@@ -251,6 +251,15 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 					"abcd history: the sub-agent payload marker is unreadable (%s)\n",
 					termsafe.Sanitize(gapErr.Error()))
 			}
+			// The stage-miss marker counts sub-agent transcripts a hook read and
+			// could not stage (iss-2610051434156079): the hook exits 0, so this
+			// is the only place the person can see such a loss.
+			miss, hasMiss, missErr := history.StageMiss(repoRoot, rootSHA)
+			if missErr != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"abcd history: the sub-agent stage-miss marker is unreadable (%s)\n",
+					termsafe.Sanitize(missErr.Error()))
+			}
 			if staged == nil {
 				staged = []history.Staged{}
 			}
@@ -273,6 +282,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 						fmt.Fprintf(w, "\nNOTE: this harness fired %s %d time(s) without an agent_transcript_path (first %s). No sub-agent transcript can be captured on it, so an empty sub-agent corpus here is the harness, not the sessions.\n",
 							termsafe.Sanitize(orDefault(gap.Event, "SubagentStop")), gap.Count,
 							gap.FirstSeen.Format("2006-01-02T15:04:05Z"))
+					}
+					if hasMiss {
+						fmt.Fprintf(w, "\nNOTE: %d sub-agent transcript(s) were read but could not be staged, so they are not in this store (first %s, last %s, agent %s: %s).\n",
+							miss.Count, miss.FirstSeen.Format("2006-01-02T15:04:05Z"), miss.LastSeen.Format("2006-01-02T15:04:05Z"),
+							termsafe.Sanitize(miss.LastAgent), termsafe.Sanitize(fsutil.RedactHome(miss.LastReason)))
 					}
 				}()
 				if len(staged) == 0 && len(quarantined) == 0 {

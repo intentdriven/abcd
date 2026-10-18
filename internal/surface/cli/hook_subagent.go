@@ -25,7 +25,9 @@ package cli
 // Capture.
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -35,6 +37,8 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/history"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -73,6 +77,20 @@ const (
 	subagentSettleAttempts = 4
 	subagentSettleInterval = 25 * time.Millisecond
 )
+
+// subagentResolveWaits are the pauses before each further attempt to resolve
+// the repository when the payload's cwd carries a .git entry but git gave no
+// root commit: a git that failed once, which on a loaded machine is a fork
+// refused or a git killed early, never a directory outside any repository
+// (iss-2610051434156079). About three and a half seconds in all.
+var subagentResolveWaits = []time.Duration{100 * time.Millisecond, 400 * time.Millisecond, time.Second, 2 * time.Second}
+
+// subagentStageRetries bounds how many times a stage refused by lock
+// contention is tried again. Each try already waits out the staging lock's own
+// timeout (history's five seconds), so three more give a held lock twenty
+// seconds in all, well inside the host's hook timeout; past that the
+// transcript is marked as missed rather than dropped unseen.
+var subagentStageRetries = 3
 
 // newSubagentStopCommand builds `abcd hook subagent-stop`.
 func newSubagentStopCommand() *cobra.Command {
@@ -115,6 +133,15 @@ func newSubagentStopCommand() *cobra.Command {
 					orDefault(in.Event, "SubagentStop"))
 			}
 			if rootSHA == "" {
+				// A directory that carries a .git entry but gave no root
+				// commit is a git that failed this once (a fork refused on a
+				// loaded machine, a git that exited early), not a directory
+				// outside any repository. It is asked again, and the session
+				// note re-read between tries, since a burst's siblings write it
+				// as they resolve (iss-2610051434156079).
+				repoRoot, rootSHA, via = retrySubagentStore(cmd.ErrOrStderr(), in)
+			}
+			if rootSHA == "" {
 				return warn("cannot resolve the repository for this sub-agent — the payload's cwd %q did not resolve and no store has seen session %q; staging nothing",
 					in.Cwd, in.SessionID)
 			}
@@ -136,9 +163,15 @@ func newSubagentStopCommand() *cobra.Command {
 			}
 
 			meta := subagentStageMeta(in)
-			res, err := history.Stage(repoRoot, rootSHA, meta, raw)
+			res, err := stageWithRetry(cmd.ErrOrStderr(), repoRoot, rootSHA, meta, raw)
 			if err != nil {
-				return warn("staging sub-agent %s failed (%v); this transcript was not captured", in.AgentID, err)
+				// The transcript was read and is lost. The marker is what lets
+				// the person see that: this hook's stderr reaches only a debug
+				// log, since it must exit 0.
+				if nerr := history.NoteStageMiss(repoRoot, rootSHA, in.AgentID, err.Error()); nerr != nil {
+					diagnosticLine(cmd.ErrOrStderr(), "abcd history: the missed stage could not be recorded either (%v)", nerr)
+				}
+				return warn("staging sub-agent %s failed (%v); this transcript was not captured, and `abcd history staged` reports it", in.AgentID, err)
 			}
 			staged := hookStageResult{Hook: "subagent-stop", Captured: true, Outcome: hookOutcomeStaged,
 				SessionID: termsafe.Sanitize(in.SessionID), AgentID: in.AgentID, Bytes: res.Staged.Bytes}
@@ -207,6 +240,43 @@ func resolveSubagentStore(in hookInput) (repoRoot, rootSHA, via string) {
 		}
 	}
 	return "", "", ""
+}
+
+// retrySubagentStore asks again, after resolveSubagentStore found no store,
+// when the payload's cwd carries a .git entry: git failing once is a loaded
+// machine, not a directory outside any repository, and a burst's siblings
+// write the session note as they resolve, so it is re-read between tries. A
+// cwd with no .git entry, or one that is gone, is not retried: there is nothing
+// a second git call could find. Each retry is said on stderr.
+func retrySubagentStore(w io.Writer, in hookInput) (repoRoot, rootSHA, via string) {
+	if in.Cwd == "" || !gitutil.RepoShaped(in.Cwd) {
+		return "", "", ""
+	}
+	for i, wait := range subagentResolveWaits {
+		time.Sleep(wait)
+		if repoRoot, rootSHA, via = resolveSubagentStore(in); rootSHA != "" {
+			fmt.Fprintf(w, "abcd history: sub-agent %s: the repository resolved on try %d, after git first gave no root commit for a repository-shaped cwd\n",
+				termsafe.Sanitize(in.AgentID), i+2)
+			return repoRoot, rootSHA, via
+		}
+	}
+	fmt.Fprintf(w, "abcd history: sub-agent %s: git gave no root commit for the repository-shaped cwd in %d tries\n",
+		termsafe.Sanitize(in.AgentID), len(subagentResolveWaits)+1)
+	return "", "", ""
+}
+
+// stageWithRetry stages, trying again when the staging lock was held past its
+// timeout, so a stage that cannot take the lock waits longer instead of losing
+// the transcript (iss-2610051434156079). Every other failure returns at once:
+// it would fail the same way again.
+func stageWithRetry(w io.Writer, repoRoot, rootSHA string, meta history.StageMeta, raw []byte) (history.StageResult, error) {
+	res, err := history.Stage(repoRoot, rootSHA, meta, raw)
+	for try := 0; err != nil && errors.Is(err, fsutil.ErrLockContention) && try < subagentStageRetries; try++ {
+		fmt.Fprintf(w, "abcd history: sub-agent %s: the staging lock was held past its timeout; trying again (%d of %d)\n",
+			meta.Lineage.AgentID, try+1, subagentStageRetries)
+		res, err = history.Stage(repoRoot, rootSHA, meta, raw)
+	}
+	return res, err
 }
 
 // subagentStageMeta assembles the lineage for one sub-agent stage, running the

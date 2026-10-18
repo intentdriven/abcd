@@ -288,6 +288,24 @@ a burst of simultaneous sub-agent completions stages in parallel instead of
 queuing behind one lock whose timeout would refuse the tail of the burst. A
 lock file is removed with the staged file it guards.
 
+The subagent-stop entrypoint does not drop a transcript on a failure that a
+second try would clear (iss-2610051434156079). A git call that fails once, as a
+fork refused or a git killed early on a loaded machine does, reads as no root
+commit, so a burst's first completions, which run before any sibling has noted
+the session, once took a repository-shaped working directory for one outside
+any repository and staged nothing. When the payload's working directory
+carries a `.git` entry but git gave no root commit, the entrypoint asks again
+for a few seconds, re-reading the session note between tries. A stage refused
+because its lock was held past the lock's timeout is tried again, up to three
+more times. Each retry is said on stderr. A transcript read and still not
+staged, with the store known, is counted in a marker beside the staging
+directory, and the staged listing reports it: the entrypoint must exit 0, and
+its stderr reaches only the host's debug log, so the marker is where the person
+sees the loss. A working directory with no `.git` entry, whose repository no
+store has seen, is not retried and has no store to mark; no queue holds such a
+transcript elsewhere, since that would keep unredacted text outside every
+store.
+
 Staging is also **the outcome record the store never had.** Before it, an absent
 record spanned "never ended", "ended before the store existed" and "ended and
 lost" alike, and nothing could tell them apart, which is why a week of losses

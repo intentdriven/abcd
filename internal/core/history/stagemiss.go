@@ -1,0 +1,110 @@
+package history
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
+)
+
+// stageMissFilename is the marker, beside the staging directory, that counts
+// the sub-agent transcripts a SubagentStop hook read but could not stage
+// (iss-2610051434156079). The hook exits 0 whatever happens, since a non-zero
+// exit is that event's blocking code, and its stderr reaches only a debug log,
+// so without the marker a lost transcript would be seen by no one.
+const stageMissFilename = "subagent-stage-misses.json"
+
+// stageMissLockTimeout bounds the wait for the marker's own lock. A burst of
+// completions that all miss writes the marker once each, and the critical
+// section is one small read and write.
+const stageMissLockTimeout = 5 * time.Second
+
+// stageMissReasonMax bounds the last reason kept, so the marker stays small
+// whatever the failure said.
+const stageMissReasonMax = 300
+
+// StageMissNote is the marker: how many sub-agent transcripts were read but
+// not staged, when the first and the last were, and the last one's agent and
+// reason.
+type StageMissNote struct {
+	Schema     int       `json:"schema"`
+	FirstSeen  time.Time `json:"first_seen"`
+	LastSeen   time.Time `json:"last_seen"`
+	Count      int       `json:"count"`
+	LastAgent  string    `json:"last_agent"`
+	LastReason string    `json:"last_reason"`
+}
+
+// stageMissPath returns the marker's path beside the staging directory.
+func stageMissPath(repoRoot, rootSHA string) (string, error) {
+	lane, err := laneDir(repoRoot, rootSHA)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(lane, stageMissFilename), nil
+}
+
+// NoteStageMiss records one sub-agent transcript that was read and could not
+// be staged, under the marker's own lock so concurrent misses each count.
+// agentID and reason are stored as given apart from a bound on the reason;
+// every reader sanitises them before printing.
+func NoteStageMiss(repoRoot, rootSHA, agentID, reason string) error {
+	if !rootSHARe.MatchString(rootSHA) {
+		return errors.New(rootSHAErrMsg)
+	}
+	path, err := stageMissPath(repoRoot, rootSHA)
+	if err != nil {
+		return err
+	}
+	if len(reason) > stageMissReasonMax {
+		reason = reason[:stageMissReasonMax]
+	}
+	reason = strings.ReplaceAll(strings.ReplaceAll(reason, "\r", " "), "\n", " ")
+	return fsutil.WithFileLock(path+".lock", stageMissLockTimeout, func() error {
+		now := time.Now().UTC()
+		note := StageMissNote{Schema: 1, FirstSeen: now}
+		if prior, ok, err := readStageMiss(path); err == nil && ok {
+			note.FirstSeen, note.Count = prior.FirstSeen, prior.Count
+		}
+		note.LastSeen, note.LastAgent, note.LastReason = now, agentID, reason
+		note.Count++
+		data, err := json.Marshal(note)
+		if err != nil {
+			return err
+		}
+		return fsutil.WriteFileAtomic(path, append(data, '\n'), 0o600)
+	})
+}
+
+// StageMiss reads the marker. A missing marker is not an error: no sub-agent
+// transcript has been missed.
+func StageMiss(repoRoot, rootSHA string) (StageMissNote, bool, error) {
+	if !rootSHARe.MatchString(rootSHA) {
+		return StageMissNote{}, false, errors.New(rootSHAErrMsg)
+	}
+	path, err := stageMissPath(repoRoot, rootSHA)
+	if err != nil {
+		return StageMissNote{}, false, err
+	}
+	return readStageMiss(path)
+}
+
+func readStageMiss(path string) (StageMissNote, bool, error) {
+	data, err := fsutil.ReadGuarded(path, maxStageSidecarBytes)
+	if errors.Is(err, os.ErrNotExist) {
+		return StageMissNote{}, false, nil
+	}
+	if err != nil {
+		return StageMissNote{}, false, err
+	}
+	var note StageMissNote
+	if err := json.Unmarshal(data, &note); err != nil {
+		return StageMissNote{}, false, fmt.Errorf("history: the stage-miss marker does not parse: %v", err)
+	}
+	return note, true, nil
+}
