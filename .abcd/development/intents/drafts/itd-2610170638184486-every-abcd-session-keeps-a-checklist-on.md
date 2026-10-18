@@ -15,7 +15,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> Every abcd session keeps a checklist on disk that says what it may decide, what it is waiting on and what it can do next, so an autonomous run never stalls and one stalled session never holds up the rest. Alice, a solo founder who is also the product thinker, leaves for the evening and tells their sessions to work on until 09:00. abcd records that as a mode with an owner and an end time, and each session's checklist carries it: Alice's design decisions that are signed off, the technical facilitator set to auto, the kinds of choice still raised with a person (security, performance, compatibility), the items waiting and on whom, the session's own promises ('when that pull request merges, do this'), and the work it owns, read from its claims, its pull requests and its branches. The checklist is repeated to the session at every start and after every compaction, so nothing that matters lives only in its context. A session that tries to stop while it has work it can do is handed the next item instead; when everything waits on something outside, it sets its next wake rather than going quiet. Before the run starts, while Alice is still there, each session writes into its checklist what could interrupt its part of the night (a design decision not yet made, a step only Alice's hands can do, work it depends on from another session, a credential it lacks), so the pass that coordinates the sessions can put them to Alice together and tell them whether the run is likely to stay autonomous. In the morning Alice reads two short lists: the steps only their own hands can do, and the decisions taken while they were away, each with its grounds and how to reverse it.
+> Every abcd session keeps a checklist on disk that says what it may decide, what it is waiting on and what it can do next, so an autonomous run never stalls and one stalled session never holds up the rest. Alice, a solo founder who is also the product thinker, leaves for the evening and tells their sessions to work on until 09:00. abcd records that as a mode with an owner and an end time, and each session's checklist carries it: Alice's design decisions that are signed off, the technical facilitator set to auto, the kinds of choice still raised with a person (security, performance, compatibility), the items waiting and on whom, the session's own promises ('when that pull request merges, do this'), and the work it owns, read from its claims, its pull requests and its branches. The checklist is repeated to the session at every start and after every compaction, so nothing that matters lives only in its context. A session that tries to stop while it has work it can do is handed the next item instead; when everything waits on something outside, it sets its next wake rather than going quiet. Before the run starts, while Alice is still there, each session writes into its checklist what could interrupt its part of the night (a design decision not yet made, a step only Alice's hands can do, work it depends on from another session, a credential it lacks), so the orchestrating session can put them to Alice together and tell them whether the run is likely to stay autonomous. In the morning Alice reads two short lists: the steps only their own hands can do, and the decisions taken while they were away, each with its grounds and how to reverse it.
 
 ## Why This Matters
 
@@ -158,6 +158,20 @@ technical decisions on state-of-the-art grounds, each marked.
   session-start hook's compact event, which the host re-reads after compaction.
   Writes use a temporary file, fsync, rename and a directory fsync, keep a
   last-good copy, and validate on read.
+- **A session's state (agent, matched with the coordination intent's
+  central-view line):** one of working; waiting, with what it waits on and
+  when it looks again; or stopped, which is allowed only while the product
+  thinker is present and is flagged. While the product thinker is away a
+  session is never stopped with work it can do, so a waiting session never
+  reads as idle.
+- **The timed wake keeps reservations alive (agent, with the coordination
+  session):** a waiting session's next wake comes sooner than half the lease
+  of the reservations it holds (under an hour for the two-hour lease), so an
+  idle waiter's holds are renewed rather than lapsing and being taken over.
+- **A public upload passes the embargo check (agent, on brief invariant 22):**
+  if the public GitHub option is kept, nothing it publishes may carry the id of
+  an advisory not yet published, the same check announcements apply
+  (itd-2609151838312703).
 - **What the product thinker sees (agent):** a session's state shown to a
   person is derived from what the machine can see (its claim renewal, its
   process, its last commit); what the agent writes about itself is a hint,
