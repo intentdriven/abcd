@@ -118,8 +118,14 @@ recorded stop (a stop at the host's cap is labelled "possibly forced by the
 cap"), records who ended it and from which working copy, and closes the
 record; on a record whose time has passed it prints the same and closes it.
 Relay every line to the user. A record or lock that is not a regular file this
-account owns that no one else can write, within 64 KiB, is refused by each verb
-(exit 2), naming the file.
+account owns that no one else can write, within 64 KiB, is refused by
+`autonomous` and `queue` (exit 2), naming the file. `back` ends the mode
+whatever state the record is in: one past 64 KiB is printed whole and kept
+with its oldest lines let go and counted; one that does not parse, or is not
+safely this account's, is replaced by a closed record, printing nothing from
+it; a lock not had in time is gone around. Each is named on its own line:
+relay those too. A queue that is full is refused (exit 2) and never cut: say
+so, and carry on with other work.
 
 ## Where the host has no status surface
 

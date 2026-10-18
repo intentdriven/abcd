@@ -73,10 +73,24 @@ docs.claude.com hooks page redirects there):
   host's task registry is reachable. Output `{"decision": "block", "reason":
   …}` prevents the stop. Claude Code caps this at eight consecutive
   continuations, overriding the next block; the count resets each time Claude
-  calls a tool, and `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` raises it.
+  calls a tool, and `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP` raises it. Read again on
+  2026-10-18 ("Stop decision control"): `hookSpecificOutput.additionalContext`
+  is "Non-error feedback for Claude. The conversation continues so Claude can
+  act on it, but unlike `decision: "block"` it is shown in the transcript as
+  hook feedback rather than a hook error"; use it "when the hook is working as
+  designed", and it "keeps the conversation going through the same loop
+  protections as `decision: "block"`, namely the `stop_hook_active` input and
+  the 8-consecutive-continuation cap, but the transcript labels it `Stop hook
+  feedback` and no hook error notification is shown". The stop check blocks
+  with `{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":…}}`
+  (Diff review round 1, item 7).
 - **StopFailure.** Fires instead of Stop "when the turn ends due to an API
   error"; its matcher is the error type (`rate_limit`, `overloaded`,
   `server_error` and others). It cannot block, and its output is ignored.
+  Its input carries `error`, "the error type and is used for matcher
+  filtering", with optional `error_details` and `last_assistant_message`
+  (here the API error string); "StopFailure hooks have no decision control".
+  `abcd hook stop-failure` reads `error`.
 - **SessionStart.** The matcher values include `compact` ("auto or manual
   compaction"). Plain stdout, or `hookSpecificOutput.additionalContext`, is
   added to Claude's context.
@@ -778,6 +792,60 @@ for review; none changes a test a step names.
   and invariant 7's clause now says too; lane 2's note above on the
   mismatch is answered by it.
 
+- 2026-10-18 (fix round 1's choice, for review): **"Managed" reaches a
+  linked worktree's main worktree.** Every away hook and the recorder act
+  only where `.abcd/` is a directory at the checkout's root or, for a
+  linked worktree, at its main worktree's root (`autonomy.Managed`). The
+  second half keeps a session that changed into a worktree it made (whose
+  branch may predate `.abcd/`, or whose `.abcd/` was never committed)
+  checked; one `git rev-parse --git-common-dir` is the only cost, paid only
+  in a linked worktree with no `.abcd/`. The recorder now asks the same
+  question instead of the local tier, which a fresh worktree lacks.
+- 2026-10-18 (fix round 1's choice, for review): **A landed no-upstream
+  branch is told by a merge first.** `git cherry` alone misses a squash of
+  several commits (its patch matches none of them), so the reader first
+  merges the branch into the last-fetched default branch without writing
+  anything (`merge-tree --write-tree`, merge drivers replaced as the conflict
+  probe replaces them): no change is landed, a change is owed. Only a
+  conflicting merge falls to `git cherry`, landed when every commit is
+  upstream by patch id, and otherwise a note. So a genuinely unpushed branch
+  whose change conflicts with the default branch is a note, not an item: the
+  phantom-stop failure the review found is worse than this one, which other
+  items (its reservation, uncarried) still cover.
+- 2026-10-18 (fix round 1's choice, for review): **The record's parts have
+  their own bounds.** Stops past 24 KiB (JSON) let the one seen least
+  recently go, and hand-backs past 8 KiB the oldest, each counted
+  (`dropped_stops`, `dropped_handed_back`) and printed by `mode back`; the
+  queue past 24 KiB refuses the next step (`ErrQueueFull`, exit 2), since a
+  queued step is the person's to read and is never cut. Only Begin carrying,
+  or Back closing, a record already past 64 KiB lets queued steps go
+  (`dropped_queue`), and Back prints every line first. Three fields are
+  added to the record, omitted when zero; `schema_version` stays 1.
+- 2026-10-18 (fix round 1's choice, for review): **Back replaces what it
+  cannot trust.** A record that does not parse, names another schema or is
+  not safely this account's (a symlink, writable by others, another
+  account's) is replaced by a closed record through the store's atomic
+  writer, which replaces a link rather than writing through it, and nothing
+  from it is printed. A record with parts of the wrong shape is read for the
+  rest. A lock not had within its two seconds, or not safe to take, is gone
+  around: the write is atomic, and a re-read catches a writer that held the
+  lock and wrote after, closing again (three tries). `autonomous` and `queue`
+  still refuse such a record, naming `mode back`.
+- 2026-10-18 (fix round 1's choice, for review): **A due renewal's deadline
+  is its lapse.** The reader reports `Owed.WakeBy`: each live reservation's
+  renewal while not yet due, and its lapse once due, the earliest. The
+  deadline reads it less the skew (falling back to `NextRenewal` for a set
+  built without it), so a renewal only due releases on a wake that fires
+  before the lease lapses, as "Owed work" has it.
+- 2026-10-18 (fix round 1's choice, for review): **The budget counts from
+  the hook's start.** The owed read has 14 seconds from the hook's start
+  (the root lookups included); the forge listing's ten seconds sit inside
+  it. A reading cut short sets `Owed.Incomplete`; `Judge` then allows the
+  stop with a line naming what was not read and, while away, records it as
+  `check-incomplete`. This changes the design in one respect: under heavy
+  load a stop with work owed may now be allowed, recorded and shown, where
+  before the hook was killed at 30 seconds and the stop went unrecorded.
+
 ## Footprint
 
 - packages: internal/core/autonomy, internal/core/mode, internal/core/guard, internal/surface/cli, hooks, commands/mode.md, commands/guard.md, .abcd/development/brief/02-constraints/03-invariants.md, .abcd/development/brief/04-surfaces/08-abcd.md, .abcd/development/brief/04-surfaces/17-guard.md
@@ -957,7 +1025,8 @@ for review; none changes a test a step names.
      `shell` task running `sleep 36000` or a `tail -f` does not count);
      TestNextLookStored; TestProseQuestionBlockedOnce; TestNothingOwedReason
      (names taking the next ready item first); TestSessionIDShape;
-     TestHookStopOutput (`{"decision":"block","reason":…}` only on a block, a
+     TestHookStopOutput (a block only on a block, written since Diff review
+     round 1 as the Stop feedback `hookSpecificOutput.additionalContext`, a
      `systemMessage` while present; a malformed payload, an unreadable record
      or a held lock allows with a stderr line); TestHookStopFailureRecords
      (the error type recorded while away, nothing written while present);
@@ -1416,3 +1485,30 @@ and the two-lane estimate sound. Each item and how it was handled:
 
 No fourth review round: the two deltas are checked on the next commit by
 hand.
+
+## Diff review round 1
+
+On 2026-10-18 an Opus and Sonnet pair reviewed the built slice's diff at
+f403910ac (against e4cca1e38), with the verdict "fix first", every major
+reproduced. The fix round added the release orchestrator's three hard
+requirements to majors 1, 3 and 6. Each item and how it was handled:
+
+| # | finding | handled |
+|---|---|---|
+| major 1 | the Stop hook acted in every git repository, not only managed ones | fixed: Stop, StopFailure, the session-start and prompt away paths and the branch recorder return at once outside a managed checkout (`autonomy.Managed`), with no output, no file under abcd's home, no session note or state, and no git past naming the roots; TestHookStopUnmanagedRepoSilent, TestAwayHooksLeaveUnmanagedRepoAlone (93d34a1ef, e1d64652a) |
+| major 2 | a squash-merged branch with no upstream read as unpushed for 14 days | fixed: a merge into the default branch that changes nothing is landed, a conflicting one falls to `git cherry`, and the undecidable is a note; TestNoUpstreamLandedBranchNotOwed, TestNoUpstreamUnlandedBranchOwed, TestNoUpstreamUndecidedBranchNoted (546c22e40) |
+| major 3 | a full record kept the person from ending the mode | fixed: AddStop collapses an identical stop anywhere and rotates past its bound; hand-backs rotate; the queue refuses past its bound; Back ends a record past its bound, unparsable, partly unparsable, not safely this account's or behind a busy or unsafe lock, printing what it can and naming the rest; Begin carries a full record fitted; TestAddStopCollapsesAnywhere, TestRecordStaysWithinBoundInUse, TestBackEndsAnyRecord, TestBackWithLockHeld, TestBeginCarriesAFullRecord, TestModeBackEndsAnUnreadableRecord (e101881f2) |
+| major 4 | a failed `git worktree add <path> <existing>` recorded a peer's branch | fixed at record time: a name a worktree has checked out is skipped; TestBranchRecorderSkipsBranchCheckedOutElsewhere (fa7f6a8f2). At read time a reflog branch another worktree holds is not own (minor 4's fix); a recorded one stays own, since a worktree the session made holds its branch by design |
+| major 5 | a row-1 block past the cap recorded nothing | fixed: work owed when anything is, else no next look; TestRowOnePastCapRecordsStop (e0d16ae76) |
+| major 6 | the stop check overran the hook's 30-second timeout | fixed: every git call of the read is bound to a 14-second budget from the hook's start; the stack-base search is linear; a reading cut short allows the stop, named and recorded; TestStackBaseSearchLinear, TestReadOwedHonoursDeadline, TestIncompleteReadAllows, TestHookStopBudgetFailsOpen (31b5ac337). A design change, stated under Settled here |
+| 7 | `decision: "block"` shows "Stop hook error occurred" | fixed after reading the hooks reference again (quoted under the host mechanics): a block is `hookSpecificOutput.additionalContext`; TestHookStopBlockIsFeedback (060d25335); the live capture re-run is the orchestrator's |
+| 8 | the reason repeated itself | fixed at the source: the reader's reason is the item's words; TestReasonSaysItOnce and the end-to-end exact line (e0d16ae76, e1d64652a) |
+| minor 1 | a due renewal never released on a wake | fixed: the deadline reads `Owed.WakeBy`; TestDueRenewalReleasesOnWake builds the set with the reader, and TestWakeReleasesUnchangedSetTwice no longer uses an impossible state (3e4676f32) |
+| minor 2 | the 200-listing truncation was silent | fixed: a note, and no reservation reported uncarried from a truncated listing; TestForgeListingAtLimitTruncated (231a6984f) |
+| minor 3 | carried counted other people's pull requests | fixed: the carried check applies findOwn's fork and author filter; TestCarriedOnlyByOwnPullRequest (29f62682b) |
+| minor 4 | the review-only exclusion leaned on author email | fixed for the case the machine can tell: a reflog branch another worktree has checked out is not own; TestReviewCheckoutSameEmailNotOwn (29f62682b). A sibling's branch no worktree holds any more still reads as own on one email: nothing on disk tells it apart |
+| minor 5 | a branch name in a suggested shell command | fixed: each interpolated word is one shell word (`shellquote.Single` unless plain), the renewal's `abcd reserve` too; names were already cleaned by termsafe; TestSuggestedQueueCommandQuotesBranch (e0d16ae76) |
+| minor 6 | `hook stop` had no `recover` | fixed: a panic allows the stop with a stderr line, and StopFailure records nothing; TestHookStopPanicAllows (61f1e0e40) |
+| minor 7 | overcounted recorded stops | left as the spec allows, labelled "possibly forced by the cap" |
+| minor 8 | SubagentStop under `--no-session-persistence` | outside the slice; not handled in this round |
+| own | the end-to-end test made its bare origin by hand | fixed: `gittest.InitBare`, which TestNoTestMakesABareRepositoryByHand requires (3b8b14fac) |
