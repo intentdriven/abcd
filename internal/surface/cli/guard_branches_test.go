@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -126,5 +127,56 @@ func TestBranchRecorderNeverRefuses(t *testing.T) {
 	// A command with no branch act is silent as before.
 	if stderr := hookAllows(t, root, "git status --porcelain"); stderr != "" {
 		t.Fatalf("no branch act, no line: %q", stderr)
+	}
+}
+
+// TestBranchRecorderUsesSessionStartCopy: the recorder keys a branch on the
+// session's start copy, the one the session-start hook noted, so a session
+// that changed into a worktree it made still records under the copy the stop
+// check reads; with no note for the session it keys on the payload cwd's
+// worktree.
+func TestBranchRecorderUsesSessionStartCopy(t *testing.T) {
+	root := awayCheckout(t)
+	wt := filepath.Join(t.TempDir(), "wt")
+	gitAt(t, root, "worktree", "add", "-q", "-b", "feat/wt", wt)
+	wt = realPath(t, wt)
+	if err := os.MkdirAll(filepath.Join(wt, ".abcd", ".work.local"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	payload := func(session, command string) string {
+		b, err := json.Marshal(map[string]any{
+			"session_id": session, "cwd": wt, "hook_event_name": "PreToolUse", "tool_name": "Bash",
+			"tool_input": map[string]any{"command": command, "description": "x"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	run := func(session, command string) {
+		t.Helper()
+		stdout, stderr, code := runGuard(payload(session, command), "guard", "hook")
+		if strings.Contains(stdout, `"deny"`) || code == 2 {
+			t.Fatalf("%q was refused: stdout %q stderr %q code %d", command, stdout, stderr, code)
+		}
+	}
+
+	if _, err := awayStore(t, root).NoteSessionCopy("noted", root, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	run("noted", "git switch -c feat/from-noted")
+	if got := createdBranches(t, root); !slices.Contains(got, "feat/from-noted") {
+		t.Fatalf("a noted session's branch is recorded under its start copy: start copy holds %v", got)
+	}
+	if got := createdBranches(t, wt); slices.Contains(got, "feat/from-noted") {
+		t.Fatalf("a noted session's branch is not recorded under the worktree it ran in: worktree holds %v", got)
+	}
+
+	run("unnoted", "git switch -c feat/from-unnoted")
+	if got := createdBranches(t, wt); !slices.Contains(got, "feat/from-unnoted") {
+		t.Fatalf("with no note the branch is recorded under the payload cwd's worktree: worktree holds %v", got)
+	}
+	if got := createdBranches(t, root); slices.Contains(got, "feat/from-unnoted") {
+		t.Fatalf("with no note nothing is recorded under another copy: start copy holds %v", got)
 	}
 }

@@ -10,10 +10,16 @@ import (
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
-// awayCopyRoot is the working copy a hook acts for: the worktree root of the
-// session's directory. The stop check reads the copy's owed work from the same
-// root (spc-2610180914469489, "Which copy").
-func awayCopyRoot(cwd string) (string, bool) {
+// awayCopyRoot is the working copy a hook acts for: the session's start copy,
+// as the session-start hook noted it (autonomy.ResolveCopy), else the worktree
+// root of the payload's cwd. The stop check reads the copy's owed work from
+// the same root (spc-2610180914469489, "Which copy"), so a branch a session
+// cuts after changing into a worktree it made is recorded where the check
+// looks.
+func awayCopyRoot(cwd, sessionID string) (string, bool) {
+	if root, _, err := autonomy.ResolveCopy(cwd, sessionID, autonomy.Options{}); err == nil {
+		return root, true
+	}
 	root, err := gitutil.CheckoutRoot(cwd, autonomy.StoreName)
 	if err != nil {
 		return "", false
@@ -24,15 +30,15 @@ func awayCopyRoot(cwd string) (string, bool) {
 // recordCreatedBranches is the created-branch recorder of the away mode
 // (spc-2610180914469489 step 3): before the guard judges command, the
 // branches it creates, checks out into a new worktree or renames are recorded
-// under the session copy's key in the away store, whether or not the person
+// under the session copy's key (awayCopyRoot) in the away store, whether or not the person
 // is away. It refuses nothing: a store it cannot write leaves one line on w
 // and the command goes on to the guard's own judgement.
-func recordCreatedBranches(w io.Writer, cwd string, workdir json.RawMessage, command string) {
+func recordCreatedBranches(w io.Writer, cwd, sessionID string, workdir json.RawMessage, command string) {
 	acts := guard.BranchActs(command)
 	if len(acts) == 0 {
 		return
 	}
-	copyRoot, ok := awayCopyRoot(cwd)
+	copyRoot, ok := awayCopyRoot(cwd, sessionID)
 	if !ok {
 		return
 	}

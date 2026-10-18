@@ -389,7 +389,7 @@ func guardHookDecide(cmd *cobra.Command) error {
 	// The away mode's created-branch recorder runs first and refuses
 	// nothing, so the registry's state never decides whether a branch the
 	// session cuts is seen as its own (spc-2610180914469489 step 3).
-	recordCreatedBranches(cmd.ErrOrStderr(), cwd, in.ToolInput.Workdir, candidate)
+	recordCreatedBranches(cmd.ErrOrStderr(), cwd, in.SessionID, in.ToolInput.Workdir, candidate)
 	sessionRoot := rulesRoot(cwd, cmd.ErrOrStderr())
 	// The fail-safe posture is decided in core (guard.LoadRepo,
 	// iss-2608291814576261); the hook only formats it. A dropped repo layer
@@ -543,6 +543,9 @@ func hookToolName(raw []byte) (name string, known bool) {
 // guardHookInput is the subset of the host's pre-tool-use payload the adapter
 // reads. Unknown fields are ignored: the host owns this schema and adds to it.
 type guardHookInput struct {
+	// SessionID names the session, whose start copy the created-branch
+	// recorder keys on (awayCopyRoot).
+	SessionID string `json:"session_id"`
 	Cwd       string `json:"cwd"`
 	ToolName  string `json:"tool_name"`
 	ToolInput struct {
