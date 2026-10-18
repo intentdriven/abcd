@@ -274,7 +274,11 @@ func newGuardHookCommand() *cobra.Command {
 			"the mode, and the question is marked open in the local tier; the answer\n" +
 			"resets the mode to managed, from `abcd hook question-answered` on the\n" +
 			"question tool's PostToolUse or else on the next human message. A questions\n" +
-			"field the hook cannot read lets the question run and warns loudly.",
+			"field the hook cannot read lets the question run and warns loudly. While\n" +
+			"the away mode holds (`abcd mode autonomous`), every question is refused\n" +
+			"first, whatever its chip, with one reason that routes it by the act it asks\n" +
+			"about: an act only the person may approve to `abcd mode queue`, every other\n" +
+			"question to `abcd decide`; no mode is set and nothing is marked open.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return answerGuardHook(cmd, guardHookDecide)

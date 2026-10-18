@@ -1873,7 +1873,11 @@ product-thinker, Tech and Setup to facilitator), so it is never refused on
 the mode, and the question is marked open in the local tier; the answer
 resets the mode to managed, from `abcd hook question-answered` on the
 question tool's PostToolUse or else on the next human message. A questions
-field the hook cannot read lets the question run and warns loudly.
+field the hook cannot read lets the question run and warns loudly. While
+the away mode holds (`abcd mode autonomous`), every question is refused
+first, whatever its chip, with one reason that routes it by the act it asks
+about: an act only the person may approve to `abcd mode queue`, every other
+question to `abcd decide`; no mode is set and nothing is marked open.
 
 ### `abcd help`
 
