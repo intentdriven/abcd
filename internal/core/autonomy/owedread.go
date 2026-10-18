@@ -516,10 +516,24 @@ func (r *owedReader) findOwn() {
 	for _, h := range linkedHeads {
 		linked[h] = true
 	}
-	candidates := append(r.reflogBranches(), r.recordedBranches()...)
+	reflog, recorded := r.reflogBranches(), r.recordedBranches()
+	isRecorded := map[string]bool{}
+	for _, n := range recorded {
+		isRecorded[n] = true
+	}
+	elsewhere := r.checkedOutElsewhere()
+	candidates := append(reflog, recorded...)
 	for i, name := range candidates {
 		b, ok := r.branches[name]
 		if !ok || r.own[name] {
+			continue
+		}
+		// A branch this copy only checked out once, which another worktree
+		// has checked out now, is that worktree's: sibling copies on one
+		// machine share the author email, so the email cannot tell. One
+		// this copy's sessions recorded creating, or a worktree they made
+		// for it, is still this copy's.
+		if elsewhere[name] && !isRecorded[name] && !linked[name] {
 			continue
 		}
 		if r.expired() {
@@ -546,6 +560,28 @@ func (r *owedReader) findOwn() {
 			}
 		}
 	}
+}
+
+// checkedOutElsewhere are the branches a worktree other than this copy has
+// checked out.
+func (r *owedReader) checkedOutElsewhere() map[string]bool {
+	out := map[string]bool{}
+	wts, err := gitutil.ListWorktrees(r.root, gitutil.MaxWorktreeListing)
+	if err != nil {
+		return out
+	}
+	here, _ := os.Stat(r.root)
+	for _, wt := range wts {
+		name, ok := strings.CutPrefix(wt.Branch, "refs/heads/")
+		if !ok {
+			continue
+		}
+		if fi, err := os.Stat(wt.Path); err == nil && here != nil && os.SameFile(fi, here) {
+			continue
+		}
+		out[name] = true
+	}
+	return out
 }
 
 func (r *owedReader) ownNames() []string {
@@ -958,6 +994,11 @@ func (r *owedReader) reservationItems() {
 		}
 		carried := false
 		for _, p := range r.list.prs {
+			// Only a pull request findOwn would count carries: in this
+			// repository, and the person's.
+			if p.IsCrossRepository || !r.list.authoredBy(p, r.person) {
+				continue
+			}
 			if r.prLinks(p, res.Record, r.own[p.HeadRefName]) {
 				carried = true
 				break

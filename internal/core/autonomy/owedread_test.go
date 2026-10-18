@@ -1236,3 +1236,43 @@ func TestDueRenewalReleasesOnWake(t *testing.T) {
 		t.Errorf("a wake past the lease's lapse released the stop")
 	}
 }
+
+// TestReviewCheckoutSameEmailNotOwn: on one machine sibling copies share the
+// author email, so a branch this copy once checked out to review, which a
+// sibling worktree now has checked out, holds commits of "this checkout's"
+// email; it is the sibling's, not this copy's own, and is not owed here.
+func TestReviewCheckoutSameEmailNotOwn(t *testing.T) {
+	f := newFx(t)
+	f.git("branch", "feat/sibling")
+	f.commitOn("feat/sibling", "sibling's work", "")
+	f.own("feat/sibling") // checked out here once, to look at it
+	sib := filepath.Join(t.TempDir(), "sib")
+	f.git("worktree", "add", "-q", sib, "feat/sibling")
+	if owed := f.read(false); has(owed, OwedUnpushed, "feat/sibling") {
+		t.Fatalf("a branch a sibling worktree has checked out is not this copy's own: %s", describe(owed))
+	}
+}
+
+// TestCarriedOnlyByOwnPullRequest: a reservation is carried only by a pull
+// request findOwn would count: in this repository and the person's; a fork's
+// or another person's pull request naming it does not carry it.
+func TestCarriedOnlyByOwnPullRequest(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		p    fakePR
+	}{
+		{"another person's", func() fakePR { p := pr(1, "fix/x", "main", "bob"); p.Body = "Resolves: iss-21"; return p }()},
+		{"a fork's", func() fakePR {
+			p := pr(2, "fix/iss-21", "main", "alice")
+			p.IsCrossRepository = true
+			return p
+		}()},
+	} {
+		f := newFx(t)
+		f.reserveFresh("iss-21")
+		f.forge.prs = []fakePR{c.p}
+		if owed := f.read(true); !has(owed, OwedUncarried, "iss-21") {
+			t.Errorf("%s pull request carried the reservation: %s", c.name, describe(owed))
+		}
+	}
+}
