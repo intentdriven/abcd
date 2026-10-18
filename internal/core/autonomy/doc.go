@@ -77,4 +77,23 @@
 // behind one, a stacked branch, an unpushed branch, and a reservation whose
 // work no pull request carries. Owed.Fingerprint and Owed.CappedFingerprint
 // compare two owed sets item by item, ignoring order and reasons.
+// Owed.NextRenewal is the earliest renewal due among the live reservations
+// under this copy's key (zero when none), and Owed.HandedBack the items a
+// queued step handed back, which the verdict accepts only under
+// --hold-pushes and only for an unpushed branch's item with its head.
+//
+// # The stop verdict
+//
+// Judge(record, owed, input, session, now) is the stop check's verdict, pure:
+// present, it allows (with a SystemMessage naming owed work); away, the seven
+// rows of the plan decide, from the owed set, the host's payload (StopInput:
+// stop_hook_active, the last message, session_crons, background_tasks, the
+// host's cap) and the session's SessionState. A wake qualifies
+// (QualifyingWake) when a session cron's latest fire time (LatestFire: its
+// next match, by abcd's own five-field cron parser, ParseCron, plus the
+// host's lateness) is no later than Deadline. The session's state lives in
+// the copy's local tier (SessionsDir, LoadSession, SaveSession), keyed by a
+// session id ValidSessionID accepts. The session-start hook notes each
+// session's start copy in the store (Store.NoteSessionCopy); ResolveCopy
+// reads it back.
 package autonomy

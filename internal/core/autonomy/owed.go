@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // OwedKind is one of the four kinds of owed work, the reservation kind split
@@ -76,6 +77,16 @@ type Owed struct {
 	// Notes say what was not read and how the set was judged instead, such
 	// as pull requests not read when the forge listing failed.
 	Notes []string `json:"notes,omitempty"`
+	// NextRenewal is the earliest renewal due among the live reservations
+	// under this copy's key, due or not yet; zero when there is none. The
+	// stop verdict's deadline is it less lease.Skew, when that is sooner than
+	// the ceiling (dcn-2610181003455731).
+	NextRenewal time.Time `json:"next_renewal,omitempty"`
+	// HandedBack are the items a queued step handed back this check, taken
+	// out of Items by the reader (dcn-2610181035355741). The verdict accepts
+	// only an unpushed branch's item, with its head, under --hold-pushes,
+	// and puts any other back among the owed items.
+	HandedBack []OwedItem `json:"handed_back,omitempty"`
 }
 
 // Empty reports whether nothing is owed.
