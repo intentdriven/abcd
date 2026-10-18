@@ -1502,8 +1502,37 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb.",
+      "sentence": "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.",
       "flags": []
+    },
+    {
+      "path": "abcd guard approve",
+      "hidden": false,
+      "block": "agents",
+      "sentence": "Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
+      "flags": [
+        {
+          "name": "base",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dir",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "run-dir",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd guard check",

@@ -478,6 +478,8 @@ var wrappersWithoutProbes = []string{
 	// A Node package runner, not a util-linux shim: npx fetches a package
 	// from the network to run it, so probing it would run whatever it
 	// fetched. Its value flags come from npm's documented exec grammar
-	// (iss-2610112232319827).
-	"npx",
+	// (iss-2610112232319827). bunx is bun's runner, fetching and running a
+	// package the same way, with its value flags from bun's documented
+	// grammar.
+	"npx", "bunx",
 }
