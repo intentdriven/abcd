@@ -82,7 +82,13 @@ func newCloudCase(t *testing.T) *cloudCase {
 			c.env = append(c.env, kv)
 		}
 	}
-	c.env = append(c.env, "PATH="+c.bin+string(os.PathListSeparator)+os.Getenv("PATH"), "CALLS="+c.calls)
+	// GIT_ALLOW_PROTOCOL=file holds every git the scripts and the built abcd
+	// run to local remotes: a github.com origin a test sets reaches no real
+	// forge, and a URL insteadOf rewrites to the bare repository still
+	// answers (iss-2610170718356567). The built binary is no test binary, so
+	// the guard gitutil keeps for one does not reach it, and its networked
+	// runner keeps this variable where it strips GIT_CONFIG_*.
+	c.env = append(c.env, "PATH="+c.bin+string(os.PathListSeparator)+os.Getenv("PATH"), "CALLS="+c.calls, "GIT_ALLOW_PROTOCOL=file")
 
 	gittest.InitBare(t, c.origin)
 	if out, err := c.run(base, "git", "init", "-q", "-b", "main", c.dir); err != nil {
