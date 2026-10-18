@@ -44,6 +44,10 @@ var cloudScrubbed = []string{
 	// A binary built from this checkout, and the host's file of variables for
 	// later shells: a test sets each, or none is set.
 	"ABCD_BIN=", "ABCD_OUTBOUND_BIN=", "CLAUDE_ENV_FILE=",
+	// The CA bundles a hosted session's proxy names: a test sets each, or
+	// none is set.
+	"SSL_CERT_FILE=", "GIT_SSL_CAINFO=", "CURL_CA_BUNDLE=", "REQUESTS_CA_BUNDLE=", "NODE_EXTRA_CA_CERTS=",
+	"FAKE_ROOT_ONLY=", "ABCD_CLOUD_CA_DIR=",
 }
 
 func newCloudCase(t *testing.T) *cloudCase {
