@@ -10,11 +10,15 @@ import (
 )
 
 // PublishedAdvisory is one advisory GitHub confirmed published, and when
-// abcd recorded it.
+// abcd recorded it. RestoreWith, for an advisory planned from the fix its
+// private record names in the store, is the command, run from the
+// checkout's root, that restores that record, resolved, into the public
+// ledger now the advisory is public.
 type PublishedAdvisory struct {
 	GHSAID      string    `json:"ghsa_id"`
 	IssueID     string    `json:"issue_id"`
 	PublishedAt time.Time `json:"published_at"`
+	RestoreWith string    `json:"restore_with,omitempty"`
 }
 
 // PublishResult is what a publish showed and did: the plan, and with an
@@ -117,7 +121,11 @@ func Publish(req PublishRequest) (PublishResult, error) {
 			recordForgeEnd(&st.Advisories[j], "published", now)
 			err = s.SaveState(st)
 		}
-		res.Published = append(res.Published, PublishedAdvisory{GHSAID: e.GHSAID, IssueID: e.IssueID, PublishedAt: now})
+		pub := PublishedAdvisory{GHSAID: e.GHSAID, IssueID: e.IssueID, PublishedAt: now}
+		if e.StoreEvidence {
+			pub.RestoreWith = restoreCommand(req.Home, s, e.storeRecord)
+		}
+		res.Published = append(res.Published, pub)
 		if err != nil {
 			return res, fail(i, e.GHSAID, "it is published on GitHub, but its published_at could not be recorded in the store ("+err.Error()+
 				"); the next `abcd embargo publish` reads it published on GitHub and records it")

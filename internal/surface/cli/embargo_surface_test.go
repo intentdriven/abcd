@@ -235,3 +235,31 @@ func TestEmbargoCheckRendersItsNote(t *testing.T) {
 		t.Fatalf("the text form is %q; want the note on a line of its own", b.String())
 	}
 }
+
+// TestEmbargoPublishRendersStoreEvidence: the text form says which planned
+// advisory takes its fix from the store, and after publication prints the
+// command that restores its record, for that advisory alone.
+func TestEmbargoPublishRendersStoreEvidence(t *testing.T) {
+	const restore = "cp -- ~/.abcd.noindex/worktrees/0123/embargo/.abcd/work/issues/resolved/iss-1-private-report.md .abcd/work/issues/resolved/"
+	fix := strings.Repeat("a", 40)
+	plan := embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", LeftOut: []embargo.LeftOut{}, Digest: "d", ApproveWith: "abcd embargo publish --release v0.9.0 --approve d",
+		Entries: []embargo.PlanEntry{
+			{GHSAID: surfaceGHSA, IssueID: "iss-1", FixCommit: fix, FirstTag: "v0.9.0", PatchedVersion: "0.9.0", StoreEvidence: true},
+			{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", FixCommit: fix, FirstTag: "v0.9.0", PatchedVersion: "0.9.0"},
+		}}
+	var b bytes.Buffer
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: plan, Published: []embargo.PublishedAdvisory{}})
+	lines := strings.Split(b.String(), "\n")
+	if !strings.Contains(lines[1], surfaceGHSA) || !strings.Contains(lines[1], "fix recorded in the store") || strings.Contains(lines[2], "store") {
+		t.Fatalf("the plan's text form is %q", b.String())
+	}
+
+	b.Reset()
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: plan, Approved: true, NoDraftLeft: true, Published: []embargo.PublishedAdvisory{
+		{GHSAID: surfaceGHSA, IssueID: "iss-1", RestoreWith: restore},
+		{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2"},
+	}})
+	if got := b.String(); !strings.Contains(got, "restore its record as resolved, from the checkout's root:\n    "+restore+"\n") || strings.Count(got, "restore its record") != 1 {
+		t.Fatalf("the publication's text form is %q", got)
+	}
+}

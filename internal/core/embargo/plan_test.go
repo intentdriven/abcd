@@ -3,9 +3,13 @@ package embargo
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 )
 
 // planFixture is a checkout with an embargo store, a fake gh, and helpers to
@@ -480,4 +484,180 @@ func readFile(t *testing.T, p string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+// storeResolve writes issID's private record into the store's own resolved/
+// folder, this account's alone, naming fix as its resolved_by.commit (empty:
+// no resolved_by), and returns its path inside the store. It writes the
+// value as given, so a test can hold the plan to a store value capture's
+// shape check would not have let through.
+func (pf planFixture) storeResolve(t *testing.T, issID, fix string) string {
+	t.Helper()
+	rel := ".abcd/work/issues/resolved/" + issID + "-private-report.md"
+	rec := "---\nschema_version: 1\nid: \"" + issID + "\"\nslug: \"private-report\"\nseverity: \"major\"\n" +
+		"category: \"security\"\nsource: \"security-advisory\"\nresolution: \"fixed\"\nimpact: fix\n"
+	if fix != "" {
+		rec += "resolved_by:\n  commit: \"" + fix + "\"\n"
+	}
+	rec += "---\n\na sample private report.\n"
+	p := filepath.Join(pf.s.Root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(rec), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return rel
+}
+
+// TestStoreRecordedFixPlans: an advisory whose record is held out of every
+// committed tree, as the security rule asks, and resolved in the store's own
+// ledger through capture's resolve with its fix commit, is planned with the
+// first release tag holding that commit as its patched version, though no
+// release carries a public record of it.
+func TestStoreRecordedFixPlans(t *testing.T) {
+	pf := newPlanFixture(t)
+	res, err := capture.Capture(capture.CaptureRequest{
+		RepoRoot: pf.s.Root, Text: "a sample report title\n\nthe sample body", Severity: capture.SeverityMajor,
+		Category: "security", Source: "security-advisory", Slug: "private-report",
+		FoundDuring: "embargo intake 2026-10-12", Remedy: issueschema.MachineRemedy,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.seed(t, vulnAdvisory(ghsaOpen, res.ID))
+	fix := pf.commit("parser.go", "package parser\n", "fix: tighten the parser")
+	pf.tag("v0.9.0")
+	pf.commit("other.go", "package other\n", "later")
+	pf.tag("v0.10.0")
+	moved, err := capture.Resolve(capture.ResolveRequest{RepoRoot: pf.s.Root, ID: res.ID, Resolution: "fixed by tightening the parser",
+		Impact: "fix", ByCommit: fix})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(pf.s.Root, filepath.FromSlash(moved.Path)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := pf.f.repo.Git("ls-tree", "-r", "--name-only", "v0.10.0", "--", ".abcd/work/issues/resolved/"); out != "" {
+		t.Fatalf("the release carries a public record: %q", out)
+	}
+	pf.remote(t, ghsaOpen, "draft", "the report", vulnJSON(examplePackage, ""))
+
+	p := pf.plan(t, "")
+	if p.Release != "v0.10.0" || len(p.Entries) != 1 || len(p.LeftOut) != 0 {
+		t.Fatalf("plan %+v", p)
+	}
+	e := p.Entries[0]
+	if e.GHSAID != ghsaOpen || e.IssueID != res.ID || e.FixCommit != fix || e.FirstTag != "v0.9.0" || e.PatchedVersion != "0.9.0" || !e.StoreEvidence {
+		t.Fatalf("entry %+v", e)
+	}
+	if len(e.Vulnerabilities) != 1 || e.Vulnerabilities[0].VulnerableVersionRange != "< 0.9.0" || e.Vulnerabilities[0].PatchedVersions != "0.9.0" {
+		t.Fatalf("vulnerabilities %+v", e.Vulnerabilities)
+	}
+	if p.ApproveWith == "" {
+		t.Fatal("a plan holding an entry offers no approval")
+	}
+}
+
+// TestStoreRecordedFixInNoTagLeftOut: a fix the store records that no release
+// tag holds is left out, saying so, and GitHub is not asked about it.
+func TestStoreRecordedFixInNoTagLeftOut(t *testing.T) {
+	pf := newPlanFixture(t)
+	pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+	r := pf.f.repo
+	pf.tag("v0.9.0")
+	r.Git("switch", "-q", "-c", "side")
+	fix := pf.commit("parser.go", "package parser\n", "fix on a branch no tag holds")
+	r.Git("switch", "-q", "main")
+	pf.storeResolve(t, issA, fix)
+	p := pf.plan(t, "")
+	if len(p.Entries) != 0 || !strings.Contains(leftOutReason(t, p, ghsaOpen), "no release tag") {
+		t.Fatalf("plan %+v", p)
+	}
+	if len(pf.g.calls()) != 0 {
+		t.Fatal("an advisory left out by the release was read from GitHub")
+	}
+}
+
+// TestStoreRecordedFixMustBeFullCommitID: the store is a trust boundary, so
+// the fix commit it names must be a full object name of this repository's
+// hash, naming a commit itself: an abbreviation (which the public record's
+// path accepts), an option-shaped value, another case, a name of the other
+// hash's length, a name of no object here, or a tag object's name is left
+// out with the reason and never reaches git as an option. A store record that
+// is not resolved, or names no fix, leaves the advisory out as before.
+func TestStoreRecordedFixMustBeFullCommitID(t *testing.T) {
+	for name, tc := range map[string]struct {
+		fix    func(pf planFixture, fix string) string
+		reason string
+	}{
+		"abbreviated":    {func(_ planFixture, fix string) string { return fix[:12] }, "not a full commit id"},
+		"option-shaped":  {func(pf planFixture, _ string) string { return "--output=" + pf.f.home + "/written" }, "not a full commit id"},
+		"upper case":     {func(_ planFixture, fix string) string { return strings.ToUpper(fix) }, "not a full commit id"},
+		"other length":   {func(_ planFixture, fix string) string { return fix + strings.Repeat("0", 64-len(fix)) }, "not a commit of this repository"},
+		"no such object": {func(_ planFixture, _ string) string { return strings.Repeat("0", 40) }, "not a commit of this repository"},
+		"tag object": {func(pf planFixture, _ string) string {
+			pf.f.repo.Git("tag", "-a", "-m", "an annotated tag", "annotated")
+			return pf.f.repo.Git("rev-parse", "refs/tags/annotated")
+		}, "not a commit of this repository"},
+		"no fix named": {func(_ planFixture, _ string) string { return "" }, "names no fix commit"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			pf := newPlanFixture(t)
+			pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+			fix := pf.commit("parser.go", "package parser\n", "fix")
+			pf.tag("v0.9.0")
+			pf.storeResolve(t, issA, tc.fix(pf, fix))
+			p := pf.plan(t, "")
+			r := leftOutReason(t, p, ghsaOpen)
+			if len(p.Entries) != 0 || !strings.Contains(r, tc.reason) || !strings.Contains(r, "not resolved in v0.9.0") {
+				t.Fatalf("reason %q, plan %+v", r, p)
+			}
+			if _, err := os.Stat(filepath.Join(pf.f.home, "written")); err == nil {
+				t.Fatal("a value from the store reached git as an option")
+			}
+			if len(pf.g.calls()) != 0 {
+				t.Fatal("an advisory left out by the release was read from GitHub")
+			}
+		})
+	}
+
+	// A private record still open in the store is no evidence of a fix.
+	pf := newPlanFixture(t)
+	pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+	pf.tag("v0.9.0")
+	p := pf.plan(t, "")
+	if r := leftOutReason(t, p, ghsaOpen); len(p.Entries) != 0 || !strings.Contains(r, "not resolved in v0.9.0") || !strings.Contains(r, "store") {
+		t.Fatalf("reason %q", r)
+	}
+}
+
+// TestPublicRecordPathUnchanged: an advisory whose record is resolved in the
+// release plans from that record exactly as before, whatever the store also
+// records: its fix commit is the public record's, and the entry is not
+// marked as taken from the store.
+func TestPublicRecordPathUnchanged(t *testing.T) {
+	pf := newPlanFixture(t)
+	pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+	fix := pf.commit("parser.go", "package parser\n", "fix")
+	pf.tag("v0.9.0")
+	other := pf.commit("other.go", "package other\n", "another fix")
+	pf.resolve(issA, fix)
+	pf.tag("v0.10.0")
+	pf.storeResolve(t, issA, other)
+	pf.remote(t, ghsaOpen, "draft", "the report", vulnJSON(examplePackage, ""))
+	p := pf.plan(t, "")
+	if len(p.Entries) != 1 {
+		t.Fatalf("plan %+v", p)
+	}
+	if e := p.Entries[0]; e.FixCommit != fix || e.FirstTag != "v0.9.0" || e.StoreEvidence {
+		t.Fatalf("entry %+v", e)
+	}
+	data, err := json.Marshal(p.Entries[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "store") {
+		t.Fatalf("a public-record entry carries a store field, which would change its digest: %s", data)
+	}
 }

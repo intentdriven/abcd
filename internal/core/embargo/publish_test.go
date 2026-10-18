@@ -28,10 +28,22 @@ const (
 
 func newPublishFixture(t *testing.T, stateA string) publishFixture {
 	t.Helper()
+	return newPublishFixtureWith(t, stateA, false)
+}
+
+// newPublishFixtureWith is newPublishFixture, with A's fix recorded only in
+// the store's own ledger when storeA: the release carries B's public record
+// alone.
+func newPublishFixtureWith(t *testing.T, stateA string, storeA bool) publishFixture {
+	t.Helper()
 	pf := newPlanFixture(t)
 	pf.seed(t, vulnAdvisory(ghsaA, issA), vulnAdvisory(ghsaB, issB))
 	fix := pf.commit("parser.go", "package parser\n", "fix")
-	pf.resolve(issA, fix)
+	if storeA {
+		pf.storeResolve(t, issA, fix)
+	} else {
+		pf.resolve(issA, fix)
+	}
 	pf.resolve(issB, fix)
 	pf.tag("v0.9.0")
 	px := publishFixture{pf}
@@ -372,4 +384,32 @@ func TestPlanRecordsClosedOnGitHub(t *testing.T) {
 		t.Fatalf("the plan did not record what GitHub reports: %+v", a)
 	}
 	noWrites(t, px.g)
+}
+
+// TestPublishNamesRestoreForStoreEvidence: an advisory planned from the fix
+// the store records is published like any other, and its result carries the
+// command that restores its record, resolved, from the store into the
+// public ledger now the advisory is public; an advisory planned from its
+// public record carries none, nor does a plan that is only shown.
+func TestPublishNamesRestoreForStoreEvidence(t *testing.T) {
+	px := newPublishFixtureWith(t, "draft", true)
+	shown := px.show(t)
+	if len(shown.Plan.Entries) != 2 || !shown.Plan.Entries[0].StoreEvidence || shown.Plan.Entries[1].StoreEvidence {
+		t.Fatalf("plan %+v", shown.Plan)
+	}
+	res, err := px.publish(shown.Plan.Digest)
+	if err != nil || len(res.Published) != 2 {
+		t.Fatalf("result %+v, %v", res, err)
+	}
+	rel, err := filepath.Rel(px.f.home, filepath.Join(px.s.Root, ".abcd", "work", "issues", "resolved", issA+"-private-report.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "cp -- ~/" + filepath.ToSlash(rel) + " .abcd/work/issues/resolved/"
+	if a := res.Published[0]; a.GHSAID != ghsaA || a.RestoreWith != want {
+		t.Fatalf("restore command\n got %q\nwant %q", a.RestoreWith, want)
+	}
+	if b := res.Published[1]; b.GHSAID != ghsaB || b.RestoreWith != "" {
+		t.Fatalf("a public-record advisory names a restore: %+v", b)
+	}
 }

@@ -382,13 +382,20 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 		fmt.Fprintln(w)
 		for _, a := range res.Published {
 			fmt.Fprintf(w, "  published %s (%s) at %s\n", a.GHSAID, a.IssueID, a.PublishedAt.Format("2006-01-02T15:04:05Z"))
+			if a.RestoreWith != "" {
+				fmt.Fprintf(w, "  restore its record as resolved, from the checkout's root:\n    %s\n", termsafe.Sanitize(a.RestoreWith))
+			}
 		}
 		return
 	}
 	fmt.Fprintf(w, "abcd embargo publish — plan for %s in %s: %s, %s left out; nothing was sent\n",
 		termsafe.Sanitize(p.Repo), p.Release, advisoryCount(len(p.Entries)), advisoryCount(len(p.LeftOut)))
 	for _, e := range p.Entries {
-		fmt.Fprintf(w, "  %s (%s): fix %s, first released in %s, patched %s\n", e.GHSAID, e.IssueID, e.FixCommit[:12], e.FirstTag, e.PatchedVersion)
+		from := ""
+		if e.StoreEvidence {
+			from = " (fix recorded in the store; no public record yet)"
+		}
+		fmt.Fprintf(w, "  %s (%s): fix %s%s, first released in %s, patched %s\n", e.GHSAID, e.IssueID, e.FixCommit[:12], from, e.FirstTag, e.PatchedVersion)
 		for _, v := range e.Vulnerabilities {
 			fmt.Fprintf(w, "    %s %s: affected %q, patched %q\n", termsafe.Sanitize(v.Package.Ecosystem), termsafe.Sanitize(v.Package.Name),
 				v.VulnerableVersionRange, v.PatchedVersions)

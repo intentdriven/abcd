@@ -5,15 +5,21 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -70,6 +76,15 @@ type PlanEntry struct {
 	ForgeState      string                 `json:"forge_state"`
 	Vulnerabilities []PlannedVulnerability `json:"vulnerabilities"`
 	TextDigest      string                 `json:"text_digest"`
+	// StoreEvidence marks an entry whose fix commit is taken from its
+	// private record, resolved in the store's own ledger, because the
+	// release carries no public record of it. It is omitted when false, so a
+	// public-record entry, and the digest over it, is what it always was.
+	StoreEvidence bool `json:"store_evidence,omitempty"`
+	// storeRecord is that private record's path inside the store,
+	// slash-separated: what the restore command copies. It is never shown,
+	// marshalled or bound into the digest.
+	storeRecord string
 }
 
 // LeftOut is an advisory judged a vulnerability that the plan does not
@@ -107,10 +122,13 @@ func planPublication(req PublishRequest) (PublicationPlan, error) {
 // planFor builds the plan of release over the store's state. For each
 // advisory judged a vulnerability and neither published nor closed, in id
 // order: its record must be resolved in the release's tree and name its fix
-// commit; the first release tag holding that commit gives the patched
-// version; the advisory, read from GitHub, must still be unpublished, carry
-// its package, an affected range in GitHub's form, and text the outbound scan
-// passes. Each that fails a step is left out with the reason. Git is read
+// commit, or, when the release carries no public record of it (the security
+// rule holds the record out of every committed tree until the advisory is
+// published), its private record must be resolved in the store's own ledger
+// naming the full id of its fix commit (storeFixCommit). The first release
+// tag holding that commit gives the patched version; the advisory, read from
+// GitHub, must still be unpublished, carry its package, an affected range in
+// GitHub's form, and text the outbound scan passes. Each that fails a step is left out with the reason. Git is read
 // before GitHub, so an advisory the release leaves out is never requested.
 //
 // An advisory GitHub reports published or closed already is left out, and
@@ -216,16 +234,17 @@ func resolvedRecords(checkout, release string) ([]string, error) {
 func planEntry(s Store, repo, release string, resolved []string, a Advisory, others denySet) (e PlanEntry, why, done string, err error) {
 	rec := ""
 	for _, p := range resolved {
-		base := path.Base(p)
-		if base == a.IssueID+".md" || (strings.HasPrefix(base, a.IssueID+"-") && strings.HasSuffix(base, ".md")) {
+		if isRecordOf(path.Base(p), a.IssueID) {
 			rec = p
 			break
 		}
 	}
-	if rec == "" {
-		return PlanEntry{}, "its record is not resolved in " + release, "", nil
+	var fix, storeRec string
+	if rec != "" {
+		fix, why = fixCommit(s.Checkout, release, rec)
+	} else if fix, storeRec, why = s.storeFixCommit(a.IssueID); why != "" {
+		why = "its record is not resolved in " + release + ", " + why
 	}
-	fix, why := fixCommit(s.Checkout, release, rec)
 	if why != "" {
 		return PlanEntry{}, why, "", nil
 	}
@@ -279,7 +298,98 @@ func planEntry(s Store, repo, release string, resolved []string, a Advisory, oth
 		}
 	}
 	return PlanEntry{GHSAID: a.GHSAID, IssueID: a.IssueID, FixCommit: fix, FirstTag: first, PatchedVersion: patched,
-		ForgeState: remote.State, Vulnerabilities: vulns, TextDigest: textDigest(remote)}, "", "", nil
+		ForgeState: remote.State, Vulnerabilities: vulns, TextDigest: textDigest(remote),
+		StoreEvidence: storeRec != "", storeRecord: storeRec}, "", "", nil
+}
+
+// isRecordOf reports whether a ledger file name is the record of issID.
+func isRecordOf(base, issID string) bool {
+	return base == issID+".md" || (strings.HasPrefix(base, issID+"-") && strings.HasSuffix(base, ".md"))
+}
+
+// storeFixCommit is the fix commit issID's private record names, resolved in
+// the store's own ledger, and the record's path in the store: the evidence
+// the plan takes when the security rule holds the record out of the
+// release's tree. why ("" when it holds) is worded to follow "its record is
+// not resolved in <release>, ".
+//
+// The store is a trust boundary, so nothing read from it is used before it
+// is judged: the record is read inside the store (os.Root), a regular file
+// within its cap, parsed, and must carry the advisory's own id; its
+// resolved_by.commit must be a full object name (gitutil.IsFullSHA), so an
+// abbreviation or anything option-shaped never reaches git, and git must
+// resolve it to exactly itself as a commit, which holds it to this
+// repository's hash and refuses a tag object's name.
+func (s Store) storeFixCommit(issID string) (fix, rel, why string) {
+	const none = "nor is its private record resolved in the store"
+	dir := resolvedRel
+	entries, err := os.ReadDir(filepath.Join(s.Root, filepath.FromSlash(dir)))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", "", none
+	}
+	if err != nil {
+		return "", "", "and the store's resolved/ folder could not be listed"
+	}
+	for _, e := range entries {
+		if !isRecordOf(e.Name(), issID) {
+			continue
+		}
+		if rel != "" {
+			return "", "", "and the store holds its private record twice in resolved/"
+		}
+		rel = dir + "/" + e.Name()
+	}
+	if rel == "" {
+		return "", "", none
+	}
+	root, err := os.OpenRoot(s.Root)
+	if err != nil {
+		return "", "", "and the store could not be opened to read its private record"
+	}
+	defer root.Close()
+	data, err := fsutil.ReadGuardedInRoot(root, rel, maxRecordBytes)
+	if err != nil {
+		return "", "", "and its private record in the store could not be read as a regular file within its size limit"
+	}
+	fm, _, err := issuerecord.Parse(string(data))
+	if err != nil {
+		return "", "", "and its private record in the store is not a record this abcd reads"
+	}
+	if id, _ := fm["id"].(string); id != issID {
+		return "", "", "and its private record in the store carries another id"
+	}
+	rb, _ := fm["resolved_by"].(map[string]any)
+	ref, _ := rb["commit"].(string)
+	switch {
+	case ref == "":
+		return "", "", "and its private record in the store names no fix commit (resolved_by.commit)"
+	case !gitutil.IsFullSHA(ref):
+		return "", "", "and the fix commit its private record in the store names is not a full commit id"
+	}
+	sha, err := gitutil.ResolveCommit(s.Checkout, ref)
+	if err != nil || sha != ref {
+		return "", "", "and the fix commit its private record in the store names is not a commit of this repository"
+	}
+	return sha, rel, ""
+}
+
+// plainPathRe is a path a shell reads as written, unquoted.
+var plainPathRe = regexp.MustCompile(`\A[A-Za-z0-9._/+-]+\z`)
+
+// restoreCommand is the command, run from the checkout's root, that copies
+// the private record at rel in the store, already resolved there, into the
+// public ledger's resolved/ folder: what a person runs once its advisory is
+// published. The record is named under ~ when it sits under home in a form a
+// shell reads unquoted, as the store does, and quoted whole otherwise.
+func restoreCommand(home string, s Store, rel string) string {
+	src := filepath.Join(s.Root, filepath.FromSlash(rel))
+	shown := "'" + strings.ReplaceAll(src, "'", `'\''`) + "'"
+	if inside(src, home) {
+		if r, err := filepath.Rel(storepath.Resolve(home), storepath.Resolve(src)); err == nil && plainPathRe.MatchString(filepath.ToSlash(r)) {
+			shown = "~/" + filepath.ToSlash(r)
+		}
+	}
+	return "cp -- " + shown + " " + resolvedRel + "/"
 }
 
 // recordForgeEnd stamps the end GitHub reports for a held advisory:
