@@ -49,10 +49,10 @@ type Store struct {
 	rootSHA string
 }
 
-// OpenStore is the away store of the repository whose working copy is at
+// openStore is the away store of the repository whose working copy is at
 // repoRoot, below home: keyed on the repository's root commit, so every
 // working copy of it opens the same store. Nothing is created.
-func OpenStore(home, repoRoot string) (Store, error) {
+func openStore(home, repoRoot string) (Store, error) {
 	sha := gitutil.RootCommit(repoRoot)
 	if !gitutil.IsFullSHA(sha) {
 		return Store{}, ErrNoRootCommit

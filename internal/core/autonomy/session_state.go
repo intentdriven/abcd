@@ -41,9 +41,9 @@ type SessionState struct {
 	WakeFingerprint string `json:"wake_fingerprint,omitempty"`
 }
 
-// SessionStatePath is the session's state file below the working copy at
+// sessionStatePath is the session's state file below the working copy at
 // copyRoot; an id outside [A-Za-z0-9_-]{1,128} is ErrSessionID.
-func SessionStatePath(copyRoot, sessionID string) (string, error) {
+func sessionStatePath(copyRoot, sessionID string) (string, error) {
 	if !ValidSessionID(sessionID) {
 		return "", ErrSessionID
 	}

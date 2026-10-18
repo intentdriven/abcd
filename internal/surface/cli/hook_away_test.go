@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -225,11 +226,11 @@ func TestPromptRouterLapsedWindowLine(t *testing.T) {
 	lapse := func(queue, stop bool) {
 		t.Helper()
 		past := time.Now().Add(-3 * time.Hour)
-		if _, err := st.Update(func(*autonomy.Record) (*autonomy.Record, error) {
-			r, err := autonomy.Begin(nil, autonomy.Who{Name: "Alice", Copy: root}, past, past.Add(time.Hour), false)
-			if err != nil {
-				return nil, err
-			}
+		o := autonomy.Options{Home: os.Getenv("HOME"), Now: func() time.Time { return past }, Who: func(string) string { return "Alice" }}
+		if _, err := autonomy.SetAway(root, past.Add(time.Hour).Format(time.RFC3339), false, o); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Update(func(r *autonomy.Record) (*autonomy.Record, error) {
 			if queue {
 				_ = r.AddStep("push feat/x", root, past)
 			}

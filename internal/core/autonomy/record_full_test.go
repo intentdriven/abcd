@@ -27,7 +27,7 @@ func recordBytes(t *testing.T, r *Record) int {
 // alternating, keep two entries, each counted, not one entry per stop.
 func TestAddStopCollapsesAnywhere(t *testing.T) {
 	now := at(t, "2026-10-18 21:00")
-	r, _ := Begin(nil, alice, now, time.Time{}, false)
+	r, _ := begin(nil, alice, now, time.Time{}, false)
 	a := Stop{Kind: StopWorkOwed, Detail: "pull request #12 (feat/a) is behind its base", PossiblyForcedByCap: true}
 	b := Stop{Kind: StopWorkOwed, Detail: "pull request #13 (feat/b) is failing its checks", PossiblyForcedByCap: true}
 	for i := 0; i < 200; i++ {
@@ -48,7 +48,7 @@ func TestAddStopCollapsesAnywhere(t *testing.T) {
 // within 64 KiB throughout.
 func TestRecordStaysWithinBoundInUse(t *testing.T) {
 	now := at(t, "2026-10-18 21:00")
-	r, _ := Begin(nil, alice, now, time.Time{}, false)
+	r, _ := begin(nil, alice, now, time.Time{}, false)
 	long := strings.Repeat("<", 240)
 	for i := 0; i < 600; i++ {
 		r.AddStop(Stop{Kind: StopWorkOwed, Detail: fmt.Sprintf("%d %s", i, long), PossiblyForcedByCap: true}, now.Add(time.Duration(i)*time.Minute))
@@ -85,7 +85,7 @@ func TestRecordStaysWithinBoundInUse(t *testing.T) {
 // leave it.
 func fillRecord(t *testing.T, st Store, now time.Time) {
 	t.Helper()
-	r, _ := Begin(nil, alice, now.Add(-time.Hour), time.Time{}, false)
+	r, _ := begin(nil, alice, now.Add(-time.Hour), time.Time{}, false)
 	r.Queue = append(r.Queue, QueuedStep{Step: "approve the embargo close", At: now, From: "/work/a"})
 	for i := 0; i < 400; i++ {
 		r.Stops = append(r.Stops, Stop{Kind: StopWorkOwed, Detail: fmt.Sprintf("%d %s", i, strings.Repeat("x", 200)), Count: 1, First: now, Last: now})
@@ -137,7 +137,7 @@ func TestBackEndsAnyRecord(t *testing.T) {
 			if _, err := QueueStep(root, "approve the embargo close", o); err != nil {
 				t.Fatal(err)
 			}
-			st, _ := OpenStore(home, root)
+			st, _ := openStore(home, root)
 			c.spoil(t, st, now)
 			res, err := Back(root, o)
 			if err != nil {
@@ -176,7 +176,7 @@ func TestBackWithLockHeld(t *testing.T) {
 	if _, err := SetAway(root, "", false, o); err != nil {
 		t.Fatal(err)
 	}
-	st, _ := OpenStore(home, root)
+	st, _ := openStore(home, root)
 	var res BackResult
 	var berr error
 	if err := st.WithLock(func() error {
@@ -199,7 +199,7 @@ func TestBeginCarriesAFullRecord(t *testing.T) {
 	root, home := managedCopy(t)
 	now := time.Now().Truncate(time.Second)
 	o := fixedOptions(home, now)
-	st, _ := OpenStore(home, root)
+	st, _ := openStore(home, root)
 	fillRecord(t, st, now)
 	rec, err := SetAway(root, "", false, o)
 	if err != nil {

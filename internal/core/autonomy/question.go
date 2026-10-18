@@ -34,13 +34,6 @@ var personOnlyActs = []string{
 	"any other act a command page or a brief invariant names as the person's",
 }
 
-// PersonOnlyActs are the acts only the person may approve, which a session
-// queues with `abcd mode queue` while the person is away instead of asking:
-// one line each, the catch-all last. The slice is a copy.
-func PersonOnlyActs() []string {
-	return append([]string(nil), personOnlyActs...)
-}
-
 // QuestionRoute is how a question is routed while the person is away, one
 // line each: the queue route and the person-only acts, then the decide route
 // for every other question, then that nothing detects the act and the away

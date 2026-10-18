@@ -34,18 +34,18 @@ const (
 	OwedUncarried OwedKind = "uncarried"
 )
 
-// OwedKinds returns the kinds in the order the next item is chosen.
-func OwedKinds() []OwedKind {
+// owedKinds returns the kinds in the order the next item is chosen.
+func owedKinds() []OwedKind {
 	return []OwedKind{OwedRenewal, OwedFailing, OwedBehind, OwedStacked, OwedUnpushed, OwedUncarried}
 }
 
 func kindRank(k OwedKind) int {
-	for i, o := range OwedKinds() {
+	for i, o := range owedKinds() {
 		if o == k {
 			return i
 		}
 	}
-	return len(OwedKinds())
+	return len(owedKinds())
 }
 
 // OwedItem is one owed item.
@@ -86,7 +86,7 @@ type Owed struct {
 	// reservations: the earliest of each one's renewal while it is not yet
 	// due, and its lapse once it is. A renewal already due is owed, and a
 	// wake before the lease lapses releases it as the spec has it; zero when
-	// there is no reservation, and Deadline then reads NextRenewal.
+	// there is no reservation, and wakeDeadline then reads NextRenewal.
 	WakeBy time.Time `json:"wake_by,omitempty"`
 	// HandedBack are the items a queued step handed back this check, taken
 	// out of Items by the reader (dcn-2610181035355741). The verdict accepts
@@ -112,7 +112,7 @@ func (o Owed) HasCapped() bool {
 	return false
 }
 
-// Next is the item the session is handed: the first by OwedKinds' order, the
+// Next is the item the session is handed: the first by owedKinds' order, the
 // items of one kind in the order they were given.
 func (o Owed) Next() (OwedItem, bool) {
 	if len(o.Items) == 0 {

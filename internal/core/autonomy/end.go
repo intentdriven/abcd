@@ -155,7 +155,7 @@ func (s Store) endUnlocked(res *BackResult, who Who, now time.Time) (*Record, er
 }
 
 // carryRead is SetAway's read under the lock: a record past its bound is
-// carried (Begin fits it); one that is unreadable, partial or not safely
+// carried (begin fits it); one that is unreadable, partial or not safely
 // this account's is refused, naming the file, for `abcd mode back` to end.
 func (s Store) carryRead() (*Record, error) {
 	lr := s.readLenient()

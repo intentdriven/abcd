@@ -11,7 +11,7 @@ import (
 // the owed set, the session's state and the host's payload.
 
 func awayRec(now time.Time, holdPushes bool) *Record {
-	r, err := Begin(nil, alice, now.Add(-time.Hour), time.Time{}, holdPushes)
+	r, err := begin(nil, alice, now.Add(-time.Hour), time.Time{}, holdPushes)
 	if err != nil {
 		panic(err)
 	}
@@ -353,18 +353,18 @@ func TestJudgeHandBackOnlyUnderHoldPushes(t *testing.T) {
 // that minus the skew.
 func TestDeadlineCeiling(t *testing.T) {
 	now := at(t, "2026-10-18 21:00")
-	if got := Deadline(owedOf(behindPR), now); !got.Equal(now.Add(30 * time.Minute)) {
+	if got := wakeDeadline(owedOf(behindPR), now); !got.Equal(now.Add(30 * time.Minute)) {
 		t.Errorf("owed, no reservation: %s", got)
 	}
-	if got := Deadline(Owed{}, now); !got.Equal(now.Add(time.Hour)) {
+	if got := wakeDeadline(Owed{}, now); !got.Equal(now.Add(time.Hour)) {
 		t.Errorf("nothing owed: %s", got)
 	}
 	soon := Owed{NextRenewal: now.Add(20 * time.Minute)}
-	if got := Deadline(soon, now); !got.Equal(now.Add(15 * time.Minute)) {
+	if got := wakeDeadline(soon, now); !got.Equal(now.Add(15 * time.Minute)) {
 		t.Errorf("renewal in 20 minutes: deadline %s, want 15 minutes on", got)
 	}
 	late := Owed{Items: []OwedItem{behindPR}, NextRenewal: now.Add(12 * time.Hour)}
-	if got := Deadline(late, now); !got.Equal(now.Add(30 * time.Minute)) {
+	if got := wakeDeadline(late, now); !got.Equal(now.Add(30 * time.Minute)) {
 		t.Errorf("renewal in 12 hours: deadline %s, want the ceiling", got)
 	}
 }
@@ -376,10 +376,10 @@ func TestQualifyingWakeDistantCron(t *testing.T) {
 	claimed := at(t, "2026-10-18 20:00")
 	now := at(t, "2026-10-18 21:00")
 	owed := Owed{Items: []OwedItem{uncarried}, NextRenewal: claimed.Add(12 * time.Hour)}
-	if _, _, ok := QualifyingWake(crons("0 7 * * *"), now, Deadline(owed, now), loc); ok {
+	if _, _, ok := qualifyingWake(crons("0 7 * * *"), now, wakeDeadline(owed, now), loc); ok {
 		t.Error("0 7 * * * seen at 21:00 qualified with work owed")
 	}
-	if _, _, ok := QualifyingWake(crons("0 7 * * *"), now, Deadline(Owed{NextRenewal: owed.NextRenewal}, now), loc); ok {
+	if _, _, ok := qualifyingWake(crons("0 7 * * *"), now, wakeDeadline(Owed{NextRenewal: owed.NextRenewal}, now), loc); ok {
 		t.Error("0 7 * * * seen at 21:00 qualified with nothing owed")
 	}
 }
@@ -390,25 +390,25 @@ func TestQualifyingWakeDistantCron(t *testing.T) {
 func TestQualifyingWakeJitter(t *testing.T) {
 	loc := london(t)
 	now := at(t, "2026-10-18 21:00")
-	deadline := Deadline(owedOf(behindPR), now) // 21:30
-	if _, _, ok := QualifyingWake(crons("27 * * * *"), now, deadline, loc); ok {
+	deadline := wakeDeadline(owedOf(behindPR), now) // 21:30
+	if _, _, ok := qualifyingWake(crons("27 * * * *"), now, deadline, loc); ok {
 		t.Error("an hourly cron at 21:27 qualified for a 21:30 deadline; it may run 30 minutes late")
 	}
 	for _, e := range []string{"*/5 * * * *", "*/10 * * * *"} {
-		if _, _, ok := QualifyingWake(crons(e), now, deadline, loc); !ok {
+		if _, _, ok := qualifyingWake(crons(e), now, deadline, loc); !ok {
 			t.Errorf("%q did not qualify", e)
 		}
 	}
 	oneShot := []SessionCron{{ID: "once", Schedule: "30 21 18 10 *", Recurring: false}}
-	if _, look, ok := QualifyingWake(oneShot, now, deadline, loc); !ok || !look.Equal(deadline) {
+	if _, look, ok := qualifyingWake(oneShot, now, deadline, loc); !ok || !look.Equal(deadline) {
 		t.Errorf("a one-shot at the deadline: ok %v look %s", ok, look)
 	}
 	// */5 runs on time, any other every-five-minutes form gets half its gap.
-	_, lateFive, _ := LatestFire(SessionCron{Schedule: "*/5 * * * *", Recurring: true}, now, deadline, loc)
+	_, lateFive, _ := latestFire(SessionCron{Schedule: "*/5 * * * *", Recurring: true}, now, deadline, loc)
 	if !lateFive.Equal(now.Add(5 * time.Minute)) {
 		t.Errorf("*/5 latest fire %s, want its match", lateFive)
 	}
-	_, lateTen, _ := LatestFire(SessionCron{Schedule: "*/10 * * * *", Recurring: true}, now, deadline, loc)
+	_, lateTen, _ := latestFire(SessionCron{Schedule: "*/10 * * * *", Recurring: true}, now, deadline, loc)
 	if !lateTen.Equal(now.Add(15 * time.Minute)) {
 		t.Errorf("*/10 latest fire %s, want its match plus five minutes", lateTen)
 	}
@@ -418,7 +418,7 @@ func TestQualifyingWakeJitter(t *testing.T) {
 func TestQualifyingWakeRecurringCron(t *testing.T) {
 	loc := london(t)
 	now := at(t, "2026-10-18 21:05")
-	if _, look, ok := QualifyingWake(crons("*/30 * * * *"), now, Deadline(Owed{}, now), loc); !ok || !look.Equal(at(t, "2026-10-18 21:30")) {
+	if _, look, ok := qualifyingWake(crons("*/30 * * * *"), now, wakeDeadline(Owed{}, now), loc); !ok || !look.Equal(at(t, "2026-10-18 21:30")) {
 		t.Errorf("*/30 with nothing owed: ok %v look %s", ok, look)
 	}
 }
@@ -429,10 +429,10 @@ func TestQualifyingWakeAfterLeaseLapse(t *testing.T) {
 	loc := london(t)
 	now := at(t, "2026-10-18 21:00")
 	owed := Owed{Items: []OwedItem{renewalDue}, NextRenewal: now.Add(12 * time.Minute)} // deadline 21:07
-	if _, _, ok := QualifyingWake([]SessionCron{{Schedule: "10 21 * * *"}}, now, Deadline(owed, now), loc); ok {
+	if _, _, ok := qualifyingWake([]SessionCron{{Schedule: "10 21 * * *"}}, now, wakeDeadline(owed, now), loc); ok {
 		t.Error("a one-shot at 21:10 qualified past a renewal due at 21:12 less the skew")
 	}
-	if _, _, ok := QualifyingWake([]SessionCron{{Schedule: "6 21 * * *"}}, now, Deadline(owed, now), loc); !ok {
+	if _, _, ok := qualifyingWake([]SessionCron{{Schedule: "6 21 * * *"}}, now, wakeDeadline(owed, now), loc); !ok {
 		t.Error("a one-shot at 21:06 did not qualify before 21:07")
 	}
 }
@@ -530,7 +530,7 @@ func TestSessionIDShape(t *testing.T) {
 			t.Errorf("LoadSession(%q) read", bad)
 		}
 	}
-	p, _ := SessionStatePath(root, "abc")
+	p, _ := sessionStatePath(root, "abc")
 	if want := filepath.Join(root, ".abcd", ".work.local", "autonomy", "sessions", "abc.json"); p != want {
 		t.Errorf("state path %s, want %s", p, want)
 	}

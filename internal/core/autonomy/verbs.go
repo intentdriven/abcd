@@ -33,7 +33,7 @@ type Options struct {
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 	// Who names the person acting in the checkout at root; nil means
-	// ResolveWho.
+	// resolveWho.
 	Who func(root string) string
 }
 
@@ -59,13 +59,13 @@ func (o Options) who(root, home string) string {
 	if o.Who != nil {
 		return o.Who(root)
 	}
-	return ResolveWho(root, home)
+	return resolveWho(root, home)
 }
 
-// ResolveWho names the person acting in the checkout at root: the holder
+// resolveWho names the person acting in the checkout at root: the holder
 // name reservations resolve without a network read, else git's user.name,
 // else "".
-func ResolveWho(root, home string) string {
+func resolveWho(root, home string) string {
 	if h := claim.ReaderHolder(root, claim.Options{Home: home}); h != "" {
 		return h
 	}
@@ -86,7 +86,7 @@ func Resolve(cwd string, o Options) (root string, st Store, err error) {
 	if err != nil {
 		return "", Store{}, err
 	}
-	st, err = OpenStore(home, root)
+	st, err = openStore(home, root)
 	return root, st, err
 }
 
@@ -128,7 +128,7 @@ func SetAway(cwd, until string, holdPushes bool, o Options) (*Record, error) {
 	now := o.now()
 	var end time.Time
 	if until != "" {
-		t, err := ParseUntil(until, now)
+		t, err := parseUntil(until, now)
 		if err != nil {
 			return nil, err
 		}
@@ -148,11 +148,11 @@ func SetAway(cwd, until string, holdPushes bool, o Options) (*Record, error) {
 	}
 	who := Who{Name: o.who(root, st.home), Copy: root}
 	// Judge the window before anything is created on disk.
-	if _, err := Begin(nil, who, now, end, holdPushes); err != nil {
+	if _, err := begin(nil, who, now, end, holdPushes); err != nil {
 		return nil, err
 	}
 	return st.update(st.carryRead, func(cur *Record) (*Record, error) {
-		return Begin(cur, who, now, end, holdPushes)
+		return begin(cur, who, now, end, holdPushes)
 	})
 }
 
@@ -230,7 +230,7 @@ func AwayAt(root string, o Options) (*Record, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	st, err := OpenStore(home, root)
+	st, err := openStore(home, root)
 	if err != nil {
 		return nil, false, err
 	}

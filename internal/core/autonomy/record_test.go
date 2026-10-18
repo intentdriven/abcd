@@ -47,23 +47,23 @@ func TestUntilClockTimeAndTimestamp(t *testing.T) {
 		{"2026-10-20T09:00", at(t, "2026-10-20 09:00")},
 		{"2026-10-20 09:00", at(t, "2026-10-20 09:00")},
 	} {
-		got, err := ParseUntil(c.in, now)
+		got, err := parseUntil(c.in, now)
 		if err != nil {
-			t.Errorf("ParseUntil(%q): %v", c.in, err)
+			t.Errorf("parseUntil(%q): %v", c.in, err)
 			continue
 		}
 		if !got.Equal(c.want) {
-			t.Errorf("ParseUntil(%q) = %s, want %s", c.in, got, c.want)
+			t.Errorf("parseUntil(%q) = %s, want %s", c.in, got, c.want)
 		}
 	}
 	for _, in := range []string{"", "tomorrow", "25:00", "09:60", "2026-13-01T09:00"} {
-		if _, err := ParseUntil(in, now); !errors.Is(err, ErrUntilUnreadable) {
-			t.Errorf("ParseUntil(%q) err = %v, want ErrUntilUnreadable", in, err)
+		if _, err := parseUntil(in, now); !errors.Is(err, ErrUntilUnreadable) {
+			t.Errorf("parseUntil(%q) err = %v, want ErrUntilUnreadable", in, err)
 		}
 	}
 	for _, in := range []string{"2026-10-18T20:00", "2026-10-18 21:00"} {
-		if _, err := ParseUntil(in, now); !errors.Is(err, ErrUntilPast) {
-			t.Errorf("ParseUntil(%q) err = %v, want ErrUntilPast", in, err)
+		if _, err := parseUntil(in, now); !errors.Is(err, ErrUntilPast) {
+			t.Errorf("parseUntil(%q) err = %v, want ErrUntilPast", in, err)
 		}
 	}
 }
@@ -73,7 +73,7 @@ func TestUntilClockTimeAndTimestamp(t *testing.T) {
 // the cap (a hand edit) is read as the cap.
 func TestStaleRecordCapSevenDays(t *testing.T) {
 	now := at(t, "2026-10-18 21:00")
-	r, err := Begin(nil, alice, now, time.Time{}, false)
+	r, err := begin(nil, alice, now, time.Time{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,10 +89,10 @@ func TestStaleRecordCapSevenDays(t *testing.T) {
 	if r.Holds(now.Add(MaxWindow)) {
 		t.Error("record still holds seven days on")
 	}
-	if _, err := Begin(nil, alice, now, now.Add(MaxWindow+time.Minute), false); !errors.Is(err, ErrUntilBeyondCap) {
+	if _, err := begin(nil, alice, now, now.Add(MaxWindow+time.Minute), false); !errors.Is(err, ErrUntilBeyondCap) {
 		t.Errorf("--until past seven days: err = %v, want ErrUntilBeyondCap", err)
 	}
-	if _, err := Begin(nil, alice, now, now.Add(MaxWindow), false); err != nil {
+	if _, err := begin(nil, alice, now, now.Add(MaxWindow), false); err != nil {
 		t.Errorf("--until at exactly seven days refused: %v", err)
 	}
 	edited := *r
@@ -107,7 +107,7 @@ func TestStaleRecordCapSevenDays(t *testing.T) {
 // past it reads as ended, lapsed until it is closed.
 func TestRecordPastEndReadsEnded(t *testing.T) {
 	now := at(t, "2026-10-18 21:00")
-	r, err := Begin(nil, alice, now, now.Add(time.Hour), false)
+	r, err := begin(nil, alice, now, now.Add(time.Hour), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestRecordPastEndReadsEnded(t *testing.T) {
 // was queued; an empty step or one past the length bound is refused.
 func TestQueueAppends(t *testing.T) {
 	now := at(t, "2026-10-18 21:00")
-	r, err := Begin(nil, alice, now, time.Time{}, false)
+	r, err := begin(nil, alice, now, time.Time{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestQueueAppends(t *testing.T) {
 	}
 
 	// Setting the mode again keeps what is still unread.
-	again, err := Begin(r, alice, now.Add(time.Hour), time.Time{}, true)
+	again, err := begin(r, alice, now.Add(time.Hour), time.Time{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestQueueAppends(t *testing.T) {
 		t.Errorf("setting the mode again dropped the unread queue: %+v", again.Queue)
 	}
 	r.Close(alice, now.Add(2*time.Hour))
-	fresh, err := Begin(r, alice, now.Add(3*time.Hour), time.Time{}, false)
+	fresh, err := begin(r, alice, now.Add(3*time.Hour), time.Time{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestQueueAppends(t *testing.T) {
 // first one again after a different one, is its own entry.
 func TestRepeatedStopCollapses(t *testing.T) {
 	now := at(t, "2026-10-18 21:00")
-	r, err := Begin(nil, alice, now, time.Time{}, false)
+	r, err := begin(nil, alice, now, time.Time{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,11 +214,11 @@ func TestRepeatedStopCollapses(t *testing.T) {
 // mode grants no rights whether or not pushes are held.
 func TestHoldPushesRecorded(t *testing.T) {
 	now := at(t, "2026-10-18 21:00")
-	held, err := Begin(nil, alice, now, at(t, "2026-10-19 09:00"), true)
+	held, err := begin(nil, alice, now, at(t, "2026-10-19 09:00"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	plain, err := Begin(nil, alice, now, at(t, "2026-10-19 09:00"), false)
+	plain, err := begin(nil, alice, now, at(t, "2026-10-19 09:00"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestHoldPushesRecorded(t *testing.T) {
 // the count included.
 func TestBackLinesOnePerItem(t *testing.T) {
 	now := at(t, "2026-10-18 21:00")
-	r, err := Begin(nil, alice, now, time.Time{}, false)
+	r, err := begin(nil, alice, now, time.Time{}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +295,7 @@ func TestBackLinesOnePerItem(t *testing.T) {
 // order the items arrive in, its fingerprint ignores order and reasons, and
 // the capped fingerprint reads the capped items alone.
 func TestOwedShape(t *testing.T) {
-	kinds := OwedKinds()
+	kinds := owedKinds()
 	want := []OwedKind{OwedRenewal, OwedFailing, OwedBehind, OwedStacked, OwedUnpushed, OwedUncarried}
 	if len(kinds) != len(want) {
 		t.Fatalf("kinds = %v", kinds)

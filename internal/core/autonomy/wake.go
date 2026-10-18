@@ -38,12 +38,12 @@ type BackgroundTask struct {
 	Command     string `json:"command,omitempty"`
 }
 
-// Deadline is the latest a wake may fire for the stop to wait on it: the
+// wakeDeadline is the latest a wake may fire for the stop to wait on it: the
 // earlier of Owed.WakeBy (the earliest renewal not yet due among the live
 // reservations under this copy's key, or the lapse of one already due; else
 // Owed.NextRenewal) less lease.Skew, and now plus a ceiling, OwedCeiling while work
 // is owed and IdleCeiling when none is (dcn-2610181003455731).
-func Deadline(owed Owed, now time.Time) time.Time {
+func wakeDeadline(owed Owed, now time.Time) time.Time {
 	ceiling := IdleCeiling
 	if !owed.Empty() {
 		ceiling = OwedCeiling
@@ -61,14 +61,14 @@ func Deadline(owed Owed, now time.Time) time.Time {
 	return d
 }
 
-// LatestFire is a task's next match after now, no later than deadline, and
+// latestFire is a task's next match after now, no later than deadline, and
 // the latest the host may run it: for a recurring task the match plus half
 // the gap to the following match, at most MaxLateness, and nothing for
 // exactly `*/5 * * * *`; a one-shot task is taken as matched, since the host
 // only ever runs one early. ok is false for an expression abcd cannot parse
 // or one with no match by the deadline.
-func LatestFire(c SessionCron, now, deadline time.Time, loc *time.Location) (match, latest time.Time, ok bool) {
-	cr, err := ParseCron(c.Schedule)
+func latestFire(c SessionCron, now, deadline time.Time, loc *time.Location) (match, latest time.Time, ok bool) {
+	cr, err := parseCron(c.Schedule)
 	if err != nil {
 		return time.Time{}, time.Time{}, false
 	}
@@ -88,15 +88,15 @@ func LatestFire(c SessionCron, now, deadline time.Time, loc *time.Location) (mat
 	return match, match.Add(late), true
 }
 
-// QualifyingWake is the task whose latest fire time is no later than
+// qualifyingWake is the task whose latest fire time is no later than
 // deadline, the earliest-matching of them, and its next match, the session's
 // next look. ok is false when none qualifies.
-func QualifyingWake(crons []SessionCron, now, deadline time.Time, loc *time.Location) (SessionCron, time.Time, bool) {
+func qualifyingWake(crons []SessionCron, now, deadline time.Time, loc *time.Location) (SessionCron, time.Time, bool) {
 	var best SessionCron
 	var look time.Time
 	found := false
 	for _, c := range crons {
-		match, latest, ok := LatestFire(c, now, deadline, loc)
+		match, latest, ok := latestFire(c, now, deadline, loc)
 		if !ok || latest.After(deadline) {
 			continue
 		}

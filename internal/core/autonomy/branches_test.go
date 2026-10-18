@@ -12,7 +12,7 @@ const testCopyKey = "0123456789abcdef0123456789abcdef"
 func testStore(t *testing.T) Store {
 	t.Helper()
 	root, home := managedCopy(t)
-	st, err := OpenStore(home, root)
+	st, err := openStore(home, root)
 	if err != nil {
 		t.Fatal(err)
 	}

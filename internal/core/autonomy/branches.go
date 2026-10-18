@@ -21,9 +21,9 @@ const MaxCreatedBranches = 100
 // createdSchemaVersion is the created-branch list's shape version.
 const createdSchemaVersion = 1
 
-// CreatedFile is the store file holding the branches the working copy whose
+// createdFile is the store file holding the branches the working copy whose
 // key is copyKey created.
-func CreatedFile(copyKey string) string { return "branches-" + copyKey + ".json" }
+func createdFile(copyKey string) string { return "branches-" + copyKey + ".json" }
 
 // CreatedBranch is one branch a session in the working copy created, and when
 // it was recorded.
@@ -64,7 +64,7 @@ type BranchChange struct {
 // copyKey, oldest first; empty when none is kept. A list the store's checks
 // refuse, or that does not parse, is ErrUnsafe.
 func (s Store) CreatedBranches(copyKey string) ([]CreatedBranch, error) {
-	raw, err := s.ReadFile(CreatedFile(copyKey))
+	raw, err := s.ReadFile(createdFile(copyKey))
 	if errors.Is(err, fs.ErrNotExist) && !errors.Is(err, ErrUnsafe) {
 		return nil, nil
 	}
@@ -73,7 +73,7 @@ func (s Store) CreatedBranches(copyKey string) ([]CreatedBranch, error) {
 	}
 	var l createdList
 	if err := json.Unmarshal(raw, &l); err != nil || l.SchemaVersion != createdSchemaVersion {
-		return nil, fmt.Errorf("%w: %s does not parse as a created-branch list", ErrUnsafe, s.Display(CreatedFile(copyKey)))
+		return nil, fmt.Errorf("%w: %s does not parse as a created-branch list", ErrUnsafe, s.Display(createdFile(copyKey)))
 	}
 	return l.Branches, nil
 }
@@ -98,7 +98,7 @@ func (s Store) RecordBranches(copyKey string, changes []BranchChange, now time.T
 		if err != nil {
 			return err
 		}
-		return s.WriteFile(CreatedFile(copyKey), append(raw, '\n'))
+		return s.WriteFile(createdFile(copyKey), append(raw, '\n'))
 	})
 }
 
@@ -157,7 +157,7 @@ func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) e
 	if err != nil {
 		return err
 	}
-	st, err := OpenStore(home, copyRoot)
+	st, err := openStore(home, copyRoot)
 	if errors.Is(err, ErrNoRootCommit) {
 		return nil
 	}

@@ -38,7 +38,7 @@ func gitAt(t *testing.T, dir string, args ...string) string {
 
 func awayStore(t *testing.T, root string) autonomy.Store {
 	t.Helper()
-	st, err := autonomy.OpenStore(os.Getenv("HOME"), root)
+	_, st, err := autonomy.Resolve(root, autonomy.Options{Home: os.Getenv("HOME")})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -44,9 +44,9 @@ func TestAwayReasonListsPersonOnlyActs(t *testing.T) {
 			t.Errorf("the reason does not name %s (%q):\n%s", want.what, want.phrase, route)
 		}
 	}
-	acts := PersonOnlyActs()
+	acts := personOnlyActs
 	if len(acts) == 0 {
-		t.Fatal("PersonOnlyActs is empty")
+		t.Fatal("personOnlyActs is empty")
 	}
 	for _, a := range acts {
 		if !strings.Contains(route, a) {

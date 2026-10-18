@@ -30,10 +30,10 @@ type cronField struct {
 
 var cronFields = [5]cronField{{0, 59}, {0, 23}, {1, 31}, {1, 12}, {0, 7}}
 
-// ParseCron reads a five-field expression: each field a comma list of `*`,
+// parseCron reads a five-field expression: each field a comma list of `*`,
 // `*/n`, `a`, `a-b` or `a-b/n`, in numbers (no names, no `@` forms); day of
 // week takes 0 or 7 for Sunday. Anything else is ErrCron.
-func ParseCron(expr string) (Cron, error) {
+func parseCron(expr string) (Cron, error) {
 	f := strings.Fields(expr)
 	if len(f) != 5 {
 		return Cron{}, fmt.Errorf("%w: %d fields, want 5", ErrCron, len(f))

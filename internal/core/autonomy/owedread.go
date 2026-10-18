@@ -424,7 +424,7 @@ func (r *owedReader) recordedBranches() []string {
 	if key == "" || r.home == "" {
 		return nil
 	}
-	st, err := OpenStore(r.home, r.root)
+	st, err := openStore(r.home, r.root)
 	if err != nil {
 		return nil
 	}

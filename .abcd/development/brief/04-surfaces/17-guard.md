@@ -219,8 +219,8 @@ from any working copy of the repository. Nothing past the away check runs, so
 no mode is set from a chip and no question is marked open; the badge's
 chip-set path is never reached while away. The reason names none of the asking
 rules, so the agent reroutes the question rather than redrafting it. It routes
-the question by the act it asks about (`autonomy.QuestionRoute`, the list in
-`autonomy.PersonOnlyActs`): an act only the person may approve is queued with
+the question by the act it asks about (`autonomy.QuestionRoute`, which carries
+the list of acts only the person may approve): such an act is queued with
 the queue `abcd mode` keeps for their return, and the session carries on with
 other work. The acts are an embargo close's approval digest, the embargo
 triage verdict, the drain's hand-back, the confirmed apply verb for remote

@@ -9,9 +9,9 @@ import (
 // read in loc.
 func cronNext(t *testing.T, expr string, from, until time.Time, loc *time.Location) (time.Time, bool) {
 	t.Helper()
-	c, err := ParseCron(expr)
+	c, err := parseCron(expr)
 	if err != nil {
-		t.Fatalf("ParseCron(%q): %v", expr, err)
+		t.Fatalf("parseCron(%q): %v", expr, err)
 	}
 	return c.Next(from, until, loc)
 }
@@ -20,9 +20,9 @@ func cronNext(t *testing.T, expr string, from, until time.Time, loc *time.Locati
 // stepping from the start of day to its end in loc.
 func matchDays(t *testing.T, expr string, from time.Time, days int, loc *time.Location) []string {
 	t.Helper()
-	c, err := ParseCron(expr)
+	c, err := parseCron(expr)
 	if err != nil {
-		t.Fatalf("ParseCron(%q): %v", expr, err)
+		t.Fatalf("parseCron(%q): %v", expr, err)
 	}
 	var got []string
 	end := from.AddDate(0, 0, days)
@@ -68,10 +68,10 @@ func TestCronNextFire(t *testing.T) {
 	}
 	for _, bad := range []string{"", "* * * *", "* * * * * *", "60 * * * *", "* 24 * * *", "* * 0 * *", "* * * 13 *",
 		"* * * * 8", "a * * * *", "*/0 * * * *", "5-1 * * * *", "1,,2 * * * *", "0 9 * * MON", "@daily", "-1 * * * *"} {
-		if _, err := ParseCron(bad); err == nil {
-			t.Errorf("ParseCron(%q) parsed; want refused", bad)
+		if _, err := parseCron(bad); err == nil {
+			t.Errorf("parseCron(%q) parsed; want refused", bad)
 		}
-		if _, _, ok := LatestFire(SessionCron{Schedule: bad, Recurring: true}, now, now.Add(time.Hour), loc); ok {
+		if _, _, ok := latestFire(SessionCron{Schedule: bad, Recurring: true}, now, now.Add(time.Hour), loc); ok {
 			t.Errorf("an unparsable %q gave a fire time", bad)
 		}
 	}

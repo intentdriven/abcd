@@ -308,7 +308,7 @@ func TestOwnBranchFromRecordedCreation(t *testing.T) {
 	if owed := f.read(false); has(owed, OwedUnpushed, "feat/s") {
 		t.Fatalf("an unrecorded branch in another worktree is not own: %s", describe(owed))
 	}
-	st, err := OpenStore(f.home, f.root)
+	st, err := openStore(f.home, f.root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestSiblingBranchNotOwn(t *testing.T) {
 	wt := filepath.Join(t.TempDir(), "sib")
 	f.git("worktree", "add", "-q", "-b", "feat/sib", wt)
 	f.git("-C", wt, "commit", "-q", "--allow-empty", "-m", "sibling work")
-	st, _ := OpenStore(f.home, f.root)
+	st, _ := openStore(f.home, f.root)
 	if err := st.RecordBranches("fedcba9876543210fedcba9876543210", []BranchChange{{Kind: BranchCreated, Name: "feat/sib"}}, f.now); err != nil {
 		t.Fatal(err)
 	}
@@ -772,7 +772,7 @@ func TestQueuedPushHandsItemBack(t *testing.T) {
 		return f.readWith(o)
 	}
 	handedBack := func(t *testing.T, f *fx) []HandBack {
-		st, _ := OpenStore(f.home, f.root)
+		st, _ := openStore(f.home, f.root)
 		rec, err := st.Read()
 		if err != nil {
 			t.Fatal(err)
@@ -986,7 +986,7 @@ func TestOwedOrderFixed(t *testing.T) {
 			kinds = append(kinds, i.Kind)
 		}
 	}
-	want := OwedKinds()
+	want := owedKinds()
 	if len(kinds) != len(want) {
 		t.Fatalf("kinds %v, want each of %v once in order: %s", kinds, want, describe(owed))
 	}
@@ -1216,7 +1216,7 @@ func TestDueRenewalReleasesOnWake(t *testing.T) {
 	if len(owed.Items) != 1 || owed.Items[0].Kind != OwedRenewal {
 		t.Fatalf("want only the renewal due: %s", describe(owed))
 	}
-	if d := Deadline(owed, f.now); !d.After(f.now) {
+	if d := wakeDeadline(owed, f.now); !d.After(f.now) {
 		t.Fatalf("the deadline for a due renewal is %s, already past at %s", d, f.now)
 	}
 	st := SessionState{}

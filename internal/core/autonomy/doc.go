@@ -68,7 +68,7 @@
 //	                count and the last time
 //	dropped_*       what was let go to stay within MaxFileBytes, counted:
 //	                the oldest stops and hand-backs past their own bounds,
-//	                and queued steps only when Begin carries, or Back
+//	                and queued steps only when SetAway carries, or Back
 //	                closes, a record past its bound; a queue past its bound
 //	                refuses the next step (ErrQueueFull) instead
 //	closed          *Closing: once ended by word, who ended it and from
@@ -85,7 +85,7 @@
 // OwedKind, whether it is capped (an item the session can act on itself, which
 // a wake releases at most twice in a row), and its branch or record id (plus
 // its pull request and head where it has them). The kinds, in the order the
-// next item is chosen (OwedKinds): a renewal due, a failing pull request, a
+// next item is chosen (owedKinds): a renewal due, a failing pull request, a
 // behind one, a stacked branch, an unpushed branch, and a reservation whose
 // work no pull request carries. Owed.Fingerprint and Owed.CappedFingerprint
 // compare two owed sets item by item, ignoring order and reasons.
@@ -103,9 +103,9 @@
 // rows of the plan decide, from the owed set, the host's payload (StopInput:
 // stop_hook_active, the last message, session_crons, background_tasks, the
 // host's cap) and the session's SessionState. A wake qualifies
-// (QualifyingWake) when a session cron's latest fire time (LatestFire: its
-// next match, by abcd's own five-field cron parser, ParseCron, plus the
-// host's lateness) is no later than Deadline. The session's state lives in
+// (qualifyingWake) when a session cron's latest fire time (latestFire: its
+// next match, by abcd's own five-field cron parser, parseCron, plus the
+// host's lateness) is no later than wakeDeadline. The session's state lives in
 // the copy's local tier (SessionsDir, LoadSession, SaveSession), keyed by a
 // session id ValidSessionID accepts. The session-start hook notes each
 // session's start copy in the store (Store.NoteSessionCopy); ResolveCopy
@@ -120,7 +120,7 @@
 // worktree add <path> [<branch>]`) when it is a branch no worktree has
 // checked out (git refuses that command, which runs after the recorder) or
 // names nothing git resolves, and a BranchMoved rename carrying a record by whole name. The list
-// is CreatedFile(copyKey) in the away store, keyed on the working copy's
+// is createdFile(copyKey) in the away store, keyed on the working copy's
 // reservation copy key (claim.CopyKey), written under the store's lock
 // (Store.RecordBranches) and capped at MaxCreatedBranches, the oldest
 // dropped; Store.CreatedBranches reads it. A checkout abcd does not manage
@@ -170,7 +170,7 @@
 // the verdict accepts the hand-back (Verdict.HandBacks) and the stop hook
 // records it, once per branch and head (Store.RecordHandBack), so a
 // hand-back has one owner. Owed.NextRenewal is filled present or away. The
-// items come sorted by OwedKinds' order. The
+// items come sorted by owedKinds' order. The
 // error is a root that is not a working copy; anything else ReadOwed could
 // not read is a note in Owed.Notes.
 //

@@ -68,7 +68,7 @@ func TestConcurrentWritesUnderLock(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	st, err := OpenStore(home, root)
+	st, err := openStore(home, root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestRecordOwnershipFailsOpen(t *testing.T) {
 			if _, err := SetAway(root, "", false, o); err != nil {
 				t.Fatal(err)
 			}
-			st, err := OpenStore(home, root)
+			st, err := openStore(home, root)
 			if err != nil {
 				t.Fatal(err)
 			}

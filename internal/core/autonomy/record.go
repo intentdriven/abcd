@@ -127,12 +127,12 @@ type Closing struct {
 	At   time.Time `json:"at"`
 }
 
-// Begin is the record `abcd mode autonomous` writes at now: until zero is
+// begin is the record `abcd mode autonomous` writes at now: until zero is
 // open-ended (seven days at most), and otherwise must be after now and no
 // later than seven days on. prev is the record already stored, or nil: an
 // unclosed one's queue, hand-backs and stops are still unread, so they are
 // carried into the new record rather than dropped.
-func Begin(prev *Record, who Who, now, until time.Time, holdPushes bool) (*Record, error) {
+func begin(prev *Record, who Who, now, until time.Time, holdPushes bool) (*Record, error) {
 	now = now.Truncate(time.Second)
 	r := &Record{
 		SchemaVersion: SchemaVersion,
@@ -201,7 +201,7 @@ func (r *Record) dropStop(i int) {
 
 // Fit lets go of what a record past its bound cannot hold, oldest first and
 // counted: stops, then hand-backs, then queued steps. A record within its
-// bound is unchanged. Begin fits what it carries and Back what it closes, so
+// bound is unchanged. begin fits what it carries and Back what it closes, so
 // neither ever fails on size; Back prints every line before it fits.
 func (r *Record) Fit() {
 	for jsonLen(r) > fitBudget {
@@ -416,11 +416,11 @@ var clockRe = regexp.MustCompile(`^(\d{1,2}):(\d{2})$`)
 // which names its own offset, is tried first.
 var localLayouts = []string{"2006-01-02T15:04:05", "2006-01-02T15:04", "2006-01-02 15:04:05", "2006-01-02 15:04"}
 
-// ParseUntil reads --until against now, in now's location (the machine's
+// parseUntil reads --until against now, in now's location (the machine's
 // local time at the front door): a clock time is its next occurrence after
 // now; a timestamp is RFC 3339 or a date and time read in local time. One
 // that is neither is ErrUntilUnreadable, and one not after now ErrUntilPast.
-func ParseUntil(s string, now time.Time) (time.Time, error) {
+func parseUntil(s string, now time.Time) (time.Time, error) {
 	raw := s
 	s = strings.TrimSpace(s)
 	loc := now.Location()

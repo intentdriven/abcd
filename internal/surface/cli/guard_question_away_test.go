@@ -86,10 +86,11 @@ func TestAwayQuestionDeniedOneReason(t *testing.T) {
 			if !strings.Contains(reason, "the person is away") {
 				t.Errorf("the reason does not say the person is away:\n%s", reason)
 			}
-			for _, act := range autonomy.PersonOnlyActs() {
-				if !strings.Contains(reason, act) {
-					t.Errorf("the reason leaves out the person-only act %q", act)
-				}
+			// The route carries every person-only act (autonomy's own test
+			// holds the route to the list), so the reason carrying it whole
+			// carries each act.
+			if !strings.Contains(reason, autonomy.QuestionRoute()) {
+				t.Errorf("the reason leaves out the question route and its person-only acts:\n%s", reason)
 			}
 			if strings.Contains(reason, "asking rules") {
 				t.Errorf("an away refusal names the asking rules, so the agent would redraft instead of rerouting:\n%s", reason)

@@ -116,8 +116,8 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 	fp := owed.Fingerprint()
 	changed := fp != st.Fingerprint
 	next.Fingerprint = fp
-	deadline := Deadline(owed, now)
-	_, look, wake := QualifyingWake(in.SessionCrons, now, deadline, in.Location)
+	deadline := wakeDeadline(owed, now)
+	_, look, wake := qualifyingWake(in.SessionCrons, now, deadline, in.Location)
 
 	v := Verdict{Save: true, HandBacks: handBacks}
 	qhash := ""
