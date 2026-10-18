@@ -70,7 +70,8 @@ its turn on a question to the person.
 
 ## What's In Scope
 
-- **The away mode.** `abcd mode autonomous [--until <time>]` records who set
+- **The away mode.** `abcd mode autonomous [--until <time>]
+  [--hold-pushes]` records who set
   it, from which working copy, when, and when it ends, at most seven days
   on; `abcd mode back` ends it, prints one line per queued step and recorded
   stop, and records who ended it. One record per repository on the machine, shared by every
@@ -79,9 +80,15 @@ its turn on a question to the person.
 - **It grants nothing.** The person's own standing instruction stays the
   authority to commit, push, and open or merge a pull request, as before.
   Where owed work needs a push, the stop check tells the session to push if
-  its standing instruction allows, and otherwise to queue the push, which
-  hands that item back to the person for the window. The person sets the
-  mode, or a session does on their word (dcn-2610181016510153).
+  its standing instruction allows; a queued push hands nothing back, so the
+  item stays owed and a stop the host's cap forces is recorded. Only when the
+  person has said pushes wait (`--hold-pushes`, which narrows and grants
+  nothing) does a queued push hand back a branch's unpushed item, and only
+  once its head contains the base's last-fetched tip and has a receipt; never
+  a behind, failing or under-review item, a reservation alone or a renewal.
+  The person's line counts the queued steps and the handed-back items. The
+  person sets the mode, or a session does on their word
+  (dcn-2610181016510153, dcn-2610181035355741).
 - **Repeated, never summarised away.** While it holds, the session-start hook
   (every source, compaction included) and the prompt hook (every prompt) add
   one short block to the session's context (dcn-2610180913406972), and the
@@ -92,14 +99,15 @@ its turn on a question to the person.
   person is away a session is only working or waiting: a turn's end with owed
   work is refused, naming the next item, and a stop is allowed only with a
   wake that fires, the host's lateness included, within half an hour while
-  work is owed and before its reservations need renewing; the host's cap of
-  eight continuations is the outer bound, and a stop it may have forced is
-  recorded.
+  work is owed and before its reservations need renewing, and a wake
+  releases an unchanged set of work the session can do itself at most twice
+  in a row; the host's cap of eight continuations is the outer bound, and a
+  stop it may have forced is recorded.
   A StopFailure hook records a turn ended by an API error. While the person
   is present the check reads disk only and points the work out
   (dcn-2610180913413137, dcn-2610180913421109, dcn-2610180936577720,
   dcn-2610180936579498, dcn-2610180937175629, dcn-2610181003455731,
-  dcn-2610181003484631).
+  dcn-2610181003484631, dcn-2610181035361997).
 - **Owed work**, in exactly these terms: a live reservation under this
   working copy's key whose renewal is due or whose work no open pull request
   carries yet; an open pull request of the session's own that is behind its
@@ -210,9 +218,19 @@ its turn on a question to the person.
   it tries to end its turn, **then** the stop is blocked with a reason that
   says to push only if a standing instruction allows and otherwise to queue
   the push, never naming the away mode as permission; **and when** it
-  queues a step naming that branch, **then** the branch is no longer named
-  as owed in this window and the step is shown when Alice runs `abcd mode
-  back`.
+  queues a step naming that branch, **then** the branch is still named as
+  owed, a stop the host's cap forces is recorded, and the step is shown when
+  Alice runs `abcd mode back`.
+- **Given** Alice set the away mode with `--hold-pushes` and the session's
+  unpushed branch has the default branch's last-fetched tip merged in and a
+  preflight receipt for its head, **when** it queues a step naming that
+  branch, **then** the branch's unpushed item is handed back and the line
+  shown to Alice counts it; **and given** instead a pull request of its own
+  that is behind, merged locally and queued, **then** it stays owed.
+- **Given** the away mode holds, a pull request of the session's own stays
+  behind, and the session has set a cron that fires every ten minutes,
+  **when** it tries to stop with the owed set unchanged a third time in a
+  row, **then** the stop is blocked naming that pull request.
 - **Given** a session sets the away mode on a message relayed from another
   session, **when** Alice sends her next prompt, **then** the line shown to
   her names who set it, from which working copy, and `abcd mode back`, and
@@ -244,8 +262,10 @@ its turn on a question to the person.
   plugin from the branch runs an away window with seeded owed work, a
   compaction and an attempted stop, **then** a captured transcript shows the
   away block at start and after compaction, the blocked stop naming the next
-  item, an unpushed branch's push queued and no longer named, and the
-  refused question.
+  item, an unpushed branch's queued push still named without
+  `--hold-pushes` and handed back with it once its head is verified, the
+  third unchanged stop with a ten-minute wake blocked, and the refused
+  question.
 
 ## SOTA
 
@@ -345,6 +365,15 @@ The trim after review round 2, on the release orchestrator's ruling:
     the draft** (dcn-2610181016510153), superseding decision 19.
 29. **The slice trimmed to what closes the issue, with what moved listed**
     (dcn-2610181017056307), refining decision 18.
+
+Review round 3 of 2026-10-18 narrowed two of them:
+
+30. **A queued push hands nothing back unless the person said pushes wait,
+    and then only a verified branch's unpushed item** (dcn-2610181035355741),
+    refining decision 28.
+31. **A wake releases an unchanged set of work the session can do itself at
+    most twice in a row** (dcn-2610181035361997), refining decisions 13 and
+    20.
 
 The invariant 7 amendment is recorded as adr-2610181003541997 (proposed),
 amended by the trim to one uncached listing per check.

@@ -44,8 +44,12 @@ reuse cache is remaining work of itd-2610170638184486 (dcn-2610181017056307).
 We will keep the check disk-only whenever the away mode does not hold: no
 turn's end while the person is present touches the network.
 
-We will name a failed or late read, never hide it: the check falls back to
-the disk kinds alone, with the pull requests named as not read.
+We will name a failed or late read, never hide it: the check fails open to
+the disk kinds alone, with the pull requests named as not read. A branch
+with a pull request is then compared on disk with the last-fetched default
+branch, naming the fetch time, and a reservation is never reported as
+uncarried, so a failed read cannot lead a session to open a duplicate pull
+request (plan review round 3).
 
 We will add this listing to invariant 7 as the away mode's documented
 meaning, beside the drain's.

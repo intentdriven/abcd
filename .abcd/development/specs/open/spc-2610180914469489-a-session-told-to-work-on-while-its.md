@@ -11,10 +11,13 @@ production_mode: hand-written
 
 Delivers itd-2610180912189125, the first slice of the checklist draft
 (itd-2610170638184486) and the fix for iss-2610170619247185. Trimmed after
-review round 2 to what closes the issue (dcn-2610181017056307). Three parts:
+review round 2 to what closes the issue (dcn-2610181017056307), and
+narrowed by review round 3 (dcn-2610181035355741, dcn-2610181035361997).
+Three parts:
 
-- **The away record.** `abcd mode autonomous [--until <time>]`, `abcd mode
-  back` and `abcd mode queue "<step>"` keep one away record per repository on
+- **The away record.** `abcd mode autonomous [--until <time>]
+  [--hold-pushes]`, `abcd mode back` and `abcd mode queue "<step>"` keep one
+  away record per repository on
   the machine, changed only under a lock and lapsing at its end, seven days
   at most. The session-start hook (every source, `compact` included) and the
   prompt hook repeat it to the agent while it holds, and the prompt hook
@@ -26,7 +29,9 @@ review round 2 to what closes the issue (dcn-2610181017056307). Three parts:
   record holds, a session is only working or waiting: a turn's end is blocked
   while owed work exists, naming the next item, and is allowed only with a
   wake that fires, the host's lateness included, within half an hour while
-  work is owed and before the session's reservations need renewing. The host's
+  work is owed and before the session's reservations need renewing, and a
+  wake releases an unchanged set of work the session can do itself at most
+  twice in a row. The host's
   cap of eight consecutive continuations is the outer bound. A StopFailure
   hook records a turn the host ends on an API error. While the person is
   present the check reads disk only and points the work out.
@@ -110,10 +115,14 @@ host's question tool.
   fsutil's atomic writer.
 - **What it holds.** Who set it: the holder name reservations cache, without
   a network read, falling back to git's `user.name`, and the working copy it
-  was set from. It also holds the start, the end, the queue of steps for the
-  person, the stops recorded (with work owed, with no next look, or on an
-  API error with its type, each at the cap labelled "possibly forced by the
-  cap"), and, once ended by word, who ended it and from which working copy.
+  was set from. It also holds the start, the end, whether the person said
+  pushes wait (`--hold-pushes`), the queue of steps for the person, the items
+  the stop check handed back (branch and head), the stops recorded (with work
+  owed, with no next look, or on an API error with its type, each at the cap
+  labelled "possibly forced by the cap"; a stop identical to the last one
+  recorded is kept as that entry with a count and the last time, so a wake
+  every ten minutes cannot push the record past its 64 KiB check), and, once
+  ended by word, who ended it and from which working copy.
 - **The lock** (dcn-2610180937181736). Every read-modify-write (`mode
   autonomous`, `mode back`, `mode queue`, a recorded stop, a recorded
   branch) holds `fsutil.WithFileLock` on the lock file and re-reads the
@@ -136,16 +145,17 @@ host's question tool.
   through 2026-10-17, fits; a forgotten record lapses.
 - **Seen by the person.** While the record holds, the prompt hook adds a
   one-line `systemMessage` on every prompt: away until when, set by whom and
-  from which working copy, and the literal `abcd mode back` as the way to
-  end it. The away block tells the agent to run `abcd mode back` only on the
+  from which working copy, "N steps queued, M items handed back", and the
+  literal `abcd mode back` as the way to end it (dcn-2610181035355741). The away block tells the agent to run `abcd mode back` only on the
   person's word in its session (dcn-2610181003474765).
 - **A lapsed window with anything unread.** While a record whose end has
   passed is not yet closed and holds a queued step or a recorded stop, the
   prompt hook shows the person one line on every prompt counting them and
   naming `abcd mode back`, until that verb closes the record
   (dcn-2610181003474765).
-- **Ending it.** `abcd mode back` prints one plain line per queued step and
-  per recorded stop (its label included), records who ended the mode and
+- **Ending it.** `abcd mode back` prints one plain line per queued step, per
+  handed-back item and per recorded stop (its label and count included),
+  records who ended the mode and
   from which working copy, and ends the record; on a record whose time has
   passed it prints the same and closes it. Nothing more is printed: the
   report on return moved to the checklist draft.
@@ -171,6 +181,13 @@ tell the person's message from one another session relays. Because the mode
 grants no rights, a mode set on a relayed word only keeps sessions working
 and deciding instead of asking, and the person sees who set it, from which
 working copy, and `abcd mode back` on their next prompt.
+
+**Pushes held** (dcn-2610181035355741). `--hold-pushes` is the person's word
+that pushes wait for their return. It only narrows what sessions do and grants
+nothing, so dcn-2610181016510153 stands: like the mode, nothing can check who
+ran it, and set on a relayed word it can at worst make sessions queue pushes
+they could have sent. It is the only thing that lets a queued push hand an
+item back (Owed work, below).
 
 **Why the guard entries left the slice.** Round 2's choice (a) made setting
 the mode the person's act alone, because the mode then carried push rights.
@@ -205,10 +222,15 @@ dcn-2610181003488355):
   holds (dcn-2610181003463367):
   - this working copy's HEAD reflog has checked it out;
   - the session created it: when the guard's pre-tool hook sees this session
-    run `git worktree add -b|-B <b>`, `git switch -c|-C <b>` or `git checkout
-    -b|-B <b>`, and no branch named `<b>` exists yet, it records `<b>` under
-    this copy's key in the away store, under the store's lock, whether or not
-    the person is away. The hook only records; it refuses nothing, and a
+    run `git worktree add -b|-B <b>`, `git switch -c|-C <b>`, `git checkout
+    -b|-B <b>` or `git branch <b>`, and no branch named `<b>` exists yet, it
+    records `<b>` under this copy's key in the away store, under the store's
+    lock, whether or not the person is away. A bare `git worktree add <path>`
+    records the branch git names after the folder, `git worktree add <path>
+    <existing>` records `<existing>`, and `git branch -m|-M <old> <new>`
+    carries a record from `<old>` to `<new>`; branch names match as whole
+    tokens, and the file is capped (the builder sets the bound, oldest
+    dropped). The hook only records; it refuses nothing, and a
     failed write leaves the command allowed with a stderr line. This is how
     the stacked drain branches of 2026-10-17 (`feat/drain-step11` and its
     siblings) are seen: cut with a plain `git worktree add`, they had no
@@ -233,6 +255,12 @@ dcn-2610181003488355):
   above leaves out, since it holds none of this checkout's commits. A
   sibling copy's branch is none of the routes above, so it never holds this
   session.
+- **Which copy.** A session's copy is the worktree it started in: the
+  session-start hook notes the worktree root of its payload's `cwd` per
+  session id in the away store, and the recorder and the stop check read the
+  copy key, local tier and session state from that root, so a session that
+  changes directory into a worktree it just made keeps its copy key; a
+  session with no note uses its payload `cwd`'s worktree.
 - **The reservation filter and link** (dcn-2610181003467233). A reservation
   counts only when its copy key is this copy's (the view's `Copy ==
   CopyThis`). A pull request carries a reservation's work when the record id
@@ -247,7 +275,10 @@ dcn-2610181003488355):
 - **Behind** (dcn-2610181003464379). While away, a pull request is behind
   when the listing's merge state (`mergeStateStatus`) is `BEHIND`, which the
   forge measures against its base as it stands now, not against the
-  last-fetched default branch, which nothing refreshes overnight. Only a
+  last-fetched default branch, which nothing refreshes overnight. `DIRTY` (a
+  conflicting pull request) is owed as behind too, and `UNKNOWN` reads as not
+  read. GitHub reports `BEHIND` only where the base requires branches to be up
+  to date, so the live capture's lab base requires it. Only a
   branch with no pull request is compared on disk, with the last-fetched
   default branch, and the reason names when that ref was last fetched.
 - **Finding a stacked branch.** An own branch is stacked when its open pull
@@ -273,16 +304,33 @@ dcn-2610181003488355):
   upstream configured, not in any remote-tracking ref. A branch whose
   upstream is gone (merged and deleted on the remote, a squash merge
   included) never counts.
-- **Handed back by the queue** (dcn-2610181016510153). The mode grants no
-  push, so an item whose next act is a push (an unpushed branch, a
-  reservation whose work no pull request carries, a behind or failing pull
-  request once its local fix is committed) may be one the session has no
-  standing instruction to send. A queued step that names the item's branch
-  or record id, on the same word-boundary match as the link, hands that item
-  back to the person for the rest of the window, so the stop check stops
-  naming it. A branch is handed back only while it holds commits its upstream
-  lacks, so the local work (the merge from the base, the fix, the review, the
-  preflight) is done first and only the push waits.
+- **Queued pushes, and the one hand-back** (dcn-2610181035355741, refining
+  dcn-2610181016510153). The mode grants no push, so an item whose next act
+  is a push (an unpushed branch, a reservation whose work no pull request
+  carries, a behind or failing pull request once its local fix is committed)
+  may be one the session has no standing instruction to send.
+  - **By default a queued push hands nothing back.** The item stays owed and
+    the stop stays blocked; a session with no standing instruction to push
+    ends at the host's cap, and the stop is recorded for the person.
+  - **Only with `--hold-pushes`** does a queued step hand anything back. A
+    step naming an own branch, on the same word-boundary match as the link,
+    removes only that branch's unpushed item, and only while the disk shows
+    the rest clear: its head contains its base's last-fetched tip (the
+    default branch, or a stacked branch's base branch as it stands on disk),
+    and a preflight receipt names the head (`landing.Receipt`) where the
+    repository mints receipts. Where it mints none, the clearing rule's
+    equivalent, passing checks in the listing, can only name a pushed
+    commit, so nothing is handed back there.
+  - **Never handed back:** a pull request that is behind (or `DIRTY`) or
+    failing, which the forge reads so until the push; a stacked branch the
+    clearing rule still owes; a review outstanding; a reservation named by
+    its record id alone; a renewal. So a behind pull request whose merge is
+    committed locally stays owed with pushes held and ends at the cap,
+    recorded: the instance of 2026-10-16 shows up in the morning instead of
+    passing as nothing owed.
+  - The conditions are re-read at every check. The stop check records each
+    item it hands back (branch and head) in the away record under its lock,
+    once per branch and head, for the person's line and `abcd mode back`.
 - **What is read, and when (invariant 7,
   adr-2610181003541997).** While the person is present the check reads disk
   only: renewals due (reservations as last fetched, `claim.LastFetched`) and
@@ -291,8 +339,11 @@ dcn-2610181003488355):
   open pull requests (head and base branch, author, body, merge state,
   review decision, check rollup; each field among those
   `internal/ghcontract` pins) under a ten-second deadline. On a failure or
-  timeout it judges from the disk kinds alone, naming the pull requests as
-  not read. There is no cache: a run of eight blocks costs up to eight
+  timeout it fails open to the disk kinds, naming the pull requests as not
+  read: a branch with a pull request is compared on disk with the
+  last-fetched default branch, naming the fetch time, and a reservation is
+  never reported as uncarried, so no duplicate pull request is opened. There
+  is no cache: a run of eight blocks costs up to eight
   listings, each bounded by the deadline (the reuse cache is remaining work
   of the checklist draft). Brief invariant 7 gains this listing as the away
   mode's documented meaning, as the drain's listing is, by
@@ -345,7 +396,21 @@ never counts on its own while away. No new dependency.
 (`.abcd/.work.local/autonomy/sessions/<session-id>.json`; an id outside
 `[A-Za-z0-9_-]{1,128}` is refused and the stop allowed with a stderr line)
 holds the state, the next look, the owed-set fingerprint, the last question
-message's hash, and the count of consecutive blocks.
+message's hash, the count of consecutive blocks, and the wake count with its
+own fingerprint of the capped items (below).
+
+**The wake count** (dcn-2610181035361997, refining dcn-2610180936577720 and
+dcn-2610181003455731). The capped items are the owed kinds the session can
+act on itself: a pull request that is behind or failing, an unpushed branch,
+a stacked branch the clearing rule still owes, and a reservation whose work
+no pull request carries (which the review's list did not name, but opening
+that pull request is the same kind of act as a push). A renewal that is only
+due, and an item waiting only on the forge (a stacked branch whose one unmet
+condition is its checks still running), are not capped. An allow by row 3
+while any capped item is owed adds one to the wake count; a change in the
+capped items' fingerprint sets it to zero. The count compares the capped
+items alone, so a renewal falling due or done neither resets it nor adds to
+it.
 
 While away, the rows are read in order and the first that matches decides:
 
@@ -353,16 +418,27 @@ While away, the rows are read in order and the first that matches decides:
 |---|---|---|
 | 1 | `last_assistant_message` ends on a line ending in `?`, not yet blocked for this message | block with the reroute's reason (working) |
 | 2 | owed, set changed or first block this session | block: next item and count (working) |
-| 3 | owed, set unchanged, qualifying wake | allow (waiting; next look kept) |
-| 4 | owed, set unchanged, no qualifying wake | block: next item, and if it cannot move, take another or schedule a look before the deadline (working) |
-| 5 | none owed, qualifying wake | allow (waiting; next look kept) |
-| 6 | none owed, no qualifying wake | block: take the next ready item first (reserve it), and only if none can be taken alone, schedule a look before the deadline (working) |
+| 3 | owed, set unchanged, qualifying wake, and no capped item owed or the wake count below two | allow (waiting; next look kept; the wake count adds one if a capped item is owed) |
+| 4 | owed, set unchanged, qualifying wake, a capped item owed and the wake count at two | block: next item; the set has not moved over two wakes, so a wake no longer releases this stop (working) |
+| 5 | owed, set unchanged, no qualifying wake | block: next item, and if it cannot move, take another or schedule a look before the deadline (working) |
+| 6 | none owed, qualifying wake | allow (waiting; next look kept) |
+| 7 | none owed, no qualifying wake | block: take the next ready item first (reserve it), and only if none can be taken alone, schedule a look before the deadline (working) |
 
-- **An item that needs a push** (dcn-2610181016510153). The reason for it
-  says: do the local work, then push if your standing instruction allows;
-  otherwise queue the push with `abcd mode queue "<step>"` naming the branch
-  or record id, and take the next item. It never says the away mode allows
-  the push.
+So a `*/10 * * * *` cron set once and an unchanged behind pull request give
+two waiting spells of up to ten minutes each, then blocks until the item
+moves or the host's cap records the stop; each later wake starts a turn that
+is blocked the same way, and the identical stops collapse into one recorded
+entry with a count.
+
+- **An item that needs a push** (dcn-2610181016510153, refined by
+  dcn-2610181035355741). Without `--hold-pushes` the reason says: do the
+  local work, then push if your standing instruction allows; queue only if
+  the person has said pushes wait, and a push you may not send stays owed,
+  so queue it with `abcd mode queue "<step>"` for the person and take
+  another item meanwhile. With `--hold-pushes` it says: the person has said
+  pushes wait; finish the local work (the merge from the base, the
+  preflight), then queue the push naming the branch. It never says the away
+  mode allows the push.
 - **`stop_hook_active`** decides no row, so both values are covered by every
   row. It alone drives the count (dcn-2610181003484631, refining
   dcn-2610180936577720): a block with it `false` sets the count to one, and
@@ -371,8 +447,8 @@ While away, the rows are read in order and the first that matches decides:
   falling due at the sixth block would have reset abcd to one, and the host's
   override at its ninth would have found abcd at three, unrecorded. The block
   whose count passes the cap (eight, or `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`
-  when set) records "stopped with work owed" (rows 2 and 4) or "stopped with
-  no next look" (row 6) in the away record, labelled "possibly forced by the
+  when set) records "stopped with work owed" (rows 2, 4 and 5) or "stopped
+  with no next look" (row 7) in the away record, labelled "possibly forced by the
   cap", because the host's count also resets on a tool call abcd cannot see.
   The count so errs toward recording a stop that did not happen, never
   toward missing one, and step 7 checks where the host's count resets.
@@ -382,7 +458,9 @@ While away, the rows are read in order and the first that matches decides:
 - **The front door.** `abcd hook stop` maps the payload and writes the host's
   JSON. A malformed payload, an unreadable record or a lock not had allows
   the stop and says so on stderr, following the guard's fail-open-loud
-  contract. A stop is never blocked on abcd's own fault.
+  contract. A stop is never blocked on abcd's own fault. The Stop entry in
+  `hooks/hooks.json` carries a timeout of 30 seconds, room for the
+  ten-second listing and the git reads.
 - **StopFailure** (dcn-2610180937175629). `abcd hook stop-failure`, while
   the record holds, records "stopped on an API error" with the error type,
   under the lock. It cannot continue the session; the scope conditions name
@@ -457,6 +535,10 @@ is set and no question is marked open.
      recorded stop, the "possibly forced by the cap" label included, and the
      ender and copy recorded; also on a record whose time has passed);
      TestRecordPastEndReadsEnded; TestQueueAppends;
+     TestHoldPushesRecorded (`--hold-pushes` is kept in the record, shown in
+     the away block, and grants nothing); TestRepeatedStopCollapses (a stop
+     identical to the last recorded one adds to its count and last time
+     instead of a new entry);
      TestConcurrentWritesUnderLock (two `mode queue` calls racing keep both
      steps, and a stop recorded after `mode back` re-reads inside the lock
      and does not turn the mode back on); TestRecordOwnershipFailsOpen (a
@@ -464,9 +546,13 @@ is set and no question is marked open.
      others, or over 64 KiB reads as not away, and a verb refuses naming
      it); TestBadgeRefusedWhileAway; the badge's three-word vocabulary test
      passes unchanged. The plugin page and the brief's `abcd mode` surface
-     text describe the three verbs and say the mode grants no rights, the
-     person's standing instruction deciding what is pushed, and `go generate
-     ./internal/surface/cli` refreshes the derived appendix.
+     text describe the three verbs and `--hold-pushes` and say the mode
+     grants no rights, the person's standing instruction deciding what is
+     pushed, and `go generate ./internal/surface/cli` refreshes the derived
+     appendix. This step also fixes the shapes of `Record` and of `Owed`
+     (the owed items, each with its kind, whether it is capped, and its
+     branch or record id) in `internal/core/autonomy`, so steps 3 and 4 and
+     steps 5 and 6 can run in two lanes against them.
 2. Repeated to the agent, shown to the person
    - packages: internal/surface/cli
    - tests: internal/surface/cli
@@ -477,8 +563,11 @@ is set and no question is marked open.
      only on the person's word); TestPromptRouterAwayBlockEveryPrompt (a
      second prompt in the same session too, outside the loader's dedup
      ledger); TestPromptRouterAwaySystemMessage (one line the person sees on
-     every prompt while it holds, naming who set it, from which copy, and
-     the literal `abcd mode back`); TestPromptRouterLapsedWindowLine (a
+     every prompt while it holds, naming who set it, from which copy, the
+     count of queued steps and of handed-back items, and the literal `abcd
+     mode back`); TestSessionStartNotesCopy (the session's start worktree is
+     noted per session id, and a later hook run from a worktree the session
+     made reads the start copy's key); TestPromptRouterLapsedWindowLine (a
      lapsed, unclosed record with a queued step or a recorded stop shows one
      line naming `abcd mode back` on every prompt until `mode back` closes
      it, and one with neither shows nothing); all inside the hook's existing
@@ -490,7 +579,11 @@ is set and no question is marked open.
      feat/x ../x`, `git switch -c feat/y` and `git checkout -B feat/z`
      record the branch under this copy's key, whether or not the person is
      away, only when no branch of that name exists, and `git checkout -b
-     main` on an existing `main` records nothing); TestBranchRecorderNeverRefuses
+     main` on an existing `main` records nothing); TestBranchRecorderOtherForms
+     (`git branch feat/w`, a bare `git worktree add ../v` recording `v`, and
+     `git worktree add ../u feat/u` on an existing branch are recorded; `git
+     branch -m feat/w feat/w2` carries the record; `feat/x` is not matched
+     inside `feat/x2`; the file stays within its cap); TestBranchRecorderNeverRefuses
      (the command is allowed whatever the recorder does, and a store it cannot
      write leaves a stderr line); TestBranchRecorderUnderLock (two recordings
      racing keep both). commands/guard.md and the brief's guard chapter say
@@ -523,7 +616,8 @@ is set and no question is marked open.
      branch own; on an own branch's pull request it carries it);
      TestBehindFromMergeState (a pull request whose merge state is `BEHIND`
      is owed while the local default branch is stale and shows it current;
-     one `CLEAN` is not); TestStackedBranchFoundWithoutPullRequest;
+     one `DIRTY` is owed as behind; one `CLEAN` is not; `UNKNOWN` reads as
+     not read); TestStackedBranchFoundWithoutPullRequest;
      TestStackedBranchClearingRule (owed while behind its base, failing,
      with a review outstanding, or unverified; waiting on its base
      otherwise); TestClearingRuleReview (`CHANGES_REQUESTED` in the listing,
@@ -532,19 +626,37 @@ is set and no question is marked open.
      folder, passing checks verify; with no pull request the reason says it
      was not verified); TestUnpushedSkipsGoneUpstream (a squash-merged
      branch whose upstream is gone is not owed); TestQueuedPushHandsItemBack
-     (a queued step naming an unpushed branch hands it back while the branch
-     is ahead of its upstream; one naming a behind branch with nothing to
-     push does not; iss-5 queued does not hand back iss-50);
+     (without `--hold-pushes` a queued step hands nothing back, the
+     unpushed branch staying owed; with it, a step naming an unpushed branch
+     whose head contains the base's last-fetched tip and has a receipt hands
+     back that branch's unpushed item, and the hand-back is recorded once
+     per branch and head; with it, none is handed back when the head lacks
+     the base tip, has no receipt, or the repository mints no receipts; nor
+     a pull request behind, `DIRTY` or failing whose fix is committed
+     locally; nor a stacked branch the clearing rule owes; nor one with
+     `CHANGES_REQUESTED`; nor a reservation queued by record id alone; nor a
+     renewal due; iss-5 queued does not hand back iss-50);
      TestPresentReadsDiskOnly (zero forge calls while present);
      TestForgeListingDeadline (a hung listing ends at ten seconds, and the
-     check judges from the disk kinds with a "not read" note);
+     check fails open to the disk kinds with a "not read" note: a branch with
+     a pull request is compared on disk naming the fetch time, and a
+     reservation is never reported as uncarried);
      TestOwedOrderFixed. Brief invariant 7 gains the away mode's one listing
      per check and its deadline, citing adr-2610181003541997.
 5. The stop verdict, the Stop and StopFailure hooks
    - packages: internal/core/autonomy, internal/surface/cli, hooks
    - tests: internal/core/autonomy, internal/surface/cli
-   - Watched failing first: TestJudgeRows (each of the six away rows and both
-     present rows, each with `stop_hook_active` true and false);
+   - Watched failing first: TestJudgeRows (each of the seven away rows and
+     both present rows, each with `stop_hook_active` true and false);
+     TestWakeReleasesUnchangedSetTwice (with `*/10 * * * *` and an
+     unchanged behind pull request, the first two stops with the wake are
+     allowed and the third is blocked, and so is each later one; the same
+     for failing, unpushed, stacked-not-clear and uncarried items; a set of
+     only a renewal due, or of a stacked branch waiting only on running
+     checks, keeps releasing; a renewal falling due between the wakes
+     neither resets nor adds to the count; a change in the capped items
+     resets it; the count and its fingerprint are read back from the
+     session's state file by a new hook process);
      TestJudgeEscapeBoundReproducesNoStall (owed, unchanged, `true`, no wake:
      blocked, not allowed); TestJudgeCapRecordsStop (the block passing the
      cap, and an override from the environment, records the stop labelled
@@ -552,9 +664,10 @@ is set and no question is marked open.
      in the owed set at the sixth block does not reset the count, and the
      ninth consecutive block still records the stop; a block with
      `stop_hook_active` false sets it to one); TestPushItemReasonDefersToStandingInstruction
-     (the reason for an unpushed branch says to push only if the standing
-     instruction allows, otherwise to queue it, and never names the away mode
-     as permission); TestDeadlineCeiling (with
+     (without `--hold-pushes` the reason for an unpushed branch says to push
+     if the standing instruction allows, to queue only if the person has said
+     pushes wait, and that a queued push stays owed; with it, to finish the
+     local work and then queue; neither names the away mode as permission); TestDeadlineCeiling (with
      work owed and no reservation, now plus 30 minutes; with nothing owed,
      now plus one hour; with a renewal due sooner, that minus the skew);
      TestCronNextFire (lists, ranges, steps, both day fields, an unparsable
@@ -580,7 +693,8 @@ is set and no question is marked open.
      `systemMessage` while present; a malformed payload, an unreadable record
      or a held lock allows with a stderr line); TestHookStopFailureRecords
      (the error type recorded while away, nothing written while present);
-     `hooks/hooks.json` gains Stop and StopFailure entries, and `hooks/stop.sh`
+     `hooks/hooks.json` gains Stop and StopFailure entries, the Stop entry
+     with a 30-second timeout, and `hooks/stop.sh`
      and `hooks/stop-failure.sh` take the same bootstrap and home checks as
      `hooks/subagent-stop.sh` (the hook-shape tests cover them); `go generate
      ./internal/surface/cli` refreshes the derived appendix.
@@ -611,10 +725,14 @@ is set and no question is marked open.
      the block again; an attempted stop blocked naming the behind pull
      request; a reply with no tool call blocked again rather than allowed;
      the stacked branch's item; the unpushed branch's reason deferring to the
-     standing instruction, and, with none given, the push queued and the
-     item no longer named; a cron set for the next morning refused as a wake
+     standing instruction, and, with none given and no `--hold-pushes`, the
+     push queued and the item still named; with `--hold-pushes` and a
+     receipt for its head, the item handed back and the person's line
+     counting it; a cron set for the next morning refused as a wake
      and one inside the deadline accepted, with abcd's computed fire time
-     compared with the `next run` the host's `CronList` row shows; nine
+     compared with the `next run` the host's `CronList` row shows; a
+     `*/10 * * * *` cron with the owed set unchanged releasing twice and the
+     third stop blocked; nine
      blocks in a row with no tool call, then the same with one tool call in
      between, to see where the host's count resets; a question refused with
      the one reason; the window left to lapse with a queued step, and the
@@ -626,37 +744,43 @@ is set and no question is marked open.
 
 ## Size
 
-Re-estimated after the trim at 5.75 working days, down from eight
-(dcn-2610181017056307):
+Re-estimated after review round 3 at 7.5 working days of work, up from the
+5.75 written after the trim (dcn-2610181017056307):
 
-| step | days | was |
+| step | days | after the trim |
 |---|---|---|
-| 1. The away record, its store, its lock and its verbs | 0.75 | 1.0 |
-| 2. Repeated to the agent, shown to the person | 0.5 | 0.75 |
-| 3. The created-branch recorder | 0.25 | (in the old step 2, 1.5) |
-| 4. Owed work, and invariant 7's clause | 1.75 | 2.0 |
-| 5. The stop verdict, the Stop and StopFailure hooks | 1.5 | 1.5 |
+| 1. The away record, its store, its lock and its verbs | 1.0 | 0.75 |
+| 2. Repeated to the agent, shown to the person | 0.75 | 0.5 |
+| 3. The created-branch recorder | 0.5 | 0.25 |
+| 4. Owed work, and invariant 7's clause | 2.25 | 1.75 |
+| 5. The stop verdict, the Stop and StopFailure hooks | 1.75 | 1.5 |
 | 6. The question reroute | 0.5 | 0.5 |
-| 7. The live session capture | 0.5 | 0.75 |
-| total | 5.75 | 8.0 |
+| 7. The live session capture | 0.75 | 0.5 |
+| total | 7.5 | 5.75 |
 
-Step 1 loses the refused attempts and the fuller `mode back` print; step 2
-the attempt line; step 4 the listing's reuse cache and its stale-cache
-fallback, less the small queue hand-back it gains; step 7 the guard, `!`
-and relay checks. The old step 2's guard entries leave whole, and only its
-branch recorder stays, as step 3.
+Round 3 adds: in step 1 `--hold-pushes`, the collapsed repeated stops and
+fixing the `Record` and `Owed` shapes; in step 2 the counts on the person's
+line and the session's start-copy note; in step 3 the other branch-creating
+forms, the rename and the cap; in step 4 the hand-back's base-tip and
+receipt conditions with their real-git cases, `DIRTY` and `UNKNOWN`, and the
+fail-open terms; in step 5 the wake count and its row; in step 7 the
+hand-back and wake-count checks. The rest of the rise is the Sonnet
+reviewer's point that 5.75 days was thin for about 60 tests on real-git
+fixtures: that reviewer planned about seven days before these additions, the
+Opus reviewer found the elapsed figure credible, and 7.5 is the honest
+figure with both.
 
-**Why not four.** About four working days is not reachable by scoping
-alone. Steps 3 to 5 carry 3.5 days, and every rule in them answers a
-review finding the trim keeps: the created-branch, stale-ownership and
-`Refs:` rules (round-2 blockers 3 to 5), the merge state (blocker 2), and the
-deadline and cron cases (blocker 1). Cutting any of them reopens a blocker,
-and the stacked-branch rules are the issue's second instance. The floor is
-about 5.75 days of work. The elapsed time can be shorter: `Judge` is pure
-over the owed set, so steps 3 and 4 can run in one lane while steps 1, 2, 5
-and 6 run in another once step 1 fixes the record's shape, which puts the
-critical path at about four days with the capture after both. Whether to run
-two lanes is the release orchestrator's choice.
+**Why not four.** About four working days of work is not reachable by
+scoping alone. Steps 3 to 5 carry 4.5 days, and every rule in them answers a
+review finding: the created-branch, stale-ownership and `Refs:` rules
+(round-2 blockers 3 to 5), the merge state (blocker 2), the deadline and
+cron cases (blocker 1), and the hand-back and wake count (round-3 F1 and
+F2). Cutting any of them reopens a finding, and the stacked-branch rules are
+the issue's second instance. The elapsed time can be shorter: `Judge` is
+pure over the owed set, so once step 1 fixes `Record` and `Owed`, steps 3
+and 4 (2.75 days) run in one lane while steps 2, 5 and 6 (3.0 days) run in
+another, which puts the critical path at about 4.75 days with the capture
+after both. Whether to run two lanes is the release orchestrator's choice.
 
 Round 2 estimated eight days for seven steps, round 1 five days for six; the
 first plan wrote no size down.
@@ -746,7 +870,9 @@ back for the window, a branch only while it holds commits to push; and the
 person-only acts gain pushing, opening or merging a pull request without a
 standing instruction. Without the hand-back, a session with no standing
 instruction to push would be blocked on its unpushed branch until the host's
-cap.
+cap. Review round 3 found that hand-back an exemption the session could
+grant itself, and narrowed it to `--hold-pushes` and a verified branch's
+unpushed item alone (below).
 
 **Each round-2 item after the trim:**
 
@@ -776,3 +902,25 @@ return had already moved; items 6, 7 and 11 are kept whole.
 **No blocker is reopened.** Nothing the review made essential to (i) to
 (iii) was cut. The items kept against the trim's pressure, and why, are
 listed in dcn-2610181017056307: each is the fix of a finding above.
+
+## Review round 3
+
+On 2026-10-18 an Opus and Sonnet pair reviewed the plan as frozen at
+600c109d6, with the verdict "ready to build once F1 and F2 are in". They
+found the round-2 mapping, the ADR and invariant 7's clause, the recorder
+and the two-lane estimate sound. Each item and how it was handled:
+
+| # | finding | handled |
+|---|---|---|
+| F1 | the queued-push hand-back lets the session exempt itself, replaying the first instance: a behind pull request merged locally and queued was handed back and stayed behind all night; it also covered stacked branches, reservations and renewals, and the person's line did not count it | fixed: by default a queued push hands nothing back, the item stays owed and the cap records the stop; only `abcd mode autonomous --hold-pushes`, which narrows and grants nothing (dcn-2610181016510153 stands), allows a hand-back, and then only of a branch's unpushed item while its head contains the base's last-fetched tip and has a receipt (or the clearing rule's equivalent, which an unpushed head never meets); never a behind, failing or under-review item, a reservation alone or a renewal; the person's line says "N steps queued, M items handed back"; TestQueuedPushHandsItemBack covers each case, the no-flag case included (dcn-2610181035355741) |
+| F2 | a cheap wake keeps a stall alive: a `*/10` cron set once releases an unchanged owed set at every wake | fixed: an unchanged set of capped items (behind, failing, unpushed, stacked-not-clear, and an uncarried reservation, added as the same kind of act) is released by a qualifying wake at most twice in a row, then blocked, the cap recording the stop; a renewal only due or an item waiting on running checks keeps releasing; the count and its fingerprint live in the session's state file in the local tier; TestWakeReleasesUnchangedSetTwice; repeated identical stops collapse into one entry so the record stays within 64 KiB (dcn-2610181035361997) |
+| minor | the behind kind: `DIRTY` and `UNKNOWN` | handed to the builder, and written into Owed work and TestBehindFromMergeState: `DIRTY` owed as behind, `UNKNOWN` not read |
+| minor | the recorder's forms: `git branch <b>`, a bare `git worktree add <path>`, `git worktree add <path> <existing>`, a record carried across `git branch -m` or `-M`, whole-token names, a capped file | handed to the builder, and written into "own" and TestBranchRecorderOtherForms; the cap's bound is the builder's |
+| minor | the copy key from a worktree's working directory | handed to the builder, and written into Owed work ("Which copy") and TestSessionStartNotesCopy; the note's shape is the builder's |
+| minor | fail-open when the listing fails, stated in the spec and the ADR | handed to the builder, and written into "What is read", TestForgeListingDeadline and adr-2610181003541997: a branch with a pull request compared on disk naming the fetch time, a reservation never reported as uncarried |
+| minor | a Stop hook timeout of about 30 seconds | handed to the builder, and written into the front door and step 5 |
+| minor | `Record` and `Owed` fixed in step 1 so the lanes can run in parallel | handed to the builder, and written into step 1 and Size |
+| size | Sonnet: 5.75 days thin, about seven; Opus: 3.75 days elapsed credible | re-estimated at 7.5 days of work with round 3's additions, about 4.75 elapsed in two lanes (Size) |
+
+No fourth review round: the two deltas are checked on the next commit by
+hand.
