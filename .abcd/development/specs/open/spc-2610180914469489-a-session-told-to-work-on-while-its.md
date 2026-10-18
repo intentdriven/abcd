@@ -514,6 +514,67 @@ command pages already do.
 The away block repeats this list and that the mode grants nothing. No mode
 is set and no question is marked open.
 
+## Settled here
+
+Choices made while building step 1 on 2026-10-18 where this record is
+silent, each the narrowest reading that meets the step. Each is the build
+lane's choice, recorded for review; none changes a test the step names.
+
+- 2026-10-18 (lane's choice, for review): **Setting the mode again keeps
+  what is unread.** `abcd mode autonomous` on a record that holds, or that
+  lapsed and is not yet closed, writes a new record (who set it, from which
+  copy, a new start and end, `--hold-pushes` as given this time) and carries
+  over its queued steps, handed-back items and recorded stops, since nothing
+  has printed them yet. The seven-day cap counts from the new start: setting
+  the mode is a deliberate act, and the cap is there for a forgotten record.
+  A closed record's items, already printed by `abcd mode back`, are not
+  carried.
+- 2026-10-18 (lane's choice, for review): **`abcd mode queue` needs a record
+  that holds.** With none, or one lapsed, it is refused (exit 2) and the
+  reason says to ask the person instead, since there is no return to queue
+  for. A step's whitespace is folded so it prints as one line, and a step
+  over 500 characters is refused, so one step cannot fill the 64 KiB record.
+- 2026-10-18 (lane's choice, for review): **Who set it.** The holder name
+  reservations resolve with no network read (`claim.ReaderHolder`), else
+  the name git would author a commit with (`identity.EffectiveIdentity`,
+  which reads `user.name` after git's own overrides), else nothing, shown as
+  "someone git does not name". The working copy is its root as git names it,
+  shown in the tilde form.
+- 2026-10-18 (lane's choice, for review): **Every refusal is exit 2 with
+  nothing written**, a lock not had within two seconds included: each is
+  "this invocation cannot be honoured", as the badge's refusals are.
+- 2026-10-18 (lane's choice, for review): **The lock is checked on every
+  read, not only on writes.** A lock file that is a symlink, another
+  account's, writable by others or over 64 KiB reads as not away for the
+  hooks as well as refusing the verbs, as TestRecordOwnershipFailsOpen
+  names. Reading never creates the store; the first write creates its
+  folders owner-only.
+- 2026-10-18 (lane's choice, for review): **"Shown in the away block" is
+  `Record.Terms`.** Step 1 has no away block yet (step 2 prints it), so the
+  record's plain statement (until when, set by whom from which copy, that
+  pushes wait when `--hold-pushes` is set, that the mode grants no rights,
+  and how it ends) is `Record.Terms`, which `abcd mode autonomous` prints and
+  step 2's block can repeat.
+- 2026-10-18 (lane's choice, for review): **Sibling files go through the
+  store.** The created-branch list (step 3) and the session's start-copy
+  note (step 2) live in the same folder; `Store.ReadFile` and
+  `Store.WriteFile`, called inside `Store.WithLock`, give them the record's
+  ownership, size and atomic-write terms. Their names and shapes are those
+  steps' to choose.
+- 2026-10-18 (lane's choice, for review): **The badge's refusal reads the
+  record at the verb.** `mode.RefuseParkWhileAway` is pure and the CLI reads
+  the away record for it, so `internal/core/mode` keeps no knowledge of the
+  away store; the guard's chip-set path is left to step 6, whose gate denies
+  every question while away before that path is reached.
+- 2026-10-18 (lane's choice, for review): **`abcd mode` gets its own brief
+  chapter**, `04-surfaces/26-mode.md`, beyond the step's named packages.
+  Once the verb registers sub-verbs, record-lint's `surface_coverage` rule
+  requires a chapter named for it with a sub-verbs table, so the away mode's
+  surface text lives there, the register's row 26 points at it, and
+  `08-abcd.md` keeps the badge and points at the new chapter. The three
+  sub-verbs' sentences and the queue's worked example go in
+  `internal/core/surface`, as every visible verb's do.
+
 ## Footprint
 
 - packages: internal/core/autonomy, internal/core/mode, internal/core/guard, internal/surface/cli, hooks, commands/mode.md, commands/guard.md, .abcd/development/brief/02-constraints/03-invariants.md, .abcd/development/brief/04-surfaces/08-abcd.md, .abcd/development/brief/04-surfaces/17-guard.md
@@ -553,6 +614,7 @@ is set and no question is marked open.
      (the owed items, each with its kind, whether it is capped, and its
      branch or record id) in `internal/core/autonomy`, so steps 3 and 4 and
      steps 5 and 6 can run in two lanes against them.
+   - landed: 2e859ad4b
 2. Repeated to the agent, shown to the person
    - packages: internal/surface/cli
    - tests: internal/surface/cli
