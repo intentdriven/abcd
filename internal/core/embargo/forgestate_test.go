@@ -492,6 +492,9 @@ func TestOneAdvisoryNotShownLeavesItUnread(t *testing.T) {
 			if !strings.Contains(leftOutReason(t, p, ghsaA), "not resolved in v0.9.0") {
 				t.Fatalf("plan %+v", p)
 			}
+			if n := listings(pf.g); n != 0 {
+				t.Fatalf("a plan that read an advisory asked for %d listings, want none", n)
+			}
 		})
 		t.Run("intake "+code, func(t *testing.T) {
 			pf, f := heldFixture(t)
@@ -527,13 +530,7 @@ func TestEveryAdvisoryNotShownListingDecides(t *testing.T) {
 			if !strings.Contains(leftOutReason(t, p, ghsaA), "not resolved in v0.9.0") {
 				t.Fatalf("plan %+v", p)
 			}
-			listed := 0
-			for _, c := range pf.g.calls() {
-				if c.has(listPath) {
-					listed++
-				}
-			}
-			if listed != 1 {
+			if listed := listings(pf.g); listed != 1 {
 				t.Fatalf("%d listings, want one", listed)
 			}
 			noWrites(t, pf.g)
@@ -542,6 +539,7 @@ func TestEveryAdvisoryNotShownListingDecides(t *testing.T) {
 			"listing refused for scope " + code: {stderr, "gh auth refresh"},
 			"listing refused in words " + code:  {"gh: Resource not accessible by personal access token (HTTP 403)", "gh auth refresh"},
 			"listing fails transiently " + code: {"gh: Server Error (HTTP 502)", "the listing that tells"},
+			"listing signed out " + code:        {"gh: Bad credentials (HTTP 401)", "gh auth login"},
 		} {
 			t.Run(name, func(t *testing.T) {
 				pf, _ := heldFixture(t)
@@ -570,8 +568,37 @@ func TestEveryAdvisoryNotShownListingDecides(t *testing.T) {
 			if len(res.Unread) != 2 || len(res.Ended) != 0 {
 				t.Fatalf("result %+v", res)
 			}
+			triage := 0
+			for _, c := range pf.g.calls() {
+				if c.has("state=triage") {
+					triage++
+				}
+			}
+			if triage != 1 {
+				t.Fatalf("intake listed triage %d times, want its own one", triage)
+			}
+		})
+		t.Run("listing exits signed out "+code, func(t *testing.T) {
+			pf, _ := heldFixture(t)
+			pf.tag("v0.9.0")
+			pf.g.fail("GET", listPath+"/"+ghsaA, "", stderr)
+			pf.g.fail("GET", listPath+"/"+ghsaB, "", stderr)
+			pf.g.hook(`if [ "$path" = '` + listPath + `' ]; then echo 'To get started with GitHub CLI, please run:  gh auth login' >&2; exit 4; fi`)
+			_, err := planPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Now: func() time.Time { return fixedNow.Add(time.Hour) }})
+			mustRefuse(t, err, "gh auth login")
 		})
 	}
+}
+
+// listings counts the advisory listings the fake was asked for.
+func listings(g *ghFake) int {
+	n := 0
+	for _, c := range g.calls() {
+		if c.has(listPath) {
+			n++
+		}
+	}
+	return n
 }
 
 // TestHTTP401IsSignedOut: GitHub's HTTP 401, which gh reports when GitHub

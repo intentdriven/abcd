@@ -83,28 +83,64 @@ func (rt *releaseTags) readOrigin() error {
 	if rt.origin != nil {
 		return nil
 	}
-	seen := map[string]string{}
-	twice := map[string]bool{}
-	err := gitutil.NetEach(rt.checkout, maxRefLine, func(line string) {
-		obj, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
-		name, isTag := strings.CutPrefix(ref, "refs/tags/")
-		if !ok || !isTag || !gitutil.IsFullSHA(obj) || !isReleaseTag(name) {
-			return
-		}
-		if prev, dup := seen[name]; dup && prev != obj {
-			twice[name] = true
-		}
-		seen[name] = obj
-	}, "ls-remote", "--refs", "--tags", originRemote)
+	var o originListing
+	err := gitutil.NetEach(rt.checkout, maxRefLine, o.add, "ls-remote", "--refs", "--tags", originRemote)
 	if err != nil {
 		return refuse("origin's tags could not be listed, so whether a release tag is published cannot be told; nothing was recorded",
 			"settle what `git ls-remote --tags origin` reports (the network, origin's URL, your credentials), then run it again")
 	}
-	for name := range twice {
-		delete(seen, name)
-	}
-	rt.origin = seen
+	rt.origin = o.tags()
 	return nil
+}
+
+// originListing reads origin's tag listing line by line: only a line of a
+// full object name, a tab and a release tag's ref is read, and a tag named
+// twice at two objects is held at neither.
+type originListing struct {
+	seen  map[string]string
+	twice map[string]bool
+}
+
+func (o *originListing) add(line string) {
+	obj, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
+	name, isTag := strings.CutPrefix(ref, "refs/tags/")
+	if !ok || !isTag || !gitutil.IsFullSHA(obj) || !isReleaseTag(name) {
+		return
+	}
+	if o.seen == nil {
+		o.seen, o.twice = map[string]string{}, map[string]bool{}
+	}
+	if prev, dup := o.seen[name]; dup && prev != obj {
+		o.twice[name] = true
+	}
+	o.seen[name] = obj
+}
+
+// tags is each release tag origin holds, at its object.
+func (o *originListing) tags() map[string]string {
+	out := map[string]string{}
+	for name, obj := range o.seen {
+		if !o.twice[name] {
+			out[name] = obj
+		}
+	}
+	return out
+}
+
+// originRepoOf is how a plan reads the repository origin names: originRepo,
+// unless a test has swapped it (SwapOriginRepoForTest).
+var originRepoOf = originRepo
+
+// SwapOriginRepoForTest substitutes how a plan reads the repository origin
+// names, and returns the restore: a test binary's git reaches no network, so
+// a fixture stands origin in with a local repository, which names none. It
+// is exported because the surface's tests live in another package. Tests
+// only; never called in production code, and never safe to call from a
+// parallel test.
+func SwapOriginRepoForTest(fn func(top string) (string, error)) (restore func()) {
+	prev := originRepoOf
+	originRepoOf = fn
+	return func() { originRepoOf = prev }
 }
 
 // published says why tag, a release tag this checkout holds, is not a

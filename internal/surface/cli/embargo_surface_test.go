@@ -209,6 +209,9 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	bare := filepath.Join(t.TempDir(), "origin.git")
 	r.Git("init", "-q", "--bare", bare)
 	r.Git("config", "remote.origin.url", bare)
+	// A local origin names no github.com repository: the plan reads it as
+	// the one intake recorded.
+	t.Cleanup(embargo.SwapOriginRepoForTest(func(string) (string, error) { return "example/example", nil }))
 	r.Git("tag", "v0.1.0")
 	r.Git("push", "-q", "origin", "refs/tags/v0.1.0")
 	code, out, stderr = runEmbargo(t, "", "embargo", "publish", "--json")

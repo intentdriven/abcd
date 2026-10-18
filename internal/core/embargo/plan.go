@@ -166,6 +166,18 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 	if release != "" && !isReleaseTag(release) {
 		return PublicationPlan{}, refuse("--release is not a release tag of the form vMAJOR.MINOR.PATCH", "name the release tag, for example v0.9.0")
 	}
+	// The tags origin holds vouch for the releases of the repository the
+	// store holds the advisories of only while origin names that
+	// repository: a repointed origin (a fork) is refused, as intake refuses
+	// it, before any of its tags is read.
+	repo, err := originRepoOf(s.Checkout)
+	if err != nil {
+		return PublicationPlan{}, err
+	}
+	if repo != st.Repo {
+		return PublicationPlan{}, refuse("the embargo store holds the advisories of another repository than origin names, so origin's tags cannot vouch for its releases",
+			"run it from a checkout whose origin is the repository the store was made for")
+	}
 	rt, err := readLocalReleaseTags(s.Checkout, st.Repo)
 	if err != nil {
 		return PublicationPlan{}, err

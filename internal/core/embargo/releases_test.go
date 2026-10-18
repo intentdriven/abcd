@@ -170,7 +170,7 @@ func TestReleaseUnreadableRefusesPlan(t *testing.T) {
 	}{
 		"origin unreachable": {func(pf planFixture) {
 			pf.tag("v0.9.0")
-			pf.f.repo.Git("config", "remote.origin.url", filepath.Join(pf.f.repo.Root(), ".git", "no-such-origin.git"))
+			pf.f.repo.Git("config", "remote.origin.url", filepath.Join(pf.f.repo.Root(), ".git", "no-such-origin", "fixture-origin.git"))
 		}, "git ls-remote --tags origin"},
 		"gh fails": {func(pf planFixture) {
 			pf.tag("v0.9.0")
@@ -184,6 +184,14 @@ func TestReleaseUnreadableRefusesPlan(t *testing.T) {
 			pf.tag("v0.9.0")
 			pf.release("v0.9.0", `{"tag_name":"v0.9.0","draft":"no","prerelease":false}`)
 		}, "not the JSON this abcd reads"},
+		"a bare 403": {func(pf planFixture) {
+			pf.tag("v0.9.0")
+			pf.g.fail("GET", releasePath("v0.9.0"), "", "gh: Forbidden (HTTP 403)")
+		}, "whether it is published cannot be told"},
+		"origin repointed": {func(pf planFixture) {
+			pf.tag("v0.9.0")
+			pf.f.repo.Git("config", "remote.origin.url", "https://github.com/example/fork.git")
+		}, "another repository than origin names"},
 		"flag missing": {func(pf planFixture) {
 			pf.tag("v0.9.0")
 			pf.release("v0.9.0", `{"tag_name":"v0.9.0","prerelease":false}`)
@@ -196,7 +204,8 @@ func TestReleaseUnreadableRefusesPlan(t *testing.T) {
 				before := readFile(t, pf.s.StatePath())
 				err := pf.planErr(release)
 				mustRefuse(t, err, tc.want)
-				if strings.Contains(err.Error(), "Server Error") || strings.Contains(err.Error(), "no-such-origin") {
+				if strings.Contains(err.Error(), "Server Error") || strings.Contains(err.Error(), "Forbidden") ||
+					strings.Contains(err.Error(), "no-such-origin") || strings.Contains(err.Error(), "fork") {
 					t.Fatalf("the refusal repeats what was sent: %v", err)
 				}
 				if readFile(t, pf.s.StatePath()) != before {
@@ -217,4 +226,41 @@ func TestFirstTagUnreadableRefusesPlan(t *testing.T) {
 	pf.g.fail("GET", releasePath("v0.8.0"), "", "gh: Server Error (HTTP 502)")
 	pf.tag("v0.9.0")
 	mustRefuse(t, pf.planErr(""), "v0.8.0")
+}
+
+// TestOriginTagListedTwiceCountsAtNeither: a tag origin's listing names
+// twice at two objects is held at neither; one named twice at one object,
+// and a line not of a full object name, a tab and a release tag, are read
+// as the listing's shape allows.
+func TestOriginTagListedTwiceCountsAtNeither(t *testing.T) {
+	a, b := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	var o originListing
+	for _, line := range []string{
+		a + "\trefs/tags/v0.9.0",
+		b + "\trefs/tags/v0.9.0",
+		a + "\trefs/tags/v0.8.0",
+		a + "\trefs/tags/v0.8.0",
+		a + "\trefs/heads/v0.7.0",
+		"abc\trefs/tags/v0.6.0",
+		a + "\trefs/tags/v0.5.0-rc.1",
+		a + " refs/tags/v0.4.0",
+	} {
+		o.add(line)
+	}
+	got := o.tags()
+	if _, ok := got["v0.9.0"]; ok || got["v0.8.0"] != a || len(got) != 1 {
+		t.Fatalf("tags %v", got)
+	}
+}
+
+// TestPublishRefusesRepointedOrigin: publish re-plans, so an origin naming
+// another repository than the store's refuses it too, before any tag is
+// read from it.
+func TestPublishRefusesRepointedOrigin(t *testing.T) {
+	pf := releaseFixture(t)
+	pf.tag("v0.9.0")
+	pf.f.repo.Git("config", "remote.origin.url", "git@github.com:example/fork.git")
+	_, err := Publish(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Now: func() time.Time { return fixedNow.Add(time.Hour) }})
+	mustRefuse(t, err, "another repository than origin names")
+	noWrites(t, pf.g)
 }
