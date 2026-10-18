@@ -19,3 +19,7 @@ The implement loop package's tests are bound by git subprocesses: the slowest, T
 ## Grounds
 
 - pursued: the loop package's tests and every drain move spend about a quarter fewer git processes, so the ubuntu leg's race step shortens by a minute or more; a merge-group race step no shorter than before would show it wrong
+
+## Outcome
+
+The grounds were shown wrong on the first two merge-group runs after both changes (#1099, #1100, 2026-10-18). The ubuntu leg's race step took 20.8 and 20.6 minutes, at the top of the 14 to 20.6 minutes it had taken before, not a minute shorter. Its package times summed to 4,293 and 4,243 CPU-seconds, against 4,254 at the slowest run before. The loop package took 635 and 621 seconds under race, inside its earlier 470 to 650. The cut in git processes stands where it was measured (one drain test, 1,107 to 830), but on CI it is below the difference between runners. The leg's remaining time is tracked in iss-2610181711260494.
