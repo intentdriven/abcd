@@ -35,3 +35,11 @@ func AllowNetTransportsForTest(t *testing.T) {
 	netGuardOff = true
 	t.Cleanup(func() { netGuardOff = false })
 }
+
+// ColdGitVersionForTest clears the cached `git version` answer and puts the
+// real probe back, so the next guard asks git again, for the length of t.
+func ColdGitVersionForTest(t *testing.T) {
+	t.Helper()
+	gitVersion.set(probeGitVersion)
+	t.Cleanup(func() { gitVersion.set(probeGitVersion) })
+}

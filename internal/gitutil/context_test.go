@@ -106,3 +106,30 @@ func TestRootCommitContextAnswersAsRootCommitDoes(t *testing.T) {
 		t.Errorf("outside a repository: %q, %v; want \"\", nil", got, err)
 	}
 }
+
+// TestAContextBoundReadEndsAtItsDeadlineWhileTheVersionProbeHangs: the
+// partial-clone guard asks git its version before an object read, and that
+// probe once ran with no context, so a git that hung held a caller on a
+// deadline (the status verb, the prompt hook) for as long as git hung. The
+// guard now waits for the probe or the caller's deadline, whichever ends
+// first (iss-2610181802344551).
+func TestAContextBoundReadEndsAtItsDeadlineWhileTheVersionProbeHangs(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hangingGit(t)
+	gitutil.ColdGitVersionForTest(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	sha, err := gitutil.RootCommitContext(ctx, dir)
+	took := time.Since(start)
+	if sha != "" || !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("RootCommitContext = %q, %v; want \"\" and context.DeadlineExceeded", sha, err)
+	}
+	if took > 3*time.Second {
+		t.Errorf("returned after %s while git's version probe hung; the deadline was 500ms", took)
+	}
+}

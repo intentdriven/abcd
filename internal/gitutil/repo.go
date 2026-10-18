@@ -32,17 +32,19 @@ import (
 func isolatedGit(root string, args ...string) *exec.Cmd {
 	cmd := exec.Command("git", isolatedArgs(root, args)...)
 	cmd.Env = gitEnv()
-	guardObjectRead(cmd, root, args)
+	guardObjectRead(context.Background(), cmd, root, args)
 	return cmd
 }
 
 // guardObjectRead applies lazyFetchGuard to an isolated command, setting a
 // refusal as cmd.Err (which exec returns from Start before anything runs).
-func guardObjectRead(cmd *exec.Cmd, root string, args []string) {
+// ctx is the command's own: the guard's probes end at its deadline too, so a
+// git that hangs cannot hold a caller on a deadline (iss-2610181802344551).
+func guardObjectRead(ctx context.Context, cmd *exec.Cmd, root string, args []string) {
 	if cmd.Err != nil {
 		return
 	}
-	if err := lazyFetchGuard(root, args); err != nil {
+	if err := lazyFetchGuard(ctx, root, args); err != nil {
 		cmd.Err = err
 	}
 }
@@ -70,7 +72,7 @@ func isolatedGitContext(ctx context.Context, root string, args ...string) *exec.
 	if ctx.Done() != nil {
 		cmd.WaitDelay = contextWaitDelay
 	}
-	guardObjectRead(cmd, root, args)
+	guardObjectRead(ctx, cmd, root, args)
 	return cmd
 }
 
@@ -261,7 +263,7 @@ func workingTreeCommand(ctx context.Context, root string, pins, args []string) *
 		"-C", root), args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Env = append(ScrubbedEnv(), "GIT_NO_LAZY_FETCH=1")
-	guardObjectRead(cmd, root, args)
+	guardObjectRead(ctx, cmd, root, args)
 	return cmd
 }
 
