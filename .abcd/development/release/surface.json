@@ -1509,7 +1509,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.",
+      "sentence": "Judge a shell command against the hazard registry before it runs: Writes branch records; refuses a hazard via check, hook or approve, and an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1559,7 +1559,7 @@
       "path": "abcd guard hook",
       "hidden": false,
       "block": "agents",
-      "sentence": "Judge the shell command in a host's pre-tool-use payload: Writes nothing; refuses a hazard or a badly built question with the host's deny.",
+      "sentence": "Judge the shell command in a host's pre-tool-use payload: Writes a created branch's record; refuses a hazard or a badly built question with the host's deny.",
       "flags": []
     },
     {

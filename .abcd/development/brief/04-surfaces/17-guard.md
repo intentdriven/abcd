@@ -3,8 +3,9 @@
 A destructive shell command typed by accident costs a person hours: a force
 push that erases a colleague's commits, an `rm -rf` with an unlucky glob, a
 `git clean` over uncommitted work. `/abcd:guard` catches those before they run
-and says what to run instead. It writes nothing, and it costs nothing to have
-on: an unrecognised command passes through untouched.
+and says what to run instead. It writes nothing but the record of a branch an
+agent creates (below), and it costs nothing to have on: an unrecognised command
+passes through untouched.
 
 Two things use it. A person or a script asks it about one command line. A
 compatible agent harness asks it about every command the agent is about to run,
@@ -205,6 +206,31 @@ state file or marker the gate cannot read or write, a read-only tier among
 them, is not a decision: the question runs and the hook says so on exit 1, the
 same fail-open-loud contract below. The manifest's pre-tool-use matcher names the
 shell tool and the question tool, and nothing else.
+
+## The created-branch recorder
+
+The pre-tool-use hook also records each branch a shell command creates, for
+the away mode's reading of the session's own branches (itd-2610180912189125,
+spc-2610180914469489 step 3). The stacked drain branches of 2026-10-17 were cut
+with a plain `git worktree add` and left no upstream, no entry in the
+coordinating copy's reflog, no run state and no record id, so nothing else could
+tell they were the session's. Before the guard judges the command, the hook
+reads it for `git worktree add -b|-B <b>`, `git switch -c|-C <b>`, `git checkout
+-b|-B <b>` and `git branch <b>` (each recorded only when no branch of that name
+exists yet), a bare `git worktree add <path>` (the branch git names after the
+folder) and `git worktree add <path> <branch>`, and `git branch -m|-M <old>
+<new>`, which carries a record from the old name to the new. Branch names match
+as whole names, so `feat/x` never stands for `feat/x2`. A word a substitution
+or a variable prints is read as no branch.
+
+The record is kept whether or not the person is away, under the working copy's
+key (the reservations' copy key) in the away store, `~/.abcd.noindex/away/<root-sha>/`,
+written under the store's lock through its atomic writer, in a list capped at
+the hundred most recent, the oldest dropped. The recorder records and **refuses
+nothing**: a store it cannot write leaves one stderr line and the command goes
+on to the guard's own judgement, and a checkout without the local tier records
+nothing. A record made for a command that then fails names a branch that does
+not exist, and the away mode's reading ignores it.
 
 ## Fail-open-loud
 

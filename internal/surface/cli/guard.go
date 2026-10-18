@@ -382,6 +382,10 @@ func guardHookDecide(cmd *cobra.Command) error {
 			cwd = wd
 		}
 	}
+	// The away mode's created-branch recorder runs first and refuses
+	// nothing, so the registry's state never decides whether a branch the
+	// session cuts is seen as its own (spc-2610180914469489 step 3).
+	recordCreatedBranches(cmd.ErrOrStderr(), cwd, in.ToolInput.Workdir, candidate)
 	sessionRoot := rulesRoot(cwd, cmd.ErrOrStderr())
 	// The fail-safe posture is decided in core (guard.LoadRepo,
 	// iss-2608291814576261); the hook only formats it. A dropped repo layer

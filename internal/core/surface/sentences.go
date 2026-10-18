@@ -139,13 +139,13 @@ var sentences = map[string]string{
 		"Writes nothing; refuses a lifeboat whose manifest does not verify.",
 
 	"abcd guard": "Judge a shell command against the hazard registry before it runs: " +
-		"Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.",
+		"Writes branch records; refuses a hazard via check, hook or approve, and an unknown sub-verb.",
 	"abcd guard check": "Judge one shell command against the hazard registry: " +
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
 	"abcd guard approve": "Answer a headless agent's permission prompts over MCP: " +
 		"Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
 	"abcd guard hook": "Judge the shell command in a host's pre-tool-use payload: " +
-		"Writes nothing; refuses a hazard or a badly built question with the host's deny.",
+		"Writes a created branch's record; refuses a hazard or a badly built question with the host's deny.",
 
 	"abcd history": "Keep session transcripts in the user-level store and read them back: " +
 		"Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb.",
