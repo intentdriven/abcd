@@ -111,8 +111,14 @@ func withDispatchReceipt(v any, d *dispatched) any {
 func renderDispatchLine(w interface{ Write([]byte) (int, error) }, d *dispatched) {
 	rc := d.receipt
 	line := fmt.Sprintf("route: %s ran on %s", rc.Agent, rc.ConnectionUsed)
-	if rc.ProviderCall != nil {
-		line += fmt.Sprintf(", model asked %s, model reported %s", rc.ProviderCall.ModelAsked, rc.ProviderCall.ModelReported)
+	if pc := rc.ProviderCall; pc != nil {
+		line += fmt.Sprintf(", model asked %s, model reported %s", pc.ModelAsked, pc.ModelReported)
+		if pc.ServedProvider != "" {
+			line += ", served by " + pc.ServedProvider
+		}
+		if pc.Cost != nil {
+			line += ", cost " + costText(*pc.Cost)
+		}
 	}
 	fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(line))
 }

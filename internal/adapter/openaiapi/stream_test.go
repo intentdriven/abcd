@@ -151,7 +151,7 @@ func TestAPlainJSONAnswerToAStreamRequestIsAccepted(t *testing.T) {
 	if string(res.Content) != `{"verdict":"yes"}` || res.FinishReason != "stop" {
 		t.Fatalf("content %q, finish %q", res.Content, res.FinishReason)
 	}
-	if res.Usage == nil || res.Usage.TotalTokens != 16 || res.Usage.PromptTokens != 11 || res.Usage.CompletionTokens != 5 {
+	if u := res.Usage; u == nil || !readCounts(u, 11, 5, 16) {
 		t.Fatalf("usage = %+v", res.Usage)
 	}
 }
@@ -173,7 +173,7 @@ func TestUsageInTheLastChunkIsRead(t *testing.T) {
 	if string(res.Content) != `{"verdict":"no"}` {
 		t.Fatalf("content = %q", res.Content)
 	}
-	if res.Usage == nil || res.Usage.PromptTokens != 40 || res.Usage.CompletionTokens != 7 || res.Usage.TotalTokens != 47 {
+	if u := res.Usage; u == nil || !readCounts(u, 40, 7, 47) {
 		t.Fatalf("usage = %+v", res.Usage)
 	}
 }
