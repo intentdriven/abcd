@@ -8,3 +8,9 @@
 # the `Key = "…"` assignment as a credential. The key is a content hash, and
 # the constant is renamed at the branch tip.
 268da6f4aa61b7ef3cb58a886a3f4c6225009410:internal/core/capture/findingkey_test.go:generic-api-key:17
+
+# Commit 710b9626b added the away mode's created-branch test (itd-2610180912189125)
+# with `testCopyKey = "<32 hex>"`, and generic-api-key reads the `Key = "…"`
+# assignment as a credential. The value is a dummy copy key; the tip builds
+# it at runtime instead.
+710b9626ba07debc4e9c7e3f73eedaf81221b9f2:internal/core/autonomy/branches_test.go:generic-api-key:10

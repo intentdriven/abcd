@@ -2,12 +2,15 @@ package autonomy
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
-const testCopyKey = "0123456789abcdef0123456789abcdef"
+// testCopyKey is a copy key's shape, built at runtime so no key-shaped
+// literal sits in source (principles/secret-shaped-fixtures-at-runtime.md).
+var testCopyKey = strings.Repeat("0123456789abcdef", 2)
 
 func testStore(t *testing.T) Store {
 	t.Helper()
