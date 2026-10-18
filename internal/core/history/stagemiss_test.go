@@ -81,7 +81,14 @@ func TestStageMissSaysAReplacedMarkerHeldEarlierMisses(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("marker not readable after replacement: ok=%v err=%v", ok, err)
 	}
-	if note.Count != 1 || !strings.Contains(note.LastReason, "earlier, unreadable stage-miss marker was replaced") {
+	if note.Count != 1 || note.EarlierLostAt.IsZero() {
 		t.Errorf("marker = %+v; want a count of 1 that says earlier misses were lost", note)
+	}
+	// The flag stands through later misses, not just the one that replaced it.
+	if err := NoteStageMiss(repoRoot, testRootSHA, "sub-agent a2", "lock held"); err != nil {
+		t.Fatal(err)
+	}
+	if again, _, _ := StageMiss(repoRoot, testRootSHA); again.Count != 2 || !again.EarlierLostAt.Equal(note.EarlierLostAt) {
+		t.Errorf("after a second miss, marker = %+v; want a count of 2 still saying when earlier misses were lost", again)
 	}
 }

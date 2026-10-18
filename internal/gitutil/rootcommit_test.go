@@ -152,3 +152,14 @@ func TestRootCommitOfABareRepositoryIsItsSHA(t *testing.T) {
 		t.Errorf("RootCommit of a bare repository = %q, %v; want %q, nil", got, err, want)
 	}
 }
+
+// TestRootCommitOutsideAnyRepositoryWithNoGitIsNone: a plain folder is no
+// repository whether or not git can run there, so git missing from PATH does
+// not turn it into a repository git did not answer for.
+func TestRootCommitOutsideAnyRepositoryWithNoGitIsNone(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", t.TempDir())
+	if got, err := gitutil.RootCommit(dir); got != "" || err != nil {
+		t.Errorf("RootCommit of a plain folder with no git = %q, %v; want \"\", nil", got, err)
+	}
+}

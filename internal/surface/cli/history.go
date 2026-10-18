@@ -288,6 +288,10 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "\nNOTE: %d transcript(s) were read but could not be staged, so they are not in this store (first %s, last %s, %s: %s).\n",
 						miss.Count, miss.FirstSeen.Format("2006-01-02T15:04:05Z"), miss.LastSeen.Format("2006-01-02T15:04:05Z"),
 						termsafe.Sanitize(miss.LastWho), termsafe.Sanitize(fsutil.RedactHome(miss.LastReason)))
+					if !miss.EarlierLostAt.IsZero() {
+						fmt.Fprintf(w, "NOTE: the count starts at %s, when an unreadable record of earlier misses was replaced; misses before then are not counted.\n",
+							miss.EarlierLostAt.Format("2006-01-02T15:04:05Z"))
+					}
 				}
 			}
 			if *asJSON {

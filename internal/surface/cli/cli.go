@@ -1957,6 +1957,7 @@ and the --json envelope carries the name as session_title.`,
 		Short: "SessionEnd: stage the raw transcript for the next session to redact and store",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			started := time.Now()
 			// Diagnostics go to stderr, out of band; stdout stays empty, since a
 			// Stop hook's stdout is not a place to speak to the model — unless
 			// the caller asked for --json, when it carries one result line on
@@ -1986,12 +1987,14 @@ and the --json envelope carries the name as session_title.`,
 					cwd = wd
 				}
 			}
+			detectStart := time.Now()
 			det, err := ahoy.Detect(cwd)
+			detectCost := time.Since(detectStart)
 			if err == nil && det.RootSHA == "" && det.RepoIdentity.RootErr() != nil {
 				// git failing once on a loaded machine is not a directory
 				// outside any repository: ask again before giving the session
 				// up, as the sub-agent hook does (iss-2610051434156079).
-				det, err = retryDetect(cmd.ErrOrStderr(), sessionEndResolveWaits, cwd, det)
+				det, err = retryDetect(cmd.ErrOrStderr(), sessionEndResolveWaits, started.Add(sessionEndRetryBudget), detectCost, cwd, det)
 			}
 			if err == nil && det.RootSHA == "" {
 				if rerr := det.RepoIdentity.RootErr(); rerr != nil {

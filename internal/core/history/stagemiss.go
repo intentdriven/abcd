@@ -38,6 +38,9 @@ type StageMissNote struct {
 	Count      int       `json:"count"`
 	LastWho    string    `json:"last_who"`
 	LastReason string    `json:"last_reason"`
+	// EarlierLostAt is when an unreadable marker was replaced: misses before
+	// it were counted there and are not in Count. Zero when none was.
+	EarlierLostAt time.Time `json:"earlier_lost_at,omitzero"`
 }
 
 // stageMissPath returns the marker's path beside the staging directory.
@@ -72,15 +75,12 @@ func NoteStageMiss(repoRoot, rootSHA, who, reason string) error {
 		prior, ok, rerr := readStageMiss(path)
 		switch {
 		case rerr != nil:
-			// A marker that cannot be read is replaced, and the reason says
-			// earlier misses were counted there, so the count restarting is
+			// A marker that cannot be read is replaced, and the replacement
+			// says when, for as long as it stands, so the count restarting is
 			// never read as the first miss.
-			reason = "an earlier, unreadable stage-miss marker was replaced, so earlier misses are not counted here; " + reason
-			if len(reason) > stageMissReasonMax {
-				reason = reason[:stageMissReasonMax]
-			}
+			note.EarlierLostAt = now
 		case ok:
-			note.FirstSeen, note.Count = prior.FirstSeen, prior.Count
+			note.FirstSeen, note.Count, note.EarlierLostAt = prior.FirstSeen, prior.Count, prior.EarlierLostAt
 		}
 		note.LastSeen, note.LastWho, note.LastReason = now, who, reason
 		note.Count++

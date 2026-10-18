@@ -426,25 +426,27 @@ func RootCommitContext(ctx context.Context, root string) (string, error) {
 	return fields[0], nil
 }
 
-// notARepository reports whether a lookup git exited 128 on failed because
+// notARepository reports whether a failed root-commit lookup failed because
 // root is in no repository: git said so itself, or neither the path as
 // written nor its resolved form has a .git entry at or above it. git exits
 // 128 for that and for a repository it will not answer for alike, so its
-// message and the shape decide; a git that did not run to an exit is never
-// "not a repository".
+// message and the shape decide.
 func notARepository(root string, lookupErr error) bool {
 	var ee *exec.ExitError
-	if !errors.As(lookupErr, &ee) || ee.ExitCode() != 128 {
-		return false
-	}
-	// git's own answer, in the C locale gitEnv pins: a .git entry that holds
-	// no repository (an empty folder, a stale gitfile) is still not one. The
-	// match is anchored on runBoundedCmd's stderr quote, so a path naming the
-	// words cannot pass for it; a refusal ("detected dubious ownership") is
-	// not this answer and stays an error.
-	if strings.Contains(lookupErr.Error(), `(stderr: "fatal: not a git repository`) {
+	if errors.As(lookupErr, &ee) && ee.ExitCode() == 128 &&
+		strings.Contains(lookupErr.Error(), `(stderr: "fatal: not a git repository`) {
+		// git's own answer, in the C locale gitEnv pins: a .git entry that
+		// holds no repository (an empty folder, a stale gitfile) is still not
+		// one. The match is anchored on runBoundedCmd's stderr quote, which
+		// escapes every quote a path could carry, so a path naming the words
+		// cannot pass for it; a refusal ("detected dubious ownership") is not
+		// this answer and stays an error.
 		return true
 	}
+	// Whatever git did (exited, never started, was absent from PATH), a
+	// directory with no .git entry at or above it, as written or resolved, is
+	// in no repository. Only a repository-shaped directory makes a failure an
+	// unanswered repository.
 	if RepoShaped(root) {
 		return false
 	}

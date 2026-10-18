@@ -298,8 +298,9 @@ carries a `.git` entry but git gave no root commit, the entrypoint asks again
 for a few seconds, re-reading the session note between tries. A stage refused
 because its lock was held past the lock's timeout is tried again, up to three
 more times. The session-end entrypoint asks again too, within the 1.5 seconds
-the host gives a session-end hook: two short pauses for the repository, and no
-further try of the stage. Each retry is said on stderr. A transcript read and still not
+the host gives a session-end hook: up to two short pauses for the repository,
+each begun only if it and another detection, costed at what the first took,
+end within 1.2 seconds of the hook's start, and no further try of the stage. Each retry is said on stderr. A transcript read and still not
 staged, with the store known, is counted in a marker beside the staging
 directory, and the staged listing reports it: the entrypoint must exit 0, and
 its stderr reaches only the host's debug log, so the marker is where the person
