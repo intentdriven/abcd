@@ -176,17 +176,15 @@ landed, from the store's folder, naming the commit by its full id:
 ```bash
 cd ~/.abcd.noindex/worktrees/<root-sha>/embargo
 "${CLAUDE_PLUGIN_ROOT}/abcd" capture resolve <iss-N> "<what fixed it>" --impact fix --commit <full commit id>
-chmod 600 .abcd/work/issues/resolved/<iss-N>-*.md
 ```
 
-The resolve writes the record afresh, open to other accounts, and every
-sub-verb refuses the store until the `chmod` closes it again. The plan takes
-that commit only when it is a full object name of this repository's hash that
-git resolves to exactly itself as a commit, so an abbreviation, a tag's name or
-anything shaped like an option is left out with the reason; the first release
-tag holding the commit gives the patched version, as for a public record. Such
-an entry carries `store_evidence: true`. A record resolved in the release is
-always taken first, whatever the store holds.
+The resolve keeps the record's mode, so it stays this account's alone. The
+plan takes that commit only when it is a full object name of this repository's
+hash that git resolves to exactly itself as a commit, so an abbreviation, a
+tag's name or anything shaped like an option is left out with the reason; the
+first release tag holding the commit gives the patched version, as for a public
+record. Such an entry carries `store_evidence: true`. A record resolved in the
+release is always taken first, whatever the store holds.
 
 `left_out` names each advisory the plan does not publish and why: its record
 is resolved neither in the release nor in the store with a fix commit the plan
