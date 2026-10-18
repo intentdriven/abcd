@@ -20,11 +20,14 @@ func defaultLookups(l *gitLog) int {
 }
 
 // TestAReservationResolvesTheDefaultBranchOnceEachSideOfItsFetch
-// (iss-2610180545134593): one reservation names origin's default branch
-// twice, no more. Once before its fetch, to name the branch the fetch brings
-// in, and once after it, for everything that reads the branch as fetched: a
-// fetch can create or move origin/HEAD, so the name is never carried across
-// one. Each lookup is two git processes, and a reservation used to make five.
+// (iss-2610180545134593): a reservation where origin holds no other names
+// origin's default branch twice: once before its fetch, to name the branch the
+// fetch brings in, and once after it, in judge, for the default branch's
+// records. A fetch can create or move origin/HEAD, so the name is never
+// carried across one. Each lookup is two git processes; judge used to make
+// two of its own, so this reservation made three. Where origin holds other
+// reservations, the crowding check's view names the branch once more, after
+// the same fetch, as a view does (TestAViewResolvesTheDefaultBranchOnce).
 func TestAReservationResolvesTheDefaultBranchOnceEachSideOfItsFetch(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -33,7 +36,7 @@ func TestAReservationResolvesTheDefaultBranchOnceEachSideOfItsFetch(t *testing.T
 		t.Fatal(err)
 	}
 	if n := defaultLookups(log); n != 2 {
-		t.Errorf("one reservation resolved origin's default branch %d times; want 2, once each side of its fetch", n)
+		t.Errorf("a reservation with no other on origin resolved origin's default branch %d times; want 2, once each side of its fetch", n)
 	}
 }
 
