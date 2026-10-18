@@ -115,14 +115,17 @@ func runSlowHook(t *testing.T, payload string, delay, budget time.Duration) stri
 // payload that takes 500 ms to arrive against a 600 ms budget, nothing is
 // left for the read: the block says the status is unavailable, and nothing
 // is kept shown. Set any later, the read would have 450 ms, ample for one
-// announcement. The same payload under a budget with time to spare after it
-// leaves the read its time, and the announcement is shown. That budget is the
-// test's own, the payload's delay plus readSpare, not the hook's one second:
-// under the one second the read had 500 ms, which a loaded merge-queue runner
-// once spent before the read finished (iss-2610180712063858). Load only makes
-// the first half's "unavailable" surer, so it keeps its tight budget.
+// announcement. The same payload with time to spare after it leaves the read
+// its time, and the announcement is shown. That half's budgets are the
+// test's own: the hook's is the payload's delay plus readSpare, and the
+// read's cap is readSpare in place of its shipped 600 ms. Under the shipped
+// one second the read had at most 350 ms after the payload, less what the
+// steps before it took, and a loaded merge-queue runner spent that
+// (iss-2610180712063858). The first half keeps the shipped read cap and its
+// tight budget: the read's deadline is the hook's less 150 ms, which the
+// payload has already passed, so load only makes its "unavailable" surer.
 func TestTheHooksDeadlineStartsWithTheHook(t *testing.T) {
-	const delay, readSpare = 500 * time.Millisecond, 10 * time.Second
+	const delay, tight, readSpare = 500 * time.Millisecond, 600 * time.Millisecond, 10 * time.Second
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	w := newReserveWorld(t)
 	octo := w.clone(t, "octo", octoMail)
@@ -133,10 +136,11 @@ func TestTheHooksDeadlineStartsWithTheHook(t *testing.T) {
 	if code, _, stderr := reserveRun(t, pat, "status"); code != 0 {
 		t.Fatalf("status: exit %d, %s", code, stderr)
 	}
-	out := runSlowHook(t, hookInputJSON(t, "s-spent", pat, "hello there"), delay, 600*time.Millisecond)
+	out := runSlowHook(t, hookInputJSON(t, "s-spent", pat, "hello there"), delay, tight)
 	if !strings.Contains(out, "status unavailable: no time was left to read it at this prompt; `abcd status` reads it without this prompt's deadline\n") || strings.Contains(out, "merging #1012") {
 		t.Fatalf("with the hook's first step taking most of its budget, the hook's text:\n%s\nwant the status unavailable", out)
 	}
+	defer claim.SetPromptReadBudgetForTest(readSpare)()
 	again := runSlowHook(t, hookInputJSON(t, "s-spent", pat, "hello again"), delay, delay+readSpare)
 	if !strings.Contains(again, "- @octo (claimed): merging #1012, for 30 min\n") {
 		t.Fatalf("the next prompt, with time left after the payload:\n%s\nwant the announcement, never shown", again)

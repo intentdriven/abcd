@@ -48,6 +48,15 @@ type Notes struct {
 // promptMarkReserve, and never more than this.
 var promptReadBudget = 600 * time.Millisecond
 
+// SetPromptReadBudgetForTest sets promptReadBudget to d until the returned
+// restore runs, for a test outside this package whose read must not run out
+// of time on a busy machine. A test of the budget itself leaves it as shipped.
+func SetPromptReadBudgetForTest(d time.Duration) (restore func()) {
+	old := promptReadBudget
+	promptReadBudget = d
+	return func() { promptReadBudget = old }
+}
+
 // promptMarkReserve is what the read leaves of the hook's deadline for the
 // hook to write the block and mark it shown.
 const promptMarkReserve = 150 * time.Millisecond
