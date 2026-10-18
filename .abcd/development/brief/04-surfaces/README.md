@@ -248,18 +248,18 @@ and prints nothing of its own anywhere else. And `abcd
 update` is a mutating fetch-verify-swap rather than a render at all. This
 paragraph is the one enumeration of the exceptions; the chapters point here
 rather than restating it. Each exception is also recorded with its reason in
-the front door's exception table, and a test runs every other visible
-top-level verb bare and fails when one renders no state, so a verb added later
-is either a render or a recorded exception, and this paragraph must name every
+the front door's exception table, and a test runs bare every other top-level
+verb not hidden from the help, bar the framework's own `help` and
+`completion`, and fails when one renders no state, so a verb added later is
+either a render or a recorded exception, and this paragraph must name every
 exception the table holds.
 
-That enumeration, the table and the test cover the visible verbs alone. A
-verb hidden from the help is outside all three: bare `abcd hook` prints its
-usage only, and it is no exception to record, because it is not a verb a
-person reaches for; the host calls its entrypoints from the hook manifest (see
+The hidden `hook` is outside that enumeration, the table and the test because
+it is hidden: bare `abcd hook` prints its usage only, and the host calls its
+entrypoints from the hook manifest (see
 [§ Operator-internal verbs](#operator-internal-verbs) below). The framework's
-own `help` and `completion`, which print usage bare as well, are left out the
-same way.
+own `help` and `completion` are not hidden, but both print usage bare, so the
+test skips them by name and the enumeration leaves them out.
 
 ## Operator-internal verbs
 
