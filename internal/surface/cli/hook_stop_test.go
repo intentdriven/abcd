@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/autonomy"
 )
 
@@ -424,7 +425,7 @@ func TestAwayHooksLeaveUnmanagedRepoAlone(t *testing.T) {
 	awayCheckout(t) // the sandboxed HOME
 	home := os.Getenv("HOME")
 	repo := unmanagedOwnUnpushed(t)
-	abcdHome := filepath.Join(home, ".abcd.noindex")
+	abcdHome := abcdhome.Path(home)
 	before := homeFiles(t, abcdHome)
 	log := gitCallLog(t)
 	onlyRoot := func(what string) {
