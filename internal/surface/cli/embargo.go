@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/embargo"
@@ -407,9 +408,26 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 				v.VulnerableVersionRange, v.PatchedVersions)
 		}
 	}
-	renderForgeEnds(w, p.Ended, p.Unread)
+	// A candidate GitHub could not be read for is shown once, on its
+	// left-out line, which carries the unread reason when that is not
+	// already its reason.
+	unreadWhy := map[string]string{}
+	for _, u := range p.Unread {
+		unreadWhy[u.GHSAID] = u.Reason
+	}
+	var unread []embargo.UnreadAdvisory
+	for _, u := range p.Unread {
+		if !slices.ContainsFunc(p.LeftOut, func(l embargo.LeftOut) bool { return l.GHSAID == u.GHSAID }) {
+			unread = append(unread, u)
+		}
+	}
+	renderForgeEnds(w, p.Ended, unread)
 	for _, l := range p.LeftOut {
-		fmt.Fprintf(w, "  left out %s (%s): %s\n", l.GHSAID, l.IssueID, termsafe.Sanitize(l.Reason))
+		why := l.Reason
+		if u, ok := unreadWhy[l.GHSAID]; ok && u != why {
+			why += "; also, " + u
+		}
+		fmt.Fprintf(w, "  left out %s (%s): %s\n", l.GHSAID, l.IssueID, termsafe.Sanitize(why))
 	}
 	renderRestores(w, p.Restores)
 	if p.ApproveWith != "" {

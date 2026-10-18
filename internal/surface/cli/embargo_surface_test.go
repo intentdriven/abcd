@@ -323,3 +323,37 @@ func TestEmbargoIntakeRendersForgeEnds(t *testing.T) {
 		t.Fatalf("the plan's text form does not name what it recorded: %q", got)
 	}
 }
+
+// TestEmbargoPublishShowsUnreadCandidateOnce: a candidate GitHub could not
+// be read for is on one line of the plan's text form, its left-out line,
+// carrying the unread reason when that is not already its reason; a held
+// advisory that is no candidate keeps its own unread line.
+func TestEmbargoPublishShowsUnreadCandidateOnce(t *testing.T) {
+	const unread = "GitHub could not be read for it; its state in the store is unchanged"
+	var b bytes.Buffer
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", Entries: []embargo.PlanEntry{},
+		LeftOut: []embargo.LeftOut{
+			{GHSAID: surfaceGHSA, IssueID: "iss-1", Reason: unread},
+			{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", Reason: "its record is not resolved in v0.9.0"},
+		},
+		Unread: []embargo.UnreadAdvisory{
+			{GHSAID: surfaceGHSA, IssueID: "iss-1", Reason: unread},
+			{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", Reason: unread},
+			{GHSAID: "GHSA-hhhh-hhhh-hhhh", IssueID: "iss-3", Reason: unread},
+		}}})
+	got := b.String()
+	for id, n := range map[string]int{surfaceGHSA: 1, "GHSA-rrrr-rrrr-rrrr": 1, "GHSA-hhhh-hhhh-hhhh": 1} {
+		if c := strings.Count(got, id); c != n {
+			t.Fatalf("%s is on %d lines, want %d: %q", id, c, n, got)
+		}
+	}
+	for _, want := range []string{
+		"  left out " + surfaceGHSA + " (iss-1): " + unread + "\n",
+		"  left out GHSA-rrrr-rrrr-rrrr (iss-2): its record is not resolved in v0.9.0; also, " + unread + "\n",
+		"  GHSA-hhhh-hhhh-hhhh (iss-3): " + unread + "\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the plan's text form is %q; want %q", got, want)
+		}
+	}
+}
