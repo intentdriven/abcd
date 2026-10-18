@@ -69,6 +69,11 @@ const promptWriteReserve = 50 * time.Millisecond
 // so a test waits for each before its directories go.
 var promptReads sync.WaitGroup
 
+// WaitPromptReadsForTest waits for every read PromptNotes started to end, for
+// a test outside this package whose directories go when it ends: a read that
+// ran past its budget is abandoned by the hook, not stopped.
+func WaitPromptReadsForTest() { promptReads.Wait() }
+
 // blockPrefix starts the one marker file each shown block writes.
 const blockPrefix = "block-"
 
