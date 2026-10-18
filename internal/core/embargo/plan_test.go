@@ -659,3 +659,98 @@ func TestPublicRecordPathUnchanged(t *testing.T) {
 		t.Fatalf("a public-record entry carries a store field, which would change its digest: %s", data)
 	}
 }
+
+// storeRecordGuards are the ways a private record in the store's resolved/
+// folder can fail the checks the plan holds it to before taking anything
+// from it, each with the reason the plan gives. set lays the record (or
+// records) down in place of storeResolve's.
+var storeRecordGuards = map[string]struct {
+	set    func(t *testing.T, pf planFixture, fix string)
+	reason string
+}{
+	"another id": {func(t *testing.T, pf planFixture, fix string) {
+		rel := pf.storeResolve(t, issA, fix)
+		p := filepath.Join(pf.s.Root, filepath.FromSlash(rel))
+		data := strings.Replace(readFile(t, p), `id: "`+issA+`"`, `id: "`+issB+`"`, 1)
+		if err := os.WriteFile(p, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}, "carries another id"},
+	"symlinked record": {func(t *testing.T, pf planFixture, fix string) {
+		rel := pf.storeResolve(t, issA, fix)
+		p := filepath.Join(pf.s.Root, filepath.FromSlash(rel))
+		elsewhere := filepath.Join(t.TempDir(), "record.md")
+		if err := os.Rename(p, elsewhere); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(elsewhere, p); err != nil {
+			t.Fatal(err)
+		}
+	}, "could not be read as a regular file within its size limit"},
+	"over the cap": {func(t *testing.T, pf planFixture, fix string) {
+		rel := pf.storeResolve(t, issA, fix)
+		p := filepath.Join(pf.s.Root, filepath.FromSlash(rel))
+		data := readFile(t, p) + strings.Repeat("x", maxRecordBytes)
+		if err := os.WriteFile(p, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}, "could not be read as a regular file within its size limit"},
+	"held twice": {func(t *testing.T, pf planFixture, fix string) {
+		rel := pf.storeResolve(t, issA, fix)
+		p := filepath.Join(pf.s.Root, filepath.FromSlash(rel))
+		twin := filepath.Join(filepath.Dir(p), issA+"-another-report.md")
+		if err := os.WriteFile(twin, []byte(readFile(t, p)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}, "holds its private record twice"},
+}
+
+// TestStoreRecordGuardsLeaveOut: a private record in the store that carries
+// another advisory's id, is a link, is over its cap, or is held twice in
+// resolved/ is no evidence of a fix: the advisory is left out with the
+// reason, and nothing is taken from the record.
+func TestStoreRecordGuardsLeaveOut(t *testing.T) {
+	for name, tc := range storeRecordGuards {
+		t.Run(name, func(t *testing.T) {
+			pf := newPlanFixture(t)
+			pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+			fix := pf.commit("parser.go", "package parser\n", "fix")
+			pf.tag("v0.9.0")
+			tc.set(t, pf, fix)
+			pf.remote(t, ghsaOpen, "draft", "the report", vulnJSON(examplePackage, ""))
+			p := pf.plan(t, "")
+			if r := leftOutReason(t, p, ghsaOpen); len(p.Entries) != 0 || !strings.Contains(r, tc.reason) || !strings.Contains(r, "not resolved in v0.9.0") {
+				t.Fatalf("reason %q, plan %+v", r, p)
+			}
+		})
+	}
+}
+
+// TestPublishedStoreRecordGuardsNameNoRestore: an advisory GitHub reports
+// published whose private record in the store fails the same checks names
+// no restore command: copying a link, or another advisory's record, into
+// the public ledger is never offered.
+func TestPublishedStoreRecordGuardsNameNoRestore(t *testing.T) {
+	for name, tc := range storeRecordGuards {
+		t.Run(name, func(t *testing.T) {
+			pf := newPlanFixture(t)
+			pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+			fix := pf.commit("parser.go", "package parser\n", "fix")
+			pf.tag("v0.9.0")
+			tc.set(t, pf, fix)
+			a := advisoryJSON(ghsaOpen, "published", "high", "a sample summary", "the report")
+			a["published_at"] = endedAt.Format(time.RFC3339)
+			b, err := json.Marshal(a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pf.g.answer("GET", listPath+"/"+ghsaOpen, "", 0, string(b))
+			p := pf.plan(t, "")
+			for _, l := range p.LeftOut {
+				if l.RestoreWith != "" {
+					t.Fatalf("a restore is named for a store record that fails its checks: %+v", l)
+				}
+			}
+		})
+	}
+}

@@ -262,7 +262,7 @@ func planEntry(s Store, release string, resolved []string, a Advisory, remote re
 	if remote.State == "published" || remote.State == "closed" {
 		ended := PlanEntry{ForgeState: remote.State}
 		if rec == "" {
-			ended.storeRecord, _ = s.storeResolvedRecord(a.IssueID)
+			ended.storeRecord, _, _ = s.storeRecord(a.IssueID)
 		}
 		return ended, "GitHub reports it " + remote.State + " already; its " + remote.State + "_at is recorded from that", nil
 	}
@@ -337,32 +337,18 @@ func isRecordOf(base, issID string) bool {
 // not resolved in <release>, ".
 //
 // The store is a trust boundary, so nothing read from it is used before it
-// is judged: the record is read inside the store (os.Root), a regular file
-// within its cap, parsed, and must carry the advisory's own id; its
+// is judged: the record must pass storeRecord's checks, and its
 // resolved_by.commit must be a full object name (gitutil.IsFullSHA), so an
 // abbreviation or anything option-shaped never reaches git, and git must
 // resolve it to exactly itself as a commit, which holds it to this
 // repository's hash and refuses a tag object's name.
 func (s Store) storeFixCommit(issID string) (fix, rel, why string) {
-	rel, why = s.storeResolvedRecord(issID)
-	if why != "" {
-		return "", "", why
-	}
-	root, err := os.OpenRoot(s.Root)
-	if err != nil {
-		return "", "", "and the store could not be opened to read its private record"
-	}
-	defer root.Close()
-	data, err := fsutil.ReadGuardedInRoot(root, rel, maxRecordBytes)
-	if err != nil {
-		return "", "", "and its private record in the store could not be read as a regular file within its size limit"
-	}
-	fm, _, err := issuerecord.Parse(string(data))
-	if err != nil {
-		return "", "", "and its private record in the store is not a record this abcd reads"
-	}
-	if id, _ := fm["id"].(string); id != issID {
-		return "", "", "and its private record in the store carries another id"
+	rel, fm, why := s.storeRecord(issID)
+	switch {
+	case why == storeRecordNone:
+		return "", "", "nor is its private record resolved in the store"
+	case why != "":
+		return "", "", "and " + why
 	}
 	rb, _ := fm["resolved_by"].(map[string]any)
 	ref, _ := rb["commit"].(string)
@@ -379,31 +365,54 @@ func (s Store) storeFixCommit(issID string) (fix, rel, why string) {
 	return sha, rel, ""
 }
 
-// storeResolvedRecord is the path in the store, slash-separated, of issID's
-// private record in the store's resolved/ folder, found by its name alone;
-// why ("" when there is one) is worded as storeFixCommit's.
-func (s Store) storeResolvedRecord(issID string) (rel, why string) {
-	const none = "nor is its private record resolved in the store"
+// storeRecordNone is storeRecord's why when the store's resolved/ folder
+// holds no record of the issue by name.
+const storeRecordNone = "its private record is not resolved in the store"
+
+// storeRecord finds issID's private record in the store's resolved/ folder
+// by its name and reads it through the checks every use of it shares: one
+// record of that name (never two), read inside the store (os.Root) as a
+// regular file, never a link, within its cap, parsed as a record, and
+// carrying the issue's own id. rel is its path in the store,
+// slash-separated, and fm its front matter; why ("" when it holds) says what
+// failed, storeRecordNone when there is no record by that name.
+func (s Store) storeRecord(issID string) (rel string, fm map[string]any, why string) {
 	entries, err := os.ReadDir(filepath.Join(s.Root, filepath.FromSlash(resolvedRel)))
 	if errors.Is(err, fs.ErrNotExist) {
-		return "", none
+		return "", nil, storeRecordNone
 	}
 	if err != nil {
-		return "", "and the store's resolved/ folder could not be listed"
+		return "", nil, "the store's resolved/ folder could not be listed"
 	}
 	for _, e := range entries {
 		if !isRecordOf(e.Name(), issID) {
 			continue
 		}
 		if rel != "" {
-			return "", "and the store holds its private record twice in resolved/"
+			return "", nil, "the store holds its private record twice in resolved/"
 		}
 		rel = resolvedRel + "/" + e.Name()
 	}
 	if rel == "" {
-		return "", none
+		return "", nil, storeRecordNone
 	}
-	return rel, ""
+	root, err := os.OpenRoot(s.Root)
+	if err != nil {
+		return "", nil, "the store could not be opened to read its private record"
+	}
+	defer root.Close()
+	data, err := fsutil.ReadGuardedInRoot(root, rel, maxRecordBytes)
+	if err != nil {
+		return "", nil, "its private record in the store could not be read as a regular file within its size limit"
+	}
+	fm, _, err = issuerecord.Parse(string(data))
+	if err != nil {
+		return "", nil, "its private record in the store is not a record this abcd reads"
+	}
+	if id, _ := fm["id"].(string); id != issID {
+		return "", nil, "its private record in the store carries another id"
+	}
+	return rel, fm, ""
 }
 
 // plainPathRe is a path a shell reads as written, unquoted.
