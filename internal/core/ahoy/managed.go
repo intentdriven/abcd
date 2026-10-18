@@ -26,6 +26,11 @@ import (
 // two file reads and no subprocess; git is asked for the root commit only when
 // the marker is absent AND there is an index to look it up in. Zero network,
 // zero writes.
+//
+// It is total: a git that did not answer for the root commit reads as "not
+// managed" here, which is safe only for a caller whose "not managed" is an
+// omission (a board block left out, a badge not shown). A caller that refuses
+// an act as unmanaged asks ManagedContext, which returns that failure.
 func Managed(root string) bool {
 	ok, _ := ManagedContext(context.Background(), root)
 	return ok
@@ -34,9 +39,10 @@ func Managed(root string) bool {
 // ManagedContext is Managed bound to ctx, for a caller on a deadline (the
 // status verb). The one subprocess it may start — git's root commit, asked
 // only when no marker block answers — runs under ctx and is killed when ctx
-// ends (gitutil.RootCommitContext). A context that ended before git answered
-// is returned as its own error, never as "not managed", so the caller does not
-// mistake a slow git for a checkout abcd does not manage.
+// ends (gitutil.RootCommitContext). A context that ended before git answered,
+// and a git that gave no answer for the repository (gitutil.ErrNoRootAnswer),
+// are returned as errors, never as "not managed", so the caller does not
+// mistake a slow or failed git for a checkout abcd does not manage.
 func ManagedContext(ctx context.Context, root string) (bool, error) {
 	abs, err := filepath.Abs(root)
 	if err != nil {

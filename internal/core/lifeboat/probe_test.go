@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // gitFixture builds an isolated git repo with the given commits applied in
@@ -561,7 +561,7 @@ func TestRootCommitOctopusMerge(t *testing.T) {
 	r.git("reset", "-q", "--hard", "main")
 
 	want := strings.TrimSpace(r.git("rev-list", "-n", "1", "--max-parents=0", "HEAD"))
-	if got := gitutil.RootCommit(r.dir); got != want {
+	if got := gittest.RootCommit(t, r.dir); got != want {
 		t.Errorf("RootCommit = %q, want %q", got, want)
 	}
 }

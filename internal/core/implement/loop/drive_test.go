@@ -206,6 +206,15 @@ func newDriveEnv(t *testing.T, mode string, harnesses ...string) driveEnv {
 			t.Fatal(err)
 		}
 	}
+	// git stays reachable: it is no harness, and the loop's root-commit
+	// lookup (the run's outage, the lane's store) refuses on a git that
+	// cannot start rather than reading the checkout as one with no root
+	// commit (iss-2610051434156079).
+	if git, err := exec.LookPath("git"); err == nil {
+		if err := os.Symlink(git, filepath.Join(e.bin, "git")); err != nil {
+			t.Fatal(err)
+		}
+	}
 	t.Setenv("PATH", e.bin)
 	t.Setenv(loopFakeEnv, mode)
 	t.Setenv(loopFakeLogEnv, e.log)

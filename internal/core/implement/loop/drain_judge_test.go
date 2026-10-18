@@ -29,15 +29,10 @@ const judgeRoutedConfig = `{"roles":{"drain-judge":{"runner":"claude"}},"runner"
 // move runs git where the fake's PATH would hide it.
 func judgeEnv(t *testing.T, mode string) driveEnv {
 	t.Helper()
-	git, err := exec.LookPath("git")
-	if err != nil {
+	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("no git on PATH")
 	}
-	e := newDriveEnv(t, mode, "claude")
-	if err := os.Symlink(git, filepath.Join(e.bin, "git")); err != nil {
-		t.Fatal(err)
-	}
-	return e
+	return newDriveEnv(t, mode, "claude")
 }
 
 // TestARoutedDrainJudgesAnswerIsTakenWithAbcdComputingTheDigest: the judge

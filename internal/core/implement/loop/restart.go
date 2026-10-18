@@ -479,7 +479,11 @@ func asideDir(root *os.Root, parent string, now time.Time) (string, error) {
 // one the run gave up on is a stop, since every step refuses after the give-up
 // and the fresh agent starts only once the connection is back.
 func outageOpen(repoRoot, laneID string) error {
-	run, err := implement.Peek(gitutil.RootCommit(repoRoot))
+	sha, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		return fmt.Errorf("reading the repository's root commit to find the run's outage: %w", err)
+	}
+	run, err := implement.Peek(sha)
 	if err != nil {
 		return err
 	}
