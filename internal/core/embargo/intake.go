@@ -159,11 +159,14 @@ func Intake(req IntakeRequest) (IntakeResult, error) {
 	// A held advisory GitHub no longer lists in triage or draft has left
 	// them on GitHub, by abcd's hand or another's: its state is read one at
 	// a time, and an end GitHub reports is recorded (iss-2610171250479046).
+	// The listing has just answered, which proves the scope, so a 404 or
+	// 403 on every one of those reads leaves each unread rather than
+	// refusing the intake.
 	inListing := map[string]bool{}
 	for _, id := range ids {
 		inListing[id] = true
 	}
-	if _, res.Ended, res.Unread, err = readHeld(s, &st, inListing, now); err != nil {
+	if _, res.Ended, res.Unread, err = readHeld(s, &st, inListing, true, now); err != nil {
 		return IntakeResult{}, err
 	}
 	held := map[string]int{}

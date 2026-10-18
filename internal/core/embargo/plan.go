@@ -146,7 +146,8 @@ func planPublication(req PublishRequest) (PublicationPlan, error) {
 // could not record it, or a hand on GitHub, is reconciled here instead of
 // holding the advisory under embargo for ever; each recorded is listed in
 // Ended, and one readHeld leaves as it is in Unread. A read every other read
-// would meet too (gh missing, a scope refused) refuses the plan whole. Then, for each advisory judged a
+// would meet too (gh missing or signed out, a scope refused), or a 404 or 403
+// on every read with none read, refuses the plan whole. Then, for each advisory judged a
 // vulnerability and neither published nor closed before this plan, in id
 // order: one GitHub reports published or closed is left out, saying so; its
 // record must be resolved in the release's tree and name its fix commit, or,
@@ -177,7 +178,7 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 		}
 	}
 	slices.SortFunc(candidates, func(a, b Advisory) int { return strings.Compare(a.GHSAID, b.GHSAID) })
-	answers, ended, unread, err := readHeld(s, st, nil, now)
+	answers, ended, unread, err := readHeld(s, st, nil, false, now)
 	if err != nil {
 		return PublicationPlan{}, err
 	}

@@ -451,3 +451,108 @@ func TestPlanListsWhatItRecords(t *testing.T) {
 		t.Fatalf("a plan with nothing left to record: ended %+v, digest changed %v", again.Ended, again.Digest != p.Digest)
 	}
 }
+
+// notShown are the answers gh gives when GitHub shows one advisory to no
+// one this token speaks for: a deleted advisory, or one this account cannot
+// see. Neither names a scope.
+var notShown = map[string]string{
+	"404": "gh: Not Found (HTTP 404)",
+	"403": "gh: Forbidden (HTTP 403)",
+}
+
+// TestOneAdvisoryNotShownLeavesItUnread: a 404 or a 403 on one held
+// advisory's read is no fault of the run: the plan and the intake go on,
+// that advisory is listed unread with a fixed reason, and the other's end
+// is recorded.
+func TestOneAdvisoryNotShownLeavesItUnread(t *testing.T) {
+	for code, stderr := range notShown {
+		check := func(t *testing.T, pf planFixture, unread []UnreadAdvisory, ended []ForgeEnd) {
+			t.Helper()
+			if len(unread) != 1 || unread[0].GHSAID != ghsaA || !strings.Contains(unread[0].Reason, "no such advisory to this account") ||
+				!strings.Contains(unread[0].Reason, "unchanged") || strings.Contains(unread[0].Reason, "Forbidden") {
+				t.Fatalf("unread %+v", unread)
+			}
+			if len(ended) != 1 || ended[0].GHSAID != ghsaB {
+				t.Fatalf("ended %+v", ended)
+			}
+			if b := pf.held(t, ghsaB); b.PublishedAt == nil || !b.PublishedAt.Equal(endedAt) {
+				t.Fatalf("held %+v", b)
+			}
+			if a := pf.held(t, ghsaA); a.PublishedAt != nil || a.ClosedAt != nil {
+				t.Fatalf("held %+v", a)
+			}
+		}
+		t.Run("plan "+code, func(t *testing.T) {
+			pf, _ := heldFixture(t)
+			pf.tag("v0.9.0")
+			heldOnly(t, pf.g, ghsaB, "published", endedAt.Format(time.RFC3339))
+			pf.g.fail("GET", listPath+"/"+ghsaA, "", stderr)
+			p := pf.plan(t, "")
+			check(t, pf, p.Unread, p.Ended)
+			if !strings.Contains(leftOutReason(t, p, ghsaA), "not resolved in v0.9.0") {
+				t.Fatalf("plan %+v", p)
+			}
+		})
+		t.Run("intake "+code, func(t *testing.T) {
+			pf, f := heldFixture(t)
+			heldOnly(t, pf.g, ghsaB, "published", endedAt.Format(time.RFC3339))
+			pf.g.fail("GET", listPath+"/"+ghsaA, "", stderr)
+			res := runIntake(t, f)
+			check(t, pf, res.Unread, res.Ended)
+		})
+	}
+}
+
+// TestEveryAdvisoryNotShownRefusesPlan: a plan whose every held advisory's
+// read GitHub answers with a 404 or a 403 has read nothing, which is what a
+// token without the advisory scope meets: it refuses whole, naming the
+// scope, and records nothing. An intake whose listing has just answered has
+// proven the scope, so there the advisories are left unread and it goes on.
+func TestEveryAdvisoryNotShownRefusesPlan(t *testing.T) {
+	for code, stderr := range notShown {
+		t.Run("plan "+code, func(t *testing.T) {
+			pf, _ := heldFixture(t)
+			pf.tag("v0.9.0")
+			pf.g.fail("GET", listPath+"/"+ghsaA, "", stderr)
+			pf.g.fail("GET", listPath+"/"+ghsaB, "", stderr)
+			before := readFile(t, pf.s.StatePath())
+			_, err := planPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Now: func() time.Time { return fixedNow.Add(time.Hour) }})
+			mustRefuse(t, err, "gh auth refresh")
+			mustRefuse(t, err, "every advisory")
+			if strings.Contains(err.Error(), "Forbidden") || strings.Contains(err.Error(), "Not Found") {
+				t.Fatalf("the refusal repeats gh's own words: %v", err)
+			}
+			if readFile(t, pf.s.StatePath()) != before {
+				t.Fatal("a refused plan recorded something")
+			}
+		})
+		t.Run("intake "+code, func(t *testing.T) {
+			pf, f := heldFixture(t)
+			pf.g.fail("GET", listPath+"/"+ghsaA, "", stderr)
+			pf.g.fail("GET", listPath+"/"+ghsaB, "", stderr)
+			res := runIntake(t, f)
+			if len(res.Unread) != 2 || len(res.Ended) != 0 {
+				t.Fatalf("result %+v", res)
+			}
+		})
+	}
+}
+
+// TestHTTP401IsSignedOut: GitHub's HTTP 401, which gh reports when GitHub
+// rejects the token it holds, is read as signed out on its own, whatever
+// gh's exit status, and refuses with the sign-in remedy, repeating none of
+// gh's words.
+func TestHTTP401IsSignedOut(t *testing.T) {
+	err := errors.New("gh: Bad credentials (HTTP 401)")
+	if !ghSignedOut(err) {
+		t.Fatal("an HTTP 401 is not read as signed out")
+	}
+	got := remoteError(err, false)
+	mustRefuse(t, got, "gh auth login")
+	if !refusesWhole(got) || strings.Contains(got.Error(), "Bad credentials") {
+		t.Fatalf("remoteError(401) = %v", got)
+	}
+	if ghSignedOut(errors.New("gh: Server Error (HTTP 500)")) {
+		t.Fatal("an HTTP 500 is read as signed out")
+	}
+}

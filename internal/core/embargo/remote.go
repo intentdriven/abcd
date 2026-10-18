@@ -82,9 +82,10 @@ const ghAuthRequired = 4
 // ghSignedOut reports whether a failed gh call failed for want of an
 // accepted sign-in: gh's own authentication-required exit status, which it
 // gives when no account is signed in and no token is set, or GitHub's
-// HTTP 401, which gh reports when the token it holds is rejected.
-// Only gh's exit status and GitHub's status code are read, never gh's
-// words, which can carry an identity.
+// HTTP 401, which gh reports when the token it holds is rejected. The
+// status is matched in err's text, which carries gh's own words, but only
+// the "HTTP 401" pattern is looked for, and nothing of that text is echoed
+// in the refusal: gh's words can carry an identity.
 func ghSignedOut(err error) bool {
 	var exit *exec.ExitError
 	if errors.As(err, &exit) && exit.ExitCode() == ghAuthRequired {
@@ -95,8 +96,11 @@ func ghSignedOut(err error) bool {
 
 // remoteError explains a failed gh call. A missing gh passes through with the
 // tool registry's explanation; a gh signed in to no account, or holding a
-// token GitHub rejects (ghSignedOut), and a refusal GitHub gives for
-// want of a scope or access, each name the person's own remedy.
+// token GitHub rejects (ghSignedOut), and a refusal GitHub gives in words
+// that name a scope or access, each name the person's own remedy and refuse
+// a run whole (accessRefusal). A bare 403 or 404 names the scope too, but is
+// told apart (notShownRefusal): on one advisory's read it is that
+// advisory's answer, not the run's.
 func remoteError(err error, write bool) error {
 	var missing *tools.MissingError
 	if errors.As(err, &missing) {
@@ -107,31 +111,44 @@ func remoteError(err error, write bool) error {
 	}
 	msg := err.Error()
 	low := strings.ToLower(msg)
-	if strings.Contains(msg, "403") || strings.Contains(msg, "404") || strings.Contains(low, "scope") ||
-		strings.Contains(low, "not accessible") {
-		scope := scopeRead
-		if write {
-			scope = scopeWrite
-		}
-		return &accessRefusal{&RefusalError{Reason: "GitHub refused the request: " + scope, Remedy: scopeRemedy}}
+	scope := scopeRead
+	if write {
+		scope = scopeWrite
+	}
+	refused := &RefusalError{Reason: "GitHub refused the request: " + scope, Remedy: scopeRemedy}
+	if strings.Contains(low, "scope") || strings.Contains(low, "not accessible") {
+		return &accessRefusal{refused}
+	}
+	if strings.Contains(msg, "403") || strings.Contains(msg, "404") {
+		return &notShownRefusal{refused}
 	}
 	return refuse("gh could not complete the request to GitHub ("+msg+")", "settle what gh reports, then run it again")
 }
 
 // accessRefusal is remoteError's refusal for want of a sign-in, a scope or
-// access: a
-// RefusalError (errors.As finds it), told apart so a caller that reads many
-// advisories one at a time refuses whole on it, as on a missing gh, instead
-// of taking it for one advisory GitHub could not show.
+// access: a RefusalError (errors.As finds it), told apart so a caller that
+// reads many advisories one at a time refuses whole on it, as on a missing
+// gh, instead of taking it for one advisory GitHub could not show.
 type accessRefusal struct{ *RefusalError }
 
 func (e *accessRefusal) Unwrap() error { return e.RefusalError }
 
+// notShownRefusal is remoteError's refusal for a bare 403 or 404: GitHub
+// shows the thing asked for to no one this token speaks for. A token
+// without the scope meets it on every request; a deleted advisory, or one
+// this account cannot see, meets it on that advisory's read alone. A caller
+// making one request refuses on it as on accessRefusal (it is the same
+// RefusalError); readHeld leaves that one advisory unread instead, and
+// refuses whole only when every read it made met it.
+type notShownRefusal struct{ *RefusalError }
+
+func (e *notShownRefusal) Unwrap() error { return e.RefusalError }
+
 // refusesWhole reports whether err, from a gh call, is one that every other
 // call would meet too: gh missing, gh signed in to no account or holding a
-// token GitHub rejects, or GitHub refusing for want of a scope or
+// token GitHub rejects, or GitHub refusing in words that name a scope or
 // access. It is passed up whole, with its remedy, never read as one
-// advisory's transient fault.
+// advisory's answer. A bare 403 or 404 (notShownRefusal) is not one.
 func refusesWhole(err error) bool {
 	var missing *tools.MissingError
 	var access *accessRefusal
