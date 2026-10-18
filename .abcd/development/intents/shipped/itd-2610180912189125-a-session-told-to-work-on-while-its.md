@@ -385,7 +385,9 @@ amended by the trim to one uncached listing per check.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-6da79a9df4b4 -->
+Fidelity review OWED (receipt rcp-6da79a9df4b4).
+<!-- abcd-review-end receipt=rcp-6da79a9df4b4 -->
 
 ## Grounds
 
