@@ -422,6 +422,11 @@ var plainPathRe = regexp.MustCompile(`\A[A-Za-z0-9._/+-]+\z`)
 // whole. A path holding a character the terminal does not show as written
 // (termsafe.Sanitize would change it) names no command: the one shown would
 // name another file.
+//
+// The command assumes that the shell the person runs it in expands ~ to
+// home, the directory the store was placed under: true when it runs as the
+// same account with HOME unchanged. Run under another HOME, or by another
+// account, ~ names another directory and the copy finds no record there.
 func restoreCommand(home string, s Store, rel string) (cmd, why string) {
 	src := filepath.Join(s.Root, filepath.FromSlash(rel))
 	shown := shellQuote(src)
