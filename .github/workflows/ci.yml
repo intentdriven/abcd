@@ -418,7 +418,7 @@ jobs:
       # instrumentation, so they skip there or drop their bound. The race lane
       # runs them and asserts nothing, so they run here, plain, by name; they
       # are what catches a quadratic blow-up. The list is derived from the
-      # test files: TestTheUbuntuLegRunsEveryPlainOnlyGuard reads every one
+      # test files: TestEveryLegRunsEveryPlainOnlyGuard reads every one
       # under internal/ and fails until this step names exactly those tests and
       # their packages.
       - name: Test (plain-only guards)
@@ -458,7 +458,7 @@ jobs:
           ABCD_TEST_SKIP_FLUSH: "1"
         run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
-      # The macOS leg's one test pass (iss-2610110938293273): race-enabled, over
+      # The macOS leg's one pass over the module (iss-2610110938293273): race-enabled, over
       # the whole module, with the same slowest-first order and the same
       # -timeout as the race lane above. Two passes cost a median 13.6 minutes
       # plain plus 23.1 race of a 39.9-minute leg (8 queue runs, 2026-10-11),
@@ -479,7 +479,7 @@ jobs:
       # The plain-only guards on the macOS leg (iss-2610180542030806): the same
       # command as the ubuntu leg's "Test (plain-only guards)", after the race
       # pass. About a minute, on a leg that ran 36.5 of its 60 in the last
-      # merge-group run. TestTheUbuntuLegRunsEveryPlainOnlyGuard holds both
+      # merge-group run. TestEveryLegRunsEveryPlainOnlyGuard holds both
       # steps to the list it derives from the test files.
       - name: Test (plain-only guards, macOS)
         if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'

@@ -20,7 +20,7 @@ import (
 // instrumentation under -race, so it skips there (`if raceEnabled { t.Skip }`,
 // directly or through a helper such as guard's assertWorkGrowthOn) or drops
 // its bound there (`!raceEnabled && elapsed > bound`). The race lane runs those
-// tests and asserts nothing, so on the ubuntu leg a plain pass must still run
+// tests and asserts nothing, so on each leg a plain pass must still run
 // them: they are what catches a quadratic blow-up in CI rather than only in a
 // local preflight.
 //
@@ -372,11 +372,11 @@ func TestExternal(t *testing.T) { assertGrowth(t) }
 	}
 }
 
-// TestTheUbuntuLegRunsEveryPlainOnlyGuard: each leg's plain-only guard step
+// TestEveryLegRunsEveryPlainOnlyGuard: each leg's plain-only guard step
 // names exactly the tests under internal/ that assert something only without
 // -race, and exactly the packages that hold them, so none of them leaves CI
 // where a leg's only pass over internal/ is race-enabled.
-func TestTheUbuntuLegRunsEveryPlainOnlyGuard(t *testing.T) {
+func TestEveryLegRunsEveryPlainOnlyGuard(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	wantTests := map[string]bool{}
 	wantPkgs := map[string]bool{}
@@ -429,6 +429,12 @@ func TestTheUbuntuLegRunsEveryPlainOnlyGuard(t *testing.T) {
 			continue
 		}
 		cmd := oneGoTest(t, where+" step "+name, step)
+		// A guard run under the detector asserts nothing, which is the gap
+		// the step exists to close.
+		if slices.ContainsFunc(strings.Fields(cmd), func(w string) bool { return w == "-race" || strings.HasPrefix(w, "-race=") }) {
+			t.Errorf("%s step %q runs `%s` under -race; its tests assert only without the detector, "+
+				"so there they assert nothing", where, name, cmd)
+		}
 		m := regexp.MustCompile(`\s-run '\^\(([A-Za-z0-9_|]+)\)\$'`).FindStringSubmatch(cmd)
 		if m == nil {
 			t.Errorf("%s step %q: `%s` carries no `-run '^(TestA|TestB)$'`", where, name, cmd)
