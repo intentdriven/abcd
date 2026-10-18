@@ -26,8 +26,8 @@ identities onto its scope conditions and append to its grounds.
 ## When to use
 
 Use "intent" when referring to the human-authored document that precedes implementation. Intent
-files live under `.abcd/development/intents/` and carry a slugged identifier (e.g.,
-`itd-27`).
+files live under `.abcd/development/intents/`, carry an `itd-N` identifier and a slug, and are
+named `itd-N-<slug>.md` (e.g., `itd-10-purge-uninstall.md`).
 
 ## When NOT to use
 
