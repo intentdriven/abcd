@@ -88,11 +88,15 @@ type PlanEntry struct {
 }
 
 // LeftOut is an advisory judged a vulnerability that the plan does not
-// publish, and why.
+// publish, and why. RestoreWith, for one GitHub reports published already
+// whose private record is resolved in the store and not in the release, is
+// the command that restores that record into the public ledger (see
+// PublishedAdvisory): a run that published it and stopped never printed it.
 type LeftOut struct {
-	GHSAID  string `json:"ghsa_id"`
-	IssueID string `json:"issue_id"`
-	Reason  string `json:"reason"`
+	GHSAID      string `json:"ghsa_id"`
+	IssueID     string `json:"issue_id"`
+	Reason      string `json:"reason"`
+	RestoreWith string `json:"restore_with,omitempty"`
 }
 
 // PublicationPlan is what publication would do. Digest is the approval it
@@ -116,7 +120,7 @@ func planPublication(req PublishRequest) (PublicationPlan, error) {
 	if err != nil {
 		return PublicationPlan{}, err
 	}
-	return planFor(s, &st, req.Release, clock(req.Now))
+	return planFor(s, &st, req.Home, req.Release, clock(req.Now))
 }
 
 // planFor builds the plan of release over the store's state. For each
@@ -136,7 +140,7 @@ func planPublication(req PublishRequest) (PublicationPlan, error) {
 // published or closed it on GitHub but could not record it (a save that
 // failed after the update) is reconciled here, instead of holding the
 // advisory under embargo for ever.
-func planFor(s Store, st *State, release string, now time.Time) (PublicationPlan, error) {
+func planFor(s Store, st *State, home, release string, now time.Time) (PublicationPlan, error) {
 	if st.Repo == "" {
 		return PublicationPlan{}, refuse("the embargo store does not name its repository", "run `abcd embargo intake` once, then run it again")
 	}
@@ -169,7 +173,11 @@ func planFor(s Store, st *State, release string, now time.Time) (PublicationPlan
 			}
 		}
 		if why != "" {
-			p.LeftOut = append(p.LeftOut, LeftOut{GHSAID: a.GHSAID, IssueID: a.IssueID, Reason: why})
+			l := LeftOut{GHSAID: a.GHSAID, IssueID: a.IssueID, Reason: why}
+			if done == "published" && e.storeRecord != "" {
+				l.RestoreWith = restoreCommand(home, s, e.storeRecord)
+			}
+			p.LeftOut = append(p.LeftOut, l)
 			continue
 		}
 		p.Entries = append(p.Entries, e)
@@ -261,7 +269,9 @@ func planEntry(s Store, repo, release string, resolved []string, a Advisory, oth
 	switch remote.State {
 	case "triage", "draft":
 	case "published", "closed":
-		return PlanEntry{}, "GitHub reports it " + remote.State + " already; its " + remote.State + "_at is recorded from that", remote.State, nil
+		// The store's record goes back with it, so a published advisory
+		// planned from the store's evidence still names its restore command.
+		return PlanEntry{storeRecord: storeRec}, "GitHub reports it " + remote.State + " already; its " + remote.State + "_at is recorded from that", remote.State, nil
 	default:
 		return PlanEntry{}, "GitHub reports it in a state this abcd does not know", "", nil
 	}

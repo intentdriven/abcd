@@ -413,3 +413,49 @@ func TestPublishNamesRestoreForStoreEvidence(t *testing.T) {
 		t.Fatalf("a public-record advisory names a restore: %+v", b)
 	}
 }
+
+// TestRestoreNamedWhenARunStopsAfterPublishing: an advisory published from
+// the store's evidence by a run that then stopped keeps its restore command:
+// the failure names it, and a later plan that finds it published on GitHub
+// names it again with the advisory it leaves out, so it is never lost.
+func TestRestoreNamedWhenARunStopsAfterPublishing(t *testing.T) {
+	px := newPublishFixtureWith(t, "draft", true)
+	stateDir := filepath.Dir(px.s.StatePath())
+	t.Cleanup(func() { _ = os.Chmod(stateDir, 0o700) })
+	// The publishing PATCH of the canary leaves the state's folder unwritable,
+	// so the run stops with A published on GitHub and not recorded.
+	px.g.hook(`if [ "$method" = PATCH ] && grep -q '"published"' "$d/calls/$n.stdin"; then chmod 500 '` + stateDir + `'; fi`)
+	shown := px.show(t)
+	_, err := px.publish(shown.Plan.Digest)
+	var pe *PublishFailedError
+	if !errors.As(err, &pe) || pe.GHSAID != ghsaA {
+		t.Fatalf("err = %v (%+v)", err, pe)
+	}
+	rel, rerr := filepath.Rel(px.f.home, filepath.Join(px.s.Root, ".abcd", "work", "issues", "resolved", issA+"-private-report.md"))
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	want := "cp -- ~/" + filepath.ToSlash(rel) + " .abcd/work/issues/resolved/"
+	if len(pe.RestoreWith) != 1 || pe.RestoreWith[0] != want || !strings.Contains(err.Error(), want) {
+		t.Fatalf("the failure does not name the restore command %q: %+v, %v", want, pe.RestoreWith, err)
+	}
+
+	px.g.hook(":")
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	px.answer(t, ghsaA, 5, "published", "< 0.9.0", "0.9.0")
+	p, err := planPublication(PublishRequest{Home: px.f.home, RepoRoot: px.f.repo.Root(), Now: func() time.Time { return publishedAt }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range p.LeftOut {
+		if l.GHSAID == ghsaA {
+			if l.RestoreWith != want || !strings.Contains(l.Reason, "published already") {
+				t.Fatalf("left out %+v, want the restore command %q", l, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("A is not left out of the replan: %+v", p)
+}

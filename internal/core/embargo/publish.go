@@ -41,6 +41,9 @@ type PublishFailedError struct {
 	Reason      string   `json:"reason"`
 	Published   []string `json:"published"`
 	Unpublished []string `json:"unpublished"`
+	// RestoreWith is the restore command of each advisory published from the
+	// store's evidence before the failure (PublishedAdvisory.RestoreWith).
+	RestoreWith []string `json:"restore_with,omitempty"`
 }
 
 func (e *PublishFailedError) Error() string {
@@ -64,6 +67,9 @@ func (e *PublishFailedError) Error() string {
 		b.WriteString("; not published: " + strings.Join(e.Unpublished, ", "))
 	}
 	b.WriteString(" (look at the advisories on GitHub; running `abcd embargo publish` again plans only what is still unpublished)")
+	for _, c := range e.RestoreWith {
+		b.WriteString("; restore a record published from the store's evidence, from the checkout's root: " + c)
+	}
 	return b.String()
 }
 
@@ -82,7 +88,7 @@ func Publish(req PublishRequest) (PublishResult, error) {
 	if err != nil {
 		return PublishResult{}, err
 	}
-	plan, err := planFor(s, &st, req.Release, clock(req.Now))
+	plan, err := planFor(s, &st, req.Home, req.Release, clock(req.Now))
 	if err != nil {
 		return PublishResult{}, err
 	}
@@ -104,11 +110,15 @@ func Publish(req PublishRequest) (PublishResult, error) {
 		planned[i] = e.GHSAID
 	}
 	fail := func(i int, ghsa, why string) error {
-		var done []string
+		var done, restore []string
 		for _, p := range res.Published {
 			done = append(done, p.GHSAID)
+			if p.RestoreWith != "" {
+				restore = append(restore, p.RestoreWith)
+			}
 		}
-		return &PublishFailedError{GHSAID: ghsa, Canary: i == 0 && ghsa != "", Reason: why, Published: done, Unpublished: planned[len(done):]}
+		return &PublishFailedError{GHSAID: ghsa, Canary: i == 0 && ghsa != "", Reason: why, Published: done, Unpublished: planned[len(done):],
+			RestoreWith: restore}
 	}
 
 	for i, e := range plan.Entries {

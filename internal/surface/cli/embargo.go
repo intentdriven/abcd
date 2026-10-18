@@ -409,6 +409,9 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 	}
 	for _, l := range p.LeftOut {
 		fmt.Fprintf(w, "  left out %s (%s): %s\n", l.GHSAID, l.IssueID, termsafe.Sanitize(l.Reason))
+		if l.RestoreWith != "" {
+			fmt.Fprintf(w, "  restore its record as resolved, from the checkout's root:\n    %s\n", termsafe.Sanitize(l.RestoreWith))
+		}
 	}
 	if p.ApproveWith != "" {
 		fmt.Fprintf(w, "digest: %s\napprove with: %s\n", p.Digest, p.ApproveWith)

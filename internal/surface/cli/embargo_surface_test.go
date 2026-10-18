@@ -263,3 +263,16 @@ func TestEmbargoPublishRendersStoreEvidence(t *testing.T) {
 		t.Fatalf("the publication's text form is %q", got)
 	}
 }
+
+// TestEmbargoPublishRendersRestoreOfLeftOut: an advisory a plan leaves out
+// because GitHub reports it published already, from the store's evidence,
+// still shows its restore command in the text form.
+func TestEmbargoPublishRendersRestoreOfLeftOut(t *testing.T) {
+	const restore = "cp -- ~/.abcd.noindex/worktrees/0123/embargo/.abcd/work/issues/resolved/iss-1-private-report.md .abcd/work/issues/resolved/"
+	var b bytes.Buffer
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", Entries: []embargo.PlanEntry{},
+		LeftOut: []embargo.LeftOut{{GHSAID: surfaceGHSA, IssueID: "iss-1", Reason: "GitHub reports it published already", RestoreWith: restore}}}})
+	if got := b.String(); !strings.Contains(got, "restore its record as resolved, from the checkout's root:\n    "+restore+"\n") {
+		t.Fatalf("the plan's text form is %q", got)
+	}
+}

@@ -208,6 +208,9 @@ command, run from the checkout's root, that copies its private record,
 resolved, from the store into the public ledger's `resolved/` folder now its
 advisory is public. abcd has no verb that restores a record; show the user the
 command, and the person runs it and lands the record in a change of its own.
+The command is never lost to a stopped run: the failure names it for each
+advisory published before the stop, and a later plan that finds such an
+advisory published on GitHub names it again on its `left_out` entry.
 
 ## What stays the person's act
 
