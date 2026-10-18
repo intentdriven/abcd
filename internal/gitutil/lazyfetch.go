@@ -53,6 +53,18 @@ func SwapGitVersionForTest(src func() (string, error)) (restore func()) {
 	return func() { gitVersion.set(probeGitVersion) }
 }
 
+// known reports whether a version probe has run and its answer is kept.
+func (v *versionCache) known() bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.done
+}
+
+// ErrGitVersionUnread is a partial clone's object read refused because git's
+// version could not be read this time: unlike ErrLazyFetchFloor, a later try
+// may clear it.
+var ErrGitVersionUnread = errors.New("git's version could not be read")
+
 // set replaces the source and clears the cached answer.
 func (v *versionCache) set(src func() (string, error)) {
 	v.mu.Lock()
@@ -161,6 +173,12 @@ func lazyFetchGuard(root string, args []string) error {
 	cmdPromisor, _ := commandLineFloorConfig(args)
 	if !cfg.promisor && !cmdPromisor {
 		return nil
+	}
+	if !gitVersion.known() {
+		// The version could not be read this time (a probe that did not run
+		// is not kept): that is git not answering, which a later try may
+		// clear, not a git known to be below the floor (iss-2610051434156079).
+		return fmt.Errorf("%w: git's version could not be read, so abcd cannot tell whether it honours GIT_NO_LAZY_FETCH in this partial clone", ErrGitVersionUnread)
 	}
 	_, raw := gitVersion.honoursNoLazyFetch()
 	if reads {

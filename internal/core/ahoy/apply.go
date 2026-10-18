@@ -128,7 +128,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	if det.RootSHA != "" {
 		gitUnanswered = nil
 	}
-	if gitUnanswered != nil && det.FolderKind == UnmanagedRepo && (opts.Adopt == nil || !*opts.Adopt) {
+	if gitUnanswered != nil && det.FolderKind == UnmanagedRepo && opts.Adopt == nil {
 		return InstallResult{}, fmt.Errorf("git gave no root commit for this repository, so abcd cannot tell whether it already manages it; run the install again once git answers, or pass --adopt to adopt it anyway: %w", gitUnanswered)
 	}
 

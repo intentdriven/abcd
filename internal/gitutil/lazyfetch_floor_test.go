@@ -81,9 +81,13 @@ func TestIsolatedObjectReadRefusesAPartialCloneBelowTheLazyFetchFloor(t *testing
 	r.Git("config", "extensions.partialClone", "origin")
 	wantRefused("extensions.partialClone", read())
 
-	// An unreadable version is treated as below the floor.
+	// An unreadable version still refuses the read, as git not answering
+	// rather than as the floor, so a caller may try again
+	// (iss-2610051434156079).
 	gitutil.SetGitVersionSource(t, func() (string, error) { return "", errors.New("no git version") })
-	wantRefused("unreadable version", read())
+	if err := read(); !errors.Is(err, gitutil.ErrGitVersionUnread) {
+		t.Fatalf("unreadable version: want the read refused with ErrGitVersionUnread, got %v", err)
+	}
 
 	// At the floor the same promisor repository reads.
 	gitutil.SetGitVersionSource(t, func() (string, error) { return "git version 2.44.0", nil })
@@ -288,4 +292,27 @@ func TestSparseListingsRefuseAPartialCloneBelowTheLazyFetchFloor(t *testing.T) {
 	r.Git("config", "core.sparseCheckout", "true")
 	gitutil.SetGitVersionSource(t, func() (string, error) { return "git version 2.44.0", nil })
 	allRun("sparse partial clone on git 2.44", listings)
+}
+
+// TestAPartialCloneReadWhoseVersionProbeFailedIsNotTheFloor: a git version
+// probe that could not run is not "below the floor": the refusal is
+// ErrGitVersionUnread, which a later try may clear, so a caller retrying a
+// transient failure does retry it (iss-2610051434156079).
+func TestAPartialCloneReadWhoseVersionProbeFailedIsNotTheFloor(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("kept.txt", "kept\n")
+	r.Commit("c0")
+	root := r.Root()
+	r.Git("config", "remote.origin.promisor", "true")
+
+	gitutil.SetGitVersionSource(t, func() (string, error) { return "", errors.New("fork/exec git: resource temporarily unavailable") })
+	_, err := gitutil.Run(root, "cat-file", "blob", "HEAD:kept.txt")
+	if errors.Is(err, gitutil.ErrLazyFetchFloor) || !errors.Is(err, gitutil.ErrGitVersionUnread) {
+		t.Fatalf("a failed version probe = %v; want ErrGitVersionUnread, not the floor", err)
+	}
+
+	gitutil.SetGitVersionSource(t, func() (string, error) { return "git version 2.39.5 (Apple Git-154)", nil })
+	if _, err := gitutil.Run(root, "cat-file", "blob", "HEAD:kept.txt"); !errors.Is(err, gitutil.ErrLazyFetchFloor) {
+		t.Fatalf("a version known to be below the floor = %v; want ErrLazyFetchFloor", err)
+	}
 }
