@@ -204,9 +204,12 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	if dated.IsZero() {
 		dated = now
 	}
-	for _, ref := range refs {
+	// The tips in one batch where they read cleanly, each as readSeen reads
+	// it (iss-2610180545134593).
+	reads := readSeenTips(root, refs, tree, dated, false)
+	for i, ref := range refs {
 		id := strings.TrimPrefix(ref, TrackingPrefix)
-		t, ok, err := readSeen(root, id, ref, tree, dated, false)
+		t, ok, err := reads[i].t, reads[i].ok, reads[i].err
 		if err != nil {
 			return snap, fmt.Errorf("reading the reservation on %s: %s", id, redacted(err))
 		}
