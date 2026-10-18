@@ -1461,14 +1461,14 @@ from GitHub on its own. One GitHub reports published is recorded published, at
 GitHub's own published_at, which releases it from the check; one it reports
 closed is recorded closed, at its closed_at, only when its verdict is
 not-abcds, not-a-vulnerability or public-track. Each recorded is listed as
-ended. One GitHub cannot tell (a failed read, an unknown state, a missing or
-malformed time), or reports closed while the store holds it otherwise, is
-listed as unread, with the reason, and left under embargo to be read again. A
-missing gh, a gh signed in to no account or holding a token GitHub rejects,
-or a token without the advisory scope, refuses the intake with
-nothing recorded. Each published advisory whose private record is resolved in
-the store and not yet in this checkout's ledger is listed with the command
-that restores it.
+ended. One GitHub cannot tell (a failed read, a 404 or 403 on its read, an
+unknown state, a missing or malformed time), or reports closed while the
+store holds it otherwise, is listed as unread, with the reason, and left
+under embargo to be read again. A missing gh, a gh signed in to no account or
+holding a token GitHub rejects, or a refusal naming the advisory scope,
+refuses the intake with nothing recorded. Each published advisory whose
+private record is resolved in the store and not yet in this checkout's
+ledger is listed with the command that restores it.
 
 #### `abcd embargo publish`
 
@@ -1477,15 +1477,20 @@ Show the publication plan with computed patched versions, or publish it: Writes 
 **Usage:** `abcd embargo publish [flags]`
 
 Show the publication plan for the release tag (--release, default the highest
-vMAJOR.MINOR.PATCH tag): for each advisory judged a vulnerability and not yet
+published release): for each advisory judged a vulnerability and not yet
 published, its record resolved in that release, its fix commit, the first
-release tag holding the fix, the patched version that gives, and the affected
-range in GitHub's form. The security rule keeps a security record out of every
-committed tree until its advisory is published, so when the release carries no
-public record the evidence is the advisory's private record, resolved in the
-embargo store's own ledger with the full id of its fix commit; nothing else
-the store holds is taken. An advisory resolved in neither, whose fix is in no
-release tag, whose package is not set on GitHub, or whose text carries a
+published release holding the fix, the patched version that gives, and the
+affected range in GitHub's form. A vMAJOR.MINOR.PATCH tag is a published
+release when origin holds the tag at the object this checkout holds and GitHub
+reports its release neither a draft nor a prerelease; any other tag gives no
+patched version, and --release naming one is refused. When origin's tags, or
+GitHub's answer for a release, cannot be read, the plan refuses with nothing
+recorded. The security rule keeps a security record out of every committed tree
+until its advisory is published, so when the release carries no public record
+the evidence is the advisory's private record, resolved in the embargo store's
+own ledger with the full id of its fix commit; nothing else the store holds is
+taken. An advisory resolved in neither, whose fix is in no published release up
+to the release, whose package is not set on GitHub, or whose text carries a
 secret, a private name or another advisory still under embargo is left out,
 saying why. Without --approve nothing but reads is sent.
 
@@ -1494,9 +1499,11 @@ neither published nor closed, as intake does: it records each published one,
 and each closed one whose verdict ends its private track, at GitHub's own
 time, lists each it recorded as ended, and lists each it could not tell, or
 found closed while the store holds it otherwise, as unread, left under
-embargo. A missing gh, a gh signed in to no account or holding a token GitHub
-rejects, or a token without the advisory scope, refuses the plan
-with nothing recorded.
+embargo; a 404 or 403 on one advisory's read leaves that one unread. A missing
+gh, a gh signed in to no account or holding a token GitHub rejects, a refusal
+naming the advisory scope, or a 404 or 403 on every advisory's read with none
+read, which is what a token without the scope meets, refuses the plan with
+nothing recorded.
 
 With --approve <digest> of exactly the plan shown it publishes one advisory as
 a canary and reads it back, then the rest the same way, stopping at the first
@@ -1510,7 +1517,7 @@ after the person, in that session, has seen the plan and said yes to it.
 
 ```
       --approve string   the plan's digest; only on the person's yes to exactly that plan
-      --release string   the release tag vMAJOR.MINOR.PATCH to publish from (default the highest)
+      --release string   the release tag vMAJOR.MINOR.PATCH to publish from (default the highest published release)
 ```
 
 #### `abcd embargo triage`

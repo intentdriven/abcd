@@ -96,14 +96,14 @@ func newEmbargoIntakeCommand(asJSON *bool) *cobra.Command {
 			"GitHub's own published_at, which releases it from the check; one it reports\n" +
 			"closed is recorded closed, at its closed_at, only when its verdict is\n" +
 			"not-abcds, not-a-vulnerability or public-track. Each recorded is listed as\n" +
-			"ended. One GitHub cannot tell (a failed read, an unknown state, a missing or\n" +
-			"malformed time), or reports closed while the store holds it otherwise, is\n" +
-			"listed as unread, with the reason, and left under embargo to be read again. A\n" +
-			"missing gh, a gh signed in to no account or holding a token GitHub rejects,\n" +
-			"or a token without the advisory scope, refuses the intake with\n" +
-			"nothing recorded. Each published advisory whose private record is resolved in\n" +
-			"the store and not yet in this checkout's ledger is listed with the command\n" +
-			"that restores it.",
+			"ended. One GitHub cannot tell (a failed read, a 404 or 403 on its read, an\n" +
+			"unknown state, a missing or malformed time), or reports closed while the\n" +
+			"store holds it otherwise, is listed as unread, with the reason, and left\n" +
+			"under embargo to be read again. A missing gh, a gh signed in to no account or\n" +
+			"holding a token GitHub rejects, or a refusal naming the advisory scope,\n" +
+			"refuses the intake with nothing recorded. Each published advisory whose\n" +
+			"private record is resolved in the store and not yet in this checkout's\n" +
+			"ledger is listed with the command that restores it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const verb = "abcd embargo intake"
@@ -358,15 +358,20 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "publish",
 		Long: "Show the publication plan for the release tag (--release, default the highest\n" +
-			"vMAJOR.MINOR.PATCH tag): for each advisory judged a vulnerability and not yet\n" +
+			"published release): for each advisory judged a vulnerability and not yet\n" +
 			"published, its record resolved in that release, its fix commit, the first\n" +
-			"release tag holding the fix, the patched version that gives, and the affected\n" +
-			"range in GitHub's form. The security rule keeps a security record out of every\n" +
-			"committed tree until its advisory is published, so when the release carries no\n" +
-			"public record the evidence is the advisory's private record, resolved in the\n" +
-			"embargo store's own ledger with the full id of its fix commit; nothing else\n" +
-			"the store holds is taken. An advisory resolved in neither, whose fix is in no\n" +
-			"release tag, whose package is not set on GitHub, or whose text carries a\n" +
+			"published release holding the fix, the patched version that gives, and the\n" +
+			"affected range in GitHub's form. A vMAJOR.MINOR.PATCH tag is a published\n" +
+			"release when origin holds the tag at the object this checkout holds and GitHub\n" +
+			"reports its release neither a draft nor a prerelease; any other tag gives no\n" +
+			"patched version, and --release naming one is refused. When origin's tags, or\n" +
+			"GitHub's answer for a release, cannot be read, the plan refuses with nothing\n" +
+			"recorded. The security rule keeps a security record out of every committed tree\n" +
+			"until its advisory is published, so when the release carries no public record\n" +
+			"the evidence is the advisory's private record, resolved in the embargo store's\n" +
+			"own ledger with the full id of its fix commit; nothing else the store holds is\n" +
+			"taken. An advisory resolved in neither, whose fix is in no published release up\n" +
+			"to the release, whose package is not set on GitHub, or whose text carries a\n" +
 			"secret, a private name or another advisory still under embargo is left out,\n" +
 			"saying why. Without --approve nothing but reads is sent.\n\n" +
 			"Every plan first reads from GitHub each advisory the store holds that is\n" +
@@ -374,9 +379,11 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 			"and each closed one whose verdict ends its private track, at GitHub's own\n" +
 			"time, lists each it recorded as ended, and lists each it could not tell, or\n" +
 			"found closed while the store holds it otherwise, as unread, left under\n" +
-			"embargo. A missing gh, a gh signed in to no account or holding a token GitHub\n" +
-			"rejects, or a token without the advisory scope, refuses the plan\n" +
-			"with nothing recorded.\n\n" +
+			"embargo; a 404 or 403 on one advisory's read leaves that one unread. A missing\n" +
+			"gh, a gh signed in to no account or holding a token GitHub rejects, a refusal\n" +
+			"naming the advisory scope, or a 404 or 403 on every advisory's read with none\n" +
+			"read, which is what a token without the scope meets, refuses the plan with\n" +
+			"nothing recorded.\n\n" +
 			"With --approve <digest> of exactly the plan shown it publishes one advisory as\n" +
 			"a canary and reads it back, then the rest the same way, stopping at the first\n" +
 			"mismatch, and confirms none is left in draft. Every plan and publication\n" +
@@ -398,7 +405,7 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderEmbargoPublish(w, res) })
 		},
 	}
-	cmd.Flags().StringVar(&release, "release", "", "the release tag vMAJOR.MINOR.PATCH to publish from (default the highest)")
+	cmd.Flags().StringVar(&release, "release", "", "the release tag vMAJOR.MINOR.PATCH to publish from (default the highest published release)")
 	cmd.Flags().StringVar(&approve, "approve", "", "the plan's digest; only on the person's yes to exactly that plan")
 	return cmd
 }

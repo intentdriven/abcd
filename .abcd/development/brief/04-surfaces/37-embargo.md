@@ -62,11 +62,15 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   to a known state and a well-formed time, present. An answer that fails that,
   or a close the store's verdict does not make, leaves the advisory under
   embargo, read again on the next run so a reopen is seen, and listed with
-  the reason; the second is the person's to settle. A missing `gh`, a `gh`
-  signed in to no account or holding a token GitHub rejects, or a
-  token without the advisory scope, refuses the run whole with its remedy,
-  recording nothing. Every publication plan reads the held advisories the same way, and
-  lists what it recorded.
+  the reason; the second is the person's to settle. So does an advisory
+  GitHub reports no such advisory for, with a 404 or a 403: it may be deleted,
+  or hidden from this account, and one such answer is that advisory's, not the
+  run's. A missing `gh`, a `gh` signed in to no account or holding a token
+  GitHub rejects, or a refusal whose words name the advisory scope, refuses the
+  run whole with its remedy, recording nothing. Every publication plan reads
+  the held advisories the same way, and lists what it recorded; a plan whose
+  every read meets a 404 or a 403, reading none, refuses whole too, since that
+  is what a token without the scope meets.
 - **triage** records one of four verdicts (vulnerability, not abcd's, not a
   vulnerability, public track) with who decided it and when; the two closing
   verdicts draft the closing explanation, and "not abcd's" names both halves of
@@ -82,11 +86,20 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   repeating the match. A paraphrase or a count is beyond it and stays the
   author's to avoid.
 - **publish** shows the plan with each patched version taken from the first
-  release tag containing the fix, leaving out, with the reason, an advisory not
-  resolved or released, one with no package, and one whose text would disclose
+  published release containing the fix, leaving out, with the reason, an
+  advisory not resolved or released, one with no package, and one whose text would disclose
   a secret, a private name or another advisory under embargo; with the approval
   of that plan's digest it publishes one advisory as a canary, reads it back,
-  publishes the rest, and confirms none is left in draft. The fix commit comes
+  publishes the rest, and confirms none is left in draft. A release tag counts
+  as a published release only when origin holds it at the object this
+  checkout holds and GitHub reports its release neither a draft nor a
+  prerelease: the release workflow drafts a release before it publishes it,
+  and a failed run leaves a tag with no release behind it, so a tag that only
+  this checkout holds, or one still drafting, would name a patched version
+  nobody can install. Such a tag is passed over for the next published
+  release, the plan's own release must be one, and origin or GitHub that
+  cannot be read refuses the plan rather than falling back on the checkout's
+  tags. The fix commit comes
   from the advisory's record resolved in the release, or, since the security
   rule keeps that record out of every committed tree until the advisory is
   published, from its private record resolved in the store's own ledger. The

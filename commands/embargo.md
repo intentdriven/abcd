@@ -52,15 +52,18 @@ and leaves the check; a closed one is recorded only when its verdict already
 ends the private track: `not-abcds`, `not-a-vulnerability` or
 `public-track`. `unread` lists each left as the store
 holds it, under embargo, with the reason, and read again by the next intake or
-plan: a failed read, a state this abcd does not know, a timestamp that is
-missing or is not one, or a close GitHub reports while the store holds the
+plan: a failed read, a 404 or 403 on its read (GitHub reports no such
+advisory to this account: it may be deleted, or this account may not see
+it), a state this abcd does not know, a timestamp that is missing or is not
+one, or a close GitHub reports while the store holds the
 advisory as a vulnerability or untriaged. That last is the person's to
 settle: tell the user, who reopens it on GitHub to publish it or records a
 verdict that ends the private track with triage, which the next read then
 records. A missing `gh`, a `gh` signed in to no account or holding a token
-GitHub rejects, or a token GitHub refuses for want of the advisory
-scope, refuses the intake whole, recording nothing, and names the remedy. `restores` lists
-each restore owed, as for publish below.
+GitHub rejects, or a refusal whose words name the advisory scope, refuses the
+intake whole, recording nothing, and names the remedy. A 404 or 403 alone
+never does: the listing intake has just read proves the scope. `restores`
+lists each restore owed, as for publish below.
 
 ## Triage
 
@@ -183,9 +186,22 @@ itself a disclosure.
 
 Once the release carrying the fixes is cut, this shows the publication plan
 and sends nothing but reads. For each advisory judged a vulnerability (the
-release defaults to the highest `vMAJOR.MINOR.PATCH` tag): its record resolved
-in the release, its fix commit, the first release tag holding the fix, the
+release defaults to the highest published release): its record resolved in
+the release, its fix commit, the first published release holding the fix, the
 patched version that gives, and the affected range in GitHub's form.
+
+**What counts as a published release.** A `vMAJOR.MINOR.PATCH` tag counts only
+when both hold: origin holds the tag at the same object as this checkout
+(read once per plan with `git ls-remote --tags origin`), and GitHub reports a
+release for it that is neither a draft nor a prerelease. A tag that only this
+checkout holds, or one whose release run failed or is still drafting, gives no
+patched version: the next published release holding the fix gives it, and a
+fix in none up to the release is left out, saying so. A `--release` naming a
+tag that is not a published release is refused with what it lacks and the
+remedy (push the tag with `git push origin <tag>`, or publish its release on
+GitHub). When origin's tags cannot be listed, or GitHub cannot be read for a
+release or answers for another tag, the plan refuses whole, recording
+nothing; the checkout's own tags are never taken in their place.
 
 The security rule keeps a security record out of every committed tree until
 its advisory is published, so the release usually carries no public record of
@@ -202,13 +218,13 @@ The resolve keeps the record's mode, so it stays this account's alone. The
 plan takes that commit only when it is a full object name of this repository's
 hash that git resolves to exactly itself as a commit, so an abbreviation, a
 tag's name or anything shaped like an option is left out with the reason; the
-first release tag holding the commit gives the patched version, as for a public
-record. Such an entry carries `store_evidence: true`. A record resolved in the
+first published release holding the commit gives the patched version, as for a
+public record. Such an entry carries `store_evidence: true`. A record resolved in the
 release is always taken first, whatever the store holds.
 
 `left_out` names each advisory the plan does not publish and why: its record
 is resolved neither in the release nor in the store with a fix commit the plan
-accepts, its fix is in no release tag, its package is not set on GitHub, or its
+accepts, its fix is in no published release up to the release, its package is not set on GitHub, or its
 text carries a secret, a private name, or another advisory still under embargo
 (a closed one's title included: it stays private on GitHub). Show the user the
 whole plan, then `approve_with`.
@@ -226,11 +242,13 @@ nor closed, judged or not, as intake does, and records what GitHub reports on
 the same terms: `ended` lists each it recorded, so a publication whose record
 failed, or one made by hand on GitHub, is completed by the next run, and an
 advisory found so is left out of the plan; `unread` lists each left as the
-store holds it, with the reason. A candidate GitHub cannot say is also left
-out, with that reason. A missing `gh`, a `gh` signed in to no account or
-holding a token GitHub rejects, or a token without the advisory
-scope, refuses the plan whole, recording nothing. Neither list is bound into the
-digest.
+store holds it, with the reason; a 404 or 403 on one advisory's read leaves
+that one unread and the plan goes on. A candidate GitHub cannot say is also
+left out, with that reason. A missing `gh`, a `gh` signed in to no account or
+holding a token GitHub rejects, a refusal whose words name the advisory scope,
+or a 404 or 403 on every advisory's read with none read, which is what a token
+without the scope meets, refuses the plan whole, recording nothing. Neither
+list is bound into the digest.
 
 `restores` names each restore the store's state owes: every advisory recorded
 published whose private record is resolved in the store, and passes the same
@@ -239,7 +257,9 @@ holds no record of it. Its `restore_with` is the command, run from the
 checkout's root, that copies the record into the public ledger's `resolved/`
 folder. It is read from the store's state, not from the run that published, so
 every plan, every intake and every publication names it, a stopped run's
-failure included, until the record is in the checkout. A record that fails
+failure included, until the record is in the checkout. The reminder stands
+until then even when the person decides never to commit the record: a record
+kept out of the ledger on purpose is named on every run. A record that fails
 those checks, or whose path holds a character the terminal would not show as
 written, names no command and gives the `reason`.
 
