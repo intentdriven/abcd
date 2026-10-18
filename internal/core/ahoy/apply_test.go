@@ -29,8 +29,9 @@ func (s stubPrompter) Prompt(key string, _ []string, def string) string {
 
 // TestStepConfigValuesRejectsInvalidDocsTarget guards that a typo'd interactive
 // docs_target answer is never persisted (which would plant markers in both
-// files and re-emit the gap forever). stepConfigValues must return nil, exactly
-// as it already does for an invalid visibility.
+// files and re-emit the gap forever): the docs target is left unset, exactly
+// as an invalid visibility is, while the values answered beside it are still
+// saved (iss-2610170930394303).
 func TestStepConfigValuesRejectsInvalidDocsTarget(t *testing.T) {
 	dir := t.TempDir()
 	a := &applyCtx{
@@ -46,11 +47,16 @@ func TestStepConfigValuesRejectsInvalidDocsTarget(t *testing.T) {
 			"docs_target": "clade_md", // typo — not in docsTargetChoices
 		}},
 	}
-	if cfg := a.stepConfigValues(); cfg != nil {
-		t.Fatalf("stepConfigValues persisted an invalid docs_target: %+v", cfg)
+	cfg := a.stepConfigValues()
+	if cfg == nil || cfg.DocsTarget != "" {
+		t.Fatalf("stepConfigValues took an invalid docs_target: %+v", cfg)
 	}
-	if _, err := os.Stat(configPath(dir)); err == nil {
-		t.Errorf("invalid docs_target was written to config.json")
+	m := readConfigT(t, dir)
+	if _, ok := subMap(m, "docs")["target"]; ok {
+		t.Errorf("invalid docs_target was written to config.json: %v", m)
+	}
+	if got, _ := stringVal(subMap(m, "repo"), "visibility"); got != "private" {
+		t.Errorf("repo.visibility = %q, want the answered private saved beside the typo", got)
 	}
 }
 
@@ -281,8 +287,9 @@ func persistedScanDeep(t *testing.T, dir string) (val, present bool) {
 // TestStepConfigValuesRejectsUnparseableScanDeep is the iss-2609090642031172
 // detector. scan_deep is collected through the same prompter as docs_target and
 // oracle_backend, and the prompter returns the typed line verbatim — so an
-// answer outside the choice set must abandon the install exactly as a typo'd
-// docs_target does. It must NEVER resolve to a weaker scan than the one the
+// answer outside the choice set leaves scan.deep unset exactly as a typo'd
+// docs_target is left, while the values answered before it are still saved
+// (iss-2610170930394303). It must NEVER resolve to a weaker scan than the one the
 // operator asked for: "yes" is a person saying yes to deep secret scanning, and
 // silently recording it as scan.deep=false is a security downgrade with no
 // diagnostic.
@@ -297,15 +304,19 @@ func TestStepConfigValuesRejectsUnparseableScanDeep(t *testing.T) {
 			if v, present := persistedScanDeep(t, dir); present && !v {
 				t.Errorf("answer %q silently DISABLED the deep secret scan: config.json holds scan.deep=false", answer)
 			}
-			if cfg != nil {
-				got := "unset"
-				if cfg.ScanDeep != nil {
+			if cfg == nil || cfg.ScanDeep != nil {
+				got := "no config"
+				if cfg != nil {
 					got = fmt.Sprintf("%v", *cfg.ScanDeep)
 				}
-				t.Fatalf("stepConfigValues accepted an out-of-set scan_deep answer %q: ScanDeep=%s (want nil — partial install)", answer, got)
+				t.Fatalf("stepConfigValues accepted an out-of-set scan_deep answer %q: ScanDeep=%s (want unset)", answer, got)
 			}
-			if _, err := os.Stat(configPath(dir)); err == nil {
+			m := readConfigT(t, dir)
+			if _, present := subMap(m, "scan")["deep"]; present {
 				t.Errorf("an out-of-set scan_deep answer %q was written to config.json", answer)
+			}
+			if got, _ := stringVal(subMap(m, "repo"), "visibility"); got != "private" {
+				t.Errorf("repo.visibility = %q, want the answered private saved beside the typo", got)
 			}
 		})
 	}

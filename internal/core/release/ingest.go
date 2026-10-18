@@ -407,6 +407,11 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 			return res, fmt.Errorf("refusing to write %s: its heading does not name this cut's version %s", PageFile, cut.NextTag)
 		}
 	}
+	// The declared digest's path and the file it appends to are checked here,
+	// with the other repository preconditions, before any write.
+	if err := planDigest(root, &plan); err != nil {
+		return res, err
+	}
 
 	// The outbound policy over what would be written, both documents: a session
 	// URL or a tool footer is refused here, where the composer can drop it,
@@ -434,6 +439,9 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 
 	if hasPage {
 		plan.page = []byte(pageText)
+	}
+	if err := composeDigest(&plan, cut, entries); err != nil {
+		return res, err
 	}
 	var undo UndoPlan
 	if len(moves) == 0 {
@@ -765,25 +773,39 @@ func renderSection(heading string, entries []ChangelogEntry, moveNote string) []
 	if moveNote != "" {
 		lines = append(lines, moveNote, "")
 	}
-	for _, section := range sectionOrder {
-		var body []string
-		for _, e := range entries {
-			if e.Section != section {
-				continue
+	var current Section
+	for _, e := range orderedEntries(entries) {
+		if e.Section != current {
+			if current != "" {
+				lines = append(lines, "")
 			}
-			// The citation is appended by the core, never trusted from the prose:
-			// it is the bijection made visible in the durable record, so a reader
-			// can trace every line back to the record it reports.
-			body = append(body, fmt.Sprintf("- %s (%s)", e.Text, strings.Join(e.Records, ", ")))
+			current = e.Section
+			lines = append(lines, "### "+string(current), "")
 		}
-		if len(body) == 0 {
-			continue
-		}
-		lines = append(lines, "### "+string(section), "")
-		lines = append(lines, body...)
+		// The citation is appended by the core, never trusted from the prose:
+		// it is the bijection made visible in the durable record, so a reader
+		// can trace every line back to the record it reports.
+		lines = append(lines, fmt.Sprintf("- %s (%s)", e.Text, strings.Join(e.Records, ", ")))
+	}
+	if current != "" {
 		lines = append(lines, "")
 	}
 	return lines
+}
+
+// orderedEntries is the order the dated section renders entries in: by
+// section in sectionOrder, the composer's order within a section. The release
+// digest stores its lines in the same order, so each is its CHANGELOG line.
+func orderedEntries(entries []ChangelogEntry) []ChangelogEntry {
+	out := make([]ChangelogEntry, 0, len(entries))
+	for _, section := range sectionOrder {
+		for _, e := range entries {
+			if e.Section == section {
+				out = append(out, e)
+			}
+		}
+	}
+	return out
 }
 
 // insertSection splices the rendered section into CHANGELOG.md directly beneath

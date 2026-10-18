@@ -278,6 +278,9 @@ func (p Pattern) Describe() string {
 	if p.AfterCD != nil && *p.AfterCD {
 		b.WriteString(", after a `cd`, `pushd` or `popd` earlier in the same chain")
 	}
+	if len(p.Env) > 0 {
+		b.WriteString(", with " + orList(quoteAll(p.Env)) + " set in its environment by the line")
+	}
 	return b.String()
 }
 

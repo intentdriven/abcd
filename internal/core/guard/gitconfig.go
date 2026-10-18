@@ -266,6 +266,12 @@ type gitConfigRead struct {
 	aliases   map[string]string
 	unread    bool
 	hooksPath bool
+	// keys is every key set, folded, in the order read; a key a
+	// substitution prints is unknownText.
+	keys []string
+	// flagValues is the value of each key a `-c key=value` word sets, by
+	// its index in keys.
+	flagValues map[int]string
 }
 
 // readGitConfig reads the configuration one git segment sets in its own text.
@@ -331,6 +337,12 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 				switch {
 				case ok:
 					c.add(k, v)
+					if !isUnknown(k) {
+						if c.flagValues == nil {
+							c.flagValues = map[int]string{}
+						}
+						c.flagValues[len(c.keys)-1] = v
+					}
 				case isUnknown(k):
 					// No `=` it spells, but its output may hold one.
 					c.add(k, "")
@@ -358,6 +370,7 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 				// it comes from the ambient environment: visible directive,
 				// unreadable value. For the hooks path the directive is all
 				// that matters — any value moves the hooks.
+				c.keys = append(c.keys, strings.ToLower(strings.TrimSpace(k)))
 				switch key := strings.ToLower(strings.TrimSpace(k)); {
 				case strings.HasPrefix(key, aliasPrefix):
 					c.unread = true
@@ -380,9 +393,11 @@ func (c *gitConfigRead) add(key, value string) {
 	// the hooks path, and an alias the guard cannot read.
 	if isUnknown(key) {
 		c.hooksPath, c.unread = true, true
+		c.keys = append(c.keys, unknownText)
 		return
 	}
 	k := strings.ToLower(strings.TrimSpace(key))
+	c.keys = append(c.keys, k)
 	switch {
 	case strings.HasPrefix(k, aliasPrefix):
 		c.aliases[strings.TrimPrefix(k, aliasPrefix)] = value

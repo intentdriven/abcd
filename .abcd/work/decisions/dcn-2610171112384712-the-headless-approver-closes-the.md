@@ -1,0 +1,6 @@
+---
+id: dcn-2610171112384712
+slug: the-headless-approver-closes-the
+date: 2026-10-17
+---
+2026-10-17 — The headless approver closes the arithmetic routes a review found by reading the text as bash will read it where that is cheap: it joins a backslash-newline before scanning, refuses an alias or alias expansion turned on, a $'…' string that writes a byte by its code, and a builtin whose operands bash may read as arithmetic spelled with a quote or a backslash in its name; it reads a substring offset on any parameter and an array index only in an assignment, an expansion or a name a builtin is handed, so a regular expression's character class is no longer refused. It stops there by decision, not by oversight: on the default branch a launched role is granted the shell with no approver at all, so every route the approver misses is one the run has today; reading a shell line well enough to refuse every hidden command is not finite; and the approver stays a mistake filter (adr-42), with the boundary for launched agents the OS sandbox spec (spc-2610161751056096). Grounds: the default branch grants Bash in the implementer and reviewer roles (internal/core/implement/loop/drive.go). Refines dcn-2610170944153720.

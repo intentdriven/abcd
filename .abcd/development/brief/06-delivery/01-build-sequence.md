@@ -32,10 +32,12 @@ A seam is stood up by the milestone that first consumes it, never on day one:
 "wired or it isn't done" forbids the stub-interface scaffold this milestone was
 first drawn around. The scanner is the one capability seam standing — the native
 secret and PII scan, with an external backend as its config-selected plug-in.
-Three further adapter packages stand outside the capability seams: `openaiapi`,
+Four further adapter packages stand outside the capability seams: `openaiapi`,
 the opt-in OpenAI-compatible provider an agent's oracle role can be pointed at;
 `hosting`, the provider seam `abcd site setup` routes a rendered site through;
-and `tailscale`, the dashboard's view of this computer's own addresses. The
+`repoprompt`, the opt-in reviewer route that sends one review request to the
+RepoPrompt MCP server a person names on their own machine; and `tailscale`, the
+dashboard's view of this computer's own addresses. The
 oracle seam's own package, the history, spec and run seams, and the wiring
 packages beside them, are planned
 rather than present, and the claim is gated rather than trusted: the `index_drift`

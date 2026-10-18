@@ -35,9 +35,13 @@ load, a site that will not render) checked nothing, so its rule raises one
 exits 2 as the target alone does, never `0` over a check that never ran
 (iss-2610100649479892). The outbound target alone stays out of the bare run,
 because its subject is text the caller hands it, not the repository. The verbs
-that WRITE stay where they were, under the docs, site and identity verbs: the
-citation baseline, the site render and the recording of the identity block.
-No check runs under those verbs any more: the docs and site verbs' former check
+that WRITE stay under the docs, site and identity verbs: The citation
+baseline, the doc-fidelity review's receipt and drafted edits, the site render
+and setup, and the recording of the identity block.
+Two judgements stay there too, outside the bare run: The docs verb's
+doc-fidelity gate ([`10-docs.md`](10-docs.md)), and the identity verb's render,
+which prints every drifted surface's correction and writes nothing
+([`19-identity.md`](19-identity.md)). The docs and site verbs' former check
 sub-verbs are unknown commands, and the identity verb, bare, lists its
 sub-verbs.
 

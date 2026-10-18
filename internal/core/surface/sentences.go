@@ -139,9 +139,11 @@ var sentences = map[string]string{
 		"Writes nothing; refuses a lifeboat whose manifest does not verify.",
 
 	"abcd guard": "Judge a shell command against the hazard registry before it runs: " +
-		"Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb.",
+		"Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.",
 	"abcd guard check": "Judge one shell command against the hazard registry: " +
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
+	"abcd guard approve": "Answer a headless agent's permission prompts over MCP: " +
+		"Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
 	"abcd guard hook": "Judge the shell command in a host's pre-tool-use payload: " +
 		"Writes nothing; refuses a hazard or a badly built question with the host's deny.",
 
@@ -410,6 +412,8 @@ var sentences = map[string]string{
 
 	"abcd update": "Swap the PATH-installed binary for a verified release, or with --check only compare: " +
 		"Writes the swapped binary; refuses a binary it cannot prove is abcd's.",
+	"abcd update news": "Say what changed since the update, and offer the setup that waits: " +
+		"Writes only an answer or --seen, to " + abcdhome.Display() + "/; refuses --answer with --full or --seen.",
 }
 
 // SentenceFor returns the sentence the manifest declares for the command at

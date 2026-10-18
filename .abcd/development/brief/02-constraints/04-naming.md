@@ -47,16 +47,21 @@ The exemptions carrying a rationale of their own:
 - `/abcd:reflect`: release-retrospective surface (itd-24). Not
   metaphor-mapped, soft register.
 - `/abcd` (bare, top-level): where-am-i status board (itd-20). The namespace root
-  refuses any positional that is not a record id, so `status` is not a registered
-  command; `abcd help` prints the root help, a different render from the bare
-  board.
+  refuses any positional that is not a record id, and neither `status` nor
+  `help` routes to the board: `abcd status` is a verb of its own, listing
+  everyone's announcements, reservations and releases being cut
+  ([`../04-surfaces/39-status.md`](../04-surfaces/39-status.md)), and
+  `abcd help` prints the root help, a different render from the bare board.
 
 The remaining surfaces are exempt for the plain reason that no maritime cognate
-adds meaning: `banlist`, `build`, `dashboard`, `decide`, `docs`, `drain`,
-`guard`, `history`, `hook`, `ideate`, `identity`, `implement`, `inbox`, `lab`,
-`library`, `lint`, `mode`, `peers`, `reading`, `report`, `rules`, `scribe`,
-`site`, `spec`, `statusline`, and `update`. They are registered here so the
-exemption is on the record.
+adds meaning: `announce`, `banlist`, `build`, `dashboard`, `decide`, `docs`,
+`drain`, `embargo`, `guard`, `history`, `hook`, `ideate`, `identity`,
+`implement`, `inbox`, `lab`, `land`, `library`, `lint`, `memory`, `mode`,
+`peers`, `reading`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`,
+`status`, `statusline`, and `update`. They are registered here so the
+exemption is on the record. `embargo` is meant in its disclosure sense, an
+advisory held private until it is closed or published, not the maritime order
+that once kept ships in port.
 
 **Reserved meta-development commands** (later phases; named now to prevent
 collisions):
@@ -98,8 +103,8 @@ are **forbidden** at design time rather than argued about in review. Lint code
 held by review.
 
 **Conformance is partial, and the gap is the shipped surface's rather than the
-discipline's.** Several parents print usage with no state, two verbs
-(`launch` and `build`) refuse instead of rendering, and `history`
+discipline's.** Several parents print usage with no state, several verbs
+refuse or act instead of rendering, and `history`
 breaks the rule from both ends at once: bare `abcd history` renders nothing
 while `history list` and `history show` exist, which is exactly the shape the
 rule forbids. The one enumeration of where the
@@ -155,7 +160,7 @@ Two things to read the table with:
 
 - **A row is a reserved name, not a delivery claim.** Where the machinery a row describes is a design target rather than shipped behaviour, the row says **(staged)** in its Type column, per the truth rule in [`../00-meta.md`](../00-meta.md#the-truth-rule). Current delivery state lives in the roadmap dashboard, never here.
 - **A row the shipped design has superseded says so.** Some names entered this register from the retired predecessor implementation and describe machinery abcd neither ships nor plans; they stay registered so the name is not re-minted on a different meaning, marked **(predecessor vocabulary; superseded)** with a pointer to what replaced it.
-- **Source ids carry their namespace.** A `spc-N` in the Source column that names the retired predecessor store is written *(predecessor store)*, per the two-namespace rule in [`../../specs/README.md`](../../specs/README.md#two-spc-n-namespaces--always-qualify-above-the-ceiling). The two id spaces overlap below the live ceiling, so an unqualified `spc-2` or `spc-3` resolves in the live store to a spec about something else entirely.
+- **Source ids carry their namespace.** A `spc-N` in the Source column that names the retired predecessor store is written *(predecessor store)*, per the two-namespace rule in [`../../specs/README.md`](../../specs/README.md#two-spc-n-namespaces--always-qualify-a-predecessor-id). The two id spaces overlap below the live ceiling, so an unqualified `spc-2` or `spc-3` resolves in the live store to a spec about something else entirely.
 
 | Term | Type | Source |
 |---|---|---|
@@ -223,8 +228,8 @@ Two things to read the table with:
 | `aliases` | Array of prior names a repo has had (e.g., renamed on GitHub). Recorded in per-root-sha `meta.json`. | spc-15 (predecessor store) + `spc-15-folder-classification-workspacesjson.5` |
 | `supersedes` | Lineage cross-ref in `index.json` repo entry: this entry was re-founded from another root-sha. | spc-15 (predecessor store) + `spc-15-folder-classification-workspacesjson.5` |
 | `superseded_by` | Lineage cross-ref in `index.json` repo entry: this entry was superseded by another root-sha (re-founding produces a new entry). | spc-15 (predecessor store) + `spc-15-folder-classification-workspacesjson.5` |
-| `voyage/` | The **operations** namespace (verb-side: what we did), as against `lifeboat` (noun-side: what gets carried). Lives at the **operator level**, `~/.abcd.noindex/voyage/<source-root-sha>/`, keyed on the root-commit SHA like the history store — never inside the source repo, and therefore never committed. Split by operation: `disembark/history.jsonl`, `embark/provenance.json`, `embark/from/<timestamp>/`. (adr-4 placed it at `.abcd/development/voyage/`; that collided with the `privacy-hygiene` audit rule, since voyage records absolute source paths.) | adr-35 (supersedes adr-4) |
-| `history.jsonl` | The append-only log at `~/.abcd.noindex/voyage/<source-root-sha>/disembark/history.jsonl` — one line per disembark run: `manifest_sha256`, file list, oracle backend used, verdict. Genuinely appended, never rewritten whole. | adr-35 |
+| `voyage/` | The **operations** namespace (verb-side: what we did), as against `lifeboat` (noun-side: what gets carried). Lives at the **operator level**, `~/.abcd.noindex/voyage/<source-root-sha>/`, keyed on the root-commit SHA like the history store — never inside the source repo, and therefore never committed. Split by operation: `disembark/history.jsonl`, which a disembark pack appends to, is the one file written; `embark/provenance.json` and `embark/from/<timestamp>/` are **(staged)** names for an embark subtree nothing writes yet ([`../04-surfaces/03-embark.md` § 7](../04-surfaces/03-embark.md#7-voyage-layout--embarkdisembark-provenance-and-history)). (adr-4 placed it at `.abcd/development/voyage/`; that collided with the `privacy-hygiene` audit rule, since voyage records absolute source paths.) | adr-35 (supersedes adr-4) |
+| `history.jsonl` | The append-only log at `~/.abcd.noindex/voyage/<source-root-sha>/disembark/history.jsonl` — one line per disembark pack: `schema_version`, the event and its time, `manifest_sha256`, the source's name and root commit, the destination, and the file and byte counts. The file list is the lifeboat's own tree, which that hash pins through `_provenance.json`, and no oracle verdict is recorded. Genuinely appended, never rewritten whole. | adr-35 |
 | `_provenance.json` | The lifeboat's own record of how it was produced: `schema_version`, source, tiers present, declared exemptions, and `manifest_sha256`. Written **last** — it is both the commit marker for a completed pack and the key to the destination safety gate (abcd never overwrites a directory it did not produce). Excluded from its own hash. | adr-35 |
 | `manifest_sha256` | SHA-256 over the concatenation of `"<sha256>  <path>\n"` for every manifest entry, sorted lexicographically by path, POSIX separators, LF only, with `_provenance.json` excluded. adr-4 asserted this chain without defining it; adr-35 pins it. | adr-35 |
 | `coverage.json` / `coverage.md` | The lifeboat's **first-class** report of what could *not* be filled: per brief section, the status, the confidence, the evidence cited, what was searched, and the question a human must answer. Schema aggregates across repositories — that aggregate is the experiment's readout. | adr-35, itd-88 |
