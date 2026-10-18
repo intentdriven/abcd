@@ -76,7 +76,47 @@ func (pf planFixture) resolve(issID, fix string) {
 	pf.commit(".abcd/work/issues/resolved/"+issID+"-private-report.md", rec, "resolve a record")
 }
 
-func (pf planFixture) tag(name string) { pf.f.repo.Git("tag", name) }
+// tag makes a published release: the tag in the checkout, pushed to the
+// fixture's origin, and GitHub reporting its release published.
+func (pf planFixture) tag(name string) {
+	pf.localTag(name)
+	pf.push(name)
+	pf.release(name, releaseJSON(name, false, false))
+}
+
+// localTag makes the tag in the checkout alone.
+func (pf planFixture) localTag(name string) { pf.f.repo.Git("tag", name) }
+
+// originPath is the fixture's origin: a bare repository kept inside the
+// checkout's .git, made on first use and named as origin's URL (for a
+// fixture whose origin names GitHub, in place of that URL, which the plan
+// does not read).
+func (pf planFixture) originPath() string {
+	bare := filepath.Join(pf.f.repo.Root(), ".git", "fixture-origin.git")
+	if _, err := os.Stat(bare); err != nil {
+		pf.f.repo.Git("init", "-q", "--bare", bare)
+		pf.f.repo.Git("config", "remote.origin.url", bare)
+	}
+	return bare
+}
+
+// push pushes the tag to the fixture's origin.
+func (pf planFixture) push(name string) {
+	pf.originPath()
+	pf.f.repo.Git("push", "-q", "origin", "refs/tags/"+name)
+}
+
+// releasePath is the API path of the GitHub release of tag.
+func releasePath(tag string) string { return "repos/example/example/releases/tags/" + tag }
+
+// release sets GitHub's answer for the release of tag.
+func (pf planFixture) release(tag, body string) { pf.g.answer("GET", releasePath(tag), "", 0, body) }
+
+// releaseJSON is a release as GitHub reports it.
+func releaseJSON(tag string, draft, prerelease bool) string {
+	b, _ := json.Marshal(map[string]any{"tag_name": tag, "draft": draft, "prerelease": prerelease, "name": "a sample release"})
+	return string(b)
+}
 
 func vulnJSON(name, rng string) map[string]any {
 	v := map[string]any{
@@ -434,8 +474,9 @@ func TestPlanSendsOnlyGets(t *testing.T) {
 		t.Fatalf("plan %+v", p)
 	}
 	noWrites(t, pf.g)
-	if got := len(pf.g.calls()); got != 2 {
-		t.Fatalf("%d calls, want one read per advisory", got)
+	calls := pf.g.calls()
+	if len(calls) != 3 || !calls[0].has(releasePath("v0.9.0")) {
+		t.Fatalf("%d calls, want one read of the release, then one per advisory", len(calls))
 	}
 	if readFile(t, before) != stateBefore {
 		t.Fatal("building the plan changed the store's state")

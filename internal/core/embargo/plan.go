@@ -162,7 +162,14 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 	if st.Repo == "" {
 		return PublicationPlan{}, refuse("the embargo store does not name its repository", "run `abcd embargo intake` once, then run it again")
 	}
-	release, err := pickRelease(s.Checkout, release)
+	if release != "" && !isReleaseTag(release) {
+		return PublicationPlan{}, refuse("--release is not a release tag of the form vMAJOR.MINOR.PATCH", "name the release tag, for example v0.9.0")
+	}
+	rt, err := readLocalReleaseTags(s.Checkout, st.Repo)
+	if err != nil {
+		return PublicationPlan{}, err
+	}
+	release, err = pickRelease(rt, release)
 	if err != nil {
 		return PublicationPlan{}, err
 	}
@@ -192,7 +199,7 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 		if !read {
 			remote.State = ""
 		}
-		e, why, err := planEntry(s, release, resolved, a, remote, unreadWhy[a.GHSAID], othersDenySet(*st, a.GHSAID))
+		e, why, err := planEntry(s, rt, release, resolved, a, remote, unreadWhy[a.GHSAID], othersDenySet(*st, a.GHSAID))
 		if err != nil {
 			return PublicationPlan{}, err
 		}
@@ -213,29 +220,6 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 		p.ApproveWith = "abcd embargo publish --release " + release + " --approve " + p.Digest
 	}
 	return p, nil
-}
-
-// pickRelease is the release tag named, which must be a release tag this
-// repository holds, or the highest one when none is named.
-func pickRelease(checkout, release string) (string, error) {
-	out, err := gitutil.RunCappedBytes(checkout, maxTagListing, "tag", "--list", "v*")
-	if err != nil {
-		return "", refuse("git could not list the release tags", "settle what git reports, then run it again")
-	}
-	tags := sortReleaseTags(strings.Split(string(out), "\n"))
-	if release == "" {
-		if len(tags) == 0 {
-			return "", refuse("this repository has no release tag (vMAJOR.MINOR.PATCH) to publish from", "cut the release that carries the fixes first")
-		}
-		return tags[len(tags)-1], nil
-	}
-	if !isReleaseTag(release) {
-		return "", refuse("--release is not a release tag of the form vMAJOR.MINOR.PATCH", "name the release tag, for example v0.9.0")
-	}
-	if !slices.Contains(tags, release) {
-		return "", refuse("there is no tag "+release+" in this repository", "fetch the tags, or name a release tag this checkout holds")
-	}
-	return release, nil
 }
 
 // resolvedRecords lists the record files in the release's resolved/ folder.
@@ -261,7 +245,7 @@ func resolvedRecords(checkout, release string) ([]string, error) {
 // publication is not one atomic act. One GitHub reports published or closed
 // already (readHeld has recorded it) is left out, saying so. An error is a failure that refuses the whole plan (a git
 // request that fails, a text the scanner cannot judge).
-func planEntry(s Store, release string, resolved []string, a Advisory, remote remoteAdvisory, unreadWhy string, others denySet) (e PlanEntry, why string, err error) {
+func planEntry(s Store, rt *releaseTags, release string, resolved []string, a Advisory, remote remoteAdvisory, unreadWhy string, others denySet) (e PlanEntry, why string, err error) {
 	rec := ""
 	for _, p := range resolved {
 		if isRecordOf(path.Base(p), a.IssueID) {
@@ -281,7 +265,7 @@ func planEntry(s Store, release string, resolved []string, a Advisory, remote re
 	if why != "" {
 		return PlanEntry{}, why, nil
 	}
-	first, why, err := firstReleaseTag(s.Checkout, fix, release)
+	first, why, err := firstReleaseTag(rt, fix, release)
 	if err != nil || why != "" {
 		return PlanEntry{}, why, err
 	}
@@ -554,11 +538,13 @@ func fixCommit(checkout, release, rec string) (string, string) {
 	return sha, ""
 }
 
-// firstReleaseTag is the lowest release tag holding the fix: the version the
-// fix was first released in, which may be older than the release being
-// published. A fix in no release tag, or first released after it, is left out.
-func firstReleaseTag(checkout, fix, release string) (string, string, error) {
-	out, err := gitutil.RunCappedBytes(checkout, maxTagListing, "tag", "--contains", fix, "--list", "v*")
+// firstReleaseTag is the lowest release tag holding the fix that is a
+// published release (releaseTags.published): the version the fix was first
+// released in, which may be older than the release being published. A tag
+// that is not a published release is passed over for the next one. A fix in
+// no release tag, or in no published release up to the release, is left out.
+func firstReleaseTag(rt *releaseTags, fix, release string) (string, string, error) {
+	out, err := gitutil.RunCappedBytes(rt.checkout, maxTagListing, "tag", "--contains", fix, "--list", "v*")
 	if err != nil {
 		return "", "", refuse("git could not list the tags holding a fix commit", "settle what git reports, then run it again")
 	}
@@ -566,13 +552,25 @@ func firstReleaseTag(checkout, fix, release string) (string, string, error) {
 	if len(tags) == 0 {
 		return "", "its fix is in no release tag yet", nil
 	}
-	first := tags[0]
-	fv, _ := launch.ParseSemver(strings.TrimPrefix(first, "v"))
 	rv, _ := launch.ParseSemver(strings.TrimPrefix(release, "v"))
-	if compareCore(fv, rv) > 0 {
-		return "", "its fix is first released in " + first + ", after " + release, nil
+	for i, t := range tags {
+		tv, _ := launch.ParseSemver(strings.TrimPrefix(t, "v"))
+		if compareCore(tv, rv) > 0 {
+			if i == 0 {
+				return "", "its fix is first tagged in " + t + ", after " + release, nil
+			}
+			break
+		}
+		w, err := rt.published(t)
+		if err != nil {
+			return "", "", err
+		}
+		if w.why == "" {
+			return t, "", nil
+		}
 	}
-	return first, "", nil
+	return "", "its fix is in no published release up to " + release + ": a release tag counts once origin holds it at the same object " +
+		"and GitHub reports its release neither a draft nor a prerelease", nil
 }
 
 // textDigest binds an advisory's text as read: SHA-256 over its summary and

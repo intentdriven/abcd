@@ -179,7 +179,7 @@ func TestCanaryFirstThenRest(t *testing.T) {
 		t.Fatalf("Publish: %v", err)
 	}
 	var seq []string
-	for _, c := range px.g.calls()[4:] { // the show's two reads and the approval's rebuild
+	for _, c := range px.g.calls()[6:] { // the show's reads of the release and the two advisories, and the approval's rebuild
 		what := c.method()
 		for _, a := range c.argv {
 			switch {
@@ -478,11 +478,14 @@ func TestRestoreNamedUntilTheRecordIsInTheCheckout(t *testing.T) {
 			t.Fatalf("plan %d after the stop names %+v, want the restore command %q", i+1, p.Restores, want)
 		}
 	}
-	px.f.repo.Git("remote", "add", "origin", "https://github.com/example/example.git")
+	// Intake reads the repository from origin's URL, which names GitHub;
+	// the plans read the release tags from the fixture's origin.
+	px.f.repo.Git("config", "remote.origin.url", "https://github.com/example/example.git")
 	in, err := Intake(IntakeRequest{Home: px.f.home, RepoRoot: px.f.repo.Root(), Now: func() time.Time { return publishedAt }})
 	if err != nil {
 		t.Fatal(err)
 	}
+	px.f.repo.Git("config", "remote.origin.url", px.originPath())
 	if r, ok := restoreOf(in.Restores, ghsaA); !ok || r.RestoreWith != want {
 		t.Fatalf("intake names %+v, want the restore command %q", in.Restores, want)
 	}

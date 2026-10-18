@@ -27,8 +27,8 @@ const surfaceGHSA = "GHSA-xxxx-xxxx-xxxx"
 // repository, under a temp HOME, with a stand-in `gh` on PATH: the triage
 // listing answers surfaceGHSA once the test has created the file named by
 // ghTriage, every other listing an empty page, and every read of one
-// advisory answers surfaceGHSA in triage. The working directory is the
-// checkout.
+// advisory answers surfaceGHSA in triage; a release's read answers it
+// published. The working directory is the checkout.
 func embargoSurfaceRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
@@ -42,7 +42,9 @@ func embargoSurfaceRepo(t *testing.T) *gittest.Repo {
 		`"severity":"high","state":"triage","vulnerabilities":[]}`
 	script := "#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in\n" +
 		"  state=triage) if [ -f '" + filepath.Join(bin, "triage-on") + "' ]; then echo '[" + advisory + "]'; else echo '[]'; fi; exit 0 ;;\n" +
-		"  state=*) echo '[]'; exit 0 ;;\nesac; done\necho '" + advisory + "'\n"
+		"  state=*) echo '[]'; exit 0 ;;\n" +
+		"  */releases/tags/*) printf '{\"tag_name\":\"%s\",\"draft\":false,\"prerelease\":false}\\n' \"${a##*/}\"; exit 0 ;;\n" +
+		"esac; done\necho '" + advisory + "'\n"
 	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +204,13 @@ func TestEmbargoJSONShapes(t *testing.T) {
 		t.Fatalf("close text: exit %d, %s", code, out)
 	}
 
+	// A release counts once origin holds its tag: origin becomes a bare
+	// repository once intake has read the repository from its URL.
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	r.Git("init", "-q", "--bare", bare)
+	r.Git("config", "remote.origin.url", bare)
 	r.Git("tag", "v0.1.0")
+	r.Git("push", "-q", "origin", "refs/tags/v0.1.0")
 	code, out, stderr = runEmbargo(t, "", "embargo", "publish", "--json")
 	if code != 0 {
 		t.Fatalf("publish: exit %d, %s", code, stderr)
