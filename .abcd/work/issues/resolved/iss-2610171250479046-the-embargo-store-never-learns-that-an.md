@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/embargo"
 remedy: "Have intake (and every plan) read each held advisory's current state on GitHub and record published_at or closed_at when GitHub reports it, releasing it from the check, as commands/embargo.md already promises; pin it with a test where the forge reports a held advisory published."
-resolution: "intake and every publication plan read each held advisory's state on GitHub and record the published_at or closed_at GitHub reports, which releases a published advisory from embargo check"
+resolution: "intake and every publication plan read each held advisory's state on GitHub and record the published_at GitHub reports, which releases a published advisory from embargo check; a close is recorded at the closed_at GitHub reports only under a verdict that ends the private track (not-abcds, not-a-vulnerability, public-track), and an advisory GitHub answers with a 404 is left unread"
 impact: fix
 ---
 
