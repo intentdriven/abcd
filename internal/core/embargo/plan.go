@@ -114,6 +114,10 @@ type PublicationPlan struct {
 	// Unread is each held advisory whose state GitHub could not tell, left
 	// as the store holds it (readHeld).
 	Unread []UnreadAdvisory `json:"unread"`
+	// Ended is each held advisory this plan found published or closed on
+	// GitHub and recorded so (readHeld): a plan changes the store's state
+	// only so, and says so. It is not bound into the digest.
+	Ended []ForgeEnd `json:"ended"`
 	// Restores is each restore the store's state owes (restoresOwed): it is
 	// not bound into the digest, since approving a plan approves what it
 	// publishes.
@@ -163,7 +167,7 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 	if err != nil {
 		return PublicationPlan{}, err
 	}
-	p := PublicationPlan{Repo: st.Repo, Release: release, Entries: []PlanEntry{}, LeftOut: []LeftOut{}, Unread: []UnreadAdvisory{}}
+	p := PublicationPlan{Repo: st.Repo, Release: release, Entries: []PlanEntry{}, LeftOut: []LeftOut{}, Unread: []UnreadAdvisory{}, Ended: []ForgeEnd{}}
 	var candidates []Advisory
 	for _, a := range st.Advisories {
 		if a.Verdict != nil && *a.Verdict == VerdictVulnerability && a.PublishedAt == nil && a.ClosedAt == nil {
@@ -175,7 +179,7 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 	if err != nil {
 		return PublicationPlan{}, err
 	}
-	p.Unread = unread
+	p.Unread, p.Ended = unread, ended
 	unreadWhy := map[string]string{}
 	for _, u := range unread {
 		unreadWhy[u.GHSAID] = u.Reason

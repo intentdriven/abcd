@@ -1,6 +1,8 @@
 package embargo
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -377,5 +379,41 @@ func TestMissingForgeTimeLeavesUnread(t *testing.T) {
 				t.Fatalf("result %+v", res)
 			}
 		})
+	}
+}
+
+// TestPlanListsWhatItRecords: a plan that records an end GitHub reports for
+// a held advisory says so in Ended, and the ends are not bound into the
+// digest, which stays the one over the repository, the release and the
+// entries alone.
+func TestPlanListsWhatItRecords(t *testing.T) {
+	pf, _ := heldFixture(t)
+	pf.tag("v0.9.0")
+	heldOnly(t, pf.g, ghsaB, "published", endedAt.Format(time.RFC3339))
+	pf.g.fail("GET", listPath+"/"+ghsaA, "", "HTTP 502: Bad Gateway")
+	p := pf.plan(t, "")
+	if len(p.Ended) != 1 || p.Ended[0].GHSAID != ghsaB || p.Ended[0].State != "published" || !p.Ended[0].At.Equal(endedAt) {
+		t.Fatalf("ended %+v", p.Ended)
+	}
+	data, err := json.Marshal(struct {
+		Repo    string      `json:"repo"`
+		Release string      `json:"release"`
+		Entries []PlanEntry `json:"entries"`
+	}{p.Repo, p.Release, p.Entries})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	if p.Digest != hex.EncodeToString(sum[:]) {
+		t.Fatal("the digest is not the one over the repository, the release and the entries")
+	}
+	bare := p
+	bare.Ended, bare.Unread, bare.Restores, bare.LeftOut = nil, nil, nil, nil
+	if planDigest(bare) != p.Digest {
+		t.Fatal("the ends, or another list outside the entries, are bound into the digest")
+	}
+	again := pf.plan(t, "")
+	if len(again.Ended) != 0 || again.Digest != p.Digest {
+		t.Fatalf("a plan with nothing left to record: ended %+v, digest changed %v", again.Ended, again.Digest != p.Digest)
 	}
 }

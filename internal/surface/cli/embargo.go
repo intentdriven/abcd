@@ -407,7 +407,7 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 				v.VulnerableVersionRange, v.PatchedVersions)
 		}
 	}
-	renderForgeEnds(w, nil, p.Unread)
+	renderForgeEnds(w, p.Ended, p.Unread)
 	for _, l := range p.LeftOut {
 		fmt.Fprintf(w, "  left out %s (%s): %s\n", l.GHSAID, l.IssueID, termsafe.Sanitize(l.Reason))
 	}

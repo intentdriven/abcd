@@ -316,4 +316,10 @@ func TestEmbargoIntakeRendersForgeEnds(t *testing.T) {
 	if got := b.String(); !strings.Contains(got, "  GHSA-rrrr-rrrr-rrrr (iss-2): GitHub could not be read for it; its state in the store is unchanged\n") {
 		t.Fatalf("the plan's text form is %q", got)
 	}
+	b.Reset()
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", Entries: []embargo.PlanEntry{}, LeftOut: []embargo.LeftOut{},
+		Ended: []embargo.ForgeEnd{{GHSAID: surfaceGHSA, IssueID: "iss-1", State: "published"}}}})
+	if got := b.String(); !strings.Contains(got, "  "+surfaceGHSA+" (iss-1) is published on GitHub; published_at is recorded from that, at 0001-01-01T00:00:00Z\n") {
+		t.Fatalf("the plan's text form does not name what it recorded: %q", got)
+	}
 }
