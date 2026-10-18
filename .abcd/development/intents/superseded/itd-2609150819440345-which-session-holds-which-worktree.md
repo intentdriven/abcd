@@ -2,17 +2,22 @@
 id: itd-2609150819440345
 slug: which-session-holds-which-worktree
 spec_id: null
-kind: null
+kind: standalone
 suggested_kind: null
-reclassification_history: []
+reclassification_history:
+  - { date: 2026-10-17, from: standalone, to: superseded, reason: "the shared central view of who holds what, with each session's details kept on its own computer, is now carried by the coordination intent" }
 builds_on: [itd-2609091416295622, itd-2609091034175565]
 severity: minor
 related_issues: [iss-2609100519122086]
 origin: extracted-from-record
 production_mode: hand-written
+kind_at_supersession: standalone
+superseded_by: itd-2610170634394993
 ---
 
 # Which session holds which worktree, branch or record is coordinated entirely by conversation, so every new session repeats a handshake that nothing records. A session joining work in progress has no way to ask what is already claimed: it messages the peers it can see, waits for replies, and rebuilds a picture that the sessions before it had already built and did not write down. One measured encounter cost four messages and about fifteen minutes before any work began, and the picture it produced is not durable, so the session after that pays again. The convention that a diff you did not make is a peer's work depends on knowing who the peers are and what they hold, which is precisely the thing no artefact carries. The repository already records this gap for the narrow case of detecting a peer session before mutating git state; the wider case is claim rather than presence, and the two want the same substrate. Whatever holds it should be as cheap to write as it is to read, because a coordination record nobody updates is worse than the chat it replaced.
+
+> **Superseded by itd-2610170634394993** on 2026-10-17: the shared central view of who holds what, with each session's details kept on its own computer, is now carried by the coordination intent
 
 ## Press Release
 
