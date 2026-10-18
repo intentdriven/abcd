@@ -262,7 +262,12 @@ When the stage hands the lane to a role that `roles.<role>.runner` in
 enabled under `runner.<name>` there), `step` starts it itself, in the lane's
 worktree, with the same brief and receipt path; the claude runner runs in print
 mode with `--bare`, so the repository's hooks, plugins and configured servers do
-not run, and opencode runs with `--pure` and its project configuration, its
+not run, and, when the role's contract grants the shell, with the guard
+answering its permission prompts (`abcd guard approve`, see `commands/guard.md`):
+a shell command the guard reads whole and clears runs, from the working tree
+and under /bin/bash with its profile, rc and environment start-up files
+ignored (-p), and anything else is
+refused with the guard's reason, which the agent is handed. opencode runs with `--pure` and its project configuration, its
 `CLAUDE.md` reading and its external skills switched off, so the repository's
 instruction files, settings, agents, skills and plugins do not reach it. A route
 the repository's `.abcd/config.json` sets to a runner is skipped with a warning
@@ -886,6 +891,20 @@ waiter is passed on to the command, and the waiter waits for it to exit before
 it exits and releases the hold, so the command is never left running without
 its waiter. A symlinked `~/.abcd.noindex` is refused, and so is a home that lies inside a git working tree, unless that home is the account's own home itself, before anything is created under it (exit 1). Relay a timeout as
 printed; do not loop around it.
+
+While it waits, in a checkout, the waiter also keeps your own reservations
+from lapsing, so a record you reserved by hand stays yours while your
+preflight waits its turn: at once and then every five minutes it renews each
+of your live reservations from this copy that is half through its lease, for
+its own term or two hours, whichever is longer, and says each renewal on
+standard error. It never reserves anything new, takes nothing over and revives
+nothing that has lapsed, so a lease shorter than ten minutes can still lapse
+between two rounds; a renewal that fails is said once, and the wait goes on. The renewal runs beside
+the gate, never in it, so the gate's order and its open never wait on one, and
+it stops when the gate opens: a gated command that runs longer than half a
+lease renews nothing itself. Since the renewal runs through git and gh, no
+waiter counts another's git or gh child as its command, so gate make or go,
+never git or gh itself.
 
 ## Wait out a lost connection
 

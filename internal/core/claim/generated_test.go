@@ -381,7 +381,11 @@ func TestOnlyAPlainDeclarationIsShared(t *testing.T) {
 		files map[string]string
 		why   string
 	}{
-		"a byte outside ASCII in the declaration": {map[string]string{".gitattributes": decl + "# r\xc3\xa9sum\xc3\xa9\n"},
+		"a byte outside ASCII in a pattern": {map[string]string{".gitattributes": decl + "r\xc3\xa9sum\xc3\xa9.md -linguist-generated\n"},
+			".gitattributes on origin/main holds a byte outside ASCII"},
+		"a byte outside ASCII in an attribute": {map[string]string{".gitattributes": decl + "b.md text=\xc3\xa9\n"},
+			".gitattributes on origin/main holds a byte outside ASCII"},
+		"a byte-order mark before a comment": {map[string]string{".gitattributes": "\xef\xbb\xbf# generated files\n" + decl},
 			".gitattributes on origin/main holds a byte outside ASCII"},
 		"a quoted pattern": {map[string]string{".gitattributes": decl + "\"b.md\" text\n"},
 			".gitattributes on origin/main quotes a pattern"},
@@ -414,6 +418,19 @@ func TestOnlyAPlainDeclarationIsShared(t *testing.T) {
 			wantGenerated(t, p.dir, map[string]bool{"a.md": false, "README.md": false}, c.why)
 		})
 	}
+}
+
+// TestACommentOutsideASCIIDecidesNothing: a comment line, one whose first
+// non-blank byte is '#', is skipped whole by git, so a byte outside ASCII in
+// it leaves the declaration plain and its files shared (iss-2610172133042562).
+func TestACommentOutsideASCIIDecidesNothing(t *testing.T) {
+	w := newWorld(t)
+	attrs := "# Generated files \xe2\x80\x94 regenerated, never edited by hand\n" +
+		"*.md linguist-generated\n" +
+		"  \t# r\xc3\xa9sum\xc3\xa9.md -linguist-generated\n"
+	w.treeOnMain(map[string]string{".gitattributes": attrs, "a.md": "x\n", "b.go": "x\n"})
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	wantGenerated(t, p.dir, map[string]bool{"a.md": true, "b.go": false}, "")
 }
 
 // TestAFileNamedOutsideASCIIIsNeverGenerated: a file whose path holds a byte

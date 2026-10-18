@@ -81,7 +81,12 @@ the original.
 Until the project's review on the dashboard ships (itd-2610111655362931),
 listing and removing are the review. Listing shows every note in both layers
 with its body, recall words, stamps and reach (this repository, everywhere,
-another repository, or the project's file). Removing takes any personal note
+another repository, or the project's file). It takes no filter and no
+argument, so listing is the plain unfiltered `<verb> list` the naming rule
+forbids
+([`../02-constraints/04-naming.md`](../02-constraints/04-naming.md#bare-invocation-renders-sub-verbs-earn-their-place)),
+a gap in the shipped surface beside a bare invocation that only counts.
+Removing takes any personal note
 out of the machine layer, whoever wrote it, run by a person or by an agent at
 a person's request. A note in the project's file is refused, naming the file:
 it is removed by editing that file in a reviewed change. There is no promote

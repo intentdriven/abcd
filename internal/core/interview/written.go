@@ -37,6 +37,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -311,6 +312,11 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 		max = DefaultMaxTurns
 	}
 	tools := append(slices.Clone(w.Tools), "Write")
+	// An interview has no lane base: a role granted the shell is judged
+	// against the registry at the HEAD the working tree has now, for every
+	// turn. A tree with no commit names none, and the runner refuses such a
+	// shell launch with that reason.
+	base, _ := gitutil.ResolveCommit(w.Repo, "HEAD")
 	asked := 0
 	again := ""
 	for turn := 1; turn <= max; turn++ {
@@ -365,6 +371,7 @@ func (w *Written) Run(ctx context.Context) (WrittenResult, error) {
 			Receipt:   filepath.Join(dir, receiptRel),
 			Dir:       w.Repo,
 			Tools:     tools,
+			Base:      base,
 			SessionID: fmt.Sprintf("%s-%s-turn-%d", w.Name, start.Format(stampLayout), turn),
 			Timeout:   w.Timeout,
 		})

@@ -50,8 +50,8 @@ when it is a person's, and otherwise the account the session's forge token
 belongs to. Nothing touches HEAD, the index or the working tree.
 
 The verb first lists the status branches on origin (`git ls-remote`), then
-fetches each one whose name is a lower-case GitHub username, by its own
-refspec, with origin's default branch in one fetch, and the status branches
+fetches the first 500 whose names are lower-case GitHub usernames, in
+origin's order and with the sender's own among them, each by its own refspec, with origin's default branch in one fetch, and the status branches
 alone in a second when the default branch cannot be read. It never fetches the
 namespace by a glob: a branch whose name differs from another only in case
 (`abcd-status/Octo` beside `abcd-status/octo`) would break such a fetch on a

@@ -1,7 +1,6 @@
 package loop
 
 import (
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -147,16 +146,12 @@ func TestALaneWhoseReservationIsAnothersPushesNothingAndIsHandedBack(t *testing.
 // A network failure also waits on the shared outage probe, as the push's
 // own does.
 func TestOriginUnreadAtThePushFenceIsAWaitNotARefusal(t *testing.T) {
+	// A refused connection without leaving this computer: a test's networked
+	// git may use only local transports (iss-2610170718356567), so an ext::
+	// remote, which the repository allows, prints what git prints for a port
+	// nothing listens on and fails.
 	closed := func(t *testing.T) string {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		addr := ln.Addr().String()
-		if err := ln.Close(); err != nil {
-			t.Fatal(err)
-		}
-		return "http://" + addr + "/origin.git"
+		return "ext::sh -c echo% fatal:% Failed% to% connect% to% 127.0.0.1% port% 1:% Connection% refused% 1>&2;% exit% 128"
 	}
 	for name, tc := range map[string]struct {
 		url     func(t *testing.T, bare string) string
@@ -176,6 +171,9 @@ func TestOriginUnreadAtThePushFenceIsAWaitNotARefusal(t *testing.T) {
 				if _, err := AcceptConfigChange(repo.Root(), f.runID, Options{}); err != nil {
 					t.Fatal(err)
 				}
+			}
+			if tc.network {
+				repo.Git("config", "protocol.ext.allow", "always")
 			}
 			setOrigin(tc.url(t, f.bare))
 			for n := range 4 {

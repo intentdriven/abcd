@@ -140,6 +140,7 @@ var helpPlacements = map[string]helpPlacement{
 	"docs":                {group: groupAgents, page: "commands/docs.md"},
 	"guard":               {group: groupAgents, page: "commands/guard.md"},
 	"guard hook":          {page: "commands/guard.md"},
+	"guard approve":       {page: "commands/guard.md"},
 	"history":             {group: groupAgents, page: "commands/history.md"},
 	"ideate record":       {page: "commands/ideate.md"},
 	"identity":            {group: groupAgents, page: "commands/identity.md"},

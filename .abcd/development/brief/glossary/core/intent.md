@@ -17,14 +17,17 @@ versions: null
 
 An **intent** is the highest-leverage authoring moment in abcd's workflow. Written in a
 press-release style (present tense, customer-voice), it commits to the outcome before any
-technical solution is chosen. The intent is frozen at promotion time and is an immutable input
-artefact — it is never edited after `/abcd:intent plan` is run.
+technical solution is chosen. Planning (`/abcd:intent plan`) is the product thinker's sign-off on
+that outcome, not a freeze of the file, and a planned intent's record still changes: its planning
+interview may edit any part of it, and the intent sub-verbs write a hold, a target release,
+dependency edges, the spec link, its kind and its impact judgement into the frontmatter, stamp
+identities onto its scope conditions and append to its grounds.
 
 ## When to use
 
 Use "intent" when referring to the human-authored document that precedes implementation. Intent
-files live under `.abcd/development/intents/` and carry a slugged identifier (e.g.,
-`itd-27`).
+files live under `.abcd/development/intents/`, carry an `itd-N` identifier and a slug, and are
+named `itd-N-<slug>.md` (e.g., `itd-10-purge-uninstall.md`).
 
 ## When NOT to use
 
@@ -34,8 +37,8 @@ specced *implementation* block, not the human-authored *intention*.
 
 ## Examples
 
-- "The intent for `itd-27` describes the grill sub-verb from the user's perspective."
-- "`/abcd:intent grill itd-27` interrogates that intent before it becomes a spec."
+- "The intent for `itd-10` describes removing abcd from a project entirely, from the user's perspective."
+- "`abcd intent interview itd-10` runs that intent's planning interview before it becomes a spec."
 
 ## Related terms
 

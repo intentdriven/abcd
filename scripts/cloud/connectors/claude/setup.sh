@@ -17,6 +17,22 @@
 #      2.35.2 git refuses a repository another user owns, so without it every
 #      git command run as root in the checkout, the host's own included, would
 #      stop there;
+#   1b. the proxy's CA bundle, readable by `abcd`. A hosted session sends
+#      HTTPS through a proxy and names its CA bundle in SSL_CERT_FILE,
+#      GIT_SSL_CAINFO, CURL_CA_BUNDLE, REQUESTS_CA_BUNDLE or
+#      NODE_EXTRA_CA_CERTS, under root's home, which `abcd` cannot read. For
+#      each of those that names a file `abcd` cannot read, root copies exactly
+#      that bundle to <dir>/<VARIABLE>.pem, root-owned and 0444, in a
+#      root-owned 0755 directory no one else can write (<dir> is
+#      ABCD_CLOUD_CA_DIR, by default /usr/local/share/abcd/cloud-ca): a
+#      temporary file in that directory renamed over the copy, never through a
+#      symlink, and only when the content differs. The variable is pointed at
+#      the copy for every command run here as `abcd` and, through
+#      CLAUDE_ENV_FILE (once), for the session's later shells, root's
+#      included, which is why `abcd` must never be able to write it. A bundle
+#      `abcd` can read is left exactly as it is; verification is never turned
+#      off and nothing else, the system's trust store included, is trusted in
+#      its place;
 #   2. gitleaks at the version .github/workflows/ci.yml pins (GITLEAKS_VERSION,
 #      read from that file as data, so there is one pin), downloaded and
 #      checksum-verified exactly as the CI job does, then installed to
@@ -89,9 +105,12 @@ miss() {
 	failed=1
 }
 
-# as_abcd runs a command as the normal user, environment kept (not a login).
+# as_abcd runs a command as the normal user, environment kept (not a login),
+# with the CA variables step 1b re-pointed at the user's own copies (ca_env,
+# empty until then and when no copy was needed).
+ca_env=()
 as_abcd() {
-	runuser -u "$USER_NAME" -- "$@"
+	env ${ca_env[@]+"${ca_env[@]}"} runuser -u "$USER_NAME" -- "$@"
 }
 
 if [ "$(id -u)" != 0 ]; then
@@ -129,6 +148,109 @@ elif git config --system --add safe.directory "$root"; then
 else
 	miss "git's system configuration could not be given the checkout as a safe.directory, so git run as root in it refuses it."
 fi
+
+# --- 1b. The proxy's CA bundle, readable by the user ----------------------------------
+
+# In a hosted session HTTPS goes through a proxy, and the session names the
+# proxy's CA bundle in the variables below. runuser passes them to abcd
+# unchanged, but the bundle sits under root's home, which abcd cannot read, so
+# every networked command run as abcd (git, gh, abcd, the toolchain download)
+# would fail its certificate check. Where a variable names a file abcd cannot
+# read, root copies exactly that bundle, read-only and root's own, into a
+# directory only root can write (ABCD_CLOUD_CA_DIR, by default
+# /usr/local/share/abcd/cloud-ca); the variable is re-pointed at that copy for
+# the commands run here as abcd and, through CLAUDE_ENV_FILE, for the session's
+# later shells, root's included. So the copy root's own TLS then trusts can never be
+# written by abcd. Verification is never turned off, and nothing else is
+# trusted in its place. A bundle abcd can already read is left exactly as it is.
+CA_VARS="SSL_CERT_FILE GIT_SSL_CAINFO CURL_CA_BUNDLE REQUESTS_CA_BUNDLE NODE_EXTRA_CA_CERTS"
+ca_dir="${ABCD_CLOUD_CA_DIR:-/usr/local/share/abcd/cloud-ca}"
+
+# ca_dir_ready makes the copies' directory, root's own, mode 0755, and proves it
+# is a real directory root owns that no one else can write. The path is
+# absolute, so no argument below can read as an option.
+ca_dir_ready() {
+	case "$ca_dir" in /*) ;; *) return 1 ;; esac
+	mkdir -p "$ca_dir" && [ -d "$ca_dir" ] && [ ! -L "$ca_dir" ] &&
+		chown 0:0 "$ca_dir" && chmod 0755 "$ca_dir" && [ -O "$ca_dir" ] &&
+		[ -z "$(find "$ca_dir" -maxdepth 0 \( -perm -020 -o -perm -002 \) -print)" ]
+}
+
+# ca_copy writes <src> to <dst> as root: a temporary file in the same
+# directory, made 0444 and root's, then renamed over the destination. A
+# destination that is a symlink or a directory is refused, never followed.
+ca_copy() {
+	local src="$1" dst="$2" tmp
+	{ [ ! -L "$dst" ] && [ ! -d "$dst" ]; } || return 1
+	tmp="$(mktemp "$ca_dir/.ca.XXXXXX")" || return 1
+	if cat -- "$src" >"$tmp" && chown 0:0 "$tmp" && chmod 0444 "$tmp" &&
+		{ [ ! -L "$dst" ] && [ ! -d "$dst" ]; } && mv -f -- "$tmp" "$dst"; then
+		return 0
+	fi
+	/bin/rm -f -- "$tmp"
+	return 1
+}
+
+ca_step() {
+	local var src dst copied="" left="" line dir_ok=""
+	for var in $CA_VARS; do
+		src="${!var:-}"
+		[ -n "$src" ] || continue
+		# Not a file root can read either: the user is no worse off than root.
+		if [ ! -f "$src" ] || [ ! -r "$src" ] || as_abcd test -r "$src" 2>/dev/null; then
+			left="$left $var"
+			continue
+		fi
+		dst="$ca_dir/$var.pem"
+		case "$dst" in
+		*"'"* | *$'\n'*)
+			miss "the CA bundle $var names cannot be read by $USER_NAME, and $ca_dir cannot be written as a variable, so no copy was made; networked commands run as $USER_NAME fail their certificate check."
+			return 0
+			;;
+		esac
+		if [ -z "$dir_ok" ]; then
+			if ! ca_dir_ready; then
+				miss "the CA bundle $var names ($src) cannot be read by $USER_NAME, and $ca_dir could not be made a directory only root can write, so no copy was made; networked commands run as $USER_NAME fail their certificate check."
+				return 0
+			fi
+			dir_ok=1
+		fi
+		# Rewritten only when it differs, or is not the plain file it must be.
+		if [ -L "$dst" ] || [ ! -f "$dst" ] || ! cmp -s -- "$src" "$dst"; then
+			if ! ca_copy "$src" "$dst" || ! cmp -s -- "$src" "$dst"; then
+				miss "the CA bundle $var names ($src) cannot be read by $USER_NAME, and a copy could not be made at $dst; networked commands run as $USER_NAME fail their certificate check."
+				return 0
+			fi
+		fi
+		if ! as_abcd test -r "$dst" 2>/dev/null; then
+			miss "the copy of the CA bundle $var names, $dst, cannot be read by $USER_NAME either; networked commands run as $USER_NAME fail their certificate check."
+			return 0
+		fi
+		ca_env+=("$var=$dst")
+		copied="$copied $var"
+		if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+			line="export $var='$dst'"
+			if ! grep -Fxq -- "$line" "$CLAUDE_ENV_FILE" 2>/dev/null; then
+				printf '%s\n' "$line" >>"$CLAUDE_ENV_FILE" || {
+					miss "a read-only copy of the CA bundle $var names is at $dst, but $var could not be written to the file of variables for later shells; point it there in each shell."
+					return 0
+				}
+			fi
+		fi
+	done
+	if [ -n "$copied" ]; then
+		if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+			say "the CA bundle named by${copied} is not readable by $USER_NAME, so a read-only copy of exactly it, root's own, is in $ca_dir, and those variables point there for $USER_NAME's commands and later shells."
+		else
+			say "the CA bundle named by${copied} is not readable by $USER_NAME, so a read-only copy of exactly it, root's own, is in $ca_dir; no file of variables for later shells was given, so point those variables there in each shell."
+		fi
+	elif [ -n "$left" ]; then
+		say "the CA bundle named by${left} is left as it is: $USER_NAME can read it, or root cannot either."
+	else
+		say "no CA bundle is named in the environment, so $USER_NAME's commands use the system's trust, as root's do."
+	fi
+}
+ca_step
 
 # --- 2. gitleaks ----------------------------------------------------------------------
 

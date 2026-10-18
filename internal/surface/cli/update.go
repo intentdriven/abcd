@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -65,7 +66,7 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			"With --check it only asks: it fetches the latest release's tag once, says\n" +
 			"whether this binary is behind and which command takes the update for this\n" +
 			"install's shape, and swaps nothing.",
-		Args: cobra.MaximumNArgs(1),
+		Args: updateArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// --check is the explicit release check (itd-2609212130136102,
 			// which moved it here from `version --check`): one fetch of the
@@ -153,8 +154,29 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip the TTY confirmation of a freshly resolved tag")
 	cmd.Flags().BoolVar(&check, "check", false, "fetch the latest release once and compare it with this binary, swapping nothing (it reaches the network only when invoked; abcd never fetches implicitly — adr-38); names its source and the command that takes the update")
 	cmd.MarkFlagsMutuallyExclusive("check", "yes")
+	cmd.AddCommand(newUpdateNewsCommand(asJSON))
 	return cmd
 }
+
+// updateArgs takes at most one positional, a release tag. With news, update
+// is a parent, so a lowercase word that is not a release tag (every release
+// tag starts with v and a digit) is a mistyped sub-verb: refused as an unknown
+// command, a usage error, before the dispatch and before the updater exists,
+// rather than fetched as a release of that name. The refusal keeps cobra's
+// unknown-command shape, so a stale binary is named (staleusage.go).
+func updateArgs(cmd *cobra.Command, args []string) error {
+	if err := cobra.MaximumNArgs(1)(cmd, args); err != nil {
+		return err
+	}
+	if len(args) == 1 && verbShape.MatchString(args[0]) && !releaseTagStart.MatchString(args[0]) {
+		return fmt.Errorf("unknown command %q for %q: its one positional is a release tag such as v0.7.0, and its one sub-verb is news",
+			args[0], cmd.CommandPath())
+	}
+	return nil
+}
+
+// releaseTagStart is how every release tag begins.
+var releaseTagStart = regexp.MustCompile(`^v[0-9]`)
 
 // isTTY reports whether f is a terminal — the progress/confirmation gate.
 // Piped and hooked invocations are silent except for the receipt. It delegates

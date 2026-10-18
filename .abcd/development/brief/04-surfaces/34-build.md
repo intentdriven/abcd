@@ -490,7 +490,26 @@ hands the host the await as the host-driven step does, naming the fallback. A
 role left unset is the host's, and the call is the host-driven step byte for
 byte. A step that re-tells an await starts nothing. The claude runner runs in
 print mode with the bare flag, so the repository's hooks, plugins and
-configured servers do not run; opencode runs in run mode with `--pure`. An
+configured servers do not run; opencode runs in run mode with `--pure`. A
+claude launch whose role's contract grants the shell carries the guard
+(iss-2610161612203555, dcn-2610161624025493): the launch names the harness's
+permission prompt tool, served by the guard's approve sub-verb as the one MCP server it
+starts (`--mcp-config` inline, `--strict-mcp-config`), under the default
+permission mode, and the shell is no longer granted without a prompt, so every
+shell command the harness would ask a person about is put to the guard, which
+approves a command it reads whole and clears, which then runs from the working
+tree under /bin/bash with its profile, rc and environment start-up files
+ignored (-p), and refuses everything else, and every other tool's prompt,
+with its reason
+([`17-guard.md`](17-guard.md#answering-a-headless-agents-prompts)). It is
+set per launch on the command line: the person's host settings are not
+touched, a session the person drives is unchanged, and it adds no sandbox;
+sandboxing autonomous runs is a separate later step (dcn-2610161619296615).
+Bare mode skips every hook, a `--settings` file's included, which is why the
+guard reaches the launch as a prompt tool rather than a hook. A launch whose
+contract grants no shell refuses every prompt unasked, as before, and opencode
+has no per-launch prompt answerer, so it keeps the permissions its own
+configuration sets. An
 interrupt or a termination kills the runner's process group. The status and
 record verbs count the fallbacks per runner and per role. A host session
 always drives this: the no-host path, where a host-routed role goes to the
