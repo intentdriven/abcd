@@ -440,9 +440,11 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 	log := traced(t)
 	start := time.Now()
 	got := pat.notes()
-	// The origin would hang for 30 s; the block reads disk alone, inside the
-	// hook's second.
-	if took := time.Since(start); took > time.Second {
+	// The origin would hang for 30 s; the block reads disk alone, well inside
+	// it. The bound is slack's (wallClockSlack), not the hook's second: a
+	// network wait is also caught by the announcement the read must still
+	// show, and by the trace below.
+	if took := time.Since(start); took > slack(time.Second) {
 		t.Fatalf("the block took %s; want it never to wait on the network", took)
 	}
 	if !strings.Contains(got, "merging #1012") {
