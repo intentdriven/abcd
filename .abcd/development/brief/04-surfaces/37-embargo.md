@@ -71,12 +71,21 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   resolved or released, one with no package, and one whose text would disclose
   a secret, a private name or another advisory under embargo; with the approval
   of that plan's digest it publishes one advisory as a canary, reads it back,
-  publishes the rest, and confirms none is left in draft.
+  publishes the rest, and confirms none is left in draft. The fix commit comes
+  from the advisory's record resolved in the release, or, since the security
+  rule keeps that record out of every committed tree until the advisory is
+  published, from its private record resolved in the store's own ledger. The
+  store is a trust boundary: the plan takes a commit from it only when it is
+  the full object name of a commit of this repository, as git resolves it, and
+  leaves the advisory out otherwise. For an advisory published on that
+  evidence it prints the command that copies the private record, resolved,
+  into the public ledger.
 
 ## What stays the person's
 
-Every verdict, every approval, fixing and landing the fixes, requesting a CVE,
-and restoring redacted records after publication. The command page,
+Every verdict, every approval, fixing and landing the fixes, resolving each
+private record in the store with its fix, requesting a CVE, and restoring each
+record into the public ledger after publication. The command page,
 [`commands/embargo.md`](../../../../commands/embargo.md), says so to the host
 and to the person.
 

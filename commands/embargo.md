@@ -166,12 +166,34 @@ and sends nothing but reads. For each advisory judged a vulnerability (the
 release defaults to the highest `vMAJOR.MINOR.PATCH` tag): its record resolved
 in the release, its fix commit, the first release tag holding the fix, the
 patched version that gives, and the affected range in GitHub's form.
+
+The security rule keeps a security record out of every committed tree until
+its advisory is published, so the release usually carries no public record of
+it. Then the fix itself is the evidence: the private record resolved in the
+store's own ledger, naming its fix commit. Resolve it there once the fix has
+landed, from the store's folder, naming the commit by its full id:
+
+```bash
+cd ~/.abcd.noindex/worktrees/<root-sha>/embargo
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture resolve <iss-N> "<what fixed it>" --impact fix --commit <full commit id>
+chmod 600 .abcd/work/issues/resolved/<iss-N>-*.md
+```
+
+The resolve writes the record afresh, open to other accounts, and every
+sub-verb refuses the store until the `chmod` closes it again. The plan takes
+that commit only when it is a full object name of this repository's hash that
+git resolves to exactly itself as a commit, so an abbreviation, a tag's name or
+anything shaped like an option is left out with the reason; the first release
+tag holding the commit gives the patched version, as for a public record. Such
+an entry carries `store_evidence: true`. A record resolved in the release is
+always taken first, whatever the store holds.
+
 `left_out` names each advisory the plan does not publish and why: its record
-is not resolved in the release, its fix is in no release tag, its package is
-not set on GitHub, or its text carries a secret, a private name, or another
-advisory still under embargo (a closed one's title included: it stays private
-on GitHub). Show the user the whole plan, then
-`approve_with`.
+is resolved neither in the release nor in the store with a fix commit the plan
+accepts, its fix is in no release tag, its package is not set on GitHub, or its
+text carries a secret, a private name, or another advisory still under embargo
+(a closed one's title included: it stays private on GitHub). Show the user the
+whole plan, then `approve_with`.
 
 **Approval, one per act.** Pass `--approve <digest>` only after the person, in
 this session, has read that plan and said yes to it, and never on your own. A
@@ -183,13 +205,22 @@ what is still unpublished. An advisory GitHub already reports published or
 closed is left out of a plan, and its `published_at` or `closed_at` recorded
 from that, so a publication whose record failed is completed by the next run.
 
+Each advisory published from store evidence carries `restore_with`, the
+command, run from the checkout's root, that copies its private record,
+resolved, from the store into the public ledger's `resolved/` folder now its
+advisory is public. abcd has no verb that restores a record; show the user the
+command, and the person runs it and lands the record in a change of its own.
+
 ## What stays the person's act
 
 In this release `embargo` does not fix, land or announce anything. These stay
 with the person:
 
-- fixing each vulnerability, and landing the fixes (with their records) so
-  they are in the release that publishes the advisories;
+- fixing each vulnerability, landing the fixes so they are in the release
+  that publishes the advisories, and resolving each private record in the
+  store with its fix commit;
+- restoring each record into the public ledger once its advisory is
+  published, with the command publish prints;
 - requesting a CVE for an advisory, on GitHub;
 - putting back any record details they redacted to land a fix, once the
   advisory is published;
