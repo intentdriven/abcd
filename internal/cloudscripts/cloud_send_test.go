@@ -17,7 +17,7 @@ import (
 const (
 	sendScript      = "scripts/cloud/send.sh"
 	environmentFile = ".abcd/.work.local/cloud/environment"
-	fixtureEnv      = "env_fixture123"
+	fixtureEnv      = "ccpool_fixture123"
 	fixtureSession  = "session_01FixtureAbCdEf2345"
 	fixtureLink     = "https://example.invalid/code/" + fixtureSession
 )
@@ -215,6 +215,27 @@ func TestSendExpiredLoginSaysRenewByHand(t *testing.T) {
 	}
 	if n := strings.Count(c.callLog(), "host-call"); n != 1 {
 		t.Errorf("send tried the host %d times; an expired login stops the run at once", n)
+	}
+}
+
+// TestSendRefusesAnAnthropicHostedEnvironment pins iss-2610222040438242: the
+// host names an environment at the start only for a self-hosted one (a
+// ccpool_ id) and rejects an Anthropic-hosted env_ id, so the connector refuses
+// such an id itself, before it asks the host anything, and says why.
+func TestSendRefusesAnAnthropicHostedEnvironment(t *testing.T) {
+	c := newSendCase(t)
+	c.write(environmentFile, "env_01hostedexample\n", 0o644)
+	out, code := c.script(nil, sendScript, fixtureIssue)
+	if code != 1 {
+		t.Fatalf("send to an Anthropic-hosted environment exited %d, want 1\n%s", code, out)
+	}
+	if calls := c.hostArgv(); len(calls) != 0 {
+		t.Fatalf("the host was asked %d times for an id it rejects; want none: %q", len(calls), calls)
+	}
+	for _, want := range []string{"self-hosted", "ccpool_", "env_01hostedexample", "iss-2610222106115276", "Nothing was started"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the refusal does not say %q\n%s", want, out)
+		}
 	}
 }
 
