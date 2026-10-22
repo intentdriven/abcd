@@ -70,10 +70,12 @@ import (
 // pid, so it may be waiting on this waiter while this one waits on it, and
 // nothing in the table tells it from one that is not. So a wait stops
 // counting crossed waiters once they alone have held its gate shut for
-// WaitCrossedCap on end, and opens past them; anything else that shuts the
-// gate in between, a crossed waiter running its command among them, starts
-// the count again. No back-off breaks that cycle: WaitBackoffCap bounds only
-// the open look, which a queued wait never reaches.
+// WaitCrossedCap on end, a step more for each crossed waiter ahead beyond the
+// first (crossedCapFor), and opens past them; anything else that shuts the
+// gate in between, a crossed waiter running its command among them, and a
+// stand-back at the open look, start the count again. No back-off breaks that
+// cycle: WaitBackoffCap bounds only the open look, which a queued wait never
+// reaches.
 //
 // Across accounts no hold keeps two waiters apart: re-checks that fall in one
 // moment, before either shows in the table as running its command, both open.
@@ -195,6 +197,25 @@ const WaitBackoffCap = 3
 // open look, which the cap outlasts. One held shut longer by its own account's
 // stricter wait limit is passed, as v0.15.1 passes every crossed waiter.
 var WaitCrossedCap = 5 * time.Minute
+
+// crossedCapFor is the cap for a wait with n crossed waiters queued ahead of
+// it: WaitCrossedCap, and one stagger step more for each beyond the first.
+// Each waiter judges the cap from its own looks, so with one cap for all, two
+// waiters of this code queued behind the same pid-ordered waiter, the later of
+// them crossed for the earlier too (after a wrap the later start can hold the
+// lower pid), would stop counting crossed waiters in the same few seconds, and
+// the later, re-checking first, would overtake the earlier. The later start
+// counts every crossed waiter the earlier counts and the earlier one as well,
+// so its n is greater, and its cap ends a step after the earlier's. A step
+// outlasts what the earlier's open can take as the later sees it: its first
+// look past its cap up to a poll after the cap, its jitter, its open look, and
+// a further poll for the two waiters' runs of looks starting up to a poll
+// apart; the later's own re-check waits at least WaitJitterMin more. By then
+// the earlier shows running, which ends the later's run of looks.
+func crossedCapFor(n int) time.Duration {
+	step := 2*WaitPollInterval + WaitJitterMax + WaitOpenPause
+	return WaitCrossedCap + time.Duration(max(n-1, 0))*step
+}
 
 // waitJitter is a random wait from WaitJitterMin to WaitJitterMax.
 func waitJitter() time.Duration {
@@ -458,13 +479,16 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	deadline := start.Add(req.Timeout)
 	announced, settled := false, false
 	// crossedSince is the first look of the run of looks at which crossed
-	// waiters alone held the gate shut, zero outside one; past WaitCrossedCap
-	// the looks stop counting them.
+	// waiters alone held the gate shut, zero outside one, and crossedN how
+	// many were queued ahead at the last of them; past their cap
+	// (crossedCapFor) the looks stop counting them.
 	var crossedSince time.Time
-	pastCap := func() bool { return !crossedSince.IsZero() && now().Sub(crossedSince) >= WaitCrossedCap }
-	noteCrossed := func(only bool) {
+	crossedN := 0
+	pastCap := func() bool { return !crossedSince.IsZero() && now().Sub(crossedSince) >= crossedCapFor(crossedN) }
+	noteCrossed := func(n int) {
+		crossedN = n
 		switch {
-		case !only:
+		case n == 0:
 			crossedSince = time.Time{}
 		case crossedSince.IsZero():
 			crossedSince = now()
@@ -509,6 +533,12 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 				}
 				res.Status, res.Hold, res.Waiters = "", nil, first
 				res.Backoffs++
+				// The run of looks ends here. A waiter that opened beside this
+				// one past its cap is one this wait had stopped counting, ahead
+				// of it, or one that opened as this one did; counting the cap
+				// afresh hands the next moment to the waiter ahead, where
+				// keeping the count would re-open this one past it at once.
+				noteCrossed(0)
 				if !slices.Contains(res.WaitedOn, WaitOnWaiter) {
 					res.WaitedOn = append(res.WaitedOn, WaitOnWaiter)
 				}
@@ -608,14 +638,15 @@ func sleepMark() (func(), error) {
 // hold; one without it that finds nothing shut reports no condition and not
 // done, and the caller re-checks after the jitter. With uncrossed set it does
 // not count crossed waiters (machineload.Ahead.Crossed, WaitCrossedCap).
-// crossedOnly reports that crossed waiters were queued ahead and nothing else
-// held the gate shut, whether or not they were counted.
-func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time, take, uncrossed bool) (shut []string, done, crossedOnly bool, err error) {
+// crossedOnly is how many crossed waiters were queued ahead when they alone
+// held the gate shut, whether or not they were counted, and zero otherwise:
+// then every waiter queued ahead is crossed.
+func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time, take, uncrossed bool) (shut []string, done bool, crossedOnly int, err error) {
 	snap, readErr := req.Read()
 	if errors.Is(readErr, machineload.ErrUnsupported) {
 		res.Status = WaitUnchecked
 		res.Reason = "abcd reads load and processes on macOS and Linux only, and this is " + termsafe.Sanitize(runtime.GOOS) + "; opening without judging"
-		return nil, true, false, nil
+		return nil, true, 0, nil
 	}
 	t := now()
 	res.Holder, res.RaceRuns, res.Reason = nil, []int{}, ""
@@ -773,12 +804,14 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	case errors.Is(err, fsutil.ErrLockContention):
 		shut = append(shut, WaitOnLock)
 	case errors.Is(err, fsutil.ErrLockPathUnsafe):
-		return nil, false, false, fmt.Errorf("the hold's lock %s is not a regular file (a symlink, or something else), so it is refused; remove it, and the next wait creates it afresh",
+		return nil, false, 0, fmt.Errorf("the hold's lock %s is not a regular file (a symlink, or something else), so it is refused; remove it, and the next wait creates it afresh",
 			abcdhome.Display(waitLockFileName))
 	case err != nil:
-		return nil, false, false, fmt.Errorf("the hold could not be judged or written: %w", err)
+		return nil, false, 0, fmt.Errorf("the hold could not be judged or written: %w", err)
 	}
-	crossedOnly = len(crossed) > 0 && (len(shut) == 0 || (crossedShut && slices.Equal(shut, []string{WaitOnWaiter})))
+	if len(crossed) > 0 && (len(shut) == 0 || (crossedShut && slices.Equal(shut, []string{WaitOnWaiter}))) {
+		crossedOnly = len(crossed)
+	}
 	if len(shut) > 0 || !take {
 		return shut, false, crossedOnly, nil
 	}

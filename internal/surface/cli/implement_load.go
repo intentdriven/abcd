@@ -95,8 +95,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"under and whatever its own account's wait limit is, with one exception: a\n" +
 			"waiter ahead with a higher pid, as after the process ids wrap, may run an abcd\n" +
 			"built before this order, which waits on every lower pid and so on yours, so once\n" +
-			"such waiters alone have kept yours shut for " + implement.WaitCrossedCap.String() + " on end, yours stops\n" +
-			"counting them. A preflight whose own\n" +
+			"such waiters alone have kept yours shut for " + implement.WaitCrossedCap.String() + " on end, and a step more\n" +
+			"for each such waiter ahead beyond the first, yours stops counting them. A\n" +
+			"preflight whose own\n" +
 			"waiter is queued\n" +
 			"takes that waiter's place in the queue, and a waiter beneath a waiter running its\n" +
 			"command (`--wait -- make preflight`) takes that ancestor's place, ahead of every\n" +
@@ -139,8 +140,10 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"race stages apart among the preflights whose checkouts have the race gate: one\n" +
 			"at a time within an account, and across accounts all but a narrow window (a\n" +
 			"race waiter gone before its race run shows, or, after a pid wrap, two waiters\n" +
-			"one of which runs v0.15.1, which counts a waiter ahead only with the lower pid\n" +
-			"as well). An account at one opens its race gate at once\n" +
+			"whose start and pid disagree: one running v0.15.1, which counts a waiter ahead\n" +
+			"only with the lower pid as well, or two of the start order whose whole-second\n" +
+			"ages read a tie differently or the later of which stopped counting the earlier\n" +
+			"past its " + implement.WaitCrossedCap.String() + " cap). An account at one opens its race gate at once\n" +
 			"whatever another account set, and a checkout older than the gate runs its race\n" +
 			"stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's\n" +
 			"waiter never queues\n" +

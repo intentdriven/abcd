@@ -586,14 +586,24 @@ func JustOpened(snap Snapshot, self Self, args map[int][]string, window time.Dur
 //
 // The earlier start stands back from a lower pid that opened beside it too.
 // That opener started later, so a waiter of this code would have stood back
-// from it; an older abcd does not (v0.15.1 stands back only from a lower
-// pid, and v0.15.0 takes no such look), and goes on. Were this one to go on as well, both would run their commands, and
-// under `--wait -- make preflight` each preflight's own gate would wait on the
-// other's waiter until its timeout. Two waiters of this code seldom open in
-// one moment, since the later start waits on the earlier in the queue, and
-// where they do (past implement.WaitCrossedCap, or a tie read either side of the
-// tolerance) both stand back and re-draw their jitters, at most
-// implement.WaitBackoffCap times each.
+// from it; an older abcd does not (v0.15.1 stands back only from a lower pid,
+// and v0.15.0 takes no such look), and goes on. Were this one to go on as
+// well, both would run their commands, and under `--wait -- make preflight`
+// each preflight's own gate would wait on the other's waiter until its
+// timeout.
+//
+// So whenever the pair is crossed (the earlier start has the higher pid), the
+// later start stands back, and so does the earlier start if it runs this code
+// or v0.15.1, which stands back from the lower pid: both stand back and
+// re-draw their jitters, at most implement.WaitBackoffCap times each. Only a
+// later start of v0.15.1 or v0.15.0 goes on past a crossed pair, and then this
+// code's earlier start standing back is what keeps the two from running at
+// once. A pair that is not crossed agrees: exactly one goes on, unless the
+// other runs v0.15.0. Two waiters of this code meet here seldom, since the
+// later start waits on the earlier in the queue: only after a wrap, for a
+// crossed pair, where a tie at the tolerance's edge reads differently to each
+// (macOS reads ages in whole seconds) or the later has stopped counting the
+// earlier past its cap (implement.WaitCrossedCap).
 func StandBackFrom(snap Snapshot, self Self, opened []int) []int {
 	byPID := make(map[int]Proc, len(snap.Procs))
 	for _, p := range snap.Procs {

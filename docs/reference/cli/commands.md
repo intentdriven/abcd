@@ -2288,8 +2288,9 @@ yours until it opens or reaches its own --timeout, whatever account it runs
 under and whatever its own account's wait limit is, with one exception: a
 waiter ahead with a higher pid, as after the process ids wrap, may run an abcd
 built before this order, which waits on every lower pid and so on yours, so once
-such waiters alone have kept yours shut for 5m0s on end, yours stops
-counting them. A preflight whose own
+such waiters alone have kept yours shut for 5m0s on end, and a step more
+for each such waiter ahead beyond the first, yours stops counting them. A
+preflight whose own
 waiter is queued
 takes that waiter's place in the queue, and a waiter beneath a waiter running its
 command (`--wait -- make preflight`) takes that ancestor's place, ahead of every
@@ -2333,8 +2334,10 @@ own hold is in force (each gate is shut only by its own gate's hold). That keeps
 race stages apart among the preflights whose checkouts have the race gate: one
 at a time within an account, and across accounts all but a narrow window (a
 race waiter gone before its race run shows, or, after a pid wrap, two waiters
-one of which runs v0.15.1, which counts a waiter ahead only with the lower pid
-as well). An account at one opens its race gate at once
+whose start and pid disagree: one running v0.15.1, which counts a waiter ahead
+only with the lower pid as well, or two of the start order whose whole-second
+ages read a tie differently or the later of which stopped counting the earlier
+past its 5m0s cap). An account at one opens its race gate at once
 whatever another account set, and a checkout older than the gate runs its race
 stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's
 waiter never queues

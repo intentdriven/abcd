@@ -284,8 +284,11 @@ waits on it, and nothing in the table tells it apart. Every cycle of waits
 passes through a crossed wait, since every other wait from any abcd points at a
 lower pid, so a wait stops counting crossed waiters once they alone have kept
 it shut for five minutes on end (`WaitCrossedCap`), longer than a waiter that
-orders by start shows queued while the machine is free to another account; no
-back-off breaks that cycle, since the back-off cap bounds only the last look.
+orders by start shows queued while the machine is free to another account,
+plus a step for each crossed waiter ahead beyond the first, so the earlier of
+two waiters behind the same one opens before the later stops counting it; no
+back-off breaks that cycle, since the back-off cap bounds only the last look,
+and a stand-back starts the count again.
 A waiter running its command holds every later gate for the command's length, by design. A look that finds the machine clear does not open the
 gate: the waiter waits a random 15 to 60 seconds and checks everything again,
 and opens only if that re-check is clear too (iss-2610102020442624). Within one
@@ -319,9 +322,12 @@ lower pid) or running its command, the load limit and
 the race gate's own hold, so race stages are kept apart among the preflights
 whose checkouts have the race gate, one at a time within an account and across
 accounts all but a narrow window: a race waiter exits as it opens, before its
-preflight's race run shows in the table, and after a pid wrap a race waiter of
-v0.15.1, which counts a waiter ahead only with the lower pid as well, and an
-earlier one of this order with a higher pid can wait on neither. A preflight run from a checkout
+preflight's race run shows in the table, and after a pid wrap two race waiters
+whose start and pid disagree can both open: one of v0.15.1 and an earlier one
+of the start order with a higher pid wait on neither, and two of the start
+order disagree for a look where whole-second ages put their starts at the tie
+tolerance's edge, or once the later has stopped counting the earlier past its
+cap. A preflight run from a checkout
 older than the gate runs its race stage ungated, so two at once is safe only
 once no such checkout runs one. The setting is each account's own: an account
 at one opens its race gate at once, so its race stage can start beside an

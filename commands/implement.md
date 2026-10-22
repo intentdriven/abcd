@@ -759,8 +759,11 @@ machine's process ids wrap: it may run an abcd built before the start order
 each would wait on the other until its timeout. So once such waiters alone
 have kept yours shut for five minutes on end, longer than a waiter that orders
 by start ever shows queued while the machine is free to you, yours stops
-counting them; anything else that shuts the gate in between starts the five
-minutes again. A preflight whose own waiter is queued takes that waiter's place in the
+counting them; anything else that shuts the gate in between, or standing back
+at the last look, starts the count again. The five minutes grow by about a
+minute and a half for each such waiter ahead beyond the first, so of two
+waiters behind the same one the earlier stops counting it first and opens
+before the later stops counting the earlier. A preflight whose own waiter is queued takes that waiter's place in the
 queue, and a waiter beneath a waiter running its command (the preflight's own
 gate under `--wait -- make preflight`) takes that ancestor's place, ahead of
 every queued waiter, since the ancestor has already won its turn. Once all of it is clear the waiter waits a random 15 to 60 seconds and
@@ -852,11 +855,15 @@ What 2 does not close, across accounts, which share no hold:
 - **A race stage starting.** A race waiter exits as it opens, and its
   preflight's `go test -race` shows in the process table a few seconds later,
   once `cmd/test-parallelism` has run; a race waiter of another account that
-  re-checks in that moment opens too. After the process ids wrap, a race
-  waiter of v0.15.1, which counts a waiter ahead only with the lower pid as
-  well, and an earlier one of this order with a higher pid can wait on
-  neither, and the plain form takes no last look, so their re-checks can both
-  open.
+  re-checks in that moment opens too. After the process ids wrap, two race
+  waiters whose start and pid disagree can both open, since the plain form
+  takes no last look: a waiter of v0.15.1, which counts a waiter ahead only
+  with the lower pid as well, and an earlier one of the start order with a
+  higher pid wait on neither; and two of the start order can disagree for a
+  look where whole-second ages put their starts at the tie tolerance's edge,
+  or once the later has stopped counting the earlier past its five-minute cap
+  on crossed waiters (the cap grows by a step for each crossed waiter more
+  ahead, so the earlier normally opens first).
 - **Three in their test stages.** The plain form of the first gate, which
   `make preflight` runs, takes no last look either, so two accounts' openers
   whose re-checks fall in one moment can both open beside a preflight already

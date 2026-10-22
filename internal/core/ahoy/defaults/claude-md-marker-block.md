@@ -80,7 +80,10 @@ the person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one
 by default and two at most, never set by a repository), and race stages kept
 apart among checkouts that have the race gate: one at a time within an account,
 and across accounts all but a narrow window (a race waiter gone before its race
-run shows, or, after a pid wrap, two waiters one of which runs abcd v0.15.1).
+run shows, or, after a pid wrap, two waiters whose start and pid disagree: one
+running abcd v0.15.1, or two of the start order whose whole-second ages read a
+tie differently or the later of which stopped counting the earlier past its
+five-minute cap).
 `SHELL` is the teaching half of the shell-hazard guard: it is generated from the
 same hazard registry `abcd guard` enforces in the repository, one rule per entry
 (the command, why it is dangerous, and what to run instead; a rule from the
