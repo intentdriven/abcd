@@ -2495,6 +2495,19 @@ After filing, two adversarial reviews (design and record discipline, each an Opu
 
 The SOTA survey was filed as research/notes/2026-10-16-model-matrix-sota.md, and itd-166 was widened to the asked and served sides it was routed. The routing survived as a five-record split; its plumbing row was the part the initial routing got wrong.
 
+## 2026-10-22: abcd drain from a plain terminal (facilitator-on-delegation, routing not yet put to the product thinker)
+
+| part | type | home |
+|---|---|---|
+| abcd drain in a plain terminal drives itself: repeats its moves, steps each lane, starts every role through the runner, stops at its cap, an empty ledger or Ctrl-C | capability | intent itd-2610222215485265, promoted from iss-2610222000271964, refining the shipped itd-2610161016401115 |
+| the agents it starts are fenced by the operating system | trust rule | cited: itd-2610161621364075 part A covers every runner launch |
+| a routed judge's answer steers an unattended lane, so it runs alone in its own directory | trust rule | cited: the shipped judge's directory and grant rules |
+| starting agents spends the person's model budget, so none starts without their yes | stance | cited: the consent rules already in force |
+| where an unattended terminal drain may run, given the product thinker's C1 answer | cited | the coordination intent's open choice 1; not decided here |
+| the loop, its log, its lock and its signals | plumbing | the brief's drain chapter, at planning |
+
+Verdict: FILE-AS-IS, proposed. Typed links: `refines` itd-2610161016401115, whose press release promised a plain-terminal drain and whose delivery stopped at one move per call. Advisory reversal flags: none.
+
 ## 2026-10-22: the checklist and coordination routings, confirmed by the product thinker's answers
 
 The 2026-10-18 checklist routing (below) was graded unconfirmed until the
