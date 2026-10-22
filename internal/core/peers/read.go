@@ -79,6 +79,40 @@ type worktree struct {
 	bare   bool
 }
 
+// SeenWorktree is one linked worktree a scan saw: its path as git reports
+// it, its short branch ("" when detached), and how the scan judged it.
+type SeenWorktree struct {
+	Path   string `json:"path"`
+	Branch string `json:"branch,omitempty"`
+	// Spent is the scan's merged judgement: its branch (or detached HEAD) is
+	// merged into the default branch by ancestry and its record folders are
+	// clean (SkipMerged).
+	Spent bool `json:"spent,omitempty"`
+	// Gone is a worktree git lists whose directory is not there (SkipGone).
+	Gone bool `json:"gone,omitempty"`
+}
+
+// Worktrees lists every linked worktree the scan saw, sorted by path: each
+// worktree peer, read or not, and each worktree skipped as merged or gone.
+// The main checkout is not one, and neither is the embargo store, which is
+// skipped unnamed. It reads nothing; a caller counting worktrees (the board's
+// store line) takes them from the scan it already ran.
+func (r Report) Worktrees() []SeenWorktree {
+	out := []SeenWorktree{}
+	for _, p := range r.Peers {
+		if p.Source == SourceWorktree {
+			out = append(out, SeenWorktree{Path: p.Path, Branch: p.Branch})
+		}
+	}
+	for _, s := range r.Skipped {
+		if s.Source == SourceWorktree && s.Path != "" {
+			out = append(out, SeenWorktree{Path: s.Path, Branch: s.Branch, Spent: s.Reason == SkipMerged, Gone: s.Reason == SkipGone})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
+}
+
 // Read returns the peer picture for the checkout at root, which is a checkout
 // root (gitutil.CheckoutRoot's answer), not an arbitrary directory under it.
 //
@@ -94,7 +128,7 @@ func Scan(root string) (Report, error) { return read(root, false) }
 
 func read(root string, titles bool) (Report, error) {
 	rep := Report{Sources: append([]Source(nil), Sources...), Peers: []Peer{}, Skipped: []Skipped{}, root: root}
-	common, err := commonDir(root)
+	common, err := gitutil.CommonDir(root)
 	if err != nil {
 		return rep, fmt.Errorf("peers: git could not name this checkout's common dir: %w", err)
 	}
@@ -192,7 +226,7 @@ func readWorktree(root, common string, wt worktree, merged map[string]bool, defa
 	// The candidate's OWN answer, not this checkout's: a directory git lists can
 	// have been replaced by another repository, and reading it would report that
 	// repository's records as this one's.
-	theirs, err := commonDir(wt.path)
+	theirs, err := gitutil.CommonDir(wt.path)
 	if err != nil {
 		p.NotRead = NotReadGitRefused + firstLine(err.Error())
 		// Where the git file points is read from the file, not left to git's
@@ -600,30 +634,6 @@ func fileID(prefix, name string) string {
 		return ""
 	}
 	return recordid.CanonCitedID(prefix + "-" + m[1])
-}
-
-// commonDir is git's common dir for the working tree whose top is dir, made
-// absolute against dir.
-//
-// It asks without --path-format=absolute, which arrived in git 2.31: an older
-// rev-parse echoes an option it does not know to stdout and exits 0, so the
-// answer would be the flag's text and a path on two lines, and every peer would
-// compare unequal to this checkout. The plain form answers relative to the
-// directory it is run in (".git" at a main working tree's top) or absolute (a
-// linked worktree's), and anything but one line is refused rather than
-// compared.
-func commonDir(dir string) (string, error) {
-	out, err := gitutil.Run(dir, "rev-parse", "--git-common-dir")
-	if err != nil {
-		return "", err
-	}
-	if out == "" || strings.ContainsAny(out, "\r\n") {
-		return "", fmt.Errorf("git named no single common dir (%q)", firstLine(out))
-	}
-	if !filepath.IsAbs(out) {
-		out = filepath.Join(dir, out)
-	}
-	return out, nil
 }
 
 // recordsClean reports whether a worktree's record folders hold no uncommitted
