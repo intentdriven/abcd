@@ -170,8 +170,10 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"past the five-minute margin included, for --older-than days (default 7, at\n" +
 			"least 1), and either its record is resolved, won't-fixed, shipped or superseded\n" +
 			"on origin's default branch, or every commit on it is a reservation or a plain\n" +
-			"release, at least one a release. A hand-back on a record still open, a commit\n" +
-			"of a kind the sweep cannot classify, and an unreadable tip keep the branch.\n" +
+			"release, whether or not any is a release, since a lapsed lease already lets any\n" +
+			"session take the record over. A hand-back on a record still open, a commit of\n" +
+			"a kind the sweep cannot classify, a history it cannot read to its root, and an\n" +
+			"unreadable tip keep the branch.\n" +
 			"The reservations ruleset lets only its bypass actor delete these branches, so\n" +
 			"the scheduled reservation-sweep workflow is what applies it; anyone else's\n" +
 			"--apply is refused by origin. It takes no record id and no other flag; exit 0\n" +

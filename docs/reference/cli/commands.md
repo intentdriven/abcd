@@ -4391,8 +4391,10 @@ meanwhile survives. A branch is spent when its tip has been untouched, its lease
 past the five-minute margin included, for --older-than days (default 7, at
 least 1), and either its record is resolved, won't-fixed, shipped or superseded
 on origin's default branch, or every commit on it is a reservation or a plain
-release, at least one a release. A hand-back on a record still open, a commit
-of a kind the sweep cannot classify, and an unreadable tip keep the branch.
+release, whether or not any is a release, since a lapsed lease already lets any
+session take the record over. A hand-back on a record still open, a commit of
+a kind the sweep cannot classify, a history it cannot read to its root, and an
+unreadable tip keep the branch.
 The reservations ruleset lets only its bypass actor delete these branches, so
 the scheduled reservation-sweep workflow is what applies it; anyone else's
 --apply is refused by origin. It takes no record id and no other flag; exit 0

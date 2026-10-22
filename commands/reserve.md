@@ -304,17 +304,19 @@ A branch is spent only when its tip has been untouched for `--older-than`
 days (default 7, at least 1), counting from the latest of its commit date, its
 own times and its lease's end plus the five-minute margin, and either its
 record is resolved, won't-fixed, shipped or superseded on origin's default
-branch, or every commit on it is a reservation or a plain release and at least
-one is a release. A hand-back on a record still open, a commit of a kind the
-sweep cannot classify, a history it cannot read to its root, a reservation
-never released, and an unreadable tip all keep the branch.
+branch, or every commit on it is a reservation or a plain release, whether or
+not any is a release: a lapsed lease already lets any session take the record
+over, so a reservation never released is spent once its lapse is that old. A
+hand-back on a record still open, a commit of a kind the sweep cannot
+classify, a history it cannot read to its root, and an unreadable tip all keep
+the branch.
 
 The payload carries `mode` (`dry_run` or `apply`), `as_of`,
 `older_than_days`, `spent`, `kept`, `deleted`, `default_branch_unread` when
 origin's default branch could not be read (no branch is then judged spent by
 its record), and `branches`: each with `record`, `branch`, `commit`, `kind`,
-`spent`, `reason` (`terminal`, `released` or `lapsed` when spent; `recent`,
-`hand_back`, `unknown_kind`, `never_released`, `history_unread` or
+`spent`, `reason` (`terminal`, `released`, `lapsed` or `lapsed_unreleased`
+when spent; `recent`, `hand_back`, `unknown_kind`, `history_unread` or
 `unreadable` when kept), `why`, `settled_at`, and under `--apply` its
 `outcome` (`deleted`, `moved` or `failed`) and `error`.
 
