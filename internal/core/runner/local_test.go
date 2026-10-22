@@ -177,10 +177,14 @@ func TestAPinnedLocalRunIsProbedAndSealed(t *testing.T) {
 	if s := ans.LocalServed; s == nil || s.WeightsSHA256 != localRunDigest || s.ContextLength != 32768 || s.ToolCalls == nil || !*s.ToolCalls {
 		t.Fatalf("local served = %+v", ans.LocalServed)
 	}
+	// The probe confirmed the pin, but opencode merges the person's
+	// ~/.opencode/opencode.json after the sealed file, and an entry there can
+	// point the provider elsewhere: the asked local fields stay not verified,
+	// as a provider pin on this path does.
 	got := reasons(ans.Unpinned)
 	for _, fl := range append(append([]oracle.Field{}, oracle.LocalFields...), oracle.AskedContext) {
-		if r, listed := got[fl]; listed {
-			t.Errorf("%s is listed %q, but the server confirmed the pin", fl, r)
+		if got[fl] != oracle.NotVerified {
+			t.Errorf("%s = %q, want not_verified on the runner path", fl, got[fl])
 		}
 	}
 	// No runtime reports its KV cache's type, so the pin's is never confirmed.
@@ -191,6 +195,26 @@ func TestAPinnedLocalRunIsProbedAndSealed(t *testing.T) {
 		t.Errorf("provider pin = %q", got[oracle.AskedProviderPin])
 	}
 	assertFixedLists(t, ans.Unpinned)
+}
+
+// TestClaudeRefusesAPinnedRoute: claude can hold neither a local pin nor a
+// provider pin, so a route the machine pins is refused before anything is
+// launched or probed, naming opencode as the runner that holds it.
+func TestClaudeRefusesAPinnedRoute(t *testing.T) {
+	o := newOllamaRunFake(t, true)
+	cfg, _ := localRunConfig(o.srv.URL+"/v1", true)
+	c := mustLoad(t, cfg, "")
+	f := newFake(t, "ok", Claude)
+	_, _, err := c.adapter(c.runners[Claude]).Run(context.Background(), f.request("ruthless-reviewer"))
+	if err == nil || !strings.Contains(err.Error(), "runner.opencode.model") || !strings.Contains(err.Error(), "pins") {
+		t.Fatalf("a pinned claude route: err = %v, want a refusal naming opencode", err)
+	}
+	if f.launched(Claude) {
+		t.Fatal("claude was launched on a pinned route")
+	}
+	if o.probes.Load() != 0 {
+		t.Fatal("a pinned claude route was probed")
+	}
 }
 
 // TestEveryPinnedLocalRunProbesItsServer: each run probes the server

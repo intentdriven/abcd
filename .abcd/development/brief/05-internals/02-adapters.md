@@ -328,7 +328,13 @@ review is skipped.
   reckoning and needs `limit.output` beside it, which would replace the
   person's), so the probe is what confirms the context. The route records
   `local_pin`, `local_served`, the configuration's SHA-256 and opencode's
-  version.
+  version. It lists the asked local fields and the context as `not_verified`
+  even where the probe confirmed them: opencode merges the person's
+  `~/.opencode/opencode.json` after the sealed file, and an entry there can
+  point the provider at another server than the one probed, as it can
+  override a provider pin. The claude runner holds neither pin, so a role
+  routed through it to a model the machine pins is refused before launch,
+  naming `runner.opencode.model` as the route that holds it.
 - **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
   review to the RepoPrompt the person runs, which answers with whichever model
   the person configured in it. The opt-in is `oracle.review = rp` in the

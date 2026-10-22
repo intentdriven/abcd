@@ -122,14 +122,26 @@ func askedUnpinned(un *oracle.Unpin, s Sides) {
 		oracle.AskedSeed, oracle.AskedEffort} {
 		un.Add(f, oracle.NotConfigured)
 	}
-	if s.Local {
+	if s.Local && s.LocalPin != nil {
+		// opencode merges ~/.opencode/opencode.json after the sealed
+		// configuration (pin.go), and an entry there can point the provider
+		// at another server than the one probed: what the probe confirmed is
+		// not shown to be what served the run, as a provider pin on this
+		// path is not.
+		un.Add(oracle.AskedContext, oracle.NotVerified)
+	} else if s.Local {
 		oracle.LocalContext(un, s.LocalPin, s.LocalServed)
 	} else {
 		un.Add(oracle.AskedContext, oracle.NotConfigured)
 	}
 	un.Unless(s.PromptSHA256 != "", oracle.AskedPromptSHA256, oracle.NotReported)
 	un.Unless(s.HarnessVersion != "", oracle.AskedHarnessVersion, oracle.NotReported)
-	if s.Local {
+	switch {
+	case s.Local && s.LocalPin != nil:
+		for _, f := range oracle.LocalFields {
+			un.Add(f, oracle.NotVerified)
+		}
+	case s.Local:
 		oracle.LocalAsked(un, s.LocalPin, s.LocalServed)
 	}
 }

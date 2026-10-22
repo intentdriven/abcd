@@ -376,6 +376,6 @@ func (c *Config) adapter(rc RunnerConfig) Runner {
 		return o
 	}
 	cl := newClaude(rc.Model)
-	cl.local = rc.Local
+	cl.local, cl.pinned = rc.Local, rc.Pin != nil || rc.LocalPin != nil
 	return cl
 }

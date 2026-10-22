@@ -41,6 +41,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 )
 
@@ -52,7 +53,11 @@ type ClaudeCLI struct {
 	// local says the route's provider is a block on this machine, whose
 	// local fields the record lists (sides.go); claude is handed no local
 	// pin, so they stay not configured.
-	local  bool
+	local bool
+	// pinned says the machine pins the route's model (a provider pin or a
+	// local pin). claude can hold neither, so a pinned route is refused
+	// before launch rather than run unheld.
+	pinned bool
 	launch launcher
 	// approver is the absolute path of the abcd binary a shell launch starts
 	// as its permission prompt answerer.
@@ -164,6 +169,12 @@ func (c *ClaudeCLI) args(req Request) []string {
 func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error) {
 	if err := req.check(); err != nil {
 		return Answer{}, nil, err
+	}
+	if c.pinned {
+		return Answer{}, nil, fail(Claude, ReasonFailed,
+			"the machine pins %s, and the claude runner can hold neither a provider pin nor a local pin, so the run is "+
+				"not started: route the role through opencode (runner.opencode.model), which holds the pin, or remove the pin",
+			layered.BoundKey(c.model))
 	}
 	if grantsShell(req.Tools) && c.approver == "" {
 		// Started without the approver, the shell would either run unchecked

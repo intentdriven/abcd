@@ -1457,7 +1457,11 @@ environment sets `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` or
 replace theirs or be overridden by it: unset it for pinned runs, or route
 the role without a pin. `~/.opencode/opencode.json` is not refused, so a
 routing entry for that model there can override the pin, which is one reason
-the pin is recorded as not verified on that path. A `~/.abcd.noindex` that is a
+the pin is recorded as not verified on that path, and so are a local pin's
+weights, quantisation, runtime version and context, though the probe checked
+them. The claude runner holds no pin, so a role routed through it to a pinned
+model is refused before it starts: route the role through opencode, or remove
+the pin. A `~/.abcd.noindex` that is a
 symlink (into a dotfiles checkout, say) is refused with nothing written, in
 any home, naming the link: the key would otherwise land wherever it points.
 A `--file` pointer is refused, naming the link, when any directory between the
