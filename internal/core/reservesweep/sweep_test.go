@@ -279,6 +279,36 @@ func TestTheClaimPackagesOwnReleaseReadsAsPlain(t *testing.T) {
 	}
 }
 
+// TestAReleaseReservationIsSpentOnlyOnceItsLeaseLapsedPastTheAge: a release
+// reservation names no record a folder can finish, so it is judged by its
+// chain alone, through the claim package's own write: kept while its 24h
+// lease and the age have not both passed, spent as lapsed and never released
+// once they have.
+func TestAReleaseReservationIsSpentOnlyOnceItsLeaseLapsedPastTheAge(t *testing.T) {
+	w := newWorld(t)
+	dir := w.clone()
+	o := claim.Options{Now: func() time.Time { return w.clock }, Home: w.home}
+	if _, err := claim.Reserve(dir, claim.Request{Record: "rel-v0.16.0"}, o); err != nil {
+		t.Fatal(err)
+	}
+	w.clock = t0.Add(week + time.Hour)
+	rep, err := Sweep(dir, w.opts(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := find(t, rep, "rel-v0.16.0"); b.Spent || b.Reason != KeptRecent {
+		t.Fatalf("a week after the reservation, its 24h lease inside the age = %+v; want kept as recent", b)
+	}
+	w.clock = t0.Add(24*time.Hour + claim.TakeoverMargin + week)
+	rep, err = Sweep(dir, w.opts(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := find(t, rep, "rel-v0.16.0"); !b.Spent || b.Reason != SpentUnreleased {
+		t.Fatalf("a week past the lapsed lease = %+v; want spent as lapsed and never released", b)
+	}
+}
+
 // TestAnUnknownKindOfTombstoneIsKept: a tombstone carrying a trailer the
 // sweep does not know, on a record still open, is kept and the report says
 // why.
