@@ -36,10 +36,12 @@
 // agent whose role is pointed at a provider resolves to it with no --route
 // (Connections.Pointed), APIConfig.Dispatch sends the step through it, and
 // Route.FellBack leaves a step whose provider could not be reached to the
-// harness. Escalating a tier after a failed fix round is still that spec's,
-// and so is handing the dispatch to the delegating verbs: until they are
-// wired every delegating verb resolves against NoConnections, so every step
-// resolves to the harness and no front door reaches a provider-leg refusal.
+// harness. The same spec escalates a tier after a failed fix round: Escalate
+// moves a tier one step up the ladder local, economy, frontier, and
+// ResolveAt resolves the winning row again at the escalated tier, through the
+// same legs and allowlist; the implement loop asks it for each round of a
+// lane whose round before did not pass (internal/core/implement/loop,
+// escalate.go).
 package oracle
 
 import (

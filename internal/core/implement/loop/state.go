@@ -56,6 +56,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -191,7 +192,12 @@ const lockFileName = ".lock"
 // `refused` kept, and written back at the current version; a file of version
 // 13 or lower carrying either side is not one its version wrote, and is
 // refused. Releases that write version 13 (v0.15.1) refuse a version-14 file
-// as a newer abcd's before any strict decode.
+// as a newer abcd's before any strict decode. So is a validation round's
+// `routes` (spc-2609251028149555, AC 10): the tier each role of the round ran
+// at, the tier a failed round moved it up from, and the failing gate output
+// that caused the switch. It joined version 14 before any release wrote that
+// version, so a file of version 13 or lower carrying it is refused, naming
+// the key.
 //
 // Version 15 added the run's review set (itd-2610240922461281,
 // spc-2610240951109420 step 1): the run's `review`, each role's reviewers at
@@ -587,6 +593,36 @@ type ValidationRound struct {
 	// Fix is the verified receipt of the fresh implementer the round's
 	// findings were handed to; once set, the next step opens the next round.
 	Fix string `json:"fix,omitempty"`
+	// Routes is the tier each agent the round handed out ran at, one record
+	// per role, in the order the round handed them out (spc-2609251028149555,
+	// AC 10): the validators, and the fresh implementer the round's findings
+	// went to. Empty for a round handed out with no routing read.
+	Routes []Round `json:"routes,omitempty"`
+}
+
+// Round is the route one role of a lane's round ran at (spc-2609251028149555,
+// AC 10; itd-2609170822093401's Decision 1, "a rule, not a router"). A round
+// whose gates failed moves the next round's tier one step up the ladder local,
+// economy, frontier (oracle.Escalate), and the switch is recorded here as a
+// fact: the tier the role ran at, the tier it moved from, and the failing gate
+// output that caused it. A route that names no tier (a runner and model, a
+// role pointed at a provider, host-decides, or a role with no routing row)
+// does not move, and says why in Note.
+type Round struct {
+	Role string `json:"role"`
+	// Tier is the tier the role was asked to run at, the receipt's tier asked;
+	// "" when its route names no tier.
+	Tier oracle.Tier `json:"tier,omitempty"`
+	// EscalatedFrom is the tier the role ran at in the round before, when the
+	// failed round moved it up; "" when it did not move.
+	EscalatedFrom oracle.Tier `json:"escalated_from,omitempty"`
+	// GateOutput is the failing output of the round before this role ran, the
+	// verdicts and findings that caused any switch, bounded; "" when the role
+	// did not follow a failed round.
+	GateOutput string `json:"gate_output,omitempty"`
+	// Note says why the role did not move after a failed round: its route
+	// names no tier, or it is at the top of the ladder.
+	Note string `json:"note,omitempty"`
 }
 
 // ValidatorRun is one validator of a round: the fresh agent handed the lane,
@@ -870,6 +906,19 @@ func (s State) overridden() string {
 	return ""
 }
 
+// rounded reports the first validation round, in a state, that carries
+// `routes`, which only version 14 and later write, or "".
+func (s State) rounded() string {
+	for _, l := range s.Lanes {
+		for _, v := range l.Validation {
+			if len(v.Routes) > 0 {
+				return fmt.Sprintf("`routes` on %s's round %d", l.ID, v.Round)
+			}
+		}
+	}
+	return ""
+}
+
 // refused reports the first lane, in a state, that carries `refused`, which
 // only version 13 and later write, or "".
 func (s State) refused() string {
@@ -1034,6 +1083,9 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnpinned && st.overridden() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.overridden(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUnmetered && st.rounded() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.rounded(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnpinned && st.pinned() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pinned(), st.SchemaVersion),

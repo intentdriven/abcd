@@ -2953,7 +2953,13 @@ finding or rejects it in writing in its report, and the next round judges the ne
 afresh; a round that passes completes the stage, unless a lane report states a verdict,
 which is refused naming the report. The audit passes only when every criterion is met: a
 criterion it could not decide (INCONCLUSIVE) fails the round as a not-met one does, and
-goes to the fresh implementer with the finding. A round that does not pass once the lane
+goes to the fresh implementer with the finding. Each role a round hands out is asked for
+the model tier its routing row names, which the result names as tier and the brief's
+routing section carries, and a round that does not pass asks each role of the next one
+tier up (local, economy, frontier; frontier and host-decides stay), recorded under the
+round's routes with the failing gate output; a role on a runner, one pointed at a
+provider, a host-decides row and the implementer name no tier and do not move. A round
+that does not pass once the lane
 has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it
 stops as unachievable, the result and the run record name the last round's findings, and
 the run starts nothing further for it. Its sibling lanes finish: no new lane opens, no
