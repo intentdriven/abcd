@@ -399,7 +399,13 @@ func readPeers(repoRoot string, now time.Time) (*peerSnapshot, error) {
 	if err := snap.readReservations(repoRoot); err != nil {
 		return nil, err
 	}
-	if sha := gitutil.RootCommit(repoRoot); gitutil.IsFullSHA(sha) {
+	sha, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		// Without the root commit the shared run's claims cannot be read,
+		// and a snapshot without them would show a claimed record as free.
+		return nil, fmt.Errorf("reading the repository's root commit to find the shared run's claims: %w", err)
+	}
+	if gitutil.IsFullSHA(sha) {
 		run, err := implement.Peek(sha)
 		if err != nil {
 			return nil, err

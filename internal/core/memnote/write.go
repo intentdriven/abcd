@@ -75,7 +75,8 @@ const machineLeaf = "memory.json"
 
 // Add judges and writes one note to the machine layer and returns it. Every
 // refusal comes before anything is created: a malformed field (*FieldError),
-// a tied note with no root commit (ErrNoRoot), the gate (*GateError, or an
+// a tied note with no root commit (ErrNoRoot) or one whose root commit git did
+// not answer for (gitutil.ErrNoRootAnswer, wrapped), the gate (*GateError, or an
 // error when the gate cannot judge), or a machine file the guarded read
 // refuses.
 func Add(req AddRequest) (Note, error) {
@@ -96,7 +97,12 @@ func Add(req AddRequest) (Note, error) {
 		n.Session = &s
 	}
 	if !req.Everywhere {
-		root := rootCommit(req.RepoRoot)
+		root, err := rootCommit(req.RepoRoot)
+		if err != nil {
+			// git did not answer: the repository may well have a root
+			// commit, so this is not ErrNoRoot, and nothing is written.
+			return Note{}, fmt.Errorf("reading this repository's root commit to tie the note to: %w", err)
+		}
 		if !gitutil.IsFullSHA(root) {
 			return Note{}, ErrNoRoot
 		}

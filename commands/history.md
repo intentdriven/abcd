@@ -167,7 +167,12 @@ alike. Report `session_id`, `staged_at` and `bytes`, plus `agent_id` and
 text** until drained, so say so whenever the list is non-empty. The text render
 also carries a note when the host has fired a sub-agent stop without handing
 over a transcript path: on such a host no sub-agent transcript can be captured
-at all, so an empty sub-agent corpus is the host and not the sessions. An entry
+at all, so an empty sub-agent corpus is the host and not the sessions. It
+carries a second note when transcripts, a session's or a sub-agent's, were
+read but could not be staged, with how many, when, and the last one's reason:
+those transcripts are not in the store, and the hook that lost them exited 0,
+so this note is the only place the loss shows. Under `--json` both notes go to
+stderr, beside the array, so read stderr as well. Tell the user how many were lost and why. An entry
 past the seven-day limit renders as OVERDUE; a quarantined transcript is listed
 in its own block, and is not awaiting anything — nothing will retry it.
 

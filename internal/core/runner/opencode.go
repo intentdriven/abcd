@@ -24,11 +24,22 @@ package runner
 //
 // The runner reaches opencode through run mode only; its server's session
 // endpoints, where a server is already up, are a later adapter.
+//
+// Run mode's JSON events name no model (opencode 1.18.31: tool_use,
+// step_start, step_finish, text, reasoning and error), so a run's served model
+// is not reported and is recorded so, never as the model the runner asked for
+// (itd-166 decision 6, iss-2610161709506207). Its step-finish events carry
+// each step's tokens and the cost opencode computed, which a run sums. Run
+// mode emits the run's own session's events only, so a sub-agent's steps are
+// not among them and the sums are a floor.
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"math"
+
+	"github.com/intentdriven/abcd/internal/core/oracle"
 )
 
 // openCodeSeal is the environment every opencode launch is sealed with, set
@@ -82,7 +93,11 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 	if err != nil {
 		return Answer{}, transcript, err
 	}
-	ans.Model = o.model
+	ans.ModelAsked, ans.PromptSHA256 = o.model, promptSHA256(req)
+	var un oracle.Unpin
+	askedUnpinned(&un, ans.Sides)
+	servedUnpinned(&un, ans.Model, ans.Sides, ans.counted)
+	ans.Unpinned = un.List()
 	return ans, transcript, nil
 }
 
@@ -94,6 +109,79 @@ type openCodeEvent struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"part"`
+}
+
+// openCodeStep is the metering of a step_finish event's part: why the step
+// stopped, the cost opencode computed and the step's tokens. It is read
+// leniently and apart from openCodeEvent, so a field of an unexpected shape
+// is a detail not reported, never an unparsable run.
+type openCodeStep struct {
+	Part struct {
+		Reason string   `json:"reason"`
+		Cost   *float64 `json:"cost"`
+		Tokens *struct {
+			Input     *int `json:"input"`
+			Output    *int `json:"output"`
+			Reasoning *int `json:"reasoning"`
+			Cache     struct {
+				Read  *int `json:"read"`
+				Write *int `json:"write"`
+			} `json:"cache"`
+		} `json:"tokens"`
+	} `json:"part"`
+}
+
+// meterOpenCode adds one step_finish event's metering to ans: its tokens and
+// cost summed onto the run's, its reason the run's finish reason until a
+// later step's replaces it.
+func meterOpenCode(ans *Answer, line []byte) {
+	var st openCodeStep
+	if json.Unmarshal(line, &st) != nil {
+		return
+	}
+	p := st.Part
+	if p.Reason != "" {
+		ans.FinishReason = cleanHarness(p.Reason)
+	}
+	// A step's cost is summed when it is readable (oracle.ReadableCost); a
+	// sum that stops being finite is dropped, not reported for the rest of
+	// the run, since +Inf is no cost and no record can write it.
+	if p.Cost != nil && !ans.costLost && oracle.ReadableCost(*p.Cost) {
+		sum := *p.Cost
+		if ans.Cost != nil {
+			sum += ans.Cost.Amount
+		}
+		if oracle.ReadableCost(sum) {
+			ans.Cost = &oracle.Cost{Amount: sum, Unit: oracle.CostUSD}
+		} else {
+			ans.Cost, ans.costLost = nil, true
+		}
+	}
+	t := p.Tokens
+	if t == nil {
+		return
+	}
+	if ans.Usage == nil {
+		ans.Usage = &oracle.Usage{}
+	}
+	// A count is summed when present and not negative; a sum that would
+	// overflow is unreadable, zeroed and not reported for the rest of the run.
+	add := func(sum *int, n *int, seen, lost *bool) {
+		switch {
+		case *lost || n == nil || *n < 0:
+		case *sum > math.MaxInt-*n:
+			*sum, *seen, *lost = 0, false, true
+		default:
+			*sum += *n
+			*seen = true
+		}
+	}
+	c, l := &ans.counted, &ans.lost
+	add(&ans.Usage.PromptTokens, t.Input, &c.prompt, &l.prompt)
+	add(&ans.Usage.CompletionTokens, t.Output, &c.completion, &l.completion)
+	add(&ans.Usage.ReasoningTokens, t.Reasoning, &c.reasoning, &l.reasoning)
+	add(&ans.Usage.CacheReadTokens, t.Cache.Read, &c.cacheRead, &l.cacheRead)
+	add(&ans.Usage.CacheWriteTokens, t.Cache.Write, &c.cacheWrite, &l.cacheWrite)
 }
 
 // parseOpenCode reads the event stream: one JSON object per line. An error
@@ -123,6 +211,7 @@ func parseOpenCode(out []byte) (Answer, error) {
 			seen = true
 		case "step_finish":
 			seen = true
+			meterOpenCode(&ans, line)
 		}
 	}
 	if !seen {

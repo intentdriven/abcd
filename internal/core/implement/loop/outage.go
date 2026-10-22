@@ -120,7 +120,12 @@ type outageGate struct {
 // the lanes, and the probe and the record are left to `abcd implement outage`.
 func outageFor(repoRoot, runID string, o Options) (*outageGate, error) {
 	g := &outageGate{now: o.now()}
-	sha := gitutil.RootCommit(repoRoot)
+	sha, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		// A gate with no run holds nothing, so git not answering is never
+		// read as a checkout with no shared run state.
+		return nil, fmt.Errorf("reading the repository's root commit to find the run's outage: %w", err)
+	}
 	if !gitutil.IsFullSHA(sha) {
 		return g, nil
 	}
@@ -439,7 +444,10 @@ func (g *outageGate) stopRefusal(st State) *Refusal {
 // CurrentOutage is the shared run's outage in force for the checkout, nil when
 // there is none or the checkout has no shared run state. It writes nothing.
 func CurrentOutage(repoRoot string) (*implement.Outage, error) {
-	sha := gitutil.RootCommit(repoRoot)
+	sha, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("reading the repository's root commit to find the run's outage: %w", err)
+	}
 	if !gitutil.IsFullSHA(sha) {
 		return nil, nil
 	}
@@ -455,7 +463,10 @@ func CurrentOutage(repoRoot string) (*implement.Outage, error) {
 // for a complete run, before its last update.
 func runOutages(repoRoot string, st State) ([]implement.OutageSpan, error) {
 	out := []implement.OutageSpan{}
-	sha := gitutil.RootCommit(repoRoot)
+	sha, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("reading the repository's root commit to find the run's outages: %w", err)
+	}
 	if !gitutil.IsFullSHA(sha) {
 		return out, nil
 	}

@@ -173,7 +173,11 @@ func ideateStore(repoRoot string, private, public bool) (ideate.Store, error) {
 			scrubPaths(err) + "), and a verdict is filed under the repository's root commit, which a shallow clone does not hold " +
 			"(nothing written)"}
 	}
-	sha := gitutil.RootCommit(repoRoot)
+	sha, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: this repository's root commit could not be read (" +
+			scrubPaths(err) + "), and a verdict is filed under it (nothing written)"}
+	}
 	if sha == "" {
 		return ideate.Store{}, &exitError{Code: 2, Msg: "ideate record: this repository has no commit yet, " +
 			"and a verdict is filed under the repository's root commit; commit once, then record (nothing written)"}

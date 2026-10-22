@@ -274,19 +274,15 @@ func gitOut(t *testing.T, root string, args ...string) string {
 	return string(out)
 }
 
-// withGit puts git beside the fake harnesses on the drive environment's PATH:
-// the loop reads the shared run's outage through the repository's root commit.
+// withGit is the drive environment with git beside the fake harnesses on its
+// PATH: the loop reads the shared run's outage through the repository's root
+// commit. newDriveEnv now links git itself; this insists git is there.
 func withGit(t *testing.T, harnesses ...string) driveEnv {
 	t.Helper()
-	git, err := exec.LookPath("git")
-	if err != nil {
+	if _, err := exec.LookPath("git"); err != nil {
 		t.Fatal(err)
 	}
-	env := newDriveEnv(t, "ok", harnesses...)
-	if err := os.Symlink(git, filepath.Join(env.bin, "git")); err != nil {
-		t.Fatal(err)
-	}
-	return env
+	return newDriveEnv(t, "ok", harnesses...)
 }
 
 // TestDriveStartsNoRunnerDuringModelOutage: while the model service is down

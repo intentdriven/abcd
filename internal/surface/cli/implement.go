@@ -171,7 +171,12 @@ func implementRun(access runAccess, session string) (*implement.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	sha := gitutil.RootCommit(root)
+	sha, err := gitutil.RootCommit(root)
+	if err != nil {
+		// Not the core's "no root commit" refusal: git did not answer, so no
+		// run is opened, created or reported absent on a guess.
+		return nil, fmt.Errorf("reading the checkout's root commit, which keys the run: %w", err)
+	}
 	var run *implement.Run
 	switch access {
 	case runJoin:

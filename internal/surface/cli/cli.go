@@ -1974,6 +1974,7 @@ envelope carries it as system_message.`,
 		Short: "SessionEnd: stage the raw transcript for the next session to redact and store",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			started := time.Now()
 			// Diagnostics go to stderr, out of band; stdout stays empty, since a
 			// Stop hook's stdout is not a place to speak to the model — unless
 			// the caller asked for --json, when it carries one result line on
@@ -2003,7 +2004,20 @@ envelope carries it as system_message.`,
 					cwd = wd
 				}
 			}
+			detectStart := time.Now()
 			det, err := ahoy.Detect(cwd)
+			detectCost := time.Since(detectStart)
+			if err == nil && det.RootSHA == "" && det.RepoIdentity.RootErr() != nil {
+				// git failing once on a loaded machine is not a directory
+				// outside any repository: ask again before giving the session
+				// up, as the sub-agent hook does (iss-2610051434156079).
+				det, err = retryDetect(cmd.ErrOrStderr(), sessionEndResolveWaits, started.Add(sessionEndRetryBudget), detectCost, cwd, det)
+			}
+			if err == nil && det.RootSHA == "" {
+				if rerr := det.RepoIdentity.RootErr(); rerr != nil {
+					return warn("git gave no root commit for %q (%s); capturing nothing", cwd, fsutil.RedactHome(rerr.Error()))
+				}
+			}
 			if err != nil || det.RootSHA == "" {
 				return warn("cannot resolve the repo's root-commit SHA from %q; capturing nothing", cwd)
 			}
@@ -2025,12 +2039,17 @@ envelope carries it as system_message.`,
 					fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
 				}
 			}
-			res, err := history.Stage(captureRoot(cwd), det.RootSHA, history.StageMeta{
+			res, err := stageWithRetry(cmd.ErrOrStderr(), 0, captureRoot(cwd), det.RootSHA, history.StageMeta{
 				Lineage:    history.CaptureMeta{SessionID: in.SessionID, Kind: "native", LineageSource: "hook"},
 				SourcePath: in.TranscriptPath,
 			}, raw)
 			if err != nil {
-				return warn("staging failed (%v); this session was not captured", err)
+				// The marker is where the person sees the loss: this hook exits
+				// 0, and its stderr reaches only the host's debug log.
+				if nerr := history.NoteStageMiss(captureRoot(cwd), det.RootSHA, "session "+in.SessionID, err.Error()); nerr != nil {
+					diagnosticLine(cmd.ErrOrStderr(), "abcd history: the missed stage could not be recorded either (%v)", nerr)
+				}
+				return warn("staging failed (%v); this session was not captured, and `abcd history staged` reports it", err)
 			}
 			staged := hookStageResult{Hook: "session-end", Captured: true, SessionID: res.Staged.SessionID, Bytes: res.Staged.Bytes}
 			if !res.Wrote {
@@ -2110,6 +2129,14 @@ envelope carries it as system_message.`,
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
 			det, detErr := ahoy.Detect(cwd)
+			if rerr := det.RepoIdentity.RootErr(); detErr == nil && rerr != nil {
+				// git did not answer for this repository: nothing is
+				// drained or noted this start, and it is said, rather than
+				// read as a folder with no store (iss-2610051434156079).
+				notices = append(notices, fmt.Sprintf(
+					"abcd: git gave no root commit for this repository (%s), so staged transcripts were not drained this time; `abcd history drain` finishes them.",
+					termsafe.Sanitize(fsutil.RedactHome(rerr.Error()))))
+			}
 			if detErr == nil && det.RootSHA != "" {
 				currentSHA = det.RootSHA
 				// Record which store this session belongs to while a real
@@ -2358,8 +2385,8 @@ func drainWhileLive(cmd *cobra.Command, cwd string) rootLookup {
 	rootSHA, rootErr := boundedRootCommit(cwd)
 	looked := rootLookup{sha: rootSHA, err: rootErr, asked: true}
 	if rootErr != nil {
-		// git did not answer in time: nothing is drained this turn, and the
-		// staged transcripts wait for the next one.
+		// git did not answer, in time or at all: nothing is drained this
+		// turn, and the staged transcripts wait for the next one.
 		diagnosticLine(cmd.ErrOrStderr(), "abcd history: this repository's root commit: %s; draining no staged transcripts this turn",
 			fsutil.RedactHome(rootErr.Error()))
 		return looked
@@ -4025,10 +4052,15 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				// Classification is read-only; the human report names the
 				// next step per folder kind (itd-40 AC2/AC3).
-				switch res.FolderKind {
-				case ahoy.UnmanagedRepo:
+				switch rerr := res.RepoIdentity.RootErr(); {
+				case res.RootSHA == "" && rerr != nil:
+					// git not answering is not a repository abcd does not
+					// manage: it may be registered (iss-2610051434156079).
+					fmt.Fprintf(w, "  git gave no root commit for this repository (%s), so abcd cannot tell whether it manages it; run this again.\n",
+						termsafe.Sanitize(fsutil.RedactHome(rerr.Error())))
+				case res.FolderKind == ahoy.UnmanagedRepo:
 					fmt.Fprintf(w, "  unmanaged git repo — run `/abcd:ahoy install` to adopt it.\n")
-				case ahoy.UnmanagedFolder:
+				case res.FolderKind == ahoy.UnmanagedFolder:
 					fmt.Fprintf(w, "  not a git repository — nothing to act on.\n")
 				}
 			})
@@ -6750,6 +6782,9 @@ func repoRootSHA() (string, error) {
 	det, err := ahoy.Detect(cwd)
 	if err != nil {
 		return "", err
+	}
+	if rerr := det.RepoIdentity.RootErr(); rerr != nil {
+		return "", fmt.Errorf("history: cannot read the repo's root-commit SHA: %w", rerr)
 	}
 	if det.RootSHA == "" {
 		return "", fmt.Errorf("history: cannot resolve the repo's root-commit SHA (not a git repo with commits)")

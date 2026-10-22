@@ -13,7 +13,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/ideate"
 	"github.com/intentdriven/abcd/internal/gittest"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // ideateRepo lays out the minimum an `ideate record` run needs, so the surface
@@ -101,7 +100,7 @@ func TestIdeateRecordWiredFromTheCLI(t *testing.T) {
 	// The literal directory, not ideate.ResearchRelDir: a check written against
 	// the constant follows the constant wherever it moves, so it can never notice
 	// the record landing outside the home research/README.md gives a dated note.
-	wantDir := ".abcd/development/research/ideas/" + gitutil.RootCommit(repo) + "/"
+	wantDir := ".abcd/development/research/ideas/" + gittest.RootCommit(t, repo) + "/"
 	if !strings.HasPrefix(res.Path, wantDir) || !strings.HasSuffix(res.Path, "-ideate-the-ideate-gate.md") {
 		t.Errorf("path = %q; want a dated ideate record under %s", res.Path, wantDir)
 	}
@@ -289,7 +288,7 @@ func TestIdeateRecordPrivateFromTheCLI(t *testing.T) {
 	if err := json.Unmarshal(out, &res); err != nil {
 		t.Fatalf("decode result: %v\n%s", err, out)
 	}
-	sha := gitutil.RootCommit(repo)
+	sha := gittest.RootCommit(t, repo)
 	wantPrefix := abcdhome.Display("ideas", sha) + "/"
 	if res.Visibility != ideate.VisibilityPrivate || !strings.HasPrefix(res.Path, wantPrefix) || res.DecisionPath != "" {
 		t.Errorf("result = visibility %q path %q decision %q; want private under %s with no pointer",

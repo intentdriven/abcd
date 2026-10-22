@@ -12,7 +12,6 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/report"
 	"github.com/intentdriven/abcd/internal/gittest"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // fillTemplate fills the issued skeleton the way a reporter does.
@@ -214,7 +213,7 @@ func TestInboxListsShowsAndPromotes(t *testing.T) {
 	// The readable one is promoted; which of the two was planted is the
 	// directory order's choice. The repository stands in for abcd's own
 	// checkout, the only place a promotion files.
-	t.Cleanup(report.SetAbcdRootCommitForTest(gitutil.RootCommit(repo)))
+	t.Cleanup(report.SetAbcdRootCommitForTest(gittest.RootCommit(t, repo)))
 	first = promotable
 	out := string(runCLI(t, "inbox", "promote", first))
 	if !strings.Contains(out, "promoted "+first+" to iss-") {
@@ -352,7 +351,7 @@ func TestInboxPromoteCaptureRefusalExitsTwo(t *testing.T) {
 	}
 	t.Setenv("HOME", home)
 	t.Chdir(repo)
-	t.Cleanup(report.SetAbcdRootCommitForTest(gitutil.RootCommit(repo)))
+	t.Cleanup(report.SetAbcdRootCommitForTest(gittest.RootCommit(t, repo)))
 	id := fileOneReport(t, "a finding about abcd")
 	elsewhere := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(repo, ".abcd", "work"), 0o755); err != nil {

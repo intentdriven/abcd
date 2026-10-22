@@ -313,3 +313,76 @@ func TestBareAhoyNamesASkippedRoute(t *testing.T) {
 		}
 	}
 }
+
+// usageRefusingProvider refuses with HTTP 400 every chat completion that asks
+// for usage in the stream, and answers reply to one that does not, counting
+// the chat requests.
+func usageRefusingProvider(t *testing.T, reply string) (base string, calls *atomic.Int32) {
+	t.Helper()
+	calls = &atomic.Int32{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		calls.Add(1)
+		raw, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		if bytes.Contains(raw, []byte("stream_options")) {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"error":{"message":"Unrecognized request argument supplied: stream_options"}}`)
+			return
+		}
+		_, _ = io.WriteString(w, reply)
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/v1", calls
+}
+
+// TestAhoyConnectSaysItTurnedStreamUsageOff is iss-2610170934491794 through
+// the front door: a server that refuses the usage request is verified asked
+// again without it, and the setup says, in the text and the JSON form, that
+// the block it wrote sets stream_usage to false.
+func TestAhoyConnectSaysItTurnedStreamUsageOff(t *testing.T) {
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+	base, calls := usageRefusingProvider(t, completionReply("qwen/qwen3-8b"))
+	out, err := runCLIErr(t, "ahoy", "connect", "local", "--base-url", base, "--model", "qwen/qwen3-8b", "--home", "none")
+	if err != nil {
+		t.Fatalf("ahoy connect: %v\n%s", err, out)
+	}
+	if calls.Load() != 2 || !strings.Contains(string(out), "stream_usage to false") {
+		t.Fatalf("ahoy connect (%d call(s)):\n%s", calls.Load(), out)
+	}
+	base, _ = usageRefusingProvider(t, completionReply("qwen/qwen3-8b"))
+	jout, err := runCLIErr(t, "ahoy", "connect", "desk", "--base-url", base, "--model", "qwen/qwen3-8b", "--home", "none", "--json")
+	if err != nil {
+		t.Fatalf("ahoy connect --json: %v\n%s", err, jout)
+	}
+	var v struct {
+		StreamUsage *bool  `json:"stream_usage"`
+		Note        string `json:"stream_usage_note"`
+	}
+	if err := json.Unmarshal(jout, &v); err != nil || v.StreamUsage == nil || *v.StreamUsage || v.Note == "" {
+		t.Fatalf("--json = %s (%v)", jout, err)
+	}
+}
+
+// TestAhoyConnectTakesStreamUsage: --stream-usage=false sends the
+// verification without the usage request and writes the block's setting.
+func TestAhoyConnectTakesStreamUsage(t *testing.T) {
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+	base, calls := usageRefusingProvider(t, completionReply("qwen/qwen3-8b"))
+	out, err := runCLIErr(t, "ahoy", "connect", "local", "--base-url", base, "--model", "qwen/qwen3-8b", "--home", "none", "--stream-usage=false")
+	if err != nil {
+		t.Fatalf("ahoy connect: %v\n%s", err, out)
+	}
+	if calls.Load() != 1 || !strings.Contains(string(out), "stream_usage: false") {
+		t.Fatalf("ahoy connect (%d call(s)):\n%s", calls.Load(), out)
+	}
+	raw, _ := os.ReadFile(abcdhome.Path(os.Getenv("HOME"), "config.json"))
+	if !strings.Contains(string(raw), `"stream_usage": false`) {
+		t.Fatalf("config.json:\n%s", raw)
+	}
+}

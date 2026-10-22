@@ -226,12 +226,12 @@ func TestTrackedFilesRepoShapedButUnanswerable(t *testing.T) {
 }
 
 // TestRootCommit pins the identity probe: the first root commit of a
-// repository with history, and "" — never an error — outside one or before the
-// first commit.
+// repository with history, and ("", nil) outside one or before the first
+// commit.
 func TestRootCommit(t *testing.T) {
 	repo := newRepo(t, "")
-	if got := gitutil.RootCommit(repo); got != "" {
-		t.Errorf("RootCommit(repo with no commits) = %q, want empty", got)
+	if got, err := gitutil.RootCommit(repo); got != "" || err != nil {
+		t.Errorf("RootCommit(repo with no commits) = %q, %v; want \"\", nil", got, err)
 	}
 	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("a\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -245,10 +245,10 @@ func TestRootCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := gitutil.RootCommit(repo); got != strings.TrimSpace(want) {
-		t.Errorf("RootCommit = %q, want %q", got, strings.TrimSpace(want))
+	if got, err := gitutil.RootCommit(repo); got != strings.TrimSpace(want) || err != nil {
+		t.Errorf("RootCommit = %q, %v; want %q, nil", got, err, strings.TrimSpace(want))
 	}
-	if got := gitutil.RootCommit(t.TempDir()); got != "" {
-		t.Errorf("RootCommit(non-repo) = %q, want empty", got)
+	if got, err := gitutil.RootCommit(t.TempDir()); got != "" || err != nil {
+		t.Errorf("RootCommit(non-repo) = %q, %v; want \"\", nil", got, err)
 	}
 }
