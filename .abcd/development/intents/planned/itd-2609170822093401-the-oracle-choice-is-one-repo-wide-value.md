@@ -163,6 +163,11 @@ Ruled by the product thinker on 2026-09-22, after the research pass on model rou
 2. **A route through a provider adapter must be on that provider's allowlist** (adr-2609221009491186); the tier proposes only routes the resolver admits.
 3. **No learned per-request router** (itd-17 superseded by itd-2609221009495079).
 
+Settled by the technical facilitator on the product thinker's delegation, relayed by the coordinator on 2026-10-22, each from this intent's own What's Out of Scope:
+
+4. **A row's fan-out bound is carried, not enforced, until the payload names the agents it used.** Out of Scope lists "Enforcing a fan-out bound at ingest; here a row carries the number and the request block states it". No verb reads the bound before itd-2609180517121254 gives the payload `agents_used`; resolution clamps it to the ceiling (`internal/core/oracle/resolve.go`) and the request block states it, as today.
+5. **The proposal is held to the agent roster at run time and by a test, not by a lint rule.** Out of Scope lists "A lint rule over the tables; run-time reporting is the gate here". An orphan row is reported at run time as a diagnostic (`internal/core/oracle/store.go`), and `TestProposalNamesEveryAgentInTheRosterAndNoOther` keeps the bundled proposal and `agents/` in step both ways.
+
 ## Acceptance Criteria
 
 - **Given** a machine with no accepted table and a repository with no
@@ -218,9 +223,11 @@ Ruled by the product thinker on 2026-09-22, after the research pass on model rou
 - Whether a fan-out bound on a row is read by any verb before
   `itd-2609180517121254` gives the payload an `agents_used` field, or only
   carried in the request block until then.
+  - Resolved: carried in the request block until then (Decision 4).
 - How the bundled proposal is versioned against the agent roster: an agent
   added without a row, or a row for an agent since removed, must be a lint
   finding on the payload rather than a run-time surprise.
+  - Resolved: run-time reporting and the roster test are the gate, not a lint rule (Decision 5).
 
 ## Typed Links
 
