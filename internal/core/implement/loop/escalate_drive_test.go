@@ -175,3 +175,66 @@ func TestLoadTieringCarriesTheProviderDiagnostics(t *testing.T) {
 		t.Fatalf("the provider configuration's diagnostic is carried: %q", diags)
 	}
 }
+
+// TestAStepOnARunnerRecordsThatItDoesNotMove: a role the machine's runner
+// configuration hands to a runner names a runner and a model, so the step asks
+// it for no tier and its round says it does not move.
+func TestAStepOnARunnerRecordsThatItDoesNotMove(t *testing.T) {
+	cfg := runnerConfig(t, `{"roles":{"ruthless-reviewer":{"runner":"opencode"}}}`, "")
+	repo := briefRepo(t, agentsMarked)
+	o := Options{Tiers: tiering(t, repo, `{"ruthless-reviewer":{"tier":"economy"}}`)}
+	_, _, res, r := driveRound(t, o, Runners{Config: cfg})
+	if res.Tier != "" || r.Tier != "" || !strings.Contains(r.Note, "opencode runner") || !strings.Contains(r.Note, "does not move") {
+		t.Fatalf("a role on a runner is asked for no tier and says why: %+v %+v", res.Tier, r)
+	}
+}
+
+// TestARunnerRoutesNoteIsMaskedWhenStored: a round's note carries the --route
+// text the person typed, so it is stored masked, its home directory redacted,
+// as every other free text of the state is.
+func TestARunnerRoutesNoteIsMaskedWhenStored(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	// The fixture points HOME at a directory of its own; that is the home the
+	// mask redacts.
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" || home == "/" {
+		t.Skip("no home directory to redact")
+	}
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	implemented(t, repo, start.RunID, DefaultStages(), "one.txt")
+	o := Options{Tiers: tiering(t, repo, `{"ruthless-reviewer":{"tier":"economy"}}`)}
+	text := "ruthless-reviewer=runner:opencode@example/‮model " + home + "/secret"
+	o.runnerRoute = func(role string) (string, string) {
+		if role == RoleRuthless {
+			return "opencode", text
+		}
+		return "", ""
+	}
+	if _, err := advance(repo.Root(), start.RunID, DefaultStages(), o); err != nil {
+		t.Fatal(err)
+	}
+	raw := string(stateBytes(t, repo.Root(), start.RunID))
+	note := routeOfRole(t, repo, start.RunID, 1, RoleRuthless).Note
+	for _, got := range []string{raw, note} {
+		if strings.ContainsRune(got, '‮') || strings.Contains(got, home+"/secret") {
+			t.Fatalf("the note's --route text is stored masked, its home redacted:\n%s", note)
+		}
+	}
+	if !strings.Contains(note, "/secret") {
+		t.Fatalf("the note keeps the --route text it masks: %q", note)
+	}
+}
+
+// TestLoadTieringRefusesAnUnreadableTableAtRouting: a routing table the step
+// cannot read decides which tier a round asks for, so it is refused at the
+// routing stage before anything moves.
+func TestLoadTieringRefusesAnUnreadableTableAtRouting(t *testing.T) {
+	roots := machineRoots(t, t.TempDir(), map[string]string{"oracle-routing.json": `{"schema_version":1,"agents":{"scribe":{"tier":"cheap"}}}`})
+	_, _, err := LoadTiering(roots, nil)
+	if r := mustRefusal(t, err); r.Stage != StageRouting || !strings.Contains(r.Reason, "cheap") {
+		t.Fatalf("an unreadable table is refused at the routing stage, naming the fault: %+v", r)
+	}
+}
