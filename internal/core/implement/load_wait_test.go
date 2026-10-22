@@ -1515,3 +1515,54 @@ func TestWaitCrossedCountStartsAgainWhenOneLeaves(t *testing.T) {
 		t.Fatalf("B2: %+v, done at %s; want open only once B1, which opened at %s, has run its command until %s", res, done, opened, opened.Add(runFor))
 	}
 }
+
+// wholeSeconds wraps read as macOS reads the table: every age in whole
+// seconds, and each look taking 0.3 s on clock, so the fractional part of a
+// start rotates through every phase from one look to the next.
+func wholeSeconds(clock *fakeClock, read func() (machineload.Snapshot, error)) func() (machineload.Snapshot, error) {
+	return func() (machineload.Snapshot, error) {
+		s, err := read()
+		for i := range s.Procs {
+			s.Procs[i].Age = s.Procs[i].Age.Truncate(time.Second)
+		}
+		clock.Sleep(300 * time.Millisecond)
+		return s, err
+	}
+}
+
+// TestWaitTieEdgeFlickerKeepsTheCrossedCount: after a wrap the table holds A,
+// a pid-ordered waiter (v0.15.0) with pid 73003 started 70 min ago, and two of
+// this code, X with pid 60000 and B with pid 8034, X started 2.5 s before B.
+// Read in whole seconds, the gap between them is 2 s at some looks (a tie, so
+// B, the lower pid, is ahead of X) and 3 s at others (X ahead of B, crossed),
+// so B counts one crossed waiter at some looks and two at others. Starting
+// the count again whenever that number fell kept B from ever reaching its cap,
+// and A's wait on B's lower pid held both until their timeouts. X, still
+// queued, has not left: B's count runs on, B opens, and X, which waits on B at
+// every look where the two tie, opens once B's command has run.
+func TestWaitTieEdgeFlickerKeepsTheCrossedCount(t *testing.T) {
+	const runFor = 10 * time.Minute
+	a := peer{pid: 73003, age: 70 * time.Minute}
+	run := func(self int, selfAge time.Duration, peers ...peer) (WaitResult, time.Time) {
+		t.Helper()
+		clock := &fakeClock{now: waitT0}
+		req := waitReq(t.TempDir(), self, clock)
+		read, args := peerTable(clock, self, selfAge, peers...)
+		req.Read, req.ReadArgs = wholeSeconds(clock, read), args
+		req.Self = machineload.Self{PID: self, UID: 501}
+		req.Timeout = time.Hour
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res, clock.Now()
+	}
+	res, opened := run(8034, time.Minute, a, peer{pid: 60000, age: time.Minute + 2500*time.Millisecond})
+	if res.Status != WaitOpen || opened.After(waitT0.Add(crossedCapFor(2)+2*time.Minute)) {
+		t.Fatalf("B: %+v, done at %s; want open within a couple of minutes of its cap, the flickering X still queued", res, opened)
+	}
+	res, done := run(60000, time.Minute+2500*time.Millisecond, a, peer{pid: 8034, age: time.Minute, runsFrom: opened, goneAt: opened.Add(runFor)})
+	if res.Status != WaitOpen || done.Before(opened.Add(runFor)) {
+		t.Fatalf("X: %+v, done at %s; want open only once B, which opened at %s, has run its command until %s", res, done, opened, opened.Add(runFor))
+	}
+}

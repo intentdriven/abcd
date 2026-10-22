@@ -368,6 +368,21 @@ func RaceCommandWaiters(snap Snapshot, self Self, args map[int][]string) []int {
 	return out
 }
 
+// QueuedAt returns, in pid order, the waiters queued at one gate, the race
+// gate's when race is set and the first gate's otherwise, outside self's
+// process and its ancestors: every one not running its command, ahead of self
+// or not. implement.WaitLoad reads it to tell a crossed waiter that has left
+// the queue (exited, or opened) from one a tie read differently has moved
+// behind self.
+func QueuedAt(snap Snapshot, self Self, args map[int][]string, race bool) []int {
+	if !snap.HasProcs {
+		return nil
+	}
+	t := readGate(snap, self, args)
+	_, waiting := t.waiters(args, race)
+	return waiting
+}
+
 // gateTable is one snapshot read for a gate: the processes by pid, the waiters
 // running a command, self's process and ancestors, and the gate candidates.
 type gateTable struct {
