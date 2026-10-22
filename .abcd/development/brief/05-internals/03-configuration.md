@@ -1244,16 +1244,17 @@ warns so, naming the check to run by hand. Its build strings are printed
 instructions to the operator for the cases it cannot provision. `SessionStart` runs one chained command rather than siblings,
 because siblings would run in parallel and share one stdin.
 
-`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse` and `PreCompact`
-are the events that reach `bootstrap.sh` at all. The last four self-provision
+`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
+`PermissionRequest` and `PreCompact` are the events that reach `bootstrap.sh` at
+all. The last five self-provision
 only when the
 plugin-root binary is missing, throttled by a `.bootstrap.attempt` marker within a
 ten-minute window, and then fall back to a PATH-resolved abcd that must be
 absolute, outside the working directory, in a directory and a file that are not
 world-writable, and recorded as this
 machine's own, before failing loudly. `UserPromptSubmit`, which runs on every
-message, declares a 120-second `timeout`; `PreToolUse`, `PostToolUse` and
-`PreCompact` declare none and take the host's ten-minute default; `SessionStart` declares 240 seconds,
+message, declares a 120-second `timeout`; `PreToolUse`, `PostToolUse`,
+`PermissionRequest` and `PreCompact` declare none and take the host's ten-minute default; `SessionStart` declares 240 seconds,
 and the transcript hooks declare none. Every event that runs `bootstrap.sh`
 names a `statusMessage`, the host's spinner text while the hook runs, because the
 salvage sends the script's output nowhere; the text states no duration, since
@@ -1276,6 +1277,16 @@ supply. `SessionStart` drains both through the fail-closed redaction path.
 question-answered`, which resets the mode to managed when an answer comes back
 to a question the guard marked open (iss-2610100626211810); the prompt hook
 runs the same reset on the next message, for a host that does not run it.
+`PermissionRequest` is matched to the shell tool alone and carries `hook
+permission-request`, which refuses the host's approval prompt while a build or
+drain runs for the session's checkout or the session is one of a running
+build's lanes (iss-2610171110154902): the agent is told to rewrite the command
+into plain steps abcd can check, or skip the step and say why. A build counts
+while its run is unfinished, no lane of it is handed back or held, and its
+state was written within the reservation lease; a drain while it has not
+stopped and was written within the same window.
+It never grants a prompt, and in every other session it says nothing, so the
+host's prompt shows as usual.
 
 **The plugin-internal development namespace** (committed in private repos,
 gitignored in public) holds, at its root, the config file and the per-surface

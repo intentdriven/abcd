@@ -28,13 +28,14 @@ import (
 // one handler carries; 0 means the field is absent. An event added, removed or
 // re-timed without updating this table fails the test.
 var wantHookTimeouts = map[string]int{
-	"SessionStart":     240,
-	"UserPromptSubmit": 120,
-	"PreToolUse":       0,
-	"PostToolUse":      0,
-	"PreCompact":       0,
-	"SessionEnd":       0,
-	"SubagentStop":     0,
+	"SessionStart":      240,
+	"UserPromptSubmit":  120,
+	"PreToolUse":        0,
+	"PostToolUse":       0,
+	"PermissionRequest": 0,
+	"PreCompact":        0,
+	"SessionEnd":        0,
+	"SubagentStop":      0,
 }
 
 // decodedHooksManifest reads the committed manifest through the same decoded
@@ -110,7 +111,7 @@ func TestEverySalvageEntryShowsItsWait(t *testing.T) {
 		}
 	}
 	slices.Sort(provisioning)
-	if want := []string{"PostToolUse", "PreCompact", "PreToolUse", "SessionStart", "UserPromptSubmit"}; !slices.Equal(provisioning, want) {
+	if want := []string{"PermissionRequest", "PostToolUse", "PreCompact", "PreToolUse", "SessionStart", "UserPromptSubmit"}; !slices.Equal(provisioning, want) {
 		t.Errorf("the entries that run hooks/bootstrap.sh are %v, want %v — a hook that starts or stops provisioning updates the timeout table too", provisioning, want)
 	}
 }

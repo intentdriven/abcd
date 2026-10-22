@@ -134,6 +134,11 @@ func TestTheBareDrainOpensALaneAndSaysWhatItDid(t *testing.T) {
 	if strings.Contains(stdout.String(), "in-progress") {
 		t.Errorf("no lane opens before the judgement:\n%s", stdout.String())
 	}
+	// The person is told once, as the drain begins, that approval prompts
+	// are refused while it runs (iss-2610171110154902).
+	if n := strings.Count(stderr.String(), unattendedRefusalNotice); n != 1 {
+		t.Errorf("the drain's first move carries the prompt notice %d times on stderr, want once:\n%s", n, stderr.String())
+	}
 	stdout.Reset()
 	stderr.Reset()
 	if code := Run([]string{"drain", "--json"}, &stdout, &stderr); code != 0 {
@@ -148,6 +153,9 @@ func TestTheBareDrainOpensALaneAndSaysWhatItDid(t *testing.T) {
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &judging); err != nil || judging.Judging.Issue != id {
 		t.Fatalf("--json names the judgement awaited: %v\n%s", err, stdout.String())
+	}
+	if strings.Contains(stdout.String()+stderr.String(), unattendedRefusalNotice) {
+		t.Errorf("a later move of the drain repeats the prompt notice:\n%s", stderr.String())
 	}
 	answer, _ := json.Marshal(map[string]any{"schema_version": 1, "issue": id, "remedy_sha256": judging.Judging.RemedySHA256,
 		"answer": "no", "reason": "an internal ordering fix"})

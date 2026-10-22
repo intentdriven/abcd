@@ -1712,6 +1712,11 @@
       "flags": []
     },
     {
+      "path": "abcd hook permission-request",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd hook prompt-router",
       "hidden": false,
       "flags": []

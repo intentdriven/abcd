@@ -38,9 +38,14 @@ import (
 // Blocks raised to 26 when the installer's refuse_older landed
 // (hooks/bootstrap.sh): its printf argument line, read alone, blocks as
 // program-name-unknown, the same way say_refusal's argument line already did.
+//
+// Warns raised to 31 when the PermissionRequest hook's shim landed
+// (hooks/permission-request.sh, iss-2610171110154902): its resolving line and
+// the file whole each warn as unrecognised-launcher, as every sibling shim's
+// two do.
 const (
 	maxSweepBlocks = 26
-	maxSweepWarns  = 29
+	maxSweepWarns  = 31
 )
 
 func TestFalsePositiveSweepCeiling(t *testing.T) {

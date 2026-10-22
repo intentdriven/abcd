@@ -51,6 +51,7 @@ var binaryHooks = []binaryHook{
 	{event: "UserPromptSubmit", verb: "prompt-router"},
 	{event: "PreToolUse", verb: "guard"},
 	{event: "PostToolUse", verb: "question-answered"},
+	{event: "PermissionRequest", verb: "permission-request"},
 	{event: "PreCompact", verb: "prompt-router-reset"},
 	{event: "SessionEnd", verb: "session-end", neverBootstraps: true},
 	{event: "SubagentStop", verb: "subagent-stop", neverBootstraps: true},

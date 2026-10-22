@@ -32,6 +32,7 @@ var stopWrapperEvents = []struct {
 	{"SessionStart", 2, []string{"hook session-start", "hook prompt-router-reset"}},
 	{"PreToolUse", 2, []string{"guard hook"}},
 	{"PostToolUse", 1, []string{"hook question-answered"}},
+	{"PermissionRequest", 1, []string{"hook permission-request"}},
 	{"PreCompact", 1, []string{"hook prompt-router-reset"}},
 	{"SessionEnd", 1, []string{"hook session-end"}},
 	{"SubagentStop", 1, []string{"hook subagent-stop"}},
