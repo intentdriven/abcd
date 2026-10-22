@@ -87,12 +87,20 @@ jobs:
           chmod 0755 "$dir/abcd-linux-amd64"
           # A release cut before the sweep existed has no `reserve --sweep`:
           # the run says so and deletes nothing, rather than failing on usage.
-          if "$dir/abcd-linux-amd64" reserve --help 2>&1 | grep -q -- '--sweep'; then
-            echo "has_sweep=true" >>"$GITHUB_OUTPUT"
-          else
-            echo "::warning title=reservation sweep did not delete::the latest release, $tag, has no reserve --sweep; nothing was deleted until a release carries it."
-            echo "has_sweep=false" >>"$GITHUB_OUTPUT"
-          fi
+          # The help is read whole before it is matched: a `grep -q` in a pipe
+          # exits at the match, the binary dies of SIGPIPE writing the rest,
+          # and pipefail then reads a release that has the flag as one that
+          # does not.
+          help="$("$dir/abcd-linux-amd64" reserve --help 2>&1)" || true
+          case "$help" in
+            *--sweep*)
+              echo "has_sweep=true" >>"$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::warning title=reservation sweep did not delete::the latest release, $tag, has no reserve --sweep; nothing was deleted until a release carries it."
+              echo "has_sweep=false" >>"$GITHUB_OUTPUT"
+              ;;
+          esac
           echo "bin=$dir/abcd-linux-amd64" >>"$GITHUB_OUTPUT"
       # The App's long-lived key is in this step alone. It mints the one-hour
       # installation token and ends, so the key never reaches the step that
