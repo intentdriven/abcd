@@ -27,13 +27,16 @@ refuses.
 
 ## Footprint
 
-- packages: internal/core/landing/config.go, internal/core/landing/facilitator.go, internal/core/landing/facilitator_test.go, internal/core/landing/review.go, internal/core/landing/review_test.go, internal/core/landing/primitives.go, internal/core/landing/land.go, internal/core/implement/loop/land.go, internal/core/implement/loop/land_test.go, internal/core/board/board.go, internal/core/board/board_test.go, internal/core/guard/merge.go, internal/core/guard/merge_test.go, internal/core/guard/guard.go, internal/surface/cli/cli.go, internal/surface/cli/board.go, internal/surface/cli/board_status.go, internal/surface/cli/board_status_test.go, internal/surface/cli/land.go, internal/surface/cli/land_surface_test.go, internal/surface/cli/receipts.go, internal/surface/cli/guard.go, .abcd/config.json, commands/land.md, commands/guard.md, .abcd/development/brief/04-surfaces/38-land.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/brief/04-surfaces/39-status.md
+- packages: internal/core/landing/config.go, internal/core/landing/facilitator.go, internal/core/landing/facilitator_test.go, internal/core/landing/review.go, internal/core/landing/review_test.go, internal/core/landing/primitives.go, internal/core/landing/land.go, internal/core/board/board.go, internal/core/board/board_test.go, internal/core/guard/merge.go, internal/core/guard/merge_test.go, internal/core/guard/guard.go, internal/surface/cli/cli.go, internal/surface/cli/board.go, internal/surface/cli/board_status.go, internal/surface/cli/board_status_test.go, internal/surface/cli/land.go, internal/surface/cli/land_surface_test.go, internal/surface/cli/receipts.go, internal/surface/cli/guard.go, .abcd/config.json, commands/land.md, commands/guard.md, .abcd/development/brief/04-surfaces/38-land.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/brief/04-surfaces/39-status.md
 - tests: internal/core/landing, internal/core/implement/loop, internal/core/board, internal/core/guard, internal/surface/cli
 - The packages line names the files the steps change, not their directories,
   so the reservation does not hold unrelated work in the same packages.
   Generated output (`docs/reference/cli/commands.md`,
   `.abcd/development/release/surface.json` and any other linguist-generated
   file) is reserved by no one: whoever lands second regenerates it.
+- Step 4 also changes `internal/core/implement/loop/land.go` and its test.
+  They join the packages line when step 4 begins, and `abcd build` then
+  reserves the widened footprint (dcn-2610222356532638).
 
 ## Steps
 
