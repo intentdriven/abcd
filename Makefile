@@ -305,8 +305,8 @@ asking-sync-check:
 # -race run or race waiter ahead is live, the load is at the limit or the race
 # gate's own hold is in force. That keeps race stages apart among checkouts
 # that have this gate: one at a time within an account, and across accounts
-# all but a narrow window (a race waiter gone before its race run shows, or two
-# waiters whose start and pid disagree after a pid wrap). An older checkout's
+# all but a narrow window (a race waiter gone before its race run shows, or,
+# after a pid wrap, two waiters one of which runs abcd v0.15.1). An older checkout's
 # race stage is ungated, so set 2 only once none runs a preflight. Each test
 # stage then takes a go test -p derived from the online cores and the load as
 # the stage starts, at most the cores divided by the setting

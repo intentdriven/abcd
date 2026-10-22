@@ -32,18 +32,29 @@ import (
 //
 // Every waiter reads the same table and orders the queue the same way, by when
 // each waiter started, earliest first, with a tie going to the lower pid
-// (queueOrder), and counts a queued waiter as ahead only when that one is
-// ahead by start and has the lower pid as well, so every wait on a queued
-// waiter points at a lower pid and no two queued waiters wait on each other,
-// without writing anything: two whose start and pid agree agree on which goes
-// first, and two whose start and pid disagree wait on neither
-// (implement.WaitLoad keeps such a pair from running at once). Pid order
-// alone starved a waiter once the machine's process ids wrapped: every later
-// waiter with a lower pid queued ahead of it (iss-2610161634043273). Start
-// order alone deadlocked against waiters built before it, which still wait on
-// every lower pid: a young waiter with a low pid waited on older ones with
-// higher pids, and they on it. Each is judged from its arguments, never from
-// a pattern over a command line, as a race run is (race.go).
+// (queueOrder), and counts every queued waiter ahead of it in that order as
+// ahead, whatever its pid, without writing anything. Pid order starved a
+// waiter once the machine's process ids wrapped: every later waiter with a
+// lower pid queued ahead of it (iss-2610161634043273). Counting a waiter ahead
+// only when it had the lower pid as well, as abcd v0.15.1 does, starved one
+// too: after a wrap an hour-old waiter with a high pid and a young one with a
+// low pid waited on neither, so every young starter competed with the old one
+// at each free moment, and the open look stood the old one back for each
+// (iss-2610222125175640).
+//
+// A waiter ahead by start with the higher pid is crossed (Ahead.Crossed). A
+// waiter built before the start order (v0.15.0 and earlier) waits on every
+// lower pid, and nothing in the table tells it from one built after, since
+// both run the same arguments: such a waiter, older with the higher pid,
+// waits on this one while this one waits on it. Every cycle of waits passes
+// through a crossed wait: every other wait, from this code, v0.15.1's or the
+// pid-ordered code, points at a lower pid, and a cycle has to climb back up
+// the pids. So implement.WaitLoad stops counting crossed waiters once they
+// alone have held its gate shut for implement.WaitCrossedCap, longer than a
+// waiter of this code or v0.15.1's, which waits on no later start, shows
+// queued while the machine is free to another account. Each is judged from
+// its arguments, never from a pattern over a command line, as a race run is
+// (race.go).
 
 // makePrograms are the base names make runs under.
 var makePrograms = []string{"make", "gmake"}
@@ -189,9 +200,9 @@ func GateCandidates(snap Snapshot, self Self) []int {
 type Ahead struct {
 	// Preflights are the make preflights running, not queued at their gate.
 	Preflights []int
-	// Waiters are the waiters queued ahead of this one (ahead by start, earlier
-	// or in the same tie group, and with a lower pid; queueOrder) or running
-	// the command they gate, in pid order.
+	// Waiters are the waiters queued ahead of this one (ahead by start: earlier,
+	// or in the same tie group with a lower pid; queueOrder) or running the
+	// command they gate, in pid order.
 	Waiters []int
 	// Busy is the work in its test stages: each preflight in Preflights and
 	// each waiter in Waiters running its command, counted once where one runs
@@ -199,6 +210,22 @@ type Ahead struct {
 	Busy []int
 	// Queued is the waiters in Waiters queued ahead, not running a command.
 	Queued []int
+	// Crossed is the waiters in Queued with a higher pid than this one's:
+	// ahead by start across a pid wrap. A waiter built before the start order
+	// waits on every lower pid, so it may be waiting on this one in turn, and
+	// implement.WaitLoad stops counting crossed waiters once they alone have
+	// held the gate shut for implement.WaitCrossedCap (Uncrossed).
+	Crossed []int
+}
+
+// Uncrossed is a without its crossed waiters: what is ahead once a wait no
+// longer counts them (implement.WaitLoad, implement.WaitCrossedCap).
+func (a Ahead) Uncrossed() Ahead {
+	drop := func(pids []int) []int {
+		return slices.DeleteFunc(slices.Clone(pids), func(pid int) bool { return slices.Contains(a.Crossed, pid) })
+	}
+	a.Waiters, a.Queued, a.Crossed = drop(a.Waiters), drop(a.Queued), nil
+	return a
 }
 
 // Shut reports which of the queue's conditions hold the first gate shut when
@@ -244,7 +271,7 @@ func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 	}
 	runningW, waiting := t.waiters(args, false)
 	if !turnWon {
-		out.Queued = t.queuedAhead(waiting)
+		out.Queued, out.Crossed = t.queuedAhead(waiting)
 	}
 	out.Waiters = append(append([]int(nil), runningW...), out.Queued...)
 	sort.Ints(out.Waiters)
@@ -284,20 +311,21 @@ func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 
 // RaceAhead returns, in pid order, the race waiters (isRaceWaiter) ahead of
 // self at the race gate: those queued ahead of it, by the rule the first
-// gate's queue keeps (ahead by start and with the lower pid, queuedAhead), and
-// those running their command, outside
-// self's process and its ancestors. A waiter at a first gate, and a preflight
-// in its unit stage, are not ahead of it there; the race runs that shut it are
-// RaceRuns.
-func RaceAhead(snap Snapshot, self Self, args map[int][]string) []int {
+// gate's queue keeps (ahead by start, queuedAhead), and those running their
+// command, outside self's process and its ancestors; and, as crossed, those
+// queued ahead of it with a higher pid (Ahead.Crossed). A waiter at a first
+// gate, and a preflight in its unit stage, are not ahead of it there; the race
+// runs that shut it are RaceRuns.
+func RaceAhead(snap Snapshot, self Self, args map[int][]string) (ahead, crossed []int) {
 	if !snap.HasProcs {
-		return nil
+		return nil, nil
 	}
 	t := readGate(snap, self, args)
 	runningW, waiting := t.waiters(args, true)
-	out := append(append([]int(nil), runningW...), t.queuedAhead(waiting)...)
-	sort.Ints(out)
-	return out
+	queued, crossed := t.queuedAhead(waiting)
+	ahead = append(append([]int(nil), runningW...), queued...)
+	sort.Ints(ahead)
+	return ahead, crossed
 }
 
 // IsRaceCommand reports whether cmd, a command a waiter gates (the words after
@@ -385,25 +413,11 @@ func (t gateTable) waiters(args map[int][]string, race bool) (running, waiting [
 }
 
 // queuedAhead returns, in pid order, the queued waiters at one gate ahead of
-// self: ahead by start (queueOrder) and with the lower pid as well, at the
-// first gate (QueueAhead) and the race gate (RaceAhead) alike. Absent from the
-// table, self has no start time, and queueOrder puts it behind every one that
-// has.
-//
-// A waiter ahead by start is ahead only when its pid is lower too. A waiter
-// built before the start order (iss-2610161634043273) waits on every lower
-// pid, and this code cannot tell it from one built after: were this waiter to
-// wait on a higher pid that started earlier, and that one run the older code,
-// each would wait on the other until its timeout. So every wait, whichever
-// code makes it, points at a lower pid, and no chain of waits can close into
-// a cycle, whatever each waiter's own read of the table says. Two waiters
-// whose start and pid disagree, as across a pid wrap, wait on neither: the
-// earlier start, with the higher pid, is no longer held behind every later
-// start with a lower one, and the waiter's settle wait and re-check, within
-// one account its hold, and across accounts the command form's look just
-// before it starts its command (JustOpened), keep the two from running at
-// once (implement.WaitLoad).
-func (t gateTable) queuedAhead(waiting []int) []int {
+// self by start (queueOrder), at the first gate (QueueAhead) and the race gate
+// (RaceAhead) alike, and those of them with a higher pid than self's, the
+// crossed ones (Ahead.Crossed). Absent from the table, self has no start time,
+// and queueOrder puts it behind every one that has.
+func (t gateTable) queuedAhead(waiting []int) (ahead, crossed []int) {
 	queue := []Proc{{PID: t.self.PID}}
 	if p, ok := t.byPID[t.self.PID]; ok {
 		queue[0] = p
@@ -411,17 +425,18 @@ func (t gateTable) queuedAhead(waiting []int) []int {
 	for _, pid := range waiting {
 		queue = append(queue, t.byPID[pid])
 	}
-	var out []int
 	for _, pid := range queueOrder(queue) {
 		if pid == t.self.PID {
 			break
 		}
-		if pid < t.self.PID {
-			out = append(out, pid)
+		ahead = append(ahead, pid)
+		if pid > t.self.PID {
+			crossed = append(crossed, pid)
 		}
 	}
-	sort.Ints(out)
-	return out
+	sort.Ints(ahead)
+	sort.Ints(crossed)
+	return ahead, crossed
 }
 
 // queueOrder returns the pids of the queued waiters ws in the order they are
@@ -429,12 +444,16 @@ func (t gateTable) queuedAhead(waiting []int) []int {
 // table cannot tell apart ordered by pid, lowest first.
 //
 // A start time is the read's moment less the process's age, and every age in
-// one table is measured back from the same read, so the earlier start is the
-// greater age; the moment itself, and how long the read took, which the
-// session-name register allows for when it compares a start time with one an
-// earlier read recorded, cancel between two waiters of one table, but for
-// the read's own length (tens of milliseconds). What is left is the reading's
-// grain, which StartTolerance absorbs, as it does for
+// one table is measured back from the same read (one ps run on macOS, one
+// uptime read on Linux), so the earlier start is the greater age and the
+// order is derived from the ages alone, never from a clock read beside them:
+// every waiter that reads one table derives the same order from it, and a
+// read at another moment shifts every age alike and orders the queue the same
+// way. The moment itself, and how long the read took, which the session-name
+// register allows for when it compares a start time with one an earlier read
+// recorded, cancel between two waiters of one table, but for the read's own
+// length (tens of milliseconds). What is left is the reading's grain (macOS
+// reads ages in whole seconds), which StartTolerance absorbs, as it does for
 // the register: two ages within it are a tie, broken by pid.
 //
 // A tie is not transitive: waiters A, B and C, each within the tolerance of
@@ -448,11 +467,7 @@ func (t gateTable) queuedAhead(waiting []int) []int {
 // one look and disagree for that look, and because a group is a chain, a gap
 // read differently can move waiters elsewhere in it; the next look reads it
 // afresh. Outside a pid wrap start order and pid order agree, so a regrouping
-// changes nothing. No cycle rests on the grouping any longer: QueueAhead and
-// RaceAhead count a waiter ahead only when it has the lower pid too
-// (queuedAhead), and that alone
-// keeps every wait pointing down the pids. The grouping keeps one order for
-// the waiters a chain of ties links.
+// changes nothing.
 //
 // A waiter whose start time cannot be read (no measurable age, which is also
 // what Share takes as unknown, or absent from the table) cannot be placed by
@@ -523,10 +538,9 @@ func GoTestParallelism(snap Snapshot, slots int) int {
 // its ancestors, that are running their command and opened within window of
 // the snapshot: a waiter with a child other than ps is running its command,
 // and it opened when its oldest such child started. An opener reads it just
-// before it starts its command (implement.WaitLoad): two waiters whose start
-// and pid disagree wait on neither, and across accounts no hold keeps them
-// from opening in one moment, so each looks once more, and the one with the
-// higher pid stands back from the other. A waiter at the other gate did not
+// before it starts its command (implement.WaitLoad): across accounts no hold
+// keeps two waiters from opening in one moment, so each looks once more and
+// stands back from the others StandBackFrom names. A waiter at the other gate did not
 // open beside this one: a race waiter's preflight passed its first gate
 // earlier, and a first gate's opener never stands back from it, as an abcd
 // released before the race gate, which reads no race waiter at all, does not.
@@ -558,6 +572,48 @@ func JustOpened(snap Snapshot, self Self, args map[int][]string, window time.Dur
 			continue
 		}
 		out = append(out, pid)
+	}
+	sort.Ints(out)
+	return out
+}
+
+// StandBackFrom returns, in pid order, the waiters of opened, read from snap
+// beside self as having opened in the same moment (JustOpened), that self
+// stands back from: every one but those self precedes both in the queue's
+// order (queueOrder, from snap's ages) and by pid. So the later start stands
+// back from the earlier whatever their pids, as the queue orders them; inside
+// one tie, where the order is by pid, exactly one goes on.
+//
+// The earlier start stands back from a lower pid that opened beside it too.
+// That opener started later, so a waiter of this code would have stood back
+// from it; an older abcd does not (v0.15.1 stands back only from a lower
+// pid, and v0.15.0 takes no such look), and goes on. Were this one to go on as well, both would run their commands, and
+// under `--wait -- make preflight` each preflight's own gate would wait on the
+// other's waiter until its timeout. Two waiters of this code seldom open in
+// one moment, since the later start waits on the earlier in the queue, and
+// where they do (past implement.WaitCrossedCap, or a tie read either side of the
+// tolerance) both stand back and re-draw their jitters, at most
+// implement.WaitBackoffCap times each.
+func StandBackFrom(snap Snapshot, self Self, opened []int) []int {
+	byPID := make(map[int]Proc, len(snap.Procs))
+	for _, p := range snap.Procs {
+		byPID[p.PID] = p
+	}
+	queue := make([]Proc, 0, len(opened)+1)
+	for _, pid := range append([]int{self.PID}, opened...) {
+		p, ok := byPID[pid]
+		if !ok {
+			p = Proc{PID: pid}
+		}
+		queue = append(queue, p)
+	}
+	order := queueOrder(queue)
+	at := slices.Index(order, self.PID)
+	var out []int
+	for i, pid := range order {
+		if pid != self.PID && (i < at || pid < self.PID) {
+			out = append(out, pid)
+		}
 	}
 	sort.Ints(out)
 	return out

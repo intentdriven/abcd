@@ -63,22 +63,36 @@ import (
 // finds it free, so two starters released by one quiet minute do not start
 // together (iss-2610102020442624).
 //
-// Two waiters whose start and pid disagree, as after the process ids wrap,
-// wait on neither (machineload.QueueAhead), and across accounts no hold keeps
-// them apart: re-checks that fall in one moment, before either shows in the
-// table as running its command, both open. Under `--wait -- make preflight`
-// each preflight's own gate then waits on the other's running waiter, and both
-// stand until their timeouts. So the command form shows itself in the table as
-// running from the moment it opens (a short-lived child, its mark), waits
-// WaitOpenPause and reads the table once more before it starts its command; a
-// waiter that finds another opened within that moment with the lower pid
-// stands back: it gives up its hold, re-draws its jitter and waits again,
-// while the lower pid goes on. It stands back at most WaitBackoffCap times.
-// It stands back only from a waiter at its own gate (machineload.JustOpened),
-// and at the first gate whatever the slots: above one, the lower pid keeps
-// going and the higher pid's next look counts it, and its mark, among the
-// units in their test stages (machineload.Ahead.Shut). With one slot the race
-// gate opens before any look, so it never marks or stands back.
+// The queue is ordered by when each waiter started, whatever its pid
+// (machineload.QueueAhead, iss-2610222125175640). A waiter queued ahead by
+// start with the higher pid, as after the process ids wrap, is crossed: one
+// built before the start order (v0.15.0 and earlier) waits on every lower
+// pid, so it may be waiting on this waiter while this one waits on it, and
+// nothing in the table tells it from one that is not. So a wait stops
+// counting crossed waiters once they alone have held its gate shut for
+// WaitCrossedCap on end, and opens past them; anything else that shuts the
+// gate in between, a crossed waiter running its command among them, starts
+// the count again. No back-off breaks that cycle: WaitBackoffCap bounds only
+// the open look, which a queued wait never reaches.
+//
+// Across accounts no hold keeps two waiters apart: re-checks that fall in one
+// moment, before either shows in the table as running its command, both open.
+// Under `--wait -- make preflight` each preflight's own gate then waits on the
+// other's running waiter, and both stand until their timeouts. So the command
+// form shows itself in the table as running from the moment it opens (a
+// short-lived child, its mark), waits WaitOpenPause and reads the table once
+// more before it starts its command; a waiter that finds another opened
+// within that moment stands back from it unless it precedes it by start and
+// by pid alike (machineload.StandBackFrom): it gives up its hold, re-draws
+// its jitter and waits again, while the other goes on. So the later start
+// stands back from the earlier whatever their pids, and the earlier from a
+// lower pid too, which an older abcd (v0.15.1 and earlier) goes on past. It
+// stands back at most WaitBackoffCap times. It stands back only from a waiter
+// at its own gate (machineload.JustOpened), and at the first gate whatever the
+// slots: above one, the other keeps going and this one's next look counts it,
+// and its mark, among the units in their test stages (machineload.Ahead.Shut).
+// With one slot the race gate opens before any look, so it never marks or
+// stands back.
 //
 // A falling load opens every waiter watching it at once, which on 2026-10-11
 // put four race runs on a 16-core machine together. So within one account the
@@ -165,10 +179,22 @@ var (
 )
 
 // WaitBackoffCap bounds how many times one wait stands back from another
-// waiter that opened in the same moment with the lower pid. A waiter that has
-// stood back this many times opens without that last look, as it did before
-// the look was added, so no wait goes round for ever.
+// waiter that opened in the same moment (machineload.StandBackFrom). A waiter
+// that has stood back this many times opens without that last look, as it did
+// before the look was added, so no wait goes round for ever.
 const WaitBackoffCap = 3
+
+// WaitCrossedCap is how long crossed waiters (machineload.Ahead.Crossed),
+// queued ahead by start with a higher pid, may alone hold a wait's gate shut
+// on end before it stops counting them. One of them may be a waiter built
+// before the start order, which waits on every lower pid and so on this one,
+// and each would wait on the other until its timeout. A waiter of this code
+// or v0.15.1's waits on no later start, so another account sees it queued
+// while the machine is free only for what its own account alone sees: its
+// account's settle hold (WaitSettle), the poll after it, its jitter and its
+// open look, which the cap outlasts. One held shut longer by its own account's
+// stricter wait limit is passed, as v0.15.1 passes every crossed waiter.
+var WaitCrossedCap = 5 * time.Minute
 
 // waitJitter is a random wait from WaitJitterMin to WaitJitterMax.
 func waitJitter() time.Duration {
@@ -282,8 +308,9 @@ type WaitRequest struct {
 	// short-lived /bin/sleep.
 	Mark func() (stop func(), err error)
 	// OnBackoff is called at each back-off, with the waiters that opened in the
-	// same moment with the lower pid and the jitter waited before looking again.
-	OnBackoff func(lower []int, jitter time.Duration)
+	// same moment that this one stood back from (machineload.StandBackFrom) and
+	// the jitter waited before looking again.
+	OnBackoff func(first []int, jitter time.Duration)
 }
 
 // WaitHolder is a hold: the record under ~/.abcd.noindex/ and what the report
@@ -344,7 +371,7 @@ type WaitResult struct {
 	// waiter, so a preflight, which waits at both gates, shows it twice.
 	SlotsNote string `json:"slots_note,omitempty"`
 	// Backoffs is how many times the waiter stood back from another that opened
-	// in the same moment with the lower pid.
+	// in the same moment (machineload.StandBackFrom).
 	Backoffs int `json:"backoffs,omitempty"`
 	// Unmark stops the command form's mark (WaitRequest.Mark). The caller calls
 	// it once its command has started, or could not be started; nil when there
@@ -430,12 +457,26 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	start := now()
 	deadline := start.Add(req.Timeout)
 	announced, settled := false, false
+	// crossedSince is the first look of the run of looks at which crossed
+	// waiters alone held the gate shut, zero outside one; past WaitCrossedCap
+	// the looks stop counting them.
+	var crossedSince time.Time
+	pastCap := func() bool { return !crossedSince.IsZero() && now().Sub(crossedSince) >= WaitCrossedCap }
+	noteCrossed := func(only bool) {
+		switch {
+		case !only:
+			crossedSince = time.Time{}
+		case crossedSince.IsZero():
+			crossedSince = now()
+		}
+	}
 	for {
 		res.Polls++
-		shut, done, err := waitLook(req, root, home, &res, now, false)
+		shut, done, only, err := waitLook(req, root, home, &res, now, false, pastCap())
 		if err != nil {
 			return res, err
 		}
+		noteCrossed(only)
 		if !done && len(shut) == 0 {
 			// Free: wait the jitter, then check everything again, and open only
 			// if the machine is still free. The jitter never runs past the
@@ -449,30 +490,31 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			}
 			sleep(j)
 			res.Polls++
-			shut, done, err = waitLook(req, root, home, &res, now, true)
+			shut, done, only, err = waitLook(req, root, home, &res, now, true, pastCap())
 			if err != nil {
 				return res, err
 			}
+			noteCrossed(only)
 		}
 		if done && res.Status == WaitOpen && req.Command && res.Backoffs < WaitBackoffCap {
-			lower, stop := openLook(req, sleep)
-			if len(lower) > 0 {
-				// Stand back: the lower pid opened in the same moment and keeps
-				// going. Give up the hold, re-draw the jitter, and wait again.
+			first, stop := openLook(req, sleep)
+			if len(first) > 0 {
+				// Stand back: another opened in the same moment, and it goes
+				// first. Give up the hold, re-draw the jitter, and wait again.
 				stop()
 				if res.Hold != nil {
 					if err := releaseHoldIn(root, *res.Hold); err != nil {
 						return res, fmt.Errorf("the hold %s could not be given up: %w", abcdhome.Display(holdFileName(res.Hold.Gate)), err)
 					}
 				}
-				res.Status, res.Hold, res.Waiters = "", nil, lower
+				res.Status, res.Hold, res.Waiters = "", nil, first
 				res.Backoffs++
 				if !slices.Contains(res.WaitedOn, WaitOnWaiter) {
 					res.WaitedOn = append(res.WaitedOn, WaitOnWaiter)
 				}
 				j := min(jitter(), max(deadline.Sub(now()), 0))
 				if req.OnBackoff != nil {
-					req.OnBackoff(lower, j)
+					req.OnBackoff(first, j)
 				}
 				sleep(j)
 				continue
@@ -508,14 +550,14 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 }
 
 // openLook is the command form's last look, once it has opened and before it
-// starts its command. Two waiters whose start and pid disagree wait on neither
-// (machineload.QueueAhead), and across accounts no hold keeps them apart, so
+// starts its command. Across accounts no hold keeps two waiters apart, so
 // both can open in one moment, before either shows in the table as running
 // its command; under `--wait -- make preflight` each preflight's own gate then
 // waits on the other's running waiter until its timeout. So the waiter marks
 // itself as running (req.Mark), waits WaitOpenPause, and reads the table once
-// more: the waiters it returns opened within that moment and have the lower
-// pid, and this one stands back from them. The mark is left running for the
+// more: the waiters it returns opened within that moment, and this one does
+// not precede them by start and by pid alike (machineload.StandBackFrom), so
+// it stands back from them. The mark is left running for the
 // caller to stop once the command has started (WaitResult.Unmark); a mark that
 // cannot be started leaves this waiter unseen by the others' look, and its own
 // look still runs. A table that cannot be read finds no one
@@ -541,13 +583,8 @@ func openLook(req WaitRequest, sleep func(time.Duration)) ([]int, func()) {
 		return nil, stopOnce
 	}
 	window := WaitOpenPause + machineload.StartTolerance*time.Second
-	var lower []int
-	for _, pid := range machineload.JustOpened(snap, req.Self, args, window, req.Race) {
-		if pid < req.Self.PID {
-			lower = append(lower, pid)
-		}
-	}
-	return lower, stopOnce
+	opened := machineload.JustOpened(snap, req.Self, args, window, req.Race)
+	return machineload.StandBackFrom(snap, req.Self, opened), stopOnce
 }
 
 // sleepMark is the default mark: a /bin/sleep child of the waiter, which the
@@ -569,16 +606,18 @@ func sleepMark() (func(), error) {
 // that hold the gate shut, or done when the wait is over (opened, or a platform
 // it cannot judge). Only a look with take set opens the gate and takes the
 // hold; one without it that finds nothing shut reports no condition and not
-// done, and the caller re-checks after the jitter.
-func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time, take bool) ([]string, bool, error) {
+// done, and the caller re-checks after the jitter. With uncrossed set it does
+// not count crossed waiters (machineload.Ahead.Crossed, WaitCrossedCap).
+// crossedOnly reports that crossed waiters were queued ahead and nothing else
+// held the gate shut, whether or not they were counted.
+func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time, take, uncrossed bool) (shut []string, done, crossedOnly bool, err error) {
 	snap, readErr := req.Read()
 	if errors.Is(readErr, machineload.ErrUnsupported) {
 		res.Status = WaitUnchecked
 		res.Reason = "abcd reads load and processes on macOS and Linux only, and this is " + termsafe.Sanitize(runtime.GOOS) + "; opening without judging"
-		return nil, true, nil
+		return nil, true, false, nil
 	}
 	t := now()
-	var shut []string
 	res.Holder, res.RaceRuns, res.Reason = nil, []int{}, ""
 	res.Preflights, res.Waiters = nil, nil
 	if readErr != nil {
@@ -601,7 +640,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	raceCmd := raceCommandAtBothGates(req, res)
 	var runs, racing []int
 	var ahead machineload.Ahead
-	var raceAhead []int
+	var raceAhead, crossed []int
 	if procsOK {
 		args, err := req.ReadArgs(machineload.GateCandidates(snap, req.Self))
 		if err != nil {
@@ -617,9 +656,22 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				slices.Sort(racing)
 			}
 			ahead = machineload.QueueAhead(snap, req.Self, args)
-			raceAhead = machineload.RaceAhead(snap, req.Self, args)
+			var raceCrossed []int
+			raceAhead, raceCrossed = machineload.RaceAhead(snap, req.Self, args)
+			crossed = ahead.Crossed
+			if req.Race {
+				crossed = raceCrossed
+			}
 		}
 	}
+	notCrossed := func(pids []int) []int {
+		return slices.DeleteFunc(slices.Clone(pids), func(pid int) bool { return slices.Contains(crossed, pid) })
+	}
+	if uncrossed {
+		ahead, raceAhead = ahead.Uncrossed(), notCrossed(raceAhead)
+	}
+	// crossedShut is the waiter condition resting on crossed waiters alone.
+	crossedShut := false
 	if !procsOK {
 		if !slices.Contains(shut, WaitOnUnreadable) {
 			shut = append(shut, WaitOnUnreadable)
@@ -638,6 +690,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			if len(raceAhead) > 0 {
 				shut = append(shut, WaitOnWaiter)
 				res.Waiters = raceAhead
+				crossedShut = len(notCrossed(raceAhead)) == 0
 			}
 		} else {
 			preflight, waiter := ahead.Shut(res.Slots)
@@ -648,6 +701,8 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			if waiter {
 				shut = append(shut, WaitOnWaiter)
 				res.Waiters = ahead.Waiters
+				_, without := ahead.Uncrossed().Shut(res.Slots)
+				crossedShut = !without
 			}
 		}
 	}
@@ -660,7 +715,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	// race gate too, an earlier preflight's race waiter would wait on it while
 	// that preflight's own race waiter queued behind the earlier one, and
 	// neither would move until its timeout.
-	err := fsutil.WithFileLockIn(root, waitLockFileName, waitLockTimeout, func() error {
+	err = fsutil.WithFileLockIn(root, waitLockFileName, waitLockTimeout, func() error {
 		var free []string
 		for _, gate := range holdGates(req, res) {
 			name := holdFileName(gate)
@@ -718,16 +773,17 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	case errors.Is(err, fsutil.ErrLockContention):
 		shut = append(shut, WaitOnLock)
 	case errors.Is(err, fsutil.ErrLockPathUnsafe):
-		return nil, false, fmt.Errorf("the hold's lock %s is not a regular file (a symlink, or something else), so it is refused; remove it, and the next wait creates it afresh",
+		return nil, false, false, fmt.Errorf("the hold's lock %s is not a regular file (a symlink, or something else), so it is refused; remove it, and the next wait creates it afresh",
 			abcdhome.Display(waitLockFileName))
 	case err != nil:
-		return nil, false, fmt.Errorf("the hold could not be judged or written: %w", err)
+		return nil, false, false, fmt.Errorf("the hold could not be judged or written: %w", err)
 	}
+	crossedOnly = len(crossed) > 0 && (len(shut) == 0 || (crossedShut && slices.Equal(shut, []string{WaitOnWaiter})))
 	if len(shut) > 0 || !take {
-		return shut, false, nil
+		return shut, false, crossedOnly, nil
 	}
 	res.Status = WaitOpen
-	return nil, true, nil
+	return nil, true, crossedOnly, nil
 }
 
 // holdInForce judges a hold at time t against the snapshot. Past its Until it
