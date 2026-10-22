@@ -812,11 +812,14 @@ review the reviewer route takes, a role whose `oracle.roles.<role>` points at a
 provider, a row at `host-decides`, and the implementer, which has no routing
 row. Each is recorded with the failed round's gate output and a note saying
 why it does not move, and none is swapped for another route. An escalated tier
-is resolved through the same legs and the same allowlist as any other: a
-connection that would serve it whose allowlist does not admit the route refuses
-the step at the `validate` stage, naming the provider, and nothing is written.
+is resolved through the same legs and the same allowlist as any other, so it
+refuses the step at the `validate` stage, naming the provider, only where a
+connection serves the escalated tier and its allowlist does not admit the
+route. No connection serves a tier today (a provider is reached only by a role
+pointed at it), so an escalated tier goes to the host, named in the brief.
 A routing table or provider configuration `step` cannot read is refused at the
-`routing` stage before anything moves. A round's `routes` is state schema
+`routing` stage before anything moves, and their non-fatal reports are said on
+stderr, as a delegating verb says them. A round's `routes` is state schema
 version 14's, so a file of version 13 or lower carrying it is refused.
 
 **The landing** (piece 9; criterion 6). The land stage takes the lane to the

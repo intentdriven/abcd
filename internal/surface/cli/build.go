@@ -940,8 +940,9 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"the model tier its routing row names, which the result names as tier and the brief's\n" +
 			"routing section carries, and a round that does not pass asks each role of the next one\n" +
 			"tier up (local, economy, frontier; frontier and host-decides stay), recorded under the\n" +
-			"round's routes with the failing gate output; a role on a runner, one pointed at a\n" +
-			"provider, a host-decides row and the implementer name no tier and do not move. A round\n" +
+			"round's routes with the failing gate output; a role on a runner, a review the reviewer\n" +
+			"route takes, one pointed at a provider, a host-decides row and the implementer name no\n" +
+			"tier and do not move. A round\n" +
 			"that does not pass once the lane\n" +
 			"has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it\n" +
 			"stops as unachievable, the result and the run record name the last round's findings, and\n" +

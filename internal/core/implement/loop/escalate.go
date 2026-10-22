@@ -19,14 +19,16 @@ package loop
 // starts at its own row's tier.
 //
 // Only a route that resolves from a tier can move. A role the step hands to a
-// runner names a runner and its model, a role pointed at a provider names a
-// model, host-decides names no tier, and the implementer has no routing row
-// (the routing tables cover the agents in the roster); each is recorded with
-// the failure and a note saying its route names no tier, and none is ever
-// swapped for another route. An escalated tier is re-resolved through
-// oracle.ResolveAt, so a connection that would serve it is held to its
-// allowlist: a route the allowlist refuses refuses the step, naming the
-// provider and the route, and nothing is written.
+// runner names a runner and its model, a review the reviewer route takes
+// names that route, a role pointed at a provider names a model, host-decides
+// names no tier, and the implementer has no routing row (the routing tables
+// cover the agents in the roster); each is recorded with the failure and a
+// note saying its route names no tier, and none is ever swapped for another
+// route. An escalated tier is re-resolved through oracle.ResolveAt, so a
+// connection that serves it is held to its allowlist and a route the
+// allowlist refuses refuses the step, naming the provider and the route, with
+// nothing written. No connection serves a tier today (a provider is reached
+// only by a role pointed at it), so an escalated tier goes to the host.
 
 import (
 	"fmt"

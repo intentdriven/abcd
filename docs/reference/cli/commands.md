@@ -2957,8 +2957,9 @@ goes to the fresh implementer with the finding. Each role a round hands out is a
 the model tier its routing row names, which the result names as tier and the brief's
 routing section carries, and a round that does not pass asks each role of the next one
 tier up (local, economy, frontier; frontier and host-decides stay), recorded under the
-round's routes with the failing gate output; a role on a runner, one pointed at a
-provider, a host-decides row and the implementer name no tier and do not move. A round
+round's routes with the failing gate output; a role on a runner, a review the reviewer
+route takes, one pointed at a provider, a host-decides row and the implementer name no
+tier and do not move. A round
 that does not pass once the lane
 has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it
 stops as unachievable, the result and the run record name the last round's findings, and
