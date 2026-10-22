@@ -906,6 +906,7 @@ The reason codes:
 | `no-entries` | carries no changelog lines |
 | `section` | names a section Keep a Changelog does not register |
 | `section-not-writable` | names `Changed`, `Deprecated`, `Removed` or `Security` |
+| `fixed-new-surface` | puts under `Fixed` a record about a surface the anchor tag did not have (its `found_at` is a path new since then, and not a rename); fold it into that surface's `Added` line, or, where the behaviour shipped and only its code moved, correct the record's `found_at` to the path the release had |
 | `changelog-missing` | leaves a required record uncited in the changelog |
 | `changelog-invented` | cites a record not in this cut in the changelog |
 | `changelog-internal` | cites an `impact: internal` record in the changelog |
