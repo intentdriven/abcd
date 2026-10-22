@@ -2499,14 +2499,14 @@ The SOTA survey was filed as research/notes/2026-10-16-model-matrix-sota.md, and
 
 | part | type | home |
 |---|---|---|
-| abcd drain in a plain terminal drives itself: repeats its moves, steps each lane, starts every role through the runner, stops at its cap, an empty ledger or Ctrl-C | capability | intent itd-2610222215485265, promoted from iss-2610222000271964, refining the shipped itd-2610161016401115 |
+| abcd drain --drive in a plain terminal drives itself: repeats its moves, steps each lane, runs its preflight, starts every role through the person's runner, stops at its cap, an empty ledger or Ctrl-C | capability | intent itd-2610222215485265, promoted from iss-2610222000271964, refining the shipped itd-2610161016401115 |
+| abcd drives agents with no host session only on the person's own invocation, on a paid key, bounded, handing back what it cannot finish | trust rule | adr-2610222222326104 (proposed): the record itd-2609201916151817's decision 5 owed for the opt-in reversal of the host-delegated boundary |
 | the agents it starts are fenced by the operating system | trust rule | cited: itd-2610161621364075 part A covers every runner launch |
 | a routed judge's answer steers an unattended lane, so it runs alone in its own directory | trust rule | cited: the shipped judge's directory and grant rules |
-| starting agents spends the person's model budget, so none starts without their yes | stance | cited: the consent rules already in force |
 | where an unattended terminal drain may run, given the product thinker's C1 answer | cited | the coordination intent's open choice 1; not decided here |
 | the loop, its log, its lock and its signals | plumbing | the brief's drain chapter, at planning |
 
-Verdict: FILE-AS-IS, proposed. Typed links: `refines` itd-2610161016401115, whose press release promised a plain-terminal drain and whose delivery stopped at one move per call. Advisory reversal flags: none.
+Verdict: SPLIT, proposed: the capability is the intent, the trust rule an ADR. Typed links: `refines` itd-2610161016401115, whose press release promised a plain-terminal drain and whose delivery stopped at one move per call. Advisory reversal flags: one, the host-delegated boundary in AGENTS.md (adr-25), reversed for this opt-in path as itd-2609201916151817's decision 5 anticipated; the first routing graded it FILE-AS-IS with no flag, and the Opus and Sonnet review round 1 found the flag the code already named (drive.go), so the initial routing did not survive.
 
 ## 2026-10-22: the checklist and coordination routings, confirmed by the product thinker's answers
 
