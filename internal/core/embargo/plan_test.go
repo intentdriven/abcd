@@ -808,9 +808,9 @@ func TestPublishedStoreRecordGuardsNameNoRestore(t *testing.T) {
 // would not show as written names no command, saying why. Each command,
 // run by a shell with that home, names exactly the record.
 func TestRestoreCommandQuoting(t *testing.T) {
-	const key = "0123456789abcdef0123456789abcdef01234567"
+	const rootSHA = "0123456789abcdef0123456789abcdef01234567"
 	storeUnder := func(home string) string {
-		return abcdhome.Path(home, "worktrees", key, "embargo")
+		return abcdhome.Path(home, "worktrees", rootSHA, "embargo")
 	}
 	for name, tc := range map[string]struct {
 		setup func(t *testing.T) (home, root string)
