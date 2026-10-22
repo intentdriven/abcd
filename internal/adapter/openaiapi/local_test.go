@@ -192,7 +192,7 @@ func TestAnOllamaWithoutTheModelIsRefused(t *testing.T) {
 }
 
 const llamaProps = `{"default_generation_settings":{"id":0,"n_ctx":32768,"speculative":false,"is_processing":false,"params":{"n_predict":-1,"seed":4294967295,"temperature":0.8}},` +
-	`"total_slots":1,"model_alias":"","model_path":"/Users/someone/models/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",` +
+	`"total_slots":1,"model_alias":"","model_path":"/Users/someone/models/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",` + // abcd-lint:allow
 	`"modalities":{"vision":false,"audio":false},"chat_template":"{% for m in messages %}{% endfor %}",` +
 	`"chat_template_caps":{"supports_parallel_tool_calls":true,"supports_preserve_reasoning":false,"supports_string_content":true,` +
 	`"supports_system_role":true,"supports_tool_calls":true,"supports_tools":true,"supports_typed_content":false},` +

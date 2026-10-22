@@ -165,7 +165,7 @@ func TestAPinnedRunRefusesThePersonsOwnOpenCodeConfiguration(t *testing.T) {
 			t.Setenv("OPENCODE_CONFIG", "")
 			t.Setenv("OPENCODE_CONFIG_CONTENT", "")
 			t.Setenv("OPENCODE_CONFIG_DIR", "")
-			t.Setenv(name, "/home/someone/opencode-work.json")
+			t.Setenv(name, "/home/someone/opencode-work.json") // abcd-lint:allow
 			pin := testPin
 			o := newOpenCode("openrouter/" + orModel)
 			o.pin = &pin
@@ -200,20 +200,20 @@ func TestAPinnedRunRefusesThePersonsOwnOpenCodeConfiguration(t *testing.T) {
 // OPENCODE_CONFIG_DIR reach opencode as they are.
 func TestAnUnpinnedRunKeepsThePersonsOpenCodeConfiguration(t *testing.T) {
 	f := newFake(t, "ok", OpenCode)
-	t.Setenv("OPENCODE_CONFIG", "/home/someone/opencode-work.json")
+	t.Setenv("OPENCODE_CONFIG", "/home/someone/opencode-work.json") // abcd-lint:allow
 	t.Setenv("OPENCODE_CONFIG_CONTENT", `{"permission":{"bash":"deny"}}`)
-	t.Setenv("OPENCODE_CONFIG_DIR", "/home/someone/opencode-dir")
+	t.Setenv("OPENCODE_CONFIG_DIR", "/home/someone/opencode-dir") // abcd-lint:allow
 	if _, _, err := newOpenCode("openrouter/"+orModel).Run(context.Background(), f.request("ruthless-reviewer")); err != nil {
 		t.Fatal(err)
 	}
 	env := envOf(t, f, OpenCode+".env")
-	if v, _ := envValue(env, "OPENCODE_CONFIG"); v != "/home/someone/opencode-work.json" {
+	if v, _ := envValue(env, "OPENCODE_CONFIG"); v != "/home/someone/opencode-work.json" { // abcd-lint:allow
 		t.Errorf("OPENCODE_CONFIG = %q", v)
 	}
 	if v, _ := envValue(env, "OPENCODE_CONFIG_CONTENT"); v != `{"permission":{"bash":"deny"}}` {
 		t.Errorf("OPENCODE_CONFIG_CONTENT = %q", v)
 	}
-	if v, _ := envValue(env, "OPENCODE_CONFIG_DIR"); v != "/home/someone/opencode-dir" {
+	if v, _ := envValue(env, "OPENCODE_CONFIG_DIR"); v != "/home/someone/opencode-dir" { // abcd-lint:allow
 		t.Errorf("OPENCODE_CONFIG_DIR = %q", v)
 	}
 }
