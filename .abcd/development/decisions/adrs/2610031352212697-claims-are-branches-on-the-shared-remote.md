@@ -31,7 +31,7 @@ every participant, that a claim is a marker on the shared remote which abcd
 lists, and that reserving one item is built first
 ([itd-2609091034175565](../../intents/shipped/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md),
 decisions 1 to 4;
-[itd-2609150819440345](../../intents/drafts/itd-2609150819440345-which-session-holds-which-worktree.md),
+[itd-2609150819440345](../../intents/superseded/itd-2609150819440345-which-session-holds-which-worktree.md),
 decision 4). The state of the art and the run lessons behind those rulings
 are in
 [`2026-10-03-multi-agent-coordination-sota-and-run-lessons.md`](../../research/notes/2026-10-03-multi-agent-coordination-sota-and-run-lessons.md).

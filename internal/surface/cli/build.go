@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -119,7 +121,8 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"is started. Another person's reservation, or your own from another computer, refuses\n" +
 			"the start as contention; --take-over moves your own live reservation from another copy\n" +
 			"to this one, never another person's. `abcd implement step` renews the reservation, fences\n" +
-			"the landing with it and releases it once the run lands; a run whose issue lane is handed\n" +
+			"the landing's push and its arming with it and releases it once the run lands; a run\n" +
+			"whose issue lane is handed\n" +
 			"back releases it then. --release pushes the tombstone over this copy's reservation on the\n" +
 			"key and changes nothing in the run's state: a later step meets it at the land fence, and\n" +
 			"`abcd build` again reserves it anew. --release takes no other flag. The reservation needs\n" +
@@ -800,7 +803,7 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 		fmt.Fprintf(w, "%s: %s is complete\n", verb, res.RunID)
 	}
 	if r := res.Route; r != nil {
-		fmt.Fprintf(w, "  ran on:  the %s runner (asked %s; model %s)\n", termsafe.Sanitize(r.Ran), termsafe.Sanitize(r.Asked), termsafe.Sanitize(modelOrNone(r.Model)))
+		fmt.Fprintf(w, "  ran on:  the %s runner (%s)\n", termsafe.Sanitize(r.Ran), routeDetail(r))
 	}
 	if fb := res.Fallback; fb != nil {
 		fmt.Fprintf(w, "  fallback: %s was routed to %s, which was %s (%s); %s runs it\n", termsafe.Sanitize(fb.Role), termsafe.Sanitize(fb.Asked),
@@ -883,7 +886,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"the hand-back and each held lane. --release <lane-id> lands a held lane as it is;\n" +
 			"--discard <lane-id> removes its worktree and branch, then closes its pull request, and\n" +
 			"leaves its step unlanded. Either is refused, changing nothing,\n" +
-			"for a lane that is not held or while any lane still has work.\n" +
+			"for a lane that is not held or while any lane still has work. --discard also takes\n" +
+			"an issue run's lane a drain handed back as stuck, and ends that run.\n" +
 			"--restart <lane-id> restarts a lane whose implementer died, or yielded on a network\n" +
 			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
 			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +
@@ -1071,7 +1075,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "the run to step (run-<16 digits>); the one run in progress when omitted")
 	cmd.Flags().StringVar(&release, "release", "", "land a held lane as it is (lane-<n>), once no lane has work left")
-	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request")
+	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>), or one a drain handed back as stuck: remove its worktree and branch, then close its pull request")
 	cmd.Flags().StringVar(&restart, "restart", "", "restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside")
 	cmd.Flags().StringVar(&yielded, "yielded", "", "with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying")
 	cmd.Flags().BoolVar(&acceptConfig, "accept-config-change", false, "accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step")
@@ -1321,7 +1325,28 @@ func routeSuffix(r *runner.RouteRecord) string {
 	if r == nil {
 		return ""
 	}
-	return fmt.Sprintf(" — ran on the %s runner (asked %s; model %s)", termsafe.Sanitize(r.Ran), termsafe.Sanitize(r.Asked), termsafe.Sanitize(modelOrNone(r.Model)))
+	return fmt.Sprintf(" — ran on the %s runner (%s)", termsafe.Sanitize(r.Ran), routeDetail(r))
+}
+
+// routeDetail is a runner route's parenthesis: the route asked for and the
+// model that served, then the model the runner asked for and the cost when
+// the record carries them (itd-166). The token counts and the fields the run
+// could not pin stay in the record, for a reader tracing a run back.
+func routeDetail(r *runner.RouteRecord) string {
+	d := fmt.Sprintf("asked %s; model %s", termsafe.Sanitize(r.Asked), termsafe.Sanitize(modelOrNone(r.Model)))
+	if r.ModelAsked != "" {
+		d += "; model asked " + termsafe.Sanitize(r.ModelAsked)
+	}
+	if r.Cost != nil {
+		d += "; cost " + costText(*r.Cost)
+	}
+	return d
+}
+
+// costText is a recorded cost as a route line names it: the amount as
+// recorded, and its unit.
+func costText(c oracle.Cost) string {
+	return strconv.FormatFloat(c.Amount, 'f', -1, 64) + " " + termsafe.Sanitize(c.Unit)
 }
 
 func modelOrNone(m string) string {

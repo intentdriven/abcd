@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -102,6 +103,10 @@ func (l Lane) masked() Lane {
 		ld.Body, ld.PRURL, ld.Merge, ld.Merged = line(ld.Body), line(ld.PRURL), line(ld.Merge), line(ld.Merged)
 		return ld
 	})
+	l.Refused = maskPtr(l.Refused, func(r LaneRefused) LaneRefused {
+		r.Stage, r.Check, r.Reason, r.Final = line(r.Stage), line(r.Check), free(r.Reason), free(r.Final)
+		return r
+	})
 	return l
 }
 
@@ -171,9 +176,22 @@ func (t Transcript) masked() Transcript {
 	return t
 }
 
-// maskRoute masks the route a runner reported, its model above all.
+// maskRoute masks the route a runner reported, its model above all, and both
+// sides of its run (itd-166), each string the harness supplied included.
 func maskRoute(r runner.RouteRecord) runner.RouteRecord {
 	r.Asked, r.Ran, r.Model = line(r.Asked), line(r.Ran), line(r.Model)
+	s := &r.Sides
+	s.ModelAsked, s.ServedProvider, s.FinishReason = line(s.ModelAsked), line(s.ServedProvider), line(s.FinishReason)
+	s.HarnessVersion, s.PromptSHA256 = line(s.HarnessVersion), line(s.PromptSHA256)
+	s.ServedModels = maskEach(s.ServedModels, line)
+	s.Cost = maskPtr(s.Cost, func(c oracle.Cost) oracle.Cost {
+		c.Unit = line(c.Unit)
+		return c
+	})
+	s.Unpinned = maskEach(s.Unpinned, func(u oracle.Unpinned) oracle.Unpinned {
+		u.Field, u.Reason = oracle.Field(line(string(u.Field))), oracle.UnpinnedReason(line(string(u.Reason)))
+		return u
+	})
 	return r
 }
 

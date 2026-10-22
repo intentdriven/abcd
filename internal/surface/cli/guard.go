@@ -197,6 +197,7 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 	guardCmd.AddCommand(checkCmd)
 
 	guardCmd.AddCommand(newGuardHookCommand())
+	guardCmd.AddCommand(newGuardApproveCommand())
 	return guardCmd
 }
 

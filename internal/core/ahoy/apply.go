@@ -18,6 +18,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/identity"
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
@@ -107,6 +108,28 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		if _, perr := ParseReadmeParts(opts.ReadmeParts); perr != nil {
 			return InstallResult{Status: "refused", Notes: []string{perr.Error()}}, nil
 		}
+	}
+
+	// The yes to the after-update offer (--only-waiting): only what waits is
+	// put, and the yes approved every kind of change.
+	opts, waiting, err := onlyWaitingRun(abs, det, opts)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	if waiting != nil {
+		p = waiting.prompter(p)
+	}
+
+	// git not answering is not an unmanaged repository: the repository may be
+	// registered, so install never ASKS to adopt it on that reading
+	// (iss-2610051434156079). An explicit --adopt is the person's own word and
+	// stands; without one, nothing is installed until git answers.
+	gitUnanswered := det.RepoIdentity.RootErr()
+	if det.RootSHA != "" {
+		gitUnanswered = nil
+	}
+	if gitUnanswered != nil && det.FolderKind == UnmanagedRepo && opts.Adopt == nil {
+		return InstallResult{}, fmt.Errorf("git gave no root commit for this repository, so abcd cannot tell whether it already manages it; run the install again once git answers, or pass --adopt to adopt it anyway: %w", gitUnanswered)
 	}
 
 	// Adoption gate for an unmanaged repo.
@@ -226,6 +249,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		confirmTool: opts.ConfirmTool,
 		provenance:  opts.VerifyProvenance,
 		readmeFlag:  opts.ReadmeParts,
+		waiting:     waiting,
 	}
 
 	// Ordered apply steps.
@@ -435,15 +459,16 @@ type applyCtx struct {
 	writes     []string
 	// writeKinds runs parallel to writes: what each write is, for the summary.
 	writeKinds      []writeKind
-	changes         []string // human-readable value changes an explicit override forced
-	notes           []string // loud refusals (refuse) and informational lines (inform), in the order they arose
-	autoYes         bool     // --yes: every category auto-approved without interaction
-	devMode         bool     // --dev: install the track-latest shim instead of the symlink
-	modeForced      bool     // the requested install mode differs from the on-disk state
-	attribution     bool     // --attribution: opt this repo into the committed prompt hook
-	outbound        bool     // --outbound: opt this repo into both outbound checks, and name the verified copy in abcd.binary
-	verifiedCopy    string   // the owned PATH copy whose build provenance this run verified; "" when none
-	binTarget       string   // the resolved PATH entry this run installs (never re-derived)
+	changes         []string       // human-readable value changes an explicit override forced
+	notes           []string       // loud refusals (refuse) and informational lines (inform), in the order they arose
+	autoYes         bool           // --yes: every category auto-approved without interaction
+	waiting         *waitingFilter // --only-waiting: what this run puts; nil otherwise
+	devMode         bool           // --dev: install the track-latest shim instead of the symlink
+	modeForced      bool           // the requested install mode differs from the on-disk state
+	attribution     bool           // --attribution: opt this repo into the committed prompt hook
+	outbound        bool           // --outbound: opt this repo into both outbound checks, and name the verified copy in abcd.binary
+	verifiedCopy    string         // the owned PATH copy whose build provenance this run verified; "" when none
+	binTarget       string         // the resolved PATH entry this run installs (never re-derived)
 	confirmTool     tools.Confirm
 	readmeFlag      string          // --readme-parts as given; "" when not given
 	provenance      ProvenanceCheck // the build-provenance check a cache promotion must pass; nil refuses
@@ -627,8 +652,13 @@ func (a *applyCtx) stepSkeleton() {
 	}
 }
 
-// stepConfigValues collects and persists the four config values. Returns nil on
-// partial install (config-change declined and a required value missing).
+// stepConfigValues collects and persists the four config values. Each value
+// answered is saved on its own: one left unanswered (deferred with "decide
+// later", or given an answer setup does not write) stays unset and is
+// reported as remaining, and never keeps an answered one out of the file
+// (iss-2610170930394303). Every answered value goes into the one atomic write
+// of .abcd/config.json. Returns nil when nothing may be saved (the config
+// cannot be parsed, the settings change was declined, or the write failed).
 func (a *applyCtx) stepConfigValues() *InstallConfig {
 	hasConfigGap := a.has("config.visibility_missing") || a.has("config.docs_target_missing") ||
 		a.has("config.oracle_backend_missing") || a.has("config.scan_deep_missing")
@@ -650,8 +680,8 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 	// leaves an already-valid value untouched (a silent no-op).
 	// Every effect this step sets ahead of its write — the echoed overrides, the
 	// forced docs target, the retraction — stands only if the write lands. Each
-	// return that saves nothing (a declined category, a value left unanswered, a
-	// failed write) takes them back through this one rollback, so stepMarker
+	// return that saves nothing (a declined category, a failed write) takes them
+	// back through this one rollback, so stepMarker
 	// never retracts a block for a target change that was not saved and the
 	// receipt never echoes one. Receipts earlier steps recorded are kept.
 	mark := len(a.changes)
@@ -695,15 +725,18 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		return nil
 	}
 
-	// Collect the missing values.
+	// Collect the missing values. One left unanswered stays unset and the
+	// rest are still asked and saved; re-detection reports it as remaining,
+	// so the run is partial.
 	got := collectMissingValues(a.cwd, ic, a.overrides, a.resolveValue)
 	if got.retired != "" {
 		// A retired answer is said, with the one explanation; a typo is never
 		// persisted either way.
 		a.refuse(got.retired)
 	}
-	if !got.ok {
-		return nil // a value left unanswered or not one setup writes => partial
+	if !got.answered && !forced {
+		landed = true
+		return ic // every missing value left unanswered: nothing to save
 	}
 	if got.docsChosen {
 		// Choosing the target is the approval to plant into it. At the skip
@@ -719,7 +752,8 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 	// only after every prompt above has been answered: the re-read is the one
 	// the write is made from, so a key another abcd wrote since the first read
 	// is kept (iss-127). If the file turned malformed since the first read,
-	// refuse rather than clobber it.
+	// refuse rather than clobber it. A value left unanswered is not written,
+	// so the key stays as the file has it.
 	err = withConfigLock(a.cwd, func() error {
 		cfgMap, cfgErr := readConfig(a.cwd)
 		if cfgErr != nil {
@@ -728,9 +762,15 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		if cfgMap == nil {
 			cfgMap = map[string]any{}
 		}
-		setSub(cfgMap, "repo", "visibility", ic.Visibility)
-		setSub(cfgMap, "docs", "target", ic.DocsTarget)
-		setSub(cfgMap, "oracle", "backend", ic.OracleBackend)
+		for _, v := range []struct{ section, key, value string }{
+			{"repo", "visibility", ic.Visibility},
+			{"docs", "target", ic.DocsTarget},
+			{"oracle", "backend", ic.OracleBackend},
+		} {
+			if v.value != "" {
+				setSub(cfgMap, v.section, v.key, v.value)
+			}
+		}
 		if ic.ScanDeep != nil {
 			setSub(cfgMap, "scan", "deep", *ic.ScanDeep)
 		}
@@ -755,8 +795,9 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 // collectedValues is what collecting the missing config values decided
 // beside the values themselves.
 type collectedValues struct {
-	// ok: every missing value was answered with one setup writes.
-	ok bool
+	// answered: at least one missing value was answered with one setup
+	// writes, so there is something to save.
+	answered bool
 	// docsChosen: this run chose the repository's first docs target.
 	docsChosen bool
 	// oracleRecorded: the one oracle backend with an adapter was recorded
@@ -768,40 +809,46 @@ type collectedValues struct {
 }
 
 // collectMissingValues fills each config value ic lacks, in the order setup
-// asks them, from resolve, and stops at the first answer that is not a value
-// setup writes: the values after it are not asked. It is the one sequence
+// asks them, from resolve. An answer that is not a value setup writes
+// (deciding later included) leaves that value unset and the values after it
+// are still asked, so one deferred value never holds back an answered one
+// (iss-2610170930394303); the deep-scan question, asked only of a private
+// repository, is not asked while the visibility is unset. It is the one sequence
 // the install's value step (stepConfigValues) and the walk before the
 // install (WalkConfigValueQuestions) both follow, so the walk puts exactly
 // the questions the install would.
 func collectMissingValues(cwd string, ic *InstallConfig, overrides map[string]string, resolve func(key string, choices []string, def string) string) collectedValues {
 	var c collectedValues
 	if ic.Visibility == "" {
-		ic.Visibility = resolve("visibility", visibilityChoices, "")
-		if !inSet(ic.Visibility, visibilityChoices) {
-			return c // no valid visibility
+		if v := resolve("visibility", visibilityChoices, ""); inSet(v, visibilityChoices) {
+			ic.Visibility = v
+			c.answered = true
 		}
 	}
 	if ic.DocsTarget == "" {
-		ic.DocsTarget = resolve("docs_target", docsTargetWritable, docsTargetDefault)
-		if !inSet(ic.DocsTarget, docsTargetWritable) {
-			if why, retired := RetiredDocsTarget(ic.DocsTarget); retired {
-				c.retired = why
-			}
-			return c // no writable docs target
+		v := resolve("docs_target", docsTargetWritable, docsTargetDefault)
+		if inSet(v, docsTargetWritable) {
+			ic.DocsTarget = v
+			c.answered = true
+			c.docsChosen = true
+		} else if why, retired := RetiredDocsTarget(v); retired {
+			c.retired = why
 		}
-		c.docsChosen = true
 	}
 	if ic.OracleBackend == "" {
+		var v string
+		recorded := false
 		if overrides["oracle_backend"] == "" && !oracleBackendAsked() {
 			// One answer has an adapter, so there is nothing to ask: record it
 			// and say so once the write lands (iss-2610031236155833).
-			ic.OracleBackend = oracleBackendDefault
-			c.oracleRecorded = true
+			v, recorded = oracleBackendDefault, true
 		} else {
-			ic.OracleBackend = resolve("oracle_backend", oracleBackendChoices, oracleBackendDefault)
+			v = resolve("oracle_backend", oracleBackendChoices, oracleBackendDefault)
 		}
-		if !inSet(ic.OracleBackend, oracleBackendChoices) {
-			return c // no valid oracle backend
+		if inSet(v, oracleBackendChoices) {
+			ic.OracleBackend = v
+			c.answered = true
+			c.oracleRecorded = recorded
 		}
 	}
 	if ic.Visibility == "private" && onPath(cwd, "trufflehog") && ic.ScanDeep == nil {
@@ -812,13 +859,12 @@ func collectMissingValues(cwd string, ic *InstallConfig, overrides map[string]st
 		// — an unparseable answer must never resolve to a WEAKER scan than the one
 		// the operator asked for. An explicit "false" still disables it deliberately.
 		ans := resolve("scan_deep", scanDeepChoices, scanDeepDefault)
-		if !inSet(ans, scanDeepChoices) {
-			return c // no valid scan_deep (never persist a typo)
+		if inSet(ans, scanDeepChoices) { // never persist a typo
+			v := ans == "true"
+			ic.ScanDeep = &v
+			c.answered = true
 		}
-		v := ans == "true"
-		ic.ScanDeep = &v
 	}
-	c.ok = true
 	return c
 }
 
@@ -826,8 +872,8 @@ func collectMissingValues(cwd string, ic *InstallConfig, overrides map[string]st
 // questions an install at cwd with opts would ask, in the order it asks them
 // and exactly as far as it would ask them: a value a flag in
 // opts.ValueOverrides gives is not put, and an answer that is not a value
-// setup writes (deciding later included) ends the walk where it ends the
-// install's collection. It is the part of setup's questions settled before
+// setup writes (deciding later included) leaves that value unset and the
+// walk goes on to the next, as the install's collection does. It is the part of setup's questions settled before
 // the install's first write, so a front door that answers from a file checks
 // the file against it before Install runs, and a value the file leaves
 // unanswered refuses with the repository untouched (iss-2610040025088395).
@@ -848,6 +894,21 @@ func WalkConfigValueQuestions(cwd string, opts InstallOptions, approves func(id 
 	det, err := Detect(abs)
 	if err != nil {
 		return err
+	}
+	// An --only-waiting run approves up front and puts only what waits, so
+	// the walk puts only that too.
+	opts, waiting, err := onlyWaitingRun(abs, det, opts)
+	if err != nil {
+		return err
+	}
+	if waiting != nil {
+		walked := answer
+		answer = func(key string, choices []string, def string) string {
+			if !waiting.asks(key) {
+				return ""
+			}
+			return walked(key, choices, def)
+		}
 	}
 	// install's gates before its first question, in its order: each ends the
 	// run before a value is asked.
@@ -1148,6 +1209,14 @@ func (a *applyCtx) stepHistory() {
 		a.note(writeSessionStore, filepath.Join(root, "index.json"))
 	}
 	sha := a.det.RepoIdentity.RootSHA
+	if rerr := a.det.RepoIdentity.RootErr(); rerr != nil {
+		// git did not answer for the root commit: the repository is not
+		// registered or given a store this run, and says so, rather than
+		// being passed over as one with no commits (iss-2610051434156079).
+		a.refuse("could not register this repository on this machine: git gave no root commit for it (" +
+			fsutil.RedactRoot(errText(rerr), a.cwd, ".") + "); run `abcd ahoy install` again")
+		return
+	}
 	if sha == "" {
 		return
 	}
@@ -2054,7 +2123,7 @@ func (a *applyCtx) stepVersionStamp() {
 		}
 		meta := subMap(cfgMap, "meta")
 		meta["schema_version"] = 1
-		meta["setup_version"] = pluginVersion()
+		meta["setup_version"] = stampedVersion(meta, pluginVersion())
 		meta["setup_date"] = time.Now().UTC().Format("2006-01-02")
 		meta["project_name"] = a.det.RepoIdentity.Name
 		cfgMap["meta"] = meta
@@ -2071,6 +2140,24 @@ func (a *applyCtx) stepVersionStamp() {
 		return
 	}
 	a.note(writeSetupRecord, configPath(a.cwd))
+}
+
+// stampedVersion is the setup version a stamp records: the running version,
+// unless the meta block already records a release tag the running version is
+// not at least (an older release, or a build that is not a release at all),
+// in which case the recorded release stays (spc-2610170635097509 step 1). A
+// teammate's newer committed setup version is never written back down.
+func stampedVersion(meta map[string]any, running string) string {
+	recorded, _ := stringVal(meta, "setup_version")
+	rv, err := launch.ParseReleaseTag(recorded)
+	if err != nil {
+		return running
+	}
+	cv, err := launch.ParseReleaseTag(running)
+	if err != nil || launch.CoreGreater(rv, cv) {
+		return recorded
+	}
+	return running
 }
 
 // Uninstall removes the marker block, abcd's README parts, abcd's status line

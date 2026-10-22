@@ -60,7 +60,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 #### `abcd ahoy connect`
 
-Verify a provider with one call and configure it, or guide setup: Writes ~/.abcd.noindex/ and the key's home, nothing guided; refuses no --model off a terminal.
+Verify a provider and configure it, or guide setup: Writes ~/.abcd.noindex/ and the key's home, nothing guided; refuses no --model off a terminal.
 
 **Usage:** `abcd ahoy connect [<provider>] [flags]`
 
@@ -77,6 +77,7 @@ Verify a provider with one call and configure it, or guide setup: Writes ~/.abcd
       --key string          the credential's name (default: the provider's name)
       --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); omitted at a terminal, the service's models are listed with the key and you pick one
       --resume string       with --guide: the last turn's resume object, or - to read it from stdin
+      --stream-usage        whether calls ask the server for usage in the stream (stream_options.include_usage), written into the block as stream_usage; omitted, the verification asks, and a server that refuses it is asked once more without it and the block is written with false (default true)
 ```
 
 **Example:**
@@ -124,6 +125,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
+      --only-waiting            ask only the setup that waits after an abcd update: the questions this repository never answered and the settings whose default changed, never one answered or deferred with decide later; every kind of change is approved up front, as the yes to the offer abcd update news makes approves them; with the approve-everything flag no question is answered, so each still waits
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
       --outbound                opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
       --readme-parts string     answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included
@@ -314,7 +316,8 @@ no footprint, or an issue with no found_at path, is refused at the reservation a
 is started. Another person's reservation, or your own from another computer, refuses
 the start as contention; --take-over moves your own live reservation from another copy
 to this one, never another person's. `abcd implement step` renews the reservation, fences
-the landing with it and releases it once the run lands; a run whose issue lane is handed
+the landing's push and its arming with it and releases it once the run lands; a run
+whose issue lane is handed
 back releases it then. --release pushes the tombstone over this copy's reservation on the
 key and changes nothing in the run's state: a later step meets it at the land fence, and
 `abcd build` again reserves it anew. --release takes no other flag. The reservation needs
@@ -1168,57 +1171,160 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [flags]`
+**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
 recorded decision: an accepted decision record whose frontmatter carries the four
 fields drain_categories, drain_severities, drain_security and drain_remedy. The
-rule reads the record's fields alone: nothing open in blocked_by; a category the
-rule takes; a severity it takes; and a remedy: field. abcd's strict baseline takes
-tech-debt, documentation, inconsistency, drift, bug and ux at nitpick or minor, and
-hands every security issue to a person. A repository's record may loosen those
-floors (major, critical, security), and every floor it loosens is named. An issue
-whose remedy opens "Waits on", or whose deferral past the current release tag is
-live, or names a release tag this checkout lacks, is always handed back. Every
-other open issue is handed back, listed as ineligible, or skipped naming its
-blocker, by the rule that excluded it.
+rule reads the issue's fields alone: nothing open in blocked_by; no intent in
+related_intents; a category the rule takes; a severity it takes; and a remedy:
+field. abcd's strict baseline takes tech-debt, documentation, inconsistency, drift,
+bug and ux at nitpick or minor, and hands every security issue to a person. A
+repository's record may loosen those floors (major, critical, security), and every
+floor it loosens is named. Three hand-backs hold whatever the record says. An issue
+whose related_intents names an intent is handed back as promoted, naming the
+intents: it goes through its intent (`abcd build <itd-N>`, or `abcd intent audit
+<itd-N>` for an audit's owed check), and a person's own `abcd build <iss-N>` still
+takes it; a record the consistency pass files is the exception, since the intents
+it names are the two it found contradicting: once a person has written its remedy,
+it is judged by its other fields as if it named no intent, and an intent it was
+promoted into still owns it. An issue whose remedy opens "Waits on", or whose
+deferral past the current release tag is live, or names a release tag this checkout
+lacks, is handed back too. Every other open issue is handed back, listed as
+ineligible, or skipped naming its blocker, by the rule that excluded it.
+
+In a checkout with a remote named origin, the ledger is read from origin's default
+branch, never from the checkout, which may be behind it: each move fetches the
+reservations and that branch first, under the drain's lock and before any judgement
+or reservation, and plans from what it fetched. A move that cannot read origin (the
+fetch fails, the default branch cannot be read, or none can be named: no origin/HEAD
+and no origin/main, master, trunk or develop) plans
+nothing: it records the failure in the drain's state and waits as for an outage,
+looking again after one minute, five, ten, then hourly, and exits 0 saying when.
+A probe that fails eight hours into the hourly stage gives up, as the outage gate
+does: the drain ends (stopped "origin"), and the next abcd drain begins a new
+drain, waiting again if origin still cannot be read.
 
 --dry-run shows every open issue's disposition, the eligible ones first in the
-order a drain takes them (by category, then severity, then oldest first), and
-writes nothing. The host judgement over each eligible remedy does not run; it can
-only ever hand an issue back.
+order a drain takes them (by category, then severity, then the issues naming a
+file before the rest, then each account's own order on origin, drawn from the
+holder git's identity names, when it names one, and the copy's key), and
+writes nothing; on a copy with no key yet it takes each group oldest first and
+says the copy's own order is drawn at its first move. It fetches nothing either: it plans from origin's default branch as
+last fetched, and says how old that view is, how many commits the checkout is
+behind it, and which issues open in the checkout it has already finished. The host
+judgement over each eligible remedy does not run; it can only ever hand an issue
+back.
+
+--take-over moves your own live reservation of an issue from another copy to this one
+as the move reaches it, as `abcd build --take-over` does: a hosted session that
+restarted lost its local tier, so its new copy reads its own reservations as another
+copy's, which a plain move passes over naming the flag. It never moves another
+person's reservation, and is given per move: a move without it passes such an issue
+over again.
 
 Without --dry-run, each invocation performs one move of the drain and exits. Before
-the next eligible issue's lane opens, the host judges its remedy: the drain writes
+the next eligible issue's lane opens, the host judges its remedy: on origin, the
+drain first reserves the issue (passing over, with no push, any issue or footprint
+another copy holds), then writes
 a request (.abcd/.work.local/run/drain-judgement.request.md) asking whether the
 remedy changes what a user sees or a trust boundary, and opens nothing. The host
 writes its answer where the request says and hands it back with --judgement <file>,
-which is validated strictly; a refused answer changes nothing. A yes hands the
+which is validated strictly; a refused answer changes nothing. When your machine's
+config routes the drain-judge role to the claude runner (roles.drain-judge.runner), the
+same move asks that runner instead, on a brief of its own in a private directory
+outside every working tree, and takes its answer as
+--judgement would, abcd computing the remedy's digest itself; a runner that does not
+answer leaves the request to the host, recorded as a fallback. A yes hands the
 issue back before any lane opens, routed as a lane's hand-back of the same kind
-(below); a no lets the lane open. The judgement can never make an issue eligible:
+(below); a no lets the lane open on the reservation. The drain releases that
+reservation, and only it, with a fetch and one tombstone push whenever no lane will
+open on it: on a yes, on an answer over an issue that has left the eligible set,
+when the judgement is superseded (the order asks another issue, nothing eligible is
+left, the drain stops, or a no comes once the window has elapsed), when the lane's
+start is refused or fails, and when a request lapses unanswered. A yes's tombstone
+publishes the hand-back on origin, its kind and the blob id of the issue's record
+there, as a lane's hand-back does, when the drain's reservation is still the
+issue's tip: every account's drain passes the issue over, pushing and asking
+nothing, until a person changes that record, and no drain takes over or renews a
+reservation a person made over it, lapsed or not. A yes whose reservation has
+moved on (renewed, reserved again or taken over since, or released by a person),
+or that took none because you held the issue live, publishes nothing yet: the
+drain keeps the hand-back pending (pending_hand_backs in --json) and publishes it
+over the issue's next release on origin. A record changed or finished on origin's
+default branch since, one origin holds in no one file, or a tombstone the hand-back
+would take past its cap drops it, and the move says it was dropped and why; a
+default branch that could not be read keeps it pending. A promotion
+this checkout cannot make, not holding the record as origin does, is left to a
+checkout that can. The reservation is taken once per request: one unanswered when it lapses is
+dropped and the issue asked again only after the drain's other eligible work. The
+judgement can never make an issue eligible:
 an answer over an issue that has left the eligible set decides nothing, and one over
 a remedy rewritten since the request is refused and asked again. Once judged, the
 drain hands the next eligible issue, in that order, to the implement loop's issue-keyed
 lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to
 drive with `abcd implement step`. Run it again once that lane is handed back or its
 pull request is open, and it routes the lane's outcome and opens the next. A lane
+that cannot finish does not hold the drain: each refused step of its run is logged
+on the lane (refused in the run's state: the stage, the check, the reason, a count
+of the same refusal in a row, since when and when last it refused there, and why it
+cannot change), and once the step has been refused the same way three times, or has
+kept refusing at one stage for sixty minutes, from its first refusal there to its
+last, a quiet of more than fifteen minutes starting the time afresh
+(pace.stuck_refusals and pace.stuck_minutes in the config layers), the next move
+hands the lane back as stuck, releases its reservation with a tombstone marking it
+stuck, and takes up the next issue. A refusal that cannot change (the issue
+finished at the lane's base or on origin's default branch, the reservation now
+another person's) hands it back at once; the wait for a preflight receipt, an
+outage's wait, and a land fence that cannot read origin are never counted, and a
+step that succeeds as the move hands the lane back keeps it. `abcd implement step
+--discard` removes a stuck lane's worktree and branch and ends its run. Every move
+renews the reservation of the lane in progress at half its lease, waiting or not
+(a lane handed back is renewed by none); once the lane's validators pass and it is
+at its landing, the first renewal narrows its footprint to the files the lane changed
+within it, never widening it, and a lane its sync sends back to a fresh round
+reserves its whole found_at again before it goes on, or is refused for you;
+and the landing checks it before its push,
+so a lane whose reservation became another person's pushes nothing and is handed
+back as stuck. A move that finds a lane parked at land reads it from its pull
+request, in one listing of your latest pull requests (gh pr list): a closed one
+hands the lane back as closed, releasing its reservation with a tombstone marking
+it closed; a conflicting one is not renewed and is named; an open one is
+renewed and named as waiting (parked in --json). Before its records and push a
+lane's sync fetches origin's default branch and merges it whenever it has moved, a
+fresh round judging the merge: a conflict confined to files origin declares
+linguist-generated goes back to an implementer to regenerate, any other hands the
+lane back naming the files, nothing pushed, and a pull request that starts to
+conflict on generated files alone enters the sync again. A lane
 that finds a decision in its issue hands it back by kind, its work discarded: a
 user-visible change is promoted to an intent draft (`capture promote`, which
 stamps the issue's related_intents and nothing else); a trust or safety rule is
 flagged as needing a decision record, with the question; a design finding or a
 second package is flagged with the home the lane names. Every issue the rule
-hands back is flagged naming the rule. Nothing but the promotion is written to
-the ledger, and every hand-back is in the summary.
+hands back is flagged naming the rule, less one this drain promoted itself, which
+is counted once, as its promotion. Nothing but the promotion is written to the
+ledger, and every hand-back is in the summary.
 
 The drain is paced as a run is: its window and pause are --pace, --sub-agents and
---fix-rounds as `abcd build` reads them, set when the drain begins. At the window's
+--fix-rounds as `abcd build` reads them, resolved when the drain begins. At the window's
 end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and
 the call opens nothing; before that time a drain opens nothing, and after it the
 next invocation continues. --max <n> caps the lanes the drain opens (the default
-is all); at the cap, or when nothing eligible is left, the drain reports and ends,
-and the next `abcd drain` begins a new one. A cap or pace named while a drain is in
-progress that differs from the one it began with is refused. Once a run gives up on a
+is all); at the cap, or when nothing eligible is left, held or not, the drain reports
+and ends. When you hold your cap of live reservations (ten unless reservation.max_live
+in your machine's config.json raises it), or every
+eligible issue left is held by another, a move neither refuses nor ends: it reserves
+and asks nothing, writes waiting_until fifteen minutes on (apart from the pace
+window) and waiting, "cap" or "held", for which of the two it waits on, names the
+reservations and pull requests or the holds it waits on, and keeps its judgements;
+run it again at or after that time. Once a drain has ended, the
+next `abcd drain` begins a new one. A cap named while a drain is in progress that
+differs from the one it began with is refused. Every lane the drain opens runs on
+the drain's pace; --pace, --sub-agents and --fix-rounds given while it runs are
+taken, recorded in its state, and applied from the next lane it opens and the next
+stage of the lane in progress. An issue the drain handed back is taken up again,
+judged afresh, once its record changes on origin's default branch. Once a run gives up on a
 lost connection (`abcd implement outage`), the drain opens nothing and ends with
 stopped "outage", naming the services down, since when, the probes and the lanes it
 opened; the next `abcd drain`, once the outage is cleared, begins a new one.
@@ -1237,6 +1343,7 @@ drain or run holds the state lock.
       --max int             cap the lanes this drain opens; the default is all
       --pace string         the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
       --sub-agents string   the ceiling on lanes and validators alive at once; wins over every configured layer
+      --take-over           move your own live reservation of each issue this move reaches from another copy to this one; never another person's
 ```
 
 **Example:**
@@ -1463,9 +1570,124 @@ abcd embark probe ../lifeboat
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb.
+Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.
 
 **Usage:** `abcd guard`
+
+#### `abcd guard approve`
+
+Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.
+
+**Usage:** `abcd guard approve --dir <working-tree> --base <commit> [--run-dir <dir>]... [flags]`
+
+Answers the permission prompts of an agent abcd started without a terminal,
+over MCP on stdio: the claude runner starts it, as the one server of a launch
+whose role's contract grants the shell, and names its tool, approve, as the
+harness's permission prompt tool. Each prompt is judged against the hazard
+registry of the working tree --dir names, read afresh for every prompt, and
+in force only where it is at least as strong as the registry at --base, the
+commit the run started on: any weakening since then, of a warn or a blocker,
+committed or not, refuses every command.
+
+A shell command is approved only when the guard reads it whole and clears
+it: no registry entry and no reading signal, a warn included; no note about
+the check, such as a script that does not exist; and every program named by
+the line rather than by a variable, a substitution or a glob ([, [[ and test
+are the test commands they name, not globs). Beyond the registry, it
+refuses:
+
+  - arithmetic on anything but written numbers: a name, a quote or an
+    expansion in (( )), $(( )) or a for (( )) header, the number tests of
+    [[ ]], let, declare -i, a non-numeric array index or substring offset,
+    ${!name}, and a name not written in the line handed to read, unset,
+    printf -v or a declaration; [ and test compare without evaluating;
+  - inline code for python -c, node -e or -p, perl -e, ruby -e, php -r,
+    osascript, lua or Rscript -e, deno eval and PowerShell -Command; a flag
+    after the script's name, or after python's -m module, is the script's;
+  - code on the standard input (a pipe, a here-document, a here-string or a
+    redirected file) of one of those interpreters, or of ex, when no script
+    file is named;
+  - an awk program that calls system(, pipes to or from a command, or is a
+    variable; a sed script with the e command or the e flag of s; tar's
+    options that run a program (--checkpoint-action, --to-command,
+    --use-compress-program, -I and the like); a vim or ex command (-c, --cmd,
+    +) holding a !;
+  - a write the guard's write model reads (redirections and a list of known
+    writers, so a program outside the list writes unread), or a removal,
+    whose target the line does not spell out (a variable,
+    a substitution, a glob, or a name after an unknown change of directory),
+    except a glob removal in a directory inside the working tree, followed
+    through symlinks, that no protected name could match, when no earlier
+    part of the line writes or removes a file and no wildcard stands in a
+    directory part of the glob, nor does it end in a /; a command where an
+    unquoted ( stands in a word (x(:A), x(.)) is refused whole, since zsh
+    reads it as glob qualifiers that can change the path, but for the (( of
+    an arithmetic for-loop and the ( before a case pattern, which bash needs;
+  - such a write, or a removal, reaching a protected path, with its directories
+    resolved through symlinks and case folded where the filesystem folds it:
+    the git common directory and its hooks, each checkout's .git, the home
+    shell start-up files and git configuration, the host's settings, .mcp.json,
+    .abcd/guard.json, abcd's own folder in the home directory (its
+    trusted-roots, rules.json, config.json and the rest, but for the run's
+    own worktree kept there), and the names the host protects in any
+    working tree;
+  - a removal whose target lies outside the working tree, the run's own
+    directories (each --run-dir) and the temporary directory; a write
+    outside the working tree is judged by the protected paths alone;
+  - git config with --global, --system or --file on a write, setting a key
+    that starts a program (core.hooksPath, core.pager, an alias and the like)
+    or core.worktree, or opening the editor, and any git command setting such
+    a key for itself, but for -c core.pager or core.sshCommand set to a
+    command the line spells out, which is judged as that command;
+  - removing, moving or recursively changing the root, a top-level directory,
+    the home directory or a directory directly in it, the working tree or a
+    directory above it, or another checkout of the repository; a find that
+    deletes from home or above; an rsync --delete into such a directory;
+  - a call asking to run outside the host's sandbox.
+
+An approved call runs with the command judged and its description, and
+nothing else it carried, from the working tree it was judged for and under
+bash: the command comes back as
+cd -- '<dir>' && /bin/bash --noprofile --norc -p -c '<command>', since the
+host keeps the shell's directory from one call to the next and runs the text
+in the person's login shell, which may be zsh, while the guard reads bash's
+grammar. The login shell only changes directory and starts /bin/bash with its
+profile, rc and environment start-up files ignored (-p), so BASH_ENV,
+exported functions and SHELLOPTS do nothing, and bash runs the command and
+gives no zsh-only construct its zsh meaning (a glob qualifier is a syntax
+error to it); when the directory cannot be entered, no part of the command
+runs. The bash call is not an exec, so text the host joins after it still
+runs. That text is read again with the guard's own parse and approved only
+when it is exactly that change of directory and that one bash call, with the
+whole command as its last word. A command holding a NUL byte is refused
+before it is read. Everything else is refused with the guard's reason and
+what to run instead, which the harness hands the agent, so the agent can
+rewrite the command. A prompt for any tool but the shell is refused, since
+nobody is there to approve it.
+
+The file tools the role is granted (--allowedTools on the launch) write
+without asking the approver, and the abcd binary that answers is not among
+the paths it protects; the OS sandbox for launched agents
+(spc-2610161751056096) is what bounds those writes.
+
+The guard is a mistake filter, not a security boundary (see `abcd guard
+check --help` for what an allow does not see), and this adds no sandbox.
+It never touches the person's host settings, and interactive sessions never
+start it. It exits 0 when its input ends.
+
+**Flags:**
+
+```
+      --base string           the commit the run started on, by its full object name
+      --dir string            the working tree the agent runs in, as an absolute path
+      --run-dir stringArray   a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
+```
+
+**Example:**
+
+```
+abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567
+```
 
 #### `abcd guard check`
 
@@ -2151,6 +2373,17 @@ moment it opens every race gate and every other such command counts it as a
 race run, so a second one waits for the first. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
+While it waits, in a checkout, the waiter keeps your own reservations from
+lapsing: at once and then every five minutes it renews each of your live
+reservations from this copy that is half through its lease, for its own term or
+two hours, whichever is longer, and says each renewal on standard error. It
+never reserves anything new, takes nothing over and revives nothing that has
+lapsed, so a lease shorter than ten minutes can still lapse between two rounds;
+a renewal that fails is said once, and the wait goes on. The renewal runs beside the gate, never in it, so
+the gate's order and its open never wait on one, and it stops when the gate
+opens. Since it runs through git and gh, no waiter counts another's git or gh
+child as its command: gate make or go, never git or gh itself.
+
 **Flags:**
 
 ```
@@ -2568,7 +2801,8 @@ merged is recorded as landed); once nothing is left to move, a step is refused n
 the hand-back and each held lane. --release <lane-id> lands a held lane as it is;
 --discard <lane-id> removes its worktree and branch, then closes its pull request, and
 leaves its step unlanded. Either is refused, changing nothing,
-for a lane that is not held or while any lane still has work.
+for a lane that is not held or while any lane still has work. --discard also takes
+an issue run's lane a drain handed back as stuck, and ends that run.
 --restart <lane-id> restarts a lane whose implementer died, or yielded on a network
 failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's
 last commit: everything left uncommitted is saved aside under the lane's directory
@@ -2695,7 +2929,7 @@ refusal, exit 3 on a pause or a locked run state.
 
 ```
       --accept-config-change   accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step
-      --discard string         discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request
+      --discard string         discard a held lane (lane-<n>), or one a drain handed back as stuck: remove its worktree and branch, then close its pull request
       --release string         land a held lane as it is (lane-<n>), once no lane has work left
       --restart string         restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
       --run string             the run to step (run-<16 digits>); the one run in progress when omitted
@@ -3838,14 +4072,18 @@ Then the reservations on the shared remote: one fetch from origin of every
 abcd-reserved/ branch, with pruning, and of the default branch, then every
 reservation with its record, holder, footprint, effective expiry and state
 (live, expired, released, or unreadable with its reason and the end of its
-hold), each person's count of live reservations, and a line for each release
-being cut (a live rel-vX.Y.Z reservation, which holds every other session's
-merge until its tag is on origin). The fetch is the only network act, and it
-reads origin's release tags with the reservations; it updates the
-remote-tracking reservation branches and the release tags abcd keeps under
-refs/abcd/release-tags/, stamps when it ran in the local tier, with when it
-first fetched each reservation dated ahead of this computer's clock or
-undated, and nothing else is written. The release-tag refs are ordinary
+hold), a live drain lane's stage when its renewal names one, each person's
+count of live reservations, and a line for each release being cut (a live
+rel-vX.Y.Z reservation, which holds every other session's merge until its
+tag is on origin). Then each holder's hand-backs of the last day, from the
+same view: the record and kind of each released tip marking one, newest
+first, the newest ten shown and the rest counted; one dated more than five
+minutes ahead of this computer's clock is not shown. The fetch is the only
+network act, and it reads origin's release tags with the reservations; it
+updates the remote-tracking reservation branches and the release tags abcd
+keeps under refs/abcd/release-tags/, stamps when it ran in the local tier,
+with when it first fetched each reservation dated ahead of this computer's
+clock or undated, and nothing else is written. The release-tag refs are ordinary
 refs of this checkout, so git log --all lists the commits they name and
 git push --mirror would push them. A checkout with no remote named origin
 lists no reservations.
@@ -4090,9 +4328,9 @@ lease (--lease, from 1m to 24h; default 2h, or 24h for a release).
 
 A session cutting a release reserves the release instead, rel-vX.Y.Z, with no
 footprint: while it is live every other session's land step holds its merge.
-It holds for 24h unless --lease names less, sits outside the cap of ten, and
-ends when the tag vX.Y.Z is on origin or its holder releases it; running the
-same command again from the same copy renews it.
+It holds for 24h unless --lease names less, sits outside the per-person cap,
+and ends when the tag vX.Y.Z is on origin or its holder releases it; running
+the same command again from the same copy renews it.
 
 Every act fetches the reservations from origin, judges the tip, writes one
 commit and makes one plain fast-forward push, with the repository's hooks
@@ -4103,6 +4341,25 @@ another copy to this one; it never moves another person's. A record already
 resolved, won't-fixed, shipped or superseded on origin's default branch counts
 as released whatever its reservation says, and so does a release whose tag is
 on origin.
+
+A new reservation or a take-over asks GitHub whether origin is a fork, and a
+fork is refused unless reservation.fork_origin names it; when GitHub cannot say,
+the act goes on and warns (not checked: whether origin is a fork, fork_unchecked
+in --json). An issue a drain handed back carries the hand-back on its tombstone:
+your own reservation over it is made, with a note (handed_back in --json), and a
+plain --release of it keeps the hand-back standing until a person changes the
+record on origin's default branch (hand_back_kept in --json), so no drain takes
+the issue, nor takes over or renews your reservation over it. A release whose
+tombstone cannot mark the hand-back is still made, plain, and says why
+(hand_back_unpublished in --json).
+
+A footprint sharing a path with another person's live reservation backs off
+(exit 3). A file that origin's default branch, as last fetched, declares
+linguist-generated in its root .gitattributes is shared, never an overlap; a
+directory never is. When that declaration cannot be read nothing is shared, and
+the act says why (generated_unread in --json). Your own reservation sharing a
+path with yours from another copy is made, and warns on stderr (own_overlap in
+--json).
 
 The holder is your GitHub username, from the first of these that names it:
 user.email, when it is a GitHub no-reply address; reservation.github_username
@@ -4375,7 +4632,8 @@ List everyone's announcements, reservations and releases being cut: Writes the f
 List everyone's status on the shared remote: the announcements every session
 posted (abcd announce), newest first, each with its sender, kind, item, the
 time sent and how long it still stands, then who holds which reservation and
-each release being cut, which holds every other session's merge.
+each release being cut, which holds every other session's merge, with a live
+drain lane's stage and each holder's hand-backs from the last day.
 
 It reads the remote once: it lists the status branches on origin (git
 ls-remote), then fetches, in one command, the reservations with origin's
@@ -4482,4 +4740,20 @@ install's shape, and swaps nothing.
 ```
       --check   fetch the latest release once and compare it with this binary, swapping nothing (it reaches the network only when invoked; abcd never fetches implicitly — adr-38); names its source and the command that takes the update
       --yes     skip the TTY confirmation of a freshly resolved tag
+```
+
+#### `abcd update news`
+
+Say what changed since the update, and offer the setup that waits: Writes only an answer or --seen, to ~/.abcd.noindex/; refuses --answer with --full or --seen.
+
+**Usage:** `abcd update news [flags]`
+
+After an abcd update, print what the agent relays at the start of its first reply: one line per release this computer has not been shown, saying how many changes it made and which need the person to act, and, where the update brings this repository setup it never answered, the offer to run setup again. It prints nothing when there is nothing to say. --full prints every change of the releases since the last update, those that need action first, each with the record it cites, and what waits here. Neither writes anything. Only a person's reply is recorded: --answer yes|not-now records the answer to the offer for this repository and release, once, and --seen records that the news was read where no offer was made, both in abcd's home folder. On yes, run abcd ahoy install --only-waiting. The text comes only from the binary's own digest and checked release numbers, and nothing is fetched.
+
+**Flags:**
+
+```
+      --answer string   record the person's reply to the offer, yes or not-now, once for this repository and release; run it only with their reply
+      --full            print the full summary of the releases since the last update and what waits here; writes nothing
+      --seen            record that the person read the news where no offer was made; run it only after they were shown it
 ```

@@ -194,7 +194,8 @@ CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
 format gate, the record-lint, issue-drift and docs-lint steps and the
 site-render gate — and on macOS on every event but a pull request, where it
-builds, vets and tests in one race-enabled pass over the whole module. On a pull
+builds, vets and tests in one race-enabled pass over the whole module, then
+runs plain the tests that assert only without the race detector. On a pull
 request `check (macos-latest)` reports its required context from an ubuntu
 runner and runs nothing (every push there has passed `make preflight`);
 the merge-queue entry runs the macOS suite on exactly the tree that lands.
@@ -328,8 +329,8 @@ with `*CONCURRENCY` to force it).
   `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
   `check-attribution`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
-  `go vet ./...`, `go test ./...`, and
-  `go test -race -timeout 20m ./internal/...`. The load
+  `go vet ./...`, `go test -timeout 20m ./...`, and
+  `go test -race -timeout 40m ./internal/...`. The load
   check runs first (`load-check`, a warning, never a failure) and is not a gate:
   it exits 0 whatever it finds. The eval
   lanes are named separately because their files carry a build tag, so

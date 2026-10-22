@@ -251,6 +251,15 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 					"abcd history: the sub-agent payload marker is unreadable (%s)\n",
 					termsafe.Sanitize(gapErr.Error()))
 			}
+			// The stage-miss marker counts transcripts a staging hook read and
+			// could not stage (iss-2610051434156079): the hook exits 0, so this
+			// is the only place the person can see such a loss.
+			miss, hasMiss, missErr := history.StageMiss(repoRoot, rootSHA)
+			if missErr != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(),
+					"abcd history: the stage-miss marker is unreadable (%s)\n",
+					termsafe.Sanitize(missErr.Error()))
+			}
 			if staged == nil {
 				staged = []history.Staged{}
 			}
@@ -264,19 +273,38 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				staged[k].SourcePath = fsutil.RedactHome(staged[k].SourcePath)
 			}
 			// The JSON envelope stays the array it has always been: a
-			// consumer that iterates it must keep working. The marker is a
-			// per-repo fact rather than a staged entry, so it is reported in
-			// the human render, where the reader who needs it is.
-			return render(cmd.OutOrStdout(), *asJSON, staged, func(w io.Writer) {
-				defer func() {
-					if hasGap {
-						fmt.Fprintf(w, "\nNOTE: this harness fired %s %d time(s) without an agent_transcript_path (first %s). No sub-agent transcript can be captured on it, so an empty sub-agent corpus here is the harness, not the sessions.\n",
-							termsafe.Sanitize(orDefault(gap.Event, "SubagentStop")), gap.Count,
-							gap.FirstSeen.Format("2006-01-02T15:04:05Z"))
+			// consumer that iterates it must keep working. The markers are
+			// per-repo facts rather than staged entries, so the human render
+			// carries them after the list, and under --json they go to stderr,
+			// where an agent reading the array still sees a lost transcript
+			// (iss-2610051434156079).
+			notes := func(w io.Writer) {
+				if hasGap {
+					fmt.Fprintf(w, "\nNOTE: this harness fired %s %d time(s) without an agent_transcript_path (first %s). No sub-agent transcript can be captured on it, so an empty sub-agent corpus here is the harness, not the sessions.\n",
+						termsafe.Sanitize(orDefault(gap.Event, "SubagentStop")), gap.Count,
+						gap.FirstSeen.Format("2006-01-02T15:04:05Z"))
+				}
+				if hasMiss {
+					fmt.Fprintf(w, "\nNOTE: %d transcript(s) were read but could not be staged, so they are not in this store (first %s, last %s, %s: %s).\n",
+						miss.Count, miss.FirstSeen.Format("2006-01-02T15:04:05Z"), miss.LastSeen.Format("2006-01-02T15:04:05Z"),
+						termsafe.Sanitize(miss.LastWho), termsafe.Sanitize(fsutil.RedactHome(miss.LastReason)))
+					if !miss.EarlierLostAt.IsZero() {
+						fmt.Fprintf(w, "NOTE: the count starts at %s, when an unreadable record of earlier misses was replaced; misses before then are not counted.\n",
+							miss.EarlierLostAt.Format("2006-01-02T15:04:05Z"))
 					}
-				}()
+				}
+			}
+			if *asJSON {
+				notes(cmd.ErrOrStderr())
+			}
+			return render(cmd.OutOrStdout(), *asJSON, staged, func(w io.Writer) {
+				defer notes(w)
 				if len(staged) == 0 && len(quarantined) == 0 {
-					fmt.Fprintln(w, "abcd history — nothing staged; every ended session is stored")
+					if hasMiss {
+						fmt.Fprintln(w, "abcd history — nothing staged")
+					} else {
+						fmt.Fprintln(w, "abcd history — nothing staged; every ended session is stored")
+					}
 					return
 				}
 				for _, s := range staged {

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // TestRunGitIgnoresInheritedGitDir proves an inherited GIT_DIR cannot redirect
@@ -36,7 +35,7 @@ func TestRunGitIgnoresInheritedGitDir(t *testing.T) {
 	// pointing at repoB.
 	t.Setenv("GIT_DIR", filepath.Join(repoB, ".git"))
 
-	if got := gitutil.RootCommit(repoA); got != shaA {
+	if got := gittest.RootCommit(t, repoA); got != shaA {
 		t.Errorf("RootCommit(repoA) = %q under inherited GIT_DIR=repoB; want repoA's root %q (GIT_DIR hijacked the query)", got, shaA)
 	}
 }

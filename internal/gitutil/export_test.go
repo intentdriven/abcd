@@ -24,3 +24,14 @@ func SetAccountPasswdForTest(t *testing.T, path string) {
 
 // RemoteHeadFrom is RemoteHeadBranch's reading of an ls-remote answer.
 var RemoteHeadFrom = remoteHeadFrom
+
+// NetEnvFor is netEnv with the test-binary question answered by underTest.
+var NetEnvFor = netEnvFor
+
+// AllowNetTransportsForTest switches the test-binary transport guard off for
+// the length of t, for a test that drives a transport through a fake.
+func AllowNetTransportsForTest(t *testing.T) {
+	t.Helper()
+	netGuardOff = true
+	t.Cleanup(func() { netGuardOff = false })
+}

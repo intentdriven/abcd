@@ -23,6 +23,8 @@ import (
 // verbatim (A8).
 var liveHistory = []string{
 	"CHANGELOG.md",
+	// The release digest holds each CHANGELOG line word for word.
+	"internal/core/releasedigest/digest.json",
 	".abcd/work/reviews/",
 	".abcd/development/research/data/",
 	"internal/core/guard/testdata/corpus/repo-mined.txt",

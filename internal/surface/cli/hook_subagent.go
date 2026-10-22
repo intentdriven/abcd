@@ -25,7 +25,9 @@ package cli
 // Capture.
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strings"
@@ -35,6 +37,8 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/history"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -74,6 +78,37 @@ const (
 	subagentSettleInterval = 25 * time.Millisecond
 )
 
+// subagentResolveWaits are the pauses before each further attempt to resolve
+// the repository when the payload's cwd carries a .git entry but git gave no
+// root commit: a git that failed once, which on a loaded machine is a fork
+// refused or a git killed early, never a directory outside any repository
+// (iss-2610051434156079). About three and a half seconds in all.
+var subagentResolveWaits = []time.Duration{100 * time.Millisecond, 400 * time.Millisecond, time.Second, 2 * time.Second}
+
+// subagentStageRetries bounds how many times a stage refused by lock
+// contention is tried again. Each try already waits out the staging lock's own
+// timeout (history's five seconds), so three more give a held lock twenty
+// seconds in all, well inside the host's hook timeout; past that the
+// transcript is marked as missed rather than dropped unseen.
+var subagentStageRetries = 3
+
+// sessionEndResolveWaits are retryDetect's pauses for the session-end hook,
+// which the host gives 1.5 seconds in all unless the hook asks for more
+// (SessionEnd's default budget, per the host's hooks reference): two short
+// pauses cover a git that failed once. Detection itself takes most of a
+// second on a loaded machine, which is when git fails, so the pauses are
+// bounded by sessionEndRetryBudget from the hook's start rather than counted:
+// a retry whose pause and detection, costed at the first detection's time,
+// cannot end before it is not begun, leaving the stage its time. Its stage is not retried for the same reason; a session's own lock is
+// contended only by that session re-firing.
+var sessionEndResolveWaits = []time.Duration{100 * time.Millisecond, 300 * time.Millisecond}
+
+// sessionEndRetryBudget is how long after the session-end hook starts a
+// detection retry, its pause and its detection both (costed at what the first
+// detection took), must have ended, leaving the rest of the host's 1.5
+// seconds to the stage.
+var sessionEndRetryBudget = 1200 * time.Millisecond
+
 // newSubagentStopCommand builds `abcd hook subagent-stop`.
 func newSubagentStopCommand() *cobra.Command {
 	return &cobra.Command{
@@ -98,7 +133,7 @@ func newSubagentStopCommand() *cobra.Command {
 				return warn("unreadable SubagentStop payload (%v); staging nothing", err)
 			}
 			in = parsed
-			repoRoot, rootSHA, via := resolveSubagentStore(in)
+			repoRoot, rootSHA, via, rootErr := resolveSubagentStore(in)
 
 			// The absent-field case comes before the store check has any
 			// consequence, but after it has been attempted: the marker needs a
@@ -113,6 +148,15 @@ func newSubagentStopCommand() *cobra.Command {
 				}
 				return warn("this harness fired %s with no agent_transcript_path, so no sub-agent transcript can be captured here; `abcd history staged` reports this",
 					orDefault(in.Event, "SubagentStop"))
+			}
+			if rootSHA == "" && rootErr != nil {
+				// git did not answer for the cwd's root commit (a fork refused
+				// on a loaded machine, a git that exited early): that is a git
+				// that failed this once, not a directory outside any
+				// repository. It is asked again, and the session note re-read
+				// between tries, since a burst's siblings write it as they
+				// resolve (iss-2610051434156079).
+				repoRoot, rootSHA, via = retrySubagentStore(cmd.ErrOrStderr(), in, rootErr)
 			}
 			if rootSHA == "" {
 				return warn("cannot resolve the repository for this sub-agent — the payload's cwd %q did not resolve and no store has seen session %q; staging nothing",
@@ -136,9 +180,15 @@ func newSubagentStopCommand() *cobra.Command {
 			}
 
 			meta := subagentStageMeta(in)
-			res, err := history.Stage(repoRoot, rootSHA, meta, raw)
+			res, err := stageWithRetry(cmd.ErrOrStderr(), subagentStageRetries, repoRoot, rootSHA, meta, raw)
 			if err != nil {
-				return warn("staging sub-agent %s failed (%v); this transcript was not captured", in.AgentID, err)
+				// The transcript was read and is lost. The marker is what lets
+				// the person see that: this hook's stderr reaches only a debug
+				// log, since it must exit 0.
+				if nerr := history.NoteStageMiss(repoRoot, rootSHA, "sub-agent "+in.AgentID, err.Error()); nerr != nil {
+					diagnosticLine(cmd.ErrOrStderr(), "abcd history: the missed stage could not be recorded either (%v)", nerr)
+				}
+				return warn("staging sub-agent %s failed (%v); this transcript was not captured, and `abcd history staged` reports it", in.AgentID, err)
 			}
 			staged := hookStageResult{Hook: "subagent-stop", Captured: true, Outcome: hookOutcomeStaged,
 				SessionID: termsafe.Sanitize(in.SessionID), AgentID: in.AgentID, Bytes: res.Staged.Bytes}
@@ -186,27 +236,122 @@ func newSubagentStopCommand() *cobra.Command {
 // written into the resolved lane rather than a fixed path — a lane the lookup
 // cannot enumerate is one it correctly reports as not having seen the session,
 // instead of staging the transcript into a second store nothing drains.
-func resolveSubagentStore(in hookInput) (repoRoot, rootSHA, via string) {
+//
+// rootErr is why the cwd gave no root commit when git did not answer for it
+// (ahoy.RepoIdentity.RootErr), nil when the cwd's answer was definite: it is
+// the signal that a second try could find what the first did not.
+func resolveSubagentStore(in hookInput) (repoRoot, rootSHA, via string, rootErr error) {
 	cwd := in.Cwd
 	if cwd == "" {
 		if wd, err := os.Getwd(); err == nil {
 			cwd = wd
 		}
 	}
-	if det, err := ahoy.Detect(cwd); err == nil && det.RootSHA != "" {
+	det, err := ahoy.Detect(cwd)
+	if err == nil && det.RootSHA != "" {
 		root := captureRoot(cwd)
 		if in.SessionID != "" {
 			// Best effort: a failure here degrades a fallback, never a capture.
 			_ = history.NoteSessionRepo(root, det.RootSHA, in.SessionID)
 		}
-		return root, det.RootSHA, "cwd"
+		return root, det.RootSHA, "cwd", nil
+	}
+	if err == nil {
+		rootErr = det.RepoIdentity.RootErr()
 	}
 	if in.SessionID != "" {
 		if sha, err := history.SessionRepo(in.SessionID); err == nil {
-			return "", sha, "session"
+			return "", sha, "session", nil
 		}
 	}
+	return "", "", "", rootErr
+}
+
+// retrySubagentStore asks again, after resolveSubagentStore found no store
+// because git did not answer for the cwd's root commit (first, the failure the
+// first try met): git failing once is a loaded machine, not a directory
+// outside any repository, and a burst's siblings write the session note as
+// they resolve, so it is re-read between tries. A cwd git answered for
+// definitely — none, gone, or a repository with no commits — is never retried,
+// since a second git call could find nothing there; the caller does not call
+// it then. A try whose answer turns definite stops the retries the same way.
+// Each retry is said on stderr.
+func retrySubagentStore(w io.Writer, in hookInput, first error) (repoRoot, rootSHA, via string) {
+	if errors.Is(first, gitutil.ErrLazyFetchFloor) {
+		// abcd's own refusal to read a partial clone's objects on an old git
+		// answers the same every time: there is nothing a retry could find.
+		return "", "", ""
+	}
+	last := first
+	for i, wait := range subagentResolveWaits {
+		time.Sleep(wait)
+		var rootErr error
+		if repoRoot, rootSHA, via, rootErr = resolveSubagentStore(in); rootSHA != "" {
+			fmt.Fprintf(w, "abcd history: sub-agent %s: the repository resolved on try %d, after git first gave no root commit for the cwd\n",
+				termsafe.Sanitize(in.AgentID), i+2)
+			return repoRoot, rootSHA, via
+		}
+		if rootErr == nil {
+			fmt.Fprintf(w, "abcd history: sub-agent %s: on try %d git answered that the cwd has no root commit\n",
+				termsafe.Sanitize(in.AgentID), i+2)
+			return "", "", ""
+		}
+		last = rootErr
+	}
+	fmt.Fprintf(w, "abcd history: sub-agent %s: git gave no root commit for the cwd in %d tries (%s)\n",
+		termsafe.Sanitize(in.AgentID), len(subagentResolveWaits)+1, termsafe.Sanitize(fsutil.RedactHome(last.Error())))
 	return "", "", ""
+}
+
+// stageWithRetry stages, trying again when the staging lock was held past its
+// timeout, so a stage that cannot take the lock waits longer instead of losing
+// the transcript (iss-2610051434156079). Every other failure returns at once:
+// it would fail the same way again.
+func stageWithRetry(w io.Writer, retries int, repoRoot, rootSHA string, meta history.StageMeta, raw []byte) (history.StageResult, error) {
+	who := "session " + termsafe.Sanitize(meta.Lineage.SessionID)
+	if meta.Lineage.AgentID != "" {
+		who = "sub-agent " + termsafe.Sanitize(meta.Lineage.AgentID)
+	}
+	res, err := history.Stage(repoRoot, rootSHA, meta, raw)
+	for try := 0; err != nil && errors.Is(err, fsutil.ErrLockContention) && try < retries; try++ {
+		fmt.Fprintf(w, "abcd history: %s: the staging lock was held past its timeout; trying again (%d of %d)\n",
+			who, try+1, retries)
+		res, err = history.Stage(repoRoot, rootSHA, meta, raw)
+	}
+	return res, err
+}
+
+// retryDetect is the session-end hook's retrySubagentStore: when git gave no
+// root commit for a repository-shaped cwd, detection is asked again after
+// each of waits whose pause and detection (costed at cost, the first
+// detection's time) end before deadline, and a try that turns definite (a root, or git answering
+// that there is none) ends the retries. Each retry is said on stderr
+// (iss-2610051434156079).
+func retryDetect(w io.Writer, waits []time.Duration, deadline time.Time, cost time.Duration, cwd string, first ahoy.DetectionResult) (ahoy.DetectionResult, error) {
+	det := first
+	if errors.Is(det.RepoIdentity.RootErr(), gitutil.ErrLazyFetchFloor) {
+		return det, nil
+	}
+	for i, wait := range waits {
+		if time.Now().Add(wait + cost).After(deadline) {
+			fmt.Fprintf(w, "abcd history: git gave no root commit for the cwd, and no time is left to ask again\n")
+			return det, nil
+		}
+		time.Sleep(wait)
+		next, err := ahoy.Detect(cwd)
+		if err != nil {
+			return next, err
+		}
+		det = next
+		if det.RootSHA != "" {
+			fmt.Fprintf(w, "abcd history: the repository resolved on try %d, after git first gave no root commit for the cwd\n", i+2)
+			return det, nil
+		}
+		if det.RepoIdentity.RootErr() == nil {
+			return det, nil
+		}
+	}
+	return det, nil
 }
 
 // subagentStageMeta assembles the lineage for one sub-agent stage, running the

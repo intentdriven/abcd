@@ -49,6 +49,9 @@ type CheckRow struct {
 	Remedy string `json:"remedy,omitempty"`
 	// contention marks a failure that is a peer's hold, not the record's fault.
 	contention bool
+	// unjudged is each peer the peers check could not read, which it counted
+	// as a holder; the drain stops its move on them (unreadableRefusal).
+	unjudged []peers.Peer
 }
 
 // CheckResult is every pre-start check for one key.
@@ -81,6 +84,7 @@ func (r CheckResult) refusal() *Refusal {
 		}
 		ref := refuse("check", c.Name, "", c.Detail, c.Remedy)
 		ref.Contention = c.contention
+		ref.unjudged = c.unjudged
 		ref.Checks = r.Checks
 		return ref
 	}
@@ -215,9 +219,25 @@ func keyCheck(key string) (CheckRow, bool) {
 // issueCheck is the pre-start checks for an issue key (decision 10 on the
 // parent): the drained repository's own rule, read as the drain reads it, takes
 // the issue, and no peer holds it. The run then has one lane, for the issue.
+// One hand-back is let through, with a note naming the intents: promoted, an
+// issue linked to an intent, which a drain never takes alone and a person's
+// own build may, but only when promoted is the only reason it would be handed
+// back. The rule is asked again with promoted set aside, and an issue another
+// rule still holds (security, category, severity, "Waits on", a deferral, no
+// remedy) is refused with that rule's reason, as it would be without the link
+// (refining dcn-2610161428244461). The drain opens lanes for eligible issues
+// alone, so it never reaches this case.
 func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnapshot) (CheckResult, error) {
 	row := CheckRow{Name: CheckEligible}
-	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
+	var plan capture.DrainPlan
+	var err error
+	if snap != nil && snap.plan != nil {
+		// The drain's move read the ledger from origin's default branch, and
+		// the start judges the issue by that same snapshot.
+		plan = *snap.plan
+	} else {
+		plan, err = capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
+	}
 	if err != nil {
 		if !drainRuleRefusal(err) {
 			return res, err
@@ -228,10 +248,34 @@ func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnap
 		return res, nil
 	}
 	i := slices.IndexFunc(plan.Dispositions, func(v capture.DrainVerdict) bool { return recordid.SameID(v.ID, res.Key) })
+	if i >= 0 && plan.Dispositions[i].Rule == capture.RulePromoted {
+		aside, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot, SetAsidePromoted: true})
+		if err != nil {
+			return res, err
+		}
+		// Another rule holds it, or the ledger moved and it is gone: the
+		// verdict without the link decides, so the refusal names that rule.
+		j := slices.IndexFunc(aside.Dispositions, func(v capture.DrainVerdict) bool { return recordid.SameID(v.ID, res.Key) })
+		if j < 0 || aside.Dispositions[j].Outcome != capture.DrainEligible {
+			plan, i = aside, j
+		}
+	}
 	switch {
 	case i < 0:
 		row.Detail = res.Key + " is not an open issue in this checkout's ledger"
 		row.Remedy = "name an open issue: `abcd drain --dry-run` lists every one with its disposition"
+	case plan.Dispositions[i].Rule == capture.RulePromoted:
+		// A person's own build is let through a hand-back, with a note
+		// (dcn-2610161040365515): a drain hands an issue linked to an intent
+		// back, and this is the lane route that leaves it, an after-merge
+		// audit's owed check among them (ruling DQ1a). Only promoted is let
+		// through, and only when no other rule would hand the issue back:
+		// every other hand-back is a decision the rule's record keeps a
+		// person's.
+		v := plan.Dispositions[i]
+		row.OK = true
+		row.Detail = fmt.Sprintf("%s: a drain hands it back under %s (promoted), and a person's own build takes it; %s", v.ID, plan.Record, v.Reason)
+		res.steps = []PendingStep{{Number: 1, Title: issueStepTitle(v)}}
 	case plan.Dispositions[i].Outcome != capture.DrainEligible:
 		v := plan.Dispositions[i]
 		row.Detail = fmt.Sprintf("%s is %s under %s (%s): %s", v.ID, v.Outcome, plan.Record, v.Rule, v.Reason)
@@ -316,7 +360,10 @@ func readyRow(r intent.ReadyResult) CheckRow {
 // claims and the reservations as last fetched, read once and judged for any
 // number of records.
 type peerSnapshot struct {
-	rep    peers.Report
+	rep peers.Report
+	// root is the checkout the listing was read from, which a peer's not-read
+	// reason is shown relative to (peers.Peer.NotReadShown).
+	root   string
 	claims []implement.ClaimState
 	// reserved is the reservations on origin as this checkout last fetched
 	// them, read from disk alone (claim.View): no fetch and no push. It is nil
@@ -331,6 +378,9 @@ type peerSnapshot struct {
 	reader string
 	// now is when the reservations are judged.
 	now time.Time
+	// plan is the drain plan an issue's check reads (Options.plan); nil
+	// reads the checkout's ledger.
+	plan *capture.DrainPlan
 	// takeOver is a start's --take-over: this person's own live reservation
 	// from another copy is then no holder, since the start's reservation
 	// moves it to this copy.
@@ -345,11 +395,17 @@ func readPeers(repoRoot string, now time.Time) (*peerSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	snap := &peerSnapshot{rep: rep, now: now}
+	snap := &peerSnapshot{rep: rep, root: repoRoot, now: now}
 	if err := snap.readReservations(repoRoot); err != nil {
 		return nil, err
 	}
-	if sha := gitutil.RootCommit(repoRoot); gitutil.IsFullSHA(sha) {
+	sha, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		// Without the root commit the shared run's claims cannot be read,
+		// and a snapshot without them would show a claimed record as free.
+		return nil, fmt.Errorf("reading the repository's root commit to find the shared run's claims: %w", err)
+	}
+	if gitutil.IsFullSHA(sha) {
 		run, err := implement.Peek(sha)
 		if err != nil {
 			return nil, err
@@ -428,8 +484,9 @@ func peersCheck(id, bucket, session string, snap *peerSnapshot, reservations boo
 	}
 	// A peer the listing names and cannot read may hold the record; the check
 	// fails closed on it, as it does on an unreadable claim below.
-	for _, p := range snap.rep.Unjudged() {
-		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+fsutil.DisplayPathsIn(p.NotRead, p.Path)+")")
+	row.unjudged = snap.rep.Unjudged()
+	for _, p := range row.unjudged {
+		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+p.NotReadShown(snap.root)+")")
 	}
 	for _, c := range snap.claims {
 		if (c.Live || c.Unreadable) && recordid.SameID(c.Record, id) {

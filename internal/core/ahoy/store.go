@@ -60,12 +60,17 @@ func runGit(cwd string, args ...string) (string, error) {
 	return string(out), nil
 }
 
-// deriveIdentity builds the deterministic RepoIdentity for cwd.
+// deriveIdentity builds the deterministic RepoIdentity for cwd. A git that
+// did not answer for the root commit leaves RootSHA "" with the failure kept
+// in RootErr, so Detect stays total while its callers can still tell "no root
+// commit" from "git failed" (iss-2610051434156079).
 func deriveIdentity(cwd string) RepoIdentity {
+	sha, err := gitutil.RootCommit(cwd)
 	return RepoIdentity{
 		Name:    filepath.Base(cwd),
 		Github:  originURL(cwd),
-		RootSHA: gitutil.RootCommit(cwd),
+		RootSHA: sha,
+		rootErr: err,
 	}
 }
 

@@ -1228,7 +1228,8 @@ func variableCarried(s segment, i int) bool {
 // killall-by-name).
 func namesOnlyItsProgram(p Pattern) bool {
 	return p.Subcommand == "" && p.Subcommand2 == "" && len(p.Flags) == 0 && len(p.FlagValues) == 0 &&
-		len(p.ArgPaths) == 0 && len(p.ArgPrefixes) == 0 && len(p.ArgsFrom) == 0 && p.AfterCD == nil
+		len(p.ArgPaths) == 0 && len(p.ArgPrefixes) == 0 && len(p.ArgsFrom) == 0 && p.AfterCD == nil &&
+		len(p.Env) == 0
 }
 
 // vanishable reports whether a word is nothing but substitutions, so an
@@ -1537,7 +1538,8 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 			// case-insensitive filesystem (macOS's default) `SUDO`/`ENV`/`NICE`
 			// resolve to and run the real binary (gh-315).
 			w := strings.ToLower(path.Base(tok))
-			runner, isRunner := runnerAt(w, tokens, st.pos)
+			runners := runnersAt(w, tokens, st.pos)
+			isRunner := len(runners) > 0
 			a := arrival{idx: st.pos, noglob: st.noglob, wrapper: wrappers[w] || isRunner}
 			if !found[a] {
 				if isUnknown(tok) && !a.wrapper {
@@ -1566,7 +1568,9 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 			}
 			switch {
 			case isRunner:
-				push(state{pos: st.pos + 2, mode: walkOptions, wrapper: runner, noglob: st.noglob})
+				for _, rs := range runners {
+					push(state{pos: rs.at, mode: walkOptions, wrapper: rs.wrapper, noglob: st.noglob})
+				}
 			case wrappers[w]:
 				push(state{pos: st.pos + 1, mode: walkOptions, wrapper: w, noglob: st.noglob || w == "noglob"})
 			case isUnknown(tok):
@@ -1715,6 +1719,11 @@ func commandNamed(s segment, a arrival, name string) bool {
 	// (`npx kill-port@latest`); no program is called by such a name, so the
 	// word is read as the program it names as well.
 	if pn := packageName(tok); pn != tok && nameCouldBe(pn, name) {
+		return true
+	}
+	// A package named for another program starts that program
+	// (packagePrograms): `npx @anthropic-ai/claude-code` is claude.
+	if prog, ok := packageProgram(tok); ok && nameCouldBe(prog, name) {
 		return true
 	}
 	return !a.noglob && s.globAt(a.idx) && globMatches(strings.ToLower(path.Base(tok)), strings.ToLower(name))

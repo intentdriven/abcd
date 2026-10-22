@@ -31,9 +31,11 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -71,6 +73,15 @@ type Request struct {
 	// Tools are the tools the role's contract grants, granted without a
 	// prompt; none granted when empty.
 	Tools []string
+	// Base is the full object name of the commit the run's working tree was
+	// cut from: a lane's base, or the HEAD an interview launched on. A launch
+	// that grants the shell needs it, since the approver judges every
+	// command against the hazard registry at that commit.
+	Base string
+	// Denied are the tools the role is refused outright, whatever else would
+	// grant them: a harness that keeps a deny list takes them there, ahead of
+	// every grant.
+	Denied []string
 	// SessionID names the run's transcript record when the harness reports no
 	// session of its own.
 	SessionID string
@@ -84,11 +95,23 @@ type Request struct {
 type Answer struct {
 	// Text is the harness's final message.
 	Text string
-	// Model is the model the harness reports, or the one it was asked for when
-	// it reports none.
+	// Model is the model the harness reports, "" when it reports none: the
+	// model the runner asked for is Sides.ModelAsked, and never stands in for
+	// the one that answered (itd-166, iss-2610161709506207).
 	Model string
 	// SessionID is the harness's own session id, "" when it reports none.
 	SessionID string
+	// Sides is both sides of the run: what the runner asked for, and the
+	// token counts, cost and served models the harness's events report.
+	Sides
+	// counted is which token counts the harness's events carried, read
+	// with them, for the record's list of what it could not pin.
+	counted counted
+	// lost is which summed counts stopped being readable (a sum that would
+	// overflow), and costLost whether the summed cost did (a sum that is no
+	// longer finite): each stays unread for the rest of the run.
+	lost     counted
+	costLost bool
 }
 
 // Runner is one route a role can run through.
@@ -204,10 +227,17 @@ var (
 	// provider/model, a bracketed context suffix): bounded and plain, as a
 	// session id is, since it is written into the run's state and records.
 	modelRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}(\[[A-Za-z0-9._-]{1,16}\])?$`)
-	// toolRe is one tool as a contract names it (Read, Bash(git log:*)). A
-	// comma or a line break would split the one flag the tools travel in.
-	toolRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\([^,\r\n()]{1,120}\))?$`)
+	// toolRe is one tool as a contract names it (Read, Bash(git log:*),
+	// Read(//abs/dir/**)). A comma or a line break would split the one flag
+	// the tools travel in. The specifier is bounded to hold an absolute path
+	// (Go's regexp bounds a repeat at 1000).
+	toolRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\([^,\r\n()]{1,1000}\))?$`)
 )
+
+// Check refuses a request no runner may be started with, as every launch
+// does before it starts anything: a caller that must know whether a runner
+// was started asks it first.
+func (r Request) Check() error { return r.check() }
 
 // check refuses a request no runner may be started with, before any launch.
 func (r Request) check() error {
@@ -222,10 +252,13 @@ func (r Request) check() error {
 			return fmt.Errorf("runner: the %s %q is not a clean absolute path", p.name, termsafe.Sanitize(p.path))
 		}
 	}
-	for _, t := range r.Tools {
+	for _, t := range slices.Concat(r.Tools, r.Denied) {
 		if !toolRe.MatchString(t) {
 			return fmt.Errorf("runner: tool %q is not a tool name as a contract spells it", termsafe.Sanitize(t))
 		}
+	}
+	if r.Base != "" && !gitutil.IsFullSHA(r.Base) {
+		return fmt.Errorf("runner: the base %q is not a commit's full object name", termsafe.Sanitize(r.Base))
 	}
 	if !sessionRe.MatchString(r.SessionID) {
 		return errors.New("runner: the request names no session id for its transcript")

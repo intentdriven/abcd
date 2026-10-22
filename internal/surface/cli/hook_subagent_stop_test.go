@@ -313,11 +313,14 @@ func TestHookSubagentStopConcurrentCompletionsAllStage(t *testing.T) {
 
 	var wg sync.WaitGroup
 	fails := make([]string, n)
+	stderrs := make([]string, n)
 	for i := range n {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, stderr, failed := runHookAllowingFailure(payloads[i], "hook", "subagent-stop"); failed {
+			_, stderr, failed := runHookAllowingFailure(payloads[i], "hook", "subagent-stop")
+			stderrs[i] = stderr
+			if failed {
 				fails[i] = stderr
 			}
 		}()
@@ -333,7 +336,7 @@ func TestHookSubagentStopConcurrentCompletionsAllStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(staged) != n {
-		t.Fatalf("want %d staged transcripts from %d simultaneous completions, got %d", n, n, len(staged))
+		t.Fatalf("want %d staged transcripts from %d simultaneous completions, got %d\n%s", n, n, len(staged), notStaged(stderrs))
 	}
 }
 

@@ -1,17 +1,23 @@
 package claim
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/intentdriven/abcd/internal/core/github"
 	toolid "github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/tools"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // noreplyRe matches GitHub's noreply commit addresses, both forms:
@@ -46,6 +52,12 @@ const (
 	holderNamespace = "reservation"
 	holderKey       = holderNamespace + ".github_username"
 )
+
+// reservationKeys are every key the reservation namespace takes, in every
+// layer: the holder's and the cap's (each read from the machine layer alone,
+// maxlive.go) and the fork check's opt-out (fork.go, read from both). Each
+// reader claims them all, so one reader's key is never another's unknown key.
+var reservationKeys = []string{"github_username", "fork_origin", "max_live"}
 
 // identity is a git identity: the one read under the person's own
 // configuration, and the author and committer of every reservation commit.
@@ -124,7 +136,7 @@ func ResolveHolder(root string, o Options) (Holder, error) {
 //     configuration (~/.abcd.noindex/config.json), the only layer read for it;
 //  3. when net allows it, the forge token gh resolves from the session's
 //     environment, asked whose account it is through the user endpoint
-//     (o.ForgeUser).
+//     (o.ForgeUser), once per process for each checkout and credential.
 //
 // When it is not a person's (unset, or a machine's), the token alone: the
 // author then comes from the token's account, and the machine key is skipped
@@ -167,11 +179,14 @@ func machineHolder(home string) (string, error) {
 	if home == "" {
 		return "", nil
 	}
-	stack, err := layered.Load(layered.Config, layered.Roots{Home: home})
+	// A home inside a working tree reads as absent (layered.MachineRoots);
+	// the front door says so.
+	roots, _ := layered.MachineRoots(home)
+	stack, err := layered.Load(layered.Config, roots)
 	if err != nil {
 		return "", refuse("could not read the configuration that names your GitHub username: %v; %s", err, nothingSent)
 	}
-	if err := stack.Claim(holderNamespace, "github_username"); err != nil {
+	if err := stack.Claim(holderNamespace, reservationKeys...); err != nil {
 		return "", refuse("%v; %s", err, nothingSent)
 	}
 	found, err := stack.Lookup(holderKey)
@@ -250,9 +265,137 @@ func tokenHolder(root string, o Options) (Holder, error) {
 	return Holder{Login: login, ID: id, NoReply: noreply, Source: HolderFromToken}, nil
 }
 
-// forgeUser is the real user-endpoint call: `gh api user` through the one
-// door to GitHub, its failure reduced to a class.
+// forgeUser is the real user-endpoint call, asked once per process for each
+// checkout and forge credential, as holderCacheKey says (iss-2610161015433495): a drain move makes
+// several reservation acts, and each asked GitHub the same question again.
+// Only a definite answer, a valid login with a positive id, is kept; a failure
+// is returned and asked again by the next act. An injected Options.ForgeUser
+// never reaches this cache. The key is computed again once the call returns,
+// and an answer whose key moved meanwhile (an account switched while gh was
+// answering) is returned but not kept.
 func forgeUser(root string) (string, int64, error) {
+	k := forgeKey(root)
+	if a, ok := holderCache.get(k); ok {
+		return a.login, a.id, nil
+	}
+	login, id, err := askForgeUser(root)
+	if err == nil && validUsername(login) && id > 0 && forgeKey(root) == k {
+		holderCache.put(k, forgeAnswer{login: login, id: id})
+	}
+	return login, id, err
+}
+
+// forgeCredentialEnv is the environment that picks the gh that answers the
+// user endpoint and the token it answers with: the PATH gh is found on, the
+// tokens gh reads for github.com ahead of its own store, and the variables its
+// configuration directory is found from.
+var forgeCredentialEnv = []string{"PATH", "GH_TOKEN", "GITHUB_TOKEN", "GH_CONFIG_DIR", "XDG_CONFIG_HOME", "HOME", "AppData"}
+
+// maxHostsBytes caps the read of gh's hosts.yml, which holds a few lines per
+// account.
+const maxHostsBytes = 256 << 10
+
+// holderCacheKey is what one cached answer is kept under: the checkout root,
+// and a digest of each variable in forgeCredentialEnv (set or not, and its
+// value) with a SHA-256 of the contents of the hosts.yml gh keeps its accounts
+// in. The root is in the key because gh runs in the checkout, so a relative
+// GH_CONFIG_DIR or XDG_CONFIG_HOME resolves against it: the same variables name
+// another account store from another checkout. hosts.yml is in it because,
+// with no token in the environment, that file decides the account, and `gh
+// auth switch`, `login` and `logout` rewrite it without changing a variable.
+//
+// The key covers nothing else. A token gh keeps in the system keychain is not
+// read: a refresh that rewrites only the keychain entry keeps the same account,
+// so the user endpoint's answer does not change. A missing or unreadable
+// hosts.yml (one ReadGuarded refuses, a symlinked one included) folds in as one
+// distinct empty value. The digest, never a token or the file, is what the
+// cache holds.
+type holderCacheKey struct {
+	root       string
+	credential [sha256.Size]byte
+}
+
+func forgeKey(root string) holderCacheKey {
+	h := sha256.New()
+	for _, name := range forgeCredentialEnv {
+		v, set := os.LookupEnv(name)
+		fmt.Fprintf(h, "%s\x00%t\x00%d\x00%s\x00", name, set, len(v), v)
+	}
+	hosts, err := fsutil.ReadGuarded(ghHostsFile(root), maxHostsBytes)
+	fmt.Fprintf(h, "hosts.yml\x00%t\x00%x\x00", err == nil, sha256.Sum256(hosts))
+	k := holderCacheKey{root: filepath.Clean(root)}
+	copy(k.credential[:], h.Sum(nil))
+	return k
+}
+
+// ghHostsFile is the hosts.yml gh reads its accounts from when run in root,
+// found as gh finds its configuration directory: GH_CONFIG_DIR, else
+// $XDG_CONFIG_HOME/gh, else %AppData%/GitHub CLI on Windows, else
+// ~/.config/gh. A relative directory resolves against root, the working
+// directory gh is run in.
+func ghHostsFile(root string) string {
+	var dir string
+	if d := os.Getenv("GH_CONFIG_DIR"); d != "" {
+		dir = d
+	} else if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
+		dir = filepath.Join(d, "gh")
+	} else if d := os.Getenv("AppData"); runtime.GOOS == "windows" && d != "" {
+		dir = filepath.Join(d, "GitHub CLI")
+	} else {
+		home, _ := os.UserHomeDir()
+		dir = filepath.Join(home, ".config", "gh")
+	}
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(root, dir)
+	}
+	return filepath.Join(dir, "hosts.yml")
+}
+
+// forgeCache is the process's definite answers from the user endpoint, one
+// per key, behind one mutex that guards the map and is never held across a
+// call. No caller is concurrent today: a drain makes one move per process, and
+// no goroutine reaches the holder resolver. Were two acts with one key ever to
+// run at once, each would miss, both would ask gh, and the later answer would
+// replace the earlier one; neither would wait on the other, so a hung gh would
+// hold up only the act that asked it.
+type forgeCache struct {
+	mu      sync.Mutex
+	entries map[holderCacheKey]forgeAnswer
+}
+
+type forgeAnswer struct {
+	login string
+	id    int64
+}
+
+var holderCache = &forgeCache{}
+
+func (c *forgeCache) get(k holderCacheKey) (forgeAnswer, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	a, ok := c.entries[k]
+	return a, ok
+}
+
+func (c *forgeCache) put(k holderCacheKey, a forgeAnswer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = map[holderCacheKey]forgeAnswer{}
+	}
+	c.entries[k] = a
+}
+
+// reset forgets every answer; tests call it so none reads another's.
+func (c *forgeCache) reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = nil
+}
+
+// askForgeUser is one `gh api user` call through the one door to GitHub, its
+// failure reduced to a class.
+func askForgeUser(root string) (string, int64, error) {
 	out, err := github.API(root, nil, "user")
 	if err != nil {
 		return "", 0, forgeClass(err)

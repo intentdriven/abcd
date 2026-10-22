@@ -39,7 +39,8 @@ const noQueueRuleset = `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":
 // body the forge holds), state (the pull request's state), mergeable.json (its
 // mergeability; MERGEABLE when absent), footer (a line the
 // "harness" appends to a body at creation), refuse-disarm (present, the forge
-// refuses to withdraw an armed merge). It never reaches a network, and it
+// refuses to withdraw an armed merge), refuse-list (present, the forge's
+// listing of pull requests fails). It never reaches a network, and it
 // refuses a --json field the real forge client refuses (ghcontract).
 var stubGH = "#!/bin/sh\n" + ghcontract.Shell() + stubGHBody
 
@@ -57,7 +58,9 @@ body_from() {
   done
 }
 case "$1 $2" in
-  "pr list") if [ -f "$d/pr.json" ]; then cat "$d/pr.json"; else echo '[]'; fi ;;
+  "pr list")
+    if [ -f "$d/refuse-list" ]; then echo "stub gh: the forge could not list" >&2; exit 1; fi
+    if [ -f "$d/pr.json" ]; then cat "$d/pr.json"; else echo '[]'; fi ;;
   "pr create")
     body_from "$@"
     if [ -f "$d/footer" ]; then cat "$d/footer" >> "$d/body.md"; fi

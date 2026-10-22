@@ -75,7 +75,13 @@ footprint and term, so another reservation over the same files that a race let
 in does not refuse it) while that footprint still covers every path the spec's
 `- packages:` line names; once the spec has widened its footprint, it reserves
 again with the widened one, which is judged for overlap like any reservation
-and keeps the term, so origin names every path the build will change. It reserves anew one that
+and keeps the term, so origin names every path the build will change. An
+issue's reservation that its landing narrowed to the files the lane changed
+lies within the issue's `found_at`, and while the lane is at its landing it is
+renewed as it stands, never reserved again with the whole `found_at`; at any
+earlier stage nothing has narrowed it, so a reservation narrower than the
+`found_at` means the `found_at` widened, and it is reserved again with the
+whole `found_at`, judged for overlap. It reserves anew one that
 `--release` released or that a run started before reservations never took, and
 records it in the run's state.
 
@@ -97,7 +103,14 @@ flag. The payload is `/abcd:reserve`'s: `act`, `record`, `holder`, `copy`,
 An issue id builds the loop's issue-keyed lane instead: `build <iss-N>` (an
 issue id by shape) checks that the repository's own drain rule takes the issue,
 read as `/abcd:drain --dry-run` reads it, and that no peer holds it, then opens
-one lane whose brief is the issue with its remedy as the work. The receipt must
+one lane whose brief is the issue with its remedy as the work. One hand-back is
+let through: an issue the drain hands back as `promoted` (its `related_intents`
+names an intent) is taken by a person's own build when no other rule would hand
+it back, and the `eligible` row names the intent it goes through; this is how an
+after-merge audit's owed check reaches a lane. The rule is asked again with
+`promoted` set aside, so a linked issue that security, category, severity,
+"Waits on", a deferral or a missing remedy still holds is refused with that
+reason, and every other hand-back is refused. The receipt must
 name the issue in `resolves`, and the landing resolves it. `/abcd:drain` starts
 these runs one at a time; see `/abcd:implement` for the lane's receipt and its
 hand-back.
@@ -409,7 +422,21 @@ skipped with a warning on stderr, so the role runs on the host as if unrouted
 nothing of theirs, and says so with a warning on stderr naming the repository's
 file, the role and the machine route it displaced (tell the user that too). A person whose Claude
 account is a subscription, with no API key, runs the role in their own session:
-the claude runner runs bare, on an API key only. `build` reads this configuration before it creates the run, and a
+the claude runner runs bare, on an API key only. A claude runner whose role's
+contract grants the shell carries the guard as its permission prompt answerer
+(`abcd guard approve`, see `commands/guard.md`), judged against the hazard
+registry at the lane's base commit: a change to `.abcd/guard.json` during the
+run takes effect only where it strengthens that registry, and any weakening,
+committed or not, refuses every command. A shell command the guard reads whole
+and clears runs unattended with the command and its description alone, from
+the working tree and under /bin/bash, whatever the login shell, with its
+profile, rc and environment start-up files ignored (-p); a write
+or removal whose target the line does not spell out, one reaching a protected
+path, `git config` beyond the repository's own file, code handed to an
+interpreter the guard does not read, and a removal of a critical directory are
+refused; and anything else the guard refuses is refused with its reason, which
+the agent is handed, so a refusal in the lane's record is the guard's and not a
+stall. `build` reads this configuration before it creates the run, and a
 fault, a model route off the allowlist included, is refused at the `runner`
 stage with nothing created. When a step hands work to a routed role,
 `implement step` starts the runner itself with the brief and the receipt path

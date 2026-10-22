@@ -78,7 +78,9 @@ func TestOpenCodeLaunch(t *testing.T) {
 	if argv[len(argv)-2] != "--" {
 		t.Errorf("the prompt is not behind the end-of-options marker: %q", argv)
 	}
-	if ans.SessionID != "ses_fake1" || ans.Text != "done" || ans.Model != "openrouter/qwen/qwen3-coder" {
+	// Run mode names no model, so the served model is empty and the one the
+	// runner passed is the asked side's (iss-2610161709506207).
+	if ans.SessionID != "ses_fake1" || ans.Text != "done" || ans.Model != "" || ans.ModelAsked != "openrouter/qwen/qwen3-coder" {
 		t.Errorf("answer = %+v", ans)
 	}
 }
@@ -452,5 +454,43 @@ func TestBinaryInsideTheCheckoutIsRefused(t *testing.T) {
 	}
 	if f.launched(OpenCode) {
 		t.Fatal("the binary inside the checkout was launched")
+	}
+}
+
+// TestClaudeLaunchScopesItsToolsByPath: a contract may grant a tool on a path
+// alone, in the harness's permission-rule form for an absolute path, and
+// refuse a tool on a path outright; the grants travel in the allow flag and
+// the refusals in the deny flag, each as one argument, however long the path.
+func TestClaudeLaunchScopesItsToolsByPath(t *testing.T) {
+	f := newFake(t, "ok", Claude)
+	req := f.request("drain-judge")
+	long := "//" + strings.Repeat("deep/", 40) + "judge"
+	req.Tools = []string{"Read(" + long + "/**)", "Edit(" + long + "/answer.json)"}
+	req.Denied = []string{"Read(//Users/a b/checkout/**)", "Edit(//Users/a b/checkout/**)"}
+	if _, _, err := newClaude("").Run(context.Background(), req); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	argv := f.argv(t, Claude)
+	for _, want := range []string{
+		"--allowedTools=Read(" + long + "/**),Edit(" + long + "/answer.json)",
+		"--disallowedTools=Read(//Users/a b/checkout/**),Edit(//Users/a b/checkout/**)",
+	} {
+		if !slices.Contains(argv, want) {
+			t.Errorf("claude argv %q lacks %q", argv, want)
+		}
+	}
+}
+
+// TestADeniedToolIsCheckedAsAGrantIs: a refusal that would split the deny
+// flag refuses the request before anything runs.
+func TestADeniedToolIsCheckedAsAGrantIs(t *testing.T) {
+	f := newFake(t, "ok", Claude)
+	req := f.request("drain-judge")
+	req.Denied = []string{"Read(//a),Edit(//b)"}
+	if _, _, err := newClaude("").Run(context.Background(), req); err == nil {
+		t.Fatal("a deny list that splits the flag was accepted")
+	}
+	if f.launched(Claude) {
+		t.Error("a refused request launched the harness")
 	}
 }

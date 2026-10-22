@@ -116,19 +116,22 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 	if err != nil {
 		return res, err
 	}
-	var worktree string
+	var worktree, base string
 	for _, l := range st.Lanes {
 		if l.ID == res.Lane {
-			worktree = l.Worktree
+			worktree, base = l.Worktree, l.BaseSHA
 		}
 	}
 	req := runner.Request{
-		Role:      aw.Role,
-		Brief:     absIn(repoRoot, aw.Brief),
-		Receipt:   absIn(repoRoot, aw.Receipt),
-		Dir:       worktree,
-		Checkout:  filepath.Clean(repoRoot),
-		Tools:     toolsFor(aw.Role),
+		Role:     aw.Role,
+		Brief:    absIn(repoRoot, aw.Brief),
+		Receipt:  absIn(repoRoot, aw.Receipt),
+		Dir:      worktree,
+		Checkout: filepath.Clean(repoRoot),
+		Tools:    toolsFor(aw.Role),
+		// The approver of a shell launch judges against the registry the
+		// lane was cut from, never one the lane has since changed.
+		Base:      base,
 		SessionID: fmt.Sprintf("%s-%s-%s-%d", runID, res.Lane, aw.Role, o.now().Unix()),
 		Timeout:   rs.Timeout,
 	}
@@ -138,8 +141,8 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		HostSession: true,
 		Transcripts: rs.Transcripts,
 		Validate: func(ran string, _ runner.Request, ans runner.Answer) error {
-			r, err := receipt(repoRoot, runID, aw.Receipt, steps, o,
-				&runner.RouteRecord{Asked: route.Runner, Ran: ran, Model: ans.Model})
+			rec := runner.RecordOf(route.Runner, ran, ans)
+			r, err := receipt(repoRoot, runID, aw.Receipt, steps, o, &rec)
 			if err != nil {
 				return err
 			}

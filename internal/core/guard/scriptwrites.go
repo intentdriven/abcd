@@ -90,7 +90,131 @@ func writerTargets(rc *readCtx, s segment, st *shellState) []writeTarget {
 			}
 		case "unzip":
 			out = append(out, w.dirTarget([]string{"-d"}))
+		case "rsync":
+			out = append(out, w.rsyncTarget()...)
+		case "find":
+			out = append(out, findRuns(rc, s, st, a.idx+1)...)
+		case "go":
+			out = append(out, w.goBuildTarget()...)
+		case "sort":
+			out = append(out, w.flagValues([]string{"-o", "--output"})...)
+		case "ditto":
+			out = append(out, w.lastOf(w.operandIdx([]string{"--arch", "--bom", "--zlibCompressionLevel"}), 2)...)
+		case "split":
+			out = append(out, w.splitTarget()...)
+		case "uniq":
+			out = append(out, w.secondOf(w.operandIdx([]string{"-f", "-s", "-w", "--skip-fields", "--skip-chars", "--check-chars"}))...)
 		}
+	}
+	return out
+}
+
+// rsyncTarget is the destination rsync writes into: the last of two or more
+// operands, unless it names another host, which no local check judges.
+func (w writerArgs) rsyncTarget() []writeTarget {
+	idx := w.operandIdx(rsyncValueFlags)
+	if len(idx) < 2 {
+		return nil
+	}
+	last := idx[len(idx)-1]
+	if tok, ok := fixedToken(w.s, last); ok && remoteSpec(tok) {
+		return nil
+	}
+	return []writeTarget{w.at(last)}
+}
+
+// lastOf is the last operand of idx when there are at least min of them: the
+// destination of a copy.
+func (w writerArgs) lastOf(idx []int, min int) []writeTarget {
+	if len(idx) < min {
+		return nil
+	}
+	return []writeTarget{w.at(idx[len(idx)-1])}
+}
+
+// secondOf is the second operand of idx, the output file of a filter that
+// takes `input output` (uniq), where there is one; `-` is standard output.
+func (w writerArgs) secondOf(idx []int) []writeTarget {
+	if len(idx) < 2 || w.s.tokens[idx[1]] == "-" {
+		return nil
+	}
+	return []writeTarget{w.at(idx[1])}
+}
+
+// splitTarget is the prefix split writes its pieces under: its second
+// operand, else `x` in the directory it runs in. A piece is the prefix with
+// a suffix after it, so the prefix is judged as the path written.
+func (w writerArgs) splitTarget() []writeTarget {
+	idx := w.operandIdx([]string{"-a", "-b", "-C", "-l", "-n", "-p", "-t", "--suffix-length", "--bytes",
+		"--line-bytes", "--lines", "--number", "--separator", "--additional-suffix"})
+	if len(idx) >= 2 {
+		return []writeTarget{w.at(idx[1])}
+	}
+	return []writeTarget{writeAt(w.rc, w.st, "x", false)}
+}
+
+// goBuildTarget is the file or directory `go build -o` writes, in Go's own
+// flag spellings: -o or --o, with the value as the next word or after `=`.
+func (w writerArgs) goBuildTarget() []writeTarget {
+	toks := w.s.tokens
+	i := w.from
+	for i+1 < len(toks) && toks[i] == "-C" {
+		i += 2 // go -C dir: another directory, which the reading places the same way
+	}
+	if i >= len(toks) || toks[i] != "build" {
+		return nil
+	}
+	var out []writeTarget
+	for j := i + 1; j < len(toks); j++ {
+		t := toks[j]
+		switch {
+		case t == "--":
+			return out
+		case t == "-o" || t == "--o":
+			if j+1 < len(toks) {
+				out = append(out, w.at(j+1))
+			}
+			j++
+		case strings.HasPrefix(t, "-o="):
+			out = append(out, w.valueAt(j, len("-o=")))
+		case strings.HasPrefix(t, "--o="):
+			out = append(out, w.valueAt(j, len("--o=")))
+		}
+	}
+	return out
+}
+
+// findRuns is what the commands a find runs write: each -exec, -execdir,
+// -ok or -okdir command, up to its `;` (or a `+` after `{}`), read as a
+// command of its own with every `{}` a name the line does not fix, since find
+// puts each file it finds there. A command -execdir or -okdir runs runs in
+// the found file's directory, which the line does not fix.
+func findRuns(rc *readCtx, s segment, st *shellState, from int) []writeTarget {
+	var out []writeTarget
+	for i := from; i < len(s.tokens); i++ {
+		action := s.tokens[i]
+		// An unknown word may be -exec (unknown.go), so what follows it is
+		// read as the command find runs.
+		if action != "-exec" && action != "-execdir" && action != "-ok" && action != "-okdir" && !isUnknown(action) {
+			continue
+		}
+		end := i + 1
+		for end < len(s.tokens) && s.tokens[end] != ";" && (s.tokens[end] != "+" || s.tokens[end-1] != "{}") {
+			end++
+		}
+		if end > i+1 {
+			toks := make([]string, 0, end-i-1)
+			for _, t := range s.tokens[i+1 : end] {
+				toks = append(toks, strings.ReplaceAll(t, "{}", unknownText))
+			}
+			sub := segment{tokens: toks, chain: s.chain, globbed: s.globSlice(i+1, end)}
+			in := st
+			if action == "-execdir" || action == "-okdir" || isUnknown(action) {
+				in = st.unresolved()
+			}
+			out = append(out, writerTargets(rc, sub, in)...)
+		}
+		i = end
 	}
 	return out
 }
@@ -287,8 +411,9 @@ func (w writerArgs) sedTargets() []writeTarget {
 		switch {
 		case t == "--":
 			i = len(toks)
-		case t == "-i" || t == "-I" || strings.HasPrefix(t, "--in-place") ||
+		case strings.HasPrefix(t, "-i") || strings.HasPrefix(t, "-I") || strings.HasPrefix(t, "--in-place") ||
 			(isShortCluster(t) && (strings.ContainsAny(t[1:], "iI"))):
+			// -i with its backup suffix glued on (-i.bak) edits in place too.
 			inPlace = true
 		case t == "-e" || t == "-f" || strings.HasPrefix(t, "--expression") || strings.HasPrefix(t, "--file"):
 			scripted = true

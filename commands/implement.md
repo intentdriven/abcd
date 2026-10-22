@@ -262,7 +262,12 @@ When the stage hands the lane to a role that `roles.<role>.runner` in
 enabled under `runner.<name>` there), `step` starts it itself, in the lane's
 worktree, with the same brief and receipt path; the claude runner runs in print
 mode with `--bare`, so the repository's hooks, plugins and configured servers do
-not run, and opencode runs with `--pure` and its project configuration, its
+not run, and, when the role's contract grants the shell, with the guard
+answering its permission prompts (`abcd guard approve`, see `commands/guard.md`):
+a shell command the guard reads whole and clears runs, from the working tree
+and under /bin/bash with its profile, rc and environment start-up files
+ignored (-p), and anything else is
+refused with the guard's reason, which the agent is handed. opencode runs with `--pure` and its project configuration, its
 `CLAUDE.md` reading and its external skills switched off, so the repository's
 instruction files, settings, agents, skills and plugins do not reach it. A route
 the repository's `.abcd/config.json` sets to a runner is skipped with a warning
@@ -425,7 +430,12 @@ has work left:
   refused the same way, before anything is removed, naming that checkout.
 
 Either is refused, changing nothing, for a lane that is not held or while a lane
-still has work. The run stays in progress, so `build next` passes over its
+still has work. `--discard` also takes an issue run's lane a drain handed back
+as `stuck` (`/abcd:drain`): its worktree and branch are removed, its pull
+request closed if it opened one, and the run is over, so no run directory is
+removed by hand. An issue run logs each refused step on its lane (`refused` in
+its state: the stage, the check, the reason and a count), which the drain
+reads; an intent's run refuses as before, writing nothing. The run stays in progress, so `build next` passes over its
 intent; no verb clears it, and the refusal names the way out: once the intent
 is replanned, remove the run's directory, `.abcd/.work.local/run/<run-id>`.
 
@@ -445,7 +455,28 @@ starts only from a clean worktree, so that reset touches no change the loop
 did not make). A merge that conflicts is aborted with the branch unchanged, and
 a fresh implementer is handed a sync brief naming each conflicting path and the
 sibling lanes; its receipt must carry the merged sha as an ancestor of its head.
-A sync counts no fix round. The closing lane, which reaches its landing with no
+A sync counts no fix round.
+
+An issue run's lane (a drain's, or `abcd build <iss-N>`'s) has no siblings,
+and other people's lanes land beside it, so its sync fetches `origin`'s default
+branch at each sync and merges it whenever it has moved past the lane's head,
+before the records and the push, a fresh round judging the merge head. A
+conflict confined to files `origin`'s default branch declares
+`linguist-generated` in its root `.gitattributes` goes to a fresh implementer,
+whose sync brief says to regenerate them with the repository's own generator;
+abcd runs no command the repository declares. Any other conflict refuses the
+step at exit 2, naming the files, in a way that cannot change, and nothing is
+pushed: a drain hands the lane back as `stuck` at once. When the lane's open
+pull request starts to conflict at its arming or while it waits to merge, and
+a merge of the default branch and the pushed head, as the forge merges, conflicts only in
+declared generated files or in none, the lane enters its sync again: an armed
+merge is withdrawn (`gh pr merge <n> --disable-auto`) in a step of its own,
+recorded before any merge is tried, the next step merges the default branch
+in, and the push and the arming are made again once a fresh round has
+judged the merge; the records commit and the pull request are kept. Any other
+conflict there is refused for a person as before.
+
+The closing lane, which reaches its landing with no
 step pending, no other lane open and none handed back, takes the fidelity audit
 over each of the run's lanes' own diff.
 
@@ -523,7 +554,20 @@ once half its lease has passed since its `Abcd-Claimed-At`, fetches and pushes
 a renewal that keeps the reservation's own term (at least the default two
 hours, at most a day, so a day-long fence is never cut short), logged in the
 run record as
-`reservation_renewed`; under half, it pushes nothing. A renewal that fails is
+`reservation_renewed`; under half, it pushes nothing. In an issue run whose
+lane is at its landing, its validators passed, the renewal narrows the
+footprint to the files the lane changed within it (its head against its merge
+base with `origin`'s default branch, so files a sync merged in are left out),
+and the record's line names both; during the validate stage nothing narrows,
+since a fix round may still change another file. A narrowing never widens the
+reservation, and one that would name a file no reservation can carry is not
+made, the renewal made all the same, its record line saying `reservation kept
+at its full footprint` and why. When the landing's sync sends the lane back to
+a fresh round, the step reserves the issue's whole `found_at` again before it
+merges, judged for overlap, since a fix round may follow; a refusal of that
+(another's reservation, or the cap) refuses the step for a person, naming it,
+and the lane stays at its landing, its branch at the judged head, with nothing
+merged and nothing pushed. A renewal that fails is
 logged as `reservation_renew_failed` and named in the step's answer, and the
 stage still runs: the land fence is where a lost reservation stops the run. A
 renewal only renews this person's own reservation from this copy: it never
@@ -550,7 +594,11 @@ stays open for the cutting session to merge or hold. A release whose tag is on
 while something renews it at half its lease: each step of the run does,
 whatever its stage, an implementer's long stage included, so does handing an
 agent's receipt back with `receipt`, and each `abcd drain` move does for a
-drain's lane parked at land. A run nobody steps, hands a receipt to or drains
+drain's lane parked at land and for its lane in progress, waiting or not.
+Before the push at step 3 the landing checks the reservation the same way,
+renewing it with its own term: one that is no longer this person's from this
+copy and live pushes nothing and opens no pull request, as contention, and a
+drain hands a lane whose reservation is another person's back at once. A run nobody steps, hands a receipt to or drains
 over for longer than its lease loses the reservation, and another person may
 then take the record over. A step or a receipt that finds the reservation held
 by another person or copy says so in its answer and logs `reservation_lost` in
@@ -558,7 +606,11 @@ the run record, once. A run keyed by an issue whose lane is handed back
 releases its reservation as the step hands it back: it pushes the tombstone
 while the reservation is still this copy's and logs `reservation_released`
 with the outcome, since the issue is the person's again; a fetch or push that
-fails is logged `reservation_release_failed` instead. For a lane a drain
+fails, and a release the reservation's tip refuses for a reason of its own (a
+tombstone it may not write, a tip it cannot read), is logged
+`reservation_release_failed` instead, never `reservation_released`. A
+tombstone that would pass the message cap with its hand-back on it is pushed
+plain, and the logged line says the hand-back was not published, and why. For a lane a drain
 opened, the drain routing the hand-back pushes the tombstone again. A run
 `build <iss-N>` started has no drain routing it, so nothing retries a failed
 release: its reservation lapses with its lease. An intent's run keeps
@@ -837,8 +889,22 @@ race stage does. A hold whose waiter has died, or whose pid now belongs to
 another process, is reclaimed by the next waiter. A SIGINT or SIGTERM to the
 waiter is passed on to the command, and the waiter waits for it to exit before
 it exits and releases the hold, so the command is never left running without
-its waiter. A symlinked `~/.abcd.noindex` is refused. Relay a timeout as
+its waiter. A symlinked `~/.abcd.noindex` is refused, and so is a home that lies inside a git working tree, unless that home is the account's own home itself, before anything is created under it (exit 1). Relay a timeout as
 printed; do not loop around it.
+
+While it waits, in a checkout, the waiter also keeps your own reservations
+from lapsing, so a record you reserved by hand stays yours while your
+preflight waits its turn: at once and then every five minutes it renews each
+of your live reservations from this copy that is half through its lease, for
+its own term or two hours, whichever is longer, and says each renewal on
+standard error. It never reserves anything new, takes nothing over and revives
+nothing that has lapsed, so a lease shorter than ten minutes can still lapse
+between two rounds; a renewal that fails is said once, and the wait goes on. The renewal runs beside
+the gate, never in it, so the gate's order and its open never wait on one, and
+it stops when the gate opens: a gated command that runs longer than half a
+lease renews nothing itself. Since the renewal runs through git and gh, no
+waiter counts another's git or gh child as its command, so gate make or go,
+never git or gh itself.
 
 ## Wait out a lost connection
 

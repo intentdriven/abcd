@@ -53,6 +53,18 @@ func SwapGitVersionForTest(src func() (string, error)) (restore func()) {
 	return func() { gitVersion.set(probeGitVersion) }
 }
 
+// known reports whether a version probe has run and its answer is kept.
+func (v *versionCache) known() bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.done
+}
+
+// ErrGitVersionUnread is a partial clone's object read refused because git's
+// version could not be read this time: unlike ErrLazyFetchFloor, a later try
+// may clear it.
+var ErrGitVersionUnread = errors.New("git's version could not be read")
+
 // set replaces the source and clears the cached answer.
 func (v *versionCache) set(src func() (string, error)) {
 	v.mu.Lock()
@@ -70,15 +82,23 @@ func (v *versionCache) honoursNoLazyFetch() (bool, string) {
 }
 
 // atLeast reports whether the git on PATH is at least major.minor, and the
-// version line it read, probing once per process. A probe that fails, or a
-// line that does not parse, is below every floor.
+// version line it read, probing until one probe runs and then never again in
+// the process. A probe that fails, or a line that does not parse, is below
+// every floor. A failed probe is not kept: git that could not run once on a
+// loaded machine would otherwise be read as a git too old for the rest of
+// the process, refusing every object read in a partial clone
+// (iss-2610051434156079). A line that does not parse is git's own answer, and
+// is kept.
 func (v *versionCache) atLeast(major, minor int) (bool, string) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if !v.done {
 		raw, err := v.src()
+		if err != nil {
+			return false, strings.TrimSpace(raw)
+		}
 		v.raw = strings.TrimSpace(raw)
-		v.ok = err == nil
+		v.ok = true
 		v.done = true
 	}
 	return v.ok && versionAtLeast(v.raw, major, minor), v.raw
@@ -153,6 +173,12 @@ func lazyFetchGuard(root string, args []string) error {
 	cmdPromisor, _ := commandLineFloorConfig(args)
 	if !cfg.promisor && !cmdPromisor {
 		return nil
+	}
+	if !gitVersion.known() {
+		// The version could not be read this time (a probe that did not run
+		// is not kept): that is git not answering, which a later try may
+		// clear, not a git known to be below the floor (iss-2610051434156079).
+		return fmt.Errorf("%w: git's version could not be read, so abcd cannot tell whether it honours GIT_NO_LAZY_FETCH in this partial clone", ErrGitVersionUnread)
 	}
 	_, raw := gitVersion.honoursNoLazyFetch()
 	if reads {

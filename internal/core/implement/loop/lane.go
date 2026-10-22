@@ -106,7 +106,12 @@ func laneWorktree(repoRoot, runID, laneID string) (LaneWorktree, error) {
 	if err != nil {
 		return LaneWorktree{}, err
 	}
-	sha := gitutil.RootCommit(repoRoot)
+	sha, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		// Not the refusal below: git did not answer, which is no evidence
+		// the repository has no root commit, and no store path is built.
+		return LaneWorktree{}, fmt.Errorf("reading the repository's root commit to key the worktree store on: %w", err)
+	}
 	if !gitutil.IsFullSHA(sha) {
 		return LaneWorktree{}, refuse(string(StageWorktree), "", laneID, "the repository has no root commit to key the worktree store on",
 			"commit to the repository first; the store is keyed on its root commit")

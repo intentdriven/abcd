@@ -65,8 +65,8 @@ func trufflehogResolves(t *testing.T, on bool) {
 
 // TestWalkPutsTheValueQuestionsTheInstallAsks holds the walk to the install
 // it runs ahead of: given the same answers, it puts the same config value
-// questions in the same order, stopping where the install's collection
-// stops, and writes nothing.
+// questions in the same order, going on past a value decided later as the
+// install's collection does (iss-2610170930394303), and writes nothing.
 func TestWalkPutsTheValueQuestionsTheInstallAsks(t *testing.T) {
 	adopt := true
 	for name, c := range map[string]struct {
@@ -77,7 +77,7 @@ func TestWalkPutsTheValueQuestionsTheInstallAsks(t *testing.T) {
 	}{
 		"every value":              {answers: map[string]string{"visibility": "private", "docs_target": "agents_md"}, want: []string{"visibility", "docs_target"}},
 		"deep scan asked":          {answers: map[string]string{"visibility": "private"}, trufflehog: true, want: []string{"visibility", "docs_target", "scan_deep"}},
-		"visibility decided later": {answers: map[string]string{"visibility": ""}, want: []string{"visibility"}},
+		"visibility decided later": {answers: map[string]string{"visibility": ""}, want: []string{"visibility", "docs_target"}},
 		"a value it does not take": {answers: map[string]string{"visibility": "public", "docs_target": "both"}, want: []string{"visibility", "docs_target"}},
 		"a flag gives visibility":  {overrides: map[string]string{"visibility": "public"}, want: []string{"docs_target"}},
 	} {

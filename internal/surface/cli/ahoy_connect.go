@@ -178,7 +178,7 @@ func keyState(home, name string) (state, from string) {
 // newAhoyConnectCommand builds `ahoy connect <provider>`.
 func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 	var baseURL, home, keyName, resume, answer string
-	var guide bool
+	var guide, streamUsage bool
 	var models []string
 	var ptr credential.Pointer
 	cmd := &cobra.Command{
@@ -211,6 +211,11 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 					"or run the command in a terminal to pick one from the models the service lists"}
 			}
 			req := oracle.ConnectRequest{Roots: roots, Provider: args[0], BaseURL: baseURL, Models: models, Home: home, KeyName: keyName, Pointer: ptr}
+			// Unset, the setup asks for usage in the stream and settles the
+			// block's stream_usage itself when the server refuses it.
+			if cmd.Flags().Changed("stream-usage") {
+				req.StreamUsage = &streamUsage
+			}
 			if len(models) == 0 {
 				req.Pick = connectPick(cmd, roots, baseURL)
 			}
@@ -247,6 +252,12 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 				line := func(s string) { fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(s)) }
 				fmt.Fprintf(w, "abcd ahoy connect — %s verified and configured\n", termsafe.Sanitize(res.Provider))
 				line(fmt.Sprintf("verified: asked %s, %s reported %s", res.Verified.ModelAsked, res.Verified.Provider, res.Verified.ModelReported))
+				switch {
+				case res.StreamUsageNote != "":
+					line("stream_usage: false, because " + res.StreamUsageNote)
+				case res.StreamUsage != nil:
+					line(fmt.Sprintf("stream_usage: %t, as given", *res.StreamUsage))
+				}
 				for _, p := range res.Wrote {
 					line("wrote: " + p)
 				}
@@ -268,6 +279,8 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 		"omitted at a terminal, the service's models are listed with the key and you pick one")
 	cmd.Flags().StringVar(&home, "home", "", "where the key lives: external (--env, or --file and --field) | abcd (read from stdin, hidden at a terminal, into the owner-only "+credential.StorePath+") | keychain (read from stdin, hidden at a terminal, into the platform keychain) | none (a server that takes no key)")
 	cmd.Flags().StringVar(&keyName, "key", "", "the credential's name (default: the provider's name)")
+	cmd.Flags().BoolVar(&streamUsage, "stream-usage", true, "whether calls ask the server for usage in the stream ("+openaiapi.StreamUsageField+"), written into the block as stream_usage; "+
+		"omitted, the verification asks, and a server that refuses it is asked once more without it and the block is written with false")
 	pointerFlags(cmd, &ptr)
 	cmd.Flags().BoolVar(&guide, "guide", false, "work the values out one question a turn and print the command to paste into a terminal; writes nothing, and the provider name is optional")
 	cmd.Flags().StringVar(&resume, "resume", "", "with --guide: the last turn's resume object, or - to read it from stdin")

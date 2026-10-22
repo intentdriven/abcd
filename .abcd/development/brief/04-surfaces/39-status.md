@@ -25,14 +25,16 @@ running session through the prompt hook, once each, from disk alone (below).
 
 The verb reads the remote once. It lists the status branches on `origin`
 (`git ls-remote origin refs/heads/abcd-status/*`), then fetches, in one
-command, the reservations with `origin`'s release tags, each status branch
-whose name is a GitHub username in lower case, by its own refspec, and
-`origin`'s default branch, and stamps when in the local tier. A branch under
+command, the reservations with `origin`'s release tags, the first 500 status
+branches whose names are GitHub usernames in lower case, in `origin`'s order,
+each by its own refspec, and `origin`'s default branch, and stamps when in the
+local tier. Such branches past the 500 are counted and not fetched. A branch under
 `abcd-status/` by any other name is never fetched: two names that differ only
 in case make every fetch fail on a case-insensitive filesystem, and the
 no-deletion ruleset would keep the bad branch for ever (decision 10), so such
 names are counted as doubtful, never shown: a pusher chose each, and agents
-read both outputs. The per-branch refspecs travel on `git fetch --stdin`, so
+read both outputs. The per-branch refspecs travel on `git fetch --stdin`, which needs git 2.29
+or later, so
 no number of branches passes the argument limit, and before the fetch every
 tracking ref under the namespace that is not among the names it fetches is
 deleted, since named refspecs prune nothing: a branch deleted on `origin`
@@ -97,14 +99,17 @@ The text form lists the announcements newest first, by when this checkout
 first fetched each, then by the time it carries, each by the line the prompt
 hook shows it by, `@maya (verified): merging #1012, for 30 min`, with the time
 sent; then each doubtful branch; then the reservations block `/abcd:peers`
-lists, release holds included, each by the line the land fence counts it by;
+lists, release holds, a live drain lane's stage and each holder's hand-backs
+from the last day included, each by the line the land fence counts it by;
 then the line that an announcement informs and grants nothing. A failed fetch
 lists the status as last fetched, with its age and a line per namespace saying
 it is unread since then and why ("status unread since 09:12 UTC: <reason>"),
 and an empty list is said ("none standing") only after a fetch that
 succeeded (C10). The JSON document carries `status_view`, `announcements`,
-`doubtful`, `unread`, `senders_unchecked`, `grants`, and the reservations
-block's own fields.
+`doubtful`, `unread`, the counts `unread_names`, `branches_not_read`,
+`branches_left_to_read` and `announcements_not_read`, `grants`, and the
+reservations block's own fields, with `senders_unchecked`, `not_dropped`,
+`local_tier_missing` and `read_error` when each has something to say.
 
 ## The prompt hook's block
 
@@ -128,8 +133,9 @@ not switch the status off.
 ## Exits
 
 Exit 0 when the fetch succeeded, and in a checkout with no remote named
-`origin`; exit 1 when the fetch failed, the failure named on stderr; exit 2
-outside a git checkout or with an operand.
+`origin`; exit 1 when the fetch failed, when what it fetched could not be
+read, or in a checkout with `origin` but without its local tier, the failure
+named on stderr; exit 2 outside a git checkout or with an operand.
 
 ## Where this sits
 

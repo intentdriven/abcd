@@ -169,7 +169,12 @@ func (s store) display(parts ...string) string {
 
 // resolveStore names this repository's lane of the store without touching disk.
 func resolveStore(repoRoot string) (store, error) {
-	sha := gitutil.RootCommit(repoRoot)
+	sha, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		// Not ErrRefused's "no root commit": git did not answer, and the
+		// store is neither keyed nor read on a guess.
+		return store{}, fmt.Errorf("reading the repository's root commit to key the lab store on: %w", err)
+	}
 	if !gitutil.IsFullSHA(sha) {
 		return store{}, fmt.Errorf("%w: the repository has no root commit to key the lab store on (a repository with no commits has no labs)", ErrRefused)
 	}

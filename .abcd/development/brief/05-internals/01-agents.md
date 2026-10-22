@@ -134,7 +134,7 @@ states what **this** run was given, and where the two disagree the bundle govern
 
 The auditor is one agent with three roles, sharing its prompt scaffolding, oracle
 resolution and receipts. Each role has its own verb, so there is no dispatch by
-record kind. Only the first ships.
+record kind. The first two ship; the third is a design target.
 
 1. **Single-document fidelity → `abcd intent audit <itd-N>`** (shipped). It reads
    a shipped intent's acceptance criteria and the delivered reality, and returns

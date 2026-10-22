@@ -148,8 +148,13 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   `internal/core/runner`): print mode with `--bare`, so a target repository's
   hooks, plugins and configured servers do not run, the stream-json event stream
   as the transcript, and `--permission-mode dontAsk` with the role's tools
-  allowed, since no one is there to answer a prompt.
-  <https://code.claude.com/docs/en/headless>
+  allowed, since no one is there to answer a prompt; a launch that grants the
+  shell instead names `--permission-prompt-tool`, served over MCP by
+  `abcd guard approve` from an inline `--mcp-config`, so the guard answers its
+  prompts (iss-2610161612203555), the answer in the allow/deny shape the Agent
+  SDK's approval docs give.
+  <https://code.claude.com/docs/en/headless>,
+  <https://code.claude.com/docs/en/agent-sdk/user-input>
 - **Cloudflare Workers and its v4 API (Cloudflare)** — the host the one
   provider behind `abcd site setup`'s hosting seam targets: an assets-only
   Worker deployed by the pinned `wrangler-action`, created, routed and

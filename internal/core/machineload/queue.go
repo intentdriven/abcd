@@ -53,8 +53,18 @@ var makePrograms = []string{"make", "gmake"}
 const abcdProgram = "abcd"
 
 // psProgram is the base name of the ps a waiter reads the machine with on
-// macOS: its one child while it waits.
+// macOS: one of its children while it waits.
 const psProgram = "ps"
+
+// errandPrograms are the base names of a waiter's own children while it
+// waits: the ps it reads the machine with, and the git and gh it renews its
+// holder's reservations through (iss-2610170926295770). A child named one of
+// them is the waiter's errand, never its gated command, so it marks no waiter
+// running; the gated command is make or go in practice, and a waiter gating
+// git or gh itself would read as queued while it runs.
+var errandPrograms = []string{psProgram, "git", "gh"}
+
+func isErrandName(name string) bool { return slices.Contains(errandPrograms, name) }
 
 func isMakeName(name string) bool { return slices.Contains(makePrograms, name) }
 
@@ -346,7 +356,7 @@ func readGate(snap Snapshot, self Self, args map[int][]string) gateTable {
 		t.byPID[p.PID] = p
 	}
 	for _, p := range snap.Procs {
-		if p.Name != psProgram {
+		if !isErrandName(p.Name) {
 			if parent, ok := t.byPID[p.PPID]; ok && isAbcdName(parent.Name) {
 				t.running[p.PPID] = true
 			}
@@ -532,7 +542,7 @@ func JustOpened(snap Snapshot, self Self, args map[int][]string, window time.Dur
 	}
 	since := map[int]time.Duration{}
 	for _, p := range snap.Procs {
-		if p.Name == psProgram {
+		if isErrandName(p.Name) {
 			continue
 		}
 		if parent, ok := byPID[p.PPID]; ok && isAbcdName(parent.Name) {

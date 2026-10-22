@@ -1,16 +1,20 @@
 # Configuration Model
 
-Almost nothing here is a decision anyone has to make. Installing abcd asks four
-questions, records the answers, and gets on with it; `ahoy install
+Almost nothing here is a decision anyone has to make. Installing abcd asks
+four questions and, at a terminal, a fifth about the README, records the
+answers and whether it created the README, and gets on with it; `ahoy install
 --attribution` writes one more key and `ahoy install --outbound` two more, and
-six further keys can be hand-set and are read but never written. Beyond those
-thirteen, the binary reads only keys a person opts into: the provider adapter's
+seven further keys can be hand-set and are read but never written. Beyond those
+sixteen, the binary reads only keys a person opts into: the provider adapter's
 `oracle` keys (the reviewer route's `oracle.review` among them) and the
 interview's list style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
 keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 `reservation.github_username`, read from the machine layer alone
-(`internal/core/claim/holder.go`), the load gate's `load.preflights`, read
+(`internal/core/claim/holder.go`), the reservation cap's `reservation.max_live`
+(how many live reservations one person may hold across all of their sessions:
+1 to 100 and 10 by default), read from the machine layer alone
+(`internal/core/claim/maxlive.go`), the load gate's `load.preflights`, read
 from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 or
 2 and 1 by default, never from a repository
 (`internal/core/implement/load_slots.go`), and the runner routes under `roles` and
@@ -26,19 +30,25 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Thirteen keys plus a `meta` block. Install asks about visibility, the docs target,
-the oracle backend, and the deep scan (the last only when visibility is private
-and the deep scanner is on `PATH`), and writes exactly those four values back.
-`attribution.hook` is written by `ahoy install --attribution`, and
+Sixteen keys plus a `meta` block. Install asks about visibility, the docs target,
+the oracle backend, the deep scan (the last only when visibility is private
+and the deep scanner is on `PATH`), and the README question (only of a person
+at a terminal, in a run without the approve-everything flag, once
+`.abcd/config.json` exists), and writes those values back; the README answer is
+`readme.parts`, a list of part names (`[]` for no), which
+`ahoy install --readme-parts` also sets in any run. Install also records
+`readme.created` when it creates `README.md`, and uninstall clears it once that
+file is gone. `attribution.hook` is written by `ahoy install --attribution`, and
 `outbound.hook` and `outbound.forge` together by `ahoy install --outbound`, the
 one outbound switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
 absent, while a key set to `false` is the repository's choice and is left as it
-is. The remaining six —
+is. The remaining seven —
 whether abcd should enable the forge's own secret scanning, the rules loader's
-refresh backstop, the filing-time match's threshold and compared fields, and
-whether `abcd land` pushes and queues — are hand-set: the binary reads them and
-never writes them.
+refresh backstop, the filing-time match's threshold and compared fields,
+whether `abcd land` pushes and queues, and whether a reservation may be made on
+an origin GitHub names a fork — are hand-set: the binary reads them and never
+writes them.
 
 ```json
 {
@@ -94,6 +104,19 @@ never writes them.
   "land": {                             // `abcd land` (04-surfaces/38-land.md)
     "push": true,                       // push the branch once a preflight receipt names its head
     "enqueue": true                     // arm and confirm its pull request where the merge gate allows
+  },
+  "reservation": {
+    "fork_origin": "refuse"             // "refuse" | "<owner>/<name>": the one fork, if any, on which a
+                                        //   reservation is made when GitHub names an origin push URL a
+                                        //   fork (04-surfaces/37-reserve.md)
+  },
+  "readme": {
+    "parts": ["licence", "links"],      // the README parts abcd keeps in README.md; [] is answered no and is
+                                        //   not asked again, an absent key is not yet answered. Written by
+                                        //   install's README question or `ahoy install --readme-parts`
+                                        //   (04-surfaces/01-ahoy.md)
+    "created": true                     // README.md was created by abcd; written by install, cleared by
+                                        //   uninstall once that file is gone
   }
 }
 ```
@@ -120,6 +143,23 @@ branch's own, and both are ANDed; a home the reader refuses hides the machine
 layer and its offs, so both acts read as off. The verb names the layer and file
 that turned an act off.
 
+The `reservation.fork_origin` key is read through the same reader, in the
+ordinary precedence: `.abcd/config.json` wins, then `~/.abcd.noindex/config.json`,
+then the bundled `"refuse"` (dcn-2610161141338923). It names a fork,
+`"<owner>/<name>"`, only for a repository whose own home is that fork on
+GitHub, where every account working on it reserves; the fork refusal names it.
+The value names the one fork it allows, so a fork of that fork, which inherits
+the committed file, is still refused, naming both; the two are compared without
+regard to case, and a reservation let through on the allowed fork says so
+(dcn-2610161223212218). It is read only once the forge has named one of
+origin's push URLs a fork, so a malformed value (neither `"refuse"` nor one
+plain owner and one plain name), or a misspelt key under `reservation`, refuses
+a reservation on a fork naming the file and never stops one anywhere else. The machine layer's `reservation.github_username`
+(04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
+layer alone and is not one of the sixteen. The holder lookup reads the
+machine's own file whatever origin is, so a misspelt key under `reservation`
+there refuses every reservation that reaches that lookup, on a fork or not.
+
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
 block. This repository's own config carries five of these blocks — `docs`, `meta`,
 `oracle`, `outbound` and `repo` — which is what an unremarkable managed repo looks like.
@@ -139,7 +179,9 @@ rather than skipped:
         "base_url": "https://openrouter.ai/api/v1",   // https, or http to this machine
         "key": "openrouter",             // a credential NAME, resolved through the credential
                                          //   source; omitted for a server that takes no key
-        "models": ["typesafe/jev-1.13"]  // the allowlist: the only models it may serve
+        "models": ["typesafe/jev-1.13"], // the allowlist: the only models it may serve
+        "stream_usage": false            // optional, default true: false stops asking for
+                                         //   usage in the stream, for a server that refuses it
       }
     },
     "denylist": ["openai/*"],            // optional, none bundled; repo or machine
@@ -152,8 +194,22 @@ rather than skipped:
 - **A provider block sits on the machine alone.** It names the address a key is
   sent to, so a repository's `.abcd/config.json` declaring `oracle.api` is
   refused: a checkout must never be able to aim the person's key at a server of
-  its choosing. `abcd ahoy connect` writes the block, after one verification
-  call, and it is the one write abcd makes to `~/.abcd.noindex/config.json`.
+  its choosing. `abcd ahoy connect` writes the block once its verification
+  succeeds (asked at most twice, below), and it is the one write abcd makes to `~/.abcd.noindex/config.json`.
+- **A call asks for its usage unless the block says not to.** The adapter sends
+  `stream_options.include_usage` with every call, so the streamed answer ends
+  with the token counts and the cost the call record carries (itd-166). A
+  server that refuses the field fails the call with HTTP 400 or 422; when the
+  refusal's body names `stream_options` or `include_usage`, it names
+  `oracle.api.<provider>.stream_usage`, and set to `false`, calls go without
+  the field and a call whose answer carries no usage records it as not
+  reported. No ordinary call is retried without the field, since a retry is a
+  second request. The setup is the one exception: `abcd ahoy connect` asks
+  its verification call once more without the field when the first is
+  refused with 400 or 422, and when that succeeds writes `stream_usage: false`
+  into the block it creates and says so (`stream_usage_note` in its JSON).
+  `--stream-usage=false` (or `=true`) sets the block's value outright, and
+  the verification is then asked once, as given.
 - **The allowlist alone decides; the denylist is optional and a union.** abcd
   bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
   is served whichever vendor made it. `oracle.denylist` is the configuration's
@@ -568,7 +624,10 @@ lab store, the worktree store (the build loop writes each lane's worktree
 there today; the store's own verbs and its reclaim are unbuilt) and its staged
 notes archive (`notes/<root-sha>/`, which nothing writes yet), the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
-([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), the machine layer of the layered configuration in `config.json`
+([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), the setup
+answers that change the machine in `interviews/` (one record per install run
+that asked them), the copies of the harness's settings file in `backups/`
+(taken before the status line changes it, the newest 10 kept), the machine layer of the layered configuration in `config.json`
 (its readers are every key read through the layered reader,
 `internal/core/layered`: the provider adapter's `oracle` keys, the reviewer
 route's `oracle.review`, the filing-time match's `match`, the
@@ -577,11 +636,19 @@ and the role routes under `roles`, each read with the repo-scope
 `.abcd/config.json` above it, except `land`, whose layers are ANDed; the
 provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
-`interview.list`, `reservation.github_username` and `load.preflights` (how
+`interview.list`, `reservation.github_username`, `reservation.max_live` (1 to
+100, 10 by default, read past to 10 when the file cannot be read, which the
+refusal at the cap says) and `load.preflights` (how
 many preflights may be in their test stages at once: 1 or 2, 1 by default,
-never read from a repository, and the one machine key read past, with a
-stderr note, when the file cannot be read for it, so a file that holds other
-settings never stops the load gate) are honoured from the machine layer alone. Its one
+never read from a repository, and read past, with a stderr note, when the
+file cannot be read for it, so a file that holds other settings never stops
+the load gate) are honoured from the machine layer alone, and only from a
+home outside every git working tree but the account's own
+(`layered.MachineRoots`, the rule `RootsFor` applies): under a home inside
+one the machine layer reads as absent, so no holder is named from it and the
+cap is ten, and one stderr line from `abcd reserve` and `abcd peers` says
+why; the load gate refuses such a home outright, before it creates anything
+under it, since a hold kept there would queue apart from the machine's. Its one
 write is the provider block `ahoy connect` adds, and every other config read
 resolves the repo-scope `.abcd/config.json` alone), the machine layer of the
 model-tier routing table in `oracle-routing.json` (read beneath the

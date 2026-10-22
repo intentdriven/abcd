@@ -68,12 +68,14 @@
 #      branch is gated as any branch is, and a deletion is refused outright:
 #      a status branch is kept for ever.
 #
-#      This hook runs only where core.hooksPath points at it. A hosted cloud
-#      session runs no hook at all, so there the server's rulesets (deletion
-#      and non-fast-forward refused under both prefixes, mirrored in
-#      .abcd/work/rulesets/) and abcd's own reader, which shows a status
-#      commit that changes a file as doubtful, are the guards; nothing on the
-#      forge refuses a file-changing push to a status branch.
+#      This hook runs only where core.hooksPath points at it. abcd's cloud
+#      setup script points it here, so a hosted session set up by abcd runs
+#      it, from the shallow clone such a session starts with; a session that
+#      skips the setup runs no hook at all. Where no hook runs, the server's
+#      rulesets (deletion and non-fast-forward refused under both prefixes,
+#      mirrored in .abcd/work/rulesets/) and abcd's own reader, which shows a
+#      status commit that changes a file as doubtful, are the guards; nothing
+#      on the forge refuses a file-changing push to a status branch.
 #
 #      A cloud session's work-in-progress branch (itd-2610120738075547 C7,
 #      adr-2610120937435856, brief invariant 23) is the third exemption, one
@@ -115,9 +117,18 @@ set -euo pipefail
 # files could otherwise read as one with the empty tree. A .git/info/grafts
 # file is honoured even then, and can give a commit no parents, hiding the
 # commits beneath it from the walk, so no graft file is read: GIT_GRAFT_FILE
-# names a path that cannot exist, which git reads as no grafts at all.
+# names a path that cannot exist, which git reads as no grafts at all. A
+# commit-graph file is a cache git reads a commit's tree and parents from in
+# place of the commit, and one written by hand can claim the empty tree for a
+# commit carrying files, so no commit-graph is read either. core.commitGraph
+# is set false as the last entry of GIT_CONFIG_PARAMETERS, where a `git -c`
+# given to the push also arrives and the last entry wins, so every git the hook
+# and its scripts run reads it, whatever the environment gave; and
+# GIT_TEST_COMMIT_GRAPH, which loads a graph whatever the setting says, is off.
 export GIT_NO_REPLACE_OBJECTS=1
 export GIT_GRAFT_FILE=/dev/null/none
+export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS:+$GIT_CONFIG_PARAMETERS }'core.commitgraph'='false'"
+export GIT_TEST_COMMIT_GRAPH=0
 cd "$(git rev-parse --show-toplevel)"
 
 protected="main"
@@ -136,23 +147,53 @@ is_null_id() {
 # only_empty_trees succeeds when every commit in the range git rev-list is
 # given has the empty tree, and fails when one does not or the range cannot be
 # walked (a remote tip this clone does not hold): the push is then gated.
+#
+# It also fails when the walk could not read the whole range. In a shallow
+# clone a .git/shallow line stops the walk at the commit it names, as a graft
+# would, and the commits beneath it go unread; the walk lists that commit with
+# fewer parents than the commit itself stores. So the check compares, for every
+# commit it lists, the parents the walk followed with the parents the commit
+# stores, and refuses on any difference: its unread parents may be new commits
+# carrying files. git's own walk decides which commits are cut, so however the
+# shallow file is written, the hook reads it as git does. A range whose every
+# listed commit kept all its parents was read in full, because each parent is
+# either listed too or reachable from the remote tip, so already on the
+# remote. A hosted session's shallow clone therefore pushes an announcement or
+# a reservation over a tip it fetched without a receipt, and the walk only
+# reads: nothing is fetched, deepened or written.
 only_empty_trees() {
-  local trees
-  trees="$(git rev-list --format=%T "$@" 2>/dev/null)" || return 1
+  local listing walked line stored parents oldifs walked_n stored_n
+  listing="$(git rev-list --format=%T "$@" 2>/dev/null)" || return 1
   [ -n "$empty_tree" ] || return 1
-  [ -z "$(printf '%s\n' "$trees" | grep -v -e '^commit ' -e "^$empty_tree\$" -e '^$')" ]
+  [ -z "$(printf '%s\n' "$listing" | grep -v -e '^commit ' -e "^$empty_tree\$" -e '^$')" ] || return 1
+  walked="$(git rev-list --parents "$@" 2>/dev/null)" || return 1
+  oldifs="$IFS"
+  IFS=$'\n'
+  for line in $walked; do
+    IFS="$oldifs"
+    # shellcheck disable=SC2086 # the line is ids separated by spaces
+    set -- $line
+    walked_n=$(($# - 1))
+    stored="$(git cat-file commit "$1" 2>/dev/null)" || return 1
+    # The header ends at the first blank line; sed reads to the end rather
+    # than quit there, so a long message never cuts the pipe under pipefail.
+    parents="$(printf '%s\n' "$stored" | sed -n -e '1,/^$/{' -e '/^parent /p' -e '}')" || return 1
+    # shellcheck disable=SC2086 # the lines are "parent <id>" pairs
+    set -- $parents
+    stored_n=$(($# / 2))
+    [ "$walked_n" -eq "$stored_n" ] || return 1
+    IFS=$'\n'
+  done
+  IFS="$oldifs"
 }
 
 # reservation_shape is the reservations' shape check: the push is a
 # fast-forward (or a create) and every commit it moves has the empty tree. The
 # range is everything new on an update, and everything reachable on a create.
 # A remote tip this clone does not hold fails both tests, so the push is gated.
-# So does any push from a shallow clone: a .git/shallow line stops the walk at
-# the commit it names, as a graft would, and the commits beneath it go unread,
-# so the hook cannot show the range changes no file and asks for a receipt.
+# So does a range a shallow clone cannot read in full (only_empty_trees).
 reservation_shape() {
   local remote_sha="$1" local_sha="$2"
-  [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" != "true" ] || return 1
   if is_null_id "$remote_sha"; then
     only_empty_trees "$local_sha"
   else
@@ -282,9 +323,17 @@ if git cat-file -e HEAD:scripts/cloud/connector.sh 2>/dev/null; then
   decl_dir="$(mktemp -d "${TMPDIR:-/tmp}/abcd-pre-push.XXXXXX")"
   trap '/bin/rm -rf -- "$decl_dir"' EXIT
   wip_prefixes=""
-  if ! git archive --format=tar HEAD -- scripts/cloud 2>/dev/null | tar -x -C "$decl_dir" 2>/dev/null ||
+  # The archive goes to a file and tar reads the file, never a pipe between
+  # them: a tar that stops at the end-of-archive marker leaves git archive
+  # writing the rest of its last record into a closed pipe, and under
+  # pipefail that read failed now and then on a loaded runner, refusing every
+  # work-in-progress push it judged. What either command says is kept, so a
+  # read that fails names its cause.
+  if ! git archive --format=tar -o "$decl_dir/cloud.tar" HEAD -- scripts/cloud 2>"$decl_dir/read-error" ||
+    ! tar -x -C "$decl_dir" -f "$decl_dir/cloud.tar" 2>>"$decl_dir/read-error" ||
     [ ! -f "$decl_dir/scripts/cloud/connector.sh" ] || [ -L "$decl_dir/scripts/cloud/connector.sh" ]; then
-    wip_bad="pre-push: the connector loader and declarations HEAD commits under scripts/cloud/ could not be read."
+    read_error="$(tr '\n' ' ' <"$decl_dir/read-error" 2>/dev/null | cut -c1-300 || true)"
+    wip_bad="pre-push: the connector loader and declarations HEAD commits under scripts/cloud/ could not be read${read_error:+ (${read_error% })}."
   elif ! wip_prefixes="$(bash "$decl_dir/scripts/cloud/connector.sh" prefixes </dev/null 2>"$decl_dir/diagnostic")"; then
     wip_bad="$(cat "$decl_dir/diagnostic")"
     [ -n "$wip_bad" ] || wip_bad="pre-push: the connector loader refused the declarations under scripts/cloud/connectors/."

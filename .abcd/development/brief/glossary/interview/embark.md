@@ -1,7 +1,7 @@
 ---
 term: embark
 bounded_context: interview
-definition: The opening move of a grill session in which the oracle reads the target intent, identifies the primary ambiguities, and poses the first round of Socratic questions.
+definition: The opening move of a grill session, a design target that does not ship, in which the oracle reads the target intent, identifies the primary ambiguities, and poses the first round of Socratic questions.
 aliases: ["session opening", "grill opening"]
 forbidden_synonyms: ["start", "begin", "introduction", "onboarding"]
 status: stable
@@ -15,8 +15,18 @@ versions: null
 
 # embark
 
-**Embark** is the structured opening phase of a grill session. When a human invokes
-`/abcd:intent grill`, the oracle does not ask a freeform question immediately. Instead, it:
+**Embark** is the structured opening phase of a grill session. The grill is a **design target**,
+not shipped: `abcd intent` registers no grill sub-verb, so nothing that ships today performs an
+embark. The [glossary README](../README.md)'s grill section records the design. Two things ship
+instead. One is the planning interview: the `/abcd:intent` plugin page runs it with the person
+present, and the `interview` sub-verb runs it in a plain Terminal. On a draft, the plugin page's
+interview opens with its pre-pass, which reads the draft against the brief's invariants, the
+principles and the other intents before the first question; the pre-pass refuses any record that
+is not a draft. The plain-Terminal interview reads the planning brief that pass writes, when there
+is one. Both forms ask one thing at a time, not in rounds. The other is the record-grill leg of
+`/abcd:ideate`'s admission gauntlet, which reads the record and asks no one anything. In the
+design, when a human invokes `/abcd:intent grill`, the oracle does not ask a freeform question
+immediately. Instead, it:
 
 1. Reads the full intent (press release + scope + constraints).
 2. Identifies the top 2–3 areas of vagueness or hidden assumption.
@@ -28,7 +38,7 @@ prompt and ensures the oracle's first questions are grounded in the actual inten
 
 ## When to use
 
-Use "embark" when describing the oracle's initialisation behaviour at the start of a grill
+Use "embark" when describing the oracle's initialisation behaviour at the start of a designed grill
 session. The term captures the intentional, navigational quality of beginning — the oracle sets
 a heading before asking anything.
 
@@ -40,8 +50,8 @@ the opening. Do not use "onboarding" (user-product connotations) or "introductio
 
 ## Examples
 
-- "The embark phase identified three vague nouns: 'session', 'context', and 'transport'."
-- "After embark, the human had three questions to answer before round 2 began."
+- "In the design, the embark phase identifies three vague nouns in an intent: 'session', 'context', and 'transport'."
+- "In the design, after embark, the human has three questions to answer before round 2 begins."
 
 ## Related terms
 
