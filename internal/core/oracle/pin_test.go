@@ -70,6 +70,21 @@ func TestAPinIsReadWithTheSettledFields(t *testing.T) {
 	}
 }
 
+// TestIsOpenRouterNamesOnlyAnOpenRouterBlock: a block is OpenRouter's by its
+// base URL's host, so a caller can tell a metered OpenRouter route from a local
+// or another provider's without reading the URL itself.
+func TestIsOpenRouterNamesOnlyAnOpenRouterBlock(t *testing.T) {
+	f := newFx(t)
+	f.machineConfig(pinBlock("https://openrouter.ai/api/v1", goodPin))
+	c := f.loadAPI()
+	if !c.IsOpenRouter("openrouter") {
+		t.Fatal("the OpenRouter block is not named OpenRouter's")
+	}
+	if c.IsOpenRouter("absent") {
+		t.Fatal("a block the configuration does not hold is named OpenRouter's")
+	}
+}
+
 // TestAPinThatCannotHoldIsRefused: each pin that would not hold a call to one
 // provider and one endpoint, or that names what the block does not serve, is
 // refused when the configuration is read, naming the fault.

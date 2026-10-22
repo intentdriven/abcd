@@ -162,6 +162,14 @@ func readGenerationSetting(baseURL string, set *bool) (bool, error) {
 	return true, nil
 }
 
+// IsOpenRouter reports whether provider is a configured block whose base URL
+// reaches OpenRouter, the one provider whose calls a pin and a readback apply
+// to, as IsLocal reports a block on this machine.
+func (c *APIConfig) IsOpenRouter(provider string) bool {
+	p, ok := c.providers[provider]
+	return ok && isOpenRouter(p.BaseURL)
+}
+
 // PinFor returns the pin this machine sets for model on provider.
 func (c *APIConfig) PinFor(provider, model string) (Pin, bool) {
 	p, ok := c.providers[provider]

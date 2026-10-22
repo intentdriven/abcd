@@ -159,6 +159,9 @@ func TestALocalPinIsReadWithEveryField(t *testing.T) {
 	if !c.IsLocal("local") || c.IsLocal("absent") {
 		t.Fatal("IsLocal does not name the block on this machine")
 	}
+	if c.IsOpenRouter("local") {
+		t.Fatal("a block on this machine is named OpenRouter's")
+	}
 }
 
 // TestALocalPinThatNamesTooLittleIsRefused: a pin that leaves a field out,
