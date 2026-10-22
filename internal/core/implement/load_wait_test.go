@@ -1494,3 +1494,24 @@ func TestWaitCrossedCapStagger(t *testing.T) {
 		t.Fatalf("stagger step %s, want more than %s", step, need)
 	}
 }
+
+// TestWaitCrossedCountStartsAgainWhenOneLeaves: as in the stagger scenario,
+// but A exits part-way through the count, at 4m30. B1 then has nothing ahead
+// and opens after its jitter, while B2 still counts B1 crossed, now one where
+// it counted two. Kept against the smaller cap, B2's count, begun at the
+// clocks' start, ran out at once and B2 opened before B1. A crossed waiter
+// leaving starts the count again, so B2 waits for B1.
+func TestWaitCrossedCountStartsAgainWhenOneLeaves(t *testing.T) {
+	const runFor = 10 * time.Minute
+	a := peer{pid: 73003, age: 70 * time.Minute, goneAt: waitT0.Add(4*time.Minute + 30*time.Second)}
+	res, opened := peerWait(t, 58628, 60*time.Minute, waitT0.Add(5*time.Second), WaitJitterMax, false,
+		a, peer{pid: 8034, age: time.Minute})
+	if res.Status != WaitOpen {
+		t.Fatalf("B1: %+v, want open once A has gone", res)
+	}
+	res, done := peerWait(t, 8034, time.Minute, waitT0, WaitJitterMin, false,
+		a, peer{pid: 58628, age: 60 * time.Minute, runsFrom: opened, goneAt: opened.Add(runFor)})
+	if res.Status != WaitOpen || done.Before(opened.Add(runFor)) {
+		t.Fatalf("B2: %+v, done at %s; want open only once B1, which opened at %s, has run its command until %s", res, done, opened, opened.Add(runFor))
+	}
+}

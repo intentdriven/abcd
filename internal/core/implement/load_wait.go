@@ -212,6 +212,13 @@ var WaitCrossedCap = 5 * time.Minute
 // a further poll for the two waiters' runs of looks starting up to a poll
 // apart; the later's own re-check waits at least WaitJitterMin more. By then
 // the earlier shows running, which ends the later's run of looks.
+//
+// The step does not budget slow reads of the process table. A look whose ps
+// run takes 8 to 12 seconds on a loaded machine delays the earlier waiter's
+// open by that much, and two or more such looks on the earlier waiter's side
+// can use up the step's margin, so the later one can still overtake; the open
+// look's stand-back (machineload.StandBackFrom) is then the backstop for the
+// command form.
 func crossedCapFor(n int) time.Duration {
 	step := 2*WaitPollInterval + WaitJitterMax + WaitOpenPause
 	return WaitCrossedCap + time.Duration(max(n-1, 0))*step
@@ -485,14 +492,17 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	var crossedSince time.Time
 	crossedN := 0
 	pastCap := func() bool { return !crossedSince.IsZero() && now().Sub(crossedSince) >= crossedCapFor(crossedN) }
+	// A crossed waiter that leaves starts the count again: the waiter it
+	// held back behind it may now open, and a count kept against the smaller
+	// cap would already have run out, re-opening this one past it at once.
 	noteCrossed := func(n int) {
-		crossedN = n
 		switch {
 		case n == 0:
 			crossedSince = time.Time{}
-		case crossedSince.IsZero():
+		case crossedSince.IsZero(), n < crossedN:
 			crossedSince = now()
 		}
+		crossedN = n
 	}
 	for {
 		res.Polls++
