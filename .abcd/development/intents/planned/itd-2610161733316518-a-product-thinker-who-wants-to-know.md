@@ -397,6 +397,22 @@ SOTA fit-challenge.
 33. **Signed off** (product thinker, 2026-10-16): the press release, mechanism, scope
     conditions and every acceptance criterion approved; plan with impact additive
     (decision 13).
+34. **The cap is never overshot** (the technical facilitator on the product thinker's
+    delegation, 2026-10-22, from decision 17): no copy starts unless the cap's remainder
+    covers its expected cost, and copies still running when the cap is reached are
+    stopped and reported unfinished. The plan says so, because decision 17 spends nothing
+    on a figure the person has not seen.
+35. **The time estimate waits for the pilot** (the technical facilitator on the product
+    thinker's delegation, 2026-10-22, from decision 8): until the pilot has run, the plan
+    says the time is known after the pilot, with a bound when the person declares
+    minutes per copy.
+36. **The expected cost comes from the person's own prices** (the technical facilitator
+    on the product thinker's delegation, 2026-10-22, for review on return): the
+    declaration may give a price, or an expected cost per copy, for each metered cell,
+    and the plan reckons the expected cost from it. A metered cell with no price shows
+    "not estimated; bounded by your cap". Prices are never fetched for the plan, because
+    decision 12 keeps every network call inside the run, after consent. Decision 17's
+    cap stays the real bound either way.
 
 ## Open Questions
 
