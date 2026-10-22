@@ -162,6 +162,22 @@ func TestPermissionRequestHookIsInstalled(t *testing.T) {
 	}
 }
 
+// A pick that starts a run tells the person once, on stderr, that approval
+// prompts are refused while it runs, as a build by id does; --json stays whole.
+func TestBuildNextTellsOnceThatPromptsAreRefused(t *testing.T) {
+	buildRepo(t)
+	code, out, errOut := implementCLI(t, "build", "next", "--json")
+	if code != 0 {
+		t.Fatalf("build next exited %d\n%s%s", code, out, errOut)
+	}
+	if !json.Valid([]byte(out)) || strings.Contains(out, unattendedRefusalNotice) {
+		t.Fatalf("--json stdout is not one whole document free of the notice:\n%s", out)
+	}
+	if n := strings.Count(errOut, unattendedRefusalNotice); n != 1 {
+		t.Fatalf("a pick that starts a run carries the notice %d times on stderr, want once:\n%s", n, errOut)
+	}
+}
+
 // A new build tells the person once, on stderr, that approval prompts are
 // refused while it runs; --json stays whole on stdout, and a resume says
 // nothing more.
