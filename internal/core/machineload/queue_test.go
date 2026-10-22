@@ -842,3 +842,55 @@ func TestJustOpenedNamesWaitersThatOpenedWithinTheWindow(t *testing.T) {
 		t.Fatalf("just opened = %v for an inner waiter, want nothing: its ancestor is its own work", got)
 	}
 }
+
+// TestQueuedAtNamesTheQueueAtOneGate: QueuedAt is every waiter queued at one
+// gate, ahead of self or not: a first gate's waiter, a race-command waiter
+// (`--wait -- go test -race`) still queued at the first gate, and at the race
+// gate only race waiters. A waiter running its command is not queued, and
+// self's own ancestors never count.
+func TestQueuedAtNamesTheQueueAtOneGate(t *testing.T) {
+	self := Self{PID: 20001, UID: callerUID}
+	snap := Snapshot{HasLoad: true, Cores: 16, HasProcs: true, Procs: []Proc{
+		{PID: 1, PPID: 0, PGID: 1, UID: rootUID, Age: time.Hour, Name: "launchd"},
+		// self beneath its own waiter running `make preflight`
+		{PID: 15001, PPID: 1, PGID: 15001, UID: callerUID, Age: time.Hour, Name: "abcd"},
+		{PID: 15002, PPID: 15001, PGID: 15001, UID: callerUID, Age: time.Minute, Name: "make"},
+		{PID: 20001, PPID: 15002, PGID: 15001, UID: callerUID, Age: time.Second, Name: "abcd"},
+		{PID: 30001, PPID: 1, PGID: 30001, UID: otherUID, Age: 9 * time.Minute, Name: "abcd"},
+		{PID: 30002, PPID: 1, PGID: 30002, UID: otherUID, Age: 8 * time.Minute, Name: "abcd"},
+		{PID: 30003, PPID: 1, PGID: 30003, UID: otherUID, Age: 7 * time.Minute, Name: "abcd"},
+		{PID: 30004, PPID: 30003, PGID: 30003, UID: otherUID, Age: time.Minute, Name: "sh"},
+		{PID: 30005, PPID: 1, PGID: 30005, UID: otherUID, Age: 6 * time.Minute, Name: "abcd"},
+		{PID: 30006, PPID: 1, PGID: 30006, UID: otherUID, Age: 5 * time.Minute, Name: "abcd"},
+		{PID: 30007, PPID: 30006, PGID: 30006, UID: otherUID, Age: time.Minute, Name: "go"},
+		{PID: 30008, PPID: 1, PGID: 30008, UID: otherUID, Age: 4 * time.Minute, Name: "abcd"},
+		{PID: 30009, PPID: 30008, PGID: 30008, UID: otherUID, Name: "ps"},
+	}}
+	args := map[int][]string{
+		15001: {"implement", "load", "--wait", "--", "make", "preflight"},
+		15002: {"preflight"},
+		20001: {"implement", "load", "--wait", "--timeout", "2h"},
+		30001: {"implement", "load", "--wait", "--timeout", "2h"},
+		30002: {"implement", "load", "--race-gate", "--timeout", "2h"},
+		30003: {"implement", "load", "--wait", "--", "sh", "-c", "work"},
+		30005: {"implement", "load", "--wait", "--", "go", "test", "-race", "./..."},
+		30006: {"implement", "load", "--wait", "--", "go", "test", "-race", "./..."},
+		30007: {"test", "-race", "./..."},
+		// Reading the machine: its one child is ps, so it is still queued.
+		30008: {"implement", "load", "--wait", "--timeout", "2h"},
+	}
+	for _, c := range []struct {
+		race bool
+		want []int
+	}{
+		{false, []int{30001, 30005, 30008}},
+		{true, []int{30002}},
+	} {
+		if got := QueuedAt(snap, self, args, c.race); !slices.Equal(got, c.want) {
+			t.Fatalf("race gate %v: queued %v, want %v", c.race, got, c.want)
+		}
+	}
+	if got := QueuedAt(Snapshot{}, self, args, false); got != nil {
+		t.Fatalf("an unread table: queued %v, want none", got)
+	}
+}

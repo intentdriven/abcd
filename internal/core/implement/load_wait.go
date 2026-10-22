@@ -520,6 +520,10 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		}
 		left := false
 		crossedSeen = slices.DeleteFunc(crossedSeen, func(pid int) bool {
+			// A departed pid reused by a new waiter at this gate within one poll
+			// would hide the departure; macOS's sequential pids make that
+			// unreachable (about 99,998 forks in 15 s), and the open look
+			// backstops it.
 			gone := !slices.Contains(c.queued, pid)
 			left = left || gone
 			return gone
