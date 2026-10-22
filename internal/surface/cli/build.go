@@ -1176,11 +1176,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				}
 				// The routing tables decide the tier each round asks for, one
 				// step up after a round that did not pass (spc-2609251028149555).
-				reviewer := ""
-				if review != nil {
-					reviewer = review.Name
-				}
-				tiers, diags, lerr := loop.LoadTiering(roots, reviewer)
+				tiers, diags, lerr := loop.LoadTiering(roots, review)
 				if lerr != nil {
 					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
 				}

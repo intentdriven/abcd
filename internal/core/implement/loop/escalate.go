@@ -57,12 +57,18 @@ const StageRouting = "routing"
 // LoadTiering reads the model-tier routing a step resolves each role's tier
 // through, at the roots a step starts from: the routing tables (oracle.Load)
 // and the machine's provider connections (oracle.LoadAPI), with reviewer the
-// reviewer route the step sends its reviews to ("" for none). A fault is
+// reviewer route the step sends its reviews to (nil for none). A fault is
 // refused in the loop's refusal shape before anything moves, as a delegating
 // verb refuses it: the table decides which tier a round asks for, so it is
 // never guessed past. The tables' diagnostics (an orphan row) are the
 // caller's to print.
-func LoadTiering(r layered.Roots, reviewer string) (*Tiering, []string, error) {
+func LoadTiering(r layered.Roots, rr *ReviewRoute) (*Tiering, []string, error) {
+	// A reviewer route with no server on this machine takes no review: every
+	// one falls back to the host, which is asked for the review's tier.
+	reviewer := ""
+	if rr != nil && rr.Absent == "" {
+		reviewer = rr.Name
+	}
 	api, err := oracle.LoadAPI(r)
 	if err != nil {
 		return nil, nil, refuse(StageRouting, "", "", err.Error(),
