@@ -62,8 +62,9 @@ const StageRouting = "routing"
 // reviewer route the step sends its reviews to (nil for none). A fault is
 // refused in the loop's refusal shape before anything moves, as a delegating
 // verb refuses it: the table decides which tier a round asks for, so it is
-// never guessed past. The tables' diagnostics (an orphan row) are the
-// caller's to print.
+// never guessed past. The provider configuration's diagnostics and the
+// tables' (an orphan row) are the caller's to print, as a delegating verb
+// prints them.
 func LoadTiering(r layered.Roots, rr *ReviewRoute) (*Tiering, []string, error) {
 	// A reviewer route with no server on this machine takes no review: every
 	// one falls back to the host, which is asked for the review's tier.
@@ -81,7 +82,8 @@ func LoadTiering(r layered.Roots, rr *ReviewRoute) (*Tiering, []string, error) {
 		return nil, nil, refuse(StageRouting, "", "", err.Error(),
 			"correct the routing table the reason names; nothing moved and nothing is written")
 	}
-	return &Tiering{Table: l, Conns: api.Connections(), Reviewer: reviewer}, l.Diagnostics, nil
+	diags := append(append([]string(nil), api.Diagnostics...), l.Diagnostics...)
+	return &Tiering{Table: l, Conns: api.Connections(), Reviewer: reviewer}, diags, nil
 }
 
 // roundRouter decides the route a role handed out in a round runs at.

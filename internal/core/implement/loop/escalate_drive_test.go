@@ -161,3 +161,17 @@ func TestTheGateOutputStaysBoundedAfterItsMask(t *testing.T) {
 		t.Fatal("the mask and its bound are idempotent, so a stored gate output round-trips")
 	}
 }
+
+// TestLoadTieringCarriesTheProviderDiagnostics: the provider configuration's
+// non-fatal reports are handed to the caller beside the tables', as a
+// delegating verb prints them.
+func TestLoadTieringCarriesTheProviderDiagnostics(t *testing.T) {
+	roots := machineRoots(t, t.TempDir(), map[string]string{"config.json": `{"oracle":{"roles":{"nobody-agent":"x/y"}}}`})
+	_, diags, err := LoadTiering(roots, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diags) != 1 || !strings.Contains(diags[0], "oracle adapter") || !strings.Contains(diags[0], "nobody-agent") {
+		t.Fatalf("the provider configuration's diagnostic is carried: %q", diags)
+	}
+}
