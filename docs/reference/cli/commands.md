@@ -1609,7 +1609,7 @@ abcd embark probe ../lifeboat
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.
+Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.
 
 **Usage:** `abcd guard`
 
@@ -1850,7 +1850,7 @@ heredoc (`abcd guard check <<'EOF'` ... `EOF`) passes it through untouched.
 
 #### `abcd guard hook`
 
-Judge the shell command in a host's pre-tool-use payload: Writes nothing; refuses a hazard or a badly built question with the host's deny.
+Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.
 
 **Usage:** `abcd guard hook`
 
@@ -1913,7 +1913,11 @@ product-thinker, Tech and Setup to facilitator), so it is never refused on
 the mode, and the question is marked open in the local tier; the answer
 resets the mode to managed, from `abcd hook question-answered` on the
 question tool's PostToolUse or else on the next human message. A questions
-field the hook cannot read lets the question run and warns loudly.
+field the hook cannot read lets the question run and warns loudly. While
+the away mode holds (`abcd mode autonomous`), every question is refused
+first, whatever its chip, with one reason that routes it by the act it asks
+about: an act only the person may approve to `abcd mode queue`, every other
+question to `abcd decide`; no mode is set and nothing is marked open.
 
 ### `abcd help`
 
@@ -4086,6 +4090,88 @@ all. With --json the notice is a field. Both forms make no network request.
 
 Exit 2 on a refusal — an unknown state, no local tier, or no checkout —
 and nothing is written on any of them.
+
+The away mode sits beside the badge, not as a fourth word: `abcd mode
+autonomous [--until <time>] [--hold-pushes]` records that the person is away,
+`abcd mode queue "<step>"` keeps a step for their return, and `abcd mode back`
+ends it and prints what was queued and recorded. While it holds, setting
+`product-thinker` or `facilitator` is refused (exit 2), naming `abcd decide`:
+a stop parked on a person who is away is a question nobody answers. The away
+mode grants no rights; the person's standing instruction decides what is pushed.
+
+#### `abcd mode autonomous`
+
+Record that the person is away and sessions work on, until a time or open-ended: Writes the away record; refuses an end already past or past seven days.
+
+**Usage:** `abcd mode autonomous [flags]`
+
+Record that the person is away, for every working copy of this repository on
+this machine: who set it (the holder name reservations resolve without a
+network read, else git's user.name), from which working copy, and when it ends.
+
+--until takes a clock time (its next occurrence, local time, as 09:00) or a
+timestamp (2026-10-19T09:00, or RFC 3339). Without it the mode is open-ended,
+and every record ends seven days after it was set at most: an --until past that,
+or one already past, is refused. --hold-pushes records the person's word that
+pushes wait for their return; it narrows what sessions do and grants nothing.
+
+The away mode grants no rights: the person's own standing instruction decides
+what is committed, pushed, and opened or merged as a pull request. It ends at its
+time or with `abcd mode back`; a prompt never ends it. Setting it again keeps
+whatever is queued or recorded and not yet read.
+
+The record lives in ~/.abcd.noindex/away/<root-sha>/record.json, keyed on the repository's
+root commit, and is changed under its lock, which only `abcd mode back` goes
+around. A record merely past its 64 KiB is carried, its oldest lines let go.
+Exit 2 on a refusal (an unreadable or past --until, one past seven days, no local
+tier, no checkout, or a record or lock that is not safely this account's) with
+nothing written. No network request.
+
+**Flags:**
+
+```
+      --hold-pushes    the person's word that pushes wait for their return (grants nothing)
+      --until string   when the mode ends: a clock time (09:00) or a timestamp; open-ended (seven days at most) when omitted
+```
+
+#### `abcd mode back`
+
+End the away mode, printing what was queued and recorded one line each: Writes its ending whatever the record's or lock's state; refuses outside a git checkout.
+
+**Usage:** `abcd mode back`
+
+End the away mode: print one plain line per queued step, per item handed back
+and per recorded stop (a stop at the host's cap is labelled "possibly forced by
+the cap"), record who ended it and from which working copy, and close the record.
+On a record whose time has already passed it prints the same and closes it. With
+no record, or one already closed, it says there is nothing to end.
+
+A session runs it only on the person's word in that session. It ends the mode
+whatever state the record is in: one past its 64 KiB is printed whole and kept
+with its oldest lines let go and counted; one that does not parse, or is not
+safely this account's, is replaced by a closed record, printing nothing from
+it; and a lock not had in time is gone around. Each is named on its own line.
+No network request.
+
+#### `abcd mode queue`
+
+Queue one step for the person's return while they are away: Writes the away record; refuses when no away record holds.
+
+**Usage:** `abcd mode queue <step>`
+
+Queue one step for the person's return, while the away mode holds: an act only
+the person may approve, which a session queues instead of asking, then carries on
+with other work. `abcd mode back` prints each queued step on one line.
+
+Exit 2 when no away record holds (ask the person instead), on an empty step or one
+over 500 characters, when the queue is full (it is never cut), and when the record
+or its lock is not safely this account's, with nothing written. No network request.
+
+**Example:**
+
+```
+abcd mode queue "approve the embargo close for the example advisory"
+```
 
 ### `abcd peers`
 

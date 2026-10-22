@@ -36,6 +36,15 @@ var wordReaders = map[string]string{
 	"firstOperands":      "the rule itself",
 	"firstOperandLimit":  "the rule itself",
 
+	// branchacts.go: the away mode's created-branch recorder, which records
+	// and refuses nothing.
+	"branchActsIn":      "isUnknown on every word: a command with a word nothing fixes is read as no branch act",
+	"branchCommandActs": "exempt: reads only words branchActsIn found known",
+	"createFlagActs":    "exempt: reads only words branchActsIn found known",
+	"flagValue":         "exempt: reads only words branchActsIn found known",
+	"plausibleBranch":   "exempt: reads only words branchActsIn found known",
+	"worktreeAddActs":   "exempt: reads only words branchActsIn found known",
+
 	// match.go
 	"matchSegmentEnv":      "sitesNamed: every place the entry's command can sit; anyProgram marks a name nothing fixes",
 	"exportsAny":           "commandSites and nameCouldBe",

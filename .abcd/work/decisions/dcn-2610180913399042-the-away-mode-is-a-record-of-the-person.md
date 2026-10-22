@@ -1,0 +1,6 @@
+---
+id: dcn-2610180913399042
+slug: the-away-mode-is-a-record-of-the-person
+date: 2026-10-18
+---
+2026-10-18 — The away mode is a record of the person's absence, set by a verb and ended only by its time or by their word (facilitator-on-delegation, itd-2610180912189125 planning): abcd mode autonomous [--until <time>] records who set it (the holder name reservations already resolve from caller-local facts), when, and when it ends, where --until takes a clock time (its next occurrence, local time) or a full timestamp and a time already past is refused; without --until it is open-ended until abcd mode back. It sits beside the waiting-on badge, whose three words stay a closed set, and is not a fourth word. A human prompt during the window does not end it, since a brief return overrode the instruction on 2026-10-16 and a prompt from a peer looks the same. An agent sets it on the person's word in its session, and one set covers every working copy, so no peer has to relay it. This restates the product thinker's 2026-10-17 ruling that they say they are away, until a set time or open-ended, and say when they are back (grounds: itd-2610170638184486 decisions; iss-2610170619247185; brief invariant 10; internal/core/mode)

@@ -1,0 +1,6 @@
+---
+id: dcn-2610180913413137
+slug: the-stop-check-refuses-only-while-the
+date: 2026-10-18
+---
+2026-10-18 — The stop check refuses only while the person is away and is bounded so it never spins (facilitator-on-delegation, itd-2610180912189125 planning): a plugin Stop hook asks abcd, which blocks the stop with the host's decision block and a reason naming the next owed item and how many remain, only while the away mode holds and owed work exists. While the person is present the stop is allowed and, with work owed, pointed out in one line through the host's systemMessage. If the host says the session is already continuing because of a stop hook and the owed set is unchanged since this session's last block, the stop is allowed and recorded as stopped with work owed, shown on the person's return; the host's own cap of eight consecutive continuations, reset by each tool call, is the outer bound. The host documents stop_hook_active as the field to check so a hook never blocks on a condition that will not resolve. The session states are the bundle's: working, waiting, stopped. This restates the product thinker's 2026-10-17 stop-check ruling (grounds: code.claude.com/docs/en/hooks Stop input and Stop decision control; itd-2610170638184486 decisions)

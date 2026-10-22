@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -27,7 +28,9 @@ import (
 // tool's PostToolUse hook runs the reset when the answer comes back, and the
 // prompt hook runs the same reset on the next human message, for a host that
 // does not run PostToolUse. Another tool's question is none of this file's
-// business and runs unchecked.
+// business and runs unchecked, except while the person is away
+// (spc-2610180914469489): then every question is refused, routed by its act
+// to `abcd mode queue` or `abcd decide`.
 //
 // This file is the whole of the feature on the front-door side. The guard's
 // own hook calls questionGate once, before its shell-command path, and touches
@@ -56,9 +59,16 @@ func isQuestionTool(name string) bool {
 // question whose only finding is the rows limit is admitted with a note for
 // the agent (rowsNote).
 //
-// The order is the spec's. First the questions are decoded; a field the check
-// cannot read is not a decision, so the question runs on the loud, non-blocking
-// status. Then the gate decides whether the question is abcd's: a header in
+// The away record is read first (spc-2610180914469489, "The question
+// reroute"). While it holds, every question-tool call is refused with one
+// reason, abcd's question or another tool's, chipped or not, readable or not
+// (awayQuestionRefusal): the person is not there to answer, and the reason
+// routes the question by the act it asks about. Nothing past that point runs,
+// so no mode is set from a chip and no question is marked open while away.
+//
+// While the person is present the order is the spec's. First the questions
+// are decoded; a field the check cannot read is not a decision, so the
+// question runs on the loud, non-blocking status. Then the gate decides whether the question is abcd's: a header in
 // abcd's chip grammar, which only abcd's interview pages are taught to write,
 // or a mode naming somebody, which only abcd's mode verb and this gate set
 // (itd-201 decision 10). Anything else is another tool's question and runs,
@@ -77,6 +87,74 @@ func isQuestionTool(name string) bool {
 // read or write is not a decision: the question runs and the gate says so, the
 // guard's fail-open-loud contract.
 func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
+	away, unread := awayAtQuestion(cwd)
+	if away {
+		return denyCall(awayQuestionRefusal())
+	}
+	if unread == nil {
+		return presentQuestionGate(cmd, cwd, raw)
+	}
+	// The away record could not be read safely, so it reads as not away and
+	// the question is checked as if the person were present. Said on stderr,
+	// and kept loud: an admitted question exits 1, which the host shows,
+	// unless the gate already answered on stdout, whose note exit 1 would
+	// drop. A deny folds the line into its reason.
+	fmt.Fprintf(cmd.ErrOrStderr(), "abcd guard: the away record was not read (%s), so it reads as not away and the question is checked as if the person were present.\n",
+		termsafe.Sanitize(scrubPaths(unread)))
+	out := &wroteWriter{w: cmd.OutOrStdout()}
+	cmd.SetOut(out)
+	err := presentQuestionGate(cmd, cwd, raw)
+	cmd.SetOut(out.w)
+	if err == nil && !out.wrote {
+		return &exitError{Code: 1}
+	}
+	return err
+}
+
+// awayAtQuestion reads whether the person is away for the repository holding
+// cwd (spc-2610180914469489, "The question reroute"). It fails open: outside
+// a checkout, in a repository with no root commit, or with no home, nobody is
+// away and nothing is said; a record or lock the store refuses reads as not
+// away, and is returned for the one line the gate writes.
+func awayAtQuestion(cwd string) (away bool, unread error) {
+	root, err := mode.Root(cwd)
+	if err != nil {
+		return false, nil
+	}
+	_, holds, err := autonomy.AwayAt(root, autonomy.Options{})
+	if err != nil {
+		if errors.Is(err, autonomy.ErrUnsafe) {
+			return false, err
+		}
+		return false, nil
+	}
+	return holds, nil
+}
+
+// awayQuestionRefusal is the one reason every question gets while the person
+// is away, whatever its chip and whoever wrote it (dcn-2610180937177502): a
+// head line saying why, then the route by the act (autonomy.QuestionRoute).
+// It names none of the asking rules, so the agent reroutes the question
+// rather than redrafting it.
+func awayQuestionRefusal() string {
+	return "Blocked by the abcd guard (question tool): the person is away (abcd mode autonomous), so no question is put to them, whatever its chip and whoever wrote it.\n" +
+		autonomy.QuestionRoute()
+}
+
+// wroteWriter records whether anything was written through it.
+type wroteWriter struct {
+	w     io.Writer
+	wrote bool
+}
+
+func (o *wroteWriter) Write(p []byte) (int, error) {
+	o.wrote = o.wrote || len(p) > 0
+	return o.w.Write(p)
+}
+
+// presentQuestionGate is the gate while the person is present: everything
+// questionGate's comment describes after the away check.
+func presentQuestionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 	stderr := cmd.ErrOrStderr()
 	fields, err := decodeQuestions(raw)
 	if err != nil {
