@@ -81,6 +81,23 @@ func ParseTier(s string) (Tier, error) {
 	return "", fmt.Errorf("tier %q is not one of %s", layered.BoundKey(s), tierList())
 }
 
+// Escalate is the tier one step up the ladder local, economy, frontier: the
+// tier a lane's next round asks for after a round whose gates failed
+// (spc-2609251028149555, AC 10; the intent's Decision 1, "a rule, not a
+// router"). frontier is the top and does not move; host-decides asks for no
+// tier, so there is nothing to move, and it does not move either. A value
+// outside the vocabulary is returned as it is: it names no place on the
+// ladder.
+func Escalate(t Tier) Tier {
+	switch t {
+	case Local:
+		return Economy
+	case Economy:
+		return Frontier
+	}
+	return t
+}
+
 func tierList() string {
 	out := make([]string, len(tiers))
 	for i, t := range tiers {
