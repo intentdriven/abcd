@@ -232,10 +232,27 @@ func TestSendRefusesAnAnthropicHostedEnvironment(t *testing.T) {
 	if calls := c.hostArgv(); len(calls) != 0 {
 		t.Fatalf("the host was asked %d times for an id it rejects; want none: %q", len(calls), calls)
 	}
-	for _, want := range []string{"self-hosted", "ccpool_", "env_01hostedexample", "iss-2610222106115276", "Nothing was started"} {
+	for _, want := range []string{"self-hosted", "ccpool_", "env_01hostedexample", "iss-2610222106115276", "host was not asked", "Nothing was started"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the refusal does not say %q\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "does not know the environment") {
+		t.Errorf("the refusal blames the host, which was never asked\n%s", out)
+	}
+
+	// The connector itself answers exit 9, its contract's code for an
+	// environment it cannot start in, and asks the host nothing.
+	brief := filepath.Join(c.dir, "brief.txt")
+	if err := os.WriteFile(brief, []byte("probe"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.resetCalls()
+	if _, code := c.script(nil, "scripts/cloud/connectors/claude/launch.sh", "env_01hostedexample", "main", brief); code != 9 {
+		t.Errorf("launch.sh on an Anthropic-hosted id exited %d, want 9", code)
+	}
+	if calls := c.hostArgv(); len(calls) != 0 {
+		t.Errorf("launch.sh asked the host %d times for an id it rejects; want none", len(calls))
 	}
 }
 

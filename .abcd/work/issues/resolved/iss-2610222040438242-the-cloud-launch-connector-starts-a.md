@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "scripts/cloud/connectors/claude/launch.sh"
 remedy: "re-check the launch form against code.claude.com/docs/en/claude-code-on-the-web and cli-reference with a live claude --cloud run, then change launch.sh, its test and the intent and spec's launch line to the documented form, recording how the session id and link are read back"
-resolution: "launch.sh refuses an environment id that is not self-hosted before it asks the host, saying why, and its documented form, the intent and the spec now say the host names an environment at the start only for a self-hosted ccpool_ id; the Anthropic-hosted start is iss-2610222106115276"
+resolution: "launch.sh now refuses an environment id that is not self-hosted before it asks the host, saying why, and its documented form, the intent and the spec say the host names an environment at the start only for a self-hosted ccpool_ id; an Anthropic-hosted environment is still not supported, only refused earlier and plainly, and starting one is iss-2610222106115276"
 impact: fix
 ---
 

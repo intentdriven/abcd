@@ -41,8 +41,8 @@ in the tree rather than only a web console.
   `gh api -X POST repos/intentdriven/abcd/rulesets --input
   .abcd/work/rulesets/status-protection.json`; like every ruleset here it is a
   change to the remote a person makes, and no verb of abcd's applies it. The
-  mirror matched the live ruleset when read on 2026-10-22. Nothing on the forge can refuse a push that changes a file
-  on a status branch. GitHub's push rulesets, which restrict file paths, are
+  mirror matched the live ruleset when read on 2026-10-22. Nothing on the forge
+  can refuse a push that changes a file on a status branch. GitHub's push rulesets, which restrict file paths, are
   offered for private and internal repositories only, and they target no
   branch: a push rule applies to every push to the repository and its fork
   network, so one cannot be scoped to `abcd-status/`. Branch rulesets restrict

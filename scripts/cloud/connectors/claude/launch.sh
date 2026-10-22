@@ -36,6 +36,8 @@
 #           of explanation on standard error)
 #   exit 8  the host answered without naming a session, so one may have
 #           started
+#   exit 9  the connector cannot start a session in this kind of environment,
+#           so the host was not asked (its reason on standard error)
 # It never retries, never starts anything else in place of a refused start,
 # and writes nothing but a temporary file it removes.
 set -euo pipefail
@@ -52,7 +54,7 @@ case "$env_id" in
 ccpool_*) ;;
 *)
 	echo "launch: $env_id is not a self-hosted environment id (ccpool_...). The host names an environment at the start only for a self-hosted one, and rejects an Anthropic-hosted env_ id; this connector cannot start an Anthropic-hosted session yet (iss-2610222106115276)." >&2
-	exit 6
+	exit 9
 	;;
 esac
 
