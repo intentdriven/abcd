@@ -83,7 +83,8 @@ func unattendedRefusal(u loop.Unattended) string {
 	return "abcd refused this approval prompt: " + what + " is running in this checkout, with nobody at the terminal to approve it. " +
 		"Rewrite the command so it needs no approval: run each step as its own plain command, and put a script's steps on the " +
 		"command line rather than in a file, a heredoc or a `bash -c` string. If the step cannot be done that way, skip it and " +
-		"say why in your report. The same command sent again is refused again."
+		"say why in your report. The same command sent again is refused again. If the person is at the terminal and no run is " +
+		"going any more, tell them: the refusal ends two hours after the run last wrote its state."
 }
 
 func newPermissionRequestCommand() *cobra.Command {
