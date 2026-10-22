@@ -146,3 +146,18 @@ func TestARaisedRowTakesEffectAtTheNextRound(t *testing.T) {
 		t.Fatalf("a lowered row never takes a lane down: %+v %v", r, err)
 	}
 }
+
+// TestTheGateOutputStaysBoundedAfterItsMask: the mask can lengthen text (an
+// invalid byte becomes a visible escape), so the gate output is bounded again
+// after it, and stored within its cap whatever bytes it carried.
+func TestTheGateOutputStaysBoundedAfterItsMask(t *testing.T) {
+	st := State{Lanes: []Lane{{ID: "lane-1", Validation: []ValidationRound{{Round: 1,
+		Routes: []Round{{Role: RoleRuthless, GateOutput: strings.Repeat("\xff", maxGateOutputBytes)}}}}}}}
+	got := st.masked().Lanes[0].Validation[0].Routes[0].GateOutput
+	if len(got) > maxGateOutputBytes {
+		t.Fatalf("the masked gate output is %d bytes, over its %d-byte cap", len(got), maxGateOutputBytes)
+	}
+	if again := (State{Lanes: []Lane{{Validation: []ValidationRound{{Routes: []Round{{GateOutput: got}}}}}}}).masked(); again.Lanes[0].Validation[0].Routes[0].GateOutput != got {
+		t.Fatal("the mask and its bound are idempotent, so a stored gate output round-trips")
+	}
+}

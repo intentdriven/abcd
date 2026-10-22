@@ -127,7 +127,9 @@ func (r ValidationRound) masked() ValidationRound {
 	r.Routes = maskEach(r.Routes, func(t Round) Round {
 		t.Role, t.Note = line(t.Role), free(t.Note)
 		t.Tier, t.EscalatedFrom = oracle.Tier(line(string(t.Tier))), oracle.Tier(line(string(t.EscalatedFrom)))
-		t.GateOutput = free(boundGateOutput(t.GateOutput))
+		// The mask can lengthen text (an invalid byte becomes an escape), so
+		// the bound holds after it too.
+		t.GateOutput = boundGateOutput(free(boundGateOutput(t.GateOutput)))
 		return t
 	})
 	return r
