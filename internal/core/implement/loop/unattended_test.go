@@ -230,3 +230,25 @@ func TestRunningUnattendedCountsALaneOfARunInAnotherWorktree(t *testing.T) {
 		t.Fatalf("the lane of a run idle past the lease: on %v, error %v; want neither", on, err)
 	}
 }
+
+// A finished lane's worktree is no longer a lane's session: a person opening
+// it while a sibling lane keeps the run unfinished sees their own prompts.
+func TestRunningUnattendedPassesOverAFinishedLane(t *testing.T) {
+	now := time.Now()
+	repo := unattendedRepo(t)
+	store := t.TempDir()
+	doneWT := filepath.Join(store, "run-0000000000000002-lane-1")
+	liveWT := filepath.Join(store, "run-0000000000000002-lane-2")
+	repo.Git("worktree", "add", "-b", "build/lane-1", "--", doneWT)
+	repo.Git("worktree", "add", "-b", "build/lane-2", "--", liveWT)
+
+	putRun(t, repo.Root(), unfinishedRun("run-0000000000000002", now.Add(-time.Minute),
+		Lane{ID: "lane-1", Key: "itd-10", SpecStep: 1, Stage: StageDone, Worktree: doneWT},
+		Lane{ID: "lane-2", Key: "itd-10", SpecStep: 2, Stage: StageImplement, Worktree: liveWT}))
+	if _, on, err := RunningUnattended(doneWT, now); on || err != nil {
+		t.Fatalf("a finished lane's worktree: on %v, error %v; want neither", on, err)
+	}
+	if _, on, err := RunningUnattended(liveWT, now); !on || err != nil {
+		t.Fatalf("the working sibling: on %v, error %v; want the build", on, err)
+	}
+}

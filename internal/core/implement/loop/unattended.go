@@ -64,8 +64,14 @@ func RunningUnattended(sessionRoot string, now time.Time) (Unattended, bool, err
 			if wt.Bare || wt.Path == "" || samePath(sessionRoot, wt.Path, sessionRoot) {
 				continue
 			}
+			// A lane counts only while it has work left: a session opened in
+			// a finished or discarded lane's worktree is a person looking at
+			// it, even while a sibling lane keeps the run unfinished.
 			lane := func(st State) bool {
 				for _, l := range st.Lanes {
+					if l.Stage == StageDone || l.Stage == StageDiscarded {
+						continue
+					}
 					if samePath(sessionRoot, l.Worktree, sessionRoot) {
 						return true
 					}
