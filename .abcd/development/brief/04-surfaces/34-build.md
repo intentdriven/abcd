@@ -267,7 +267,17 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 13. Version 13
+under a run id it does not name. The state is schema version 14. Version 14
+added both sides of a run (itd-166): a runner's `route` on a verified receipt or
+a validator's return carries, beside the route asked, the route that ran and the
+served model, the model the runner asked for (`model_asked`), the SHA-256 of
+the prompt it handed the harness, the served models, provider, finish reason
+and harness version the harness's events name, the token counts and the cost,
+and `unpinned`, each field of the fixed asked and served lists the run could
+not pin with its reason. Version 13 is its strict subset, read as a run whose
+routes recorded neither side; a file of version 13 or lower carrying either is
+refused, and an abcd that writes version 13 refuses a version-14 file as a
+newer abcd's. Version 13
 added a lane's `refused` (spc-2610161044461448 step 5): an issue run's lane
 logs its run of refused steps, the stage, the check, the reason, a count of the
 same refusal in a row and since when it has refused at that stage, which a
@@ -326,7 +336,7 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap, a
 version-7 run is one the host ran every agent of) and
-written back at version 13 by its next mutation; an earlier version carrying what
+written back at version 14 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
@@ -480,9 +490,11 @@ transcript lands in abcd's history store, keyed on the repository's root
 commit, and its receipt is handed back through the same receipt verb and
 verified by the stage's own verifier, so a verified one completes the stage in
 the same call. The verified receipt, or the validator's recorded return, names
-the route that ran it (asked, ran, the model the runner reported), which is the
-only field a runner-run review's record differs in from a host-run one's; the
-record's receipt or verdict line names the runner that ran it. A runner that is absent, refuses, fails, runs past
+the route that ran it (asked, ran, the model the runner reported, and both
+sides of the run: the model it asked for, the token counts, the cost and the
+fields it could not pin), which is the only field a runner-run review's record differs in from a host-run one's; the
+record's receipt or verdict line names the runner that ran it, with the model
+it asked for and the cost when the route carries them. A runner that is absent, refuses, fails, runs past
 its time, answers unparsably or writes a receipt the verifier refuses leaves the
 lane awaiting: the call records one fallback receipt (the role, the runner asked
 for, the reason and the route that runs it) in the state and the record, and
@@ -490,7 +502,26 @@ hands the host the await as the host-driven step does, naming the fallback. A
 role left unset is the host's, and the call is the host-driven step byte for
 byte. A step that re-tells an await starts nothing. The claude runner runs in
 print mode with the bare flag, so the repository's hooks, plugins and
-configured servers do not run; opencode runs in run mode with `--pure`. An
+configured servers do not run; opencode runs in run mode with `--pure`. A
+claude launch whose role's contract grants the shell carries the guard
+(iss-2610161612203555, dcn-2610161624025493): the launch names the harness's
+permission prompt tool, served by the guard's approve sub-verb as the one MCP server it
+starts (`--mcp-config` inline, `--strict-mcp-config`), under the default
+permission mode, and the shell is no longer granted without a prompt, so every
+shell command the harness would ask a person about is put to the guard, which
+approves a command it reads whole and clears, which then runs from the working
+tree under /bin/bash with its profile, rc and environment start-up files
+ignored (-p), and refuses everything else, and every other tool's prompt,
+with its reason
+([`17-guard.md`](17-guard.md#answering-a-headless-agents-prompts)). It is
+set per launch on the command line: the person's host settings are not
+touched, a session the person drives is unchanged, and it adds no sandbox;
+sandboxing autonomous runs is a separate later step (dcn-2610161619296615).
+Bare mode skips every hook, a `--settings` file's included, which is why the
+guard reaches the launch as a prompt tool rather than a hook. A launch whose
+contract grants no shell refuses every prompt unasked, as before, and opencode
+has no per-launch prompt answerer, so it keeps the permissions its own
+configuration sets. An
 interrupt or a termination kills the runner's process group. The status and
 record verbs count the fallbacks per runner and per role. A host session
 always drives this: the no-host path, where a host-routed role goes to the

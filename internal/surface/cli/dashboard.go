@@ -86,7 +86,11 @@ func newDashboardStartCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: prefix + err.Error() + " (nothing started)"}
 			}
-			if !ahoy.Managed(root) {
+			managed, merr := ahoy.ManagedContext(cmd.Context(), root)
+			if merr != nil {
+				return &exitError{Code: 1, Msg: prefix + "whether abcd manages this checkout could not be read (" + scrubPaths(merr) + "); try again (nothing started)"}
+			}
+			if !managed {
 				return &exitError{Code: 2, Msg: prefix + "this checkout is not one abcd manages; run `abcd ahoy install` first (nothing started)"}
 			}
 			bin, err := tailscale.Resolve(exec.LookPath, tailscale.BundledCommands, root)

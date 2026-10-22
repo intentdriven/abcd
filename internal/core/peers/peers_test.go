@@ -11,7 +11,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/gittest"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // fixture is one repository ("here" is its main checkout) with worktrees laid
@@ -556,7 +555,7 @@ func TestAGoneWorktreeOnAMergedBranchIsCountedOnce(t *testing.T) {
 // location or the count.
 func TestPeersSkipsEmbargoStore(t *testing.T) {
 	f := newFixture(t)
-	store := abcdhome.Path(f.home, "worktrees", gitutil.RootCommit(f.here()), storepath.Name)
+	store := abcdhome.Path(f.home, "worktrees", gittest.RootCommit(f.t, f.here()), storepath.Name)
 	if err := os.MkdirAll(filepath.Dir(store), 0o700); err != nil {
 		t.Fatal(err)
 	}

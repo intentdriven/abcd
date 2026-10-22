@@ -20,8 +20,12 @@ Two flows over the abcd binary, kept apart on purpose:
 - **ship** — the release cut: derive the version from what shipped, compose the
   changelog prose and the release page, write them. It writes the dated section
   of `CHANGELOG.md`, the release page `RELEASE.md`, the outgoing page's copy
-  under `.abcd/development/releases/`, and the `target_release` line of every
-  planned intent whose target the cut passed, moved to `next`; in a repository that publishes a versioned
+  under `.abcd/development/releases/`, the `target_release` line of every
+  planned intent whose target the cut passed, moved to `next`, and, in a
+  repository whose `.abcd/config.json` declares `release.digest`, the cut's
+  release appended to that JSON file (its tag, the tag it was cut from, and
+  each changelog line with the records it cites and their impact; abcd's own
+  is the digest its binary embeds); in a repository that publishes a versioned
   plugin it also pins the release's plugin archive in
   `.claude-plugin/marketplace.json` (refreshing the surface snapshot beside it).
   It **never publishes**.
@@ -110,17 +114,19 @@ Reserve the release before anything else, from the copy that will cut it:
 ```
 
 While that reservation is live, every other session's land step (an
-`implement step` arming a merge, under any account, on any computer) refuses
-to arm, names you and the release, and leaves its pull request open for you to
-merge or hold; `/abcd:peers` shows "release vX.Y.Z being cut by @you: merges
-are held". It takes no footprint and holds for a day. If the cut runs longer,
+`implement step` arming a merge, or `abcd land`, under any account, on any
+computer) refuses to arm, names you and the release, and leaves its pull
+request open for you to merge or hold; `/abcd:peers` shows other sessions
+"release vX.Y.Z being cut by @you: merges are held", and shows this copy "you
+are cutting release vX.Y.Z from this copy: every other session's merges are
+held". It takes no footprint and holds for a day. If the cut runs longer,
 run the same command again from the same copy to renew it for another day. It
 ends by itself once the release workflow pushes the tag `vX.Y.Z`; if you
 abandon the cut before then, release it with
 `"${CLAUDE_PLUGIN_ROOT}/abcd" reserve rel-vX.Y.Z --release --json`. `launch
 ship` does not take or release it for you: the tag is pushed by the release
 workflow, not by abcd, and the ship steps run many times in one cut. The hold
-binds abcd's own land step; a person merging by hand on the forge is not
+binds abcd's own land steps, the implement loop's and `abcd land`; a person merging by hand on the forge is not
 stopped by it, which is why step 3 still says to tell people.
 
 The hold stops a merge from being armed. It does not stop a merge armed, or
@@ -657,8 +663,8 @@ ready cut's `--json` result carries the request block as a `routing` member
 the harness lets you choose one, and pass the same `--route` to the ingest step
 so its receipt records the override. The ingest's `--json` result carries a
 `route` receipt (`tier_asked`, `connection_tried`, `connection_used`,
-`fallback_reason`, `override`, `settings_sent`, `model_reported`, and `provider_call`, null until a provider
-adapter answers the step) and its text a
+`fallback_reason`, `override`, `settings_sent`, `model_reported`, `provider_call`, null until a provider adapter answers the step, and
+`unpinned`, the fields the receipt could not pin, each with its reason) and its text a
 `route:` line; relay it with the result. When no configured provider can serve
 the tier, one stderr line says the step goes through the harness instead. A
 `--route` naming an agent this invocation does not dispatch, a tier outside the

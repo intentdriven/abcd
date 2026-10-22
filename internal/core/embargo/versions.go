@@ -19,12 +19,12 @@ import (
 // form, with no v. Changing the form is this one constant.
 const patchedVersionKeepsV = false
 
-// releaseTagRe is a release tag: strict vMAJOR.MINOR.PATCH, with no leading
-// zero, no pre-release and no build part.
-var releaseTagRe = regexp.MustCompile(`\Av(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\z`)
-
-// isReleaseTag reports whether tag is a release tag.
-func isReleaseTag(tag string) bool { return releaseTagRe.MatchString(tag) }
+// isReleaseTag reports whether tag is a release tag: the one form
+// launch.ParseReleaseTag accepts (one-canonical-primitive).
+func isReleaseTag(tag string) bool {
+	_, err := launch.ParseReleaseTag(tag)
+	return err == nil
+}
 
 // sortReleaseTags returns the release tags among tags, lowest version first.
 func sortReleaseTags(tags []string) []string {
@@ -35,10 +35,7 @@ func sortReleaseTags(tags []string) []string {
 	var vs []tv
 	for _, t := range tags {
 		t = strings.TrimSpace(t)
-		if !isReleaseTag(t) {
-			continue
-		}
-		v, err := launch.ParseSemver(strings.TrimPrefix(t, "v"))
+		v, err := launch.ParseReleaseTag(t)
 		if err != nil {
 			continue
 		}

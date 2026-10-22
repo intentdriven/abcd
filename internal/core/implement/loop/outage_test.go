@@ -5,7 +5,8 @@ package loop
 // probe while the offline lanes move, the step runs the probe when it is due,
 // and a run that gave up stops every step naming what was done and what is
 // left. The clock is the fixture's, the network probe is injected, and the one
-// real network call (a push to a port nothing listens on) fails at once.
+// real network call (a push through a local ext:: remote that prints git's
+// refused-connection message) fails at once.
 
 import (
 	"context"
@@ -74,11 +75,18 @@ func TestLandPushNetworkFailureHoldsOnlyItsLane(t *testing.T) {
 	f.implement(t, "lane-2", "two.txt")
 	l1 := f.lane(t, "lane-1")
 	preflighted(t, l1, l1.HeadSHA)
-	f.repo.Git("remote", "set-url", "--push", "origin", "http://127.0.0.1:1/x.git")
-	// A push URL is watched by the run tripwire: the person accepts it.
+	// The push meets a refused connection without leaving this computer: a
+	// test's networked git may use only local transports
+	// (iss-2610170718356567), so an ext:: push URL, which the repository
+	// allows, prints what git prints for http://127.0.0.1:1 and fails.
+	f.repo.Git("config", "protocol.ext.allow", "always")
+	f.repo.Git("remote", "set-url", "--push", "origin",
+		"ext::sh -c echo% fatal:% Failed% to% connect% to% 127.0.0.1% port% 1:% Connection% refused% 1>&2;% exit% 128")
+	// A push URL and a protocol policy are watched by the run tripwire: the
+	// person accepts them.
 	if accepted, err := AcceptConfigChange(f.repo.Root(), f.runID, f.opts()); err != nil ||
-		!slices.Equal(accepted, []string{"remote.origin.pushurl (added)"}) {
-		t.Fatalf("the accept names the push URL it accepted: %q %v", accepted, err)
+		!slices.Equal(accepted, []string{"protocol.ext.allow (added)", "remote.origin.pushurl (added)"}) {
+		t.Fatalf("the accept names the push URL and the policy it accepted: %q %v", accepted, err)
 	}
 
 	res := f.step(t)
@@ -266,19 +274,15 @@ func gitOut(t *testing.T, root string, args ...string) string {
 	return string(out)
 }
 
-// withGit puts git beside the fake harnesses on the drive environment's PATH:
-// the loop reads the shared run's outage through the repository's root commit.
+// withGit is the drive environment with git beside the fake harnesses on its
+// PATH: the loop reads the shared run's outage through the repository's root
+// commit. newDriveEnv now links git itself; this insists git is there.
 func withGit(t *testing.T, harnesses ...string) driveEnv {
 	t.Helper()
-	git, err := exec.LookPath("git")
-	if err != nil {
+	if _, err := exec.LookPath("git"); err != nil {
 		t.Fatal(err)
 	}
-	env := newDriveEnv(t, "ok", harnesses...)
-	if err := os.Symlink(git, filepath.Join(env.bin, "git")); err != nil {
-		t.Fatal(err)
-	}
-	return env
+	return newDriveEnv(t, "ok", harnesses...)
 }
 
 // TestDriveStartsNoRunnerDuringModelOutage: while the model service is down

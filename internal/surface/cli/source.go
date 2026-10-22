@@ -429,7 +429,10 @@ func ledgerRepo(flag string) (string, error) {
 	if err != nil {
 		return "", &exitError{Code: 2, Msg: "abcd library ledger: " + err.Error() + " (or name the ledger with --repo)"}
 	}
-	sha := gitutil.RootCommit(root)
+	sha, err := gitutil.RootCommit(root)
+	if err != nil {
+		return "", &exitError{Code: 1, Msg: "abcd library ledger: this checkout's root commit could not be read (" + scrubPaths(err) + "), and the ledger is named by it; try again, or name it with --repo"}
+	}
 	if !gitutil.IsFullSHA(sha) {
 		return "", &exitError{Code: 2, Msg: "abcd library ledger: this checkout has no commit to name its ledger by; name it with --repo"}
 	}

@@ -1,10 +1,14 @@
 package history
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // otherRootSHA is a second repository's store key: a transcript that resolves
@@ -23,9 +27,22 @@ const otherRootSHA = "cccccccccccccccccccccccccccccccccccccccc"
 func fakeRepos(t *testing.T, table map[string]string) {
 	t.Helper()
 	prior := resolveRootSHA
-	resolveRootSHA = func(cwd string) (string, bool) {
-		sha, ok := table[cwd]
-		return sha, ok
+	resolveRootSHA = func(cwd string) (string, error) {
+		return table[cwd], nil
+	}
+	t.Cleanup(func() { resolveRootSHA = prior })
+}
+
+// fakeReposFailing is fakeRepos where git does not answer for each directory
+// in failing (gitutil.ErrNoRootAnswer), as on a loaded machine.
+func fakeReposFailing(t *testing.T, table map[string]string, failing ...string) {
+	t.Helper()
+	prior := resolveRootSHA
+	resolveRootSHA = func(cwd string) (string, error) {
+		if slices.Contains(failing, cwd) {
+			return "", fmt.Errorf("%w: %s: exit status 128", gitutil.ErrNoRootAnswer, cwd)
+		}
+		return table[cwd], nil
 	}
 	t.Cleanup(func() { resolveRootSHA = prior })
 }
@@ -225,6 +242,50 @@ func TestIngestAdoptsOnlyProjectsNamedByTheDestination(t *testing.T) {
 		if !strings.Contains(string(onDisk), want) {
 			t.Errorf("an adopted record must carry %q:\n%s", want, onDisk)
 		}
+	}
+}
+
+// TestIngestNeverAdoptsATranscriptWhoseRepositoryGitDidNotAnswerFor: a
+// recorded directory that is a repository git failed for once read as one
+// with no repository, so its transcript became an orphan, and naming its
+// project adopted it into the destination's store under the destination's
+// redaction configuration (iss-2610051434156079). Its owner is unknown, not
+// absent: it is skipped and said, never stored, never offered as an orphan.
+func TestIngestNeverAdoptsATranscriptWhoseRepositoryGitDidNotAnswerFor(t *testing.T) {
+	repoRoot, _ := setupStore(t)
+	src := t.TempDir()
+	fakeReposFailing(t, map[string]string{repoRoot: testRootSHA}, "/theirs")
+	transcriptFile(t, filepath.Join(src, "claimed"), "s1.jsonl", "sess-unanswered", "", "/theirs")
+
+	res, err := Ingest(Destination{RepoRoot: repoRoot, RootSHA: testRootSHA}, []string{src},
+		IngestOptions{Adopt: []string{"claimed"}})
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(res.Captured) != 0 || len(res.Orphans) != 0 {
+		t.Fatalf("a transcript whose repository git did not answer for was stored or offered as an orphan: captured %+v, orphans %+v", res.Captured, res.Orphans)
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0].Reason != SkipOwnerUnanswered {
+		t.Fatalf("want one %s skip, got %+v", SkipOwnerUnanswered, res.Skipped)
+	}
+	records, err := List(repoRoot, testRootSHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 0 {
+		t.Errorf("the store must be untouched, got %d records", len(records))
+	}
+}
+
+// TestIngestRefusesADestinationRootGitDidNotAnswerFor: the destination's own
+// root commit failing is said as git's failure, not as a directory that is no
+// repository.
+func TestIngestRefusesADestinationRootGitDidNotAnswerFor(t *testing.T) {
+	repoRoot, _ := setupStore(t)
+	fakeReposFailing(t, nil, repoRoot)
+	_, err := Ingest(Destination{RepoRoot: repoRoot, RootSHA: testRootSHA}, []string{t.TempDir()}, IngestOptions{})
+	if err == nil || !strings.Contains(err.Error(), "could not read the root commit") || strings.Contains(err.Error(), "name a git repository with commits") {
+		t.Fatalf("want git's failure named, not a request for a repository with commits: %v", err)
 	}
 }
 

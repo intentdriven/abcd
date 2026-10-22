@@ -11,10 +11,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -34,6 +36,12 @@ var (
 	loadJitter func() time.Duration
 	// loadMark is the command form's mark; nil is the core's /bin/sleep.
 	loadMark func() (func(), error)
+	// loadRenew renews the caller's own reservations half through their
+	// lease, run every loadRenewEvery while the waiter waits; loadRenewRound,
+	// when set, is called after each round has been said.
+	loadRenew      = func(root string) ([]claim.Renewal, error) { return claim.RenewDue(root, claim.Options{}) }
+	loadRenewEvery = 5 * time.Minute
+	loadRenewRound func()
 )
 
 // newImplementLoadCommand builds `implement load`, the load check that runs once
@@ -167,7 +175,17 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"live, judges and takes the race gate's hold as well as its own, and from the\n" +
 			"moment it opens every race gate and every other such command counts it as a\n" +
 			"race run, so a second one waits for the first. A\n" +
-			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.",
+			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
+			"While it waits, in a checkout, the waiter keeps your own reservations from\n" +
+			"lapsing: at once and then every five minutes it renews each of your live\n" +
+			"reservations from this copy that is half through its lease, for its own term or\n" +
+			"two hours, whichever is longer, and says each renewal on standard error. It\n" +
+			"never reserves anything new, takes nothing over and revives nothing that has\n" +
+			"lapsed, so a lease shorter than ten minutes can still lapse between two rounds;\n" +
+			"a renewal that fails is said once, and the wait goes on. The renewal runs beside the gate, never in it, so\n" +
+			"the gate's order and its open never wait on one, and it stops when the gate\n" +
+			"opens. Since it runs through git and gh, no waiter counts another's git or gh\n" +
+			"child as its command: gate make or go, never git or gh itself.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return nil
@@ -252,7 +270,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	if race {
 		flag = "--race-gate"
 	}
+	stopRenewal := startHoldRenewal(cmd.ErrOrStderr())
 	res, err := implement.WaitLoad(req)
+	stopRenewal()
 	if err != nil {
 		return &exitError{Code: 1, Msg: "abcd implement load " + flag + ": " + err.Error()}
 	}
@@ -288,6 +308,76 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 		return &exitError{Code: code}
 	}
 	return nil
+}
+
+// startHoldRenewal renews the caller's own reservations while the waiter
+// waits, so a reservation made by hand does not lapse while its preflight
+// waits its turn (iss-2610170926295770): from the checkout the waiter runs
+// in, at once and then every loadRenewEvery, it renews each of this person's
+// live reservations from this copy that is half through its lease
+// (claim.RenewDue), and says each renewal on w. A renewal that fails is said
+// once until it succeeds, and the wait goes on. It runs beside the gate,
+// never in it: the gate's looks, its order and its open neither wait on a
+// renewal nor read one, and stop returns at once, a renewal still in flight
+// finishing unsaid. Outside a checkout there is nothing to renew.
+func startHoldRenewal(w io.Writer) (stop func()) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return func() {}
+	}
+	root, err := gitutil.CheckoutRoot(cwd, "the reservations")
+	if err != nil {
+		return func() {}
+	}
+	var mu sync.Mutex
+	stopped := false
+	say := func(format string, a ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		if !stopped {
+			fmt.Fprintf(w, format, a...)
+		}
+	}
+	// The seams are read here, once, so the goroutine reads no shared state.
+	renew, every, round := loadRenew, loadRenewEvery, loadRenewRound
+	done := make(chan struct{})
+	go func() {
+		tick := time.NewTicker(every)
+		defer tick.Stop()
+		failed := map[string]bool{}
+		viewFailed := false
+		for {
+			got, err := renew(root)
+			if err != nil && !viewFailed {
+				say("abcd implement load --wait: could not read the reservations to renew them (%v); the wait goes on\n", err)
+			}
+			viewFailed = err != nil
+			for _, r := range got {
+				switch {
+				case r.Err != nil && !failed[r.Record]:
+					say("abcd implement load --wait: could not renew your reservation on %s (%v); the wait goes on\n", r.Record, r.Err)
+				case r.Err == nil:
+					say("abcd implement load --wait: renewed your reservation on %s, half its lease having passed while this waits, until %s\n",
+						r.Record, r.Until.UTC().Format(time.RFC3339))
+				}
+				failed[r.Record] = r.Err != nil
+			}
+			if round != nil {
+				round()
+			}
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+			}
+		}
+	}()
+	return func() {
+		mu.Lock()
+		stopped = true
+		mu.Unlock()
+		close(done)
+	}
 }
 
 // runGated runs the gated command with the verb's own streams and returns its

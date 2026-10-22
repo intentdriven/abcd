@@ -83,7 +83,19 @@ type RepoIdentity struct {
 	Name    string `json:"name"`
 	Github  string `json:"github"`
 	RootSHA string `json:"root_sha"`
+	// rootErr is why RootSHA is "" when git did not answer for a repository
+	// (gitutil.ErrNoRootAnswer, gitutil.ErrGitTimedOut): nil when RootSHA is
+	// the answer, "" included. Unexported, so the JSON envelope is unchanged.
+	rootErr error
 }
+
+// RootErr reports why the root commit is unknown when git did not answer for
+// the repository, and nil when RootSHA is git's answer — an empty RootSHA with
+// a nil RootErr is a directory outside any repository, or one with no commits.
+// A caller that would key, create or refuse anything on an empty RootSHA asks
+// this first, so a failed git call is never read as "no repository"
+// (iss-2610051434156079).
+func (id RepoIdentity) RootErr() error { return id.rootErr }
 
 // DetectionResult is the canonical envelope. dry-run marshals exactly this
 // (with Adopted=nil).
@@ -208,6 +220,15 @@ type InstallOptions struct {
 	// cannot import it, because update imports ahoy. Nil refuses every
 	// promotion: there is no unverified path.
 	VerifyProvenance ProvenanceCheck
+	// OnlyWaiting is the setup the yes to the after-update offer runs
+	// (spc-2610170635097509, step 7): only the questions and changed
+	// defaults Waiting returns for this repository are put to the prompter,
+	// and every other question is left unanswered, as deciding later leaves
+	// it. The yes approved the run, so every kind of change is approved up
+	// front and no approval is put. With Yes no question is answered at all,
+	// waiting or not: --yes is never a person's answer to a value question.
+	// --only-waiting.
+	OnlyWaiting bool
 }
 
 // ProvenanceCheck verifies a release artefact's build provenance by its

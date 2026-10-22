@@ -32,6 +32,9 @@ func fakeSSH(t *testing.T) (record string) {
 // (review finding R6 on spc-2610031753359849 steps 1-3).
 func TestNetsSSHNeverPrompts(t *testing.T) {
 	gittest.Env(t)
+	// The fake ssh below is the transport under test, so the guard that
+	// refuses ssh under a test binary is off here.
+	gitutil.AllowNetTransportsForTest(t)
 	// Unset, not empty: git takes an empty GIT_SSH_COMMAND as the command.
 	for _, k := range []string{"GIT_SSH_COMMAND", "GIT_SSH"} {
 		t.Setenv(k, "")

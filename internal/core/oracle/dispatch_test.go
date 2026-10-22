@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -118,7 +119,7 @@ func TestDispatchSendsTheStepThroughThePointedProvider(t *testing.T) {
 	if rc.ConnectionUsed != "openrouter" || rc.ConnectionTried != "openrouter" || rc.FallbackReason != "" {
 		t.Fatalf("receipt = %+v; want openrouter tried and used", rc)
 	}
-	if rc.ProviderCall == nil || *rc.ProviderCall != (CallRecord{Provider: "openrouter", ModelAsked: "typesafe/jev-1.13",
+	if rc.ProviderCall == nil || !reflect.DeepEqual(who(*rc.ProviderCall), CallRecord{Provider: "openrouter", ModelAsked: "typesafe/jev-1.13",
 		ModelReported: "typesafe/jev-1.13-20260915", Credential: "openrouter"}) {
 		t.Fatalf("provider call = %+v", rc.ProviderCall)
 	}

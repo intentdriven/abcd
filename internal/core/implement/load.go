@@ -354,7 +354,13 @@ func scrubOwnNames(repoRoot string, own []LoadOwnStray) bool {
 func logLoadWarning(req LoadRequest, res LoadResult) LoadRunLog {
 	sha := req.RootSHA
 	if sha == "" && req.RepoRoot != "" {
-		sha = gitutil.RootCommit(req.RepoRoot)
+		var err error
+		if sha, err = gitutil.RootCommit(req.RepoRoot); err != nil {
+			// Best effort, like every failure here: the warning stands, and
+			// the log says it could not find the run rather than that there
+			// is none.
+			return LoadRunLog{Error: "reading the repository's root commit to find the run: " + err.Error()}
+		}
 	}
 	if !gitutil.IsFullSHA(sha) {
 		return LoadRunLog{}

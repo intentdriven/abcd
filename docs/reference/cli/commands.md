@@ -60,7 +60,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 #### `abcd ahoy connect`
 
-Verify a provider with one call and configure it, or guide setup: Writes ~/.abcd.noindex/ and the key's home, nothing guided; refuses no --model off a terminal.
+Verify a provider and configure it, or guide setup: Writes ~/.abcd.noindex/ and the key's home, nothing guided; refuses no --model off a terminal.
 
 **Usage:** `abcd ahoy connect [<provider>] [flags]`
 
@@ -77,6 +77,7 @@ Verify a provider with one call and configure it, or guide setup: Writes ~/.abcd
       --key string          the credential's name (default: the provider's name)
       --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); omitted at a terminal, the service's models are listed with the key and you pick one
       --resume string       with --guide: the last turn's resume object, or - to read it from stdin
+      --stream-usage        whether calls ask the server for usage in the stream (stream_options.include_usage), written into the block as stream_usage; omitted, the verification asks, and a server that refuses it is asked once more without it and the block is written with false (default true)
 ```
 
 **Example:**
@@ -124,6 +125,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
+      --only-waiting            ask only the setup that waits after an abcd update: the questions this repository never answered and the settings whose default changed, never one answered or deferred with decide later; every kind of change is approved up front, as the yes to the offer abcd update news makes approves them; with the approve-everything flag no question is answered, so each still waits
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
       --outbound                opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
       --readme-parts string     answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included
@@ -1568,9 +1570,124 @@ abcd embark probe ../lifeboat
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb.
+Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.
 
 **Usage:** `abcd guard`
+
+#### `abcd guard approve`
+
+Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.
+
+**Usage:** `abcd guard approve --dir <working-tree> --base <commit> [--run-dir <dir>]... [flags]`
+
+Answers the permission prompts of an agent abcd started without a terminal,
+over MCP on stdio: the claude runner starts it, as the one server of a launch
+whose role's contract grants the shell, and names its tool, approve, as the
+harness's permission prompt tool. Each prompt is judged against the hazard
+registry of the working tree --dir names, read afresh for every prompt, and
+in force only where it is at least as strong as the registry at --base, the
+commit the run started on: any weakening since then, of a warn or a blocker,
+committed or not, refuses every command.
+
+A shell command is approved only when the guard reads it whole and clears
+it: no registry entry and no reading signal, a warn included; no note about
+the check, such as a script that does not exist; and every program named by
+the line rather than by a variable, a substitution or a glob ([, [[ and test
+are the test commands they name, not globs). Beyond the registry, it
+refuses:
+
+  - arithmetic on anything but written numbers: a name, a quote or an
+    expansion in (( )), $(( )) or a for (( )) header, the number tests of
+    [[ ]], let, declare -i, a non-numeric array index or substring offset,
+    ${!name}, and a name not written in the line handed to read, unset,
+    printf -v or a declaration; [ and test compare without evaluating;
+  - inline code for python -c, node -e or -p, perl -e, ruby -e, php -r,
+    osascript, lua or Rscript -e, deno eval and PowerShell -Command; a flag
+    after the script's name, or after python's -m module, is the script's;
+  - code on the standard input (a pipe, a here-document, a here-string or a
+    redirected file) of one of those interpreters, or of ex, when no script
+    file is named;
+  - an awk program that calls system(, pipes to or from a command, or is a
+    variable; a sed script with the e command or the e flag of s; tar's
+    options that run a program (--checkpoint-action, --to-command,
+    --use-compress-program, -I and the like); a vim or ex command (-c, --cmd,
+    +) holding a !;
+  - a write the guard's write model reads (redirections and a list of known
+    writers, so a program outside the list writes unread), or a removal,
+    whose target the line does not spell out (a variable,
+    a substitution, a glob, or a name after an unknown change of directory),
+    except a glob removal in a directory inside the working tree, followed
+    through symlinks, that no protected name could match, when no earlier
+    part of the line writes or removes a file and no wildcard stands in a
+    directory part of the glob, nor does it end in a /; a command where an
+    unquoted ( stands in a word (x(:A), x(.)) is refused whole, since zsh
+    reads it as glob qualifiers that can change the path, but for the (( of
+    an arithmetic for-loop and the ( before a case pattern, which bash needs;
+  - such a write, or a removal, reaching a protected path, with its directories
+    resolved through symlinks and case folded where the filesystem folds it:
+    the git common directory and its hooks, each checkout's .git, the home
+    shell start-up files and git configuration, the host's settings, .mcp.json,
+    .abcd/guard.json, abcd's own folder in the home directory (its
+    trusted-roots, rules.json, config.json and the rest, but for the run's
+    own worktree kept there), and the names the host protects in any
+    working tree;
+  - a removal whose target lies outside the working tree, the run's own
+    directories (each --run-dir) and the temporary directory; a write
+    outside the working tree is judged by the protected paths alone;
+  - git config with --global, --system or --file on a write, setting a key
+    that starts a program (core.hooksPath, core.pager, an alias and the like)
+    or core.worktree, or opening the editor, and any git command setting such
+    a key for itself, but for -c core.pager or core.sshCommand set to a
+    command the line spells out, which is judged as that command;
+  - removing, moving or recursively changing the root, a top-level directory,
+    the home directory or a directory directly in it, the working tree or a
+    directory above it, or another checkout of the repository; a find that
+    deletes from home or above; an rsync --delete into such a directory;
+  - a call asking to run outside the host's sandbox.
+
+An approved call runs with the command judged and its description, and
+nothing else it carried, from the working tree it was judged for and under
+bash: the command comes back as
+cd -- '<dir>' && /bin/bash --noprofile --norc -p -c '<command>', since the
+host keeps the shell's directory from one call to the next and runs the text
+in the person's login shell, which may be zsh, while the guard reads bash's
+grammar. The login shell only changes directory and starts /bin/bash with its
+profile, rc and environment start-up files ignored (-p), so BASH_ENV,
+exported functions and SHELLOPTS do nothing, and bash runs the command and
+gives no zsh-only construct its zsh meaning (a glob qualifier is a syntax
+error to it); when the directory cannot be entered, no part of the command
+runs. The bash call is not an exec, so text the host joins after it still
+runs. That text is read again with the guard's own parse and approved only
+when it is exactly that change of directory and that one bash call, with the
+whole command as its last word. A command holding a NUL byte is refused
+before it is read. Everything else is refused with the guard's reason and
+what to run instead, which the harness hands the agent, so the agent can
+rewrite the command. A prompt for any tool but the shell is refused, since
+nobody is there to approve it.
+
+The file tools the role is granted (--allowedTools on the launch) write
+without asking the approver, and the abcd binary that answers is not among
+the paths it protects; the OS sandbox for launched agents
+(spc-2610161751056096) is what bounds those writes.
+
+The guard is a mistake filter, not a security boundary (see `abcd guard
+check --help` for what an allow does not see), and this adds no sandbox.
+It never touches the person's host settings, and interactive sessions never
+start it. It exits 0 when its input ends.
+
+**Flags:**
+
+```
+      --base string           the commit the run started on, by its full object name
+      --dir string            the working tree the agent runs in, as an absolute path
+      --run-dir stringArray   a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
+```
+
+**Example:**
+
+```
+abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567
+```
 
 #### `abcd guard check`
 
@@ -2255,6 +2372,17 @@ live, judges and takes the race gate's hold as well as its own, and from the
 moment it opens every race gate and every other such command counts it as a
 race run, so a second one waits for the first. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
+
+While it waits, in a checkout, the waiter keeps your own reservations from
+lapsing: at once and then every five minutes it renews each of your live
+reservations from this copy that is half through its lease, for its own term or
+two hours, whichever is longer, and says each renewal on standard error. It
+never reserves anything new, takes nothing over and revives nothing that has
+lapsed, so a lease shorter than ten minutes can still lapse between two rounds;
+a renewal that fails is said once, and the wait goes on. The renewal runs beside the gate, never in it, so
+the gate's order and its open never wait on one, and it stops when the gate
+opens. Since it runs through git and gh, no waiter counts another's git or gh
+child as its command: gate make or go, never git or gh itself.
 
 **Flags:**
 
@@ -4630,4 +4758,20 @@ install's shape, and swaps nothing.
 ```
       --check   fetch the latest release once and compare it with this binary, swapping nothing (it reaches the network only when invoked; abcd never fetches implicitly — adr-38); names its source and the command that takes the update
       --yes     skip the TTY confirmation of a freshly resolved tag
+```
+
+#### `abcd update news`
+
+Say what changed since the update, and offer the setup that waits: Writes only an answer or --seen, to ~/.abcd.noindex/; refuses --answer with --full or --seen.
+
+**Usage:** `abcd update news [flags]`
+
+After an abcd update, print what the agent relays at the start of its first reply: one line per release this computer has not been shown, saying how many changes it made and which need the person to act, and, where the update brings this repository setup it never answered, the offer to run setup again. It prints nothing when there is nothing to say. --full prints every change of the releases since the last update, those that need action first, each with the record it cites, and what waits here. Neither writes anything. Only a person's reply is recorded: --answer yes|not-now records the answer to the offer for this repository and release, once, and --seen records that the news was read where no offer was made, both in abcd's home folder. On yes, run abcd ahoy install --only-waiting. The text comes only from the binary's own digest and checked release numbers, and nothing is fetched.
+
+**Flags:**
+
+```
+      --answer string   record the person's reply to the offer, yes or not-now, once for this repository and release; run it only with their reply
+      --full            print the full summary of the releases since the last update and what waits here; writes nothing
+      --seen            record that the person read the news where no offer was made; run it only after they were shown it
 ```

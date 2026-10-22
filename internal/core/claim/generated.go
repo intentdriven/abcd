@@ -56,7 +56,13 @@ func (g Generated) Is(p string) bool {
 // root .gitattributes); otherwise the set is empty and the reason says why
 // generated files were not recognised.
 func GeneratedFiles(root string) (Generated, string) {
-	ref := originDefault(root)
+	return generatedFilesAt(root, originDefault(root))
+}
+
+// generatedFilesAt is GeneratedFiles read from ref, origin's default branch as
+// the caller resolved it ("" for none), so an operation that has named the
+// branch once reads it under that one name.
+func generatedFilesAt(root, ref string) (Generated, string) {
 	if ref == "" {
 		return Generated{}, ""
 	}
@@ -88,17 +94,20 @@ func GeneratedFiles(root string) (Generated, string) {
 }
 
 // plainDeclaration is why the root declaration is not plain, "" when it is:
-// abcd shares a generated file only on a declaration that is ASCII
-// throughout, quotes no pattern, has no line starting with [attr] and
-// converts no file on checkout (ident, working-tree-encoding).
+// abcd shares a generated file only on a declaration whose every line git
+// reads is ASCII, quotes no pattern, does not start with [attr] and
+// converts no file on checkout (ident, working-tree-encoding). A blank or
+// comment line, one whose first non-blank byte is '#', is one git skips
+// whole, so what it holds decides nothing; a byte-order mark before the
+// '#' leaves the line read, and outside ASCII.
 func plainDeclaration(text string) string {
-	if !isASCII(text) {
-		return "holds a byte outside ASCII"
-	}
 	for line := range strings.SplitSeq(text, "\n") {
 		f := attrFields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 			continue
+		}
+		if !isASCII(line) {
+			return "holds a byte outside ASCII"
 		}
 		switch {
 		case strings.HasPrefix(f[0], `"`):

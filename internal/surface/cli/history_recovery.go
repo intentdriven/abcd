@@ -218,6 +218,10 @@ func resolveDestination(into string) (history.Destination, error) {
 	if err != nil {
 		return history.Destination{}, err
 	}
+	if rerr := det.RepoIdentity.RootErr(); rerr != nil {
+		return history.Destination{}, fmt.Errorf("history ingest: the root commit of %s could not be read, so it has no store key this run: %w",
+			termsafe.Sanitize(fsutil.DisplayPath(abs)), rerr)
+	}
 	if det.RootSHA == "" {
 		return history.Destination{}, fmt.Errorf("history ingest: %s is not a git repository with commits, so it has no store key",
 			termsafe.Sanitize(fsutil.DisplayPath(abs)))

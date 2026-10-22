@@ -239,11 +239,10 @@ func validBlob(s string) bool {
 	return true
 }
 
-// defaultRecords is every record origin's default branch holds as last
-// fetched, by id, each with its folders and blobs; nil when this checkout
-// names no default branch of origin.
-func defaultRecords(root string) (map[string][]peers.RecordAt, error) {
-	ref := originDefault(root)
+// defaultRecords is every record origin's default branch, ref as the caller
+// resolved it, holds as last fetched, by id, each with its folders and blobs;
+// nil when ref is "", where this checkout names no default branch of origin.
+func defaultRecords(root, ref string) (map[string][]peers.RecordAt, error) {
 	if ref == "" {
 		return nil, nil
 	}

@@ -11,10 +11,14 @@ in the tree rather than only a web console.
   status checks (strict), and the merge queue. **No bypass actors**: nobody
   merges past a red required check.
 - `main-review.json` — the pull-request rule requiring a code-owner review on
-  changes to the publish surface (`.github/CODEOWNERS`). Repository admins may
-  bypass, which is why it is a separate ruleset: a bypass covers every rule in
-  its ruleset, so the review requirement and the required checks must never
-  share one.
+  changes to the publish surface (`.github/CODEOWNERS`). Its approval count is
+  0, and the code-owner approval is required all the same: GitHub requires a
+  code owner's approval on a pull request that modifies owned content whatever
+  the count. Repository admins may bypass, so the rule binds every other
+  writer and does not hold the owner's own pull requests, an agent's under the
+  owner's identity included. That is why it is a separate ruleset: a bypass
+  covers every rule in its ruleset, so the review requirement and the required
+  checks must never share one.
 - `reservations-protection.json` — deletion and force-push protection for
   `refs/heads/abcd-reserved/**`, the branches `abcd reserve` pushes
   (itd-2609091034175565). It is its own ruleset because it guards abcd's
