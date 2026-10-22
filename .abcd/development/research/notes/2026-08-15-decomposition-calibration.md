@@ -2495,6 +2495,33 @@ After filing, two adversarial reviews (design and record discipline, each an Opu
 
 The SOTA survey was filed as research/notes/2026-10-16-model-matrix-sota.md, and itd-166 was widened to the asked and served sides it was routed. The routing survived as a five-record split; its plumbing row was the part the initial routing got wrong.
 
+## 2026-10-22: the checklist and coordination routings, confirmed by the product thinker's answers
+
+The 2026-10-18 checklist routing (below) was graded unconfirmed until the
+product thinker answered. Their answers of 2026-10-22 confirm it as proposed,
+row by row:
+
+| part | type | home, as filed on 2026-10-22 |
+|---|---|---|
+| the private shared option, the public option and the phone | capability | its own draft, itd-2610222029228127, building on both intents (dcn-2610222025212338: not asked, because the answer that full uploads come later settled it) |
+| the checklist records a credential's kind, scope and expiry, never its value or anything that retrieves it | trust rule | adr-2610222026265719 (accepted) and brief invariant 24 |
+| a wait holds one item, never the session, and a declared dependency holds only the landing | stance | the principle `waiting-holds-one-item-never-a-session` |
+| autonomous work survives the host's automatic compaction (iss-2610222026223032, filed by the product thinker the same night) | capability | the checklist intent itself, as the first of two proposed specs; not a new intent, since it is the checklist's on-disk file and its re-injection |
+
+The coordination intent's two deferred records were filed at the same
+time: its trust rule as adr-2610222026262980 (proposed until the plan's
+sign-off, then a brief invariant) and its stance as the principle
+`coordination-lives-on-the-shared-remote`.
+
+Verdict: SPLIT, confirmed for the checklist draft; the coordination split of
+2026-10-17 stands. One part of the issue's remedy did not survive a check of
+the host's hooks reference: no hook can make a session write before an
+automatic compaction, so the checklist is kept current at each turn's end
+instead (recorded in the checklist draft's decisions). Advisory reversal
+flags: one, raised by the product thinker, not the routing: the model budget
+shared across sessions reverses itd-2610100704270254's "each abcd run"
+(dcn-2610222025116937).
+
 ## 2026-10-17: headless agents in parallel coordinate through the shared remote (product thinker, routing confirmed)
 
 | part | type | home |

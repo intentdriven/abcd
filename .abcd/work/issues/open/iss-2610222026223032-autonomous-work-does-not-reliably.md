@@ -9,6 +9,7 @@ found_during: "PT asked for it during the 2026-10-22 crash recovery"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "hooks"
+related_intents: [itd-2610170638184486]
 remedy: "each abcd session keeps its to-do list as a file in the local tier (.abcd/.work.local/, one per session), written as it works; abcd's PreCompact hook makes the session bring it up to date before a compaction and the SessionStart and post-compaction hooks inject it back, so the session resumes from the list; deliver it as the first slice of the session checklist intent itd-2610170638184486"
 ---
 

@@ -11,7 +11,7 @@ impact: additive
 origin: researcher-authored
 production_mode: hand-written
 related_issues: [iss-2610161639025702, iss-2610161634043273, iss-2610162306239284, iss-2610140638074587]
-related_intents: [itd-2610100704270254, itd-78, itd-115, itd-2609201916151817, itd-82, itd-2609201925079472, itd-148]
+related_intents: [itd-2610170638184486, itd-2610222029228127, itd-2610100704270254, itd-78, itd-115, itd-2609201916151817, itd-82, itd-2609201925079472, itd-148]
 supersedes: [itd-2609150819440345]
 ---
 
@@ -35,7 +35,7 @@ Published measurements say the collisions are common, not rare: 19.8% of agent p
 
 ## Mechanism
 
-We expect parallel headless agents to stop colliding and stop idling on each other, because every fact they now pass by message (who holds what, what waits on what, whose turn it is, how much budget is left) becomes a record on the shared remote that each agent already fetches and that any session can act on. Shown wrong if, in a measured run of three or more headless agents, the agent minutes lost to conflicts, rebuilds after a dependency landed, and waits that ended in a timeout are no lower than in a run of the same agents coordinating by message.
+We expect parallel headless agents to stop colliding and stop idling on each other, because every fact they now pass by message (who holds what, what waits on what, whose turn it is, how much budget is left) becomes a record on the shared remote that each agent already fetches and that any session can act on. Shown wrong if, in a measured run of three or more headless agents, the agent minutes lost to conflicts, rebuilds after a dependency landed, and waits that ended in a timeout are no lower than in a run of the same agents with only reservations and the load gate (dcn-2610180720412979: headless agents cannot coordinate by message, so the shipped coordination is the baseline).
 
 ## Scope Conditions
 
@@ -43,6 +43,7 @@ We expect parallel headless agents to stop colliding and stop idling on each oth
 - Holds for one repository on one forge whose merge queue is the only route to the default branch.
 - Holds for the machine budget (preflights, race runs) only among agents on one machine, which is all the process table shows. The model budget spans every account of one organisation, because the provider's rate limits do.
 - Holds where the forge can issue a credential narrower than the person's own login, limited by repository and by act (push to its own branches, open a pull request, read), and expiring; GitHub's App installation tokens and fine-grained tokens are the candidates.
+- Holds for unattended runs started where the person's own forge login is absent (a cloud session, a container or a separate user account); on a computer where that login is saved, abcd refuses to start one (dcn-2610222025104969, dcn-2610222030477927).
 - Holds while at most one minor version of abcd's coordination records is in use at once; a reader meeting a newer record refuses it rather than guessing.
 
 ## Acceptance Criteria
@@ -58,6 +59,8 @@ We expect parallel headless agents to stop colliding and stop idling on each oth
 - Given a session that stops without notice, when the central view is opened, then its line reads as live, then as not seen for a stated time, then as work another session may take over after a delay, then it is gone; it never reads as working once its renewals have stopped.
 - Given an autonomous session started by abcd, when it pushes, opens a pull request or reads the forge, then it does so under a credential issued for it alone, limited to the repository and the acts its work needs and expiring with it, never under the person's own login; and when it tries an act outside that set (changing a repository setting or variable, deleting a branch it did not create, reaching another repository), the forge refuses it.
 - Given the person's own login holds admin rights on the repository, when an autonomous session runs, then nothing the session can reach carries those rights, so a setting only the maintainer may change (the reservation cap among them) stays out of its reach.
+- Given a computer where the person's forge login is saved, when an unattended run is asked to start there, then abcd refuses to start it and names each place it found a login, without printing the login; and given a cloud session, a container or a separate user account with no login saved, the run starts with its own App token.
+- Given the repository sets a sub-agent budget of eight and two sessions are running, when both start sub-agents, then together they never hold more than the budget, and a session that finds the budget spent waits for a slot under a stated deadline rather than starting one.
 - Given an agent about to re-submit a branch after a change it overlaps with has landed, when abcd rebuilds it, then the agent is given a summary of what landed since its base.
 
 ## SOTA
@@ -74,14 +77,21 @@ Path taken: 2. The forge and the shared remote are the native floor (the queue, 
 
 ## Open Questions
 
-- Who runs the coordination pass: any session on demand (each `land`, `build` or `drain` runs it before acting), a session that holds a lease to run it on a timer, or both? The state-of-the-art pass advises against a coordinator process that must stay alive.
-- Where does "waits on" live: a `Depends-On:` line in the pull request body (Mergify's form, visible on the forge), a field on the claim record on the remote (visible before any pull request exists), or both?
-- Does the dependent branch get rebuilt by merging the landed dependency in or by restacking it, given the repository allows merge, squash and rebase merges and a restack rewrites shas a `resolved_by.commit` stamp may cite?
-- Where does the machine budget live: the load gate's slots (`load.preflights`) extended to every heavy job as weighted slots, or a separate pool? Does the sub-agent budget (itd-2610100704270254) join it, and is it sized from the provider's rate-limit headers or a fixed count?
-- Which credential does a session get, and who issues it: a GitHub App installation token (short-lived, scoped per repository and permission, the kind the dependency re-author workflow already uses), a fine-grained token per run, or another? Can abcd set it up for a repository without manual steps, and where is the issuing secret kept so no session can read it?
-- Does the release cut become a lease the merge path checks, replacing the rule that the cutting session has the final say by message?
-- The fixed-form announcements (itd-2609151838312703) stay their own intent; the pass reads them as one input beside claims and dependency lines. Is "I am merging, hold" then an announcement the pass acts on, or a field of the short status line?
-- How often may the short lines and renewals be pushed? The forge recommends at most six pushes a minute per repository; ten sessions renewing every five minutes is two.
+Answered on 2026-10-18 by the planning prep (facilitator, each a decision
+record) and on 2026-10-22 by the product thinker:
+
+- Who runs the pass: any session on demand, before it acts; no timer lease (dcn-2610180720366282).
+- Where "waits on" lives: a `Depends-On:` line in the pull request body, mirrored as a hint on the status line (dcn-2610180720362692).
+- Merge or restack: merge, restacking only after a hand squash or rebase merge (dcn-2610180720369860).
+- The machine budget: the load gate's slots, weighted per job (dcn-2610180720376153). The model budget: shared across sessions (dcn-2610222025116937, the product thinker's reversal of dcn-2610180720379757).
+- The credential: a GitHub App token minted for the person, eight-hour expiry (dcn-2610180720379765, dcn-2610180723332655); the App registered once in the browser (dcn-2610180720389628); shipped with the coordination (dcn-2610222025116835).
+- The release cut: the announcements intent's release reservation, no new lease (dcn-2610180720382472).
+- "I am merging, hold": a hold is a reservation; the announcement informs (dcn-2610180720389352).
+- Push rate: renewals hourly, the line only on change, back-off on refusal (dcn-2610180720390166).
+
+Still open, for the product thinker's sign-off:
+
+- **How far the shared model budget reaches.** Sessions on one computer can share a pool kept on that computer, as the load gate's slots already are; sessions on several computers or accounts would need the pool kept on the shared remote, which costs a push each time a sub-agent starts or ends. The scope condition above says the model budget spans every account of one organisation; the product thinker's answer of 2026-10-22 said "shared across sessions" without naming the reach.
 
 ## Decisions
 
@@ -91,6 +101,12 @@ Path taken: 2. The forge and the shared remote are the native floor (the queue, 
 4. **This intent supersedes the register draft (2026-10-17).** The register draft (itd-2609150819440345) stated the problem this intent answers: who holds what was settled only in conversation. Its want, a central place to see who holds what, is decision 3's view, and its claim branch shipped as reservations. Its helper program on each machine, reachable over a private network to show work not yet pushed, is dropped: it needs a process left running, which decision 3 avoids. It can be raised again as a new idea.
 5. **Autonomous sessions never use the person's own forge login (2026-10-17).** The product thinker ruled that autonomous sessions work under a weaker credential of their own, given on a need-to-know basis, and that this belongs to this intent and to the autonomous-agents bundle. It was found that day that every session on the machine used the maintainer's own `gh` login, which holds admin rights on the repository, so any session could change a setting meant for the maintainer alone (the reservation cap, captured the same day).
 6. **The central view says what each session is actually doing (2026-10-17).** Restated from the product thinker's ruling relayed by the checklist draft's session: the person must never wrongly believe agents are working or waiting. A line's state is therefore derived from what the machine and the remote can see (the renewal, the process, the last commit), and what an agent writes about itself is a hint beside it, because agents' own status reports lag.
+
+7. **Unattended runs happen only where the person's forge login is absent (2026-10-22, C1).** The product thinker chose a real guarantee, set up once, over saying plainly that the login is still within reach (dcn-2610222025104969). abcd checks for a saved login before an unattended run starts and refuses where it finds one (dcn-2610222030477927, facilitator).
+8. **Only the short line is shared now; full checklist uploads come later (2026-10-22, C2).** Settles the two rulings of 2026-10-17 in favour of later and keeps decision 3 as written (dcn-2610222025114805). The later uploads are itd-2610222029228127.
+9. **Agents' own App tokens ship in the same release as the coordination (2026-10-22, C3).** The person registers abcd's GitHub App once in the browser before that release is usable (dcn-2610222025116835).
+10. **The model budget is shared across sessions (2026-10-22, C-confirm).** A typed reversal of dcn-2610180720379757 and of the product thinker's 2026-10-10 answer "each abcd run" in itd-2610100704270254: the budget is one pool every session draws on, and one busy session can slow the others, which the product thinker accepted (dcn-2610222025116937). The press release keeps "a share of the model budget".
+11. **The trust rule and the stance are written (2026-10-22).** The trust rule is adr-2610222026262980, proposed until the plan's sign-off, then a brief invariant; the stance is the principle `coordination-lives-on-the-shared-remote`.
 
 ## Audit Notes
 

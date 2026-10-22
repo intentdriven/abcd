@@ -149,6 +149,7 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610161710316538` — Drains and builds a person's session drives report how isolated they were
 - `itd-2610170634394993` — Headless agents in parallel coordinate through the shared remote, not conversation
 - `itd-2610170638184486` — Every session keeps a checklist on disk, so no run stalls and no stall spreads
+- `itd-2610222029228127` — Every session's checklist reaches a shared copy and the phone
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
