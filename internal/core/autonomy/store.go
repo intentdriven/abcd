@@ -53,7 +53,12 @@ type Store struct {
 // repoRoot, below home: keyed on the repository's root commit, so every
 // working copy of it opens the same store. Nothing is created.
 func openStore(home, repoRoot string) (Store, error) {
-	sha := gitutil.RootCommit(repoRoot)
+	sha, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		// Not ErrNoRootCommit: git did not answer, and the store is neither
+		// keyed nor read on a guess.
+		return Store{}, fmt.Errorf("reading the repository's root commit to key the away store on: %w", err)
+	}
 	if !gitutil.IsFullSHA(sha) {
 		return Store{}, ErrNoRootCommit
 	}

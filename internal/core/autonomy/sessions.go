@@ -133,8 +133,12 @@ func ResolveCopy(cwd, sessionID string, o Options) (string, Store, error) {
 		return root, st, err
 	}
 	if c, ok := st.SessionCopy(sessionID); ok {
-		if top, err := gitutil.Toplevel(c); err == nil && gitutil.RootCommit(top) == st.RootSHA() {
-			return top, st, nil
+		// A noted copy git cannot answer for is not confirmed, and the
+		// session acts from cwd's worktree, as when it is no repository.
+		if top, err := gitutil.Toplevel(c); err == nil {
+			if sha, err := gitutil.RootCommit(top); err == nil && sha == st.RootSHA() {
+				return top, st, nil
+			}
 		}
 	}
 	return root, st, nil

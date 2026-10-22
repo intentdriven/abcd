@@ -12,6 +12,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // managedCopy is a checkout with one commit and the local tier, under a HOME
@@ -37,6 +38,18 @@ func fixedOptions(home string, now time.Time) Options {
 		Home: home,
 		Now:  func() time.Time { return now },
 		Who:  func(string) string { return "alice" },
+	}
+}
+
+// TestOpenStoreRefusesWhenGitGivesNoRoot: a root commit git did not answer
+// for is not "no root commit". Opening the store stops with git's failure,
+// not ErrNoRootCommit, and the store is never keyed on a guess.
+func TestOpenStoreRefusesWhenGitGivesNoRoot(t *testing.T) {
+	root, home := managedCopy(t)
+	gittest.ShimGit(t, []string{"--max-parents=0"}, "", 128)
+	_, err := openStore(home, root)
+	if !errors.Is(err, gitutil.ErrNoRootAnswer) || errors.Is(err, ErrNoRootCommit) {
+		t.Fatalf("openStore with git failing = %v, want gitutil.ErrNoRootAnswer and not ErrNoRootCommit", err)
 	}
 }
 
