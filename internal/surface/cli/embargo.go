@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/embargo"
@@ -89,7 +90,20 @@ func newEmbargoIntakeCommand(asJSON *bool) *cobra.Command {
 			"critical to critical, high to major, medium and low to minor; an advisory\n" +
 			"with no severity is listed for you to set on GitHub and not recorded. A\n" +
 			"re-run records nothing twice. Nothing is written to this checkout's ledger\n" +
-			"or committed anywhere.",
+			"or committed anywhere.\n\n" +
+			"Each advisory the store holds that GitHub lists in neither state is read\n" +
+			"from GitHub on its own. One GitHub reports published is recorded published, at\n" +
+			"GitHub's own published_at, which releases it from the check; one it reports\n" +
+			"closed is recorded closed, at its closed_at, only when its verdict is\n" +
+			"not-abcds, not-a-vulnerability or public-track. Each recorded is listed as\n" +
+			"ended. One GitHub cannot tell (a failed read, a 404 or 403 on its read, an\n" +
+			"unknown state, a missing or malformed time), or reports closed while the\n" +
+			"store holds it otherwise, is listed as unread, with the reason, and left\n" +
+			"under embargo to be read again. A missing gh, a gh signed in to no account or\n" +
+			"holding a token GitHub rejects, or a refusal naming the advisory scope,\n" +
+			"refuses the intake with nothing recorded. Each published advisory whose\n" +
+			"private record is resolved in the store and not yet in this checkout's\n" +
+			"ledger is listed with the command that restores it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const verb = "abcd embargo intake"
@@ -116,6 +130,8 @@ func renderEmbargoIntake(w io.Writer, res embargo.IntakeResult) {
 	for _, id := range res.NeedsSeverity {
 		fmt.Fprintf(w, "  no record yet: %s has no severity this abcd maps, and the check holds it under embargo; set it on GitHub, then run intake again\n", id)
 	}
+	renderForgeEnds(w, res.Ended, res.Unread)
+	renderRestores(w, res.Restores)
 	created := ""
 	if res.StoreCreated {
 		created = " (made now)"
@@ -342,16 +358,40 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "publish",
 		Long: "Show the publication plan for the release tag (--release, default the highest\n" +
-			"vMAJOR.MINOR.PATCH tag): for each advisory judged a vulnerability and not yet\n" +
+			"published release): for each advisory judged a vulnerability and not yet\n" +
 			"published, its record resolved in that release, its fix commit, the first\n" +
-			"release tag holding the fix, the patched version that gives, and the affected\n" +
-			"range in GitHub's form. An advisory whose record is not resolved there, whose\n" +
-			"fix is in no release tag, whose package is not set on GitHub, or whose text\n" +
-			"carries a secret, a private name or another advisory still under embargo is\n" +
-			"left out, saying why. Without --approve nothing but reads is sent.\n\n" +
+			"published release holding the fix, the patched version that gives, and the\n" +
+			"affected range in GitHub's form. A vMAJOR.MINOR.PATCH tag is a published\n" +
+			"release when origin holds the tag at the object this checkout holds and GitHub\n" +
+			"reports its release neither a draft nor a prerelease; any other tag gives no\n" +
+			"patched version, and --release naming one is refused. When origin's tags, or\n" +
+			"GitHub's answer for a release, cannot be read, the plan refuses with nothing\n" +
+			"recorded, and so does an origin naming another repository than the store's. The\n" +
+			"security rule keeps a security record out of every committed tree until its\n" +
+			"advisory is published, so when the release carries no public record the\n" +
+			"evidence is the advisory's private record, resolved in the embargo store's own\n" +
+			"ledger with the full id of its fix commit; nothing else the store holds is\n" +
+			"taken. An advisory resolved in neither, whose fix is in no published release up\n" +
+			"to the release, whose package is not set on GitHub, or whose text carries a\n" +
+			"secret, a private name or another advisory still under embargo is left out,\n" +
+			"saying why. Without --approve nothing but reads is sent.\n\n" +
+			"Every plan first reads from GitHub each advisory the store holds that is\n" +
+			"neither published nor closed, as intake does: it records each published one,\n" +
+			"and each closed one whose verdict ends its private track, at GitHub's own\n" +
+			"time, lists each it recorded as ended, and lists each it could not tell, or\n" +
+			"found closed while the store holds it otherwise, as unread, left under\n" +
+			"embargo; a 404 or 403 on an advisory's read leaves it unread. When every read\n" +
+			"meets one, the plan asks once for the repository's advisory listing: if it\n" +
+			"answers, the scope is proven and the plan goes on; if GitHub refuses it, or\n" +
+			"it fails otherwise, the plan refuses. A missing gh, a gh signed in to no\n" +
+			"account or holding a token GitHub rejects, or a refusal naming the advisory\n" +
+			"scope, refuses the plan with nothing recorded.\n\n" +
 			"With --approve <digest> of exactly the plan shown it publishes one advisory as\n" +
 			"a canary and reads it back, then the rest the same way, stopping at the first\n" +
-			"mismatch, and confirms none is left in draft. A host passes --approve only\n" +
+			"mismatch, and confirms none is left in draft. Every plan and publication\n" +
+			"lists each published advisory whose private record is resolved in the store\n" +
+			"and not yet in this checkout's ledger, with the command that copies it into\n" +
+			"the public ledger, until the checkout holds it. A host passes --approve only\n" +
 			"after the person, in that session, has seen the plan and said yes to it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -367,7 +407,7 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderEmbargoPublish(w, res) })
 		},
 	}
-	cmd.Flags().StringVar(&release, "release", "", "the release tag vMAJOR.MINOR.PATCH to publish from (default the highest)")
+	cmd.Flags().StringVar(&release, "release", "", "the release tag vMAJOR.MINOR.PATCH to publish from (default the highest published release)")
 	cmd.Flags().StringVar(&approve, "approve", "", "the plan's digest; only on the person's yes to exactly that plan")
 	return cmd
 }
@@ -383,22 +423,70 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 		for _, a := range res.Published {
 			fmt.Fprintf(w, "  published %s (%s) at %s\n", a.GHSAID, a.IssueID, a.PublishedAt.Format("2006-01-02T15:04:05Z"))
 		}
+		renderRestores(w, res.Restores)
 		return
 	}
 	fmt.Fprintf(w, "abcd embargo publish — plan for %s in %s: %s, %s left out; nothing was sent\n",
 		termsafe.Sanitize(p.Repo), p.Release, advisoryCount(len(p.Entries)), advisoryCount(len(p.LeftOut)))
 	for _, e := range p.Entries {
-		fmt.Fprintf(w, "  %s (%s): fix %s, first released in %s, patched %s\n", e.GHSAID, e.IssueID, e.FixCommit[:12], e.FirstTag, e.PatchedVersion)
+		from := ""
+		if e.StoreEvidence {
+			from = " (fix recorded in the store; no public record yet)"
+		}
+		fmt.Fprintf(w, "  %s (%s): fix %s%s, first released in %s, patched %s\n", e.GHSAID, e.IssueID, e.FixCommit[:12], from, e.FirstTag, e.PatchedVersion)
 		for _, v := range e.Vulnerabilities {
 			fmt.Fprintf(w, "    %s %s: affected %q, patched %q\n", termsafe.Sanitize(v.Package.Ecosystem), termsafe.Sanitize(v.Package.Name),
 				v.VulnerableVersionRange, v.PatchedVersions)
 		}
 	}
-	for _, l := range p.LeftOut {
-		fmt.Fprintf(w, "  left out %s (%s): %s\n", l.GHSAID, l.IssueID, termsafe.Sanitize(l.Reason))
+	// A candidate GitHub could not be read for is shown once, on its
+	// left-out line, which carries the unread reason when that is not
+	// already its reason.
+	unreadWhy := map[string]string{}
+	for _, u := range p.Unread {
+		unreadWhy[u.GHSAID] = u.Reason
 	}
+	var unread []embargo.UnreadAdvisory
+	for _, u := range p.Unread {
+		if !slices.ContainsFunc(p.LeftOut, func(l embargo.LeftOut) bool { return l.GHSAID == u.GHSAID }) {
+			unread = append(unread, u)
+		}
+	}
+	renderForgeEnds(w, p.Ended, unread)
+	for _, l := range p.LeftOut {
+		why := l.Reason
+		if u, ok := unreadWhy[l.GHSAID]; ok && u != why {
+			why += "; also, " + u
+		}
+		fmt.Fprintf(w, "  left out %s (%s): %s\n", l.GHSAID, l.IssueID, termsafe.Sanitize(why))
+	}
+	renderRestores(w, p.Restores)
 	if p.ApproveWith != "" {
 		fmt.Fprintf(w, "digest: %s\napprove with: %s\n", p.Digest, p.ApproveWith)
+	}
+}
+
+// renderForgeEnds names each held advisory GitHub reports published or
+// closed, as now recorded, and each whose end was not recorded, with why.
+func renderForgeEnds(w io.Writer, ended []embargo.ForgeEnd, unread []embargo.UnreadAdvisory) {
+	for _, e := range ended {
+		fmt.Fprintf(w, "  %s (%s) is %s on GitHub; %s_at is recorded from that, at %s\n", e.GHSAID, e.IssueID, e.State, e.State, e.At.Format("2006-01-02T15:04:05Z"))
+	}
+	for _, u := range unread {
+		fmt.Fprintf(w, "  %s (%s): %s\n", u.GHSAID, u.IssueID, termsafe.Sanitize(u.Reason))
+	}
+}
+
+// renderRestores names each restore the store's state owes: the command
+// that copies a published advisory's record into the public ledger, or why
+// none is named.
+func renderRestores(w io.Writer, restores []embargo.Restore) {
+	for _, r := range restores {
+		if r.RestoreWith != "" {
+			fmt.Fprintf(w, "  %s (%s) is published; restore its record as resolved, from the checkout's root:\n    %s\n", r.GHSAID, r.IssueID, termsafe.Sanitize(r.RestoreWith))
+			continue
+		}
+		fmt.Fprintf(w, "  %s (%s) is published, and its record is not restored: %s\n", r.GHSAID, r.IssueID, termsafe.Sanitize(r.Reason))
 	}
 }
 

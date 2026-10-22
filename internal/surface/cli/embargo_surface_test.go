@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -27,8 +28,8 @@ const surfaceGHSA = "GHSA-xxxx-xxxx-xxxx"
 // repository, under a temp HOME, with a stand-in `gh` on PATH: the triage
 // listing answers surfaceGHSA once the test has created the file named by
 // ghTriage, every other listing an empty page, and every read of one
-// advisory answers surfaceGHSA in triage. The working directory is the
-// checkout.
+// advisory answers surfaceGHSA in triage; a release's read answers it
+// published. The working directory is the checkout.
 func embargoSurfaceRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
@@ -42,7 +43,9 @@ func embargoSurfaceRepo(t *testing.T) *gittest.Repo {
 		`"severity":"high","state":"triage","vulnerabilities":[]}`
 	script := "#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in\n" +
 		"  state=triage) if [ -f '" + filepath.Join(bin, "triage-on") + "' ]; then echo '[" + advisory + "]'; else echo '[]'; fi; exit 0 ;;\n" +
-		"  state=*) echo '[]'; exit 0 ;;\nesac; done\necho '" + advisory + "'\n"
+		"  state=*) echo '[]'; exit 0 ;;\n" +
+		"  */releases/tags/*) printf '{\"tag_name\":\"%s\",\"draft\":false,\"prerelease\":false}\\n' \"${a##*/}\"; exit 0 ;;\n" +
+		"esac; done\necho '" + advisory + "'\n"
 	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +153,7 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("intake: exit %d, %s", code, stderr)
 	}
-	if got := strings.Join(jsonKeys(t, out), ","); got != "held,intake_at,minted,needs_severity,repo,store,store_created" {
+	if got := strings.Join(jsonKeys(t, out), ","); got != "ended,held,intake_at,minted,needs_severity,repo,restores,store,store_created,unread" {
 		t.Errorf("intake keys %s", got)
 	}
 	if strings.Contains(out, os.Getenv("HOME")) {
@@ -202,12 +205,21 @@ func TestEmbargoJSONShapes(t *testing.T) {
 		t.Fatalf("close text: exit %d, %s", code, out)
 	}
 
+	// A release counts once origin holds its tag: origin becomes a bare
+	// repository once intake has read the repository from its URL.
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	gittest.InitBare(t, bare)
+	r.Git("config", "remote.origin.url", bare)
+	// A local origin names no github.com repository: the plan reads it as
+	// the one intake recorded.
+	t.Cleanup(embargo.SwapOriginRepoForTest(func(string) (string, error) { return "example/example", nil }))
 	r.Git("tag", "v0.1.0")
+	r.Git("push", "-q", "origin", "refs/tags/v0.1.0")
 	code, out, stderr = runEmbargo(t, "", "embargo", "publish", "--json")
 	if code != 0 {
 		t.Fatalf("publish: exit %d, %s", code, stderr)
 	}
-	if got := strings.Join(jsonKeys(t, out), ","); got != "approved,no_draft_left,plan,published" {
+	if got := strings.Join(jsonKeys(t, out), ","); got != "approved,no_draft_left,plan,published,restores" {
 		t.Errorf("publish keys %s", got)
 	}
 	var pr embargo.PublishResult
@@ -233,5 +245,127 @@ func TestEmbargoCheckRendersItsNote(t *testing.T) {
 	renderEmbargoCheck(&b, embargo.CheckResult{Note: note, Findings: []embargo.CheckFinding{}})
 	if !strings.Contains(b.String(), "note: "+note+"\n") {
 		t.Fatalf("the text form is %q; want the note on a line of its own", b.String())
+	}
+}
+
+// TestEmbargoPublishRendersStoreEvidence: the text form says which planned
+// advisory takes its fix from the store, and after publication prints each
+// restore the result names, once.
+func TestEmbargoPublishRendersStoreEvidence(t *testing.T) {
+	restore := "cp -- " + abcdhome.Display("worktrees", "0123", "embargo", ".abcd/work/issues/resolved/iss-1-private-report.md") + " .abcd/work/issues/resolved/"
+	fix := strings.Repeat("a", 40)
+	plan := embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", LeftOut: []embargo.LeftOut{}, Digest: "d", ApproveWith: "abcd embargo publish --release v0.9.0 --approve d",
+		Entries: []embargo.PlanEntry{
+			{GHSAID: surfaceGHSA, IssueID: "iss-1", FixCommit: fix, FirstTag: "v0.9.0", PatchedVersion: "0.9.0", StoreEvidence: true},
+			{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", FixCommit: fix, FirstTag: "v0.9.0", PatchedVersion: "0.9.0"},
+		}}
+	var b bytes.Buffer
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: plan, Published: []embargo.PublishedAdvisory{}})
+	lines := strings.Split(b.String(), "\n")
+	if !strings.Contains(lines[1], surfaceGHSA) || !strings.Contains(lines[1], "fix recorded in the store") || strings.Contains(lines[2], "store") {
+		t.Fatalf("the plan's text form is %q", b.String())
+	}
+
+	b.Reset()
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: plan, Approved: true, NoDraftLeft: true, Published: []embargo.PublishedAdvisory{
+		{GHSAID: surfaceGHSA, IssueID: "iss-1"}, {GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2"},
+	}, Restores: []embargo.Restore{{GHSAID: surfaceGHSA, IssueID: "iss-1", RestoreWith: restore}}})
+	if got := b.String(); !strings.Contains(got, "  "+surfaceGHSA+" (iss-1) is published; restore its record as resolved, from the checkout's root:\n    "+restore+"\n") ||
+		strings.Count(got, "restore its record") != 1 {
+		t.Fatalf("the publication's text form is %q", got)
+	}
+}
+
+// TestEmbargoRendersRestores: a plan and an intake each print every restore
+// the store's state owes, and a restore that names no command says why.
+func TestEmbargoRendersRestores(t *testing.T) {
+	restore := "cp -- " + abcdhome.Display("worktrees", "0123", "embargo", ".abcd/work/issues/resolved/iss-1-private-report.md") + " .abcd/work/issues/resolved/"
+	rs := []embargo.Restore{
+		{GHSAID: surfaceGHSA, IssueID: "iss-1", RestoreWith: restore},
+		{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", Reason: "its private record in the store carries another id; no command restoring it is named"},
+	}
+	wants := []string{
+		"  " + surfaceGHSA + " (iss-1) is published; restore its record as resolved, from the checkout's root:\n    " + restore + "\n",
+		"  GHSA-rrrr-rrrr-rrrr (iss-2) is published, and its record is not restored: its private record in the store carries another id; no command restoring it is named\n",
+	}
+	var b bytes.Buffer
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", Entries: []embargo.PlanEntry{},
+		LeftOut: []embargo.LeftOut{}, Restores: rs}})
+	for _, want := range wants {
+		if got := b.String(); !strings.Contains(got, want) {
+			t.Fatalf("the plan's text form is %q; want %q", got, want)
+		}
+	}
+	b.Reset()
+	renderEmbargoIntake(&b, embargo.IntakeResult{Repo: "example/example", Minted: []embargo.MintedRecord{}, Held: []string{}, NeedsSeverity: []string{}, Restores: rs})
+	for _, want := range wants {
+		if got := b.String(); !strings.Contains(got, want) {
+			t.Fatalf("the intake's text form is %q; want %q", got, want)
+		}
+	}
+}
+
+// TestEmbargoIntakeRendersForgeEnds: the text form names each held
+// advisory GitHub reports published or closed, now recorded, and each one
+// GitHub could not tell, left as it was.
+func TestEmbargoIntakeRendersForgeEnds(t *testing.T) {
+	var b bytes.Buffer
+	renderEmbargoIntake(&b, embargo.IntakeResult{Repo: "example/example", Minted: []embargo.MintedRecord{}, Held: []string{}, NeedsSeverity: []string{},
+		Ended:  []embargo.ForgeEnd{{GHSAID: surfaceGHSA, IssueID: "iss-1", State: "published"}},
+		Unread: []embargo.UnreadAdvisory{{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", Reason: "GitHub could not be read for it; its state in the store is unchanged"}}})
+	got := b.String()
+	for _, want := range []string{
+		"  " + surfaceGHSA + " (iss-1) is published on GitHub; published_at is recorded from that, at 0001-01-01T00:00:00Z\n",
+		"  GHSA-rrrr-rrrr-rrrr (iss-2): GitHub could not be read for it; its state in the store is unchanged\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the text form is %q; want %q", got, want)
+		}
+	}
+	b.Reset()
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", Entries: []embargo.PlanEntry{}, LeftOut: []embargo.LeftOut{},
+		Unread: []embargo.UnreadAdvisory{{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", Reason: "GitHub could not be read for it; its state in the store is unchanged"}}}})
+	if got := b.String(); !strings.Contains(got, "  GHSA-rrrr-rrrr-rrrr (iss-2): GitHub could not be read for it; its state in the store is unchanged\n") {
+		t.Fatalf("the plan's text form is %q", got)
+	}
+	b.Reset()
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", Entries: []embargo.PlanEntry{}, LeftOut: []embargo.LeftOut{},
+		Ended: []embargo.ForgeEnd{{GHSAID: surfaceGHSA, IssueID: "iss-1", State: "published"}}}})
+	if got := b.String(); !strings.Contains(got, "  "+surfaceGHSA+" (iss-1) is published on GitHub; published_at is recorded from that, at 0001-01-01T00:00:00Z\n") {
+		t.Fatalf("the plan's text form does not name what it recorded: %q", got)
+	}
+}
+
+// TestEmbargoPublishShowsUnreadCandidateOnce: a candidate GitHub could not
+// be read for is on one line of the plan's text form, its left-out line,
+// carrying the unread reason when that is not already its reason; a held
+// advisory that is no candidate keeps its own unread line.
+func TestEmbargoPublishShowsUnreadCandidateOnce(t *testing.T) {
+	const unread = "GitHub could not be read for it; its state in the store is unchanged"
+	var b bytes.Buffer
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", Entries: []embargo.PlanEntry{},
+		LeftOut: []embargo.LeftOut{
+			{GHSAID: surfaceGHSA, IssueID: "iss-1", Reason: unread},
+			{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", Reason: "its record is not resolved in v0.9.0"},
+		},
+		Unread: []embargo.UnreadAdvisory{
+			{GHSAID: surfaceGHSA, IssueID: "iss-1", Reason: unread},
+			{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", Reason: unread},
+			{GHSAID: "GHSA-hhhh-hhhh-hhhh", IssueID: "iss-3", Reason: unread},
+		}}})
+	got := b.String()
+	for id, n := range map[string]int{surfaceGHSA: 1, "GHSA-rrrr-rrrr-rrrr": 1, "GHSA-hhhh-hhhh-hhhh": 1} {
+		if c := strings.Count(got, id); c != n {
+			t.Fatalf("%s is on %d lines, want %d: %q", id, c, n, got)
+		}
+	}
+	for _, want := range []string{
+		"  left out " + surfaceGHSA + " (iss-1): " + unread + "\n",
+		"  left out GHSA-rrrr-rrrr-rrrr (iss-2): its record is not resolved in v0.9.0; also, " + unread + "\n",
+		"  GHSA-hhhh-hhhh-hhhh (iss-3): " + unread + "\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the plan's text form is %q; want %q", got, want)
+		}
 	}
 }

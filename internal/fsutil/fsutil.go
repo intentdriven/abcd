@@ -548,8 +548,17 @@ func WriteFileAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileM
 // for a new file — the contained counterpart of
 // WriteFileAtomicPreserveMode.
 func WriteFileAtomicPreserveModeInRoot(root *os.Root, rel string, data []byte) error {
+	return WriteFileAtomicModeOfInRoot(root, rel, rel, data)
+}
+
+// WriteFileAtomicModeOfInRoot is WriteFileAtomicPreserveModeInRoot with the
+// mode taken from the file at from (root-relative) rather than the target: a
+// file moved to a new path, as a record moving between status folders is,
+// keeps the mode it had instead of taking the 0644 a new file defaults to.
+// With from equal to rel it is WriteFileAtomicPreserveModeInRoot.
+func WriteFileAtomicModeOfInRoot(root *os.Root, rel, from string, data []byte) error {
 	perm := os.FileMode(0o644)
-	fi, err := root.Lstat(rel)
+	fi, err := root.Lstat(from)
 	switch {
 	case err == nil:
 		if fi.Mode().IsRegular() {
