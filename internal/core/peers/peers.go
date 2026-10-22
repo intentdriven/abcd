@@ -100,6 +100,9 @@ type Peer struct {
 	// any record — rather than one that holds none of this repository's
 	// (another repository, or no records at the committed layout).
 	unjudged bool
+	// base is the commit the peer's work is measured from (Report.Holders):
+	// its branch's ref, or a worktree's HEAD as git listed it; "" when none.
+	base string
 }
 
 // Skip reasons: a spent peer contributes no rows and is counted instead.
@@ -134,6 +137,9 @@ type Report struct {
 
 	here holdings
 	root string
+	// defaultRef is DefaultRef's full ref name, which Holders measures each
+	// peer's merge-base against; "" when none resolved.
+	defaultRef string
 }
 
 // Live is the number of live peers: those read, and those named but not read.

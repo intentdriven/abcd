@@ -119,7 +119,8 @@ const maxIntentBytes = 256 * 1024
 //     2026-09-29).
 //   - steps: the spec's `## Steps` reads, and leaves a step to build.
 //   - peers: no peer holds the record — no sibling worktree or local branch
-//     holds it in another bucket, no session holds a live claim on it, and,
+//     holds it in another bucket having changed it since its merge-base with
+//     the default branch, no session holds a live claim on it, and,
 //     for an intent, no other copy holds a reservation on it on origin as
 //     this checkout last fetched them (read from disk alone).
 func Check(repoRoot, key string) (CheckResult, error) { return check(repoRoot, key, "", nil) }
@@ -469,17 +470,17 @@ func (snap *peerSnapshot) reservationHolder(id string) (holder string, yours boo
 // branch holding the intent in another bucket than this checkout's — a lane
 // that shipped or re-drafted it), the run's claim store (a session holding
 // a live claim on it), and, when reservations is true, the reservations on
-// origin as last fetched (another copy's reservation on it). A peer holding the record in the same bucket holds a
-// copy, not the record: every branch cut from the default branch does. A live
-// claim held by session — the one the build is started for — is its own, and
-// so is this copy's reservation.
+// origin as last fetched (another copy's reservation on it). A peer holding
+// the record in the same bucket holds a copy, not the record: every branch
+// cut from the default branch does; so does one holding it unchanged since its
+// merge-base with the default branch, a branch cut before the record moved
+// there (peers.Report.Holders, iss-2610222008081888). A live claim held by
+// session — the one the build is started for — is its own, and so is this
+// copy's reservation.
 func peersCheck(id, bucket, session string, snap *peerSnapshot, reservations bool) CheckRow {
 	row := CheckRow{Name: CheckPeers}
 	var holders []string
-	for _, l := range snap.rep.Locate(id) {
-		if l.Folder == bucket {
-			continue
-		}
+	for _, l := range snap.rep.Holders(id, bucket) {
 		holders = append(holders, peerName(l.Source, l.Branch, l.Path)+" holds it in "+l.Folder+"/")
 	}
 	// A peer the listing names and cannot read may hold the record; the check
