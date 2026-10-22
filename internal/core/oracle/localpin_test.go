@@ -180,6 +180,15 @@ func TestALocalPinThatNamesTooLittleIsRefused(t *testing.T) {
 		{"llama.cpp without its weights file", "http://127.0.0.1:8080/v1", llamaPinFile(""), "weights_file"},
 		{"weights file as a path", "http://127.0.0.1:8080/v1", llamaPinFile(`"weights_file":"/m/` + llamaFile + `",`), "weights_file"},
 		{"weights file not GGUF", "http://127.0.0.1:8080/v1", llamaPinFile(`"weights_file":"qwen3-coder",`), "weights_file"},
+		// The probe keeps at most 200 bytes of the served name, so a longer
+		// pin could never match; a bidi override or a C1 control would reach
+		// a refusal and the record as written.
+		{"weights file past the served name's length", "http://127.0.0.1:8080/v1",
+			llamaPinFile(`"weights_file":"` + strings.Repeat("q", 196) + `.gguf",`), "weights_file"},
+		{"weights file with a bidi override", "http://127.0.0.1:8080/v1",
+			llamaPinFile(`"weights_file":"qwen\u202e3.gguf",`), "weights_file"},
+		{"weights file with a C1 control", "http://127.0.0.1:8080/v1",
+			llamaPinFile(`"weights_file":"qwen\u00853.gguf",`), "weights_file"},
 		{"weights file off llama.cpp", "http://127.0.0.1:11434/v1",
 			strings.Replace(ollamaPin, `"quantisation"`, `"weights_file":"`+llamaFile+`","quantisation"`, 1), "weights_file"},
 		{"neither", "https://api.example.com/v1", ollamaPin, "this machine"},

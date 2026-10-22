@@ -259,11 +259,15 @@ rather than skipped:
   `base_url` is on this machine, `oracle.api.<provider>.pins.<model>` declares
   every one of the runtime (`ollama`, `llama.cpp` or `mlx`), its
   `runtime_version`, `weights_sha256` (the weight file's SHA-256, or Ollama's
-  model digest, with or without `sha256:`), `quantisation`, `context_length`
+  model digest, all 64 hex digits with or without `sha256:`; `ollama list`
+  shows only the start, the digest Ollama's `/api/tags` lists is whole),
+  `quantisation`, `context_length`
   and `kv_cache_type`; a pin that leaves one out, or names a model off the
   block's list, is refused when the configuration is read. A `llama.cpp` pin
   also names `weights_file`, the base name of the GGUF file llama-server loads
-  (`Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf`), and is refused without it:
+  (`Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf`, printable characters and at
+  most 200 bytes, the most of a served name the probe keeps), and is refused
+  without it:
   llama-server reports no digest, so the file it has loaded is the one thing
   the probe can hold its weights to. abcd never hashes a weight file of its
   own accord: the person declares the digest. Before the route is used the
@@ -283,7 +287,10 @@ rather than skipped:
   declares a q4 KV cache. No runtime reports its KV cache's type, so that
   refusal rests on the pin's declaration alone, and the record lists the
   served cache type as not verified. A runner's route is probed before every
-  run; a self-contained call reuses a report the pin held for a minute at
+  run, and records its asked local fields as not verified, since opencode's
+  own `~/.opencode/opencode.json` can point the provider elsewhere after the
+  probe; the claude runner holds no pin, so a pinned route through it is
+  refused before launch; a self-contained call reuses a report the pin held for a minute at
   most, and a report the pin refused, or a probe that read nothing, is never
   reused, so a server put right holds the route at its next use. Like every
   member of a provider block, a local pin is the machine's alone.

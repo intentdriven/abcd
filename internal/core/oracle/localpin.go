@@ -42,6 +42,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
@@ -59,9 +60,26 @@ var (
 	// localTokenRe is a quantisation or a cache type (Q4_K_M, 4bit, q8_0).
 	localTokenRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$`)
 	// weightsFileRe is a GGUF file's base name: no directory, no control
-	// character, and the .gguf llama-server loads.
+	// character, and the .gguf llama-server loads. weightsFileOK adds what a
+	// pattern cannot say well: printable runes only, and no longer than the
+	// served name the probe keeps (openaiapi.MaxModelBytes), so a pin can
+	// always match the name the server reports.
 	weightsFileRe = regexp.MustCompile(`(?i)^[^/\\\x00-\x1f\x7f]{1,250}\.gguf$`)
 )
+
+// weightsFileOK reports whether name is a weights_file a pin may carry: a
+// GGUF base name of printable runes, at most openaiapi.MaxModelBytes long.
+func weightsFileOK(name string) bool {
+	if len(name) > openaiapi.MaxModelBytes || !weightsFileRe.MatchString(name) {
+		return false
+	}
+	for _, r := range name {
+		if !unicode.IsPrint(r) {
+			return false
+		}
+	}
+	return true
+}
 
 // LocalPin is one local model's pin, as the configuration declares it and a
 // record carries it.
@@ -128,14 +146,14 @@ func readLocalPins(models []string, raw map[string]localPinFile) (map[string]Loc
 			return nil, fmt.Errorf("%s: runtime_version names the runtime's version as it prints it (0.14.2, b9860)", where)
 		case !localDigestRe.MatchString(pf.WeightsSHA256):
 			return nil, fmt.Errorf("%s: weights_sha256 is the weight file's SHA-256, or Ollama's model digest, in hex "+
-				"(shasum -a 256 <file>; ollama list shows the digest's start)", where)
+				"all 64 digits (shasum -a 256 <file>, or the digest Ollama's /api/tags lists; ollama list shows only its start)", where)
 		case !localTokenRe.MatchString(pf.Quantisation):
 			return nil, fmt.Errorf("%s: quantisation names the weights' quantisation (Q4_K_M, 4bit, bf16)", where)
 		case pf.ContextLength <= 0 || pf.ContextLength > MaxContextLength:
 			return nil, fmt.Errorf("%s: context_length is the context the server serves the model at, from 1 to %d", where, MaxContextLength)
 		case !localTokenRe.MatchString(pf.KVCacheType):
 			return nil, fmt.Errorf("%s: kv_cache_type names the KV cache's type (f16, q8_0)", where)
-		case pf.Runtime == openaiapi.RuntimeLlamaCpp && !weightsFileRe.MatchString(pf.WeightsFile):
+		case pf.Runtime == openaiapi.RuntimeLlamaCpp && !weightsFileOK(pf.WeightsFile):
 			return nil, fmt.Errorf("%s: weights_file is the base name of the GGUF file llama-server loads (-m), "+
 				"such as Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf: llama-server reports no digest, so the file it "+
 				"has loaded is what the probe holds the pin to", where)
