@@ -86,3 +86,28 @@ func TestAStepWhoseReviewTheReviewerRouteTakesRecordsNoTier(t *testing.T) {
 		t.Fatalf("a reviewer route with no server takes no review, so the host's is asked for its tier: %+v %+v", res.Tier, r)
 	}
 }
+
+// pointedConns is a machine whose one provider the ruthless reviewer's role
+// points at; its adapter accepts no setting.
+type pointedConns struct{}
+
+func (pointedConns) Serves(oracle.Tier) (oracle.Connection, bool) { return oracle.Connection{}, false }
+func (pointedConns) Named(string) (oracle.Connection, bool)       { return oracle.Connection{}, false }
+func (pointedConns) Pointed(agent string) (oracle.Connection, bool) {
+	return oracle.Connection{Name: "desk-llm", Models: []string{"example/model-1"},
+		Roles: map[string]string{RoleRuthless: "example/model-1"}}, agent == RoleRuthless
+}
+
+// TestAPointedRoleRecordsNoTierAndItsRowNeverStopsTheStep: a role pointed at
+// a provider names a model, not a tier, and the loop never sends it to that
+// provider, so a routing row whose settings that provider would refuse does
+// not stop the step: the role is recorded as not moving.
+func TestAPointedRoleRecordsNoTierAndItsRowNeverStopsTheStep(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	tiers := tiering(t, repo, `{"ruthless-reviewer":{"tier":"economy","settings":{"temperature":0.2}}}`)
+	tiers.Conns = pointedConns{}
+	_, _, res, r := driveRound(t, Options{Tiers: tiers}, Runners{Config: runnerConfig(t, "", "")})
+	if res.Tier != "" || r.Tier != "" || !strings.Contains(r.Note, "pointed at desk-llm") {
+		t.Fatalf("a pointed role is asked for no tier and says why: %+v %+v", res.Tier, r)
+	}
+}

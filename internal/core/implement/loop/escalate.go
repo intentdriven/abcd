@@ -129,14 +129,17 @@ func (rt *roundRouter) route(lane Lane, n int, role string, after *ValidationRou
 	if conns == nil {
 		conns = oracle.NoConnections{}
 	}
+	// A pointed role is judged before its row is resolved: the loop never
+	// sends it to that provider, so the provider's refusal of the row's
+	// settings is not this step's to make.
+	if c, ok := conns.Pointed(role); ok {
+		r.Note = fmt.Sprintf("the %s is pointed at %s by oracle.roles.%s, a route that names a model, not a tier, so it does not move", role, c.Name, role)
+		return r, nil, nil
+	}
 	base, err := oracle.Resolve(role, rt.tiers.Table, conns)
 	if err != nil {
 		return Round{}, nil, refuse(string(StageValidate), "", lane.ID, fmt.Sprintf("the %s's route for round %d is refused: %v", role, n, err),
 			"correct the routing the reason names; nothing was written")
-	}
-	if c, ok := conns.Pointed(role); ok {
-		r.Note = fmt.Sprintf("the %s is pointed at %s by oracle.roles.%s, a route that names a model, not a tier, so it does not move", role, c.Name, role)
-		return r, nil, nil
 	}
 	if base.Row.Tier == oracle.HostDecides {
 		r.Note = fmt.Sprintf("the %s's route is %s, which names no tier, so it does not move", role, oracle.HostDecides)
