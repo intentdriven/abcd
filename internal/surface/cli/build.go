@@ -107,7 +107,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"open question, has no unanswered claim section, is not held, names no unsettled blocker\n" +
 			"in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling\n" +
 			"worktree or local branch holds it in another bucket having changed it since its\n" +
-			"merge-base with the default branch, so a branch holding that branch's older copy\n" +
+			"merge-base with this checkout, so a branch holding this checkout's older copy\n" +
 			"untouched does not count; no session holds a live claim on it; and no other copy holds\n" +
 			"a reservation on it on origin, as this checkout last fetched the reservations; a peer,\n" +
 			"claim or view that cannot be read, or a copy that cannot be compared, counts as holding\n" +

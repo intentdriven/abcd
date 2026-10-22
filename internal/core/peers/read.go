@@ -72,7 +72,7 @@ type Location struct {
 	Folder string `json:"folder"`
 
 	// The file the peer holds the record in (its blob for a branch peer), and
-	// the commit the peer's merge-base with the default ref is taken from
+	// the commit the peer's merge-base with this checkout is taken from
 	// (Peer.base): what Holders judges a stale copy by.
 	rel, blob, base string
 }
@@ -99,7 +99,8 @@ func Read(root string) (Report, error) { return read(root, true) }
 func Scan(root string) (Report, error) { return read(root, false) }
 
 func read(root string, titles bool) (Report, error) {
-	rep := Report{Sources: append([]Source(nil), Sources...), Peers: []Peer{}, Skipped: []Skipped{}, root: root}
+	rep := Report{Sources: append([]Source(nil), Sources...), Peers: []Peer{}, Skipped: []Skipped{}, root: root,
+		bases: &baseCache{merged: map[string][]string{}}}
 	common, err := commonDir(root)
 	if err != nil {
 		return rep, fmt.Errorf("peers: git could not name this checkout's common dir: %w", err)
@@ -110,7 +111,7 @@ func read(root string, titles bool) (Report, error) {
 	}
 	rep.here = here
 	defaultRef := gitutil.DefaultRef(root)
-	rep.DefaultRef, rep.defaultRef = gitutil.ShortRef(defaultRef), defaultRef
+	rep.DefaultRef = gitutil.ShortRef(defaultRef)
 	merged := mergedBranches(root, defaultRef)
 
 	wts, err := listWorktrees(root)
@@ -347,20 +348,23 @@ func (r Report) Locate(id string) []Location {
 
 // Holders returns the live, read peers that hold id themselves, as against
 // this checkout holding it in folder: those holding it in another folder of
-// its family (a lane that shipped or re-drafted it) whose copy the peer
-// changed since its merge-base with the default ref. A copy in folder is a
+// its family (a lane that shipped or re-drafted it) whose copy differs from
+// the one in its merge-base with this checkout's HEAD. A copy in folder is a
 // copy, not a holding: every branch cut from the default branch carries one.
-// So is a copy identical, at the same path, to the one in the merge-base tree
-// of the peer and the default ref: the peer was cut before the record moved
-// on the default branch and holds that branch's older copy, which it never
-// touched (iss-2610222008081888). A worktree peer is judged off its disk,
-// against the merge-base of its HEAD, so an uncommitted move or edit is a
-// change.
+// So is a copy identical, at the same path, to the one in every merge-base
+// tree of the peer and this checkout: the peer was cut before the record
+// moved here and holds this checkout's older copy, which it never touched
+// (iss-2610222008081888). It is measured against this checkout, not the
+// default branch, so a peer cut after the default branch shipped what this
+// checkout, being behind, still holds as planned holds it shipped. In a
+// criss-cross history every merge-base must agree. A worktree peer is judged
+// off its disk, against the merge-bases of its HEAD, so an uncommitted move
+// or edit is a change.
 //
-// It fails closed: where the default ref, the merge-base, the merge-base
-// tree's entry or the peer's copy cannot be read, the location holds it. The
-// comparison is made only for a location in another folder, so a peer costs
-// a merge-base and a tree read per such location, never per record.
+// It fails closed: where this checkout's HEAD (unborn, or unreadable), the
+// merge-bases, a merge-base tree's entry or the peer's copy cannot be read,
+// the location holds it. The comparison is made only for a location in
+// another folder, and the merge-bases once per peer for the Report's life.
 //
 // Locate keeps every location: a not-found path asks where a record is, and a
 // stale copy is still where it is.
@@ -376,40 +380,99 @@ func (r Report) Holders(id, folder string) []Location {
 }
 
 // changedSinceBase reports whether the peer at l changed its copy of the
-// record since the merge-base of l.base and the default ref: whether the
+// record since its merge-bases with this checkout's HEAD: whether any
 // merge-base tree holds no regular file at l's path, or one whose content is
 // not the peer's. Anything that cannot be read answers true.
 func (r Report) changedSinceBase(l Location) bool {
-	if r.defaultRef == "" || l.base == "" || l.rel == "" {
+	if l.base == "" || l.rel == "" {
 		return true
 	}
-	mb, err := gitutil.Run(r.root, "merge-base", l.base, r.defaultRef)
-	if err != nil || !gitutil.IsFullSHA(mb) {
+	bases := r.mergeBases(l.base)
+	if len(bases) == 0 {
 		return true
 	}
-	out, err := gitutil.RunCapped(r.root, maxListing, "ls-tree", "-z", "--full-tree", mb, "--", l.rel)
+	var disk []byte
+	if l.Source == SourceWorktree {
+		b, err := fsutil.ReadGuarded(filepath.Join(l.Path, filepath.FromSlash(l.rel)), maxListing)
+		if err != nil {
+			return true
+		}
+		disk = b
+	}
+	for _, mb := range bases {
+		blob, ok := r.blobAt(mb, l.rel)
+		if !ok {
+			return true
+		}
+		switch l.Source {
+		case SourceBranch:
+			if l.blob == "" || l.blob != blob {
+				return true
+			}
+		case SourceWorktree:
+			content, err := gitutil.RunCappedBytes(r.root, maxListing, "cat-file", "blob", blob)
+			if err != nil || !bytes.Equal(disk, content) {
+				return true
+			}
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+// mergeBases is every merge-base of base and this checkout's HEAD
+// (`merge-base --all`), memoised per base in r.bases; nil when HEAD is unborn
+// or unreadable, the two share no history, or git cannot answer.
+func (r Report) mergeBases(base string) []string {
+	c := r.bases
+	if c == nil {
+		c = &baseCache{merged: map[string][]string{}}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.headRead {
+		c.headRead = true
+		if head, err := gitutil.Run(r.root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"); err == nil && gitutil.IsFullSHA(head) {
+			c.head = head
+		}
+	}
+	if c.head == "" {
+		return nil
+	}
+	if got, ok := c.merged[base]; ok {
+		return got
+	}
+	var bases []string
+	if out, err := gitutil.RunCapped(r.root, maxListing, "merge-base", "--all", base, c.head); err == nil {
+		for _, ln := range strings.Split(out, "\n") {
+			ln = strings.TrimSpace(ln)
+			if !gitutil.IsFullSHA(ln) {
+				bases = nil
+				break
+			}
+			bases = append(bases, ln)
+		}
+	}
+	c.merged[base] = bases
+	return bases
+}
+
+// blobAt is the object name of the regular file at rel in commit's tree, and
+// false when the tree holds none there, or anything else, or cannot be read.
+func (r Report) blobAt(commit, rel string) (string, bool) {
+	out, err := gitutil.RunCapped(r.root, maxListing, "ls-tree", "-z", "--full-tree", commit, "--", rel)
 	if err != nil {
-		return true
+		return "", false
 	}
 	entry, rest, _ := strings.Cut(out, "\x00")
 	meta, file, ok := strings.Cut(entry, "\t")
 	f := strings.Fields(meta) // <mode> <type> <object>
-	if !ok || file != l.rel || strings.Trim(rest, "\x00") != "" || len(f) != 3 ||
+	if !ok || file != rel || strings.Trim(rest, "\x00") != "" || len(f) != 3 ||
 		f[0] != "100644" && f[0] != "100755" || f[1] != "blob" {
-		return true
+		return "", false
 	}
-	switch l.Source {
-	case SourceBranch:
-		return l.blob == "" || l.blob != f[2]
-	case SourceWorktree:
-		disk, err := fsutil.ReadGuarded(filepath.Join(l.Path, filepath.FromSlash(l.rel)), maxListing)
-		if err != nil {
-			return true
-		}
-		blob, err := gitutil.RunCappedBytes(r.root, maxListing, "cat-file", "blob", f[2])
-		return err != nil || !bytes.Equal(disk, blob)
-	}
-	return true
+	return f[2], true
 }
 
 // Unjudged returns the live peers that were named and not read for a reason

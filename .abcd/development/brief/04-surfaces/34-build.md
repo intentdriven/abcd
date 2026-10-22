@@ -90,13 +90,17 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   one the build is started for holds a live claim on it in the shared run
   state. A copy in the same bucket is not a
   holding: every branch cut from the default branch carries one. Nor is a copy
-  the peer has not changed since its merge-base with the default branch, the
-  same file with the same contents as in that merge-base's tree: a branch cut
-  before the intent left drafts/ holds the default branch's older copy, not the
-  intent (iss-2610222008081888). A worktree is compared off its disk, against
-  the merge-base of its HEAD, so an uncommitted move or edit is a change. A
-  copy that cannot be compared (no default ref, no merge-base, an unreadable
-  file) counts as a holding. The check
+  the peer has not changed since its merge-base with this checkout, the same
+  file with the same contents as in that merge-base's tree (in every one, when
+  a criss-cross history gives several): a branch cut before the intent left
+  drafts/ holds this checkout's older copy, not the intent
+  (iss-2610222008081888). The peer is measured against this checkout's HEAD,
+  not the default branch, so a branch cut after the default branch shipped an
+  intent this checkout, being behind, still holds as planned is a holding. A
+  worktree is compared off its disk, against the merge-bases of its HEAD, so an
+  uncommitted move or edit is a change. A copy that cannot be compared (an
+  unborn HEAD here, no merge-base, an unreadable file) counts as a holding. The
+  check
   fails closed on what it cannot see into, on both sides: a peer the listing
   names and cannot read (git or the filesystem will not answer for it, or its
   ledger holds one id in two folders) and an unreadable claim file each count

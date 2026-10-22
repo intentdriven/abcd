@@ -9,8 +9,8 @@ found_during: "lane D build start of itd-2610150602547271"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/check.go"
-remedy: "Count a peer as holding a record only when the peer changed it since its merge-base with the default branch (the record's path or blob differs from the merge-base tree's); keep failing closed when the merge-base or the comparison cannot be read; apply the same rule in the abcd peers holder listing."
-resolution: "peers.Report.Holders counts a peer as holding a record only when it holds it in another folder and changed it since its merge-base with the default ref (same path and blob, or for a worktree the same on-disk content, as the merge-base tree is a stale copy); it fails closed when the default ref, the merge-base or the comparison cannot be read. The build's peers check uses it; the not-found refusal keeps every location from Locate."
+remedy: "Count a peer as holding a record only when the peer changed it since its merge-base with this checkout (the record's path or blob differs from a merge-base tree's); keep failing closed when this checkout's HEAD, the merge-base or the comparison cannot be read; apply the rule wherever a peer is judged a holder (the build's peers check), and leave the not-found refusal listing every location, since it asks where a record is, not who holds it."
+resolution: "peers.Report.Holders counts a peer as holding a record only when it holds it in another folder and changed it since its merge-bases with this checkout's HEAD (a copy at the same path with the same blob, or for a worktree the same on-disk content, as in every merge-base tree is a stale copy); it fails closed when this checkout's HEAD, the merge-bases or the comparison cannot be read, and memoises the merge-bases per peer. The build's peers check uses it; the not-found refusal keeps every location from Locate, since it asks where a record is, not who holds it."
 impact: fix
 ---
 

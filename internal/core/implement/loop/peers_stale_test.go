@@ -72,8 +72,8 @@ func TestThePeersCheckPassesOverAStaleCopy(t *testing.T) {
 // TestThePeersCheckStillRefusesAPeerThatChangedTheRecord: a branch that
 // re-drafted the intent since its merge-base, one cut while it was a draft
 // that rewrote the draft, and a worktree with an uncommitted move each hold
-// it; and with no default ref to judge against, a stale branch still holds it
-// (the check fails closed).
+// it; and so does a branch cut after main shipped it, when this checkout is
+// behind main (the peer is measured against this checkout, not main).
 func TestThePeersCheckStillRefusesAPeerThatChangedTheRecord(t *testing.T) {
 	t.Run("a branch that re-drafted it", func(t *testing.T) {
 		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
@@ -118,11 +118,26 @@ func TestThePeersCheckStillRefusesAPeerThatChangedTheRecord(t *testing.T) {
 			t.Fatalf("want the worktree named as holding it in drafts/: %+v", row)
 		}
 	})
-	t.Run("no default ref to judge a stale branch against", func(t *testing.T) {
-		repo := draftedThenPlanned(t, func(repo *gittest.Repo) { staleBranch(repo, "feat/old") })
-		repo.Git("branch", "-q", "-m", "main", "work")
-		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "branch feat/old holds it in drafts/") {
-			t.Fatalf("with no default ref the stale branch still holds it: %+v", row)
+	t.Run("a branch cut after main shipped it, past this checkout", func(t *testing.T) {
+		repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+		repo.Git("checkout", "-q", "-b", "behind")
+		tmp := filepath.Join(t.TempDir(), "on-main")
+		repo.Git("worktree", "add", "-q", tmp, "main")
+		shipped := ".abcd/development/intents/shipped/itd-10-alpha.md"
+		if err := os.MkdirAll(filepath.Join(tmp, filepath.Dir(shipped)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		repo.Git("-C", tmp, "mv", plannedRel, shipped)
+		repo.Git("-C", tmp, "commit", "-q", "-m", "ship alpha")
+		repo.Git("-C", tmp, "checkout", "-q", "-b", "lane-fresh")
+		if err := os.WriteFile(filepath.Join(tmp, "note"), []byte("ahead\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		repo.Git("-C", tmp, "add", "note")
+		repo.Git("-C", tmp, "commit", "-q", "-m", "ahead of main")
+		repo.Git("worktree", "remove", tmp)
+		if row := peersRow(t, repo); row.OK || !strings.Contains(row.Detail, "branch lane-fresh holds it in shipped/") {
+			t.Fatalf("an intent main shipped past this checkout must not start here: %+v", row)
 		}
 	})
 }

@@ -3,6 +3,7 @@ package peers_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/peers"
@@ -150,8 +151,8 @@ func TestAWorktreeIsJudgedOffItsDisk(t *testing.T) {
 	})
 }
 
-// The judgement fails closed: where the default ref, the merge-base or the
-// peer's copy cannot be read, the location still counts as holding it.
+// The judgement fails closed: where this checkout's HEAD, the merge-base or
+// the peer's copy cannot be read, the location still counts as holding it.
 func TestAHoldingWhoseBaseCannotBeReadStillHolds(t *testing.T) {
 	t.Run("no merge-base with the default ref", func(t *testing.T) {
 		f := staleFixture(t, func(*fixture) {})
@@ -165,15 +166,11 @@ func TestAHoldingWhoseBaseCannotBeReadStillHolds(t *testing.T) {
 			t.Fatalf("Holders = %v, want unrelated (its history shares no base with main)", holderBranches(got))
 		}
 	})
-	t.Run("no default ref", func(t *testing.T) {
+	t.Run("an unborn HEAD here", func(t *testing.T) {
 		f := staleFixture(t, func(f *fixture) { branchAhead(f, "feat/old") })
-		f.git(f.here(), "branch", "-q", "-m", "main", "work")
-		rep := f.read()
-		if rep.DefaultRef != "" {
-			t.Fatalf("the fixture still resolves a default ref %q", rep.DefaultRef)
-		}
-		if got := rep.Holders("itd-50", "planned"); len(got) != 1 || got[0].Branch != "feat/old" {
-			t.Fatalf("Holders = %v, want feat/old (no default ref to judge it against)", holderBranches(got))
+		f.git(f.here(), "switch", "-q", "--orphan", "nothing-yet")
+		if got := f.read().Holders("itd-50", "planned"); len(got) != 1 || got[0].Branch != "feat/old" {
+			t.Fatalf("Holders = %v, want feat/old (this checkout has no HEAD to judge it against)", holderBranches(got))
 		}
 	})
 	t.Run("a worktree copy that cannot be read", func(t *testing.T) {
@@ -204,5 +201,111 @@ func TestAHoldingInThisCheckoutsFolderIsNoHolder(t *testing.T) {
 	f.git(f.here(), "switch", "-q", "main")
 	if got := f.read().Holders("itd-50", "planned"); len(got) != 0 {
 		t.Fatalf("Holders = %v, want none (same folder)", holderBranches(got))
+	}
+}
+
+// onMain runs fn in a temporary worktree checked out on main, then removes the
+// worktree, so main moves on while this checkout stays where it is.
+func (f *fixture) onMain(fn func(dir string)) {
+	f.t.Helper()
+	dir := filepath.Join(f.home, "wt", "on-main")
+	f.git(f.here(), "worktree", "add", "-q", dir, "main")
+	fn(dir)
+	f.git(f.here(), "worktree", "remove", dir)
+}
+
+// commitIn commits everything in dir.
+func (f *fixture) commitIn(dir, msg string) {
+	f.t.Helper()
+	f.git(dir, "add", "-A")
+	f.git(dir, "commit", "-q", "-m", msg)
+}
+
+// The peer is measured against its merge-base with THIS checkout, not with
+// the default ref: when this checkout is behind main, a branch cut after main
+// shipped the intent holds it shipped, and a build here must not start it.
+func TestABranchCutAfterTheDefaultBranchShippedItIsAHolderOfACheckoutBehind(t *testing.T) {
+	f := newFixture(t)
+	f.write(f.here(), plannedRel, intentRec("itd-50", "A planned intent"))
+	f.commitIn(f.here(), "plan itd-50")
+	f.git(f.here(), "switch", "-q", "-c", "behind")
+	f.onMain(func(dir string) {
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(shippedRel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		f.git(dir, "mv", plannedRel, shippedRel)
+		f.commitIn(dir, "ship itd-50")
+		f.git(dir, "switch", "-q", "-c", "feat/fresh")
+		f.write(dir, "note", "ahead\n")
+		f.commitIn(dir, "work on feat/fresh")
+	})
+	if got := f.read().Holders("itd-50", "planned"); len(got) != 1 || got[0].Branch != "feat/fresh" || got[0].Folder != "shipped" {
+		t.Fatalf("Holders = %v, want feat/fresh:shipped (main shipped it past this checkout)", holderBranches(got))
+	}
+}
+
+// A checkout left in drafts/ while main planned the intent: a lane cut from
+// main's tip, which never touched the record, holds it planned, which this
+// checkout has not seen, and is a holder.
+func TestAFreshLaneIsAHolderOfAStaleCheckout(t *testing.T) {
+	f := newFixture(t)
+	f.write(f.here(), draftRel, intentRec("itd-50", "A drafted intent"))
+	f.commitIn(f.here(), "draft itd-50")
+	f.git(f.here(), "switch", "-q", "-c", "stale")
+	f.onMain(func(dir string) {
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(plannedRel)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		f.git(dir, "mv", draftRel, plannedRel)
+		f.commitIn(dir, "plan itd-50")
+		f.git(dir, "switch", "-q", "-c", "lane-fresh")
+		f.write(dir, "note", "ahead\n")
+		f.commitIn(dir, "work on lane-fresh")
+	})
+	if got := f.read().Holders("itd-50", "drafts"); len(got) != 1 || got[0].Branch != "lane-fresh" || got[0].Folder != "planned" {
+		t.Fatalf("Holders = %v, want lane-fresh:planned", holderBranches(got))
+	}
+}
+
+// In a criss-cross history the peer and this checkout have two merge-bases,
+// and a single `git merge-base` names whichever its dates favour. The peer
+// is unchanged only when its copy matches the copy in EVERY merge-base: here
+// the peer's draft matches one base's and not the other's, whichever side
+// rewrote it, so it holds the record either way.
+func TestACrissCrossPeerMatchingOneMergeBaseOnlyIsAHolder(t *testing.T) {
+	for _, side := range []string{"main", "y"} {
+		t.Run("rewritten on "+side, func(t *testing.T) {
+			f := newFixture(t)
+			f.write(f.here(), draftRel, intentRec("itd-50", "A drafted intent"))
+			f.commitIn(f.here(), "draft itd-50")
+			f.git(f.here(), "branch", "y")
+			step := func(branch string) string {
+				f.git(f.here(), "switch", "-q", branch)
+				if branch == side {
+					f.write(f.here(), draftRel, intentRec("itd-50", "A drafted intent, rewritten"))
+				} else {
+					f.write(f.here(), "note-"+branch, "side\n")
+				}
+				f.commitIn(f.here(), "one side on "+branch)
+				return f.git(f.here(), "rev-parse", "HEAD")
+			}
+			x1, y1 := step("main"), step("y")
+			f.git(f.here(), "switch", "-q", "main")
+			f.git(f.here(), "merge", "-q", "--no-ff", "-m", "x2", y1)
+			f.git(f.here(), "switch", "-q", "y")
+			f.git(f.here(), "merge", "-q", "--no-ff", "-m", "y2", x1)
+			f.git(f.here(), "switch", "-q", "main")
+			if err := os.MkdirAll(filepath.Join(f.here(), filepath.Dir(plannedRel)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			f.git(f.here(), "mv", draftRel, plannedRel)
+			f.commitIn(f.here(), "plan itd-50")
+			if bases := strings.Fields(f.git(f.here(), "merge-base", "--all", "y", "HEAD")); len(bases) != 2 {
+				t.Fatalf("the fixture is not criss-cross: merge-bases %v", bases)
+			}
+			if got := f.read().Holders("itd-50", "planned"); len(got) != 1 || got[0].Branch != "y" || got[0].Folder != "drafts" {
+				t.Fatalf("Holders = %v, want y:drafts", holderBranches(got))
+			}
+		})
 	}
 }
