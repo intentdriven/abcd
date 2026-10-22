@@ -654,7 +654,7 @@ so that a later drain takes issues a person would have decided. What guards it:
 
 A drain is unattended, as a build is, so while one has not stopped and its
 state was written within the reservation lease, the host's approval prompts
-for shell commands in its checkout and its lanes are refused rather than shown,
+for shell commands in its checkout and in the lanes the host runs are refused rather than shown,
 on the terms [`34-build.md`](34-build.md#approval-prompts-while-it-runs) sets
 out (iss-2610171110154902). A lane handed back does not end it, since the
 drain routes the hand-back and goes on unattended; refusal stops when the

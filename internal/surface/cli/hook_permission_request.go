@@ -30,7 +30,7 @@ import (
 
 // unattendedRefusalNotice is the one line build and drain print as they
 // start: the person is told once that the prompts are refused while it runs.
-const unattendedRefusalNotice = "While this runs, the host's approval prompts for shell commands in this checkout and its lanes " +
+const unattendedRefusalNotice = "While this runs, the host's approval prompts for shell commands in this checkout and the lanes it runs " +
 	"are refused, and the agent is told to rewrite the command into plain steps abcd can check."
 
 // noticeUnattended tells the person, once, as a build or drain starts, that

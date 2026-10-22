@@ -851,9 +851,11 @@ prompts again two hours after the run last moved. The refusal tells the agent to
 rewrite the command so it needs no approval, each step its own plain command
 and a script's steps on the command line rather than in a file, a heredoc or a
 `bash -c` string, or to skip the step and say why in its report. It is the
-same every time the prompt comes back, and abcd never grants a prompt: an
+same every time the prompt comes back, and the hook never grants a prompt: an
 approval given to a retry would let any command past every check by being sent
-twice. In every other session the hook says nothing and the host's prompt
+twice. A lane started through the claude runner runs with the host's hooks off
+(`--bare`), so the hook never sees its prompts; the guard answers them as that
+runner's permission prompt answerer (`abcd guard approve`). In every other session the hook says nothing and the host's prompt
 shows as usual. A new run, and a pick as it starts one or begins a series,
 says once on stderr that the prompts are refused while it runs; a
 resume says nothing.

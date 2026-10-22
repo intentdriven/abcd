@@ -490,10 +490,12 @@ run in this checkout was handed back.
 
 The move that begins a drain says once, in one line on stderr (stdout's JSON is
 untouched), that approval prompts are refused while it runs: the host's
-approval prompt for a shell command in this checkout or one of its lanes is
+approval prompt for a shell command in this checkout or in a lane the host runs is
 refused rather than shown, and the agent is told to rewrite the command into
 plain steps abcd can check, or skip the step and say why in its report, as
-`/abcd:build` describes. abcd never approves a prompt.
+`/abcd:build` describes. The refusal never turns into an approval; a lane
+started through the claude runner runs with the host's hooks off, and the
+guard answers its prompts instead (`abcd guard approve`).
 
 Refusal stops when the drain stops, or after two hours with no activity in the
 drain. A lane handed back does not stop it, since the drain routes the
