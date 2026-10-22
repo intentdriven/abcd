@@ -10,11 +10,13 @@ package loop
 // caused it.
 //
 // The tier of a role's round n+1 is oracle.Escalate of its tier in round n,
-// never its base tier moved twice in one step. A round that passed moves
-// nothing: a fresh round after it (a sync with the default branch) keeps the
-// tier the lane reached, so a lane never drops back below the tier its
-// failure took it to, and a role new to the lane (the auditor joining the
-// closing lane) starts at its own row's tier.
+// never its base tier moved twice in one step. The role's row is the floor: a
+// row raised during the run takes effect at the next round, and the step up
+// is taken from the higher of the two. A round that passed moves nothing: a
+// fresh round after it (a sync with the default branch) keeps the tier the
+// lane reached, so a lane never drops back below the tier its failure took it
+// to, and a role new to the lane (the auditor joining the closing lane)
+// starts at its own row's tier.
 //
 // Only a route that resolves from a tier can move. A role the step hands to a
 // runner names a runner and its model, a role pointed at a provider names a
@@ -145,8 +147,10 @@ func (rt *roundRouter) route(lane Lane, n int, role string, after *ValidationRou
 		r.Note = fmt.Sprintf("the %s's route is %s, which names no tier, so it does not move", role, oracle.HostDecides)
 		return r, nil, nil
 	}
+	// The row is the floor: a row raised during the run takes effect at the
+	// next round, and a lowered one never takes the lane back down.
 	from := base.Row.Tier
-	if prev, ok := priorTier(lane, n, role); ok {
+	if prev, ok := priorTier(lane, n, role); ok && rank(prev) > rank(from) {
 		from = prev
 	}
 	r.Tier = from
@@ -181,6 +185,17 @@ func priorTier(lane Lane, n int, role string) (oracle.Tier, bool) {
 		}
 	}
 	return "", false
+}
+
+// rank is a tier's place on the ladder local, economy, frontier.
+func rank(t oracle.Tier) int {
+	switch t {
+	case oracle.Economy:
+		return 1
+	case oracle.Frontier:
+		return 2
+	}
+	return 0
 }
 
 // failedBefore is the round round n of lane follows when that round did not

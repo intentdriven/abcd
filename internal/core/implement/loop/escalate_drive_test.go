@@ -111,3 +111,38 @@ func TestAPointedRoleRecordsNoTierAndItsRowNeverStopsTheStep(t *testing.T) {
 		t.Fatalf("a pointed role is asked for no tier and says why: %+v %+v", res.Tier, r)
 	}
 }
+
+// TestARaisedRowTakesEffectAtTheNextRound: a row raised during the run is the
+// floor the next round starts from, so raising a table takes effect at once
+// and a lane is never moved below the row; a lowered row never takes a lane
+// back down.
+func TestARaisedRowTakesEffectAtTheNextRound(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	lane := Lane{ID: "lane-1", Validation: []ValidationRound{
+		{Round: 1, Fix: "fix-1", Validators: []ValidatorRun{{Role: RoleRuthless, Verdict: "FIX FIRST", Return: "r"}},
+			Routes: []Round{{Role: RoleRuthless, Tier: oracle.Local}}},
+		{Round: 2},
+	}}
+	raised := &roundRouter{tiers: tiering(t, repo, `{"ruthless-reviewer":{"tier":"economy"}}`)}
+	r, _, err := raised.route(lane, 2, RoleRuthless, failedBefore(lane, 2))
+	if err != nil || r.Tier != oracle.Frontier || r.EscalatedFrom != oracle.Economy {
+		t.Fatalf("a row raised to economy is the floor the failed round moves up from: %+v %v", r, err)
+	}
+	passed := Lane{ID: "lane-1", Validation: []ValidationRound{
+		{Round: 1, Validators: []ValidatorRun{{Role: RoleRuthless, Verdict: "SHIP", Pass: true}},
+			Routes: []Round{{Role: RoleRuthless, Tier: oracle.Local}}},
+		{Round: 2},
+	}}
+	if r, _, err := raised.route(passed, 2, RoleRuthless, nil); err != nil || r.Tier != oracle.Economy {
+		t.Fatalf("a row raised after a passing round takes effect at the next: %+v %v", r, err)
+	}
+	lowered := &roundRouter{tiers: tiering(t, repo, `{"ruthless-reviewer":{"tier":"local"}}`)}
+	high := Lane{ID: "lane-1", Validation: []ValidationRound{
+		{Round: 1, Validators: []ValidatorRun{{Role: RoleRuthless, Verdict: "SHIP", Pass: true}},
+			Routes: []Round{{Role: RoleRuthless, Tier: oracle.Frontier}}},
+		{Round: 2},
+	}}
+	if r, _, err := lowered.route(high, 2, RoleRuthless, nil); err != nil || r.Tier != oracle.Frontier {
+		t.Fatalf("a lowered row never takes a lane down: %+v %v", r, err)
+	}
+}
