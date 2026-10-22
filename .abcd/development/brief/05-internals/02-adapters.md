@@ -194,8 +194,9 @@ listed, one it does not report (llama-server and mlx_lm.server report no
 digest) is `not_verified`, and the pin's context is the asked context. A field
 the server reports otherwise refuses the call before the brief is sent; on
 llama-server, which reports no digest, the model file it has loaded is held to
-the pin's `weights_file`. Recording adds no request to the ones the call
-makes. A model its provider block pins to one OpenRouter provider
+the pin's `weights_file`. Writing the record adds no request of its own:
+the only requests beyond the call are the probe of a pinned local model,
+above, and the generation readback a block turns on, below. A model its provider block pins to one OpenRouter provider
 (`oracle.api.<provider>.pins`, iss-2610161734413178) is sent with OpenRouter's
 provider routing object (one provider in `order`, `allow_fallbacks: false`,
 `require_parameters: true`, `data_collection: "deny"`, one quantisation), and
