@@ -855,7 +855,7 @@ same every time the prompt comes back, and the hook never grants a prompt: an
 approval given to a retry would let any command past every check by being sent
 twice. A lane started through the claude runner runs with the host's hooks off
 (`--bare`), so the hook never sees its prompts; the guard answers them as that
-runner's permission prompt answerer (`abcd guard approve`). In every other session the hook says nothing and the host's prompt
+runner's permission prompt answerer. In every other session the hook says nothing and the host's prompt
 shows as usual. A new run, and a pick as it starts one or begins a series,
 says once on stderr that the prompts are refused while it runs; a
 resume says nothing.
