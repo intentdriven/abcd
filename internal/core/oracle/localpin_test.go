@@ -2,12 +2,14 @@ package oracle
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
@@ -15,7 +17,7 @@ import (
 
 // The tests in this file are iss-2610161734428291's oracle half: a block on
 // this machine can pin a listed model down to its weights, the server is
-// probed once before the route's first use, a field it reports otherwise
+// probed before the route is used, a field it reports otherwise
 // refuses the route, and the record carries the pin on the asked side and the
 // server's report on the served side. Each server is an httptest fake shaped
 // like the runtime's real endpoints; a live probe is owed.
@@ -23,6 +25,10 @@ import (
 const (
 	localModel  = "qwen3-coder:30b"
 	localDigest = "06c1097efce0431c2045fe7b2e5108366e43bee1b4603a7aded8f21689e90bca"
+	// llamaFile is the GGUF file a llama.cpp pin names, and llamaPath where
+	// the llama-server fakes report it loaded.
+	llamaFile = "Qwen3-Coder-Q4_K_M.gguf"
+	llamaPath = "/m/" + llamaFile
 )
 
 // pinnedLocalBlock is a keyless block at base serving localModel, pinned by pins.
@@ -32,10 +38,34 @@ func pinnedLocalBlock(base, pins string) string {
 }
 
 // localPinText is a pin of localModel on runtime with the context ctx and
-// cache type kv.
+// cache type kv; a llama.cpp pin names llamaFile as its weights file.
 func localPinText(runtime, version, ctx, kv string) string {
+	file := ""
+	if runtime == "llama.cpp" {
+		file = `"weights_file":"` + llamaFile + `",`
+	}
 	return `{"` + localModel + `":{"runtime":"` + runtime + `","runtime_version":"` + version + `","weights_sha256":"sha256:` +
-		strings.ToUpper(localDigest) + `","quantisation":"Q4_K_M","context_length":` + ctx + `,"kv_cache_type":"` + kv + `"}}`
+		strings.ToUpper(localDigest) + `",` + file + `"quantisation":"Q4_K_M","context_length":` + ctx + `,"kv_cache_type":"` + kv + `"}}`
+}
+
+// llamaPinFile is a llama.cpp pin of localModel naming file as its weights
+// file, the key left out when file is empty.
+func llamaPinFile(file string) string {
+	return strings.Replace(localPinText("llama.cpp", "b9860", "32768", "f16"), `"weights_file":"`+llamaFile+`",`, file, 1)
+}
+
+// llamaPropsAt is llama-server's /props loading the model file at path,
+// serving each of slots slots (none named when 0) a context of nctx.
+func llamaPropsAt(path string, nctx, slots int) string {
+	extra := ""
+	if path != "" {
+		extra += `,"model_path":"` + path + `"`
+	}
+	if slots != 0 {
+		extra += `,"total_slots":` + fmt.Sprint(slots)
+	}
+	return `{"build_info":"b9860-1a2b3c4d","default_generation_settings":{"n_ctx":` + fmt.Sprint(nctx) + `},` +
+		`"chat_template_caps":{"supports_tool_calls":true}` + extra + `}`
 }
 
 var ollamaPin = localPinText("ollama", "0.14.2", "32768", "f16")
@@ -56,7 +86,7 @@ func forgetProbes(t *testing.T) {
 	t.Helper()
 	clear := func() {
 		probes.Lock()
-		probes.m = map[string]*probeOnce{}
+		probes.m = map[string]probeHeld{}
 		probes.Unlock()
 	}
 	clear()
@@ -147,6 +177,11 @@ func TestALocalPinThatNamesTooLittleIsRefused(t *testing.T) {
 		{"unlisted model", "http://127.0.0.1:11434/v1", strings.Replace(ollamaPin, localModel, "absent", 1), "not on its models"},
 		{"OpenRouter's pin here", "http://127.0.0.1:11434/v1", `{"` + localModel + `":{"order":["a"],"quantizations":["fp8"],"canonical_slug":"a/b"}}`, "local pin"},
 		{"local pin on OpenRouter", "https://openrouter.ai/api/v1", ollamaPin, "OpenRouter pin"},
+		{"llama.cpp without its weights file", "http://127.0.0.1:8080/v1", llamaPinFile(""), "weights_file"},
+		{"weights file as a path", "http://127.0.0.1:8080/v1", llamaPinFile(`"weights_file":"/m/` + llamaFile + `",`), "weights_file"},
+		{"weights file not GGUF", "http://127.0.0.1:8080/v1", llamaPinFile(`"weights_file":"qwen3-coder",`), "weights_file"},
+		{"weights file off llama.cpp", "http://127.0.0.1:11434/v1",
+			strings.Replace(ollamaPin, `"quantisation"`, `"weights_file":"`+llamaFile+`","quantisation"`, 1), "weights_file"},
 		{"neither", "https://api.example.com/v1", ollamaPin, "this machine"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -194,7 +229,7 @@ func TestAPinnedLocalCallIsProbedAndRecorded(t *testing.T) {
 	}
 	for f, want := range map[Field]UnpinnedReason{
 		ServedWeightsSHA256: SelfReported, ServedQuantisation: SelfReported, ServedRuntimeVersion: SelfReported,
-		ServedContextLength: SelfReported, ServedToolCalls: SelfReported, ServedKVCacheType: NotReported,
+		ServedContextLength: SelfReported, ServedToolCalls: SelfReported, ServedKVCacheType: NotVerified,
 		AskedProviderPin: NotConfigured,
 	} {
 		if r, _ := listed(rec, f); r != want {
@@ -211,8 +246,7 @@ func TestAPinnedLocalCallIsProbedAndRecorded(t *testing.T) {
 // verified, and the served fields as not reported.
 func TestWhatTheServerDoesNotReportIsNotVerified(t *testing.T) {
 	l := newLocalFake(t)
-	l.props = `{"build_info":"b9860-1a2b3c4d","model_path":"/m/Qwen3-Coder-Q4_K_M.gguf","default_generation_settings":{"n_ctx":32768},` +
-		`"chat_template_caps":{"supports_tool_calls":true}}`
+	l.props = llamaPropsAt(llamaPath, 32768, 0)
 	rec, err := localCall(t, l, localPinText("llama.cpp", "b9860", "32768", "q8_0"))
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +254,7 @@ func TestWhatTheServerDoesNotReportIsNotVerified(t *testing.T) {
 	for f, want := range map[Field]UnpinnedReason{
 		AskedWeightsSHA256: NotVerified, AskedQuantisation: NotVerified,
 		ServedWeightsSHA256: NotReported, ServedQuantisation: NotReported, ServedRuntimeVersion: SelfReported,
-		ServedContextLength: SelfReported,
+		ServedContextLength: SelfReported, ServedKVCacheType: NotVerified,
 	} {
 		if r, _ := listed(rec, f); r != want {
 			t.Errorf("%s = %q, want %q", f, r, want)
@@ -231,7 +265,7 @@ func TestWhatTheServerDoesNotReportIsNotVerified(t *testing.T) {
 			t.Errorf("%s is listed %q, but llama-server confirmed it", f, r)
 		}
 	}
-	if rec.LocalServed == nil || rec.LocalServed.Model != "Qwen3-Coder-Q4_K_M.gguf" {
+	if rec.LocalServed == nil || rec.LocalServed.Model != llamaFile {
 		t.Fatalf("local served = %+v", rec.LocalServed)
 	}
 }
@@ -264,22 +298,44 @@ func TestAServerThatDiffersFromThePinIsRefusedBeforeAnyCall(t *testing.T) {
 	}
 }
 
-// TestTheServerIsProbedOncePerProcess: a second call to the same pinned
-// route reads the first probe's report, and an unpinned route to the same
-// server is never probed.
-func TestTheServerIsProbedOncePerProcess(t *testing.T) {
+// holdClock sets the probe's clock to the returned time for the length of
+// the test.
+func holdClock(t *testing.T) *time.Time {
+	t.Helper()
+	now := time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)
+	was := probeNow
+	probeNow = func() time.Time { return now }
+	t.Cleanup(func() { probeNow = was })
+	return &now
+}
+
+// TestACallReusesAProbeForAMinuteAtMost: a self-contained call to the same
+// pinned route within a minute of the probe the pin held reads its report,
+// and one made later probes again; an unpinned route to the same server is
+// never probed.
+func TestACallReusesAProbeForAMinuteAtMost(t *testing.T) {
 	l := newLocalFake(t)
+	now := holdClock(t)
 	f := newFx(t)
 	f.machineConfig(pinnedLocalBlock(l.srv.URL+"/v1", ollamaPin))
 	c := f.loadAPI()
-	for range 2 {
+	call := func() {
+		t.Helper()
 		if _, _, err := c.Call(context.Background(), credential.Machine(f.roots.Home), CallRequest{
 			Target: Target{Provider: "local", Model: localModel}, Brief: sidesBrief}); err != nil {
 			t.Fatal(err)
 		}
 	}
+	call()
+	*now = now.Add(59 * time.Second)
+	call()
 	if n := l.versionAsked.Load(); n != 1 {
-		t.Fatalf("the server was probed %d times, want once", n)
+		t.Fatalf("the server was probed %d times within a minute, want once", n)
+	}
+	*now = now.Add(2 * time.Second)
+	call()
+	if n := l.versionAsked.Load(); n != 2 {
+		t.Fatalf("the server was probed %d times, want a report older than a minute probed again", n)
 	}
 	before := l.versionAsked.Load()
 	_, rec, err := c.Call(context.Background(), credential.Machine(f.roots.Home), CallRequest{
@@ -300,6 +356,107 @@ func TestTheServerIsProbedOncePerProcess(t *testing.T) {
 	}
 }
 
+// TestARefusedReportIsNeverReused: a report the pin refused is not kept, so
+// the server, once put right, holds the route at the next call without a
+// restart.
+func TestARefusedReportIsNeverReused(t *testing.T) {
+	l := newLocalFake(t)
+	holdClock(t)
+	f := newFx(t)
+	f.machineConfig(pinnedLocalBlock(l.srv.URL+"/v1", ollamaPin))
+	c := f.loadAPI()
+	call := func() error {
+		_, _, err := c.Call(context.Background(), credential.Machine(f.roots.Home), CallRequest{
+			Target: Target{Provider: "local", Model: localModel}, Brief: sidesBrief})
+		return err
+	}
+	l.digest = strings.Repeat("a", 64)
+	if err := call(); err == nil || !strings.Contains(err.Error(), "weights_sha256") {
+		t.Fatalf("err = %v", err)
+	}
+	l.digest = localDigest
+	if err := call(); err != nil {
+		t.Fatalf("the server put right is still refused: %v", err)
+	}
+	if n := l.versionAsked.Load(); n != 2 {
+		t.Fatalf("probes = %d, want the refused report probed again", n)
+	}
+}
+
+// TestARunnerRouteIsProbedAtEveryUse: the probe a runner's route takes
+// before each run is made afresh every time, never read from an earlier one.
+func TestARunnerRouteIsProbedAtEveryUse(t *testing.T) {
+	l := newLocalFake(t)
+	holdClock(t)
+	f := newFx(t)
+	f.machineConfig(pinnedLocalBlock(l.srv.URL+"/v1", ollamaPin))
+	c := f.loadAPI()
+	for range 2 {
+		if _, _, err := c.ProbeLocal(context.Background(), credential.Machine(f.roots.Home), "local", localModel, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := l.versionAsked.Load(); n != 2 {
+		t.Fatalf("probes = %d, want one per use", n)
+	}
+}
+
+// TestALlamaPinIsHeldToItsWeightsFile: llama-server reports no digest, so
+// the model file it has loaded is what identifies the weights: a file other
+// than the one pinned, or none named, refuses the route, naming the field and
+// what the server has loaded, before the brief is sent.
+func TestALlamaPinIsHeldToItsWeightsFile(t *testing.T) {
+	for _, tc := range []struct{ name, path, want string }{
+		{"other file", "/m/Qwen3-Coder-Q8_0.gguf", "Qwen3-Coder-Q8_0.gguf"},
+		{"no file named", "", "names no model file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := newLocalFake(t)
+			l.props = llamaPropsAt(tc.path, 32768, 0)
+			_, err := localCall(t, l, localPinText("llama.cpp", "b9860", "32768", "f16"))
+			if err == nil || !strings.Contains(err.Error(), "weights_file") || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want weights_file and %q named", err, tc.want)
+			}
+			if l.chats.Load() != 0 {
+				t.Fatal("the brief was sent to a server holding other weights")
+			}
+		})
+	}
+	l := newLocalFake(t)
+	l.props = llamaPropsAt(`C:\\models\\`+llamaFile, 32768, 0)
+	if _, err := localCall(t, l, localPinText("llama.cpp", "b9860", "32768", "f16")); err != nil {
+		t.Fatalf("the pinned file under a Windows path: %v", err)
+	}
+}
+
+// TestALlamaContextFixCountsItsSlots: llama-server reports each slot's
+// context, and --ctx-size is the total its --parallel slots share, so the
+// fix names the pinned context times the slots, or one slot.
+func TestALlamaContextFixCountsItsSlots(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		slots int
+		want  []string
+	}{
+		{"four slots", 4, []string{"--ctx-size 131072", "--parallel 1 --ctx-size 32768"}},
+		{"slots unread", 0, []string{"--ctx-size <32768 × its --parallel slot count>", "--parallel 1 --ctx-size 32768"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			l := newLocalFake(t)
+			l.props = llamaPropsAt(llamaPath, 8192, tc.slots)
+			_, err := localCall(t, l, localPinText("llama.cpp", "b9860", "32768", "f16"))
+			if err == nil || !strings.Contains(err.Error(), "context_length") {
+				t.Fatalf("err = %v", err)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("err = %v, want it to name %q", err, w)
+				}
+			}
+		})
+	}
+}
+
 // TestABuildRouteIsHeldToToolsAndContext: a route that runs a tool-using
 // role is refused when the server reports no tool calls, when Ollama cannot
 // say what context it serves, or when a llama-server pin declares a q4 KV
@@ -313,10 +470,10 @@ func TestABuildRouteIsHeldToToolsAndContext(t *testing.T) {
 		{"no tools", ollamaPin, "ollama show", func(l *localFake) { l.caps = `"capabilities":["completion"],` }},
 		{"context unread", ollamaPin, "OLLAMA_CONTEXT_LENGTH", func(l *localFake) { l.ps = `{"models":[]}` }},
 		{"q4 cache", localPinText("llama.cpp", "b9860", "32768", "q4_0"), "--cache-type-k", func(l *localFake) {
-			l.props = `{"build_info":"b9860-1a2b3c4d","default_generation_settings":{"n_ctx":32768},"chat_template_caps":{"supports_tool_calls":true}}`
+			l.props = llamaPropsAt(llamaPath, 32768, 0)
 		}},
 		{"llama without jinja", localPinText("llama.cpp", "b9860", "32768", "f16"), "--jinja", func(l *localFake) {
-			l.props = `{"build_info":"b9860-1a2b3c4d","default_generation_settings":{"n_ctx":32768},"chat_template_caps":{"supports_tool_calls":false}}`
+			l.props = strings.Replace(llamaPropsAt(llamaPath, 32768, 0), `"supports_tool_calls":true`, `"supports_tool_calls":false`, 1)
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

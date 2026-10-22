@@ -17,9 +17,14 @@ package openaiapi
 //     (context_length). None of them loads a model. The KV-cache type is the
 //     server's environment (OLLAMA_KV_CACHE_TYPE), which no endpoint reports.
 //   - llama-server (b9860): GET /props is its build (build_info), the context
-//     each slot serves (default_generation_settings.n_ctx), the model file's
-//     path, and whether its chat template calls tools (chat_template_caps).
-//     It reports no digest, quantisation or KV-cache type.
+//     each slot serves (default_generation_settings.n_ctx), its slot count
+//     (total_slots, its --parallel), the model file's path, whose base name is
+//     the one identity it gives its weights, and whether its chat template
+//     calls tools (chat_template_caps). It reports no digest, quantisation or
+//     KV-cache type.
+//
+// No runtime reports the KV cache's type, so a report never carries one: a
+// pin's kv_cache_type is the person's declaration alone.
 //   - mlx_lm.server (0.31): GET /v1/models lists the models it serves, and
 //     nothing else is reported.
 //
@@ -72,15 +77,21 @@ type LocalReport struct {
 	Digest string
 	// Quantisation is the model's quantisation as the runtime names it.
 	Quantisation string
-	// Context is the context length the model is served at.
+	// Context is the context length the model is served at (llama-server's
+	// is each slot's).
 	Context int
-	// KVCacheType is the KV cache's type.
-	KVCacheType string
 	// ToolCalls is whether the model's template takes tool calls.
 	ToolCalls *bool
-	// Model is the model as the server names it: Ollama's name, the
-	// llama-server model file's name, mlx's listed id.
+	// Model is the model as the server names it: the name Ollama lists it
+	// under, the llama-server model file's name, mlx's listed id.
 	Model string
+	// WeightsFile is the base name of the model file llama-server loaded
+	// (/props model_path); the other runtimes report none.
+	WeightsFile string
+	// Slots is llama-server's slot count (/props total_slots, its
+	// --parallel): the context it reports is each slot's, and --ctx-size is
+	// the total the slots share.
+	Slots int
 }
 
 // numCtxRe is a Modelfile parameter line setting num_ctx.
@@ -228,7 +239,6 @@ func (p prober) ollama(model string) (LocalReport, error) {
 	if json.Unmarshal(raw, &show) != nil {
 		return LocalReport{}, p.c.fail(p.c.host + " answered POST /api/show with something that is not Ollama's model details")
 	}
-	rep.Model = p.clean(model)
 	rep.Quantisation = p.clean(lenientString(show.Details.Quantisation))
 	if show.Capabilities != nil {
 		tools := false
@@ -264,9 +274,17 @@ func (p prober) ollama(model string) (LocalReport, error) {
 	if err != nil {
 		return LocalReport{}, err
 	}
+	// The served model is the name Ollama lists it under, its own word; the
+	// digest is compared without the sha256: some builds put before it.
 	for _, l := range tags {
 		if is(l) {
-			if d := strings.ToLower(lenientString(l.Digest)); sha256Re.MatchString(d) {
+			name := l.Name
+			if name == "" {
+				name = l.Model
+			}
+			rep.Model = p.clean(name)
+			d := strings.ToLower(lenientString(l.Digest))
+			if d = strings.TrimPrefix(d, "sha256:"); sha256Re.MatchString(d) {
 				rep.Digest = d
 			}
 			break
@@ -284,6 +302,9 @@ func (p prober) ollama(model string) (LocalReport, error) {
 	}
 	return rep, nil
 }
+
+// maxSlots bounds the slot count a probe reads from llama-server.
+const maxSlots = 1 << 12
 
 // sha256Re is a SHA-256 in lower-case hex.
 var sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -317,7 +338,8 @@ func (p prober) llamaServer() (LocalReport, error) {
 		Defaults  struct {
 			NCtx json.RawMessage `json:"n_ctx"`
 		} `json:"default_generation_settings"`
-		Caps map[string]json.RawMessage `json:"chat_template_caps"`
+		Slots json.RawMessage            `json:"total_slots"`
+		Caps  map[string]json.RawMessage `json:"chat_template_caps"`
 	}
 	if json.Unmarshal(raw, &props) != nil || props.BuildInfo == nil {
 		return LocalReport{}, p.c.fail(p.c.host + " answered GET /props with something that is not llama-server's properties")
@@ -327,9 +349,14 @@ func (p prober) llamaServer() (LocalReport, error) {
 	rep.Version = p.clean(build)
 	if mp := lenientString(props.ModelPath); mp != "" {
 		rep.Model = p.clean(path.Base(strings.ReplaceAll(mp, `\`, "/")))
+		rep.WeightsFile = rep.Model
 	}
 	if n := readCount(props.Defaults.NCtx); n != nil && *n > 0 {
 		rep.Context = *n
+	}
+	// A slot count past maxSlots is not one a server runs, so it is not read.
+	if n := readCount(props.Slots); n != nil && *n > 0 && *n <= maxSlots {
+		rep.Slots = *n
 	}
 	for _, key := range []string{"supports_tool_calls", "supports_tools"} {
 		var b bool

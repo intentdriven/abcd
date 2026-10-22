@@ -1444,8 +1444,11 @@ OpenRouter block alone, as the configuration chapter of the brief describes,
 and a configured provider's verification sends the first listed model's pin
 when it has one. A block on this machine takes a local pin there instead
 (the runtime, its version, the weights' digest, quantisation, context length
-and KV-cache type, iss-2610161734428291), which probes the server before the
-route's first use. The verification never reads the generation record back,
+and KV-cache type, and on llama.cpp the GGUF file's name, since llama-server
+reports no digest, iss-2610161734428291), which probes the server before the
+route is used. No runtime reports the KV-cache type, so the refusal of a q4
+cache on llama-server rests on the pin's declaration, and the record lists
+the served cache type as not verified. The verification never reads the generation record back,
 even when the block says `read_generation: true`: that would be one more
 request for an answer the verification discards. A role
 routed through opencode to a pinned model is refused while the person's

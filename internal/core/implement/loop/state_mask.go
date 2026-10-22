@@ -214,12 +214,12 @@ func maskRoute(r runner.RouteRecord) runner.RouteRecord {
 	})
 	s.LocalPin = maskPtr(s.LocalPin, func(p oracle.LocalPin) oracle.LocalPin {
 		p.Runtime, p.RuntimeVersion, p.WeightsSHA256 = line(p.Runtime), line(p.RuntimeVersion), line(p.WeightsSHA256)
-		p.Quantisation, p.KVCacheType = line(p.Quantisation), line(p.KVCacheType)
+		p.WeightsFile, p.Quantisation, p.KVCacheType = line(p.WeightsFile), line(p.Quantisation), line(p.KVCacheType)
 		return p
 	})
 	s.LocalServed = maskPtr(s.LocalServed, func(v oracle.LocalServed) oracle.LocalServed {
 		v.Model, v.RuntimeVersion, v.WeightsSHA256 = line(v.Model), line(v.RuntimeVersion), line(v.WeightsSHA256)
-		v.Quantisation, v.KVCacheType = line(v.Quantisation), line(v.KVCacheType)
+		v.Quantisation = line(v.Quantisation)
 		return v
 	})
 	s.Cost = maskPtr(s.Cost, func(c oracle.Cost) oracle.Cost {

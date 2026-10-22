@@ -202,8 +202,9 @@ rather than skipped:
             "weights_sha256": "06c1…0bca", // the weight file's SHA-256, or Ollama's digest
             "quantisation": "Q4_K_M",
             "context_length": 32768,     // the context the server serves the model at
-            "kv_cache_type": "f16"
-          }
+            "kv_cache_type": "f16"       // declared: no runtime reports it
+          }                              // a llama.cpp pin also names "weights_file",
+                                         //   the GGUF file's base name
         }
       }
     },
@@ -260,20 +261,32 @@ rather than skipped:
   `runtime_version`, `weights_sha256` (the weight file's SHA-256, or Ollama's
   model digest, with or without `sha256:`), `quantisation`, `context_length`
   and `kv_cache_type`; a pin that leaves one out, or names a model off the
-  block's list, is refused when the configuration is read. abcd never hashes a
-  weight file of its own accord: the person declares the digest. Before the
-  route's first use in a process the server is probed, on this machine alone,
-  bounded at five seconds, asking no model anything: Ollama's `/api/version`,
-  `/api/show`, `/api/tags` and `/api/ps`, llama-server's `/props`,
-  mlx_lm.server's `/v1/models`. A value the server reports otherwise than the
-  pin refuses the route, naming the field, before the brief is sent. A route
-  that runs a tool-using role (every role a runner runs) is also refused when
-  the server says the model takes no tool calls, when Ollama cannot say what
-  context it serves (it defaults to 4096 and truncates a longer prompt
-  silently: set `num_ctx` in a Modelfile, or `OLLAMA_CONTEXT_LENGTH` and load
-  the model), or when a llama-server pin declares a q4 KV cache. A probe that
-  read nothing is made again at the next use. Like every member of a provider
-  block, a local pin is the machine's alone.
+  block's list, is refused when the configuration is read. A `llama.cpp` pin
+  also names `weights_file`, the base name of the GGUF file llama-server loads
+  (`Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf`), and is refused without it:
+  llama-server reports no digest, so the file it has loaded is the one thing
+  the probe can hold its weights to. abcd never hashes a weight file of its
+  own accord: the person declares the digest. Before the route is used the
+  server is probed, on this machine alone, bounded at five seconds, asking no
+  model anything: Ollama's `/api/version`, `/api/show`, `/api/tags` and
+  `/api/ps`, llama-server's `/props`, mlx_lm.server's `/v1/models`. A value the
+  server reports otherwise than the pin refuses the route, naming the field,
+  before the brief is sent; on llama-server that includes a model file other
+  than `weights_file`, named as the server has it. A context llama-server
+  serves otherwise is each slot's: `--ctx-size` is the total its `--parallel`
+  slots share, so the fix is the pinned context times the slots, or
+  `--parallel 1`. A route that runs a tool-using role (every role a runner
+  runs) is also refused when the server says the model takes no tool calls,
+  when Ollama cannot say what context it serves (it defaults to 4096 and
+  truncates a longer prompt silently: set `num_ctx` in a Modelfile, or
+  `OLLAMA_CONTEXT_LENGTH` and load the model), or when a llama-server pin
+  declares a q4 KV cache. No runtime reports its KV cache's type, so that
+  refusal rests on the pin's declaration alone, and the record lists the
+  served cache type as not verified. A runner's route is probed before every
+  run; a self-contained call reuses a report the pin held for a minute at
+  most, and a report the pin refused, or a probe that read nothing, is never
+  reused, so a server put right holds the route at its next use. Like every
+  member of a provider block, a local pin is the machine's alone.
 - **Reading back what served a call is the person's choice, per provider.**
   `oracle.api.<provider>.read_generation: true` makes every call through that
   block read OpenRouter's generation record once it is answered (the

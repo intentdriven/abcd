@@ -187,7 +187,7 @@ func complete(ctx context.Context, p Provider, key, model string, brief openaiap
 	}
 	var served *LocalServed
 	if pin, ok := p.LocalPins[model]; ok {
-		if served, err = checkLocal(ctx, client, p, pin, model, false); err != nil {
+		if served, err = checkLocal(ctx, client, p, pin, model, false, true); err != nil {
 			return nil, CallRecord{}, err
 		}
 	}

@@ -183,13 +183,32 @@ func TestAPinnedLocalRunIsProbedAndSealed(t *testing.T) {
 			t.Errorf("%s is listed %q, but the server confirmed the pin", fl, r)
 		}
 	}
-	if got[oracle.ServedKVCacheType] != oracle.NotReported || got[oracle.ServedWeightsSHA256] != oracle.SelfReported {
+	// No runtime reports its KV cache's type, so the pin's is never confirmed.
+	if got[oracle.ServedKVCacheType] != oracle.NotVerified || got[oracle.ServedWeightsSHA256] != oracle.SelfReported {
 		t.Errorf("served local fields: %v", ans.Unpinned)
 	}
 	if got[oracle.AskedProviderPin] != oracle.NotConfigured {
 		t.Errorf("provider pin = %q", got[oracle.AskedProviderPin])
 	}
 	assertFixedLists(t, ans.Unpinned)
+}
+
+// TestEveryPinnedLocalRunProbesItsServer: each run probes the server
+// afresh, so a server changed between two runs is never trusted on the
+// strength of the first run's report.
+func TestEveryPinnedLocalRunProbesItsServer(t *testing.T) {
+	o := newOllamaRunFake(t, true)
+	cfg, _ := localRunConfig(o.srv.URL+"/v1", true)
+	c := mustLoad(t, cfg, "")
+	for range 2 {
+		f := newFake(t, "ok", OpenCode)
+		if _, _, err := c.adapter(c.runners[OpenCode]).Run(context.Background(), f.request("ruthless-reviewer")); err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	}
+	if n := o.probes.Load(); n != 2 {
+		t.Fatalf("probes = %d, want one per run", n)
+	}
 }
 
 // TestAPinnedLocalRunTheServerCannotHoldIsNeverLaunched: a server whose

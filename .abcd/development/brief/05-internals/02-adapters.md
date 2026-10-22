@@ -179,15 +179,22 @@ route to this machine also lists the served local fields
 (`served.weights_sha256`, `served.quantisation`, `served.runtime_version`,
 `served.context_length`, `served.kv_cache_type`, `served.tool_calls`): each is
 `self_reported` when the server's probe read it, since it is the server's own
-word, and `not_reported` otherwise. A model a block on this machine pins
+word, and `not_reported` otherwise, except `served.kv_cache_type`, which no
+runtime reports: on a pinned route it is always `not_verified`, since the
+pin's cache type is the person's declaration and nothing on the route
+confirms it. A model a block on this machine pins
 (`oracle.api.<provider>.pins`, a local pin, iss-2610161734428291;
-[`03-configuration.md`](03-configuration.md)) is probed once per process before
-its first use through the runtime's own endpoints, and the record carries the
-pin as `local_pin` and what the server reported as `local_served`: a pinned
-field the server confirmed is no longer listed, one it does not report
-(llama-server and mlx_lm.server report no digest) is `not_verified`, and the
-pin's context is the asked context. A field the server reports otherwise
-refuses the call before the brief is sent. Recording adds no request to the ones the call
+[`03-configuration.md`](03-configuration.md)) is probed before it is used,
+through the runtime's own endpoints: a call reuses a report the pin held for
+a minute at most, a runner's route is probed before every run, and a report
+the pin refused is never reused, so a server put right holds the route at its
+next use. The record carries the pin as `local_pin` and what the server
+reported as `local_served`: a pinned field the server confirmed is no longer
+listed, one it does not report (llama-server and mlx_lm.server report no
+digest) is `not_verified`, and the pin's context is the asked context. A field
+the server reports otherwise refuses the call before the brief is sent; on
+llama-server, which reports no digest, the model file it has loaded is held to
+the pin's `weights_file`. Recording adds no request to the ones the call
 makes. A model its provider block pins to one OpenRouter provider
 (`oracle.api.<provider>.pins`, iss-2610161734413178) is sent with OpenRouter's
 provider routing object (one provider in `order`, `allow_fallbacks: false`,

@@ -28,6 +28,9 @@ type ollamaFake struct {
 	show, ps   string
 	showStatus int
 	asked      []string
+	// accept is the model /api/show answers for (ollamaModel when empty),
+	// and tags the pulled models' list (two models when empty).
+	accept, tags string
 }
 
 func (o *ollamaFake) serve(t *testing.T) *httptest.Server {
@@ -39,13 +42,21 @@ func (o *ollamaFake) serve(t *testing.T) *httptest.Server {
 			_, _ = io.WriteString(w, `{"version":"0.14.2"}`)
 		case "POST /api/show":
 			body, _ := io.ReadAll(r.Body)
-			if !strings.Contains(string(body), `"model":"`+ollamaModel+`"`) || o.showStatus != 0 {
+			accept := o.accept
+			if accept == "" {
+				accept = ollamaModel
+			}
+			if !strings.Contains(string(body), `"model":"`+accept+`"`) || o.showStatus != 0 {
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = io.WriteString(w, `{"error":"model 'x' not found"}`)
 				return
 			}
 			_, _ = io.WriteString(w, o.show)
 		case "GET /api/tags":
+			if o.tags != "" {
+				_, _ = io.WriteString(w, o.tags)
+				return
+			}
 			_, _ = io.WriteString(w, `{"models":[{"name":"llama3.2:latest","model":"llama3.2:latest","digest":"a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72"},`+
 				`{"name":"`+ollamaModel+`","model":"`+ollamaModel+`","modified_at":"2026-10-16T09:00:00Z","size":18556688736,`+
 				`"digest":"`+ollamaDigest+`","details":{"format":"gguf","family":"qwen3moe","quantization_level":"Q4_K_M"}}]}`)
@@ -98,8 +109,44 @@ func TestTheOllamaProbeReadsWhatItServes(t *testing.T) {
 	if rep.ToolCalls == nil || !*rep.ToolCalls {
 		t.Fatalf("tool calls = %v, want true", rep.ToolCalls)
 	}
-	if rep.KVCacheType != "" {
-		t.Fatalf("kv cache type = %q: Ollama reports none", rep.KVCacheType)
+}
+
+// TestAnOllamaDigestWithItsPrefixIsRead: a digest /api/tags names as
+// sha256:<hex> is the same digest, read without its prefix and compared,
+// never dropped as unreadable.
+func TestAnOllamaDigestWithItsPrefixIsRead(t *testing.T) {
+	o := &ollamaFake{show: ollamaShow(`num_ctx 8192`, `"capabilities":["completion","tools"],`), ps: ollamaLoaded,
+		tags: `{"models":[{"name":"` + ollamaModel + `","model":"` + ollamaModel + `","digest":"sha256:` + strings.ToUpper(ollamaDigest) + `"}]}`}
+	rep, err := probeClient(t, o.serve(t).URL+"/v1", "").ProbeLocal(context.Background(), RuntimeOllama, ollamaModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Digest != ollamaDigest {
+		t.Fatalf("digest = %q, want %q", rep.Digest, ollamaDigest)
+	}
+}
+
+// TestTheOllamaModelIsTheNameItLists: the served model is the name Ollama's
+// own list gives the model the pin asked for (an untagged name is its
+// :latest), never a copy of the configured name; a model the list does not
+// name has no served name.
+func TestTheOllamaModelIsTheNameItLists(t *testing.T) {
+	o := &ollamaFake{show: ollamaShow(`num_ctx 8192`, ``), ps: `{"models":[]}`, accept: "qwen3-coder",
+		tags: `{"models":[{"name":"qwen3-coder:latest","model":"qwen3-coder:latest","digest":"` + ollamaDigest + `"}]}`}
+	rep, err := probeClient(t, o.serve(t).URL+"/v1", "").ProbeLocal(context.Background(), RuntimeOllama, "qwen3-coder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Model != "qwen3-coder:latest" || rep.Digest != ollamaDigest {
+		t.Fatalf("report = %+v, want the listed name qwen3-coder:latest", rep)
+	}
+	o.tags = `{"models":[]}`
+	rep, err = probeClient(t, o.serve(t).URL+"/v1", "").ProbeLocal(context.Background(), RuntimeOllama, "qwen3-coder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Model != "" {
+		t.Fatalf("model = %q for a model Ollama does not list", rep.Model)
 	}
 }
 
@@ -172,11 +219,16 @@ func TestTheLlamaServerProbeReadsItsProps(t *testing.T) {
 	if rep.Version != "b9860" || rep.Context != 32768 || rep.Model != "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf" {
 		t.Fatalf("report = %+v", rep)
 	}
+	// The model file's base name is the weights' one identity llama-server
+	// reports, and its slot count says what the per-slot context totals.
+	if rep.WeightsFile != "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf" || rep.Slots != 1 {
+		t.Fatalf("weights file %q, slots %d", rep.WeightsFile, rep.Slots)
+	}
 	if rep.ToolCalls == nil || !*rep.ToolCalls {
 		t.Fatalf("tool calls = %v", rep.ToolCalls)
 	}
-	if rep.Digest != "" || rep.Quantisation != "" || rep.KVCacheType != "" {
-		t.Fatalf("report = %+v: llama-server reports no digest, quantisation or cache type", rep)
+	if rep.Digest != "" || rep.Quantisation != "" {
+		t.Fatalf("report = %+v: llama-server reports no digest or quantisation", rep)
 	}
 	if got, _ := auth.Load().(string); got != "Bearer sk-local-1234567890" {
 		t.Fatalf("authorization = %q", got)
