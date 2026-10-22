@@ -1,7 +1,7 @@
 ---
 name: release-changelog-composer
 description: Compose the prose of one release cut from the records that shipped in it — the changelog lines and the release page, every line and headline citing the record id it reports, so the binary can prove both documents describe exactly the cut. Host-delegated; feeds `abcd launch ship --changelog-json`.
-prompt_version: 0.4.3
+prompt_version: 0.5.0
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]
@@ -33,7 +33,11 @@ The **cut** — the emit step's JSON, produced by `abcd launch ship --json` (or 
 - `removed[]` — records that LEFT one. A record leaves `shipped/` when it was
   superseded or withdrawn: that is a real, user-visible change.
 - each entry carries `id`, `path`, `impact`, `title`, `summary`, `in_changelog`,
-  `in_press_release`.
+  `in_press_release`, and `found_at_new` when it is true: the record's `found_at`
+  is a path the last release's tree did not hold, so the record is about a
+  surface that release did not have.
+- `guard.new_commands` — the commands the last release did not have, from its
+  surface snapshot.
 - `targets[]` — planned intents that name a release they must land by. They are
   NOT in the cut: never cite one, never mention one, never say what is coming.
   The list is the operator's report, and the no-forecast rule below covers it.
@@ -120,6 +124,21 @@ arithmetic. It maps to a section like this:
 - a record on the cut's **`removed[]`** side left a terminal folder — a
   supersession or a withdrawal. Cite it on the `Added` line of the shape that
   replaced it, or on its own `Added` line saying what superseded or withdrew it.
+
+A fix to a surface the last release did not have is no fix its reader could
+see. A record with `found_at_new`, or one about a command in
+`guard.new_commands`, may carry `impact: fix` and a body saying "no longer",
+but the behaviour it fixed never reached a release. Fold it into that
+surface's `Added` line, or put it under `Added` worded as what the surface
+does, never as a `Fixed` line saying the wrong behaviour stopped. For a
+`found_at_new` record the binary refuses a `Fixed` line (`fixed-new-surface`).
+That flag says the record's path is new, not that its behaviour is: where the
+behaviour did ship and only its code moved to a new file, the record is wrong
+rather than the line, and the refusal tells the operator to correct its
+`found_at`; never reword a real fix as new to get past it. For a command in
+`guard.new_commands` the binary cannot tie a record to the command, so that
+judgement is yours, from the record's body. The section moves only where the
+line prints: the version comes from `impact`, which you never change.
 
 A record body may say "no longer", "was", "used to" or "the old spelling is
 gone". Those words are the record's own baseline — the state of the branch when

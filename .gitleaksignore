@@ -14,3 +14,10 @@
 # assignment as a credential. The value is a dummy copy key; the tip builds
 # it at runtime instead.
 710b9626ba07debc4e9c7e3f73eedaf81221b9f2:internal/core/autonomy/branches_test.go:generic-api-key:10
+
+# Commit 2ec0d0370 added a restore-command test constant
+# (iss-2610171250466572), `key = "0123…4567"`, a made-up root-commit object
+# name that keys the worktree store's path, and generic-api-key reads the
+# `key = "…"` assignment as a credential. It is forty hex digits counting up,
+# and the constant is renamed at the branch tip.
+2ec0d03708fac15883da833f9a31b079e026cf0a:internal/core/embargo/plan_test.go:generic-api-key:770

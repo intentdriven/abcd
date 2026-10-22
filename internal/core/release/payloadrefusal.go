@@ -49,9 +49,12 @@ const (
 	ReasonNoEntries          ReasonCode = "no-entries"
 	ReasonSection            ReasonCode = "section"
 	ReasonSectionNotWritable ReasonCode = "section-not-writable"
-	ReasonChangelogMissing   ReasonCode = "changelog-missing"
-	ReasonChangelogInvented  ReasonCode = "changelog-invented"
-	ReasonChangelogInternal  ReasonCode = "changelog-internal"
+	// ReasonFixedNewSurface: a Fixed line cites a record about a surface the
+	// anchor tag did not hold (Entry.FoundAtNew).
+	ReasonFixedNewSurface   ReasonCode = "fixed-new-surface"
+	ReasonChangelogMissing  ReasonCode = "changelog-missing"
+	ReasonChangelogInvented ReasonCode = "changelog-invented"
+	ReasonChangelogInternal ReasonCode = "changelog-internal"
 
 	// Release-page faults.
 	ReasonMissing           ReasonCode = "missing"
@@ -89,7 +92,7 @@ var ReasonCodes = []ReasonCode{
 	ReasonPayloadOversize, ReasonMalformedJSON, ReasonUnknownField, ReasonTrailingData,
 	ReasonSchemaVersion, ReasonPromptVersion, ReasonStaleCut,
 	ReasonTextOversize, ReasonMalformedID, ReasonNoCitation, ReasonEmptyProse,
-	ReasonNoEntries, ReasonSection, ReasonSectionNotWritable,
+	ReasonNoEntries, ReasonSection, ReasonSectionNotWritable, ReasonFixedNewSurface,
 	ReasonChangelogMissing, ReasonChangelogInvented, ReasonChangelogInternal,
 	ReasonMissing, ReasonOutsideSet, ReasonDuplicateCitation, ReasonNoHeadline, ReasonPageForEmptySet,
 	ReasonHeading, ReasonFence, ReasonBlockquote, ReasonQuoteSource, ReasonQuoteNotVerbatim,

@@ -796,8 +796,9 @@ func commitTransition(repoRoot, issuesRoot, src, dst, newContent, expected strin
 		return fmt.Errorf("%w: %s changed since it was read", ErrChecksumMismatch, src)
 	}
 	// The write and both removals resolve inside the ledger's os.Root
-	// (iss-2609012037143368).
-	if err := writeLedgerFile(repoRoot, issuesRoot, dst, []byte(newContent)); err != nil {
+	// (iss-2609012037143368). The destination keeps the source's mode
+	// (iss-2610181517504705).
+	if err := moveLedgerFile(repoRoot, issuesRoot, src, dst, []byte(newContent)); err != nil {
 		return err
 	}
 	removeSrc := func(p string) error { return removeLedgerFile(repoRoot, issuesRoot, p) }
