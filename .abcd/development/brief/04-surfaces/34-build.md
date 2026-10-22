@@ -788,6 +788,37 @@ hand-back, and building the intent again resumes the run and says the same.
 Moving the intent to `drafts/` with its replan reason (itd-50, criterion 3) is
 not made by this build.
 
+**The tier each round asks for** (itd-2609170822093401, Decision 1 and
+criterion 10; spc-2609251028149555). Each role a round hands out, its
+validators and the fresh implementer its findings go to, is asked for the model
+tier its routing row names (the tables the delegating verbs resolve), and the
+round records it in the state as the round's `routes`, one record per role
+with its `tier`. A round that does not pass moves each role's tier for the next
+round one step up the ladder `local`, `economy`, `frontier`, from the tier the
+role ran at in that round, never two steps at once; `frontier` and
+`host-decides` do not move. The record names the tier the role moved from
+(`escalated_from`) and the failed round's gate output (`gate_output`: its
+verdicts, the returns that did not pass and the criteria the audit judged not
+met or undecided, held to 2 KiB and masked as the state's other free text is).
+The run record says the switch, the step's result names the tier as `tier` and
+in the line saying what to do next, and the role's brief carries the request block's routing section,
+naming the escalated tier as the tier asked. A round that passes moves nothing,
+up or down: a fresh round after it (a sync) keeps the tier the lane reached,
+and a role new to the lane (the auditor on the closing lane) starts at its own
+row's tier. A route that names no tier does not move: a role the step hands to
+a runner (a machine route, or the per-invocation override naming a runner and
+its model), a
+review the reviewer route takes, a role whose `oracle.roles.<role>` points at a
+provider, a row at `host-decides`, and the implementer, which has no routing
+row. Each is recorded with the failed round's gate output and a note saying
+why it does not move, and none is swapped for another route. An escalated tier
+is resolved through the same legs and the same allowlist as any other: a
+connection that would serve it whose allowlist does not admit the route refuses
+the step at the `validate` stage, naming the provider, and nothing is written.
+A routing table or provider configuration `step` cannot read is refused at the
+`routing` stage before anything moves. A round's `routes` is state schema
+version 14's, so a file of version 13 or lower carrying it is refused.
+
 **The landing** (piece 9; criterion 6). The land stage takes the lane to the
 default branch one step per invocation, each recorded in the lane's `landing`
 as it completes, so a killed invocation repeats the step that did not complete

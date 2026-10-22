@@ -590,7 +590,11 @@ A lane's stages run in order:
    a `security-reviewer` and, on the lane whose landing ships the intent, an
    `intent-auditor`. Start each as a fresh agent with its brief and hand its
    return back unedited; the loop records the verdict itself. A round one of
-   them did not pass goes to a fresh `implementer` with the findings. The audit
+   them did not pass goes to a fresh `implementer` with the findings, and the
+   next round asks each role one model tier up (`local`, `economy`,
+   `frontier`) from the tier it ran at; when the result names a `tier`, start
+   the agent on a model of that tier (`/abcd:implement` says which routes
+   move). The audit
    passes only when every criterion is met: an undecided (`INCONCLUSIVE`)
    criterion fails the round as a not-met one does. Once the lane has taken the
    run's fix rounds, a round that still does not pass hands the lane back: the
