@@ -132,10 +132,13 @@ shared copies and the phone moved to itd-2610222029228127 on 2026-10-22
   resumes from the checklist it wrote before the compaction, naming the same
   next step and the same open items, with nothing it had written down lost
   (iss-2610222026223032).
-- **Given** a session that has done work since it last wrote its checklist,
-  **when** it ends a turn, **then** it is told its checklist is out of date
-  and which items it has not recorded, so the file is current before any
-  compaction can come.
+- **Given** a session that owns a reservation, pull request or branch its
+  checklist does not list, or whose owned work changed after the checklist
+  was last written, **when** it ends a turn while the person is away, or the
+  person next writes to it while present, **then** it is told its checklist
+  is behind and which of those it does not list, so the file is current
+  before any compaction can come. A step that left no such trace cannot be
+  seen, and the scope conditions say so.
 - **Given** a session killed while writing its checklist, or a reboot,
   **when** the next session starts in that working copy, **then** it reads and
   is given the last complete checklist, never a truncated or empty one, and an

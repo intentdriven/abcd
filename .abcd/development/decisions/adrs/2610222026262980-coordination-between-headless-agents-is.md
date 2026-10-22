@@ -53,12 +53,15 @@ session:
    ends in a refusal that names what it waited on and for how long. No wait
    is open-ended, and no deadline depends on a process staying alive: each is
    derived from the records when they are read.
-2. **A claim is fenced by its tip.** Every push, queue entry or tag made
-   under a claim re-checks that the claim's branch tip is still the one the
-   act started from. On a push the forge enforces it (a push that is not a
-   fast-forward is refused); for a queue entry or a tag abcd re-reads the tip
-   and refuses the act if it moved. A claim whose holder stopped renewing is
-   retaken only after its expiry plus a fixed delay.
+2. **A claim is fenced by its tip.** A push of the work branch or a tag
+   that abcd makes under a claim travels in one atomic push with a renewal
+   of the claim branch, so if the claim's tip moved the forge refuses the
+   whole push. A queue entry cannot share a push: abcd re-reads the claim's
+   tip immediately before it enqueues and names the pull request's head it
+   expects, which leaves a window of one call that this rule states rather
+   than claims closed. A push made outside abcd is not fenced, and the rule
+   does not claim it. A claim whose holder stopped
+   renewing is retaken only after its expiry plus a fixed delay.
 3. **A reader refuses a coordination record newer than it knows.** From the
    release that adds a version to the coordination records, a reader meeting
    a version above its own refuses the record with a message naming both
@@ -66,11 +69,19 @@ session:
    before that ignore the field, which is why the rule starts there.
 4. **An autonomous session never acts under the person's own forge login.**
    It pushes, opens pull requests and reads the forge with a short-lived
-   token abcd's GitHub App mints for that session, limited to the repository
-   and the acts its work needs. An unattended run starts only where the
-   person's saved login cannot be reached (a cloud session, a container or a
-   separate user account); abcd checks the known places a login is kept
-   before starting one, and refuses to start, naming where it found one.
+   token issued through abcd's GitHub App for that session, limited to the
+   repository and the acts its work needs. The token reaches only the git
+   and forge commands abcd runs for the session, through a credential channel
+   of abcd's own, never the forge CLI's token variables, and the key or
+   refresh token that issues it is never readable by a session. An
+   unattended run starts only where the person's saved login cannot be
+   reached (a cloud session, a container or a separate user account). Before
+   one starts, and before its token is issued, abcd reads the signals that
+   carry no secret (the forge CLI's login status by exit code, whether the
+   token variables are set, whether a stored-credential file names the host)
+   and refuses to start, naming where it found a login. It never asks a
+   credential helper, so a login kept only in a keychain is out of its sight,
+   and the refusal says that rather than calling the machine clean.
 
 ## Alternatives Considered
 
@@ -92,8 +103,10 @@ session:
 - Every coordination verb (land, build, drain, status, reserve, the load
   gate) carries a stated deadline and a named refusal at its end; a test per
   verb watches it end.
-- Queueing and tagging gain a tip re-check; a session whose claim was taken
-  over cannot land under it.
+- abcd's pushes and tags carry the claim's renewal atomically, and its queue
+  entries a tip re-check; a session whose claim was taken over cannot push
+  or tag under it through abcd, and can enqueue only inside the one-call
+  window.
 - The coordination records gain a version field in the release that ships
   this; the refusal binds from then on.
 - Unattended runs need a setup the person does once: the App registered in

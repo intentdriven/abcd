@@ -26,10 +26,9 @@ later (dcn-2610222025114805); the text below is carried over from
 that draft's decisions of 2026-10-17, not newly confirmed._
 
 The checklist draft keeps each session's state on the computer it runs on,
-so a session's work survives compaction and a restart there. Two things it
-cannot do from there: let the person see and answer from somewhere else, and
-let another computer pick up a dead session where it stopped. On 2026-10-17
-the product thinker asked for both: a private shared copy (for example
+so a session's work survives compaction and a restart there. From there it
+cannot let the person see and answer from somewhere else. On 2026-10-17 the
+product thinker asked for that: a private shared copy (for example
 through abcdev.app) that shares everything by default, a public option on
 GitHub, and the phone, so a question that would stop a session overnight
 reaches the right person wherever they are. On 2026-10-22 they ruled that

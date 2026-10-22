@@ -27,16 +27,19 @@ The checklist is the most-read file a session has. It is re-injected into
 the model's context at every start and after every compaction, written by
 the agent, read back by any later session in that working copy, summarised
 into the person's return lists, and, in later work, uploaded to a private
-shared copy and optionally published (the checklist decision of 2026-10-22,
-K1). Anything written there is copied into every one of those places.
+shared copy and optionally published (itd-2610222029228127, split out on
+2026-10-22 by dcn-2610222025212338). Anything written there is copied into every one of those places.
 Agent-written state is also the least careful writer in the system: a model
 told to record "the token that expires at 03:00" will as readily paste the
 token.
 
 On 2026-10-18 the agent routing the draft's decomposition proposed this as a
 separate trust rule; on 2026-10-22 the product thinker ruled that it be
-written up as one (K-split i). Through the decomposition table a trust rule
-becomes an ADR and a clause of the brief's invariants.
+written up as one (dcn-2610222025224993). Through the decomposition table a
+trust rule becomes an ADR and a clause of the brief's invariants. The rule
+itself, the first two paragraphs of the decision below, is the product
+thinker's; how it is enforced, the third, is the technical facilitator's,
+decided on their delegation and open to change at the plan's sign-off.
 
 ## Decision
 
@@ -56,12 +59,13 @@ by when.
 
 **The write refuses, and the read refuses.** abcd's checklist writer checks
 every field it writes with abcd's native secret scanner
-(`internal/adapter/scanner`), the one capture, decide and the claim writer
-already run, and refuses a write that carries a secret
+(`internal/adapter/scanner`), the one capture and decide already run, and refuses a write that carries a secret
 pattern, naming the field and the pattern kind and never echoing the match;
 the session's last good checklist stays in place. A checklist read from disk
 that fails the same check is not re-injected: the reader reports the field
-and falls back to the last good copy, as it does for a file it cannot parse.
+and falls back to the last good copy, as it does for a file it cannot parse;
+the last good copy is only ever a file a checked write produced, and it is
+checked again on read, so a file that fails both is not re-injected at all.
 The check is a pattern scan, so it catches the shapes it knows; the rule
 binds whatever it misses, and the fields that name a credential are typed
 (kind, scope and expiry, from fixed lists and a timestamp), never free text.

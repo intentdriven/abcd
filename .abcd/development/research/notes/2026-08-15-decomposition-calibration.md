@@ -2498,8 +2498,10 @@ The SOTA survey was filed as research/notes/2026-10-16-model-matrix-sota.md, and
 ## 2026-10-22: the checklist and coordination routings, confirmed by the product thinker's answers
 
 The 2026-10-18 checklist routing (below) was graded unconfirmed until the
-product thinker answered. Their answers of 2026-10-22 confirm it as proposed,
-row by row:
+product thinker answered. Their answers of 2026-10-22 cover two of its rows
+by name (the credential rule and the waiting stance); the phone split
+follows from their answer on uploads and was not asked; the compaction row
+is the facilitator's routing, put to them at the plan's sign-off. As filed:
 
 | part | type | home, as filed on 2026-10-22 |
 |---|---|---|
@@ -2513,14 +2515,15 @@ time: its trust rule as adr-2610222026262980 (proposed until the plan's
 sign-off, then a brief invariant) and its stance as the principle
 `coordination-lives-on-the-shared-remote`.
 
-Verdict: SPLIT, confirmed for the checklist draft; the coordination split of
-2026-10-17 stands. One part of the issue's remedy did not survive a check of
+Verdict: SPLIT; two rows confirmed by the product thinker's named answers,
+the other two facilitator-routed and unconfirmed until the plan's sign-off;
+the coordination split of 2026-10-17 stands. One part of the issue's remedy did not survive a check of
 the host's hooks reference: no hook can make a session write before an
 automatic compaction, so the checklist is kept current at each turn's end
 instead (recorded in the checklist draft's decisions). Advisory reversal
-flags: one, raised by the product thinker, not the routing: the model budget
-shared across sessions reverses itd-2610100704270254's "each abcd run"
-(dcn-2610222025116937).
+flags: one, from the facilitator's confirming question, which the product
+thinker answered by reversing: the model budget shared across sessions
+reverses itd-2610100704270254's "each abcd run" (dcn-2610222025116937).
 
 ## 2026-10-17: headless agents in parallel coordinate through the shared remote (product thinker, routing confirmed)
 
