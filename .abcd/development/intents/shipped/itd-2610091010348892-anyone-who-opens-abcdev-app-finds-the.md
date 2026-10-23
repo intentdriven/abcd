@@ -51,8 +51,91 @@ _Drafted 2026-10-14 from the product thinker's rulings; accepted as drafted the 
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-8ae5e776b270 -->
-Fidelity review OWED (receipt rcp-8ae5e776b270).
+<!-- abcd-review: INGESTED receipt=rcp-8ae5e776b270 -->
+Fidelity review — receipt rcp-8ae5e776b270 (verifier intent-auditor claude-opus-5-5).
+
+Provenance: intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:acc7493119fb9278e755bd63e127968180bdfbf470a36966e4e9900cc18ab7c7
+Input attestations: diff:6fd30326d137092947945773dd9bf4c2b95952f2..8281224047292549fc71e9ab9f99fb1e30882041 (feat/hosted-sites)@sha256:98969c7180a6262d673c33126e19770148d85a0290b923ab28bc55a11071865e;
+
+Acceptance rollup: MET 5 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: Setup asks the switch question before writing; a yes writes .abcd/site.json in project mode with hosting.publish true plus .github/workflows/site.yml and seeds no site sources; the test asserts the changed paths are exactly those two and that no composition key is present (passes at HEAD).
+  evidence: internal/core/site/setup.go:362 — "if req.Asker == nil || !req.Asker.Confirm(switchQuestion(adapter, prof, takeover, manifestBytes == nil, project)) {"
+  evidence: internal/core/site/setup.go:728 — "// A project site is seeded with nothing: its interface words, styles"
+  evidence: internal/core/site/setup_pages_test.go:70 — "var pagesFiles = []string{ManifestRelPath, SiteWorkflowRelPath}"
+  evidence: internal/core/site/setup_pages_test.go:94 — "if got := changedPaths(t, h.harness); !reflect.DeepEqual(got, want) {"
+- ac-2 — MET_WITH_CONCERNS: The workflow fires on release: published, checks out the released tag, builds with --project below /< repo>/ and deploys through upload-pages-artifact/deploy-pages, and setup creates a workflow-built Pages site. Concern: the workflow downloads abcd's latest release, and no abcd tag contains the --project commit (54f5060ad is only on origin/feat/hosted-sites; latest tag v0.15.1), so a switched-on project's release build fails until abcd cuts a release carrying it, which setup itself admits in a note. No live end-to-end deploy to a real github.io address is evidenced; the proof is a golden file and an in-process fake.
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:54 — "release:"
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:129 — "ref: refs/tags/${{ steps.release.outputs.tag }}"
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:218 — ""${RUNNER_TEMP}/abcd" site build --project --out site --version "${TAG#v}" --commit "$(git rev-parse --verify HEAD)" --base-path /widgets/"
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:285 — "uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1"
+  evidence: internal/adapter/hosting/githubpages/githubpages.go:292 — "map[string]string{"build_type": "workflow"}"
+  evidence: internal/core/site/setup.go:80 — "const projectReleaseNote = "the workflow builds with abcd's latest release, so its build fails until abcd publishes a release " +"
+- ac-3 — MET_WITH_CONCERNS: The about page is built in code from the identity block (only when abcd wrote its file), the brief's opening, met shipped intents' press releases and CHANGELOG.md; the references page is dropped, and the test asserts no README/docs words on any page and every data-src span is abcd-written. Concerns: 'what abcd writes' is enforced as a path prefix (.abcd/** but the local tier, plus CHANGELOG.md), so a person's own file placed under .abcd/ passes as abcd's; and with no identity block the page is titled by the repository name from the origin remote, which is not a file abcd writes.
+  evidence: internal/core/site/project.go:129 — "func abcdWrittenSource(rel string) bool {"
+  evidence: internal/core/site/project.go:133 — "return strings.HasPrefix(rel, ".abcd/") && !strings.HasPrefix(rel, ".abcd/.work.local/")"
+  evidence: internal/core/site/project.go:208 — "if !ok || !fsutil.ValidRelPath(cfg.Block.File) || !abcdWrittenSource(cfg.Block.File) {"
+  evidence: internal/core/site/project_test.go:104 — "for _, words := range []string{readmeOnlyWords, docsOnlyWords, "Who this is for"} {"
+  evidence: internal/core/site/project_test.go:129 — "if _, ok := files["references/index.html"]; ok {"
+- ac-4 — MET: Every page's head is followed by the managed line, whose words are the binary's managed_record string, wrapped in a link to the repository address taken from the origin remote; a project test asserts it on every built .html page (passes at HEAD).
+  evidence: internal/core/site/setupsrc/ui.json:107 — ""managed_record": "This is the record of an abcd-managed repository","
+  evidence: internal/core/site/compose.go:303 — "b.WriteString(c.managedLine())"
+  evidence: internal/core/site/compose.go:316 — "if c.repo.Repository != "" {"
+  evidence: internal/core/site/project_test.go:261 — "func TestEveryProjectPageOpensWithTheManagedRepositoryLine(t *testing.T) {"
+- ac-5 — MET: With --project the gate also fails any data-src span on any page whose file abcd does not write, on top of the existing word-provenance walk; the workflow runs lint site --project after the build; interface words come from the binary's embedded ui.json and the stylesheet/scripts/headers are copied from setupsrc, which the test compares byte for byte.
+  evidence: internal/core/site/project.go:524 — "func (c *checker) checkProjectSources() {"
+  evidence: internal/core/site/check.go:372 — "c.checkProjectSources()"
+  evidence: internal/core/site/project.go:150 — "func projectUI() (UI, error) {"
+  evidence: internal/core/site/project_test.go:173 — "func TestTheProjectGateRefusesASpanFromDocsOrTheReadme(t *testing.T) {"
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:219 — ""${RUNNER_TEMP}/abcd" lint site --project --out site --base-path /widgets/"
+- ac-6 — MET: The Pages workflow's only credential is github.token; the deploy job has exactly contents read, pages write and id-token write; the adapter declares no secrets and no credential name; a test refuses any secrets. reference and any shell interpolation. The build runs on the project's own runner, so no abcd service runs anything.
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:105 — "GH_TOKEN: ${{ github.token }}"
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:242 — "permissions:"
+  evidence: internal/adapter/hosting/githubpages/githubpages.go:73 — "func (Adapter) Secrets() []string { return nil }"
+  evidence: internal/core/site/setup_pages_test.go:311 — "func TestThePagesWorkflowHoldsNoSecretAndInterpolatesNothingIntoAShell(t *testing.T) {"
+- ac-7 — MET: The render job's switch step reads hosting.publish at both the released tag and the head of the default branch (missing or malformed reads as off) and gates every later step and the deploy job; the test runs the step with bash over real git checkouts. Setup with the switch off touches nothing remote and offers to remove the workflow, keeping a hand-edited one.
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:154 — "if ! git show "origin/main:.abcd/site.json" 2>/dev/null | jq -e '.hosting.publish == true' >/dev/null 2>&1; then"
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:236 — "if: needs.render.outputs.publish == 'true' && toJSON(github.event.repository.private) == 'false'"
+  evidence: internal/core/site/setup.go:1198 — "if req.Asker == nil || !req.Asker.Confirm("Remove "+SiteWorkflowRelPath+", the release workflow abcd added? The project site is switched off in "+"
+  evidence: internal/core/site/setup_pages_test.go:238 — "func TestASwitchedOffSiteRemovesTheWorkflowAndPublishesNothing(t *testing.T) {"
+  evidence: internal/core/site/setup_pages_switch_test.go:58 — "func TestTheSwitchIsReadAtTheTagAndTheDefaultBranchAndOnlyWhilePublic(t *testing.T) {"
+
+Gap audit:
+- honoured:
+  - switching it on at setup costs one answer and writes only the switch and the workflow
+    evidence: internal/core/site/setup.go:362 — "switchQuestion(adapter, prof, takeover, manifestBytes == nil, project)"
+    evidence: internal/core/site/setup_pages_test.go:70 — "var pagesFiles = []string{ManifestRelPath, SiteWorkflowRelPath}"
+  - the project's own workflow builds at each release and publishes to its own GitHub Pages address (owner.github.io/< repo>/)
+    evidence: internal/adapter/hosting/githubpages/githubpages.go:116 — "return "https://" + strings.ToLower(owner) + ".github.io" + basePath(s)"
+    evidence: internal/core/site/testdata/site-workflow-github-pages.yml:279 — "uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0"
+  - every page opens with a line saying it is the record of an abcd-managed repository, linking to it
+    evidence: internal/core/site/compose.go:314 — "func (c *composer) managedLine() string {"
+  - GitHub hosts it and abcd runs nothing: no secret beyond the run's token
+    evidence: internal/adapter/hosting/githubpages/githubpages.go:70 — "func (Adapter) CredentialName() string { return "" }"
+    evidence: internal/core/site/testdata/site-workflow-github-pages.yml:48 — "github-pages the deploy job. Same policy. No secrets: the run's own token."
+- diverged:
+  - every word on it comes from the repository: enforced as a path prefix (.abcd/** and CHANGELOG.md), and the title can come from the origin remote's repository name rather than a file
+    evidence: internal/core/site/project.go:133 — "return strings.HasPrefix(rel, ".abcd/") && !strings.HasPrefix(rel, ".abcd/.work.local/")"
+    evidence: internal/core/site/project.go:508 — "title := c.repo.Name"
+  - at each release: only a published, non-draft, non-pre-release GitHub release tagged vX.Y.Z is rendered
+    evidence: internal/core/site/testdata/site-workflow-github-pages.yml:114 — "if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+] [0-9A-Za-z.-]+)?$'; then"
+    evidence: internal/core/site/testdata/site-workflow-github-pages.yml:121 — "echo "::error::$tag is a pre-release or a draft; the site renders published releases only""
+- missing:
+  - a working build at a switched-on project's next release today: the workflow uses abcd's latest release, and no released abcd carries site build --project yet
+    evidence: internal/core/site/setup.go:80 — "the workflow builds with abcd's latest release, so its build fails until abcd publishes a release"
+    evidence: internal/core/site/testdata/site-workflow-github-pages.yml:169 — "tags="$(gh release list --repo intentdriven/abcd --exclude-drafts --exclude-pre-releases \"
+
+Scope-condition dispositions:
+- cond-2610141709464490 — survived: The delivery encodes the public-only assumption at every layer: setup refuses a private repository or an unreadable visibility before asking or writing, the adapter's Inspect refuses one, and the workflow's switch step and deploy job publish nothing for a repository made private later.
+  evidence: internal/core/site/setup.go:307 — "return SetupResult{}, fmt.Errorf("site setup: %s is private, and %s publishes public repositories only for now", forge.Repo(), adapter.Name())"
+  evidence: internal/adapter/hosting/githubpages/githubpages.go:236 — "the project site is published for public repositories only"
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:146 — "if [ "${REPO_PRIVATE:-}" != false ]; then"
+- cond-2610141709468073 — narrowed: The workflow does rely on GitHub releases (release: published, gh release view), but it renders only a published, non-draft, non-pre-release release whose tag matches vX.Y.Z, and the environments admit only tags v*; a GitHub release under any other tag scheme publishes nothing.
+  narrowing: holds only for published, non-draft, non-pre-release GitHub releases tagged vX.Y.Z (environment policy: tags v*), not for every GitHub release
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:114 — "if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+([-+] [0-9A-Za-z.-]+)?$'; then"
+  evidence: internal/core/site/testdata/site-workflow-github-pages.yml:118 — "state="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft \"
+- cond-2610141709463916 — untested: Nothing in the delivery measures or bounds the built site's size against GitHub Pages' 1 GB limit, and no test builds a site near it; the assumption was neither exercised nor contradicted.
 <!-- abcd-review-end receipt=rcp-8ae5e776b270 -->
 
 ## Decisions
