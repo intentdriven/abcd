@@ -238,7 +238,15 @@ func releaseEnded(t tip, tagged bool, now time.Time) bool {
 // act finds it armed and counts it done.
 func settleEnded(a actor, tree, id string) (s Settle, ok bool) {
 	t, present, err := readSeen(a.root, id, trackingName(id), tree, a.now, true)
-	if err != nil || !present || t.Unreadable != "" {
+	if err != nil || !present {
+		return Settle{}, false
+	}
+	return settleTip(a, tree, id, t)
+}
+
+// settleTip is settleEnded over id's tip t, already read.
+func settleTip(a actor, tree, id string, t tip) (s Settle, ok bool) {
+	if t.Unreadable != "" {
 		return Settle{}, false
 	}
 	if !slices.ContainsFunc(t.Withdrawn, func(w Withdrawal) bool { return w.Pending() && sameHolder(w.By, a.holder) }) {
@@ -278,12 +286,20 @@ func sweepEnded(a actor, tree, skip string) (out []Settle, pushed bool) {
 	if err != nil {
 		return nil, false
 	}
+	var listed []string
 	for _, ref := range strings.Fields(refs) {
-		id := strings.TrimPrefix(ref, TrackingPrefix)
-		if !isRelease(id) || id == skip {
+		if id := strings.TrimPrefix(ref, TrackingPrefix); isRelease(id) && id != skip {
+			listed = append(listed, ref)
+		}
+	}
+	// The release tips in one batch, as the view reads them: every act runs
+	// this sweep, and a repository keeps a release branch for every cut.
+	reads := readSeenTips(a.root, listed, tree, a.now, true)
+	for i, ref := range listed {
+		if reads[i].err != nil || !reads[i].ok {
 			continue
 		}
-		if s, ok := settleEnded(a, tree, id); ok {
+		if s, ok := settleTip(a, tree, strings.TrimPrefix(ref, TrackingPrefix), reads[i].t); ok {
 			out = append(out, s)
 			pushed = pushed || s.Commit != ""
 		}

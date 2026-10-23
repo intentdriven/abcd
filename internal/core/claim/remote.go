@@ -647,7 +647,7 @@ func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
 		if len(j.Withdrawn) > 0 {
 			listed = strings.Join(numbers(j.Withdrawn), ", ")
 		}
-		return Result{}, message{}, "", refuse("#%d is not among the pull requests %s withdrew (%s), so there is nothing to admit: a merge armed since is held by the release, not withdrawn; %s",
+		return Result{}, message{}, "", refuse("#%d is not among the pull requests %s withdrew (%s), so there is nothing to admit: only a merge the reservation withdrew is admitted, and one armed since stays armed; %s",
 			n, p.id, listed, nothingPushed)
 	case j.Withdrawn[i].State == WithdrawnAdmitted:
 		return Result{}, message{}, "", refuse("#%d is already admitted into %s; %s", n, p.id, nothingPushed)
