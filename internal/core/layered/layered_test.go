@@ -389,3 +389,60 @@ func TestLayerNames(t *testing.T) {
 		}
 	}
 }
+
+// TestClaimRefusesAMiscasedNamespace: a claimed namespace (or any named segment
+// of it) spelt in another case is refused in every layer, naming the file, the
+// spelling found and the one the reader takes. Ignoring it would let the layer
+// below decide what the person meant to set; the key is bounded and quoted.
+func TestClaimRefusesAMiscasedNamespace(t *testing.T) {
+	long := strings.Repeat("x", 200)
+	for _, c := range []struct {
+		name, repo, machine, ns, file, layer, found string
+	}{
+		{"top level, machine file", `{"pace":{"work_minutes":90}}`, `{"Pace":{"work_minutes":30}}`, "pace", "abcd.noindex/config.json", "machine", `"Pace"`},
+		{"top level, repo file", `{"PACE":{"work_minutes":90}}`, "", "pace", ".abcd/config.json", "repo", `"PACE"`},
+		{"inner segment", `{"oracle":{"backend":"host","Rp":{"url":"x"}}}`, "", "oracle.rp", ".abcd/config.json", "repo", `"oracle.Rp"`},
+		{"control bytes are escaped", "", `{"Pac\u001be":{}}`, "pac\u001be", "abcd.noindex/config.json", "machine", `\x1b`},
+		{"a long key is bounded", "", `{"` + strings.ToUpper(long) + `":{}}`, long, "abcd.noindex/config.json", "machine", "..."},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			if c.repo != "" {
+				f.repoFile(Config, c.repo)
+			}
+			if c.machine != "" {
+				f.machineFile(Config, c.machine)
+			}
+			s, err := Load(Config, f.roots)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = s.Claim(c.ns, "work_minutes", "url")
+			if err == nil {
+				t.Fatal("a miscased namespace was ignored, so the layer below would decide")
+			}
+			for _, want := range []string{c.found, c.file, c.layer + " layer"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("err = %v, want it to name %s", err, want)
+				}
+			}
+			if strings.Contains(err.Error(), "\x1b") || strings.Contains(err.Error(), long) {
+				t.Errorf("err = %q carries a raw control byte or an unbounded key", err)
+			}
+		})
+	}
+	// The exact spelling, and a key that only resembles the namespace, pass.
+	f := newFixture(t)
+	f.repoFile(Config, `{"pace":{"work_minutes":90},"paces":{},"Match":{}}`)
+	s, err := Load(Config, f.roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Claim("pace", "work_minutes"); err != nil {
+		t.Fatalf("exact namespace refused: %v", err)
+	}
+	// A wildcard segment names no spelling, so it compares nothing.
+	if err := s.Claim("roles.*", "runner"); err != nil {
+		t.Fatalf("wildcard claim refused: %v", err)
+	}
+}

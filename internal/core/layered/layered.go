@@ -35,7 +35,8 @@
 // error naming the file: a present file that is not a regular file, is a
 // symlink or sits behind one, is writable by others (machine layer), is not
 // valid JSON, holds a key twice, carries trailing content, or declares the
-// wrong schema_version; an unknown key under a claimed namespace; a value in
+// wrong schema_version; an unknown key under a claimed namespace, or the
+// namespace itself spelt in another case; a value in
 // the winning layer that does not decode to the caller's type or fails its
 // check. None of these falls through to a lower layer or to the default,
 // because a configuration that silently does less than it says is the failure
@@ -600,8 +601,10 @@ func objectAt(d *doc, key string) (map[string]json.RawMessage, bool, error) {
 // it sits in and the keys the namespace takes, so a misspelt key never lets a
 // default apply unannounced. namespace "" claims the file's top level (a file
 // one reader owns outright); a "*" segment claims every member at that level
-// (roles.* claims each role's keys, whatever the role is called). A namespace
-// no layer holds is not an error.
+// (roles.* claims each role's keys, whatever the role is called). A named
+// segment spelt in another case in any layer ("Facilitator" for facilitator)
+// is refused too, since Lookup would ignore it and a lower layer would decide.
+// A namespace no layer holds is not an error.
 func (s *Stack) Claim(namespace string, keys ...string) error {
 	allowed := map[string]bool{}
 	for _, k := range keys {
@@ -629,6 +632,8 @@ func claimIn(d *doc, obj map[string]json.RawMessage, at string, rest []string, t
 			sort.Strings(names)
 		} else if _, ok := obj[seg]; ok {
 			names = []string{seg}
+		} else if err := refuseMiscased(d, obj, at, seg); err != nil {
+			return err
 		}
 		for _, n := range names {
 			p := joinKey(at, n)
@@ -673,6 +678,31 @@ func claimIn(d *doc, obj map[string]json.RawMessage, at string, rest []string, t
 	}
 	return fmt.Errorf("%s (%s layer): unknown key %s; nothing reads it, so it would change nothing. "+
 		"%s takes: %s", d.originFor(joinKey(at, unknown[0])), d.layer, list, scope, strings.Join(keys, ", "))
+}
+
+// refuseMiscased refuses a member of obj that names the claimed segment seg in
+// another case ("Facilitator" for facilitator). Lookup reads the exact
+// spelling, so such a member would be ignored and the layer below it would
+// decide what the file meant to set: a machine-wide setting written with a
+// capital would silently lose to a repository's. Case is judged as
+// encoding/json binds a key (Unicode simple folding, strings.EqualFold); the
+// duplicate-key check has already refused a file holding both spellings, so
+// at most one member matches. Both keys are bounded and %q-escaped.
+func refuseMiscased(d *doc, obj map[string]json.RawMessage, at, seg string) error {
+	var near []string
+	for k := range obj {
+		if k != seg && strings.EqualFold(k, seg) {
+			near = append(near, k)
+		}
+	}
+	if len(near) == 0 {
+		return nil
+	}
+	sort.Strings(near)
+	want := joinKey(at, seg)
+	return fmt.Errorf("%s (%s layer): %q is spelt in another case than %q; keys are read exactly as spelt, "+
+		"so it would change nothing and a lower layer or the default would decide; spell it %q",
+		d.originFor(want), d.layer, BoundKey(joinKey(at, near[0])), BoundKey(want), BoundKey(want))
 }
 
 // Value is a resolved configuration value with its provenance.

@@ -242,3 +242,29 @@ func TestARefusedHomeMakesTheFacilitatorAPerson(t *testing.T) {
 		t.Errorf("mode = %+v, want human from the refused machine layer, saying why", f)
 	}
 }
+
+// A namespace spelt in another case is not the facilitator namespace, and
+// silently ignoring it would let a repository's auto beat the person's
+// machine-wide human, so it is refused in whichever layer it sits, naming the
+// file and the spelling a reader takes.
+func TestAMiscasedFacilitatorNamespaceIsRefusedNamingItsFile(t *testing.T) {
+	for _, c := range []struct {
+		name, repo, machine, file, layer, key string
+	}{
+		{"capitalised in the machine file over auto in the repo", `{"facilitator":{"mode":"auto"}}`, `{"Facilitator":{"mode":"human"}}`, "abcd.noindex/config.json", "machine", "Facilitator"},
+		{"upper case in the repo", `{"FACILITATOR":{"mode":"auto"}}`, "", ".abcd/config.json", "repo", "FACILITATOR"},
+		{"mixed case below a winning human", `{"facilitator":{"mode":"human"}}`, `{"faciLitator":{"mode":"auto"}}`, "abcd.noindex/config.json", "machine", "faciLitator"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f, err := readMode(configRoots(t, c.repo, c.machine))
+			if err == nil {
+				t.Fatalf("mode = %+v, want the miscased namespace refused", f)
+			}
+			for _, want := range []string{`"` + c.key + `"`, `"facilitator"`, c.file, c.layer + " layer"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("err = %v, want it to name %s", err, want)
+				}
+			}
+		})
+	}
+}
