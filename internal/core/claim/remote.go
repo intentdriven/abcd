@@ -120,11 +120,14 @@ type Result struct {
 	// not be read (GeneratedUnreadLine), so every shared path was judged an
 	// overlap; "" when it was read, there is none, or no overlap was judged.
 	GeneratedUnread string
-	// Directories is each path of the footprint a reservation or a take-over
-	// named that is a directory git tracks (iss-2610230016544142), with the
-	// tracked files beneath it: the act is made all the same, and a surface
-	// tells the person to name the files instead (DirectoryFootprint.Warning).
-	// nil for a release, a renewal and a footprint of files alone.
+	// Directories is each path of the footprint the request named that is a
+	// directory git tracks (iss-2610230016544142), with the tracked files
+	// beneath it: the act is made all the same, and a surface tells the
+	// person to name the files instead (DirectoryFootprint.Warning). Every
+	// act that names a footprint is judged, a reserve that renews this copy's
+	// own tip (ActRenewed) included; nil for a release, for a Request.Renew
+	// renewal, which names no footprint and keeps the tip's, and for a
+	// footprint of files alone.
 	Directories []DirectoryFootprint
 }
 

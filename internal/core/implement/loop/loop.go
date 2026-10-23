@@ -263,8 +263,11 @@ type StartResult struct {
 	Reservation string `json:"reservation,omitempty"`
 	// ReservationWarnings is each warning the start's reservation act gave:
 	// a footprint path naming a directory git tracks, with the tracked files
-	// beneath it (iss-2610230016544142), reserved all the same; empty when it
-	// gave none, renewed a reservation as it stood, or reserved nothing.
+	// beneath it (iss-2610230016544142), reserved all the same. Every act
+	// that names the run's footprint gives them, a reserve that renews this
+	// copy's own tip included; it is empty when the footprint names no such
+	// directory, when a resume renewed the reservation keeping the tip's
+	// footprint (a renewal names none), or when nothing was reserved.
 	ReservationWarnings []string `json:"reservation_warnings,omitempty"`
 	// ForkUnchecked is why the start's reservation could not ask the forge
 	// whether origin is a fork, so it went on without the check (claim's

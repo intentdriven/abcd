@@ -55,3 +55,38 @@ func TestBuildOfAFileFootprintDrawsNoWarning(t *testing.T) {
 		t.Fatalf("a file footprint draws no warning: %q", res.ReservationWarnings)
 	}
 }
+
+// TestAResumeWarnsOnlyWhenItReservesADirectoryAfresh: a resume that renews
+// this copy's live reservation keeps its footprint and warns of nothing; one
+// that reserves afresh (after the reservation was released) names the
+// directory again, as a start does.
+func TestAResumeWarnsOnlyWhenItReservesADirectoryAfresh(t *testing.T) {
+	spec := specWithSteps("") + "\n## Footprint\n\n- packages: internal/widget/a.go, commands\n- tests: the widget\n"
+	repo := loopRepo(t, readyIntent("", settledQuestions), spec)
+	repo.Write("internal/widget/a.go", "package widget\n")
+	repo.Write("commands/one.md", "one\n")
+	repo.Write("commands/two.md", "two\n")
+	repo.Commit("the widget and the commands")
+	onOrigin(t, repo)
+
+	if _, err := Start(repo.Root(), "itd-10", Options{}); err != nil {
+		t.Fatal(err)
+	}
+	renewed, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil || !renewed.Resumed || !strings.Contains(renewed.Reservation, "renewed the reservation on itd-10") {
+		t.Fatalf("the resume renews: %+v %v", renewed, err)
+	}
+	if len(renewed.ReservationWarnings) != 0 {
+		t.Fatalf("a resume that renews warns again: %q", renewed.ReservationWarnings)
+	}
+	if _, err := ReleaseReservation(repo.Root(), "itd-10", Options{}); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil || !again.Resumed || !strings.HasPrefix(again.Reservation, "reserved itd-10 on origin") {
+		t.Fatalf("the resume reserves afresh: %+v %v", again, err)
+	}
+	if len(again.ReservationWarnings) != 1 || !strings.Contains(again.ReservationWarnings[0], `"commands" is a directory covering 2 tracked files`) {
+		t.Fatalf("a resume that reserves afresh names the directory: %q", again.ReservationWarnings)
+	}
+}
