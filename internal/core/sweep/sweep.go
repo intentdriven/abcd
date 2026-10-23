@@ -46,18 +46,26 @@ type Options struct {
 	// acts on nothing.
 	Held store.HeldReader
 	// Cwd is the sweep's own working directory; the worktree holding it is
-	// kept, as prune keeps its own.
+	// kept, as prune keeps its own. It is required, as Held is: a sweep that
+	// does not know where it runs could remove the worktree it runs in.
 	Cwd string
+
+	// changes reads the paths a worktree changes, running git in it; nil is
+	// changedPaths. A test sets it to see which worktrees git ran in.
+	changes func(abs, def string) []string
 }
 
 // DryRun judges every worktree of the repository at repoRoot and every entry
 // in its lane, and writes nothing. A store refusal, a failure to list the
 // worktrees, or a failure to read what the build loop holds is returned as
 // the error, and the result carries it as its Refusal, so ExitCode reads
-// ExitRefused.
+// ExitRefused. A run without Held or Cwd is refused the same way.
 func DryRun(ctx context.Context, repoRoot string, o Options) (Result, error) {
 	if o.Held == nil {
 		return refused(errors.New("sweep: a dry run needs a reader of what the build loop holds"))
+	}
+	if o.Cwd == "" {
+		return refused(errors.New("sweep: a dry run needs its own working directory, to keep the worktree holding it"))
 	}
 	listing, err := store.List(repoRoot, store.ListOptions{Forge: o.Forge})
 	if err != nil {
@@ -78,14 +86,16 @@ func DryRun(ctx context.Context, repoRoot string, o Options) (Result, error) {
 	home, _ := os.UserHomeDir()
 	p := NewProbe(ctx, o.Probe)
 	j := judge{
-		home:  home,
-		def:   gitutil.DefaultRef(repoRoot),
-		probe: p,
-		held:  held,
+		home:    home,
+		def:     gitutil.DefaultRef(repoRoot),
+		probe:   p,
+		held:    held,
+		changes: o.changes,
 	}
-	if o.Cwd != "" {
-		j.cwd = fsutil.RealExistingPath(o.Cwd)
+	if j.changes == nil {
+		j.changes = changedPaths
 	}
+	j.cwd = fsutil.RealExistingPath(o.Cwd)
 	res := Result{
 		Lane:                    listing.Lane,
 		Rows:                    make([]Row, 0, len(listing.Worktrees)),
@@ -99,10 +109,22 @@ func DryRun(ctx context.Context, repoRoot string, o Options) (Result, error) {
 	return res, nil
 }
 
-// refused is the result and error of a run that refused before judging.
+// refused is the result and error of a run that refused before judging. The
+// error says only the cleaned text the Refusal carries, so a front door that
+// prints it shows no home path; the cause stays reachable through errors.Is.
 func refused(err error) (Result, error) {
-	return Result{Rows: []Row{}, Refusal: clean(err.Error())}, err
+	msg := clean(err.Error())
+	return Result{Rows: []Row{}, Refusal: msg}, &refusal{msg: msg, cause: err}
 }
+
+// refusal is a refused run's error: the cleaned text, wrapping its cause.
+type refusal struct {
+	msg   string
+	cause error
+}
+
+func (r *refusal) Error() string { return r.msg }
+func (r *refusal) Unwrap() error { return r.cause }
 
 // clean is text made display-ready: home-redacted, and masked so a byte a
 // terminal would act on is shown instead.
@@ -155,11 +177,12 @@ func branchOf(wt gitutil.Worktree) string {
 
 // judge is what every row of one dry run is judged against.
 type judge struct {
-	home  string
-	def   string
-	cwd   string
-	probe *Probe
-	held  store.Held
+	home    string
+	def     string
+	cwd     string
+	probe   *Probe
+	held    store.Held
+	changes func(abs, def string) []string
 }
 
 // row judges one store row whose item sits at abs ("" when it could not be
@@ -206,7 +229,7 @@ func (j judge) row(r store.Row, abs string) Row {
 			storeSaid(Hint, "an unknown state or merge"))
 	}
 
-	live := j.probe.Judge(Worktree{Path: abs, Changed: changedPaths(abs, j.def)})
+	live := j.liveness(abs)
 	ev := slices.Clone(live.Evidence)
 	var reasons []string
 	if live.Held {
@@ -248,6 +271,18 @@ func (j judge) row(r store.Row, abs string) Row {
 	}
 	row.Action = ActionRemove
 	return keep(merged+", clean, and "+live.Reason, ev...)
+}
+
+// liveness is the probe's judgement of the worktree at abs. Its owner is asked
+// before any git command: a worktree another account owns, or whose owner
+// cannot be read, has no git run in it by this account, and the probe keeps it
+// on the owner (its changes then read as unknown, which keeps it too).
+func (j judge) liveness(abs string) Liveness {
+	w := Worktree{Path: abs}
+	if _, foreign, err := j.probe.owner(fsutil.RealExistingPath(abs)); !foreign && err == nil {
+		w.Changed = j.changes(abs, j.def)
+	}
+	return j.probe.Judge(w)
 }
 
 // lockedBy is the keep reason for git's lock: its reason shown whole, and the

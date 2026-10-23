@@ -82,12 +82,14 @@ func unmergedAdd(t *testing.T, repo *gittest.Repo, name, rel string) string {
 func nothingHeld(string) (store.Held, error) { return store.Held{}, nil }
 
 // sweepOpts is a dry run that nothing but the test's own setting holds: the
-// reservations stamped as fetched, no process, no run, and a clock far enough
-// ahead that nothing the test wrote is recent.
+// reservations stamped as fetched, no process, no run, a clock far enough
+// ahead that nothing the test wrote is recent, and a working directory no
+// worktree holds.
 func sweepOpts() Options {
 	return Options{
 		Probe: ProbeOptions{Reservations: claim.Snapshot{FetchedAt: time.Unix(1, 0)}, Processes: cwds(), Now: stale()},
 		Held:  nothingHeld,
+		Cwd:   string(filepath.Separator),
 	}
 }
 
@@ -525,6 +527,76 @@ func TestTheDryRunRefusesWithoutAReaderOfTheLoopsHold(t *testing.T) {
 	res, err = DryRun(context.Background(), repo.Root(), o)
 	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, "the run state is unreadable") {
 		t.Fatalf("DryRun with a failing reader = %+v, %v; want a refusal naming why", res, err)
+	}
+}
+
+// TestTheDryRunRefusesWithoutItsWorkingDirectory: the worktree holding the
+// sweep's own working directory is kept, so a caller that forgets to say
+// where the sweep runs is refused, as one that forgets the loop's hold is.
+func TestTheDryRunRefusesWithoutItsWorkingDirectory(t *testing.T) {
+	repo, _ := sweepRepo(t)
+	mergedAdd(t, repo, "here")
+	o := sweepOpts()
+	o.Cwd = ""
+	res, err := DryRun(context.Background(), repo.Root(), o)
+	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, "working directory") || len(res.Rows) != 0 {
+		t.Fatalf("DryRun with no working directory = %+v, %v; want a refusal naming it, exiting %d", res, err, ExitRefused)
+	}
+}
+
+// TestTheRefusalErrorIsRedacted: the error a refusal returns carries the same
+// cleaned text as its Refusal, so a front door printing the error leaks no
+// home path, and the cause is still reachable through errors.Is.
+func TestTheRefusalErrorIsRedacted(t *testing.T) {
+	repo, home := sweepRepo(t)
+	cause := fmt.Errorf("cannot open %s", filepath.Join(home, "private", "state.json"))
+	o := sweepOpts()
+	o.Held = func(string) (store.Held, error) { return store.Held{}, cause }
+	res, err := DryRun(context.Background(), repo.Root(), o)
+	if err == nil || res.ExitCode() != ExitRefused {
+		t.Fatalf("DryRun with a failing reader = %+v, %v; want a refusal", res, err)
+	}
+	if strings.Contains(err.Error(), home) || !strings.Contains(err.Error(), "~/private/state.json") {
+		t.Fatalf("the refusal error is home-redacted: %q", err)
+	}
+	if err.Error() != res.Refusal {
+		t.Fatalf("the error %q and the Refusal %q say the same", err, res.Refusal)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("the cause is reachable through the error: %v", err)
+	}
+}
+
+// TestAForeignOwnedWorktreeHasNoGitRunInIt: the owner is judged before any git
+// command, so a worktree another account owns is kept on the owner alone and
+// this account runs no git in it, while its own worktree is read as before.
+func TestAForeignOwnedWorktreeHasNoGitRunInIt(t *testing.T) {
+	repo, _ := sweepRepo(t)
+	mine := fsutil.RealExistingPath(mergedAdd(t, repo, "mine"))
+	theirs := fsutil.RealExistingPath(mergedAdd(t, repo, "theirs"))
+	o := sweepOpts()
+	o.Probe.Owner = func(p string) (int, bool, error) {
+		if p == theirs {
+			return 4242, true, nil
+		}
+		return os.Getuid(), false, nil
+	}
+	var ran []string
+	o.changes = func(abs, def string) []string {
+		ran = append(ran, fsutil.RealExistingPath(abs))
+		return changedPaths(abs, def)
+	}
+	res := dryRun(t, repo, o)
+	r := rowFor(t, res, "theirs")
+	kept(t, r, "owned by another account (uid 4242)")
+	if !hasEvidence(r, KindOwner, Proven) {
+		t.Fatalf("the owner is the proof: %+v", r)
+	}
+	if slices.Contains(ran, theirs) {
+		t.Fatalf("git ran in the foreign-owned worktree: %q", ran)
+	}
+	if !slices.Contains(ran, mine) || rowFor(t, res, "mine").Action != ActionRemove {
+		t.Fatalf("this account's own worktree is read and judged as before: ran %q, row %+v", ran, rowFor(t, res, "mine"))
 	}
 }
 
