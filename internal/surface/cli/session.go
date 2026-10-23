@@ -835,8 +835,25 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintln(stderr, "  Waiting for GitHub, for up to an hour; Ctrl-C stops without creating anything here.")
 					sessionSetupVisit(page)
 				})
-				if err != nil {
+				switch {
+				case errors.Is(err, context.Canceled):
+					return &exitError{Code: 1, Msg: prefix + "stopped before GitHub's answer came back; nothing was recorded"}
+				case errors.Is(err, context.DeadlineExceeded):
+					return &exitError{Code: 1, Msg: prefix + "no app came back from GitHub within the hour; nothing was recorded, so run abcd session setup again"}
+				case err != nil:
 					return &exitError{Code: 1, Msg: prefix + "the sign-in app was not recorded: " + err.Error()}
+				}
+				// For an organisation the form posts to the organisation's own
+				// page, so the app GitHub hands back must be the organisation's:
+				// one any other account owns came from another hand, and is
+				// never recorded or offered for installing. For a person the
+				// owner is whoever was signed in, so it is named instead.
+				if org && !strings.EqualFold(app.OwnerLogin, owner) {
+					return &exitError{Code: 1, Msg: prefix + "the app GitHub handed back belongs to " + termsafe.Sanitize(app.OwnerLogin) +
+						", not the organisation " + owner + " it was created for, so it was not recorded; run abcd session setup again, and delete that app on GitHub if you made it"}
+				}
+				if !org {
+					fmt.Fprintf(stderr, "%sthe app belongs to the GitHub account %s\n", prefix, termsafe.Sanitize(app.OwnerLogin))
 				}
 				if err := coresession.WriteAppFile(root, app.ClientID); err != nil {
 					return &exitError{Code: 1, Msg: prefix + "GitHub created the app, but its client id could not be written: " + err.Error() +

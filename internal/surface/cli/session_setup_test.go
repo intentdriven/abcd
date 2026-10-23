@@ -24,6 +24,13 @@ import (
 // manifest conversion, whose answer carries secrets.
 func fakeManifestAPI(t *testing.T) (*[]string, func()) {
 	t.Helper()
+	return fakeManifestAPIOwnedBy(t, `{"login": "acme", "type": "Organization"}`)
+}
+
+// fakeManifestAPIOwnedBy is fakeManifestAPI with the converted app's owner
+// given, so a test can bring back an app some other account created.
+func fakeManifestAPIOwnedBy(t *testing.T, owner string) (*[]string, func()) {
+	t.Helper()
 	var mu sync.Mutex
 	var asked []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +43,7 @@ func fakeManifestAPI(t *testing.T) (*[]string, func()) {
 		case r.Method == http.MethodPost && r.URL.Path == "/app-manifests/code123/conversions":
 			w.WriteHeader(http.StatusCreated)
 			io.WriteString(w, `{"id": 7, "slug": "acme-brief", "client_id": "Iv23liFromGitHub", "client_secret": "SECRET-ONE",
-				"webhook_secret": "SECRET-TWO", "pem": "SECRET-THREE", "owner": {"login": "acme", "type": "Organization"}}`)
+				"webhook_secret": "SECRET-TWO", "pem": "SECRET-THREE", "owner": `+owner+`}`)
 		default:
 			http.NotFound(w, r)
 		}
@@ -371,5 +378,27 @@ func TestSessionSetupRefusedAfterTheChoiceRecordsNothing(t *testing.T) {
 	var m map[string]any
 	if json.Unmarshal(cfg, &m) != nil || m["sessions"] != nil {
 		t.Errorf("a refusal saying nothing was written recorded an answer:\n%s", cfg)
+	}
+}
+
+// TestSessionSetupRefusesAnAppAnotherAccountOwns: for an organisation the
+// form posts to the organisation's own page, so an app that comes back owned
+// by any other account is not the one the person created there, and nothing
+// is recorded.
+func TestSessionSetupRefusesAnAppAnotherAccountOwns(t *testing.T) {
+	repo := managedSessionRepo(t)
+	sessionConfig(t, repo, `{"meta": {"schema_version": 1}}`)
+	_, done := fakeManifestAPIOwnedBy(t, `{"login": "mallory", "type": "User"}`)
+	defer done()
+	out, err := runCLIStdinErr(t, "", "session", "setup", "--where", "local")
+	if err == nil {
+		t.Fatalf("setup recorded an app another account owns:\n%s", out)
+	}
+	said := string(out) + err.Error()
+	if !strings.Contains(said, "mallory") || !strings.Contains(said, "organisation acme") {
+		t.Errorf("the refusal does not name both owners:\n%s", said)
+	}
+	if _, serr := os.Stat(filepath.Join(repo, ".abcd", "relay", "github-app.json")); !os.IsNotExist(serr) {
+		t.Errorf("github-app.json was written for another account's app (%v)", serr)
 	}
 }

@@ -35,6 +35,11 @@ import (
 // maxConversion bounds GitHub's answer to the conversion.
 const maxConversion = 1 << 20
 
+// maxConversionTries is how many conversions may fail before the run ends: a
+// passing fault leaves the page serving, so the browser can come back with
+// the same code, which GitHub honours for an hour.
+const maxConversionTries = 3
+
 // manifestCodeRe is a manifest code as it travels into GitHub's path.
 var manifestCodeRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
@@ -85,10 +90,13 @@ var donePage = template.Must(template.New("done").Parse(`<!doctype html>
 func LoopbackListener() (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") }
 
 // Run serves the flow on ln until GitHub's redirect brings a code that
-// converts, ctx ends, or the conversion fails. opened is told the address to
-// open, once the page answers. Every request must name ln's own address as
+// converts, ctx ends, or the conversion fails maxConversionTries times. opened
+// is told the address to open, once the server is listening. Every request must name ln's own address as
 // its host, so a page on another name cannot drive it (the relay's
-// DNS-rebinding guard, here too).
+// DNS-rebinding guard, here too). Both pages live under a path drawn at
+// random for this run and printed in that address alone, so a program on
+// this computer that was not handed the address can neither read the state
+// nor bring back a code of its own.
 func (s *AppSetup) Run(ctx context.Context, ln net.Listener, opened func(string)) (coresession.CreatedApp, error) {
 	defer ln.Close()
 	stateBytes := make([]byte, 24)
@@ -96,8 +104,13 @@ func (s *AppSetup) Run(ctx context.Context, ln net.Listener, opened func(string)
 		return coresession.CreatedApp{}, err
 	}
 	state := hex.EncodeToString(stateBytes)
+	pathBytes := make([]byte, 24)
+	if _, err := rand.Read(pathBytes); err != nil {
+		return coresession.CreatedApp{}, err
+	}
+	token := hex.EncodeToString(pathBytes)
 	host := ln.Addr().String()
-	base := "http://" + host
+	base := "http://" + host + "/" + token
 	manifest := s.Manifest
 	manifest.RedirectURL = base + "/created"
 	rawManifest, err := json.Marshal(manifest)
@@ -112,15 +125,20 @@ func (s *AppSetup) Run(ctx context.Context, ln net.Listener, opened func(string)
 	result := make(chan outcome, 1)
 	var once sync.Once
 	finish := func(o outcome) { once.Do(func() { result <- o }) }
+	// Conversions are taken one at a time, so a repeated redirect never
+	// races the first, and a failure can never override a success.
+	var convMu sync.Mutex
+	failures := 0
+	converted := false
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /"+token+"/{$}", func(w http.ResponseWriter, _ *http.Request) {
 		pageHeaders(w)
 		_ = setupPage.Execute(w, map[string]string{
 			"Repo": manifest.URL, "Action": s.FormURL(state), "Manifest": string(rawManifest),
 		})
 	})
-	mux.HandleFunc("GET /created", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /"+token+"/created", func(w http.ResponseWriter, r *http.Request) {
 		pageHeaders(w)
 		q := r.URL.Query()
 		if subtle.ConstantTimeCompare([]byte(q.Get("state")), []byte(state)) != 1 || !manifestCodeRe.MatchString(q.Get("code")) {
@@ -129,14 +147,31 @@ func (s *AppSetup) Run(ctx context.Context, ln net.Listener, opened func(string)
 				"Body": "Go back to your terminal and open the address abcd session setup printed."})
 			return
 		}
-		app, err := s.convert(r.Context(), q.Get("code"))
-		if err != nil {
-			w.WriteHeader(http.StatusBadGateway)
-			_ = donePage.Execute(w, map[string]string{"Title": "The app could not be read back",
-				"Body": "GitHub did not answer as expected. Go back to your terminal; it says what to do next."})
-			finish(outcome{err: err})
+		// The conversion runs on the run's own context, not the request's: a
+		// browser that closes the page must not cancel an exchange GitHub may
+		// already have answered, spending the code with nothing recorded.
+		convMu.Lock()
+		defer convMu.Unlock()
+		if converted {
+			_ = donePage.Execute(w, map[string]string{"Title": "The sign-in app is created",
+				"Body": "Go back to your terminal for the next steps."})
 			return
 		}
+		app, err := s.convert(ctx, q.Get("code"))
+		if err != nil {
+			failures++
+			w.WriteHeader(http.StatusBadGateway)
+			if failures >= maxConversionTries {
+				_ = donePage.Execute(w, map[string]string{"Title": "The app could not be read back",
+					"Body": "GitHub did not answer as expected. Go back to your terminal; it says what to do next."})
+				finish(outcome{err: err})
+				return
+			}
+			_ = donePage.Execute(w, map[string]string{"Title": "GitHub did not answer as expected",
+				"Body": "Reload this page to ask GitHub again; the app it created is kept for an hour."})
+			return
+		}
+		converted = true
 		_ = donePage.Execute(w, map[string]string{"Title": "The sign-in app is created",
 			"Body": "Go back to your terminal for the next steps: installing the app on the repository, and its settings."})
 		finish(outcome{app: app})
@@ -150,7 +185,6 @@ func (s *AppSetup) Run(ctx context.Context, ln net.Listener, opened func(string)
 			mux.ServeHTTP(w, r)
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
-		ErrorLog:          nil,
 	}
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -194,7 +228,14 @@ func (s *AppSetup) convert(ctx context.Context, code string) (coresession.Create
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := s.Client.Do(req)
 	if err != nil {
-		return coresession.CreatedApp{}, fmt.Errorf("asking GitHub for the new app: %w", err)
+		// The request's URL carries the manifest code, which stays
+		// redeemable for an hour when the exchange failed before GitHub
+		// answered, so the error keeps the cause and never the URL.
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = ue.Err
+		}
+		return coresession.CreatedApp{}, fmt.Errorf("asking GitHub for the new app: %v", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxConversion))
