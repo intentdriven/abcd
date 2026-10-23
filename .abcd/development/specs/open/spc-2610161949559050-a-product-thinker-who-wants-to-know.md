@@ -81,7 +81,17 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
    - waits on: itd-166 (the asked and served sides)
 2. Plan, cost and consent
    - packages: internal/core/matrix, internal/surface/cli, commands
-   - tests: the plan shows copies, cost by source against the cap, load cap, time and judges; nothing starts without consent; a metered run without a named cap is refused; a local- or host-only run needs no cap
+   - tests: the plan shows copies, cost by source against the cap, load cap, time and judges; nothing starts without consent; a metered run without a named cap is refused; a local- or host-only run needs no cap; a matrix refusal printed by the front door carries a control or direction character escaped, never raw; a scanner kind naming a repository's own rule id is printed sanitised; the role echoed in a pin refusal is quoted
+   - The front door passes every matrix error through the terminal sanitiser
+     before printing it, because the core returns raw text. The run record's
+     refusal prints the scanner's finding kind sanitised, since an opted-in
+     augmenter's kind carries the repository's own rule id.
+   - When a trial writer is added, it calls the run record's screen on every
+     trial before writing it, so a trial's reason and score detail are
+     screened for credentials as the run record is.
+   - The plan's cost and time follow decisions 34-36: no copy starts past the
+     cap's remainder, the time waits for the pilot, and the expected cost
+     comes only from prices the person declares.
 3. Trial mode, isolated clones and routing
    - packages: internal/core/implement/loop, internal/core/runner, internal/core/launch, internal/core/matrix
    - tests: trial mode takes no reservation and lands nothing; a runner failure in a cell is the cell's failure with no host fallback; an OpenRouter outage is retried on the same pin and not scored; each copy is a clone outside every working tree with no local tier; a provider-bound clone passes the secret scan or is refused; one local server at a time as an owned process group
