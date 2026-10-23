@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -75,14 +74,6 @@ func DryRun(ctx context.Context, repoRoot string, o Options) (Result, error) {
 	if err != nil {
 		return refused(fmt.Errorf("reading what the build loop holds: %w", err))
 	}
-	lane, err := store.LaneFor(repoRoot)
-	if err != nil {
-		return refused(err)
-	}
-	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
-	if err != nil {
-		return refused(fmt.Errorf("listing the repository's worktrees: %w", err))
-	}
 	home, _ := os.UserHomeDir()
 	p := NewProbe(ctx, o.Probe)
 	j := judge{
@@ -104,7 +95,7 @@ func DryRun(ctx context.Context, repoRoot string, o Options) (Result, error) {
 		ForgeNote:               listing.ForgeNote,
 	}
 	for _, r := range listing.Worktrees {
-		res.Rows = append(res.Rows, j.row(r, locate(r, wts, lane)))
+		res.Rows = append(res.Rows, j.row(r))
 	}
 	return res, nil
 }
@@ -130,51 +121,6 @@ func (r *refusal) Unwrap() error { return r.cause }
 // terminal would act on is shown instead.
 func clean(s string) string { return termsafe.Sanitize(fsutil.RedactHome(s)) }
 
-// locate is the absolute path of the worktree or lane entry a store row names,
-// or "" when it cannot be tied to exactly one. The store's rows carry only a
-// display path, so the row is matched against git's own listing (a worktree
-// it lists) or the lane (an entry it does not) by its name, its branch and its
-// displayed path. Two candidates that both fit, as two worktrees outside the
-// home with one base name do, are a doubt, and the row is kept unclassified.
-func locate(r store.Row, wts []gitutil.Worktree, lane store.Lane) string {
-	var cands []string
-	if r.Branch != "" {
-		for i, wt := range wts {
-			if i == 0 || wt.Bare || termsafe.Sanitize(branchOf(wt)) != r.Branch {
-				continue
-			}
-			cands = append(cands, wt.Path)
-		}
-	} else {
-		cands = []string{lane.Path(r.Name), filepath.Join(filepath.Dir(lane.Dir), r.Name)}
-	}
-	found := ""
-	for _, c := range cands {
-		if termsafe.Sanitize(filepath.Base(filepath.Clean(c))) != r.Name {
-			continue
-		}
-		if termsafe.Sanitize(fsutil.RedactHome(c)) != r.Path && termsafe.Sanitize(fsutil.DisplayPath(c)) != r.Path {
-			continue
-		}
-		if found != "" && fsutil.RealExistingPath(found) != fsutil.RealExistingPath(c) {
-			return ""
-		}
-		found = c
-	}
-	return found
-}
-
-// branchOf is a listed worktree's branch as the store's row names it.
-func branchOf(wt gitutil.Worktree) string {
-	switch {
-	case wt.Branch != "":
-		return strings.TrimPrefix(wt.Branch, "refs/heads/")
-	case wt.Detached:
-		return "detached"
-	}
-	return ""
-}
-
 // judge is what every row of one dry run is judged against.
 type judge struct {
 	home    string
@@ -185,12 +131,14 @@ type judge struct {
 	changes func(abs, def string) []string
 }
 
-// row judges one store row whose item sits at abs ("" when it could not be
-// located). The order is the spec's: the embargo store and what the store
+// row judges one store row, its item at the row's Abs: the store's own
+// absolute path, as git or the lane names it, so no row needs matching back to
+// a worktree by its displayed name. The order is the spec's: the embargo store and what the store
 // did not judge first, read no further; then liveness, an external lock, the
 // sweep's own directory and the loop's hold; then outside the store; then
 // dirty, unmerged and, last, merged and clean.
-func (j judge) row(r store.Row, abs string) Row {
+func (j judge) row(r store.Row) Row {
+	abs := r.Abs
 	row := Row{Kind: RowWorktree, Name: r.Name, Path: r.Path, Action: ActionKeep}
 	keep := func(reason string, ev ...Evidence) Row {
 		row.Reason = clean(reason)
@@ -204,15 +152,10 @@ func (j judge) row(r store.Row, abs string) Row {
 		return Evidence{Kind: KindStore, Strength: s, Detail: detail}
 	}
 
-	if r.Where == store.WhereSibling || (abs != "" && storepath.IsStorePath(j.home, abs)) {
+	if r.Where == store.WhereSibling || storepath.IsStorePath(j.home, abs) {
 		row.Kind, row.State = RowEmbargoStore, "abcd's embargo store; not read"
 		return keep("abcd's embargo store: never read, saved or removed",
 			storeSaid(Proven, firstNonEmpty(r.Reason, "the embargo store's path")))
-	}
-	if abs == "" {
-		row.State = stateOf(r)
-		return keep("cannot classify: this row could not be tied to one worktree git lists or one entry in the lane",
-			storeSaid(Hint, "no single worktree or lane entry matches the row's name, branch and path"))
 	}
 	if r.Branch == "" {
 		if fi, err := os.Lstat(abs); err == nil && !fi.IsDir() {
