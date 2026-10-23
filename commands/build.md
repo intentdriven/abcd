@@ -50,6 +50,17 @@ payload's `reservation` says what was done (`reserved <id> on origin for this
 copy until <expiry>, footprint: …`); a run in a checkout without `origin`
 reserves nothing and carries none.
 
+The reservation names exactly the paths that line names, so a file named there
+is reserved as that file, and one reservation holds them for every step of the
+run. A path naming a directory git tracks is reserved as it stands, and the
+start warns on stderr, `abcd build: warning: footprint "<path>" is a directory
+covering <n> tracked files on <branch>, …; reserved anyway: name the files the
+work changes instead` (`reservation_warnings` in `--json`, a list of those
+lines; under `build next` it sits in `start`). A directory holds off every other
+reservation of a file inside it, so tell the user, and suggest narrowing the
+spec's `- packages:` line to the files the work changes. A step's own
+`- packages:` line is not read for the reservation.
+
 - A spec with no footprint is refused at the `reservation` stage, exit 2,
   starting nothing: `<spc-N> has no footprint under ## Footprint to reserve
   <itd-N> with; fill its packages line, then run abcd build again; nothing was
@@ -175,7 +186,7 @@ When the checks pass, the payload names the `run_id`, the `state` file
 (`.abcd/.work.local/run/<run-id>/state.json`), the first `lane` (the spec's first
 unlanded step), the `pending` spec steps, `claim` (the claim `--session` took,
 or null), `reservation` (above; absent when nothing was reserved),
-and `next`, the move to make. The
+`reservation_warnings` (above; absent when there is none), and `next`, the move to make. The
 local tier is never created: in a repository abcd does not manage the verb
 refuses. Starting again while the run is in progress creates nothing, runs no
 check, and reports `resumed: true` with the same run and an empty `checks`: the

@@ -261,6 +261,11 @@ type StartResult struct {
 	// footprint); empty when it reserved nothing (no remote named origin, or
 	// a resumed run handed back).
 	Reservation string `json:"reservation,omitempty"`
+	// ReservationWarnings is each warning the start's reservation act gave:
+	// a footprint path naming a directory git tracks, with the tracked files
+	// beneath it (iss-2610230016544142), reserved all the same; empty when it
+	// gave none, renewed a reservation as it stood, or reserved nothing.
+	ReservationWarnings []string `json:"reservation_warnings,omitempty"`
 	// ForkUnchecked is why the start's reservation could not ask the forge
 	// whether origin is a fork, so it went on without the check (claim's
 	// Result.ForkUnchecked); "" when it asked, or asked nothing.
@@ -525,6 +530,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		res.Diagnostics = reviewNotes
 		res.Claim = claim
 		res.Reservation, res.ForkUnchecked, res.ForkAllowed = rsv.note, rsv.forkUnchecked, rsv.forkAllowed
+		res.ReservationWarnings = rsv.warnings
 		keep = true
 		return nil
 	})
