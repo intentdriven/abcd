@@ -679,7 +679,7 @@ with `--everywhere`; [the prompt router](#the-prompt-routers-output) recalls the
 beside the repository's `.abcd/memory.json`, whose notes a person commits in a
 reviewed change and the verb never writes, as one set in which a project note
 shadows a personal note with the same id), curated cross-project memory pages
-under `memory/` (a later phase: nothing resolves it today), and the `sources/` corpus
+under `memory/` (the prompt router's recall reads them, read only), and the `sources/` corpus
 `/abcd:library` reads and writes (abcd never creates that one unasked: only its
 explicit init does, and every other corpus verb and the page say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned

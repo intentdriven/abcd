@@ -4,7 +4,7 @@
 session does not learn them again (itd-2610091918433290,
 spc-2610111627213138). It is an agents' command: its page is hidden from a
 person's menu, and the binary's help lists the verb with the agents. Recall of a note through the prompt hook is the same
-spec's later step; this chapter covers the store and the verb.
+spec's steps 2 to 4, shipped: a matching note or page comes back under `## MEMORY`, ranked by BM25F, and the rules verb can show why for a given prompt; this chapter covers the store and the verb.
 
 ## Sub-verbs
 
