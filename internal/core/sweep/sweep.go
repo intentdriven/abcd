@@ -52,6 +52,10 @@ type Options struct {
 	// changes reads the paths a worktree changes, running git in it; nil is
 	// changedPaths. A test sets it to see which worktrees git ran in.
 	changes func(abs, def string) []string
+	// pruneOne reclaims one worktree of the lane; nil is the store's
+	// PruneOne. A test sets it to see which worktrees the prune was asked
+	// about.
+	pruneOne func(repoRoot, name string, opts store.PruneOptions) (store.Pruned, error)
 }
 
 // DryRun judges every worktree of the repository at repoRoot and every entry
@@ -60,19 +64,30 @@ type Options struct {
 // the error, and the result carries it as its Refusal, so ExitCode reads
 // ExitRefused. A run without Held or Cwd is refused the same way.
 func DryRun(ctx context.Context, repoRoot string, o Options) (Result, error) {
+	res, _, _, err := judgeRepo(ctx, repoRoot, o)
+	return res, err
+}
+
+// judgeRepo is DryRun, also answering with the store's row behind each of the
+// result's rows, in order, and the judge that made them, for Apply to act on.
+func judgeRepo(ctx context.Context, repoRoot string, o Options) (Result, []store.Row, judge, error) {
+	fail := func(err error) (Result, []store.Row, judge, error) {
+		res, err := refused(err)
+		return res, nil, judge{}, err
+	}
 	if o.Held == nil {
-		return refused(errors.New("sweep: a dry run needs a reader of what the build loop holds"))
+		return fail(errors.New("sweep: a dry run needs a reader of what the build loop holds"))
 	}
 	if o.Cwd == "" {
-		return refused(errors.New("sweep: a dry run needs its own working directory, to keep the worktree holding it"))
+		return fail(errors.New("sweep: a dry run needs its own working directory, to keep the worktree holding it"))
 	}
 	listing, err := store.List(repoRoot, store.ListOptions{Forge: o.Forge})
 	if err != nil {
-		return refused(err)
+		return fail(err)
 	}
 	held, err := o.Held(repoRoot)
 	if err != nil {
-		return refused(fmt.Errorf("reading what the build loop holds: %w", err))
+		return fail(fmt.Errorf("reading what the build loop holds: %w", err))
 	}
 	home, _ := os.UserHomeDir()
 	p := NewProbe(ctx, o.Probe)
@@ -97,7 +112,7 @@ func DryRun(ctx context.Context, repoRoot string, o Options) (Result, error) {
 	for _, r := range listing.Worktrees {
 		res.Rows = append(res.Rows, j.row(r))
 	}
-	return res, nil
+	return res, listing.Worktrees, j, nil
 }
 
 // refused is the result and error of a run that refused before judging. The

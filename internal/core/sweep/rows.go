@@ -38,6 +38,17 @@ const (
 	ActionKeep Action = "keep"
 )
 
+// Outcome is what `--apply` did with a row's item.
+type Outcome string
+
+const (
+	// OutcomeRemoved is a worktree the store's prune reclaimed.
+	OutcomeRemoved Outcome = "removed"
+	// OutcomeKept is an item left as it was, its reason saying why: one the
+	// dry run kept, or one a check at the moment of acting kept.
+	OutcomeKept Outcome = "kept"
+)
+
 // The evidence kinds a row adds to the liveness probe's: what the store read
 // of the worktree, each a proof, since git said it.
 const (
@@ -70,6 +81,8 @@ type Row struct {
 	// Evidence is each thing read that bears on the action, every piece
 	// marked proven or hint.
 	Evidence []Evidence `json:"evidence,omitempty"`
+	// Outcome is what an applied run did with the item; "" in a dry run.
+	Outcome Outcome `json:"outcome,omitempty"`
 }
 
 // The exit codes a sweep maps to (spc-2610230730269295, Rows).
@@ -98,6 +111,9 @@ type Result struct {
 	ForgeNote string `json:"forge_note,omitempty"`
 	// Refusal is why the run refused or faulted; "" when it completed.
 	Refusal string `json:"refusal,omitempty"`
+	// Applied marks a run that acted, each row carrying its Outcome; a dry
+	// run leaves it false.
+	Applied bool `json:"applied,omitempty"`
 }
 
 // Notes are the lines a rendering puts once at the top: each failed-closed
@@ -117,14 +133,18 @@ func (r Result) Notes() []string {
 }
 
 // ExitCode is the code the front door exits with: ExitRefused on a refusal or
-// fault, whatever rows came before it; otherwise ExitActed when any row
-// carries an action other than keep, and ExitNothing when none does.
+// fault, whatever rows came before it; otherwise, for an applied run,
+// ExitActed when any row's outcome is other than kept, and for a dry run when
+// any row carries an action other than keep; ExitNothing when none does.
 func (r Result) ExitCode() int {
 	if strings.TrimSpace(r.Refusal) != "" {
 		return ExitRefused
 	}
 	for _, row := range r.Rows {
-		if row.Action != ActionKeep && row.Action != "" {
+		switch {
+		case r.Applied && row.Outcome != OutcomeKept && row.Outcome != "":
+			return ExitActed
+		case !r.Applied && row.Action != ActionKeep && row.Action != "":
 			return ExitActed
 		}
 	}
