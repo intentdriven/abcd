@@ -178,11 +178,12 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
 			"While it waits, in a checkout, the waiter keeps your own reservations from\n" +
 			"lapsing: at once and then every five minutes it renews each of your live\n" +
-			"reservations from this copy that is half through its lease, for its own term or\n" +
+			"reservations that is half through its lease and whose latest commit this copy\n" +
+			"pushed, for its own term or\n" +
 			"two hours, whichever is longer, and says each renewal on standard error. It\n" +
 			"never reserves anything new, takes nothing over and revives nothing that has\n" +
 			"lapsed, so a lease shorter than ten minutes can still lapse between two rounds;\n" +
-			"a renewal that fails is said once, and the wait goes on. The renewal runs beside the gate, never in it, so\n" +
+			"a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on. The renewal runs beside the gate, never in it, so\n" +
 			"the gate's order and its open never wait on one, and it stops when the gate\n" +
 			"opens. Since it runs through git and gh, no waiter counts another's git or gh\n" +
 			"child as its command: gate make or go, never git or gh itself.",
@@ -314,9 +315,10 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 // waits, so a reservation made by hand does not lapse while its preflight
 // waits its turn (iss-2610170926295770): from the checkout the waiter runs
 // in, at once and then every loadRenewEvery, it renews each of this person's
-// live reservations from this copy that is half through its lease
-// (claim.RenewDue), and says each renewal on w. A renewal that fails is said
-// once until it succeeds, and the wait goes on. It runs beside the gate,
+// live reservations that is half through its lease and whose latest commit
+// this copy pushed (claim.RenewDue), and says each renewal on w. A renewal
+// that fails, or a reservation left unrenewed, is said once until it
+// succeeds, and the wait goes on. It runs beside the gate,
 // never in it: the gate's looks, its order and its open neither wait on a
 // renewal nor read one, and stop returns at once, a renewal still in flight
 // finishing unsaid. Outside a checkout there is nothing to renew.
