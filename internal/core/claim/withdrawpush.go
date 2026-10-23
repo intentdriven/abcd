@@ -3,8 +3,9 @@ package claim
 // withdrawpush.go holds a release branch's withdrawals to the forge's own
 // record of who pushed each commit (iss-2610222014550692), the record the
 // status branches are already held to (C17, checkSenders). A commit's
-// Abcd-Holder trailer is whatever its writer put there, so before any re-arm
-// (the tag sweep, the tombstone sweep, --release, --admit) the commit that
+// Abcd-Holder trailer is whatever its writer put there, so before any act on
+// a withdrawal (the tag sweep, the tombstone sweep, --release, --admit, a live
+// renewal's withdrawal again) the commit that
 // first recorded a withdrawal must be one the forge's activity record says
 // a person pushed, that person being the withdrawal's By; and before the
 // launch check exempts an admitted merge, the commits that recorded the
@@ -12,7 +13,8 @@ package claim
 // forge has not caught up with, or did not answer in full, decides nothing:
 // the withdrawal is reported as not yet verified and a later act asks again.
 // An app's push vouches for no one, and is reported for its person to act on
-// by hand. Reports (peers, the lost walk) read the chain alone.
+// by hand. The peers listing splits the reader's own withdrawals the same
+// way; the lost walk reads the chain alone.
 
 import (
 	"context"
