@@ -132,6 +132,26 @@ did not count as a hold, for one), when there are any.
 
 Tell the user what was pushed and where the pull request stands.
 
+## Record the review pair's verdicts
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" land [<branch>] --record-review <return> --record-review <return> [--json]
+```
+
+`--record-review` records that the review pair passed the branch's head and
+lands nothing: it pushes, gates and arms nothing. Give it once per reviewer's
+return, at least two. Each return must name the head's first nine characters
+(as the build loop's briefs abbreviate it) and end in a `### Verdict` section.
+When every verdict passes the stop rule, `SHIP` or `APPROVE` (no critical or
+major finding), the head's review receipt is written to
+`.abcd/.work.local/review-receipts/<full sha>`, beside the preflight receipts
+and found from any worktree the same way, and `--json` carries the `commit` and
+the `receipt` path. A return that names another commit, has no verdict, or says
+`FIX FIRST`, `BLOCK` or `NEEDS-INPUT` is refused with exit 2, naming the return,
+and nothing is written. `--record-review` takes no `--no-push` or
+`--no-enqueue`. In `auto` mode the merge gate arms only a head a review receipt
+names.
+
 ## Turning an act off
 
 `land.push` and `land.enqueue` are booleans in `.abcd/config.json` (read in
