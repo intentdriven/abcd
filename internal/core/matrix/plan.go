@@ -33,6 +33,11 @@ type PlannedCell struct {
 	// Provider is the oracle provider block the model is asked of, "" for a
 	// host cell.
 	Provider string `json:"provider,omitempty"`
+	// ProviderPin is an OpenRouter cell's pin and LocalPin a local cell's,
+	// read from this machine's configuration, so the plan the person sees
+	// names exactly what each copy is held to (decision 6).
+	ProviderPin *ProviderPin `json:"provider_pin,omitempty"`
+	LocalPin    *LocalPin    `json:"local_pin,omitempty"`
 }
 
 // Copies is how many copies the run makes: every cell does every task, the
@@ -208,8 +213,23 @@ func resolveCell(c roleCell, api *oracle.APIConfig, check func(oracle.FlagRoute)
 	switch {
 	case api.IsLocal(provider):
 		pc.Source = SourceLocal
+		lp, ok := api.LocalPinFor(provider, model)
+		if !ok {
+			return PlannedCell{}, fmt.Errorf("the local model %s on %s has no pin in %s; a local cell is pinned down to its weights", clip(model), clip(provider), layered.Config.MachineOrigin())
+		}
+		pin := LocalPin(lp)
+		pc.LocalPin = &pin
 	case api.IsOpenRouter(provider):
 		pc.Source = SourceOpenRouter
+		op, ok := api.PinFor(provider, model)
+		if !ok {
+			return PlannedCell{}, fmt.Errorf("the OpenRouter model %s has no provider pin in %s; without one OpenRouter falls back across providers, which changes the cell", clip(model), layered.Config.MachineOrigin())
+		}
+		if op.AllowFallbacks {
+			return PlannedCell{}, fmt.Errorf("the OpenRouter pin for %s allows fallbacks; a matrix cell keeps them off", clip(model))
+		}
+		pin := ProviderPin(op)
+		pc.ProviderPin = &pin
 	default:
 		pc.Source = SourceProvider
 	}

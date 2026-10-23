@@ -666,8 +666,11 @@ func writeRun(repoRoot string, rec RunRecord, declaration []byte) error {
 // withoutVersionsAndDigests is the record with every version and digest
 // emptied and nothing else changed, so it encodes to the record's own lines:
 // the commits, the binary's digest, version and revision, every content
-// reference's and hash map's digest, and each cell's harness version and
-// local runtime version and weights digest. It changes nothing in rec.
+// reference's and hash map's digest, each cell's harness version and local
+// runtime version and weights digest, and each unpinned field's name, which
+// abcd builds from a validated id (cell.<id>.<field>) and which a cell id such
+// as local-rev would otherwise make read as a host name. It changes nothing in
+// rec.
 func (rec RunRecord) withoutVersionsAndDigests() RunRecord {
 	r := rec
 	r.RootSHA, r.FrozenCommit = "", ""
@@ -705,6 +708,10 @@ func (rec RunRecord) withoutVersionsAndDigests() RunRecord {
 			l.RuntimeVersion, l.WeightsSHA256 = "", ""
 			r.Cells[i].LocalPin = &l
 		}
+	}
+	r.Unpinned = slices.Clone(rec.Unpinned)
+	for i := range r.Unpinned {
+		r.Unpinned[i].Field = ""
 	}
 	return r
 }

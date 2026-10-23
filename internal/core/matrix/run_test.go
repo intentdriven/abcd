@@ -761,3 +761,19 @@ func TestARunTheScannerCannotFullyScreenIsRefusedUnwritten(t *testing.T) {
 		t.Fatalf("writeRun with the scanner whole: %v", err)
 	}
 }
+
+// An unpinned field is named by abcd from a validated cell id
+// (cell.<id>.<field>), so a cell id such as local-rev must not read as the
+// host name cell.local to the network screen: the record is written. The
+// credential screen still reads the names.
+func TestAnUnpinnedFieldNamedForACellIsNotReadAsAHostName(t *testing.T) {
+	root, _, _, in := matrixLab(t)
+	in.Cells[2].HarnessVersion = "" // local-rev: its harness version is then listed as unpinned
+	rec, err := newRunRecord(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRun(root, rec, in.Declaration); err != nil {
+		t.Fatalf("writeRun with cell.local-rev.harness_version unpinned: %v", err)
+	}
+}

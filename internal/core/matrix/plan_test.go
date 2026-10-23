@@ -17,9 +17,10 @@ import (
 func planAPI(t *testing.T, paidURL string) *oracle.APIConfig {
 	t.Helper()
 	machine := `{"oracle":{"api":{` +
-		`"openrouter":{"base_url":"https://openrouter.ai/api/v1","key":"openrouter","models":["vendor/model"],` +
+		`"openrouter":{"base_url":"https://openrouter.ai/api/v1","key":"openrouter","models":["vendor/model","vendor/unpinned"],` +
 		`"pins":{"vendor/model":{"order":["deepinfra"],"quantizations":["fp8"],"canonical_slug":"vendor/model-20240723"}}},` +
-		`"local":{"base_url":"http://127.0.0.1:11535/v1","models":["qwen"]},` +
+		`"local":{"base_url":"http://127.0.0.1:11535/v1","models":["qwen","bare"],"pins":{"qwen":{"runtime":"ollama","runtime_version":"0.14.2",` +
+		`"weights_sha256":"sha256:06C1097EFCE0431C2045FE7B2E5108366E43BEE1B4603A7ADED8F21689E90BCA","quantisation":"Q4_K_M","context_length":32768,"kv_cache_type":"f16"}}},` +
 		`"paid":{"base_url":"` + paidURL + `","key":"paid","models":["big"]}}}}`
 	api, err := oracle.LoadAPI(capRoots(t, "", machine))
 	if err != nil {
@@ -83,6 +84,18 @@ func TestThePlanNamesEachCellsSource(t *testing.T) {
 	}
 	if len(p.Cells) != len(want) {
 		t.Fatalf("cells = %+v", p.Cells)
+	}
+	for _, c := range p.Cells {
+		switch c.Source {
+		case SourceOpenRouter:
+			if c.ProviderPin == nil || c.ProviderPin.Order[0] != "deepinfra" || c.LocalPin != nil {
+				t.Errorf("OpenRouter cell %s pins = %+v, %+v", c.Cell, c.ProviderPin, c.LocalPin)
+			}
+		case SourceLocal:
+			if c.LocalPin == nil || c.LocalPin.Runtime != "ollama" || c.ProviderPin != nil {
+				t.Errorf("local cell %s pins = %+v, %+v", c.Cell, c.ProviderPin, c.LocalPin)
+			}
+		}
 	}
 }
 
@@ -197,6 +210,8 @@ func TestACellRouteTheRunnerConfigRefusesIsRefused(t *testing.T) {
 		{"builder=runner:opencode@openrouter/unlisted", "not on openrouter's list"},
 		{"reviewer=runner:opencode@local/qwen", "reviewer"},
 		{"builder=strong", "runner"},
+		{"builder=runner:opencode@openrouter/vendor/unpinned", "no provider pin"},
+		{"builder=runner:opencode@local/bare", "no pin"},
 	} {
 		if _, err := plan(t, planDecl(`{"id":"cell","route":"`+c.route+`"}`, ``, ``), usd25); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: err = %v; want a refusal mentioning %q", c.route, err, c.want)
@@ -208,11 +223,17 @@ func TestBuildingThePlanMakesNoNetworkCall(t *testing.T) {
 	var calls atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))
 	defer srv.Close()
-	// The counting server is on this machine, so the provider pointed at it
-	// reads as local: the plan must not probe it any more than a remote one.
-	decl := planDecl(`{"id":"paid-big","route":"builder=runner:opencode@paid/big","cost_per_copy":{"amount":1,"unit":"usd"}}`, ``, `"load_cap": 4,`)
+	// A pinned block served by the counting server: building the plan reads
+	// its configuration and must never ask the server anything (decision 12).
+	machine := `{"oracle":{"api":{"probe":{"base_url":"` + srv.URL + `/v1","models":["qwen"],"pins":{"qwen":{"runtime":"ollama","runtime_version":"0.14.2",` +
+		`"weights_sha256":"sha256:06C1097EFCE0431C2045FE7B2E5108366E43BEE1B4603A7ADED8F21689E90BCA","quantisation":"Q4_K_M","context_length":32768,"kv_cache_type":"f16"}}}}}}`
+	api, err := oracle.LoadAPI(capRoots(t, "", machine))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decl := planDecl(`{"id":"probe-cell","route":"builder=runner:opencode@probe/qwen"}`, ``, `"load_cap": 4,`)
 	if _, err := BuildPlan(PlanInputs{Lab: "lab-1", FrozenCommit: strings.Repeat("a", 40), Declaration: decl,
-		API: planAPI(t, srv.URL+"/v1"), CheckRoute: anyRoute, Cap: usd25, Cores: 16}); err != nil {
+		API: api, CheckRoute: anyRoute, Cap: ResolvedCap{}, Cores: 16}); err != nil {
 		t.Fatal(err)
 	}
 	if n := calls.Load(); n != 0 {
