@@ -98,6 +98,41 @@ func TestMergedJudgement(t *testing.T) {
 			t.Fatalf("a branch with a commit of its own, merged by fast-forward: %+v", r)
 		}
 	})
+	t.Run("copied with no commit of its own", func(t *testing.T) {
+		// git copies main's reflog with the branch, commits and all.
+		repo, _ := repoWithCommit(t)
+		repo.Git("branch", "-c", "main", "copied")
+		if _, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "copied", Branch: "copied", Existing: true, Git: git}); err != nil {
+			t.Fatal(err)
+		}
+		if r := judged(t, repo, unreachable, "copied"); r.Merged != "unmerged" || r.JudgedBy != "" {
+			t.Fatalf("a copied branch with no commit of its own is not merged: %+v", r)
+		}
+	})
+	t.Run("copied, one real commit, later merged", func(t *testing.T) {
+		repo, _ := repoWithCommit(t)
+		repo.Git("branch", "-c", "main", "copied")
+		got, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "copied", Branch: "copied", Existing: true, Git: git})
+		if err != nil {
+			t.Fatal(err)
+		}
+		commitIn(t, repo, got.Path, "c.txt", "c\n")
+		repo.Git("merge", "-q", "--ff-only", "copied")
+		if r := judged(t, repo, unreachable, "copied"); r.Merged != "merged" || r.JudgedBy != "ancestry" {
+			t.Fatalf("a copied branch with a commit of its own, merged: %+v", r)
+		}
+	})
+	t.Run("renamed after a real commit, later merged", func(t *testing.T) {
+		// A rename carries the branch's own reflog forward.
+		repo, _ := repoWithCommit(t)
+		p := addToLane(t, repo, "before")
+		commitIn(t, repo, p, "r.txt", "r\n")
+		repo.Git("branch", "-m", "before", "after")
+		repo.Git("merge", "-q", "--ff-only", "after")
+		if r := judged(t, repo, unreachable, "before"); r.Branch != "after" || r.Merged != "merged" || r.JudgedBy != "ancestry" {
+			t.Fatalf("a renamed branch keeps its own commits: %+v", r)
+		}
+	})
 	t.Run("rebase merge", func(t *testing.T) {
 		repo, _ := repoWithCommit(t)
 		p := addToLane(t, repo, "rb")
