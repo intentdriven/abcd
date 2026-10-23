@@ -188,11 +188,13 @@ func TestTheLaunchCheckNeverPointsAQueuedMergeAtABareDisableAuto(t *testing.T) {
 // forge's record of pushes does not yet show the reader pushed is not
 // exempt, and the finding says why.
 func TestTheLaunchCheckDoesNotExemptAnUnverifiedAdmission(t *testing.T) {
-	withArmed(t, ArmedMerges{Base: "main", Release: "rel-v0.16.0", Unverified: map[int]string{11: "the forge's record says another account pushed the commit that recorded the admission"},
+	why := "the forge's record says another account pushed the commit that recorded the admission: check the pull request by hand"
+	withArmed(t, ArmedMerges{Base: "main", Release: "rel-v0.16.0", Unverified: map[int]string{11: why},
 		Armed: []ArmedMerge{{Number: 11, Head: headX, HeadRef: "fix/a", AutoMerge: true, Method: "SQUASH"}}}, nil, "release/v0.16.0")
 	res := runGateSuite(suiteRequest{RepoRoot: t.TempDir(), Dirty: DirtySkip})
 	row := mergeHoldRow(t, res)
-	if len(row.Findings) != 1 || !mergeHeld(res) || !strings.Contains(row.Findings[0].Detail, "is recorded admitted into rel-v0.16.0, but the forge's record says another account pushed") {
-		t.Fatalf("row = %+v", row)
+	if len(row.Findings) != 1 || !mergeHeld(res) || !strings.Contains(row.Findings[0].Detail, "is recorded admitted into rel-v0.16.0, but it is not exempt") ||
+		!strings.HasSuffix(row.Findings[0].Detail, why) || strings.Contains(row.Findings[0].Detail, "in a minute") {
+		t.Fatalf("row = %+v; want the reason and its own remedy, and no reading again for a verdict that does not change", row)
 	}
 }

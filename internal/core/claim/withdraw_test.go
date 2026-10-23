@@ -129,6 +129,9 @@ type fakeForge struct {
 	partial    bool
 	pushersErr error
 	pushAsks   int
+	// edit, when set, rewrites the record of pushes before it is answered:
+	// pushes merged, dropped or added, as the forge's own record can hold.
+	edit func([]Push) []Push
 }
 
 func newFakeForge(t *testing.T, prs map[int]*fakePR) *fakeForge {
@@ -145,7 +148,7 @@ func newFakeForge(t *testing.T, prs map[int]*fakePR) *fakeForge {
 func (f *fakeForge) pushers(_ context.Context, root, ref string) ([]Push, error) {
 	f.mu.Lock()
 	f.pushAsks++
-	lag, partial, perr := f.lag, f.partial, f.pushersErr
+	lag, partial, perr, edit := f.lag, f.partial, f.pushersErr, f.edit
 	over := maps.Clone(f.pusherOf)
 	f.mu.Unlock()
 	if perr != nil {
@@ -173,6 +176,9 @@ func (f *fakeForge) pushers(_ context.Context, root, ref string) ([]Push, error)
 		lag = len(out)
 	}
 	out = out[lag:]
+	if edit != nil {
+		out = edit(out)
+	}
 	if partial {
 		return out, ErrPartialRecord
 	}

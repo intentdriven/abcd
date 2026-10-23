@@ -63,11 +63,15 @@ func releaseChain(root, id, tip, tree string) (links []chainLink, complete bool,
 }
 
 // sameEntry reports whether a and b record the same withdrawal: the same
-// pull request, node id and head, withdrawn by the same person. The form and
-// state are not compared: a correction after a partial withdrawal changes the
-// form, and a settle the state.
+// pull request, node id, form and head, withdrawn by the same person. Every
+// field a forge call reads from the entry is compared, so a commit that
+// carries an entry with any of them changed is that entry's own first
+// record, held to the record of pushes as any first record is. Only the
+// state is not compared, since a settle changes it. abcd's own correction
+// after a partial withdrawal changes the form, and is then the corrected
+// entry's first record: a reservation of the withdrawer's, pushed by them.
 func sameEntry(a, b Withdrawal) bool {
-	return a.Number == b.Number && a.ID == b.ID && a.Head == b.Head && sameHolder(a.By, b.By)
+	return a.Number == b.Number && a.ID == b.ID && a.Form == b.Form && a.Head == b.Head && sameHolder(a.By, b.By)
 }
 
 func entryIn(ws []Withdrawal, w Withdrawal) (Withdrawal, bool) {
@@ -96,14 +100,24 @@ func vouched(links []chainLink, complete bool, w Withdrawal) bool {
 // skipped, kept) ends the walk, since nothing settled is ever put back to
 // withdrawn, so a commit over it carrying it withdrawn again is its own first
 // record. A first record past the walk's bound, or beneath a commit that does
-// not read, is not vouched for.
+// not read, is not vouched for. A withdrawal the tip records kept (one the
+// forge refused, which a live renewal tries again) is vouched for by the
+// withdrawn record beneath the commits that carry it kept: the walk passes
+// over those first, and nothing else.
 func firstRecord(links []chainLink, complete bool, w Withdrawal) (string, bool) {
 	first := -1
+	kept := w.State == WithdrawnKept
 	for i, l := range links {
 		if !l.readable {
 			return "", false
 		}
 		e, ok := entryIn(l.m.Withdrawn, w)
+		if ok && kept {
+			if e.State == WithdrawnKept {
+				continue
+			}
+			kept = false
+		}
 		if !ok || !e.unsettled() {
 			break
 		}

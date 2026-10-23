@@ -28,6 +28,7 @@ package claim
 // untouched and names them, with whose they are.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -294,10 +295,11 @@ func (p *prepared) pushRecord(tree, parent string, m message) (string, error) {
 // and why the merges could not be listed or touched at all, "" when they
 // could.
 //
-// again, when not nil, narrows it to the merges m already records as
-// withdrawn: a live renewal withdraws again only one of those the forge has
-// armed again (a process cut off between its record and the forge, or an
-// arming made since by hand), and touches nothing else.
+// again, when not nil, narrows it to those merges, which m already records
+// as withdrawn or kept and the branch vouches for (vouchAgain): a live
+// renewal withdraws again only one of those the forge has armed (a process
+// cut off between its record and the forge, an arming made since by hand, or
+// a withdrawal the forge refused before), and touches nothing else.
 func (p *prepared) withdrawArmed(tree, sha string, m message, again []Withdrawal) (commit string, recorded message, made []Withdrawal, fails []ForgeFailure, unchecked string) {
 	commit, recorded = sha, m
 	owner, name, err := releaseForge.repo(p.root)
@@ -324,7 +326,7 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again []Withdrawal
 			continue // ruled into the cut already
 		}
 		if again != nil {
-			if have, ok := withdrawalOf(again, pr.Number); !ok || !have.Pending() {
+			if _, ok := withdrawalOf(again, pr.Number); !ok {
 				continue
 			}
 		}
@@ -409,6 +411,32 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again []Withdrawal
 	return next, fixed, made, fails, ""
 }
 
+// vouchAgain is what a live renewal, just pushed as sha over the tip it read
+// (parent), may withdraw again: the withdrawals of ws, as sha records them,
+// that are this person's and still withdrawn or kept, and that the branch's
+// history and the forge's record of pushes vouch for (vouch), as a re-arm is
+// vouched for. The settle names each of the rest, not acted on: one no
+// reservation of theirs recorded first, or whose first record another
+// account or an app pushed, or that the record does not settle yet. It
+// reads the branch and asks the forge's record once, and only when there is
+// a candidate.
+func (p *prepared) vouchAgain(tree, sha, parent string, ws []Withdrawal) ([]Withdrawal, Settle) {
+	retry := func(w Withdrawal) bool { return w.Pending() || w.State == WithdrawnKept }
+	s := Settle{Subject: p.id, Settled: []Withdrawal{}}
+	if !slices.ContainsFunc(ws, func(w Withdrawal) bool { return retry(w) && sameHolder(w.By, p.holder) }) {
+		return nil, s
+	}
+	links, complete, err := releaseChain(p.root, p.id, sha, tree)
+	if err != nil {
+		s.Failed = "could not read the history of " + p.id + "'s branch to tell whose its withdrawals are (" + redacted(err) +
+			"), so none was withdrawn again; the next renewal tries again"
+		return nil, s
+	}
+	v := vouch(links, complete, ws, p.holder, pushCheck{p.root, p.id, []string{parent, sha}}, retry)
+	s.noted(v)
+	return v.Due, s
+}
+
 // withdrawalOf is ws's entry for pull request n.
 func withdrawalOf(ws []Withdrawal, n int) (Withdrawal, bool) {
 	i := slices.IndexFunc(ws, func(w Withdrawal) bool { return w.Number == n })
@@ -460,6 +488,15 @@ func rearmMine(a actor, ws []Withdrawal, trust func(Withdrawal) bool) (out, sett
 		}
 		if state == "" {
 			if state, err = releaseForge.arm(a.root, w); err != nil {
+				// Only the forge refusing the arming counts toward the bound:
+				// a failure on the way to it (the network, a 5xx, gh out of
+				// time) says nothing of whether it would be taken.
+				var ae *armError
+				if !errors.As(err, &ae) || !ae.refused {
+					fails = append(fails, ForgeFailure{Number: w.Number, Act: ForgeRearm,
+						Reason: err.Error() + " (the forge did not answer the arming, so it is not counted as a refusal)"})
+					continue
+				}
 				k := refusalKey(w)
 				refusals[k]++
 				if refusals[k] < maxRearmRefusals {
@@ -552,21 +589,24 @@ func keepRefusals(root, id string, counts map[string]int) {
 const shownDirRel = stateRelDir + "/withdrawals-shown"
 
 // shownOnce clears s's Unrecorded and AppPushed when they were already named
-// at commit, id's tip, and otherwise keeps commit as the tip they were named
-// at.
-func (s *Settle) shownOnce(root, id, commit string) {
+// at commit, id's tip. Otherwise it returns what keeps commit as the tip they
+// were named at, for the caller to run once the settle naming them is the
+// one the act returns: a settle a lost push discards names nothing, so it
+// marks nothing shown.
+func (s *Settle) shownOnce(root, id, commit string) (shown func()) {
+	shown = func() {}
 	if len(s.Unrecorded)+len(s.AppPushed) == 0 || !isRelease(id) {
-		return
+		return shown
 	}
 	if r, err := os.OpenRoot(root); err == nil {
 		data, rerr := fsutil.ReadGuardedInRoot(r, shownDirRel+"/"+id, 128)
 		r.Close()
 		if rerr == nil && strings.TrimSpace(string(data)) == commit {
 			s.Unrecorded, s.AppPushed = nil, nil
-			return
+			return shown
 		}
 	}
-	_ = writeUnflushedIn(root, shownDirRel, id, []byte(commit+"\n"))
+	return func() { _ = writeUnflushedIn(root, shownDirRel, id, []byte(commit+"\n")) }
 }
 
 // stranded is the withdrawals in ws still withdrawn that are not holder's.
@@ -633,14 +673,16 @@ func settleTip(a actor, tree, id string, t tip) (s Settle, ok bool) {
 		s.Failed = "could not read the history of " + id + "'s branch to tell whose its withdrawals are (" + redacted(err) + "), so none was re-armed"
 		return s, true
 	}
-	v := vouch(links, complete, t.Withdrawn, a.holder, func() pushRecord { return readPushRecord(a.root, id, links, t.Commit) }, Withdrawal.unsettled)
+	v := vouch(links, complete, t.Withdrawn, a.holder, pushCheck{a.root, id, []string{t.Commit}}, Withdrawal.unsettled)
 	s.noted(v)
-	s.shownOnce(a.root, id, t.Commit)
+	shown := s.shownOnce(a.root, id, t.Commit)
 	if len(v.Due) == 0 {
+		shown()
 		return s, s.said()
 	}
 	if why, _ := loginMismatch(a.root, a.holder); why != "" {
 		s.Failed = why
+		shown()
 		return s, true
 	}
 	base := t.Commit
@@ -651,6 +693,7 @@ func settleTip(a actor, tree, id string, t tip) (s Settle, ok bool) {
 		}
 		base, s.Commit = claimed, claimed
 	}
+	shown()
 	ws, settled, changed, fails, why := rearmMine(a, t.Withdrawn, func(w Withdrawal) bool { _, ok := entryIn(v.Due, w); return ok })
 	s.Settled, s.Failures, s.Failed = append(s.Settled, settled...), fails, why
 	if !changed {
@@ -758,7 +801,7 @@ func (p *prepared) admitVouched(tree, commit string, w Withdrawal) error {
 	if err != nil {
 		return refuse("#%d was not admitted: the history of %s's branch could not be read (%s); %s", w.Number, p.id, redacted(err), nothingPushed)
 	}
-	v := vouch(links, complete, []Withdrawal{w}, w.By, func() pushRecord { return readPushRecord(p.root, p.id, links, commit) }, Withdrawal.unsettled)
+	v := vouch(links, complete, []Withdrawal{w}, w.By, pushCheck{p.root, p.id, []string{commit}}, Withdrawal.unsettled)
 	switch {
 	case len(v.Due) == 1:
 		return nil
@@ -816,9 +859,9 @@ func (p *prepared) settleOwnRelease(tree, sha, parent string, ws []Withdrawal) (
 			"), so none was re-armed; the next act of a copy of yours tries again"
 		return s, sha, ws
 	}
-	v := vouch(links, complete, ws, p.holder, func() pushRecord { return readPushRecord(p.root, p.id, links, parent, sha) }, Withdrawal.unsettled)
+	v := vouch(links, complete, ws, p.holder, pushCheck{p.root, p.id, []string{parent, sha}}, Withdrawal.unsettled)
 	s.noted(v)
-	s.shownOnce(p.root, p.id, sha)
+	s.shownOnce(p.root, p.id, sha)()
 	out, settled, changed, fails, why := rearmMine(a, ws, func(w Withdrawal) bool { _, ok := entryIn(v.Due, w); return ok })
 	s.Settled, s.Failures, s.Failed = append(s.Settled, settled...), fails, why
 	if !changed {
@@ -912,13 +955,17 @@ func validPRNumber(n int) bool { return n > 0 && n <= 999999999 }
 // admitted, with Lapsed set when it is still being cut (stillBeingCut) and
 // its lease lapsed before it ended, which ends nothing
 // (dcn-2610230328220298); on one ended (its tag on origin or any
-// tombstone), those still to re-arm, split into the reader's own that the
-// branch's history vouches for (Due, which the reader's next act re-arms),
-// the reader's own it does not (Unrecorded, which nothing re-arms, and
-// which the act's settle names once for each tip), and another person's
-// (Stranded, which only that person re-arms), and those its last tombstone
-// skipped for their owners (moved, closed, mismatched, needing a manual
-// merge, or refused). A merged one is not listed: it needs nothing more.
+// tombstone), those still to re-arm, split as an act's settle splits them
+// (vouch): the reader's own that the branch's history vouches for and the
+// forge's record of pushes says they pushed (Due, which the reader's next act
+// re-arms); the reader's own that no reservation of theirs recorded first, or
+// whose first record another account pushed (Unrecorded), or an app pushed
+// (AppPushed), none of which anything re-arms; the reader's own the record
+// does not settle yet (Unverified, with UnverifiedWhy, which a later act
+// asks about again); and another person's (Stranded, which only that person
+// re-arms); and those its last tombstone skipped for their owners (moved,
+// closed, mismatched, needing a manual merge, or refused). A merged one is
+// not listed: it needs nothing more.
 type ReleaseWithdrawals struct {
 	Subject    string       `json:"subject"`
 	Ended      bool         `json:"ended"`
@@ -929,8 +976,12 @@ type ReleaseWithdrawals struct {
 	Admitted   []Withdrawal `json:"admitted,omitempty"`
 	Due        []Withdrawal `json:"due,omitempty"`
 	Unrecorded []Withdrawal `json:"unrecorded,omitempty"`
-	Stranded   []Withdrawal `json:"stranded,omitempty"`
-	Skipped    []Withdrawal `json:"skipped,omitempty"`
+	AppPushed  []Withdrawal `json:"app_pushed,omitempty"`
+	Unverified []Withdrawal `json:"unverified,omitempty"`
+	// UnverifiedWhy is why the record does not settle Unverified yet.
+	UnverifiedWhy string       `json:"unverified_why,omitempty"`
+	Stranded      []Withdrawal `json:"stranded,omitempty"`
+	Skipped       []Withdrawal `json:"skipped,omitempty"`
 }
 
 // Lines is each sentence the listing shows for the release's withdrawals.
@@ -964,8 +1015,11 @@ func (r ReleaseWithdrawals) Lines() []string {
 // ReleaseWithdrawals is every release in the view at now whose tip records a
 // withdrawal there is something to say about, for reader (the listing's own
 // GitHub username, "" when it is not known, which owns none). The reader's
-// own on an ended release are read against the branch's history at root
-// (vouched), so one nothing re-arms never reads as due.
+// own on an ended release are read against the branch's history at root and
+// the forge's record of pushes, as an act's settle reads them (vouch), so one
+// nothing re-arms never reads as due. The record is asked at most once for
+// each such release, and not at all for a withdrawal whose verdict an act
+// already kept for the tip (an app's push, or another account's).
 func (s Snapshot) ReleaseWithdrawals(root, reader string, now time.Time) []ReleaseWithdrawals {
 	var out []ReleaseWithdrawals
 	for _, r := range s.Reservations {
@@ -991,36 +1045,30 @@ func (s Snapshot) ReleaseWithdrawals(root, reader string, now time.Time) []Relea
 			}
 		}
 		if len(mine) > 0 {
-			rw.Due, rw.Unrecorded = vouchedByChain(root, r, mine)
+			v := vouchedForReader(root, r, reader, mine)
+			rw.Due, rw.Unrecorded, rw.AppPushed, rw.Unverified, rw.UnverifiedWhy = v.Due, v.Unrecorded, v.AppPushed, v.Unverified, v.Why
 		}
 		if r.State == StateExpired && stillBeingCut(r) {
 			rw.Lapsed, rw.LapsedAt = true, r.EffectiveExpiry
 		}
-		if len(rw.Held)+len(rw.Admitted)+len(rw.Due)+len(rw.Unrecorded)+len(rw.Stranded)+len(rw.Skipped) > 0 || rw.Lapsed {
+		if len(rw.Held)+len(rw.Admitted)+len(rw.Due)+len(rw.Unrecorded)+len(rw.AppPushed)+len(rw.Unverified)+len(rw.Stranded)+len(rw.Skipped) > 0 || rw.Lapsed {
 			out = append(out, rw)
 		}
 	}
 	return out
 }
 
-// vouchedByChain splits ws, withdrawals on r's tip, into those the branch's
-// history vouches for (vouched) and those it does not; all of them are taken
-// as not vouched for when the history cannot be read.
-func vouchedByChain(root string, r Reservation, ws []Withdrawal) (ok, not []Withdrawal) {
+// vouchedForReader is vouching for ws, the reader's withdrawals on r's tip
+// (vouch); all of them are taken as not recorded when the branch's history
+// cannot be read.
+func vouchedForReader(root string, r Reservation, reader string, ws []Withdrawal) vouching {
 	tree, err := emptyTree(root)
 	if err != nil {
-		return nil, ws
+		return vouching{Unrecorded: ws}
 	}
 	links, complete, err := releaseChain(root, r.Record, r.Commit, tree)
 	if err != nil {
-		return nil, ws
+		return vouching{Unrecorded: ws}
 	}
-	for _, w := range ws {
-		if vouched(links, complete, w) {
-			ok = append(ok, w)
-		} else {
-			not = append(not, w)
-		}
-	}
-	return ok, not
+	return vouch(links, complete, ws, reader, pushCheck{root, r.Record, []string{r.Commit}}, Withdrawal.Pending)
 }

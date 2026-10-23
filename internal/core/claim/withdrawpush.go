@@ -17,10 +17,12 @@ package claim
 import (
 	"context"
 	"errors"
+	"os"
 	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/github"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -75,12 +77,18 @@ type pushRecord struct {
 // to id's release branch, and places each push on the commits it carried: the
 // first-parent line from its After down to its Before, at most maxChain
 // commits. A push whose Before is not on that line (a forced push, or one past
-// the walk) may have carried any commit the walk read, so its pusher is placed
-// on all of them, never on none. tips are the branch's tip as this act
-// judged it, and the commit the act itself pushed over it when it pushed one
-// first: the record's newest push must be one that moved the branch to one of
-// them, or the record has not caught up (or the branch was moved since by a
-// push it does not hold yet), and it settles nothing.
+// the walk) is placed on every commit of the line from its After down, never
+// on none; one whose After this checkout does not hold to place is placed on
+// the whole line the walk read, and leaves the record not settling any commit
+// it places nothing else on. tips are the branch's tip as this act judged it,
+// and the commit the act itself pushed over it when it pushed one first: the
+// record's newest push must be one that moved the branch to one of them, or
+// the record has not caught up (or the branch was moved since by a push it
+// does not hold yet), and it settles nothing. The pushes must also run
+// unbroken, each one's Before the After of the one before it, down to the push
+// that made the branch: the forge's activity record passes over an entry it
+// holds without a pusher or a commit name, and a record with a push missing
+// from it does not say who carried every commit, so it settles nothing either.
 func readPushRecord(root, id string, links []chainLink, tips ...string) pushRecord {
 	if releaseForge.pushers == nil {
 		return pushRecord{why: "no record of who pushed each reservation commit is read on this path"}
@@ -98,6 +106,8 @@ func readPushRecord(root, id string, links []chainLink, tips ...string) pushReco
 		rec.why = "the forge's record of who pushed to " + id + "'s branch was not read in full"
 	case len(pushes) == 0 || !slices.Contains(tips, pushes[0].After):
 		rec.why = "the forge's record of who pushed to " + id + "'s branch does not end at the tip read here (it has not caught up yet, or the branch moved since this checkout fetched it)"
+	case !unbroken(pushes):
+		rec.why = "the forge's record of who pushed to " + id + "'s branch has a push missing from it (one it holds without a pusher or a commit name is passed over), so it does not say who carried every commit"
 	}
 	line := make([]string, len(links))
 	for i, l := range links {
@@ -133,6 +143,22 @@ func readPushRecord(root, id string, links []chainLink, tips ...string) pushReco
 		}
 	}
 	return rec
+}
+
+// unbroken reports whether pushes, newest first and read in full, run without
+// a gap: each push's Before is the After of the push before it, and the
+// oldest made the branch (its Before is no commit). A push that made the
+// branch anew after a deletion starts its run afresh, since the deletion is
+// not among them.
+func unbroken(pushes []Push) bool {
+	for i, p := range pushes {
+		switch {
+		case p.Before == zeroCommit:
+		case i+1 == len(pushes) || pushes[i+1].After != p.Before:
+			return false
+		}
+	}
+	return true
 }
 
 // verdict is what the record says of commit and login: another account's
@@ -171,13 +197,24 @@ type vouching struct {
 	Why                                    string
 }
 
+// pushCheck is where vouch asks the forge's record of pushes: the checkout,
+// the release, and the tips the record must end at (readPushRecord).
+type pushCheck struct {
+	root, id string
+	tips     []string
+}
+
 // vouch is vouching for the withdrawals of ws that keep returns true for whose
 // By is holder, over the chain read from the tip and the record of pushes
-// placed on it, which record reads, asked only when the chain vouches for
-// one and then once.
-func vouch(links []chainLink, complete bool, ws []Withdrawal, holder string, record func() pushRecord, keep func(Withdrawal) bool) vouching {
+// placed on it, asked as c says only when the chain vouches for one and then
+// once. A verdict that never changes once given (another account's push, or
+// an app's, carried the first record) is kept for the tip in the local tier
+// (verdicts), so a withdrawal left that way costs one ask of the forge, not
+// one on every act.
+func vouch(links []chainLink, complete bool, ws []Withdrawal, holder string, c pushCheck, keep func(Withdrawal) bool) vouching {
 	var v vouching
 	var rec *pushRecord
+	var known *verdicts
 	for _, w := range ws {
 		if !keep(w) || !sameHolder(w.By, holder) {
 			continue
@@ -187,11 +224,19 @@ func vouch(links []chainLink, complete bool, ws []Withdrawal, holder string, rec
 			v.Unrecorded = append(v.Unrecorded, w)
 			continue
 		}
-		if rec == nil {
-			r := record()
-			rec = &r
+		if known == nil {
+			known = readVerdicts(c.root, c.id, links[0].commit)
 		}
-		switch rec.verdict(first, w.By) {
+		verdict, ok := known.of(first, w.By)
+		if !ok {
+			if rec == nil {
+				r := readPushRecord(c.root, c.id, links, c.tips...)
+				rec = &r
+			}
+			verdict = rec.verdict(first, w.By)
+			known.keep(first, w.By, verdict)
+		}
+		switch verdict {
 		case pushedByThem:
 			v.Due = append(v.Due, w)
 		case pushedByOther:
@@ -203,7 +248,99 @@ func vouch(links []chainLink, complete bool, ws []Withdrawal, holder string, rec
 			v.Why = rec.reason()
 		}
 	}
+	if known != nil {
+		known.save()
+	}
 	return v
+}
+
+// verdictsDirRel is where the verdicts that never change are kept for each
+// release, in the local tier, for the one tip they were given at.
+const verdictsDirRel = stateRelDir + "/withdrawal-verdicts"
+
+// maxVerdictsBytes bounds what readVerdicts reads.
+const maxVerdictsBytes = 16 << 10
+
+// verdicts is the kept verdicts for one release tip: by the commit judged and
+// the person, lower-cased, only those that never change (pushedByOther,
+// pushedByApp). Only a verdict that leaves a withdrawal alone is kept, so a
+// lost or stale file can cost an ask of the forge, and never an act.
+type verdicts struct {
+	root, id, tip string
+	by            map[string]pushVerdict
+	changed       bool
+}
+
+// verdictWords are the kept verdicts as the file names them.
+var verdictWords = map[string]pushVerdict{"other": pushedByOther, "app": pushedByApp}
+
+// readVerdicts is the verdicts kept for id at tip; empty when none is kept,
+// they were kept for another tip, or the file does not read.
+func readVerdicts(root, id, tip string) *verdicts {
+	k := &verdicts{root: root, id: id, tip: tip, by: map[string]pushVerdict{}}
+	if !isRelease(id) {
+		return k
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return k
+	}
+	defer r.Close()
+	data, err := fsutil.ReadGuardedInRoot(r, verdictsDirRel+"/"+id, maxVerdictsBytes)
+	if err != nil {
+		return k
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) == 0 || lines[0] != tip {
+		return k
+	}
+	for _, l := range lines[1:] {
+		f := strings.Fields(l)
+		if len(f) != 3 || !gitutil.IsFullSHA(f[0]) || !validUsername(f[1]) {
+			continue
+		}
+		if v, ok := verdictWords[f[2]]; ok {
+			k.by[f[0]+" "+strings.ToLower(f[1])] = v
+		}
+	}
+	return k
+}
+
+// of is the verdict kept for commit and login.
+func (k *verdicts) of(commit, login string) (pushVerdict, bool) {
+	v, ok := k.by[commit+" "+strings.ToLower(login)]
+	return v, ok
+}
+
+// keep keeps v for commit and login when it is one that never changes.
+func (k *verdicts) keep(commit, login string, v pushVerdict) {
+	if v != pushedByOther && v != pushedByApp || !validUsername(login) {
+		return
+	}
+	k.by[commit+" "+strings.ToLower(login)] = v
+	k.changed = true
+}
+
+// save writes the kept verdicts, best effort: a file lost costs only an ask.
+func (k *verdicts) save() {
+	if !k.changed || !isRelease(k.id) || !gitutil.IsFullSHA(k.tip) {
+		return
+	}
+	keys := make([]string, 0, len(k.by))
+	for key := range k.by {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	var b strings.Builder
+	b.WriteString(k.tip + "\n")
+	for _, key := range keys {
+		for w, v := range verdictWords {
+			if v == k.by[key] {
+				b.WriteString(key + " " + w + "\n")
+			}
+		}
+	}
+	_ = writeUnflushedIn(k.root, verdictsDirRel, k.id, []byte(b.String()))
 }
 
 // appPushedLine is the sentence naming withdrawals an app's push recorded.

@@ -138,8 +138,11 @@ func mergeHoldGate(root string) (GateSummary, []GateFinding, *GateSummary) {
 			continue
 		}
 		if why, ok := a.Unverified[pr.Number]; ok {
-			findings = append(findings, GateFinding{Detail: fmt.Sprintf("pull request #%d is recorded admitted into %s, but %s, so it is not exempt yet: "+
-				"the check exempts an admission only once the forge's record shows you pushed it; run the check again in a minute", pr.Number, a.Release, why)})
+			// why ends with what settles it: a reading made again once the
+			// forge's record has caught up, or, where no later reading
+			// changes it, a look at the pull request by hand.
+			findings = append(findings, GateFinding{Detail: fmt.Sprintf("pull request #%d is recorded admitted into %s, but it is not exempt: "+
+				"the check exempts an admission only where the forge's record shows you pushed it, and %s", pr.Number, a.Release, why)})
 			continue
 		}
 		findings = append(findings, GateFinding{Detail: armedFinding(a, pr)})

@@ -178,7 +178,7 @@ func (f mergeForge) send(root, doc string, vars map[string]string, ints map[stri
 		for _, e := range a.Errors {
 			msgs = append(msgs, e.Message)
 		}
-		return errors.New(strings.Join(msgs, "; "))
+		return answerError(strings.Join(msgs, "; "))
 	}
 	if into == nil {
 		return nil
@@ -191,6 +191,39 @@ func (f mergeForge) send(root, doc string, vars map[string]string, ints map[stri
 	}
 	return nil
 }
+
+// answerError is the errors a forge's answer carried: the forge read the
+// request and refused it.
+type answerError string
+
+func (e answerError) Error() string { return string(e) }
+
+// forgeRefused reports whether err is the forge refusing a request it read,
+// as its answer's errors say (gh prints them as "GraphQL: ..." when it exits
+// non-zero), rather than the request not reaching it or not being answered
+// (gh missing or out of time, the network, a 5xx): only a refusal is a
+// verdict on the request, and a failure of the other kind says nothing of
+// whether it would be taken.
+func forgeRefused(err error) bool {
+	var a answerError
+	var missing *tools.MissingError
+	switch {
+	case errors.As(err, &a):
+		return true
+	case errors.As(err, &missing), errors.Is(err, github.ErrTimeout):
+		return false
+	}
+	return strings.Contains(err.Error(), "GraphQL: ")
+}
+
+// armError is a re-arm the forge did not take: why, and whether the forge
+// refused it (forgeRefused), which alone counts toward maxRearmRefusals.
+type armError struct {
+	reason  string
+	refused bool
+}
+
+func (e *armError) Error() string { return e.reason }
 
 // ArmedPR is one open pull request into the default branch that is armed or
 // queued, as the forge lists it.
@@ -344,7 +377,11 @@ func (f mergeForge) rearm(root, owner, name string, w Withdrawal) (string, error
 // The forge's node id for the number must be the one recorded: every
 // mutation names the pull request by node id, and node ids are global, so a
 // record pairing one pull request's number with another's id (in this
-// repository or any other) is never acted on (mismatch).
+// repository or any other) is never acted on (mismatch). An admitted one
+// found armed or queued counts as done whatever its head: the forge keeps an
+// arming across pushes to the head, so its owner's push during the cut left
+// it armed, and nothing is left for its owner to re-arm. A withdrawn one whose
+// head moved is its owner's to re-arm (dcn-2610222219297487).
 func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, error) {
 	n, err := f.pullRequest(root, owner, name, w.Number)
 	if err != nil {
@@ -357,6 +394,8 @@ func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, err
 		return WithdrawnMerged, nil
 	case n.State == "CLOSED":
 		return WithdrawnClosed, nil
+	case w.State == WithdrawnAdmitted && n.armed():
+		return WithdrawnFoundArmed, nil
 	case n.HeadRefOid != w.Head:
 		return WithdrawnMoved, nil
 	case n.armed():
@@ -372,7 +411,8 @@ const cleanStatus = "clean status"
 
 // arm sends w's re-arm, pinned to its head. A refusal for clean status
 // settles it as needing a manual merge (dcn-2610230328230096): abcd never
-// merges it outright, and never tries the arming again.
+// merges it outright, and never tries the arming again. Any other failure is
+// an *armError saying whether the forge refused it.
 func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 	var serr error
 	if w.Form == FormQueue {
@@ -384,7 +424,7 @@ func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 	case serr != nil && strings.Contains(strings.ToLower(serr.Error()), cleanStatus):
 		return WithdrawnManual, nil
 	case serr != nil:
-		return "", errors.New(forgeReason(serr))
+		return "", &armError{reason: forgeReason(serr), refused: forgeRefused(serr)}
 	}
 	return WithdrawnRearmed, nil
 }
@@ -519,13 +559,14 @@ func pushedAdmissions(root string, r Reservation, reader string) (ok, unverified
 	if err != nil {
 		return nil, admitted, "the release branch's history could not be read (" + redacted(err) + ")"
 	}
-	links, _, err := releaseChain(root, r.Record, r.Commit, tree)
+	links, complete, err := releaseChain(root, r.Record, r.Commit, tree)
 	if err != nil {
 		return nil, admitted, "the release branch's history could not be read (" + redacted(err) + ")"
 	}
 	rec := readPushRecord(root, r.Record, links, r.Commit)
 	if rec.verdict(r.Commit, reader) != pushedByThem {
-		return nil, admitted, notPushedBy(rec, r.Commit, reader, "the reservation's tip")
+		return nil, admitted, notPushedBy(rec, r.Commit, reader, "the reservation's tip",
+			"renew the reservation from this copy (abcd reserve "+r.Record+"), whose push is then the tip, and run the check again")
 	}
 	for _, w := range admitted {
 		at := ""
@@ -536,23 +577,37 @@ func pushedAdmissions(root string, r Reservation, reader string) (ok, unverified
 			}
 			at = l.commit
 		}
+		if at != "" && at == links[len(links)-1].commit && !complete {
+			// The walk stopped while the admission was still carried: the
+			// commit that recorded it lies past the walk, unread.
+			unverified = append(unverified, w)
+			why = "the commit that recorded the admission lies past the " + fmt.Sprint(maxChain) + " commits of the release branch read, " +
+				"which no later reading changes: " + byHand
+			continue
+		}
 		if at != "" && rec.verdict(at, reader) == pushedByThem {
 			ok = append(ok, w)
 			continue
 		}
 		unverified = append(unverified, w)
-		why = notPushedBy(rec, at, reader, "the commit that recorded the admission")
+		why = notPushedBy(rec, at, reader, "the commit that recorded the admission", byHand)
 	}
 	return ok, unverified, why
 }
 
-// notPushedBy is why what names, commit, is not taken as reader's.
-func notPushedBy(rec pushRecord, commit, reader, what string) string {
+// byHand is the remedy for an admission no later reading exempts.
+const byHand = "check the pull request by hand, and take it off the merge path if it does not belong in the cut"
+
+// notPushedBy is why what names, commit, is not taken as reader's, ending
+// with what settles it: final, when the record's verdict is one no later
+// reading changes (another account's push, or an app's), and otherwise a
+// reading made again once the record has caught up.
+func notPushedBy(rec pushRecord, commit, reader, what, final string) string {
 	switch rec.verdict(commit, reader) {
 	case pushedByOther:
-		return "the forge's record says another account pushed " + what
+		return "the forge's record says another account pushed " + what + ": " + final
 	case pushedByApp:
-		return "an app pushed " + what + ", which says nothing of which person sent it"
+		return "an app pushed " + what + ", which says nothing of which person sent it: " + final
 	}
-	return rec.reason()
+	return rec.reason() + "; run the check again in a minute, once the forge's record has caught up"
 }

@@ -74,7 +74,8 @@ const (
 	// the withdrawal, so it was left armed as it was. The correction that
 	// says so keeps the entry in this state rather than dropping it, so the
 	// walk for lost withdrawals never reads it as a record a later commit
-	// lost; the next renewal drops it, as it drops every settled one.
+	// lost. This person's own renewals carry it, and a live one withdraws it
+	// again when the forge still has it armed; a tombstone ends it.
 	WithdrawnKept = "kept"
 )
 
@@ -215,14 +216,15 @@ func mergeMethodOf(form string) string {
 
 // carried is the withdrawals a new commit on a release subject keeps from the
 // tip it is written over: from this person's own reservation (renewed, or
-// taken over from their other copy), every one still withdrawn or admitted;
-// from any other tip (a tombstone, a lapsed reservation of another person's),
-// only those still withdrawn, which nobody has settled yet. A settled one
-// stays on the commit that settled it.
+// taken over from their other copy), every one still withdrawn or admitted,
+// and every one kept (a withdrawal the forge refused, which a live renewal
+// tries again); from any other tip (a tombstone, a lapsed reservation of
+// another person's), only those still withdrawn, which nobody has settled
+// yet. A settled one stays on the commit that settled it.
 func carried(tip []Withdrawal, ownReservation bool) []Withdrawal {
 	var out []Withdrawal
 	for _, w := range tip {
-		if w.Pending() || ownReservation && w.State == WithdrawnAdmitted {
+		if w.Pending() || ownReservation && (w.State == WithdrawnAdmitted || w.State == WithdrawnKept) {
 			out = append(out, w)
 		}
 	}

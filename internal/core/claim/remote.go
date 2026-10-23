@@ -333,11 +333,18 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// that its own push holds every other session's arming, recording
 		// them on a renewal of the reservation it just pushed before it
 		// touches the forge. A live renewal withdraws again only what it
-		// already records as withdrawn and the forge has armed again.
+		// already records as this person's, withdrawn or kept (a withdrawal
+		// the forge refused), that the forge has armed, and only those the
+		// branch's history and the forge's record of pushes vouch for, as a
+		// re-arm is vouched for; the rest are named and left as they are.
 		live := res.Act == ActRenewed && res.RenewedLive
 		var again []Withdrawal
 		if live {
-			again = slices.DeleteFunc(slices.Clone(m.Withdrawn), func(w Withdrawal) bool { return !w.Pending() })
+			var s Settle
+			again, s = p.vouchAgain(tree, sha, j.Commit, m.Withdrawn)
+			if s.said() {
+				settles = append(settles, s)
+			}
 		}
 		if !live || len(again) > 0 {
 			commit, recorded, made, fails, unchecked := p.withdrawArmed(tree, sha, m, again)

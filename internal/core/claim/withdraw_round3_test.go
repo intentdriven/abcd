@@ -60,9 +60,11 @@ func TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed(t *testing
 	if len(res.Settles) != 1 || len(res.Settles[0].Unrecorded) != 1 || res.Settles[0].Commit != "" {
 		t.Fatalf("settles = %+v; want #11 named unrecorded and nothing pushed", res.Settles)
 	}
-	// The genuine case: octo pushed them.
+	// The genuine case: octo pushed them (the verdict kept for the tip is
+	// the other world's, so it goes too).
 	delete(f.pusherOf, record)
 	delete(f.pusherOf, tomb)
+	forgetVerdicts(t, octo.dir)
 	if _, err := octo.reserve("iss-9", "p.go"); err != nil {
 		t.Fatal(err)
 	}
@@ -186,8 +188,10 @@ func TestAnAdmissionOfAWithdrawalAnotherLoginRecordedIsRefused(t *testing.T) {
 	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "pushed by octo, recorded its withdrawal first") || len(f.mutations()) != 0 {
 		t.Fatalf("admit = %v, mutations %v; want refused, nothing armed", err, f.mutations())
 	}
-	// Pushed by octo, it is admitted.
+	// Pushed by octo, it is admitted (the verdict kept for the tip is the
+	// other world's, so it goes too).
 	delete(f.pusherOf, c)
+	forgetVerdicts(t, octo.dir)
 	if res, err := octo.do(Request{Record: "rel-v0.16.0", Admit: 11}); err != nil || res.Act != ActAdmitted {
 		t.Fatalf("admit = %+v, %v; want admitted", res, err)
 	}
@@ -297,7 +301,7 @@ func TestAReArmRefusedFiveTimesIsLeftToItsOwner(t *testing.T) {
 	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
 		t.Fatal(err)
 	}
-	f.refuse["enqueuePullRequest #12"] = "Pull request is not mergeable: required status check is pending"
+	f.refuse["enqueuePullRequest #12"] = "GraphQL: Pull request is not mergeable: required status check is pending (enqueuePullRequest)"
 	if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -359,12 +363,13 @@ func TestAWithdrawalTheForgeRefusedIsNotReportedLost(t *testing.T) {
 			t.Fatalf("lost = %q; want none: #11 is still armed, never withdrawn", lost[0].Line())
 		}
 	}
-	// Nor after a renewal drops the kept entry.
+	// Nor after a renewal, which tries it again and, refused again, carries
+	// it kept.
 	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) != "" {
-		t.Fatalf("the renewal still carries #11 as %q", stateOf(ws, 11))
+	if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) != WithdrawnKept {
+		t.Fatalf("the renewal carries #11 as %q; want kept", stateOf(ws, 11))
 	}
 	if _, err := Fetch(p.dir, p.opts()); err != nil {
 		t.Fatal(err)
