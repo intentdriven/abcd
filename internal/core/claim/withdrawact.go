@@ -435,12 +435,15 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again bool) (commi
 // acts on nothing of this person's while it cannot read their record. An
 // origin with no forge holds no withdrawal to read, and a branch on which no
 // commit records one has nothing to read either: both are judged by the tip,
-// as before.
+// as before. A tip that does not read is judged as the holder's own newest
+// push records the release, when both are found; otherwise it is judged by
+// the tip, as before.
 func (p *prepared) ownRelease(tree string, j *judged) (Settle, error) {
 	s := Settle{Subject: p.id, Settled: []Withdrawal{}, Person: p.holder}
-	if !isRelease(p.id) || !j.present || j.Unreadable != "" {
+	if !isRelease(p.id) || !j.present {
 		return s, nil
 	}
+	unread := j.Unreadable != ""
 	if _, _, err := releaseForge.repo(p.root); err != nil {
 		return s, nil
 	}
@@ -454,16 +457,19 @@ func (p *prepared) ownRelease(tree string, j *judged) (Settle, error) {
 	k := &asker{c: pushCheck{p.root, p.id, []string{j.Commit}}, links: links, complete: complete}
 	defer k.save()
 	_, holder, held, why := k.ended()
-	if why != "" {
-		return s, refuse("%s; %s", unplacedLine(p.id, p.holder, why), nothingPushed)
-	}
 	own := k.newest(p.holder)
-	if own.why != "" {
+	switch {
+	case unread && (why != "" || own.why != "" || holder == "" || !held.found):
+		return s, nil
+	case why != "":
+		return s, refuse("%s; %s", unplacedLine(p.id, p.holder, why), nothingPushed)
+	case own.why != "":
 		return s, refuse("%s; %s", unplacedLine(p.id, p.holder, own.why), nothingPushed)
 	}
-	if holder != "" && held.found && held.commit != j.Commit {
+	if holder != "" && held.found && (held.commit != j.Commit || unread) {
 		// The release as its holder's own newest push records it, over the
 		// tip the act's push is written on.
+		j.Unreadable = ""
 		j.message = held.m
 		j.verdict = lease.Judge(lease.Stamp{ClaimedAt: held.m.ClaimedAt, ExpiresAt: held.m.ExpiresAt}, lease.Default, p.now)
 		j.mine, j.thisCopy = sameHolder(held.m.Holder, p.holder), held.m.Copy == p.copy
@@ -693,11 +699,10 @@ func settleEnded(a actor, tree, id string, own bool) (s Settle, ok bool) {
 // fails leaves what was re-armed armed, and the next act finds it armed and
 // records it.
 func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
-	if t.Unreadable != "" {
-		return Settle{}, false
-	}
+	// A tip that does not read ends nothing by itself, but its tag still
+	// ends the release, and the holder's record is read beneath it.
 	tagged, err := taggedOnOrigin(a.root, id)
-	if err != nil || !tagged && !t.message.released() {
+	if err != nil || !tagged && (t.Unreadable != "" || !t.message.released()) {
 		return Settle{}, false
 	}
 	if c := readTipCache(a.root, id, t.Commit); !own && (c.isDone(a.holder) || c.gaveUp(a.holder, a.now)) {
@@ -1162,7 +1167,13 @@ func (r ReleaseWithdrawals) Lines() []string {
 func (s Snapshot) ReleaseWithdrawals(root, reader string, now time.Time) []ReleaseWithdrawals {
 	var out []ReleaseWithdrawals
 	for _, r := range s.Reservations {
-		if !isRelease(r.Record) || len(r.Withdrawn) == 0 || r.State == StateUnreadable {
+		if !isRelease(r.Record) {
+			continue
+		}
+		// A tip that does not read, or records no withdrawal, says nothing of
+		// the reader's own record beneath it: the branch is read for it only
+		// when a commit there records one of theirs still to settle.
+		if (len(r.Withdrawn) == 0 || r.State == StateUnreadable) && !holdsUnsettledOf(root, r.Record, r.Commit, reader) {
 			continue
 		}
 		tip := r.Commit
@@ -1177,7 +1188,7 @@ func (s Snapshot) ReleaseWithdrawals(root, reader string, now time.Time) []Relea
 			}
 		}
 		ws := r.Withdrawn
-		if reader != "" && why == "" && slices.ContainsFunc(ws, Withdrawal.unsettled) {
+		if reader != "" && why == "" && (len(ws) == 0 || r.State == StateUnreadable || slices.ContainsFunc(ws, Withdrawal.unsettled)) {
 			own := readerRecord(root, r.Record, tip, reader)
 			rw.Reader, rw.NotRead, rw.Unplaced = reader, own.above, own.why
 			if own.why != "" {
@@ -1210,6 +1221,26 @@ func (s Snapshot) ReleaseWithdrawals(root, reader string, now time.Time) []Relea
 		}
 	}
 	return out
+}
+
+// holdsUnsettledOf reports whether a commit of id's branch at tip, as the walk
+// reads it, records a withdrawal of reader's still to settle. It reads the
+// branch only, never the forge.
+func holdsUnsettledOf(root, id, tip, reader string) bool {
+	if reader == "" || tip == "" {
+		return false
+	}
+	tree, err := emptyTree(root)
+	if err != nil {
+		return false
+	}
+	links, _, err := releaseChain(root, id, tip, tree)
+	if err != nil {
+		return false
+	}
+	return slices.ContainsFunc(links, func(l chainLink) bool {
+		return l.readable && slices.ContainsFunc(l.m.Withdrawn, func(w Withdrawal) bool { return w.unsettled() && sameHolder(w.By, reader) })
+	})
 }
 
 // readerRecord is reader's own record on id's release branch at tip
