@@ -334,3 +334,132 @@ func TestAppSetupKeepsServingAfterAFailedConversion(t *testing.T) {
 		t.Fatalf("the retried conversion did not record the app: %v", err)
 	}
 }
+
+// TestAppSetupConvertsNothingOnceSettled: once the run has given up, a later
+// callback converts nothing, so GitHub never spends the code on an answer
+// abcd no longer waits for.
+func TestAppSetupConvertsNothingOnceSettled(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	t.Cleanup(api.Close)
+	s, ln := newAppSetup(t, api.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	opened := make(chan string, 1)
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.Run(ctx, ln, func(u string) { opened <- u })
+		done <- err
+	}()
+	page := <-opened
+	body := getPage(t, page, http.StatusOK)
+	action, _ := url.Parse(html.UnescapeString(formActionRe.FindStringSubmatch(body)[1]))
+	back := strings.TrimSuffix(page, "/") + "/created?code=code123&state=" + url.QueryEscape(action.Query().Get("state"))
+	for i := 0; i < maxConversionTries; i++ {
+		getPage(t, back, http.StatusBadGateway)
+	}
+	// The run has settled; the server may still answer while it shuts down.
+	if resp, err := http.Get(back); err == nil {
+		resp.Body.Close()
+	}
+	<-done
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != maxConversionTries {
+		t.Errorf("GitHub was asked to convert %d times, want %d", calls, maxConversionTries)
+	}
+}
+
+// TestAppSetupConvertsOnceForTwoCallbacks: two callbacks arriving together
+// make one conversion, and the run records that one app.
+func TestAppSetupConvertsOnceForTwoCallbacks(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusCreated)
+		io.WriteString(w, `{"slug": "acme-brief", "client_id": "Iv23liAbC", "owner": {"login": "acme", "type": "Organization"}}`)
+	}))
+	t.Cleanup(api.Close)
+	s, ln := newAppSetup(t, api.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	opened := make(chan string, 1)
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.Run(ctx, ln, func(u string) { opened <- u })
+		done <- err
+	}()
+	page := <-opened
+	body := getPage(t, page, http.StatusOK)
+	action, _ := url.Parse(html.UnescapeString(formActionRe.FindStringSubmatch(body)[1]))
+	back := strings.TrimSuffix(page, "/") + "/created?code=code123&state=" + url.QueryEscape(action.Query().Get("state"))
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if resp, err := http.Get(back); err == nil {
+				resp.Body.Close()
+			}
+		}()
+	}
+	wg.Wait()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 1 {
+		t.Errorf("two callbacks made %d conversions, want 1", calls)
+	}
+}
+
+// TestAppSetupConvertsWhenTheBrowserLetsGo: the conversion runs on the
+// setup's own context, so a browser that drops the request while GitHub is
+// answering does not cancel an exchange GitHub completes.
+func TestAppSetupConvertsWhenTheBrowserLetsGo(t *testing.T) {
+	release := make(chan struct{})
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+		w.WriteHeader(http.StatusCreated)
+		io.WriteString(w, `{"slug": "acme-brief", "client_id": "Iv23liAbC", "owner": {"login": "acme", "type": "Organization"}}`)
+	}))
+	t.Cleanup(api.Close)
+	s, ln := newAppSetup(t, api.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	opened := make(chan string, 1)
+	type outcome struct {
+		app coresession.CreatedApp
+		err error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		app, err := s.Run(ctx, ln, func(u string) { opened <- u })
+		done <- outcome{app, err}
+	}()
+	page := <-opened
+	body := getPage(t, page, http.StatusOK)
+	action, _ := url.Parse(html.UnescapeString(formActionRe.FindStringSubmatch(body)[1]))
+	back := strings.TrimSuffix(page, "/") + "/created?code=code123&state=" + url.QueryEscape(action.Query().Get("state"))
+	impatient := &http.Client{Timeout: 150 * time.Millisecond}
+	if resp, err := impatient.Get(back); err == nil {
+		resp.Body.Close()
+		t.Fatal("the browser's request finished before GitHub answered")
+	}
+	close(release)
+	got := <-done
+	if got.err != nil || got.app.ClientID != "Iv23liAbC" {
+		t.Fatalf("a dropped browser request lost the app: %+v %v", got.app, got.err)
+	}
+}

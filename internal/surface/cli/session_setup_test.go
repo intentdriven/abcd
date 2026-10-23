@@ -210,7 +210,6 @@ func TestSessionSetupRefusals(t *testing.T) {
 	if json.Unmarshal(cfg, &m) != nil || m["sessions"] != nil {
 		t.Errorf("a refusal recorded an answer:\n%s", cfg)
 	}
-	_ = time.Second
 }
 
 // TestSessionSetupChecksTheReleaseBeforeCreatingTheApp: for the cloud, the
@@ -400,5 +399,27 @@ func TestSessionSetupRefusesAnAppAnotherAccountOwns(t *testing.T) {
 	}
 	if _, serr := os.Stat(filepath.Join(repo, ".abcd", "relay", "github-app.json")); !os.IsNotExist(serr) {
 		t.Errorf("github-app.json was written for another account's app (%v)", serr)
+	}
+}
+
+// TestSessionSetupSaysWhenTheHourRunsOut: a setup whose app never comes back
+// says the wait ran out, and records nothing.
+func TestSessionSetupSaysWhenTheHourRunsOut(t *testing.T) {
+	repo := managedSessionRepo(t)
+	sessionConfig(t, repo, `{"meta": {"schema_version": 1}}`)
+	_, done := fakeManifestAPI(t)
+	defer done()
+	oldWait, oldVisit := sessionAppWait, sessionSetupVisit
+	sessionAppWait, sessionSetupVisit = 200*time.Millisecond, func(string) {}
+	defer func() { sessionAppWait, sessionSetupVisit = oldWait, oldVisit }()
+	out, err := runCLIStdinErr(t, "", "session", "setup", "--where", "local")
+	if err == nil {
+		t.Fatalf("a setup with no app reported success:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "within the hour") || strings.Contains(err.Error(), "context deadline") {
+		t.Errorf("the timeout is not said plainly: %v", err)
+	}
+	if _, serr := os.Stat(filepath.Join(repo, ".abcd", "relay", "github-app.json")); !os.IsNotExist(serr) {
+		t.Errorf("an app was recorded after the wait ran out (%v)", serr)
 	}
 }

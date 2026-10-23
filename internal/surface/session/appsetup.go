@@ -130,6 +130,10 @@ func (s *AppSetup) Run(ctx context.Context, ln net.Listener, opened func(string)
 	var convMu sync.Mutex
 	failures := 0
 	converted := false
+	// settled is set once the run has its outcome, success or a final
+	// failure; a callback after that converts nothing, so GitHub never spends
+	// the code on an answer this run no longer waits for.
+	settled := false
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /"+token+"/{$}", func(w http.ResponseWriter, _ *http.Request) {
@@ -157,11 +161,18 @@ func (s *AppSetup) Run(ctx context.Context, ln net.Listener, opened func(string)
 				"Body": "Go back to your terminal for the next steps."})
 			return
 		}
+		if settled {
+			w.WriteHeader(http.StatusGone)
+			_ = donePage.Execute(w, map[string]string{"Title": "This setup has ended",
+				"Body": "Go back to your terminal; it says what to do next."})
+			return
+		}
 		app, err := s.convert(ctx, q.Get("code"))
 		if err != nil {
 			failures++
 			w.WriteHeader(http.StatusBadGateway)
 			if failures >= maxConversionTries {
+				settled = true
 				_ = donePage.Execute(w, map[string]string{"Title": "The app could not be read back",
 					"Body": "GitHub did not answer as expected. Go back to your terminal; it says what to do next."})
 				finish(outcome{err: err})
@@ -171,7 +182,7 @@ func (s *AppSetup) Run(ctx context.Context, ln net.Listener, opened func(string)
 				"Body": "Reload this page to ask GitHub again; the app it created is kept for an hour."})
 			return
 		}
-		converted = true
+		converted, settled = true, true
 		_ = donePage.Execute(w, map[string]string{"Title": "The sign-in app is created",
 			"Body": "Go back to your terminal for the next steps: installing the app on the repository, and its settings."})
 		finish(outcome{app: app})
@@ -222,7 +233,8 @@ func pageHeaders(w http.ResponseWriter) {
 func (s *AppSetup) convert(ctx context.Context, code string) (coresession.CreatedApp, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.API+"/app-manifests/"+url.PathEscape(code)+"/conversions", nil)
 	if err != nil {
-		return coresession.CreatedApp{}, err
+		// As below: the address carries the code, so it never reaches the error.
+		return coresession.CreatedApp{}, errors.New("asking GitHub for the new app: the request could not be made")
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
@@ -240,7 +252,9 @@ func (s *AppSetup) convert(ctx context.Context, code string) (coresession.Create
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxConversion))
 	if err != nil {
-		return coresession.CreatedApp{}, fmt.Errorf("reading GitHub's answer: %w", err)
+		// %v, not %w: a slow answer's timeout is this exchange's, and must not
+		// read as the setup's own hour running out.
+		return coresession.CreatedApp{}, fmt.Errorf("reading GitHub's answer: %v", err)
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return coresession.CreatedApp{}, fmt.Errorf("GitHub answered %d to the app's conversion; its code lasts an hour, so run abcd session setup again", resp.StatusCode)

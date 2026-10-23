@@ -674,7 +674,7 @@ var (
 
 // sessionAppWait is how long setup waits for the person to create the app:
 // GitHub's manifest code lasts an hour.
-const sessionAppWait = time.Hour
+var sessionAppWait = time.Hour
 
 // sessionSetupResult is what `session setup` did, and the steps left to the
 // person, in order.
