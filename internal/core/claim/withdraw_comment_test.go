@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -325,5 +327,46 @@ func TestTheForgesCommentWriterPostsThenReadsBack(t *testing.T) {
 	answer["read"] = `{"data":{"node":null}}`
 	if posted, read, err := c.Comment("", "PR_eleven", "a body"); !posted || read != "" || err == nil {
 		t.Fatalf("an unread comment = %v, %q, %v; want posted, unread", posted, read, err)
+	}
+}
+
+// TestAReArmWhoseTombstoneDidNotLandIsCommentedOnByTheActThatRecordsIt: a
+// settle whose tombstone origin refuses posts nothing; the act that next
+// records the pull request, found armed, posts that once.
+func TestAReArmWhoseTombstoneDidNotLandIsCommentedOnByTheActThatRecordsIt(t *testing.T) {
+	w := newWorld(t)
+	f := newFakeForge(t, map[int]*fakePR{11: {id: "PR_eleven", head: headA, method: "SQUASH"}})
+	releaseForge.comments = f
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	hook := filepath.Join(w.bare, "hooks", "pre-receive")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nwhile read old new ref; do if git log -1 --format=%B \"$new\" | grep -q ' rearmed$'; then "+
+		"echo 'no settles today' >&2; exit 1; fi; done\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, err := p.do(Request{Record: "rel-v0.16.0", Release: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Settles) != 1 || !strings.Contains(res.Settles[0].Failed, "was not pushed") || f.pr(11).method != "SQUASH" {
+		t.Fatalf("settles = %+v; want #11 re-armed and its tombstone refused", res.Settles)
+	}
+	if got := f.posted(); len(got) != 1 {
+		t.Fatalf("comments = %q; want only the withdrawal's, none for a re-arm no tombstone records", got)
+	}
+	if err := os.Remove(hook); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.reserve("iss-8", "o.go"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"#11 abcd release hold: the merge of #11 is withdrawn by octo while release v0.16.0 is cut, and is re-armed after it.",
+		"#11 abcd release hold: the merge of #11 is armed again after release v0.16.0.",
+	}
+	if got := f.posted(); !slices.Equal(got, want) {
+		t.Fatalf("comments =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 }

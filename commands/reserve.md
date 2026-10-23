@@ -241,8 +241,9 @@ instead, so it is never reported lost.
 records for a pull request is also posted on it, as one fixed sentence naming
 the release's tag: withdrawn ("abcd release hold: the merge of #1234 is
 withdrawn by octo while release v0.16.0 is cut, and is re-armed after it."),
-admitted, re-armed, or not re-armed with its state as the reason (`moved`,
-`closed`, `merged`, `mismatch`, `manual`, `refused`, `armed`). It carries
+admitted, re-armed (or armed again, for one found armed already), or not
+re-armed with its state as the reason (`moved`, `closed`, `merged`,
+`mismatch`, `manual`, `refused`). It carries
 nothing but validated fields: no session URL, no tool footer, and the
 withdrawer's login without an at-sign, so it notifies no one. Each one is
 judged by the outbound policy the commit-msg hook judges a commit message by
@@ -252,7 +253,8 @@ what was sent (a footer appended, say) is reported for you to correct on the
 pull request, never edited. A comment is posted only once the push recording
 its change of state has landed, so a renewal that withdraws again what it
 already records, an admission run again, and a second copy whose settle does
-not land post nothing. A comment that fails is named in `forge_failures` (or
+not land post nothing, and a re-arm whose tombstone was not pushed is
+commented on by the act that next records it. A comment that fails is named in `forge_failures` (or
 a settle's `failures`) with act `comment`, and never holds up or undoes the
 withdrawal or the re-arm it reports.
 

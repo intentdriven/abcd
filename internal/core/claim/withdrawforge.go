@@ -447,8 +447,8 @@ func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 
 // commentBody is the one fixed sentence the writer posts on w's pull request
 // for the release subject, by the state a push just recorded for it:
-// withdrawn, admitted, re-armed, or not re-armed with its state word as the
-// reason. Every value in it is validated data (a number, the release's tag, a
+// withdrawn, admitted, re-armed (or found armed again, which counts as
+// re-armed), or not re-armed with its state word as the reason. Every value in it is validated data (a number, the release's tag, a
 // GitHub username, a state word), so it carries no free text from the
 // branch, no session URL and no tool footer. The withdrawer is named without
 // an at-sign, so a comment notifies no one but the pull request's own
@@ -462,6 +462,8 @@ func commentBody(subject string, w Withdrawal) string {
 		return fmt.Sprintf("abcd release hold: the merge of #%d is admitted into release %s by %s.", w.Number, tag, w.By)
 	case WithdrawnRearmed:
 		return fmt.Sprintf("abcd release hold: the merge of #%d is re-armed after release %s.", w.Number, tag)
+	case WithdrawnFoundArmed:
+		return fmt.Sprintf("abcd release hold: the merge of #%d is armed again after release %s.", w.Number, tag)
 	}
 	return fmt.Sprintf("abcd release hold: the merge of #%d is not re-armed after release %s (reason: %s).", w.Number, tag, w.State)
 }
@@ -526,6 +528,8 @@ func commentWord(state string) string {
 		return "admitted"
 	case WithdrawnRearmed:
 		return "re-armed"
+	case WithdrawnFoundArmed:
+		return "armed again"
 	}
 	return "not re-armed (" + state + ")"
 }

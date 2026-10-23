@@ -520,8 +520,8 @@ withdrawing nothing, and an admission or a release is refused.
   entry (`kept`), so it never reads as lost.
 - **A comment on each pull request acted on** (dcn-2610230712084099,
   superseding dcn-2610230328230097). Each change of state a push records for
-  a pull request (withdrawn, admitted, re-armed, or not re-armed with its
-  state word as the reason) is posted on it as one fixed sentence naming the
+  a pull request (withdrawn, admitted, re-armed or found armed again, or not
+  re-armed with its state word as the reason) is posted on it as one fixed sentence naming the
   release's tag, through `gh`'s `addComment` (pinned in ghcontract's
   `graphql-fields.txt`). Every value in it is validated data, the
   withdrawer's login carries no at-sign, and the body is judged by the
