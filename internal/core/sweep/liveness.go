@@ -506,16 +506,19 @@ func (p *Probe) processIn(wt string) (Evidence, bool) {
 // worktree are one a plain string prefix of the other, after the folding
 // within uses. Every byte before the escape is the directory's own, so a
 // prefix that leads into the worktree, or that the worktree extends, may be
-// it; one that leads elsewhere cannot be. The comparison is not on a name
-// boundary because the escape can fall in the middle of a name. It is a hint,
-// not a proof: the directory is known only as far as the escape.
+// it; one that leads elsewhere cannot be. Where the escape falls inside the
+// worktree's path the comparison is plain text, because it can cut a name in
+// half. Where the prefix runs past the worktree's path, those bytes are real,
+// so the worktree must end on a name boundary: a prefix under /a/fix-2 is not
+// in /a/fix. It is a hint, not a proof: the directory is known only as far as
+// the escape.
 func (p *Probe) escapedNear(wt string) (Evidence, bool) {
 	fold := fsutil.CaseFoldingFS()
 	w := fsutil.FoldPath(wt, fold)
 	for _, e := range p.escaped {
 		for _, lit := range []string{e.lit, e.real} {
 			l := fsutil.FoldPath(lit, fold)
-			if strings.HasPrefix(l, w) || strings.HasPrefix(w, l) {
+			if strings.HasPrefix(w, l) || strings.HasPrefix(l, w) && (len(l) == len(w) || l[len(w)] == '/') {
 				return Evidence{Kind: KindProcess, Strength: Hint,
 					Detail: "in use: a process works in a directory lsof printed escaped, under " + e.lit}, true
 			}

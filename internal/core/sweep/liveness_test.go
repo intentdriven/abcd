@@ -447,6 +447,12 @@ func TestAProcessInAnEscapedDirectoryHoldsWhatItsLiteralPrefixCovers(t *testing.
 		p := probe(ProbeOptions{Processes: lsofSays("p7\nfcwd\nn" + real + "/^A\n"), Now: stale()})
 		frees(t, p.Judge(Worktree{Path: real + "c", Changed: none}))
 	})
+	t.Run("a prefix that runs past the worktree into a sibling", func(t *testing.T) {
+		// The bytes before the escape name real+"-2", so the process is in that
+		// sibling, not in the worktree its name extends.
+		p := probe(ProbeOptions{Processes: lsofSays("p7\nfcwd\nn" + real + "-2/d^A\n"), Now: stale()})
+		frees(t, p.Judge(Worktree{Path: wt, Changed: none}))
+	})
 	t.Run("an escaped name under an unrelated directory", func(t *testing.T) {
 		other, err := filepath.EvalSymlinks(t.TempDir())
 		if err != nil {
