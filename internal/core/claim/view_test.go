@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"maps"
@@ -153,4 +154,39 @@ func objectStore(t *testing.T, dir string) map[string]time.Time {
 		t.Fatal(err)
 	}
 	return files
+}
+
+// TestTheOtherReadsLeaveTheObjectStoreUntouched is iss-2610231038335615 on the
+// two other reads that named the empty tree by writing it: the first-fetched
+// keeper behind the merge hold and abcd peers, and the status read's intake.
+// Each compares tips against the name and needs no object.
+func TestTheOtherReadsLeaveTheObjectStoreUntouched(t *testing.T) {
+	for _, format := range []string{"sha1", "sha256"} {
+		t.Run(format, func(t *testing.T) {
+			w := newWorldFormat(t, format)
+			p := w.clone("1234+octo@users.noreply.github.com", "")
+			q := w.clone("99+quinn@users.noreply.github.com", "")
+			if _, err := p.reserve("iss-5", "a.go"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Fetch(q.dir, q.opts()); err != nil {
+				t.Fatal(err)
+			}
+			objects := filepath.Join(q.dir, ".git", "objects")
+			for name, read := range map[string]func(){
+				"keepFirstFetched": func() { keepFirstFetched(q.dir, w.clock(), nil) },
+				"ReadStatus": func() {
+					if _, err := ReadStatus(context.Background(), q.dir, w.clock(), q.opts()); err != nil {
+						t.Fatal(err)
+					}
+				},
+			} {
+				before := agedObjectStore(t, objects)
+				read()
+				if after := objectStore(t, objects); !maps.Equal(before, after) {
+					t.Errorf("%s changed the object store", name)
+				}
+			}
+		})
+	}
 }
