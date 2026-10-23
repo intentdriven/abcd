@@ -32,8 +32,17 @@ hold, below), and does one of two things: it reserves the record, or it
 releases this copy's reservation of it. A third form, the holder query, takes
 no record and is described under "The holder" below. A reservation names every
 repository-relative path the work will change, one path to a flag, never split
-on commas, and the footprint is required. Its lease is from one minute to 24
-hours, two hours by default. A release takes no footprint, take-over or lease.
+on commas, and the footprint is required. Its paths are meant to be files: a
+path naming a directory holds off every other reservation of any file inside
+it, so a lane holding a whole package serialises every unrelated lane that
+touches one file there (iss-2610230016544142). A footprint path naming a
+directory git tracks is still reserved, never refused, and the act names it,
+with how many tracked files lie beneath it and the branch they were counted on
+(origin's default branch as last fetched, or the checkout's own head for a
+directory only it holds), telling the person to name the files instead
+(`directory_footprint`, a warning on stderr in the text form). A path neither
+holds as a directory, such as a file the work will add, draws nothing. Its
+lease is from one minute to 24 hours, two hours by default. A release takes no footprint, take-over or lease.
 Bare `abcd reserve` refuses as a usage error and points at `abcd peers`, which
 lists the reservations. The flags are in the appendix below.
 
@@ -382,6 +391,8 @@ on a fork origin, and on every other refusal and failure. The JSON document carr
 `copy` (`this` or `another`, never a copy's key), `footprint`, `claimed_at`,
 `effective_expiry`, `commit`, `replaced` for a take-over,
 `derived_unchecked` when the default branch could not be read,
+`directory_footprint` (`path`, `tracked_files`, `on`) for each footprint path
+naming a directory,
 `fork_unchecked` when the forge could not say whether origin is a fork,
 `fork_allowed`, the fork's owner/name, when the check was waived for the fork
 the repository allows, and

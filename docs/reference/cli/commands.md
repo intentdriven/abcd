@@ -4510,7 +4510,10 @@ linguist-generated in its root .gitattributes is shared, never an overlap; a
 directory never is. When that declaration cannot be read nothing is shared, and
 the act says why (generated_unread in --json). Your own reservation sharing a
 path with yours from another copy is made, and warns on stderr (own_overlap in
---json).
+--json). Name files, not directories: a directory holds off every reservation of
+a file inside it. A footprint path naming a directory git tracks is reserved all
+the same, and warns on stderr, naming it and how many tracked files it covers on
+origin's default branch, or HEAD (directory_footprint in --json).
 
 The holder is your GitHub username, from the first of these that names it:
 user.email, when it is a GitHub no-reply address; reservation.github_username
