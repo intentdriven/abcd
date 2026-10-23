@@ -128,16 +128,19 @@ const (
 func recallPagesFrom(store *storeHandle, shown string, read func(string, int64) ([]byte, error)) ([]RecallPage, []RecallRefusal) {
 	var pages []RecallPage
 	var refused []RecallRefusal
-	var bytesRead int
+	var bytesRead, tried int
 	for _, name := range store.pageNames() {
 		if _, _, _, ok := ParsePageFilename(name); !ok {
 			continue
 		}
-		if len(pages) >= maxRecallPagesPerScope || bytesRead >= maxRecallBytesPerScope {
+		// Every page tried counts, a refused one included, so a store of
+		// pages the recall refuses cannot make it open every one of them.
+		if tried >= maxRecallPagesPerScope || bytesRead >= maxRecallBytesPerScope {
 			refused = append(refused, RecallRefusal{File: shown, Err: fmt.Errorf("it holds more pages than one prompt's recall reads (%d pages or %d bytes); from %s on, its pages are not recalled",
 				maxRecallPagesPerScope, maxRecallBytesPerScope, name)})
 			break
 		}
+		tried++
 		raw, err := read(name, maxRecallPageBytes)
 		if err != nil {
 			refused = append(refused, RecallRefusal{File: shown + name, Filename: name, Err: recallReadError(err)})

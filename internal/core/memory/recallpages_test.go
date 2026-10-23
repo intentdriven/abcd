@@ -304,3 +304,22 @@ func TestRecallPagesBoundTheScope(t *testing.T) {
 		t.Fatalf("refused = %+v", hrefused)
 	}
 }
+
+// TestRecallPagesCountRefusedPagesTowardTheBound: a page the recall refuses
+// still counts toward the scope's bound, so a store of oversized pages cannot
+// make every prompt open every one of them, or name each on stderr.
+func TestRecallPagesCountRefusedPagesTowardTheBound(t *testing.T) {
+	repo := t.TempDir()
+	mem := filepath.Join(repo, ".abcd", "memory")
+	big := recallPageText("Too big", "auth") + strings.Repeat("x", maxRecallPageBytes)
+	for i := 0; i < maxRecallPagesPerScope+5; i++ {
+		writeStoreFile(t, mem, fmt.Sprintf("fact_eng_b%04d.md", i), big, 0o644)
+	}
+	pages, refused := ReadRecallPages(repo)
+	if len(pages) != 0 {
+		t.Fatalf("an oversized page was read: %d", len(pages))
+	}
+	if len(refused) > maxRecallPagesPerScope+1 {
+		t.Fatalf("%d refusals for a bound of %d pages", len(refused), maxRecallPagesPerScope)
+	}
+}
