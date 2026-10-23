@@ -320,8 +320,13 @@ The **hard-fail** gates refuse the release:
 - **The merge hold** (iss-2610222014550692): every open pull request into
   origin's default branch with auto-merge on or in the merge queue, listed
   through `gh`, refuses the cut unless this copy's live release reservation
-  admitted it (`37-reserve.md`, "Withdrawn merges"); the release pull request
-  opened from the checked-out branch is the cut and is not judged. A listing
+  admitted it at the head it now has (`37-reserve.md`, "Withdrawn merges"); the
+  release pull request opened from the checked-out branch is the cut and is not
+  judged. A release reservation of this copy's whose lease lapsed before the
+  release ended refuses the cut too: it holds no merge, and a lapse ends
+  nothing (dcn-2610230328220298). Withdrawals a later commit on a recent
+  release branch dropped are a warning row, `merge-hold-lost`
+  (dcn-2610230328242929). A listing
   the forge does not give refuses too, since an armed merge it cannot see may
   be there. The row is `not_armed` where origin is not one repository on
   github.com. The reading is the reservation package's, which the launch
@@ -780,7 +785,8 @@ abandoned before its tag is released by its holder, or lapses within the day.
 The hold stops a merge from being armed, and the reservation withdraws every
 merge armed or queued before it, recording each, so the cut starts from a
 frozen branch; the cutting copy admits one through the reserve verb, and the rest are re-armed in their own form, pinned to their
-withdrawn heads, once the cut ends (`37-reserve.md`, "Withdrawn merges"). The
+withdrawn heads, once the release ends: on its holder's release, or its tag on
+origin, never on a lapsed lease (`37-reserve.md`, "Withdrawn merges"). The
 merge-hold gate (§ 1) refuses the cut while any merge the reservation does not
 account for is armed, so the cut's runbook (`commands/launch.md`) has the
 cutting session run the preview again just before it merges the release pull

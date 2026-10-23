@@ -131,23 +131,33 @@ stopped by it, which is why step 3 still says to tell people.
 
 The reservation also takes care of the merges armed before it. Reserving the
 release withdraws every pull request into the default branch that has
-auto-merge on or sits in the merge queue: it turns the auto-merge off, takes
-the entry out of the queue, and records each on the reservation with the form
-it was armed in and its head (`withdrew` in `--json`, a `withdrew:` line in the
-text). The cut starts from a frozen branch. To let one of them into the cut,
-admit it from the same copy:
+auto-merge on or sits in the merge queue, the release pull request from this
+checkout's branch excepted: it records each on the reservation with the form
+it was armed in and its head, then turns the auto-merge off and takes the
+entry out of the queue (`withdrew` in `--json`, a `withdrew:` line in the
+text). The cut starts from a frozen branch. Each withdrawal is made through
+`gh` under its token's account, and none is made when that account is not
+yours as the reservation names you. One release is cut at a time: a second
+release reserved while this one is live backs off. To let one of them into the
+cut, admit it from the same copy:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" reserve rel-vX.Y.Z --admit 1234 --json
 ```
 
-which re-arms that pull request in its recorded form, pinned to the head it
-had when withdrawn, and records it admitted; one whose head moved since is
-refused, for its owner to re-arm. Every other withdrawn pull request is
-re-armed the same way when the cut ends: on `--release` from this copy, or,
-once the tag is on `origin`, on the next abcd act of any copy of yours that
-fetches the reservations (a reserve, a build or drain start, `abcd peers`). One
-whose head moved, or that was closed or merged meanwhile, is skipped and named
+which records it admitted, then re-arms that pull request in its recorded
+form, pinned to the head it had when withdrawn; one whose head moved since is
+refused, for its owner to re-arm, and the launch check passes an admitted one
+only at the head it was admitted at. Every other withdrawn pull request is
+re-armed the same way when the release ends, and it ends only on `--release`
+from this copy or once the tag is on `origin`, on the next abcd act of any
+copy of yours that fetches the reservations (a reserve, a build or drain
+start, `abcd peers`). **A lapsed lease ends nothing.** The reservation holds
+for 24 hours and nothing renews it by itself: past that, the launch check
+refuses the cut, `abcd peers` reports the lapse, and nothing is re-armed;
+renew it by reserving the release again from this copy. One whose head moved,
+that was closed or merged meanwhile, or that can merge now with no merge
+queue to put it in (abcd never merges it for its owner), is skipped and named
 for its owner. A copy of another person never re-arms your withdrawals: it
 names them instead.
 
@@ -156,7 +166,7 @@ and reason (`forge_failures`, and a `warning:` line on stderr) and the
 reservation stands. Pass every such line on to the user. The launch check
 below then refuses the cut while that pull request is still armed.
 
-### Step 3 — merging, and the one hazard### Step 3 — merging, and the one hazard
+### Step 3 — merging, and the one hazard
 
 Merge the release PR the normal way, from the PR page's **Merge pull request**
 button (or the merge queue if the repository uses one).
@@ -430,8 +440,11 @@ Then summarise the JSON for the user:
   `documentation-auditor`, `hook-compliance` (warn). `merge-hold` lists every
   open pull request into origin's default branch with auto-merge on or in the
   merge queue, through `gh`, and refuses on each that this copy's release
-  reservation has not admitted, the release pull request opened from the
-  checked-out branch excepted; a listing the forge does not give refuses too.
+  reservation has not admitted at its current head, the release pull request
+  opened from the checked-out branch excepted, and on this copy's release
+  reservation when its lease lapsed before the release ended; a listing the
+  forge does not give refuses too. A `merge-hold-lost` row (warn) appears only
+  when a recent release's branch dropped the record of withdrawn pull requests.
   It is `not_armed` where origin is not one repository on github.com. `semantic-receipts` (`host-run`) reports which
   semantic receipts are recorded for the candidate commit. That row is the one a
   release fails on most expensively, so never omit it.

@@ -27,7 +27,8 @@ through `gh`, to learn whose account the forge token `gh` resolves from this ses
 environment belongs to. A release reservation also reads and writes the
 pull requests' merge state on GitHub, through `gh` under the session's own
 identity (below): it withdraws the merges armed on the default branch, and
-re-arms them when the cut ends.
+re-arms them when the release ends (its `--release`, or its tag on `origin`;
+a lapsed lease ends nothing).
 
 ## Reserve before starting
 
@@ -109,13 +110,24 @@ The hold stops a merge from being armed, so a release reserved anew (any act
 but a renewal of this copy's live reservation) also withdraws every merge
 already armed: after its own push holds every other session's arming, it lists
 the open pull requests into `origin`'s default branch with auto-merge on or in
-the merge queue, turns each one's auto-merge off and takes it out of the queue,
-and records each on a renewal of the reservation, with the form it was armed in
-(`queue`, or `auto:merge`, `auto:squash`, `auto:rebase`) and its head. The
-payload's `withdrew` lists them, as `number`, `id`, `form`, `head`, `by` and
-`state`, and `withdrawals` everything the reservation records. A renewal from
-the same copy while the reservation is live withdraws nothing new and keeps
-the record. Tell the user what was withdrawn.
+the merge queue, records each on a renewal of the reservation, with the form it
+was armed in (`queue`, or `auto:merge`, `auto:squash`, `auto:rebase`) and its
+head, and only then turns each one's auto-merge off and takes it out of the
+queue. The release pull request itself (one from this checkout's branch, in
+this repository) is never withdrawn. The payload's `withdrew` lists them, as
+`number`, `id`, `form`, `head`, `by` and `state`, and `withdrawals`
+everything the reservation records. A renewal from the same copy while the
+reservation is live withdraws nothing new and keeps the record. Tell the user
+what was withdrawn.
+
+One release is cut at a time: reserving a release while another release's
+reservation is live backs off (exit 3), naming the release and its holder.
+
+Every withdrawal and re-arm is made through `gh` under the account its token
+acts as, so each is refused when that account is not the reservation's holder:
+the reservation stands, nothing is withdrawn, and `forge_unchecked` says which
+account `gh` acts as; `--admit` and `--release` are refused (exit 2, nothing
+pushed). Switch `gh` to the holder's account and run it again.
 
 To let a withdrawn pull request into the cut, from the copy that holds the
 release:
@@ -124,37 +136,61 @@ release:
 "${CLAUDE_PLUGIN_ROOT}/abcd" reserve rel-v0.16.0 --admit 1234 --json
 ```
 
-It re-arms that one in its recorded form, pinned to its withdrawn head, and
-renews the reservation recording it admitted (`act: admitted`, `admitted`).
-It is refused (exit 2, nothing pushed) from any other copy, by any other
-person, for a pull request the reservation did not withdraw or already
-admitted, and for one whose head moved, or that was closed or merged, since.
+It renews the reservation recording that one admitted, then re-arms it in its
+recorded form, pinned to its withdrawn head (`act: admitted`, `admitted`). It
+is refused (exit 2, nothing pushed) from any other copy, by any other person,
+on a lapsed or released reservation, for a pull request the reservation did
+not withdraw or already admitted, and for one whose head moved, or that was
+closed or merged, since. When the forge then refuses the arming, a second
+renewal puts it back to withdrawn and the refusal says so. The launch check
+lets an admitted pull request through only at the head it was admitted at.
 
-Every other withdrawn pull request is re-armed when the cut ends: by
-`--release` from the cutting copy, and, once the release has ended (its tag
-on `origin`, its tombstone, or its lease lapsed past the five-minute margin),
-by the next act of any copy of the same person that fetches the reservations
-(any reserve, a build or drain start, `/abcd:peers`). Each is re-armed in the
-form it was taken from, pinned to the head it had; one already armed or queued
-again counts as done (`armed`), and one whose head moved, or that was closed or
-merged, is skipped (`moved`, `closed`, `merged`) and named for its owner to
-re-arm. The tombstone records every state, so no copy acts twice; one the forge
-refused stays `withdrawn`, and the next such act tries it again. The payload's
-`settles` names each release settled this way, with its `settled` pull
-requests, its `failures` and the tombstone's `commit`. A copy of another person
+Every other withdrawn pull request is re-armed when the release ends, and a
+release ends only two ways: `--release` from the cutting copy, or its tag on
+`origin`. `--release` pushes the tombstone first, with every withdrawal as it
+stands, then re-arms; once the tag is on `origin`, the next act of any copy of
+the same person that fetches the reservations (any reserve, a build or drain
+start, `/abcd:peers`) does the same, pushing a tombstone before it touches the
+forge, so of two copies only the one whose push lands acts. **A lapsed lease
+ends nothing.** Nothing renews a release lease by itself, so a slow cut's lease
+lapses while it is still being cut: the lapse is reported (`/abcd:peers`, and
+the launch check refuses the cut until it is renewed), and no copy re-arms
+anything. Renew it by reserving the release again from the cutting copy.
+
+**After a crash.** When the copy cutting the release is gone (its worktree
+deleted, its machine down), end the release from another copy of the same
+person: `reserve rel-vX.Y.Z --take-over`, which carries the withdrawals, then
+`reserve rel-vX.Y.Z --release`, which re-arms them.
+
+Each is re-armed in the form it was taken from, pinned to the head it had; one
+already armed or queued again counts as done (`armed`). One is skipped and
+named for its owner to act on: its head moved (`moved`), it was closed or
+merged (`closed`, `merged`), the node id recorded for it is not the forge's for
+its number (`mismatch`, never acted on), or it can merge now and the repository
+has no merge queue to put it in (`manual`: abcd never merges another person's
+pull request, so its owner merges it). The tombstone records every state, so no
+copy acts twice; one the forge refused stays `withdrawn`, and the next such act
+tries it again. The payload's `settles` names each release settled this way,
+with its `settled` pull requests, its `failures` and the tombstone's `commit`.
+Only a withdrawal that the branch's own history shows a reservation of its
+withdrawer recorded first is ever acted on: one that is not is named in
+`unrecorded` and left alone. A copy of another person
 never re-arms: a reservation it makes over the release carries the
 withdrawals forward untouched (`stranded`, and a `note:` line naming whose
-they are), and `/abcd:peers` names them (`release_withdrawals`).
+they are), and `/abcd:peers` names them (`release_withdrawals`). An older abcd
+that renews the release drops the record from the tip; `/abcd:peers` names
+those as lost (`lost_withdrawals`), and the launch check warns of them.
 
 **Failures are loud and lose nothing.** A withdrawal or re-arm the forge
 refuses is named in `forge_failures` (`number`, `act`, `reason`) and on
 stderr, and the reservation stands; a merge left armed is what the launch
 check refuses the cut on (`/abcd:launch`). `forge_unchecked` says why the
-merges could not be listed at all: `origin` is not one repository on
-github.com, or the forge did not answer. A pull request the 4096-byte message
-could not record is not withdrawn, and is named. When the renewal recording
-the withdrawals cannot be pushed, each one is re-armed again on the spot.
-Pass every one of these on to the user.
+merges could not be listed or touched at all: `origin` is not one repository
+on github.com, the forge did not answer, or `gh` acts as another account. A
+pull request the 4096-byte message (at most 40) could not record is not
+withdrawn, and is named. When the renewal recording the withdrawals cannot be
+pushed, the forge is not touched and each one stays armed, named. Pass every
+one of these on to the user.
 
 ## When it refuses
 

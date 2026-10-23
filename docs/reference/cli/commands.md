@@ -4205,18 +4205,20 @@ same view: the record and kind of each released tip marking one, newest
 first, the newest ten shown and the rest counted; one dated more than five
 minutes ahead of this computer's clock is not shown. Then each release's
 withdrawn pull requests (release_withdrawals): those a live release holds or
-admitted, those an ended one has still to re-arm (yours, or another person's,
-named with whose), and those its tombstone skipped for their owners. The fetch
+admitted, a lease that lapsed before the release ended (reported, never acted
+on), those an ended one has still to re-arm (yours, or another person's, named
+with whose), and those its tombstone skipped for their owners; and those a
+later commit on a recent release's branch dropped (lost_withdrawals). The fetch
 reads origin's release tags with the reservations; it updates the
 remote-tracking reservation branches and the release tags abcd keeps under
 refs/abcd/release-tags/, stamps when it ran in the local tier, with when it
 first fetched each reservation dated ahead of this computer's clock or
 undated. One more act follows it, only when a release has ended (its tag on
-origin, its tombstone, or its lease lapsed) with pull requests you withdrew for
-it not yet re-armed: each is re-armed through gh in the form it was taken from,
-pinned to its withdrawn head, or skipped when its head moved or it was closed
-or merged, and a tombstone recording every state is pushed to its branch
-(settled). Nothing else is written. The release-tag refs are ordinary
+origin, or its tombstone) with pull requests you withdrew for it not yet
+re-armed: a tombstone is pushed first, then each is re-armed through gh in the
+form it was taken from, pinned to its withdrawn head, or skipped when its head
+moved, it was closed or merged, or it can only be merged by hand, and a second
+tombstone records every state (settled). Nothing else is written. The release-tag refs are ordinary
 refs of this checkout, so git log --all lists the commits they name and
 git push --mirror would push them. A checkout with no remote named origin
 lists no reservations.
@@ -4468,18 +4470,24 @@ the same command again from the same copy renews it.
 
 A release reserved anew (not renewed from the same copy while live) also withdraws
 every pull request into origin's default branch that has auto-merge on or sits in
-the merge queue, through gh under your own identity, and records each on the
-reservation with the form it was armed in and its head (withdrew in --json). A
-withdrawal the forge refuses is named and the reservation stands (forge_failures);
-the launch check then refuses the cut while that pull request is armed. --admit
-<pr>, from the copy cutting the release, re-arms one withdrawn pull request in its
-recorded form, pinned to its withdrawn head, and records it admitted. --release
-from that copy re-arms every other one the same way; once the release has ended
-(its tag on origin, its tombstone, or its lease lapsed), any act of a copy of the
-same person that fetches the reservations does so. One whose head moved, or that
-was closed or merged, is skipped and named for its owner; every state is recorded
-on the tombstone (settles in --json), so no copy acts twice, and a copy of another
-person never re-arms (stranded in --json).
+the merge queue, but the release pull request from this checkout's branch,
+through gh under your own identity (refused when gh acts as another account),
+and records each on the reservation first, with the form it was armed in and its
+head (withdrew in --json). A withdrawal the forge refuses is named and the
+reservation stands (forge_failures); the launch check then refuses the cut while
+that pull request is armed. One release is cut at a time: another release live
+backs this one off. --admit <pr>, from the copy cutting the release, records one
+withdrawn pull request admitted, then re-arms it in its recorded form, pinned to
+its withdrawn head. --release from that copy pushes the tombstone, then re-arms
+every other one the same way; once the tag is on origin, any act of a copy of
+the same person that fetches the reservations does so. A lapsed lease ends
+nothing: it is reported, and the cut renews it by reserving again. After a crash,
+the same person ends it from another copy with --take-over, then --release. One
+whose head moved, that was closed or merged, or that can only be merged by hand
+(no merge queue), is skipped and named for its owner; every state is recorded on
+the tombstone (settles in --json), so no copy acts twice, a copy of another
+person never re-arms (stranded in --json), and a withdrawal no reservation of its
+withdrawer's recorded first is never acted on (unrecorded in settles).
 
 Every act fetches the reservations from origin, judges the tip, writes one
 commit and makes one plain fast-forward push, with the repository's hooks

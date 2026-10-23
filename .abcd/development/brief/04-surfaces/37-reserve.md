@@ -360,72 +360,124 @@ The hold stops a merge from being armed. A merge armed, or queued, before the
 release was reserved (a pull request with auto-merge on, or an entry already in
 the merge queue) would land when its checks pass, so the release reservation
 withdraws it (iss-2610222014550692; dcn-2610222219289525,
-dcn-2610222219297651, dcn-2610222219297487). Every forge call goes through the
-one door to GitHub (`internal/core/github`), under the session's own `gh`
-identity, so abcd holds no token and every withdrawal and re-arm is the acting
-person's; each GraphQL field and mutation is pinned in `internal/ghcontract`.
+dcn-2610222219297651, dcn-2610222219297487, and the round-two rulings
+dcn-2610230328220298, dcn-2610230328230097, dcn-2610230328230096,
+dcn-2610230328242929). Every forge call goes through the one door to GitHub
+(`internal/core/github`), under the session's own `gh` identity, so abcd holds
+no token and every withdrawal and re-arm is the acting person's; each GraphQL
+field and mutation is pinned in `internal/ghcontract`. Before any withdrawal,
+admission or re-arm, the account the `gh` token acts as is compared with the
+reservation's holder, and a mismatch touches nothing: a reservation is made
+withdrawing nothing, and an admission or a release is refused.
 
+- **One release at a time.** A release reserved anew while another release's
+  reservation is live backs off, naming it: a second cut would withdraw the
+  merges the first admitted.
 - **Withdraw at reserve.** A release reserved anew (every act on it but a
   renewal of this copy's live reservation, so a take-over and a renewal of a
   lapsed one too) pushes its reservation first, so every other session's
   arming is held from then, and then lists the open pull requests into
   origin's default branch that have auto-merge on or sit in the merge queue,
-  a hundred a page up to a thousand (more is refused, never cut short). For
-  each it turns auto-merge off (`disablePullRequestAutoMerge`) and then takes
-  it out of the queue (`dequeuePullRequest`), the order that leaves the forge
-  no arming to queue it again with, and records it on a renewal of the
-  reservation just pushed. A renewal from the same copy while live withdraws
-  nothing new and keeps the record.
-- **The record.** One `Abcd-Withdrawn` trailer a pull request, six fields
-  separated by one space: its number, its node id, the form it was armed in
-  (`queue` for a merge-queue entry, which is also the form of one both armed
-  and queued; `auto:merge`, `auto:squash` or `auto:rebase` for auto-merge with
-  its method), its head when withdrawn, the GitHub username whose reservation
-  withdrew it, and its state: `withdrawn` (still to settle), `admitted`,
-  `rearmed`, `armed` (found armed or queued again, counted done), `moved`,
-  `closed` or `merged` (skipped for its owner). Every field is fixed-form, so
-  no free text reaches the remote. The reader reads it strictly: any other
-  shape, a pull request named twice, one on a record's reservation, or a
-  settled state on a reservation that is not released makes the tip
-  unreadable, as a bad hand-back does. Every commit on the release carries
-  forward what its tip still has to settle: this person's own reservation
-  keeps its withdrawn and admitted ones, and any other commit (a tombstone, a
-  take-over of another person's lapsed one) the withdrawn ones.
+  a hundred a page up to a thousand (more is refused, never cut short). The
+  release pull request itself, a same-repository pull request from the
+  checkout's branch, is left alone, as is one the reservation already
+  admitted. The record comes first: a renewal naming every one about to be
+  withdrawn, as withdrawn, is pushed before the forge is touched, so a process
+  killed mid-way leaves a record of each merge it may have withdrawn, and one
+  it never reached reads as armed when the re-arm comes to it. For each it
+  then turns auto-merge off (`disablePullRequestAutoMerge`) and takes it out
+  of the queue (`dequeuePullRequest`), the order that leaves the forge no
+  arming to queue it again with; a second renewal records what the forge
+  actually did when that differs. A renewal from the same copy while live
+  withdraws nothing new and keeps the record.
+- **The record.** One `Abcd-Withdrawn` trailer a pull request, at most 40 on a
+  tip, six fields separated by one space: its number, its node id, the form it
+  was armed in (`queue` for a merge-queue entry, which is also the form of one
+  both armed and queued; `auto:merge`, `auto:squash` or `auto:rebase` for
+  auto-merge with its method), its head when withdrawn, the GitHub username
+  whose reservation withdrew it, and its state: `withdrawn` (still to settle),
+  `admitted`, `rearmed`, `armed` (found armed or queued again, counted done),
+  `moved`, `closed`, `merged`, `mismatch` or `manual` (skipped for its owner).
+  Every field is fixed-form, so no free text reaches the remote. The reader
+  reads it strictly: any other shape, a pull request named twice, more than
+  40, one on a record's reservation, or a settled state on a reservation that
+  is not released makes the tip unreadable, as a bad hand-back does. Whether a
+  withdrawal fits is measured on the tombstone any holder would write (the
+  longest login and label), never the cutter's own. Every commit on the
+  release carries forward what its tip still has to settle: this person's own
+  reservation keeps its withdrawn and admitted ones, and any other commit (a
+  tombstone, a take-over of another person's lapsed one) the withdrawn ones.
+- **Whose a withdrawal is.** The username on a withdrawal is the writer's data,
+  so a re-arm honours one only when the release branch's own history shows the
+  reservation commit that first recorded it, withdrawn, was held by that
+  username: the walk reads the first-parent line from the tip, at most 64
+  commits. One that is not vouched for this way is named, in `unrecorded`,
+  and never acted on. The walk reads the record's own history, so a commit's
+  holder is taken as the commit names it.
 - **Admit.** An admission, the reserve verb naming one pull request on the
-  release, from the cutting copy alone, re-arms one withdrawn pull request in its recorded form, pinned with
-  `expectedHeadOid` to its withdrawn head, and renews the reservation
-  recording it admitted. It is refused from another copy or by another
-  person, for a pull request the reservation did not withdraw or already
-  admitted, and for one whose head moved, or that was closed or merged,
-  since; nothing is pushed then.
-- **Re-arm.** The cutting copy re-arms every withdrawn, unadmitted pull
-  request when it releases the reservation, and the tombstone records each in its state. Once
-  the release has ended (its tag on origin, a tombstone, or its lease lapsed
-  past the take-over margin), any act of a copy whose holder is the
+  release, from the cutting copy's live reservation alone, reads the pull
+  request on the forge, records it admitted on a renewal, and only then
+  re-arms it in its recorded form, pinned with `expectedHeadOid` to its
+  withdrawn head; an arming the forge refuses is put back to withdrawn by a
+  second renewal. It is refused from another copy or by another person, on a
+  lapsed or released reservation, for a pull request the reservation did not
+  withdraw or already admitted, and for one whose head moved, or that was
+  closed or merged, since; nothing is pushed then. The launch check passes an
+  admitted pull request only at the head it was admitted at.
+- **When a release ends.** A release ends only on its holder's release
+  (including after a take-over by the same person from another copy) or once
+  its tag is on origin. A lapsed lease ends nothing: nothing renews a release
+  lease by itself, so a slow cut's lease lapses while it is still being cut,
+  and the lapse is reported (`abcd peers`, and the launch check refuses the
+  cut), never acted on. After a crash, the same person ends it from another
+  copy by taking it over and then releasing it.
+- **Re-arm.** Every settle pushes a tombstone first, with every withdrawal as
+  it stands, as the compare-and-swap: of two copies settling at once, only the
+  one whose push lands acts. The cutting copy's release pushes the tombstone
+  that ends the reservation, then re-arms every withdrawn, unadmitted pull
+  request of its own, then pushes a second tombstone recording each state.
+  Once the tag is on origin, any act of a copy whose holder is the
   withdrawal's (every reserve act, a build's and a drain's included, and
-  `abcd peers` after its fetch) re-arms that holder's withdrawn ones and
-  pushes a tombstone over the tip recording every state. A re-arm uses the
-  form the pull request was taken from (`enablePullRequestAutoMerge` with its
-  method, or `enqueuePullRequest`), always with `expectedHeadOid` set to the
-  withdrawn head, so it merges exactly the commits its author armed. One
-  already armed or queued counts as done; one whose head moved, or that was
-  closed or merged, is skipped and named on the tombstone and in `abcd peers`
-  for its owner. One the forge refused stays withdrawn for the next act.
+  `abcd peers` after its fetch) does the same for that holder's withdrawn
+  ones. A re-arm reads the pull request by number and acts only when the
+  forge's node id for it is the one recorded (`mismatch` otherwise: node ids
+  are global, so a record pairing one pull request's number with another's
+  id is never acted on). It uses the form the pull request was taken from
+  (`enablePullRequestAutoMerge` with its method, or `enqueuePullRequest`),
+  always with `expectedHeadOid` set to the withdrawn head, so it merges
+  exactly the commits its author armed. One already armed or queued counts as
+  done; one whose head moved, or that was closed or merged, is skipped and
+  named on the tombstone and in `abcd peers` for its owner. One the forge
+  refuses because it can merge now and the repository has no merge queue
+  ("clean status") settles as `manual`, for its owner to merge: abcd never
+  merges another person's pull request. One the forge refused otherwise stays
+  withdrawn for the next act.
 - **Another person never re-arms.** The re-arm runs under the re-armer's own
   GitHub identity, so a copy of another person carries the withdrawals
   forward untouched and names them, with whose they are (`stranded`), on the
   reservation it makes and in `abcd peers` (`release_withdrawals`).
+- **Lost withdrawals.** An older abcd ignores the `Abcd-Withdrawn` trailer, so
+  its renewal, take-over or tombstone rewrites the tip without them. For each
+  release claimed in the last 14 days, `abcd peers` and the launch check walk
+  the branch's history and name each withdrawal still withdrawn on an ancestor
+  that no later commit carries (`lost_withdrawals`, the `merge-hold-lost`
+  warning): nothing re-arms those, so their withdrawer does it by hand.
+- **No comments on other people's pull requests.** A fixed-form comment
+  writer (one sentence of validated fields, judged by the outbound policy)
+  sits behind a seam that nothing sets, so abcd posts nothing on the pull
+  requests it withdraws or re-arms; `abcd peers` and the tombstone carry the
+  trace until the product thinker decides otherwise (dcn-2610230328230097).
 - **Failures are loud and lose nothing.** A withdrawal the forge refuses
   (no permission, no network) leaves the reservation standing and is named
-  by number and reason; a partial one (auto-merge off, the queue entry kept)
-  is recorded as what happened, in the form it lost. A pull request the
-  message cap has no room to record is not withdrawn, and is named. If the
-  renewal recording the withdrawals cannot be pushed, each is put back as it
-  was. The launch check (`04-launch.md`) refuses a cut while any merge the
-  reservation does not account for is armed, which catches each of these and
-  a merge a person arms by hand on the forge after the reservation; the
-  cutting session still tells people working in the repository by hand to
-  hold.
+  by number and reason, and the second renewal drops it from the record; a
+  partial one (auto-merge off, the queue entry kept) is recorded as what
+  happened, in the form it lost. A pull request the record has no room for is
+  not withdrawn, and is named. If the renewal recording the withdrawals
+  cannot be pushed, the forge is not touched. The launch check
+  (`04-launch.md`) refuses a cut while any merge the reservation does not
+  account for is armed, which catches each of these and a merge a person
+  arms by hand on the forge after the reservation; the cutting session still
+  tells people working in the repository by hand to hold.
 
 ## Exits
 
