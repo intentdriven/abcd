@@ -187,7 +187,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"(no merge queue), is skipped and named for its owner; every state is recorded on\n" +
 			"the tombstone (settles in --json), so no copy acts twice, a copy of another\n" +
 			"person never re-arms (stranded in --json), and a withdrawal no reservation of its\n" +
-			"withdrawer's recorded first is never acted on (forged in settles).\n\n" +
+			"withdrawer's recorded first is never acted on (unrecorded in settles).\n\n" +
 			"Every act fetches the reservations from origin, judges the tip, writes one\n" +
 			"commit and makes one plain fast-forward push, with the repository's hooks\n" +
 			"running: a reservation, a renewal by the same person and copy, a take-over of\n" +
@@ -443,7 +443,7 @@ func renderReserve(w io.Writer, out reserveOutput) {
 		for _, wd := range st.Settled {
 			fmt.Fprintf(w, "  %s\n", claim.SettledLine(st.Subject, wd))
 		}
-		if line := claim.ForgedLine(st.Subject, st.Forged); line != "" {
+		if line := claim.UnrecordedLine(st.Subject, st.Unrecorded); line != "" {
 			fmt.Fprintf(w, "  note: %s\n", line)
 		}
 	}

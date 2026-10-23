@@ -585,7 +585,7 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 		if st.Failed != "" {
 			fmt.Fprintln(w, "  "+st.Failed)
 		}
-		if line := claim.ForgedLine(st.Subject, st.Forged); line != "" {
+		if line := claim.UnrecordedLine(st.Subject, st.Unrecorded); line != "" {
 			fmt.Fprintln(w, "  "+line)
 		}
 	}

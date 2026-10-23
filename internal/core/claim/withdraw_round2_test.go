@@ -186,18 +186,19 @@ func TestASweepThatLosesTheTombstoneRaceReArmsNothing(t *testing.T) {
 	}
 }
 
-// TestAForgedWithdrawalIsReportedAndNeverActedOn: a tombstone anyone pushed,
-// naming octo as the withdrawer of a pull request by another's node id, is
-// named to octo's copy and touches nothing on the forge (the round-1 probe).
-func TestAForgedWithdrawalIsReportedAndNeverActedOn(t *testing.T) {
+// TestAWithdrawalNoReservationOfItsWithdrawerRecordedIsNeverActedOn: a
+// tombstone of another holder's, naming octo as the withdrawer of a pull
+// request under another's node id, is named to octo's copy and touches
+// nothing on the forge: octo re-arms only what octo's reservation recorded.
+func TestAWithdrawalNoReservationOfItsWithdrawerRecordedIsNeverActedOn(t *testing.T) {
 	w := newWorld(t)
 	f := newFakeForge(t, map[int]*fakePR{
 		11: {id: "PR_eleven", head: headA},
 		14: {id: "PR_fourteen", head: headA},
 	})
-	forged := message{Record: "rel-v0.17.0", Holder: "mal", Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: t0, ExpiresAt: t0, ReleasedAt: t0,
+	other := message{Record: "rel-v0.17.0", Holder: "mal", Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: t0, ExpiresAt: t0, ReleasedAt: t0,
 		Withdrawn: []Withdrawal{{Number: 11, ID: "PR_fourteen", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending}}}
-	w.pushHostile("rel-v0.17.0", forged.text(), t0)
+	w.pushHostile("rel-v0.17.0", other.text(), t0)
 	f.reset()
 	octo := w.clone("1234+octo@users.noreply.github.com", "")
 	res, err := octo.reserve("iss-8", "o.go")
@@ -207,9 +208,9 @@ func TestAForgedWithdrawalIsReportedAndNeverActedOn(t *testing.T) {
 	if len(f.calls) != 0 || f.pr(14).method != "" {
 		t.Fatalf("calls = %v, #14 = %+v; want the forge untouched", f.calls, f.pr(14))
 	}
-	if len(res.Settles) != 1 || len(res.Settles[0].Forged) != 1 || res.Settles[0].Commit != "" ||
-		!strings.Contains(ForgedLine("rel-v0.17.0", res.Settles[0].Forged), "no reservation of octo's on its branch recorded them first") {
-		t.Fatalf("settles = %+v; want the forged entry named and nothing pushed", res.Settles)
+	if len(res.Settles) != 1 || len(res.Settles[0].Unrecorded) != 1 || res.Settles[0].Commit != "" ||
+		!strings.Contains(UnrecordedLine("rel-v0.17.0", res.Settles[0].Unrecorded), "no reservation of octo's on its branch recorded them first") {
+		t.Fatalf("settles = %+v; want the entry named and nothing pushed", res.Settles)
 	}
 }
 

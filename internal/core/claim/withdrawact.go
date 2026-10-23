@@ -64,27 +64,28 @@ func (f ForgeFailure) Line() string {
 // Settle is what an act did for one release's withdrawals that were due:
 // those it re-armed or skipped (Settled, each in its new state), the
 // failures, and the tombstone that recorded it (Commit), or why none was
-// pushed (Failed). Forged is each one recorded as the act's person's that the
-// branch's history does not vouch for: none of them is acted on.
+// pushed (Failed). Unrecorded is each one named as the act's person's that
+// no reservation of theirs on the branch recorded first: none of them is
+// acted on.
 type Settle struct {
-	Subject  string         `json:"subject"`
-	Commit   string         `json:"commit,omitempty"`
-	Settled  []Withdrawal   `json:"settled"`
-	Failures []ForgeFailure `json:"failures,omitempty"`
-	Failed   string         `json:"failed,omitempty"`
-	Forged   []Withdrawal   `json:"forged,omitempty"`
+	Subject    string         `json:"subject"`
+	Commit     string         `json:"commit,omitempty"`
+	Settled    []Withdrawal   `json:"settled"`
+	Failures   []ForgeFailure `json:"failures,omitempty"`
+	Failed     string         `json:"failed,omitempty"`
+	Unrecorded []Withdrawal   `json:"unrecorded,omitempty"`
 }
 
-// ForgedLine is the sentence naming the withdrawals recorded as holder's
+// UnrecordedLine is the sentence naming the withdrawals recorded as holder's
 // that no reservation of theirs recorded first: "#11 on rel-v0.16.0 is
 // recorded as withdrawn by octo, but no reservation of octo's recorded it:
 // it is not re-armed".
-func ForgedLine(subject string, ws []Withdrawal) string {
+func UnrecordedLine(subject string, ws []Withdrawal) string {
 	if len(ws) == 0 {
 		return ""
 	}
 	return fmt.Sprintf("%s on %s recorded as withdrawn by %s, but no reservation of %s's on its branch recorded them first, "+
-		"so abcd does not trust the record and re-arms none of them: check each pull request by hand",
+		"and abcd re-arms a withdrawal only from the reservation that recorded it, so none of them is re-armed: check each pull request by hand",
 		strings.Join(numbers(ws), ", "), subject, ws[0].By, ws[0].By)
 }
 
@@ -240,7 +241,7 @@ func (p *prepared) pushRecord(tree, parent string, m message) (string, error) {
 
 // withdrawArmed lists the merges armed or queued on origin's default branch
 // and withdraws them for the release reservation m, just pushed as sha. The
-// record comes first (point 4 of the round-1 review): a renewal naming every
+// record comes first: a renewal naming every
 // one about to be withdrawn, still withdrawn, is pushed over sha before the
 // forge is touched, so a process killed mid-way leaves a record of every
 // merge it may have withdrawn, and one it never reached reads as armed when
@@ -431,7 +432,7 @@ func settleEnded(a actor, tree, id string) (s Settle, ok bool) {
 // settleTip settles id's withdrawals of a's holder over its tip t, already
 // read, once the release has ended: its tag on origin or a tombstone. Only a
 // withdrawal the branch's own history vouches for is acted on (vouched); one
-// it does not is named (Forged) and left as it is. The order is the
+// it does not is named (Unrecorded) and left as it is. The order is the
 // compare-and-swap's: a tombstone over t, every withdrawal as it stands, is
 // pushed first, so of two copies settling at once only the one whose push
 // lands acts; then each is re-armed; then a second tombstone records every
@@ -456,10 +457,10 @@ func settleTip(a actor, tree, id string, t tip) (s Settle, ok bool) {
 		s.Failed = "could not read the history of " + id + "'s branch to tell whose its withdrawals are (" + redacted(err) + "), so none was re-armed"
 		return s, true
 	}
-	due, forged := vouchedPending(links, complete, t.Withdrawn, a.holder)
-	s.Forged = forged
+	due, unrecorded := vouchedPending(links, complete, t.Withdrawn, a.holder)
+	s.Unrecorded = unrecorded
 	if len(due) == 0 {
-		return s, len(forged) > 0
+		return s, len(unrecorded) > 0
 	}
 	if why, _ := loginMismatch(a.root, a.holder); why != "" {
 		s.Failed = why
@@ -610,8 +611,8 @@ func (p *prepared) settleOwnRelease(tree, sha string, ws []Withdrawal) (Settle, 
 			"), so none was re-armed; the next act of a copy of yours tries again"
 		return s, sha, ws
 	}
-	due, forged := vouchedPending(links, complete, ws, p.holder)
-	s.Forged = forged
+	due, unrecorded := vouchedPending(links, complete, ws, p.holder)
+	s.Unrecorded = unrecorded
 	out, settled, fails, why := rearmMine(a, ws, func(w Withdrawal) bool { _, ok := entryIn(due, w); return ok })
 	s.Settled, s.Failures, s.Failed = append(s.Settled, settled...), fails, why
 	if len(settled) == 0 {

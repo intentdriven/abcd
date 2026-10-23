@@ -5,8 +5,8 @@ package claim
 //
 //   - whose a withdrawal is. The By field is the writer's data, so a re-arm
 //     honours one only when the reservation commit that first recorded it was
-//     itself held by that person (vouched); a forged entry, appended to a tip
-//     by anyone who can push to the namespace, is reported and never acted on.
+//     itself held by that person (vouched); any other entry is named and
+//     never acted on.
 //   - which withdrawals a later commit lost. An older abcd ignores the
 //     Abcd-Withdrawn trailer, so its renewal, take-over or tombstone rewrites
 //     the tip without them; the walk finds each one still withdrawn on an
@@ -221,8 +221,8 @@ func LostReleaseWithdrawals(root string, now time.Time) []LostWithdrawals {
 
 // vouchedPending is the withdrawals of ws still withdrawn whose By is
 // holder's, split into those the chain vouches for and those it does not
-// (forged): only the first are ever acted on.
-func vouchedPending(links []chainLink, complete bool, ws []Withdrawal, holder string) (ok, forged []Withdrawal) {
+// (unrecorded): only the first are ever acted on.
+func vouchedPending(links []chainLink, complete bool, ws []Withdrawal, holder string) (ok, unrecorded []Withdrawal) {
 	for _, w := range ws {
 		if !w.Pending() || !sameHolder(w.By, holder) {
 			continue
@@ -230,8 +230,8 @@ func vouchedPending(links []chainLink, complete bool, ws []Withdrawal, holder st
 		if vouched(links, complete, w) {
 			ok = append(ok, w)
 		} else {
-			forged = append(forged, w)
+			unrecorded = append(unrecorded, w)
 		}
 	}
-	return ok, forged
+	return ok, unrecorded
 }
