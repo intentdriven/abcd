@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -371,5 +372,87 @@ func TestListCarriesEachRowsAbsolutePath(t *testing.T) {
 		if r.Path == r.Abs {
 			t.Errorf("%s: the display path stays redacted: %q", name, r.Path)
 		}
+	}
+}
+
+// ownedBy stands in for the owner lookup: the worktrees in foreign belong to
+// another account, the owner of those in unread cannot be read, and every
+// other path is looked up as it is.
+func ownedBy(t *testing.T, foreign, unread []string) func() {
+	t.Helper()
+	is := func(set []string, p string) bool {
+		return slices.ContainsFunc(set, func(s string) bool { return fsutil.RealExistingPath(s) == fsutil.RealExistingPath(p) })
+	}
+	return worktree.SwapOwnerForTest(func(p string) (uint32, error) {
+		switch {
+		case is(foreign, p):
+			return uint32(os.Getuid()) + 1, nil
+		case is(unread, p):
+			return 0, errors.New("owner not readable")
+		}
+		return fsutil.OwnerUID(p)
+	})
+}
+
+// spoilGitfile points the worktree at p's .git file at a checkout that is not
+// there, so any git run in it answers that the checkout is gone: a row that
+// names its owner instead was never handed to git.
+func spoilGitfile(t *testing.T, p string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(p, ".git"), []byte("gitdir: "+filepath.Join(t.TempDir(), "gone")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestListRunsNoGitInAWorktreeAnotherAccountOwns: a worktree whose root
+// directory another account owns, in the lane or outside it, or whose owner
+// cannot be read, is reported with its state unknown and no git is run in
+// it; the caller's own worktree beside it is judged. --all reads the same.
+func TestListRunsNoGitInAWorktreeAnotherAccountOwns(t *testing.T) {
+	repo, _ := repoWithCommit(t)
+	addToLane(t, repo, "mine")
+	theirs := addToLane(t, repo, "theirs")
+	unread := addToLane(t, repo, "unread")
+	beside := filepath.Join(filepath.Dir(repo.Root()), "beside")
+	repo.Git("worktree", "add", "-q", "--detach", beside)
+	for _, p := range []string{theirs, unread, beside} {
+		spoilGitfile(t, p)
+	}
+	defer ownedBy(t, []string{theirs, beside}, []string{unread})()
+
+	got, err := worktree.List(repo.Root(), worktree.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{
+		"theirs": "owned by another account; state unknown",
+		"beside": "owned by another account; state unknown",
+		"unread": "its owner could not be read; state unknown",
+	} {
+		if r := rowNamed(t, got.Worktrees, name); r.Reason != want || r.State != "" || r.Merged != "" {
+			t.Errorf("%s: %+v, want reason %q", name, r, want)
+		}
+	}
+	if r := rowNamed(t, got.Worktrees, "mine"); r.Reason != "" || r.State != "clean" {
+		t.Errorf("the caller's own worktree is judged: %+v", r)
+	}
+
+	all, err := worktree.ListAll(worktree.AllOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all.Lanes) != 1 {
+		t.Fatalf("one lane: %+v", all.Lanes)
+	}
+	for name, want := range map[string]string{
+		"theirs": "owned by another account; state unknown",
+		"unread": "its owner could not be read; state unknown",
+	} {
+		if r := rowNamed(t, all.Lanes[0].Worktrees, name); r.Reason != want || r.State != "" {
+			t.Errorf("--all %s: %+v, want reason %q", name, r, want)
+		}
+	}
+	if r := rowNamed(t, all.Lanes[0].Worktrees, "mine"); r.Reason != "" || r.State != "clean" {
+		t.Errorf("--all judges the caller's own worktree: %+v", r)
 	}
 }

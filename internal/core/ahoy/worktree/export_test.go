@@ -22,3 +22,11 @@ func StartForTest(l Lane, name string) (branch, start string, ok bool) {
 	rec, ok := readStart(l, name)
 	return rec.Branch, rec.Start, ok
 }
+
+// SwapOwnerForTest replaces the owner lookup for one test, so a test can stand
+// in for a worktree another account owns, which it cannot make without root.
+func SwapOwnerForTest(fn func(path string) (uint32, error)) (restore func()) {
+	prev := ownerOf
+	ownerOf = fn
+	return func() { ownerOf = prev }
+}

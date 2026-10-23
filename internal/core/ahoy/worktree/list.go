@@ -51,7 +51,14 @@ const (
 	reasonOtherCommon  = "another checkout's worktree: its common directory is not this checkout's"
 	reasonNoGitFile    = "not a worktree: no .git file names a checkout"
 	reasonEmbargo      = "abcd's embargo store (`abcd embargo`), never judged or pruned"
+	reasonForeignOwner = "owned by another account; state unknown"
+	reasonOwnerUnread  = "its owner could not be read; state unknown"
 )
+
+// ownerOf is the uid owning a worktree's root directory: fsutil.OwnerUID, the
+// one ownership lookup. It is a variable only so a test can stand in for a
+// worktree another account owns, which a test cannot make without root.
+var ownerOf = fsutil.OwnerUID
 
 // statusCap bounds one worktree's status listing: a tree whose listing passes
 // it is dirty past doubt, and reads as unjudged rather than truncated.
@@ -227,6 +234,9 @@ func scan(repoRoot string, lane Lane, forge GH, pick func(entry) bool) ([]entry,
 			e.where = WhereStore
 		}
 		if e.reason == "" {
+			e.reason = ownedElsewhere(wt.Path)
+		}
+		if e.reason == "" {
 			e.reason = belongs(wt, own)
 		}
 		es = append(es, e)
@@ -264,6 +274,25 @@ func scan(repoRoot string, lane Lane, forge GH, pick func(entry) bool) ([]entry,
 	}
 	note := judgeAll(repoRoot, lane, unjudged(es), forge)
 	return es, note, nil
+}
+
+// ownedElsewhere is why no git may run in the worktree at p, read before any
+// does: its root directory is another account's, or its owner could not be
+// read, which fails closed. The store judges only the caller's own
+// worktrees, so it leaves another account's unjudged and never runs git
+// there. "" when the caller owns it, or when it is gone, which the proof's
+// own reasons then name.
+func ownedElsewhere(p string) string {
+	uid, err := ownerOf(p)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return ""
+	case err != nil:
+		return reasonOwnerUnread
+	case uid != uint32(os.Getuid()):
+		return reasonForeignOwner
+	}
+	return ""
 }
 
 // belongs is the proof of belonging's third test, and git's own word on a
@@ -487,6 +516,10 @@ func scanLane(lane Lane, forge GH) ([]entry, string, string, error) {
 		default:
 			if _, ok := gitutil.GitfileTarget(p); !ok {
 				e.reason = reasonNoGitFile
+				break
+			}
+			if r := ownedElsewhere(p); r != "" {
+				e.reason = r
 				break
 			}
 			common, err := gitutil.CommonDir(p)

@@ -843,3 +843,52 @@ func TestPreRemoveIsAskedLastBeforeTheRemoval(t *testing.T) {
 		})
 	}
 }
+
+// TestPruneKeepsAWorktreeAnotherAccountOwns: a merged clean worktree whose
+// root directory another account owns, or whose owner cannot be read, is kept
+// by Prune and PruneOne alike with that reason: no git is run in it, nothing
+// of it is archived, and the caller's check is never asked about it.
+func TestPruneKeepsAWorktreeAnotherAccountOwns(t *testing.T) {
+	repo, home := pruneFixture(t)
+	theirs := mergedWorktree(t, repo, "theirs")
+	unread := mergedWorktree(t, repo, "unread")
+	for _, p := range []string{theirs, unread} {
+		if err := os.MkdirAll(filepath.Join(p, ".abcd", ".work.local"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(p, ".abcd", ".work.local", "NEXT.md"), []byte("next\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer ownedBy(t, []string{theirs}, []string{unread})()
+	defer worktree.SwapRemoveForTest(func(_, path string) error {
+		t.Fatalf("a removal was asked for %s", path)
+		return nil
+	})()
+	var asked []string
+	opts := worktree.PruneOptions{PreRemove: keepHook("kept by the check", &asked)}
+	want := map[string]string{
+		"theirs": "owned by another account; state unknown",
+		"unread": "its owner could not be read; state unknown",
+	}
+	all := prune(t, repo, opts)
+	for name, reason := range want {
+		if r := pruneRow(t, all, name); r.Outcome != "kept" || r.Reason != reason || r.Archive != "" {
+			t.Errorf("Prune %s: %+v, want kept, %q", name, r, reason)
+		}
+		if r := pruneOne(t, repo, name, opts).Rows[0]; r.Outcome != "kept" || r.Reason != reason || r.Archive != "" {
+			t.Errorf("PruneOne %s: %+v, want kept, %q", name, r, reason)
+		}
+	}
+	for _, p := range []string{theirs, unread} {
+		if !exists(filepath.Join(p, ".abcd", ".work.local", "NEXT.md")) || !listed(t, repo, p) {
+			t.Fatalf("%s stands with its tier", p)
+		}
+	}
+	if len(asked) != 0 {
+		t.Fatalf("the caller's check is never asked: %v", asked)
+	}
+	if n := notesEntries(t, repo, home); len(n) != 0 {
+		t.Fatalf("nothing is archived: %v", n)
+	}
+}
