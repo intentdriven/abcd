@@ -261,3 +261,53 @@ func TestBoardRowShowsItsTarget(t *testing.T) {
 func facilitatorBlock(b *statusblock.Block) string {
 	return strings.Join(board.Render(board.Input{Status: b}, board.Frame{View: board.Facilitator, Width: 1000}), "\n") + "\n"
 }
+
+// TestBoardSaysWhoMergesAndWhere is spc-2610161609350616 step 2 at the bare
+// board: in a managed checkout the text names who merges and the layer that
+// said so, and --json carries the resolved facilitator.mode with its layer and
+// origin.
+func TestBoardSaysWhoMergesAndWhere(t *testing.T) {
+	root := managedCheckout(t)
+	if text := string(runCLI(t, "--view", "facilitator")); !strings.Contains(text, "  merges:     a person (facilitator.mode human, from the bundled default)") {
+		t.Fatalf("with no layer the board does not name the bundled person:\n%s", text)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte(`{"facilitator":{"mode":"auto"}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if text := string(runCLI(t, "--view", "facilitator")); !strings.Contains(text, "  merges:     abcd (facilitator.mode auto, from .abcd/config.json)") {
+		t.Fatalf("the repository's auto is not named with its file:\n%s", text)
+	}
+	var got struct {
+		Facilitator *struct {
+			Key, Mode, Layer, Origin, Error string
+		} `json:"facilitator"`
+	}
+	if err := json.Unmarshal(runCLI(t, "--json"), &got); err != nil {
+		t.Fatal(err)
+	}
+	if f := got.Facilitator; f == nil || f.Key != "facilitator.mode" || f.Mode != "auto" || f.Layer != "repo" || f.Origin != ".abcd/config.json" || f.Error != "" {
+		t.Fatalf("--json facilitator = %+v; want facilitator.mode auto from the repo layer's .abcd/config.json", got.Facilitator)
+	}
+}
+
+// TestBoardSaysAnUnreadableModeArmsNothing: a value the reader refuses is drawn
+// as unreadable, masked, and carried in --json as the error, never as a mode.
+func TestBoardSaysAnUnreadableModeArmsNothing(t *testing.T) {
+	root := managedCheckout(t)
+	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte("{\"facilitator\":{\"mode\":\"\\u001b[31mauto\"}}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	text := string(runCLI(t, "--view", "facilitator"))
+	if !strings.Contains(text, "  merges:     unreadable, so nothing is armed (") || strings.ContainsRune(text, '\x1b') {
+		t.Fatalf("an unreadable mode is not drawn as unreadable and masked:\n%q", text)
+	}
+	var got struct {
+		Facilitator *struct{ Mode, Error string } `json:"facilitator"`
+	}
+	if err := json.Unmarshal(runCLI(t, "--json"), &got); err != nil {
+		t.Fatal(err)
+	}
+	if f := got.Facilitator; f == nil || f.Mode != "" || f.Error == "" {
+		t.Fatalf("--json facilitator = %+v; want an error and no mode", got.Facilitator)
+	}
+}

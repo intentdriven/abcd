@@ -6,6 +6,8 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/board"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/report"
 	"github.com/intentdriven/abcd/internal/core/reviews"
@@ -46,6 +48,10 @@ type boardOutput struct {
 	// is flagged (itd-28); omitted when the tree holds none. The text render
 	// lists the dated reviews and folds the release receipts into one line.
 	Reviews *reviews.Board `json:"reviews,omitempty"`
+	// Facilitator is facilitator.mode as the merge gate reads it, with the
+	// layer and origin that set it, or the read's refusal as Error
+	// (spc-2610161609350616 step 2); present in a managed checkout only.
+	Facilitator *boardFacilitator `json:"facilitator,omitempty"`
 	// Status is the Now / Next / Later block (itd-2609212103568351), present
 	// in a checkout abcd manages and omitted elsewhere.
 	Status *statusblock.Block `json:"status,omitempty"`
@@ -70,6 +76,38 @@ type boardStatusline struct {
 //
 // The render's notes and any failure go to stderr under the board's own
 // prefix, and the line is omitted rather than invented on a failure.
+// boardFacilitator is the board's facilitator.mode: the resolved reading, or
+// the refusal, masked, as Error with no mode.
+type boardFacilitator struct {
+	landing.Facilitator
+	Error string `json:"error,omitempty"`
+}
+
+// readBoardFacilitator reads facilitator.mode for a managed checkout, nil
+// elsewhere. The reader's notes go to stderr masked, as the presence line's do.
+func readBoardFacilitator(cwd string, stderr io.Writer) *boardFacilitator {
+	root, err := gitutil.CheckoutRoot(cwd, statuslineStore)
+	if err != nil || !ahoy.Managed(root) {
+		return nil
+	}
+	f, notes, err := landing.ReadFacilitator(cwd)
+	for _, n := range notes {
+		fmt.Fprintf(stderr, "abcd: %s\n", termsafe.Sanitize(n))
+	}
+	if err != nil {
+		return &boardFacilitator{Facilitator: landing.Facilitator{Key: landing.KeyFacilitatorMode}, Error: termsafe.Sanitize(err.Error())}
+	}
+	return &boardFacilitator{Facilitator: f}
+}
+
+// merges is the reading as the board draws it; nil draws no line.
+func (b *boardFacilitator) merges() *board.Merges {
+	if b == nil {
+		return nil
+	}
+	return &board.Merges{Mode: b.Mode, Layer: b.Layer, Origin: b.Origin, Refused: b.Error}
+}
+
 func boardPresence(cwd string, stderr io.Writer) *boardStatusline {
 	root, err := gitutil.CheckoutRoot(cwd, statuslineStore)
 	if err != nil || !ahoy.Managed(root) {

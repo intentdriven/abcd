@@ -18,6 +18,22 @@ Run:
 
 Paste its output to the user unchanged, in one fenced block: add nothing inside the fence, and retell none of it outside the fence. The output is the view for the product thinker, a few plain lines: what is being built, the next three things to build, and how many more are ready or parked. It is drawn for a person to read as it stands.
 
+## Who merges
+
+In a repository abcd manages the board also says who merges a ready pull
+request: the repository's `facilitator.mode`, as the merge gate reads it, and
+the layer that set it. The product view draws one line above the version
+(`merges: a person (the bundled default)`, or `merges: abcd (set in
+.abcd/config.json)`); the facilitator view draws it as a `merges:` row after the
+status block, naming the key and the mode as configured (`merges: abcd
+(facilitator.mode auto, from .abcd/config.json)`). `--json` carries it as
+`facilitator` (`key`, `mode`, `layer`, `origin`). A person from any layer wins,
+so a `human` in `~/.abcd.noindex/config.json` reads as a person whatever the
+repository says. When the mode cannot be read, the line says it is unreadable
+and that nothing is armed, and `--json` carries the refusal as `error` with no
+`mode`. This is not `/abcd:mode`'s `facilitator` state, which says whose answer
+the loop is waiting on right now; `facilitator.mode` declares who merges.
+
 ## The version
 
 The board's last line is the installed abcd version, in both views and both

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/core/statusline"
@@ -328,5 +329,59 @@ func TestFacilitatorRowNamesAnotherCopysReservation(t *testing.T) {
 	}
 	if strings.Contains(got, "\x1b") {
 		t.Errorf("a reservation's text reached the terminal unmasked:\n%q", got)
+	}
+}
+
+// TestTheBoardSaysWhoMerges pins the line naming facilitator.mode and the layer
+// that set it (spc-2610161609350616 step 2): worded by outcome, never as a bare
+// mode, so it does not read as abcd mode's waiting-on state. The product view
+// draws it as a line of its own above the version; the facilitator view as a
+// labelled row after the status block, so it wraps as every row does.
+func TestTheBoardSaysWhoMerges(t *testing.T) {
+	person := &Merges{Mode: "human", Layer: "bundled", Origin: "bundled"}
+	repoAuto := &Merges{Mode: "auto", Layer: "repo", Origin: ".abcd/config.json"}
+	machine := &Merges{Mode: "human", Layer: "machine", Origin: abcdhome.Display("config.json")}
+	for _, c := range []struct {
+		name string
+		m    *Merges
+		view View
+		form Form
+		want string
+	}{
+		{"bundled, facilitator view", person, Facilitator, Text, "  merges:     a person (facilitator.mode human, from the bundled default)"},
+		{"repo auto, facilitator view", repoAuto, Facilitator, Text, "  merges:     abcd (facilitator.mode auto, from .abcd/config.json)"},
+		{"machine human, facilitator view", machine, Facilitator, Text, "  merges:     a person (facilitator.mode human, from " + abcdhome.Display("config.json") + ")"},
+		{"bundled, product view", person, Product, Text, "merges: a person (the bundled default)"},
+		{"repo auto, product view", repoAuto, Product, Text, "merges: abcd (set in .abcd/config.json)"},
+		{"repo auto, markdown", repoAuto, Product, Markdown, "- merges: abcd (set in .abcd/config.json)"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			lines := Render(Input{Status: fixture(2, 0), Merges: c.m, Version: ver}, Frame{View: c.view, Form: c.form, Width: 120, Rung: Mono})
+			if n := len(lines); n < 2 || lines[n-2] != c.want || lines[n-1] != versionLine(ver, Frame{Form: c.form}) {
+				t.Fatalf("last two lines = %q; want %q, then the version line", lines[max(0, len(lines)-2):], c.want)
+			}
+		})
+	}
+	t.Run("no line without a reading", func(t *testing.T) {
+		for _, l := range Render(Input{Status: fixture(2, 0), Version: ver}, Frame{View: Facilitator, Form: Text, Width: 120, Rung: Mono}) {
+			if strings.Contains(l, "merges:") {
+				t.Fatalf("a board handed no reading drew %q", l)
+			}
+		}
+	})
+}
+
+// TestAnUnreadableModeSaysNothingIsArmedAndIsMasked: a refused read is drawn
+// as such, masked like every other line, since the refusal can quote a key a
+// configuration file wrote (the layered reader returns its raw bytes).
+func TestAnUnreadableModeSaysNothingIsArmedAndIsMasked(t *testing.T) {
+	m := &Merges{Refused: abcdhome.Display("config.json") + " (machine layer): facilitator: \"\x1b[31mmode\" is not a facilitator mode"}
+	lines := Render(Input{Status: fixture(2, 0), Merges: m, Version: ver}, Frame{View: Facilitator, Form: Text, Width: 200, Rung: Mono})
+	got := lines[len(lines)-2]
+	if strings.ContainsRune(got, '\x1b') {
+		t.Fatalf("the refusal reached the board raw: %q", got)
+	}
+	if !strings.HasPrefix(got, "  merges:     unreadable, so nothing is armed (") {
+		t.Fatalf("line = %q; want it to say the mode is unreadable and nothing is armed", got)
 	}
 }

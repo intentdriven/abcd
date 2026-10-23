@@ -184,6 +184,17 @@ func checkMode(m string) error {
 	return nil
 }
 
+// ReadFacilitator resolves facilitator.mode for the working directory cwd,
+// as the merge gate reads it, with the notes RootsFor wrote on the way (a
+// refused home among them) for the caller to print. The error is the reader's
+// raw text: a front door masks it before printing it, since it can quote a key
+// a configuration file wrote.
+func ReadFacilitator(cwd string) (Facilitator, []string, error) {
+	r, notes := layered.RootsFor(cwd)
+	f, err := readMode(r)
+	return f, notes, err
+}
+
 // readMode resolves facilitator.mode through the layered configuration
 // reader, which claims the facilitator namespace with its one key mode, so a
 // misspelt key is refused naming its file.
