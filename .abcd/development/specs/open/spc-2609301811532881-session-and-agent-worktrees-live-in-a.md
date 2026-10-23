@@ -446,30 +446,37 @@ _None open._ The board's "reclaimable" is the peers scan's judgement, not prune'
 
 1. The store package and the lane primitive
    - criteria: 2, 3, 5
+   - needs: none
    - packages: internal/core/ahoy/worktree, internal/core/implement/loop, internal/core/peers, internal/gitutil
    - tests: the level maker refuses a symlinked, foreign-owned or group-writable level and makes nothing beneath it; `ParseWorktreeList` carries locked and prunable in the `-z` and newline forms; `gitutil.CommonDir` refuses a multi-line answer; the loop's existing lane tests pass unchanged and a new one proves the lane goes through the package
 2. `ahoy worktree add`
    - criteria: 1, 4, 19
+   - needs: 1
    - packages: internal/core/ahoy/worktree, internal/surface/cli
    - tests: add makes the worktree in the lane, prints its path, leaves the checkout's parent unchanged and sets `0o700`; `../x`, `-x`, a taken name, a name a sibling store holds in the lane (`embargo`, read from `internal/core/embargo/storepath.Name`, never copied; iss-2610230014564359) and a repository with no commits refuse and write nothing; `--branch` checks out an existing branch and makes none
 3. `list`, `list --all` and the merged judgement
    - criteria: 6, 7, 18
+   - needs: 1
    - packages: internal/core/ahoy/worktree, internal/core/ahoy, internal/surface/cli
    - tests: three rows for a lane of two plus a sibling, the sibling outside; registered and unregistered lanes under their labels, a stale registry path changing nothing, a moved checkout's lane as "checkout not found", an abbreviated directory as "not a lane" naming the full key; the same lane from a moved checkout; the merged judgement over ancestry, a never-committed branch, a rebase merge and a squash merge with the forge unreachable, and a forge answer whose head is not the tip; the embargo store's directory listed as abcd's own sibling store, never as a lane or a candidate (iss-2610230014564359); a worktree's lock or prune reason carrying control bytes rendered escaped, in the text and JSON forms alike (from step 1's review)
 4. `prune` for merged worktrees, with the notes archive
    - criteria: 8, 9, 10, 12, 13, 14, 15, 16
+   - needs: 3
    - packages: internal/core/ahoy/worktree, internal/core/history, internal/core/implement/loop, internal/surface/cli
    - tests: a merged clean worktree removed with its branch standing; a squash-merged one reclaimed with no forge; the tier archived redacted beside its manifest and a failed archive keeping the worktree; a store refusal exits 2; dirty, unmerged and outside kept with exit 1 and exit 0 once one is reclaimed; a directory failing the proof untouched; locked, own-cwd and loop-held kept; the embargo store's directory never judged, archived or removed (iss-2610230014564359); dry-run and `--json` matching a real run's rows; `history.Capture` still passing its suite through the lifted pass
 5. Quiet candidates
    - criteria: 11
+   - needs: 4
    - packages: internal/core/ahoy/worktree, internal/surface/cli
    - tests: a 15-day-quiet unmerged worktree listed with its dossier, dirty state first, and left; `--yes <name>` removes that one only; a dirty named candidate kept; `worktrees.quiet_days` read through the layered resolver and a bad value refused; a `--yes` name not in the lane refusing the run
 6. The board line
    - criteria: 17
+   - needs: 1, 4
    - packages: internal/core/peers, internal/surface/cli
    - tests: one line with the held and reclaimable counts from one scan; absent on an empty lane; absent from the site's rendered status block
 7. The surfaces
    - criteria: 20, 21
    - brief: when the store ships, `02-constraints/03-invariants.md` gains the invariant "the store deletes only what passes its proof of belonging" (adr-2609091248200336), held by the prune refusal tests; it is not added before the code that holds it exists.
+   - needs: 2, 5, 6
    - packages: commands/, AGENTS.md, .abcd/development/brief/05-internals, .abcd/development/brief/04-surfaces, internal/surface/cli, internal/README.md (the package map gains `internal/core/ahoy/worktree`), and `05-internals/03-configuration.md`'s store section drops the deleted `WorktreeStoreRel` (both found by step 1's review)
    - tests: the plugin page carries the host-run step; `AGENTS.md` names the verb and no sibling form; the surface snapshot and command reference regenerated; docs-lint and record-lint clean
