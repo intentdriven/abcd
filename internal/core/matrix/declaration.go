@@ -120,10 +120,18 @@ type Task struct {
 // parsed where the run starts (spec step 2), against the runner rung
 // iss-2610161801358637 adds; here it is bounded text. Settings are the
 // vendor's recommended sampling settings, pinned for the cell (decision 5).
+//
+// CostPerCopy is the person's own expected cost of one copy on a metered cell
+// (decision 36): the plan reckons the expected cost from it, and never fetches
+// a price before consent (decision 12). MinutesPerCopy is the person's own
+// estimate of one copy's time (decision 35): with one on every cell the plan
+// shows a bound before the pilot; otherwise the time is known after it.
 type Cell struct {
-	ID       string          `json:"id"`
-	Route    string          `json:"route"`
-	Settings oracle.Settings `json:"settings,omitempty"`
+	ID             string          `json:"id"`
+	Route          string          `json:"route"`
+	Settings       oracle.Settings `json:"settings,omitempty"`
+	CostPerCopy    *Money          `json:"cost_per_copy,omitempty"`
+	MinutesPerCopy *float64        `json:"minutes_per_copy,omitempty"`
 }
 
 // Repeats is the pilot each cell runs first and the most it may be sized up to.
@@ -298,15 +306,26 @@ func (c roleCell) validate() error {
 	if _, err := oracle.CheckSettings(c.Settings); err != nil {
 		return fmt.Errorf("settings: %w", err)
 	}
+	if c.CostPerCopy != nil {
+		if err := c.CostPerCopy.validate(); err != nil {
+			return fmt.Errorf("cost_per_copy: %w", err)
+		}
+	}
+	if m := c.MinutesPerCopy; m != nil && (!(*m > 0) || *m > maxMinutesPerCopy || math.IsInf(*m, 0)) {
+		return fmt.Errorf("minutes_per_copy is %v; it is a positive figure of at most %d", *m, maxMinutesPerCopy)
+	}
 	return nil
 }
 
+// maxMinutesPerCopy bounds one copy's declared time: a week.
+const maxMinutesPerCopy = 7 * 24 * 60
+
 func (m Money) validate() error {
 	if m.Unit != "usd" {
-		return fmt.Errorf("unit is %q; a cap is in usd", clip(m.Unit))
+		return fmt.Errorf("unit is %q; money here is in usd", clip(m.Unit))
 	}
 	if !(m.Amount > 0) || math.IsInf(m.Amount, 0) {
-		return fmt.Errorf("amount is %v; a cap is a positive figure", m.Amount)
+		return fmt.Errorf("amount is %v; it is a positive figure", m.Amount)
 	}
 	return nil
 }
