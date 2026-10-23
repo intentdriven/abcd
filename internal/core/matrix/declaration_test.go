@@ -191,3 +191,20 @@ func TestADeclarationBoundsItsTasksAndCells(t *testing.T) {
 		}
 	}
 }
+
+// A cell's settings are held to the oracle's own settings check, the one a
+// routing row and a --route pass: a parameter-shaped name and a scalar value.
+func TestACellSettingTheOracleRefusesIsRefused(t *testing.T) {
+	for name, settings := range map[string]string{
+		"object value":     `{"temperature": {"x": 1}}`,
+		"array value":      `{"temperature": [0.6]}`,
+		"null value":       `{"temperature": null}`,
+		"not a param name": `{"Top-P": 0.9}`,
+		"escape in value":  `{"stop": "end\u001b[2J"}`,
+	} {
+		doc := strings.Replace(goodDeclaration, `"settings": {"temperature": 0.6}`, `"settings": `+settings, 1)
+		if _, err := parseDeclaration([]byte(doc)); err == nil {
+			t.Errorf("%s: the declaration was admitted", name)
+		}
+	}
+}

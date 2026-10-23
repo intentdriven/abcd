@@ -7,6 +7,7 @@ package matrix
 // decision 14), never a parallel shape, beside the copy's own outcome.
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -280,19 +281,19 @@ func line(field, s string, limit int) error {
 	return nil
 }
 
-// settingsBounded holds settings as a record carries them: at most
-// oracle.MaxSettings, each named by a recorded name, each value at most
-// oracle.MaxSettingBytes of JSON.
+// settingsBounded holds settings as a record carries them to the oracle's own
+// check (oracle.CheckSettings: at most oracle.MaxSettings, each a
+// parameter-shaped name and a bounded, plain JSON scalar), and each value to
+// its bytes as sent, with no space around it, so the record carries a setting
+// exactly as the oracle would.
 func settingsBounded(field string, s oracle.Settings) error {
-	if len(s) > oracle.MaxSettings {
-		return fmt.Errorf("%s names %d settings; at most %d", field, len(s), oracle.MaxSettings)
+	checked, err := oracle.CheckSettings(s)
+	if err != nil {
+		return fmt.Errorf("%s: %w", field, err)
 	}
 	for k, v := range s {
-		if err := text(field, k); err != nil {
-			return err
-		}
-		if len(v) > oracle.MaxSettingBytes || !json.Valid(v) {
-			return fmt.Errorf("%s: the setting %s is not JSON of at most %d bytes", field, k, oracle.MaxSettingBytes)
+		if !bytes.Equal(checked[k], v) {
+			return fmt.Errorf("%s: the setting %s carries space around its value", field, k)
 		}
 	}
 	return nil

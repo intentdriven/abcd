@@ -292,13 +292,11 @@ func (c roleCell) validate() error {
 	if len(c.Route) > oracle.MaxRouteBytes || strings.IndexFunc(c.Route, notPrintable) >= 0 || termsafe.Sanitize(c.Route) != c.Route {
 		return fmt.Errorf("route is longer than %d bytes or carries a space or a control, bidirectional or zero-width character", oracle.MaxRouteBytes)
 	}
-	if len(c.Settings) > oracle.MaxSettings {
-		return fmt.Errorf("settings names %d settings; at most %d", len(c.Settings), oracle.MaxSettings)
-	}
-	for k, v := range c.Settings {
-		if k == "" || len(v) > oracle.MaxSettingBytes {
-			return fmt.Errorf("the setting %q is unnamed or longer than %d bytes", clip(k), oracle.MaxSettingBytes)
-		}
+	// The oracle's own check, the one a routing row and a --route pass: at
+	// most oracle.MaxSettings, each a parameter-shaped name and a bounded,
+	// plain JSON scalar.
+	if _, err := oracle.CheckSettings(c.Settings); err != nil {
+		return fmt.Errorf("settings: %w", err)
 	}
 	return nil
 }

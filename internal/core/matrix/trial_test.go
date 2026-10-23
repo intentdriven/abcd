@@ -232,3 +232,22 @@ func TestATrialHoldsItsCountsAndTextToBounds(t *testing.T) {
 		})
 	}
 }
+
+// A trial's settings, as sent, are held to the oracle's settings check.
+func TestATrialSettingTheOracleRefusesIsRefused(t *testing.T) {
+	for name, v := range map[string]oracle.Settings{
+		"object value":     {"temperature": json.RawMessage(`{"x":1}`)},
+		"not a param name": {"Top-P": json.RawMessage(`0.9`)},
+	} {
+		tr := fullTrial()
+		tr.Settings = v
+		if tr.validate() == nil {
+			t.Errorf("%s: validate admitted it", name)
+		}
+		tr = fullTrial()
+		tr.Calls[0].SettingsSent = v
+		if tr.validate() == nil {
+			t.Errorf("%s in a call's settings: validate admitted it", name)
+		}
+	}
+}
