@@ -672,6 +672,9 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 	reader := readerHolder(root, o)
 	var lapsed []Reservation
 	for _, r := range snap.Reservations {
+		if reader != "" {
+			r, _, _ = asCut(root, r, now, true)
+		}
 		if r.Copy != CopyThis || reader == "" || !sameHolder(r.Holder, reader) || !stillBeingCut(r) {
 			continue
 		}

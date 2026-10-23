@@ -40,6 +40,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -1028,26 +1029,113 @@ func stillBeingCut(r Reservation) bool {
 	return false
 }
 
+// asCut is r, a reservation as the view lists it, as the release hold reads
+// whether it has ended (dcn-2610230328220298), by the rule settleTip holds a
+// tombstone to: a release tombstone ends it only when the forge's record of
+// pushes says the holder of the reservation it was written over pushed it
+// (endedBy), or when its tag is on origin. Over one that ends nothing, cut is
+// that reservation beneath, judged at now: still being cut (stillBeingCut)
+// while it is live or holds a withdrawal it has not settled, and notEnded is
+// true. why, set, is what kept the record (or the branch, or the tags) from
+// settling it, which is read as not ended too; cut is then r itself when the
+// reservation beneath does not read. A tombstone with no reservation beneath
+// it, or over one holding no withdrawal it has not settled, ends it: a second
+// release can take nothing from a cut that holds nothing withdrawn or
+// admitted, and the record is not asked. Anything else is r as listed.
+// reading is true for a caller that only reads (peers, the launch reading),
+// which may take the end from a verdict kept for the tip; the second-release
+// refusal asks the record every time.
+func asCut(root string, r Reservation, now time.Time, reading bool) (cut Reservation, notEnded bool, why string) {
+	if !isRelease(r.Record) || r.State != StateReleased || r.ReleasedBy != ReleasedByTombstone {
+		return r, false, ""
+	}
+	tagged, err := taggedOnOrigin(root, r.Record)
+	if err != nil {
+		return r, true, "whether " + releaseTag(r.Record) + " is on " + Remote + " could not be read (" + redacted(err) + ")"
+	}
+	if tagged {
+		return r, false, ""
+	}
+	tree, err := emptyTree(root)
+	if err != nil {
+		return r, true, "the history of its branch could not be read (" + redacted(err) + ")"
+	}
+	links, complete, err := releaseChain(root, r.Record, r.Commit, tree)
+	if err != nil {
+		return r, true, "the history of its branch could not be read (" + redacted(err) + ")"
+	}
+	i := 0
+	for i < len(links) && links[i].readable && links[i].m.released() {
+		i++
+	}
+	switch {
+	case i == len(links) && complete:
+		return r, false, ""
+	case i == len(links) || !links[i].readable:
+		return r, true, "the reservation its tombstone ended is not within the commits read, or does not read"
+	}
+	b := links[i].m
+	v := lease.Judge(lease.Stamp{ClaimedAt: b.ClaimedAt, ExpiresAt: b.ExpiresAt}, lease.Default, now)
+	cut = r
+	cut.Holder, cut.Footprint, cut.ClaimedAt, cut.EffectiveExpiry = b.Holder, b.Footprint, b.ClaimedAt, v.EffectiveExpiry
+	cut.Withdrawn, cut.Commit, cut.Stage = b.Withdrawn, links[i].commit, b.Stage
+	cut.ReleasedBy, cut.ReleasedAt, cut.HandedBack, cut.Copy = "", time.Time{}, "", ""
+	if own := ownCopyKey(root); own != "" && b.Copy == own {
+		cut.Copy = CopyThis
+	}
+	cut.State = StateExpired
+	if v.Live {
+		cut.State = StateLive
+	}
+	if !stillBeingCut(cut) || !slices.ContainsFunc(cut.Withdrawn, Withdrawal.unsettled) {
+		return r, false, ""
+	}
+	k := &asker{c: pushCheck{root, r.Record, []string{r.Commit}}, links: links, reading: reading}
+	defer k.save()
+	switch verdict, _, why := k.endedBy(""); verdict {
+	case pushedByThem:
+		return r, false, ""
+	case pushNotVerified:
+		return cut, true, why
+	}
+	return cut, true, ""
+}
+
 // otherLiveRelease refuses, with a back-off, a release reserved anew while
-// another release is still being cut (stillBeingCut), as last fetched: one
-// release is cut at a time, and a second would withdraw the merges the first
-// admitted.
+// another release is still being cut (stillBeingCut), as last fetched and
+// read as the hold reads an end (asCut): one release is cut at a time, and a
+// second would withdraw the merges the first admitted. A tombstone whose end
+// the forge's record of pushes does not settle is read as ending nothing, and
+// the back-off says why. A view of the reservations that does not read
+// refuses: without it no other release can be ruled out.
 func otherLiveRelease(root, id string, now time.Time) error {
 	snap, err := viewOf(root, now, true, isRelease)
 	if err != nil {
-		return nil
+		return refuse("could not tell whether another release is being cut: %s; %s", err.Error(), nothingPushed)
 	}
 	for _, r := range snap.Reservations {
-		if r.Record == id || !stillBeingCut(r) {
+		if r.Record == id {
 			continue
 		}
-		if r.State == StateLive {
-			return backOff("%s is being cut by %s until %s, and one release is cut at a time: a second reservation would withdraw the merges the first admitted; "+
-				"wait for it to end (its tag on %s, or its holder's --release); %s", r.Record, r.Holder, stamp(r.EffectiveExpiry), Remote, nothingPushed)
+		r, notEnded, why := asCut(root, r, now, false)
+		if why != "" {
+			return backOff("%s's tip is a tombstone, and whether it ends the release is not settled: %s; one release is cut at a time, so it is read as still being cut: "+
+				"wait for it to end (its tag on %s, or its holder's --release); %s", r.Record, why, Remote, nothingPushed)
 		}
-		return backOff("%s is still being cut by %s: its lease lapsed at %s, but it still holds merges withdrawn or admitted, and one release is cut at a time; "+
+		if !stillBeingCut(r) {
+			continue
+		}
+		over := ""
+		if notEnded {
+			over = fmt.Sprintf(" (its tip is a tombstone %s did not push, as the forge's record of pushes says, which ends nothing)", r.Holder)
+		}
+		if r.State == StateLive {
+			return backOff("%s is being cut by %s until %s%s, and one release is cut at a time: a second reservation would withdraw the merges the first admitted; "+
+				"wait for it to end (its tag on %s, or its holder's --release); %s", r.Record, r.Holder, stamp(r.EffectiveExpiry), over, Remote, nothingPushed)
+		}
+		return backOff("%s is still being cut by %s: its lease lapsed at %s%s, but it still holds merges withdrawn or admitted, and one release is cut at a time; "+
 			"it ends when %s renews it (abcd reserve %s) and finishes the cut, or ends it (abcd reserve %s --release); %s",
-			r.Record, r.Holder, stamp(r.EffectiveExpiry), r.Holder, r.Record, r.Record, nothingPushed)
+			r.Record, r.Holder, stamp(r.EffectiveExpiry), over, r.Holder, r.Record, r.Record, nothingPushed)
 	}
 	return nil
 }
@@ -1164,7 +1252,16 @@ func (s Snapshot) ReleaseWithdrawals(root, reader string, now time.Time) []Relea
 		if !isRelease(r.Record) || len(r.Withdrawn) == 0 || r.State == StateUnreadable {
 			continue
 		}
-		rw := ReleaseWithdrawals{Subject: r.Record, Holder: r.Holder, Ended: r.State == StateReleased}
+		cut, notEnded, why := asCut(root, r, now, true)
+		r = cut
+		rw := ReleaseWithdrawals{Subject: r.Record, Holder: r.Holder, Ended: r.State == StateReleased && !notEnded}
+		if notEnded {
+			if why == "" {
+				rw.NotEnded = r.Holder
+			} else {
+				rw.UnverifiedWhy = why
+			}
+		}
 		var mine []Withdrawal
 		for _, w := range r.Withdrawn {
 			switch {
@@ -1183,8 +1280,8 @@ func (s Snapshot) ReleaseWithdrawals(root, reader string, now time.Time) []Relea
 			}
 		}
 		if len(mine) > 0 {
-			v, notEnded := vouchedForReader(root, r, reader, mine)
-			rw.Due, rw.Unrecorded, rw.AppPushed, rw.Unverified, rw.UnverifiedWhy, rw.NotEnded = v.Due, v.Unrecorded, v.AppPushed, v.Unverified, v.Why, notEnded
+			v, ended := vouchedForReader(root, r, reader, mine)
+			rw.Due, rw.Unrecorded, rw.AppPushed, rw.Unverified, rw.UnverifiedWhy, rw.NotEnded = v.Due, v.Unrecorded, v.AppPushed, v.Unverified, v.Why, ended
 		}
 		if r.State == StateExpired && stillBeingCut(r) {
 			rw.Lapsed, rw.LapsedAt = true, r.EffectiveExpiry
@@ -1210,7 +1307,7 @@ func vouchedForReader(root string, r Reservation, reader string, ws []Withdrawal
 	if err != nil {
 		return vouching{Unrecorded: ws}, ""
 	}
-	k := &asker{c: pushCheck{root, r.Record, []string{r.Commit}}, links: links}
+	k := &asker{c: pushCheck{root, r.Record, []string{r.Commit}}, links: links, reading: true}
 	defer k.save()
 	v = k.vouch(complete, ws, reader, Withdrawal.Pending)
 	if len(v.Due) == 0 {

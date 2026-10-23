@@ -232,6 +232,10 @@ type asker struct {
 	links []chainLink
 	rec   *pushRecord
 	known *verdicts
+	// reading is true for an asker that only reads (peers, the launch
+	// reading): its endedBy may take an end from a verdict kept for the
+	// tip. An act's never does, since an end re-arms.
+	reading bool
 }
 
 func (k *asker) kept() *verdicts {
@@ -377,12 +381,15 @@ func (k *asker) vouch(complete bool, ws []Withdrawal, holder string, keep func(W
 	return v
 }
 
-// endedBy is whether the tombstones at the top of the chain end the release:
-// the lowest of them, written over the reservation it ended, ends it only
-// when it is that reservation's holder's and the forge's record says the
-// holder pushed it, or when own, the person whose act this is, is that
-// holder (their own --release over it). It returns the verdict, the holder,
-// and why it is not verified when it is not. A tip that is no tombstone ends
+// endedBy is whether the tombstones at the top of the chain end the release
+// written beneath them: one of them ends it when it names that reservation's
+// holder and the forge's record says the holder pushed it, or when own, the
+// person whose act this is, is that holder (their own --release over it). A
+// tombstone another login pushed over the reservation ends nothing, and
+// neither does one stacked on it, unless the holder pushed that one. It
+// returns the verdict (pushedByThem when one ends it; pushNotVerified, with
+// why, when none does and the record does not settle one of the holder's;
+// pushedByOther otherwise) and the holder. A tip that is no tombstone ends
 // nothing by this reading.
 func (k *asker) endedBy(own string) (verdict pushVerdict, holder, why string) {
 	i := 0
@@ -396,16 +403,29 @@ func (k *asker) endedBy(own string) (verdict pushVerdict, holder, why string) {
 		return pushNotVerified, "", "the reservation its tombstone ended is not within the commits read, or does not read"
 	}
 	holder = k.links[i].m.Holder
-	tomb := k.links[i-1]
-	switch {
-	case own != "" && sameHolder(own, holder):
+	if own != "" && sameHolder(own, holder) {
 		return pushedByThem, holder, ""
-	case !sameHolder(tomb.m.Holder, holder):
-		return pushedByOther, holder, ""
 	}
-	verdict = k.verdict(tomb.commit, holder)
-	if verdict == pushNotVerified {
-		why = k.record().reason()
+	verdict = pushedByOther
+	for j := i - 1; j >= 0; j-- {
+		tomb := k.links[j]
+		if !sameHolder(tomb.m.Holder, holder) {
+			continue
+		}
+		// An end an act reads re-arms, so only a reading takes it from a
+		// verdict kept for the tip; the record's word that the holder pushed
+		// the commit is kept either way, the same fact a change of state by
+		// them at that commit is kept as (change).
+		if k.reading && k.kept().standing(tomb.commit, holder) {
+			return pushedByThem, holder, ""
+		}
+		switch k.verdict(tomb.commit, holder) {
+		case pushedByThem:
+			k.kept().stand(tomb.commit, holder)
+			return pushedByThem, holder, ""
+		case pushNotVerified:
+			verdict, why = pushNotVerified, k.record().reason()
+		}
 	}
 	return verdict, holder, why
 }
@@ -424,10 +444,12 @@ const maxVerdictsBytes = 16 << 10
 type verdicts struct {
 	root, id, tip string
 	by            map[string]pushVerdict
-	// stands is each change of state (by the commit that made it and the
-	// person) the record says its withdrawer pushed: read only for a change,
-	// where it leaves the withdrawal as the tip records it, never for a first
-	// record, where a verdict acts.
+	// stands is each commit the record says the person pushed, kept for a
+	// change of state (by the commit that made it and its withdrawer) or a
+	// tombstone (by its holder): read for a change, where it leaves the
+	// withdrawal as the tip records it, and for an end only by a reading
+	// (asker.reading), never for a first record or an act's end, where a
+	// verdict acts.
 	stands  map[string]bool
 	changed bool
 }

@@ -132,7 +132,13 @@ still being cut backs off (exit 3), naming the release and its holder. A
 release is still being cut while its reservation is live, and also once its
 lease has lapsed while it still holds pull requests withdrawn or admitted; the
 back-off then says how it ends: its holder renews it, or ends it with
-`--release`. A lapsed release that holds nothing does not block.
+`--release`. A lapsed release that holds nothing does not block. A tombstone
+over a release holding pull requests withdrawn or admitted ends it here only as
+it ends the hold: its holder pushed it, as the forge's record of pushes says,
+or its tag is on origin. One another account pushed leaves that release still
+being cut, and when the record cannot be read the reservation backs off and
+says why. When the reservations themselves cannot be read, it is refused
+(exit 2), naming the failure.
 
 Every withdrawal and re-arm is made through `gh` under the account its token
 acts as, so each is refused when that account is not the reservation's holder:
