@@ -11,7 +11,12 @@ import (
 // and p's home: a second session of the same person on the same machine.
 func (p *participant) worktree(name string) *participant {
 	p.w.t.Helper()
-	dir := filepath.Join(p.w.t.TempDir(), name)
+	return p.worktreeAt(filepath.Join(p.w.t.TempDir(), name))
+}
+
+// worktreeAt is worktree at the path dir.
+func (p *participant) worktreeAt(dir string) *participant {
+	p.w.t.Helper()
 	p.git("worktree", "add", "-q", "--detach", dir)
 	if err := os.MkdirAll(filepath.Join(dir, ".abcd", ".work.local"), 0o755); err != nil {
 		p.w.t.Fatal(err)
@@ -43,6 +48,13 @@ func TestTheViewNamesTheSiblingWorktreeAReservationWasMadeFrom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The view alone lists no worktree: only NameSiblings does.
+	for _, r := range snap.Reservations {
+		if r.Sibling != "" {
+			t.Fatalf("the plain view named %s's sibling %q", r.Record, r.Sibling)
+		}
+	}
+	snap.NameSiblings(p.dir, "OCTO")
 	got := map[string]Reservation{}
 	for _, r := range snap.Reservations {
 		got[r.Record] = r
@@ -92,7 +104,7 @@ func TestTheCeilingCountsAPersonsHoldsByCopyAndWarnsNearTheLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, ok := CeilingFor(p.dir, snap, p.opts())
+	c, ok := CeilingFor(p.dir, &snap, p.opts())
 	if !ok {
 		t.Fatal("no ceiling for the reader")
 	}
@@ -118,7 +130,7 @@ func TestTheCeilingCountsAPersonsHoldsByCopyAndWarnsNearTheLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c, _ := CeilingFor(p.dir, snap, p.opts()); c.Live != 3 || c.Warn || c.Warning() != "" {
+	if c, _ := CeilingFor(p.dir, &snap, p.opts()); c.Live != 3 || c.Warn || c.Warning() != "" {
 		t.Fatalf("ceiling at 3 of 5 = %+v, warning %q; want no warning", c, c.Warning())
 	}
 }
@@ -145,9 +157,67 @@ func TestTheCapRefusalSaysWhichCopyHoldsEachReservation(t *testing.T) {
 	if err == nil {
 		t.Fatal("a fourth reservation at a cap of 3 was made")
 	}
-	for _, want := range []string{"this copy: iss-1; lane-b, on this machine: iss-2; elsewhere: iss-3"} {
+	for _, want := range []string{`this copy: iss-1; "lane-b", on this machine: iss-2; elsewhere: iss-3`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q lacks %q", err, want)
 		}
+	}
+}
+
+// TestNameSiblingsNamesOnlyTheHoldersOwnAndTellsClashingNamesApart
+// (iss-2610231004140527 review): a tip of another holder carrying a sibling's
+// key is not named, since the key is no secret from whoever pushed it; two
+// worktrees with one directory name read as parent/name; two holding one key
+// (a copied worktree) read as both; and worktrees that cannot be listed are
+// said to be, every tip then reading as made elsewhere.
+func TestNameSiblingsNamesOnlyTheHoldersOwnAndTellsClashingNamesApart(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	a := p.worktreeAt(filepath.Join(t.TempDir(), "a", "lane-b"))
+	b := p.worktreeAt(filepath.Join(t.TempDir(), "b", "lane-b"))
+	c := p.worktreeAt(filepath.Join(t.TempDir(), "lane-c"))
+	d := p.worktreeAt(filepath.Join(t.TempDir(), "lane-d"))
+	keys := map[string]string{}
+	for name, q := range map[string]*participant{"a": a, "b": b, "c": c} {
+		k, err := CopyKey(q.dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys[name] = k
+	}
+	// d is a copy of c: the same kept key.
+	if err := os.MkdirAll(filepath.Join(d.dir, ".abcd", ".work.local", "reservation"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(d.dir, ".abcd", ".work.local", "reservation", "copy-key"), []byte(keys["c"]+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snap := Snapshot{Reservations: []Reservation{
+		{Record: "iss-1", Holder: "octo", State: StateLive, copyKey: keys["a"]},
+		{Record: "iss-2", Holder: "octo", State: StateLive, copyKey: keys["b"]},
+		{Record: "iss-3", Holder: "octo", State: StateLive, copyKey: keys["c"]},
+		{Record: "iss-4", Holder: "mallory", State: StateLive, copyKey: keys["a"]},
+	}}
+	snap.NameSiblings(p.dir, "octo")
+	want := map[string]string{"iss-1": "a/lane-b", "iss-2": "b/lane-b", "iss-4": ""}
+	for _, r := range snap.Reservations {
+		if r.Record == "iss-3" {
+			if r.Sibling != "lane-c or lane-d" && r.Sibling != "lane-d or lane-c" {
+				t.Errorf("iss-3 sibling = %q; want both names of the copied worktree", r.Sibling)
+			}
+			continue
+		}
+		if r.Sibling != want[r.Record] {
+			t.Errorf("%s sibling = %q; want %q", r.Record, r.Sibling, want[r.Record])
+		}
+	}
+	if snap.SiblingsUnread != "" {
+		t.Errorf("SiblingsUnread = %q on a listing that worked", snap.SiblingsUnread)
+	}
+
+	gone := Snapshot{Reservations: []Reservation{{Record: "iss-1", Holder: "octo", State: StateLive, copyKey: keys["a"]}}}
+	gone.NameSiblings(t.TempDir(), "octo")
+	if gone.Reservations[0].Sibling != "" || !strings.Contains(gone.SiblingsUnread, "could not be listed") {
+		t.Fatalf("outside a repository: sibling %q, unread %q; want none and the reason", gone.Reservations[0].Sibling, gone.SiblingsUnread)
 	}
 }

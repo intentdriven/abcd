@@ -459,6 +459,16 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 		age := int64(now.Sub(snap.FetchedAt).Seconds())
 		out.View.AgeSeconds = &age
 	}
+	// The ceiling names the reader's sibling worktrees in the view, so it is
+	// read before the rows that show them.
+	if c, ok := claim.CeilingFor(root, &snap, claim.Options{Now: func() time.Time { return now }}); ok {
+		c.Holder = termsafe.Sanitize(c.Holder)
+		for i := range c.Siblings {
+			c.Siblings[i].Name = termsafe.Sanitize(c.Siblings[i].Name)
+		}
+		c.Note = termsafe.Sanitize(fsutil.RedactHome(c.Note))
+		out.Ceiling = &ceilingRow{Ceiling: c, Warning: c.Warning()}
+	}
 	for _, r := range snap.Reservations {
 		row := reservationRow{Record: r.Record, Holder: r.Holder, Copy: r.Copy, Footprint: make([]string, 0, len(r.Footprint)),
 			EffectiveExpiry: rfc3339(r.EffectiveExpiry), State: r.State, ReleasedBy: r.ReleasedBy,
@@ -482,14 +492,6 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 		out.LapsedReleases = append(out.LapsedReleases, lapsedRow{Release: l.Release, Subject: l.Subject,
 			Holder: termsafe.Sanitize(l.Holder), Copy: l.Copy, RenewedAt: rfc3339(l.RenewedAt), LapsedAt: rfc3339(l.LapsedAt),
 			Text: termsafe.Sanitize(l.Text())})
-	}
-	if c, ok := claim.CeilingFor(root, snap, claim.Options{Now: func() time.Time { return now }}); ok {
-		c.Holder = termsafe.Sanitize(c.Holder)
-		for i := range c.Siblings {
-			c.Siblings[i].Name = termsafe.Sanitize(c.Siblings[i].Name)
-		}
-		c.Note = termsafe.Sanitize(fsutil.RedactHome(c.Note))
-		out.Ceiling = &ceilingRow{Ceiling: c, Warning: c.Warning()}
 	}
 	// The hand-backs are read from the same view, as last fetched: no act of
 	// their own touches the network.

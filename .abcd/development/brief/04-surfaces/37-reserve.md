@@ -246,7 +246,9 @@ name, and elsewhere. And `abcd peers` counts the reader's own live reservations
 the same way against this machine's ceiling, warning from four fifths of it
 that the total is shared with every session and account on the login. A sibling
 worktree is told apart by the copy key kept in its local tier, read without
-minting one; the key itself is never shown.
+minting one and only for the reader's own holds; the key itself is never
+shown. The worktrees are listed only by those two readers, never by the view
+every other surface shares.
 
 An act the judgement finds reserves afresh, a reservation over no tip or a
 released one, or a take-over, then asks the forge whether origin is a fork,

@@ -69,14 +69,20 @@ func crowding(p *prepared, j judged, res *Result) error {
 			return err
 		}
 		var mine []string
-		where := map[string]string{}
 		for _, r := range others {
 			if sameHolder(r.Holder, p.holder) && !isRelease(r.Record) {
 				mine = append(mine, r.Record)
-				where[r.Record] = copyPlace(r)
 			}
 		}
 		if len(mine) >= limit {
+			// The worktrees are listed only now, for the refusal's words.
+			snap.NameSiblings(p.root, p.holder)
+			where := map[string]string{}
+			for _, r := range snap.Reservations {
+				if slices.Contains(mine, r.Record) {
+					where[r.Record] = copyPlace(r)
+				}
+			}
 			return capRefusal(mine, where, limit, note)
 		}
 	}

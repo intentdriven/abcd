@@ -3,6 +3,9 @@ package claim
 import (
 	"fmt"
 	"sort"
+	"strconv"
+
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The cap counts a person's live reservations across every session, copy and
@@ -26,21 +29,23 @@ type Ceiling struct {
 	Limit  int    `json:"limit"`
 	// ThisCopy, Siblings and Elsewhere split Live: this checkout's copy, each
 	// other worktree of the repository on this machine (by name, sorted), and
-	// every other copy, another machine's or another account's.
+	// every copy not found among them: another clone on this machine or
+	// another, a removed worktree, or another account pushing as the login.
 	ThisCopy  int           `json:"this_copy"`
 	Siblings  []SiblingLive `json:"siblings"`
 	Elsewhere int           `json:"elsewhere"`
 	// Warn is true from four fifths of the limit.
 	Warn bool `json:"warn"`
 	// Note says why the machine's configuration was read past for the
-	// limit, "" when it was not.
+	// limit, or why the worktrees could not be listed; "" when neither.
 	Note string `json:"note,omitempty"`
 }
 
-// CeilingFor is the reader's ceiling in the view s: false when the reader's
-// GitHub login cannot be named without the network, or this machine's
-// reservation.max_live is one an act would refuse.
-func CeilingFor(root string, s Snapshot, o Options) (Ceiling, bool) {
+// CeilingFor is the reader's ceiling in the view s, naming its siblings
+// (NameSiblings) first: false when the reader's GitHub login cannot be named
+// without the network, or this machine's reservation.max_live is one an act
+// would refuse.
+func CeilingFor(root string, s *Snapshot, o Options) (Ceiling, bool) {
 	holder := readerHolder(root, o)
 	if holder == "" {
 		return Ceiling{}, false
@@ -49,6 +54,8 @@ func CeilingFor(root string, s Snapshot, o Options) (Ceiling, bool) {
 	if err != nil {
 		return Ceiling{}, false
 	}
+	s.NameSiblings(root, holder)
+	note = joinNote(note, s.SiblingsUnread)
 	c := Ceiling{Holder: holder, Limit: limit, Siblings: []SiblingLive{}, Note: note}
 	bySibling := map[string]int{}
 	for _, r := range s.Reservations {
@@ -88,14 +95,26 @@ func (c Ceiling) Warning() string {
 		c.Holder, c.Live, c.Limit, MaxLiveKey, where)
 }
 
+// joinNote is a and b joined by "; ", either alone when the other is "".
+func joinNote(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	}
+	return a + "; " + b
+}
+
 // copyPlace names the copy a reservation was made from, as the cap's refusal
-// names it: this copy, a sibling worktree here, or elsewhere.
+// names it: this copy, a sibling worktree here (its name quoted and
+// terminal-safe, as abcd peers shows it), or elsewhere.
 func copyPlace(r Reservation) string {
 	switch {
 	case r.Copy == CopyThis:
 		return "this copy"
 	case r.Sibling != "":
-		return r.Sibling + ", on this machine"
+		return strconv.Quote(termsafe.Sanitize(r.Sibling)) + ", on this machine"
 	}
 	return "elsewhere"
 }
