@@ -4355,6 +4355,7 @@ Reserve an issue, intent or release on the shared remote, or release it: Writes 
 **Usage:** `abcd reserve <record-id> [flags]`
 
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
+abcd reserve rel-vX.Y.Z --admit <pr>
 abcd reserve <record-id> --release
 abcd reserve --holder
 
@@ -4370,6 +4371,21 @@ footprint: while it is live every other session's land step holds its merge.
 It holds for 24h unless --lease names less, sits outside the per-person cap,
 and ends when the tag vX.Y.Z is on origin or its holder releases it; running
 the same command again from the same copy renews it.
+
+A release reserved anew (not renewed from the same copy while live) also withdraws
+every pull request into origin's default branch that has auto-merge on or sits in
+the merge queue, through gh under your own identity, and records each on the
+reservation with the form it was armed in and its head (withdrew in --json). A
+withdrawal the forge refuses is named and the reservation stands (forge_failures);
+the launch check then refuses the cut while that pull request is armed. --admit
+<pr>, from the copy cutting the release, re-arms one withdrawn pull request in its
+recorded form, pinned to its withdrawn head, and records it admitted. --release
+from that copy re-arms every other one the same way; once the release has ended
+(its tag on origin, its tombstone, or its lease lapsed), any act of a copy of the
+same person that fetches the reservations does so. One whose head moved, or that
+was closed or merged, is skipped and named for its owner; every state is recorded
+on the tombstone (settles in --json), so no copy acts twice, and a copy of another
+person never re-arms (stranded in --json).
 
 Every act fetches the reservations from origin, judges the tip, writes one
 commit and makes one plain fast-forward push, with the repository's hooks
@@ -4426,6 +4442,7 @@ push leaves no reservation and nothing in the checkout.
 **Flags:**
 
 ```
+      --admit int               on a release reservation, from the copy cutting it: re-arm this withdrawn pull request and record it admitted
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
       --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
       --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)

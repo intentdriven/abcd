@@ -49,9 +49,17 @@ type reservationsBlock struct {
 	// HandBacksByHolder is each holder's hand-back tombstones of the last day,
 	// newest first and bounded (spc-2610161044461448 step 18).
 	HandBacksByHolder []handBackHolder `json:"hand_backs_by_holder"`
-	View              reservationView  `json:"view"`
-	FetchError        string           `json:"fetch_error,omitempty"`
-	DerivedUnchecked  string           `json:"derived_unchecked,omitempty"`
+	// ReleaseWithdrawals is each release whose tip records withdrawn pull
+	// requests worth naming (iss-2610222014550692): those it holds, those
+	// still to re-arm (this person's, due on their next act, or another
+	// person's, stranded for them) and those skipped for their owners.
+	ReleaseWithdrawals []claim.ReleaseWithdrawals `json:"release_withdrawals,omitempty"`
+	// Settled is each ended release whose withdrawals of this person's the
+	// listing re-armed or skipped after its fetch (`abcd peers` only).
+	Settled          []claim.Settle  `json:"settled,omitempty"`
+	View             reservationView `json:"view"`
+	FetchError       string          `json:"fetch_error,omitempty"`
+	DerivedUnchecked string          `json:"derived_unchecked,omitempty"`
 }
 
 // reservationRow is one reservation as the listing shows it. Every value a
@@ -380,7 +388,26 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 // (the view is then the last one fetched) or the view could not be read, and
 // "" otherwise. A checkout with no remote named origin lists none.
 func addReservations(root string, out *peersOutput, now time.Time) (failed string) {
-	gap, err := claim.Fetch(root, claim.Options{Now: func() time.Time { return now }})
+	o := claim.Options{Now: func() time.Time { return now }}
+	gap, err := claim.Fetch(root, o)
+	if err == nil {
+		// The fallback re-arm (dcn-2610222219297651): a copy of the person
+		// whose release has ended re-arms what it withdrew, once, and
+		// records it; another person's copy only names it below. The
+		// listing then reads the reservations as they now stand.
+		if settled, serr := claim.SettleEndedReleases(root, o); serr == nil && len(settled) > 0 {
+			for i := range settled {
+				settled[i].Failed = termsafe.Sanitize(fsutil.RedactHome(settled[i].Failed))
+				for j := range settled[i].Failures {
+					settled[i].Failures[j].Reason = termsafe.Sanitize(fsutil.RedactHome(settled[i].Failures[j].Reason))
+				}
+			}
+			out.Settled = settled
+			if g, ferr := claim.Fetch(root, o); ferr == nil {
+				gap = g
+			}
+		}
+	}
 	return out.fill(root, now, gap, err)
 }
 
@@ -441,6 +468,7 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 		out.Reservations = append(out.Reservations, row)
 	}
 	out.LiveByHolder = snap.LiveByHolder()
+	out.ReleaseWithdrawals = snap.ReleaseWithdrawals(claim.ReaderHolder(root, claim.Options{Now: func() time.Time { return now }}), now)
 	// The hand-backs are read from the same view, as last fetched: no act of
 	// their own touches the network.
 	for _, h := range snap.RecentHandBacks(now) {
@@ -528,6 +556,25 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 	}
 	for _, h := range out.ReleaseHolds {
 		fmt.Fprintln(w, "  "+h.Text)
+	}
+	for _, st := range out.Settled {
+		for _, wd := range st.Settled {
+			// A skip is named below, from the tombstone that records it.
+			if wd.State == claim.WithdrawnRearmed || wd.State == claim.WithdrawnFoundArmed {
+				fmt.Fprintln(w, "  "+claim.SettledLine(st.Subject, wd))
+			}
+		}
+		for _, f := range st.Failures {
+			fmt.Fprintln(w, "  "+f.Line())
+		}
+		if st.Failed != "" {
+			fmt.Fprintln(w, "  "+st.Failed)
+		}
+	}
+	for _, rw := range out.ReleaseWithdrawals {
+		for _, line := range rw.Lines() {
+			fmt.Fprintln(w, "  "+line)
+		}
 	}
 	if len(out.LiveByHolder) > 0 {
 		names := make([]string, 0, len(out.LiveByHolder))

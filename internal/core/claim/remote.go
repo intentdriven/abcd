@@ -243,7 +243,9 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// person's is re-armed, and the tombstone records each in its state.
 		ws, done, fails, why := rearmMine(p.actor(), j.Withdrawn)
 		m.Withdrawn = ws
-		own = &Settle{Subject: p.id, Settled: append([]Withdrawal{}, done...), Failures: fails, Failed: why}
+		if len(ws) > 0 {
+			own = &Settle{Subject: p.id, Settled: append([]Withdrawal{}, done...), Failures: fails, Failed: why}
+		}
 		res.Stranded = stranded(ws, p.holder)
 	case p.req.Admit != 0:
 		if err := p.admitOne(&m, p.req.Admit); err != nil {

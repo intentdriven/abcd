@@ -412,6 +412,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--admit` | int |
 | `--footprint` | stringArray |
 | `--holder` | bool |
 | `--lease` | duration |

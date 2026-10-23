@@ -3562,6 +3562,13 @@
       "sentence": "Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3.",
       "flags": [
         {
+          "name": "admit",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "footprint",
           "shorthand": "",
           "type": "stringArray",

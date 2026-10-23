@@ -55,8 +55,23 @@ type reserveOutput struct {
 	// on stderr. GeneratedUnread is why no generated file was recognised.
 	OwnOverlap      []reserveOwnOverlap `json:"own_overlap,omitempty"`
 	GeneratedUnread string              `json:"generated_unread,omitempty"`
-	note            string
-	warnings        []string
+	// Withdrew is each merge a release reserved anew withdrew from origin's
+	// default branch, and Withdrawals every withdrawal the commit pushed
+	// records (iss-2610222014550692); ForgeFailures each pull request the
+	// forge refused a withdrawal or re-arm of, and ForgeUnchecked why the
+	// armed merges could not be listed at all. Admitted is the pull request
+	// --admit re-armed; Stranded each withdrawal of another person's the
+	// release carries; Settles each release whose withdrawals the act re-armed
+	// or skipped. The text form warns of every failure on stderr.
+	Withdrew       []claim.Withdrawal   `json:"withdrew,omitempty"`
+	Withdrawals    []claim.Withdrawal   `json:"withdrawals,omitempty"`
+	ForgeFailures  []claim.ForgeFailure `json:"forge_failures,omitempty"`
+	ForgeUnchecked string               `json:"forge_unchecked,omitempty"`
+	Admitted       *claim.Withdrawal    `json:"admitted,omitempty"`
+	Stranded       []claim.Withdrawal   `json:"stranded,omitempty"`
+	Settles        []claim.Settle       `json:"settles,omitempty"`
+	note           string
+	warnings       []string
 }
 
 // reserveOwnOverlap is a path shared with one's own reservation from another
@@ -99,10 +114,12 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 		release   bool
 		leaseFor  time.Duration
 		holder    bool
+		admit     int
 	)
 	cmd := &cobra.Command{
 		Use: "reserve <record-id>",
 		Long: "abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]\n" +
+			"abcd reserve rel-vX.Y.Z --admit <pr>\n" +
 			"abcd reserve <record-id> --release\n" +
 			"abcd reserve --holder\n\n" +
 			"Reserve an issue or an intent on the shared remote before starting work on it, so\n" +
@@ -116,6 +133,20 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"It holds for 24h unless --lease names less, sits outside the per-person cap,\n" +
 			"and ends when the tag vX.Y.Z is on origin or its holder releases it; running\n" +
 			"the same command again from the same copy renews it.\n\n" +
+			"A release reserved anew (not renewed from the same copy while live) also withdraws\n" +
+			"every pull request into origin's default branch that has auto-merge on or sits in\n" +
+			"the merge queue, through gh under your own identity, and records each on the\n" +
+			"reservation with the form it was armed in and its head (withdrew in --json). A\n" +
+			"withdrawal the forge refuses is named and the reservation stands (forge_failures);\n" +
+			"the launch check then refuses the cut while that pull request is armed. --admit\n" +
+			"<pr>, from the copy cutting the release, re-arms one withdrawn pull request in its\n" +
+			"recorded form, pinned to its withdrawn head, and records it admitted. --release\n" +
+			"from that copy re-arms every other one the same way; once the release has ended\n" +
+			"(its tag on origin, its tombstone, or its lease lapsed), any act of a copy of the\n" +
+			"same person that fetches the reservations does so. One whose head moved, or that\n" +
+			"was closed or merged, is skipped and named for its owner; every state is recorded\n" +
+			"on the tombstone (settles in --json), so no copy acts twice, and a copy of another\n" +
+			"person never re-arms (stranded in --json).\n\n" +
 			"Every act fetches the reservations from origin, judges the tip, writes one\n" +
 			"commit and makes one plain fast-forward push, with the repository's hooks\n" +
 			"running: a reservation, a renewal by the same person and copy, a take-over of\n" +
@@ -168,7 +199,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 				if len(args) > 0 {
 					with = append(with, "record id")
 				}
-				for _, f := range []string{"footprint", "take-over", "lease", "release"} {
+				for _, f := range []string{"footprint", "take-over", "lease", "release", "admit"} {
 					if cmd.Flags().Changed(f) {
 						with = append(with, "--"+f)
 					}
@@ -190,16 +221,25 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			if holder {
 				return runReserveHolder(cmd.OutOrStdout(), cmd.ErrOrStderr(), *asJSON)
 			}
-			if release {
+			for _, lone := range []struct {
+				flag string
+				on   bool
+			}{{"--release", release}, {"--admit", cmd.Flags().Changed("admit")}} {
+				if !lone.on {
+					continue
+				}
 				var with []string
-				for _, f := range []string{"footprint", "take-over", "lease"} {
-					if cmd.Flags().Changed(f) {
+				for _, f := range []string{"footprint", "take-over", "lease", "release", "admit"} {
+					if "--"+f != lone.flag && cmd.Flags().Changed(f) {
 						with = append(with, "--"+f)
 					}
 				}
 				if len(with) > 0 {
-					return &exitError{Code: 2, Msg: "abcd reserve: --release takes no " + strings.Join(with, ", ") + "; nothing was pushed"}
+					return &exitError{Code: 2, Msg: "abcd reserve: " + lone.flag + " takes no " + strings.Join(with, ", ") + "; nothing was pushed"}
 				}
+			}
+			if cmd.Flags().Changed("admit") && admit <= 0 {
+				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd reserve: --admit takes a pull request number, not %d; nothing was pushed", admit)}
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -211,7 +251,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			}
 			noteMachineHome(cmd.ErrOrStderr(), "abcd reserve")
 			res, err := claim.Reserve(root, claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
-				TakeOver: takeOver, Release: release, WarnOwnOverlap: true}, claim.Options{ForgeUser: reserveForgeUser})
+				TakeOver: takeOver, Release: release, Admit: admit, WarnOwnOverlap: true}, claim.Options{ForgeUser: reserveForgeUser})
 			if err != nil {
 				return reserveRefusal(err)
 			}
@@ -231,6 +271,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&takeOver, "take-over", false, "move your own live reservation from another copy to this one")
 	cmd.Flags().DurationVar(&leaseFor, "lease", 0, "how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)")
 	cmd.Flags().BoolVar(&release, "release", false, "release your reservation from this copy by pushing a tombstone")
+	cmd.Flags().IntVar(&admit, "admit", 0, "on a release reservation, from the copy cutting it: re-arm this withdrawn pull request and record it admitted")
 	cmd.Flags().BoolVar(&holder, "holder", false, "say which GitHub account an act would reserve as, and from where; reserves nothing")
 	return cmd
 }
@@ -303,6 +344,28 @@ func reserveView(res claim.Result) reserveOutput {
 			EffectiveExpiry: rfc3339(o.Expiry)})
 		out.warnings = append(out.warnings, o.Warning())
 	}
+	out.Withdrew, out.Withdrawals, out.Stranded = res.Withdrew, res.Withdrawals, res.Stranded
+	out.Admitted, out.Settles = res.Admitted, res.Settles
+	out.ForgeUnchecked = termsafe.Sanitize(fsutil.RedactHome(res.ForgeUnchecked))
+	for _, f := range res.ForgeFailures {
+		f.Reason = termsafe.Sanitize(fsutil.RedactHome(f.Reason))
+		out.ForgeFailures = append(out.ForgeFailures, f)
+		out.warnings = append(out.warnings, f.Line())
+	}
+	if out.ForgeUnchecked != "" {
+		out.warnings = append(out.warnings, out.ForgeUnchecked)
+	}
+	for i, st := range out.Settles {
+		st.Failed = termsafe.Sanitize(fsutil.RedactHome(st.Failed))
+		for j, f := range st.Failures {
+			st.Failures[j].Reason = termsafe.Sanitize(fsutil.RedactHome(f.Reason))
+			out.warnings = append(out.warnings, st.Failures[j].Line())
+		}
+		if st.Failed != "" {
+			out.warnings = append(out.warnings, st.Failed)
+		}
+		out.Settles[i] = st
+	}
 	return out
 }
 
@@ -323,6 +386,25 @@ func renderReserve(w io.Writer, out reserveOutput) {
 		fmt.Fprintf(w, "abcd reserve: released %s\n", out.Record)
 	case claim.ActAlreadyReleased:
 		fmt.Fprintf(w, "abcd reserve: %s was already released; nothing was pushed\n", out.Record)
+	case claim.ActAdmitted:
+		if a := out.Admitted; a != nil {
+			fmt.Fprintf(w, "abcd reserve: admitted #%d into %s, re-armed (%s) at %s; renewed until %s\n", a.Number, out.Record, a.Form, shortCommit(a.Head), out.EffectiveExpiry)
+		}
+	}
+	if len(out.Withdrew) > 0 {
+		parts := make([]string, len(out.Withdrew))
+		for i, wd := range out.Withdrew {
+			parts[i] = fmt.Sprintf("#%d (%s at %s)", wd.Number, wd.Form, shortCommit(wd.Head))
+		}
+		fmt.Fprintf(w, "  withdrew: %s; each is re-armed when the release ends, or now with --admit <pr>\n", strings.Join(parts, ", "))
+	}
+	for _, st := range out.Settles {
+		for _, wd := range st.Settled {
+			fmt.Fprintf(w, "  %s\n", claim.SettledLine(st.Subject, wd))
+		}
+	}
+	if len(out.Stranded) > 0 {
+		fmt.Fprintf(w, "  note: %s\n", claim.StrandedLine(out.Record, out.Stranded))
 	}
 	if len(out.Footprint) > 0 && out.Act != claim.ActAlreadyReleased {
 		quoted := make([]string, len(out.Footprint))
