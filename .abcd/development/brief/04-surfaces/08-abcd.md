@@ -256,7 +256,11 @@ the same view, so they add no network act (spc-2610161044461448 step 18,
 dcn-2610161040394970). The JSON form adds `reservations` (each live one with
 `stage` when it carries one), `live_by_holder`, `release_holds` (one per
 release being cut), `hand_backs_by_holder` (`holder`,
-`hand_backs` of `record`, `kind` and `released_at`, and `more`) and `view`
+`hand_backs` of `record`, `kind` and `released_at`, and `more`),
+`release_withdrawals` (each release's withdrawn pull requests by state: held,
+admitted, due, stranded for another person, skipped), `settled` (each ended
+release of the reader's whose withdrawals the listing re-armed or skipped,
+iss-2610222014550692) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and
 exits 1; the peer rows are unchanged. A checkout with no remote named

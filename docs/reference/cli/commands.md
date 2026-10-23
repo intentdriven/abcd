@@ -4089,7 +4089,7 @@ and nothing is written on any of them.
 
 ### `abcd peers`
 
-List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.
+List what peers hold that this checkout lacks, and the reservations: Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout.
 
 **Usage:** `abcd peers`
 

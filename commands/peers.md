@@ -1,6 +1,6 @@
 ---
 name: peers
-description: "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout."
+description: "List what peers hold that this checkout lacks, and the reservations: Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout."
 block: agents
 user-invocable: false
 ---
@@ -16,7 +16,15 @@ branches (and the default branch, and `origin`'s release tags `v*`); the fetch
 updates the remote-tracking reservation branches and the release tags abcd
 keeps under `refs/abcd/release-tags/`, and stamps when it ran in the local
 tier, with when it first fetched each reservation dated ahead of this
-computer's clock or undated, and nothing else is written. The release-tag
+computer's clock or undated. One more act follows the fetch, and only when a
+release you reserved has ended (its tag on `origin`, its tombstone, or its
+lease lapsed) with pull requests it withdrew not yet re-armed: each is
+re-armed through `gh` in the form it was taken from (auto-merge or a
+merge-queue entry), pinned to the head it had when withdrawn, or skipped when
+its head moved or it was closed or merged, and a tombstone recording each
+outcome is pushed to the release's reservation branch (see `/abcd:reserve`).
+A release another person reserved is never re-armed from here: its
+withdrawals are listed for that person. Nothing else is written. The release-tag
 refs are ordinary refs in this checkout, so `git log --all` lists the commits
 they name and `git push --mirror` would push them.
 
@@ -99,6 +107,17 @@ payload adds:
   than five minutes ahead or undated, with no first sighting kept here), neither of
   which holds a merge, and `text`, the line the text form shows it by. Tell
   the user who is cutting which release, and that merges are held.
+- `release_withdrawals`: each release whose reservation records withdrawn
+  pull requests, with its `subject`, `ended`, and the pull requests by state:
+  `held` (withdrawn while the release is live), `admitted` (re-armed by the
+  cutting copy's `--admit`), `due` (yours, re-armed on your next act now the
+  release has ended), `stranded` (another person's ended release: listed for
+  them, never re-armed from here) and `skipped` (named for its owner, because
+  its head moved or it was closed or merged). Tell the user about any
+  `stranded` or `skipped` pull request: its owner has to re-arm it.
+- `settled`: each ended release of yours whose withdrawn pull requests this
+  listing re-armed or skipped, with the tombstone `commit` it pushed, and
+  `failures` naming each pull request the forge refused.
 - `hand_backs_by_holder`: for each holder, the hand-backs of the last 24
   hours: each released tip carrying a hand-back, as `record`, `kind` (one of
   `user-visible`, `trust-rule`, `design-finding`, `second-package`,

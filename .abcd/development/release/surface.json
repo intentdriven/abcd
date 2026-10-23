@@ -3407,7 +3407,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.",
+      "sentence": "List what peers hold that this checkout lacks, and the reservations: Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout.",
       "flags": []
     },
     {
