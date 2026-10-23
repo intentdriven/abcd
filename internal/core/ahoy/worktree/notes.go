@@ -100,17 +100,20 @@ func collectNotes(repoRoot, wt string) ([]note, error) {
 	var notes []note
 	total := 0
 	err := filepath.WalkDir(tier, func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if p == tier || d.IsDir() {
+		if p == tier && err == nil {
 			return nil
 		}
-		rel, err := filepath.Rel(tier, p)
-		if err != nil {
-			return err
+		rel, rerr := filepath.Rel(tier, p)
+		if rerr != nil {
+			return errors.New("a path in the tier cannot be named relative to it")
 		}
 		rel = filepath.ToSlash(rel)
+		if err != nil {
+			return named(repoRoot, rel, causeOf(err))
+		}
+		if d.IsDir() {
+			return nil
+		}
 		if len(notes) == maxNoteFiles {
 			return fmt.Errorf("the tier holds more than %d files", maxNoteFiles)
 		}
@@ -118,28 +121,28 @@ func collectNotes(repoRoot, wt string) ([]note, error) {
 		case d.Type()&fs.ModeSymlink != 0:
 			target, err := os.Readlink(p)
 			if err != nil {
-				return fmt.Errorf("%s: %w", rel, err)
+				return named(repoRoot, rel, causeOf(err))
 			}
 			red, err := history.Redact(repoRoot, fsutil.RedactHome(target), rel)
 			if err != nil {
-				return fmt.Errorf("%s: %w", rel, err)
+				return named(repoRoot, rel, err.Error())
 			}
 			notes = append(notes, note{rel: rel, link: red.Text, isLink: true})
 		case !d.Type().IsRegular():
-			return fmt.Errorf("%s: not a regular file", rel)
+			return named(repoRoot, rel, "not a regular file")
 		default:
 			data, err := fsutil.ReadGuarded(p, maxNoteBytes)
 			switch {
 			case errors.Is(err, fsutil.ErrTooBig):
-				return fmt.Errorf("%s: over the archive's per-file cap of %d bytes", rel, maxNoteBytes)
+				return named(repoRoot, rel, fmt.Sprintf("over the archive's per-file cap of %d bytes", maxNoteBytes))
 			case err != nil:
-				return fmt.Errorf("%s: %w", rel, err)
+				return named(repoRoot, rel, causeOf(err))
 			case !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0:
-				return fmt.Errorf("%s: not text, which the redaction pass cannot vouch for", rel)
+				return named(repoRoot, rel, "not text, which the redaction pass cannot vouch for")
 			}
 			red, err := history.Redact(repoRoot, string(data), rel)
 			if err != nil {
-				return fmt.Errorf("%s: %w", rel, err)
+				return named(repoRoot, rel, err.Error())
 			}
 			if total += len(red.Text); total > maxNotesTotal {
 				return fmt.Errorf("the tier holds more than the archive's cap of %d bytes", maxNotesTotal)
@@ -152,6 +155,27 @@ func collectNotes(repoRoot, wt string) ([]note, error) {
 		return nil, err
 	}
 	return notes, namesSurvive(repoRoot, notes)
+}
+
+// named is a reason about the tier's file rel. The name is the tier's bytes as
+// much as the file is, so it passes the same redaction pass before any reason
+// carries it, and a name the pass refuses is not named at all.
+func named(repoRoot, rel, why string) error {
+	shown := "a file in the tier"
+	if red, err := history.Redact(repoRoot, rel, "notes file name"); err == nil {
+		shown = red.Text
+	}
+	return errors.New(shown + ": " + why)
+}
+
+// causeOf is err without the path an *fs.PathError names, which is the
+// tier's own and unredacted.
+func causeOf(err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
 }
 
 // namesSurvive refuses a tier whose file names the redaction pass would

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -214,5 +215,39 @@ func TestAhoyWorktreePruneKeepsWhatTheLoopHolds(t *testing.T) {
 	}
 	if _, err := os.Stat(busy); err != nil {
 		t.Fatalf("the held worktree stands: %v", err)
+	}
+}
+
+// TestAhoyWorktreePruneRedactsFileNamesInItsReasons: a file the archive
+// cannot take is named in the kept row's reason, and that name passes the
+// same redaction as the files themselves, in the text and the JSON forms.
+func TestAhoyWorktreePruneRedactsFileNamesInItsReasons(t *testing.T) {
+	token := "ghp_" + strings.Repeat("a", 40)
+	for name, content := range map[string][]byte{
+		"binary":    {0, 1, 2, 0xff},
+		"oversized": bytes.Repeat([]byte("x"), 4<<20+1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := worktreeFixture(t)
+			repo.Write(".gitignore", ".abcd/.work.local/\n")
+			repo.Commit("ignore the local tier")
+			p := mergedLaneWorktree(t, repo, "kept")
+			tier := filepath.Join(p, ".abcd", ".work.local")
+			if err := os.MkdirAll(tier, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(tier, "note-"+token+".bin"), content, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			for _, asJSON := range []bool{false, true} {
+				out, code := runWorktree(t, asJSON, "prune")
+				if code != 1 || !strings.Contains(out, "notes could not be archived") {
+					t.Fatalf("json=%v: the worktree is kept (exit %d):\n%s", asJSON, code, out)
+				}
+				if strings.Contains(out, token) {
+					t.Fatalf("json=%v: the file name reached the output unredacted:\n%s", asJSON, out)
+				}
+			}
+		})
 	}
 }
