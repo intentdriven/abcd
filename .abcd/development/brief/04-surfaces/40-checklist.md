@@ -1,7 +1,7 @@
 # `/abcd:checklist` — Keep the Working Copy's Checklist on Disk
 
 `/abcd:checklist` keeps what a session in this working copy is doing on disk
-(itd-2610170638184486, spc-2610230805429429 steps 1 and 2): what it works on,
+(itd-2610170638184486, spc-2610230805429429 steps 1 to 3): what it works on,
 what it waits on and what it has promised. A resumed or a fresh session in the
 same copy reads the same list, and the list survives a compaction or a crash.
 It is an agent's verb, listed in the agents group, and every sub-verb runs in
@@ -52,6 +52,19 @@ becomes the last good copy.
 The reader validates and scans the file. When it fails, the reader validates
 and scans the last good copy and says why it fell back; when both fail, it
 reads nothing and says so. A reason never quotes the file.
+
+## At every session start
+
+Every session start, whether a startup, a resume, a clear or a compaction,
+adds the list's rendering to the session's context, so what the session wrote
+down outlives the compaction that drops it from memory. The rendering shares
+the host's cap of 10,000 characters on the start's whole output with the away
+block and the update notices the same start prints: those stay whole, and the
+list gets what they leave, less a margin of 500. Past that, it keeps the open
+items, newest first, and says how many it left out and how to see them all.
+When the file fails the reader, the last good copy is added with one line
+saying why; when both fail, that line alone. A working copy that never had a
+list is given nothing, and the list never fails a start.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
