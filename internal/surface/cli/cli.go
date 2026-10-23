@@ -660,6 +660,10 @@ func NewRootCommand() *cobra.Command {
 	// host's instruction to BLOCK, so every usage error a hook can provoke refuses
 	// at exit 1 instead (iss-269).
 	applyHookPlaneFailOpen(root)
+	// After every pass that sets a flag-error function: each receives the
+	// parser's error reworded to name the flag, never the text passed with it
+	// (usage_errors.go).
+	applyUsageFlagErrors(root)
 	// Truly last: every flag-error function above is wrapped so Run can tell a
 	// flag-parse refusal from any other, and answer it in JSON when the caller
 	// typed --json (iss-2609292352131344).
@@ -2659,7 +2663,8 @@ Read-only.`,
 				name := strings.ToUpper(args[0])
 				d, ok := rs.Lookup(name)
 				if !ok {
-					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd rules: unknown domain %q", name)}
+					known := slices.Sorted(maps.Keys(rs.Domains))
+					return &exitError{Code: 2, Msg: "abcd rules: no domain of that name (the name is not repeated here); the domains are " + strings.Join(known, ", ")}
 				}
 				return render(cmd.OutOrStdout(), *asJSON, d, func(w io.Writer) {
 					fmt.Fprint(w, rules.Render([]rules.ResolvedDomain{d}))
@@ -6411,7 +6416,7 @@ func parseRecurs(raw string) ([]string, error) {
 			continue
 		}
 		if !readingItemIDRe.MatchString(tok) {
-			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture disposition: --recurs token %q must match rdi-N (nothing written)", tok)}
+			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture disposition: --recurs token %d must match rdi-N (it is not repeated here; nothing written)", len(ids)+1)}
 		}
 		ids = append(ids, tok)
 	}
@@ -6961,9 +6966,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if msg := scrubPaths(err); msg != "" {
 		// An unknown command or flag on a binary that can prove it is stale
 		// names the staleness and the way out, on a second line, from disk
-		// alone; otherwise cobra's line stands byte-for-byte
-		// (iss-2608230943088357, staleusage.go).
-		if note := staleUsageNote(root, args, msg); note != "" {
+		// alone; otherwise the refusal line stands alone (iss-2608230943088357,
+		// staleusage.go). The note reads the operand from cobra's own wording;
+		// the line itself then names the refused argument by its position
+		// (usage_errors.go).
+		note := staleUsageNote(root, args, msg)
+		msg = withholdOperands(root, msg)
+		if note != "" {
 			msg += "\nabcd: " + note
 		}
 		// Masked once, here, for every verb: a refusal that echoes an operand or
