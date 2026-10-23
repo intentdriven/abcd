@@ -91,6 +91,17 @@ var sentences = map[string]string{
 	"abcd capture wontfix": "Move an open issue to wontfix/ with the reason it is not acted on: " +
 		"Writes the moved record; refuses an id this ledger does not hold.",
 
+	"abcd checklist": "List this working copy's checklist, every item and field: " +
+		"Writes nothing; refuses outside a git checkout.",
+	"abcd checklist add": "Add one item to the checklist under a new stable id: " +
+		"Writes checklist.json and its last-good copy; refuses a schema violation or a secret, naming the field.",
+	"abcd checklist render": "Print the checklist as a session's context is given it, open items first: " +
+		"Writes nothing; refuses outside a git checkout.",
+	"abcd checklist set": "Set one checklist item's state by its id: " +
+		"Writes checklist.json and its last-good copy; refuses an unknown id or state.",
+	"abcd checklist show": "Show one checklist item, every field, by its id: " +
+		"Writes nothing; refuses an id the checklist does not hold.",
+
 	"abcd decide": "Record a decision, list them bare, or mint an ADR with --adr: " +
 		"Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.",
 

@@ -355,11 +355,11 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `commands/`:
 
 <!-- index: commands -->
-`abcd`, `ahoy`, `announce`, `banlist`, `build`, `capture`, `dashboard`,
-`decide`, `disembark`, `docs`, `drain`, `embargo`, `embark`, `guard`, `history`,
-`ideate`, `identity`, `implement`, `inbox`, `intent`, `lab`, `land`, `launch`,
-`library`, `lint`, `memory`, `mode`, `peers`, `reading`, `reflect`, `report`,
-`reserve`, `scribe`, `site`, `status`, `update`.
+`abcd`, `ahoy`, `announce`, `banlist`, `build`, `capture`, `checklist`,
+`dashboard`, `decide`, `disembark`, `docs`, `drain`, `embargo`, `embark`,
+`guard`, `history`, `ideate`, `identity`, `implement`, `inbox`, `intent`, `lab`,
+`land`, `launch`, `library`, `lint`, `memory`, `mode`, `peers`, `reading`,
+`reflect`, `report`, `reserve`, `scribe`, `site`, `status`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

@@ -403,6 +403,7 @@ func NewRootCommand() *cobra.Command {
 
 	root.AddCommand(newUpdateCommand(&asJSON))
 	root.AddCommand(newModeCommand(&asJSON))
+	root.AddCommand(newChecklistCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
 	root.AddCommand(newReserveCommand(&asJSON))
 	root.AddCommand(newAnnounceCommand(&asJSON))
