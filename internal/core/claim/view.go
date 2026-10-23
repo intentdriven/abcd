@@ -75,6 +75,8 @@ type Reservation struct {
 	// Stage is the drain lane's stage the tip's renewal names, one of
 	// LaneStages; "" when the tip names none.
 	Stage string
+	// Withdrawn is a release tip's withdrawn pull requests (withdraw.go).
+	Withdrawn []Withdrawal
 }
 
 // Snapshot is the reservations as this checkout last fetched them.
@@ -259,6 +261,7 @@ func listed(t tip, id, derivedBy, own string, now time.Time) Reservation {
 		v := lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, now)
 		r.Holder, r.Footprint, r.ClaimedAt, r.EffectiveExpiry = t.Holder, t.Footprint, t.ClaimedAt, v.EffectiveExpiry
 		r.Stage = t.Stage
+		r.Withdrawn = t.Withdrawn
 		if own != "" && t.Copy == own {
 			r.Copy = CopyThis
 		}

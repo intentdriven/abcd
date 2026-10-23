@@ -200,3 +200,44 @@ PageInfo.endCursor String SCALAR
 PageInfo.hasNextPage Boolean SCALAR
 PageInfo.hasPreviousPage Boolean SCALAR
 PageInfo.startCursor String SCALAR
+# The release hold's withdrawals (iss-2610222014550692), read 2026-10-23 the
+# same way, one __type query a type: the listing of a branch's open pull
+# requests (Repository.pullRequests, whose type is a non-null
+# PullRequestConnection, listed whole), and the four mutations the release
+# hold sends with their payloads, listed whole. Mutation holds only those four.
+# An input object's fields are read from __type's inputFields and pinned the
+# same way, one field a line, so a test can hold each mutation's input to them.
+Repository.pullRequests PullRequestConnection OBJECT
+PullRequestConnection.edges PullRequestEdge OBJECT
+PullRequestConnection.nodes PullRequest OBJECT
+PullRequestConnection.pageInfo PageInfo OBJECT
+PullRequestConnection.totalCount Int SCALAR
+Mutation.dequeuePullRequest DequeuePullRequestPayload OBJECT
+Mutation.disablePullRequestAutoMerge DisablePullRequestAutoMergePayload OBJECT
+Mutation.enablePullRequestAutoMerge EnablePullRequestAutoMergePayload OBJECT
+Mutation.enqueuePullRequest EnqueuePullRequestPayload OBJECT
+DequeuePullRequestPayload.clientMutationId String SCALAR
+DequeuePullRequestPayload.mergeQueueEntry MergeQueueEntry OBJECT
+DisablePullRequestAutoMergePayload.actor Actor INTERFACE
+DisablePullRequestAutoMergePayload.clientMutationId String SCALAR
+DisablePullRequestAutoMergePayload.pullRequest PullRequest OBJECT
+EnablePullRequestAutoMergePayload.actor Actor INTERFACE
+EnablePullRequestAutoMergePayload.clientMutationId String SCALAR
+EnablePullRequestAutoMergePayload.pullRequest PullRequest OBJECT
+EnqueuePullRequestPayload.clientMutationId String SCALAR
+EnqueuePullRequestPayload.mergeQueueEntry MergeQueueEntry OBJECT
+DequeuePullRequestInput.clientMutationId String SCALAR
+DequeuePullRequestInput.id ID SCALAR
+DisablePullRequestAutoMergeInput.clientMutationId String SCALAR
+DisablePullRequestAutoMergeInput.pullRequestId ID SCALAR
+EnablePullRequestAutoMergeInput.authorEmail String SCALAR
+EnablePullRequestAutoMergeInput.clientMutationId String SCALAR
+EnablePullRequestAutoMergeInput.commitBody String SCALAR
+EnablePullRequestAutoMergeInput.commitHeadline String SCALAR
+EnablePullRequestAutoMergeInput.expectedHeadOid GitObjectID SCALAR
+EnablePullRequestAutoMergeInput.mergeMethod PullRequestMergeMethod ENUM
+EnablePullRequestAutoMergeInput.pullRequestId ID SCALAR
+EnqueuePullRequestInput.clientMutationId String SCALAR
+EnqueuePullRequestInput.expectedHeadOid GitObjectID SCALAR
+EnqueuePullRequestInput.jump Boolean SCALAR
+EnqueuePullRequestInput.pullRequestId ID SCALAR

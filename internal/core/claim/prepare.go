@@ -135,6 +135,11 @@ type Request struct {
 	// a build's start), or one outside LaneStages, is refused before anything
 	// is pushed.
 	Stage string
+	// Admit, on a release subject, is the number of a pull request the
+	// release reservation withdrew, which the cutting copy rules in: it is
+	// re-armed in its recorded form, pinned to its withdrawn head, and a
+	// renewal records it admitted. 0 for every other act.
+	Admit int
 }
 
 // prepared is a request checked and filled in from the checkout, before the
@@ -224,6 +229,16 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 		return nil, refuse("only a reservation is a drain's to back off a hand-back, never a release or a renewal; %s", nothingPushed)
 	}
 	release := isRelease(id)
+	if req.Admit != 0 {
+		switch {
+		case !release:
+			return nil, refuse("only a release reservation admits a pull request; %s", nothingPushed)
+		case !validPRNumber(req.Admit):
+			return nil, refuse("%d is not a pull request number; %s", req.Admit, nothingPushed)
+		case req.Release || req.Renew || req.TakeOver || len(req.Footprint) > 0 || req.Lease != 0 || req.Drain || req.Stage != "":
+			return nil, refuse("an admission takes no footprint, lease, take-over, renewal or release; %s", nothingPushed)
+		}
+	}
 	if release && len(req.Footprint) > 0 {
 		return nil, refuse("a release reservation holds every merge and takes no footprint; %s", nothingPushed)
 	}
