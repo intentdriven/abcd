@@ -172,6 +172,18 @@ List this repository's worktrees and its lane in the worktree store: Writes noth
 
 **Usage:** `abcd ahoy worktree`
 
+##### `abcd ahoy worktree add`
+
+Add a worktree in this repository's lane of the worktree store: Writes the worktree, its start record and its local tier; refuses a taken or reserved name.
+
+**Usage:** `abcd ahoy worktree add <name> [flags]`
+
+**Flags:**
+
+```
+      --branch string   check out this existing local branch instead of making a new one
+```
+
 ##### `abcd ahoy worktree list`
 
 List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.

@@ -386,6 +386,20 @@
       "flags": []
     },
     {
+      "path": "abcd ahoy worktree add",
+      "hidden": false,
+      "sentence": "Add a worktree in this repository's lane of the worktree store: Writes the worktree, its start record and its local tier; refuses a taken or reserved name.",
+      "flags": [
+        {
+          "name": "branch",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd ahoy worktree list",
       "hidden": false,
       "sentence": "List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",

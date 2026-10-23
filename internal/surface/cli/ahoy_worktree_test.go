@@ -9,7 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -249,5 +252,120 @@ func TestAhoyWorktreePruneRedactsFileNamesInItsReasons(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestAhoyWorktreeAddPrintsThePath is criteria 1 and 19: add makes the
+// worktree in the lane on a new branch cut from the default branch, prints
+// its path home-redacted (and as `path` in JSON), leaves the checkout's
+// parent as it was, and narrows the worktree to 0700.
+func TestAhoyWorktreeAddPrintsThePath(t *testing.T) {
+	repo := worktreeFixture(t)
+	parent := filepath.Dir(repo.Root())
+	before, err := os.ReadDir(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, err := worktree.LaneFor(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, code := runWorktree(t, false, "add", "feature")
+	if code != 0 || text != fsutil.RedactHome(l.Path("feature"))+"\n" || strings.Contains(text, l.Home) {
+		t.Fatalf("exit %d; want the path alone, home-redacted:\n%q", code, text)
+	}
+	if b := repo.Git("-C", l.Path("feature"), "rev-parse", "--abbrev-ref", "HEAD"); b != "feature" {
+		t.Fatalf("the worktree is on its new branch: %q", b)
+	}
+	if b, m := repo.Git("rev-parse", "feature"), repo.Git("rev-parse", "main"); b != m {
+		t.Fatalf("the branch is cut from the default branch: %s, main %s", b, m)
+	}
+	if fi, err := os.Lstat(l.Path("feature")); err != nil || fi.Mode().Perm() != 0o700 {
+		t.Fatalf("the worktree is 0700: %v %v", fi, err)
+	}
+	after, err := os.ReadDir(parent)
+	if err != nil || len(after) != len(before) {
+		t.Fatalf("nothing is made beside the checkout: %d -> %d entries (%v)", len(before), len(after), err)
+	}
+
+	js, code := runWorktree(t, true, "add", "second")
+	var got struct{ Name, Branch, Path string }
+	if err := json.Unmarshal([]byte(js), &got); err != nil || code != 0 {
+		t.Fatalf("exit %d, %v\n%s", code, err, js)
+	}
+	if got.Name != "second" || got.Branch != "second" || got.Path != fsutil.RedactHome(l.Path("second")) {
+		t.Fatalf("the JSON form names the worktree: %+v", got)
+	}
+}
+
+// TestAhoyWorktreeAddChecksOutAnExistingBranch is criterion 4's last half:
+// --branch checks an existing branch out and makes none.
+func TestAhoyWorktreeAddChecksOutAnExistingBranch(t *testing.T) {
+	repo := worktreeFixture(t)
+	repo.Git("branch", "topic")
+	refs := repo.Git("for-each-ref", "refs/heads/")
+	text, code := runWorktree(t, false, "add", "wt", "--branch", "topic")
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, text)
+	}
+	l, _ := worktree.LaneFor(repo.Root())
+	if b := repo.Git("-C", l.Path("wt"), "rev-parse", "--abbrev-ref", "HEAD"); b != "topic" {
+		t.Fatalf("the existing branch is checked out: %q", b)
+	}
+	if after := repo.Git("for-each-ref", "refs/heads/"); after != refs {
+		t.Fatalf("no branch is made: %q -> %q", refs, after)
+	}
+}
+
+// TestAhoyWorktreeAddRefusesAndWritesNothing is criterion 4: `../x`, `-x`, a
+// taken name, the embargo store's name, a branch that already exists without
+// --branch, and a repository with no commits each exit 2 naming the reason,
+// and write nothing.
+func TestAhoyWorktreeAddRefusesAndWritesNothing(t *testing.T) {
+	repo := worktreeFixture(t)
+	home, _ := os.UserHomeDir()
+	repo.Git("branch", "exists")
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"add", "../x"}, "plain path segment"},
+		{[]string{"add", "--", "-x"}, "plain path segment"},
+		{[]string{"add", storepath.Name}, "embargo"},
+		{[]string{"add", "exists"}, "--branch exists"},
+		{[]string{"add", "wt", "--branch", "absent"}, "no local branch"},
+	} {
+		text, code := runWorktree(t, false, tc.args...)
+		if code != 2 || !strings.Contains(text, tc.want) {
+			t.Errorf("%v: exit %d, want 2 naming %q:\n%s", tc.args, code, tc.want, text)
+		}
+		if _, err := os.Lstat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%v: a refused add writes nothing under the home: %v", tc.args, err)
+		}
+	}
+
+	if _, code := runWorktree(t, false, "add", "taken"); code != 0 {
+		t.Fatal("the first add of a name succeeds")
+	}
+	l, _ := worktree.LaneFor(repo.Root())
+	lane, err := os.ReadDir(l.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text, code := runWorktree(t, false, "add", "taken"); code != 2 || !strings.Contains(text, "occupied") {
+		t.Fatalf("a taken name: exit %d:\n%s", code, text)
+	}
+	if after, err := os.ReadDir(l.Dir); err != nil || len(after) != len(lane) {
+		t.Fatalf("the lane is left as it was: %d -> %d (%v)", len(lane), len(after), err)
+	}
+
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(gittest.NewRepo(t).Root())
+	home, _ = os.UserHomeDir()
+	if text, code := runWorktree(t, false, "add", "wt"); code != 2 || !strings.Contains(text, "no root commit") {
+		t.Fatalf("a repository with no commits: exit %d:\n%s", code, text)
+	}
+	if _, err := os.Lstat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a repository with no commits writes nothing under the home: %v", err)
 	}
 }

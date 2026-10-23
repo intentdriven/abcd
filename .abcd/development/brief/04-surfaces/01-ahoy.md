@@ -33,6 +33,7 @@ repo whose stamp says it is current.
 | `remote apply` | gate | shipped |
 | `uninstall` | — | shipped |
 | `worktree` | — | shipped |
+| `worktree add` | — | shipped |
 | `worktree list` | — | shipped |
 | `worktree prune` | — | shipped |
 
@@ -1555,9 +1556,17 @@ Sub-verbs: none.
 
 ### `abcd ahoy worktree`
 
-Sub-verbs: `abcd ahoy worktree list`, `abcd ahoy worktree prune`.
+Sub-verbs: `abcd ahoy worktree add`, `abcd ahoy worktree list`, `abcd ahoy worktree prune`.
 
 Flags: none.
+
+### `abcd ahoy worktree add`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--branch` | string |
 
 ### `abcd ahoy worktree list`
 

@@ -47,6 +47,8 @@ var sentences = map[string]string{
 		"Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.",
 	"abcd ahoy worktree": "List this repository's worktrees and its lane in the worktree store: " +
 		"Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
+	"abcd ahoy worktree add": "Add a worktree in this repository's lane of the worktree store: " +
+		"Writes the worktree, its start record and its local tier; refuses a taken or reserved name.",
 	"abcd ahoy worktree list": "List this repository's worktrees and its lane, or every lane with --all: " +
 		"Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
 	"abcd ahoy worktree prune": "Reclaim this lane's merged, clean worktrees, archiving their notes first: " +

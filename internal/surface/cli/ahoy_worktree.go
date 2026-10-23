@@ -1,9 +1,10 @@
 package cli
 
 // ahoy_worktree.go is the worktree store's front door (itd-2609091014076309,
-// spc-2609301811532881): bare `abcd ahoy worktree` and `list` render the
-// repository's worktrees and its lane, `list --all` every lane on the
-// machine, and `prune` reclaims the lane's merged, clean worktrees. The core judges each row and masks every string in it, since a
+// spc-2609301811532881): `add` makes a worktree in the repository's lane,
+// bare `abcd ahoy worktree` and `list` render the repository's worktrees and
+// its lane, `list --all` every lane on the machine, and `prune` reclaims the
+// lane's merged, clean worktrees. The core judges each row and masks every string in it, since a
 // branch, a lock reason and a path are another checkout's bytes; this door
 // lays the rows out and maps a refusal or a fault to exit 2.
 
@@ -25,6 +26,12 @@ import (
 // worktreeForge is the forge client the worktree verbs ask, once a run, for
 // the merged judgement: the repository's own bounded `gh`. A test replaces it.
 var worktreeForge worktree.GH = landing.GH
+
+// worktreeGit is the git `add` hands the store: git through gitutil's
+// isolated environment, as the spec's add runs it.
+var worktreeGit worktree.GitRunner = func(dir string, args ...string) (string, error) {
+	return gitutil.Run(dir, args...)
+}
 
 // worktreeFault is a refusal or a fault of a worktree verb: exit 2, its text
 // home-redacted and masked.
@@ -83,9 +90,85 @@ func newAhoyWorktreeCommand(asJSON *bool) *cobra.Command {
 		RunE:  func(cmd *cobra.Command, _ []string) error { return list(cmd, all) },
 	}
 	listCmd.Flags().BoolVar(&all, "all", false, "walk every lane in the worktree store on this machine")
+	cmd.AddCommand(newAhoyWorktreeAddCommand(asJSON))
 	cmd.AddCommand(listCmd)
 	cmd.AddCommand(newAhoyWorktreePruneCommand(asJSON))
 	return cmd
+}
+
+// worktreeAdded is what `add` reports: the worktree's name, its branch and the
+// path to work in, home-redacted.
+type worktreeAdded struct {
+	Name   string `json:"name"`
+	Branch string `json:"branch"`
+	Path   string `json:"path"`
+}
+
+// newAhoyWorktreeAddCommand builds `ahoy worktree add <name> [--branch
+// <existing>]`. Without --branch it makes a new branch named <name>, cut from
+// the default branch as the build loop's lanes are; with it, it checks that
+// existing local branch out and makes none. It prints the path alone, so a
+// caller can work in it at once, and exits 2 on any refusal or fault.
+func newAhoyWorktreeAddCommand(asJSON *bool) *cobra.Command {
+	var branch string
+	cmd := &cobra.Command{
+		Use:   "add <name>",
+		Short: "Add a worktree in this repository's lane of the worktree store",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := worktreeCheckout()
+			if err != nil {
+				return worktreeFault("add", err)
+			}
+			name := args[0]
+			opts := worktree.AddOptions{Name: name, Git: worktreeGit}
+			if cmd.Flags().Changed("branch") {
+				opts.Branch, opts.Existing = branch, true
+			} else {
+				if err := branchTaken(root, name); err != nil {
+					return worktreeFault("add", err)
+				}
+				// No default branch, or none git can name, is no base: the
+				// core refuses that, after the repository's own refusals.
+				if def := gitutil.DefaultRef(root); def != "" {
+					opts.Base, _ = gitutil.Run(root, "rev-parse", "--verify", "--quiet", def+"^{commit}", "--")
+				}
+			}
+			got, err := worktree.Add(root, opts)
+			if err != nil {
+				return worktreeFault("add", err)
+			}
+			out := worktreeAdded{
+				Name:   termsafe.Sanitize(name),
+				Branch: termsafe.Sanitize(got.Branch),
+				Path:   termsafe.Sanitize(fsutil.RedactHome(got.Path)),
+			}
+			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { fmt.Fprintln(w, out.Path) })
+		},
+	}
+	cmd.Flags().StringVar(&branch, "branch", "", "check out this existing local branch instead of making a new one")
+	return cmd
+}
+
+// branchTaken refuses a new branch whose name a local branch already holds,
+// naming the flag that checks it out. The core refuses the same case without
+// knowing this door's flags, and refuses a taken path in the lane first, so
+// this answers only for a valid name whose place in the lane is free.
+func branchTaken(root, name string) error {
+	if !worktree.ValidName(name) {
+		return nil
+	}
+	if _, err := gitutil.Run(root, "rev-parse", "--verify", "--quiet", "refs/heads/"+name, "--"); err != nil {
+		return nil
+	}
+	lane, err := worktree.LaneFor(root)
+	if err != nil {
+		return nil
+	}
+	if _, err := os.Lstat(lane.Path(name)); err == nil {
+		return nil
+	}
+	return fmt.Errorf("a branch named %s already exists; check it out with `--branch %s`", name, name)
 }
 
 // newAhoyWorktreePruneCommand builds `ahoy worktree prune [--dry-run]`. It
