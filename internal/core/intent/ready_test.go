@@ -876,6 +876,11 @@ func TestReadyWarnsOnSerialByDefaultSteps(t *testing.T) {
 		{"no steps", "", false},
 		{"one step declares none", "\n## Steps\n\n1. A\n2. B\n   - needs: none\n3. C\n", false},
 		{"one step declares an earlier step", "\n## Steps\n\n1. A\n2. B\n3. C\n   - needs: 1\n", false},
+		// Step 1 has no earlier step to wait for, so its line changes nothing.
+		{"only step 1 declares none", "\n## Steps\n\n1. A\n   - needs: none\n2. B\n3. C\n", true},
+		// Fewer than two steps left to build can run nothing beside each other.
+		{"two steps, one landed", "\n## Steps\n\n1. A\n   - landed: #1\n2. B\n", false},
+		{"every step landed", "\n## Steps\n\n1. A\n   - landed: #1\n2. B\n   - landed: #2\n", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -595,8 +595,8 @@ Declare each step's needs whenever the spec lists two or more. Any other line
 indented under a step is the author's and travels with it. `abcd intent ready`
 reports the section's shape on its advisory `steps` row: the steps listed and
 how many have landed, or none and so one step. A section that is not a numbered
-list is named there with the shape above, and a spec of two or more steps where
-no step declares `needs:` draws a warning there, saying the steps run fully
+list is named there with the shape above, and a spec with two or more steps still
+to build, none after the first declaring `needs:`, draws a warning there, saying the steps run fully
 serial and naming the fix; record-lint's `spec_steps_serial` rule names the same
 open specs at warn. Neither ever withholds readiness. The close below reads it too: a
 `--remainder` close carries the steps not marked landed into the spec it mints,
