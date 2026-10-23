@@ -117,7 +117,11 @@ type fakeForge struct {
 	logins map[string]string
 	calls  []string
 	// comments is each comment the writer posted, "#<n> <body>".
-	comments []string
+	// commentErr, set, is why the forge takes no comment; commentEcho, set,
+	// is what the forge reads a posted comment back as.
+	comments    []string
+	commentErr  error
+	commentEcho func(string) string
 	// The forge's record of pushes to a reservation branch: by default one
 	// push a commit on origin's first-parent line, by the holder its
 	// Abcd-Holder trailer names, as abcd pushes them. pusherOf overrides one
@@ -201,14 +205,22 @@ func (f *fakeForge) login(root string) (string, error) {
 }
 
 // Comment is the comment writer's seam, kept rather than posted.
-func (f *fakeForge) Comment(_, owner, name string, number int, body string) error {
+func (f *fakeForge) Comment(_, subject, body string) (bool, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if owner != "acme" || name != "widgets" {
-		f.t.Errorf("a comment went to %s/%s", owner, name)
+	n, pr := f.byID(subject)
+	if pr == nil {
+		f.t.Errorf("a comment went to %q, no pull request's node id", subject)
 	}
-	f.comments = append(f.comments, fmt.Sprintf("#%d %s", number, body))
-	return nil
+	if f.commentErr != nil {
+		return false, "", f.commentErr
+	}
+	f.comments = append(f.comments, fmt.Sprintf("#%d %s", n, body))
+	read := body
+	if f.commentEcho != nil {
+		read = f.commentEcho(body)
+	}
+	return true, read, nil
 }
 
 // mutationRe is the shape of the mutations the release hold sends.

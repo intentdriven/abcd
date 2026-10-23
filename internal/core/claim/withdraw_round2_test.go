@@ -5,8 +5,7 @@ package claim
 // vouched for by the branch's history, the holder checked against gh's
 // account, one release at a time, the release pull request left alone, the
 // queue-less re-arm (dcn-2610230328230096), the withdrawals an older binary
-// dropped (dcn-2610230328242929), the comment writer's seam
-// (dcn-2610230328230097), and the bounds.
+// dropped (dcn-2610230328242929), and the bounds.
 
 import (
 	"errors"
@@ -384,49 +383,6 @@ func TestWithdrawalsAnOlderBinaryDroppedAreReportedLost(t *testing.T) {
 	// A settled record is not lost: none on a fresh release.
 	if l := lostWithdrawals(nil, true); l != nil {
 		t.Fatalf("lost on nothing = %+v", l)
-	}
-}
-
-// TestTheCommentWriterIsOffByDefaultAndFixedFormBehindItsSeam: no comment is
-// posted unless the seam is set; set (as only a test sets it), each
-// withdrawal and each re-arm or skip posts one fixed-form comment on its own
-// pull request, with no session URL and no tool footer.
-func TestTheCommentWriterIsOffByDefaultAndFixedFormBehindItsSeam(t *testing.T) {
-	w := newWorld(t)
-	f := newFakeForge(t, map[int]*fakePR{
-		11: {id: "PR_eleven", head: headA, method: "SQUASH"},
-		12: {id: "PR_twelve", head: headB, queued: true},
-	})
-	if releaseForge.comments != nil {
-		t.Fatal("a comment writer is set by default")
-	}
-	p := w.clone("1234+octo@users.noreply.github.com", "")
-	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.comments) != 0 {
-		t.Fatalf("comments = %v; want none by default", f.comments)
-	}
-	releaseForge.comments = f
-	f.prs[12].head = headC
-	if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := p.do(Request{Record: "rel-v0.16.1"}); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{
-		"#11 abcd release hold: #11 re-armed (auto:squash, at 111111111111) after rel-v0.16.0 (withdrawn by @octo).",
-		"#12 abcd release hold: #12 was not re-armed after rel-v0.16.0: its head moved since it was withdrawn at 222222222222, so its owner re-arms it (withdrawn by @octo).",
-		"#11 abcd release hold: #11 withdrawn for rel-v0.16.1 (withdrawn by @octo).",
-	}
-	if !slices.Equal(f.comments, want) {
-		t.Fatalf("comments =\n%s\nwant\n%s", strings.Join(f.comments, "\n"), strings.Join(want, "\n"))
-	}
-	for _, c := range f.comments {
-		if strings.Contains(c, "http") || strings.Contains(c, "Generated with") {
-			t.Fatalf("comment %q carries a URL or a footer", c)
-		}
 	}
 }
 

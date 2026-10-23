@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/github"
 	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -40,6 +41,12 @@ const (
 	DequeueMutation          = `mutation($id:ID!){dequeuePullRequest(input:{id:$id}){clientMutationId}}`
 	EnableAutoMergeMutation  = `mutation($id:ID!,$m:PullRequestMergeMethod!,$h:GitObjectID!){enablePullRequestAutoMerge(input:{pullRequestId:$id,mergeMethod:$m,expectedHeadOid:$h}){clientMutationId}}`
 	EnqueueMutation          = `mutation($id:ID!,$h:GitObjectID!){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$h}){clientMutationId}}`
+
+	// AddCommentMutation posts one comment on a pull request, by its node
+	// id, and names the comment it made; CommentQuery reads that comment
+	// back by its own id.
+	AddCommentMutation = `mutation($id:ID!,$b:String!){addComment(input:{subjectId:$id,body:$b}){commentEdge{node{id}}}}`
+	CommentQuery       = `query($c:ID!){node(id:$c){... on IssueComment{body}}}`
 )
 
 // maxArmedPages bounds the listing: a thousand open pull requests into one
@@ -59,10 +66,9 @@ type mergeForge struct {
 	// withdrawal and re-arm is made under it, so each is refused unless it is
 	// the reservation's holder.
 	login func(root string) (string, error)
-	// comments is the pull-request comment writer's seam
-	// (dcn-2610230328230097): nil, and nothing sets it outside the tests, so
-	// abcd posts nothing on other people's pull requests until the product
-	// thinker decides it does.
+	// comments is the pull-request comment writer (dcn-2610230712084099):
+	// the forge's own (ghCommenter) wherever abcd runs, a fake in the tests.
+	// nil posts nothing.
 	comments PRCommenter
 	// pushers is the forge's record of who pushed each commit to a
 	// reservation branch, asked by its full ref (withdrawpush.go): what a
@@ -70,16 +76,26 @@ type mergeForge struct {
 	pushers PusherLookup
 }
 
-// PRCommenter posts one comment on pull request number of owner/name.
+// PRCommenter posts one comment on the pull request whose node id is
+// subject, and reads it back from the forge: posted reports whether the
+// forge took it, and read is its body as the forge then reads it back. err
+// says why it was not posted, or, posted, why it could not be read back.
 type PRCommenter interface {
-	Comment(root, owner, name string, number int, body string) error
+	Comment(root, subject, body string) (posted bool, read string, err error)
 }
 
-// releaseForge is the forge every withdrawal, admission and re-arm goes to.
-// Every field is wired here, not in a front door, so every path that
-// reaches a re-arm (reserve, peers, a build's or a drain's reservation, the
-// load gate's renewals) is held to the same record of pushes.
-var releaseForge = mergeForge{repo: originRepo, graphql: ghGraphQL, login: ghLogin, pushers: reservationPushers}
+// releaseForge is the forge every withdrawal, admission, re-arm and comment
+// goes to. Every field is wired here, not in a front door, so every path
+// that reaches a re-arm (reserve, peers, a build's or a drain's reservation,
+// the load gate's renewals) is held to the same record of pushes, and
+// comments on the pull requests it acts on.
+var releaseForge = productionForge()
+
+// productionForge is the forge as abcd runs it: gh for every call.
+func productionForge() mergeForge {
+	return mergeForge{repo: originRepo, graphql: ghGraphQL, login: ghLogin, pushers: reservationPushers,
+		comments: ghCommenter{graphql: ghGraphQL}}
+}
 
 // ghLogin is the login the session's gh token answers the user endpoint
 // with (forgeUser, asked once per process for each checkout and credential).
@@ -429,39 +445,133 @@ func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 	return WithdrawnRearmed, nil
 }
 
-// The events a pull-request comment reports.
-const (
-	commentWithdrawn = "withdrawn"
-	commentSettled   = "settled"
-)
-
-// commentBody is the fixed-form comment the writer posts on w's pull request
-// for subject's hold: every value in it is validated data (a number, a
-// release subject, a form, an object name, a GitHub username, a state), so it
-// carries no free text, no session URL and no tool footer.
+// commentBody is the one fixed sentence the writer posts on w's pull request
+// for the release subject, by the state a push just recorded for it:
+// withdrawn, admitted, re-armed, or not re-armed with its state word as the
+// reason. Every value in it is validated data (a number, the release's tag, a
+// GitHub username, a state word), so it carries no free text from the
+// branch, no session URL and no tool footer. The withdrawer is named without
+// an at-sign, so a comment notifies no one but the pull request's own
+// watchers.
 func commentBody(subject string, w Withdrawal) string {
-	return "abcd release hold: " + SettledLine(subject, w) + " (withdrawn by @" + w.By + ")."
+	tag := strings.TrimPrefix(subject, releasePrefix)
+	switch w.State {
+	case WithdrawnPending:
+		return fmt.Sprintf("abcd release hold: the merge of #%d is withdrawn by %s while release %s is cut, and is re-armed after it.", w.Number, w.By, tag)
+	case WithdrawnAdmitted:
+		return fmt.Sprintf("abcd release hold: the merge of #%d is admitted into release %s by %s.", w.Number, tag, w.By)
+	case WithdrawnRearmed:
+		return fmt.Sprintf("abcd release hold: the merge of #%d is re-armed after release %s.", w.Number, tag)
+	}
+	return fmt.Sprintf("abcd release hold: the merge of #%d is not re-armed after release %s (reason: %s).", w.Number, tag, w.State)
 }
 
-// comment posts commentBody through the seam, when one is set and the body
-// passes the outbound policy; the failure it returns names why it was not
-// posted, nil when it was or nothing is set.
-func (f mergeForge) comment(root, owner, name, subject string, w Withdrawal) *ForgeFailure {
+// comment posts commentBody for w, in the state a push just recorded for it,
+// on its pull request (postComment). Each caller posts only once the push
+// recording that change of state has landed, and only for an entry whose
+// state it changed: a copy whose push lost, and an act that finds the state
+// already recorded, post nothing, so each change is commented on once.
+func (f mergeForge) comment(root, subject string, w Withdrawal) *ForgeFailure {
+	return f.postComment(root, w, commentBody(subject, w))
+}
+
+// postComment posts body on w's pull request through the writer, when one is
+// set, after judging it by the outbound policy the commit-msg hook judges a
+// commit message by (scanner.CheckOutbound): a body it refuses is never
+// posted. Posted, the comment is read back from the forge and held to what
+// was sent: one that reads back otherwise (a footer appended after it was
+// posted) is reported, never edited. The failure returned is reported once,
+// by pull request and reason; it never holds up or undoes the act the
+// comment reports. nil when it was posted as sent, or no writer is set.
+func (f mergeForge) postComment(root string, w Withdrawal, body string) *ForgeFailure {
 	if f.comments == nil {
 		return nil
 	}
-	body := commentBody(subject, w)
-	if err := checkText(root, commentFamily, body); err != nil {
-		return &ForgeFailure{Number: w.Number, Act: ForgeComment, Reason: "the comment was not posted: " + err.Error()}
+	fail := func(reason string) *ForgeFailure {
+		return &ForgeFailure{Number: w.Number, Act: ForgeComment, Reason: reason}
 	}
-	if err := f.comments.Comment(root, owner, name, w.Number, body); err != nil {
-		return &ForgeFailure{Number: w.Number, Act: ForgeComment, Reason: "the comment was not posted: " + forgeReason(err)}
+	what := "the comment saying it is " + commentWord(w.State)
+	findings, err := scanner.CheckOutbound(root, body, commentFamily.name)
+	switch {
+	case len(findings) > 0:
+		return fail(what + " was not posted: it carries " + findings[0].Kind + ", which public text may not carry")
+	case err != nil:
+		return fail(what + " was not posted: it could not be judged against the outbound policy (" + redacted(err) + ")")
+	case len(body) > MaxMessageBytes:
+		return fail(fmt.Sprintf("%s was not posted: it would be %d bytes, over the %d-byte cap", what, len(body), MaxMessageBytes))
+	}
+	posted, read, err := f.comments.Comment(root, w.ID, body)
+	switch {
+	case !posted:
+		reason := "the forge did not say it took it"
+		if err != nil {
+			reason = forgeReason(err)
+		}
+		return fail(what + " was not posted: " + reason)
+	case err != nil:
+		return fail(what + " was posted, but could not be read back from the forge to check it (" + forgeReason(err) + "); read it on the pull request")
+	case read != body:
+		return fail(fmt.Sprintf("%s was posted, but the forge reads it back as %d bytes that are not the %d abcd sent: something changed it after it was posted "+
+			"(a footer appended, say); abcd does not edit it, so read it on the pull request and correct it there", what, len(read), len(body)))
 	}
 	return nil
 }
 
+// commentWord is a state as a comment's failure names it.
+func commentWord(state string) string {
+	switch state {
+	case WithdrawnPending:
+		return "withdrawn"
+	case WithdrawnAdmitted:
+		return "admitted"
+	case WithdrawnRearmed:
+		return "re-armed"
+	}
+	return "not re-armed (" + state + ")"
+}
+
 // commentFamily is the pull-request comment as the outbound check names it.
 var commentFamily = &family{name: "pull request comment", shorten: "name fewer pull requests"}
+
+// ghCommenter is the forge's own comment writer: one addComment mutation
+// through the one door every other forge call takes (ghGraphQL, gh under the
+// session's own credential, never printed), then one read of the comment it
+// made, by the id the forge answered with.
+type ghCommenter struct {
+	graphql func(root, doc string, vars map[string]string, ints map[string]int) ([]byte, error)
+}
+
+func (c ghCommenter) Comment(root, subject, body string) (posted bool, read string, err error) {
+	f := mergeForge{graphql: c.graphql}
+	var made struct {
+		AddComment struct {
+			CommentEdge struct {
+				Node struct {
+					ID string `json:"id"`
+				} `json:"node"`
+			} `json:"commentEdge"`
+		} `json:"addComment"`
+	}
+	if err := f.send(root, AddCommentMutation, map[string]string{"id": subject, "b": body}, nil, &made); err != nil {
+		return false, "", err
+	}
+	id := made.AddComment.CommentEdge.Node.ID
+	if !validNodeID(id) {
+		return true, "", errors.New("the forge's answer names no comment it made")
+	}
+	var got struct {
+		Node *struct {
+			Body *string `json:"body"`
+		} `json:"node"`
+	}
+	if err := f.send(root, CommentQuery, map[string]string{"c": id}, nil, &got); err != nil {
+		return true, "", err
+	}
+	if got.Node == nil || got.Node.Body == nil {
+		return true, "", errors.New("the forge's answer carries no comment by the id it named")
+	}
+	return true, *got.Node.Body, nil
+}
 
 // ArmedMerges is what the launch check judges a cut by (iss-2610222014550692):
 // every open pull request into origin's default branch (Base) that is armed

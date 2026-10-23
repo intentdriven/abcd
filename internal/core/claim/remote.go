@@ -360,6 +360,13 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		res.Commit = commit
 		w, _ := withdrawalOf(m.Withdrawn, p.req.Admit)
 		res.Admitted = &w
+		// An admission recorded already, admitted again, changes no state,
+		// so only the first is commented on.
+		if admitting.State != WithdrawnAdmitted {
+			if f := releaseForge.comment(root, p.id, w); f != nil {
+				res.ForgeFailures = append(res.ForgeFailures, *f)
+			}
+		}
 	}
 	res.Withdrawals = m.Withdrawn
 	res.Settles = settles

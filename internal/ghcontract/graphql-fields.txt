@@ -204,7 +204,8 @@ PageInfo.startCursor String SCALAR
 # same way, one __type query a type: the listing of a branch's open pull
 # requests (Repository.pullRequests, whose type is a non-null
 # PullRequestConnection, listed whole), and the four mutations the release
-# hold sends with their payloads, listed whole. Mutation holds only those four.
+# hold sends with their payloads, listed whole. Mutation holds only those four
+# and addComment, pinned below.
 # An input object's fields are read from __type's inputFields and pinned the
 # same way, one field a line, so a test can hold each mutation's input to them.
 Repository.pullRequests PullRequestConnection OBJECT
@@ -241,3 +242,24 @@ EnqueuePullRequestInput.clientMutationId String SCALAR
 EnqueuePullRequestInput.expectedHeadOid GitObjectID SCALAR
 EnqueuePullRequestInput.jump Boolean SCALAR
 EnqueuePullRequestInput.pullRequestId ID SCALAR
+# The release hold's pull-request comments (dcn-2610230712084099), read
+# 2026-10-23 the same way, one __type query a type: the addComment mutation,
+# its input and payload listed whole, the edge to the comment it made, and the
+# walk that reads the comment back by its id (Query.node, an interface; the
+# one type of it the read spreads on is pinned as a union's are, "on Node
+# IssueComment", read by {__type(name:"Node"){possibleTypes{name}}}), with the
+# two fields of IssueComment the post and the read select.
+Mutation.addComment AddCommentPayload OBJECT
+AddCommentInput.body String SCALAR
+AddCommentInput.clientMutationId String SCALAR
+AddCommentInput.subjectId ID SCALAR
+AddCommentPayload.clientMutationId String SCALAR
+AddCommentPayload.commentEdge IssueCommentEdge OBJECT
+AddCommentPayload.subject Node INTERFACE
+AddCommentPayload.timelineEdge IssueTimelineItemEdge OBJECT
+IssueCommentEdge.cursor String SCALAR
+IssueCommentEdge.node IssueComment OBJECT
+Query.node Node INTERFACE
+on Node IssueComment
+IssueComment.body String SCALAR
+IssueComment.id ID SCALAR

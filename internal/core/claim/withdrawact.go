@@ -52,7 +52,7 @@ const (
 )
 
 // ForgeFailure is one pull request the forge, or the record of it, failed
-// on: the act (ForgeWithdraw, ForgeRearm, ForgeRecord) and the reason.
+// on: the act (ForgeWithdraw, ForgeRearm, ForgeRecord, ForgeComment) and the reason.
 type ForgeFailure struct {
 	Number int    `json:"number"`
 	Act    string `json:"act"`
@@ -387,8 +387,11 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again []Withdrawal
 		default:
 			made = append(made, got)
 		}
-		if done {
-			if f := releaseForge.comment(p.root, owner, name, p.id, got); f != nil {
+		// The comment reports the change of state the record just pushed
+		// made: an entry it already recorded withdrawn, as it stands, is
+		// withdrawn again without one.
+		if prev, had := withdrawalOf(m.Withdrawn, pr.Number); done && (!had || !prev.Pending() || !sameEntry(prev, got)) {
+			if f := releaseForge.comment(p.root, p.id, got); f != nil {
 				fails = append(fails, *f)
 			}
 		}
@@ -514,9 +517,6 @@ func rearmMine(a actor, ws []Withdrawal, trust func(Withdrawal) bool) (out, sett
 			continue // admitted into the cut, and done
 		}
 		settled = append(settled, out[i])
-		if f := releaseForge.comment(a.root, owner, name, a.subject, out[i]); f != nil {
-			fails = append(fails, *f)
-		}
 	}
 	keepRefusals(a.root, a.subject, refusals)
 	return out, settled, changed, fails, ""
@@ -706,7 +706,21 @@ func settleTip(a actor, tree, id string, t tip) (s Settle, ok bool) {
 		return s, true
 	}
 	s.Commit = final
+	s.Failures = append(s.Failures, commentSettled(a, settled)...)
 	return s, true
+}
+
+// commentSettled posts the comment for each of settled, once the tombstone
+// recording their new states has landed (mergeForge.comment), and returns the
+// comments that failed.
+func commentSettled(a actor, settled []Withdrawal) []ForgeFailure {
+	var fails []ForgeFailure
+	for _, w := range settled {
+		if f := releaseForge.comment(a.root, a.subject, w); f != nil {
+			fails = append(fails, *f)
+		}
+	}
+	return fails
 }
 
 // pushTombstone writes, as a, a tombstone over parent on id's branch
@@ -874,6 +888,7 @@ func (p *prepared) settleOwnRelease(tree, sha, parent string, ws []Withdrawal) (
 		return s, sha, ws
 	}
 	s.Commit = final
+	s.Failures = append(s.Failures, commentSettled(a, settled)...)
 	return s, final, out
 }
 
