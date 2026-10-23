@@ -803,35 +803,39 @@ func (s State) metered() string {
 	return ""
 }
 
-// pinned reports the first route, in a state, that carries a pin or names
-// its model as local, which only version 15 and later write, or "".
-func (s State) pinned() string {
-	key := func(r *runner.RouteRecord) string {
-		switch {
-		case r == nil:
-			return ""
-		case r.ProviderPin != nil:
-			return "provider_pin"
-		case r.PinConfigSHA256 != "":
-			return "pin_config_sha256"
-		case r.LocalPin != nil:
-			return "local_pin"
-		case r.LocalServed != nil:
-			return "local_served"
-		case r.Local:
-			return "local"
-		}
+// pinKey names the first of a route's pin fields, or its `local`, that the
+// route carries, or "": the fields the run state's version 16 and the drain
+// state's version 2 added.
+func pinKey(r *runner.RouteRecord) string {
+	switch {
+	case r == nil:
 		return ""
+	case r.ProviderPin != nil:
+		return "provider_pin"
+	case r.PinConfigSHA256 != "":
+		return "pin_config_sha256"
+	case r.LocalPin != nil:
+		return "local_pin"
+	case r.LocalServed != nil:
+		return "local_served"
+	case r.Local:
+		return "local"
 	}
+	return ""
+}
+
+// pinned reports the first route, in a state, that carries a pin or names
+// its model as local, which only version 16 and later write, or "".
+func (s State) pinned() string {
 	for _, l := range s.Lanes {
 		for i, r := range l.Receipts {
-			if k := key(r.Route); k != "" {
+			if k := pinKey(r.Route); k != "" {
 				return fmt.Sprintf("`%s` on %s's receipt %d's route", k, l.ID, i+1)
 			}
 		}
 		for _, v := range l.Validation {
 			for i, vr := range v.Validators {
-				if k := key(vr.Route); k != "" {
+				if k := pinKey(vr.Route); k != "" {
 					return fmt.Sprintf("`%s` on %s's round %d validator %d's route", k, l.ID, v.Round, i+1)
 				}
 			}
