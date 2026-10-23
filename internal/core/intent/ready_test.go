@@ -829,7 +829,7 @@ func TestReadyReportsTheStepsShape(t *testing.T) {
 		remedy      string
 	}{
 		{"none", "", true, "built as one step", ""},
-		{"listed", "\n## Steps\n\n1. The parser\n   - landed: #1\n2. The loop\n", true, "2 step(s) listed, 1 landed", ""},
+		{"listed", "\n## Steps\n\n1. The parser\n   - landed: #1\n2. The loop\n   - needs: 1\n", true, "2 step(s) listed, 1 landed", ""},
 		{"malformed", "\n## Steps\n\nFirst the parser, then the loop.\n", false, "not a numbered step", "1. <title>"},
 		// An unclosed opener masks the section; the remedy is to close it, and
 		// rewriting the list would not help.
@@ -854,6 +854,64 @@ func TestReadyReportsTheStepsShape(t *testing.T) {
 			}
 			if !res.Ready {
 				t.Fatalf("the steps row never withholds readiness: %+v", res.Checks)
+			}
+		})
+	}
+}
+
+// TestReadyWarnsOnSerialByDefaultSteps is dcn-2610230857411093 (remedy part 1)
+// on iss-2610230016561927: a spec of two or more steps where no step declares
+// `needs:` runs fully serial, each step waiting for every earlier one (ruling
+// DR6b), so the steps row warns, naming the fix. It is a warning, never a
+// refusal: the row stays advisory and the intent stays READY. A one-step spec,
+// or one where any step declares its needs, draws nothing.
+func TestReadyWarnsOnSerialByDefaultSteps(t *testing.T) {
+	cases := []struct {
+		name, steps string
+		warn        bool
+	}{
+		{"two steps, no needs", "\n## Steps\n\n1. The parser\n   - packages: internal/core/spec\n2. The loop\n", true},
+		{"three steps, no needs, one landed", "\n## Steps\n\n1. A\n   - landed: #1\n2. B\n3. C\n", true},
+		{"one step", "\n## Steps\n\n1. The parser\n", false},
+		{"no steps", "", false},
+		{"one step declares none", "\n## Steps\n\n1. A\n2. B\n   - needs: none\n3. C\n", false},
+		{"one step declares an earlier step", "\n## Steps\n\n1. A\n2. B\n3. C\n   - needs: 1\n", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
+			writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10")+tc.steps)
+			res, err := Ready(root, "itd-10")
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertShape(t, res)
+			c := checkByName(t, res, CheckSteps)
+			if !c.Advisory {
+				t.Fatalf("the steps row must stay advisory: %+v", c)
+			}
+			if !res.Ready {
+				t.Fatalf("the serial warning never withholds readiness: %+v", res.Checks)
+			}
+			if !tc.warn {
+				if !c.OK || strings.Contains(c.Detail, "serial") || c.Remedy != "" {
+					t.Fatalf("steps = %+v, want a passing row with no serial warning", c)
+				}
+				return
+			}
+			if c.OK {
+				t.Fatalf("steps = %+v, want a warning (advisory, not OK)", c)
+			}
+			for _, w := range []string{"fully serial", "every earlier step"} {
+				if !strings.Contains(c.Detail, w) {
+					t.Fatalf("the detail must say %q: %q", w, c.Detail)
+				}
+			}
+			for _, w := range []string{"- needs:", "none", "spc-1-alpha.md"} {
+				if !strings.Contains(c.Remedy, w) {
+					t.Fatalf("the remedy must name %q: %q", w, c.Remedy)
+				}
 			}
 		})
 	}
