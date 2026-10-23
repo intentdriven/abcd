@@ -65,6 +65,12 @@ The process proof reads `/proc/<pid>/cwd` on Linux. On macOS it runs `/usr/sbin/
 
 A last write to the tree or its index within 24 hours (configurable) is a hint, not a proof. The hint also keeps the worktree.
 
+A reservation holds a worktree in either of two cases. Its tip names that worktree's own copy key, so a session that reserved from the worktree holds it before changing anything. Or its footprint overlaps the paths the worktree changes. The rule errs toward keeping, and the keep names the reservation by its record and holder. Matching a reservation's branch to the worktree's branch was rejected, because a reservation carries no branch.
+
+Reservations that cannot be read keep worktrees too. If no fetch of the reservations is stamped, nothing can show that a worktree is unreserved, so every worktree is held as "reservations unread", and the dry run says so once at the top. An unreadable reservation still within its hold has a footprint no one can read, so it holds every worktree as a hint naming that record and its holder. A worktree whose changed paths could not be computed is held as "changes unknown".
+
+The sweep judges only worktrees this account owns. One whose top directory or git file another account owns is held, naming that account's uid.
+
 The probe fails closed. A worktree the probe could not clear counts as possibly live whenever any of these happens:
 - lsof is missing, times out, exits non-zero, or prints what the parser cannot read;
 - `/proc` cannot be read.
