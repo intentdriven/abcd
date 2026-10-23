@@ -292,3 +292,12 @@ func TestAPersonsOwnPushOfSeveralCommitsVouchesForEach(t *testing.T) {
 		t.Fatalf("mutations = %v; want #11 re-armed", got)
 	}
 }
+
+// TestTheWalkReadsTheSixtyFourCommitsTheBriefNames: brief 37 and the launch
+// check's remedy name the walk's bound, 64 commits; the tests above pin the
+// behaviour at whatever bound is set, this pins the bound itself.
+func TestTheWalkReadsTheSixtyFourCommitsTheBriefNames(t *testing.T) {
+	if maxChain != 64 {
+		t.Fatalf("maxChain = %d; brief 37 and the launch check's remedy say 64", maxChain)
+	}
+}
