@@ -211,7 +211,7 @@ func archiveRenderRequest(repoRoot, tag string) (launch.PayloadRenderRequest, er
 		return launch.PayloadRenderRequest{}, err
 	}
 	if tag != "" && tag != next.Tag() {
-		return launch.PayloadRenderRequest{}, fmt.Errorf("--tag %s is not the release CHANGELOG.md dates newest (%s)", termsafe.Sanitize(tag), next.Tag())
+		return launch.PayloadRenderRequest{}, fmt.Errorf("--tag is not the release CHANGELOG.md dates newest (%s; the value given is not repeated here)", next.Tag())
 	}
 	prev := launch.Semver{}
 	if len(releases) > 1 {

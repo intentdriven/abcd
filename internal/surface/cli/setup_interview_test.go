@@ -498,13 +498,13 @@ func TestUnansweredSetupQuestionRefusesNamingIt(t *testing.T) {
 	}
 
 	// A value the question does not offer is refused, naming the values it
-	// does offer, and never recorded.
+	// does offer without repeating the one given, and never recorded.
 	out, err = pipedSetup(t, answersFileWith(t, interview.FileAnswer{ID: "visibility", Value: "privat"}), "--adopt", "--yes")
 	if !errors.As(err, &ee) || ee.Code != 2 {
 		t.Fatalf("a value the question does not offer: %v, want exit 2\n%s", err, out)
 	}
-	if !strings.Contains(ee.Msg, `"privat"`) || !strings.Contains(ee.Msg, "private|public|later") {
-		t.Fatalf("the refusal %q does not name the value given and the values offered", ee.Msg)
+	if strings.Contains(ee.Msg, "privat\"") || !strings.Contains(ee.Msg, "a value it does not offer") || !strings.Contains(ee.Msg, "private|public|later") {
+		t.Fatalf("the refusal %q repeats the value given, or does not name the values offered", ee.Msg)
 	}
 	if after := listTree(t, run.repo); after != before || !strings.Contains(ee.Msg, "nothing was written") {
 		t.Fatalf("a value the question does not offer: refused after writing, or not saying so (%q):\n--- before\n%s--- after\n%s", ee.Msg, before, after)

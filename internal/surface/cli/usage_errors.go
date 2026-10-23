@@ -13,6 +13,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"regexp"
 	"strconv"
 	"strings"
@@ -133,4 +134,15 @@ func subCommandList(root *cobra.Command, path string) string {
 		return "it takes no sub-command"
 	}
 	return "its sub-commands are " + strings.Join(names, ", ")
+}
+
+// pathErrorCause is err without the path an *fs.PathError carries — the bare
+// cause ("no such file or directory", "is a directory") — for a refusal that
+// names the path by its role rather than by what the caller typed.
+func pathErrorCause(err error) error {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err
+	}
+	return err
 }
