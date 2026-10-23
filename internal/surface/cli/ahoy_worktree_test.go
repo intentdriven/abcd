@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -135,5 +136,83 @@ func TestAhoyWorktreeRefusesOutsideARepository(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if out, code := runWorktree(t, false, "list"); code != 2 {
 		t.Fatalf("exit %d, want 2:\n%s", code, out)
+	}
+}
+
+// mergedLaneWorktree adds name to the lane with a commit of its own and
+// fast-forwards main over it: merged and clean.
+func mergedLaneWorktree(t *testing.T, repo *gittest.Repo, name string) string {
+	t.Helper()
+	p := laneWorktree(t, repo, name)
+	repo.Git("-C", p, "commit", "-q", "--allow-empty", "-m", "work on "+name)
+	repo.Git("merge", "-q", "--ff-only", name)
+	return p
+}
+
+// TestAhoyWorktreePruneExitCodes is decision 8: 1 when the run reclaimed
+// nothing, an empty lane included; 0 once one worktree is reclaimed; a dry
+// run answers the code the real run would, and --json carries the rows.
+func TestAhoyWorktreePruneExitCodes(t *testing.T) {
+	repo := worktreeFixture(t)
+	if out, code := runWorktree(t, false, "prune"); code != 1 {
+		t.Fatalf("an empty lane: exit %d, want 1:\n%s", code, out)
+	}
+	work := laneWorktree(t, repo, "work")
+	repo.Git("-C", work, "commit", "-q", "--allow-empty", "-m", "unmerged work")
+	if out, code := runWorktree(t, false, "prune"); code != 1 || !strings.Contains(out, "work") || !strings.Contains(out, "unmerged") {
+		t.Fatalf("an unmerged worktree is kept: exit %d:\n%s", code, out)
+	}
+	done := mergedLaneWorktree(t, repo, "done")
+
+	js, code := runWorktree(t, true, "prune", "--dry-run")
+	if code != 0 {
+		t.Fatalf("a dry run answers the real run's code: exit %d:\n%s", code, js)
+	}
+	var dry worktree.Pruned
+	if err := json.Unmarshal([]byte(js), &dry); err != nil || !dry.DryRun || len(dry.Rows) != 2 {
+		t.Fatalf("the dry run's rows (%v):\n%s", err, js)
+	}
+	if _, err := gitutil.Run(done, "rev-parse", "HEAD"); err != nil {
+		t.Fatalf("a dry run removes nothing: %v", err)
+	}
+	text, code := runWorktree(t, false, "prune")
+	if code != 0 || !strings.Contains(text, "done") || !strings.Contains(text, "reclaimed") {
+		t.Fatalf("a merged clean worktree is reclaimed: exit %d:\n%s", code, text)
+	}
+}
+
+// TestAhoyWorktreePruneRefusesAStoreItCannotTrust is criterion 12 at the
+// door: exit 2, nothing removed.
+func TestAhoyWorktreePruneRefusesAStoreItCannotTrust(t *testing.T) {
+	repo := worktreeFixture(t)
+	done := mergedLaneWorktree(t, repo, "done")
+	l, err := worktree.LaneFor(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(l.Dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if out, code := runWorktree(t, false, "prune"); code != 2 || !strings.Contains(out, "writable by its group or by every user") {
+		t.Fatalf("exit %d, want 2:\n%s", code, out)
+	}
+	if _, err := os.Stat(done); err != nil {
+		t.Fatalf("nothing is removed: %v", err)
+	}
+}
+
+// TestAhoyWorktreePruneKeepsWhatTheLoopHolds: the door hands prune the build
+// loop's own reader, and a run whose state cannot be read holds every
+// worktree named after it.
+func TestAhoyWorktreePruneKeepsWhatTheLoopHolds(t *testing.T) {
+	repo := worktreeFixture(t)
+	busy := mergedLaneWorktree(t, repo, "run-0000000000000007-lane-1")
+	repo.Write(".abcd/.work.local/run/run-0000000000000007/state.json", "not a state file\n")
+	out, code := runWorktree(t, false, "prune")
+	if code != 1 || !strings.Contains(out, "held by the build loop's run run-0000000000000007") {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	if _, err := os.Stat(busy); err != nil {
+		t.Fatalf("the held worktree stands: %v", err)
 	}
 }

@@ -3,7 +3,7 @@ package cli
 // ahoy_worktree.go is the worktree store's front door (itd-2609091014076309,
 // spc-2609301811532881): bare `abcd ahoy worktree` and `list` render the
 // repository's worktrees and its lane, `list --all` every lane on the
-// machine. The core judges each row and masks every string in it, since a
+// machine, and `prune` reclaims the lane's merged, clean worktrees. The core judges each row and masks every string in it, since a
 // branch, a lock reason and a path are another checkout's bytes; this door
 // lays the rows out and maps a refusal or a fault to exit 2.
 
@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -83,7 +84,72 @@ func newAhoyWorktreeCommand(asJSON *bool) *cobra.Command {
 	}
 	listCmd.Flags().BoolVar(&all, "all", false, "walk every lane in the worktree store on this machine")
 	cmd.AddCommand(listCmd)
+	cmd.AddCommand(newAhoyWorktreePruneCommand(asJSON))
 	return cmd
+}
+
+// newAhoyWorktreePruneCommand builds `ahoy worktree prune [--dry-run]`. It
+// exits 0 when it reclaimed a worktree, 1 when the run completed and
+// reclaimed nothing, and 2 on a refusal or a fault (decision 8); a dry run
+// answers the code the real run would.
+func newAhoyWorktreePruneCommand(asJSON *bool) *cobra.Command {
+	var dryRun bool
+	cmd := &cobra.Command{
+		Use:   "prune",
+		Short: "Reclaim the merged, clean worktrees of this repository's lane, archiving their notes first",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return worktreeFault("prune", err)
+			}
+			root, err := gitutil.Toplevel(cwd)
+			if err != nil {
+				return worktreeFault("prune", err)
+			}
+			got, err := worktree.Prune(root, worktree.PruneOptions{DryRun: dryRun, Forge: worktreeForge, Held: loop.HeldWorktrees, Cwd: cwd})
+			if err != nil {
+				return worktreeFault("prune", err)
+			}
+			if err := render(cmd.OutOrStdout(), *asJSON, got, func(w io.Writer) { renderPruned(w, got) }); err != nil {
+				return err
+			}
+			if got.Reclaimed() == 0 {
+				return &exitError{Code: 1}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "archive and remove nothing; report what a real run would")
+	return cmd
+}
+
+// renderPruned lays out one line a worktree: its outcome, then why it was
+// kept or where its notes went.
+func renderPruned(w io.Writer, got worktree.Pruned) {
+	head := "lane " + got.Lane
+	if got.DryRun {
+		head += " (dry run: nothing archived or removed)"
+	}
+	fmt.Fprintln(w, head)
+	if len(got.Rows) == 0 {
+		fmt.Fprintln(w, "  (no worktrees)")
+	}
+	for _, r := range got.Rows {
+		line := "  " + r.Outcome + "  " + r.Name + "  " + r.Path
+		switch {
+		case r.Reason != "":
+			line += "; " + r.Reason
+		case r.Archive != "":
+			line += "; notes (" + r.Notes + ") archived to " + r.Archive
+		case r.Notes != "":
+			line += "; notes: " + r.Notes
+		}
+		fmt.Fprintln(w, line)
+	}
+	if got.ForgeNote != "" {
+		fmt.Fprintf(w, "note: %s\n", got.ForgeNote)
+	}
 }
 
 // hereOrNone is the checkout the caller stands in, or "" outside one: --all
