@@ -25,6 +25,18 @@ is asked neutrally among them. The drafter's own behaviour is unchanged: it
 drafts the question from the material it is handed. Unmeasured, in the `0.x`
 band.
 
+## 2026-10-23 (iss-2610230016561927 — a build run serialises every lane on the previous one merging)
+
+### planning-interviewer 0.2.0
+
+MINOR: when the record splits the work into two or more steps, the interviewer
+asks the technical facilitator, under a `Tech` chip, what each step needs (the
+earlier steps it waits for, or none) and records each answer as a decision
+line, so the spec's steps can declare their `- needs:` lines. A step with no
+needs line waits for every step before it, so a spec whose steps declare none
+runs fully serial; the readiness gate and record-lint now warn on that shape
+(dcn-2610230857411093). Unmeasured, in the `0.x` band.
+
 ## 2026-10-18 (iss-2610172148157726 — a fix to a surface new since the last release is no fix)
 
 ### release-changelog-composer 0.5.0

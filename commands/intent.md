@@ -492,6 +492,11 @@ checks; the judgement is yours, as the host.
     acceptance criterion. Where the work is larger than one implementer can
     hold and land, list its steps under the minted `## Steps` section (see
     [Steps](#steps-the-unit-below-a-spec)); a spec that lists none is one step.
+    With two or more steps, declare each step's needs: `- needs:` and the
+    earlier steps it waits for by number, or `- needs: none` for a step that
+    waits on nothing. A step without the line waits for every step before it,
+    so a spec whose steps declare none runs fully serial, and `abcd intent
+    ready` warns on it.
     Fill the minted `## Footprint` section: `- packages:` the packages the
     spec expects to touch, comma-separated, and `- tests:` the tests that will
     show it works. `abcd build next` scores a spec's test path and footprint
@@ -579,14 +584,21 @@ line and its footprint indented beneath it:
 2. The remainder copy
    - packages: internal/core/intent
    - tests: the remainder carries the unlanded steps
+   - needs: 1
 ```
 
 `- landed:` names what landed the step, a pull request or a commit; a step
-without it is not landed. Any other line indented under a step is the author's
-and travels with it. `abcd intent ready` reports the section's shape on its
-advisory `steps` row: the steps listed and how many have landed, or none and so
-one step. A section that is not a numbered list is named there with the shape
-above, and never withholds readiness. The close below reads it too: a
+without it is not landed. `- needs:` names the earlier steps a step waits for,
+by number, or `none`; a step without the line waits for every step before it,
+so the build runs a step beside earlier ones only when its line says it may.
+Declare each step's needs whenever the spec lists two or more. Any other line
+indented under a step is the author's and travels with it. `abcd intent ready`
+reports the section's shape on its advisory `steps` row: the steps listed and
+how many have landed, or none and so one step. A section that is not a numbered
+list is named there with the shape above, and a spec of two or more steps where
+no step declares `needs:` draws a warning there, saying the steps run fully
+serial and naming the fix; record-lint's `spec_steps_serial` rule names the same
+open specs at warn. Neither ever withholds readiness. The close below reads it too: a
 `--remainder` close carries the steps not marked landed into the spec it mints,
 and refuses, writing nothing, when the section cannot be read as steps.
 
