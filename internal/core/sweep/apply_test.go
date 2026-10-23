@@ -14,6 +14,7 @@ import (
 
 	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -247,6 +248,52 @@ func TestApplyExitCodes(t *testing.T) {
 			t.Fatalf("Apply with no reader = %+v, %v; want a refusal exiting %d", res, err, ExitRefused)
 		}
 	})
+}
+
+// TestApplyNeverAsksThePruneAboutAWorktreeTheDryRunKeeps: a foreign-owned, a
+// loop-held, a cwd-held and an unmerged worktree are each kept by the dry
+// run's judgement, and the store's prune is never asked about any of them.
+func TestApplyNeverAsksThePruneAboutAWorktreeTheDryRunKeeps(t *testing.T) {
+	repo, _ := sweepRepo(t)
+	theirs := mergedAdd(t, repo, "theirs")
+	looped := mergedAdd(t, repo, "looped")
+	here := mergedAdd(t, repo, "here")
+	unmerged := unmergedAdd(t, repo, "unmerged", "u.txt")
+	realTheirs := fsutil.RealExistingPath(theirs)
+	o := sweepOpts()
+	o.Probe.Owner = func(p string) (int, bool, error) {
+		if p == realTheirs {
+			return 4242, true, nil
+		}
+		return os.Getuid(), false, nil
+	}
+	o.Held = func(string) (store.Held, error) {
+		return store.Held{Names: map[string]string{"looped": "run-7"}}, nil
+	}
+	o.Cwd = here
+	asked := recordPrunes(&o)
+
+	res := apply(t, repo, o)
+	for name, c := range map[string]struct{ path, why string }{
+		"theirs":   {theirs, "owned by another account (uid 4242)"},
+		"looped":   {looped, "held by the build loop's run run-7"},
+		"here":     {here, "the sweep's own working directory"},
+		"unmerged": {unmerged, "unmerged"},
+	} {
+		r := rowFor(t, res, name)
+		if r.Action != ActionKeep || r.Outcome != OutcomeKept || !strings.Contains(r.Reason, c.why) {
+			t.Errorf("%s: %+v; want it kept, its reason containing %q", name, r, c.why)
+		}
+		if !exists(c.path) {
+			t.Errorf("%s: the worktree stands", name)
+		}
+	}
+	if len(*asked) != 0 {
+		t.Fatalf("the store's prune is never asked about a kept worktree: asked %q", *asked)
+	}
+	if res.ExitCode() != ExitNothing {
+		t.Fatalf("a run that acted on nothing exits %d; want %d", res.ExitCode(), ExitNothing)
+	}
 }
 
 // TestADirtyWorktreeIsKeptAndSaidToBeUnsaved: patch salvage is not built, so
