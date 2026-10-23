@@ -247,26 +247,34 @@ func checklistWrite(cmd *cobra.Command, asJSON bool, verb string, change func(*c
 	if err != nil {
 		return err
 	}
-	res := checklist.Read(root)
-	c := res.Checklist
-	notice := ""
-	switch {
-	case res.Source == checklist.FromLastGood:
-		notice = res.Reason + " The write builds on that copy."
-	case res.Source == checklist.FromNothing && checklistFilesExist(root):
-		notice = res.Reason + " The write starts a new list."
-	}
-	if res.Source == checklist.FromNothing {
-		c = checklist.Checklist{}
-	}
-	i, err := change(&c)
+	// The whole cycle runs under the checklist's lock (checklist.Update), so a
+	// concurrent writer's item is never lost to this one's write.
+	var (
+		c      checklist.Checklist
+		i      int
+		notice string
+	)
+	err = checklist.Update(root, func(res checklist.Result) (checklist.Checklist, error) {
+		c, notice = res.Checklist, ""
+		switch {
+		case res.Source == checklist.FromLastGood:
+			notice = res.Reason + " The write builds on that copy."
+		case res.Source == checklist.FromNothing && checklistFilesExist(root):
+			notice = res.Reason + " The write starts a new list."
+		}
+		if res.Source == checklist.FromNothing {
+			c = checklist.Checklist{}
+		}
+		var cerr error
+		if i, cerr = change(&c); cerr != nil {
+			return c, cerr
+		}
+		c.Schema = checklist.Schema
+		c.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		c.UpdatedBy = checklistWriter(root)
+		return c, nil
+	})
 	if err != nil {
-		return checklistRefusal(verb, err)
-	}
-	c.Schema = checklist.Schema
-	c.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
-	c.UpdatedBy = checklistWriter(root)
-	if err := checklist.Write(root, c); err != nil {
 		return checklistRefusal(verb, err)
 	}
 	out := checklistItemOutput{ID: c.Items[i].ID, Item: c.Items[i], Notice: notice}
@@ -291,7 +299,7 @@ func checklistFilesExist(root string) bool {
 
 // checklistRefusal maps the store's refusals to exit 2 with nothing written:
 // a schema violation, a secret, no local tier, a scanner that cannot vouch
-// for the text, no checkout, and an unknown id. The store's wording names the
+// for the text, no checkout, an unknown id, and a lock another writer held past the wait. The store's wording names the
 // field and the rule or pattern kind and never the value. Anything else is an
 // I/O failure at exit 1.
 func checklistRefusal(verb string, err error) error {
@@ -304,7 +312,8 @@ func checklistRefusal(verb string, err error) error {
 	switch {
 	case errors.As(err, &fe), errors.As(err, &se),
 		errors.Is(err, checklist.ErrNoLocalTier), errors.Is(err, checklist.ErrScannerUnavailable),
-		errors.Is(err, gitutil.ErrNoCheckoutRoot), errors.Is(err, errChecklistNoItem):
+		errors.Is(err, gitutil.ErrNoCheckoutRoot), errors.Is(err, errChecklistNoItem),
+		errors.Is(err, checklist.ErrLockHeld):
 		msg := strings.TrimPrefix(err.Error(), "checklist: ")
 		if !strings.Contains(msg, "nothing was written") {
 			msg += " (nothing written)"

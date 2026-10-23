@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -314,4 +315,52 @@ func removeTorn(root *os.Root, now time.Time) {
 		}
 		_ = root.Remove(path.Join(TierRelPath, e.Name()))
 	}
+}
+
+// LockRelPath is the lock every read-change-write of the checklist holds.
+const LockRelPath = TierRelPath + "/checklist.lock"
+
+// lockTimeout bounds the wait for another writer's cycle, which is one read,
+// one scan and two atomic writes. A var only so a test can shorten it.
+var lockTimeout = 10 * time.Second
+
+// ErrLockHeld is Update's refusal when another writer held the checklist's
+// lock past the wait, or the lock file is not a plain file: nothing was
+// written.
+var ErrLockHeld = errors.New("checklist: another writer holds the checklist's lock, or its lock file is not a plain file; nothing was written")
+
+// Update is the one read-change-write cycle: it reads the checklist as Read
+// does, hands the result to change, and writes what change returns through
+// Write, holding the checklist's lock across all three. Every writer that
+// builds on what is there goes through it.
+//
+// WHY a lock: a session's verb, its stop hook and sub-agents sharing the
+// worktree write one checklist, and two unlocked cycles that read the same
+// list each write back their own item over the other's, losing one; a lost
+// item is the failure the checklist exists to prevent. The lock is fsutil's
+// one inter-process primitive (iss-129), the one `abcd decide` and the memory
+// store take, never a lock of this package's own.
+func Update(repoRoot string, change func(Result) (Checklist, error)) error {
+	tier := filepath.Join(repoRoot, filepath.FromSlash(TierRelPath))
+	// Lstat, not Stat: a symlink standing in for the tier is not the tier, and
+	// the lock file is never created in a tier that is not there.
+	if fi, err := os.Lstat(tier); err != nil || !fi.IsDir() {
+		return fmt.Errorf("%w: %s/ is not a directory in this checkout, and it is never created on the way to a write",
+			ErrNoLocalTier, TierRelPath)
+	}
+	ran := false
+	err := fsutil.WithFileLock(filepath.Join(repoRoot, filepath.FromSlash(LockRelPath)), lockTimeout, func() error {
+		ran = true
+		c, err := change(Read(repoRoot))
+		if err != nil {
+			return err
+		}
+		return Write(repoRoot, c)
+	})
+	// fn's own error comes back unwrapped, so only an error before fn ran is
+	// the lock's own.
+	if !ran && (errors.Is(err, fsutil.ErrLockContention) || errors.Is(err, fsutil.ErrLockPathUnsafe)) {
+		return ErrLockHeld
+	}
+	return err
 }

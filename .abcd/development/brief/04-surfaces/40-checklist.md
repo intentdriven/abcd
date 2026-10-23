@@ -42,10 +42,12 @@ credential named by kind, scope and expiry only (brief invariant 24,
 
 Every write validates the list and scans each field with the native secret
 scanner before anything reaches the disk. A refusal names the field and the
-rule or pattern kind, never the value, and exits 2. The file is written
-atomically, and the same checked bytes are kept beside it as the last good
-copy, so a file changed by anything other than the verb never becomes the last
-good copy.
+rule or pattern kind, never the value, and exits 2. Every change reads,
+changes and writes the list under one lock, so two writers in the same copy,
+a session and its sub-agents among them, never lose each other's items. The
+file is written atomically, and the same checked bytes are kept beside it as
+the last good copy, so a file changed by anything other than the verb never
+becomes the last good copy.
 
 The reader validates and scans the file. When it fails, the reader validates
 and scans the last good copy and says why it fell back; when both fail, it

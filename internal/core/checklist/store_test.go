@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -343,5 +346,81 @@ func TestBothBadReadsNothingWithAReason(t *testing.T) {
 	if got := checklist.Read(root); got.Source != checklist.FromNothing ||
 		!strings.Contains(got.Reason, "checklist.last-good.json") {
 		t.Errorf("a corrupt last-good: want nothing naming it, got %s: %s", got.Source, got.Reason)
+	}
+}
+
+// TestConcurrentUpdatesKeepEveryItem: a session's verb, the stop hook and
+// sub-agents sharing one worktree write one checklist, so each read-change-
+// write holds the checklist's lock across the whole cycle, and no writer's
+// item is lost to another's write.
+func TestConcurrentUpdatesKeepEveryItem(t *testing.T) {
+	root := newRepo(t)
+	const writers = 8
+	var wg sync.WaitGroup
+	errs := make(chan error, writers)
+	for i := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs <- checklist.Update(root, func(res checklist.Result) (checklist.Checklist, error) {
+				c := res.Checklist
+				if res.Source == checklist.FromNothing {
+					c = checklist.Checklist{Schema: checklist.Schema}
+				}
+				c.UpdatedAt = "2026-10-23T08:00:00Z"
+				c.UpdatedBy = "6f1c2a9e-3b4d-4e5f-8a7b-0c1d2e3f4a5b"
+				// Widen the window between the read and the write, so an
+				// unlocked cycle loses items every run, not by chance.
+				time.Sleep(20 * time.Millisecond)
+				c.Items = append(c.Items, checklist.Item{
+					ID: fmt.Sprintf("item-%d", i), Title: fmt.Sprintf("Item %d", i), State: checklist.Working,
+				})
+				return c, nil
+			})
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := checklist.Read(root)
+	if got.Source != checklist.FromFile || len(got.Checklist.Items) != writers {
+		t.Fatalf("want %d items from the file, got %d from %s: %s", writers, len(got.Checklist.Items), got.Source, got.Reason)
+	}
+}
+
+// TestUpdateRefusesWhileAnotherWriterHoldsTheLock: a writer that cannot take
+// the lock within the wait writes nothing and says why, never building on a
+// list another writer is changing.
+func TestUpdateRefusesWhileAnotherWriterHoldsTheLock(t *testing.T) {
+	root := newRepo(t)
+	defer checklist.SetLockTimeout(50 * time.Millisecond)()
+	held := make(chan struct{})
+	release := make(chan struct{})
+	go func() {
+		_ = fsutil.WithFileLock(abs(root, checklist.LockRelPath), time.Second, func() error {
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	<-held
+	called := false
+	err := checklist.Update(root, func(checklist.Result) (checklist.Checklist, error) {
+		called = true
+		return sample(), nil
+	})
+	close(release)
+	if !errors.Is(err, checklist.ErrLockHeld) {
+		t.Fatalf("want ErrLockHeld, got %v", err)
+	}
+	if called {
+		t.Fatal("the change ran without the lock")
+	}
+	if _, err := os.Stat(abs(root, checklist.FileRelPath)); !os.IsNotExist(err) {
+		t.Fatalf("a refused update wrote the checklist: %v", err)
 	}
 }
