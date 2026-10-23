@@ -1,13 +1,16 @@
 package gitutil
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 // SetGitVersionSource replaces the `git version` probe (the lazy-fetch floor
 // and the merge driver's options both read it) for the length of t, clearing
 // the cached answer on both sides.
 func SetGitVersionSource(t *testing.T, src func() (string, error)) {
 	t.Helper()
-	gitVersion.set(src)
+	gitVersion.set(func(context.Context) (string, error) { return src() })
 	t.Cleanup(func() { gitVersion.set(probeGitVersion) })
 }
 
@@ -34,4 +37,12 @@ func AllowNetTransportsForTest(t *testing.T) {
 	t.Helper()
 	netGuardOff = true
 	t.Cleanup(func() { netGuardOff = false })
+}
+
+// ColdGitVersionForTest clears the cached `git version` answer and puts the
+// real probe back, so the next guard asks git again, for the length of t.
+func ColdGitVersionForTest(t *testing.T) {
+	t.Helper()
+	gitVersion.set(probeGitVersion)
+	t.Cleanup(func() { gitVersion.set(probeGitVersion) })
 }
