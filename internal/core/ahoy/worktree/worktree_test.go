@@ -489,6 +489,86 @@ func TestAddRefusesARepositoryWithNoCommits(t *testing.T) {
 	}
 }
 
+// TestAddLaysTheLocalTier (iss-2610222022157889): a worktree the store adds
+// has its own .abcd/.work.local/, the caller's alone, so a reservation can
+// keep its key there at once; a .abcd/ the branch carries keeps its mode.
+func TestAddLaysTheLocalTier(t *testing.T) {
+	repo, _ := repoWithCommit(t)
+	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	got, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "bare", Base: base, Git: git})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tier := filepath.Join(got.Path, ".abcd", ".work.local")
+	if fi, err := os.Lstat(tier); err != nil || !fi.IsDir() || fi.Mode().Perm() != 0o700 {
+		t.Fatalf("the local tier is a 0700 directory: %v %v", fi, err)
+	}
+	if st := repo.Git("-C", got.Path, "status", "--porcelain", "--untracked-files=all"); st != "" {
+		t.Fatalf("an empty tier leaves the tree clean: %q", st)
+	}
+
+	repo.Write(".abcd/config.json", "{}\n")
+	repo.Commit("carry .abcd")
+	base = strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	got, err = worktree.Add(repo.Root(), worktree.AddOptions{Name: "carried", Base: base, Git: git})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Lstat(filepath.Join(got.Path, ".abcd", ".work.local")); err != nil || !fi.IsDir() || fi.Mode().Perm() != 0o700 {
+		t.Fatalf("the local tier is a 0700 directory beside the branch's .abcd: %v %v", fi, err)
+	}
+	if fi, err := os.Lstat(filepath.Join(got.Path, ".abcd")); err != nil || fi.Mode().Perm() == 0o700 {
+		t.Fatalf("the branch's own .abcd keeps the mode git gave it: %v %v", fi, err)
+	}
+}
+
+// TestAddNeverFollowsWhatStandsAtTheLocalTier: a branch that carries a
+// symlink or a file where the tier, or the .abcd above it, would be is
+// refused, naming the tier and the worktree git made; nothing is made
+// through the link, and what stands there is left as it was.
+func TestAddNeverFollowsWhatStandsAtTheLocalTier(t *testing.T) {
+	for name, plant := range map[string]func(t *testing.T, repo *gittest.Repo, elsewhere string){
+		"tier is a symlink": func(t *testing.T, repo *gittest.Repo, elsewhere string) {
+			repo.Write(".abcd/config.json", "{}\n")
+			if err := os.Symlink(elsewhere, filepath.Join(repo.Root(), ".abcd", ".work.local")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		".abcd is a symlink": func(t *testing.T, repo *gittest.Repo, elsewhere string) {
+			if err := os.Symlink(elsewhere, filepath.Join(repo.Root(), ".abcd")); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"tier is a file": func(t *testing.T, repo *gittest.Repo, _ string) {
+			repo.Write(".abcd/.work.local", "not a directory\n")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, home := repoWithCommit(t)
+			elsewhere := t.TempDir()
+			plant(t, repo, elsewhere)
+			repo.Git("add", "-A", "-f")
+			repo.Git("commit", "-q", "-m", "plant")
+			base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+			got, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "wt", Base: base, Git: git})
+			r := mustRefusal(t, err)
+			if !strings.Contains(r.Reason, ".abcd/.work.local") || !strings.Contains(r.Reason, "made") || strings.Contains(r.Error(), home) {
+				t.Fatalf("the refusal names the tier and the worktree git made, home-redacted: %+v", r)
+			}
+			if n := names(t, elsewhere); len(n) != 0 {
+				t.Fatalf("nothing is made through the link: %v", n)
+			}
+			l, _ := worktree.LaneFor(repo.Root())
+			if got.Path != l.Path("wt") {
+				t.Fatalf("the worktree git made is named: %+v", got)
+			}
+			if fi, err := os.Lstat(filepath.Join(got.Path, ".abcd")); err != nil {
+				t.Fatalf("what the branch carries is left in place: %v %v", fi, err)
+			}
+		})
+	}
+}
+
 // TestAddRecordsTheStartCommit (iss-2610231011465325): add records where the
 // worktree's branch starts, in the lane beside the worktrees, owner-only: a
 // new branch's base, or an existing branch's tip as add checks it out. A

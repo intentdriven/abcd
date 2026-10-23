@@ -270,8 +270,10 @@ type Added struct {
 // that fails is a refusal whose cause is git's error (Refusal.Err).
 //
 // Once git has made the worktree, Add records where its branch starts
-// (start.go). That failing is a refusal returned with the Added it made,
-// since the worktree stands and git's own removal is the way back.
+// (start.go) and lays its local tier, so a reservation can keep its key there
+// at once (iss-2610222022157889). Either failing is a refusal returned with
+// the Added it made, since the worktree stands and git's own removal is the
+// way back.
 func Add(repoRoot string, opts AddOptions) (Added, error) {
 	if opts.Git == nil {
 		return Added{}, errors.New("worktree: Add needs a git runner")
@@ -343,6 +345,12 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 	if err := recordStart(repoRoot, lane, opts.Name, ref); err != nil {
 		return added, refuse(fmt.Sprintf("git made the worktree at %s, but where its branch starts could not be recorded: %v", path, err),
 			"settle what stops the write, then remove the worktree (`git worktree remove`) and add it again")
+	}
+	// One level at a time, each proved a real directory, so a link or a file
+	// the branch carries at .abcd or the tier is refused rather than followed.
+	if err := fsutil.EnsureRealDirAll(path, tierRel, dirPerm); err != nil {
+		return added, refuse(fmt.Sprintf("git made the worktree at %s, but its local tier %s cannot be laid: %v", path, tierRel, err),
+			"move aside what the branch carries there (a symlink or a file); nothing was made through it")
 	}
 	return added, nil
 }
