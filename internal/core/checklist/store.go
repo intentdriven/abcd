@@ -1,0 +1,315 @@
+package checklist
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path"
+	"strings"
+	"time"
+
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/fsutil"
+)
+
+// TierRelPath is the local tier the checklist lives in, repo-relative and
+// slash-separated (an os.Root path). As for the mode store, its presence is the
+// managed-only property: the writer requires it and never creates it.
+const TierRelPath = ".abcd/.work.local"
+
+// FileRelPath is the checklist, one per working copy (dcn-2610180913444971),
+// and LastGoodRelPath the copy only a checked write produces
+// (spc-2610230805429429, "The write").
+const (
+	FileRelPath     = TierRelPath + "/checklist.json"
+	LastGoodRelPath = TierRelPath + "/checklist.last-good.json"
+)
+
+// storePerm is the files' mode: the tier's other stores are written 0600, and
+// a session's checklist is no wider than they are.
+const storePerm fs.FileMode = 0o600
+
+// maxReadBytes caps the guarded read. It is not a size limit on the checklist,
+// which the spec refuses to set ("A write is never refused for the file's
+// total size"); it only keeps a device or a runaway file planted at the path
+// from being read into memory, and sits far above any list a session writes.
+const maxReadBytes = 64 << 20
+
+// tempPrefix is the name fsutil.WriteFileAtomicInRoot gives its temp file, so a
+// writer killed before its rename leaves a file of this name in the tier.
+const tempPrefix = ".abcd-tmp-"
+
+// tornAfter is how old a temp file must be before the next write removes it.
+// The tier is shared with the other local stores, and a write running beside
+// this one renames its temp file within moments, so only one older than this
+// was cut off (the claim status store's tmpKeep, on the same reasoning).
+const tornAfter = time.Minute
+
+// ErrNoLocalTier is the write's refusal when the checkout has no local tier.
+var ErrNoLocalTier = errors.New("checklist: no local-ephemeral tier")
+
+// ErrScannerUnavailable is the refusal when the native secret scanner cannot be
+// built or runs degraded. Both the write and the read fail closed on it: a file
+// that could not be checked is never written, and never shown.
+var ErrScannerUnavailable = errors.New("checklist: the secret scanner is unavailable")
+
+// SecretError is the write's refusal for a field the native scanner matched
+// (adr-2610222026265719): the field's path and the pattern kind, never the
+// match.
+type SecretError struct {
+	Field string
+	Kind  string
+}
+
+func (e *SecretError) Error() string {
+	return fmt.Sprintf("checklist: %s matches the secret pattern %s; nothing was written, and the match is not repeated here", e.Field, e.Kind)
+}
+
+// Write validates c, scans every string field with the native secret scanner,
+// and writes it atomically to FileRelPath under an already-resolved checkout
+// root; then it writes the same bytes as LastGoodRelPath (spc-2610230805429429
+// step 1, "The write").
+//
+// Every refusal comes before any byte is written: a schema violation (a
+// *FieldError), an absent tier (ErrNoLocalTier), a scanner that cannot vouch
+// for the text (ErrScannerUnavailable), and a secret (a *SecretError). A
+// refused write leaves both files as they were.
+//
+// Last-good is written from this call's own validated and scanned bytes, never
+// copied from the file already on disk: that file may have been changed by
+// anything other than this verb, and promoting it would let an unchecked edit
+// become the copy the reader falls back to.
+func Write(repoRoot string, c Checklist) error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return fmt.Errorf("checklist: opening the checkout to write: %w", err)
+	}
+	defer root.Close()
+	// Lstat, not Stat: a symlink standing in for the tier is not the tier.
+	if fi, err := root.Lstat(TierRelPath); err != nil || !fi.IsDir() {
+		return fmt.Errorf("%w: %s/ is not a directory in this checkout, and it is never created on the way to a write",
+			ErrNoLocalTier, TierRelPath)
+	}
+	sc, err := newScanner(repoRoot)
+	if err != nil {
+		return err
+	}
+	if field, kind, err := scan(sc, c); err != nil {
+		return err
+	} else if field != "" {
+		return &SecretError{Field: field, Kind: kind}
+	}
+	data, err := encode(c)
+	if err != nil {
+		return fmt.Errorf("checklist: encoding: %w", err)
+	}
+	removeTorn(root, time.Now())
+	if err := fsutil.WriteFileAtomicInRoot(root, FileRelPath, data, storePerm); err != nil {
+		return fmt.Errorf("checklist: writing %s: %w", FileRelPath, err)
+	}
+	if err := fsutil.WriteFileAtomicInRoot(root, LastGoodRelPath, data, storePerm); err != nil {
+		return fmt.Errorf("checklist: %s was written, but %s was not updated: %w", FileRelPath, LastGoodRelPath, err)
+	}
+	return nil
+}
+
+// Source says which file a Read used.
+type Source string
+
+const (
+	// FromFile is the checklist itself.
+	FromFile Source = "checklist"
+	// FromLastGood is the last copy a checked write produced, used because the
+	// checklist itself failed.
+	FromLastGood Source = "last-good"
+	// FromNothing means neither file passed; the result carries no checklist.
+	FromNothing Source = "nothing"
+)
+
+// Result is a Read's answer: the checklist (zero for FromNothing), the file it
+// came from, and the reason as one sentence a render can print as it stands.
+// The reason names files, fields and pattern kinds, never a value.
+type Result struct {
+	Checklist Checklist
+	Source    Source
+	Reason    string
+}
+
+// Read reads the checklist under an already-resolved checkout root. The reader
+// is the enforcement (the spec's "Settled here"): a file written past the verb,
+// by a shell or an editor, reaches it unchecked, so it validates and scans
+// FileRelPath, and on any failure validates and scans LastGoodRelPath, and on
+// a second failure answers FromNothing. It never writes, so a read never
+// promotes a file to last-good. A temp file a killed writer left is never
+// read: only the two named paths are.
+func Read(repoRoot string) Result {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return Result{Source: FromNothing, Reason: fmt.Sprintf("No checklist to show: the checkout could not be opened (%v).", err)}
+	}
+	defer root.Close()
+	sc, scanErr := newScanner(repoRoot)
+
+	c, why := load(repoRoot, root, sc, scanErr, FileRelPath)
+	if why == "" {
+		return Result{Checklist: c, Source: FromFile, Reason: "Read checklist.json, which validated and scanned clean."}
+	}
+	lg, lgWhy := load(repoRoot, root, sc, scanErr, LastGoodRelPath)
+	switch {
+	case lgWhy == "":
+		return Result{Checklist: lg, Source: FromLastGood, Reason: "Showing the last good copy, because checklist.json " + why +
+			"; the copy was written by a checked write and validated and scanned clean again."}
+	case why == absent && lgWhy == absent:
+		return Result{Source: FromNothing, Reason: "No checklist has been written in this working copy yet."}
+	}
+	return Result{Source: FromNothing, Reason: "No checklist to show: checklist.json " + why +
+		", and checklist.last-good.json " + lgWhy + "."}
+}
+
+// absent is load's answer for a file that is not there, compared by Read to
+// say "nothing written yet" rather than list two absences.
+const absent = "is absent"
+
+// load reads one of the two files and answers the checklist, or why it cannot
+// be used as a clause that follows the file's name.
+func load(repoRoot string, root *os.Root, sc *scanner.Scanner, scanErr error, rel string) (Checklist, string) {
+	data, err := fsutil.ReadGuardedInRoot(root, rel, maxReadBytes)
+	switch {
+	case err == nil:
+	case errors.Is(err, fs.ErrNotExist):
+		return Checklist{}, absent
+	case errors.Is(err, fsutil.ErrNotRegular):
+		return Checklist{}, "is not a regular file"
+	case errors.Is(err, fsutil.ErrTooBig):
+		return Checklist{}, fmt.Sprintf("is larger than the %d-byte read cap", maxReadBytes)
+	default:
+		return Checklist{}, fmt.Sprintf("could not be read (%v)", err)
+	}
+	c, err := Decode(data)
+	if err != nil {
+		// The decoder names an unknown or repeated key by the file's own
+		// spelling, and a key is as able to hold a token as a value is.
+		return Checklist{}, "does not decode (" + scanner.RedactRefusal(repoRoot, err.Error()) + ")"
+	}
+	if err := c.Validate(); err != nil {
+		var fe *FieldError
+		if errors.As(err, &fe) {
+			return Checklist{}, "fails the schema: " + fe.Field + " " + fe.Problem
+		}
+		return Checklist{}, "fails the schema"
+	}
+	if scanErr != nil {
+		return Checklist{}, "could not be checked for secrets (" + scanErr.Error() + ")"
+	}
+	field, kind, err := scan(sc, c)
+	switch {
+	case err != nil:
+		return Checklist{}, "could not be checked for secrets (" + err.Error() + ")"
+	case field != "":
+		return Checklist{}, "carries a secret in " + field + " (" + kind + ")"
+	}
+	return c, ""
+}
+
+// newScanner builds the native scanner for repoRoot, with the repository's
+// pattern overrides folded in, and refuses one that is degraded: the
+// decide and decisions stores' fail-closed stance, since a checklist is
+// re-injected into every later session.
+func newScanner(repoRoot string) (*scanner.Scanner, error) {
+	sc, err := scanner.New(repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrScannerUnavailable, err)
+	}
+	if unavail, why := sc.Unavailable(); unavail {
+		return nil, fmt.Errorf("%w: %s", ErrScannerUnavailable, why)
+	}
+	return sc, nil
+}
+
+// scan runs every string field through the scanner and answers the first
+// field a secret pattern matched, with the pattern's kind, or "" when none did.
+//
+// The fields are scanned as one text, one field to a line, so a repository's
+// opt-in augmenter runs once per checklist rather than once per field; a
+// finding's line names its field. That mapping holds because Validate, which
+// both callers run first, refuses a line break in every field.
+func scan(sc *scanner.Scanner, c Checklist) (field, kind string, err error) {
+	fields := c.stringFields()
+	lines := make([]string, len(fields))
+	for i, f := range fields {
+		lines[i] = f.value
+	}
+	findings := sc.ScanText(strings.Join(lines, "\n"), "checklist")
+	// A failed augmenter run degrades the scanner during the call.
+	if unavail, why := sc.Unavailable(); unavail {
+		return "", "", fmt.Errorf("%w: %s", ErrScannerUnavailable, why)
+	}
+	for _, f := range findings {
+		if !isSecret(f) {
+			continue
+		}
+		name := "a field"
+		if f.Line >= 1 && f.Line <= len(fields) {
+			name = fields[f.Line-1].name
+		}
+		return name, f.Kind, nil
+	}
+	return "", "", nil
+}
+
+// isSecret is the class the write refuses: a hard-fail finding or a token of
+// any severity, but not an identity finding (a name, a home path, an address),
+// which adr-2610222026265719 does not reach. It is the scanner's own line
+// between a secret span and the rest (its hasSecret), drawn from the exported
+// kind predicates.
+func isSecret(f scanner.Finding) bool {
+	return (f.Severity == scanner.SeverityHardFail || scanner.IsTokenKind(f.Kind)) && !scanner.IsIdentityKind(f.Kind)
+}
+
+// encode is the file's one spelling: indented, with a trailing newline, and
+// without encoding/json's HTML escaping, which would turn a promise's "=>"
+// into "=>" in a file a person may read.
+func encode(c Checklist) ([]byte, error) {
+	if c.Items == nil {
+		c.Items = []Item{}
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(c); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// removeTorn removes, best effort, every temp file in the tier a killed writer
+// left behind: the atomic writer's prefix, a regular file, and older than
+// tornAfter. A younger one may belong to a write still running.
+func removeTorn(root *os.Root, now time.Time) {
+	dir, err := root.Open(TierRelPath)
+	if err != nil {
+		return
+	}
+	entries, err := dir.ReadDir(-1)
+	dir.Close()
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), tempPrefix) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || !info.Mode().IsRegular() || now.Sub(info.ModTime()) <= tornAfter {
+			continue
+		}
+		_ = root.Remove(path.Join(TierRelPath, e.Name()))
+	}
+}
