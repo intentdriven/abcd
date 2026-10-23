@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -401,5 +402,43 @@ func TestAhoyWorktreeAddRefusesAndWritesNothing(t *testing.T) {
 	}
 	if _, err := os.Lstat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a repository with no commits writes nothing under the home: %v", err)
+	}
+}
+
+// TestAhoyWorktreeAddChecksOutWhatTheGlobalFilterSmudges is
+// iss-2610111729375108 at the store's door: a content filter defined in the
+// person's global config (as a global `git lfs install` defines LFS's) applies
+// to the worktree add makes, as it does to the person's own `git worktree
+// add`, so the file holds the smudged bytes, not the committed pointer text.
+func TestAhoyWorktreeAddChecksOutWhatTheGlobalFilterSmudges(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX sed filter")
+	}
+	repo := worktreeFixture(t)
+	repo.Write(".gitattributes", "*.bin filter=fake\n")
+	repo.Write("asset.bin", "PTR\n")
+	repo.Commit("an asset behind a filter")
+	// Defined after the commit and in the global config alone, so only a git
+	// that reads the person's global config smudges the checkout.
+	cfg := filepath.Join(os.Getenv("HOME"), ".gitconfig")
+	if err := os.WriteFile(cfg, []byte("[filter \"fake\"]\n\tsmudge = sed s/PTR/REAL/\n\tclean = sed s/REAL/PTR/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", cfg)
+
+	out, code := runWorktree(t, true, "add", "assets")
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	l, err := worktree.LaneFor(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(l.Path("assets"), "asset.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "REAL\n" {
+		t.Fatalf("the worktree holds what the person's own git checks out: asset.bin = %q, want %q", got, "REAL\n")
 	}
 }
