@@ -4,41 +4,37 @@ package loop
 // implementer works in, made in abcd's form. It lives in the machine-scoped
 // worktree store, ~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>, keyed on the
 // repository's root commit in the full form the sibling stores use, on a branch
-// cut from the default branch. The store's own verbs are planned and not yet
-// shipped (itd-2609091014076309), so the lane is a plain `git worktree add`
-// into the store's path until they ship.
+// cut from the default branch. The store is the worktree package's
+// (internal/core/ahoy/worktree, itd-2609091014076309): the lane is keyed,
+// made, adopted and added through its LaneFor, Lane.Ensure, Adopt and Add, so
+// a lane enters the store the one way every worktree does. What stays here is
+// the loop's own: the run-id and lane-id shapes, the build/ branch prefix, the
+// base cut from the default branch, the checkout's time bound, and the pick
+// commit.
 //
 // The path is derived, never taken: the run id and the lane id are each held to
 // their own shape and the name they compose to a single safe path segment, so
 // no component can walk out of the store, and nothing outside
 // ~/.abcd.noindex/worktrees/<root-sha>/ is ever created (the user's directory is
-// theirs; adr-2609091248200336). Every level of the store is made one at a time
-// and proved a real directory that is the caller's alone, and git runs through
-// the isolated environment.
+// theirs; adr-2609091248200336).
 
 import (
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 
-	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
-// WorktreeStoreRel is the machine-scoped worktree store, relative to the
-// caller's home.
-var WorktreeStoreRel = abcdhome.Rel("worktrees")
-
 // BranchPrefix is the namespace every lane branch is cut under.
 const BranchPrefix = "build/"
 
-// storeDirPerm is the mode a store level is created with.
-const storeDirPerm = abcdhome.DirMode
+// addWorktree is the store's Add, the one way the worktree stage makes a lane.
+// It is a variable only so a test can watch the lane go through it.
+var addWorktree = worktree.Add
 
 // laneIDRe is the shape of a lane id the loop opens (openNextLane).
 var laneIDRe = regexp.MustCompile(`^lane-[1-9][0-9]{0,3}$`)
@@ -47,21 +43,19 @@ var laneIDRe = regexp.MustCompile(`^lane-[1-9][0-9]{0,3}$`)
 func ValidLaneID(id string) bool { return laneIDRe.MatchString(id) }
 
 // safeSegment reports whether s is one path segment that cannot escape the
-// directory it is joined onto and cannot be read as an option: letters,
-// digits, '.', '_' and '-', not led by '-' or '.', and holding no "..".
-func safeSegment(s string) bool {
-	if s == "" || s[0] == '-' || s[0] == '.' || strings.Contains(s, "..") {
-		return false
+// directory it is joined onto and cannot be read as an option: the store's
+// own test of a worktree name (worktree.ValidName).
+func safeSegment(s string) bool { return worktree.ValidName(s) }
+
+// storeRefusal is a refusal of the worktree store as the loop's own, at the
+// worktree stage for laneID, its remedy ending in how to retry here. Any other
+// error is returned as it is.
+func storeRefusal(err error, laneID string) error {
+	var r *worktree.Refusal
+	if !errors.As(err, &r) {
+		return err
 	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '.', c == '_', c == '-':
-		default:
-			return false
-		}
-	}
-	return true
+	return refuse(string(StageWorktree), "", laneID, r.Reason, r.Remedy+", then run `abcd implement step` again")
 }
 
 // laneName composes a lane's store name, <run-id>-<lane-id>, refusing any
@@ -97,6 +91,9 @@ type LaneWorktree struct {
 	Path string
 	// Branch is the lane's branch, build/<name>.
 	Branch string
+
+	// lane is the store's lane the worktree lives in.
+	lane worktree.Lane
 }
 
 // laneWorktree derives the lane's worktree and branch from the run and lane
@@ -106,27 +103,19 @@ func laneWorktree(repoRoot, runID, laneID string) (LaneWorktree, error) {
 	if err != nil {
 		return LaneWorktree{}, err
 	}
-	sha, err := gitutil.RootCommit(repoRoot)
+	// A repository with no root commit is the store's refusal; git not
+	// answering is an error, no evidence of none, and no path is built.
+	l, err := worktree.LaneFor(repoRoot)
 	if err != nil {
-		// Not the refusal below: git did not answer, which is no evidence
-		// the repository has no root commit, and no store path is built.
-		return LaneWorktree{}, fmt.Errorf("reading the repository's root commit to key the worktree store on: %w", err)
+		return LaneWorktree{}, storeRefusal(err, laneID)
 	}
-	if !gitutil.IsFullSHA(sha) {
-		return LaneWorktree{}, refuse(string(StageWorktree), "", laneID, "the repository has no root commit to key the worktree store on",
-			"commit to the repository first; the store is keyed on its root commit")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return LaneWorktree{}, fmt.Errorf("cannot resolve the caller's home directory for the worktree store: %v", err)
-	}
-	storeRel := WorktreeStoreRel + "/" + sha
 	return LaneWorktree{
-		Home:     home,
-		RootSHA:  sha,
-		StoreRel: storeRel,
-		Path:     filepath.Join(home, filepath.FromSlash(storeRel), name),
+		Home:     l.Home,
+		RootSHA:  l.RootSHA,
+		StoreRel: l.Rel,
+		Path:     l.Path(name),
 		Branch:   BranchPrefix + name,
+		lane:     l,
 	}, nil
 }
 
@@ -180,13 +169,14 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("resolving the default branch %s: %v", defRef, err)
 	}
 
-	if err := ensureStore(lw.Home, lw.StoreRel, lane.ID); err != nil {
-		return Outcome{}, err
+	if err := lw.lane.Ensure(); err != nil {
+		return Outcome{}, storeRefusal(err, lane.ID)
 	}
 
-	adopted, err := adoptWorktree(c.RepoRoot, lw, lane.ID)
+	name := filepath.Base(lw.Path)
+	adopted, err := worktree.Adopt(c.RepoRoot, lw.lane, name, lw.Branch)
 	if err != nil {
-		return Outcome{}, err
+		return Outcome{}, storeRefusal(err, lane.ID)
 	}
 	branchRef := "refs/heads/" + lw.Branch
 	switch {
@@ -198,18 +188,11 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		}
 		base = mb
 	default:
-		if _, err := os.Lstat(lw.Path); err == nil {
-			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
-				fmt.Sprintf("%s is occupied by something git does not list as this lane's worktree", fsutil.RedactHome(lw.Path)),
-				"the loop never adopts what it cannot prove it made; move it aside, then run `abcd implement step` again")
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return Outcome{}, fmt.Errorf("checking %s: %w", fsutil.RedactHome(lw.Path), err)
-		}
-		args := []string{"worktree", "add", "-b", lw.Branch, "--", lw.Path, base}
+		opts := worktree.AddOptions{Name: name, Branch: lw.Branch, Base: base, Git: worktreeAddGit}
 		if _, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef, "--"); err == nil {
 			// A process killed between git making the branch and the worktree
 			// left the branch: it is the lane's, checked out rather than remade.
-			args = []string{"worktree", "add", "--", lw.Path, lw.Branch}
+			opts.Existing = true
 			if mb, err := gitutil.Run(c.RepoRoot, "merge-base", base, branchRef); err == nil && gitutil.IsFullSHA(mb) {
 				base = mb
 			}
@@ -219,8 +202,17 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		// (iss-2610111729375108), and runs the repository's post-checkout
 		// hook (the one `git lfs install` installs), as the person's own
 		// `git worktree add` does (iss-2610120640452939). Its time scales
-		// with the tree, so it has its own bound (worktreeAddGit).
-		if _, err := worktreeAddGit(c.RepoRoot, args...); errors.Is(err, errCheckoutStalled) {
+		// with the tree, so it has its own bound (worktreeAddGit). The
+		// store's Add refuses what stands at the path, and sets the
+		// worktree to 0700 once git has made it.
+		_, err := addWorktree(c.RepoRoot, opts)
+		var gitFailed *worktree.Refusal
+		if errors.As(err, &gitFailed) && gitFailed.Err != nil {
+			err = gitFailed.Err
+		} else if err != nil {
+			return Outcome{}, storeRefusal(err, lane.ID)
+		}
+		if errors.Is(err, errCheckoutStalled) {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 				"git could not add the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				fmt.Sprintf("settle the repository's post-checkout hook if it waits; a checkout that needs longer than %s (a large Git LFS download) can be made by hand at %s on %s, which the worktree stage adopts; then run `abcd implement step` again",
@@ -231,14 +223,15 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 				"settle what git reports, then run `abcd implement step` again")
 		}
 	}
-	// git makes the worktree at the process umask, 0755 under the usual 022;
-	// the lane's checkout is the caller's alone, like the store levels above
-	// it. An adopted worktree is narrowed too, since a process killed between
-	// git's add and this line left it as git made it. A store on a
-	// filesystem that cannot change modes (exFAT, a network share) keeps the
-	// lane as git made it rather than refusing the step: the home above it is
-	// narrowed at every command, so other accounts cannot reach the lane.
-	_, _ = fsutil.NarrowToOwner(lw.Path)
+	// An adopted worktree is narrowed to 0700 here, as Add narrows one it
+	// makes, since a process killed between git's add and Add's narrowing left
+	// it as git made it. A store on a filesystem that cannot change modes
+	// (exFAT, a network share) keeps the lane as git made it rather than
+	// refusing the step: the home above it is narrowed at every command, so
+	// other accounts cannot reach the lane.
+	if adopted {
+		_, _ = fsutil.NarrowToOwner(lw.Path)
+	}
 	head, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef+"^{commit}", "--")
 	if err != nil || !gitutil.IsFullSHA(head) {
 		return Outcome{}, fmt.Errorf("resolving the lane branch %s: %v", lw.Branch, err)
@@ -265,72 +258,4 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 	}
 	return Outcome{Note: fmt.Sprintf("%s the worktree ~/%s/%s on %s, cut from %s at %s%s",
 		verb, lw.StoreRel, filepath.Base(lw.Path), lw.Branch, gitutil.ShortRef(defRef), base[:12], picked)}, nil
-}
-
-// ensureStore makes the store's levels under home one at a time, from the top
-// down, and holds each to two tests before the next is made: it is a real
-// directory (a symlink or a file anywhere in the chain refuses), and it is the
-// caller's alone (fsutil.CallersAlone: owned by this uid, no group or other
-// write bit), so no other account can replace the checkout a lane's
-// implementer works in. A level made here is made storeDirPerm; one that
-// already exists keeps its mode and is judged as it stands, and nothing is made
-// inside a level that fails.
-func ensureStore(home, rel, laneID string) error {
-	if !fsutil.IsRealDir(home) || !fsutil.ValidRelPath(rel) {
-		return refuse(string(StageWorktree), "", laneID,
-			"the home directory is not a real directory to make the worktree store under",
-			"run `abcd implement step` from an account whose home is a real directory")
-	}
-	dir, shown := home, "~"
-	for _, seg := range strings.Split(rel, "/") {
-		dir, shown = filepath.Join(dir, seg), shown+"/"+seg
-		if err := fsutil.EnsureRealDir(dir, storeDirPerm); err != nil {
-			return refuse(string(StageWorktree), "", laneID,
-				fmt.Sprintf("the worktree store ~/%s cannot be made as real directories: %v", rel, fsutil.RedactHome(err.Error())),
-				"remove what stands in for the store (a symlink or a file), then run `abcd implement step` again")
-		}
-		fi, err := os.Lstat(dir)
-		if err != nil {
-			return fmt.Errorf("checking the worktree store level %s: %w", shown, err)
-		}
-		switch err := fsutil.CallersAlone(dir, fi); {
-		case errors.Is(err, fsutil.ErrDeclarationWritable):
-			return refuse(string(StageWorktree), "", laneID,
-				fmt.Sprintf("the worktree store level %s is writable by its group or by every user, so another account could replace the lane's checkout", shown),
-				"make it yours alone (`chmod go-w` it), then run `abcd implement step` again")
-		case err != nil:
-			return refuse(string(StageWorktree), "", laneID,
-				fmt.Sprintf("the worktree store level %s is owned by another account, or its owner could not be read, so that account could replace the lane's checkout", shown),
-				"move it aside and let the worktree stage make the store, then run `abcd implement step` again")
-		}
-	}
-	return nil
-}
-
-// adoptWorktree reports whether git already lists a worktree at the lane's
-// path on the lane's branch. One at that path on any other branch is refused.
-func adoptWorktree(repoRoot string, lw LaneWorktree, laneID string) (bool, error) {
-	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
-	if err != nil {
-		return false, fmt.Errorf("listing the repository's worktrees: %w", err)
-	}
-	want := fsutil.RealExistingPath(lw.Path)
-	for _, wt := range wts {
-		if fsutil.RealExistingPath(wt.Path) != want {
-			continue
-		}
-		if wt.Branch != "refs/heads/"+lw.Branch {
-			return false, refuse(string(StageWorktree), "", laneID,
-				fmt.Sprintf("git lists a worktree at %s on %q, not on the lane's branch %s", fsutil.RedactHome(lw.Path), wt.Branch, lw.Branch),
-				"the loop never adopts what it cannot prove it made; remove that worktree (`git worktree remove`), then run `abcd implement step` again")
-		}
-		fi, err := os.Lstat(lw.Path)
-		if err != nil || !fi.IsDir() {
-			return false, refuse(string(StageWorktree), "", laneID,
-				fmt.Sprintf("git lists the lane's worktree at %s, but no real directory stands there", fsutil.RedactHome(lw.Path)),
-				"run `git worktree prune`, then run `abcd implement step` again")
-		}
-		return true, nil
-	}
-	return false, nil
 }

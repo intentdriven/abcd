@@ -575,3 +575,51 @@ func TestPeersSkipsEmbargoStore(t *testing.T) {
 		}
 	}
 }
+
+// TestWorktreesListsEachLinkedWorktreeTheScanSaw is the accessor the worktree
+// store's board line counts from (spc-2609301811532881): every linked worktree
+// the one scan saw, with its path and whether the scan judged it spent, so the
+// board needs no second scan. A live worktree, a merged one and a gone one are
+// each listed; the main checkout, a branch checked out nowhere and the
+// embargo store (skipped with no path) are not.
+func TestWorktreesListsEachLinkedWorktreeTheScanSaw(t *testing.T) {
+	f := newFixture(t)
+	merged := f.worktree("merged", "feat/merged")
+	live := f.worktree("live", "feat/live")
+	f.write(live, ".abcd/work/issues/open/iss-500-new.md", issue("iss-500", "New"))
+	gone := f.worktree("gone", "feat/gone")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+	f.git(f.here(), "branch", "nowhere")
+	store := abcdhome.Path(f.home, "worktrees", gittest.RootCommit(f.t, f.here()), storepath.Name)
+	if err := os.MkdirAll(filepath.Dir(store), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	f.git(f.here(), "worktree", "add", "-q", "--detach", store, "main")
+
+	rep, err := peers.Scan(f.here())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := rep.Worktrees()
+	want := map[string]peers.SeenWorktree{
+		"feat/merged": {Path: merged, Branch: "feat/merged", Spent: true},
+		"feat/live":   {Path: live, Branch: "feat/live"},
+		"feat/gone":   {Path: gone, Branch: "feat/gone", Gone: true},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("want %d worktrees, got %+v", len(want), got)
+	}
+	for _, w := range got {
+		exp, ok := want[w.Branch]
+		if !ok {
+			t.Fatalf("listed a worktree it should not: %+v", w)
+		}
+		// A gone worktree's path cannot be resolved; its parent can.
+		if w.Spent != exp.Spent || w.Gone != exp.Gone || filepath.Base(w.Path) != filepath.Base(exp.Path) ||
+			!samePath(t, filepath.Dir(w.Path), filepath.Dir(exp.Path)) {
+			t.Errorf("%s = %+v, want %+v", w.Branch, w, exp)
+		}
+	}
+}
