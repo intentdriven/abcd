@@ -173,6 +173,13 @@ func keptFor(e entry, held Held, cwd string) string {
 	return ""
 }
 
+// removeWorktree is `git worktree remove` without --force, run from the
+// checkout. It is a variable only so a test can see when it is asked for.
+var removeWorktree = func(repoRoot, path string) error {
+	_, err := gitutil.Run(repoRoot, "worktree", "remove", "--", path)
+	return err
+}
+
 // reclaim archives e's notes and removes it, or under a dry run reads the
 // notes the archive would write and stops there. A failed archive or a git
 // that refuses the removal keeps the worktree, naming why.
@@ -201,7 +208,7 @@ func reclaim(repoRoot string, lane Lane, e entry, opts PruneOptions, row *PruneR
 	// Without --force: git re-checks the tree and the lock as it removes, and
 	// refuses a tree that changed since it was judged. The archive written
 	// stays, since the tier still stands in the kept worktree.
-	if _, err := gitutil.Run(repoRoot, "worktree", "remove", "--", e.path); err != nil {
+	if err := removeWorktree(repoRoot, e.path); err != nil {
 		row.Reason = "git refused the removal: " + firstLine(err.Error())
 		return
 	}

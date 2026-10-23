@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -48,6 +49,11 @@ const (
 	maxNotesTotal = 64 << 20
 	maxNoteFiles  = 4096
 )
+
+// flush makes a written file or directory durable: fsutil.Flush, the one
+// fsync every durable write in the module goes through. It is a variable only
+// so a test can see what is flushed, and when.
+var flush = fsutil.Flush
 
 // note is one entry of a tier, redacted: a file's text, or a link's target.
 type note struct {
@@ -245,6 +251,9 @@ func writeNotes(repoRoot string, lane Lane, e entry, notes []note, now time.Time
 		return dir, fmt.Errorf("opening the archive entry: %w", err)
 	}
 	defer root.Close()
+	// Every directory a file lands in, so each is flushed once its entries
+	// are written.
+	made := map[string]bool{}
 	for _, n := range notes {
 		if n.isLink {
 			m.Files = append(m.Files, manifestFile{Path: n.rel, Link: n.link})
@@ -253,6 +262,9 @@ func writeNotes(repoRoot string, lane Lane, e entry, notes []note, now time.Time
 		if d := path.Dir(n.rel); d != "." {
 			if err := root.MkdirAll(d, dirPerm); err != nil {
 				return dir, fmt.Errorf("%s: %w", n.rel, err)
+			}
+			for ; d != "."; d = path.Dir(d) {
+				made[d] = true
 			}
 		}
 		if err := writeNew(root, n.rel, n.data); err != nil {
@@ -268,17 +280,40 @@ func writeNotes(repoRoot string, lane Lane, e entry, notes []note, now time.Time
 	if err := writeNew(root, manifestName, append(data, '\n')); err != nil {
 		return dir, fmt.Errorf("%s: %w", manifestName, err)
 	}
+	// The worktree's tier goes with `git worktree remove`, so the archive is
+	// its only copy: its directories are flushed too, deepest first, then the
+	// entry and the directory the entry was made in. A filesystem that refuses
+	// a directory flush is tolerated, as fsutil's own writers tolerate it.
+	dirs := make([]string, 0, len(made))
+	for d := range made {
+		dirs = append(dirs, d)
+	}
+	slices.SortFunc(dirs, func(a, b string) int { return strings.Count(b, "/") - strings.Count(a, "/") })
+	for _, d := range append(dirs, ".") {
+		if f, err := root.Open(d); err == nil {
+			_ = flush(f)
+			f.Close()
+		}
+	}
+	if f, err := os.Open(filepath.Dir(dir)); err == nil {
+		_ = flush(f)
+		f.Close()
+	}
 	return dir, nil
 }
 
 // writeNew writes data to a file rel inside root that must not exist yet,
-// the caller's alone.
+// the caller's alone, and flushes it to disk before it is closed.
 func writeNew(root *os.Root, rel string, data []byte) error {
 	f, err := root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, abcdhome.FileMode)
 	if err != nil {
 		return err
 	}
 	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := flush(f); err != nil {
 		f.Close()
 		return err
 	}

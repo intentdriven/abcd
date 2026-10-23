@@ -463,3 +463,68 @@ func TestPruneDryRunReportsTheRowsARealRunWould(t *testing.T) {
 		t.Fatalf("the dry run's row: %+v", dry.Rows)
 	}
 }
+
+// TestPruneFlushesTheArchiveBeforeTheRemoval: every archived file, the
+// manifest, the directories they sit in and the entry itself are flushed to
+// disk before git is asked to remove the worktree, so the only copy of the
+// notes is durable when the tier goes. The flush itself is the filesystem's
+// and is not observed; that it is asked for, and when, is.
+func TestPruneFlushesTheArchiveBeforeTheRemoval(t *testing.T) {
+	repo, _ := pruneFixture(t)
+	p := mergedWorktree(t, repo, "noted")
+	tier := filepath.Join(p, ".abcd", ".work.local")
+	if err := os.MkdirAll(filepath.Join(tier, "logs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for rel, text := range map[string]string{"NEXT.md": "next\n", "logs/run.log": "ran\n"} {
+		if err := os.WriteFile(filepath.Join(tier, filepath.FromSlash(rel)), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var events []string
+	defer worktree.SwapFlushForTest(func(f *os.File) error {
+		fi, err := f.Stat()
+		if err != nil {
+			t.Fatalf("flushing a closed file: %v", err)
+		}
+		kind := "file "
+		if fi.IsDir() {
+			kind = "dir "
+		}
+		events = append(events, kind+filepath.ToSlash(f.Name()))
+		return nil
+	})()
+	defer worktree.SwapRemoveForTest(func(repoRoot, path string) error {
+		events = append(events, "remove")
+		repo.Git("-C", repoRoot, "worktree", "remove", "--", path)
+		return nil
+	})()
+
+	got := prune(t, repo, worktree.PruneOptions{})
+	if r := pruneRow(t, got, "noted"); r.Outcome != "reclaimed" {
+		t.Fatalf("the row: %+v", r)
+	}
+	removeAt := slices.Index(events, "remove")
+	if removeAt < 0 {
+		t.Fatalf("the removal was never asked for: %v", events)
+	}
+	before := events[:removeAt]
+	for _, want := range []string{"NEXT.md", "logs/run.log", "manifest.json"} {
+		if !slices.ContainsFunc(before, func(e string) bool { return strings.HasPrefix(e, "file ") && strings.HasSuffix(e, want) }) {
+			t.Errorf("%s is flushed before the removal: %v", want, before)
+		}
+	}
+	dirs := 0
+	for _, e := range before {
+		if strings.HasPrefix(e, "dir ") {
+			dirs++
+		}
+	}
+	// logs/, the entry, and the lane's notes directory the entry was made in.
+	if dirs < 3 {
+		t.Errorf("the archive's directories are flushed before the removal: %v", before)
+	}
+	if len(events) != removeAt+1 {
+		t.Errorf("nothing is flushed after the removal: %v", events)
+	}
+}
