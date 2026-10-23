@@ -1,0 +1,152 @@
+{
+  "task_name": "feature-a",
+  "trial_name": "feature-a__or-cheap__2",
+  "trial_uri": "abcd://matrix/mx-261023012949-ab12/feature-a/or-cheap/2",
+  "task_id": {
+    "path": "feature-a"
+  },
+  "task_checksum": "git:cccccccccccccccccccccccccccccccccccccccc",
+  "config": {
+    "task": {
+      "path": "feature-a"
+    },
+    "agent": {
+      "model_name": "vendor/model"
+    }
+  },
+  "agent_info": {
+    "name": "opencode",
+    "version": "1.2.3",
+    "model_info": {
+      "name": "vendor/model-2026-10",
+      "provider": "provider-a"
+    }
+  },
+  "agent_result": {
+    "n_input_tokens": 9000,
+    "n_cache_tokens": 7000,
+    "n_output_tokens": 340,
+    "cost_usd": 0.0123,
+    "metadata": {
+      "abcd": {
+        "schema_version": 1,
+        "run": "mx-261023012949-ab12",
+        "kind": "code",
+        "intent": "itd-2610161733316518",
+        "source": "openrouter",
+        "settings": {
+          "temperature": 0.6
+        },
+        "status": "failed",
+        "reason": "hidden tests failed",
+        "score": {
+          "passed": 7,
+          "total": 9,
+          "detail": "two edge cases"
+        },
+        "roles": [
+          {
+            "role": "builder",
+            "brief": "brief.md",
+            "contract": "receipt.json",
+            "route": {
+              "asked": "runner:opencode",
+              "ran": "runner:opencode",
+              "model": "vendor/model-2026-10",
+              "model_asked": "vendor/model",
+              "served_models": [
+                "vendor/model-2026-10"
+              ],
+              "served_provider": "provider-a",
+              "finish_reason": "stop",
+              "harness_version": "1.2.3",
+              "prompt_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+              "usage": {
+                "prompt_tokens": 1200,
+                "completion_tokens": 340,
+                "reasoning_tokens": 56,
+                "cache_read_tokens": 7000,
+                "cache_write_tokens": 800
+              },
+              "cost": {
+                "amount": 0.0123,
+                "unit": "usd"
+              },
+              "unpinned": [
+                {
+                  "field": "served.cost",
+                  "reason": "harness_computed"
+                }
+              ]
+            }
+          }
+        ],
+        "calls": [
+          {
+            "agent": "reviewer",
+            "tier_asked": "",
+            "connection_tried": "or",
+            "connection_used": "or",
+            "fallback_reason": "",
+            "override": "reviewer=runner:opencode",
+            "settings_sent": {},
+            "model_reported": "vendor/model",
+            "provider_call": {
+              "provider": "openrouter",
+              "model_asked": "vendor/model",
+              "model_reported": "vendor/model-2026-10",
+              "prompt_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+              "adapter_added": [
+                "stream_options"
+              ],
+              "served_provider": "provider-a",
+              "generation_id": "gen-1",
+              "finish_reason": "stop",
+              "usage": {
+                "prompt_tokens": 1200,
+                "completion_tokens": 340,
+                "reasoning_tokens": 56,
+                "cache_read_tokens": 7000,
+                "cache_write_tokens": 800
+              },
+              "cost": {
+                "amount": 0.01,
+                "unit": "credits"
+              },
+              "unpinned": []
+            },
+            "unpinned": null
+          }
+        ],
+        "fallbacks": [],
+        "reasoning_tokens": 56,
+        "cache_write_tokens": 800,
+        "model_time_ms": 61000,
+        "gate_wait_ms": 12000,
+        "unpinned": [
+          {
+            "field": "served.cost",
+            "reason": "harness_computed"
+          },
+          {
+            "field": "asked.seed",
+            "reason": "not_configured"
+          }
+        ]
+      }
+    }
+  },
+  "verifier_result": {
+    "rewards": {
+      "hidden_tests": 0.7777777777777778
+    }
+  },
+  "exception_info": {
+    "exception_type": "abcd.failed",
+    "exception_message": "hidden tests failed",
+    "exception_traceback": "",
+    "occurred_at": "2026-10-23T01:03:38Z"
+  },
+  "started_at": "2026-10-23T01:02:03Z",
+  "finished_at": "2026-10-23T01:03:38Z"
+}
