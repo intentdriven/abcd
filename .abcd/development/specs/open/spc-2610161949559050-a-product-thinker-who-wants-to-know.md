@@ -67,8 +67,11 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
 
 ## Footprint
 
-- packages: internal/core/matrix, internal/core/lab, internal/core/implement/loop, internal/core/runner, internal/core/oracle, internal/core/reading, internal/core/docfidelity, internal/core/record/findingkey, internal/core/launch, internal/surface/cli, commands
+- packages: internal/core/matrix/doc.go, internal/core/matrix/declaration.go, internal/core/matrix/run.go, internal/core/matrix/trial.go, internal/core/matrix/export.go, internal/core/matrix/declaration_test.go, internal/core/matrix/run_test.go, internal/core/matrix/trial_test.go, internal/core/matrix/export_test.go, internal/core/matrix/testdata/inspect-eval-sample.json, internal/core/matrix/testdata/harbor-trial-result.json, internal/core/lab/procedure.go, internal/core/lab/procedure_test.go, internal/core/lab/preflight.go, internal/README.md, ACKNOWLEDGEMENTS.md
 - tests: the matrix plan refuses to start without consent and a named cap for metered cells; a failing runner cell is scored failed with no host fallback; trial mode takes no reservation and lands nothing; a provider-bound clone with a secret-shaped file is refused; reviewer requests carry no authorship field; a malformed verdict file is refused with nothing recorded; a check run leaves the doc-fidelity receipts untouched; Bradley–Terry and α floors; the trial record round-trips through a Harbor and an Inspect fixture
+- The packages line names step 1's files. Each later step's files join it
+  when that step begins, and `abcd build` then reserves the widened
+  footprint (dcn-2610230129331232). Generated output is reserved by no one.
 
 ## Steps
 
