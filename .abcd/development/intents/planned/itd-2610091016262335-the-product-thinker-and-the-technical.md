@@ -66,7 +66,7 @@ _Drafted 2026-10-14 from the product thinker's rulings and accepted as drafted t
 
 ## Open Questions
 
-- The decision record for this trust boundary (adr-2610091016270711) is written from the 2026-10-14 rulings at planning.
+- resolved: The decision record for this trust boundary (adr-2610091016270711) is written from the 2026-10-14 rulings and accepted; settled on 2026-10-23 by the record itself, which carries those rulings and stands accepted.
 
 ## Typed Links
 
