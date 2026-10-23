@@ -617,6 +617,7 @@ rather than adding to them.
    - packages: internal/surface/dashboard, internal/adapter/tailscale, internal/surface/cli, commands/dashboard.md, docs/reference, .abcd/development/decisions/adrs, .abcd/development/brief/02-constraints
    - tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestASharedInNodeIsRefused, TestARelayedRequestIsRefused, TestWhoIsReportsASharer, TestThisComputerIsRefusedOnceTheSelfCheckAnswered, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestWritesNeedTailnetIdentity, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, each against a fake `tailscale` on PATH and watched fail first; the surface parity test with the new page; the command reference regenerated
    - needs: none
+   - landed: f7fe95d79, 77ca9b27a
 2. The summary and item pages, from one snapshot through the site's renderer
    - criteria: P1, P3, T3's shared snapshot and capped live updates, T4
    - security review: required before landing (routing, rendering of record text, live-update streams)

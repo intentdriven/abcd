@@ -664,16 +664,19 @@ _None open._ Both points were settled on 2026-10-02:
    - packages: internal/core/record/findingkey, internal/core/intent, internal/core/capture, internal/core/issueschema, internal/core/lint, internal/surface/cli, commands/
    - tests: `Derive` is stable over reordered ends, collapsed whitespace and a status-folder move, and differs by class; the duplicate check in `validateConsistencyFindings` uses the key; the same payload content ingested in two runs gives one key and the filed record carries `finding_ref`; keyed resolved and won't-fix records make the row `addressed` naming them, with nothing filed and the record untouched; an open keyed record links; a legacy open record links by prose with nothing written; `issueschema.Known` admits `finding_ref` and capture and `record_schema` refuse a malformed value; the report renders the key column and the addressed cell
    - needs: none
+   - landed: 5887d3fdb
 2. A1: the cross-document lint codes
    - criteria: 1
    - packages: internal/core/lint, .abcd/record-lint.json
    - tests: `builds_on_reciprocal`, `routed_from_acknowledged` and `related_issues_backlink` each fire on a fixture pair naming the rule and both files with the key, and stay silent on a reciprocated pair; an unresolved target is left to `record_schema`; a `routed_from` whose source lacks the item label is skipped; the rules are known to `validateRuleNames` and land at warn, so record-lint over this tree exits as before
    - needs: 1
+   - landed: ec7156cfc
 3. A4: overflow measurement and chunked review
    - criteria: 8
    - packages: internal/core/intent, internal/surface/cli, commands/
    - tests: a corpus under the limit emits one request with no `overflow`; over the limit, the result and the report state corpus bytes, limit, groups and chunks, and every pair of documents shares a chunk; a scoped run pins its scope into every chunk; an oversize document is named as unreviewed; the ingest refuses a chunk set missing one chunk or mixing two emits, writing nothing; cross-chunk findings sharing a key are one row; `consistency.max_request_bytes` is read through the layered resolver and values outside 64 KiB–1 MiB are refused
    - needs: 1
+   - landed: ec768a4d1
 4. A3 and A2: the pre-commit gate and its setup question
    - blocked: waits for the core-owned managed pre-commit gates (iss-84 with itd-62, ruling J23); steps 1 to 3 do not
    - criteria: 2, 3, 4, 5, 6, 7

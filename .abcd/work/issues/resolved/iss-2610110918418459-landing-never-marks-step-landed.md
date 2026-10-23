@@ -34,3 +34,5 @@ While declaring needs lines on the open specs (2026-10-23), these open specs wer
 - spc-2610111627213138 (memory recall), steps 1 and 2: c8d1ab0df, 59b69f398.
 
 The remedy stands for lanes still to land. These existing cases also need a one-off backfill of their `landed:` lines, each checked against its commit, before any of these specs is built again.
+
+Backfilled the same day for the four specs no lane owns, each line checked against its commit on the default branch (the subject, and the body naming the step where it does): drain ledger triage steps 1 to 3, the consistency pass steps 1 to 3, the board steps 1 to 4 (step 5's page landed only in part, so it stays unlanded), and the dashboard step 1 (the tailnet reader and the verb). Sessions announce is left for its owner, and memory recall waits for the open pull request that edits its spec. The remedy, landing that writes the line itself, is still owed.
