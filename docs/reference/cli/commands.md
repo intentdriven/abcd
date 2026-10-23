@@ -1457,6 +1457,20 @@ with no severity is listed for you to set on GitHub and not recorded. A
 re-run records nothing twice. Nothing is written to this checkout's ledger
 or committed anywhere.
 
+Each advisory the store holds that GitHub lists in neither state is read
+from GitHub on its own. One GitHub reports published is recorded published, at
+GitHub's own published_at, which releases it from the check; one it reports
+closed is recorded closed, at its closed_at, only when its verdict is
+not-abcds, not-a-vulnerability or public-track. Each recorded is listed as
+ended. One GitHub cannot tell (a failed read, a 404 or 403 on its read, an
+unknown state, a missing or malformed time), or reports closed while the
+store holds it otherwise, is listed as unread, with the reason, and left
+under embargo to be read again. A missing gh, a gh signed in to no account or
+holding a token GitHub rejects, or a refusal naming the advisory scope,
+refuses the intake with nothing recorded. Each published advisory whose
+private record is resolved in the store and not yet in this checkout's
+ledger is listed with the command that restores it.
+
 #### `abcd embargo publish`
 
 Show the publication plan with computed patched versions, or publish it: Writes GitHub and the store only with --approve; refuses a digest for another plan.
@@ -1464,24 +1478,49 @@ Show the publication plan with computed patched versions, or publish it: Writes 
 **Usage:** `abcd embargo publish [flags]`
 
 Show the publication plan for the release tag (--release, default the highest
-vMAJOR.MINOR.PATCH tag): for each advisory judged a vulnerability and not yet
+published release): for each advisory judged a vulnerability and not yet
 published, its record resolved in that release, its fix commit, the first
-release tag holding the fix, the patched version that gives, and the affected
-range in GitHub's form. An advisory whose record is not resolved there, whose
-fix is in no release tag, whose package is not set on GitHub, or whose text
-carries a secret, a private name or another advisory still under embargo is
-left out, saying why. Without --approve nothing but reads is sent.
+published release holding the fix, the patched version that gives, and the
+affected range in GitHub's form. A vMAJOR.MINOR.PATCH tag is a published
+release when origin holds the tag at the object this checkout holds and GitHub
+reports its release neither a draft nor a prerelease; any other tag gives no
+patched version, and --release naming one is refused. When origin's tags, or
+GitHub's answer for a release, cannot be read, the plan refuses with nothing
+recorded, and so does an origin naming another repository than the store's. The
+security rule keeps a security record out of every committed tree until its
+advisory is published, so when the release carries no public record the
+evidence is the advisory's private record, resolved in the embargo store's own
+ledger with the full id of its fix commit; nothing else the store holds is
+taken. An advisory resolved in neither, whose fix is in no published release up
+to the release, whose package is not set on GitHub, or whose text carries a
+secret, a private name or another advisory still under embargo is left out,
+saying why. Without --approve nothing but reads is sent.
+
+Every plan first reads from GitHub each advisory the store holds that is
+neither published nor closed, as intake does: it records each published one,
+and each closed one whose verdict ends its private track, at GitHub's own
+time, lists each it recorded as ended, and lists each it could not tell, or
+found closed while the store holds it otherwise, as unread, left under
+embargo; a 404 or 403 on an advisory's read leaves it unread. When every read
+meets one, the plan asks once for the repository's advisory listing: if it
+answers, the scope is proven and the plan goes on; if GitHub refuses it, or
+it fails otherwise, the plan refuses. A missing gh, a gh signed in to no
+account or holding a token GitHub rejects, or a refusal naming the advisory
+scope, refuses the plan with nothing recorded.
 
 With --approve <digest> of exactly the plan shown it publishes one advisory as
 a canary and reads it back, then the rest the same way, stopping at the first
-mismatch, and confirms none is left in draft. A host passes --approve only
+mismatch, and confirms none is left in draft. Every plan and publication
+lists each published advisory whose private record is resolved in the store
+and not yet in this checkout's ledger, with the command that copies it into
+the public ledger, until the checkout holds it. A host passes --approve only
 after the person, in that session, has seen the plan and said yes to it.
 
 **Flags:**
 
 ```
       --approve string   the plan's digest; only on the person's yes to exactly that plan
-      --release string   the release tag vMAJOR.MINOR.PATCH to publish from (default the highest)
+      --release string   the release tag vMAJOR.MINOR.PATCH to publish from (default the highest published release)
 ```
 
 #### `abcd embargo triage`
@@ -1570,7 +1609,7 @@ abcd embark probe ../lifeboat
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.
+Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.
 
 **Usage:** `abcd guard`
 
@@ -1811,7 +1850,7 @@ heredoc (`abcd guard check <<'EOF'` ... `EOF`) passes it through untouched.
 
 #### `abcd guard hook`
 
-Judge the shell command in a host's pre-tool-use payload: Writes nothing; refuses a hazard or a badly built question with the host's deny.
+Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.
 
 **Usage:** `abcd guard hook`
 
@@ -1874,7 +1913,11 @@ product-thinker, Tech and Setup to facilitator), so it is never refused on
 the mode, and the question is marked open in the local tier; the answer
 resets the mode to managed, from `abcd hook question-answered` on the
 question tool's PostToolUse or else on the next human message. A questions
-field the hook cannot read lets the question run and warns loudly.
+field the hook cannot read lets the question run and warns loudly. While
+the away mode holds (`abcd mode autonomous`), every question is refused
+first, whatever its chip, with one reason that routes it by the act it asks
+about: an act only the person may approve to `abcd mode queue`, every other
+question to `abcd decide`; no mode is set and nothing is marked open.
 
 ### `abcd help`
 
@@ -4047,6 +4090,88 @@ all. With --json the notice is a field. Both forms make no network request.
 
 Exit 2 on a refusal — an unknown state, no local tier, or no checkout —
 and nothing is written on any of them.
+
+The away mode sits beside the badge, not as a fourth word: `abcd mode
+autonomous [--until <time>] [--hold-pushes]` records that the person is away,
+`abcd mode queue "<step>"` keeps a step for their return, and `abcd mode back`
+ends it and prints what was queued and recorded. While it holds, setting
+`product-thinker` or `facilitator` is refused (exit 2), naming `abcd decide`:
+a stop parked on a person who is away is a question nobody answers. The away
+mode grants no rights; the person's standing instruction decides what is pushed.
+
+#### `abcd mode autonomous`
+
+Record that the person is away and sessions work on, until a time or open-ended: Writes the away record; refuses an end already past or past seven days.
+
+**Usage:** `abcd mode autonomous [flags]`
+
+Record that the person is away, for every working copy of this repository on
+this machine: who set it (the holder name reservations resolve without a
+network read, else git's user.name), from which working copy, and when it ends.
+
+--until takes a clock time (its next occurrence, local time, as 09:00) or a
+timestamp (2026-10-19T09:00, or RFC 3339). Without it the mode is open-ended,
+and every record ends seven days after it was set at most: an --until past that,
+or one already past, is refused. --hold-pushes records the person's word that
+pushes wait for their return; it narrows what sessions do and grants nothing.
+
+The away mode grants no rights: the person's own standing instruction decides
+what is committed, pushed, and opened or merged as a pull request. It ends at its
+time or with `abcd mode back`; a prompt never ends it. Setting it again keeps
+whatever is queued or recorded and not yet read.
+
+The record lives in ~/.abcd.noindex/away/<root-sha>/record.json, keyed on the repository's
+root commit, and is changed under its lock, which only `abcd mode back` goes
+around. A record merely past its 64 KiB is carried, its oldest lines let go.
+Exit 2 on a refusal (an unreadable or past --until, one past seven days, no local
+tier, no checkout, or a record or lock that is not safely this account's) with
+nothing written. No network request.
+
+**Flags:**
+
+```
+      --hold-pushes    the person's word that pushes wait for their return (grants nothing)
+      --until string   when the mode ends: a clock time (09:00) or a timestamp; open-ended (seven days at most) when omitted
+```
+
+#### `abcd mode back`
+
+End the away mode, printing what was queued and recorded one line each: Writes its ending whatever the record's or lock's state; refuses outside a git checkout.
+
+**Usage:** `abcd mode back`
+
+End the away mode: print one plain line per queued step, per item handed back
+and per recorded stop (a stop at the host's cap is labelled "possibly forced by
+the cap"), record who ended it and from which working copy, and close the record.
+On a record whose time has already passed it prints the same and closes it. With
+no record, or one already closed, it says there is nothing to end.
+
+A session runs it only on the person's word in that session. It ends the mode
+whatever state the record is in: one past its 64 KiB is printed whole and kept
+with its oldest lines let go and counted; one that does not parse, or is not
+safely this account's, is replaced by a closed record, printing nothing from
+it; and a lock not had in time is gone around. Each is named on its own line.
+No network request.
+
+#### `abcd mode queue`
+
+Queue one step for the person's return while they are away: Writes the away record; refuses when no away record holds.
+
+**Usage:** `abcd mode queue <step>`
+
+Queue one step for the person's return, while the away mode holds: an act only
+the person may approve, which a session queues instead of asking, then carries on
+with other work. `abcd mode back` prints each queued step on one line.
+
+Exit 2 when no away record holds (ask the person instead), on an empty step or one
+over 500 characters, when the queue is full (it is never cut), and when the record
+or its lock is not safely this account's, with nothing written. No network request.
+
+**Example:**
+
+```
+abcd mode queue "approve the embargo close for the example advisory"
+```
 
 ### `abcd peers`
 

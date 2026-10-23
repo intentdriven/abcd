@@ -167,7 +167,8 @@ func Triage(req TriageRequest) (TriageResult, error) {
 			return TriageResult{}, refuse("the private record could not be moved to wontfix/ in the store: "+err.Error(),
 				"settle what it reports, then run it again")
 		}
-		// The move writes the record afresh, at the ledger's 0644.
+		// The move keeps the record's mode; it is closed all the same, so a
+		// record widened before the move is not left open after it.
 		if err := os.Chmod(filepath.Join(s.Root, filepath.FromSlash(moved.Path)), recordMode); err != nil {
 			return TriageResult{}, refuse("the private record was moved to wontfix/ in the store, but could not be closed to other accounts",
 				"run `chmod -R go-rwx` on the store, then run triage again")

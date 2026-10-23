@@ -38,9 +38,15 @@ import (
 // Blocks raised to 26 when the installer's refuse_older landed
 // (hooks/bootstrap.sh): its printf argument line, read alone, blocks as
 // program-name-unknown, the same way say_refusal's argument line already did.
+//
+// Warns raised to 33 when the away mode's stop check landed
+// (spc-2610180914469489 step 5): hooks/stop.sh and hooks/stop-failure.sh are
+// the same launcher as hooks/subagent-stop.sh, and each warns as
+// unrecognised-launcher twice, its command line and the file whole, exactly
+// as that one already did.
 const (
 	maxSweepBlocks = 26
-	maxSweepWarns  = 29
+	maxSweepWarns  = 33
 )
 
 func TestFalsePositiveSweepCeiling(t *testing.T) {

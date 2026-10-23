@@ -152,6 +152,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"hook"}, {"hook", "prompt-router"}, {"hook", "prompt-router-reset"},
 		{"hook", "session-start"}, {"hook", "session-end"},
 		{"hook", "subagent-stop"}, {"hook", "question-answered"},
+		{"hook", "stop"}, {"hook", "stop-failure"},
 	} {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
@@ -1656,6 +1657,10 @@ type routerView struct {
 	// SessionTitle is the session's title when this prompt set it
 	// (hook_session_name.go), and absent on every other prompt.
 	SessionTitle string `json:"session_title,omitempty"`
+	// SystemMessage is the one line the person is shown while the away
+	// record holds, or once it lapsed unclosed with anything unread
+	// (spc-2610180914469489 step 2), and absent otherwise.
+	SystemMessage string `json:"system_message,omitempty"`
 }
 
 // routerRefused is the prompt router's fail-open exit when it cannot evaluate
@@ -1731,7 +1736,16 @@ alone, or empty, when the rules could not be loaded):
   {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
    "additionalContext": ..., "sessionTitle": ...}}
 
-and the --json envelope carries the name as session_title.`,
+and the --json envelope carries the name as session_title.
+
+While the away record holds (abcd mode autonomous), every prompt's text ends
+with the "## AWAY" block, outside the dedup ledger, and the person is shown
+one line naming who set it, from which working copy, the steps queued and
+items handed back, and abcd mode back; once its window has lapsed unclosed
+with a queued step or a recorded stop, one line naming abcd mode back
+instead. Plain stdout is then one object carrying that line as systemMessage
+beside the additional context (and sessionTitle when owed), and the --json
+envelope carries it as system_message.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The hook's one deadline (C12), set before anything else runs:
@@ -1774,7 +1788,13 @@ and the --json envelope carries the name as session_title.`,
 			// the drain's reason: a rules.json that will not load must not
 			// also leave the badge parked.
 			resetModeOnAnswer(cmd.ErrOrStderr(), cwd)
+			// The away record (spc-2610180914469489 step 2): its block rides
+			// every prompt, outside the loader's dedup ledger, and its line
+			// is shown to the person. Read before the rules, for the drain's
+			// reason, from the drain's root-commit lookup, and inside the
+			// hook's one deadline: the status read below takes what it leaves.
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
+			away := readPromptAway(cmd.ErrOrStderr(), drained, root)
 			rs, err := rules.Load(root)
 			if err != nil {
 				// rules.Load errors already carry their own "rules:" prefix, so
@@ -1786,22 +1806,24 @@ and the --json envelope carries the name as session_title.`,
 				// (spc-2610150728396006 step 3).
 				status := routerStatus(cmd, root, deadline)
 				defer status.MarkShown()
+				// Nor does it switch off the away block and line.
+				text := joinBlocks(status.Text, away.Block)
 				// The title owed on this prompt is set even so: naming does
 				// not depend on the rules (hook_session_name.go). The status
 				// block, when there is one, is the context it is set with.
 				if title := resendSessionTitle(cmd, in); title != "" {
 					if *asJSON {
-						return routerEmit(cmd, routerView{Text: status.Text, Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title})
+						return routerEmit(cmd, routerView{Text: text, Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title, SystemMessage: away.Message})
 					}
-					emitTitled(cmd, status.Text, title)
+					emitPrompt(cmd, text, title, away.Message)
 					return nil
 				}
-				if status.Text != "" && !*asJSON {
-					fmt.Fprint(cmd.OutOrStdout(), status.Text)
+				if (text != "" || away.Message != "") && !*asJSON {
+					emitPrompt(cmd, text, "", away.Message)
 					return nil
 				}
-				if status.Text != "" {
-					return routerEmit(cmd, routerView{Text: status.Text, Injected: []string{}, Recalled: []string{}, Error: err.Error()})
+				if text != "" || away.Message != "" {
+					return routerEmit(cmd, routerView{Text: text, Injected: []string{}, Recalled: []string{}, Error: err.Error(), SystemMessage: away.Message})
 				}
 				return routerRefused(cmd, *asJSON, err.Error())
 			}
@@ -1851,6 +1873,7 @@ and the --json envelope carries the name as session_title.`,
 			status := routerStatus(cmd, root, deadline)
 			defer status.MarkShown()
 			text = joinBlocks(text, status.Text)
+			text = joinBlocks(text, away.Block)
 			// The name this session's start reserved, set once at its first
 			// prompt (hook_session_name.go).
 			title := resendSessionTitle(cmd, in)
@@ -1863,15 +1886,9 @@ and the --json envelope carries the name as session_title.`,
 				if recalled == nil {
 					recalled = []string{}
 				}
-				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title})
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title, SystemMessage: away.Message})
 			}
-			if title != "" {
-				emitTitled(cmd, text, title)
-				return nil
-			}
-			if text != "" {
-				fmt.Fprint(cmd.OutOrStdout(), text)
-			}
+			emitPrompt(cmd, text, title, away.Message)
 			return nil
 		},
 	})
@@ -2090,6 +2107,12 @@ and the --json envelope carries the name as session_title.`,
 			// name the first prompt sets, and writes nothing to stdout
 			// (hook_session_name.go).
 			startSessionName(cmd, in, cwd)
+			// The away block, on every source, compaction included, and the
+			// session's start copy noted (spc-2610180914469489 step 2). The
+			// block is the home store's own words, never a tracked file's.
+			if block := sessionStartAway(cmd.ErrOrStderr(), in, cwd); block != "" {
+				fmt.Fprint(cmd.OutOrStdout(), block)
+			}
 			var notices []string
 			// currentSHA is remembered so the cross-repository survey below can
 			// leave this repository out: the drain reports it entry by entry,
@@ -2292,6 +2315,10 @@ and the --json envelope carries the name as session_title.`,
 	// Its body lives in hook_subagent.go, with the attribution ladder and the
 	// store resolution it needs.
 	hookCmd.AddCommand(newSubagentStopCommand())
+
+	// stop and stop-failure — Stop and StopFailure: the away mode's stop
+	// check (spc-2610180914469489 step 5). Their bodies live in hook_stop.go.
+	hookCmd.AddCommand(newHookStopCommand(), newHookStopFailureCommand())
 
 	return hookCmd
 }

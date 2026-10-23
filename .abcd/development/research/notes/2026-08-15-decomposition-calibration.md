@@ -2518,3 +2518,45 @@ The proposal: when abcd's plugin was updated, offer the person to run setup agai
 | setup changes nothing without the person's yes | trust rule | existing consent rules; no new record |
 
 Verdict: SPLIT. The initial routing proposed one intent (FILE-AS-IS) with the what-changed summary inside it; the product thinker chose to split the summary into its own record, so the routing did not survive as proposed. Both drafts carry `builds_on: [itd-111, itd-105]`. The product thinker then asked for the two new drafts and the two shipped intents they build on to be one bundle; a bundle can only join records not yet shipped, so the two drafts are to be planned as one bundle, linked to the shipped pair through `builds_on`.
+
+## 2026-10-18: every session keeps a checklist on disk (facilitator-on-delegation, routing not yet put to the product thinker)
+
+| part | type | home |
+|---|---|---|
+| the away mode with an owner and an end time, repeated at every start, compaction and prompt; the stop check that refuses to end a turn with owed work while the person is away; the question reroute and the queue of steps for the person's hands | capability | intent itd-2610180912189125 (planned, spc-2610180914469489), the first slice, which builds on the draft |
+| the per-session checklist on disk and its re-injection; waits per item; trigger promises; timed wakes; the states working, waiting and stopped | capability | itd-2610170638184486 (draft) |
+| the pre-run blocker sweep, asked by message | capability | the same draft, by the product thinker's choice |
+| the two lists for the person's return across sessions | capability | the same draft; the slice's per-repository form moved back here in its review round 1 (dcn-2610180937181929), leaving it only `abcd mode back` printing the queue |
+| the technical facilitator set to auto or to a person, and whether a feature's design work is done | capability | the same draft, reading the existing `facilitator.mode` of itd-2610150602547271; no second toggle |
+| the private shared option, the public option and the phone | capability | proposed as its own intent in the bundle; split not filed |
+| the checklist records a credential's kind, scope and expiry, never its value or anything that retrieves it | trust rule | proposed ADR and brief invariant clause at planning; not filed |
+| a public upload passes the embargo check | cited | brief invariant 22; no new rule |
+| the stop check's one forge listing per check, made only while the person is away | rule clause | brief invariant 7, amended by the slice's step 3 (step 6 before its review round 1) |
+| a wait holds one item, never the session, and a declared dependency holds only the landing | stance | proposed principle; not filed |
+| a state shown to a person follows what the machine sees, and the agent's own words are a hint | stance | the coordination intent's decision 6 and the principle `enforcement-claims-are-facts`, cited; no new principle |
+| the checklist's JSON format and its crash-safe write | plumbing | the brief's internals, through `internal/fsutil`'s atomic writer |
+| idle time per session for a coordinator; each autonomous session's own credential | capability | the coordination intent (headless agents coordinate through the shared remote), not this draft |
+
+Verdict: SPLIT, proposed. The routing is the agent's and has not been put to
+the product thinker; it is graded as unconfirmed until the planning interview
+on 2026-10-23. Only the first slice was filed, on the orchestrating session's
+instruction, so the security and bug-fix release can wait on it alone
+(dcn-2610180913379049, dcn-2610180913388445). The other proposed records (the
+shared-options and phone intent, the credential ADR, the waiting principle)
+are described in the facilitator's note for Thursday and filed only once the
+routing is confirmed.
+
+Typed links: itd-2610180912189125 builds on the draft and is the remedy home
+of iss-2610170619247185 with it; the coordination intent is the bundle
+sibling, kept apart by the draft's scope split. Advisory reversal flags: none.
+Two refinements of the issue's remedy wording are recorded rather than
+flagged: the away record is held per repository on the machine rather than
+per checkout (dcn-2610180913399499), and a coordinator's view of idle time
+comes through the coordination intent's central view rather than `abcd
+peers`.
+
+The initial routing moved once before filing. The draft first held the stop
+check and the away mode inside the checklist itself; carving them into a
+separate intent followed from the release cut waiting on them, and from
+planning the draft before its criteria are walked being the worse of the two
+routes.

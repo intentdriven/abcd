@@ -3,6 +3,7 @@ package changelog
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/surface"
@@ -53,6 +54,12 @@ type SurfaceGuard struct {
 	BreakingDeclared bool `json:"breaking_declared"`
 	// Reason names what to fix; empty on a clean pass.
 	Reason string `json:"reason,omitempty"`
+	// NewCommands is every command path the current surface holds that the
+	// anchor's snapshot does not, sorted: the verbs the last release lacked.
+	// It is a report, never a reason to refuse, and the composer reads it so a
+	// fix to one of them is worded as what it does rather than as a fix
+	// (iss-2610172148157726).
+	NewCommands []string `json:"new_commands,omitempty"`
 }
 
 // GuardSurface runs the release surface guardrail over the repository at root
@@ -121,6 +128,8 @@ func GuardSurface(root string, current surface.Snapshot) (SurfaceGuard, error) {
 	if !matches {
 		return refuseGuard(g, reason), nil
 	}
+
+	g.NewCommands = newCommands(baseline, current)
 
 	records, err := ShippedSince(root, g.BaseTag)
 	if err != nil {
@@ -270,4 +279,21 @@ func surfaceSnapshotAt(root string, ref string) (surface.Snapshot, bool, error) 
 		return surface.Snapshot{}, false, fmt.Errorf("decoding %s at %s: %w", surface.SnapshotPath, ref, err)
 	}
 	return snap, true, nil
+}
+
+// newCommands is every command path in current that baseline does not hold,
+// sorted.
+func newCommands(baseline, current surface.Snapshot) []string {
+	had := make(map[string]bool, len(baseline.Commands))
+	for _, c := range baseline.Commands {
+		had[c.Path] = true
+	}
+	var out []string
+	for _, c := range current.Commands {
+		if !had[c.Path] {
+			out = append(out, c.Path)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }

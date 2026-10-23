@@ -25,6 +25,9 @@ type PublishResult struct {
 	Approved    bool                `json:"approved"`
 	Published   []PublishedAdvisory `json:"published"`
 	NoDraftLeft bool                `json:"no_draft_left"`
+	// Restores, after a publication, is each restore the store's state then
+	// owes (restoresOwed), those of the advisories just published included.
+	Restores []Restore `json:"restores"`
 }
 
 // PublishFailedError is a publication that stopped: at advisory GHSAID (the
@@ -37,6 +40,10 @@ type PublishFailedError struct {
 	Reason      string   `json:"reason"`
 	Published   []string `json:"published"`
 	Unpublished []string `json:"unpublished"`
+	// restores is each restore the store's state owes at the failure
+	// (restoresOwed), named in the message: those of the advisories
+	// published before it included.
+	restores []Restore
 }
 
 func (e *PublishFailedError) Error() string {
@@ -60,6 +67,13 @@ func (e *PublishFailedError) Error() string {
 		b.WriteString("; not published: " + strings.Join(e.Unpublished, ", "))
 	}
 	b.WriteString(" (look at the advisories on GitHub; running `abcd embargo publish` again plans only what is still unpublished)")
+	for _, r := range e.restores {
+		if r.RestoreWith != "" {
+			b.WriteString("; restore the record of " + r.GHSAID + " (" + r.IssueID + "), from the checkout's root: " + r.RestoreWith)
+		} else {
+			b.WriteString("; the record of " + r.GHSAID + " (" + r.IssueID + ") is not restored: " + r.Reason)
+		}
+	}
 	return b.String()
 }
 
@@ -78,11 +92,11 @@ func Publish(req PublishRequest) (PublishResult, error) {
 	if err != nil {
 		return PublishResult{}, err
 	}
-	plan, err := planFor(s, &st, req.Release, clock(req.Now))
+	plan, err := planFor(s, &st, req.Home, req.Release, clock(req.Now))
 	if err != nil {
 		return PublishResult{}, err
 	}
-	res := PublishResult{Plan: plan, Published: []PublishedAdvisory{}}
+	res := PublishResult{Plan: plan, Published: []PublishedAdvisory{}, Restores: []Restore{}}
 	if req.Approve == "" {
 		return res, nil
 	}
@@ -104,7 +118,8 @@ func Publish(req PublishRequest) (PublishResult, error) {
 		for _, p := range res.Published {
 			done = append(done, p.GHSAID)
 		}
-		return &PublishFailedError{GHSAID: ghsa, Canary: i == 0 && ghsa != "", Reason: why, Published: done, Unpublished: planned[len(done):]}
+		return &PublishFailedError{GHSAID: ghsa, Canary: i == 0 && ghsa != "", Reason: why, Published: done, Unpublished: planned[len(done):],
+			restores: restoresOwed(req.Home, s, st)}
 	}
 
 	for i, e := range plan.Entries {
@@ -141,6 +156,7 @@ func Publish(req PublishRequest) (PublishResult, error) {
 		return res, fail(len(planned), "", "GitHub still lists "+strings.Join(left, ", ")+" in draft or triage after reading it back published")
 	}
 	res.NoDraftLeft = true
+	res.Restores = restoresOwed(req.Home, s, st)
 	return res, nil
 }
 

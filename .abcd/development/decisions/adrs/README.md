@@ -216,4 +216,5 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610161621415708](2610161621415708-abcd-s-command-guard-steers-agents-an-os.md) | Unattended runs abcd launches execute inside an OS sandbox | proposed | 2026-10-16 |
 | [adr-2610161733400551](2610161733400551-a-reviewer-in-a-model-matrix-run-never.md) | A reviewer or judge in a model-matrix run is told nothing about which model wrote the copy it judges | proposed | 2026-10-16 |
 | [adr-2610161940004937](2610161940004937-spent-reservation-branches-are-deleted.md) | Spent reservation branches are deleted only by one GitHub App the ruleset names | proposed | 2026-10-16 |
+| [adr-2610181003541997](2610181003541997-the-away-mode-s-stop-check-reads-the.md) | The away mode's stop check reads the forge once, as its documented meaning | proposed | 2026-10-18 |
 <!-- /index -->
