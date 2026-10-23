@@ -1,10 +1,18 @@
 package claim
 
 import (
+	"os"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/lease"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
+
+// pushedRelDir keeps, per record, the last reservation commit this copy
+// pushed for it (notePushed): the commit names RenewDue renews from.
+const pushedRelDir = stateRelDir + "/pushed"
 
 // Renewal is one reservation RenewDue renewed, or failed to: Until is the
 // renewed lease's end, and Err why it could not be renewed.
@@ -23,8 +31,10 @@ type Renewal struct {
 // it never reserves a record anew, never takes one over and never revives one
 // that has lapsed. A renewal keeps the tip's own term (renewalTerm). A
 // release subject is left alone: its hold is a release cut's, kept by the
-// cut. The error is a view that could not be read; each renewal's own
-// failure is in its Renewal.
+// cut. Only a reservation whose tip is the commit this copy itself last
+// pushed for it (pushedHere) is renewed; any other tip is left as it is.
+// The error is a view that could not be read; each renewal's own failure is
+// in its Renewal.
 func RenewDue(root string, o Options) ([]Renewal, error) {
 	now := o.now()
 	snap, err := View(root, now)
@@ -33,7 +43,8 @@ func RenewDue(root string, o Options) ([]Renewal, error) {
 	}
 	var out []Renewal
 	for _, r := range snap.Reservations {
-		if r.Copy != CopyThis || r.State != StateLive || isRelease(r.Record) || !halfThrough(r, now) {
+		if r.Copy != CopyThis || r.State != StateLive || isRelease(r.Record) || !halfThrough(r, now) ||
+			pushedHere(root, r.Record) != r.Commit {
 			continue
 		}
 		res, err := Reserve(root, Request{Record: r.Record, Renew: true, Live: true, Lease: renewalTerm(r)}, o)
@@ -53,4 +64,43 @@ func halfThrough(r Reservation, now time.Time) bool {
 // term a fence gave a pull request waiting on a person.
 func renewalTerm(r Reservation) time.Duration {
 	return min(max(lease.Default, r.EffectiveExpiry.Sub(r.ClaimedAt)), lease.Max)
+}
+
+// notePushed keeps sha as the commit this copy last pushed for id, best
+// effort: a note that cannot be written only leaves that reservation out of
+// RenewDue, to be renewed by hand.
+func notePushed(root, id, sha string) {
+	if _, err := reservableID(id); err != nil || !gitutil.IsFullSHA(sha) {
+		return
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return
+	}
+	defer r.Close()
+	if err := mkStateDir(r, pushedRelDir); err != nil {
+		return
+	}
+	_ = fsutil.WriteFileAtomicInRoot(r, pushedRelDir+"/"+id, []byte(sha+"\n"), stateMode)
+}
+
+// pushedHere is the commit this copy last pushed for id (notePushed), "" when
+// none is kept or the note cannot be read.
+func pushedHere(root, id string) string {
+	if _, err := reservableID(id); err != nil {
+		return ""
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return ""
+	}
+	defer r.Close()
+	data, err := fsutil.ReadGuardedInRoot(r, pushedRelDir+"/"+id, 128)
+	if err != nil {
+		return ""
+	}
+	if sha := strings.TrimSpace(string(data)); gitutil.IsFullSHA(sha) {
+		return sha
+	}
+	return ""
 }
