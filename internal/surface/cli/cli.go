@@ -2105,6 +2105,11 @@ envelope carries it as system_message.`,
 					cwd = wd
 				}
 			}
+			// The hook's one output is composed here and written once, with the
+			// checklist last, in what the rest leaves of the host's cap
+			// (hook_checklist.go).
+			out := new(strings.Builder)
+			defer func() { emitSessionStart(cmd, out.String(), cwd) }()
 			// Naming first, before the drain's time budget: it reserves the
 			// name the first prompt sets, and writes nothing to stdout
 			// (hook_session_name.go).
@@ -2113,7 +2118,7 @@ envelope carries it as system_message.`,
 			// session's start copy noted (spc-2610180914469489 step 2). The
 			// block is the home store's own words, never a tracked file's.
 			if block := sessionStartAway(cmd.ErrOrStderr(), in, cwd); block != "" {
-				fmt.Fprint(cmd.OutOrStdout(), block)
+				fmt.Fprint(out, block)
 			}
 			var notices []string
 			// currentSHA is remembered so the cross-repository survey below can
@@ -2254,14 +2259,14 @@ envelope carries it as system_message.`,
 			// An inbox that cannot be counted says so among the notices, on
 			// stderr: the reason names a path, and stdout carries counts only.
 			if g, n := inboxGreeting(); g != "" {
-				fmt.Fprintln(cmd.OutOrStdout(), g)
+				fmt.Fprintln(out, g)
 			} else if n != "" {
 				notices = append(notices, n)
 			}
 			// The moment after an update (spc-2610170635097509): one constant
 			// line, read only, from the detection above (update_news.go).
 			if detErr == nil {
-				notices = append(notices, updateNewsSessionStart(cmd.OutOrStdout(), cwd, det)...)
+				notices = append(notices, updateNewsSessionStart(out, cwd, det)...)
 			}
 			if len(notices) == 0 {
 				return nil
@@ -2305,7 +2310,7 @@ envelope carries it as system_message.`,
 			// gap COUNT and says nothing about a staged transcript or a failed
 			// drain — so the one notice naming a privacy artefact was the one it
 			// lost. `abcd history staged` is where that lives.
-			fmt.Fprintf(cmd.OutOrStdout(),
+			fmt.Fprintf(out,
 				"abcd: %d session-start notice(s) on this hook's stderr; "+
 					"run `abcd history staged` for transcript backlog or `abcd ahoy` for install state.\n",
 				len(notices))

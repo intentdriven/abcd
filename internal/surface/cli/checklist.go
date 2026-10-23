@@ -208,7 +208,7 @@ func newChecklistRenderCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			res := checklist.Read(root)
-			text := renderChecklist(res)
+			text := checklist.Render(res, checklistRenderBudget)
 			return render(cmd.OutOrStdout(), *asJSON, checklistRenderOutput{Source: res.Source, Text: text}, func(w io.Writer) {
 				io.WriteString(w, text)
 			})
@@ -372,9 +372,6 @@ func checklistStateWords() string {
 	return strings.Join(words, ", ")
 }
 
-// checklistOpen reports whether an item is still to be acted on.
-func checklistOpen(s checklist.State) bool { return s == checklist.Working || s == checklist.Waiting }
-
 // writeChecklistList is the bare list: the reader's reason when it did not
 // read the file clean, then every item with every field. Every field the
 // reader passed is one line with no control character, so it prints as it is.
@@ -415,47 +412,4 @@ func writeChecklistItem(w io.Writer, it checklist.Item) {
 		}
 		fmt.Fprintf(w, "    credential: %s, scope %s, expiry %s\n", cr.Kind, strings.Join(scopes, ", "), cr.Expiry)
 	}
-}
-
-// renderChecklist is the injection text, kept minimal: the reader's reason
-// when it did not read the file clean, then the open items, then the closed
-// ones, one line each. It has no budget; step 3 of the spec moves the render
-// into the core with the hook's character budget, newest first and a count of
-// what it left out.
-func renderChecklist(res checklist.Result) string {
-	var b strings.Builder
-	if res.Source != checklist.FromFile {
-		fmt.Fprintln(&b, res.Reason)
-	}
-	if res.Source == checklist.FromNothing {
-		return b.String()
-	}
-	var open, closed []checklist.Item
-	for _, it := range res.Checklist.Items {
-		if checklistOpen(it.State) {
-			open = append(open, it)
-		} else {
-			closed = append(closed, it)
-		}
-	}
-	fmt.Fprintln(&b, "This working copy's checklist (`abcd checklist` lists every field):")
-	section := func(title string, items []checklist.Item) {
-		if len(items) == 0 {
-			return
-		}
-		fmt.Fprintln(&b, title)
-		for _, it := range items {
-			line := fmt.Sprintf("- [%s] %s: %s", it.State, it.ID, it.Title)
-			if it.WaitsOn != "" {
-				line += " (waits on " + it.WaitsOn + ")"
-			}
-			fmt.Fprintln(&b, line)
-		}
-	}
-	section("Open:", open)
-	section("Done or dropped:", closed)
-	if len(res.Checklist.Items) == 0 {
-		fmt.Fprintln(&b, "No items.")
-	}
-	return b.String()
 }
