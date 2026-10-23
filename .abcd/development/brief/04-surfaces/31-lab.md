@@ -24,6 +24,23 @@ the verb encodes is the discipline record
 | `record` | — | shipped |
 | `sweep` | gate | shipped |
 | `harvest` | — | shipped |
+| `matrix` | — | shipped |
+
+## A model matrix run
+
+A model matrix run in a lab begins with its plan (itd-2610161733316518,
+spc-2610161949559050 step 2): the copies each cell makes, the expected cost by source against the spending cap, the load
+cap below the machine's cores, the time and the judges each task needs. It is
+built from the declaration and the machine's configuration alone: no network
+call, no price fetched (a cost is reckoned only from a cell's declared
+`cost_per_copy`), and nothing written. Its digest names exactly that plan.
+Approving that digest records the run once the person has seen the plan and said
+yes to it; the plan is built again and must carry the same digest. The spending
+cap comes from the declaration's `spend_cap` or the machine's
+`matrix.spend_cap`, never from the repository's configuration. Starting the
+run's copies is step 3's, so a consented run is recorded and nothing is
+launched, and the verb says so. A refusal exits 2 with nothing written; a
+halted lab exits 1.
 
 ## The store
 
@@ -138,7 +155,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd lab`
 
-Sub-verbs: `abcd lab harvest`, `abcd lab mint`, `abcd lab preflight`, `abcd lab record`, `abcd lab sweep`.
+Sub-verbs: `abcd lab harvest`, `abcd lab matrix`, `abcd lab mint`, `abcd lab preflight`, `abcd lab record`, `abcd lab sweep`.
 
 Flags: none.
 
@@ -147,6 +164,14 @@ Flags: none.
 Sub-verbs: none.
 
 Flags: none.
+
+### `abcd lab matrix`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--approve` | string |
 
 ### `abcd lab mint`
 

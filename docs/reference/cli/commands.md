@@ -3506,6 +3506,44 @@ is still harvested, its gate findings first.
 abcd lab harvest lab-260901000000-0123abc
 ```
 
+#### `abcd lab matrix`
+
+**Usage:** `abcd lab matrix <lab-id> <declaration.json> [flags]`
+
+abcd lab matrix <lab-id> <declaration.json> [--approve <digest>]
+
+Show the plan for a model matrix run of the declaration in the lab: how many
+copies each cell makes, the expected cost by source against the spending cap,
+the load cap below this machine's cores, the time, and the judges each task
+needs. Building it reads the declaration and this machine's configuration and
+nothing else: no network call, no price fetched, nothing written. Its digest
+names exactly that plan.
+
+--approve <digest> records the run, once the person has seen the plan and said
+yes to it: the plan is built again and must carry that digest. A host passes
+--approve only after the person, in that session, has seen the plan and said
+yes to it. Starting the run's copies is not built yet, so a consented run is
+recorded in the lab and nothing is launched; the output says so.
+
+Refused, exit 2, with nothing written: a declaration that does not parse, a
+cell route the runner rung or this machine's runner configuration refuses, a
+cell on a runner that names no model, a model its provider does not list, an
+OpenRouter or local cell with no pin, a metered cell with no spending cap, a
+local cell with no load cap or one at or above the cores, and an approval that
+is not the plan's digest. A halted lab exits 1.
+
+**Flags:**
+
+```
+      --approve string   the digest of the plan the person saw and said yes to; records the run
+```
+
+**Example:**
+
+```
+abcd lab matrix lab-260901000000-0123abc matrix.json
+```
+
 #### `abcd lab mint`
 
 Mint a lab for one question, with a standalone snapshot at the pin: Writes only under the lab store; refuses a multi-line question or a pin naming no commit.

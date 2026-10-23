@@ -2810,6 +2810,19 @@
       "flags": []
     },
     {
+      "path": "abcd lab matrix",
+      "hidden": false,
+      "flags": [
+        {
+          "name": "approve",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd lab mint",
       "hidden": false,
       "sentence": "Mint a lab for one question, with a standalone snapshot at the pin: Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",

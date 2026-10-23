@@ -50,7 +50,7 @@ func newLabCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newLabMintCommand(asJSON), newLabPreflightCommand(asJSON), newLabRecordCommand(asJSON),
-		newLabSweepCommand(asJSON), newLabHarvestCommand(asJSON))
+		newLabSweepCommand(asJSON), newLabHarvestCommand(asJSON), newLabMatrixCommand(asJSON))
 	return cmd
 }
 

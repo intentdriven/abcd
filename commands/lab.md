@@ -96,6 +96,42 @@ yourself**: show the candidates and let the user decide, and note any without a
 `refutation`. When a finding cites no probe record or evidence, or one that is
 missing or incomplete, `gaps` names it, the exit is 1 and nothing is written.
 
+**Plan a model matrix run** in a lab whose preflight passed:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix --json <lab-id> <declaration.json>
+```
+
+It shows the plan and writes nothing: `cells` (each cell's role, model and
+`source`: host, openrouter, local or provider), `copies` (the pilot and the most
+the run may make), `cost` (the expected cost by source at the most copies,
+reckoned only from each cell's declared `cost_per_copy`; a metered source with a
+cell that declared none says `not estimated; bounded by your cap`), `spend_cap`
+and where it came from, `load_cap` and `cores`, `time` (a bound when every cell
+declares `minutes_per_copy`, otherwise known after the pilot), `judges`, and the
+`digest` naming exactly this plan, with `approve_with`, the command that starts
+it. Building it makes no network call and fetches no price. Show the person the
+whole plan in plain words: the copies, what it may spend against the cap, the
+load, the time and the judges.
+
+**Only after the person has seen that plan and said yes to it**, record the run
+with the digest it carried:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" lab matrix --json <lab-id> <declaration.json> --approve <digest>
+```
+
+The plan is built again and must carry that digest; an approval naming another
+plan is refused with nothing written. Never pass `--approve` on your own
+judgement, and never with a digest the person did not see. Starting the run's
+copies is not built yet, so a consented run is recorded in the lab and nothing
+is launched: `launched` is false and `note` says so; tell the person that
+plainly. Refused, exit 2, with nothing written: a metered cell with no spending
+cap (set one in the declaration's `spend_cap` or `matrix.spend_cap` in the
+person's own machine configuration, never the repository's), a local cell with
+no load cap or one at or above the cores, a route this machine's runners refuse,
+an OpenRouter or local cell with no pin, and a stale approval.
+
 Exit codes: `0` done; `1` a gate refused or a halted lab refused a probe; `2`
 the request was refused (no checkout, an unknown lab, a bad name, question or
 pin), with nothing written.

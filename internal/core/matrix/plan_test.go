@@ -52,7 +52,7 @@ func anyRoute(oracle.FlagRoute) error { return nil }
 
 func plan(t *testing.T, decl []byte, c ResolvedCap) (Plan, error) {
 	t.Helper()
-	return BuildPlan(PlanInputs{Lab: "lab-1", FrozenCommit: strings.Repeat("a", 40), Declaration: decl,
+	return buildPlan(PlanInputs{Lab: "lab-1", FrozenCommit: strings.Repeat("a", 40), Declaration: decl,
 		API: planAPI(t, "https://api.example.com/v1"), CheckRoute: anyRoute, Cap: c, Cores: 16})
 }
 
@@ -199,7 +199,7 @@ func TestALoadCapAtOrAboveTheCoreCountIsRefused(t *testing.T) {
 
 func TestACellRouteTheRunnerConfigRefusesIsRefused(t *testing.T) {
 	decl := planDecl(`{"id":"or-cheap","route":"builder=runner:opencode@openrouter/vendor/model"}`, ``, ``)
-	_, err := BuildPlan(PlanInputs{Lab: "lab-1", FrozenCommit: strings.Repeat("a", 40), Declaration: decl,
+	_, err := buildPlan(PlanInputs{Lab: "lab-1", FrozenCommit: strings.Repeat("a", 40), Declaration: decl,
 		API: planAPI(t, "https://api.example.com/v1"), Cap: usd25, Cores: 16,
 		CheckRoute: func(oracle.FlagRoute) error { return errors.New("runner opencode is not enabled on this machine") }})
 	if err == nil || !strings.Contains(err.Error(), "not enabled") || !strings.Contains(err.Error(), "or-cheap") {
@@ -232,7 +232,7 @@ func TestBuildingThePlanMakesNoNetworkCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	decl := planDecl(`{"id":"probe-cell","route":"builder=runner:opencode@probe/qwen"}`, ``, `"load_cap": 4,`)
-	if _, err := BuildPlan(PlanInputs{Lab: "lab-1", FrozenCommit: strings.Repeat("a", 40), Declaration: decl,
+	if _, err := buildPlan(PlanInputs{Lab: "lab-1", FrozenCommit: strings.Repeat("a", 40), Declaration: decl,
 		API: api, CheckRoute: anyRoute, Cap: ResolvedCap{}, Cores: 16}); err != nil {
 		t.Fatal(err)
 	}

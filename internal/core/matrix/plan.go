@@ -121,13 +121,13 @@ const maxJudgeSubset = 8
 // judge's ranking is reported on its own (decision 26).
 const judgeFloor = 3
 
-// BuildPlan builds and checks a matrix run's plan. Everything it refuses is
+// buildPlan builds and checks a matrix run's plan. Everything it refuses is
 // refused before anything is written: a declaration that does not parse, a
 // cell route the grammar or the runner configuration refuses, a cell on a
 // runner that does not name its model, a provider the allowlist denies, a
 // metered cell with no cap, a local cell with no load cap or one at or above
 // the cores.
-func BuildPlan(in PlanInputs) (Plan, error) {
+func buildPlan(in PlanInputs) (Plan, error) {
 	d, err := parseDeclaration(in.Declaration)
 	if err != nil {
 		return Plan{}, err
