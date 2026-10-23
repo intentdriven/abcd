@@ -600,6 +600,94 @@ func TestAForeignOwnedWorktreeHasNoGitRunInIt(t *testing.T) {
 	}
 }
 
+// TestADirtyWorktreeThatIsHeldIsKept: a hold outranks the salvage, so a dirty
+// worktree a process works in is kept with the hold as its reason, and its
+// changes are not saved.
+func TestADirtyWorktreeThatIsHeldIsKept(t *testing.T) {
+	repo, _ := sweepRepo(t)
+	p := laneAdd(t, repo, "dirty-held")
+	write(t, filepath.Join(p, "scratch.txt"), "wip\n")
+	o := sweepOpts()
+	o.Probe.Processes = cwds(p)
+	r := rowFor(t, dryRun(t, repo, o), "dirty-held")
+	kept(t, r, "in use: process 100 works in it")
+	if !slices.Contains(r.Evidence, Evidence{Kind: KindState, Strength: Proven, Detail: "dirty"}) {
+		t.Fatalf("the row still says it is dirty: %+v", r)
+	}
+}
+
+// TestAWorktreeTheStoreGaveAnUnknownStateOrMergeIsKept: the store reads clean
+// or dirty and merged or unmerged; a row carrying any other word, and no
+// reason, is not one the sweep can classify, and it is kept.
+func TestAWorktreeTheStoreGaveAnUnknownStateOrMergeIsKept(t *testing.T) {
+	dir := t.TempDir()
+	o := sweepOpts()
+	o.Probe.CopyView = func(string, time.Time) (claim.Snapshot, error) { return claim.Snapshot{}, nil }
+	o.Probe.Owner = func(string) (int, bool, error) { return os.Getuid(), false, nil }
+	j := judge{probe: NewProbe(context.Background(), o.Probe), changes: func(string, string) []string { return []string{} }}
+	for _, sr := range []store.Row{
+		{Name: "odd-state", Branch: "odd-state", Path: "odd-state", Where: store.WhereStore, State: "half", Merged: "merged", JudgedBy: "ancestry"},
+		{Name: "odd-merge", Branch: "odd-merge", Path: "odd-merge", Where: store.WhereStore, State: "clean", Merged: "maybe"},
+	} {
+		r := j.row(sr, dir)
+		kept(t, r, fmt.Sprintf("cannot classify: the store read its state as %q and its merge as %q", sr.State, sr.Merged))
+		if !hasEvidence(r, KindStore, Hint) {
+			t.Fatalf("%s: %+v; want the store's unknown word as a hint", sr.Name, r)
+		}
+	}
+}
+
+// TestTwoDetachedWorktreesOutsideTheStoreWithOneNameAreKept: outside HOME the
+// store shows a worktree by its base name, so two detached worktrees with one
+// base name give two rows that each fit both worktrees git lists. Neither row
+// can be tied to one, and both are kept as unclassifiable.
+func TestTwoDetachedWorktreesOutsideTheStoreWithOneNameAreKept(t *testing.T) {
+	repo, _ := sweepRepo(t)
+	repo.Git("worktree", "add", "-q", "--detach", filepath.Join(t.TempDir(), "twin"))
+	repo.Git("worktree", "add", "-q", "--detach", filepath.Join(t.TempDir(), "twin"))
+	res := dryRun(t, repo, sweepOpts())
+	n := 0
+	for _, r := range res.Rows {
+		if r.Name != "twin" {
+			continue
+		}
+		n++
+		kept(t, r, "could not be tied to one worktree git lists")
+		if !hasEvidence(r, KindStore, Hint) || r.State == "" {
+			t.Fatalf("an unlocatable row: %+v; want a state and the doubt as a hint", r)
+		}
+	}
+	if n != 2 {
+		t.Fatalf("want two rows named twin, got %+v", res.Rows)
+	}
+}
+
+// TestARowThatCannotBeTiedToAWorktreeIsKept: a row the sweep could not locate
+// is kept, though the store read it merged and clean in the store, and
+// neither the probe nor git is asked about it.
+func TestARowThatCannotBeTiedToAWorktreeIsKept(t *testing.T) {
+	o := sweepOpts()
+	var asked []string
+	o.Probe.Owner = func(p string) (int, bool, error) {
+		asked = append(asked, p)
+		return os.Getuid(), false, nil
+	}
+	o.Probe.CopyView = func(string, time.Time) (claim.Snapshot, error) { return claim.Snapshot{}, nil }
+	j := judge{probe: NewProbe(context.Background(), o.Probe), changes: func(abs, _ string) []string {
+		asked = append(asked, abs)
+		return []string{}
+	}}
+	r := j.row(store.Row{Name: "lost", Branch: "lost", Path: "lost", Where: store.WhereStore,
+		State: "clean", Merged: "merged", JudgedBy: "ancestry"}, "")
+	kept(t, r, "cannot classify: this row could not be tied to one worktree")
+	if !hasEvidence(r, KindStore, Hint) || r.State == "" {
+		t.Fatalf("an unlocatable row: %+v; want a state and the doubt as a hint", r)
+	}
+	if len(asked) != 0 {
+		t.Fatalf("nothing is read for a row with no worktree: asked %q", asked)
+	}
+}
+
 // TestTheDryRunActsOnNothingInAnEmptyLane: a repository with no worktrees
 // renders no rows and maps to "nothing to act on".
 func TestTheDryRunActsOnNothingInAnEmptyLane(t *testing.T) {
