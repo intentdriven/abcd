@@ -156,9 +156,12 @@ this copy, on any tombstone on its branch, or with its tag on `origin`; after
 a tag or a tombstone another copy pushed, the next abcd act of any copy of
 yours that fetches the reservations (a reserve, a build or drain start,
 `abcd peers`) re-arms them. **A lapsed lease ends nothing.** The reservation holds
-for 24 hours and nothing renews it by itself: past that, the launch check
-refuses the cut, `abcd peers` reports the lapse, and nothing is re-armed;
-renew it by reserving the release again from this copy. One whose head moved,
+for 24 hours and nothing renews it by itself: past that, while it still holds
+pull requests withdrawn or admitted, the launch check refuses the cut,
+`abcd peers` reports the lapse, and nothing is re-armed; renew it by
+reserving the release again from this copy. A lapsed release that holds
+nothing is abandoned: it is neither reported nor a reason to refuse, and the
+check judges the merges armed as for a copy holding no release. One whose head moved,
 that was closed or merged meanwhile, or that can merge now with no merge
 queue to put it in (abcd never merges it for its owner), is skipped and named
 for its owner. A copy of another person never re-arms your withdrawals: it
@@ -166,7 +169,8 @@ names them instead.
 
 A withdrawal the forge refuses (no permission, no network) is named by number
 and reason (`forge_failures`, and a `warning:` line on stderr) and the
-reservation stands. Pass every such line on to the user. The launch check
+reservation stands, recording it `kept`: reserving the release again from this
+copy tries the withdrawal again. Pass every such line on to the user. The launch check
 below then refuses the cut while that pull request is still armed.
 
 ### Step 3 — merging, and the one hazard

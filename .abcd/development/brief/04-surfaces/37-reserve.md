@@ -394,9 +394,11 @@ withdrawing nothing, and an admission or a release is refused.
   of the queue (`dequeuePullRequest`), the order that leaves the forge no
   arming to queue it again with; a second renewal records what the forge
   actually did when that differs. A renewal from the same copy while live
-  keeps the record and withdraws only what it already records as withdrawn
-  that the forge has armed again (a process cut off between the record and
-  the forge, or an arming made by hand since).
+  keeps the record and withdraws only what it already records as this
+  person's, withdrawn or `kept`, that the forge has armed (a process cut off
+  between the record and the forge, an arming made by hand since, or a
+  withdrawal the forge refused before), and of those only the ones the two
+  readings under "Whose a withdrawal is" vouch for; it names the rest.
 - **The record.** One `Abcd-Withdrawn` trailer a pull request, at most 40 on a
   tip, six fields separated by one space: its number, its node id, the form it
   was armed in (`queue` for a merge-queue entry, which is also the form of one
@@ -406,7 +408,8 @@ withdrawing nothing, and an admission or a release is refused.
   `admitted`, `rearmed`, `armed` (found armed or queued again, counted done),
   `moved`, `closed`, `merged`, `mismatch`, `manual` or `refused` (skipped for
   its owner), or `kept` (the forge refused its withdrawal, so it was left
-  armed; carried only on the correction that says so).
+  armed; this person's own renewals carry it, and a live one tries the
+  withdrawal again).
   Every field is fixed-form, so no free text reaches the remote. The reader
   reads it strictly: any other shape, a pull request named twice, more than
   40, one on a record's reservation, or a settled state on a reservation that
@@ -414,25 +417,38 @@ withdrawing nothing, and an admission or a release is refused.
   withdrawal fits is measured on the tombstone any holder would write (the
   longest login and label), never the cutter's own. Every commit on the
   release carries forward what its tip still has to settle: this person's own
-  reservation keeps its withdrawn and admitted ones, and any other commit (a
-  tombstone, a take-over of another person's lapsed one) the withdrawn ones.
+  reservation keeps its withdrawn, admitted and kept ones, and any other
+  commit (a tombstone, a take-over of another person's lapsed one) the
+  withdrawn ones.
 - **Whose a withdrawal is.** The username on a withdrawal, and a commit's
-  holder, are the writer's data, so every re-arm (the tag sweep, the
-  tombstone sweep, the holder's release, an admission) honours a withdrawal only on two
-  readings. The release branch's own history must show the reservation
-  commit that first recorded it, withdrawn, held by that username: the walk
-  reads the first-parent line from the tip, at most 64 commits, and a commit
-  carrying it settled ends the walk, since nothing settled is put back to
-  withdrawn. And the forge's activity record of pushes to the branch (the
+  holder, are the writer's data, so every act on a withdrawal (the tag sweep,
+  the tombstone sweep, the holder's release, an admission, a live renewal's
+  withdrawal again) honours one only on two readings. The release branch's
+  own history must show the reservation commit that first recorded it,
+  withdrawn, held by that username: the walk reads the first-parent line from
+  the tip, at most 64 commits, and a commit carrying it settled ends the walk,
+  since nothing settled is put back to withdrawn. An entry is the same entry
+  only with every field the forge is asked by unchanged (number, node id,
+  form, head and withdrawer), so a commit that changes any of them, its form
+  included, is that entry's first record. A `kept` entry is vouched for by
+  the withdrawn record beneath the commits that carry it kept. And the forge's activity record of pushes to the branch (the
   record `abcd status` holds announcements to, C17) must say a person, that
   username, pushed that commit, with its newest push the one that moved the
-  branch to the tip read. Another account's push, or no reservation of
+  branch to the tip read, and its pushes must run unbroken down to the push
+  that made the branch (the activity record passes over an entry without a
+  pusher or a commit name, and a record with a push missing from it does not
+  say who carried every commit). Another account's push, or no reservation of
   theirs recording it, is named in `unrecorded`; an app's push, which says
   nothing of which person sent it, in `app_pushed`; both once for each tip,
-  never acted on. A record read short, not caught up with the tip, or not
-  answering decides nothing: the withdrawal is named `unverified` and a later
-  act asks again. Reports (`abcd peers`, the lost walk) read the history
-  alone.
+  never acted on, and the verdict is kept for the tip in the local tier, so
+  the forge is asked once, not on every act. A record read short, not caught
+  up with the tip, broken, or not answering decides nothing: the withdrawal is
+  named `unverified` and a later act asks again. `abcd peers` splits the
+  reader's own withdrawals on an ended release by the same two readings, so
+  one an app or another account pushed never reads as due; the lost walk
+  reads the history alone. A copy that pushes through an app can therefore
+  neither admit nor re-arm its own withdrawals: each is `app_pushed`, for its
+  person to re-arm by hand.
 - **Admit.** An admission, the reserve verb naming one pull request on the
   release, from the cutting copy's live reservation alone, reads the pull
   request on the forge, records it admitted on a renewal, and only then
@@ -472,17 +488,20 @@ withdrawing nothing, and an admission or a release is refused.
   ones. A re-arm reads the pull request by number and acts only when the
   forge's node id for it is the one recorded (`mismatch` otherwise: node ids
   are global, so a record pairing one pull request's number with another's
-  id is never acted on). It uses the form the pull request was taken from
+  id is never acted on). It uses the form its withdrawer recorded
   (`enablePullRequestAutoMerge` with its method, or `enqueuePullRequest`),
   always with `expectedHeadOid` set to the withdrawn head, so it merges
   exactly the commits its author armed. One already armed or queued counts as
-  done; one whose head moved, or that was closed or merged, is skipped and
+  done, and an admitted one found armed counts as done whatever its head,
+  since the forge keeps an arming across pushes; one whose head moved, or that was closed or merged, is skipped and
   named on the tombstone and in `abcd peers` for its owner. One the forge
   refuses because it can merge now and the repository has no merge queue
   ("clean status") settles as `manual`, for its owner to merge: abcd never
   merges another person's pull request. One the forge refused otherwise stays
   withdrawn for the next act, up to five refusals counted by each copy in its
-  local tier; after the fifth it settles as `refused`, for its owner.
+  local tier; after the fifth it settles as `refused`, for its owner. Only the
+  forge's own refusal counts: a failure on the way to it (the network, a 5xx,
+  `gh` out of time) is tried again without counting.
 - **Another person never re-arms.** The re-arm runs under the re-armer's own
   GitHub identity, so a copy of another person carries the withdrawals
   forward untouched and names them, with whose they are (`stranded`), on the
@@ -502,7 +521,8 @@ withdrawing nothing, and an admission or a release is refused.
   trace until the product thinker decides otherwise (dcn-2610230328230097).
 - **Failures are loud and lose nothing.** A withdrawal the forge refuses
   (no permission, no network) leaves the reservation standing and is named
-  by number and reason, and the second renewal records it `kept`; a
+  by number and reason, and the second renewal records it `kept`, which the
+  next live renewal tries again; a
   partial one (auto-merge off, the queue entry kept) is recorded as what
   happened, in the form it lost. A pull request the record has no room for is
   not withdrawn, and is named. If the renewal recording the withdrawals

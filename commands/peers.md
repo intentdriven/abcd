@@ -118,9 +118,14 @@ payload adds:
   `--release`, after `--take-over` from another copy of theirs), and the pull
   requests by state: `held` (withdrawn until the release ends), `admitted`
   (re-armed by the cutting copy's `--admit`), `due` (yours, re-armed on your
-  next act now the release has ended), `unrecorded` (yours by its record, but
-  no reservation of yours on the branch recorded it first, so nothing
-  re-arms it), `stranded` (another person's ended release: listed for them,
+  next act now the release has ended: the branch's history and the forge's
+  record of pushes both say you recorded it), `unrecorded` (yours by its
+  record, but no reservation of yours on the branch recorded it first, or
+  another account pushed the commit that did, so nothing re-arms it),
+  `app_pushed` (yours by its record, but an app pushed the commit that
+  recorded it, so you re-arm it by hand), `unverified` with `unverified_why`
+  (the forge's record of pushes does not settle it yet; a later act asks
+  again), `stranded` (another person's ended release: listed for them,
   never re-armed from here) and `skipped` (named for its owner, because its
   head moved, it was closed, its recorded node id is not the forge's, it
   needs a manual merge, or the forge refused its re-arm five times). A merged

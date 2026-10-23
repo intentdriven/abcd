@@ -118,10 +118,14 @@ this repository) is never withdrawn. The payload's `withdrew` lists them, as
 `number`, `id`, `form`, `head`, `by` and `state`, and `withdrawals`
 everything the reservation records. A renewal from the same copy while the
 reservation is live keeps the record and withdraws nothing new: it withdraws
-again only a pull request it records as withdrawn that the forge has armed
-again (a run cut off between its record and the forge, or an arming made by
-hand since). A pull request the forge refused to withdraw stays on the
-record as `kept` until the next renewal. Tell the user what was withdrawn.
+again only a pull request it records as yours, withdrawn, that the forge has
+armed again (a run cut off between its record and the forge, or an arming made
+by hand since), and only one the branch's history and the forge's record of
+pushes vouch for, as they vouch for a re-arm (below); any other is named in
+`settles` and left as it is. A pull request the forge refused to withdraw stays
+on the record as `kept`, carried by your renewals, and the next live renewal
+tries the withdrawal again, so reserving the release again is the remedy. Tell
+the user what was withdrawn.
 
 One release is cut at a time: reserving a release while another release is
 still being cut backs off (exit 3), naming the release and its holder. A
@@ -185,8 +189,13 @@ deleted, its machine down), end the release from another copy of the same
 person: `reserve rel-vX.Y.Z --take-over`, which carries the withdrawals, then
 `reserve rel-vX.Y.Z --release`, which re-arms them.
 
-Each is re-armed in the form it was taken from, pinned to the head it had; one
-already armed or queued again counts as done (`armed`). One is skipped and
+Each is re-armed in the form its withdrawer recorded, pinned to the head it
+had: the form is part of the record the forge's record of pushes vouches for,
+so an entry whose form a later commit changed is that commit's record, not the
+withdrawer's, and is acted on only when the withdrawer pushed that commit. One
+already armed or queued again counts as done (`armed`); an admitted one found
+armed counts as done whatever its head, since the forge keeps an arming across
+pushes. One is skipped and
 named for its owner to act on: its head moved (`moved`), it was closed or
 merged (`closed`, `merged`), the node id recorded for it is not the forge's for
 its number (`mismatch`, never acted on), or it can merge now and the repository
@@ -194,18 +203,25 @@ has no merge queue to put it in (`manual`: abcd never merges another person's
 pull request, so its owner merges it). The tombstone records every state, so no
 copy acts twice; one the forge refused stays `withdrawn`, and the next such act
 tries it again, up to five refusals counted by each copy; after the fifth it
-is recorded `refused` and left to its owner. The payload's `settles` names
+is recorded `refused` and left to its owner. Only the forge refusing the arming
+counts: a failure on the way to it (the network, a 5xx, `gh` out of time) is
+named and tried again without counting. The payload's `settles` names
 each release settled this way, with its `settled` pull requests, its
 `failures` and the tombstone's `commit`.
 Only a withdrawal whose first record is a reservation of its withdrawer's on
 the branch's own history, and whose commit the forge's record of pushes says
-that person pushed, is ever acted on. One that is not is left alone and named
-once for each tip: `unrecorded` (no reservation of theirs recorded it first, or
-another account pushed the commit that did) and `app_pushed` (an app pushed
-that commit, which says nothing of which person sent it: re-arm it by hand).
-One the forge's record does not settle yet (read short, not caught up with the
-tip, or not answering) is named `unverified`, with `unverified_why`, and a
-later act asks again. A copy of another person
+that person pushed, is ever acted on: re-armed, admitted, or withdrawn again.
+One that is not is left alone and named once for each tip: `unrecorded` (no
+reservation of theirs recorded it first, or another account pushed the commit
+that did) and `app_pushed` (an app pushed that commit, which says nothing of
+which person sent it: re-arm it by hand). Either verdict is kept for the tip in
+the local tier, so the forge is asked once, not on every act. One the forge's
+record does not settle yet (read short, not caught up with the tip, not
+answering, or with a push missing from it) is named `unverified`, with
+`unverified_why`, and a later act asks again. A copy that pushes through an app
+(a hosted session's installation token, say) can therefore neither admit nor
+re-arm its own withdrawals: every one is `app_pushed`, and the person re-arms
+each by hand after the cut. A copy of another person
 never re-arms: a reservation it makes over the release carries the
 withdrawals forward untouched (`stranded`, and a `note:` line naming whose
 they are), and `/abcd:peers` names them (`release_withdrawals`). A

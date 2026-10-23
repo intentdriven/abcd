@@ -168,10 +168,12 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"remote-tracking reservation branches and the release tags abcd keeps under\n" +
 			"refs/abcd/release-tags/, stamps when it ran in the local tier, with when it\n" +
 			"first fetched each reservation dated ahead of this computer's clock or\n" +
-			"undated. One more act follows it, only when a release has ended (its tag on\n" +
+			"undated, and keeps there each verdict of the forge's record of pushes that\n" +
+			"never changes. One more act follows it, only when a release has ended (its tag on\n" +
 			"origin, or its tombstone) with pull requests you withdrew for it not yet\n" +
-			"re-armed: a tombstone is pushed first, then each is re-armed through gh in the\n" +
-			"form it was taken from, pinned to its withdrawn head, or skipped when its head\n" +
+			"re-armed: a tombstone is pushed first, then each one the forge's record of\n" +
+			"pushes says you recorded is re-armed through gh in the form you recorded,\n" +
+			"pinned to its withdrawn head, or skipped when its head\n" +
 			"moved, it was closed or merged, or it can only be merged by hand, and a second\n" +
 			"tombstone records every state (settled). Nothing else is written. The release-tag refs are ordinary\n" +
 			"refs of this checkout, so git log --all lists the commits they name and\n" +

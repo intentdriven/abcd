@@ -259,8 +259,9 @@ dcn-2610161040394970). The JSON form adds `reservations` (each live one with
 release being cut), `hand_backs_by_holder` (`holder`,
 `hand_backs` of `record`, `kind` and `released_at`, and `more`),
 `release_withdrawals` (each release's withdrawn pull requests by state: held,
-admitted, due (read against the branch's history, so one nothing re-arms is
-never due), unrecorded, stranded for another person, skipped, with `lapsed`
+admitted, due (read against the branch's history and the forge's record of
+pushes, as an act's settle reads them, so one nothing re-arms is never due),
+unrecorded, app_pushed, unverified, stranded for another person, skipped, with `lapsed`
 when its lease lapsed before it ended still holding some, which ends
 nothing), `lost_withdrawals` (each recent release's withdrawals a later
 commit dropped), `settled` (each ended release of the reader's whose
