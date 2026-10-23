@@ -2418,8 +2418,8 @@ symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 While it waits, in a checkout, the waiter keeps your own reservations from
 lapsing: at once and then every five minutes it renews each of your live
-reservations whose latest commit this copy pushed that is half through its
-lease, for its own term or
+reservations that is half through its lease and whose latest commit this copy
+pushed, for its own term or
 two hours, whichever is longer, and says each renewal on standard error. It
 never reserves anything new, takes nothing over and revives nothing that has
 lapsed, so a lease shorter than ten minutes can still lapse between two rounds;

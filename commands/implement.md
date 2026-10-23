@@ -895,8 +895,8 @@ printed; do not loop around it.
 While it waits, in a checkout, the waiter also keeps your own reservations
 from lapsing, so a record you reserved by hand stays yours while your
 preflight waits its turn: at once and then every five minutes it renews each
-of your live reservations whose latest commit this copy pushed that is half
-through its lease, for
+of your live reservations that is half through its lease and whose latest
+commit this copy pushed, for
 its own term or two hours, whichever is longer, and says each renewal on
 standard error. It never reserves anything new, takes nothing over and revives
 nothing that has lapsed, so a lease shorter than ten minutes can still lapse

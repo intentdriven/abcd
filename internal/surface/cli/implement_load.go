@@ -178,8 +178,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
 			"While it waits, in a checkout, the waiter keeps your own reservations from\n" +
 			"lapsing: at once and then every five minutes it renews each of your live\n" +
-			"reservations whose latest commit this copy pushed that is half through its\n" +
-			"lease, for its own term or\n" +
+			"reservations that is half through its lease and whose latest commit this copy\n" +
+			"pushed, for its own term or\n" +
 			"two hours, whichever is longer, and says each renewal on standard error. It\n" +
 			"never reserves anything new, takes nothing over and revives nothing that has\n" +
 			"lapsed, so a lease shorter than ten minutes can still lapse between two rounds;\n" +
