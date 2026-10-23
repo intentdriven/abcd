@@ -186,4 +186,4 @@ abcdesign.app is published from a repository of its own, intentdriven/abcdesign,
 6. Setting up live sessions at repository setup: the two questions, the GitHub App manifest, the device-flow switch for local sessions, Render's Deploy button and the recorded relay address (a later lane)
    - packages: internal/core/ahoy, internal/surface/cli, commands/ahoy.md, docs/
    - tests: internal/core/ahoy, internal/surface/cli
-   - landed: aa57e2265
+   - landed: 918e6e6f2
