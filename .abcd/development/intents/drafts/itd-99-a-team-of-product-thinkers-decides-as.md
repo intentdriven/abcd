@@ -100,6 +100,53 @@ thinker. Three things are missing, in dependency order:
   by that person on that date, never disguised as something extracted from
   the repository (itd-90 symmetry).
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [elicitation interviews SOTA note](../../research/notes/2026-10-23-elicitation-interviews-sota.md).
+
+- Independence before aggregation is measured: social influence "diminishes the
+  diversity of the crowd without improvements of its collective error" and
+  "boosts individuals' confidence … despite lack of improved accuracy" (Lorenz et
+  al., PNAS 2011). No shared pre-read.
+- The one large trial of machine collation used this protocol: private opinions,
+  a machine draft, private critiques, a revised draft; 5,734 participants
+  preferred the machine statements to a human mediator's 56 per cent of the
+  time, and the report describes the successful statements as carrying the
+  dissenting views while keeping the majority position (MIT Technology Review,
+  October 2024; the journal paper was unreachable, so no wording is quoted).
+  The protocol shape, not the fine-tuned model, is what transfers to two to
+  four thinkers.
+- Off-the-shelf summarisers "risk underrepresenting minority perspectives" and
+  are order-dependent, and "LLMs as judges … show weak alignment with human
+  judgments" on exactly this (Zhu et al., 2025): each thinker confirms their own
+  position's rendering; no model judges whether a minority view survived.
+- Standing bodies decide by addressed objections, not counts: "Lack of
+  disagreement is more important than agreement", "the existence of the
+  unaddressed open issue, not the number of people, is determinative", "Hums
+  should not be used as votes" (RFC 7282); consent passes what is "good enough
+  for now and safe enough to try" and separates an objection from a concern
+  (Sociocracy 3.0). "Addressed, but not necessarily accommodated" is the closing
+  test that matches "no voting arithmetic".
+- Dissent is recorded structurally where it is recorded at all: Rust's
+  "@rfcbot concern NAME_OF_CONCERN", where "only the original author can mark
+  their concern as resolved"; PEP 1's "rejected ideas should be recorded along
+  with the reasoning". The single-approver frameworks (RAPID, DACI, MADR) have no
+  dissent slot and end in one decider, which is not what this intent promises.
+- Tension with the seeded press release: it has the joint proposal name "its
+  recommendation"; `widen-options-never-recommend` binds any conjectural question
+  put to a product thinker, while a priced technical choice is the facilitator's
+  to recommend. Recorded for the product thinker, who owns the press release.
+
+**Path 2**: a native protocol shaped to the trial and to rfcbot, extending the
+press-release composer's cite-or-be-dropped collation rather than adding a
+collator; private sessions, an attributed draft, private per-thinker
+confirmation, author-owned concerns that only their author clears, RFC 7282's
+closing test, and a decision record with adopters, date and each concern's
+verbatim text; participants as handles mapped in an uncommitted local file, with
+PROV's `actedOnBehalfOf` for a relayed answer. No Go dependency.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - **Where do participants live, and the privacy collision**: the PII
@@ -114,6 +161,9 @@ thinker. Three things are missing, in dependency order:
   or is adoption by the recorded decision rule always sufficient?
 - **Collation engine home** — transpose the press-release-composer agent, or
   a new dedicated collation agent? (One-canonical-primitive says extend.)
+- (SOTA 2026-10-23) Whether a concern that its author has not cleared blocks
+  planning by being unaddressed, or whether the decision rule may declare it "in
+  the rough" once answered, as RFC 7282 allows a chair to do.
 
 ## Audit Notes
 

@@ -44,11 +44,28 @@ adr-23 committed to the MCP server as the second thin front door over the unchan
 - **Given** the MCP front door is live, **when** the surface registry and brief are linted, **then** the new surface has its brief row and surface-registry entry in the same change (spec moves with the surface).
 - **Given** a Go MCP dependency is proposed for the implementation, **when** the intent reaches planning, **then** the dependency passes the sota-per-intent path decision with explicit maintainer approval before any `go get` (hard stop).
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [harness, interop and lifeboats SOTA note](../../research/notes/2026-10-23-harness-interop-lifeboats-sota.md).
+
+- The current MCP revision is 2026-07-28: the `initialize` handshake and protocol sessions are gone, every request carries its version and capabilities in `_meta`, servers MUST answer `server/discover`, results carry `resultType`, roots/sampling/logging are deprecated, and `tools/list` should be deterministic for prompt caching (MCP changelog). Dated revisions through 2025-11-25 still use the stateful handshake (conformance framework), and which revision each host negotiates today was not found, so the floor answers both.
+- Structured results map straight onto `outputSchema` and `structuredContent`; input failures are tool errors (`isError`), unknown tools are JSON-RPC errors; tool annotations are untrusted to clients; a no-argument tool uses `{"type":"object","additionalProperties":false}` (MCP tools page).
+- The official Go SDK (`modelcontextprotocol/go-sdk`, with Google) supports 2026-07-28 at v1.7.0+ but its `go.mod` requires eight direct modules including `x/tools`, `x/oauth2` and a JWT library; `mark3labs/mcp-go` is at 2025-11-25 and "under active development". Either is a new dependency needing explicit sign-off before any `go get`.
+- The no-dependency cost is measured for the older handshake and estimated for the new: the guard's approve sub-verb already serves `initialize`, `ping`, `tools/list` and `tools/call` over stdio in 312 lines of standard library (`internal/surface/cli/guard_approve.go`), speaking 2025-06-18, and the RepoPrompt route is a Streamable HTTP client beside a test server. The 2026-07-28 deltas on top of that are `server/discover`, per-request `_meta` parsing, `resultType` on every result, the required `ttlMs` and `cacheScope` on list results (`CacheableResult`), and `UnsupportedProtocolVersionError` (`-32022`) on a version mismatch; `ping` and `logging/setLevel` are removed in the new revision, so `ping` and `initialize` stay only for pre-2026-07-28 clients.
+- Every host prefixes tool names itself (`mcp__abcd__<tool>` in Claude Code for a user- or project-scoped server and `mcp__plugin_abcd_abcd__<tool>` when the server is bundled in the plugin, which is the route abcd ships; `mcp_abcd_<tool>` in Gemini CLI, which also splits policy rules on the first underscore), so abcd's names stay plain `[a-z0-9_]`; the `mcp:abcd:*` spelling in this record is a label, not a wire name.
+- Registration is three config shapes: `claude mcp add` with `.mcp.json` at project scope (approval asked), `[mcp_servers.<name>]` in Codex's `config.toml` (`startup_timeout_sec` 10, `tool_timeout_sec` 60), `mcpServers` in Gemini's `settings.json` (`trust` off by default).
+- Codex's `writes` approval mode prompts for every tool "not marked read-only", so `readOnlyHint`/`destructiveHint` on each verb decide whether a harness asks first.
+- The conformance framework (`npx @modelcontextprotocol/conformance`) is the parity evidence; it is a Node tool, a lab dependency and never a build step.
+
+**Path 2 — a native stdio server shaped to the 2026-07-28 specification, extending the hand-rolled server the binary already carries, with the official Go SDK named as the later replacement for the framing layer only; adopting the SDK instead is a hard stop needing the maintainer's sign-off.** The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Which subset of core verbs is the floor's v1 tool list — all read verbs plus which mutating ones?
 - MCP SDK versus hand-rolled protocol: the anticipated SDK is a new dependency (hard stop); what is the no-dependency alternative's real cost?
 - How does the server resolve the target repository — cwd at launch, a per-call argument, or both?
+- (SOTA 2026-10-23) Should the guard's approve server and the front door become one server package before the floor ships, so the binary carries one MCP dispatcher rather than two?
+- (SOTA 2026-10-23) Which mutating verbs carry `destructiveHint`, given Codex's `writes` mode prompts on every tool not marked read-only?
 
 ## Audit Notes
 

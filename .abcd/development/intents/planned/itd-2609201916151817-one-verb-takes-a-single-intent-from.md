@@ -75,6 +75,72 @@ Ruled by the product thinker on 2026-09-21, in the interview that filed `itd-260
 
 10. **The loop takes an issue as well as an intent** (ruled 2026-09-21 for `abcd drain`, itd-82). `abcd implement` is keyed by `itd-N` or `iss-N`; for an issue the brief is the record and its `remedy:` field, the checks before it starts are drain's eligibility rule, the validators are the same, and the landing is `capture resolve --commit` in the lane's change; the lane report carries a `handback:` field the loop reads as a first-class outcome. `abcd build <iss-N>` is the person's form.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [autonomous-loops SOTA note](../../research/notes/2026-10-23-autonomous-loops-sota.md).
+The decisions are settled; the pass checks the loop's shape against durable
+execution and the host's current non-interactive surface, and names what the
+decisions leave implicit.
+
+- **Replay from recorded outcomes is the durable-execution rule.** DBOS records
+  each step's output and a step with a checkpoint "returns the checkpointed
+  output instead of executing", recovery resumes from the last completed step,
+  steps must be idempotent, and there is no separate orchestration server (it
+  needs Postgres); Temporal requires
+  deterministic workflow code with non-deterministic work in activities
+  "outside the replay path", and versioning for a code change under a running
+  execution (DBOS and Temporal docs). LangGraph warns that code before a pause
+  "runs again" on resume (LangGraph docs).
+- **The host's result is the receipt's machine half.** `claude -p
+  --output-format json` returns `session_id`, `num_turns`, `is_error`,
+  `total_cost_usd`, `modelUsage` keyed by model, `permission_denials`, and on
+  failure a subtype (`error_max_turns`, `error_during_execution`,
+  `error_max_budget_usd`) with `errors`; `--max-budget-usd` caps a lane and
+  `--permission-prompts none` removes `AskUserQuestion` (Claude Code headless
+  docs). The result is not always whole: after a process crash the final
+  `error_during_execution` result "may carry zeroed `usage`, `total_cost_usd`,
+  and `modelUsage`", and an `error_max_budget_usd` result's `usage` leaves out
+  the response that crossed the budget, so the receipt accounts from
+  `total_cost_usd` or `modelUsage` where present and records "unknown"
+  otherwise (Agent SDK cost tracking). From host v2.1.302 a `-p` run with no
+  permission mode set starts in Manual mode, so a lane sets its mode
+  explicitly (headless docs).
+- **Bare mode and signals.** `--bare` is the host's recommendation for scripts
+  and skips hooks and plugins, which carry abcd's capture and guard; it also
+  "doesn't use your subscription login", so a bare lane needs
+  `ANTHROPIC_API_KEY` or an `apiKeyHelper` in `--settings`, and a plugin and
+  its hooks are passed explicitly with `--plugin-dir` and `--settings`; SIGTERM
+  exits 143 with the turn unrecorded, SIGINT ends the turn first, and
+  `SessionEnd` still runs (Claude Code headless docs).
+- **The host's own session state is not a read for the loop.** The supervisor's
+  `state.json` "is not a stable interface"; `claude agents --json` is (Claude
+  Code agent view).
+
+**Path 2**, the decided shape with two rules made explicit: every step is
+recorded with an idempotency key (lane, step, attempt) and its outcome before
+the next step is considered, and a re-entry replays a recorded outcome rather
+than re-running the step; every non-deterministic read (the forge, the runner,
+the peer listing) is written into the state file as an activity result; the
+state file carries a schema version and refuses a newer one. On the host: a
+lane is not started with `--bare` (or, once bare is the default, the plugin
+and hooks are passed with `--plugin-dir` and `--settings` and the lane carries
+an API credential, since bare mode does not use the subscription login), sets
+its permission mode explicitly, is ended with SIGINT before SIGTERM, and its
+result JSON is read by the runner adapter, not the loop, with a zeroed crash
+result accounted as "unknown". No Go dependency. The independent fit-challenge runs at
+plan time.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- Whether every step's outcome, and every non-deterministic
+  read the loop makes, is recorded under an idempotency key in the state file
+  so a re-entry replays rather than re-asks, and whether the state file's
+  schema version is refused when newer than the binary knows.
+- Whether a lane may ever be started with the host's `--bare`
+  mode, given that it skips the hooks that carry abcd's capture and guard and
+  is announced as the future default for `-p`.
+
 ## Open Questions
 
 _None open; decisions 5 to 7 settle the interview's questions, and decisions 8 to 10 record the rulings of 2026-09-21 (the verb's name, the unforgeable verdict, the issue key)._

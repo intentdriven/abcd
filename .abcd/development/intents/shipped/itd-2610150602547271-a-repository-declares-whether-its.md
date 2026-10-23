@@ -191,6 +191,53 @@ So a path that forgets to ask is still stopped.
   mode resolves, **then** the read is refused loudly, naming the file, and
   nothing is armed.
 
+## SOTA
+
+Surveyed on 2026-10-23. The ground is shared with the parent intent itd-97,
+whose findings are in the [elicitation and interviews SOTA note](../../research/notes/2026-10-23-elicitation-interviews-sota.md)
+(its itd-97 section). The queue mechanics are in the
+[forge, CI and merge SOTA note](../../research/notes/2026-10-23-forge-ci-merge-sota.md)
+and under itd-115.
+
+- **The two values are two points on the autonomy scale.** `human` is
+  Sheridan and Verplank's level 5 (execute if the human approves) and `auto`
+  is level 7 (execute, then inform). Level 6, a veto window before automatic
+  execution, is the one point left out. A queue that waits a fixed time after
+  a pull request goes green is that level, should a third value be wanted.
+- **Hosts refuse this exact act by default.** Claude Code's `auto` permission
+  mode blocks "Merging a pull request no human has approved" and ignores
+  `auto` set in a project's settings. Gemini CLI's YOLO mode can only be
+  enabled from the command line. A repository file cannot raise a person's
+  autonomy, so the off-wins rule (`human` from any layer wins) matches the
+  field.
+- **"Checks pass" must mean success.** Kodiak documents that the forge counts
+  a `neutral` check conclusion as passing, so the receipt and the merge gate
+  read a success conclusion, never the absence of a failure.
+- **Auto-merge is a rule only where something is required.** It waits for
+  required reviews and checks; with nothing required it is never offered. The
+  `auto` path's "say so where the forge refuses" covers that case.
+- **The code-owner stand-in is looser than it looks, as the record says.**
+  Code owners are requested "when someone opens a pull request that modifies
+  code that they own", and any one owner's approval meets the requirement
+  ([GitHub, About code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)).
+  The page implies but does not state that a pull request touching no owned
+  path needs no owner, which is the gap AM1 leaves.
+- **Bots already work under a human-review rule.** Renovate cannot automerge
+  its own pull request until a required review has happened. GitHub's coding
+  agent does not count its requester's approval, and for the forge's reviewer
+  "By default, Copilot's reviews do not count toward required approvals for
+  the pull request" (an opt-in lets its approval satisfy a required-approval
+  rule). A machine's review receipt is
+  evidence for the gate, never an approval the forge counts.
+- **The human gate decays.** Automation bias is not prevented by training or
+  instructions (Parasuraman and Manzey 2010). `human` mode guarantees that a
+  person merges, not that a person reads.
+
+**Path 2**: native, with the declaration, the resolver and the guard as the
+record rules them, shaped to the hosts' "a project file cannot raise autonomy"
+rule and to the forge's queue and auto-merge as the executors. No dependency.
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 _None recorded yet._

@@ -66,6 +66,23 @@ _Drafted 2026-10-14 from the product thinker's rulings and accepted as drafted t
 - (setup) **Given** Local, **when** the technical facilitator sets it up, **then** the team's GitHub App is created from a pre-filled manifest with no secret kept, its device flow switched on and the app installed on the repository, and abcd records its public client id itself.
 - (setup) **Given** any setup, **when** it finishes, **then** abcd runs no server that holds project content or a key.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [dashboard-sites SOTA note](../../research/notes/2026-10-23-dashboard-sites-sota.md). The 2026-10-14 co-editing note settles the editor and sync stack (raw Markdown in CodeMirror over Yjs v13, one load from a recorded base commit, notes by relative position plus quote anchor, a three-way merge at submit); this pass checks the two ruled hosting routes and the crediting rules.
+
+- **The Tailscale route reaches only people on the host's tailnet.** A device not on it cannot open the address; letting a teammate in means sharing a machine with them (an invitation; "unused invite links expire after 30 days"; the share is visible only to that recipient and quarantined by default). Funnel would open the session "for anyone to access—even if they don't use Tailscale", but is in beta, listens only on ports 443, 8443 and 10000, requires "HTTPS enabled and valid HTTPS certificates for your tailnet" (which publish the machine name in the certificate ledger) and carries "non-configurable bandwidth limits" (Tailscale docs). So "scan a QR code from any phone" and "the host's own machine over Tailscale" fit together only for a team already on one tailnet; the relay is the general route.
+- **The free relay host sleeps:** on Render's free plan a web service spins down after "15 minutes without receiving any inbound traffic", a cold start "takes about one minute", a workspace has 750 free instance hours a month, WebSocket messages count as activity, a free Postgres expires after 30 days and the free key-value store is in-memory only (Render docs). The blueprint must hold rooms in memory, warn the first joiner of the wait, and keep no database.
+- **Crediting an approved guest change has a forge precedent:** applying a suggestion makes the suggester "a co-author of the commit" and the applier "a co-author and the committer" (GitHub docs). The kernel's `Suggested-by:` (the idea) and `Acked-by:` or `Reviewed-by:` (the person who let it in) are the named conventions; `Approved-by:` has precedent outside the kernel's tag set (Mergify's optional `approved-by` merge-commit trailer; FreeBSD's "Approved by:" commit line for approved MFCs), so the ruled name has prior use, and the attribution gate does not yet know it.
+- **The secure-context rule binds the session page:** over plain HTTP from a tailnet address there is no Async Clipboard, Web Crypto or Service Worker (MDN); the relay route is HTTPS by its host, the certificate-less Tailscale route is not, so the editor must not depend on those APIs.
+
+**Path 2 — native, on the stack the co-editing note recommends, with both ruled routes and the relay blueprint written for an in-memory, sleeping host.** The web app's dependencies (Yjs, CodeMirror) are a new dependency set outside the Go module and need explicit sign-off; the Go side adds none. The QR-and-Tailscale tension is put to the product thinker at planning rather than resolved here. The independent fit-challenge runs at plan time.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- Whether the Tailscale route is offered as "for a team on one tailnet" with the relay as the default, given that a phone scanning the QR code must already be on the host's tailnet to reach it.
+- Whether `Approved-by:` stays as ruled, with the attribution gate taught to accept it (it has precedent in Mergify's merge trailers and FreeBSD's commit lines), or follows a kernel trailer (`Acked-by:`, `Reviewed-by:`).
+- Whether the certificate-less Tailscale route may carry the session over plain HTTP, given the dashboard's own rule against writes over plain HTTP (adr-2610032150581128) and the browser features a non-secure context loses.
+
 ## Open Questions
 
 - resolved: The decision record for this trust boundary (adr-2610091016270711) is written from the 2026-10-14 rulings and accepted; settled on 2026-10-23 by the record itself, which carries those rulings and stands accepted.

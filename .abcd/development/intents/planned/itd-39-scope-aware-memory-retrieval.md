@@ -61,6 +61,21 @@ The failure mode itd-3 guards against is *unbounded scaffolding outside the repo
 - **Given** a recall keyword that matches a page in both the workspace and user scope, **when** the hook resolves the match, **then** the workspace-scope page is injected and the user-scope page is suppressed (narrower scope wins).
 - **Given** any prompt, **when** the hook runs, **then** `~/.claude/.../memory/` is never read or written by the retrieval path.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [memory-knowledge SOTA note](../../research/notes/2026-10-23-memory-knowledge-sota.md).
+
+- **Harnesses recall on files, not prompt words.** Claude Code's `.claude/rules/` with a `paths:` glob loads "only when Claude works with matching files"; Cursor's "Apply to Specific Files" auto-attaches on a matching file in context and "Apply Intelligently" lets the agent pull a rule in by its description; Copilot's `.github/instructions/*.instructions.md` carries an `applyTo` glob (vendor docs). abcd's keyword-on-prompt recall is the outlier; a file trigger needs a tool hook the loader does not run, so it is a later seam, not a step.
+- **Lexical ranking is the strong baseline at this size.** On a six-project benchmark an information-retrieval detector from a decade ago beat the deep-learning ones by 22.3% average RR@10 "for most projects" (Zhang et al., TOSEM; duplicate-report detection, so an analogy for note recall); the context-window note already records agentic search over RAG at this scale. The spec's BM25F with no embedding stands.
+- **The fill signal is documented.** The status line payload carries `session_id`, `transcript_path` and `context_window.used_percentage` (input tokens only), which "may be `null` early in the session", while `current_usage` is null after `/compact` until the next API call (Claude Code status line docs); the spec's "unknown fill" row is the right default.
+- **Memory systems with evaluations consolidate on write.** Mem0 (Chhikara et al., arXiv 2504.19413, 2025) judges each new fact against its ten nearest memories as ADD, UPDATE, DELETE or NOOP; the hard classes in LongMemEval (ICLR 2025) are knowledge updates and abstention, not lookup. The stale page recalled with confidence is the failure to design against.
+- **The benchmarks are contested.** Zep's rebuttal of Mem0's LoCoMo numbers (75.14% corrected against 65.99% reported), Mem0's own table showing the full-context baseline (72.90) above Mem0 (66.88, graph 68.44), and Zep's note that LoCoMo conversations fit a modern context window and lack knowledge-update questions say the leaderboard settles nothing for abcd.
+- **Path 2**: the native design the spec holds, with Mem0's write discipline carried by the ledger's existing match primitive as an advisory echo on `memory add` (see the notes intent), and the file-scoped trigger recorded as the seam. The independent fit-challenge runs at plan time.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- Should a page's `recall:` list later gain an optional file glob, matched against the files a session touches, as every surveyed harness scopes rules? It needs a hook the loader does not run today; the question is whether to reserve the field now or add it when a tool hook exists.
+
 ## Open Questions
 
 - None for the product thinker. The three questions first left here are settled under Decisions (2026-10-11); the technical questions the plan leaves open are in the bundle's spec.

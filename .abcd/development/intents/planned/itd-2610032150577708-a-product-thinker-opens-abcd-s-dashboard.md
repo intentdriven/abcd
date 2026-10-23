@@ -89,6 +89,25 @@ _Technical checks, accepted as one list on 2026-10-04 (facilitator's hat):_
 - Given a note, when it is stored, then it is anchored by quote, offsets and commit, and a note whose sentence is gone is kept as an orphan.
 - Given notes and stamps, when they are stored, then they live in the checkout's local tier until reviewed.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [dashboard-sites SOTA note](../../research/notes/2026-10-23-dashboard-sites-sota.md). Step 1 of the spec is built; the findings serve the two open questions and the notes criterion.
+
+- **A shared-in device is attributed to the sharer:** "shared machines appear in the other tailnet as the sharer, not the owner of the machine"; the share is visible only to the one recipient, strips tags and groups, and is quarantined by default so it "cannot start connections" until the recipient allows it (Tailscale, sharing). The first open question can be put as "refuse a user who is not one of this tailnet's own" rather than "refuse what cannot be told"; whether the lookup reports such a node's profile as the sharer is not verified and needs a test.
+- **The lookup answers with `Node`, `UserProfile` and `CapMap`,** never nil on success; `LoginName` is "for display purposes only" (the client package's types). The node, not the login string, is the identity, as built.
+- **Serve adds identity headers and strips client-sent copies; Funnel adds none;** both need the tailnet's HTTPS certificates, whose public ledger "includes the fully qualified domain name of your devices" (Tailscale, Serve, Funnel, HTTPS). Decisions 21 and 23 and the relay-header refusal match the documented behaviour.
+- **Go 1.25's cross-origin protection allows a request with neither `Sec-Fetch-Site` nor `Origin`** (net/http); the gate and the session, not that layer, are what stop a non-browser writer on the tailnet.
+- **Notes that survive rewording: the annotation field re-anchors in a fixed order,** range, then character position, then prefix-and-suffix fuzzy match against the saved quote, then the quote alone (the Hypothesis fuzzy-anchoring write-up, over the W3C selectors the co-editing note cites); showing the note as an orphan when all four fail is this record's own rule (loud staging), which the write-up does not describe. This is the implementable form of "stays attached after the brief is reworded; shown struck through if gone".
+- **Per-person capabilities exist in the policy file** (grants' `app` field, read through `CapMap`; golink's `admin: true` is the worked example) and are the seam itd-2610040740135705 can use; not needed here.
+- **Chrome's Local Network Access gates public-to-local requests, not a local page;** the dashboard is unaffected, and a public page probing its tailnet IPv6 (unique-local) address is prompted; the tailnet IPv4 range (100.64.0.0/10) is not in the post's list of local ranges, so no prompt is claimed for it.
+
+**Path 2 — native, shaped to the Tailscale lookup, the annotation field's anchoring order and Go's own cross-origin layer, with the identity lookup as the seam.** No new dependency. The independent fit-challenge runs at plan time.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- For the spec: where the list of "this tailnet's own users" comes from when the gate refuses a shared-in device by its user (the lookup does not supply it; the admin API is an outbound call under adr-38; a login-domain difference is a weaker signal), and a test of what the lookup reports for a shared-in node.
+- For the spec: the fuzzy-match threshold below which a note is shown as an orphan rather than re-attached to a near sentence; a wrong re-attachment is worse than an orphan.
+
 ## Open Questions
 
 _Answered at the interview of 2026-10-04 (decisions 4 to 18). Two remain open for the product thinker, below; until they are answered, the dashboard refuses both, the facilitator's safe default ([dcn-2610050000000002](../../../work/decisions/dcn-2610050000000002-decided-without-asking-facilitator.md)). For the spec (facilitator): how the dashboard serves the record site's pages without the minutes-long site build (the record review's finding 4), and how earmarked items reach the facilitator's session (the session-start seam the rules loader uses)._

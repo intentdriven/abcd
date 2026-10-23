@@ -55,6 +55,44 @@ The mechanism is intentionally left undecided; the planning/grill stage chooses 
 
 Open questions for grill: does capturing a headless (non-interactive) run need a different hook than an interactive one? Does capture interfere with the live run-console view or the timeout/cancel controls? Should the capture be best-effort (never block a run pass) or gated? What is the retention/size policy for autonomous transcripts vs interactive?
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [autonomous-loops SOTA note](../../research/notes/2026-10-23-autonomous-loops-sota.md).
+The store, the redaction door and the hook as capture path were settled in the
+2026-07-30 session-recording note; this pass covers what the host's
+non-interactive mode does to that path.
+
+- **A headless run is stored like a session.** A `claude -p` session is written
+  to the same transcript store and is resumable by id, though left out of the
+  picker; sub-agent transcripts persist under the session's `subagents/` folder
+  and are deleted after `cleanupPeriodDays` (30 days by default);
+  `--no-session-persistence` suppresses a run's transcript (Claude Code
+  sessions and sub-agents docs).
+- **The hooks run unless the lane is started bare.** Without `--bare` a `-p`
+  session runs the project's hooks and plugins; `--bare` skips them, is the
+  host's recommendation for scripts, and "will become the default for `-p` in
+  a future release" (Claude Code headless docs). A lane started bare is
+  invisible to abcd's `SessionEnd` and `SubagentStop` capture.
+- **Termination matters.** On SIGTERM the host runs `SessionEnd` and no other
+  hook, records no result for the turn, and exits 143; SIGINT ends the turn
+  first; the Stop hook's `transcript_path` may lag the conversation (Claude
+  Code docs). `SubagentStop` carries `agent_transcript_path`, which abcd
+  already captures; `--forward-subagent-text` on `stream-json` is the
+  alternative reconstruction from the stream.
+- **The format is declared unstable.** The transcript "entry format is internal
+  to Claude Code and changes between versions" (Claude Code sessions docs), so
+  the raw file is stored and the index derived.
+
+**Path 2**: approach (a), capture at the seam through the same hooks, with the
+loop never passing `--bare` (or passing the plugin explicitly once bare is the
+default) and keying the capture by run id, lane, pass and phase set in the
+lane's environment; approach (b), ingest by session id from the result, as the
+fallback the loop runs when a receipt names a session whose capture is missing;
+both through `history.Capture` and its redaction door, best-effort as the
+criteria require. No Go dependency. The independent fit-challenge runs at plan
+time.
+
 ## Acceptance Criteria
 
 > _Given-When-Then per the itd-1 discipline._

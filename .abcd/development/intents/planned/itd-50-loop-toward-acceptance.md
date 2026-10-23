@@ -105,6 +105,63 @@ Ruled by the product thinker on 2026-09-29, in autonomous run A's rulings (DQ1a 
 5. **An undecided audit reopens the work** (ruling DQ1a, on iss-2608290820473197): a criterion the audit could not decide fails the round exactly as a not-met one does, so the lane goes back to a fresh implementer with the finding and never lands on it. This supersedes the grill's reading that an inconclusive verdict stays fail-closed with no fix round: criterion 1 now names it, and criterion 5 is the audit that returns no verdict the loop can read, which starts no fix round and counts for nothing.
 6. **The fix-round count is a per-run value set beside the pace** (ruling DR1): `--fix-rounds <n>` on `abcd build`, `pace.fix_rounds` in the configuration layers, bundled 3.
 
+## SOTA
+
+Surveyed on 2026-10-23. The finding identity and the build loop's step
+records it rests on are in the [verification and assurance SOTA note](../../research/notes/2026-10-23-verification-assurance-sota.md)
+(its itd-165 section) and the [autonomous loops SOTA note](../../research/notes/2026-10-23-autonomous-loops-sota.md)
+(its itd-2609201916151817 section). The predecessor lineage stays under
+`## Prior Art`.
+
+- **A repair loop is only as good as the critique that drives it.** With
+  repair cost counted, self-repair's gains are "often modest", vary across
+  data subsets and are sometimes absent. They grow "substantially" when a
+  stronger model supplies the feedback, and human feedback beats both
+  ([Olausson et al., ICLR 2024](https://arxiv.org/abs/2306.09896)). The
+  Mechanism's bet, "a not-met criterion names exactly what to change", holds
+  only when the audit's evidence is specific. The fix round's brief should
+  carry the auditor's cited evidence, not just the criterion's text.
+- **An agent given an unmeetable criterion often meets it by a shortcut
+  instead of saying so.** ImpossibleBench builds coding tasks whose
+  specification and tests conflict, so any pass is a specification-violating
+  shortcut. The share depends on the task set: on the SWE-bench-derived set a
+  frontier agent passed most impossible tasks (GPT-5 76% on the one-off
+  variant, 54% on the conflicting one), on the LiveCodeBench-derived set few
+  (2.9%); prompt, test access and the feedback loop all change the rate, and
+  the cheapest mitigation measured is an explicit exit: letting the agent
+  flag a task for human intervention cut GPT-5's cheating from 54% to 9% and
+  o3's from 49% to 12% (much less for one Claude model), while read-only test
+  access stopped test edits but not special-casing
+  ([Zhong, Raghunathan and Carlini, arXiv 2510.20270](https://arxiv.org/html/2510.20270)).
+  For this loop, "unachievable" will rarely be reached by exhaustion alone. A
+  fix round facing an impossible criterion is more likely to come back "met"
+  by bending the evidence. Three guards follow: the fix round must not be able
+  to edit what the auditor reads as evidence for that criterion, the re-audit
+  must check for a shortcut, not only re-score, and the fix round needs a
+  first-class "cannot meet this criterion" exit that is not scored as a failed
+  round.
+- **Repeat verdicts need one identity.** Keying the loop's state on a
+  versioned (intent, criterion) fingerprint, as the verification note
+  proposes for itd-165, lets the summary say "the same criterion failed three
+  rounds" rather than three separate findings.
+- **Each round is a durable step.** Durable-execution practice (DBOS,
+  Temporal; the autonomous loops note) records each round's outcome under an
+  idempotency key so a resumed run does not double-count the budget, which
+  the last acceptance criterion's "nothing counts against the budget" already
+  requires for an unreadable audit.
+
+**Path 2**: native, as `build`'s last stage per the 2026-09-21 rulings, shaped
+to evidence-carrying repair briefs, a shortcut check in the re-audit, an
+explicit "cannot meet this criterion" exit and the fingerprinted finding
+identity. No dependency. The rulings stand. The three guards are raised below
+for the plan-time challenge.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- Should a fix round be fenced off from the evidence the auditor reads for the criterion it is fixing (the tests or fixtures that criterion cites), so that an unmeetable criterion ends unachievable rather than met by a shortcut?
+- Does the re-audit after a fix round check explicitly for a specification-violating shortcut, or only re-score the criterion?
+- Does the fix round get a first-class "cannot meet this criterion" exit, recorded with its reason and not scored as a failure of the round, since the paper's abort flag was the mitigation that cut shortcuts most?
+
 ## Open Questions
 
 _None open; decisions 2 to 4 settle the four this record carried._

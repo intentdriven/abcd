@@ -109,6 +109,52 @@ Overtaken:
 Left for its owner: the record review's correction to the decomposition-calibration note's "home" column belongs to that note, not this file.
 9. 2026-10-03, the product thinker: the revised press release confirmed as written.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [install-update-release SOTA note](../../research/notes/2026-10-23-install-update-release-sota.md).
+The decisions above stand; the research serves the two questions left to the
+technical facilitator.
+
+- **The harness has its own floor model, and it matches decision 4**: a
+  minimum-version setting that its updater "refuse[s] to install any version
+  below", and managed settings under which it refuses to start outside a
+  version range; its release channels are "latest" and a "stable" channel
+  about a week behind, so being behind the newest release is a supported
+  state (the harness's setup page).
+- **The version command's output shape is documented** as a version number
+  followed by the product name in brackets, and the harness's doctor command
+  prints read-only diagnostics including the auto-update state.
+- **The update step is per install shape, in the vendor's own words**: a
+  native install auto-updates or runs its own update command; a Homebrew,
+  WinGet or system-package install is upgraded by that package manager; an npm
+  install by reinstalling the latest package. On a Homebrew, WinGet or apk
+  install the harness's own update command reports "Claude is up to date!"
+  (the setup page says so; that it changes nothing there is inferred from the
+  message, not stated), so one step per adapter would name a command that
+  does not update those installs.
+- **"Held" is a real state with named causes**: an environment setting that
+  stops only the background check, another that blocks every update path
+  (meant for organisations distributing the harness themselves), the minimum
+  and maximum version pins; the doctor output names which one is set.
+- **The repository already classifies an install shape from the resolved
+  path**: the update package folds a Homebrew Cellar prefix and names `brew
+  upgrade` for it (iss-380). The same resolve-then-classify step can serve the
+  harness line.
+
+**Path 2 — native, shaped to the harness's own install-shape table, with the
+classifier as the seam**: the floor compared offline as decided; the update
+step chosen per install shape from where the command on the search path
+resolves, with the vendor's generic step for an unknown shape and "held" for
+a harness whose own settings hold its updates. This contradicts the "one per
+adapter to start" proposal in the open questions, on the grounds above; the
+ruling is the technical facilitator's. The independent fit-challenge runs at
+plan time.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- The vendor documents that its own update command answers "Claude is up to date!" on Homebrew, WinGet and apk installs; does the step come from the install shape the resolved path reveals (the Cellar fold the update package already has), with the generic step only for an unknown shape?
+
 ## Open Questions
 
 The three filed questions are answered: which check carries the line (decision 3, abcd's update check); which hosts are checked and how (decisions 5 and 7, every harness with an adapter, offline, one with no version named as not checked); and the disk-only signal (decision 6, its own draft, itd-2610031325050110).

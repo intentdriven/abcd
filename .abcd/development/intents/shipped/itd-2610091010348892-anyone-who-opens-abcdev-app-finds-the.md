@@ -46,6 +46,23 @@ _Drafted 2026-10-14 from the product thinker's rulings; accepted as drafted the 
 - (technical) **Given** the release workflow, **when** it runs, **then** it uses no secret beyond the short-lived token GitHub gives each run, and abcd runs nothing.
 - (technical) **Given** the owner switches the site off, **when** the next release is published, **then** nothing is published, and abcd's setup can remove the workflow.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [dashboard-sites SOTA note](../../research/notes/2026-10-23-dashboard-sites-sota.md). The 2026-10-14 notes on GitHub builds and on no-server options already settle the route; this pass checks the mechanics of a release-triggered Pages build.
+
+- **The official actions and limits:** the deploy job needs `pages: write` and `id-token: write` and "should target the `github-pages` environment"; the artefact is "a single gzip archive containing a single tar file", with no symbolic or hard links, "under 10GB (we recommend under 1 GB!)" and an "officially supported maximum size limit" of 1 GB; sites may be no larger than 1 GB, deploys time out at 10 minutes, and the ten-builds-an-hour limit does not apply to a custom workflow. The current majors are `configure-pages@v6`, `upload-pages-artifact@v5` and `deploy-pages@v5` (each repository's tags, checked 2026-10-23); GitHub's starter workflow still pins older ones (`configure-pages@v5`, `upload-pages-artifact@v3`), with `concurrency: group: "pages"`. `upload-pages-artifact` excludes dotfiles unless `include-hidden-files: true`, which matters if the rendered site mirrors any dot-path.
+- **A release-triggered run is on the tag, and the recommended environment rule refuses it:** GitHub recommends "a deployment protection rule so that only the default branch can deploy to this environment"; the rule "is matched against the `GITHUB_REF` of the workflow run"; branch and tag patterns are set separately. One project's release-triggered docs deploy failed with "Tag 'v1.0.1' is not allowed to deploy to github-pages" and was reworked to build from the default branch. The fix is a tag rule (`v*`) on the environment, set by the owner, or a job that checks out the release's commit while running on the default branch's ref.
+- **The site lives under a path and the action says which:** `configure-pages` outputs `base_url`, `origin`, `host` and `base_path` ("/my-repo" or empty); its `enablement` input needs more than `GITHUB_TOKEN` (a PAT with `repo`, or an App with `administration:write` and `pages:write`). Enabling Pages with the Actions source is a one-time step the owner does by hand or setup does with the owner's own forge login, never with a key abcd holds.
+- **A release created with `GITHUB_TOKEN` does not start a `release`-triggered workflow** (GitHub's general rule for `GITHUB_TOKEN` events, via the GitHub builds note); the Pages rule that such commits do not trigger a build is the branch-publishing source's, not the Actions source this route uses. Where abcd scaffolds the release workflow, the site job belongs inside it.
+- **Private repositories:** an access-controlled Pages site needs Enterprise Cloud; on other plans the site is public (Pages visibility). The first scope condition stands; the later intent must say "your record would be public" before offering the switch.
+
+**Path 1 for hosting — GitHub Pages through the project's own workflow and the three official actions, as ruled — with the renderer native and base-path-aware.** Setup prints the one settings step (enable Pages with the Actions source; add the tag rule if the job runs on the tag) as verified, linked instructions to a person. This pass came after the build was planned and had no fit-challenge before the intent shipped, so it stands as notes for a later revision.
+
+Questions this pass raised, kept as notes for a later revision of the shipped work:
+
+- The first criterion says "nothing else in the repository changes"; enabling Pages and the environment's tag rule are settings, not files. Whether setup does those steps through the owner's own login (an outbound call under adr-38's "when asked") or prints them as instructions, and whether the criterion should say so.
+- Whether the site job is copied into each project's workflow or called as a reusable workflow from abcd's repository; the ruling's wording favours the copy, which setup then keeps current.
+
 ## Open Questions
 
 

@@ -186,6 +186,65 @@ schedule it. The binary never contacts a scheduling service.
   the prompt directs it marked needs-human in the loop-state ledger and
   excluded from future picking and PR-resumption until a human clears it.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [autonomous-loops SOTA note](../../research/notes/2026-10-23-autonomous-loops-sota.md).
+
+- **The fleet re-render has a precedent.** Copier records the answers and the
+  template version in an answers file inside the rendered project, and
+  `copier update` regenerates from the new template version, diffs against the
+  current project and re-applies the project's own changes, with conflicts
+  shown inline (Copier docs). That is the shape of "re-render at version N+1,
+  differing only by the template change".
+- **One shared config, many repositories.** Renovate presets are referenced as
+  `extends: ["github>org/repo#1.2.3"]`, a tag pins the version, and an untagged
+  reference follows the default branch (Renovate docs). A network read at
+  render time is what the intent forbids, so the pattern informs the version
+  pin, not the mechanism.
+- **The host's routines version nothing across repositories.** A scheduled task
+  is "a prompt, one or more repositories, and a set of connectors" saved per
+  account; runs push to `claude/` branches, fire-endpoint text arrives wrapped
+  as untrusted data, runs are capped per hour, a lost GitHub connection turns
+  the task off after 72 hours, and a green run status does not mean the work
+  succeeded (Claude Code scheduled tasks docs). The GitHub Action's fleet route
+  is a reusable workflow each repository calls (Claude Code GitHub Actions
+  docs).
+- **State outside the model.** Anthropic's long-running harness keeps a
+  progress file and a JSON feature list, chosen because the model overwrites
+  JSON less readily than Markdown, and says compaction is not sufficient
+  (Anthropic engineering). The contrarian "same prompt in a while loop" (the
+  Ralph loop) lists its own failure modes: placeholders, duplicated work from
+  wrong searches, broken builds on waking, unusable on an existing codebase
+  (Huntley, anecdotal).
+- **Per-sub-agent worktrees are a host primitive now.** `isolation: worktree`
+  gives a sub-agent a locked temporary worktree, removed when unchanged, with
+  edits, command cwd and git redirects into the main checkout blocked; the
+  default location is `.claude/worktrees/` under the repository and a
+  `WorktreeCreate` hook replaces the host's git creation entirely, at a cost:
+  the host's automatic removal, marker and periodic sweep do not cover a
+  hook-made worktree (the sweep "keeps any worktree without" the marker,
+  "including a worktree a `WorktreeCreate` hook created"), so relocation
+  needs a paired `WorktreeRemove` hook or worktrees accumulate;
+  `.worktreeinclude` is not processed, so the hook copies local files itself;
+  the transcript stays at the launch directory; and the hook is host
+  configuration written into the managed repository's settings. It applies
+  on a local host only: a cloud scheduled task runs on a fresh clone in the
+  vendor's machine, where there is no machine store, and keeps the host
+  default inside its clone (Claude Code worktrees and hooks docs).
+- **Conflict rates and the orchestrator-worker evidence** are in the
+  2026-10-17 note and are not repeated.
+
+**Path 2**: a native `routine render` shaped to Copier's update contract (an
+answers record in the rendered repository's `.abcd/` tier naming template
+version and interview answers, a byte-identical render, an update that
+re-renders and diffs), with the manifest-to-host step behind the host connector
+so schedule configuration for one host never enters the core, and, on a local
+host, sub-agent worktrees placed in abcd's machine store through the host's
+`WorktreeCreate` hook with a paired `WorktreeRemove` hook (a cloud host has no
+machine store and keeps the host default inside its own clone). No Go
+dependency. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - Verb name and family: `abcd routine` as its own verb, or a sub-verb of an
@@ -212,6 +271,17 @@ schedule it. The binary never contacts a scheduling service.
   isolation rule above does not cover independent peers.
 - Whether attribution-footer defence is detection, post-create stripping, or
   both, and whether a detection blocks the round or only annotates it.
+- (SOTA 2026-10-23) Whether the per-repository answers record (Copier's
+  precedent) is the fleet's only register, so that "which repos carry which
+  routines at which version" is answered by walking the repositories, or
+  whether the user's home also keeps an index.
+- (SOTA 2026-10-23) Whether a rendered routine relocates the host's sub-agent
+  worktrees into abcd's machine store through a `WorktreeCreate` hook, or
+  accepts the host's default under the checkout; relocation costs a paired
+  `WorktreeRemove` hook (the host's cleanup, marker and sweep do not cover a
+  hook-made worktree), the hook copying `.worktreeinclude` files itself, and
+  host settings written into the managed repository, and it applies to local
+  hosts only.
 
 ## Audit Notes
 

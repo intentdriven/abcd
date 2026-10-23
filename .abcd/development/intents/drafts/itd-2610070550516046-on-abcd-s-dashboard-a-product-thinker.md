@@ -46,9 +46,24 @@ Answered by the product thinker on 2026-10-07 ("1. PT order decides, but can be 
 3. **When a reorder takes effect depends on whether a session can pull it.** If a session can pull the change from the dashboard straight away, it takes effect at once; if not, the product thinker exports it and imports it into a session. The answer names abcdesign.app, the page for editing a public project's brief filed on 2026-10-05 (itd-2610052000411162 and itd-2610052000424067, drafts); how a session pulls from it is settled with those intents.
 4. **Ownership.** Read by the facilitator as the answer to question 5 (the answer is numbered 6): "the product thinker owns two things, the brief and the intents" goes into the glossary entry for the product thinker.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [traceability-governance SOTA note](../../research/notes/2026-10-23-traceability-governance-sota.md). The four rulings below stand; the mockups owed under question 1 remain the product thinker's pick.
+
+- **Coverage views in the requirements tools are a filtered table plus an on-demand graph with a cap.** sphinx-needs' `needtable` filters and sorts needs with their link columns; `needflow` draws needs and links with a `max_items` cap, and a truncated view "says so in the page and emits a `needs.max_items` warning". A network graph is a filtered neighbourhood, never everything; this agrees with the facilitator's pass of 2026-10-07 recorded above.
+- **The coverage report's first row is the uncovered set.** Spec Kit's `analyze` reports "requirements with no tasks" and a coverage percentage; a section nothing realises is the "at a glance" item.
+- **A position per item is how tools built for concurrent editing store manual order.** Figma's fractional indexing ("Every object has a real number as an index"; insert at the average of the neighbours; concurrent inserts can interleave) says so explicitly; Jira's LexoRank (a lexicographic string field with a background balancer and collation failure modes) and GitLab's manual sort ("Each issue is assigned a relative order value"; "everyone who visits the same list sees the updated issue order") store the same shape without stating the reason. With one writer and a few hundred ideas, one ordered list of ids is enough and "reset" (ruling 1) is deleting it.
+- **Two modes, shown.** GitHub Projects lets a row be dragged when no sort is applied and is silent on what a later sort does to that order; the honest design says which mode the view is in: the product thinker's order, or the computed pick.
+- **The frame is already rendered:** Now/Next/Later is abcd's computed status (adr-2609212115255771), and its inventors' rule is that the columns carry confidence, not dates.
+- **Path 2**: native, a coverage strip and section list from itd-2610040817105016's trace index, the ordered ideas beside it, a filtered neighbourhood graph on demand; the product thinker's order as one ordered list of ids kept where the dashboard's notes already live, read by the one ordering function (shared with itd-78 and itd-2610070549060530) as its highest-precedence input when present (ruling 1), with the revisit mark placing an idea within or ahead of it; the precedence between the two is stated once, in the answer to itd-78's open question, not in each spec. The seam is that function; the storage moves to a rank per record only if a second editor appears. No new dependency.
+
+The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 1. **The picture.** The product thinker asked which picture is meant: the "clear data visualisation to relate brief elements and intents" of their request. Put to them again on 2026-10-07 as a grid, a tree or a map, they answered: "Conduct SOTA and create mockups for each first; incl. a network graph, too." Open until a state-of-the-art pass and a mockup of each of the four forms (grid, tree, map, network graph) are in front of them; whether shipped ideas still show is asked with the mockups. Both were prepared by the facilitator on 2026-10-07 in the local tier (`scratch/reports/sota-brief-intent-visualisation-2026-10-07.md`, `scratch/mockups/brief-ideas-views.html`, built from the record with each chapter linked to the ideas that cite it): the research recommends a hybrid, a coverage strip of one tile per section above the section list, with the ordered list beside it, and rules out a treemap or sunburst sized by count and a force-directed network of everything. The pick is the product thinker's.
+2. (SOTA 2026-10-23) Where the product thinker's order lives so it survives: a linked worktree's local tier dies with the worktree, and the order is theirs, not a worktree's.
+3. (SOTA 2026-10-23) How the view shows which mode it is in (their order, or the computed pick after a reset), given that GitHub Projects leaves the question unanswered and the two are easy to confuse.
 
 ## Audit Notes
 

@@ -153,6 +153,22 @@ Ruled at this draft's planning interview, 2026-10-02 (the product thinker and te
 7. **G1 lands first.**
 8. **Impact is additive**: the A1 codes start as warnings.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [verification-assurance SOTA note](../../research/notes/2026-10-23-verification-assurance-sota.md). The decisions above stand; the research checks G1's key and A2's hook against outside practice.
+
+- **Fingerprint keys are versioned names, so an algorithm change does not orphan old findings.** SARIF 2.1.0's `partialFingerprints` keys carry a version component; consumers "SHOULD use the latest version of the partial fingerprint available in both results", and property names should "describe the information used to compute the partial fingerprint" and never be removed (SARIF 2.1.0 specification).
+- **A path change is a new finding on the forge.** Code scanning closes the old alert and opens a new one when "the filepath differs for the same result" (forge documentation, SARIF support for code scanning). G1's key, as shipped, already satisfies this: `findingkey.Derive` maps each end to an identity path that drops the status folder for intents, specs and the issue ledger, so a record moved from `open/` to `resolved/` keeps its key and the `addressed` rule can find it (`internal/core/record/findingkey/findingkey.go`).
+- **A pre-commit hook judges the staged content.** The common framework "only runs on the staged contents of files by temporarily stashing the unstaged changes while running hooks", because unstaged content "can lead to both false-positives and false-negatives during committing"; hooks that do not operate on files are `always_run` (pre-commit documentation). A2's "staged records plus their links" for the model pass and "whole corpus" for the A1 codes match the two shapes.
+- **The `addressed` marking has an outside name**: SARIF's `baselineState` `absent` (found in the baseline, not now) and `unchanged`, should the report ever want the standard's vocabulary.
+- **Locally**, `findingkey.Derive` already collapses whitespace, drops the status folder from each end's path and keys on class, both identity paths and quotes, under a versioned derivation domain (`abcd/finding-key/v1`, key prefix `cfk-`, bumped only when the derivation changes); the [model-matrix note](../../research/notes/2026-10-16-model-matrix-sota.md) records that two models agree on a key only when they quote the same text.
+
+**Path 2, confirmed as shipped: `findingkey.Derive` already drops the status folder (SARIF's stable-path rule) and versions its derivation domain (`abcd/finding-key/v1`, as SARIF versions its fingerprint names).** SARIF export is not worth adopting: one consumer, no ingestion target. No dependency. The independent fit-challenge runs at plan time.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- The residual risk the code itself states: a contradiction quoted differently gets a new key, so an edited sentence reads as a new finding and the old one as `addressed`. Is that acceptable for the hook's report, or should the report pair a new key with the key it most resembles?
+
 ## Open Questions
 
 _None open._

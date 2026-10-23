@@ -101,6 +101,18 @@ Kept for the spec: what the board can derive about a waiting answer is a role an
 13. 2026-10-03, the technical facilitator, decided without a question: decision 4 (two records, linked, not one bundle) supersedes decision 1's question of whether the two are planned as one bundle.
 14. 2026-10-03, the product thinker: the revised press release confirmed as written.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in the [dashboard-sites SOTA note](../../research/notes/2026-10-23-dashboard-sites-sota.md). The 2026-10-03 pass this record cites lives only in a checkout's local tier; the note puts its sources into the record, opened afresh.
+
+- **Fixed sections, the reader's own work first.** GitHub's `gh status` prints one person's slice of shared data in a fixed order (assigned issues, assigned pull requests, review requests, mentions, activity); the board's "whose view, now, next, counts" is the same shape (gh manual).
+- **Hide what only the makers understand.** clig.dev: "By default, don't output information that's only understandable by the creators of the software"; show it "only in verbose mode". The facilitator's view is that mode.
+- **Colour never the only carrier.** WCAG 2.2 SC 1.4.1 is the word-and-symbol rule, applied to a terminal. Colour off when stdout is not a TTY, when `NO_COLOR` is present and non-empty, or when `TERM` is `dumb`; flags override `NO_COLOR` (clig.dev; no-color.org), the order itd-112's ladder already uses.
+- **The host's screen-reader mode renders flat text:** no box characters, no colour-only cues, tables read as `Header: value` lines (the host's accessibility page). A markdown list, not a table, survives both renders unchanged; this replaces the `[F]` on the session-render facts.
+- **Research contradicts one ruling and the ruling stands:** clig.dev says "Suggest commands the user should run"; decision 6 keeps the product thinker's view command-free, and the menu (itd-2610031215002409) is where the next step lives.
+
+**Path 2 — native, shaped to the `gh status` and clig.dev conventions, with one renderer behind the Terminal, pipe and markdown forms as the seam.** No dependency. The independent fit-challenge runs at plan time.
+
 ## Open Questions
 
 - The role colours would now mean two things: on the board "this view is for", and in the status line "an answer is waiting on". The words differ, so the two can be told apart; the question is whether that is enough, or whether the board also shows whose answer is owed as its own line. _Answered by decision 6._

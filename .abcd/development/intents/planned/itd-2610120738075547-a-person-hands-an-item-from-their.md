@@ -154,6 +154,59 @@ Ruled by the product thinker on 2026-10-15, after a probe in a real hosted sessi
 
 Left for the product thinker's review on return, because the planning was done on delegation without them: the Mechanism claim, the grounds, the confirmation of the scope conditions and the walk of every criterion. A change they make then is made in this record and its spec before the step it touches is built.
 
+## SOTA
+
+Surveyed on 2026-10-23; sources, evidence tiers and the local fit risks are in
+the [autonomous-loops SOTA note](../../research/notes/2026-10-23-autonomous-loops-sota.md).
+The host's surface was read on 2026-10-12 and re-read on 2026-10-22; this pass
+checks the hand-back contract against comparable hosted agents and against what
+the host added since.
+
+- **The first host's cloud surface today.** `claude --cloud "<task>"` clones
+  the remote at the current branch ("push first if you have local commits");
+  `claude -p "<message>" --cloud <session-id>` queues a follow-up and returns
+  `{ok, session_id, url}` as JSON; `--teleport <session-id>` pulls the session
+  and its pushed branch into a terminal; there is still no scriptable or
+  machine-readable listing of cloud sessions (`--teleport` with no id opens an
+  interactive picker, and `/tasks` lists background sessions in a session);
+  an expired environment restores the
+  conversation but not background work; and per-account "projects" now
+  coordinate parallel cloud threads, in public beta on individual plans only
+  (Claude Code docs).
+- **The host's own hand-back is a report to a vendor-held conversation.** A
+  thread "reports back to the conversation when it finishes", works on its own
+  branch and opens a pull request when the work calls for one; when threads
+  stall, the advice is to ask each what it assumed, could not reach and waits
+  on, and to "fix the gap once" (Claude Code projects docs).
+- **Comparable agents hand back a branch and a log, under a hard cap.** A second
+  vendor's coding agent works in an ephemeral environment, on one branch and
+  one pull request per task, leaves session logs, and stops at a 59-minute cap
+  that "cannot be extended or bypassed" (GitHub docs). A third vendor's CLI can
+  "list recent cloud chats and check their status" (Codex cloud docs), a
+  scriptable listing the first host lacks.
+- **Branch protection governs pushes as the connected access**, so a rule that
+  access can bypass does not block a run (Claude Code scheduled tasks docs);
+  the proxy's branches-only rule is in the 2026-10-03 note.
+
+**Path 2**, the planned contract confirmed (work-in-progress branch, report
+file on it, tracking-issue comment only when the push fails, list and collect
+reading the remote alone), with one addition the comparable systems argue for:
+a hard cap and an expiring environment mean work exists only once pushed, so
+the brief directs a push of the work-in-progress branch after every commit and
+a report written early as "started" and overwritten at the end, so a session
+cut off mid-task still leaves a branch and a partial report. The host connector
+remains the seam: a host that offers a listing may enrich the list, and the
+remote-only read stays the floor. No Go dependency. The independent
+fit-challenge runs at plan time.
+
+Questions this pass raised for the fit-challenge before the build. They are kept here, not under Open Questions, so they do not hold a build the record already rules ready:
+
+- Whether C4's brief directs the session to push its
+  work-in-progress branch after every commit and to write the report file early
+  as "started", overwriting it at the end, so that a session cut off by a time
+  cap or an expired environment still leaves a branch and a partial report;
+  C6 and C7 today speak only of the end.
+
 ## Open Questions
 
 None. Q3, Q3b and Q4 were decided on 2026-10-12 by the technical facilitator on the product thinker's delegation (decisions 3 and 4); every other question was answered by the product thinker the same day.
