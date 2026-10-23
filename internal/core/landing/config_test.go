@@ -121,3 +121,124 @@ func TestARefusedHomeTurnsBothActsOff(t *testing.T) {
 		}
 	}
 }
+
+// With no layer declaring facilitator.mode, the facilitator is a person: a
+// fresh install changes nothing about who merges.
+func TestTheFacilitatorIsAPersonByDefault(t *testing.T) {
+	f, err := readMode(configRoots(t, "", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Key != KeyFacilitatorMode || f.Mode != ModeHuman || f.Layer != "bundled" || f.Origin != "bundled" {
+		t.Errorf("mode = %+v, want human from the bundled default", f)
+	}
+}
+
+func TestAutoInTheRepoMakesAbcdTheFacilitator(t *testing.T) {
+	f, err := readMode(configRoots(t, `{"facilitator":{"mode":"auto"}}`, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Mode != ModeAuto || f.Layer != "repo" || f.Origin != ".abcd/config.json" {
+		t.Errorf("mode = %+v, want auto from .abcd/config.json", f)
+	}
+}
+
+func TestAutoInTheMachineLayerAloneMakesAbcdTheFacilitator(t *testing.T) {
+	f, err := readMode(configRoots(t, "", `{"facilitator":{"mode":"auto"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Mode != ModeAuto || f.Layer != "machine" || !strings.Contains(f.Origin, "abcd.noindex/config.json") {
+		t.Errorf("mode = %+v, want auto from the machine file", f)
+	}
+}
+
+// A person takes the role back on their own machine, and no repository's file
+// takes it from them: human wins from any layer, though the repository's file
+// ordinarily beats the machine's.
+func TestHumanInTheMachineLayerWinsOverAutoInTheRepo(t *testing.T) {
+	f, err := readMode(configRoots(t, `{"facilitator":{"mode":"auto"}}`, `{"facilitator":{"mode":"human"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Mode != ModeHuman || f.Layer != "machine" || !strings.Contains(f.Origin, "abcd.noindex/config.json") {
+		t.Errorf("mode = %+v, want human from the machine file", f)
+	}
+}
+
+func TestHumanInTheRepoWinsOverAutoInTheMachineLayer(t *testing.T) {
+	f, err := readMode(configRoots(t, `{"facilitator":{"mode":"human"}}`, `{"facilitator":{"mode":"auto"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Mode != ModeHuman || f.Layer != "repo" || f.Origin != ".abcd/config.json" {
+		t.Errorf("mode = %+v, want human from .abcd/config.json", f)
+	}
+}
+
+// Any value but human or auto is refused, naming the file, in every layer: a
+// human above it does not excuse a bad value below.
+func TestAModeOtherThanHumanOrAutoIsRefusedNamingItsFile(t *testing.T) {
+	for _, c := range []struct {
+		name, repo, machine, file, layer string
+	}{
+		{"unknown word in the repo", `{"facilitator":{"mode":"robot"}}`, "", ".abcd/config.json", "repo"},
+		{"wrong case in the machine file", "", `{"facilitator":{"mode":"Auto"}}`, "abcd.noindex/config.json", "machine"},
+		{"a boolean in the repo", `{"facilitator":{"mode":true}}`, "", ".abcd/config.json", "repo"},
+		{"null in the machine file", "", `{"facilitator":{"mode":null}}`, "abcd.noindex/config.json", "machine"},
+		{"empty in the repo", `{"facilitator":{"mode":""}}`, "", ".abcd/config.json", "repo"},
+		{"bad below a winning human", `{"facilitator":{"mode":"human"}}`, `{"facilitator":{"mode":"robot"}}`, "abcd.noindex/config.json", "machine"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f, err := readMode(configRoots(t, c.repo, c.machine))
+			if err == nil {
+				t.Fatalf("mode = %+v, want the value refused", f)
+			}
+			for _, want := range []string{KeyFacilitatorMode, c.file, c.layer + " layer", "human or auto"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("err = %v, want it to name %q", err, want)
+				}
+			}
+		})
+	}
+}
+
+// facilitator is a claimed namespace with the one key mode, so a misspelt key
+// is refused rather than leaving the default to apply unannounced.
+func TestAnUnknownKeyUnderFacilitatorIsRefused(t *testing.T) {
+	for _, c := range []struct {
+		name, repo, machine, file string
+	}{
+		{"misspelt in the repo", `{"facilitator":{"moed":"auto"}}`, "", ".abcd/config.json"},
+		{"extra key in the machine file", "", `{"facilitator":{"mode":"human","merges":"me"}}`, "abcd.noindex/config.json"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f, err := readMode(configRoots(t, c.repo, c.machine))
+			if err == nil || !strings.Contains(err.Error(), "facilitator.") || !strings.Contains(err.Error(), c.file) {
+				t.Fatalf("mode = %+v, err = %v, want the unknown key refused naming %s", f, err, c.file)
+			}
+		})
+	}
+}
+
+func TestAFacilitatorThatIsNotAnObjectIsRefused(t *testing.T) {
+	f, err := readMode(configRoots(t, `{"facilitator":"auto"}`, ""))
+	if err == nil || !strings.Contains(err.Error(), "facilitator") || !strings.Contains(err.Error(), ".abcd/config.json") {
+		t.Fatalf("mode = %+v, err = %v, want the non-object refused naming its file", f, err)
+	}
+}
+
+// A home RootsFor refused hides the machine layer, and with it any machine-wide
+// human, so the facilitator reads as a person and says why.
+func TestARefusedHomeMakesTheFacilitatorAPerson(t *testing.T) {
+	r := configRoots(t, `{"facilitator":{"mode":"auto"}}`, "")
+	r.Home, r.HomeRefused = "", true
+	f, err := readMode(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Mode != ModeHuman || f.Layer != "machine" || !strings.Contains(f.Origin, "home") {
+		t.Errorf("mode = %+v, want human from the refused machine layer, saying why", f)
+	}
+}
