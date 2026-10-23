@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"time"
@@ -9,6 +10,11 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
+
+// errNotPushedHere is a renewal's answer for a reservation whose tip is not
+// the commit this copy last pushed for it.
+var errNotPushedHere = errors.New("its latest commit is not one this copy pushed, so it is not renewed from here; " +
+	"if it is yours, renew it with abcd reserve")
 
 // pushedRelDir keeps, per record, the last reservation commit this copy
 // pushed for it (notePushed): the commit names RenewDue renews from.
@@ -32,7 +38,8 @@ type Renewal struct {
 // that has lapsed. A renewal keeps the tip's own term (renewalTerm). A
 // release subject is left alone: its hold is a release cut's, kept by the
 // cut. Only a reservation whose tip is the commit this copy itself last
-// pushed for it (pushedHere) is renewed; any other tip is left as it is.
+// pushed for it (pushedHere) is renewed; any other tip is left as it is, and
+// answered with errNotPushedHere.
 // The error is a view that could not be read; each renewal's own failure is
 // in its Renewal.
 func RenewDue(root string, o Options) ([]Renewal, error) {
@@ -43,8 +50,11 @@ func RenewDue(root string, o Options) ([]Renewal, error) {
 	}
 	var out []Renewal
 	for _, r := range snap.Reservations {
-		if r.Copy != CopyThis || r.State != StateLive || isRelease(r.Record) || !halfThrough(r, now) ||
-			pushedHere(root, r.Record) != r.Commit {
+		if r.Copy != CopyThis || r.State != StateLive || isRelease(r.Record) || !halfThrough(r, now) {
+			continue
+		}
+		if pushedHere(root, r.Record) != r.Commit {
+			out = append(out, Renewal{Record: r.Record, Err: errNotPushedHere})
 			continue
 		}
 		res, err := Reserve(root, Request{Record: r.Record, Renew: true, Live: true, Lease: renewalTerm(r)}, o)

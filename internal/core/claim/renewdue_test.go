@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -122,8 +123,13 @@ func TestRenewDueRenewsOnlyWhatThisCopyPushed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0].Record != "iss-5" || got[0].Err != nil {
-		t.Fatalf("renewals %+v; want iss-5 alone", got)
+	byRecord := map[string]Renewal{}
+	for _, r := range got {
+		byRecord[r.Record] = r
+	}
+	if len(got) != 2 || byRecord["iss-5"].Err != nil || byRecord["iss-5"].Until.IsZero() ||
+		!errors.Is(byRecord["iss-9"].Err, errNotPushedHere) {
+		t.Fatalf("renewals %+v; want iss-5 renewed and iss-9 answered as not pushed here", got)
 	}
 	if w.remoteTip("iss-9") != other {
 		t.Fatalf("iss-9, whose tip this copy did not push, was renewed from it")
@@ -132,7 +138,15 @@ func TestRenewDueRenewsOnlyWhatThisCopyPushed(t *testing.T) {
 	// The renewal this copy pushed is its own in turn, so it is renewed again
 	// once half its new lease has passed.
 	w.set(t0.Add(61*time.Minute + 61*time.Minute))
-	if got, err := RenewDue(p.dir, p.opts()); err != nil || len(got) != 1 || got[0].Record != "iss-5" || got[0].Err != nil {
-		t.Fatalf("second renewals %+v, err %v; want iss-5 alone", got, err)
+	got, err = RenewDue(p.dir, p.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	renewedAgain := false
+	for _, r := range got {
+		renewedAgain = renewedAgain || r.Record == "iss-5" && r.Err == nil
+	}
+	if !renewedAgain || w.remoteTip("iss-9") != other {
+		t.Fatalf("second renewals %+v; want iss-5 renewed again and iss-9 left as it is", got)
 	}
 }

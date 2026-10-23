@@ -895,11 +895,12 @@ printed; do not loop around it.
 While it waits, in a checkout, the waiter also keeps your own reservations
 from lapsing, so a record you reserved by hand stays yours while your
 preflight waits its turn: at once and then every five minutes it renews each
-of your live reservations from this copy that is half through its lease, for
+of your live reservations whose latest commit this copy pushed that is half
+through its lease, for
 its own term or two hours, whichever is longer, and says each renewal on
 standard error. It never reserves anything new, takes nothing over and revives
 nothing that has lapsed, so a lease shorter than ten minutes can still lapse
-between two rounds; a renewal that fails is said once, and the wait goes on. The renewal runs beside
+between two rounds; a renewal that fails, or a reservation whose latest commit another copy or clone pushed, is said once, and the wait goes on. The renewal runs beside
 the gate, never in it, so the gate's order and its open never wait on one, and
 it stops when the gate opens: a gated command that runs longer than half a
 lease renews nothing itself. Since the renewal runs through git and gh, no
