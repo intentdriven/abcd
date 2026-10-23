@@ -44,6 +44,13 @@ func TestAFormAnotherLoginRewroteIsNeverReArmed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// mal's tombstone ends nothing; octo's own --release over it does.
+	if len(res.Settles) != 1 || !slices.Equal(numbersOf(res.Settles[0].Unrecorded), []int{11, 12}) || res.Settles[0].NotEnded != "octo" || len(f.mutations()) != 0 {
+		t.Fatalf("settles = %+v, mutations %v; want #11 and #12 named unrecorded, and nothing acted on", res.Settles, f.mutations())
+	}
+	if _, err := octo.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
+		t.Fatal(err)
+	}
 	if pr := f.pr(11); pr.method != "" {
 		t.Fatalf("#11 = %+v; want it left withdrawn, never armed in the form mal wrote", pr)
 	}
@@ -52,9 +59,6 @@ func TestAFormAnotherLoginRewroteIsNeverReArmed(t *testing.T) {
 	}
 	if got := f.mutations(); !slices.Equal(got, []string{"enqueuePullRequest #13"}) {
 		t.Fatalf("mutations = %v; want only #13, carried unchanged, re-armed in its own form", got)
-	}
-	if len(res.Settles) != 1 || !slices.Equal(numbersOf(res.Settles[0].Unrecorded), []int{11, 12}) {
-		t.Fatalf("settles = %+v; want #11 and #12 named unrecorded", res.Settles)
 	}
 }
 
@@ -739,7 +743,7 @@ func TestAnUnrecordedWithdrawalIsShownAgainWhenTheSettleNamingItIsLost(t *testin
 		}
 		return ps
 	}
-	s, ok := settleEnded(a, tree, "rel-v0.16.0")
+	s, ok := settleEnded(a, tree, "rel-v0.16.0", false)
 	f.edit = nil
 	if err := os.Rename(away, w.bare); err != nil {
 		t.Fatal(err)
@@ -747,7 +751,7 @@ func TestAnUnrecordedWithdrawalIsShownAgainWhenTheSettleNamingItIsLost(t *testin
 	if ok || s.said() {
 		t.Fatalf("settle = %+v; want nothing said when its claim was not pushed", s)
 	}
-	s, ok = settleEnded(a, tree, "rel-v0.16.0")
+	s, ok = settleEnded(a, tree, "rel-v0.16.0", false)
 	if !ok || s.Commit == "" || !slices.Equal(numbersOf(s.Unrecorded), []int{14}) {
 		t.Fatalf("settle = %+v; want #14 named unrecorded by the settle that was pushed", s)
 	}

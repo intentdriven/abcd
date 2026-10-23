@@ -70,12 +70,16 @@ type ArmedMerge struct {
 // settle yet, by number to why, which is not exempt. Lapsed is this copy's
 // own release reservation still being cut whose lease lapsed before the
 // release ended, "" when none did, and LapsedAt when; Lost is each sentence
-// naming withdrawals a later commit dropped.
+// naming withdrawals a later commit dropped. Kept is each pull request the
+// release reservation recorded as about to be withdrawn but the forge
+// refused to withdraw, left armed, which --admit does not rule in: a
+// renewal of the reservation withdraws it again.
 type ArmedMerges struct {
 	Base       string
 	Release    string
 	Admitted   map[int]string
 	Unverified map[int]string
+	Kept       map[int]bool
 	Armed      []ArmedMerge
 	Lapsed     string
 	LapsedAt   string
@@ -184,6 +188,10 @@ func armedFinding(a ArmedMerges, pr ArmedMerge) string {
 		how = "has auto-merge on (" + strings.ToLower(pr.Method) + ")"
 	}
 	n := fmt.Sprint(pr.Number)
+	if a.Kept[pr.Number] {
+		return "pull request #" + n + " " + how + " into " + a.Base + ", and the forge refused " + a.Release + "'s withdrawal of it, so it could merge mid-cut: " +
+			"reserve " + a.Release + " again from this copy (abcd reserve " + a.Release + "), whose renewal withdraws it again, or " + disarmHint(pr)
+	}
 	if a.Release == "" {
 		return "pull request #" + n + " " + how + " into " + a.Base + ", and this copy holds no release reservation: reserve the release first " +
 			"(abcd reserve rel-vX.Y.Z), which withdraws it, then admit it with --admit " + n + " if it belongs in the cut"

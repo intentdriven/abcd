@@ -48,6 +48,12 @@ func init() {
 				out.Admitted[w.Number] = w.Head
 			}
 		}
+		if len(a.Kept) > 0 {
+			out.Kept = map[int]bool{}
+			for _, w := range a.Kept {
+				out.Kept[w.Number] = true
+			}
+		}
 		if len(a.Unverified) > 0 {
 			out.Unverified = map[int]string{}
 			for _, w := range a.Unverified {

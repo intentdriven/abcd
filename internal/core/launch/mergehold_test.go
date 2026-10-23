@@ -198,3 +198,18 @@ func TestTheLaunchCheckDoesNotExemptAnUnverifiedAdmission(t *testing.T) {
 		t.Fatalf("row = %+v; want the reason and its own remedy, and no reading again for a verdict that does not change", row)
 	}
 }
+
+// TestTheLaunchCheckPointsAKeptWithdrawalAtARenewal: a pull request the
+// forge refused to withdraw is left armed and recorded kept, and --admit
+// refuses a kept one, so the finding names the renewal that withdraws it
+// again, never --admit.
+func TestTheLaunchCheckPointsAKeptWithdrawalAtARenewal(t *testing.T) {
+	withArmed(t, ArmedMerges{Base: "main", Release: "rel-v0.16.0", Kept: map[int]bool{11: true},
+		Armed: []ArmedMerge{{Number: 11, Head: headX, HeadRef: "fix/a", AutoMerge: true, Method: "SQUASH"}}}, nil, "release/v0.16.0")
+	row := mergeHoldRow(t, runGateSuite(suiteRequest{RepoRoot: t.TempDir(), Dirty: DirtySkip}))
+	if len(row.Findings) != 1 || !strings.Contains(row.Findings[0].Detail, "the forge refused rel-v0.16.0's withdrawal of it") ||
+		!strings.Contains(row.Findings[0].Detail, "reserve rel-v0.16.0 again from this copy (abcd reserve rel-v0.16.0)") ||
+		strings.Contains(row.Findings[0].Detail, "--admit") {
+		t.Fatalf("row = %+v; want the renewal named, never --admit", row)
+	}
+}

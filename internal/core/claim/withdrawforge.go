@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -220,16 +221,28 @@ func (e answerError) Error() string { return string(e) }
 // (gh missing or out of time, the network, a 5xx): only a refusal is a
 // verdict on the request, and a failure of the other kind says nothing of
 // whether it would be taken.
+// GitHub's own words for a failure on its side (a rate limit, an error it
+// could not serve) are not a verdict either, though its answer carries them.
 func forgeRefused(err error) bool {
 	var a answerError
 	var missing *tools.MissingError
 	switch {
+	case errors.As(err, &missing), errors.Is(err, github.ErrTimeout), forgeTransient(err.Error()):
+		return false
 	case errors.As(err, &a):
 		return true
-	case errors.As(err, &missing), errors.Is(err, github.ErrTimeout):
-		return false
 	}
 	return strings.Contains(err.Error(), "GraphQL: ")
+}
+
+// transientAnswers are GitHub's words for a failure on its side, which say
+// nothing of whether the request would be taken.
+var transientAnswers = []string{"rate limit", "something went wrong"}
+
+// forgeTransient reports whether msg carries one of transientAnswers.
+func forgeTransient(msg string) bool {
+	msg = strings.ToLower(msg)
+	return slices.ContainsFunc(transientAnswers, func(t string) bool { return strings.Contains(msg, t) })
 }
 
 // armError is a re-arm the forge did not take: why, and whether the forge
@@ -446,35 +459,62 @@ func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 }
 
 // commentBody is the one fixed sentence the writer posts on w's pull request
-// for the release subject, by the state a push just recorded for it:
-// withdrawn, admitted, re-armed (or found armed again, which counts as
-// re-armed), or not re-armed with its state word as the reason. Every value in it is validated data (a number, the release's tag, a
-// GitHub username, a state word), so it carries no free text from the
-// branch, no session URL and no tool footer. The withdrawer is named without
-// an at-sign, so a comment notifies no one but the pull request's own
-// watchers.
-func commentBody(subject string, w Withdrawal) string {
+// for the release subject, by the state a push just recorded for it
+// (dcn-2610230833367984): withdrawn or admitted, naming by, the person whose
+// act it was; re-armed; found armed; or not re-armed, with the one clause
+// its state closes over (its head moved, no merge queue, refused, closed,
+// merged). Any other state ("" back) posts nothing: a mismatched node id
+// names no pull request the record is trusted for, and a kept or partial
+// withdrawal did not happen as a comment would say. Every value in it is
+// validated data (a number, the release's tag, a GitHub username), so it
+// carries no free text from the branch, no session URL and no tool footer.
+// The person is named without an at-sign, so a comment mentions no one;
+// every subscriber of the pull request is notified, as by any comment.
+func commentBody(subject string, w Withdrawal, by string) string {
 	tag := strings.TrimPrefix(subject, releasePrefix)
 	switch w.State {
 	case WithdrawnPending:
-		return fmt.Sprintf("abcd release hold: the merge of #%d is withdrawn by %s while release %s is cut, and is re-armed after it.", w.Number, w.By, tag)
+		return fmt.Sprintf("abcd release hold: the merge of #%d is withdrawn by %s while release %s is cut, and is re-armed after it.", w.Number, by, tag)
 	case WithdrawnAdmitted:
-		return fmt.Sprintf("abcd release hold: the merge of #%d is admitted into release %s by %s.", w.Number, tag, w.By)
+		return fmt.Sprintf("abcd release hold: the merge of #%d is admitted into release %s by %s.", w.Number, tag, by)
 	case WithdrawnRearmed:
-		return fmt.Sprintf("abcd release hold: the merge of #%d is re-armed after release %s.", w.Number, tag)
+		return fmt.Sprintf("abcd release hold: the merge of #%d is re-armed; the hold for release %s has ended.", w.Number, tag)
 	case WithdrawnFoundArmed:
-		return fmt.Sprintf("abcd release hold: the merge of #%d is armed again after release %s.", w.Number, tag)
+		return fmt.Sprintf("abcd release hold: the merge of #%d is armed; the hold for release %s has ended.", w.Number, tag)
 	}
-	return fmt.Sprintf("abcd release hold: the merge of #%d is not re-armed after release %s (reason: %s).", w.Number, tag, w.State)
+	clause, ok := map[string]string{
+		WithdrawnMoved:   "Its head changed while it was held, so its owner needs to re-arm it.",
+		WithdrawnManual:  "It can merge now and there is no merge queue, so its owner can merge it.",
+		WithdrawnRefused: "GitHub refused to re-arm it " + countWord(maxRearmRefusals) + " times, so its owner needs to re-arm it.",
+		WithdrawnClosed:  "It was closed.",
+		WithdrawnMerged:  "It was merged.",
+	}[w.State]
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("abcd release hold: the merge of #%d is not re-armed; the hold for release %s has ended. %s", w.Number, tag, clause)
+}
+
+// countWord is n as a comment spells it.
+func countWord(n int) string {
+	words := []string{"zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"}
+	if n >= 0 && n < len(words) {
+		return words[n]
+	}
+	return strconv.Itoa(n)
 }
 
 // comment posts commentBody for w, in the state a push just recorded for it,
-// on its pull request (postComment). Each caller posts only once the push
-// recording that change of state has landed, and only for an entry whose
-// state it changed: a copy whose push lost, and an act that finds the state
-// already recorded, post nothing, so each change is commented on once.
-func (f mergeForge) comment(root, subject string, w Withdrawal) *ForgeFailure {
-	return f.postComment(root, w, commentBody(subject, w))
+// on its pull request (postComment); by is the person whose withdrawal or
+// admission it reports. Each caller posts only once the push recording that
+// change of state has landed: a copy whose push lost posts nothing. A state
+// commentBody has no sentence for posts nothing.
+func (f mergeForge) comment(root, subject string, w Withdrawal, by string) *ForgeFailure {
+	body := commentBody(subject, w, by)
+	if body == "" {
+		return nil
+	}
+	return f.postComment(root, w, body)
 }
 
 // postComment posts body on w's pull request through the writer, when one is
@@ -499,8 +539,6 @@ func (f mergeForge) postComment(root string, w Withdrawal, body string) *ForgeFa
 		return fail(what + " was not posted: it carries " + findings[0].Kind + ", which public text may not carry")
 	case err != nil:
 		return fail(what + " was not posted: it could not be judged against the outbound policy (" + redacted(err) + ")")
-	case len(body) > MaxMessageBytes:
-		return fail(fmt.Sprintf("%s was not posted: it would be %d bytes, over the %d-byte cap", what, len(body), MaxMessageBytes))
 	}
 	posted, read, err := f.comments.Comment(root, w.ID, body)
 	switch {
@@ -529,7 +567,7 @@ func commentWord(state string) string {
 	case WithdrawnRearmed:
 		return "re-armed"
 	case WithdrawnFoundArmed:
-		return "armed again"
+		return "armed"
 	}
 	return "not re-armed (" + state + ")"
 }
@@ -590,12 +628,15 @@ func (c ghCommenter) Comment(root, subject, body string) (posted bool, read stri
 // release ended (dcn-2610230328220298): it holds no merge then, and nothing
 // re-arms what it withdrew, so the check names it; one that lapsed holding
 // nothing is abandoned, and is not named. Lost is each recent release's
-// withdrawals a later commit dropped.
+// withdrawals a later commit dropped. Kept is each withdrawal of the live
+// release reservation the forge refused (kept), which a renewal withdraws
+// again, never --admit.
 type ArmedMerges struct {
 	Base          string            `json:"base"`
 	Armed         []ArmedPR         `json:"armed"`
 	Release       string            `json:"release,omitempty"`
 	Admitted      []Withdrawal      `json:"admitted,omitempty"`
+	Kept          []Withdrawal      `json:"kept,omitempty"`
 	Unverified    []Withdrawal      `json:"unverified,omitempty"`
 	UnverifiedWhy string            `json:"unverified_why,omitempty"`
 	Lapsed        string            `json:"lapsed,omitempty"`
@@ -640,6 +681,11 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 		}
 		a.Release = r.Record
 		a.Admitted, a.Unverified, a.UnverifiedWhy = pushedAdmissions(root, r, reader)
+		for _, w := range r.Withdrawn {
+			if w.State == WithdrawnKept {
+				a.Kept = append(a.Kept, w)
+			}
+		}
 	}
 	for _, r := range lapsed {
 		if r.Record != a.Release {

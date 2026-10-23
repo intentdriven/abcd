@@ -182,7 +182,7 @@ func TestASweepThatLosesTheTombstoneRaceReArmsNothing(t *testing.T) {
 		copy: ownCopyKey(laptop.dir), now: w.clock(), label: "abcd:v0.0.0"}
 	// The forge's record ends at the other copy's tombstone, not at the tip
 	// the laptop read, so nothing is verified and nothing is done.
-	if s, _ := settleEnded(a, tree, "rel-v0.16.0"); s.Commit != "" || len(s.Settled) != 0 || len(f.mutations()) != 0 {
+	if s, _ := settleEnded(a, tree, "rel-v0.16.0", false); s.Commit != "" || len(s.Settled) != 0 || len(f.mutations()) != 0 {
 		t.Fatalf("settle = %+v, mutations %v; want nothing done by the copy that lost", s, f.mutations())
 	}
 }

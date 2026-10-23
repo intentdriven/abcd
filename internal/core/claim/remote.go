@@ -232,7 +232,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 			if isRelease(p.id) && p.req.Release {
 				// A release already ended by its tombstone settles what that
 				// tombstone left withdrawn.
-				if s, ok := settleEnded(p.actor(), tree, p.id); ok {
+				if s, ok := settleEnded(p.actor(), tree, p.id, true); ok {
 					settles = append(settles, s)
 				}
 			}
@@ -272,8 +272,14 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 			Head: admitting.Head, By: admitting.By, State: WithdrawnAdmitted})
 	default:
 		// A reservation keeps what its tip still has withdrawn: its own
-		// admissions too while it is this person's reservation.
-		m.Withdrawn = carried(j.Withdrawn, j.mine && !j.message.released() && !j.derived)
+		// admissions too while it is this person's reservation. Over a
+		// tombstone, an entry of this person's that a commit they did not
+		// push recorded settled is carried as it stood before (restated).
+		ws := j.Withdrawn
+		if isRelease(p.id) && j.present && j.message.released() {
+			ws = p.restated(tree, j.Commit, ws)
+		}
+		m.Withdrawn = carried(ws, j.mine && !j.message.released() && !j.derived)
 		res.Stranded = stranded(m.Withdrawn, p.holder)
 	}
 	if !p.req.Release {
@@ -337,19 +343,20 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// the forge refused), that the forge has armed, and only those the
 		// branch's history and the forge's record of pushes vouch for, as a
 		// re-arm is vouched for; the rest are named and left as they are.
-		live := res.Act == ActRenewed && res.RenewedLive
-		var again []Withdrawal
-		if live {
-			var s Settle
-			again, s = p.vouchAgain(tree, sha, j.Commit, m.Withdrawn)
-			if s.said() {
-				settles = append(settles, s)
+		var again func([]Withdrawal) []Withdrawal
+		var noted Settle
+		if res.Act == ActRenewed && res.RenewedLive {
+			again = func(armed []Withdrawal) []Withdrawal {
+				due, s := p.vouchAgain(tree, sha, j.Commit, armed)
+				noted = s
+				return due
 			}
 		}
-		if !live || len(again) > 0 {
-			commit, recorded, made, fails, unchecked := p.withdrawArmed(tree, sha, m, again)
-			res.ForgeFailures, res.ForgeUnchecked, res.Withdrew = fails, unchecked, made
-			res.Commit, m = commit, recorded
+		commit, recorded, made, fails, unchecked := p.withdrawArmed(tree, sha, m, again)
+		res.ForgeFailures, res.ForgeUnchecked, res.Withdrew = fails, unchecked, made
+		res.Commit, m = commit, recorded
+		if noted.said() {
+			settles = append(settles, noted)
 		}
 	}
 	if p.req.Admit != 0 {
@@ -363,7 +370,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// An admission recorded already, admitted again, changes no state,
 		// so only the first is commented on.
 		if admitting.State != WithdrawnAdmitted {
-			if f := releaseForge.comment(root, p.id, w); f != nil {
+			if f := releaseForge.comment(root, p.id, w, p.holder); f != nil {
 				res.ForgeFailures = append(res.ForgeFailures, *f)
 			}
 		}
@@ -652,7 +659,8 @@ func releasedAlready(p *prepared, j judged) (Result, message, string, error) {
 
 // decideAdmit is an --admit's row of the push table: only the cutting copy,
 // this person's live release reservation from this copy, admits, and only a
-// pull request the reservation withdrew and has not admitted yet. Its renewal
+// pull request the reservation withdrew and has not admitted yet, and that
+// this person withdrew. Its renewal
 // keeps every withdrawal and marks that one admitted once the forge has
 // re-armed it (admitOne); every other tip is refused, and nothing is pushed.
 func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
@@ -688,6 +696,14 @@ func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
 			n, p.id, listed, nothingPushed)
 	case !j.Withdrawn[i].unsettled():
 		return Result{}, message{}, "", refuse("#%d is recorded %s on %s, so there is nothing to admit; %s", n, j.Withdrawn[i].State, p.id, nothingPushed)
+	case !sameHolder(j.Withdrawn[i].By, p.holder):
+		// Another person's copy never re-arms a withdrawal
+		// (dcn-2610222219297651), and an admission arms one under this
+		// person's account: only its withdrawer admits it
+		// (dcn-2610230833367984).
+		by := j.Withdrawn[i].By
+		return Result{}, message{}, "", refuse("#%d was withdrawn by %s, not by you, and only its withdrawer admits it, since an admission arms it under the admitter's account: "+
+			"%s admits it, or takes the release over themselves (abcd reserve %s --take-over) and admits it then; %s", n, by, by, p.id, nothingPushed)
 	}
 	// An admission already recorded is admitted again: the forge is read
 	// once more, and the pull request armed when it is not, so an --admit

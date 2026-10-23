@@ -70,8 +70,8 @@ func TestEachEventPostsItsOneFixedSentence(t *testing.T) {
 		"#12 abcd release hold: the merge of #12 is withdrawn by octo while release v0.16.0 is cut, and is re-armed after it.",
 		"#13 abcd release hold: the merge of #13 is withdrawn by octo while release v0.16.0 is cut, and is re-armed after it.",
 		"#13 abcd release hold: the merge of #13 is admitted into release v0.16.0 by octo.",
-		"#11 abcd release hold: the merge of #11 is re-armed after release v0.16.0.",
-		"#12 abcd release hold: the merge of #12 is not re-armed after release v0.16.0 (reason: moved).",
+		"#11 abcd release hold: the merge of #11 is re-armed; the hold for release v0.16.0 has ended.",
+		"#12 abcd release hold: the merge of #12 is not re-armed; the hold for release v0.16.0 has ended. Its head changed while it was held, so its owner needs to re-arm it.",
 	}
 	if got := f.posted(); !slices.Equal(got, want) {
 		t.Fatalf("comments =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
@@ -82,9 +82,46 @@ func TestEachEventPostsItsOneFixedSentence(t *testing.T) {
 		}
 	}
 	for _, state := range WithdrawalStates {
-		if b := commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo", State: state}); strings.Count(b, ". ") != 0 || !strings.Contains(b, "v0.16.0") {
-			t.Fatalf("the comment for %s is %q; want one sentence naming the release's tag", state, b)
+		if b := commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo", State: state}, "octo"); b != "" && !strings.Contains(b, "release v0.16.0") {
+			t.Fatalf("the comment for %s is %q; want it to name the release's tag", state, b)
 		}
+	}
+}
+
+// TestEachCommentSentenceIsTheOneApproved pins every sentence the release
+// hold posts, byte for byte, as dcn-2610230833367984 approved them: a change
+// to any of them changes this test too. A state with no sentence (a
+// mismatched node id, a kept withdrawal) posts nothing.
+func TestEachCommentSentenceIsTheOneApproved(t *testing.T) {
+	const pre = "abcd release hold: the merge of #11 is "
+	const ended = "; the hold for release v0.16.0 has ended."
+	want := map[string]string{
+		WithdrawnPending:    pre + "withdrawn by octo while release v0.16.0 is cut, and is re-armed after it.",
+		WithdrawnAdmitted:   pre + "admitted into release v0.16.0 by bob.",
+		WithdrawnRearmed:    pre + "re-armed" + ended,
+		WithdrawnFoundArmed: pre + "armed" + ended,
+		WithdrawnMoved:      pre + "not re-armed" + ended + " Its head changed while it was held, so its owner needs to re-arm it.",
+		WithdrawnManual:     pre + "not re-armed" + ended + " It can merge now and there is no merge queue, so its owner can merge it.",
+		WithdrawnRefused:    pre + "not re-armed" + ended + " GitHub refused to re-arm it five times, so its owner needs to re-arm it.",
+		WithdrawnClosed:     pre + "not re-armed" + ended + " It was closed.",
+		WithdrawnMerged:     pre + "not re-armed" + ended + " It was merged.",
+		WithdrawnMismatch:   "",
+		WithdrawnKept:       "",
+	}
+	if len(want) != len(WithdrawalStates) {
+		t.Fatalf("the test names %d states; WithdrawalStates has %d: pin the new one's sentence", len(want), len(WithdrawalStates))
+	}
+	for _, state := range WithdrawalStates {
+		by := "octo"
+		if state == WithdrawnAdmitted {
+			by = "bob" // the admitter is passed, never read from the withdrawal
+		}
+		if got := commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo", State: state}, by); got != want[state] {
+			t.Errorf("the comment for %s is\n%q\nwant\n%q", state, got, want[state])
+		}
+	}
+	if maxRearmRefusals != 5 {
+		t.Errorf("maxRearmRefusals is %d; the approved refused sentence says five", maxRearmRefusals)
 	}
 }
 
@@ -130,11 +167,10 @@ func TestACommentThatFailsLeavesTheActAsItIsAndIsReported(t *testing.T) {
 	}
 }
 
-// TestACommentIsPostedOncePerChangeOfState: a live renewal that withdraws
-// again what it already records withdrawn, an admission run again, and a
-// second copy of the same person settling what the first already settled,
-// each post nothing: only a push that changes an entry's state is commented
-// on.
+// TestACommentIsPostedOncePerChangeOfState: every real disarm is commented
+// on, a live renewal's withdrawal again of a pull request its owner re-armed
+// by hand included; an admission run again, and a second copy of the same
+// person settling what the first already settled, post nothing.
 func TestACommentIsPostedOncePerChangeOfState(t *testing.T) {
 	w := newWorld(t)
 	f := commentedForge(t)
@@ -143,7 +179,8 @@ func TestACommentIsPostedOncePerChangeOfState(t *testing.T) {
 	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
 		t.Fatal(err)
 	}
-	// Re-armed by hand, then a live renewal withdraws it again.
+	// Re-armed by hand, then a live renewal withdraws it again: a real
+	// disarm, commented on.
 	f.mu.Lock()
 	f.prs[11].method = "SQUASH"
 	f.mu.Unlock()
@@ -184,7 +221,7 @@ func TestACommentIsPostedOncePerChangeOfState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, ok := settleEnded(pr.actor(), tree, "rel-v0.16.0")
+	s, ok := settleEnded(pr.actor(), tree, "rel-v0.16.0", false)
 	if !ok || s.Commit != "" || len(s.Settled) != 0 {
 		t.Fatalf("the second copy's settle = %+v, %v; want nothing settled", s, ok)
 	}
@@ -206,7 +243,7 @@ func TestACommentIsPostedOncePerChangeOfState(t *testing.T) {
 		}
 		count[n+" "+event]++
 	}
-	want := map[string]int{"#11 withdrawn": 1, "#12 withdrawn": 1, "#13 withdrawn": 1, "#13 admitted": 1, "#12 re-armed": 1, "#11 re-armed": 1}
+	want := map[string]int{"#11 withdrawn": 2, "#12 withdrawn": 1, "#13 withdrawn": 1, "#13 admitted": 1, "#12 re-armed": 1, "#11 re-armed": 1}
 	if fmt.Sprint(count) != fmt.Sprint(want) {
 		t.Fatalf("comments by event = %v; want %v\n%s", count, want, strings.Join(f.posted(), "\n"))
 	}
@@ -256,7 +293,7 @@ func TestTheOutboundPolicyRefusesACommentBodyItWouldReject(t *testing.T) {
 	if len(f.posted()) != 0 {
 		t.Fatalf("comments = %q; want none posted", f.posted())
 	}
-	if x := releaseForge.postComment(p.dir, Withdrawal{Number: 11, ID: "PR_eleven", State: WithdrawnPending}, commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo"})); x != nil {
+	if x := releaseForge.postComment(p.dir, Withdrawal{Number: 11, ID: "PR_eleven", State: WithdrawnPending}, commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo"}, "octo")); x != nil {
 		t.Fatalf("the fixed body was refused: %+v", x)
 	}
 }
@@ -364,7 +401,7 @@ func TestAReArmWhoseTombstoneDidNotLandIsCommentedOnByTheActThatRecordsIt(t *tes
 	}
 	want := []string{
 		"#11 abcd release hold: the merge of #11 is withdrawn by octo while release v0.16.0 is cut, and is re-armed after it.",
-		"#11 abcd release hold: the merge of #11 is armed again after release v0.16.0.",
+		"#11 abcd release hold: the merge of #11 is armed; the hold for release v0.16.0 has ended.",
 	}
 	if got := f.posted(); !slices.Equal(got, want) {
 		t.Fatalf("comments =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

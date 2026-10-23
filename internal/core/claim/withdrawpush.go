@@ -194,9 +194,27 @@ func (r pushRecord) reason() string {
 // first, or another account pushed the commit that did (Unrecorded); an
 // app's push carried that commit (AppPushed); or the record does not settle
 // it yet (Unverified, with Why), which a later act asks about again.
+// Restated is each the tip records settled (kept, re-armed, skipped) where
+// the commit that moved it out of withdrawn or admitted was not pushed by its
+// withdrawer, as it stands on the tip: the change counts for nothing, and it
+// is split as the entry it changed, in restate.
 type vouching struct {
 	Due, Unrecorded, AppPushed, Unverified []Withdrawal
 	Why                                    string
+	Restated                               []Withdrawal
+	restate                                map[int]Withdrawal
+}
+
+// actedOn is ws with each entry Restated put back as it stood before the
+// change its withdrawer did not push: what an act settles and records.
+func (v vouching) actedOn(ws []Withdrawal) []Withdrawal {
+	out := slices.Clone(ws)
+	for i, w := range out {
+		if e, ok := v.restate[w.Number]; ok {
+			out[i] = e
+		}
+	}
+	return out
 }
 
 // pushCheck is where vouch asks the forge's record of pushes: the checkout,
@@ -206,39 +224,145 @@ type pushCheck struct {
 	tips     []string
 }
 
+// asker is the forge's record of pushes to one release branch read from its
+// tip (links), asked as c says only when a verdict is wanted and then once,
+// beside the verdicts kept for the tip in the local tier (verdicts).
+type asker struct {
+	c     pushCheck
+	links []chainLink
+	rec   *pushRecord
+	known *verdicts
+}
+
+func (k *asker) kept() *verdicts {
+	if k.known == nil {
+		tip := ""
+		if len(k.links) > 0 {
+			tip = k.links[0].commit
+		}
+		k.known = readVerdicts(k.c.root, k.c.id, tip)
+	}
+	return k.known
+}
+
+func (k *asker) record() *pushRecord {
+	if k.rec == nil {
+		r := readPushRecord(k.c.root, k.c.id, k.links, k.c.tips...)
+		k.rec = &r
+	}
+	return k.rec
+}
+
+// verdict is what the record says of commit and login, a verdict kept for
+// the tip first. A verdict that never changes once given (another account's
+// push, or an app's) is kept, so a withdrawal left that way costs one ask of
+// the forge, not one on every act.
+func (k *asker) verdict(commit, login string) pushVerdict {
+	if v, ok := k.kept().of(commit, login); ok {
+		return v
+	}
+	v := k.record().verdict(commit, login)
+	k.kept().keep(commit, login, v)
+	return v
+}
+
+// change is verdict for a commit that moved a withdrawal of login's out of
+// withdrawn or admitted. Its writer's own word decides first: a commit whose
+// holder is not login is another person's, whoever pushed it. One the record
+// says login pushed is kept as standing for the tip, a verdict that only ever
+// leaves the withdrawal as the tip records it.
+func (k *asker) change(c chainLink, login string) pushVerdict {
+	if !sameHolder(c.m.Holder, login) {
+		return pushedByOther
+	}
+	if k.kept().standing(c.commit, login) {
+		return pushedByThem
+	}
+	v := k.verdict(c.commit, login)
+	if v == pushedByThem {
+		k.kept().stand(c.commit, login)
+	}
+	return v
+}
+
+func (k *asker) save() {
+	if k.known != nil {
+		k.known.save()
+	}
+}
+
+// changeOf finds where the withdrawal w, as the chain's tip records it, was
+// moved out of withdrawn or admitted: the commits from the tip down carrying
+// it as it stands, field for field and in its state, end at a commit (index
+// j) whose entry for its number is still to settle (prev). ok is false when
+// w is itself still to settle, or the walk finds no such commit beneath
+// (another settled state, no entry, a commit that does not read, or the end
+// of the walk). The change is links[j-1]'s.
+func changeOf(links []chainLink, w Withdrawal) (j int, prev Withdrawal, ok bool) {
+	if w.unsettled() || len(links) == 0 || !links[0].readable {
+		return 0, Withdrawal{}, false
+	}
+	for j = 1; j < len(links); j++ {
+		if !links[j].readable {
+			return 0, Withdrawal{}, false
+		}
+		e, found := withdrawalOf(links[j].m.Withdrawn, w.Number)
+		if found && sameEntry(e, w) && e.State == w.State {
+			continue
+		}
+		if !found || !e.unsettled() {
+			return 0, Withdrawal{}, false
+		}
+		return j, e, true
+	}
+	return 0, Withdrawal{}, false
+}
+
 // vouch is vouching for the withdrawals of ws that keep returns true for whose
 // By is holder, over the chain read from the tip and the record of pushes
-// placed on it, asked as c says only when the chain vouches for one and then
-// once. A verdict that never changes once given (another account's push, or
-// an app's, carried the first record) is kept for the tip in the local tier
-// (verdicts), so a withdrawal left that way costs one ask of the forge, not
-// one on every act.
+// placed on it, asked as c says only when a verdict is wanted and then once.
 func vouch(links []chainLink, complete bool, ws []Withdrawal, holder string, c pushCheck, keep func(Withdrawal) bool) vouching {
+	k := &asker{c: c, links: links}
+	v := k.vouch(complete, ws, holder, keep)
+	k.save()
+	return v
+}
+
+// vouch is vouching for ws over k's chain. A change of state counts only when
+// its withdrawer pushed it: an entry the tip records settled, where the
+// commit that moved it out of withdrawn or admitted is not one the record
+// says its withdrawer pushed, is Restated and judged as the entry it was
+// before that commit, so a release re-arms it; one whose change the record
+// does not settle yet is left as it stands, and a later act asks again.
+func (k *asker) vouch(complete bool, ws []Withdrawal, holder string, keep func(Withdrawal) bool) vouching {
 	var v vouching
-	var rec *pushRecord
-	var known *verdicts
 	for _, w := range ws {
+		from := 0
+		if j, prev, ok := changeOf(k.links, w); ok && keep(prev) && sameHolder(prev.By, holder) {
+			switch k.change(k.links[j-1], prev.By) {
+			case pushedByThem:
+			case pushNotVerified:
+				continue
+			default:
+				named := w
+				named.By = prev.By
+				v.Restated = append(v.Restated, named)
+				if v.restate == nil {
+					v.restate = map[int]Withdrawal{}
+				}
+				v.restate[w.Number] = prev
+				w, from = prev, j
+			}
+		}
 		if !keep(w) || !sameHolder(w.By, holder) {
 			continue
 		}
-		first, ok := firstRecord(links, complete, w)
+		first, ok := firstRecord(k.links[from:], complete, w)
 		if !ok {
 			v.Unrecorded = append(v.Unrecorded, w)
 			continue
 		}
-		if known == nil {
-			known = readVerdicts(c.root, c.id, links[0].commit)
-		}
-		verdict, ok := known.of(first, w.By)
-		if !ok {
-			if rec == nil {
-				r := readPushRecord(c.root, c.id, links, c.tips...)
-				rec = &r
-			}
-			verdict = rec.verdict(first, w.By)
-			known.keep(first, w.By, verdict)
-		}
-		switch verdict {
+		switch k.verdict(first, w.By) {
 		case pushedByThem:
 			v.Due = append(v.Due, w)
 		case pushedByOther:
@@ -247,13 +371,43 @@ func vouch(links []chainLink, complete bool, ws []Withdrawal, holder string, c p
 			v.AppPushed = append(v.AppPushed, w)
 		default:
 			v.Unverified = append(v.Unverified, w)
-			v.Why = rec.reason()
+			v.Why = k.record().reason()
 		}
 	}
-	if known != nil {
-		known.save()
-	}
 	return v
+}
+
+// endedBy is whether the tombstones at the top of the chain end the release:
+// the lowest of them, written over the reservation it ended, ends it only
+// when it is that reservation's holder's and the forge's record says the
+// holder pushed it, or when own, the person whose act this is, is that
+// holder (their own --release over it). It returns the verdict, the holder,
+// and why it is not verified when it is not. A tip that is no tombstone ends
+// nothing by this reading.
+func (k *asker) endedBy(own string) (verdict pushVerdict, holder, why string) {
+	i := 0
+	for i < len(k.links) && k.links[i].readable && k.links[i].m.released() {
+		i++
+	}
+	switch {
+	case i == 0:
+		return pushedByOther, "", ""
+	case i == len(k.links) || !k.links[i].readable:
+		return pushNotVerified, "", "the reservation its tombstone ended is not within the commits read, or does not read"
+	}
+	holder = k.links[i].m.Holder
+	tomb := k.links[i-1]
+	switch {
+	case own != "" && sameHolder(own, holder):
+		return pushedByThem, holder, ""
+	case !sameHolder(tomb.m.Holder, holder):
+		return pushedByOther, holder, ""
+	}
+	verdict = k.verdict(tomb.commit, holder)
+	if verdict == pushNotVerified {
+		why = k.record().reason()
+	}
+	return verdict, holder, why
 }
 
 // verdictsDirRel is where the verdicts that never change are kept for each
@@ -270,7 +424,12 @@ const maxVerdictsBytes = 16 << 10
 type verdicts struct {
 	root, id, tip string
 	by            map[string]pushVerdict
-	changed       bool
+	// stands is each change of state (by the commit that made it and the
+	// person) the record says its withdrawer pushed: read only for a change,
+	// where it leaves the withdrawal as the tip records it, never for a first
+	// record, where a verdict acts.
+	stands  map[string]bool
+	changed bool
 }
 
 // verdictWords are the kept verdicts as the file names them.
@@ -279,7 +438,7 @@ var verdictWords = map[string]pushVerdict{"other": pushedByOther, "app": pushedB
 // readVerdicts is the verdicts kept for id at tip; empty when none is kept,
 // they were kept for another tip, or the file does not read.
 func readVerdicts(root, id, tip string) *verdicts {
-	k := &verdicts{root: root, id: id, tip: tip, by: map[string]pushVerdict{}}
+	k := &verdicts{root: root, id: id, tip: tip, by: map[string]pushVerdict{}, stands: map[string]bool{}}
 	if !isRelease(id) {
 		return k
 	}
@@ -303,6 +462,8 @@ func readVerdicts(root, id, tip string) *verdicts {
 		}
 		if v, ok := verdictWords[f[2]]; ok {
 			k.by[f[0]+" "+strings.ToLower(f[1])] = v
+		} else if f[2] == standsWord {
+			k.stands[f[0]+" "+strings.ToLower(f[1])] = true
 		}
 	}
 	return k
@@ -320,6 +481,23 @@ func (k *verdicts) keep(commit, login string, v pushVerdict) {
 		return
 	}
 	k.by[commit+" "+strings.ToLower(login)] = v
+	k.changed = true
+}
+
+// standsWord is how the file names a change its withdrawer pushed.
+const standsWord = "stands"
+
+// standing reports whether a change commit made for login is kept as theirs.
+func (k *verdicts) standing(commit, login string) bool {
+	return k.stands[commit+" "+strings.ToLower(login)]
+}
+
+// stand keeps commit as a change of login's own.
+func (k *verdicts) stand(commit, login string) {
+	if !validUsername(login) {
+		return
+	}
+	k.stands[commit+" "+strings.ToLower(login)] = true
 	k.changed = true
 }
 
@@ -341,6 +519,14 @@ func (k *verdicts) save() {
 				b.WriteString(key + " " + w + "\n")
 			}
 		}
+	}
+	stood := make([]string, 0, len(k.stands))
+	for key := range k.stands {
+		stood = append(stood, key)
+	}
+	slices.Sort(stood)
+	for _, key := range stood {
+		b.WriteString(key + " " + standsWord + "\n")
 	}
 	_ = writeUnflushedIn(k.root, verdictsDirRel, k.id, []byte(b.String()))
 }
