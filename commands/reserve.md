@@ -117,17 +117,29 @@ queue. The release pull request itself (one from this checkout's branch, in
 this repository) is never withdrawn. The payload's `withdrew` lists them, as
 `number`, `id`, `form`, `head`, `by` and `state`, and `withdrawals`
 everything the reservation records. A renewal from the same copy while the
-reservation is live withdraws nothing new and keeps the record. Tell the user
-what was withdrawn.
+reservation is live keeps the record and withdraws nothing new: it withdraws
+again only a pull request it records as withdrawn that the forge has armed
+again (a run cut off between its record and the forge, or an arming made by
+hand since). A pull request the forge refused to withdraw stays on the
+record as `kept` until the next renewal. Tell the user what was withdrawn.
 
-One release is cut at a time: reserving a release while another release's
-reservation is live backs off (exit 3), naming the release and its holder.
+One release is cut at a time: reserving a release while another release is
+still being cut backs off (exit 3), naming the release and its holder. A
+release is still being cut while its reservation is live, and also once its
+lease has lapsed while it still holds pull requests withdrawn or admitted; the
+back-off then says how it ends: its holder renews it, or ends it with
+`--release`. A lapsed release that holds nothing does not block.
 
 Every withdrawal and re-arm is made through `gh` under the account its token
 acts as, so each is refused when that account is not the reservation's holder:
 the reservation stands, nothing is withdrawn, and `forge_unchecked` says which
 account `gh` acts as; `--admit` and `--release` are refused (exit 2, nothing
-pushed). Switch `gh` to the holder's account and run it again.
+pushed). Switch `gh` to the holder's account and run it again. When `gh`
+cannot say which account it acts as at all (not logged in, no network), a
+reservation withdraws nothing and says so in `forge_unchecked`, `--admit` is
+refused (exit 2, nothing pushed), and `--release` still pushes the tombstone
+but re-arms nothing, naming why in its settle's `failed`; the next act of a
+copy of yours that fetches the reservations re-arms them once `gh` answers.
 
 To let a withdrawn pull request into the cut, from the copy that holds the
 release:
@@ -140,19 +152,30 @@ It renews the reservation recording that one admitted, then re-arms it in its
 recorded form, pinned to its withdrawn head (`act: admitted`, `admitted`). It
 is refused (exit 2, nothing pushed) from any other copy, by any other person,
 on a lapsed or released reservation, for a pull request the reservation did
-not withdraw or already admitted, and for one whose head moved, or that was
-closed or merged, since. When the forge then refuses the arming, a second
-renewal puts it back to withdrawn and the refusal says so. The launch check
-lets an admitted pull request through only at the head it was admitted at.
+not withdraw, and for one whose head moved, or that was closed or merged,
+since. Admitting one already admitted reads the forge again and arms it when
+it is not armed, so an `--admit` cut off between its record and its arming is
+finished by running it again (the release's settle arms it too). When the
+forge then refuses the arming, a second renewal puts it back to withdrawn and
+the refusal says so. The launch check lets an admitted pull request through
+only at the head it was admitted at, and only once the forge's record of
+pushes shows you pushed the reservation and the admission.
 
-Every other withdrawn pull request is re-armed when the release ends, and a
-release ends only two ways: `--release` from the cutting copy, or its tag on
-`origin`. `--release` pushes the tombstone first, with every withdrawal as it
-stands, then re-arms; once the tag is on `origin`, the next act of any copy of
-the same person that fetches the reservations (any reserve, a build or drain
-start, `/abcd:peers`) does the same, pushing a tombstone before it touches the
-forge, so of two copies only the one whose push lands acts. **A lapsed lease
-ends nothing.** Nothing renews a release lease by itself, so a slow cut's lease
+Every other withdrawn pull request is re-armed when the release ends, and an
+admitted one is checked on the forge and armed if it is not. A release ends
+in any of these ways: `--release` from the cutting copy; its tag on `origin`;
+or any tombstone on its branch, including one another person pushed after
+taking the reservation over and releasing it. `--release` pushes the tombstone
+first, with every withdrawal as it stands, then re-arms; once the tag is on
+`origin`, the next act of any copy of the same person that fetches the
+reservations (any reserve, a build or drain start, `/abcd:peers`) does the
+same, pushing a tombstone before it touches the forge when the tip is not one
+yet. Two copies of the same person that settle the same release at once may
+both re-arm; that is harmless, because a re-arm reads the forge first, is
+pinned to the withdrawn head, and finds the pull request already armed. A
+tombstone recording the new states is pushed only when a state changed, so a
+re-arm the forge keeps refusing writes nothing to `origin` while it is tried
+again. **A lapsed lease ends nothing.** Nothing renews a release lease by itself, so a slow cut's lease
 lapses while it is still being cut: the lapse is reported (`/abcd:peers`, and
 the launch check refuses the cut until it is renewed), and no copy re-arms
 anything. Renew it by reserving the release again from the cutting copy.
@@ -170,16 +193,28 @@ its number (`mismatch`, never acted on), or it can merge now and the repository
 has no merge queue to put it in (`manual`: abcd never merges another person's
 pull request, so its owner merges it). The tombstone records every state, so no
 copy acts twice; one the forge refused stays `withdrawn`, and the next such act
-tries it again. The payload's `settles` names each release settled this way,
-with its `settled` pull requests, its `failures` and the tombstone's `commit`.
-Only a withdrawal that the branch's own history shows a reservation of its
-withdrawer recorded first is ever acted on: one that is not is named in
-`unrecorded` and left alone. A copy of another person
+tries it again, up to five refusals counted by each copy; after the fifth it
+is recorded `refused` and left to its owner. The payload's `settles` names
+each release settled this way, with its `settled` pull requests, its
+`failures` and the tombstone's `commit`.
+Only a withdrawal whose first record is a reservation of its withdrawer's on
+the branch's own history, and whose commit the forge's record of pushes says
+that person pushed, is ever acted on. One that is not is left alone and named
+once for each tip: `unrecorded` (no reservation of theirs recorded it first, or
+another account pushed the commit that did) and `app_pushed` (an app pushed
+that commit, which says nothing of which person sent it: re-arm it by hand).
+One the forge's record does not settle yet (read short, not caught up with the
+tip, or not answering) is named `unverified`, with `unverified_why`, and a
+later act asks again. A copy of another person
 never re-arms: a reservation it makes over the release carries the
 withdrawals forward untouched (`stranded`, and a `note:` line naming whose
-they are), and `/abcd:peers` names them (`release_withdrawals`). An older abcd
-that renews the release drops the record from the tip; `/abcd:peers` names
-those as lost (`lost_withdrawals`), and the launch check warns of them.
+they are), and `/abcd:peers` names them (`release_withdrawals`). A
+withdrawal recorded on an earlier commit of the branch and missing from a
+later one, with the tip not carrying it either, is reported lost
+(`lost_withdrawals` on `/abcd:peers`, and a warning in the launch check): an
+older abcd that renews the release drops the record that way. abcd's own
+correction after a withdrawal the forge refused keeps that entry (`kept`)
+instead, so it is never reported lost.
 
 **Failures are loud and lose nothing.** A withdrawal or re-arm the forge
 refuses is named in `forge_failures` (`number`, `act`, `reason`) and on

@@ -370,9 +370,14 @@ admission or re-arm, the account the `gh` token acts as is compared with the
 reservation's holder, and a mismatch touches nothing: a reservation is made
 withdrawing nothing, and an admission or a release is refused.
 
-- **One release at a time.** A release reserved anew while another release's
-  reservation is live backs off, naming it: a second cut would withdraw the
-  merges the first admitted.
+- **One release at a time.** A release reserved anew while another release is
+  still being cut backs off, naming it: a second cut would withdraw the merges
+  the first admitted. A release is still being cut while its reservation is
+  live, and, since a lapse ends nothing, while its lease has lapsed with pull
+  requests still withdrawn or admitted; the back-off then says how it ends
+  (its holder renews it, or releases it). One that lapsed holding
+  nothing is abandoned, and blocks nothing. The launch check names the same
+  lapsed release, and only that one.
 - **Withdraw at reserve.** A release reserved anew (every act on it but a
   renewal of this copy's live reservation, so a take-over and a renewal of a
   lapsed one too) pushes its reservation first, so every other session's
@@ -389,7 +394,9 @@ withdrawing nothing, and an admission or a release is refused.
   of the queue (`dequeuePullRequest`), the order that leaves the forge no
   arming to queue it again with; a second renewal records what the forge
   actually did when that differs. A renewal from the same copy while live
-  withdraws nothing new and keeps the record.
+  keeps the record and withdraws only what it already records as withdrawn
+  that the forge has armed again (a process cut off between the record and
+  the forge, or an arming made by hand since).
 - **The record.** One `Abcd-Withdrawn` trailer a pull request, at most 40 on a
   tip, six fields separated by one space: its number, its node id, the form it
   was armed in (`queue` for a merge-queue entry, which is also the form of one
@@ -397,7 +404,9 @@ withdrawing nothing, and an admission or a release is refused.
   auto-merge with its method), its head when withdrawn, the GitHub username
   whose reservation withdrew it, and its state: `withdrawn` (still to settle),
   `admitted`, `rearmed`, `armed` (found armed or queued again, counted done),
-  `moved`, `closed`, `merged`, `mismatch` or `manual` (skipped for its owner).
+  `moved`, `closed`, `merged`, `mismatch`, `manual` or `refused` (skipped for
+  its owner), or `kept` (the forge refused its withdrawal, so it was left
+  armed; carried only on the correction that says so).
   Every field is fixed-form, so no free text reaches the remote. The reader
   reads it strictly: any other shape, a pull request named twice, more than
   40, one on a record's reservation, or a settled state on a reservation that
@@ -407,13 +416,23 @@ withdrawing nothing, and an admission or a release is refused.
   release carries forward what its tip still has to settle: this person's own
   reservation keeps its withdrawn and admitted ones, and any other commit (a
   tombstone, a take-over of another person's lapsed one) the withdrawn ones.
-- **Whose a withdrawal is.** The username on a withdrawal is the writer's data,
-  so a re-arm honours one only when the release branch's own history shows the
-  reservation commit that first recorded it, withdrawn, was held by that
-  username: the walk reads the first-parent line from the tip, at most 64
-  commits. One that is not vouched for this way is named, in `unrecorded`,
-  and never acted on. The walk reads the record's own history, so a commit's
-  holder is taken as the commit names it.
+- **Whose a withdrawal is.** The username on a withdrawal, and a commit's
+  holder, are the writer's data, so every re-arm (the tag sweep, the
+  tombstone sweep, the holder's release, an admission) honours a withdrawal only on two
+  readings. The release branch's own history must show the reservation
+  commit that first recorded it, withdrawn, held by that username: the walk
+  reads the first-parent line from the tip, at most 64 commits, and a commit
+  carrying it settled ends the walk, since nothing settled is put back to
+  withdrawn. And the forge's activity record of pushes to the branch (the
+  record `abcd status` holds announcements to, C17) must say a person, that
+  username, pushed that commit, with its newest push the one that moved the
+  branch to the tip read. Another account's push, or no reservation of
+  theirs recording it, is named in `unrecorded`; an app's push, which says
+  nothing of which person sent it, in `app_pushed`; both once for each tip,
+  never acted on. A record read short, not caught up with the tip, or not
+  answering decides nothing: the withdrawal is named `unverified` and a later
+  act asks again. Reports (`abcd peers`, the lost walk) read the history
+  alone.
 - **Admit.** An admission, the reserve verb naming one pull request on the
   release, from the cutting copy's live reservation alone, reads the pull
   request on the forge, records it admitted on a renewal, and only then
@@ -421,21 +440,32 @@ withdrawing nothing, and an admission or a release is refused.
   withdrawn head; an arming the forge refuses is put back to withdrawn by a
   second renewal. It is refused from another copy or by another person, on a
   lapsed or released reservation, for a pull request the reservation did not
-  withdraw or already admitted, and for one whose head moved, or that was
-  closed or merged, since; nothing is pushed then. The launch check passes an
-  admitted pull request only at the head it was admitted at.
-- **When a release ends.** A release ends only on its holder's release
-  (including after a take-over by the same person from another copy) or once
-  its tag is on origin. A lapsed lease ends nothing: nothing renews a release
+  withdraw, and for one whose head moved, or that was closed or merged,
+  since; nothing is pushed then. An admission of one already admitted reads
+  the forge again and arms it when it is not, which finishes an admission cut
+  off between its record and its arming. The launch check passes an admitted
+  pull request only at the head it was admitted at, and only when the forge's
+  record of pushes says the reader pushed the reservation's tip and the
+  commit that recorded the admission.
+- **When a release ends.** A release ends on its holder's release (including
+  after a take-over by the same person from another copy), once its tag is on
+  origin, or on any tombstone on its branch, another person's after a
+  take-over and a release of theirs included. A lapsed lease ends nothing: nothing renews a release
   lease by itself, so a slow cut's lease lapses while it is still being cut,
   and the lapse is reported (`abcd peers`, and the launch check refuses the
   cut), never acted on. After a crash, the same person ends it from another
   copy by taking it over and then releasing it.
-- **Re-arm.** Every settle pushes a tombstone first, with every withdrawal as
-  it stands, as the compare-and-swap: of two copies settling at once, only the
-  one whose push lands acts. The cutting copy's release pushes the tombstone
-  that ends the reservation, then re-arms every withdrawn, unadmitted pull
-  request of its own, then pushes a second tombstone recording each state.
+- **Re-arm.** A settle over a tip that is not yet a tombstone (a tag ended it)
+  pushes a tombstone first, with every withdrawal as it stands, as the
+  compare-and-swap that claims the end; over a tip that already is one it
+  claims nothing again. A second copy of the same person may then settle the
+  same release at the same moment and re-arm too, which is harmless: a
+  re-arm reads the forge first and is pinned to the withdrawn head, so it
+  finds the pull request armed. The cutting copy's release pushes the
+  tombstone that ends the reservation, then re-arms every withdrawn,
+  unadmitted pull request of its own and checks every admitted one on the
+  forge, arming it when it is not, then pushes a second tombstone recording
+  each state, only when a state changed, so a refused re-arm writes nothing.
   Once the tag is on origin, any act of a copy whose holder is the
   withdrawal's (every reserve act, a build's and a drain's included, and
   `abcd peers` after its fetch) does the same for that holder's withdrawn
@@ -451,7 +481,8 @@ withdrawing nothing, and an admission or a release is refused.
   refuses because it can merge now and the repository has no merge queue
   ("clean status") settles as `manual`, for its owner to merge: abcd never
   merges another person's pull request. One the forge refused otherwise stays
-  withdrawn for the next act.
+  withdrawn for the next act, up to five refusals counted by each copy in its
+  local tier; after the fifth it settles as `refused`, for its owner.
 - **Another person never re-arms.** The re-arm runs under the re-armer's own
   GitHub identity, so a copy of another person carries the withdrawals
   forward untouched and names them, with whose they are (`stranded`), on the
@@ -460,8 +491,10 @@ withdrawing nothing, and an admission or a release is refused.
   its renewal, take-over or tombstone rewrites the tip without them. For each
   release claimed in the last 14 days, `abcd peers` and the launch check walk
   the branch's history and name each withdrawal still withdrawn on an ancestor
-  that no later commit carries (`lost_withdrawals`, the `merge-hold-lost`
-  warning): nothing re-arms those, so their withdrawer does it by hand.
+  that the commit above it and the tip do not carry (`lost_withdrawals`, the
+  `merge-hold-lost` warning): nothing re-arms those, so their withdrawer does
+  it by hand. abcd's own correction after a refused withdrawal keeps the
+  entry (`kept`), so it never reads as lost.
 - **No comments on other people's pull requests.** A fixed-form comment
   writer (one sentence of validated fields, judged by the outbound policy)
   sits behind a seam that nothing sets, so abcd posts nothing on the pull
@@ -469,7 +502,7 @@ withdrawing nothing, and an admission or a release is refused.
   trace until the product thinker decides otherwise (dcn-2610230328230097).
 - **Failures are loud and lose nothing.** A withdrawal the forge refuses
   (no permission, no network) leaves the reservation standing and is named
-  by number and reason, and the second renewal drops it from the record; a
+  by number and reason, and the second renewal records it `kept`; a
   partial one (auto-merge off, the queue entry kept) is recorded as what
   happened, in the form it lost. A pull request the record has no room for is
   not withdrawn, and is named. If the renewal recording the withdrawals

@@ -259,11 +259,15 @@ dcn-2610161040394970). The JSON form adds `reservations` (each live one with
 release being cut), `hand_backs_by_holder` (`holder`,
 `hand_backs` of `record`, `kind` and `released_at`, and `more`),
 `release_withdrawals` (each release's withdrawn pull requests by state: held,
-admitted, due, stranded for another person, skipped, with `lapsed` when its
-lease lapsed before it ended, which ends nothing), `lost_withdrawals` (each
-recent release's withdrawals a later commit dropped), `settled` (each ended
-release of the reader's whose withdrawals the listing re-armed or skipped,
-with `unrecorded` naming any no reservation of theirs recorded first, iss-2610222014550692) and `view`
+admitted, due (read against the branch's history, so one nothing re-arms is
+never due), unrecorded, stranded for another person, skipped, with `lapsed`
+when its lease lapsed before it ended still holding some, which ends
+nothing), `lost_withdrawals` (each recent release's withdrawals a later
+commit dropped), `settled` (each ended release of the reader's whose
+withdrawals the listing re-armed or skipped, with `unrecorded` and
+`app_pushed` naming those it never acts on, once for each tip, and
+`unverified` those the forge's record of pushes does not settle yet,
+iss-2610222014550692) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and
 exits 1; the peer rows are unchanged. A checkout with no remote named

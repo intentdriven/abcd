@@ -113,26 +113,36 @@ payload adds:
   the user who is cutting which release, and that merges are held.
 - `release_withdrawals`: each release whose reservation records withdrawn
   pull requests, with its `subject`, `holder`, `ended` (its tag on `origin`
-  or its tombstone), `lapsed` and `lapsed_at` (its lease lapsed before it
+  or a tombstone), `lapsed` and `lapsed_at` (its lease lapsed before it
   ended, which ends nothing: its holder renews it, or ends it with
   `--release`, after `--take-over` from another copy of theirs), and the pull
   requests by state: `held` (withdrawn until the release ends), `admitted`
   (re-armed by the cutting copy's `--admit`), `due` (yours, re-armed on your
-  next act now the release has ended), `stranded` (another person's ended
-  release: listed for them, never re-armed from here) and `skipped` (named for
-  its owner, because its head moved, it was closed or merged, its recorded
-  node id is not the forge's, or it needs a manual merge). Tell the user about
+  next act now the release has ended), `unrecorded` (yours by its record, but
+  no reservation of yours on the branch recorded it first, so nothing
+  re-arms it), `stranded` (another person's ended release: listed for them,
+  never re-armed from here) and `skipped` (named for its owner, because its
+  head moved, it was closed, its recorded node id is not the forge's, it
+  needs a manual merge, or the forge refused its re-arm five times). A merged
+  one is not listed. `ended` counts any tombstone, another person's after a
+  take-over included; `lapsed` is set only while the release still holds
+  pull requests withdrawn or admitted. Tell the user about
   any `lapsed` release, and any `stranded` or `skipped` pull request: its
   owner has to act on it.
 - `lost_withdrawals`: each release claimed in the last 14 days whose branch
-  history records withdrawn pull requests a later commit dropped (an older
-  abcd's renewal), as `subject` and `lost`. Nothing re-arms them; tell the
+  history records withdrawn pull requests a later commit dropped and the tip
+  does not carry (an older abcd's renewal; abcd's own correction after a
+  refused withdrawal keeps the entry as `kept`, so it is never among them), as
+  `subject` and `lost`. Nothing re-arms them; tell the
   user, whose withdrawer re-arms them by hand.
 - `settled`: each ended release of yours whose withdrawn pull requests this
   listing re-armed or skipped, with the tombstone `commit` it pushed,
-  `failures` naming each pull request the forge refused, and `unrecorded`
-  naming each recorded as yours that no reservation of yours recorded first,
-  which nothing acts on.
+  `failures` naming each pull request the forge refused, `unrecorded`
+  naming each recorded as yours that no reservation of yours recorded first
+  (or whose first record another account pushed) and `app_pushed` each whose
+  first record an app pushed, both named once for each tip and never acted
+  on, and `unverified` each the forge's record of pushes does not settle yet
+  (`unverified_why`), which a later act asks about again.
 - `hand_backs_by_holder`: for each holder, the hand-backs of the last 24
   hours: each released tip carrying a hand-back, as `record`, `kind` (one of
   `user-visible`, `trust-rule`, `design-finding`, `second-package`,

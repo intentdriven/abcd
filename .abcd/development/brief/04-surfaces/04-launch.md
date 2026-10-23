@@ -320,11 +320,14 @@ The **hard-fail** gates refuse the release:
 - **The merge hold** (iss-2610222014550692): every open pull request into
   origin's default branch with auto-merge on or in the merge queue, listed
   through `gh`, refuses the cut unless this copy's live release reservation
-  admitted it at the head it now has (`37-reserve.md`, "Withdrawn merges"); the
+  admitted it at the head it now has, an admission the forge's record of
+  pushes says the reader pushed (`37-reserve.md`, "Withdrawn merges"); the
   release pull request opened from the checked-out branch is the cut and is not
   judged. A release reservation of this copy's whose lease lapsed before the
-  release ended refuses the cut too: it holds no merge, and a lapse ends
-  nothing (dcn-2610230328220298). Withdrawals a later commit on a recent
+  release ended, still holding pull requests withdrawn or admitted, refuses
+  the cut too: it holds no merge, and a lapse ends nothing
+  (dcn-2610230328220298). One that lapsed holding nothing is abandoned, and is
+  not named. Withdrawals a later commit on a recent
   release branch dropped are a warning row, `merge-hold-lost`
   (dcn-2610230328242929). A listing
   the forge does not give refuses too, since an armed merge it cannot see may
