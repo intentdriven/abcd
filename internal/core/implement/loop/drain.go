@@ -1368,6 +1368,18 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 		return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s cannot be read as the drain's state: %v", DrainStateRel, err),
 			"the drain writes a regular file in a real directory; restore that, or remove "+DrainStateRel)
 	}
+	// A newer abcd's drain state is refused as that before any strict decode,
+	// as the run state's is (decodeState): a field the newer version added is
+	// never read as a file that does not parse, whose remedy would throw the
+	// newer run's drain away (iss-2610230223231843).
+	var peek struct {
+		SchemaVersion int `json:"schema_version"`
+	}
+	if json.Unmarshal(data, &peek) == nil && peek.SchemaVersion > DrainSchemaVersion {
+		return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s is schema version %d, which a newer abcd wrote; this abcd reads version %d",
+			DrainStateRel, peek.SchemaVersion, DrainSchemaVersion),
+			"run the newer abcd that wrote it (`abcd update` brings this one up to date); do not remove the drain state, which holds the drain")
+	}
 	var st DrainState
 	if err := jsonstrict.Decode(data, &st); err != nil || st.SchemaVersion != DrainSchemaVersion {
 		why := fmt.Sprintf("schema_version %d (this abcd reads %d)", st.SchemaVersion, DrainSchemaVersion)
