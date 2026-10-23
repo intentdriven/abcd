@@ -12,7 +12,7 @@ impact: additive
 origin: researcher-authored
 production_mode: hand-written
 related_adrs: [adr-2609091248200336, adr-2609091248201071]
-related_issues: [iss-2610230014564359, iss-2610231003000222, iss-2610231011465325]
+related_issues: [iss-2610230014564359, iss-2610231003000222, iss-2610231011465325, iss-2610231125086511, iss-2610231125096250]
 ---
 
 # Session and agent worktrees live in a machine-scoped store that abcd lists and reclaims, never beside the user's own projects
