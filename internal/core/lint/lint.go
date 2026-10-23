@@ -418,6 +418,14 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			findings = append(findings, su...)
 		}
 
+		if ssCfg, ok := cfg.Rules[ruleSpecStepsSerial]; ok && ssCfg.Enabled {
+			ss, err := checkSpecStepsSerial(repoRoot, rootAbs, ssCfg, cfg)
+			if err != nil {
+				return nil, err
+			}
+			findings = append(findings, ss...)
+		}
+
 		if fsCfg, ok := cfg.Rules["forbidden_synonyms"]; ok && fsCfg.Enabled {
 			fs, err := checkForbiddenSynonyms(repoRoot, rootAbs, fsCfg)
 			if err != nil {

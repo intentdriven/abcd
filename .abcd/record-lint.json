@@ -303,6 +303,12 @@
       "specs_dir": "specs",
       "intents_dir": "intents"
     },
+    "spec_steps_serial": {
+      "enabled": true,
+      "severity": "warn",
+      "specs_dir": "specs",
+      "intents_dir": "intents"
+    },
     "record_schema": {
       "enabled": true,
       "severity": "blocker",
