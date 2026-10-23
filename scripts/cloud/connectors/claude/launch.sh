@@ -4,12 +4,19 @@
 # starts a session, and to how its failures show up, lives here; send.sh
 # renders the outcome without naming the host (C12).
 #
-# The host's documented launch, read from its documentation on 2026-10-12 (the
-# intent's "What the host offers today"):
+# The host's documented launch, re-read from its CLI reference and cloud
+# environments pages on 2026-10-22 (iss-2610222040438242):
 #
-#   claude -p "<prompt>" --environment <env-id> --ref <branch> --output-format json
+#   claude -p "<prompt>" --environment <ccpool_ id> --ref <branch> --output-format json
 #
-# which returns the session's id and link. The answer's exact JSON fields and
+# which returns the session's id and link. --environment names a self-hosted
+# environment only (a ccpool_ id, Claude Code v2.1.224 or later) and the host
+# rejects an Anthropic-hosted env_ id there; --ref applies only with it. An
+# Anthropic-hosted session is started with `claude --cloud "<task>"`, which
+# takes its environment from the /remote-env default and its branch from the
+# current checkout, and whose output on creation is not documented, so this
+# connector refuses an id that is not self-hosted rather than guess
+# (iss-2610222106115276). The answer's exact JSON fields and
 # the wording of its failures are not documented; the shapes read below are
 # the best reading of the host's usual JSON result and error lines, and the
 # spec's step 12 proves them in a real session. A failure this script cannot
@@ -29,6 +36,8 @@
 #           of explanation on standard error)
 #   exit 8  the host answered without naming a session, so one may have
 #           started
+#   exit 9  the connector cannot start a session in this kind of environment,
+#           so the host was not asked (its reason on standard error)
 # It never retries, never starts anything else in place of a refused start,
 # and writes nothing but a temporary file it removes.
 set -euo pipefail
@@ -40,6 +49,14 @@ fi
 env_id="$1"
 ref="$2"
 brief_file="$3"
+
+case "$env_id" in
+ccpool_*) ;;
+*)
+	echo "launch: $env_id is not a self-hosted environment id (ccpool_...). The host names an environment at the start only for a self-hosted one, and rejects an Anthropic-hosted env_ id; this connector cannot start an Anthropic-hosted session yet (iss-2610222106115276)." >&2
+	exit 9
+	;;
+esac
 
 command -v claude >/dev/null 2>&1 || exit 3
 

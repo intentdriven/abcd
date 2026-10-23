@@ -1,6 +1,6 @@
 module github.com/intentdriven/abcd
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/minio/selfupdate v0.6.0

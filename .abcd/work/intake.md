@@ -39,10 +39,10 @@ code-owner path, and S1 says so explicitly.
 # Provision modules first: the module cache mount is what lets the build work
 # once the network is cut, and the image tag MUST track go.mod's toolchain
 # (an older container refuses a newer `go` directive, and --network=none
-# blocks the GOTOOLCHAIN auto rescue). Bump the tag with go.mod.
+# blocks the GOTOOLCHAIN auto rescue). Bump the tag with go.mod (a test holds it there).
 go mod download
 docker run --rm --network=none -v "$PWD:/src" \
-  -v "$(go env GOMODCACHE):/go/pkg/mod:ro" -w /src golang:1.26.7
+  -v "$(go env GOMODCACHE):/go/pkg/mod:ro" -w /src golang:1.26.10
 ```
 
 `go test` executes contributor Go via `init()` and `TestMain`; a bare run on a

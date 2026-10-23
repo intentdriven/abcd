@@ -22,14 +22,15 @@ answer.
 
 | Verb | Bucket | Status |
 |---|---|---|
-| `mode` | — | shipped |
 | `peers` | — | shipped |
 
 This is the bare command's chapter, so the rule compares its table with the
 command tree in neither direction: the surfaces index is what covers the
-top-level verbs. The rows are the two top-level verbs this chapter documents
-beneath the board, and neither registers a sub-verb of its own. The record-id
-form is a positional on the root, not a sub-verb.
+top-level verbs. The row is the top-level verb this chapter documents beneath
+the board, and it registers no sub-verb of its own. `abcd mode`, which stores
+the badge's state and keeps the away mode, has its own chapter,
+[`26-mode.md`](26-mode.md). The record-id form is a positional on the root,
+not a sub-verb.
 
 ## What ships today
 
@@ -624,12 +625,6 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 | `--no-color` | bool |
 | `--version` | bool |
 | `--view` | string |
-
-### `abcd mode`
-
-Sub-verbs: none.
-
-Flags: none.
 
 ### `abcd peers`
 
