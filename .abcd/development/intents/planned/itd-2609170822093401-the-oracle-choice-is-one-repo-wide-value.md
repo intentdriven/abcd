@@ -154,6 +154,9 @@ several routes, each receipt naming the route that governed it.
 - Hosts that report the model used: on the harness leg the self-report is <!-- cond: cond-2609180535006629 -->
   the only evidence, and a host that cannot name its model cannot be
   checked, so rows for it are advice with a receipt that says so.
+- Escalation applies to tier-routed reviewers only: the agent that writes each <!-- cond: cond-2610230707033758 -->
+  fix round has no level row and never escalates (Decision 6, the product
+  thinker's ruling of 2026-10-23).
 
 ## Decisions
 
@@ -167,6 +170,10 @@ Settled by the technical facilitator on the product thinker's delegation, relaye
 
 4. **A row's fan-out bound is carried, not enforced, until the payload names the agents it used.** Out of Scope lists "Enforcing a fan-out bound at ingest; here a row carries the number and the request block states it". No verb reads the bound before itd-2609180517121254 gives the payload `agents_used`; resolution clamps it to the ceiling (`internal/core/oracle/resolve.go`) and the request block states it, as today.
 5. **The proposal is held to the agent roster at run time and by a test, not by a lint rule.** Out of Scope lists "A lint rule over the tables; run-time reporting is the gate here". An orphan row is reported at run time as a diagnostic (`internal/core/oracle/store.go`), and `TestProposalNamesEveryAgentInTheRosterAndNoOther` keeps the bundled proposal and `agents/` in step both ways.
+
+Ruled by the product thinker on 2026-10-23, relayed by the coordinator:
+
+6. **Escalation covers tier-routed reviewers only.** The agent that writes each fix round has no level row in the routing tables and never moves up a tier, and accepted tables are not offered a new row. A failed round's next round asks one tier up for each reviewer whose route resolves from a tier; a route that names no tier (a runner route, the reviewer route, a pointed role, `host-decides`, the fix agent) is recorded with the gate output and does not move. The scope condition saying so was stamped by `abcd intent plan`, which here carries the product thinker's direct answer of 2026-10-23, relayed by the coordinator, and changes nothing else on the intent.
 
 ## Acceptance Criteria
 
