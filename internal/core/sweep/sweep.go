@@ -26,6 +26,11 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
+// dirtyKept is the reason on a dirty worktree nothing holds, the dry run's and
+// the apply's alike: patch salvage is not built, so it is kept and its
+// changes are not saved.
+const dirtyKept = "dirty, and nothing holds it: kept, since the sweep does not yet save uncommitted changes"
+
 // changesCap bounds each read of a worktree's changed paths: past it the
 // changes read as unknown, which keeps the worktree.
 const changesCap = 4 << 20
@@ -223,7 +228,7 @@ func (j judge) row(r store.Row) Row {
 		return keep("outside the store; never touched", ev...)
 	case r.State == "dirty":
 		row.Action = ActionSavePatch
-		return keep("dirty, and nothing holds it: its changes are saved as a patch and the worktree kept", ev...)
+		return keep(dirtyKept, ev...)
 	case r.Merged == "unmerged":
 		return keep("unmerged", ev...)
 	}

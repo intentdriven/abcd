@@ -248,3 +248,102 @@ func TestApplyExitCodes(t *testing.T) {
 		}
 	})
 }
+
+// TestADirtyWorktreeIsKeptAndSaidToBeUnsaved: patch salvage is not built, so
+// the dry run says a dirty worktree is kept with its changes unsaved, never
+// that they are saved, and the apply says the same.
+func TestADirtyWorktreeIsKeptAndSaidToBeUnsaved(t *testing.T) {
+	repo, _ := sweepRepo(t)
+	p := laneAdd(t, repo, "dirty")
+	write(t, filepath.Join(p, "scratch.txt"), "wip\n")
+
+	dry := rowFor(t, dryRun(t, repo, sweepOpts()), "dirty")
+	if dry.Action != ActionSavePatch || strings.Contains(dry.Reason, "saved as a patch") ||
+		!strings.Contains(dry.Reason, "kept") || !strings.Contains(dry.Reason, "does not yet save") {
+		t.Fatalf("the dry run's dirty row: %+v; want it kept, saying its changes are not saved yet", dry)
+	}
+	applied := rowFor(t, apply(t, repo, sweepOpts()), "dirty")
+	if applied.Outcome != OutcomeKept || applied.Reason != dry.Reason {
+		t.Fatalf("the apply's dirty row: %+v; want it kept with the dry run's reason %q", applied, dry.Reason)
+	}
+}
+
+// failedApply is Apply on a run whose reclaim of the worktree name fails:
+// the run faults, naming want, exits ExitRefused, and the worktree at p is
+// kept and stands.
+func failedApply(t *testing.T, repo *gittest.Repo, o Options, name, p, want string) {
+	t.Helper()
+	res, err := Apply(context.Background(), repo.Root(), o)
+	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, want) {
+		t.Fatalf("Apply over a failed reclaim = %+v, %v; want a fault naming %q, exiting %d", res, err, want, ExitRefused)
+	}
+	r := rowFor(t, res, name)
+	if r.Action != ActionRemove || r.Outcome != OutcomeKept || !strings.Contains(r.Reason, want) {
+		t.Fatalf("the worktree whose reclaim failed: %+v; want it kept, naming %q", r, want)
+	}
+	if !exists(p) {
+		t.Fatal("the worktree stands")
+	}
+}
+
+// TestAFailedReclaimIsAFaultNotAKeep: the store keeps a worktree whose
+// reclaim failed, with no error, as it keeps one it chose to; the sweep tells
+// the two apart, and a failure is a fault exiting ExitRefused, the worktree
+// kept.
+func TestAFailedReclaimIsAFaultNotAKeep(t *testing.T) {
+	t.Run("git refuses the removal", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root removes a directory it cannot write")
+		}
+		repo, _ := sweepRepo(t)
+		p := laneAdd(t, repo, "stuck")
+		commitAt(t, repo, p, "sub/f.txt")
+		repo.Git("merge", "-q", "--ff-only", "stuck")
+		sub := filepath.Join(p, "sub")
+		if err := os.Chmod(sub, 0o555); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(sub, 0o755) })
+		failedApply(t, repo, sweepOpts(), "stuck", p, "git refused the removal")
+	})
+
+	t.Run("the notes cannot be archived", func(t *testing.T) {
+		repo, _ := sweepRepo(t)
+		p := mergedAdd(t, repo, "binary")
+		blob := filepath.Join(p, ".abcd", ".work.local", "blob.bin")
+		if err := os.MkdirAll(filepath.Dir(blob), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(blob, []byte{0, 1, 2, 0xff}, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		failedApply(t, repo, sweepOpts(), "binary", p, "the notes could not be archived")
+	})
+
+	t.Run("a held worktree's archive entry cannot be taken back", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root removes a directory it cannot write")
+		}
+		repo, home := sweepRepo(t)
+		p := mergedAdd(t, repo, "held")
+		write(t, filepath.Join(p, ".abcd", ".work.local", "NEXT.md"), "next\n")
+		calls := 0
+		o := sweepOpts()
+		o.Probe.Processes = func(context.Context) ([]Process, error) {
+			if calls++; calls == 1 {
+				return nil, nil
+			}
+			// The last check before removal: the entry is written, and its
+			// parent is made read-only so taking it back fails.
+			dirs, _ := filepath.Glob(filepath.Join(home, ".abcd.noindex", "notes", "*"))
+			for _, d := range dirs {
+				if err := os.Chmod(d, 0o500); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(d, 0o700) })
+			}
+			return []Process{{PID: 4321, Cwd: p}}, nil
+		}
+		failedApply(t, repo, o, "held", p, "could not be taken back")
+	})
+}
