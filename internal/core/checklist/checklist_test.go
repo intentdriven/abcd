@@ -96,6 +96,15 @@ func TestValidateNamesTheOffendingField(t *testing.T) {
 			c.Items[0].Credential.Scope[1] = bogus
 		}},
 		{"items[1].credential.expiry", func(c *checklist.Checklist) { c.Items[1].Credential.Expiry = bogus }},
+		// time.Parse takes any number of fractional digits; a stamp is never
+		// a place for free data, least of all in a credential (invariant 24).
+		{"items[1].credential.expiry", func(c *checklist.Checklist) {
+			c.Items[1].Credential.Expiry = "2026-10-24T03:10:00." + strings.Repeat("7", 220) + "Z"
+		}},
+		{"updated_at", func(c *checklist.Checklist) { c.UpdatedAt = "2026-10-24T03:10:00." + strings.Repeat("7", 40) + "Z" }},
+		{"items[0].next_look", func(c *checklist.Checklist) {
+			c.Items[0].NextLook = "2026-10-24T03:10:00." + strings.Repeat("7", 40) + "Z"
+		}},
 	}
 	for _, tc := range cases {
 		c := sample()

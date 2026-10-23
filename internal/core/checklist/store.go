@@ -193,9 +193,11 @@ func load(repoRoot string, root *os.Root, sc *scanner.Scanner, scanErr error, re
 	}
 	c, err := Decode(data)
 	if err != nil {
-		// The decoder names an unknown or repeated key by the file's own
-		// spelling, and a key is as able to hold a token as a value is.
-		return Checklist{}, "does not decode (" + scanner.RedactRefusal(repoRoot, err.Error()) + ")"
+		// WHY a fixed sentence: the decoder names an unknown or repeated key by
+		// the file's own spelling, a key is as able to hold a token as a value
+		// is, and a redaction still keeps a fingerprint of it (its head, tail
+		// and length), which invariant 24 counts as a part of the secret.
+		return Checklist{}, "does not decode as one v1 checklist (malformed JSON, or an unknown or repeated key)"
 	}
 	if err := c.Validate(); err != nil {
 		var fe *FieldError

@@ -166,8 +166,8 @@ func (e *FieldError) Error() string { return "checklist: " + e.Field + " " + e.P
 // Decode is the strict decode: exactly one JSON document, no repeated key, no
 // field the schema does not name (jsonstrict.Decode, as every trust-boundary
 // reader decodes). It checks the shape only; Validate checks the values. The
-// error may name an unknown key by the file's own spelling, so a caller that
-// shows it routes it through the scanner's refusal redaction first.
+// error may name an unknown key by the file's own spelling, so a caller never
+// shows it: a redaction keeps a fingerprint, which is still a part of a secret.
 func Decode(data []byte) (Checklist, error) {
 	var c Checklist
 	if err := jsonstrict.Decode(data, &c); err != nil {
@@ -267,7 +267,7 @@ func (cr Credential) validate(at string) error {
 		seen[s] = true
 	}
 	if cr.Expiry != NoExpiry {
-		if _, err := time.Parse(time.RFC3339, cr.Expiry); err != nil {
+		if !isStamp(cr.Expiry) {
 			return refuse(at+".expiry", "must be an RFC 3339 timestamp or "+NoExpiry)
 		}
 	}
@@ -277,10 +277,24 @@ func (cr Credential) validate(at string) error {
 func refuse(field, problem string) error { return &FieldError{Field: field, Problem: problem} }
 
 func checkStamp(field, v string) error {
-	if _, err := time.Parse(time.RFC3339, v); err != nil {
+	if !isStamp(v) {
 		return refuse(field, "must be an RFC 3339 timestamp")
 	}
 	return nil
+}
+
+// maxStampLen is the longest RFC 3339 stamp with nanoseconds and an offset.
+const maxStampLen = len("2006-01-02T15:04:05.999999999-07:00")
+
+// isStamp reports whether v is an RFC 3339 timestamp of at most nanosecond
+// precision. WHY the length cap: time.Parse takes any number of fractional
+// digits, and a stamp is never a place for free data (invariant 24).
+func isStamp(v string) bool {
+	if len(v) > maxStampLen {
+		return false
+	}
+	_, err := time.Parse(time.RFC3339, v)
+	return err == nil
 }
 
 // checkText is the rule for a free-text field: present, valid UTF-8, one line

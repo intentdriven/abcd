@@ -59,11 +59,19 @@ func marshal(t *testing.T, c checklist.Checklist) []byte {
 // literal is ever committed (principle secret-shaped-fixtures-at-runtime).
 func token() string { return "ghp_" + testsecret.Synthetic(2610230805, 36) }
 
-// assertNoEcho fails when text carries the token or any long run of it.
+// assertNoEcho fails when text carries the token, its prefix, or any run of
+// four of its characters: a redaction fingerprint (head, stars, tail) is a part
+// of the secret too (invariant 24).
 func assertNoEcho(t *testing.T, what, text, tok string) {
 	t.Helper()
-	if strings.Contains(text, tok) || strings.Contains(text, tok[4:16]) {
-		t.Errorf("%s repeats the secret: %s", what, text)
+	if strings.Contains(text, tok[:3]) {
+		t.Errorf("%s repeats the secret's prefix: %s", what, text)
+	}
+	for i := 0; i+4 <= len(tok); i++ {
+		if strings.Contains(text, tok[i:i+4]) {
+			t.Errorf("%s repeats part of the secret: %s", what, text)
+			return
+		}
 	}
 }
 
@@ -284,6 +292,7 @@ func TestUnreadableFileFallsBackWithoutEchoing(t *testing.T) {
 	docs := map[string]string{
 		"corrupt":       `{"schema":"abcd/checklist/v1","items":[`,
 		"unknown field": `{"` + tok + `":1,"schema":"abcd/checklist/v1"}`,
+		"repeated key":  `{"schema":"abcd/checklist/v1","` + tok + `":1,"` + tok + `":2}`,
 		"schema":        strings.Replace(string(marshal(t, sample())), `"state":"done"`, `"state":"`+tok+`"`, 1),
 	}
 	for name, doc := range docs {
