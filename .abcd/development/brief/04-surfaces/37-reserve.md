@@ -377,7 +377,14 @@ withdrawing nothing, and an admission or a release is refused.
   requests still withdrawn or admitted; the back-off then says how it ends
   (its holder renews it, or releases it). One that lapsed holding
   nothing is abandoned, and blocks nothing. The launch check names the same
-  lapsed release, and only that one.
+  lapsed release, and only that one. A tombstone over it that its holder did
+  not push ends nothing (see "When a release ends"), so a second release
+  still backs off, naming it. And while the forge's record of pushes cannot
+  settle whether a tombstone ends it, the release is read as still being
+  cut, and the back-off says why; once this copy has failed to settle it for
+  longer than 14 days, a time no writer sets, it is read as ended, so a
+  release abandoned while its record could not be read does not hold every
+  later one back for good.
 - **Withdraw at reserve.** A release reserved anew (every act on it but a
   renewal of this copy's live reservation, so a take-over and a renewal of a
   lapsed one too) pushes its reservation first, so every other session's
@@ -397,8 +404,9 @@ withdrawing nothing, and an admission or a release is refused.
   keeps the record and withdraws only what it already records as this
   person's, withdrawn or `kept`, that the forge has armed (a process cut off
   between the record and the forge, an arming made by hand since, or a
-  withdrawal the forge refused before), and of those only the ones the two
-  readings under "Whose a withdrawal is" vouch for; it names the rest.
+  withdrawal the forge refused before), read from this person's own newest
+  push (see "Whose a withdrawal is"); what another account pushed above it is
+  counted and never read.
 - **The record.** One `Abcd-Withdrawn` trailer a pull request, at most 40 on a
   tip, six fields separated by one space: its number, its node id, the form it
   was armed in (`queue` for a merge-queue entry, which is also the form of one
@@ -422,42 +430,39 @@ withdrawing nothing, and an admission or a release is refused.
   withdrawn ones.
 - **Whose a withdrawal is.** The username on a withdrawal, and a commit's
   holder, are the writer's data, so every act on a withdrawal (the tag sweep,
-  the tombstone sweep, the holder's release, an admission, a live renewal's
-  withdrawal again) honours one only on two readings. The release branch's
-  own history must show the reservation commit that first recorded it,
-  withdrawn, held by that username: the walk reads the first-parent line from
-  the tip, at most 64 commits, and a commit carrying it settled ends the walk,
-  since nothing settled is put back to withdrawn. An entry is the same entry
-  only with every field the forge is asked by unchanged (number, node id,
-  form, head and withdrawer), so a commit that changes any of them, its form
-  included, is that entry's first record. A `kept` entry is vouched for by
-  the withdrawn record beneath the commits that carry it kept. And the forge's activity record of pushes to the branch (the
-  record `abcd status` holds announcements to, C17) must say a person, that
-  username, pushed that commit, with its newest push the one that moved the
-  branch to the tip read, and its pushes must run unbroken down to the push
-  that made the branch (the activity record passes over an entry without a
-  pusher or a commit name, and a record with a push missing from it does not
-  say who carried every commit). Another account's push, or no reservation of
-  theirs recording it, is named in `unrecorded`; an app's push, which says
-  nothing of which person sent it, in `app_pushed`; both once for each tip,
-  never acted on, and the verdict is kept for the tip in the local tier, so
-  the forge is asked once, not on every act. A record read short, not caught
-  up with the tip, broken, or not answering decides nothing: the withdrawal is
-  named `unverified` and a later act asks again. `abcd peers` splits the
-  reader's own withdrawals on an ended release by the same two readings, so
-  one an app or another account pushed never reads as due; the lost walk
-  reads the history alone. A copy that pushes through an app can therefore
-  neither admit nor re-arm its own withdrawals: each is `app_pushed`, for its
-  person to re-arm by hand. A change of state counts only when the
-  withdrawer's own push carried it (dcn-2610230833367984): an entry the tip
-  records settled, where the commit that moved it out of withdrawn or admitted
-  is not one the record says its withdrawer pushed (a commit whose holder is
-  another person's is not, whoever pushed it), is named once for each tip
-  (`restated`) and judged as the entry it was before that commit, so a release
-  re-arms it; one whose change the record does not settle yet is left as it
-  stands, and a later act asks again. A tip that holds none of the person's
-  withdrawals still to settle is read for such a change only while it was
-  claimed within the last 14 days, as the lost walk is.
+  the tombstone sweep, the holder's release, an admission, a renewal's
+  withdrawal again) reads a person's withdrawals on a release only from that
+  person's own newest push to its branch (dcn-2610231033516293): the newest
+  commit the forge's activity record of pushes to the branch (the record
+  `abcd status` holds announcements to, C17) shows that username pushed,
+  walking the first-parent line from the tip, at most 64 commits. The record
+  must place every push it holds on that line, run unbroken down to the push
+  that made the branch, and end at the tip read (the activity record passes
+  over an entry without a pusher or a commit name, and a record with a push
+  missing from it does not say who carried every commit). Commits another
+  account pushed above that newest push are never read: they cannot re-arm,
+  drop, admit or change the person's withdrawals, and each act names them
+  once for each tip, counted by pusher (`not_read`, on the act and in
+  `abcd peers`). The person's own entries are taken from their newest push,
+  every other person's from the tip. When that newest push cannot be found or
+  placed (an app's push above it, which says nothing of which person sent it;
+  the record read short, not caught up with the tip, broken or not
+  answering; a commit the record places several accounts on; or the push past
+  the 64 commits read), abcd does nothing for that person on the release: no
+  re-arm, no withdrawal, no admission, no comment. It says so, once for each
+  tip on an act and on every `abcd peers` (`unplaced`), and a later act asks
+  again; a renewal, an admission or a release over it is refused with nothing
+  pushed. A copy that pushes through an app therefore has no newest push of
+  its own, and abcd acts on none of its withdrawals: its person re-arms them
+  by hand. A renewal or a release over a later commit is judged from the
+  holder's own newest push, so a tombstone another login pushed neither ends
+  nor renews the release, the admissions are kept, and nothing is withdrawn
+  or commented on twice. What the record placed on each commit beneath a tip
+  is kept for that tip in the local tier and read by listings alone (`abcd
+  peers`, the launch check, the one-release-at-a-time check); every act asks
+  the record again, and the local mark of a person with nothing left to do at
+  a tip only ever lets an act do nothing. The lost walk reads the history
+  alone.
 - **Admit.** An admission, the reserve verb naming one pull request on the
   release, from the cutting copy's live reservation alone, reads the pull
   request on the forge, records it admitted on a renewal, and only then
@@ -466,23 +471,24 @@ withdrawing nothing, and an admission or a release is refused.
   second renewal. It is refused from another copy or by another person, on a
   lapsed or released reservation, for a pull request the reservation did not
   withdraw, for one another person withdrew (a release taken over from them:
-  its withdrawer admits it, or takes the release over themselves;
-  dcn-2610230833367984), and for one whose head moved, or that was closed or
-  merged, since; and, since it arms under the cutter's account, unless the two
-  readings under "Whose a withdrawal is" vouch for it: no reservation of the
-  withdrawer's recorded it first, or another account pushed the commit that
-  did; an app pushed that commit; or the record does not settle it yet (the
-  refusal says to run it again in a minute). Nothing is pushed then. An admission of one already admitted reads
+  the refusal names the remedy, that person taking the release back with
+  `--take-over` and admitting it; dcn-2610230833367984), and for one whose
+  head moved, or that was closed or merged, since. A release another person
+  holds refuses the withdrawer's own admission with the same remedy. Since it
+  arms under the cutter's account, it is refused too when the cutter's own
+  newest push cannot be found or placed (see "Whose a withdrawal is"), and
+  the pull request is admitted only as that newest push records it. Nothing
+  is pushed then. An admission of one already admitted reads
   the forge again and arms it when it is not, which finishes an admission cut
   off between its record and its arming. The launch check passes an admitted
-  pull request only at the head it was admitted at, and only when the forge's
-  record of pushes says the reader pushed the reservation's tip and the
-  commit that recorded the admission.
+  pull request only at the head it was admitted at, and only as the reader's
+  own newest push to the branch records it admitted.
 - **When a release ends.** A release ends on its holder's release (including
   after a take-over by the same person from another copy), once its tag is on
-  origin, or on a tombstone on its branch that the holder of the reservation
-  it ends pushed, as the forge's record of pushes says, another person's after
-  a take-over and a release of theirs included. A tombstone its holder did not
+  origin, or on a tombstone of the holder's that is the holder's own newest
+  push to the branch, as the forge's record of pushes says, the holder being
+  the login whose own push made the newest reservation on it (another
+  person's after a take-over and a release of theirs included). A tombstone its holder did not
   push ends nothing (dcn-2610230833367984): it is named once for its tip
   (`not_ended`), nothing is acted on, and `abcd peers` lists none of its
   withdrawals as due. A lapsed lease ends nothing: nothing renews a release

@@ -259,18 +259,18 @@ dcn-2610161040394970). The JSON form adds `reservations` (each live one with
 release being cut), `hand_backs_by_holder` (`holder`,
 `hand_backs` of `record`, `kind` and `released_at`, and `more`),
 `release_withdrawals` (each release's withdrawn pull requests by state: held,
-admitted, due (read against the branch's history and the forge's record of
-pushes, as an act's settle reads them, so one nothing re-arms is never due),
-unrecorded, app_pushed, unverified, stranded for another person, skipped, with `lapsed`
+admitted, due (read from the reader's own newest push to the branch, as the
+forge's record of pushes shows it, as an act's settle reads them, so one
+nothing re-arms is never due), stranded for another person, skipped, with
+`reader`, `not_read` (the commits other accounts pushed above the reader's
+newest push, counted by pusher, never read) and `unplaced` (why that push
+cannot be found or placed, when none of the reader's is listed), `lapsed`
 when its lease lapsed before it ended still holding some, which ends
 nothing, and `not_ended` naming the holder whose tombstone the forge's record
 does not show they pushed, which ends nothing either), `lost_withdrawals` (each recent release's withdrawals a later
 commit dropped), `settled` (each ended release of the reader's whose
-withdrawals the listing re-armed or skipped, with `unrecorded` and
-`app_pushed` naming those it never acts on, `restated` those recorded settled
-by a commit their withdrawer did not push, which it acts on as they stood
-before, and `not_ended`, each once for each tip, `unverified` those the
-forge's record of pushes does not settle yet, and `failures`, a comment not
+withdrawals the listing re-armed or skipped, with `not_read`, `unplaced` and
+`not_ended`, each once for each tip, and `failures`, a comment not
 posted as sent among them, iss-2610222014550692) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and

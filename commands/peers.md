@@ -114,27 +114,27 @@ payload adds:
   which holds a merge, and `text`, the line the text form shows it by. Tell
   the user who is cutting which release, and that merges are held.
 - `release_withdrawals`: each release whose reservation records withdrawn
-  pull requests, with its `subject`, `holder`, `ended` (its tag on `origin`
-  or a tombstone), `lapsed` and `lapsed_at` (its lease lapsed before it
+  pull requests, with its `subject`, `holder`, `ended` (its tag on `origin`,
+  or a tombstone of its holder's that is their own newest push), `lapsed` and `lapsed_at` (its lease lapsed before it
   ended, which ends nothing: its holder renews it, or ends it with
   `--release`, after `--take-over` from another copy of theirs), and the pull
   requests by state: `held` (withdrawn until the release ends), `admitted`
   (re-armed by the cutting copy's `--admit`), `due` (yours, re-armed on your
-  next act now the release has ended: the branch's history and the forge's
-  record of pushes both say you recorded it), `unrecorded` (yours by its
-  record, but no reservation of yours on the branch recorded it first, or
-  another account pushed the commit that did, so nothing re-arms it),
-  `app_pushed` (yours by its record, but an app pushed the commit that
-  recorded it, so you re-arm it by hand), `unverified` with `unverified_why`
-  (the forge's record of pushes does not settle it yet; a later act asks
-  again), `stranded` (another person's ended release: listed for them,
+  next act now the release has ended, as your own newest push to its branch
+  records it), `stranded` (another person's ended release: listed for them,
   never re-armed from here) and `skipped` (named for its owner, because its
   head moved, it was closed, its recorded node id is not the forge's, it
   needs a manual merge, or the forge refused its re-arm five times). A merged
-  one is not listed. `ended` counts any tombstone, another person's after a
-  take-over included; one the holder of the reservation it ends did not push
-  ends nothing, so none of yours on it is `due`, and `not_ended` names that
-  holder. `lapsed` is set only while the release still holds
+  one is not listed. Your own pull requests are listed as your own newest push
+  to the branch records them, never as a commit someone else pushed above it
+  does: `reader` is you, `not_read` counts the commits other accounts pushed
+  above your newest push, by `pusher` and `commits` (never read), and
+  `unplaced` says why your newest push cannot be found or placed in the
+  forge's record of pushes, in which case none of yours is listed. A
+  tombstone ends the release only when it is its holder's own newest push,
+  another person's after a take-over and a release of theirs included; one
+  its holder did not push ends nothing, so none of yours on it is `due`, and
+  `not_ended` names that holder. `lapsed` is set only while the release still holds
   pull requests withdrawn or admitted. Tell the user about
   any `lapsed` release, and any `stranded` or `skipped` pull request: its
   owner has to act on it.
@@ -147,15 +147,12 @@ payload adds:
 - `settled`: each ended release of yours whose withdrawn pull requests this
   listing re-armed or skipped, with the tombstone `commit` it pushed,
   `failures` naming each pull request the forge refused or whose comment was
-  not posted as sent (act `comment`), `restated` naming each recorded settled
-  by a commit you did not push (re-armed as it stood before), `not_ended`
-  naming the holder of a reservation whose tombstone they did not push (it
-  ends nothing, and nothing is re-armed), `unrecorded`
-  naming each recorded as yours that no reservation of yours recorded first
-  (or whose first record another account pushed) and `app_pushed` each whose
-  first record an app pushed, both named once for each tip and never acted
-  on, and `unverified` each the forge's record of pushes does not settle yet
-  (`unverified_why`), which a later act asks about again.
+  not posted as sent (act `comment`), `not_ended` naming the holder of a
+  reservation whose tombstone they did not push (it ends nothing, and nothing
+  is re-armed), `not_read` counting the commits other accounts pushed above
+  your newest push (never read), and `unplaced` saying why your newest push
+  cannot be found or placed (nothing of yours is acted on; a later act asks
+  again), each named once for each tip.
 - `hand_backs_by_holder`: for each holder, the hand-backs of the last 24
   hours: each released tip carrying a hand-back, as `record`, `kind` (one of
   `user-visible`, `trust-rule`, `design-finding`, `second-package`,

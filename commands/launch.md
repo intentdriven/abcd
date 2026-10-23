@@ -139,7 +139,12 @@ text). The cut starts from a frozen branch. Each withdrawal is made through
 `gh` under its token's account, and none is made when that account is not
 yours as the reservation names you. One release is cut at a time: a second
 release reserved while this one is still being cut backs off, whether its
-lease is live or lapsed with pull requests still withdrawn or admitted. To let one of them into the
+lease is live or lapsed with pull requests still withdrawn or admitted. A
+tombstone over it that its holder did not push ends nothing, so the second
+release still backs off; and while the forge's record of pushes cannot settle
+whether a tombstone ends it, it is read as still being cut, and the back-off
+says why, until the record settles it or this copy has failed to settle it
+for 14 days. To let one of them into the
 cut, admit it from the same copy:
 
 ```bash
@@ -149,11 +154,11 @@ cut, admit it from the same copy:
 which records it admitted, then re-arms that pull request in its recorded
 form, pinned to the head it had when withdrawn; one whose head moved since is
 refused, for its owner to re-arm, and the launch check passes an admitted one
-only at the head it was admitted at, and only once the forge's record of
-pushes shows you pushed the admission. Every other withdrawn pull request is
+only at the head it was admitted at, and only as your own newest push to the
+release's branch records it. Every other withdrawn pull request is
 re-armed the same way when the release ends. It ends on `--release` from
-this copy, on a tombstone on its branch that its holder pushed (as the
-forge's record of pushes says), or with its tag on `origin`; after a tag or a
+this copy, on a tombstone that is its holder's own newest push to its branch
+(as the forge's record of pushes says), or with its tag on `origin`; after a tag or a
 tombstone another copy pushed, the next abcd act of any copy of
 yours that fetches the reservations (a reserve, a build or drain start,
 `abcd peers`) re-arms them. **A lapsed lease ends nothing.** The reservation holds
@@ -324,11 +329,11 @@ Seven failures are worth recognising, because each looks like something else.
   cutting copy is gone (a crash, a deleted worktree), end it from another copy
   of yours: `abcd reserve rel-vX.Y.Z --take-over`, then `--release`. An
   `--admit` cut off before it armed its pull request is finished by running
-  the same `--admit` again, or by the release's settle. A re-arm named "not yet
-  verified" waits for the forge's record of who pushed each reservation commit
-  to catch up, and the next abcd act of a copy of yours tries again; one named
-  `unrecorded` or `app_pushed` is never re-armed by abcd, so re-arm it by hand
-  (`/abcd:reserve` says more).
+  the same `--admit` again, or by the release's settle. A release named
+  `unplaced` is one where the forge's record of pushes could not place your
+  own newest push to its branch, so nothing of yours was acted on: the next
+  abcd act of a copy of yours asks again, and when an app pushed above it,
+  re-arm yours by hand (`/abcd:reserve` says more).
 
 ## Preview (`dry-run`)
 
@@ -467,8 +472,9 @@ Then summarise the JSON for the user:
   open pull request into origin's default branch with auto-merge on or in the
   merge queue, through `gh`, and refuses on each that this copy's release
   reservation has not admitted at its current head, the release pull request
-  opened from the checked-out branch excepted, on an admission the forge's
-  record of pushes does not yet show you pushed, and on this copy's release
+  opened from the checked-out branch excepted, on an admission your own
+  newest push to the release's branch does not record, or when that push
+  cannot be found or placed in the forge's record of pushes, and on this copy's release
   reservation when its lease lapsed before the release ended while it still
   holds pull requests withdrawn or admitted; a listing the forge does not give
   refuses too. A `merge-hold-lost` row (warn) appears only
