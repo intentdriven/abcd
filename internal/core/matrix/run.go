@@ -249,8 +249,10 @@ func newRunRecord(in runInputs) (RunRecord, error) {
 	if !runIDRe.MatchString(in.RunID) {
 		return RunRecord{}, fmt.Errorf("%q is not a run id (mx-<yymmddHHMMSS>-<4 hex>)", clip(in.RunID))
 	}
-	if !lab.ValidID(in.Lab) {
-		return RunRecord{}, fmt.Errorf("%q is not a lab id", clip(in.Lab))
+	// The lab id's shape is held where the run is written: lab.OpenProcedure
+	// refuses one that is not a lab's before it touches a path.
+	if err := text("lab", in.Lab); err != nil {
+		return RunRecord{}, err
 	}
 	if !gitutil.IsFullSHA(in.RootSHA) || !gitutil.IsFullSHA(in.FrozenCommit) {
 		return RunRecord{}, errors.New("the root commit and the frozen commit are each a full object name")

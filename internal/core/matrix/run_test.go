@@ -155,7 +155,7 @@ func TestAHashTheRunCannotReadIsListedUnpinnedNeverOmitted(t *testing.T) {
 func TestTheRunRecordIsRefusedWhatItCannotStandOn(t *testing.T) {
 	cases := map[string]func(*runInputs){
 		"run id":               func(in *runInputs) { in.RunID = "mx-1" },
-		"lab id":               func(in *runInputs) { in.Lab = "lab-x" },
+		"no lab":               func(in *runInputs) { in.Lab = "" },
 		"frozen commit":        func(in *runInputs) { in.FrozenCommit = "HEAD" },
 		"binary digest":        func(in *runInputs) { in.Binary.SHA256 = "" },
 		"binary version":       func(in *runInputs) { in.Binary.Version = "" },
@@ -281,6 +281,13 @@ func TestARunIsWrittenUnderItsLabOnceAtThePin(t *testing.T) {
 	}
 	if err := writeRun(r.Root(), rec, in.Declaration); !errors.Is(err, lab.ErrRefused) {
 		t.Fatalf("a second write = %v; want a refusal, never an overwrite", err)
+	}
+
+	// A record naming no lab of this repository is refused before any path.
+	bad := rec
+	bad.Lab = "lab-../../x"
+	if err := writeRun(r.Root(), bad, in.Declaration); !errors.Is(err, lab.ErrRefused) {
+		t.Fatalf("writeRun into a malformed lab id = %v; want ErrRefused", err)
 	}
 
 	// A record whose frozen commit is not the lab's pin is not this lab's run.
