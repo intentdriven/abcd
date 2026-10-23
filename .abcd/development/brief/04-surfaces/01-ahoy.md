@@ -32,6 +32,9 @@ repo whose stamp says it is current.
 | `remote` | — | shipped |
 | `remote apply` | gate | shipped |
 | `uninstall` | — | shipped |
+| `worktree` | — | shipped |
+| `worktree list` | — | shipped |
+| `worktree prune` | — | shipped |
 
 
 Bare `/abcd:ahoy` shows read-only status and mutates nothing. Four read-only
