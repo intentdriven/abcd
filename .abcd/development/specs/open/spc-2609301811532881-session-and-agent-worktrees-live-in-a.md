@@ -115,8 +115,13 @@ whether git lists it or not. Without `--branch` it makes a new branch named
 are; a branch of that name that already exists refuses, naming `--branch <name>`
 as the way to check it out. With `--branch` naming an existing local branch it
 checks that branch out and makes no new one; a `--branch` that names no local
-branch refuses. It runs `git worktree add` through gitutil's isolated
-environment, then `chmod 0o700` on the directory git made, and prints the path
+branch refuses. It runs `git worktree add` the way the person's own git does,
+through `gitutil.WorkingTreeCommitCommand` bounded by `gitutil.CheckoutBound`,
+as the loop's lanes are: the repository's content filters and checkout hooks
+run, and a hook that waits past the bound ends `add` with a refusal and no
+lock left behind (iss-2610111729375108, iss-2610111729399920). It records the
+branch's start commit in the lane (`<lane>/.starts/<name>`), lays the new
+worktree's `.abcd/.work.local/`, then `chmod 0o700` on the directory git made, and prints the path
 home-redacted (text) and as `path` (JSON). The only directories it creates are
 the store's levels and the worktree itself, so nothing is written beside the
 checkout. Exit 0 on success, 2 on any refusal or fault.
