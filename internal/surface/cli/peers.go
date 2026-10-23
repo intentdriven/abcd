@@ -170,12 +170,14 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"first fetched each reservation dated ahead of this computer's clock or\n" +
 			"undated, and keeps there each verdict of the forge's record of pushes that\n" +
 			"never changes. One more act follows it, only when a release has ended (its tag on\n" +
-			"origin, or its tombstone) with pull requests you withdrew for it not yet\n" +
-			"re-armed: a tombstone is pushed first, then each one the forge's record of\n" +
-			"pushes says you recorded is re-armed through gh in the form you recorded,\n" +
-			"pinned to its withdrawn head, or skipped when its head\n" +
+			"origin, or a tombstone its holder pushed) with pull requests you withdrew for\n" +
+			"it not yet re-armed: a tombstone is pushed first, then each one the forge's\n" +
+			"record of pushes says you recorded is re-armed through gh in the form you\n" +
+			"recorded, pinned to its withdrawn head, or skipped when its head\n" +
 			"moved, it was closed or merged, or it can only be merged by hand, and a second\n" +
-			"tombstone records every state (settled). Nothing else is written. The release-tag refs are ordinary\n" +
+			"tombstone records every state (settled). Each pull request re-armed, found\n" +
+			"armed or skipped for its owner then gets one fixed comment, and a comment\n" +
+			"that fails is named in settled.failures. Nothing else is written or posted. The release-tag refs are ordinary\n" +
 			"refs of this checkout, so git log --all lists the commits they name and\n" +
 			"git push --mirror would push them. A checkout with no remote named origin\n" +
 			"lists no reservations.\n" +

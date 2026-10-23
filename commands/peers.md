@@ -17,18 +17,20 @@ updates the remote-tracking reservation branches and the release tags abcd
 keeps under `refs/abcd/release-tags/`, and stamps when it ran in the local
 tier, with when it first fetched each reservation dated ahead of this
 computer's clock or undated. One more act follows the fetch, and only when a
-release you withdrew pull requests for has ended (its tag on `origin`, or its
-tombstone) with some not yet re-armed: a tombstone is pushed to the release's
+release you withdrew pull requests for has ended (its tag on `origin`, or a
+tombstone its holder pushed) with some not yet re-armed: a tombstone is pushed to the release's
 reservation branch first, then each is re-armed through `gh` in the form it
 was taken from (auto-merge or a merge-queue entry), pinned to the head it had
 when withdrawn, or skipped when its head moved, it was closed or merged, its
 recorded node id is not the forge's, or it can merge now with no merge queue
 to put it in, and a second tombstone records each outcome (see
-`/abcd:reserve`). A lease that lapsed ends nothing: the listing reports it,
+`/abcd:reserve`). Each pull request re-armed, found armed or skipped for its
+owner then gets one fixed comment, and a comment that fails is named in
+`settled`'s `failures`. A lease that lapsed ends nothing: the listing reports it,
 and nothing is re-armed. A release another person withdrew pull requests for
 is never re-armed from here: its withdrawals are listed for that person, and
 one recorded as yours that no reservation of yours recorded first is named
-and left alone. Nothing else is written. The release-tag
+and left alone. Nothing else is written or posted. The release-tag
 refs are ordinary refs in this checkout, so `git log --all` lists the commits
 they name and `git push --mirror` would push them.
 
@@ -130,7 +132,9 @@ payload adds:
   head moved, it was closed, its recorded node id is not the forge's, it
   needs a manual merge, or the forge refused its re-arm five times). A merged
   one is not listed. `ended` counts any tombstone, another person's after a
-  take-over included; `lapsed` is set only while the release still holds
+  take-over included; one the holder of the reservation it ends did not push
+  ends nothing, so none of yours on it is `due`, and `not_ended` names that
+  holder. `lapsed` is set only while the release still holds
   pull requests withdrawn or admitted. Tell the user about
   any `lapsed` release, and any `stranded` or `skipped` pull request: its
   owner has to act on it.
@@ -142,7 +146,11 @@ payload adds:
   user, whose withdrawer re-arms them by hand.
 - `settled`: each ended release of yours whose withdrawn pull requests this
   listing re-armed or skipped, with the tombstone `commit` it pushed,
-  `failures` naming each pull request the forge refused, `unrecorded`
+  `failures` naming each pull request the forge refused or whose comment was
+  not posted as sent (act `comment`), `restated` naming each recorded settled
+  by a commit you did not push (re-armed as it stood before), `not_ended`
+  naming the holder of a reservation whose tombstone they did not push (it
+  ends nothing, and nothing is re-armed), `unrecorded`
   naming each recorded as yours that no reservation of yours recorded first
   (or whose first record another account pushed) and `app_pushed` each whose
   first record an app pushed, both named once for each tip and never acted

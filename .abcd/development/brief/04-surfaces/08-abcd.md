@@ -263,12 +263,15 @@ admitted, due (read against the branch's history and the forge's record of
 pushes, as an act's settle reads them, so one nothing re-arms is never due),
 unrecorded, app_pushed, unverified, stranded for another person, skipped, with `lapsed`
 when its lease lapsed before it ended still holding some, which ends
-nothing), `lost_withdrawals` (each recent release's withdrawals a later
+nothing, and `not_ended` naming the holder whose tombstone the forge's record
+does not show they pushed, which ends nothing either), `lost_withdrawals` (each recent release's withdrawals a later
 commit dropped), `settled` (each ended release of the reader's whose
 withdrawals the listing re-armed or skipped, with `unrecorded` and
-`app_pushed` naming those it never acts on, once for each tip, and
-`unverified` those the forge's record of pushes does not settle yet,
-iss-2610222014550692) and `view`
+`app_pushed` naming those it never acts on, `restated` those recorded settled
+by a commit their withdrawer did not push, which it acts on as they stood
+before, and `not_ended`, each once for each tip, `unverified` those the
+forge's record of pushes does not settle yet, and `failures`, a comment not
+posted as sent among them, iss-2610222014550692) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and
 exits 1; the peer rows are unchanged. A checkout with no remote named

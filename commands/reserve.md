@@ -156,8 +156,9 @@ It renews the reservation recording that one admitted, then re-arms it in its
 recorded form, pinned to its withdrawn head (`act: admitted`, `admitted`). It
 is refused (exit 2, nothing pushed) from any other copy, by any other person,
 on a lapsed or released reservation, for a pull request the reservation did
-not withdraw, and for one whose head moved, or that was closed or merged,
-since. It is also refused, since an admission arms the pull request under your
+not withdraw, for one another person withdrew (a release you took over: its
+withdrawer admits it, or takes the release over themselves), and for one whose
+head moved, or that was closed or merged, since. It is also refused, since an admission arms the pull request under your
 account, unless the forge's record of pushes shows you pushed the commit that
 first recorded the withdrawal: when no reservation of yours recorded it first,
 or another account pushed the commit that did; when an app pushed that commit
@@ -173,8 +174,12 @@ pushes shows you pushed the reservation and the admission.
 Every other withdrawn pull request is re-armed when the release ends, and an
 admitted one is checked on the forge and armed if it is not. A release ends
 in any of these ways: `--release` from the cutting copy; its tag on `origin`;
-or any tombstone on its branch, including one another person pushed after
-taking the reservation over and releasing it. `--release` pushes the tombstone
+or a tombstone on its branch that the holder of the reservation it ends
+pushed, as the forge's record of pushes says, including another person who
+took the reservation over and released it. A tombstone its holder did not
+push ends nothing: it is named once for its tip (a settle's `not_ended`, and
+`/abcd:peers`), and nothing is re-armed until the holder's `--release` or the
+tag. `--release` pushes the tombstone
 first, with every withdrawal as it stands, then re-arms; once the tag is on
 `origin`, the next act of any copy of the same person that fetches the
 reservations (any reserve, a build or drain start, `/abcd:peers`) does the
@@ -226,7 +231,12 @@ answering, or with a push missing from it) is named `unverified`, with
 `unverified_why`, and a later act asks again. A copy that pushes through an app
 (a hosted session's installation token, say) can therefore neither admit nor
 re-arm its own withdrawals: every one is `app_pushed`, and the person re-arms
-each by hand after the cut. A copy of another person
+each by hand after the cut. A change of a withdrawal's state counts only when
+its withdrawer pushed it too: one the tip records settled (`kept`, re-armed,
+skipped) where the commit that moved it out of withdrawn or admitted is not
+one the forge's record says its withdrawer pushed is named once for each tip
+(`restated`) and acted on as it stood before that commit, so the release
+re-arms it, and a reservation made over such a tombstone carries it. A copy of another person
 never re-arms: a reservation it makes over the release carries the
 withdrawals forward untouched (`stranded`, and a `note:` line naming whose
 they are), and `/abcd:peers` names them (`release_withdrawals`). A
@@ -237,26 +247,41 @@ older abcd that renews the release drops the record that way. abcd's own
 correction after a withdrawal the forge refused keeps that entry (`kept`)
 instead, so it is never reported lost.
 
-**A comment on each pull request it acts on.** Each change of state abcd
-records for a pull request is also posted on it, as one fixed sentence naming
-the release's tag: withdrawn ("abcd release hold: the merge of #1234 is
-withdrawn by octo while release v0.16.0 is cut, and is re-armed after it."),
-admitted, re-armed (or armed again, for one found armed already), or not
-re-armed with its state as the reason (`moved`, `closed`, `merged`,
-`mismatch`, `manual`, `refused`). It carries
-nothing but validated fields: no session URL, no tool footer, and the
-withdrawer's login without an at-sign, so it notifies no one. Each one is
-judged by the outbound policy the commit-msg hook judges a commit message by
-before it is posted, and a body the policy refuses is never posted; once
-posted it is read back from the forge, and one that reads back as other than
-what was sent (a footer appended, say) is reported for you to correct on the
-pull request, never edited. A comment is posted only once the push recording
-its change of state has landed, so a renewal that withdraws again what it
-already records, an admission run again, and a second copy whose settle does
-not land post nothing, and a re-arm whose tombstone was not pushed is
-commented on by the act that next records it. A comment that fails is named in `forge_failures` (or
-a settle's `failures`) with act `comment`, and never holds up or undoes the
-withdrawal or the re-arm it reports.
+**A comment on each pull request it acts on.** abcd posts one fixed sentence
+on a pull request, naming the release's tag, when it does one of these, once
+the push recording it has landed:
+
+- withdraws it whole (auto-merge off, and out of the queue): "abcd release
+  hold: the merge of #1234 is withdrawn by octo while release v0.16.0 is cut,
+  and is re-armed after it." Every such disarm is posted, a live renewal's
+  withdrawal again included (after a run cut off before the forge, or after
+  its owner re-armed it by hand);
+- admits it: "abcd release hold: the merge of #1234 is admitted into release
+  v0.16.0 by octo.";
+- re-arms it: "abcd release hold: the merge of #1234 is re-armed; the hold for
+  release v0.16.0 has ended.", or finds it armed already: "abcd release hold:
+  the merge of #1234 is armed; the hold for release v0.16.0 has ended.";
+- leaves it for its owner: "abcd release hold: the merge of #1234 is not
+  re-armed; the hold for release v0.16.0 has ended." and one clause saying
+  why: its head changed while it was held (`moved`), it can merge now and
+  there is no merge queue (`manual`), GitHub refused to re-arm it five times
+  (`refused`), or it was closed or merged.
+
+Nothing is posted for a withdrawal the forge refused (`kept`), a partial one
+(auto-merge off but still queued, which `forge_failures` names), a node id
+that is not the forge's for its number (`mismatch`), an admission run again,
+or a second copy whose settle does not land; a re-arm whose tombstone was not
+pushed is posted by the act that next records it. The sentence carries
+nothing but validated fields: no session URL, no tool footer, and the login
+without an at-sign, so it mentions no one (every subscriber of the pull
+request is notified, as by any comment). Each one is judged by the outbound
+policy the commit-msg hook judges a commit message by before it is posted,
+and a body the policy refuses is never posted; once posted it is read back
+from the forge, and one that reads back as other than what was sent (a footer
+appended, say) is reported for you to correct on the pull request, never
+edited. A comment that fails is named in `forge_failures` (or a settle's
+`failures`) with act `comment`, and never holds up or undoes the withdrawal
+or the re-arm it reports.
 
 **Failures are loud and lose nothing.** A withdrawal or re-arm the forge
 refuses is named in `forge_failures` (`number`, `act`, `reason`) and on

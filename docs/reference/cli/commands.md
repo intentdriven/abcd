@@ -4215,12 +4215,14 @@ refs/abcd/release-tags/, stamps when it ran in the local tier, with when it
 first fetched each reservation dated ahead of this computer's clock or
 undated, and keeps there each verdict of the forge's record of pushes that
 never changes. One more act follows it, only when a release has ended (its tag on
-origin, or its tombstone) with pull requests you withdrew for it not yet
-re-armed: a tombstone is pushed first, then each one the forge's record of
-pushes says you recorded is re-armed through gh in the form you recorded,
-pinned to its withdrawn head, or skipped when its head
+origin, or a tombstone its holder pushed) with pull requests you withdrew for
+it not yet re-armed: a tombstone is pushed first, then each one the forge's
+record of pushes says you recorded is re-armed through gh in the form you
+recorded, pinned to its withdrawn head, or skipped when its head
 moved, it was closed or merged, or it can only be merged by hand, and a second
-tombstone records every state (settled). Nothing else is written. The release-tag refs are ordinary
+tombstone records every state (settled). Each pull request re-armed, found
+armed or skipped for its owner then gets one fixed comment, and a comment
+that fails is named in settled.failures. Nothing else is written or posted. The release-tag refs are ordinary
 refs of this checkout, so git log --all lists the commits they name and
 git push --mirror would push them. A checkout with no remote named origin
 lists no reservations.

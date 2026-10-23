@@ -790,7 +790,9 @@ merge armed or queued before it, recording each, so the cut starts from a
 frozen branch; the cutting copy admits one through the reserve verb, and the rest are re-armed in their own form, pinned to their
 withdrawn heads, once the release ends: on its holder's release, or its tag on
 origin, never on a lapsed lease (`37-reserve.md`, "Withdrawn merges"). The
-merge-hold gate (§ 1) refuses the cut while any merge the reservation does not
+hold comments on each pull request it withdraws, admits and re-arms, or leaves
+for its owner, one fixed sentence naming the release (dcn-2610230833367984).
+The merge-hold gate (§ 1) refuses the cut while any merge the reservation does not
 account for is armed, so the cut's runbook (`commands/launch.md`) has the
 cutting session run the preview again just before it merges the release pull
 request, and tell people working in the repository by hand to hold.

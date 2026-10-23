@@ -152,8 +152,9 @@ refused, for its owner to re-arm, and the launch check passes an admitted one
 only at the head it was admitted at, and only once the forge's record of
 pushes shows you pushed the admission. Every other withdrawn pull request is
 re-armed the same way when the release ends. It ends on `--release` from
-this copy, on any tombstone on its branch, or with its tag on `origin`; after
-a tag or a tombstone another copy pushed, the next abcd act of any copy of
+this copy, on a tombstone on its branch that its holder pushed (as the
+forge's record of pushes says), or with its tag on `origin`; after a tag or a
+tombstone another copy pushed, the next abcd act of any copy of
 yours that fetches the reservations (a reserve, a build or drain start,
 `abcd peers`) re-arms them. **A lapsed lease ends nothing.** The reservation holds
 for 24 hours and nothing renews it by itself: past that, while it still holds
@@ -165,7 +166,10 @@ check judges the merges armed as for a copy holding no release. One whose head m
 that was closed or merged meanwhile, or that can merge now with no merge
 queue to put it in (abcd never merges it for its owner), is skipped and named
 for its owner. A copy of another person never re-arms your withdrawals: it
-names them instead.
+names them instead. The hold also comments on each pull request it
+withdraws, admits, re-arms or leaves for its owner, one fixed sentence naming
+the release (see `/abcd:reserve`), so its owner sees why it stopped and when
+the hold ended.
 
 A withdrawal the forge refuses (no permission, no network) is named by number
 and reason (`forge_failures`, and a `warning:` line on stderr) and the
@@ -313,7 +317,8 @@ Seven failures are worth recognising, because each looks like something else.
 - **Other people's pull requests stay disarmed after a cut, or the
   `merge-hold` row refuses on a lapsed reservation.** The release reservation
   withdrew them, and nothing re-arms them until the release ends: its tag on
-  `origin`, `--release`, or any tombstone on its branch. A lapsed lease ends
+  `origin`, `--release`, or a tombstone on its branch its holder pushed (one
+  they did not push ends nothing, and is named). A lapsed lease ends
   nothing, so renew it from the cutting copy (`abcd reserve rel-vX.Y.Z`) and
   finish the cut, or end it with `abcd reserve rel-vX.Y.Z --release`. When the
   cutting copy is gone (a crash, a deleted worktree), end it from another copy

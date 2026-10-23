@@ -448,7 +448,16 @@ withdrawing nothing, and an admission or a release is refused.
   one an app or another account pushed never reads as due; the lost walk
   reads the history alone. A copy that pushes through an app can therefore
   neither admit nor re-arm its own withdrawals: each is `app_pushed`, for its
-  person to re-arm by hand.
+  person to re-arm by hand. A change of state counts only when the
+  withdrawer's own push carried it (dcn-2610230833367984): an entry the tip
+  records settled, where the commit that moved it out of withdrawn or admitted
+  is not one the record says its withdrawer pushed (a commit whose holder is
+  another person's is not, whoever pushed it), is named once for each tip
+  (`restated`) and judged as the entry it was before that commit, so a release
+  re-arms it; one whose change the record does not settle yet is left as it
+  stands, and a later act asks again. A tip that holds none of the person's
+  withdrawals still to settle is read for such a change only while it was
+  claimed within the last 14 days, as the lost walk is.
 - **Admit.** An admission, the reserve verb naming one pull request on the
   release, from the cutting copy's live reservation alone, reads the pull
   request on the forge, records it admitted on a renewal, and only then
@@ -456,8 +465,10 @@ withdrawing nothing, and an admission or a release is refused.
   withdrawn head; an arming the forge refuses is put back to withdrawn by a
   second renewal. It is refused from another copy or by another person, on a
   lapsed or released reservation, for a pull request the reservation did not
-  withdraw, and for one whose head moved, or that was closed or merged,
-  since; and, since it arms under the cutter's account, unless the two
+  withdraw, for one another person withdrew (a release taken over from them:
+  its withdrawer admits it, or takes the release over themselves;
+  dcn-2610230833367984), and for one whose head moved, or that was closed or
+  merged, since; and, since it arms under the cutter's account, unless the two
   readings under "Whose a withdrawal is" vouch for it: no reservation of the
   withdrawer's recorded it first, or another account pushed the commit that
   did; an app pushed that commit; or the record does not settle it yet (the
@@ -469,8 +480,12 @@ withdrawing nothing, and an admission or a release is refused.
   commit that recorded the admission.
 - **When a release ends.** A release ends on its holder's release (including
   after a take-over by the same person from another copy), once its tag is on
-  origin, or on any tombstone on its branch, another person's after a
-  take-over and a release of theirs included. A lapsed lease ends nothing: nothing renews a release
+  origin, or on a tombstone on its branch that the holder of the reservation
+  it ends pushed, as the forge's record of pushes says, another person's after
+  a take-over and a release of theirs included. A tombstone its holder did not
+  push ends nothing (dcn-2610230833367984): it is named once for its tip
+  (`not_ended`), nothing is acted on, and `abcd peers` lists none of its
+  withdrawals as due. A lapsed lease ends nothing: nothing renews a release
   lease by itself, so a slow cut's lease lapses while it is still being cut,
   and the lapse is reported (`abcd peers`, and the launch check refuses the
   cut), never acted on. After a crash, the same person ends it from another
@@ -519,20 +534,28 @@ withdrawing nothing, and an admission or a release is refused.
   it by hand. abcd's own correction after a refused withdrawal keeps the
   entry (`kept`), so it never reads as lost.
 - **A comment on each pull request acted on** (dcn-2610230712084099,
-  superseding dcn-2610230328230097). Each change of state a push records for
-  a pull request (withdrawn, admitted, re-armed or found armed again, or not
-  re-armed with its state word as the reason) is posted on it as one fixed sentence naming the
-  release's tag, through `gh`'s `addComment` (pinned in ghcontract's
-  `graphql-fields.txt`). Every value in it is validated data, the
-  withdrawer's login carries no at-sign, and the body is judged by the
-  outbound policy before it is posted, a refused one never posted. The
-  comment is read back from the forge by the id it answered with; one that
-  reads back as other than what was sent is reported, never edited. It is
-  posted only after the push recording that state lands, and only for an
-  entry whose state that push changed, so a retry, a repeated `--admit` and a
-  second copy whose settle does not land post nothing. A comment that fails is
-  a `comment` failure, named by number and reason, and never holds up or
-  undoes the act it reports.
+  superseding dcn-2610230328230097; the sentences dcn-2610230833367984). abcd
+  posts one fixed sentence naming the release's tag, through `gh`'s
+  `addComment` (pinned in ghcontract's `graphql-fields.txt`), on a pull
+  request it withdraws whole ("the merge of #N is withdrawn by LOGIN while
+  release vX is cut, and is re-armed after it."), admits ("is admitted into
+  release vX by LOGIN.", the admitter, who is the withdrawer), re-arms ("is
+  re-armed; the hold for release vX has ended."), finds armed already ("is
+  armed; the hold for release vX has ended.") or leaves for its owner ("is not
+  re-armed; the hold for release vX has ended." and one clause from a closed
+  set: head moved, no merge queue, refused five times, closed, merged), each
+  prefixed "abcd release hold: ". Every real disarm is posted, a live
+  renewal's withdrawal again included; nothing is posted for a refused (`kept`)
+  or partial withdrawal, a `mismatch`, any other state, an admission run
+  again, or a second copy whose settle does not land. Every value in it is
+  validated data, the login carries no at-sign, so it mentions no one (every
+  subscriber of the pull request is notified, as by any comment), and the body
+  is judged by the outbound policy before it is posted, a refused one never
+  posted. The comment is read back from the forge by the id it answered with;
+  one that reads back as other than what was sent is reported, never edited.
+  It is posted only after the push recording that state lands. A comment that
+  fails is a `comment` failure, named by number and reason, and never holds up
+  or undoes the act it reports.
 - **Failures are loud and lose nothing.** A withdrawal the forge refuses
   (no permission, no network) leaves the reservation standing and is named
   by number and reason, and the second renewal records it `kept`, which the
