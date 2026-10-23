@@ -38,38 +38,47 @@ Each working copy keeps one checklist (dcn-2610180913444971), a JSON file in its
 
 1. **Schema, store and atomic write**
    Tests: round-trip; a torn temp file is ignored; a schema violation is refused; a secret in each field kind is refused and the match is never echoed; last-good is written only from a validated, scanned write; a hand-edited file with a secret never becomes last-good (technical criterion 3, story 7).
+   - needs: none
    - packages: internal/core/checklist
    - tests: internal/core/checklist
 2. **The `abcd checklist` verbs**
    Tests: each verb and its JSON output, and the generated surface chapter.
+   - needs: 1
    - packages: internal/surface/cli, commands/checklist.md
    - tests: internal/surface/cli
 3. **Render and injection for all four sources**
    Tests: each source injects; the budget is computed against the hook's whole output with the away block present; over budget cuts and says so; a corrupt or secret-bearing file falls back to a scanned last-good; both failing inject only the line (technical criteria 1 and 3, story 2).
+   - needs: 1
    - packages: internal/core/checklist, internal/surface/cli
    - tests: internal/core/checklist, internal/surface/cli
 4. **The behind check**
    Tests: an unlisted reservation, pull request or branch blocks once while away, naming it; the slice's bound holds; while present, the next prompt carries the note and the stop is not blocked; no network call while present (story 3).
+   - needs: 1
    - packages: internal/core/autonomy, internal/surface/cli
    - tests: internal/core/autonomy, internal/surface/cli
 5. **The file-tool refusal on the checklist path**
    Tests: each file tool is refused; a shell write is not refused, and the reader catches it (step 3's tests).
+   - needs: none
    - packages: internal/core/guard, hooks
    - tests: internal/core/guard
 6. **The PreCompact event sidecar**
    Tests: it records, and it never blocks.
+   - needs: 1
    - packages: internal/surface/cli, hooks
    - tests: internal/surface/cli
 7. **The crash lab**
    The kill loop and the power-cycle receipts, recorded in a dated research note (technical criterion 2).
+   - needs: 1
    - packages: internal/core/checklist
    - tests: internal/core/checklist
 8. **A live capture in a real Claude Code session**
    Write three items; force `/compact` and show the context after compaction holds them; repeat with an automatic compaction on a long session. Script output alone is not the proof (story 2).
+   - needs: 2, 3
    - packages: internal/surface/cli
    - tests: internal/surface/cli
 9. **Docs and brief**
    The command page, a new surface chapter and the format in the internals, then `go generate ./internal/surface/cli`; invariant 24 is rewritten to the present tense, naming the tests that hold it.
+   - needs: 2, 3, 4, 5, 6
    - packages: commands/checklist.md, .abcd/development/brief/04-surfaces, .abcd/development/brief/05-internals, .abcd/development/brief/02-constraints/03-invariants.md
    - tests: internal/surface/cli
 
