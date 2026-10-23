@@ -236,6 +236,42 @@ func TestRefusalsNeverRepeatWhatWasPassed(t *testing.T) {
 				_ = os.WriteFile(p, b, 0o644)
 				return []string{"ahoy", "install", "--answers", p}
 			}, code: 2, names: []string{"the answers file", "adopt", "yes"}},
+		{name: "ahoy install --answers id twice", setup: scratchRepo,
+			args: func(dir, m string) []string {
+				return []string{"ahoy", "install", "--answers", setupAnswersFileFor(t, dir, ahoy.SetupInterview,
+					[]map[string]string{{"id": m, "value": "yes"}, {"id": m, "value": "no"}})}
+			}, code: 2, names: []string{"answer 2", "earlier answer"}},
+		{name: "ahoy install --answers answered_in", setup: scratchRepo,
+			args: func(dir, m string) []string {
+				return []string{"ahoy", "install", "--answers", setupAnswersFileFor(t, dir, ahoy.SetupInterview,
+					[]map[string]string{{"id": "adopt", "value": "yes", "answered_in": m}})}
+			}, code: 2, names: []string{"answer 1", "answered_in"}},
+		{name: "ahoy install --answers interview", setup: scratchRepo,
+			args: func(dir, m string) []string {
+				return []string{"ahoy", "install", "--answers", setupAnswersFileFor(t, dir, m, nil)}
+			}, code: 2, names: []string{"another interview", ahoy.SetupInterview}},
+		{name: "ahoy install --answers unknown key", setup: scratchRepo,
+			args: func(dir, m string) []string {
+				return []string{"ahoy", "install", "--answers", setupAnswersFileFor(t, dir, ahoy.SetupInterview,
+					[]map[string]string{{"id": "adopt", "value": "yes", m: "x"}})}
+			}, code: 2, names: []string{"does not define"}},
+		// The intent pre-pass: its id operand and its findings file.
+		{name: "intent prepass id", setup: scratchRepo,
+			args: func(_, m string) []string { return []string{"intent", "prepass", m} }, code: 2,
+			names: []string{"first argument", "itd-N"}},
+		{name: "intent prepass absent id", setup: scratchRepo,
+			args: func(_, _ string) []string { return []string{"intent", "prepass", "itd-" + portMarker} },
+			hide: func(string) string { return portMarker }, code: 2, names: []string{"first argument"}},
+		{name: "intent prepass --findings-json missing", setup: scratchRepo,
+			args: func(dir, m string) []string {
+				return []string{"intent", "prepass", "itd-1", "--findings-json", filepath.Join(dir, m)}
+			}, code: 2, names: []string{"--findings-json"}},
+		{name: "intent prepass --findings-json directory", setup: scratchRepo,
+			args: func(dir, m string) []string {
+				p := filepath.Join(dir, m)
+				_ = os.MkdirAll(p, 0o755)
+				return []string{"intent", "prepass", "itd-1", "--findings-json", p}
+			}, code: 2, names: []string{"the findings file"}},
 		// Paths the caller typed.
 		{name: "lint docs --config", setup: scratchRepo,
 			args: func(dir, m string) []string {
@@ -323,8 +359,28 @@ func TestRefusalsNeverRepeatWhatWasPassed(t *testing.T) {
 }
 
 // portMarker is the run's number for --port: a flag that takes a number
-// cannot carry the letter marker.
+// cannot carry the letter marker. An intent id's digits reuse it.
 var portMarker = digitsMarker()
+
+// setupAnswersFileFor writes an answers file for the named interview into dir and
+// returns its path.
+func setupAnswersFileFor(t *testing.T, dir, name string, answers []map[string]string) string {
+	t.Helper()
+	if answers == nil {
+		answers = []map[string]string{}
+	}
+	b, err := json.Marshal(map[string]any{
+		"schema_version": interview.SchemaVersion,
+		"interview":      name,
+		"answers":        answers,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "answers.json")
+	writeScratch(t, p, string(b))
+	return p
+}
 
 // TestRefusalHelpersNeverRepeatWhatWasPassed covers the refusals that only a
 // running install, interview, hook or release cut reaches, by calling the
