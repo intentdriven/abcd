@@ -13,7 +13,9 @@
 //     proof's remaining blind spot is a process run as root, or one in a tree
 //     shared through its group: such a process, like one under a hidepid
 //     /proc or in another pid namespace, is invisible to the process table.
-//     That is a documented gap, not a case the probe fails closed on.
+//     That is a documented gap, not a case the probe fails closed on. A /proc
+//     that does not list this process at all is empty or another's, and the
+//     check fails closed on it.
 //   - The process table is read once, when the probe is made. A process that
 //     starts after that is not seen, so a caller removing a worktree makes a
 //     fresh probe immediately before each removal, never reusing one.
@@ -31,9 +33,11 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
@@ -58,7 +62,8 @@ const (
 type EvidenceKind string
 
 const (
-	// KindReservation, KindRun and KindProcess are the three proofs.
+	// KindReservation, KindRun and KindProcess are the three proofs. A
+	// process whose directory lsof printed escaped is a KindProcess hint.
 	KindReservation EvidenceKind = "reservation"
 	KindRun         EvidenceKind = "run"
 	KindProcess     EvidenceKind = "process"
@@ -102,6 +107,11 @@ type Liveness struct {
 type Process struct {
 	PID int
 	Cwd string
+	// Escaped marks a working directory lsof printed with an escape in it.
+	// Cwd is then only the text before the first backslash or caret: the real
+	// directory's leading bytes, cut wherever the escape fell, perhaps in the
+	// middle of a name.
+	Escaped bool
 }
 
 // ProcessLister lists the running processes' working directories. An error
@@ -169,6 +179,7 @@ type Probe struct {
 	owner        OwnerCheck
 	runs         []loop.State
 	processes    []Process
+	escaped      []escapedCwd
 	unavailable  string
 	unread       string
 }
@@ -208,11 +219,33 @@ func NewProbe(ctx context.Context, o ProbeOptions) *Probe {
 	// real locations on both sides, so a cwd reached through a symlink, or a
 	// /var that is really /private/var, still lands inside the worktree.
 	for _, proc := range procs {
-		if filepath.IsAbs(proc.Cwd) {
+		switch {
+		case !filepath.IsAbs(proc.Cwd):
+		case proc.Escaped:
+			p.escaped = append(p.escaped, escapedCwd{lit: proc.Cwd, real: realPrefix(proc.Cwd)})
+		default:
 			p.processes = append(p.processes, Process{PID: proc.PID, Cwd: fsutil.RealExistingPath(proc.Cwd)})
 		}
 	}
 	return p
+}
+
+// escapedCwd is the literal prefix of a working directory lsof printed
+// escaped: lit as printed, and real with its existing part's symlinks resolved.
+type escapedCwd struct {
+	lit, real string
+}
+
+// realPrefix resolves a literal prefix as the plain directories are resolved,
+// keeping a trailing slash, which marks the prefix as ending on a name
+// boundary: resolving would drop it and widen the prefix to every sibling
+// whose name extends the last one.
+func realPrefix(lit string) string {
+	real := fsutil.RealExistingPath(lit)
+	if strings.HasSuffix(lit, "/") && !strings.HasSuffix(real, "/") {
+		real += "/"
+	}
+	return real
 }
 
 // ProcessCheckUnavailable is why the process check could not be made, "" when
@@ -244,9 +277,13 @@ func (p *Probe) Judge(w Worktree) Liveness {
 	ev = append(ev, p.reservationsHolding(wt, w.Changed)...)
 	if w.Changed == nil {
 		ev = append(ev, Evidence{Kind: KindChanges, Strength: Hint, Detail: "changes unknown"})
+	} else if e, ok := unreadableChange(w.Changed); ok {
+		ev = append(ev, e)
 	}
 	ev = append(ev, p.lanesNaming(wt)...)
 	if e, ok := p.processIn(wt); ok {
+		ev = append(ev, e)
+	} else if e, ok := p.escapedNear(wt); ok {
 		ev = append(ev, e)
 	}
 	if p.unavailable != "" {
@@ -355,9 +392,47 @@ func foreignOwner(wt string) (int, bool, error) {
 	return self, false, nil
 }
 
+// unreadableChange is the hint for a changed path that is not a clean
+// repository-relative one (a backslash in it, say): no footprint can be
+// compared with it, so none can be shown not to cover it, and the worktree is
+// kept as it is when its changes are unknown. "" and "." name no path at all
+// and are passed over.
+func unreadableChange(changed []string) (Evidence, bool) {
+	var first string
+	n := 0
+	for _, c := range changed {
+		if c == "" || c == "." || fsutil.ValidRelPath(c) {
+			continue
+		}
+		if n == 0 {
+			first = c
+		}
+		n++
+	}
+	if n == 0 {
+		return Evidence{}, false
+	}
+	detail := "changes unreadable: " + printable(first)
+	if n > 1 {
+		detail += fmt.Sprintf(" (and %d more)", n-1)
+	}
+	return Evidence{Kind: KindChanges, Strength: Hint, Detail: detail}, true
+}
+
+// printable is s as it is, or quoted when it holds a byte a terminal would act
+// on rather than show, so a reason stays one readable line.
+func printable(s string) string {
+	if strings.IndexFunc(s, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
+		return strconv.Quote(s)
+	}
+	return s
+}
+
 // firstOverlap is the first changed path a footprint path covers, or is
 // covered by, compared on a path boundary. A path that is not a clean
-// repository-relative one is skipped: "" or "." would cover everything.
+// repository-relative one is skipped here, since "" or "." would cover
+// everything; unreadableChange keeps the worktree for any such path but those
+// two.
 func firstOverlap(footprint, changed []string) (string, bool) {
 	for _, c := range changed {
 		if !fsutil.ValidRelPath(c) {
@@ -424,6 +499,29 @@ func (p *Probe) processIn(wt string) (Evidence, bool) {
 		detail += fmt.Sprintf(" (and %d more)", n-1)
 	}
 	return Evidence{Kind: KindProcess, Strength: Proven, Detail: detail}, true
+}
+
+// escapedNear is the hint for a process whose working directory lsof printed
+// escaped: it names the first such directory whose literal prefix and the
+// worktree are one a plain string prefix of the other, after the folding
+// within uses. Every byte before the escape is the directory's own, so a
+// prefix that leads into the worktree, or that the worktree extends, may be
+// it; one that leads elsewhere cannot be. The comparison is not on a name
+// boundary because the escape can fall in the middle of a name. It is a hint,
+// not a proof: the directory is known only as far as the escape.
+func (p *Probe) escapedNear(wt string) (Evidence, bool) {
+	fold := fsutil.CaseFoldingFS()
+	w := fsutil.FoldPath(wt, fold)
+	for _, e := range p.escaped {
+		for _, lit := range []string{e.lit, e.real} {
+			l := fsutil.FoldPath(lit, fold)
+			if strings.HasPrefix(l, w) || strings.HasPrefix(w, l) {
+				return Evidence{Kind: KindProcess, Strength: Hint,
+					Detail: "in use: a process works in a directory lsof printed escaped, under " + e.lit}, true
+			}
+		}
+	}
+	return Evidence{}, false
 }
 
 // within reports whether child is parent or inside it, on a path boundary:
@@ -559,7 +657,7 @@ func (c lsofCommand) list(ctx context.Context) ([]Process, error) {
 	// exits 0, so it runs under a UTF-8 locale, and with nothing else from
 	// this process's environment. en_US.UTF-8 is the name every macOS ships;
 	// C.UTF-8 is missing from older ones. A name it escapes anyway (a
-	// newline, say) parseLsof refuses.
+	// newline, say) parseLsof keeps only up to the escape.
 	cmd.Env = []string{"LC_ALL=en_US.UTF-8"}
 	out := &boundedBuffer{limit: c.limit, over: cancel}
 	cmd.Stdout = out
@@ -624,11 +722,16 @@ func sizeWords(n int64) string {
 // descriptor an `f<fd>` line and an `n<name>` line. It is strict, since a line
 // it misread could hide a process: an unknown field, a blank line, a NUL, a
 // field out of order, a pid that is not a number or a name that is not an
-// absolute path is an error. So is a name holding a backslash: lsof writes a
-// byte it will not print as an escape (\xc3\xa9, \n), and an escaped name
-// read as a path would match no worktree, hiding the process. So is no process
-// at all, because lsof always lists itself. Errors name the line number, never
-// its text.
+// absolute path is an error. So is no process at all, because lsof always
+// lists itself. Errors name the line number, never its text.
+//
+// A name holding a backslash or a caret is kept, cut before the first of them
+// and marked Escaped. lsof doubles a literal backslash, writes a byte it will
+// not print as a backslash escape, and writes most control bytes in caret
+// form with no backslash, but every byte before the first backslash or caret
+// is the directory's own. Read whole, an escaped name would match no
+// worktree and hide its process; refused, it would stop the check for every
+// worktree. The probe holds instead only the worktrees its prefix may reach.
 func parseLsof(out []byte) ([]Process, error) {
 	if len(out) == 0 {
 		return nil, errors.New("no process listed, though lsof always lists itself")
@@ -663,10 +766,12 @@ func parseLsof(out []byte) ([]Process, error) {
 			if !path.IsAbs(val) {
 				return nil, fmt.Errorf("line %d: a name that is not an absolute path", n)
 			}
-			if strings.IndexByte(val, '\\') >= 0 {
-				return nil, fmt.Errorf("line %d: a name lsof escaped, which cannot be read as a path", n)
+			if fd != "cwd" {
+				continue
 			}
-			if fd == "cwd" {
+			if i := strings.IndexAny(val, `\\^`); i >= 0 {
+				procs = append(procs, Process{PID: pid, Cwd: val[:i], Escaped: true})
+			} else {
 				procs = append(procs, Process{PID: pid, Cwd: val})
 			}
 		default:
@@ -680,7 +785,9 @@ func parseLsof(out []byte) ([]Process, error) {
 // process that exited mid-listing, or one another account owns, is passed
 // over: neither is a session working in this account's worktrees, and
 // refusing on them would fail every check on a shared host. A /proc that
-// cannot be listed, or a link that fails any other way, is an error.
+// cannot be listed, or a link that fails any other way, is an error. So is a
+// /proc that does not list this process: one that is empty or another's, as
+// in a chroot or a container, cannot show that nothing else is running.
 func procCwds(root string) ([]Process, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -704,6 +811,10 @@ func procCwds(root string) ([]Process, error) {
 			return nil, fmt.Errorf("cannot read the working directory of process %d: %v", pid, err)
 		}
 		procs = append(procs, Process{PID: pid, Cwd: cwd})
+	}
+	self := os.Getpid()
+	if !slices.ContainsFunc(procs, func(p Process) bool { return p.PID == self }) {
+		return nil, fmt.Errorf("this process is not in %s", root)
 	}
 	return procs, nil
 }

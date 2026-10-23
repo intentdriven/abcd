@@ -63,17 +63,19 @@ A worktree is held when any of these proofs names it:
 
 The process proof reads `/proc/<pid>/cwd` on Linux. On macOS it runs `/usr/sbin/lsof -a -d cwd -Fn` by absolute path, never resolved through PATH, with a 5-second deadline, a 4 MiB bounded read and defensive parsing of the `-F` fields. It uses no cgo, because the released binaries are cross-compiled.
 
+lsof escapes some bytes in a name, even under a UTF-8 locale: a backslash comes out doubled, a byte it will not print comes out as a backslash escape, and most control bytes come out in caret form. Every byte before the first backslash or caret is the directory's own, so the probe keeps that prefix and does not refuse the whole check. A process in such a directory holds, as a hint, every worktree that the prefix leads into, or that extends the prefix, compared as plain text with the same case folding as other paths, because the escape can fall in the middle of a name. The keep reads "in use: a process works in a directory lsof printed escaped, under <prefix>". A worktree that the prefix does not reach is not held by that process.
+
 A last write to the tree or its index within 24 hours (configurable) is a hint, not a proof. The hint also keeps the worktree.
 
 A reservation holds a worktree in either of two cases. Its tip names that worktree's own copy key, so a session that reserved from the worktree holds it before changing anything. Or its footprint overlaps the paths the worktree changes. The rule errs toward keeping, and the keep names the reservation by its record and holder. Matching a reservation's branch to the worktree's branch was rejected, because a reservation carries no branch.
 
-Reservations that cannot be read keep worktrees too. If no fetch of the reservations is stamped, nothing can show that a worktree is unreserved, so every worktree is held as "reservations unread", and the dry run says so once at the top. An unreadable reservation still within its hold has a footprint no one can read, so it holds every worktree as a hint naming that record and its holder. A worktree whose changed paths could not be computed is held as "changes unknown".
+Reservations that cannot be read keep worktrees too. If no fetch of the reservations is stamped, nothing can show that a worktree is unreserved, so every worktree is held as "reservations unread", and the dry run says so once at the top. An unreadable reservation still within its hold has a footprint no one can read, so it holds every worktree as a hint naming that record and its holder. A worktree whose changed paths could not be computed is held as "changes unknown". A changed path that is not a clean repository-relative path, such as one holding a backslash, cannot be compared with any footprint, so the worktree is held as a hint, "changes unreadable: <path>".
 
 The sweep judges only worktrees this account owns. One whose top directory or git file another account owns is held, naming that account's uid.
 
 The probe fails closed. A worktree the probe could not clear counts as possibly live whenever any of these happens:
 - lsof is missing, times out, exits non-zero, or prints what the parser cannot read;
-- `/proc` cannot be read.
+- `/proc` cannot be read, or does not list the sweep's own process, as happens when it is empty or belongs to another system, in a chroot or a container ("this process is not in /proc").
 
 Such a worktree is left in place and named "process check unavailable: <why>", and the dry run says so once at the top.
 

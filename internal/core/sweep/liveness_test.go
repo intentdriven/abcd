@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -367,14 +368,99 @@ func TestParseLsof(t *testing.T) {
 		{"a relative name", "p1\nfcwd\nnrelative\n"},
 		{"a blank line", "p1\n\nfcwd\nn/\n"},
 		{"a NUL", "p1\nfcwd\nn/a\x00b\n"},
-		{"a name lsof escaped", `p1` + "\nfcwd\n" + `n/tmp/\xc3\xa9-wt` + "\n"},
-		{"a newline lsof escaped", `p1` + "\nfcwd\n" + `n/tmp/a\nb` + "\n"},
+		{"a relative name with an escape in it", "p1\nfcwd\nnrel^Ative\n"},
 	}
 	for _, c := range bad {
 		if got, err := parseLsof([]byte(c.out)); err == nil {
 			t.Errorf("%s: parseLsof(%q) = %v, nil; want an error", c.name, c.out, got)
 		}
 	}
+}
+
+// TestParseLsofKeepsTheLiteralPrefixOfAnEscapedName: every byte before the
+// first backslash or caret is the directory's own, so that prefix is kept and
+// marked, rather than the name refusing the whole check.
+func TestParseLsofKeepsTheLiteralPrefixOfAnEscapedName(t *testing.T) {
+	cases := []struct{ name, out, lit string }{
+		{"a byte escaped in hex", `p1` + "\nfcwd\n" + `n/tmp/\xc3\xa9-wt` + "\n", "/tmp/"},
+		{"a newline escaped", `p1` + "\nfcwd\n" + `n/tmp/a\nb` + "\n", "/tmp/a"},
+		{"a backslash doubled", `p1` + "\nfcwd\n" + `n/tmp/wt/a\\b` + "\n", "/tmp/wt/a"},
+		{"a control byte in caret form", "p1\nfcwd\nn/tmp/wt/x^Ay\n", "/tmp/wt/x"},
+		{"an escape in the first name", "p1\nfcwd\nn/^[x\n", "/"},
+	}
+	for _, c := range cases {
+		got, err := parseLsof([]byte(c.out))
+		if want := []Process{{PID: 1, Cwd: c.lit, Escaped: true}}; err != nil || !slices.Equal(got, want) {
+			t.Errorf("%s: parseLsof(%q) = %v, %v; want %v", c.name, c.out, got, err, want)
+		}
+	}
+}
+
+// lsofSays is a process lister that reads the lsof output given.
+func lsofSays(out string) ProcessLister {
+	return func(context.Context) ([]Process, error) { return parseLsof([]byte(out)) }
+}
+
+func TestAProcessInAnEscapedDirectoryHoldsWhatItsLiteralPrefixCovers(t *testing.T) {
+	wt, _ := worktree(t)
+	real, err := filepath.EvalSymlinks(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	escapedUnder := func(lit string) string {
+		return "in use: a process works in a directory lsof printed escaped, under " + lit
+	}
+	holds := func(t *testing.T, out, lit string, w string) {
+		t.Helper()
+		p := probe(ProbeOptions{Processes: lsofSays(out), Now: stale()})
+		if why := p.ProcessCheckUnavailable(); why != "" {
+			t.Fatalf("ProcessCheckUnavailable() = %q; want the check made", why)
+		}
+		l := p.Judge(Worktree{Path: w, Changed: none})
+		holdsBy(t, l, KindProcess, Hint)
+		if l.Reason != escapedUnder(lit) {
+			t.Fatalf("reason = %q; want %q", l.Reason, escapedUnder(lit))
+		}
+	}
+
+	t.Run("a caret name under the worktree", func(t *testing.T) {
+		holds(t, "p7\nfcwd\nn"+real+"/internal/x^Ay\n", real+"/internal/x", wt)
+	})
+	t.Run("a backslash name under the worktree", func(t *testing.T) {
+		holds(t, "p7\nfcwd\nn"+real+`/internal/a\\b`+"\n", real+"/internal/a", wt)
+	})
+	t.Run("an escape that cuts the worktree's own name in half", func(t *testing.T) {
+		lit := filepath.Join(filepath.Dir(real), "w")
+		holds(t, "p7\nfcwd\nn"+lit+"^At/internal\n", lit, wt)
+	})
+	t.Run("an escape right after the worktree's own name", func(t *testing.T) {
+		holds(t, "p7\nfcwd\nn"+real+"/^A\n", real+"/", wt)
+		// The slash is part of the prefix: a sibling whose name extends the
+		// worktree's is not under it.
+		if err := os.Mkdir(real+"c", 0o755); err != nil {
+			t.Fatal(err)
+		}
+		old := time.Now().Add(-72 * time.Hour)
+		if err := os.Chtimes(real+"c", old, old); err != nil {
+			t.Fatal(err)
+		}
+		p := probe(ProbeOptions{Processes: lsofSays("p7\nfcwd\nn" + real + "/^A\n"), Now: stale()})
+		frees(t, p.Judge(Worktree{Path: real + "c", Changed: none}))
+	})
+	t.Run("an escaped name under an unrelated directory", func(t *testing.T) {
+		other, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := probe(ProbeOptions{Processes: lsofSays("p7\nfcwd\nn" + other + `/x\\y` + "\np8\nfcwd\nn" + real + "\n"), Now: stale()})
+		if why := p.ProcessCheckUnavailable(); why != "" {
+			t.Fatalf("ProcessCheckUnavailable() = %q; want the check still made", why)
+		}
+		elsewhere, _ := worktree(t)
+		frees(t, p.Judge(Worktree{Path: elsewhere, Changed: none}))
+		// The plain name in the same listing still proves its worktree held.
+		holdsBy(t, p.Judge(Worktree{Path: wt, Changed: none}), KindProcess, Proven)
+	})
 }
 
 func TestProcCwdsReadsAProcTree(t *testing.T) {
@@ -393,13 +479,51 @@ func TestProcCwdsReadsAProcTree(t *testing.T) {
 	if err := os.Symlink("/elsewhere", filepath.Join(proc, "self", "cwd")); err != nil {
 		t.Fatal(err)
 	}
+	self := strconv.Itoa(os.Getpid())
+	if err := os.Mkdir(filepath.Join(proc, self), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(proc, self, "cwd")); err != nil {
+		t.Fatal(err)
+	}
 	got, err := procCwds(proc)
-	if err != nil || !slices.Equal(got, []Process{{PID: 123, Cwd: target}}) {
-		t.Fatalf("procCwds = %v, %v; want [%s]", got, err, target)
+	slices.SortFunc(got, func(a, b Process) int { return a.PID - b.PID })
+	want := []Process{{PID: 123, Cwd: target}, {PID: os.Getpid(), Cwd: target}}
+	slices.SortFunc(want, func(a, b Process) int { return a.PID - b.PID })
+	if err != nil || !slices.Equal(got, want) {
+		t.Fatalf("procCwds = %v, %v; want %v", got, err, want)
 	}
 
 	if _, err := procCwds(filepath.Join(proc, "absent")); err == nil || !strings.Contains(err.Error(), "cannot read") {
 		t.Fatalf("procCwds over an unreadable /proc = %v; want a refusal saying it cannot read it", err)
+	}
+}
+
+// TestAProcTreeWithoutThisProcessFailsClosed: a /proc that does not list the
+// process reading it is empty or another's, as in a chroot, a container or
+// under hidepid, so what it lists cannot show that nothing is running.
+func TestAProcTreeWithoutThisProcessFailsClosed(t *testing.T) {
+	proc := t.TempDir()
+	if err := os.Mkdir(filepath.Join(proc, "123"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(proc, "123", "cwd")); err != nil {
+		t.Skipf("cannot make a symlink here: %v", err)
+	}
+	p := probe(ProbeOptions{Processes: func(context.Context) ([]Process, error) { return procCwds(proc) }, Now: stale()})
+	if why, want := p.ProcessCheckUnavailable(), "this process is not in "+proc; why != want {
+		t.Fatalf("ProcessCheckUnavailable() = %q; want %q", why, want)
+	}
+	wt, _ := worktree(t)
+	l := p.Judge(Worktree{Path: wt, Changed: none})
+	holdsBy(t, l, KindProcessCheck, Hint)
+	if want := "process check unavailable: this process is not in " + proc; l.Reason != want {
+		t.Fatalf("reason = %q; want %q", l.Reason, want)
+	}
+
+	// An empty /proc fails the same way.
+	if _, err := procCwds(t.TempDir()); err == nil || !strings.Contains(err.Error(), "this process is not in") {
+		t.Fatalf("procCwds over an empty tree = %v; want this process named missing", err)
 	}
 }
 
@@ -433,7 +557,7 @@ func TestTheHostProbeFindsARealChildProcess(t *testing.T) {
 	}
 }
 
-func TestTheLsofProbeRunsUnderAUTF8LocaleAndRefusesAnEscapedName(t *testing.T) {
+func TestTheLsofProbeRunsUnderAUTF8LocaleAndKeepsAnEscapedNamesPrefix(t *testing.T) {
 	// Run with no locale set, lsof escapes a non-ASCII name (\xc3\xa9) and
 	// still exits 0; the child must get a UTF-8 locale whatever the parent has.
 	t.Setenv("LC_ALL", "")
@@ -445,15 +569,13 @@ func TestTheLsofProbeRunsUnderAUTF8LocaleAndRefusesAnEscapedName(t *testing.T) {
 		t.Fatalf("list() = %v, %v; want [/tmp/é], read under a UTF-8 locale", got, err)
 	}
 
-	// A name lsof escaped anyway fails the check closed, never reads as a path.
+	// A name lsof escaped anyway keeps only its literal prefix, marked, and
+	// leaves the check standing for every other name.
 	escaped := lsofCommand{path: script(t, `printf 'p1\nfcwd\nn/tmp/\\xc3\\xa9-wt\n'`), timeout: 5 * time.Second, limit: 1 << 20}
-	p := probe(ProbeOptions{Processes: escaped.list, Now: stale()})
-	why := p.ProcessCheckUnavailable()
-	if !strings.Contains(why, "unreadable output") || !strings.Contains(why, "escaped") {
-		t.Fatalf("ProcessCheckUnavailable() = %q; want an unreadable escaped name", why)
+	got, err = escaped.list(context.Background())
+	if want := []Process{{PID: 1, Cwd: "/tmp/", Escaped: true}}; err != nil || !slices.Equal(got, want) {
+		t.Fatalf("list() = %v, %v; want %v", got, err, want)
 	}
-	wt, _ := worktree(t)
-	holdsBy(t, p.Judge(Worktree{Path: wt, Changed: none}), KindProcessCheck, Hint)
 }
 
 func TestTheLsofProbeFailsClosedOnAChildHoldingItsOutput(t *testing.T) {
@@ -503,6 +625,45 @@ func TestTheHostProbeFindsANonASCIIWorkingDirectory(t *testing.T) {
 	}
 	if l := p.Judge(Worktree{Path: dir, Changed: none}); !slices.Contains(kinds(l), KindProcess) {
 		t.Fatalf("liveness of %q = %+v; want held by its process", dir, l)
+	}
+}
+
+// TestTheHostProbeHoldsAWorktreeUnderADirectoryLsofEscapes proves a real
+// process in a directory whose name lsof escapes (a backslash) still holds the
+// worktree it works in, and leaves the process check standing.
+func TestTheHostProbeHoldsAWorktreeUnderADirectoryLsofEscapes(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skipf("no process check on %s", runtime.GOOS)
+	}
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skipf("no sleep to start: %v", err)
+	}
+	wt := filepath.Join(t.TempDir(), "wt")
+	dir := filepath.Join(wt, `back\slash`)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Skipf("cannot make a directory with a backslash here: %v", err)
+	}
+	child := exec.Command(sleep, "30")
+	child.Dir = dir
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = child.Process.Kill()
+		_ = child.Wait()
+	})
+	p := probe(ProbeOptions{Now: stale()})
+	if why := p.ProcessCheckUnavailable(); why != "" {
+		t.Fatalf("the host probe is unavailable: %s", why)
+	}
+	l := p.Judge(Worktree{Path: wt, Changed: none})
+	if !slices.Contains(kinds(l), KindProcess) {
+		t.Fatalf("liveness of %q = %+v; want held by its process", wt, l)
+	}
+	// lsof doubles the backslash, so on macOS the hold comes from the prefix.
+	if runtime.GOOS == "darwin" && !strings.Contains(l.Reason, "printed escaped") {
+		t.Fatalf("reason = %q; want the escaped directory named", l.Reason)
 	}
 }
 
@@ -571,6 +732,21 @@ func TestChangesTheCallerCouldNotComputeKeepTheWorktree(t *testing.T) {
 		t.Fatalf("reason = %q; want %q", l.Reason, "changes unknown")
 	}
 	frees(t, p.Judge(Worktree{Path: wt, Changed: none}))
+}
+
+func TestAChangedPathThatCannotBeReadKeepsTheWorktree(t *testing.T) {
+	wt, _ := worktree(t)
+	p := probe(ProbeOptions{Processes: cwds(), Now: stale()})
+	l := p.Judge(Worktree{Path: wt, Changed: []string{"internal/a.go", `docs/a\b.md`}})
+	holdsBy(t, l, KindChanges, Hint)
+	if want := `changes unreadable: docs/a\b.md`; l.Reason != want {
+		t.Fatalf("reason = %q; want %q", l.Reason, want)
+	}
+	for _, bad := range []string{"../x", "/abs", "a//b"} {
+		holdsBy(t, p.Judge(Worktree{Path: wt, Changed: []string{bad}}), KindChanges, Hint)
+	}
+	// "" and "." name no path at all, and stay passed over.
+	frees(t, p.Judge(Worktree{Path: wt, Changed: []string{"", "."}}))
 }
 
 func TestReservationsNoFetchStampedKeepEveryWorktree(t *testing.T) {
