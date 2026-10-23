@@ -506,7 +506,29 @@ func TestAhoyWorktreeAddStopsACheckoutPastItsBound(t *testing.T) {
 	if code != 2 || !strings.Contains(out, "did not finish") || !strings.Contains(out, "within 1s") {
 		t.Fatalf("add is refused naming the checkout and its bound (exit %d):\n%s", code, out)
 	}
-	err := filepath.WalkDir(filepath.Join(repo.Root(), ".git"), func(p string, d os.DirEntry, err error) error {
+	// git runs the hook after it has made and registered the worktree, so
+	// the worktree stands, and add finishes it and says so.
+	l, err := worktree.LaneFor(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := l.Path("stalled")
+	if !strings.Contains(out, "stands") || !strings.Contains(repo.Git("worktree", "list", "--porcelain"), "/stalled\nHEAD ") {
+		t.Fatalf("the worktree git made stands, and add says so:\n%s", out)
+	}
+	if fi, err := os.Lstat(filepath.Join(l.Dir, ".starts", "stalled")); err != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("its start record is written: %v", err)
+	}
+	if fi, err := os.Lstat(filepath.Join(p, ".abcd", ".work.local")); err != nil || !fi.IsDir() {
+		t.Fatalf("its local tier is laid: %v", err)
+	}
+	if fi, err := os.Stat(p); err != nil || fi.Mode().Perm() != 0o700 {
+		t.Fatalf("it is the caller's alone: %v %v", fi.Mode(), err)
+	}
+	if again, code := runWorktree(t, false, "add", "stalled"); code != 2 || !strings.Contains(again, "occupied") || strings.Contains(again, "does not list") {
+		t.Fatalf("a second add is refused as a taken name (exit %d):\n%s", code, again)
+	}
+	err = filepath.WalkDir(filepath.Join(repo.Root(), ".git"), func(p string, d os.DirEntry, err error) error {
 		if err == nil && d.Name() == "index.lock" {
 			t.Errorf("git left a lock behind: %s", p)
 		}

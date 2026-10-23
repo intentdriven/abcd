@@ -4,9 +4,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
@@ -610,5 +612,62 @@ func TestAddRecordsTheStartCommit(t *testing.T) {
 	}
 	if branch, start, ok := worktree.StartForTest(got.Lane, "fresh"); !ok || branch != "refs/heads/again" || start != tip {
 		t.Fatalf("a later add records its own start: %q %q %v", branch, start, ok)
+	}
+}
+
+// TestAddFinishesAWorktreeGitMadeWhenTheCheckoutHookFails: git runs the
+// repository's post-checkout hook after it has made and registered the
+// worktree and its branch, then exits with the hook's status (the stock LFS
+// hook does, with git-lfs missing from PATH). The worktree stands, so add
+// finishes it as it finishes any other (its start record, its local tier,
+// mode 0700) and says it stands, naming the hook's exit status. A second add
+// at the name is refused as a taken name, never as something git does not
+// list.
+func TestAddFinishesAWorktreeGitMadeWhenTheCheckoutHookFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX hook script")
+	}
+	repo, _ := repoWithCommit(t)
+	hook := filepath.Join(repo.Root(), ".git", "hooks", "post-checkout")
+	if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 3\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The person's own git, as the door hands it: the repository's hooks run.
+	withHooks := func(dir string, args ...string) (string, error) {
+		return gitutil.RunCommitCommandBounded(dir, time.Minute, gitutil.ErrCheckoutStalled, args...)
+	}
+	base := strings.TrimSpace(repo.Git("rev-parse", "main"))
+	opts := worktree.AddOptions{Name: "hooked", Base: base, Git: withHooks}
+
+	got, err := worktree.Add(repo.Root(), opts)
+	r := mustRefusal(t, err)
+	if !strings.Contains(r.Reason, "stands") || !strings.Contains(r.Reason, "exit status 3") || strings.Contains(r.Reason, "could not add") {
+		t.Fatalf("the refusal says the worktree stands and names the hook's status: %+v", r)
+	}
+	l, _ := worktree.LaneFor(repo.Root())
+	p := l.Path("hooked")
+	if got.Path != p || got.Branch != "hooked" {
+		t.Fatalf("add names the worktree it made: %+v", got)
+	}
+	if !strings.Contains(repo.Git("worktree", "list", "--porcelain"), "/hooked\nHEAD ") {
+		t.Fatal("git lists the worktree")
+	}
+	if branch, start, ok := worktree.StartForTest(l, "hooked"); !ok || branch != "refs/heads/hooked" || start != base {
+		t.Fatalf("the start record: %q %q %v", branch, start, ok)
+	}
+	if fi, err := os.Lstat(filepath.Join(p, ".abcd", ".work.local")); err != nil || !fi.IsDir() {
+		t.Fatalf("the local tier is laid: %v", err)
+	}
+	if fi, err := os.Stat(p); err != nil || fi.Mode().Perm() != 0o700 {
+		t.Fatalf("the worktree is the caller's alone: %v %v", fi.Mode(), err)
+	}
+
+	_, err = worktree.Add(repo.Root(), opts)
+	r = mustRefusal(t, err)
+	if !strings.Contains(r.Reason, "occupied") || strings.Contains(r.Reason, "does not list") {
+		t.Fatalf("a second add is refused as a taken name: %+v", r)
 	}
 }

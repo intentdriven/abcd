@@ -306,6 +306,10 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 	}
 	path := lane.Path(opts.Name)
 	if _, err := os.Lstat(path); err == nil {
+		if listed(repoRoot, path) {
+			return Added{}, refuse(fmt.Sprintf("%s is occupied: git lists a worktree there already", path),
+				"work in that worktree, or name the new one something else")
+		}
 		return Added{}, refuse(fmt.Sprintf("%s is occupied by something git does not list as this worktree", path),
 			"the store never adopts what it cannot prove it made; move it aside")
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -331,10 +335,33 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 		return Added{}, err
 	}
 	if _, err := opts.Git(repoRoot, args...); err != nil {
-		r := refuse("git could not add the worktree: "+err.Error(), "settle what git reports")
+		// git runs the repository's post-checkout hook after it has made and
+		// registered the worktree and its branch, then exits with the hook's
+		// status, so a failure may leave a worktree standing. One git lists
+		// at the path on the branch is finished like any other, and the
+		// refusal says it stands: claiming nothing was added would leave it
+		// unfinished, and a rerun refused over it.
+		if made, aerr := Adopt(repoRoot, lane, opts.Name, branch); aerr != nil || !made {
+			r := refuse("git could not add the worktree: "+err.Error(), "settle what git reports")
+			r.Err = err
+			return Added{}, r
+		}
+		added, ferr := finish(repoRoot, lane, opts.Name, path, branch)
+		if ferr != nil {
+			return added, ferr
+		}
+		r := refuse(fmt.Sprintf("git made the worktree at %s, which stands, but the repository's checkout hook failed: %v", path, err),
+			"settle the hook, then work in the worktree, or remove it (`git worktree remove`)")
 		r.Err = err
-		return Added{}, r
+		return added, r
 	}
+	return finish(repoRoot, lane, opts.Name, path, branch)
+}
+
+// finish completes a worktree git has made at path on branch: narrowed to the
+// caller, its branch's start recorded, its local tier laid. A failure is a
+// refusal returned with the Added, since the worktree stands.
+func finish(repoRoot string, lane Lane, name, path, branch string) (Added, error) {
 	// git makes the worktree at the process umask, 0755 under the usual 022;
 	// a worktree in the store is the caller's alone, like the levels above it.
 	// A filesystem that cannot change modes (exFAT, a network share) keeps it
@@ -342,7 +369,7 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 	// accounts cannot reach it.
 	_, _ = fsutil.NarrowToOwner(path)
 	added := Added{Lane: lane, Path: path, Branch: branch}
-	if err := recordStart(repoRoot, lane, opts.Name, ref); err != nil {
+	if err := recordStart(repoRoot, lane, name, "refs/heads/"+branch); err != nil {
 		return added, refuse(fmt.Sprintf("git made the worktree at %s, but where its branch starts could not be recorded: %v", path, err),
 			"settle what stops the write, then remove the worktree (`git worktree remove`) and add it again")
 	}
@@ -353,4 +380,20 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 			"move aside what the branch carries there (a symlink or a file); nothing was made through it")
 	}
 	return added, nil
+}
+
+// listed reports whether git lists a worktree of the repository at path,
+// read through the isolated listing.
+func listed(repoRoot, path string) bool {
+	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
+	if err != nil {
+		return false
+	}
+	want := fsutil.RealExistingPath(path)
+	for _, wt := range wts {
+		if fsutil.RealExistingPath(wt.Path) == want {
+			return true
+		}
+	}
+	return false
 }
