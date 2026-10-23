@@ -251,7 +251,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// withdrawal as it stands, and once it has landed every one of this
 		// person's is re-armed and a second tombstone records each state.
 		m.Withdrawn = j.Withdrawn
-		if slices.ContainsFunc(j.Withdrawn, func(w Withdrawal) bool { return w.Pending() && sameHolder(w.By, p.holder) }) {
+		if slices.ContainsFunc(j.Withdrawn, func(w Withdrawal) bool { return w.unsettled() && sameHolder(w.By, p.holder) }) {
 			if why, definite := loginMismatch(root, p.holder); definite {
 				return Result{}, refuse("%s was not released: %s; %s", p.id, why, nothingPushed)
 			}
@@ -262,6 +262,9 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// The admission is recorded before the forge re-arms it, so a push
 		// that loses leaves nothing armed.
 		admitting, _ = withdrawalOf(j.Withdrawn, p.req.Admit)
+		if err := p.admitVouched(tree, j.Commit, admitting); err != nil {
+			return Result{}, err
+		}
 		if admitState, err = p.admitCheck(admitting); err != nil {
 			return Result{}, err
 		}
@@ -321,18 +324,26 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	res.ForkUnchecked = forkUnchecked
 	res.ForkAllowed = forkAllowed
 	if settleOwn {
-		s, final, ws := p.settleOwnRelease(tree, sha, m.Withdrawn)
+		s, final, ws := p.settleOwnRelease(tree, sha, j.Commit, m.Withdrawn)
 		settles = append(settles, s)
 		res.Commit, m.Withdrawn = final, ws
 	}
-	if isRelease(p.id) && !p.req.Release && p.req.Admit == 0 && (res.Act != ActRenewed || !res.RenewedLive) {
+	if isRelease(p.id) && !p.req.Release && p.req.Admit == 0 {
 		// A release reserved anew withdraws the merges already armed, now
 		// that its own push holds every other session's arming, recording
 		// them on a renewal of the reservation it just pushed before it
-		// touches the forge.
-		commit, recorded, made, fails, unchecked := p.withdrawArmed(tree, sha, m)
-		res.ForgeFailures, res.ForgeUnchecked, res.Withdrew = fails, unchecked, made
-		res.Commit, m = commit, recorded
+		// touches the forge. A live renewal withdraws again only what it
+		// already records as withdrawn and the forge has armed again.
+		live := res.Act == ActRenewed && res.RenewedLive
+		var again []Withdrawal
+		if live {
+			again = slices.DeleteFunc(slices.Clone(m.Withdrawn), func(w Withdrawal) bool { return !w.Pending() })
+		}
+		if !live || len(again) > 0 {
+			commit, recorded, made, fails, unchecked := p.withdrawArmed(tree, sha, m, again)
+			res.ForgeFailures, res.ForgeUnchecked, res.Withdrew = fails, unchecked, made
+			res.Commit, m = commit, recorded
+		}
 	}
 	if p.req.Admit != 0 {
 		commit, err := p.admitAfter(tree, sha, m, admitting, admitState)
@@ -661,9 +672,13 @@ func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
 		}
 		return Result{}, message{}, "", refuse("#%d is not among the pull requests %s withdrew (%s), so there is nothing to admit: only a merge the reservation withdrew is admitted, and one armed since stays armed; %s",
 			n, p.id, listed, nothingPushed)
-	case j.Withdrawn[i].State == WithdrawnAdmitted:
-		return Result{}, message{}, "", refuse("#%d is already admitted into %s; %s", n, p.id, nothingPushed)
+	case !j.Withdrawn[i].unsettled():
+		return Result{}, message{}, "", refuse("#%d is recorded %s on %s, so there is nothing to admit; %s", n, j.Withdrawn[i].State, p.id, nothingPushed)
 	}
+	// An admission already recorded is admitted again: the forge is read
+	// once more, and the pull request armed when it is not, so an --admit
+	// cut off between its record and its arming is finished by running it
+	// again.
 	m := p.reservation()
 	m.Withdrawn = carried(j.Withdrawn, true)
 	return Result{Act: ActAdmitted, Record: p.id, Holder: p.holder, ClaimedAt: m.ClaimedAt, ExpiresAt: m.ExpiresAt, RenewedLive: true},

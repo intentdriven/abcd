@@ -91,7 +91,7 @@ func TestALapsedReleaseIsNotEndedAndNothingReArms(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := snap.ReleaseWithdrawals("octo", w.clock())
+	got := snap.ReleaseWithdrawals(cutter.dir, "octo", w.clock())
 	if len(got) != 1 || got[0].Ended || !got[0].Lapsed || len(got[0].Held) != 3 ||
 		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "rel-v0.16.0's lease lapsed at 2026-10-04T14:00:00Z before the release ended") {
 		t.Fatalf("listing = %+v %q; want the lapse reported with the three held", got, got[0].Lines())
@@ -181,8 +181,10 @@ func TestASweepThatLosesTheTombstoneRaceReArmsNothing(t *testing.T) {
 	h, _ := resolveHolder(laptop.dir, identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, laptop.opts(), false)
 	a := actor{root: laptop.dir, who: identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, holder: h.Login,
 		copy: ownCopyKey(laptop.dir), now: w.clock(), label: "abcd:v0.0.0"}
-	if s, ok := settleEnded(a, tree, "rel-v0.16.0"); ok || len(f.mutations()) != 0 {
-		t.Fatalf("settle = %+v, %v, mutations %v; want nothing done by the copy that lost", s, ok, f.mutations())
+	// The forge's record ends at the other copy's tombstone, not at the tip
+	// the laptop read, so nothing is verified and nothing is done.
+	if s, _ := settleEnded(a, tree, "rel-v0.16.0"); s.Commit != "" || len(s.Settled) != 0 || len(f.mutations()) != 0 {
+		t.Fatalf("settle = %+v, mutations %v; want nothing done by the copy that lost", s, f.mutations())
 	}
 }
 
@@ -209,7 +211,7 @@ func TestAWithdrawalNoReservationOfItsWithdrawerRecordedIsNeverActedOn(t *testin
 		t.Fatalf("calls = %v, #14 = %+v; want the forge untouched", f.calls, f.pr(14))
 	}
 	if len(res.Settles) != 1 || len(res.Settles[0].Unrecorded) != 1 || res.Settles[0].Commit != "" ||
-		!strings.Contains(UnrecordedLine("rel-v0.17.0", res.Settles[0].Unrecorded), "no reservation of octo's on its branch recorded them first") {
+		!strings.Contains(UnrecordedLine("rel-v0.17.0", res.Settles[0].Unrecorded), "no reservation of octo's on its branch, pushed by octo, recorded them first") {
 		t.Fatalf("settles = %+v; want the entry named and nothing pushed", res.Settles)
 	}
 }
@@ -341,7 +343,7 @@ func TestAReArmTheForgeFindsCleanNeedsAManualMerge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := snap.ReleaseWithdrawals("octo", w.clock()); len(got) != 1 || len(got[0].Skipped) != 1 ||
+	if got := snap.ReleaseWithdrawals(cutter.dir, "octo", w.clock()); len(got) != 1 || len(got[0].Skipped) != 1 ||
 		!strings.Contains(got[0].Lines()[0], "#11 was not re-armed after rel-v0.16.0: it can merge now and there is no merge queue to put it in, so it needs a manual merge by its owner") {
 		t.Fatalf("listing = %+v; want #11 named for a manual merge", got)
 	}
@@ -505,7 +507,7 @@ func TestReArmMineSkipsAnotherPersonsEntryOnTheSameTip(t *testing.T) {
 		{Number: 11, ID: "PR_eleven", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending},
 		{Number: 12, ID: "PR_twelve", Form: FormAutoMerge, Head: headB, By: "quinn", State: WithdrawnPending},
 	}
-	out, settled, fails, why := rearmMine(actor{root: p.dir, holder: "octo", subject: "rel-v0.16.0"}, ws, func(Withdrawal) bool { return true })
+	out, settled, _, fails, why := rearmMine(actor{root: p.dir, holder: "octo", subject: "rel-v0.16.0"}, ws, func(Withdrawal) bool { return true })
 	if why != "" || len(fails) != 0 || len(settled) != 1 || settled[0].Number != 11 || out[1].State != WithdrawnPending ||
 		!slices.Equal(f.mutations(), []string{"enablePullRequestAutoMerge #11"}) {
 		t.Fatalf("rearmMine = %+v %+v %+v %q, mutations %v; want only octo's #11", out, settled, fails, why, f.mutations())
@@ -513,7 +515,7 @@ func TestReArmMineSkipsAnotherPersonsEntryOnTheSameTip(t *testing.T) {
 	// Nor one the trust refuses.
 	f.reset()
 	ws[0].State = WithdrawnPending
-	if _, settled, _, _ := rearmMine(actor{root: p.dir, holder: "octo"}, ws, func(Withdrawal) bool { return false }); len(settled) != 0 || len(f.calls) != 0 {
+	if _, settled, _, _, _ := rearmMine(actor{root: p.dir, holder: "octo"}, ws, func(Withdrawal) bool { return false }); len(settled) != 0 || len(f.calls) != 0 {
 		t.Fatalf("an untrusted entry was re-armed: %v", f.calls)
 	}
 }

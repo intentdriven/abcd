@@ -66,16 +66,26 @@ const (
 	// outright (dcn-2610230328230096), so it needs a manual merge by its
 	// owner, and no copy tries again.
 	WithdrawnManual = "manual"
+	// WithdrawnRefused: the forge refused its re-arm maxRearmRefusals times
+	// for a reason other than clean status, so no copy tries again and its
+	// owner re-arms it.
+	WithdrawnRefused = "refused"
+	// WithdrawnKept: recorded as about to be withdrawn, but the forge refused
+	// the withdrawal, so it was left armed as it was. The correction that
+	// says so keeps the entry in this state rather than dropping it, so the
+	// walk for lost withdrawals never reads it as a record a later commit
+	// lost; the next renewal drops it, as it drops every settled one.
+	WithdrawnKept = "kept"
 )
 
 // WithdrawalStates is the closed vocabulary of states.
 var WithdrawalStates = []string{WithdrawnPending, WithdrawnAdmitted, WithdrawnRearmed, WithdrawnFoundArmed,
-	WithdrawnMoved, WithdrawnClosed, WithdrawnMerged, WithdrawnMismatch, WithdrawnManual}
+	WithdrawnMoved, WithdrawnClosed, WithdrawnMerged, WithdrawnMismatch, WithdrawnManual, WithdrawnRefused, WithdrawnKept}
 
 // skippedForOwner reports whether state is one a re-arm settles a withdrawal in
 // without re-arming it, for its owner to act on.
 func skippedForOwner(state string) bool {
-	return slices.Contains([]string{WithdrawnMoved, WithdrawnClosed, WithdrawnMerged, WithdrawnMismatch, WithdrawnManual}, state)
+	return slices.Contains([]string{WithdrawnMoved, WithdrawnClosed, WithdrawnMerged, WithdrawnMismatch, WithdrawnManual, WithdrawnRefused}, state)
 }
 
 // maxWithdrawals bounds the withdrawals one release tip records: a writer
@@ -104,6 +114,14 @@ type Withdrawal struct {
 
 // Pending reports whether the withdrawal is still to settle.
 func (w Withdrawal) Pending() bool { return w.State == WithdrawnPending }
+
+// unsettled reports whether the withdrawal is one a release still being cut
+// holds: withdrawn, or admitted into the cut. Both are settled when the
+// release ends: a withdrawn one re-armed, an admitted one checked on the
+// forge and armed when it is not.
+func (w Withdrawal) unsettled() bool {
+	return w.State == WithdrawnPending || w.State == WithdrawnAdmitted
+}
 
 // trailer is the withdrawal's trailer value: "<number> <id> <form> <head>
 // <by> <state>".
@@ -145,7 +163,8 @@ func parseWithdrawal(v string) (Withdrawal, bool) {
 // validateWithdrawn reads a message's withdrawals into m, which
 // validateReservation has filled: none, or each pull request once, on a
 // release subject; a reservation that is not released carries only those
-// still withdrawn or admitted, since only a tombstone settles one. It returns
+// still withdrawn or admitted, and those its own correction kept (a
+// withdrawal the forge refused), since only a tombstone settles one. It returns
 // reasonWithdrawn for anything else.
 func validateWithdrawn(m *message, t trailers) string {
 	vals := t.vals[keyWithdrawn]
@@ -162,7 +181,7 @@ func validateWithdrawn(m *message, t trailers) string {
 		if !ok || seen[w.Number] {
 			return reasonWithdrawn
 		}
-		if !m.released() && w.State != WithdrawnPending && w.State != WithdrawnAdmitted {
+		if !m.released() && !w.unsettled() && w.State != WithdrawnKept {
 			return reasonWithdrawn
 		}
 		seen[w.Number] = true

@@ -1,9 +1,11 @@
 package claim
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -116,15 +118,65 @@ type fakeForge struct {
 	calls  []string
 	// comments is each comment the writer posted, "#<n> <body>".
 	comments []string
+	// The forge's record of pushes to a reservation branch: by default one
+	// push a commit on origin's first-parent line, by the holder its
+	// Abcd-Holder trailer names, as abcd pushes them. pusherOf overrides one
+	// commit's pusher (a login, or "app" for an app's push); lag leaves the
+	// newest pushes out, as a record that has not caught up does; partial
+	// answers ErrPartialRecord beside them, and pushersErr fails the ask.
+	pusherOf   map[string]string
+	lag        int
+	partial    bool
+	pushersErr error
+	pushAsks   int
 }
 
 func newFakeForge(t *testing.T, prs map[int]*fakePR) *fakeForge {
 	t.Helper()
-	f := &fakeForge{t: t, prs: prs, refuse: map[string]string{}, answer: map[string]string{}, logins: map[string]string{}}
+	f := &fakeForge{t: t, prs: prs, refuse: map[string]string{}, answer: map[string]string{}, logins: map[string]string{}, pusherOf: map[string]string{}}
 	prev := releaseForge
-	releaseForge = mergeForge{repo: func(string) (string, string, error) { return "acme", "widgets", nil }, graphql: f.graphql, login: f.login}
+	releaseForge = mergeForge{repo: func(string) (string, string, error) { return "acme", "widgets", nil }, graphql: f.graphql, login: f.login, pushers: f.pushers}
 	t.Cleanup(func() { releaseForge = prev })
 	return f
+}
+
+// pushers is the forge's record of pushes to ref on the origin root clones,
+// newest first.
+func (f *fakeForge) pushers(_ context.Context, root, ref string) ([]Push, error) {
+	f.mu.Lock()
+	f.pushAsks++
+	lag, partial, perr := f.lag, f.partial, f.pushersErr
+	over := maps.Clone(f.pusherOf)
+	f.mu.Unlock()
+	if perr != nil {
+		return nil, perr
+	}
+	bare := strings.TrimSpace(runGit(f.t, root, "remote", "get-url", "origin"))
+	if strings.TrimSpace(runGit(f.t, bare, "for-each-ref", "--format=%(objectname)", ref)) == "" {
+		return nil, nil
+	}
+	var out []Push
+	for _, l := range strings.Split(strings.TrimSpace(runGit(f.t, bare, "log", "--first-parent",
+		"--format=%H %P%x09%(trailers:key=Abcd-Holder,valueonly,separator=)", ref)), "\n") {
+		ids, holder, _ := strings.Cut(l, "\t")
+		f := strings.Fields(ids)
+		p := Push{Before: zeroCommit, After: f[0], Pusher: strings.TrimSpace(holder)}
+		if len(f) > 1 {
+			p.Before = f[1]
+		}
+		if o, ok := over[p.After]; ok {
+			p.Pusher, p.App = o, o == "app"
+		}
+		out = append(out, p)
+	}
+	if lag > len(out) {
+		lag = len(out)
+	}
+	out = out[lag:]
+	if partial {
+		return out, ErrPartialRecord
+	}
+	return out, nil
 }
 
 // login is the account gh acts as in the checkout at root.
@@ -409,9 +461,9 @@ func TestAWithdrawalTheForgeRefusesIsReportedAndKeepsTheReservation(t *testing.T
 		t.Fatalf("line = %q", res.ForgeFailures[0].Line())
 	}
 	_, ws := w.tipWithdrawals("rel-v0.16.0")
-	// #11 stays armed and is not recorded; #12 was dequeued; #13 lost its
+	// #11 stays armed and is recorded kept; #12 was dequeued; #13 lost its
 	// auto-merge but stays queued, recorded in the form it lost.
-	if len(ws) != 2 || ws[0].Number != 12 || ws[1].Number != 13 || ws[1].Form != FormAutoMerge {
+	if len(ws) != 3 || ws[0].Number != 11 || ws[0].State != WithdrawnKept || ws[1].Number != 12 || ws[2].Number != 13 || ws[2].Form != FormAutoMerge {
 		t.Fatalf("recorded %+v; want #12 queued and #13's auto-merge, as what actually happened", ws)
 	}
 	if pr := f.pr(11); pr.method != "SQUASH" {
@@ -455,8 +507,12 @@ func TestAdmitReArmsOneWithdrawnMergeFromTheCuttingCopy(t *testing.T) {
 	if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) != WithdrawnAdmitted || stateOf(ws, 12) != WithdrawnPending {
 		t.Fatalf("recorded %+v; want #11 admitted and the rest withdrawn", ws)
 	}
-	if _, err := p.do(Request{Record: "rel-v0.16.0", Admit: 11}); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "already admitted") {
-		t.Fatalf("a second admission = %v; want refused as already admitted", err)
+	// A second admission reads the forge again and, finding #11 armed,
+	// arms nothing: an --admit cut off before its arming is finished by
+	// running it again.
+	f.reset()
+	if res, err := p.do(Request{Record: "rel-v0.16.0", Admit: 11}); err != nil || res.Act != ActAdmitted || len(f.mutations()) != 0 {
+		t.Fatalf("a second admission = %+v, %v, mutations %v; want admitted again with nothing armed", res, err, f.mutations())
 	}
 	// An admission whose head moved is refused, and nothing is recorded.
 	f.prs[12].head = headC
@@ -467,8 +523,8 @@ func TestAdmitReArmsOneWithdrawnMergeFromTheCuttingCopy(t *testing.T) {
 
 // TestReleaseReArmsEveryWithdrawnUnadmittedMerge: --release from the cutting
 // copy re-arms each withdrawn merge in its own form, pinned to its head,
-// skips one whose head moved or that was merged, leaves the admitted one as
-// it is, and records each state on the tombstone.
+// skips one whose head moved or that was merged, finds the admitted one
+// armed, which counts as done, and records each state on the tombstone.
 func TestReleaseReArmsEveryWithdrawnUnadmittedMerge(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -491,9 +547,9 @@ func TestReleaseReArmsEveryWithdrawnUnadmittedMerge(t *testing.T) {
 		t.Fatalf("mutations = %v; want only #13 enqueued again (#11 admitted, #12 moved, #15 merged)", got)
 	}
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	if !m.released() || stateOf(ws, 11) != WithdrawnAdmitted || stateOf(ws, 12) != WithdrawnMoved || stateOf(ws, 13) != WithdrawnRearmed ||
+	if !m.released() || stateOf(ws, 11) != WithdrawnFoundArmed || stateOf(ws, 12) != WithdrawnMoved || stateOf(ws, 13) != WithdrawnRearmed ||
 		stateOf(ws, 15) != WithdrawnMerged {
-		t.Fatalf("tombstone records %+v; want admitted, moved, rearmed, merged", ws)
+		t.Fatalf("tombstone records %+v; want armed, moved, rearmed, merged", ws)
 	}
 	if len(res.Settles) != 1 || len(res.Settles[0].Settled) != 3 || res.Settles[0].Commit != res.Commit {
 		t.Fatalf("settles = %+v; want the three settled on the tombstone", res.Settles)
@@ -539,7 +595,7 @@ func TestAnEndedReleaseIsReArmedByACopyOfTheSameHolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := snap.ReleaseWithdrawals("quinn", w.clock()); len(got) != 1 || got[0].Subject != "rel-v0.16.0" || len(got[0].Stranded) != 3 ||
+	if got := snap.ReleaseWithdrawals(quinn.dir, "quinn", w.clock()); len(got) != 1 || got[0].Subject != "rel-v0.16.0" || len(got[0].Stranded) != 3 ||
 		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "#11, #12, #13 withdrawn by octo for rel-v0.16.0 stay withdrawn: only a copy of octo's re-arms them") {
 		t.Fatalf("stranded = %+v; want the three named with their holder", got)
 	}

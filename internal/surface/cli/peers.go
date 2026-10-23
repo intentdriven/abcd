@@ -482,7 +482,7 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 		out.Reservations = append(out.Reservations, row)
 	}
 	out.LiveByHolder = snap.LiveByHolder()
-	out.ReleaseWithdrawals = snap.ReleaseWithdrawals(claim.ReaderHolder(root, claim.Options{Now: func() time.Time { return now }}), now)
+	out.ReleaseWithdrawals = snap.ReleaseWithdrawals(root, claim.ReaderHolder(root, claim.Options{Now: func() time.Time { return now }}), now)
 	out.LostWithdrawals = claim.LostReleaseWithdrawals(root, now)
 	// The hand-backs are read from the same view, as last fetched: no act of
 	// their own touches the network.
@@ -585,7 +585,7 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 		if st.Failed != "" {
 			fmt.Fprintln(w, "  "+st.Failed)
 		}
-		if line := claim.UnrecordedLine(st.Subject, st.Unrecorded); line != "" {
+		for _, line := range st.Notes() {
 			fmt.Fprintln(w, "  "+line)
 		}
 	}

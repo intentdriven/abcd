@@ -48,6 +48,12 @@ func init() {
 				out.Admitted[w.Number] = w.Head
 			}
 		}
+		if len(a.Unverified) > 0 {
+			out.Unverified = map[int]string{}
+			for _, w := range a.Unverified {
+				out.Unverified[w.Number] = termsafe.Sanitize(fsutil.RedactHome(a.UnverifiedWhy))
+			}
+		}
 		for _, l := range a.Lost {
 			out.Lost = append(out.Lost, termsafe.Sanitize(l.Line()))
 		}
@@ -443,7 +449,7 @@ func renderReserve(w io.Writer, out reserveOutput) {
 		for _, wd := range st.Settled {
 			fmt.Fprintf(w, "  %s\n", claim.SettledLine(st.Subject, wd))
 		}
-		if line := claim.UnrecordedLine(st.Subject, st.Unrecorded); line != "" {
+		for _, line := range st.Notes() {
 			fmt.Fprintf(w, "  note: %s\n", line)
 		}
 	}

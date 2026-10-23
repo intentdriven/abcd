@@ -64,6 +64,10 @@ type mergeForge struct {
 	// abcd posts nothing on other people's pull requests until the product
 	// thinker decides it does.
 	comments PRCommenter
+	// pushers is the forge's record of who pushed each commit to a
+	// reservation branch, asked by its full ref (withdrawpush.go): what a
+	// re-arm and the launch check's exemption are held to.
+	pushers PusherLookup
 }
 
 // PRCommenter posts one comment on pull request number of owner/name.
@@ -72,7 +76,10 @@ type PRCommenter interface {
 }
 
 // releaseForge is the forge every withdrawal, admission and re-arm goes to.
-var releaseForge = mergeForge{repo: originRepo, graphql: ghGraphQL, login: ghLogin}
+// Every field is wired here, not in a front door, so every path that
+// reaches a re-arm (reserve, peers, a build's or a drain's reservation, the
+// load gate's renewals) is held to the same record of pushes.
+var releaseForge = mergeForge{repo: originRepo, graphql: ghGraphQL, login: ghLogin, pushers: reservationPushers}
 
 // ghLogin is the login the session's gh token answers the user endpoint
 // with (forgeUser, asked once per process for each checkout and credential).
@@ -87,7 +94,7 @@ func ghLogin(root string) (string, error) {
 func SetMergeForgeForTest(repo func(root string) (string, string, error),
 	graphql func(root, doc string, vars map[string]string, ints map[string]int) ([]byte, error)) (restore func()) {
 	prev := releaseForge
-	releaseForge = mergeForge{repo: repo, graphql: graphql, login: prev.login}
+	releaseForge = mergeForge{repo: repo, graphql: graphql, login: prev.login, pushers: prev.pushers}
 	return func() { releaseForge = prev }
 }
 
@@ -420,24 +427,32 @@ var commentFamily = &family{name: "pull request comment", shorten: "name fewer p
 // every open pull request into origin's default branch (Base) that is armed
 // or queued, and this copy's own live release reservation (Release, "" when
 // it holds none) with the pull requests it admitted, each at the head it was
-// admitted at. The cut is refused while any armed one is not admitted at its
-// current head. Lapsed names this copy's own release reservation when its
-// lease lapsed before the release ended (dcn-2610230328220298): it holds no
-// merge then, and nothing re-arms what it withdrew, so the check names it.
-// Lost is each recent release's withdrawals a later commit dropped.
+// admitted at. An admission is taken only when the forge's record of pushes
+// says the reader pushed both the reservation's tip and the commit that
+// recorded the admission; one it does not settle is Unverified, with
+// UnverifiedWhy, and is not exempt. The cut is refused while any armed one is
+// not admitted at its current head. Lapsed names this copy's own release
+// reservation still being cut (stillBeingCut) whose lease lapsed before the
+// release ended (dcn-2610230328220298): it holds no merge then, and nothing
+// re-arms what it withdrew, so the check names it; one that lapsed holding
+// nothing is abandoned, and is not named. Lost is each recent release's
+// withdrawals a later commit dropped.
 type ArmedMerges struct {
-	Base     string            `json:"base"`
-	Armed    []ArmedPR         `json:"armed"`
-	Release  string            `json:"release,omitempty"`
-	Admitted []Withdrawal      `json:"admitted,omitempty"`
-	Lapsed   string            `json:"lapsed,omitempty"`
-	LapsedAt time.Time         `json:"lapsed_at,omitempty"`
-	Lost     []LostWithdrawals `json:"lost,omitempty"`
+	Base          string            `json:"base"`
+	Armed         []ArmedPR         `json:"armed"`
+	Release       string            `json:"release,omitempty"`
+	Admitted      []Withdrawal      `json:"admitted,omitempty"`
+	Unverified    []Withdrawal      `json:"unverified,omitempty"`
+	UnverifiedWhy string            `json:"unverified_why,omitempty"`
+	Lapsed        string            `json:"lapsed,omitempty"`
+	LapsedAt      time.Time         `json:"lapsed_at,omitempty"`
+	Lost          []LostWithdrawals `json:"lost,omitempty"`
 }
 
 // ArmedMergesForCut reads ArmedMerges for the checkout at root: the
-// reservations as last fetched (it fetches nothing and writes nothing), and
-// the forge's listing now. A checkout with no remote named origin, or whose
+// reservations as last fetched (it fetches nothing and writes nothing), the
+// forge's record of pushes to this copy's live release branch, and the
+// forge's listing now. A checkout with no remote named origin, or whose
 // origin is not one repository on github.com, answers ErrNotOnGitHub; a
 // listing the forge does not give answers its error, never an empty list.
 func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
@@ -460,20 +475,22 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 		return ArmedMerges{}, err
 	}
 	reader := readerHolder(root, o)
+	var lapsed []Reservation
 	for _, r := range snap.Reservations {
-		if r.Copy != CopyThis || reader == "" || !sameHolder(r.Holder, reader) {
+		if r.Copy != CopyThis || reader == "" || !sameHolder(r.Holder, reader) || !stillBeingCut(r) {
 			continue
 		}
-		switch r.State {
-		case StateLive:
-			a.Release = r.Record
-			for _, w := range r.Withdrawn {
-				if w.State == WithdrawnAdmitted {
-					a.Admitted = append(a.Admitted, w)
-				}
-			}
-		case StateExpired:
+		if r.State != StateLive {
+			lapsed = append(lapsed, r)
+			continue
+		}
+		a.Release = r.Record
+		a.Admitted, a.Unverified, a.UnverifiedWhy = pushedAdmissions(root, r, reader)
+	}
+	for _, r := range lapsed {
+		if r.Record != a.Release {
 			a.Lapsed, a.LapsedAt = r.Record, r.EffectiveExpiry
+			break
 		}
 	}
 	a.Lost = LostReleaseWithdrawals(root, now)
@@ -481,4 +498,61 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 		return ArmedMerges{}, errors.New(forgeReason(err))
 	}
 	return a, nil
+}
+
+// pushedAdmissions splits the admitted withdrawals of r, the reader's live
+// release reservation, into those the forge's record of pushes says the
+// reader pushed (the reservation's tip, and the commit that recorded each
+// admission: the oldest of the commits from the tip down that carry it
+// admitted) and those it does not settle, with why.
+func pushedAdmissions(root string, r Reservation, reader string) (ok, unverified []Withdrawal, why string) {
+	var admitted []Withdrawal
+	for _, w := range r.Withdrawn {
+		if w.State == WithdrawnAdmitted {
+			admitted = append(admitted, w)
+		}
+	}
+	if len(admitted) == 0 {
+		return nil, nil, ""
+	}
+	tree, err := emptyTree(root)
+	if err != nil {
+		return nil, admitted, "the release branch's history could not be read (" + redacted(err) + ")"
+	}
+	links, _, err := releaseChain(root, r.Record, r.Commit, tree)
+	if err != nil {
+		return nil, admitted, "the release branch's history could not be read (" + redacted(err) + ")"
+	}
+	rec := readPushRecord(root, r.Record, links, r.Commit)
+	if rec.verdict(r.Commit, reader) != pushedByThem {
+		return nil, admitted, notPushedBy(rec, r.Commit, reader, "the reservation's tip")
+	}
+	for _, w := range admitted {
+		at := ""
+		for _, l := range links {
+			e, found := entryIn(l.m.Withdrawn, w)
+			if !l.readable || !found || e.State != WithdrawnAdmitted {
+				break
+			}
+			at = l.commit
+		}
+		if at != "" && rec.verdict(at, reader) == pushedByThem {
+			ok = append(ok, w)
+			continue
+		}
+		unverified = append(unverified, w)
+		why = notPushedBy(rec, at, reader, "the commit that recorded the admission")
+	}
+	return ok, unverified, why
+}
+
+// notPushedBy is why what names, commit, is not taken as reader's.
+func notPushedBy(rec pushRecord, commit, reader, what string) string {
+	switch rec.verdict(commit, reader) {
+	case pushedByOther:
+		return "the forge's record says another account pushed " + what
+	case pushedByApp:
+		return "an app pushed " + what + ", which says nothing of which person sent it"
+	}
+	return rec.reason()
 }

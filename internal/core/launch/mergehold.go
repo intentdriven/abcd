@@ -65,17 +65,21 @@ type ArmedMerge struct {
 // ArmedMerges is what the row judges: every merge armed or queued into Base,
 // and this copy's own live release reservation (Release, "" when it holds
 // none) with the pull requests it admitted, each by number to the head it was
-// admitted at. Lapsed is this copy's own release reservation whose lease
-// lapsed before the release ended, "" when none did, and LapsedAt when; Lost
-// is each sentence naming withdrawals a later commit dropped.
+// admitted at, taken only where the forge's record of pushes says this copy's
+// person pushed the admission; Unverified is each admission it does not
+// settle yet, by number to why, which is not exempt. Lapsed is this copy's
+// own release reservation still being cut whose lease lapsed before the
+// release ended, "" when none did, and LapsedAt when; Lost is each sentence
+// naming withdrawals a later commit dropped.
 type ArmedMerges struct {
-	Base     string
-	Release  string
-	Admitted map[int]string
-	Armed    []ArmedMerge
-	Lapsed   string
-	LapsedAt string
-	Lost     []string
+	Base       string
+	Release    string
+	Admitted   map[int]string
+	Unverified map[int]string
+	Armed      []ArmedMerge
+	Lapsed     string
+	LapsedAt   string
+	Lost       []string
 }
 
 // gateMergeHoldLost is the warning row naming lost withdrawals.
@@ -129,8 +133,13 @@ func mergeHoldGate(root string) (GateSummary, []GateFinding, *GateSummary) {
 				continue
 			}
 			findings = append(findings, GateFinding{Detail: fmt.Sprintf("pull request #%d was admitted into %s at %s, but its head is now %s: "+
-				"the commits pushed since were not admitted, and it could merge them mid-cut; turn its auto-merge off or take it out of the queue (gh pr merge %d --disable-auto)",
-				pr.Number, a.Release, short(head), short(pr.Head), pr.Number)})
+				"the commits pushed since were not admitted, and it could merge them mid-cut; %s",
+				pr.Number, a.Release, short(head), short(pr.Head), disarmHint(pr))})
+			continue
+		}
+		if why, ok := a.Unverified[pr.Number]; ok {
+			findings = append(findings, GateFinding{Detail: fmt.Sprintf("pull request #%d is recorded admitted into %s, but %s, so it is not exempt yet: "+
+				"the check exempts an admission only once the forge's record shows you pushed it; run the check again in a minute", pr.Number, a.Release, why)})
 			continue
 		}
 		findings = append(findings, GateFinding{Detail: armedFinding(a, pr)})
@@ -177,6 +186,23 @@ func armedFinding(a ArmedMerges, pr ArmedMerge) string {
 			"(abcd reserve rel-vX.Y.Z), which withdraws it, then admit it with --admit " + n + " if it belongs in the cut"
 	}
 	return "pull request #" + n + " " + how + " into " + a.Base + ", and " + a.Release + " has not admitted it, so it could merge mid-cut: " +
-		"turn its auto-merge off or take it out of the queue (gh pr merge " + n + " --disable-auto), or, if it belongs in the cut and " +
+		disarmHint(pr) + ", or, if it belongs in the cut and " +
 		a.Release + " withdrew it, admit it (abcd reserve " + a.Release + " --admit " + n + ")"
+}
+
+// disarmHint is how the person takes pr off the merge path by hand: auto-merge
+// off (gh pr merge --disable-auto) only when it is on, and out of the merge
+// queue when it is queued, which turning auto-merge off does not do. Either
+// leaves no withdrawal on the reservation, so the hint says nothing re-arms
+// it.
+func disarmHint(pr ArmedMerge) string {
+	n := fmt.Sprint(pr.Number)
+	const unrecorded = " (that is recorded nowhere, so nothing re-arms it after the tag)"
+	switch {
+	case pr.Queued && pr.AutoMerge:
+		return "turn its auto-merge off (gh pr merge " + n + " --disable-auto) and take it out of the merge queue on its pull request page" + unrecorded
+	case pr.Queued:
+		return "take it out of the merge queue on its pull request page" + unrecorded
+	}
+	return "turn its auto-merge off (gh pr merge " + n + " --disable-auto)" + unrecorded
 }

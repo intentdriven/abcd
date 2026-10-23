@@ -156,3 +156,43 @@ func TestTheLaunchCheckRefusesALapsedReleaseAndWarnsOfLostWithdrawals(t *testing
 		t.Fatalf("lost row = %+v, warnings %v; want a warning naming them", lost, res.Warnings)
 	}
 }
+
+// TestTheLaunchCheckNeverPointsAQueuedMergeAtABareDisableAuto: turning
+// auto-merge off does not take a pull request out of the merge queue, so a
+// queued one is pointed at the dequeue (or --admit), never at a bare
+// --disable-auto, and every hand remedy says nothing re-arms it.
+func TestTheLaunchCheckNeverPointsAQueuedMergeAtABareDisableAuto(t *testing.T) {
+	withArmed(t, ArmedMerges{Base: "main", Release: "rel-v0.16.0", Admitted: map[int]string{12: headX}, Armed: []ArmedMerge{
+		{Number: 12, Head: headY, HeadRef: "fix/q", Queued: true},
+		{Number: 13, HeadRef: "fix/r", Queued: true},
+		{Number: 14, HeadRef: "fix/s", Queued: true, AutoMerge: true, Method: "MERGE"},
+	}}, nil, "release/v0.16.0")
+	row := mergeHoldRow(t, runGateSuite(suiteRequest{RepoRoot: t.TempDir(), Dirty: DirtySkip}))
+	if len(row.Findings) != 3 {
+		t.Fatalf("row = %+v", row)
+	}
+	for i, f := range row.Findings {
+		if !strings.Contains(f.Detail, "take it out of the merge queue") || !strings.Contains(f.Detail, "nothing re-arms it") {
+			t.Errorf("finding %d = %q; want the dequeue named", i, f.Detail)
+		}
+		if i < 2 && strings.Contains(f.Detail, "--disable-auto") {
+			t.Errorf("finding %d = %q; want no bare --disable-auto for a queued pull request", i, f.Detail)
+		}
+	}
+	if !strings.Contains(row.Findings[1].Detail, "--admit 13") || !strings.Contains(row.Findings[2].Detail, "gh pr merge 14 --disable-auto") {
+		t.Fatalf("findings = %+v", row.Findings)
+	}
+}
+
+// TestTheLaunchCheckDoesNotExemptAnUnverifiedAdmission: an admission the
+// forge's record of pushes does not yet show the reader pushed is not
+// exempt, and the finding says why.
+func TestTheLaunchCheckDoesNotExemptAnUnverifiedAdmission(t *testing.T) {
+	withArmed(t, ArmedMerges{Base: "main", Release: "rel-v0.16.0", Unverified: map[int]string{11: "the forge's record says another account pushed the commit that recorded the admission"},
+		Armed: []ArmedMerge{{Number: 11, Head: headX, HeadRef: "fix/a", AutoMerge: true, Method: "SQUASH"}}}, nil, "release/v0.16.0")
+	res := runGateSuite(suiteRequest{RepoRoot: t.TempDir(), Dirty: DirtySkip})
+	row := mergeHoldRow(t, res)
+	if len(row.Findings) != 1 || !mergeHeld(res) || !strings.Contains(row.Findings[0].Detail, "is recorded admitted into rel-v0.16.0, but the forge's record says another account pushed") {
+		t.Fatalf("row = %+v", row)
+	}
+}

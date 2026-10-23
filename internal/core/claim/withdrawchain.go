@@ -80,33 +80,51 @@ func entryIn(ws []Withdrawal, w Withdrawal) (Withdrawal, bool) {
 }
 
 // vouched reports whether w, as the chain's tip records it, was first
-// recorded by a reservation its own By held: walking down from the tip
-// while each commit reads and carries it, the last one that does must be a
-// reservation (not a tombstone) whose holder is w.By, recording it withdrawn.
-// A first record past the walk's bound, or beneath a commit that does not
-// read, is not vouched for.
+// recorded by a reservation its own By held (firstRecord), by the chain
+// alone: what a report reads. An act that re-arms also holds that commit to
+// the forge's record of who pushed it (vouch).
 func vouched(links []chainLink, complete bool, w Withdrawal) bool {
+	_, ok := firstRecord(links, complete, w)
+	return ok
+}
+
+// firstRecord is the commit that first recorded w, as the chain's tip records
+// it, and whether the chain vouches for it: walking down from the tip while
+// each commit reads and carries it still to settle (withdrawn or admitted),
+// the last one that does must be a reservation (not a tombstone) whose holder
+// is w.By, recording it withdrawn. A commit that carries it settled (re-armed,
+// skipped, kept) ends the walk, since nothing settled is ever put back to
+// withdrawn, so a commit over it carrying it withdrawn again is its own first
+// record. A first record past the walk's bound, or beneath a commit that does
+// not read, is not vouched for.
+func firstRecord(links []chainLink, complete bool, w Withdrawal) (string, bool) {
 	first := -1
 	for i, l := range links {
 		if !l.readable {
-			return false
+			return "", false
 		}
-		if _, ok := entryIn(l.m.Withdrawn, w); !ok {
+		e, ok := entryIn(l.m.Withdrawn, w)
+		if !ok || !e.unsettled() {
 			break
 		}
 		first = i
 	}
 	if first < 0 || first == len(links)-1 && !complete {
-		return false
+		return "", false
 	}
 	l := links[first]
 	e, _ := entryIn(l.m.Withdrawn, w)
-	return !l.m.released() && sameHolder(l.m.Holder, w.By) && e.State == WithdrawnPending
+	if l.m.released() || !sameHolder(l.m.Holder, w.By) || e.State != WithdrawnPending {
+		return "", false
+	}
+	return l.commit, true
 }
 
 // lostWithdrawals is each withdrawal still withdrawn on an ancestor of the
 // chain's tip that the commit above it no longer carries for its number, in
-// any state, and that the tip does not carry either: what an older binary's commit dropped.
+// any state, and that the tip does not carry either: what a commit dropped
+// without settling, as an older binary's renewal does. abcd's own correction
+// after a refused withdrawal keeps the entry as kept, so it is not among them.
 // Each is vouched for as vouched does, from the ancestor that held it; one
 // that is not is left out, since nothing then says it was ever withdrawn.
 func lostWithdrawals(links []chainLink, complete bool) []Withdrawal {
@@ -154,9 +172,9 @@ type LostWithdrawals struct {
 	Lost    []Withdrawal `json:"lost"`
 }
 
-// Line is the sentence naming them: "#11, #12 were withdrawn for
-// rel-v0.16.0 by octo, and a later commit on its branch dropped the record
-// (an older abcd renewed it): they stay withdrawn until octo re-arms them".
+// Line is the sentence naming them: "#11, #12 withdrawn for rel-v0.16.0 by
+// octo are lost: a later commit on its branch dropped the record without
+// settling them (...)", ending with whose hand re-arms them.
 func (l LostWithdrawals) Line() string {
 	by := map[string][]Withdrawal{}
 	var order []string
@@ -171,7 +189,7 @@ func (l LostWithdrawals) Line() string {
 	for _, k := range order {
 		h := by[k][0].By
 		parts = append(parts, strings.Join(numbers(by[k]), ", ")+" withdrawn for "+l.Subject+" by "+h+
-			" are lost: a later commit on its branch dropped the record (an older abcd wrote it), so nothing re-arms them; "+h+" re-arms them by hand")
+			" are lost: a later commit on its branch dropped the record without settling them (an older abcd's renewal does that), so nothing re-arms them; "+h+" re-arms them by hand")
 	}
 	return strings.Join(parts, "; ")
 }
@@ -217,21 +235,4 @@ func LostReleaseWithdrawals(root string, now time.Time) []LostWithdrawals {
 		return nil
 	}
 	return lostOnReleases(root, tree, now.UTC().Truncate(time.Second))
-}
-
-// vouchedPending is the withdrawals of ws still withdrawn whose By is
-// holder's, split into those the chain vouches for and those it does not
-// (unrecorded): only the first are ever acted on.
-func vouchedPending(links []chainLink, complete bool, ws []Withdrawal, holder string) (ok, unrecorded []Withdrawal) {
-	for _, w := range ws {
-		if !w.Pending() || !sameHolder(w.By, holder) {
-			continue
-		}
-		if vouched(links, complete, w) {
-			ok = append(ok, w)
-		} else {
-			unrecorded = append(unrecorded, w)
-		}
-	}
-	return ok, unrecorded
 }
