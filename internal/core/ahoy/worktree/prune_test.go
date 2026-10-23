@@ -528,3 +528,318 @@ func TestPruneFlushesTheArchiveBeforeTheRemoval(t *testing.T) {
 		t.Errorf("nothing is flushed after the removal: %v", events)
 	}
 }
+
+func pruneOne(t *testing.T, repo *gittest.Repo, name string, opts worktree.PruneOptions) worktree.Pruned {
+	t.Helper()
+	if opts.Held == nil {
+		opts.Held = noneHeld
+	}
+	if opts.Forge == nil {
+		opts.Forge = unreachable
+	}
+	got, err := worktree.PruneOne(repo.Root(), name, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Rows) != 1 || got.Rows[0].Name != name {
+		t.Fatalf("one row, for %s: %+v", name, got.Rows)
+	}
+	return got
+}
+
+// TestPruneOneReclaimsTheNamedWorktreeAlone: the named merged worktree is
+// reclaimed and archived, its merged neighbour stands, and the answer is the
+// one row with Prune's count, so the door's exit code reads the same.
+func TestPruneOneReclaimsTheNamedWorktreeAlone(t *testing.T) {
+	repo, home := pruneFixture(t)
+	done := mergedWorktree(t, repo, "done")
+	if err := os.MkdirAll(filepath.Join(done, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(done, ".abcd", ".work.local", "NEXT.md"), []byte("next\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	other := mergedWorktree(t, repo, "other")
+	work := addToLane(t, repo, "work")
+	commitIn(t, repo, work, "w.txt", "w\n")
+
+	got := pruneOne(t, repo, "done", worktree.PruneOptions{})
+	if r := got.Rows[0]; r.Outcome != "reclaimed" || r.Notes != "1 file" || r.Archive == "" || got.Reclaimed() != 1 {
+		t.Fatalf("the named worktree is reclaimed and archived: %+v", got)
+	}
+	if exists(done) || !exists(other) || !listed(t, repo, other) {
+		t.Fatal("only the named worktree is removed")
+	}
+	if n := notesEntries(t, repo, home); len(n) != 1 || !strings.HasSuffix(n[0], "-done") {
+		t.Fatalf("one archive entry, for done: %v", n)
+	}
+	if got := pruneOne(t, repo, "work", worktree.PruneOptions{}); got.Rows[0].Reason != "unmerged" || got.Reclaimed() != 0 {
+		t.Fatalf("an unmerged worktree is kept: %+v", got)
+	}
+}
+
+// TestPruneOneKeepsWhatPruneKeeps: every refusal Prune makes, PruneOne makes
+// for the one worktree, with the same row, because it is the same path.
+func TestPruneOneKeepsWhatPruneKeeps(t *testing.T) {
+	repo, home := pruneFixture(t)
+	locked := mergedWorktree(t, repo, "locked")
+	repo.Git("worktree", "lock", "--reason", "on a removable disk", locked)
+	here := mergedWorktree(t, repo, "here")
+	mergedWorktree(t, repo, "run-0000000000000001-lane-1")
+	dirty := mergedWorktree(t, repo, "dirty")
+	if err := os.WriteFile(filepath.Join(dirty, "wip.txt"), []byte("wip\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	work := addToLane(t, repo, "work")
+	commitIn(t, repo, work, "w.txt", "w\n")
+	binary := mergedWorktree(t, repo, "binary")
+	if err := os.MkdirAll(filepath.Join(binary, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binary, ".abcd", ".work.local", "blob.bin"), []byte{0, 1, 0xff}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	l, _ := worktree.LaneFor(repo.Root())
+	repo.Git("worktree", "add", "-q", "--detach", l.Path(storepath.Name))
+	if err := os.Mkdir(l.Path("stray"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	held := func(string) (worktree.Held, error) {
+		return worktree.Held{Names: map[string]string{"run-0000000000000001-lane-1": "run-0000000000000001"}}, nil
+	}
+	opts := worktree.PruneOptions{Held: held, Cwd: here}
+
+	all := prune(t, repo, opts)
+	for _, name := range []string{"locked", "here", "run-0000000000000001-lane-1", "dirty", "work", "binary", storepath.Name, "stray"} {
+		want := pruneRow(t, all, name)
+		if want.Outcome != "kept" {
+			t.Fatalf("the fixture's %s is kept by Prune: %+v", name, want)
+		}
+		got := pruneOne(t, repo, name, opts)
+		if got.Rows[0] != want || got.Reclaimed() != 0 {
+			t.Errorf("%s: PruneOne %+v, Prune %+v", name, got.Rows[0], want)
+		}
+	}
+	for _, p := range []string{locked, here, dirty, work, binary} {
+		if !exists(p) || !listed(t, repo, p) {
+			t.Fatalf("%s stands", p)
+		}
+	}
+	if n := notesEntries(t, repo, home); len(n) != 0 {
+		t.Fatalf("nothing kept is archived: %v", n)
+	}
+	if _, err := worktree.PruneOne(repo.Root(), "locked", worktree.PruneOptions{Forge: unreachable}); err == nil {
+		t.Fatal("PruneOne with no reader of what the loop holds is an error, never a guess")
+	}
+	if err := os.Chmod(l.Dir, 0o770); err != nil {
+		t.Fatal(err)
+	}
+	_, err := worktree.PruneOne(repo.Root(), "locked", worktree.PruneOptions{Held: noneHeld, Forge: unreachable})
+	mustRefusal(t, err)
+}
+
+// TestPruneOneRefusesANameNotInTheLane: a name the lane does not hold, a path
+// rather than a name, a worktree outside the store and a directory directly
+// under the store that is not this lane are each refused, and nothing is
+// archived or removed.
+func TestPruneOneRefusesANameNotInTheLane(t *testing.T) {
+	repo, home := pruneFixture(t)
+	done := mergedWorktree(t, repo, "done")
+	outside := filepath.Join(filepath.Dir(repo.Root()), "beside")
+	repo.Git("worktree", "add", "-q", "-b", "beside", outside)
+	repo.Git("-C", outside, "commit", "-q", "--allow-empty", "-m", "beside")
+	repo.Git("merge", "-q", "--ff-only", "beside")
+	l, _ := worktree.LaneFor(repo.Root())
+	short := filepath.Join(filepath.Dir(l.Dir), l.RootSHA[:12])
+	if err := os.Mkdir(short, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"nope", "../" + filepath.Base(l.Dir) + "/done", "", "beside", l.RootSHA[:12], "DONE"} {
+		_, err := worktree.PruneOne(repo.Root(), name, worktree.PruneOptions{Held: noneHeld, Forge: unreachable})
+		mustRefusal(t, err)
+	}
+	for _, p := range []string{done, outside} {
+		if !exists(p) || !listed(t, repo, p) {
+			t.Fatalf("%s stands", p)
+		}
+	}
+	if !exists(short) {
+		t.Fatal("the abbreviated directory stands")
+	}
+	if n := notesEntries(t, repo, home); len(n) != 0 {
+		t.Fatalf("nothing is archived: %v", n)
+	}
+}
+
+// keepHook is a PreRemove that keeps every worktree with reason and records
+// each path it is asked about.
+func keepHook(reason string, asked *[]string) func(string) (bool, string) {
+	return func(abs string) (bool, string) {
+		*asked = append(*asked, abs)
+		return true, reason
+	}
+}
+
+// TestPreRemoveKeepsAWorktree: a caller's check that keeps a reclaimable
+// worktree keeps it, through Prune and PruneOne alike, with its reason masked
+// and home-redacted as a git reason is, and the archive entry written for it
+// taken back, so a kept worktree leaves no orphan entry. A dry run asks it
+// at the same point and reports the same row.
+func TestPreRemoveKeepsAWorktree(t *testing.T) {
+	for _, one := range []bool{false, true} {
+		t.Run(map[bool]string{false: "Prune", true: "PruneOne"}[one], func(t *testing.T) {
+			repo, home := pruneFixture(t)
+			p := mergedWorktree(t, repo, "live")
+			tier := filepath.Join(p, ".abcd", ".work.local")
+			if err := os.MkdirAll(filepath.Join(tier, "logs"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(tier, "logs", "run.log"), []byte("ran\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var asked []string
+			reason := "a session is live in " + home + "/x\x1b[31m\nforged"
+			run := func(dry bool) worktree.PruneRow {
+				opts := worktree.PruneOptions{DryRun: dry, PreRemove: keepHook(reason, &asked)}
+				if one {
+					return pruneOne(t, repo, "live", opts).Rows[0]
+				}
+				return pruneRow(t, prune(t, repo, opts), "live")
+			}
+			want := worktree.PruneRow{Name: "live", Branch: "live", Path: fsutil.RedactHome(p), Where: "store",
+				Outcome: "kept", Reason: "a session is live in ~/x?[31m?forged"}
+			for _, dry := range []bool{true, false} {
+				if r := run(dry); r != want {
+					t.Errorf("dry=%v: %+v, want %+v", dry, r, want)
+				}
+			}
+			if len(asked) != 2 || fsutil.RealExistingPath(asked[0]) != fsutil.RealExistingPath(p) || !filepath.IsAbs(asked[0]) {
+				t.Fatalf("the hook is asked about the worktree's absolute path, once a run: %v", asked)
+			}
+			if !exists(filepath.Join(tier, "logs", "run.log")) || !listed(t, repo, p) {
+				t.Fatal("the kept worktree stands with its tier")
+			}
+			if n := notesEntries(t, repo, home); len(n) != 0 {
+				t.Fatalf("no archive entry is left for a kept worktree: %v", n)
+			}
+		})
+	}
+}
+
+// TestPreRemoveAllowsTheRemoval: a check that keeps nothing changes nothing.
+func TestPreRemoveAllowsTheRemoval(t *testing.T) {
+	repo, home := pruneFixture(t)
+	p := mergedWorktree(t, repo, "done")
+	if err := os.MkdirAll(filepath.Join(p, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(p, ".abcd", ".work.local", "NEXT.md"), []byte("next\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var asked []string
+	got := prune(t, repo, worktree.PruneOptions{PreRemove: func(abs string) (bool, string) {
+		asked = append(asked, abs)
+		return false, "ignored when the check allows"
+	}})
+	r := pruneRow(t, got, "done")
+	if r.Outcome != "reclaimed" || r.Reason != "" || r.Archive == "" || exists(p) || len(asked) != 1 {
+		t.Fatalf("the check allowed the removal: %+v, asked %v", r, asked)
+	}
+	if n := notesEntries(t, repo, home); len(n) != 1 {
+		t.Fatalf("the archive entry stays: %v", n)
+	}
+}
+
+// TestPreRemoveIsNeverAskedAboutAWorktreeAlreadyKept: every earlier refusal,
+// a failed archive included, keeps its worktree without asking the caller.
+func TestPreRemoveIsNeverAskedAboutAWorktreeAlreadyKept(t *testing.T) {
+	repo, _ := pruneFixture(t)
+	locked := mergedWorktree(t, repo, "locked")
+	repo.Git("worktree", "lock", locked)
+	here := mergedWorktree(t, repo, "here")
+	mergedWorktree(t, repo, "run-0000000000000001-lane-1")
+	dirty := mergedWorktree(t, repo, "dirty")
+	if err := os.WriteFile(filepath.Join(dirty, "wip.txt"), []byte("wip\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	work := addToLane(t, repo, "work")
+	commitIn(t, repo, work, "w.txt", "w\n")
+	binary := mergedWorktree(t, repo, "binary")
+	if err := os.MkdirAll(filepath.Join(binary, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binary, ".abcd", ".work.local", "blob.bin"), []byte{0, 1, 0xff}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	l, _ := worktree.LaneFor(repo.Root())
+	repo.Git("worktree", "add", "-q", "--detach", l.Path(storepath.Name))
+	outside := filepath.Join(filepath.Dir(repo.Root()), "beside")
+	repo.Git("worktree", "add", "-q", "--detach", outside)
+	done := mergedWorktree(t, repo, "done")
+	held := func(string) (worktree.Held, error) {
+		return worktree.Held{Names: map[string]string{"run-0000000000000001-lane-1": "run-0000000000000001"}}, nil
+	}
+	var asked []string
+	got := prune(t, repo, worktree.PruneOptions{Held: held, Cwd: here, PreRemove: keepHook("kept by the check", &asked)})
+	if len(asked) != 1 || fsutil.RealExistingPath(asked[0]) != fsutil.RealExistingPath(done) {
+		t.Fatalf("only the reclaimable worktree is asked about: %v", asked)
+	}
+	if r := pruneRow(t, got, "done"); r.Outcome != "kept" || r.Reason != "kept by the check" {
+		t.Fatalf("the reclaimable one is kept by the check: %+v", r)
+	}
+	asked = nil
+	for _, name := range []string{"locked", "here", "run-0000000000000001-lane-1", "dirty", "work", "binary", storepath.Name} {
+		pruneOne(t, repo, name, worktree.PruneOptions{Held: held, Cwd: here, PreRemove: keepHook("kept by the check", &asked)})
+	}
+	if len(asked) != 0 {
+		t.Fatalf("PruneOne asks about no worktree an earlier refusal kept: %v", asked)
+	}
+}
+
+// TestPreRemoveIsAskedLastBeforeTheRemoval: the archive is written and
+// flushed, then the caller is asked, and the removal follows with nothing
+// between them.
+func TestPreRemoveIsAskedLastBeforeTheRemoval(t *testing.T) {
+	for _, one := range []bool{false, true} {
+		t.Run(map[bool]string{false: "Prune", true: "PruneOne"}[one], func(t *testing.T) {
+			repo, _ := pruneFixture(t)
+			p := mergedWorktree(t, repo, "noted")
+			if err := os.MkdirAll(filepath.Join(p, ".abcd", ".work.local"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(p, ".abcd", ".work.local", "NEXT.md"), []byte("next\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			var events []string
+			defer worktree.SwapFlushForTest(func(f *os.File) error {
+				events = append(events, "flush "+filepath.Base(f.Name()))
+				return nil
+			})()
+			defer worktree.SwapRemoveForTest(func(repoRoot, path string) error {
+				events = append(events, "remove")
+				repo.Git("-C", repoRoot, "worktree", "remove", "--", path)
+				return nil
+			})()
+			opts := worktree.PruneOptions{PreRemove: func(abs string) (bool, string) {
+				events = append(events, "pre-remove")
+				return false, ""
+			}}
+			var r worktree.PruneRow
+			if one {
+				r = pruneOne(t, repo, "noted", opts).Rows[0]
+			} else {
+				r = pruneRow(t, prune(t, repo, opts), "noted")
+			}
+			if r.Outcome != "reclaimed" {
+				t.Fatalf("the row: %+v", r)
+			}
+			at := slices.Index(events, "pre-remove")
+			if at < 1 || len(events) != at+2 || events[at+1] != "remove" {
+				t.Fatalf("the check comes after every flush and immediately before the removal: %v", events)
+			}
+			if !slices.Contains(events[:at], "flush NEXT.md") || !slices.Contains(events[:at], "flush manifest.json") {
+				t.Fatalf("the archive is flushed before the check: %v", events)
+			}
+		})
+	}
+}

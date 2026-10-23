@@ -111,6 +111,40 @@ func TestAhoyWorktreeListEscapesGitsReasons(t *testing.T) {
 	}
 }
 
+// TestAhoyWorktreeListNeverPrintsTheAbsolutePath: the row's absolute path is
+// for a caller that acts on it, and reaches neither the text nor the JSON form
+// of list, for a worktree inside HOME or outside it.
+func TestAhoyWorktreeListNeverPrintsTheAbsolutePath(t *testing.T) {
+	repo := worktreeFixture(t)
+	laneWorktree(t, repo, "inside")
+	repo.Git("worktree", "add", "-q", "--detach", filepath.Join(filepath.Dir(repo.Root()), "outside"))
+	got, err := worktree.List(repo.Root(), worktree.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var abs []string
+	for _, r := range got.Worktrees {
+		if r.Abs == "" {
+			t.Fatalf("%s carries no absolute path", r.Name)
+		}
+		abs = append(abs, r.Abs, fsutil.RealExistingPath(r.Abs))
+	}
+	if len(got.Worktrees) != 2 {
+		t.Fatalf("two rows: %+v", got.Worktrees)
+	}
+	for _, asJSON := range []bool{false, true} {
+		out, code := runWorktree(t, asJSON, "list")
+		if code != 0 {
+			t.Fatalf("json=%v: exit %d:\n%s", asJSON, code, out)
+		}
+		for _, a := range abs {
+			if strings.Contains(out, a) {
+				t.Fatalf("json=%v: %s reached the output:\n%s", asJSON, a, out)
+			}
+		}
+	}
+}
+
 // TestAhoyWorktreeListAllEmitsArrays: --all walks the store, and the JSON
 // form's collections are arrays, never null, an empty store included.
 func TestAhoyWorktreeListAllEmitsArrays(t *testing.T) {

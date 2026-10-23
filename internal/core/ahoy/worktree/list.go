@@ -79,6 +79,10 @@ type Row struct {
 	Prunable       bool   `json:"prunable,omitempty"`
 	PrunableReason string `json:"prunable_reason,omitempty"`
 	Reason         string `json:"reason,omitempty"`
+	// Abs is the worktree's absolute path, as git or the lane names it, for a
+	// caller that acts on the row. It is never output: Path is the form that
+	// may be shown, so a home path never reaches a terminal or the JSON.
+	Abs string `json:"-"`
 }
 
 // ListOptions is how List judges the rows.
@@ -121,6 +125,7 @@ func (e entry) row(redact func(string) string) Row {
 		Prunable:       e.wt.Prunable,
 		PrunableReason: termsafe.Sanitize(e.wt.PrunableReason),
 		Reason:         termsafe.Sanitize(fsutil.RedactHome(e.reason)),
+		Abs:            e.path,
 	}
 	if e.reason != "" {
 		return r
@@ -174,7 +179,7 @@ func List(repoRoot string, opts ListOptions) (Listing, error) {
 	if err != nil {
 		return Listing{}, err
 	}
-	es, note, err := scan(repoRoot, lane, opts.Forge)
+	es, note, err := scan(repoRoot, lane, opts.Forge, nil)
 	if err != nil {
 		return Listing{}, err
 	}
@@ -182,8 +187,10 @@ func List(repoRoot string, opts ListOptions) (Listing, error) {
 }
 
 // scan reads the repository's worktrees and its lane into entries, judged,
-// and the forge's note. It is the one reading list and prune share.
-func scan(repoRoot string, lane Lane, forge GH) ([]entry, string, error) {
+// and the forge's note. It is the one reading list and prune share. A pick
+// keeps only the entries it accepts, before any is judged; nil keeps every
+// one.
+func scan(repoRoot string, lane Lane, forge GH, pick func(entry) bool) ([]entry, string, error) {
 	inLane, err := lane.present()
 	if err != nil {
 		return nil, "", err
@@ -251,6 +258,9 @@ func scan(repoRoot string, lane Lane, forge GH) ([]entry, string, error) {
 				es = append(es, entry{path: filepath.Join(store, n), name: n, where: WhereStore, reason: notALane(lane, true)})
 			}
 		}
+	}
+	if pick != nil {
+		es = slices.DeleteFunc(es, func(e entry) bool { return !pick(e) })
 	}
 	note := judgeAll(repoRoot, lane, unjudged(es), forge)
 	return es, note, nil

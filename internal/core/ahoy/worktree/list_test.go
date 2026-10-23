@@ -346,3 +346,30 @@ func TestListKeepsTheStartRecordsOutOfTheRows(t *testing.T) {
 		t.Fatalf("--all: one lane of one row: %+v", all.Lanes)
 	}
 }
+
+// TestListCarriesEachRowsAbsolutePath: a caller that acts on a row, the sweep,
+// needs the worktree's own path, which the display path redacts or shortens.
+// List fills it for a worktree inside HOME (the lane) and one outside it.
+func TestListCarriesEachRowsAbsolutePath(t *testing.T) {
+	repo, home := repoWithCommit(t)
+	inside := addToLane(t, repo, "inside")
+	outside := filepath.Join(filepath.Dir(repo.Root()), "outside")
+	repo.Git("worktree", "add", "-q", "--detach", outside)
+	if fsutil.PathWithin(fsutil.RealExistingPath(outside), fsutil.RealExistingPath(home), fsutil.CaseFoldingFS()) {
+		t.Fatalf("the fixture's outside worktree sits under HOME: %s", outside)
+	}
+
+	got, err := worktree.List(repo.Root(), worktree.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"inside": inside, "outside": outside} {
+		r := rowNamed(t, got.Worktrees, name)
+		if !filepath.IsAbs(r.Abs) || fsutil.RealExistingPath(r.Abs) != fsutil.RealExistingPath(want) {
+			t.Errorf("%s: Abs %q, want %q", name, r.Abs, want)
+		}
+		if r.Path == r.Abs {
+			t.Errorf("%s: the display path stays redacted: %q", name, r.Path)
+		}
+	}
+}

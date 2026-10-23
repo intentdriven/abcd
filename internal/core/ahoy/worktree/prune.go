@@ -10,6 +10,7 @@ package worktree
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -67,6 +68,13 @@ type PruneOptions struct {
 	Cwd string
 	// Now stamps the archive entry; nil is the clock.
 	Now func() time.Time
+	// PreRemove is the caller's own check on a worktree prune is about to
+	// remove, given its absolute path: asked last, after every refusal, the
+	// merged judgement and the archive's flush, immediately before `git
+	// worktree remove`. A keep keeps the worktree with reason and takes back
+	// the archive entry just written for it. A dry run asks it at the same
+	// point, so it reports the row a real run would. nil checks nothing more.
+	PreRemove func(abs string) (keep bool, reason string)
 }
 
 // PruneRow is one worktree's outcome.
@@ -110,6 +118,25 @@ func (p Pruned) Reclaimed() int {
 // failure to read what the build loop holds; otherwise every worktree is a
 // row.
 func Prune(repoRoot string, opts PruneOptions) (Pruned, error) {
+	return prune(repoRoot, "", opts)
+}
+
+// PruneOne is Prune for the one worktree called name in the repository's
+// lane: the same proof, refusals, judgement, archive and removal, its answer
+// the one row. A name the lane does not hold, a worktree outside the store
+// among them, is refused before anything is archived or removed. Only that
+// worktree is judged, so a caller walking the lane one name at a time does
+// not judge every worktree once a call.
+func PruneOne(repoRoot, name string, opts PruneOptions) (Pruned, error) {
+	if name == "" {
+		return Pruned{}, refuse("no worktree is named", "name a worktree of this repository's lane")
+	}
+	return prune(repoRoot, name, opts)
+}
+
+// prune is Prune and PruneOne's one path; only, when set, is the name of the
+// one worktree in the lane it judges.
+func prune(repoRoot, only string, opts PruneOptions) (Pruned, error) {
 	if opts.Held == nil {
 		return Pruned{}, errors.New("worktree: Prune needs a reader of what the build loop holds")
 	}
@@ -120,9 +147,17 @@ func Prune(repoRoot string, opts PruneOptions) (Pruned, error) {
 	if err != nil {
 		return Pruned{}, err
 	}
-	es, note, err := scan(repoRoot, lane, opts.Forge)
+	var pick func(entry) bool
+	if only != "" {
+		pick = func(e entry) bool { return inLane(lane, only, e) }
+	}
+	es, note, err := scan(repoRoot, lane, opts.Forge, pick)
 	if err != nil {
 		return Pruned{}, err
+	}
+	if only != "" && len(es) == 0 {
+		return Pruned{}, refuse(fmt.Sprintf("this repository's lane holds no worktree named %q", only),
+			"name one `abcd ahoy worktree list` shows in the store")
 	}
 	held, err := opts.Held(repoRoot)
 	if err != nil {
@@ -144,6 +179,15 @@ func Prune(repoRoot string, opts PruneOptions) (Pruned, error) {
 		out.Rows = append(out.Rows, row)
 	}
 	return out, nil
+}
+
+// inLane reports whether e is the directory called name directly in lane,
+// listed by git or not. The name is matched exactly and the real paths
+// compared, so neither a path for a name nor an outside worktree sharing the
+// base name selects anything.
+func inLane(lane Lane, name string, e entry) bool {
+	return e.name == name && e.where != WhereOutside &&
+		fsutil.RealExistingPath(e.path) == fsutil.RealExistingPath(lane.Path(name))
 }
 
 // keptFor is why e is kept before its notes are read, in the spec's order, or
@@ -191,11 +235,15 @@ func reclaim(repoRoot string, lane Lane, e entry, opts PruneOptions, row *PruneR
 	}
 	row.Notes = notesCount(notes)
 	if opts.DryRun {
+		if keptByCaller(opts, e, row) {
+			return
+		}
 		row.Outcome = OutcomeWouldReclaim
 		return
 	}
+	entryDir := ""
 	if len(notes) > 0 {
-		entryDir, err := writeNotes(repoRoot, lane, e, notes, opts.Now())
+		entryDir, err = writeNotes(repoRoot, lane, e, notes, opts.Now())
 		if entryDir != "" {
 			row.Archive = termsafe.Sanitize(fsutil.RedactHome(entryDir))
 		}
@@ -205,6 +253,19 @@ func reclaim(repoRoot string, lane Lane, e entry, opts PruneOptions, row *PruneR
 			return
 		}
 	}
+	if keptByCaller(opts, e, row) {
+		// The tier still stands in the kept worktree, so the entry is a
+		// second copy no removal will ever claim: taken back, it leaves no
+		// orphan in the archive. The entry was made by this run alone.
+		if entryDir != "" {
+			if err := os.RemoveAll(entryDir); err != nil {
+				row.Reason += "; its notes archive entry could not be taken back: " + causeOf(err)
+				return
+			}
+			row.Archive = ""
+		}
+		return
+	}
 	// Without --force: git re-checks the tree and the lock as it removes, and
 	// refuses a tree that changed since it was judged. The archive written
 	// stays, since the tier still stands in the kept worktree.
@@ -213,6 +274,24 @@ func reclaim(repoRoot string, lane Lane, e entry, opts PruneOptions, row *PruneR
 		return
 	}
 	row.Outcome = OutcomeReclaimed
+}
+
+// keptByCaller asks the caller's PreRemove about e and, on a keep, marks row
+// kept with the caller's reason. The reason is caller text, and is masked and
+// home-redacted with every other reason as the row is finished.
+func keptByCaller(opts PruneOptions, e entry, row *PruneRow) bool {
+	if opts.PreRemove == nil {
+		return false
+	}
+	keep, reason := opts.PreRemove(e.path)
+	if !keep {
+		return false
+	}
+	if reason == "" {
+		reason = "kept by the caller's check before removal"
+	}
+	row.Notes, row.Reason = "", reason
+	return true
 }
 
 func notesCount(notes []note) string {
