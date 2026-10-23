@@ -99,36 +99,73 @@ func LaneFor(repoRoot string) (Lane, error) {
 // it stands, and nothing is made inside a level that fails. A Lane that is not
 // the store's shape for its own root commit makes nothing.
 func (l Lane) Ensure() error {
+	if err := l.shaped(); err != nil {
+		return err
+	}
+	_, err := levels(l.Home, l.Rel, "worktree store", true)
+	return err
+}
+
+// shaped refuses a Lane that is not LaneFor's answer for its own root commit.
+func (l Lane) shaped() error {
 	if !gitutil.IsFullSHA(l.RootSHA) || l.Rel != StoreRel+"/"+l.RootSHA ||
 		l.Dir != filepath.Join(l.Home, filepath.FromSlash(l.Rel)) {
 		return refuse("the lane is not the worktree store's for its root commit",
 			"derive the lane with LaneFor")
 	}
-	if !fsutil.IsRealDir(l.Home) || !fsutil.ValidRelPath(l.Rel) {
-		return refuse("the home directory is not a real directory to make the worktree store under",
+	return nil
+}
+
+// present reports whether the lane's levels all exist, holding each that does
+// to Ensure's two tests, from the top down, and making none: a reader of the
+// store refuses what a maker would refuse, and an absent level is a store that
+// holds nothing yet.
+func (l Lane) present() (bool, error) {
+	if err := l.shaped(); err != nil {
+		return false, err
+	}
+	return levels(l.Home, l.Rel, "worktree store", false)
+}
+
+// levels walks rel's levels under home one at a time, from the top down,
+// making each that is absent when create is set and holding each to the two
+// tests Ensure names before the next is reached. Without create, it answers
+// false at the first absent level and reads nothing beneath it. It is the
+// one maker the worktree store and the notes archive share.
+func levels(home, rel, what string, create bool) (bool, error) {
+	if !fsutil.IsRealDir(home) || !fsutil.ValidRelPath(rel) {
+		return false, refuse("the home directory is not a real directory to make the "+what+" under",
 			"make the home a real directory, or work from an account whose home is one")
 	}
-	dir, shown := l.Home, "~"
-	for _, seg := range strings.Split(l.Rel, "/") {
+	dir, shown := home, "~"
+	for _, seg := range strings.Split(rel, "/") {
 		dir, shown = filepath.Join(dir, seg), shown+"/"+seg
-		if err := fsutil.EnsureRealDir(dir, dirPerm); err != nil {
-			return refuse(fmt.Sprintf("the worktree store ~/%s cannot be made as real directories: %v", l.Rel, err),
-				"remove what stands in for the store (a symlink or a file)")
+		if create {
+			if err := fsutil.EnsureRealDir(dir, dirPerm); err != nil {
+				return false, refuse(fmt.Sprintf("the %s ~/%s cannot be made as real directories: %v", what, rel, err),
+					"remove what stands in for the store (a symlink or a file)")
+			}
 		}
 		fi, err := os.Lstat(dir)
-		if err != nil {
-			return fmt.Errorf("checking the worktree store level %s: %w", shown, err)
+		switch {
+		case !create && errors.Is(err, fs.ErrNotExist):
+			return false, nil
+		case err != nil:
+			return false, fmt.Errorf("checking the %s level %s: %w", what, shown, err)
+		case !fi.IsDir():
+			return false, refuse(fmt.Sprintf("the %s ~/%s is not real directories: %s is a symlink or a file", what, rel, shown),
+				"remove what stands in for the store (a symlink or a file)")
 		}
 		switch err := fsutil.CallersAlone(dir, fi); {
 		case errors.Is(err, fsutil.ErrDeclarationWritable):
-			return refuse(fmt.Sprintf("the worktree store level %s is writable by its group or by every user, so another account could replace a checkout in it", shown),
+			return false, refuse(fmt.Sprintf("the %s level %s is writable by its group or by every user, so another account could replace what it holds", what, shown),
 				"make it yours alone (`chmod go-w` it)")
 		case err != nil:
-			return refuse(fmt.Sprintf("the worktree store level %s is owned by another account, or its owner could not be read, so that account could replace a checkout in it", shown),
+			return false, refuse(fmt.Sprintf("the %s level %s is owned by another account, or its owner could not be read, so that account could replace what it holds", what, shown),
 				"move it aside and let the store make itself")
 		}
 	}
-	return nil
+	return true, nil
 }
 
 // ValidName reports whether name is one plain path segment that cannot escape
