@@ -4384,6 +4384,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoyWorktreeCommand(asJSON))
 
 	return ahoyCmd
 }

@@ -1459,7 +1459,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd ahoy`
 
-Sub-verbs: `abcd ahoy connect`, `abcd ahoy credential`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
+Sub-verbs: `abcd ahoy connect`, `abcd ahoy credential`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`, `abcd ahoy worktree`.
 
 | Flag | Type |
 |---|---|
@@ -1549,5 +1549,27 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--bin-dir` | string |
+
+### `abcd ahoy worktree`
+
+Sub-verbs: `abcd ahoy worktree list`, `abcd ahoy worktree prune`.
+
+Flags: none.
+
+### `abcd ahoy worktree list`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--all` | bool |
+
+### `abcd ahoy worktree prune`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--dry-run` | bool |
 
 <!-- surface-appendix:end -->
