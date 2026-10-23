@@ -237,6 +237,25 @@ older abcd that renews the release drops the record that way. abcd's own
 correction after a withdrawal the forge refused keeps that entry (`kept`)
 instead, so it is never reported lost.
 
+**A comment on each pull request it acts on.** Each change of state abcd
+records for a pull request is also posted on it, as one fixed sentence naming
+the release's tag: withdrawn ("abcd release hold: the merge of #1234 is
+withdrawn by octo while release v0.16.0 is cut, and is re-armed after it."),
+admitted, re-armed, or not re-armed with its state as the reason (`moved`,
+`closed`, `merged`, `mismatch`, `manual`, `refused`, `armed`). It carries
+nothing but validated fields: no session URL, no tool footer, and the
+withdrawer's login without an at-sign, so it notifies no one. Each one is
+judged by the outbound policy the commit-msg hook judges a commit message by
+before it is posted, and a body the policy refuses is never posted; once
+posted it is read back from the forge, and one that reads back as other than
+what was sent (a footer appended, say) is reported for you to correct on the
+pull request, never edited. A comment is posted only once the push recording
+its change of state has landed, so a renewal that withdraws again what it
+already records, an admission run again, and a second copy whose settle does
+not land post nothing. A comment that fails is named in `forge_failures` (or
+a settle's `failures`) with act `comment`, and never holds up or undoes the
+withdrawal or the re-arm it reports.
+
 **Failures are loud and lose nothing.** A withdrawal or re-arm the forge
 refuses is named in `forge_failures` (`number`, `act`, `reason`) and on
 stderr, and the reservation stands; a merge left armed is what the launch

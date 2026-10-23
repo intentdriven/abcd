@@ -518,11 +518,21 @@ withdrawing nothing, and an admission or a release is refused.
   `merge-hold-lost` warning): nothing re-arms those, so their withdrawer does
   it by hand. abcd's own correction after a refused withdrawal keeps the
   entry (`kept`), so it never reads as lost.
-- **No comments on other people's pull requests.** A fixed-form comment
-  writer (one sentence of validated fields, judged by the outbound policy)
-  sits behind a seam that nothing sets, so abcd posts nothing on the pull
-  requests it withdraws or re-arms; `abcd peers` and the tombstone carry the
-  trace until the product thinker decides otherwise (dcn-2610230328230097).
+- **A comment on each pull request acted on** (dcn-2610230712084099,
+  superseding dcn-2610230328230097). Each change of state a push records for
+  a pull request (withdrawn, admitted, re-armed, or not re-armed with its
+  state word as the reason) is posted on it as one fixed sentence naming the
+  release's tag, through `gh`'s `addComment` (pinned in ghcontract's
+  `graphql-fields.txt`). Every value in it is validated data, the
+  withdrawer's login carries no at-sign, and the body is judged by the
+  outbound policy before it is posted, a refused one never posted. The
+  comment is read back from the forge by the id it answered with; one that
+  reads back as other than what was sent is reported, never edited. It is
+  posted only after the push recording that state lands, and only for an
+  entry whose state that push changed, so a retry, a repeated `--admit` and a
+  second copy whose settle does not land post nothing. A comment that fails is
+  a `comment` failure, named by number and reason, and never holds up or
+  undoes the act it reports.
 - **Failures are loud and lose nothing.** A withdrawal the forge refuses
   (no permission, no network) leaves the reservation standing and is named
   by number and reason, and the second renewal records it `kept`, which the
