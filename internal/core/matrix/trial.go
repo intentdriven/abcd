@@ -37,6 +37,9 @@ const (
 	maxTests       = 1 << 20
 	maxReasonBytes = 1 << 10
 	maxReceipts    = 256
+	// maxServedBytes is a served model or provider as its producer writes
+	// it: at most oracle.MaxModelBytes, cut with "..." after it.
+	maxServedBytes = oracle.MaxModelBytes + len("...")
 )
 
 // TrialKey is what a copy is a copy of: the task (for a code task, the task
@@ -50,7 +53,11 @@ type TrialKey struct {
 // String is the key as one token.
 func (k TrialKey) String() string { return k.Task + "/" + k.Cell + "/" + strconv.Itoa(k.Repeat) }
 
-// rel is the trial record's path in its run's directory.
+// rel is the trial record's path in its run's directory: the seam the step
+// that writes a trial writes through. That writer passes the record through
+// screen first, as writeRun does a run's: reason and score.detail are bounded
+// plain text but carry what a runner said, so only the scanner can tell a
+// credential in them.
 func (k TrialKey) rel() string {
 	return "trials/" + k.Task + "/" + k.Cell + "/" + strconv.Itoa(k.Repeat) + ".json"
 }
@@ -217,9 +224,20 @@ func (t TrialRecord) validate() error {
 	if !t.FinishedAt.IsZero() && t.FinishedAt.Before(t.StartedAt) {
 		return fmt.Errorf("the trial %s finished before it started", t.Key)
 	}
-	for field, v := range map[string]string{"harness_version": t.HarnessVersion, "model_asked": t.ModelAsked,
-		"model_served": t.ModelServed, "served_provider": t.ServedProvider} {
+	if (t.Status == StatusFailed || t.Status == StatusExcluded) && t.Score == nil && (t.Reason == "" || t.FinishedAt.IsZero()) {
+		return fmt.Errorf("the trial %s is %s with no score, so it names its reason and when it finished; either target exports it as an error", t.Key, t.Status)
+	}
+	for field, v := range map[string]string{"harness_version": t.HarnessVersion, "model_asked": t.ModelAsked} {
 		if err := optional(field, v); err != nil {
+			return fmt.Errorf("the trial %s: %w", t.Key, err)
+		}
+	}
+	// The served side is the source's to name: held to the bound its
+	// producer writes (a provider's display name may carry spaces, and a
+	// served id past oracle.MaxModelBytes arrives cut with "..." after it),
+	// as the trial's own receipts carry it.
+	for field, v := range map[string]string{"model_served": t.ModelServed, "served_provider": t.ServedProvider} {
+		if err := line(field, v, maxServedBytes); err != nil {
 			return fmt.Errorf("the trial %s: %w", t.Key, err)
 		}
 	}

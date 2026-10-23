@@ -609,3 +609,23 @@ func TestAnInvalidTrialIsNotExported(t *testing.T) {
 		t.Error("Inspect exported a trial with no repeat")
 	}
 }
+
+// A sample id that is not the task's string is quoted back in the refusal,
+// never printed raw: a carriage return, a right-to-left override and a C1
+// control inside it reach the refusal escaped.
+func TestASampleIdIsQuotedInItsRefusal(t *testing.T) {
+	s := inspectOf(t, fullTrial())
+	s.ID = json.RawMessage("{\r\"a\": \"\u202e\u009b2J\"}")
+	if !json.Valid(s.ID) {
+		t.Fatal("the probe id is not JSON")
+	}
+	_, err := s.Trial()
+	if err == nil {
+		t.Fatal("an object sample id was read")
+	}
+	for _, r := range []string{"\r", "\u202e", "\u009b"} {
+		if strings.Contains(err.Error(), r) {
+			t.Errorf("the refusal carries %q raw: %q", r, err)
+		}
+	}
+}

@@ -474,7 +474,7 @@ func (s InspectSample) Trial() (TrialRecord, error) {
 	}
 	var task string
 	if err := json.Unmarshal(s.ID, &task); err != nil {
-		return TrialRecord{}, fmt.Errorf("the sample id %s is not the task id abcd writes", clip(string(s.ID)))
+		return TrialRecord{}, fmt.Errorf("the sample id %q is not the task id abcd writes", clip(string(s.ID)))
 	}
 	t := TrialRecord{
 		SchemaVersion: meta.SchemaVersion, Run: meta.Run, Key: TrialKey{Task: task, Cell: meta.Cell, Repeat: s.Epoch},
@@ -529,9 +529,11 @@ func (s InspectSample) Trial() (TrialRecord, error) {
 
 // exception is the error type a target names for a failed or excluded copy
 // that has no score (its runner failed, refused or answered unparsably), ""
-// for any other copy: a scored failure is a result, not an error.
+// for any other copy: a scored failure is a result, not an error. Such a copy
+// always names its reason and finish time (validate), so it never exports as
+// a copy that produced nothing.
 func exception(t TrialRecord) string {
-	if (t.Status == StatusFailed || t.Status == StatusExcluded) && t.Score == nil && t.Reason != "" && !t.FinishedAt.IsZero() {
+	if (t.Status == StatusFailed || t.Status == StatusExcluded) && t.Score == nil {
 		return "abcd." + string(t.Status)
 	}
 	return ""
@@ -551,7 +553,10 @@ func inspectFallbacks(t TrialRecord) []InspectModelFallback {
 var snapshotRe = regexp.MustCompile(`^[-@:]([0-9]{8}|[0-9]{4}-[0-9]{2}(-[0-9]{2})?)$`)
 
 // sameModel reports whether served is the asked model: the same id, or the
-// asked id with a date stamp after it.
+// asked id with a date stamp after it. A four-digit stamp (-0613) is not
+// read as one: it cannot be told from a size or a version without a vendor's
+// list, and a different model read as the same would hide a substitution, so
+// it exports as a fallback, which a reader can see is a snapshot.
 func sameModel(asked, served string) bool {
 	rest, ok := strings.CutPrefix(served, asked)
 	return ok && (rest == "" || snapshotRe.MatchString(rest))

@@ -199,7 +199,9 @@ func TestATrialHoldsItsCountsAndTextToBounds(t *testing.T) {
 		"escape in harness":       func(t *TrialRecord) { t.HarnessVersion = esc },
 		"escape in served model":  func(t *TrialRecord) { t.ModelServed = "\x1b[31mRED" },
 		"bidi in asked model":     func(t *TrialRecord) { t.ModelAsked = "vendor/‮model" },
-		"long served provider":    func(t *TrialRecord) { t.ServedProvider = strings.Repeat("p", oracle.MaxModelBytes+1) },
+		"long served provider":    func(t *TrialRecord) { t.ServedProvider = strings.Repeat("p", oracle.MaxModelBytes+len("...")+1) },
+		"long served model":       func(t *TrialRecord) { t.ModelServed = strings.Repeat("m", oracle.MaxModelBytes+len("...")+1) },
+		"newline in served model": func(t *TrialRecord) { t.ModelServed = "vendor/model\nforged" },
 		"escape in reason":        func(t *TrialRecord) { t.Reason = "failed" + esc },
 		"newline in reason":       func(t *TrialRecord) { t.Reason = "failed\nforged line" },
 		"long reason":             func(t *TrialRecord) { t.Reason = long },
@@ -249,5 +251,54 @@ func TestATrialSettingTheOracleRefusesIsRefused(t *testing.T) {
 		if tr.validate() == nil {
 			t.Errorf("%s in a call's settings: validate admitted it", name)
 		}
+	}
+}
+
+// The served side is recorded as the source sends it, the bound its producer
+// writes: a provider's display name may carry spaces, and a served id past
+// oracle.MaxModelBytes arrives cut with "..." after it (openaiapi's
+// cleanModel). The trial holds both to that bound, as its own receipts carry
+// them, and both travel through either target unchanged.
+func TestTheServedSideIsHeldToTheBoundItsProducerWrites(t *testing.T) {
+	tr := fullTrial()
+	tr.ServedProvider = "Together AI"
+	tr.ModelServed = strings.Repeat("m", oracle.MaxModelBytes) + "..."
+	tr.Roles[0].Route.Sides.ServedProvider = tr.ServedProvider
+	tr.Calls[0].ProviderCall.ServedProvider = tr.ServedProvider
+	if err := tr.validate(); err != nil {
+		t.Fatalf("a spaced provider name and a cut served id are refused: %v", err)
+	}
+	for name, rt := range map[string]func(TrialRecord) (TrialRecord, error){"Harbor": roundTripHarbor, "Inspect": roundTripInspect} {
+		if back, err := rt(tr); err != nil || !reflect.DeepEqual(back, tr) {
+			t.Errorf("through %s: %v", name, err)
+		}
+	}
+}
+
+// An unscored failure is exported as an error, so it names why and when it
+// failed: a failed or excluded copy with no score and no reason or no finish
+// time is refused, rather than exported as a copy that produced nothing.
+func TestAnUnscoredFailureNamesWhyAndWhen(t *testing.T) {
+	for _, status := range []TrialStatus{StatusFailed, StatusExcluded} {
+		for name, mutate := range map[string]func(*TrialRecord){
+			"no reason":      func(t *TrialRecord) { t.Reason = "" },
+			"no finish time": func(t *TrialRecord) { t.FinishedAt = time.Time{} },
+		} {
+			tr := fullTrial()
+			tr.Status, tr.Score, tr.Reason = status, nil, "the runner answered unparsably"
+			if err := tr.validate(); err != nil {
+				t.Fatalf("%s, unscored: %v", status, err)
+			}
+			mutate(&tr)
+			if tr.validate() == nil {
+				t.Errorf("%s, unscored, %s: validate admitted it", status, name)
+			}
+		}
+	}
+	// A scored failure is a result and needs neither.
+	tr := fullTrial()
+	tr.Reason, tr.FinishedAt = "", time.Time{}
+	if err := tr.validate(); err != nil {
+		t.Fatalf("a scored failure with no reason or finish time: %v", err)
 	}
 }
