@@ -1,0 +1,6 @@
+---
+id: dcn-2610181003477194
+slug: the-acts-only-the-person-may-approve-are
+date: 2026-10-18
+---
+2026-10-18 — The acts only the person may approve are completed, end in a catch-all, and are classified by the agent (facilitator-on-delegation, itd-2610180912189125 review round 2, blocker 6; refines dcn-2610180937177502): the list the question reroute queues gains the embargo triage verdict (commands/embargo.md), the drain's hand-back (commands/drain.md), the confirmed apply verb for remote configuration (brief invariant 10), a push or merge beyond the session's own branches (the default branch, a tag, a release cut, another person's pull request, a branch only checked out to review), and a comment or message posted outward other than the session's own pull request, and it ends with any act a command page or a brief invariant names as the person's. A release sign-off is a cut, or a step of one, that asks for the person by name or that no standing instruction of theirs allows; a standing permission for automatic cuts stands, and the away mode adds none. Nothing detects the act mechanically: the agent classifies its own question from the refusal's list, and the guard's existing entries enforce only what they name, a force push and a skipped hook among them (grounds: plan review round 2, blocker 6; commands/embargo.md; commands/drain.md; brief invariant 10)

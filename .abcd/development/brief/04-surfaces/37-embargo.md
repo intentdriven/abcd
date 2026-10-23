@@ -52,6 +52,28 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   person's own `gh` and mints one private record per advisory not seen before;
   severity maps critical to critical, high to major, medium and low to minor,
   and an advisory with no severity is listed for the person, not recorded.
+  Each held advisory GitHub lists in neither state is read on its own. One
+  GitHub reports published, by any hand, is recorded so, which releases it
+  from the outbound check; one it reports closed is recorded so only when the
+  store's verdict on it already ends the private track (a closing verdict, or
+  the public track), since a close recorded on GitHub's
+  word alone would drop an advisory judged a vulnerability, or never judged,
+  from every plan for good. Every timestamp is GitHub's own: its answer is held
+  to a known state and a well-formed time, present. An answer that fails that,
+  or a close the store's verdict does not make, leaves the advisory under
+  embargo, read again on the next run so a reopen is seen, and listed with
+  the reason; the second is the person's to settle. So does an advisory
+  GitHub reports no such advisory for, with a 404 or a 403: it may be deleted,
+  or hidden from this account, and one such answer is that advisory's, not the
+  run's. A missing `gh`, a `gh` signed in to no account or holding a token
+  GitHub rejects, or a refusal whose words name the advisory scope, refuses the
+  run whole with its remedy, recording nothing. Every publication plan reads
+  the held advisories the same way, and lists what it recorded. A plan whose
+  every read meets a 404 or a 403 cannot tell deleted advisories from a token
+  without the scope, so it asks once for the repository's advisory listing,
+  which answers only a token holding the scope: answered, the plan goes on
+  with those advisories unread; refused, or failing otherwise, the plan
+  refuses whole.
 - **triage** records one of four verdicts (vulnerability, not abcd's, not a
   vulnerability, public track) with who decided it and when; the two closing
   verdicts draft the closing explanation, and "not abcd's" names both halves of
@@ -67,16 +89,41 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   repeating the match. A paraphrase or a count is beyond it and stays the
   author's to avoid.
 - **publish** shows the plan with each patched version taken from the first
-  release tag containing the fix, leaving out, with the reason, an advisory not
-  resolved or released, one with no package, and one whose text would disclose
+  published release containing the fix, leaving out, with the reason, an
+  advisory not resolved or released, one with no package, and one whose text would disclose
   a secret, a private name or another advisory under embargo; with the approval
   of that plan's digest it publishes one advisory as a canary, reads it back,
-  publishes the rest, and confirms none is left in draft.
+  publishes the rest, and confirms none is left in draft. A release tag counts
+  as a published release only when origin holds it at the object this
+  checkout holds and GitHub reports its release neither a draft nor a
+  prerelease: the release workflow drafts a release before it publishes it,
+  and a failed run leaves a tag with no release behind it, so a tag that only
+  this checkout holds, or one still drafting, would name a patched version
+  nobody can install. Such a tag is passed over for the next published
+  release, the plan's own release must be one, and origin or GitHub that
+  cannot be read refuses the plan rather than falling back on the checkout's
+  tags. Origin's tags vouch only while origin names the repository the store
+  was made for, so a repointed origin refuses the plan, as it refuses intake. The fix commit comes
+  from the advisory's record resolved in the release, or, since the security
+  rule keeps that record out of every committed tree until the advisory is
+  published, from its private record resolved in the store's own ledger. The
+  store is a trust boundary: the plan takes a commit from it only when it is
+  the full object name of a commit of this repository, as git resolves it, and
+  leaves the advisory out otherwise. The command that copies a private
+  record, resolved, into the public ledger is read from the store's state,
+  not from the run that published: every plan, intake and publication names
+  it for each advisory recorded published whose record is resolved in the
+  store, passes the same checks, and is not yet in the checkout's ledger, so
+  a stopped run loses nothing. A record whose path the terminal would not
+  show as written names no command, saying why. Before the record lands, the
+  person compares its body, minted from the reporter's report, with the
+  published advisory.
 
 ## What stays the person's
 
-Every verdict, every approval, fixing and landing the fixes, requesting a CVE,
-and restoring redacted records after publication. The command page,
+Every verdict, every approval, fixing and landing the fixes, resolving each
+private record in the store with its fix, requesting a CVE, and restoring each
+record into the public ledger after publication. The command page,
 [`commands/embargo.md`](../../../../commands/embargo.md), says so to the host
 and to the person.
 

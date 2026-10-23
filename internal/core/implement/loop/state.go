@@ -48,6 +48,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -175,10 +176,26 @@ const lockFileName = ".lock"
 // Version 13 added a lane's `refused` (spc-2610161044461448 step 5): an issue
 // run's lane logs its run of refused steps, which a drain reads to hand a
 // stuck lane back. Version 12 is its strict subset, read as a run whose lanes
-// have refused nothing and written back at version 13; a file of version 12 or
-// lower carrying `refused` is not one its version wrote, and is refused.
-// Releases that write version 12 refuse a version-13 file as a newer abcd's.
-const SchemaVersion = 13
+// have refused nothing and written back at the current version; a file of
+// version 12 or lower carrying `refused` is not one its version wrote, and is
+// refused. Releases that write version 12 refuse a version-13 file as a newer
+// abcd's.
+//
+// Version 14 added both sides of a run (itd-166): a runner's route record on
+// a verified receipt or a validator's return carries the model the runner
+// asked for, the prompt's hash, the served models, provider, finish reason
+// and harness version the harness reported, the token counts and cost, and
+// the fields it could not pin (runner.Sides). Version 13 is its strict
+// subset, read as a run whose routes recorded neither side, its lanes'
+// `refused` kept, and written back at version 14; a file of version 13 or
+// lower carrying either side is not one its version wrote, and is refused.
+// Releases that write version 13 (v0.15.1) refuse a version-14 file as a
+// newer abcd's before any strict decode.
+const SchemaVersion = 14
+
+// schemaVersionUnmetered is the version before a route's both sides: read,
+// never written.
+const schemaVersionUnmetered = 13
 
 // schemaVersionUnrefused is the version before a lane's `refused`: read,
 // never written.
@@ -717,7 +734,7 @@ func (s State) kept() string {
 }
 
 // answered reports the first await, in a state, that carries `answered`,
-// which only version 12 writes, or "".
+// which only version 12 and later write, or "".
 func (s State) answered() string {
 	for _, l := range s.Lanes {
 		for _, a := range l.Awaits {
@@ -729,8 +746,31 @@ func (s State) answered() string {
 	return ""
 }
 
+// metered reports the first route, in a state, that carries either side of
+// its run, which only version 14 writes, or "".
+func (s State) metered() string {
+	sided := func(r *runner.RouteRecord) bool {
+		return r != nil && !reflect.DeepEqual(r.Sides, runner.Sides{})
+	}
+	for _, l := range s.Lanes {
+		for i, r := range l.Receipts {
+			if sided(r.Route) {
+				return fmt.Sprintf("%s's receipt %d's route", l.ID, i+1)
+			}
+		}
+		for _, v := range l.Validation {
+			for i, vr := range v.Validators {
+				if sided(vr.Route) {
+					return fmt.Sprintf("%s's round %d validator %d's route", l.ID, v.Round, i+1)
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // refused reports the first lane, in a state, that carries `refused`, which
-// only version 13 writes, or "".
+// only version 13 and later write, or "".
 func (s State) refused() string {
 	for _, l := range s.Lanes {
 		if l.Refused != nil {
@@ -885,7 +925,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnrefused && st.refused() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.refused(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnrefused:
+	case st.SchemaVersion <= schemaVersionUnmetered && st.metered() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries both sides of %s, which version %d never wrote", rel, st.SchemaVersion, st.metered(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnmetered:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.

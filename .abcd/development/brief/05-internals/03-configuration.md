@@ -179,7 +179,9 @@ rather than skipped:
         "base_url": "https://openrouter.ai/api/v1",   // https, or http to this machine
         "key": "openrouter",             // a credential NAME, resolved through the credential
                                          //   source; omitted for a server that takes no key
-        "models": ["typesafe/jev-1.13"]  // the allowlist: the only models it may serve
+        "models": ["typesafe/jev-1.13"], // the allowlist: the only models it may serve
+        "stream_usage": false            // optional, default true: false stops asking for
+                                         //   usage in the stream, for a server that refuses it
       }
     },
     "denylist": ["openai/*"],            // optional, none bundled; repo or machine
@@ -192,8 +194,22 @@ rather than skipped:
 - **A provider block sits on the machine alone.** It names the address a key is
   sent to, so a repository's `.abcd/config.json` declaring `oracle.api` is
   refused: a checkout must never be able to aim the person's key at a server of
-  its choosing. `abcd ahoy connect` writes the block, after one verification
-  call, and it is the one write abcd makes to `~/.abcd.noindex/config.json`.
+  its choosing. `abcd ahoy connect` writes the block once its verification
+  succeeds (asked at most twice, below), and it is the one write abcd makes to `~/.abcd.noindex/config.json`.
+- **A call asks for its usage unless the block says not to.** The adapter sends
+  `stream_options.include_usage` with every call, so the streamed answer ends
+  with the token counts and the cost the call record carries (itd-166). A
+  server that refuses the field fails the call with HTTP 400 or 422; when the
+  refusal's body names `stream_options` or `include_usage`, it names
+  `oracle.api.<provider>.stream_usage`, and set to `false`, calls go without
+  the field and a call whose answer carries no usage records it as not
+  reported. No ordinary call is retried without the field, since a retry is a
+  second request. The setup is the one exception: `abcd ahoy connect` asks
+  its verification call once more without the field when the first is
+  refused with 400 or 422, and when that succeeds writes `stream_usage: false`
+  into the block it creates and says so (`stream_usage_note` in its JSON).
+  `--stream-usage=false` (or `=true`) sets the block's value outright, and
+  the verification is then asked once, as given.
 - **The allowlist alone decides; the denylist is optional and a union.** abcd
   bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
   is served whichever vendor made it. `oracle.denylist` is the configuration's
@@ -1310,14 +1326,20 @@ names a `statusMessage`, the host's spinner text while the hook runs, because th
 salvage sends the script's output nowhere; the text states no duration, since
 those limits differ. A test pins every event's timeout and the message
 (`internal/surface/cli/hooks_timeout_test.go`). `SessionEnd` and
-`SubagentStop` are the two
+`SubagentStop` are among the four
 exceptions and download nothing at all: each fires where the harness cancels a slow
 hook rather than wait — one as the session exits, the other inside a live session as
 a sub-agent finishes — so a fetch there races that cancellation and loses the
 transcript the hook exists to capture (iss-2608210934566223). Both resolve the
 plugin root, then PATH, then say the transcript was not captured. `SubagentStop`
 additionally never exits non-zero beyond that refusal, because exit 2 is the host's
-BLOCKING code on that event.
+BLOCKING code on that event. `Stop` and `StopFailure` carry the away
+mode's stop check (`hook stop`, `hook stop-failure`, spc-2610180914469489) and fire
+at a turn's end, where a fetch would hold the session; each resolves the plugin
+root, then PATH, then says what did not happen, at exit 1, never `Stop`'s
+blocking 2: `Stop` that the stop check did not run, `StopFailure` that a turn
+ended on an API error was not recorded. `Stop` declares a 30-second `timeout`, room for the check's one forge
+listing under its own ten-second deadline; `StopFailure` declares none.
 
 `SessionEnd` carries `hook session-end`, which stages the session's own transcript;
 `SubagentStop` carries `hook subagent-stop`, which stages a finished sub-agent's

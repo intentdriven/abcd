@@ -64,6 +64,8 @@ const (
 	denylistKey   = "oracle.denylist"
 	rolesKey      = "oracle.roles"
 	judgementsKey = "oracle.judgements"
+	// streamUsageKey is a provider block's opt-out of usage in the stream.
+	streamUsageKey = "stream_usage"
 )
 
 // Bounds on what the configuration may carry.
@@ -98,7 +100,15 @@ type Provider struct {
 	Key     string   `json:"key,omitempty"`
 	Models  []string `json:"models"`
 	Origin  string   `json:"origin"`
+	// StreamUsage is the block's stream_usage: false stops a call asking for
+	// usage in the stream (openaiapi.StreamUsageField), for a server that
+	// refuses the field. nil, the default, asks (itd-166 decision 4).
+	StreamUsage *bool `json:"stream_usage,omitempty"`
 }
+
+// AsksStreamUsage reports whether a call through p asks for usage in the
+// stream: unless its block sets stream_usage to false.
+func (p Provider) AsksStreamUsage() bool { return p.StreamUsage == nil || *p.StreamUsage }
 
 // Target is where a role or a judgement type is pointed: a configured
 // provider and a model on its list.
@@ -138,9 +148,10 @@ type APIConfig struct {
 
 // providerFile is a provider block as the file spells it, decoded strictly.
 type providerFile struct {
-	BaseURL string   `json:"base_url"`
-	Key     *string  `json:"key"`
-	Models  []string `json:"models"`
+	BaseURL     string   `json:"base_url"`
+	Key         *string  `json:"key"`
+	Models      []string `json:"models"`
+	StreamUsage *bool    `json:"stream_usage"`
 }
 
 // LoadAPI reads the provider configuration through the layered resolver and
@@ -234,7 +245,7 @@ func (c *APIConfig) readProviders(s *layered.Stack) error {
 				origin, apiKey, name, Harness)
 		}
 	}
-	if err := s.Claim(apiKey+".*", "base_url", "key", "models"); err != nil {
+	if err := s.Claim(apiKey+".*", "base_url", "key", "models", streamUsageKey); err != nil {
 		return fmt.Errorf("oracle adapter: %w", err)
 	}
 	for _, name := range names {
@@ -265,7 +276,7 @@ func (c *APIConfig) provider(name string, fd layered.Found) (Provider, error) {
 	if err := openaiapi.ValidateBaseURL(pf.BaseURL); err != nil {
 		return Provider{}, err
 	}
-	p := Provider{Name: name, BaseURL: pf.BaseURL, Origin: fd.Origin}
+	p := Provider{Name: name, BaseURL: pf.BaseURL, Origin: fd.Origin, StreamUsage: pf.StreamUsage}
 	if pf.Key != nil {
 		if !credential.ValidName(*pf.Key) {
 			return Provider{}, fmt.Errorf("key %q is not a plain credential name (lower case letters, digits, '.', '_' and '-'); "+

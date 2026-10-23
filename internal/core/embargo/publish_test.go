@@ -28,10 +28,22 @@ const (
 
 func newPublishFixture(t *testing.T, stateA string) publishFixture {
 	t.Helper()
+	return newPublishFixtureWith(t, stateA, false)
+}
+
+// newPublishFixtureWith is newPublishFixture, with A's fix recorded only in
+// the store's own ledger when storeA: the release carries B's public record
+// alone.
+func newPublishFixtureWith(t *testing.T, stateA string, storeA bool) publishFixture {
+	t.Helper()
 	pf := newPlanFixture(t)
 	pf.seed(t, vulnAdvisory(ghsaA, issA), vulnAdvisory(ghsaB, issB))
 	fix := pf.commit("parser.go", "package parser\n", "fix")
-	pf.resolve(issA, fix)
+	if storeA {
+		pf.storeResolve(t, issA, fix)
+	} else {
+		pf.resolve(issA, fix)
+	}
 	pf.resolve(issB, fix)
 	pf.tag("v0.9.0")
 	px := publishFixture{pf}
@@ -47,7 +59,8 @@ func newPublishFixture(t *testing.T, stateA string) publishFixture {
 	return px
 }
 
-// answer sets the n-th read of ghsa: in state, with the versions given.
+// answer sets the n-th read of ghsa: in state, with the versions given; a
+// published or closed one carries GitHub's timestamp for it.
 func (px publishFixture) answer(t *testing.T, ghsa string, n int, state, rng, patched string) {
 	t.Helper()
 	v := vulnJSON(examplePackage, rng)
@@ -55,6 +68,9 @@ func (px publishFixture) answer(t *testing.T, ghsa string, n int, state, rng, pa
 		v["patched_versions"] = patched
 	}
 	a := advisoryJSON(ghsa, state, "high", "a sample summary", "the report")
+	if state == "published" || state == "closed" {
+		a[state+"_at"] = endedAt.Format(time.RFC3339)
+	}
 	a["vulnerabilities"] = []map[string]any{v}
 	b, err := json.Marshal(a)
 	if err != nil {
@@ -163,7 +179,7 @@ func TestCanaryFirstThenRest(t *testing.T) {
 		t.Fatalf("Publish: %v", err)
 	}
 	var seq []string
-	for _, c := range px.g.calls()[4:] { // the show's two reads and the approval's rebuild
+	for _, c := range px.g.calls()[6:] { // the show's reads of the release and the two advisories, and the approval's rebuild
 		what := c.method()
 		for _, a := range c.argv {
 			switch {
@@ -359,17 +375,127 @@ func TestPublishedAtRecordedFromGitHubAfterSaveFails(t *testing.T) {
 	}
 }
 
-// TestPlanRecordsClosedOnGitHub: an advisory judged a vulnerability that
-// GitHub reports closed is left out, and its closed_at is recorded.
-func TestPlanRecordsClosedOnGitHub(t *testing.T) {
+// TestPlanKeepsVulnerabilityClosedOnGitHub: an advisory judged a
+// vulnerability that GitHub reports closed is left out, saying a person
+// settles it, and its close is not recorded: it stays under embargo and a
+// candidate for the next plan.
+func TestPlanKeepsVulnerabilityClosedOnGitHub(t *testing.T) {
 	px := newPublishFixture(t, "draft")
 	px.answer(t, ghsaA, 1, "closed", "", "")
 	p := px.plan(t, "")
-	if r := leftOutReason(t, p, ghsaA); !strings.Contains(r, "closed already") {
+	if r := leftOutReason(t, p, ghsaA); !strings.Contains(r, "a person settles it") || !strings.Contains(r, "as a vulnerability") {
 		t.Fatalf("left-out reason %q", r)
 	}
-	if a := px.advisory(t, ghsaA); a.ClosedAt == nil || a.ForgeState != "closed" || a.PublishedAt != nil {
-		t.Fatalf("the plan did not record what GitHub reports: %+v", a)
+	if a := px.advisory(t, ghsaA); a.ClosedAt != nil || a.ForgeState != "draft" || a.PublishedAt != nil {
+		t.Fatalf("the plan recorded a close the store's verdict does not make: %+v", a)
 	}
 	noWrites(t, px.g)
+}
+
+// restoreOf is the restore a list names for ghsa, and whether it names one.
+func restoreOf(rs []Restore, ghsa string) (Restore, bool) {
+	for _, r := range rs {
+		if r.GHSAID == ghsa {
+			return r, true
+		}
+	}
+	return Restore{}, false
+}
+
+// wantRestore is the restore command of issID's record resolved in the store.
+func (px publishFixture) wantRestore(t *testing.T, issID string) string {
+	t.Helper()
+	rel, err := filepath.Rel(px.f.home, filepath.Join(px.s.Root, ".abcd", "work", "issues", "resolved", issID+"-private-report.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "cp -- ~/" + filepath.ToSlash(rel) + " .abcd/work/issues/resolved/"
+}
+
+// TestPublishNamesRestoreForStoreEvidence: an advisory planned from the fix
+// the store records is published like any other, and the result names the
+// command that restores its record, resolved, from the store into the
+// public ledger now the advisory is public; an advisory planned from its
+// public record, which the checkout's ledger holds, is named by none, nor
+// is anything named while the plan is only shown.
+func TestPublishNamesRestoreForStoreEvidence(t *testing.T) {
+	px := newPublishFixtureWith(t, "draft", true)
+	shown := px.show(t)
+	if len(shown.Plan.Entries) != 2 || !shown.Plan.Entries[0].StoreEvidence || shown.Plan.Entries[1].StoreEvidence {
+		t.Fatalf("plan %+v", shown.Plan)
+	}
+	if len(shown.Plan.Restores) != 0 {
+		t.Fatalf("a plan names a restore before anything is published: %+v", shown.Plan.Restores)
+	}
+	res, err := px.publish(shown.Plan.Digest)
+	if err != nil || len(res.Published) != 2 {
+		t.Fatalf("result %+v, %v", res, err)
+	}
+	want := px.wantRestore(t, issA)
+	if r, ok := restoreOf(res.Restores, ghsaA); !ok || r.RestoreWith != want || r.IssueID != issA {
+		t.Fatalf("restore %+v\nwant %q", res.Restores, want)
+	}
+	if _, ok := restoreOf(res.Restores, ghsaB); ok || len(res.Restores) != 1 {
+		t.Fatalf("a public-record advisory names a restore: %+v", res.Restores)
+	}
+}
+
+// TestRestoreNamedUntilTheRecordIsInTheCheckout: the restore an advisory
+// published from the store's evidence owes is read from the store's state,
+// not from the run that published it, so it is never lost: a run that
+// stopped after publishing names it, every later plan and intake names it
+// again, and once the record is in the checkout's resolved/ folder none
+// names it.
+func TestRestoreNamedUntilTheRecordIsInTheCheckout(t *testing.T) {
+	px := newPublishFixtureWith(t, "draft", true)
+	stateDir := filepath.Dir(px.s.StatePath())
+	t.Cleanup(func() { _ = os.Chmod(stateDir, 0o700) })
+	// The publishing PATCH of the canary leaves the state's folder unwritable,
+	// so the run stops with A published on GitHub and not recorded.
+	px.g.hook(`if [ "$method" = PATCH ] && grep -q '"published"' "$d/calls/$n.stdin"; then chmod 500 '` + stateDir + `'; fi`)
+	shown := px.show(t)
+	_, err := px.publish(shown.Plan.Digest)
+	var pe *PublishFailedError
+	if !errors.As(err, &pe) || pe.GHSAID != ghsaA {
+		t.Fatalf("err = %v (%+v)", err, pe)
+	}
+	want := px.wantRestore(t, issA)
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("the failure does not name the restore command %q: %v", want, err)
+	}
+
+	px.g.hook(":")
+	if err := os.Chmod(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	px.answer(t, ghsaA, 5, "published", "< 0.9.0", "0.9.0")
+	for i := range 2 {
+		p, err := planPublication(PublishRequest{Home: px.f.home, RepoRoot: px.f.repo.Root(), Now: func() time.Time { return publishedAt }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r, ok := restoreOf(p.Restores, ghsaA); !ok || r.RestoreWith != want {
+			t.Fatalf("plan %d after the stop names %+v, want the restore command %q", i+1, p.Restores, want)
+		}
+	}
+	// Intake reads the repository from origin's URL, which names GitHub;
+	// the plans read the release tags from the fixture's origin.
+	px.f.repo.Git("config", "remote.origin.url", "https://github.com/example/example.git")
+	in, err := Intake(IntakeRequest{Home: px.f.home, RepoRoot: px.f.repo.Root(), Now: func() time.Time { return publishedAt }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	px.f.repo.Git("config", "remote.origin.url", px.originPath())
+	if r, ok := restoreOf(in.Restores, ghsaA); !ok || r.RestoreWith != want {
+		t.Fatalf("intake names %+v, want the restore command %q", in.Restores, want)
+	}
+
+	px.f.repo.Write(".abcd/work/issues/resolved/"+issA+"-private-report.md", readFile(t, filepath.Join(px.s.Root, ".abcd", "work", "issues", "resolved", issA+"-private-report.md")))
+	p, err := planPublication(PublishRequest{Home: px.f.home, RepoRoot: px.f.repo.Root(), Now: func() time.Time { return publishedAt }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Restores) != 0 {
+		t.Fatalf("a record the checkout holds is still named: %+v", p.Restores)
+	}
 }

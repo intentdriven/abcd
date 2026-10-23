@@ -152,6 +152,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"hook"}, {"hook", "prompt-router"}, {"hook", "prompt-router-reset"},
 		{"hook", "session-start"}, {"hook", "session-end"},
 		{"hook", "subagent-stop"}, {"hook", "question-answered"},
+		{"hook", "stop"}, {"hook", "stop-failure"},
 	} {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
@@ -1657,6 +1658,10 @@ type routerView struct {
 	// SessionTitle is the session's title when this prompt set it
 	// (hook_session_name.go), and absent on every other prompt.
 	SessionTitle string `json:"session_title,omitempty"`
+	// SystemMessage is the one line the person is shown while the away
+	// record holds, or once it lapsed unclosed with anything unread
+	// (spc-2610180914469489 step 2), and absent otherwise.
+	SystemMessage string `json:"system_message,omitempty"`
 }
 
 // routerRefused is the prompt router's fail-open exit when it cannot evaluate
@@ -1732,7 +1737,16 @@ alone, or empty, when the rules could not be loaded):
   {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
    "additionalContext": ..., "sessionTitle": ...}}
 
-and the --json envelope carries the name as session_title.`,
+and the --json envelope carries the name as session_title.
+
+While the away record holds (abcd mode autonomous), every prompt's text ends
+with the "## AWAY" block, outside the dedup ledger, and the person is shown
+one line naming who set it, from which working copy, the steps queued and
+items handed back, and abcd mode back; once its window has lapsed unclosed
+with a queued step or a recorded stop, one line naming abcd mode back
+instead. Plain stdout is then one object carrying that line as systemMessage
+beside the additional context (and sessionTitle when owed), and the --json
+envelope carries it as system_message.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// The hook's one deadline (C12), set before anything else runs:
@@ -1775,7 +1789,13 @@ and the --json envelope carries the name as session_title.`,
 			// the drain's reason: a rules.json that will not load must not
 			// also leave the badge parked.
 			resetModeOnAnswer(cmd.ErrOrStderr(), cwd)
+			// The away record (spc-2610180914469489 step 2): its block rides
+			// every prompt, outside the loader's dedup ledger, and its line
+			// is shown to the person. Read before the rules, for the drain's
+			// reason, from the drain's root-commit lookup, and inside the
+			// hook's one deadline: the status read below takes what it leaves.
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
+			away := readPromptAway(cmd.ErrOrStderr(), drained, root)
 			rs, err := rules.Load(root)
 			if err != nil {
 				// rules.Load errors already carry their own "rules:" prefix, so
@@ -1787,22 +1807,24 @@ and the --json envelope carries the name as session_title.`,
 				// (spc-2610150728396006 step 3).
 				status := routerStatus(cmd, root, deadline)
 				defer status.MarkShown()
+				// Nor does it switch off the away block and line.
+				text := joinBlocks(status.Text, away.Block)
 				// The title owed on this prompt is set even so: naming does
 				// not depend on the rules (hook_session_name.go). The status
 				// block, when there is one, is the context it is set with.
 				if title := resendSessionTitle(cmd, in); title != "" {
 					if *asJSON {
-						return routerEmit(cmd, routerView{Text: status.Text, Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title})
+						return routerEmit(cmd, routerView{Text: text, Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title, SystemMessage: away.Message})
 					}
-					emitTitled(cmd, status.Text, title)
+					emitPrompt(cmd, text, title, away.Message)
 					return nil
 				}
-				if status.Text != "" && !*asJSON {
-					fmt.Fprint(cmd.OutOrStdout(), status.Text)
+				if (text != "" || away.Message != "") && !*asJSON {
+					emitPrompt(cmd, text, "", away.Message)
 					return nil
 				}
-				if status.Text != "" {
-					return routerEmit(cmd, routerView{Text: status.Text, Injected: []string{}, Recalled: []string{}, Error: err.Error()})
+				if text != "" || away.Message != "" {
+					return routerEmit(cmd, routerView{Text: text, Injected: []string{}, Recalled: []string{}, Error: err.Error(), SystemMessage: away.Message})
 				}
 				return routerRefused(cmd, *asJSON, err.Error())
 			}
@@ -1852,6 +1874,7 @@ and the --json envelope carries the name as session_title.`,
 			status := routerStatus(cmd, root, deadline)
 			defer status.MarkShown()
 			text = joinBlocks(text, status.Text)
+			text = joinBlocks(text, away.Block)
 			// The name this session's start reserved, set once at its first
 			// prompt (hook_session_name.go).
 			title := resendSessionTitle(cmd, in)
@@ -1864,15 +1887,9 @@ and the --json envelope carries the name as session_title.`,
 				if recalled == nil {
 					recalled = []string{}
 				}
-				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title})
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title, SystemMessage: away.Message})
 			}
-			if title != "" {
-				emitTitled(cmd, text, title)
-				return nil
-			}
-			if text != "" {
-				fmt.Fprint(cmd.OutOrStdout(), text)
-			}
+			emitPrompt(cmd, text, title, away.Message)
 			return nil
 		},
 	})
@@ -1958,6 +1975,7 @@ and the --json envelope carries the name as session_title.`,
 		Short: "SessionEnd: stage the raw transcript for the next session to redact and store",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			started := time.Now()
 			// Diagnostics go to stderr, out of band; stdout stays empty, since a
 			// Stop hook's stdout is not a place to speak to the model — unless
 			// the caller asked for --json, when it carries one result line on
@@ -1987,7 +2005,20 @@ and the --json envelope carries the name as session_title.`,
 					cwd = wd
 				}
 			}
+			detectStart := time.Now()
 			det, err := ahoy.Detect(cwd)
+			detectCost := time.Since(detectStart)
+			if err == nil && det.RootSHA == "" && det.RepoIdentity.RootErr() != nil {
+				// git failing once on a loaded machine is not a directory
+				// outside any repository: ask again before giving the session
+				// up, as the sub-agent hook does (iss-2610051434156079).
+				det, err = retryDetect(cmd.ErrOrStderr(), sessionEndResolveWaits, started.Add(sessionEndRetryBudget), detectCost, cwd, det)
+			}
+			if err == nil && det.RootSHA == "" {
+				if rerr := det.RepoIdentity.RootErr(); rerr != nil {
+					return warn("git gave no root commit for %q (%s); capturing nothing", cwd, fsutil.RedactHome(rerr.Error()))
+				}
+			}
 			if err != nil || det.RootSHA == "" {
 				return warn("cannot resolve the repo's root-commit SHA from %q; capturing nothing", cwd)
 			}
@@ -2009,12 +2040,17 @@ and the --json envelope carries the name as session_title.`,
 					fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
 				}
 			}
-			res, err := history.Stage(captureRoot(cwd), det.RootSHA, history.StageMeta{
+			res, err := stageWithRetry(cmd.ErrOrStderr(), 0, captureRoot(cwd), det.RootSHA, history.StageMeta{
 				Lineage:    history.CaptureMeta{SessionID: in.SessionID, Kind: "native", LineageSource: "hook"},
 				SourcePath: in.TranscriptPath,
 			}, raw)
 			if err != nil {
-				return warn("staging failed (%v); this session was not captured", err)
+				// The marker is where the person sees the loss: this hook exits
+				// 0, and its stderr reaches only the host's debug log.
+				if nerr := history.NoteStageMiss(captureRoot(cwd), det.RootSHA, "session "+in.SessionID, err.Error()); nerr != nil {
+					diagnosticLine(cmd.ErrOrStderr(), "abcd history: the missed stage could not be recorded either (%v)", nerr)
+				}
+				return warn("staging failed (%v); this session was not captured, and `abcd history staged` reports it", err)
 			}
 			staged := hookStageResult{Hook: "session-end", Captured: true, SessionID: res.Staged.SessionID, Bytes: res.Staged.Bytes}
 			if !res.Wrote {
@@ -2072,6 +2108,12 @@ and the --json envelope carries the name as session_title.`,
 			// name the first prompt sets, and writes nothing to stdout
 			// (hook_session_name.go).
 			startSessionName(cmd, in, cwd)
+			// The away block, on every source, compaction included, and the
+			// session's start copy noted (spc-2610180914469489 step 2). The
+			// block is the home store's own words, never a tracked file's.
+			if block := sessionStartAway(cmd.ErrOrStderr(), in, cwd); block != "" {
+				fmt.Fprint(cmd.OutOrStdout(), block)
+			}
 			var notices []string
 			// currentSHA is remembered so the cross-repository survey below can
 			// leave this repository out: the drain reports it entry by entry,
@@ -2088,6 +2130,14 @@ and the --json envelope carries the name as session_title.`,
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
 			det, detErr := ahoy.Detect(cwd)
+			if rerr := det.RepoIdentity.RootErr(); detErr == nil && rerr != nil {
+				// git did not answer for this repository: nothing is
+				// drained or noted this start, and it is said, rather than
+				// read as a folder with no store (iss-2610051434156079).
+				notices = append(notices, fmt.Sprintf(
+					"abcd: git gave no root commit for this repository (%s), so staged transcripts were not drained this time; `abcd history drain` finishes them.",
+					termsafe.Sanitize(fsutil.RedactHome(rerr.Error()))))
+			}
 			if detErr == nil && det.RootSHA != "" {
 				currentSHA = det.RootSHA
 				// Record which store this session belongs to while a real
@@ -2267,6 +2317,10 @@ and the --json envelope carries the name as session_title.`,
 	// store resolution it needs.
 	hookCmd.AddCommand(newSubagentStopCommand())
 
+	// stop and stop-failure — Stop and StopFailure: the away mode's stop
+	// check (spc-2610180914469489 step 5). Their bodies live in hook_stop.go.
+	hookCmd.AddCommand(newHookStopCommand(), newHookStopFailureCommand())
+
 	return hookCmd
 }
 
@@ -2332,8 +2386,8 @@ func drainWhileLive(cmd *cobra.Command, cwd string) rootLookup {
 	rootSHA, rootErr := boundedRootCommit(cwd)
 	looked := rootLookup{sha: rootSHA, err: rootErr, asked: true}
 	if rootErr != nil {
-		// git did not answer in time: nothing is drained this turn, and the
-		// staged transcripts wait for the next one.
+		// git did not answer, in time or at all: nothing is drained this
+		// turn, and the staged transcripts wait for the next one.
 		diagnosticLine(cmd.ErrOrStderr(), "abcd history: this repository's root commit: %s; draining no staged transcripts this turn",
 			fsutil.RedactHome(rootErr.Error()))
 		return looked
@@ -4004,10 +4058,15 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				// Classification is read-only; the human report names the
 				// next step per folder kind (itd-40 AC2/AC3).
-				switch res.FolderKind {
-				case ahoy.UnmanagedRepo:
+				switch rerr := res.RepoIdentity.RootErr(); {
+				case res.RootSHA == "" && rerr != nil:
+					// git not answering is not a repository abcd does not
+					// manage: it may be registered (iss-2610051434156079).
+					fmt.Fprintf(w, "  git gave no root commit for this repository (%s), so abcd cannot tell whether it manages it; run this again.\n",
+						termsafe.Sanitize(fsutil.RedactHome(rerr.Error())))
+				case res.FolderKind == ahoy.UnmanagedRepo:
 					fmt.Fprintf(w, "  unmanaged git repo — run `/abcd:ahoy install` to adopt it.\n")
-				case ahoy.UnmanagedFolder:
+				case res.FolderKind == ahoy.UnmanagedFolder:
 					fmt.Fprintf(w, "  not a git repository — nothing to act on.\n")
 				}
 			})
@@ -6744,6 +6803,9 @@ func repoRootSHA() (string, error) {
 	det, err := ahoy.Detect(cwd)
 	if err != nil {
 		return "", err
+	}
+	if rerr := det.RepoIdentity.RootErr(); rerr != nil {
+		return "", fmt.Errorf("history: cannot read the repo's root-commit SHA: %w", rerr)
 	}
 	if det.RootSHA == "" {
 		return "", fmt.Errorf("history: cannot resolve the repo's root-commit SHA (not a git repo with commits)")

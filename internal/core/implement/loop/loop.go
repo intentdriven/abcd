@@ -538,7 +538,10 @@ func pickNote(p RunPick) string {
 // stage a checkout with no root commit, a session that is not a name, and a run
 // the session has not joined, before anything is created.
 func sharedRunFor(repoRoot, session string) (*implement.Run, error) {
-	sha := gitutil.RootCommit(repoRoot)
+	sha, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		return nil, fmt.Errorf("reading the repository's root commit to open the shared run: %w", err)
+	}
 	run, err := implement.OpenJoined(sha, session)
 	if err == nil {
 		_, err = run.Joined(session)

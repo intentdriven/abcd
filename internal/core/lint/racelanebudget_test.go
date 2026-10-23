@@ -35,7 +35,7 @@ import (
 // records. Ruling Z (2026-09-28, the technical facilitator) raised the macOS
 // leg, and every other leg keeps 30, after a spell at 45 from 2026-10-17 (dcn-2610171803056931,
 // iss-2610171803053186); the job declares that as one matrix expression, which checkLegTimeouts reads leg by leg. The queue's cap is 90
-// minutes since 2026-10-11 and the macOS leg's is 60 since 2026-10-15, below
+// minutes since 2026-10-11 and the macOS leg's is 70 since 2026-10-18, below
 // it, so on that leg the job's own ceiling is the binding one. The step's -timeout still earns its place under that cap: it lifts the
 // ten-minute per-package default, so a slow package fails on the job's clock
 // rather than at ten minutes. Raising the queue's cap is an admin act on the
@@ -56,7 +56,7 @@ import (
 // start first instead of last (iss-2609281715083637). The order may change; the
 // set may not: go list must resolve the command's packages to exactly the ones
 // ./internal/... matches. The macOS pass is the one exception, by design
-// (iss-2610110938293273): it is that leg's only test pass, so the same
+// (iss-2610110938293273): it is that leg's only pass over the module, so the same
 // slowest-first list ends in ./... and resolves to the whole module.
 func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
@@ -125,7 +125,7 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 			}
 			if leg.os == "macos-latest" && leg.minutes != checkMacOSCeilingMinutes*time.Minute {
 				t.Errorf("%s: the macos-latest leg's timeout-minutes is %s; want %dm, the ceiling "+
-					"the technical facilitator set on 2026-10-15", where, leg.minutes, checkMacOSCeilingMinutes)
+					"set on 2026-10-18 (dcn-2610181756328249)", where, leg.minutes, checkMacOSCeilingMinutes)
 			}
 			// Ruling Z raised the macOS leg; every other leg keeps 30, after
 			// a spell at 45 from 2026-10-17 (dcn-2610171803056931).
@@ -153,10 +153,12 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 }
 
 // checkMacOSCeilingMinutes is the macOS leg's timeout-minutes in ci.yml's check
-// job: 45 under ruling Z (2026-09-28), 60 since 2026-10-15, when merge-queue
-// macOS runs had grown from 31-35 to 34-40 minutes. It stays below the merge
+// job: 45 under ruling Z (2026-09-28); 60 from 2026-10-15, when merge-queue
+// macOS runs had grown from 31-35 to 34-40 minutes; 70 since 2026-10-18, when
+// ten merge-group runs took 35.1 to 49.3 minutes on a leg whose race pass keeps
+// its three test slots full (dcn-2610181756328249). It stays below the merge
 // queue's check response timeout, which the budget test reads from the mirror.
-const checkMacOSCeilingMinutes = 60
+const checkMacOSCeilingMinutes = 70
 
 // checkUbuntuCeilingMinutes is the check job's ceiling on every leg but
 // macOS: 30 under ruling Z; 45 from 2026-10-17, when the drain bundle
@@ -207,6 +209,17 @@ func TestCheckJobWarnsBeforeTheQueueCap(t *testing.T) {
 			"%d-minute ceiling (the cancel policy of ruling Z)",
 			where, checkWarnStep, warn, checkWarnAfterMinutes, checkWarnLeadMinutes, checkMacOSCeilingMinutes)
 	}
+	// The cap the message names comes from the step's own env, held to the
+	// leg's ceiling here, so the message cannot name a cap the job no longer
+	// has (dcn-2610181756328249).
+	c := regexp.MustCompile(`(?m)^\s+CEILING_MINUTES: "?(\d+)"?\s*$`).FindStringSubmatch(step)
+	if c == nil {
+		t.Errorf("%s step %q: no CEILING_MINUTES in its env; the message would name the cap from a "+
+			"number no test holds to the leg's ceiling", where, checkWarnStep)
+	} else if ceiling, _ := strconv.Atoi(c[1]); ceiling != checkMacOSCeilingMinutes {
+		t.Errorf("%s step %q: CEILING_MINUTES is %d; want %d, the macos-latest leg's ceiling",
+			where, checkWarnStep, ceiling, checkMacOSCeilingMinutes)
+	}
 	warnAfter := time.Duration(warn) * time.Minute
 	for _, leg := range checkLegTimeouts(t, where, job) {
 		if leg.os == "macos-latest" && warnAfter >= leg.minutes {
@@ -237,6 +250,10 @@ func TestCheckJobWarnsBeforeTheQueueCap(t *testing.T) {
 		t.Fatalf("%s step %q has no run: script", where, checkWarnStep)
 	}
 	run := step[at:]
+	if !strings.Contains(run, "${CEILING_MINUTES}-minute cap") {
+		t.Errorf("%s step %q: its script does not name the cap as ${CEILING_MINUTES}-minute cap; a "+
+			"cap written any other way can drift from the ceiling", where, checkWarnStep)
+	}
 	for _, want := range []string{"::warning", "GITHUB_STEP_SUMMARY", "rerun", "speed lane"} {
 		if !strings.Contains(run, want) {
 			t.Errorf("%s step %q: its script never mentions %q; the warning names the rerun-once "+
@@ -378,7 +395,7 @@ func racePackages(t *testing.T, where, text string) []string {
 const raceLanePattern = "./internal/..."
 
 // modulePattern is the package set of the macOS leg's one race-enabled pass:
-// the whole module, since it is that leg's only test pass.
+// the whole module, since it is that leg's only pass over the module.
 const modulePattern = "./..."
 
 // macOSRaceStep names that pass in ci.yml's check job.

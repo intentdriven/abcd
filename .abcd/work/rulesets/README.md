@@ -11,10 +11,14 @@ in the tree rather than only a web console.
   status checks (strict), and the merge queue. **No bypass actors**: nobody
   merges past a red required check.
 - `main-review.json` — the pull-request rule requiring a code-owner review on
-  changes to the publish surface (`.github/CODEOWNERS`). Repository admins may
-  bypass, which is why it is a separate ruleset: a bypass covers every rule in
-  its ruleset, so the review requirement and the required checks must never
-  share one.
+  changes to the publish surface (`.github/CODEOWNERS`). Its approval count is
+  0, and the code-owner approval is required all the same: GitHub requires a
+  code owner's approval on a pull request that modifies owned content whatever
+  the count. Repository admins may bypass, so the rule binds every other
+  writer and does not hold the owner's own pull requests, an agent's under the
+  owner's identity included. That is why it is a separate ruleset: a bypass
+  covers every rule in its ruleset, so the review requirement and the required
+  checks must never share one.
 - `reservations-protection.json` — deletion and force-push protection for
   `refs/heads/abcd-reserved/**`, the branches `abcd reserve` pushes
   (itd-2609091034175565). **No bypass actors.** It is its own ruleset because it
@@ -32,12 +36,13 @@ in the tree rather than only a web console.
   so neither a deletion nor a forced push has a use. It is required, not
   optional: the committed pre-push hook refuses both, and a file-changing push,
   only for a push made through the hooks, and a hosted cloud session runs no
-  hooks at all, so there this ruleset is the only refusal on the forge. **Not
-  yet applied**: applying it is a change to the remote a person makes
-  (`gh api -X POST repos/intentdriven/abcd/rulesets --input
-  .abcd/work/rulesets/status-protection.json`), and its id joins the list
-  below when it is. Nothing on the forge can refuse a push that changes a file
-  on a status branch. GitHub's push rulesets, which restrict file paths, are
+  hooks at all, so there this ruleset is the only refusal on the forge.
+  Applied by the person on 2026-10-17 (id 25302453), with
+  `gh api -X POST repos/intentdriven/abcd/rulesets --input
+  .abcd/work/rulesets/status-protection.json`; like every ruleset here it is a
+  change to the remote a person makes, and no verb of abcd's applies it. The
+  mirror matched the live ruleset when read on 2026-10-22. Nothing on the forge
+  can refuse a push that changes a file on a status branch. GitHub's push rulesets, which restrict file paths, are
   offered for private and internal repositories only, and they target no
   branch: a push rule applies to every push to the repository and its fork
   network, so one cannot be scoped to `abcd-status/`. Branch rulesets restrict
@@ -63,7 +68,7 @@ in the tree rather than only a web console.
   strength of a default nobody chose. Collapsing the two would make the file read as
   a promise about settings nothing enforces.
 
-Refresh the rulesets after any settings change (ids: 19969675, 21045110, 24921633, 24933439):
+Refresh the rulesets after any settings change (ids: 19969675, 21045110, 24921633, 24933439, 25302453):
 
 ```sh
 gh api repos/intentdriven/abcd/rulesets/<id> \

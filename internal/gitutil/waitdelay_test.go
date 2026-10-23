@@ -40,8 +40,8 @@ func TestRootCommitWaitsOutAGitThatHoldsItsPipe(t *testing.T) {
 	repo, want, _ := committedRepo(t)
 	gittest.SlowPipeGit(t, "--max-parents=0", -1)
 
-	if got := gitutil.RootCommit(repo.Root()); got != want {
-		t.Errorf("RootCommit = %q; want %q", got, want)
+	if got, err := gitutil.RootCommit(repo.Root()); got != want || err != nil {
+		t.Errorf("RootCommit = %q, %v; want %q, nil", got, err, want)
 	}
 }
 

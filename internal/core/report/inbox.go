@@ -103,7 +103,10 @@ type Sender struct {
 // reports under its repository's name, not its own directory's). A repository
 // with no commit has no key and cannot report.
 func SenderOf(root string) (Sender, error) {
-	key := gitutil.RootCommit(root)
+	key, err := gitutil.RootCommit(root)
+	if err != nil {
+		return Sender{}, fmt.Errorf("reading the repository's root commit to key the report on: %w", err)
+	}
 	if !gitutil.IsFullSHA(key) {
 		return Sender{}, fmt.Errorf("%w: the repository has no root commit to key the report on (a repository with no commits cannot report)", ErrRefused)
 	}
@@ -572,7 +575,11 @@ func Promote(ledgerRoot, id string, mc *match.Config) (Promoted, error) {
 	if m == nil {
 		return Promoted{}, fmt.Errorf("%w: %q is not a report id (rpt- and sixteen digits)", ErrRefused, id)
 	}
-	if root := gitutil.RootCommit(ledgerRoot); root != abcdRootCommit {
+	root, err := gitutil.RootCommit(ledgerRoot)
+	if err != nil {
+		return Promoted{}, fmt.Errorf("reading this repository's root commit, which must be abcd's to promote a report: %w", err)
+	}
+	if root != abcdRootCommit {
 		here := "has no root commit"
 		if root != "" {
 			here = "has root commit " + root

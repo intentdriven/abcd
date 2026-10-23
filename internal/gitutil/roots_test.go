@@ -41,7 +41,7 @@ func TestDefaultBranchRootsListsEveryRoot(t *testing.T) {
 	t.Run("an ordinary repository lists its one root", func(t *testing.T) {
 		r, root := setup(t)
 		got, err := gitutil.DefaultBranchRoots(r.Root())
-		if err != nil || !slices.Equal(got, []string{root}) || root != gitutil.RootCommit(r.Root()) {
+		if err != nil || !slices.Equal(got, []string{root}) || root != gittest.RootCommit(t, r.Root()) {
 			t.Fatalf("DefaultBranchRoots = %q, %v; want [%s], RootCommit's answer", got, err, root)
 		}
 	})
@@ -49,7 +49,7 @@ func TestDefaultBranchRootsListsEveryRoot(t *testing.T) {
 		r, root := setup(t)
 		other := datedRoot(t, r, "2090-01-01T00:00:00Z", "an unrelated root")
 		r.Git("merge", "-q", "-s", "ours", "--allow-unrelated-histories", "--no-edit", other)
-		if gitutil.RootCommit(r.Root()) != other {
+		if gittest.RootCommit(t, r.Root()) != other {
 			t.Fatal("the fixture's rev-list does not meet the merged root first")
 		}
 		got, err := gitutil.DefaultBranchRoots(r.Root())

@@ -12,7 +12,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/gittest"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // deadLane is a lane whose implementer committed once and then died with work
@@ -220,7 +219,7 @@ func TestRestartRecordsYieldReason(t *testing.T) {
 // is refused as a wait and changes nothing.
 func TestRestartRefusedWhileOutageOpen(t *testing.T) {
 	repo, runID, l, dir, _ := deadLane(t)
-	run, err := implement.Open(gitutil.RootCommit(repo.Root()))
+	run, err := implement.Open(gittest.RootCommit(t, repo.Root()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +248,7 @@ func TestRestartRefusedWhileOutageOpen(t *testing.T) {
 // way on: clearing the outage once the connection is back.
 func TestRestartRefusedAfterOutageGaveUp(t *testing.T) {
 	repo, runID, l, dir, _ := deadLane(t)
-	run, err := implement.Open(gitutil.RootCommit(repo.Root()))
+	run, err := implement.Open(gittest.RootCommit(t, repo.Root()))
 	if err != nil {
 		t.Fatal(err)
 	}

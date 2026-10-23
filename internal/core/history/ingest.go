@@ -67,6 +67,11 @@ const (
 	SkipAmbiguousOwner = "ambiguous-owner"
 	SkipNoSession      = "no-session-id"
 	SkipAmbiguousAgent = "ambiguous-agent-id"
+	// SkipOwnerUnanswered is a transcript whose recorded directory is a
+	// repository git did not answer for: its owner is unknown, not absent, so
+	// it is neither stored nor offered for adoption as an orphan
+	// (iss-2610051434156079).
+	SkipOwnerUnanswered = "owner-unanswered"
 )
 
 // resolveRootSHA maps a recorded working directory to the root-commit SHA of
@@ -81,14 +86,10 @@ const (
 // ahoy.Detect: internal/core/ahoy now depends on this package for the store's
 // location (Resolve), so reaching back into it from here would be an import
 // cycle. gitutil.RootCommit is the same call ahoy's own identity pass makes,
-// and it answers the only question asked here.
-var resolveRootSHA = func(cwd string) (string, bool) {
-	sha := gitutil.RootCommit(cwd)
-	if sha == "" {
-		return "", false
-	}
-	return sha, true
-}
+// and it answers the only question asked here: ("", nil) for a directory
+// that is gone, outside any repository or in one with no commits, and an
+// error when git did not answer for a repository.
+var resolveRootSHA = gitutil.RootCommit
 
 // Destination is the repository a run of Ingest writes into: its root for the
 // scanner configuration, and its root-commit SHA for the store key.
@@ -116,8 +117,12 @@ type Destination struct {
 // unresolvable root is not evidence that the pair agrees, and accepting one
 // would leave the invariant defended only where it happens to be checkable.
 func (d Destination) verify() error {
-	sha, ok := resolveRootSHA(d.RepoRoot)
-	if !ok || sha == "" {
+	sha, err := resolveRootSHA(d.RepoRoot)
+	if err != nil {
+		return fmt.Errorf("history: ingest could not read the root commit of the destination repository at %s, so it cannot prove that root owns the store key %s: %s",
+			fsutil.DisplayPath(d.RepoRoot), d.RootSHA, fsutil.RedactHome(err.Error()))
+	}
+	if sha == "" {
 		return fmt.Errorf("history: ingest cannot resolve the root commit of the destination repository at %s, so it cannot prove that root owns the store key %s; name a git repository with commits as the destination",
 			fsutil.DisplayPath(d.RepoRoot), d.RootSHA)
 	}
@@ -274,6 +279,9 @@ type sessionPlacement struct {
 	rootSHA   string
 	via       string
 	ambiguous bool
+	// unanswered is a session whose main-thread directory is a repository
+	// git did not answer for, and that no store owns.
+	unanswered bool
 }
 
 // placeSessions resolves the owning repository once per SESSION, before any
@@ -311,7 +319,7 @@ func placeSessions(probes []transcriptProbe) map[string]sessionPlacement {
 		mainCwds[p.sessionID] = append(mainCwds[p.sessionID], p.cwds...)
 	}
 	out := map[string]sessionPlacement{}
-	cache := map[string]string{}
+	cache := map[string]rootAnswer{}
 	for _, p := range probes {
 		if p.sessionID == "" {
 			continue
@@ -319,18 +327,24 @@ func placeSessions(probes []transcriptProbe) map[string]sessionPlacement {
 		if _, done := out[p.sessionID]; done {
 			continue
 		}
-		shas := resolveAll(mainCwds[p.sessionID], cache)
-		switch len(shas) {
-		case 1:
-			out[p.sessionID] = sessionPlacement{rootSHA: shas[0], via: "session-cwd"}
-			continue
-		case 0:
-		default:
+		shas, unanswered := resolveAll(mainCwds[p.sessionID], cache)
+		switch {
+		case len(shas) > 1:
 			out[p.sessionID] = sessionPlacement{ambiguous: true, via: "session-cwd"}
 			continue
+		case len(shas) == 1 && !unanswered:
+			out[p.sessionID] = sessionPlacement{rootSHA: shas[0], via: "session-cwd"}
+			continue
 		}
+		// No directory answered, or one did and another is a repository git
+		// did not answer for, which may be a second owner: a store that
+		// placed the session earlier still settles it.
 		if sha := storeOwner(p.sessionID); sha != "" {
 			out[p.sessionID] = sessionPlacement{rootSHA: sha, via: "store"}
+			continue
+		}
+		if unanswered {
+			out[p.sessionID] = sessionPlacement{unanswered: true, via: "session-cwd"}
 			continue
 		}
 		out[p.sessionID] = sessionPlacement{}
@@ -338,20 +352,30 @@ func placeSessions(probes []transcriptProbe) map[string]sessionPlacement {
 	return out
 }
 
+// rootAnswer is one directory's root-commit lookup, cached for a run.
+type rootAnswer struct {
+	sha        string
+	unanswered bool
+}
+
 // resolveAll maps a set of recorded working directories to the distinct
 // repositories they belong to, in first-seen order. Directories that no longer
 // exist simply do not answer; several directories inside one repository (a
 // worktree, a subdirectory) collapse to one SHA, which is why the count is over
-// repositories and not over paths.
-func resolveAll(cwds []string, cache map[string]string) []string {
-	var out []string
+// repositories and not over paths. unanswered reports that at least one
+// directory is a repository git did not answer for: its owner is unknown, and
+// the caller must not read the answer as complete.
+func resolveAll(cwds []string, cache map[string]rootAnswer) (out []string, unanswered bool) {
 	seen := map[string]struct{}{}
 	for _, cwd := range cwds {
-		sha, cached := cache[cwd]
+		a, cached := cache[cwd]
 		if !cached {
-			sha, _ = resolveRootSHA(cwd)
-			cache[cwd] = sha
+			sha, err := resolveRootSHA(cwd)
+			a = rootAnswer{sha: sha, unanswered: err != nil}
+			cache[cwd] = a
 		}
+		unanswered = unanswered || a.unanswered
+		sha := a.sha
 		if sha == "" {
 			continue
 		}
@@ -361,7 +385,7 @@ func resolveAll(cwds []string, cache map[string]string) []string {
 		seen[sha] = struct{}{}
 		out = append(out, sha)
 	}
-	return out
+	return out, unanswered
 }
 
 // ingestOne places and, where the destination owns it, stores one transcript.
@@ -371,21 +395,27 @@ func ingestOne(dest Destination, opts IngestOptions, p transcriptProbe, placed s
 		return
 	}
 	sha, via := placed.rootSHA, placed.via
-	ambiguous := placed.ambiguous
-	if sha == "" && !ambiguous {
+	ambiguous, unanswered := placed.ambiguous, placed.unanswered
+	if sha == "" && !ambiguous && !unanswered {
 		// Fallback: the file's own recorded directory.
-		shas := resolveAll(p.cwds, map[string]string{})
-		switch len(shas) {
-		case 1:
-			sha, via = shas[0], "file-cwd"
-		case 0:
-		default:
+		shas, fileUnanswered := resolveAll(p.cwds, map[string]rootAnswer{})
+		switch {
+		case len(shas) > 1:
 			ambiguous, via = true, "file-cwd"
+		case fileUnanswered:
+			unanswered, via = true, "file-cwd"
+		case len(shas) == 1:
+			sha, via = shas[0], "file-cwd"
 		}
 	}
 	switch {
 	case ambiguous:
 		res.Skipped = append(res.Skipped, IngestSkip{Path: p.path, SessionID: p.sessionID, AgentID: p.agentID, Reason: SkipAmbiguousOwner})
+		return
+	case unanswered:
+		// Never an orphan: an orphan may be adopted into this store, and
+		// this transcript's owner is a repository git did not answer for.
+		res.Skipped = append(res.Skipped, IngestSkip{Path: p.path, SessionID: p.sessionID, AgentID: p.agentID, Reason: SkipOwnerUnanswered})
 		return
 	case sha == "":
 		if _, claimed := adopt[p.project]; !claimed {

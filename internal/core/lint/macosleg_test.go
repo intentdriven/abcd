@@ -22,8 +22,9 @@ import (
 // its suite on every event but pull_request; on a pull request it is a
 // stand-in that reports `check (macos-latest)` from an ubuntu runner and runs
 // nothing. Where it does run, it tests in one race-enabled pass over the whole
-// module (iss-2610110938293273), while the ubuntu leg keeps its plain pass and
-// its race lane.
+// module (iss-2610110938293273), then plain and by name the tests that assert
+// nothing under -race (iss-2610180542030806), while the ubuntu leg keeps its
+// plain pass and its race lane.
 //
 // The stand-in must still REPORT, because the context is a required check in
 // the ruleset: so the job itself may not be skipped on that event, only its
@@ -165,11 +166,16 @@ func TestMacOSLegRunsItsSuiteOnlyWhereItLands(t *testing.T) {
 							// One race-enabled pass over the whole module
 							// (iss-2610110938293273): a plain pass beside it
 							// reran every test outside internal/ at a third of
-							// the leg's time.
-							if len(passes) != 1 || !strings.HasPrefix(passes[0], "go test -race ") ||
-								!strings.HasSuffix(passes[0], " "+modulePattern) {
-								t.Errorf("the macOS leg runs %d test pass(es) on a %s event: %q; want one "+
-									"`go test -race ... %s`", len(passes), event, passes, modulePattern)
+							// the leg's time. Then, plain and by name, the
+							// tests that assert nothing under -race
+							// (iss-2610180542030806), after it, so the race
+							// pass still starts the leg's testing.
+							if len(passes) != 2 || !strings.HasPrefix(passes[0], "go test -race ") ||
+								!strings.HasSuffix(passes[0], " "+modulePattern) ||
+								!strings.HasPrefix(passes[1], "go test -run ") {
+								t.Errorf("the macOS leg runs %d test pass(es) on a %s event: %q; want "+
+									"`go test -race ... %s`, then the plain-only guards by name",
+									len(passes), event, passes, modulePattern)
 							}
 							return
 						}

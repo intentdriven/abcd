@@ -434,13 +434,17 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 	pat.status(nil)
 	// An origin that would hang any fetch, push or listing sent to it.
 	pat.git("config", "protocol.ext.allow", "always")
-	pat.git("remote", "set-url", "origin", "ext::sh -c sleep\\ 30")
+	// "% " is git-remote-ext's literal space; a backslash would hand sleep
+	// no argument, and the origin would fail at once instead of hanging.
+	pat.git("remote", "set-url", "origin", "ext::sh -c sleep% 30")
 	log := traced(t)
 	start := time.Now()
 	got := pat.notes()
-	// The origin would hang for 30 s; the block reads disk alone, inside the
-	// hook's second.
-	if took := time.Since(start); took > time.Second {
+	// The origin would hang for 30 s; the block reads disk alone, well inside
+	// it. The bound is slack's (wallClockSlack), not the hook's second: a
+	// network wait runs the read out of its budget, which notes fails on,
+	// and the trace below names it.
+	if took := time.Since(start); took > slack(time.Second) {
 		t.Fatalf("the block took %s; want it never to wait on the network", took)
 	}
 	if !strings.Contains(got, "merging #1012") {
@@ -470,8 +474,10 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 	defer cancel()
 	start = time.Now()
 	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
-	// The read is held until the test ends; the hook's deadline is a second.
-	if took := time.Since(start); took > time.Second {
+	// The read is held until the test ends, so any finite bound shows the
+	// prompt returned at its deadline, a second, and not at the read's end;
+	// the bound is slack's, as above.
+	if took := time.Since(start); took > slack(time.Second) {
 		t.Fatalf("a slow read held the prompt for %s", took)
 	}
 	if !errors.Is(err, ErrStatusUnavailable) || !strings.Contains(n.Text, "status unavailable: reading it here took longer than this prompt allows") {

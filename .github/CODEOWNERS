@@ -1,8 +1,11 @@
 # The publish surface: paths whose changes ship behaviour to installed users
 # (plugin hooks and commands, agent prompts, workflows, gates and their config)
 # or alter what the release and site builds produce. The "main review" ruleset
-# requires a code-owner review on any pull request touching them; the two
-# rulesets are mirrored into .abcd/work/rulesets/ (itd-92 owns the drift check).
+# requires a code owner's approval on any pull request touching them, whatever
+# its approval count, from every writer but a repository admin: admins pass it
+# by the ruleset's bypass, so the owner's own pull requests are not held by it.
+# The rulesets are mirrored into .abcd/work/rulesets/ (itd-92 owns the drift
+# check).
 /hooks/ @REPPL
 /commands/ @REPPL
 /agents/ @REPPL

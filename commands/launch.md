@@ -663,8 +663,8 @@ ready cut's `--json` result carries the request block as a `routing` member
 the harness lets you choose one, and pass the same `--route` to the ingest step
 so its receipt records the override. The ingest's `--json` result carries a
 `route` receipt (`tier_asked`, `connection_tried`, `connection_used`,
-`fallback_reason`, `override`, `settings_sent`, `model_reported`, and `provider_call`, null until a provider
-adapter answers the step) and its text a
+`fallback_reason`, `override`, `settings_sent`, `model_reported`, `provider_call`, null until a provider adapter answers the step, and
+`unpinned`, the fields the receipt could not pin, each with its reason) and its text a
 `route:` line; relay it with the result. When no configured provider can serve
 the tier, one stderr line says the step goes through the harness instead. A
 `--route` naming an agent this invocation does not dispatch, a tier outside the
@@ -906,6 +906,7 @@ The reason codes:
 | `no-entries` | carries no changelog lines |
 | `section` | names a section Keep a Changelog does not register |
 | `section-not-writable` | names `Changed`, `Deprecated`, `Removed` or `Security` |
+| `fixed-new-surface` | puts under `Fixed` a record about a surface the anchor tag did not have (its `found_at` is a path new since then, and not a rename); fold it into that surface's `Added` line, or, where the behaviour shipped and only its code moved, correct the record's `found_at` to the path the release had |
 | `changelog-missing` | leaves a required record uncited in the changelog |
 | `changelog-invented` | cites a record not in this cut in the changelog |
 | `changelog-internal` | cites an `impact: internal` record in the changelog |

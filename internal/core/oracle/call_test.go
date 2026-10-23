@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -80,6 +81,13 @@ func configured(t *testing.T, base, key string) (*fx, *APIConfig) {
 	return f, f.loadAPI()
 }
 
+// who is a call record's identity alone: the provider, the models and the
+// credential, which a test compares whole; the two sides itd-166 added are
+// held by their own tests (sides_test.go).
+func who(c CallRecord) CallRecord {
+	return CallRecord{Provider: c.Provider, ModelAsked: c.ModelAsked, ModelReported: c.ModelReported, Credential: c.Credential}
+}
+
 func verdictContract(b []byte) error {
 	var v struct {
 		Verdict string `json:"verdict"`
@@ -110,7 +118,7 @@ func TestCallSendsTheBriefToThePointedModelWithTheKeyByName(t *testing.T) {
 		t.Fatalf("payload = %q", payload)
 	}
 	want := CallRecord{Provider: "openrouter", ModelAsked: "typesafe/jev-1.13", ModelReported: "typesafe/jev-1.13-20260915", Credential: "openrouter"}
-	if rec != want {
+	if !reflect.DeepEqual(who(rec), want) {
 		t.Fatalf("record = %+v, want %+v", rec, want)
 	}
 	if p.auth.Load() != "Bearer "+callKey {
@@ -250,7 +258,7 @@ func TestTheReceiptCarriesTheProviderCall(t *testing.T) {
 	enc, _ = json.Marshal(r.Receipt("").WithCall(rec))
 	// The run's record names the credential the call used, and never a value
 	// (itd-2609221017023290 criterion 5).
-	for _, want := range []string{`"provider_call":{"provider":"openrouter","model_asked":"typesafe/jev-1.13","model_reported":"typesafe/jev-1.13-20260915","credential":"openrouter"}`} {
+	for _, want := range []string{`"provider_call":{"provider":"openrouter","model_asked":"typesafe/jev-1.13","model_reported":"typesafe/jev-1.13-20260915","credential":"openrouter",`} {
 		if !strings.Contains(string(enc), want) {
 			t.Fatalf("receipt = %s, want %s", enc, want)
 		}

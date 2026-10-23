@@ -12,7 +12,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
-	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // A run's lost connection (iss-2610080620372731) reads in `implement step`, in
@@ -85,7 +85,7 @@ func TestImplementStatusNamesAnUnreadableOutage(t *testing.T) {
 	repo := buildRepo(t)
 	mustImplement(t, "build", "itd-10", "--json")
 	mustImplement(t, "implement", "join", "--session", "alpha", "--role", "first", "--json")
-	run, err := implement.Peek(gitutil.RootCommit(repo.Root()))
+	run, err := implement.Peek(gittest.RootCommit(t, repo.Root()))
 	if err != nil {
 		t.Fatal(err)
 	}
