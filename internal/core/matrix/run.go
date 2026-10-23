@@ -347,6 +347,12 @@ func newRunRecord(in runInputs) (RunRecord, error) {
 	if !sha256Re.MatchString(in.Binary.SHA256) || strings.TrimSpace(in.Binary.Version) == "" {
 		return RunRecord{}, errors.New("the binary's sha256 and version are both named; a run is never recorded against an unpinned binary")
 	}
+	if err := text("binary.version", in.Binary.Version); err != nil {
+		return RunRecord{}, err
+	}
+	if err := optional("binary.revision", in.Binary.Revision); err != nil {
+		return RunRecord{}, err
+	}
 	if len(in.Declaration) == 0 {
 		return RunRecord{}, errors.New("the run has no declaration")
 	}
@@ -455,7 +461,7 @@ func pinCells(d Declaration, pins []CellPin, un *oracle.Unpin) ([]CellPin, error
 			return nil, fmt.Errorf("the declared cell %s has no pin", dc.ID)
 		}
 		if p.Role != dc.role {
-			return nil, fmt.Errorf("the cell %s is declared a %s and pinned a %s", dc.ID, dc.role, p.Role)
+			return nil, fmt.Errorf("the cell %s is declared a %s and pinned a %q", dc.ID, dc.role, clip(string(p.Role)))
 		}
 		if !p.Source.valid() {
 			return nil, fmt.Errorf("the cell %s names the source %q; a source is host, openrouter, local or provider", dc.ID, clip(string(p.Source)))
@@ -636,8 +642,16 @@ func writeRun(repoRoot string, rec RunRecord, declaration []byte) error {
 	if len(js) > lab.MaxStateBytes {
 		return fmt.Errorf("the run record is %d bytes, past the %d its lab reads a record back within", len(js), lab.MaxStateBytes)
 	}
+	// A version or a digest is screened as what it is, never as an
+	// address: a four-part version reads as an IPv4 one. So the network
+	// screen reads the record with those fields emptied, line for line the
+	// record as written, and every other screen reads the record whole.
+	versionless, err := encodeRun(rec.withoutVersionsAndDigests())
+	if err != nil {
+		return err
+	}
 	files := []lab.StateFile{{Rel: rec.RunID + "/declaration.json", Data: declaration}, {Rel: rec.RunID + "/run.json", Data: js}}
-	if err := screen(repoRoot, files); err != nil {
+	if err := screen(repoRoot, []screened{{files[0], declaration}, {files[1], versionless}}); err != nil {
 		return err
 	}
 	// The two are written together or not at all: a write that fails
@@ -645,28 +659,113 @@ func writeRun(repoRoot string, rec RunRecord, declaration []byte) error {
 	return p.WriteStates(files...)
 }
 
+// withoutVersionsAndDigests is the record with every version and digest
+// emptied and nothing else changed, so it encodes to the record's own lines:
+// the commits, the binary's digest, version and revision, every content
+// reference's and hash map's digest, and each cell's harness version and
+// local runtime version and weights digest. It changes nothing in rec.
+func (rec RunRecord) withoutVersionsAndDigests() RunRecord {
+	r := rec
+	r.RootSHA, r.FrozenCommit = "", ""
+	r.Binary.SHA256, r.Binary.Version, r.Binary.Revision = "", "", ""
+	r.Declaration.SHA256 = ""
+	emptied := func(m map[string]string) map[string]string {
+		if m == nil {
+			return nil
+		}
+		out := make(map[string]string, len(m))
+		for k := range m {
+			out[k] = ""
+		}
+		return out
+	}
+	r.PromptSHA256, r.ToolDefinitionsSHA256 = emptied(rec.PromptSHA256), emptied(rec.ToolDefinitionsSHA256)
+	if rec.RenderTemplate != nil {
+		t := *rec.RenderTemplate
+		t.SHA256 = ""
+		r.RenderTemplate = &t
+	}
+	undigested := func(in []ContentRef) []ContentRef {
+		out := slices.Clone(in)
+		for i := range out {
+			out[i].SHA256 = ""
+		}
+		return out
+	}
+	r.HiddenTests, r.SeededMaterial = undigested(rec.HiddenTests), undigested(rec.SeededMaterial)
+	r.Cells = slices.Clone(rec.Cells)
+	for i := range r.Cells {
+		r.Cells[i].HarnessVersion = ""
+		if lp := rec.Cells[i].LocalPin; lp != nil {
+			l := *lp
+			l.RuntimeVersion, l.WeightsSHA256 = "", ""
+			r.Cells[i].LocalPin = &l
+		}
+	}
+	return r
+}
+
+// screened is a file to screen: what is written, and the same file as the
+// network screen reads it.
+type screened struct {
+	lab.StateFile
+	// network is the file the network kinds (an address, a MAC, a host
+	// name) are screened in: Data with its versions and digests emptied.
+	network []byte
+}
+
 // screen passes each file through the repository's secret scanner, the one
 // the launch bundle and the decision records use, and refuses a file carrying
-// a credential or an identity (a home path, a user or host name, an address):
-// the record names every route and launches none. A scanner that cannot run,
-// or runs degraded, refuses rather than reporting clean. A refusal names the
-// file, line and kind, never the value.
-func screen(repoRoot string, files []lab.StateFile) error {
+// a credential or an identity (a home path, a user or host name, an address)
+// or anything else the launch bundle's scan fails on: the record names every
+// route and launches none. The credential and personal
+// screens read the file as written; the network screen reads it with its
+// versions and digests emptied. A scanner that cannot run, runs degraded, or
+// runs without the augmenter the repository configured refuses rather than
+// reporting clean, as the launch bundle's scan does. A refusal names the file,
+// line and kind, never the value.
+func screen(repoRoot string, files []screened) error {
 	sc, err := scanner.New(repoRoot)
 	if err != nil {
 		return fmt.Errorf("the run is not written: the secret scanner cannot run: %w", err)
 	}
+	if gap := sc.AugmenterGap(); gap != "" {
+		return fmt.Errorf("the run is not written: the secret scanner runs without the augmenter this repository configured: %s", gap)
+	}
+	network := map[string]bool{}
+	for _, p := range scanner.NetworkPatterns() {
+		network[p.Kind] = true
+	}
 	for _, f := range files {
-		findings := sc.ScanText(string(f.Data), path.Base(f.Rel))
+		name := path.Base(f.Rel)
+		whole := sc.ScanText(string(f.Data), name)
+		addresses := sc.ScanText(string(f.network), name)
 		if degraded, reason := sc.Unavailable(); degraded {
 			return fmt.Errorf("the run is not written: the secret scanner runs degraded: %s", reason)
 		}
-		for _, fd := range findings {
-			if scanner.IsTokenKind(fd.Kind) || scanner.IsIdentityKind(fd.Kind) {
-				return fmt.Errorf("the run is not written: %s line %d carries a %s; a run record names routes and models, never a credential, a home path or who or where the machine is",
-					path.Base(f.Rel), fd.Line, fd.Kind)
+		for _, fd := range whole {
+			if refuses(fd) && !network[fd.Kind] {
+				return refused(name, fd)
+			}
+		}
+		for _, fd := range addresses {
+			if network[fd.Kind] {
+				return refused(name, fd)
 			}
 		}
 	}
 	return nil
+}
+
+// refuses reports whether screen refuses a finding: one the launch bundle's
+// scan fails on (any hard-fail finding, the augmenter's among them), and any
+// credential or identity, whatever its severity.
+func refuses(fd scanner.Finding) bool {
+	return fd.Severity == scanner.SeverityHardFail || scanner.IsTokenKind(fd.Kind) || scanner.IsIdentityKind(fd.Kind)
+}
+
+// refused is screen's refusal of a finding: its file, line and kind.
+func refused(name string, fd scanner.Finding) error {
+	return fmt.Errorf("the run is not written: %s line %d carries a %s; a run record names routes and models, never a credential, a home path or who or where the machine is",
+		name, fd.Line, fd.Kind)
 }
