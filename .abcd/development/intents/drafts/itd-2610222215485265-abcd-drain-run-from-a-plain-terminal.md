@@ -49,7 +49,7 @@ _Facilitator-proposed._
 - Holds on a machine where the person has enabled the claude runner with an API key (`runner.claude`, ruling RN2). A person with only a subscription runs the drain from a Claude session, as today.
 - Holds for one drive per working copy, one lane at a time, as the drain's lock and its one-lane rule already enforce.
 - Holds while the terminal stays open, or under a tool the person chooses to keep it running (`tmux`, `nohup`). abcd starts no background service.
-- Once the sandbox (itd-2610161621364075) ships, it holds only where its fence check passes. Once the coordination intent ships, it holds only where that intent's login check lets an unattended run start (its open choice 1, and Open Questions below).
+- Once the sandbox (itd-2610161621364075) ships, it holds only where its fence check passes. Once the coordination intent ships, a drive abcd launches as a helper holds only where that intent's login check lets it start, away from the person's GitHub login; a drive the person starts and watches at the terminal may count as attended and run under their login (dcn-2610230710469123).
 
 ## Acceptance Criteria
 
@@ -66,10 +66,10 @@ _Facilitator-proposed on 2026-10-22, revised after review round 1, for the produ
 
 ## Open Questions
 
-Two choices for the product thinker. Both are in the walk.
+One choice for the product thinker, in the walk. The second was settled on 2026-10-23 (decision 9).
 
 - **The drive spends an API key, not a subscription.** Under ruling RN2, an agent abcd starts runs on the person's own API key, billed per use. A person with only a subscription can't drive a drain from a terminal, and keeps running it from a Claude session. Is a pay-per-use key acceptable for terminal drives, or should drains stay in Claude sessions?
-- **Where a drive may run, given the forge-login ruling.** The coordination intent's C1 answer keeps unattended runs off a computer where the person's GitHub login is saved, and a drive needs that login to reserve and push. This is the same question as that intent's open choice 1. A drive started and watched at the terminal may count as attended, so the reading chosen there decides where a drive may run.
+- **Where a drive may run: settled 2026-10-23 by the product thinker** (dcn-2610230710469123, decision 9). Only the helpers abcd launches on its own must run away from the person's GitHub login; a drive the person starts and watches may count as attended.
 
 ## Decisions
 
@@ -83,6 +83,10 @@ Each is the facilitator's, on the product thinker's delegation of 2026-10-14 and
 6. The driver runs the lane's preflight itself, through `abcd implement load --wait`, when the landing waits for a receipt.
 7. A runner fallback while driving hands the lane back as stuck. Runner failures in a row are an outage the driver waits through, never a hand-back.
 8. Ctrl-C or a hang-up stops the running agent and leaves the open lane resumable with its reservation, naming when the reservation lapses. Nothing is handed back for an interruption.
+
+The product thinker's, on 2026-10-23:
+
+9. **Only abcd's own helpers run away from the person's login (narrowing C1).** The build and drain lanes abcd launches on its own must run where the person's GitHub login is absent; the person's own sessions working while they are away keep running on their own computer under their login, and a drain the person starts and watches may count as attended (dcn-2610230710469123). It answers this intent's second choice and the coordination intent's first in one ruling.
 
 ## Audit Notes
 
