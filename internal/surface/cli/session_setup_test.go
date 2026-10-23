@@ -388,14 +388,14 @@ func TestSessionSetupRefusedAfterTheChoiceRecordsNothing(t *testing.T) {
 func TestSessionSetupRefusesAnAppAnotherAccountOwns(t *testing.T) {
 	repo := managedSessionRepo(t)
 	sessionConfig(t, repo, `{"meta": {"schema_version": 1}}`)
-	_, done := fakeManifestAPIOwnedBy(t, `{"login": "mallory", "type": "User"}`)
+	_, done := fakeManifestAPIOwnedBy(t, `{"login": "another-account", "type": "User"}`)
 	defer done()
 	out, err := runCLIStdinErr(t, "", "session", "setup", "--where", "local")
 	if err == nil {
 		t.Fatalf("setup recorded an app another account owns:\n%s", out)
 	}
 	said := string(out) + err.Error()
-	if !strings.Contains(said, "mallory") || !strings.Contains(said, "organisation acme") {
+	if !strings.Contains(said, "another-account") || !strings.Contains(said, "organisation acme") {
 		t.Errorf("the refusal does not name both owners:\n%s", said)
 	}
 	if _, serr := os.Stat(filepath.Join(repo, ".abcd", "relay", "github-app.json")); !os.IsNotExist(serr) {
