@@ -75,7 +75,9 @@ payload adds:
 
 - `reservations`: each with its `record`, `holder`, `footprint`,
   `effective_expiry`, `state` and `commit`; `claimed_at` for a readable one;
-  `copy: "this"` when it was made from this checkout; `released_by`
+  `copy: "this"` when it was made from this checkout; `sibling`, the
+  directory name of the other worktree of this repository on this computer
+  that made it (never its key); `released_by`
   (`tombstone`, `default-branch` when the record is already resolved,
   won't-fixed, shipped or superseded on origin's default branch, or `tag`
   when a release's tag is on origin) for a released one; and for an `unreadable` one its fixed `unreadable` reason, no
@@ -98,6 +100,16 @@ payload adds:
   held, and from five minutes after the lapse any copy reserves the release
   again, to resume the cut or, followed by `--release`, to withdraw it. Tell
   the user no merge waits on it (iss-2610241104098581).
+- `ceiling`: the reader's own live reservations against this computer's
+  `reservation.max_live`: `holder`, `live`, `limit`, and where they were made
+  from: `this_copy`, `siblings` (each worktree here by `name`, with its
+  `live`) and `elsewhere` (another computer, or another account pushing as
+  the same login). From four fifths of the limit `warn` is true and `warning`
+  says so: every session and account on one login counts toward one total,
+  and another account's own ceiling cannot be read from here, so it may
+  already be held at it. Relay the warning, and before reserving more, ask
+  which holds can be released. Absent when the reader's login cannot be named
+  without the network, or the cap cannot be read.
 - `release_holds`: each release being cut (a live `rel-vX.Y.Z` reservation,
   or an unreadable one within its hold, which holds every other session's
   merge until its tag is on origin; see `/abcd:reserve`), with its `release`,

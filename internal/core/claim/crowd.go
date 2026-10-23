@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -68,13 +69,15 @@ func crowding(p *prepared, j judged, res *Result) error {
 			return err
 		}
 		var mine []string
+		where := map[string]string{}
 		for _, r := range others {
 			if sameHolder(r.Holder, p.holder) && !isRelease(r.Record) {
 				mine = append(mine, r.Record)
+				where[r.Record] = copyPlace(r)
 			}
 		}
 		if len(mine) >= limit {
-			return capRefusal(mine, limit, note)
+			return capRefusal(mine, where, limit, note)
 		}
 	}
 	// A renew-only act over a live tip keeps the tip's own footprint, so it
@@ -172,6 +175,10 @@ func addsOne(j judged) bool {
 type CapError struct {
 	// Held are the holder's live reservations, the record ids sorted.
 	Held []string
+	// Where names the copy each held record was made from (copyPlace), so
+	// the person can tell this machine's holds from the rest
+	// (iss-2610231004140527).
+	Where map[string]string
 	// Limit is the cap they reached, the person's reservation.max_live
 	// (maxlive.go); zero means MaxLive.
 	Limit int
@@ -188,6 +195,9 @@ func (e *CapError) Error() string {
 		limit = MaxLive
 	}
 	ids := strings.Join(e.Held, ", ")
+	if len(e.Where) > 0 {
+		ids = heldByPlace(e.Held, e.Where)
+	}
 	advice := "wait for one of their pull requests to merge, which ends its reservation, or release one whose work is abandoned (abcd reserve <id> --release)"
 	if limit < MaxLiveCeiling {
 		advice += fmt.Sprintf(", or raise %s in %s (a whole number from 1 to %d, %d when unset)",
@@ -205,11 +215,49 @@ func (e *CapError) Error() string {
 // Is makes the cap an ErrRefused refusal.
 func (e *CapError) Is(target error) bool { return target == ErrRefused }
 
+// heldByPlace is the held ids grouped by the copy each was made from: this
+// copy first, then each sibling worktree by name, then elsewhere, each group's
+// ids in the order held lists them.
+func heldByPlace(held []string, where map[string]string) string {
+	groups := map[string][]string{}
+	for _, id := range held {
+		w := where[id]
+		if w == "" {
+			w = "elsewhere"
+		}
+		groups[w] = append(groups[w], id)
+	}
+	places := make([]string, 0, len(groups))
+	for w := range groups {
+		places = append(places, w)
+	}
+	rank := func(w string) int {
+		switch w {
+		case "this copy":
+			return 0
+		case "elsewhere":
+			return 2
+		}
+		return 1
+	}
+	sort.Slice(places, func(i, j int) bool {
+		if ri, rj := rank(places[i]), rank(places[j]); ri != rj {
+			return ri < rj
+		}
+		return places[i] < places[j]
+	})
+	parts := make([]string, len(places))
+	for i, w := range places {
+		parts[i] = w + ": " + strings.Join(groups[w], ", ")
+	}
+	return strings.Join(parts, "; ")
+}
+
 // capRefusal names the cap and the holder's live reservations, as the view
 // lists them, the cap they reached, and note, when the machine's
 // configuration was read past for it.
-func capRefusal(mine []string, limit int, note string) error {
-	return &CapError{Held: slices.Clone(mine), Limit: limit, Note: note}
+func capRefusal(mine []string, where map[string]string, limit int, note string) error {
+	return &CapError{Held: slices.Clone(mine), Where: where, Limit: limit, Note: note}
 }
 
 // LiveHeldBy is the records holder holds live in the view, from any copy,

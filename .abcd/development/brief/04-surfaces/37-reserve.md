@@ -237,6 +237,17 @@ anyone else a `config.json` that cannot be read at all (writable by others,
 not valid JSON) is read past, ten applies, and the refusal at the cap says
 why; at the ceiling of 100 the refusal no longer offers raising it.
 
+The count is by login, while each machine reads its own ceiling, so another
+account that pushes as the same login is counted against the same total under a
+ceiling no session here can read (iss-2610231004140527). Two places say so. The
+refusal at the cap groups the held records by the copy each was made from: this
+copy, each other worktree of the repository on this machine by its directory's
+name, and elsewhere. And `abcd peers` counts the reader's own live reservations
+the same way against this machine's ceiling, warning from four fifths of it
+that the total is shared with every session and account on the login. A sibling
+worktree is told apart by the copy key kept in its local tier, read without
+minting one; the key itself is never shown.
+
 An act the judgement finds reserves afresh, a reservation over no tip or a
 released one, or a take-over, then asks the forge whether origin is a fork,
 after the fetch and before anything is pushed (spc-2610161044461448, step 10;

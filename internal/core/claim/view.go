@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -44,7 +45,11 @@ type Reservation struct {
 	Copy string
 	// key is the copy key the tip names, for finding it among this
 	// checkout's other worktrees (siblingCopy); never shown.
-	key       string
+	key string
+	// Sibling is the name of the other worktree of this repository, on this
+	// machine, whose copy made the tip (iss-2610231004140527): its directory's
+	// name, never its key; "" for this copy and for a copy elsewhere.
+	Sibling   string
 	Footprint []string
 	ClaimedAt time.Time
 	// EffectiveExpiry is when it stops holding: the lease clamped to a day,
@@ -203,6 +208,15 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 		}
 	}
 	own := ownCopyKey(root)
+	// The sibling worktrees' keys are read once, and only when a tip names a
+	// copy other than this one.
+	var siblings map[string]string
+	siblingOf := func(key string) string {
+		if siblings == nil {
+			siblings = siblingCopies(root, own)
+		}
+		return siblings[key]
+	}
 	dated := snap.FetchedAt
 	if dated.IsZero() {
 		dated = now
@@ -227,6 +241,9 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 			by = ReleasedByDefaultBranch
 		}
 		r := listed(t, id, by, own, now)
+		if r.Copy != CopyThis && t.Unreadable == "" && validCopyKey(t.Copy) {
+			r.Sibling = siblingOf(t.Copy)
+		}
 		if r.HandedBack != "" {
 			r.RecordChanged = changedSince(t.RecordBlob, blobOf(records[id]))
 		}
@@ -317,6 +334,26 @@ func lastFetched(root string, ns namespace) time.Time {
 		return time.Time{}
 	}
 	return at.UTC()
+}
+
+// siblingCopies maps the copy key kept in each other worktree of the
+// repository at root to that worktree's directory name, own's excluded; read
+// without minting a key, and empty when the worktrees cannot be listed.
+func siblingCopies(root, own string) map[string]string {
+	out := map[string]string{}
+	wts, err := gitutil.ListWorktrees(root, gitutil.MaxWorktreeListing)
+	if err != nil {
+		return out
+	}
+	for _, wt := range wts {
+		if wt.Bare {
+			continue
+		}
+		if key := ownCopyKey(wt.Path); key != "" && key != own {
+			out[key] = filepath.Base(wt.Path)
+		}
+	}
+	return out
 }
 
 // ownCopyKey is this checkout's copy key when one is kept, read without
