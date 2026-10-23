@@ -244,13 +244,16 @@ func routeRound(c Context, lane Lane, r *ValidationRound, role string, after *Va
 // routingSection is the brief's routing section for a role asked to run at a
 // tier: the request block a delegating verb hands the host
 // (oracle.RenderRequestSection), so the tier the round asks for travels with
-// the brief. "" when the role's route names no tier.
+// the brief, in the form the delegating verbs' request documents carry it
+// (intent audit's): the section's own lines under the heading, with no fence,
+// so this file writes no second fence rule. "" when the role's route names no
+// tier.
 func routingSection(route *oracle.Route) string {
 	if route == nil {
 		return ""
 	}
-	return "## Routing\n\nThis round asks for the model tier below (itd-2609170822093401):\n\n```\n" +
-		oracle.RenderRequestSection(route.Request()) + "```\n\n"
+	return "## Routing\n\nThis round asks for the model tier below (itd-2609170822093401):\n\n" +
+		oracle.RenderRequestSection(route.Request()) + "\n"
 }
 
 // roundTier is the tier the round asks a's role to run at, when a is an
