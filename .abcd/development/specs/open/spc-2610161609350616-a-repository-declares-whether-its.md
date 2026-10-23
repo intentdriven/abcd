@@ -68,6 +68,7 @@ refuses.
 4. The merge gate reads the mode
    - packages: internal/core/landing, internal/core/implement/loop
    - tests: internal/core/landing, internal/core/implement/loop
+   - needs: 1, 3
    - `mergeGate` becomes the one function `abcd land` and the loop's
      `landArm` ask.
    - `human` arms nothing and says the pull request waits for the
@@ -92,6 +93,7 @@ refuses.
 5. The guard's hard rule
    - packages: internal/core/guard
    - tests: internal/core/guard
+   - needs: 1, 4
    - While the mode is `human`, `abcd guard` refuses `gh pr merge --auto`,
      `gh pr merge` aimed at a queue, and a GraphQL `enqueuePullRequest`.
    - It reads the mode through the same resolver.
@@ -99,6 +101,7 @@ refuses.
 6. abcd's own repository and the docs
    - packages: .abcd/config.json, commands/land.md, .abcd/development/brief/04-surfaces/38-land.md
    - tests: internal/surface/cli
+   - needs: 4, 5
    - Set `facilitator.mode: auto` in abcd's committed config, in the same
      change as step 4, so its sessions keep queueing.
    - Make the docs say exactly what each mode does.

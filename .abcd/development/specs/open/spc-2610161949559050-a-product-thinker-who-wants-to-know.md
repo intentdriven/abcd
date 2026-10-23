@@ -95,21 +95,27 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
 3. Trial mode, isolated clones and routing
    - packages: internal/core/implement/loop, internal/core/runner, internal/core/launch, internal/core/matrix
    - tests: trial mode takes no reservation and lands nothing; a runner failure in a cell is the cell's failure with no host fallback; an OpenRouter outage is retried on the same pin and not scored; each copy is a clone outside every working tree with no local tier; a provider-bound clone passes the secret scan or is refused; one local server at a time as an owned process group
+   - needs: 1, 2
    - waits on: iss-2610161801358637, iss-2610161734413178, iss-2610161734428291, iss-2610161709506207
 4. Code tasks: hidden tests and compliance
    - packages: internal/core/matrix
    - tests: hidden tests sit outside the clone; the compliance check excludes a copy that edited tests or read another copy, and marks an unexaminable copy unexamined; host-harness isolation is reported as asserted
+   - needs: 1, 3
 5. Blinded reviewer models
    - packages: internal/core/matrix, internal/core/reading, internal/core/oracle
    - tests: a reviewer request is assembled through the include table with no trailer, author, branch or run metadata; recall and true-negative rate on known-good and seeded-defect copies; the author-guess score; same-family verdicts reported apart
+   - needs: 2, 3
 6. Writing tasks judged in an abcdesign.app session
    - packages: internal/core/matrix, internal/core/oracle
    - tests: a judge's subset holds at most eight copies and every pair of models is compared; copies render as inert text; a verdict file is validated and refused whole when malformed; one ranking per judge identity; guest verdicts and the host's self-blinded verdicts reported apart
+   - needs: 2, 3
    - waits on: itd-2610091016262335 and iss-2610161928115039 (the session and its kinds)
 7. Checks compared in two phases
    - packages: internal/core/matrix, internal/core/docfidelity, internal/core/record/findingkey
    - tests: a check copy's findings are read before its clone is deleted; the doc-fidelity receipts and the issue ledger are unchanged by a run; exact-key matching first, the matcher's agreement on a labelled sample reported; the overlap table appears only after the person's verdicts are locked; recall on seeded falsehoods
+   - needs: 2, 3
    - waits on: itd-2610091016262335 and iss-2610161928115039
 8. Statistics, report and re-run
    - packages: internal/core/matrix, internal/surface/cli
    - tests: pass@1 interval and pass^k; regularised Bradley–Terry with bootstrapped intervals and "not separable"; α with interval or "not estimable"; floors below three judges; a comparison under its power estimate states the smallest detectable difference; the report lists limitations and suggested improvements; a re-run reports drift field by field
+   - needs: 1, 4, 5, 6, 7
