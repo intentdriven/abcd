@@ -9,12 +9,12 @@ import (
 )
 
 // `make precheck` is the minutes-long pass a lane runs before it queues a
-// preflight (iss-2610230016523625): preflight's gates and the repository-wide
-// audit tests, without the full unit and race stages. On 2026-10-22 two lanes
+// preflight (iss-2610230016523625): preflight's gates and the audit tests that
+// read the committed tree, without the full unit and race stages. On 2026-10-22 two lanes
 // each lost a preflight slot, queued for over an hour, to a sentence in the
 // build brief that TestSurfaceChapterProseStatesNoShape refuses; the precheck
-// is what would have said so in seconds. These tests hold it to preflight so
-// the two cannot drift apart.
+// is what would have said so in minutes, before the queue. These tests hold it
+// to preflight and to the audit tests it claims to run.
 
 // precheckPrereqs reads the `precheck:` recipe's prerequisites, as
 // preflightPrereqs reads preflight's.
@@ -71,6 +71,9 @@ func TestPrecheckAuditPatternCatchesTheLateFailures(t *testing.T) {
 		"TestReferenceMatchesCommittedPage",           // the generated CLI reference
 		"TestSurfaceSnapshotMatchesCommittedBaseline", // the release surface baseline
 		"TestSelfProvisionParagraphsMatchTheShippedSets",
+		"TestGuardApproveDocsQuoteTheBashCall", // quotes sentences in the guard, build and implement pages
+		"TestBakedIdentityInSync",              // the identity block against its generated copy
+		"TestInstallSurfacesAgree",             // the site package's install pages
 	} {
 		if !re.MatchString(name) {
 			t.Errorf("PRECHECK_AUDIT_TESTS does not match %s", name)
@@ -78,11 +81,35 @@ func TestPrecheckAuditPatternCatchesTheLateFailures(t *testing.T) {
 	}
 }
 
+// TestPrecheckRunsTheAuditTests: the recipe itself runs the audit packages in
+// full and the pattern-chosen audit tests of the command and site packages, so
+// deleting a test line fails here rather than leaving a precheck that passes
+// on gates alone.
+func TestPrecheckRunsTheAuditTests(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	recipe, ok := makeRecipe(readRepoFile(t, root, "Makefile"), "precheck")
+	if !ok {
+		t.Fatal("Makefile declares no `precheck:` recipe")
+	}
+	for _, want := range []string{
+		"go build ./...",
+		"go vet ./...",
+		"go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord " +
+			"./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading",
+		"go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site",
+	} {
+		if !strings.Contains(recipe, want) {
+			t.Errorf("the precheck recipe does not run %q:\n%s", want, recipe)
+		}
+	}
+}
+
 // TestPrecheckRunsOnTheDeclaredToolchain: precheck judges with CI's toolchain,
 // as preflight does (iss-2609261850045839), or it can pass what preflight fails.
+// The export is matched as a whole line, so a commented-out copy does not pass.
 func TestPrecheckRunsOnTheDeclaredToolchain(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
-	if !strings.Contains(readRepoFile(t, root, "Makefile"), "precheck: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)") {
+	if !regexp.MustCompile(`(?m)^precheck: export GOTOOLCHAIN := go\$\(GO_TOOLCHAIN_VERSION\)$`).MatchString(readRepoFile(t, root, "Makefile")) {
 		t.Fatal("precheck does not run on the toolchain go.mod declares")
 	}
 }
