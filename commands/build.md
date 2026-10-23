@@ -56,7 +56,8 @@ run. A path naming a directory git tracks is reserved as it stands, and the
 start warns on stderr, `abcd build: warning: footprint "<path>" is a directory
 covering <n> tracked files on <branch>, …; reserved anyway: name the files the
 work changes instead` (`reservation_warnings` in `--json`, a list of those
-lines; under `build next` it sits in `start`). A directory holds off every other
+lines). `build next` warns the same way for the run it starts, and its
+`--json` carries the list under `start`. A directory holds off every other
 reservation of a file inside it, so tell the user, and suggest narrowing the
 spec's `- packages:` line to the files the work changes. A step's own
 `- packages:` line is not read for the reservation.
