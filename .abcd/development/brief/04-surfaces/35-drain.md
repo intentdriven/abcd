@@ -438,7 +438,7 @@ The drain's state is one file beside the runs,
 and its pace, the window clock, every lane it opened with its outcome, and
 every hand-back it routed with the record change it made. It is written under
 its own lock, so two drains never open two lanes. A drain state of a later
-schema version is a newer abcd's: it is refused as that before it is parsed,
+schema version is a newer abcd's: it is refused as that before it is strictly parsed,
 and the person is told to run the newer abcd and not to remove the file, which
 holds that drain. A drain that has ended is
 kept for reading, and the next invocation begins a new one. The cap is set when
