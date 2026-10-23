@@ -323,11 +323,11 @@
     },
     {
       "chapter": "22-site.md",
-      "sentence": "setup, since it asks the network nothing to learn which release is latest.",
-      "replacement": "setup whose files are written or already current (a declined, refused or switched-off run carries no such note), since it asks the network nothing to learn which release is latest.",
-      "evidence": "internal/core/site/setup.go:508",
-      "commit": "7c7fcdb2f6df785f2e640851c9f9064ce7834b02",
-      "applied": "2026-10-23T05:52:31Z"
+      "sentence": "setup whose files are written or already current (a declined, refused or switched-off run carries no such note), since it asks the network nothing to learn which release is latest.",
+      "replacement": "setup whose files are written or already current (a run declined at the switch, refused before anything is written, or switched off carries no such note), since it asks the network nothing to learn which release is latest.",
+      "evidence": "internal/core/site/setup.go:512",
+      "commit": "fd4f4538ee4ca75cf3c346ab4679ed94571d99c0",
+      "applied": "2026-10-23T05:54:23Z"
     }
   ]
 }

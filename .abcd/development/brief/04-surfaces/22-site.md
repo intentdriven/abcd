@@ -142,7 +142,7 @@ should show any of it is to be revisited.
 The project route depends on abcd's own releases: the workflow downloads abcd's
 latest release to build with, so a project site cannot build until a release of
 abcd carries the project flag. Setup states this in a note on every project
-setup whose files are written or already current (a declined, refused or switched-off run carries no such note), since it asks the network nothing to learn which release is latest.
+setup whose files are written or already current (a run declined at the switch, refused before anything is written, or switched off carries no such note), since it asks the network nothing to learn which release is latest.
 
 The gate holds the line: on a project site, a rendered span whose source file
 abcd does not write fails the site's gate, on every page, the record's own
