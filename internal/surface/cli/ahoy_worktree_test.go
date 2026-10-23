@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
@@ -440,5 +441,78 @@ func TestAhoyWorktreeAddChecksOutWhatTheGlobalFilterSmudges(t *testing.T) {
 	}
 	if string(got) != "REAL\n" {
 		t.Fatalf("the worktree holds what the person's own git checks out: asset.bin = %q, want %q", got, "REAL\n")
+	}
+}
+
+// writeHook installs the repository's post-checkout hook with body.
+func writeHook(t *testing.T, repo *gittest.Repo, body string) {
+	t.Helper()
+	hook := filepath.Join(repo.Root(), ".git", "hooks", "post-checkout")
+	if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\n"+body+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAhoyWorktreeAddRunsTheRepositorysPostCheckoutHook (iss-2610111729399920):
+// the person's own `git worktree add` runs the repository's post-checkout hook
+// (the one `git lfs install` installs) in the new worktree, so the store's add
+// runs it too, as the build loop's lanes do.
+func TestAhoyWorktreeAddRunsTheRepositorysPostCheckoutHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX hook script")
+	}
+	repo := worktreeFixture(t)
+	mark := filepath.Join(t.TempDir(), "post-checkout")
+	writeHook(t, repo, "pwd -P > "+mark)
+
+	if out, code := runWorktree(t, false, "add", "hooked"); code != 0 {
+		t.Fatalf("exit %d:\n%s", code, out)
+	}
+	got, err := os.ReadFile(mark)
+	if err != nil {
+		t.Fatal("adding the worktree did not run the repository's post-checkout hook")
+	}
+	l, err := worktree.LaneFor(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fsutil.RealExistingPath(l.Path("hooked")); strings.TrimSpace(string(got)) != want {
+		t.Fatalf("the hook ran in %q, want the new worktree %q", strings.TrimSpace(string(got)), want)
+	}
+}
+
+// TestAhoyWorktreeAddStopsACheckoutPastItsBound: a post-checkout hook that
+// never finishes cannot hold add forever. Past the checkout's bound git and
+// the hook are stopped, so git removes its lock files, and add is refused
+// naming the checkout and the bound.
+func TestAhoyWorktreeAddStopsACheckoutPastItsBound(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX hook script")
+	}
+	repo := worktreeFixture(t)
+	writeHook(t, repo, "exec sleep 60")
+	prev := worktreeAddTimeout
+	worktreeAddTimeout = time.Second
+	t.Cleanup(func() { worktreeAddTimeout = prev })
+
+	began := time.Now()
+	out, code := runWorktree(t, false, "add", "stalled")
+	if took := time.Since(began); took > 20*time.Second {
+		t.Fatalf("add took %s; the checkout's bound did not stop it", took)
+	}
+	if code != 2 || !strings.Contains(out, "did not finish") || !strings.Contains(out, "within 1s") {
+		t.Fatalf("add is refused naming the checkout and its bound (exit %d):\n%s", code, out)
+	}
+	err := filepath.WalkDir(filepath.Join(repo.Root(), ".git"), func(p string, d os.DirEntry, err error) error {
+		if err == nil && d.Name() == "index.lock" {
+			t.Errorf("git left a lock behind: %s", p)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

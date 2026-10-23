@@ -9,11 +9,9 @@ package cli
 // lays the rows out and maps a refusal or a fault to exit 2.
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
@@ -29,24 +27,23 @@ import (
 // the merged judgement: the repository's own bounded `gh`. A test replaces it.
 var worktreeForge worktree.GH = landing.GH
 
+// worktreeAddTimeout bounds add's `git worktree add`: gitutil.CheckoutBound,
+// the bound the build loop's lane checkout has, since a checkout's time scales
+// with the tree and a Git LFS download. A var so a test can shorten it.
+var worktreeAddTimeout = gitutil.CheckoutBound
+
 // worktreeGit is the git `add` hands the store for `git worktree add`, which
-// writes a working tree: gitutil.WorkingTreeCommand, so the content filters,
-// ignore files and line-ending settings in the person's global config apply as
-// they do to the person's own `git worktree add`. Under the isolated
-// environment a filter a global `git lfs install` defines does not run, and
-// the worktree held pointer text (iss-2610111729375108). The add's reads, whose
-// answers abcd parses, stay isolated in the core. git's own stderr is kept in
-// the error, as gitutil.Run keeps it, since it is the refusal's reason.
+// checks a working tree out as the build loop's lanes do:
+// gitutil.WorkingTreeCommitCommand, so the content filters in the person's
+// global config apply (iss-2610111729375108) and the repository's
+// post-checkout hook, its signing and its signature checks run as on the
+// person's own `git worktree add` (iss-2610111729399920). Since those
+// programs run, it is bounded, and a hook that waits is stopped with git, so
+// git removes its lock files. The add's reads, whose answers abcd parses,
+// stay isolated in the core.
 var worktreeGit worktree.GitRunner = func(dir string, args ...string) (string, error) {
-	out, err := gitutil.WorkingTreeCommand(dir, args...).Output()
-	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
-			return "", fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(ee.Stderr)))
-		}
-		return "", err
-	}
-	return strings.TrimSpace(string(out)), nil
+	out, err := gitutil.RunCommitCommandBounded(dir, worktreeAddTimeout, gitutil.ErrCheckoutStalled, args...)
+	return strings.TrimSpace(out), err
 }
 
 // worktreeFault is a refusal or a fault of a worktree verb: exit 2, its text
