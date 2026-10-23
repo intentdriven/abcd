@@ -133,6 +133,52 @@ func TestMergedJudgement(t *testing.T) {
 			t.Fatalf("a renamed branch keeps its own commits: %+v", r)
 		}
 	})
+	t.Run("copied, its copy entry since expired", func(t *testing.T) {
+		// The copy and the reset expire as unreachable; main's inherited
+		// commit entry stays, with nothing left to say where the branch began.
+		repo, _ := repoWithCommit(t)
+		repo.Write("m2.txt", "m2\n")
+		repo.Commit("m2")
+		repo.Git("branch", "-c", "main", "cp")
+		repo.Git("branch", "-f", "cp", "main~1")
+		repo.Git("reflog", "expire", "--expire-unreachable=now", "--all")
+		if _, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "cp", Branch: "cp", Existing: true, Git: git}); err != nil {
+			t.Fatal(err)
+		}
+		if r := judged(t, repo, unreachable, "cp"); r.Merged != "unmerged" || r.JudgedBy != "" {
+			t.Fatalf("a reflog that no longer records the branch's creation proves no commit of its own: %+v", r)
+		}
+	})
+	t.Run("reflog gone after a real commit, later merged", func(t *testing.T) {
+		repo, _ := repoWithCommit(t)
+		p := addToLane(t, repo, "gone")
+		commitIn(t, repo, p, "g.txt", "g\n")
+		repo.Git("merge", "-q", "--ff-only", "gone")
+		repo.Git("reflog", "delete", "--rewrite", "refs/heads/gone@{0}", "refs/heads/gone@{1}")
+		if r := judged(t, repo, unreachable, "gone"); r.Merged != "unmerged" {
+			t.Fatalf("a branch with no reflog to prove a commit of its own is judged by content alone: %+v", r)
+		}
+	})
+	for name, create := range map[string][]string{
+		"git branch":      {"branch", "made"},
+		"git checkout -b": {"checkout", "-q", "-b", "made"},
+		"git switch -c":   {"switch", "-q", "-c", "made"},
+	} {
+		t.Run("created by "+name+", a real commit, later merged", func(t *testing.T) {
+			repo, _ := repoWithCommit(t)
+			repo.Git(create...)
+			repo.Git("checkout", "-q", "main")
+			got, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "made", Branch: "made", Existing: true, Git: git})
+			if err != nil {
+				t.Fatal(err)
+			}
+			commitIn(t, repo, got.Path, "m.txt", "m\n")
+			repo.Git("merge", "-q", "--ff-only", "made")
+			if r := judged(t, repo, unreachable, "made"); r.Merged != "merged" || r.JudgedBy != "ancestry" {
+				t.Fatalf("%s: %+v", name, r)
+			}
+		})
+	}
 	t.Run("rebase merge", func(t *testing.T) {
 		repo, _ := repoWithCommit(t)
 		p := addToLane(t, repo, "rb")

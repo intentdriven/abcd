@@ -140,27 +140,43 @@ func branchName(ref string) string {
 
 // ownCommit reports whether ref's reflog proves the branch made a commit of
 // its own that its tip still holds: an entry written by a commit, a
-// cherry-pick or a merge that made a merge commit, newer than any copy the
-// branch was made by. A fast-forward, a reset and the branch's creation make
-// no commit, and a branch with no reflog to prove one is judged by the content
-// tests alone.
+// cherry-pick or a merge that made a merge commit, newer than the entry that
+// records where the branch began. A fast-forward, a reset and the branch's
+// creation make no commit. A reflog whose oldest entry is not that beginning
+// has lost part of the branch's history to expiry, and may hold commit entries
+// another branch's reflog brought with it, so it proves nothing; a branch with
+// no reflog to prove a commit is judged by the content tests alone.
 func ownCommit(dir, ref, tip string) bool {
 	out, err := gitutil.RunCappedAsStored(dir, reflogCap, "log", "-g", "--format=%H%x00%gs", ref, "--")
 	if err != nil {
 		return false
 	}
-	// Newest first. `git branch -c` copies the source branch's reflog with
-	// it, so every entry older than the copy is the other branch's history and
-	// proves nothing about this one. `git branch -m` carries the branch's own
-	// reflog forward under its new name, so the scan goes on past a rename.
+	// Newest first. Every command that creates a branch (git branch,
+	// checkout -b, switch -c, worktree add -b) writes "branch: Created from
+	// <start>" as its first entry. `git branch -c` copies the source branch's
+	// reflog with it, so every entry older than the copy is the other branch's
+	// history, and the copy is where this branch began. `git branch -m`
+	// carries the branch's own reflog forward under its new name, so the scan
+	// goes on past a rename.
+	var made []string
+	began := false
 	for _, line := range strings.Split(out, "\n") {
 		sha, subject, ok := strings.Cut(line, "\x00")
-		if ok && strings.HasPrefix(subject, "Branch: copied ") {
-			return false
-		}
-		if !ok || !gitutil.IsFullSHA(sha) || !madeACommit(subject) {
+		if !ok || !gitutil.IsFullSHA(sha) {
 			continue
 		}
+		if strings.HasPrefix(subject, "Branch: copied ") || strings.HasPrefix(subject, "branch: Created from ") {
+			began = true
+			break
+		}
+		if madeACommit(subject) {
+			made = append(made, sha)
+		}
+	}
+	if !began {
+		return false
+	}
+	for _, sha := range made {
 		if held, err := gitutil.IsAncestor(dir, sha, tip); err == nil && held {
 			return true
 		}
