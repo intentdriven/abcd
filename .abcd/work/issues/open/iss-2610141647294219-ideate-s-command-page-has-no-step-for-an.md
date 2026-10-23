@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "commands/ideate.md"
 remedy: "Deliver itd-2610141646452213: a URL input runs the librarian (itd-2610141646126492) and the verdict cites the reading-pack items it tested."
+related_intents: [itd-2610141646452213]
 ---
 
 ideate's command page has no step for an input that is a source rather than an idea: given a web address holding several ideas, the runner must improvise the extraction (which ideas, how worded), and that choice shapes every later leg yet appears in no record (lab finding F-1).

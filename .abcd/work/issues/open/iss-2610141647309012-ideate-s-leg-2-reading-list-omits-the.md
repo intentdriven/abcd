@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "commands/ideate.md"
 remedy: "Deliver itd-2610141646456128: leg 2 reads the private verdict store, and a private verdict is citable by its key from another private verdict."
+related_intents: [itd-2610141646456128]
 ---
 
 ideate's leg-2 reading list omits the private verdict store (~/.abcd.noindex/ideas/<root-sha>/), and ideate record resolves repository ids only, so a directly relevant prior private verdict can be neither found by the list nor cited (lab finding F-5).

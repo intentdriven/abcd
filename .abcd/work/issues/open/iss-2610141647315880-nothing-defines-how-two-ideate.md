@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ideate/ideate.go"
 remedy: "Deliver itd-2610141646454347: a reframing field, per-reviewer attempts, and the rule that a split pair goes to an advisor, recorded in the verdict."
+related_intents: [itd-2610141646454347]
 ---
 
 Nothing defines how two ideate evaluators are merged or where a reframing is recorded: the schema has one adversarial leg, one verdict and no reframing field, although the page says a graduation carries the reframing; runs encode it as a final 'survived' kill attempt by unwritten convention (lab finding F-8).
