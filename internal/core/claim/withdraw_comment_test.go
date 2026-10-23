@@ -318,6 +318,10 @@ func TestTheForgesCommentWriterPostsThenReadsBack(t *testing.T) {
 		t.Fatalf("a refused addComment = %v, %v; want not posted", posted, err)
 	}
 	delete(answer, "add")
+	answer["read"] = `{"data":{"node":{"body":"a body\n\nwith a footer"}}}`
+	if posted, read, err := c.Comment("", "PR_eleven", "a body"); !posted || read != "a body\n\nwith a footer" || err != nil {
+		t.Fatalf("a changed comment = %v, %q, %v; want the body the forge reads back", posted, read, err)
+	}
 	answer["read"] = `{"data":{"node":null}}`
 	if posted, read, err := c.Comment("", "PR_eleven", "a body"); !posted || read != "" || err == nil {
 		t.Fatalf("an unread comment = %v, %q, %v; want posted, unread", posted, read, err)
