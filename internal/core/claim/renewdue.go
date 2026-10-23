@@ -14,7 +14,7 @@ import (
 // errNotPushedHere is a renewal's answer for a reservation whose tip is not
 // the commit this copy last pushed for it.
 var errNotPushedHere = errors.New("its latest commit is not one this copy pushed, so it is not renewed from here; " +
-	"if it is yours, renew it with abcd reserve")
+	"renew it with abcd reserve only if you reserved it from this copy (abcd peers names its holder and expiry)")
 
 // pushedRelDir keeps, per record, the last reservation commit this copy
 // pushed for it (notePushed): the commit names RenewDue renews from.

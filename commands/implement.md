@@ -900,7 +900,7 @@ commit this copy pushed, for
 its own term or two hours, whichever is longer, and says each renewal on
 standard error. It never reserves anything new, takes nothing over and revives
 nothing that has lapsed, so a lease shorter than ten minutes can still lapse
-between two rounds; a renewal that fails, or a reservation whose latest commit another copy or clone pushed, is said once, and the wait goes on. The renewal runs beside
+between two rounds; a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on. The renewal runs beside
 the gate, never in it, so the gate's order and its open never wait on one, and
 it stops when the gate opens: a gated command that runs longer than half a
 lease renews nothing itself. Since the renewal runs through git and gh, no
