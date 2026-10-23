@@ -13,6 +13,7 @@ related_intents: [itd-2610052000411162, itd-2610040740122709, itd-26100407401357
 related_adrs: [adr-2610091016270711, adr-2610161400542916]
 related_issues: [iss-2610230519103295, iss-2610230519116460, iss-2610230519122686]
 supersedes: [itd-2610052000411162, itd-2610052000424067]
+held: "its remainder spec spc-2610230609005313 (ac-21: cloud setup in two steps, abcd recording the relay's address) has open design questions and no steps; plan it before any build (dcn-2610230609300445)"
 ---
 
 # A team edits its brief together live during a call, on abcdesign.app or on the host's own computer
@@ -74,6 +75,8 @@ _Drafted 2026-10-14 from the product thinker's rulings and accepted as drafted t
 - **built on by `itd-2610161733316518`** (one task done across a model matrix): Its judging step waits on this intent's session, as a session kind beside brief editing; verdicts stay in the host's run record.
 
 ## Audit Notes
+
+_2026-10-23, before shipping (the intent stays planned): the intent-fidelity audit of what spc-2610141709430146 delivered (receipt rcp-a260a0a30612, Opus with a Sonnet second) found ac-21 NOT MET and ac-6 INCONCLUSIVE, with 5 criteria met and 16 met with concerns. The remainder spec spc-2610230609005313 carries ac-21 (dcn-2610230609300445)._
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
 

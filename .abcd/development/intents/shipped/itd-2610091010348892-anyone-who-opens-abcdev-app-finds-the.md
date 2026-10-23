@@ -11,6 +11,7 @@ origin: researcher-authored
 production_mode: hand-written
 related_intents: [itd-2610052000411162, itd-2610142145236613]
 related_adrs: [adr-47, adr-2610091010387033]
+impact: additive
 ---
 
 # An opted-in project's record is built at each release onto its own GitHub Pages
@@ -50,7 +51,9 @@ _Drafted 2026-10-14 from the product thinker's rulings; accepted as drafted the 
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-8ae5e776b270 -->
+Fidelity review OWED (receipt rcp-8ae5e776b270).
+<!-- abcd-review-end receipt=rcp-8ae5e776b270 -->
 
 ## Decisions
 
