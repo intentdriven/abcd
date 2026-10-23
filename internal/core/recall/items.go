@@ -61,7 +61,7 @@ type Item struct {
 // recall asks it only once matching has found a tied item, and at most once
 // per call, so a prompt that matches no tied item costs no git call. A caller
 // that hands the same RootFunc to more than one call memoises it
-// (sync.OnceValues). An error is git not answering in time
+// (sync.OnceValues). An error is git not answering, in time or at all
 // (gitutil.RootCommitContext): the tied items are then left out.
 type RootFunc func() (string, error)
 

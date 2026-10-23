@@ -75,6 +75,13 @@ type Entry struct {
 	// changelog.RecordSet.PressReleaseRequired, carried per entry for the reason
 	// InChangelog is — the host must never re-derive the rule.
 	InPressRelease bool `json:"in_press_release"`
+	// FoundAtNew reports that the record's found_at is a path the anchor tag's
+	// tree did not hold: the record is about a surface the last release lacked
+	// (changelog.Record.FoundAtNew). A Fixed line citing it is refused, since no
+	// reader of that release had the behaviour it says was fixed; the fix is
+	// folded into the surface's Added line, or worded as what the surface does
+	// (iss-2610172148157726).
+	FoundAtNew bool `json:"found_at_new,omitempty"`
 	// pressRelease is the record's `## Press Release` section, the source a
 	// page quote is verified against. Unexported, so it never enters the cut
 	// JSON: the composer reads the record at its path, as it always has.
@@ -531,6 +538,7 @@ func entriesOf(records []changelog.Record, pageSet []changelog.Record) []Entry {
 			ShippedInErr: rec.ShippedInErr,
 
 			InPressRelease: onPage[rec.Path],
+			FoundAtNew:     rec.FoundAtNew,
 			pressRelease:   rec.PressRelease,
 		})
 	}

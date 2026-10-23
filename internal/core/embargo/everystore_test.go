@@ -12,7 +12,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // ghsaPendingElsewhere is the pending id sampleState holds.
@@ -105,7 +104,7 @@ func TestShallowSecondCloneChecksAgainstTheFirstClonesStore(t *testing.T) {
 	cf.f.repo.Write("a.txt", "two\n")
 	cf.f.repo.Commit("c2")
 	clone := shallowClone(t, cf.f)
-	if key := filepath.Base(filepath.Dir(cf.s.Root)); gitutil.RootCommit(clone) == key {
+	if key := filepath.Base(filepath.Dir(cf.s.Root)); gittest.RootCommit(t, clone) == key {
 		t.Fatal("the shallow clone's root is the store's key, so it proves nothing")
 	}
 	wantEmbargoedIDRefused(t, cf.f.home, clone)
@@ -352,7 +351,7 @@ func TestNoFreePlaceAdviceFitsWhoHoldsThePlace(t *testing.T) {
 		other := gittest.NewRepo(t)
 		other.Write("README.md", "another project\n")
 		datedCommit(t, other, "2011-01-01T00:00:00Z", "its own root")
-		place := abcdhome.Path(f.home, "worktrees", gitutil.RootCommit(f.repo.Root()), StoreName)
+		place := abcdhome.Path(f.home, "worktrees", gittest.RootCommit(t, f.repo.Root()), StoreName)
 		if err := os.MkdirAll(filepath.Dir(place), 0o700); err != nil {
 			t.Fatal(err)
 		}

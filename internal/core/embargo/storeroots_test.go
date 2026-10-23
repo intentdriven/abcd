@@ -36,7 +36,7 @@ func mergeUnrelatedRoot(t *testing.T, r *gittest.Repo) string {
 	t.Helper()
 	other := datedRoot(t, r, "2090-01-01T00:00:00Z", "an unrelated root")
 	r.Git("merge", "-q", "-s", "ours", "--allow-unrelated-histories", "--no-edit", other)
-	if gitutil.RootCommit(r.Root()) != other {
+	if gittest.RootCommit(t, r.Root()) != other {
 		t.Fatal("the fixture's rev-list does not meet the merged root first")
 	}
 	return other
@@ -341,7 +341,7 @@ func TestStoreFoundAfterAShallowCloneDeepens(t *testing.T) {
 	}
 	holdSample(t, s)
 	cloneGit("-C", clone, "fetch", "-q", "--unshallow")
-	if gitutil.RootCommit(clone) == boundary {
+	if gittest.RootCommit(t, clone) == boundary {
 		t.Fatal("the deepened clone still has the boundary for its root")
 	}
 	wantEmbargoedIDRefused(t, src.home, clone)
@@ -359,7 +359,7 @@ func TestStoreMadeUnderAReplacedRootIsFound(t *testing.T) {
 	standIn := f.repo.Git("commit-tree", f.repo.Git("rev-parse", "HEAD^{tree}"), "-m", "a stand-in root")
 	f.repo.Git("replace", tip, standIn)
 	stored := f.repo.Git("-c", "core.useReplaceRefs=false", "rev-list", "--max-parents=0", "HEAD")
-	oldKey := gitutil.RootCommit(f.repo.Root())
+	oldKey := gittest.RootCommit(t, f.repo.Root())
 	if !gitutil.IsFullSHA(oldKey) || oldKey == stored {
 		t.Fatalf("the replace ref does not move the root an earlier abcd keyed on (%q, stored %q)", oldKey, stored)
 	}
@@ -469,7 +469,7 @@ func TestOrdinaryCloneKeepsItsStorePath(t *testing.T) {
 	if err != nil || !created {
 		t.Fatalf("openStore: created %v, %v", created, err)
 	}
-	if want := abcdhome.Path(f.home, "worktrees", gitutil.RootCommit(f.repo.Root()), StoreName); s.Root != want {
+	if want := abcdhome.Path(f.home, "worktrees", gittest.RootCommit(t, f.repo.Root()), StoreName); s.Root != want {
 		t.Fatalf("store at %s; want %s", s.Root, want)
 	}
 }

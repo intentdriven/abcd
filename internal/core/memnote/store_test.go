@@ -19,6 +19,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 const testRoot = "0123456789abcdef0123456789abcdef01234567"
@@ -29,7 +30,7 @@ func fixture(t *testing.T) (home, repo string) {
 	t.Helper()
 	home, repo = t.TempDir(), t.TempDir()
 	prevRoot, prevNow := rootCommit, now
-	rootCommit = func(string) string { return testRoot }
+	rootCommit = func(string) (string, error) { return testRoot, nil }
 	now = func() time.Time { return time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC) }
 	t.Cleanup(func() { rootCommit, now = prevRoot, prevNow })
 	return home, repo
@@ -134,9 +135,24 @@ func TestASessionShapedLikeALinkIsRefused(t *testing.T) {
 	}
 }
 
+// TestTiedNoteRefusesWhenGitGivesNoRoot: a root commit git did not answer
+// for is not "no root commit". The write stops with git's failure, is not
+// ErrNoRoot's advice to pass --everywhere, and creates nothing.
+func TestTiedNoteRefusesWhenGitGivesNoRoot(t *testing.T) {
+	home, repo := fixture(t)
+	rootCommit = func(string) (string, error) { return "", gitutil.ErrNoRootAnswer }
+	_, err := Add(addReq(home, repo))
+	if !errors.Is(err, gitutil.ErrNoRootAnswer) || errors.Is(err, ErrNoRoot) {
+		t.Fatalf("a tied note whose root commit git did not answer for: %v, want gitutil.ErrNoRootAnswer and not ErrNoRoot", err)
+	}
+	if _, err := os.Stat(abcdhome.Path(home)); !os.IsNotExist(err) {
+		t.Errorf("a refused write created the home scope (stat err %v)", err)
+	}
+}
+
 func TestEverywhereNoteCarriesNoRoot(t *testing.T) {
 	home, repo := fixture(t)
-	rootCommit = func(string) string { return "" }
+	rootCommit = func(string) (string, error) { return "", nil }
 	req := addReq(home, repo)
 	if _, err := Add(req); !errors.Is(err, ErrNoRoot) {
 		t.Fatalf("a tied note with no root commit: %v, want ErrNoRoot", err)

@@ -1,6 +1,6 @@
 ---
 name: guard
-description: "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb."
+description: "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb."
 argument-hint: "[check [--command <command>] | hook | approve --dir <dir>]"
 block: agents
 user-invocable: false
@@ -9,8 +9,11 @@ user-invocable: false
 # `/abcd:guard` shell-hazard check
 
 Decide whether a shell command is safe to run, using abcd's hazard registry —
-the bundled hazard entries merged with this repo's `.abcd/guard.json`. This
-command performs **zero writes**.
+the bundled hazard entries merged with this repo's `.abcd/guard.json`. The
+check performs **zero writes**. The hook writes the record of a branch the
+session creates (below), and refuses nothing for it; when it admits abcd's own
+question where the badge shows, it also writes the waiting-on mode and the
+marker saying a question is open (below).
 
 ## `check` — decide one command
 
@@ -78,6 +81,20 @@ hands it to the agent. A notice the hook printed before it blocked, such as a
 repository guard file that did not load, leads the reason, because the host
 discards the hook's stderr when it exits 0.
 
+Before it judges a shell command, the hook records the branches the command
+creates, for the away mode's reading of which branches are the session's own
+(`/abcd:mode`): `git worktree add -b|-B <b>`, `git switch -c|-C <b>`, `git
+checkout -b|-B <b>` and `git branch <b>`, each only when no branch of that name
+exists yet; a bare `git worktree add <path>`, recorded as the branch git names
+after the folder, and `git worktree add <path> <branch>`; and `git branch
+-m|-M <old> <new>`, which carries a record from the old name to the new. It
+records them whether or not the person is away, under the working copy's key in
+the away store (`~/.abcd.noindex/away/<root-sha>/`), matched by whole name, in a
+list of the hundred most recent. The recorder **refuses nothing**: a store it
+cannot write leaves one stderr line and the command goes on to the check as
+before, and a record made for a command that then fails names a branch that
+does not exist, which the reading ignores.
+
 On the host's question tool the hook checks abcd's own questions instead of
 consulting the registry. A question is abcd's when a header is in abcd's chip
 grammar (a role word, then `Q` and the question's number, such as `Product Q2`)
@@ -124,6 +141,23 @@ a loud `NOT CHECKED` warning. A questions field the hook cannot read is the same
 warns loudly. So is a payload the hook cannot decode at all: where it names the
 question tool the warning says the question runs, and where no tool name can be
 read the warning names no tool.
+
+While the away mode holds (`/abcd:mode autonomous`), the hook refuses every
+question on the host's question tool whose payload it can decode, before any
+of the checks above, abcd's or another tool's, whatever its chip, with one
+reason, and sets no mode and marks nothing open; a payload it cannot decode
+runs with the loud warning above, away or not. The reason routes the question by the act it asks about: an act
+only the person may approve (an embargo `--approve` digest or triage verdict,
+the drain's hand-back, the remote-configuration apply verb, a release sign-off,
+pushing, opening or merging a pull request without a standing instruction,
+publishing or posting outward, a new dependency, a secret, a credential or an
+App, a website step, a destructive act, spending, or any other act a command
+page or a brief invariant names as the person's) is queued with
+`/abcd:mode queue "<step>"`, and every other question is decided and recorded
+with `/abcd:decide`. Nothing detects the act: the agent classifies its own
+question from the reason's list. An away record that cannot be read safely
+reads as not away, and the hook says so on stderr, with the warning status
+only where it would otherwise admit the question silently.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
 call that is neither a shell command nor a question, a registry that does not

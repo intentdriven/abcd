@@ -22,7 +22,9 @@ private record at `600`, and a refusal names the `chmod` that restores them.
 Every request to GitHub is the person's own `gh`, signed in to an account that
 may read and edit the repository's security advisories; abcd holds no token.
 A refusal for want of a scope names it and the person's own remedy
-(`gh auth refresh -s repository_advisories:write`).
+(`gh auth refresh -s repository_advisories:write`); one for want of a sign-in,
+a `gh` signed in to no account or holding a token GitHub rejects,
+names `gh auth login`.
 
 Pick the sub-verb from the user's input. With none, ask which step they are
 on; there is no bare listing.
@@ -41,6 +43,27 @@ twice; `needs_severity` lists the advisories GitHub gives no severity, which
 get no record yet but are held under embargo all the same, so the check
 refuses their id, reserved CVE id and title: tell the user to set the severity
 on GitHub and run intake again. Nothing is written to the public ledger.
+
+An advisory the store holds that GitHub no longer lists in triage or draft was
+published or closed there, by abcd or by hand, and intake reads it on its own.
+`ended` lists each now recorded, with the `published_at` or `closed_at` taken
+from GitHub's own timestamp: a published one is recorded whatever its verdict,
+and leaves the check; a closed one is recorded only when its verdict already
+ends the private track: `not-abcds`, `not-a-vulnerability` or
+`public-track`. `unread` lists each left as the store
+holds it, under embargo, with the reason, and read again by the next intake or
+plan: a failed read, a 404 or 403 on its read (GitHub reports no such
+advisory to this account: it may be deleted, or this account may not see
+it), a state this abcd does not know, a timestamp that is missing or is not
+one, or a close GitHub reports while the store holds the
+advisory as a vulnerability or untriaged. That last is the person's to
+settle: tell the user, who reopens it on GitHub to publish it or records a
+verdict that ends the private track with triage, which the next read then
+records. A missing `gh`, a `gh` signed in to no account or holding a token
+GitHub rejects, or a refusal whose words name the advisory scope, refuses the
+intake whole, recording nothing, and names the remedy. A 404 or 403 alone
+never does: the listing intake has just read proves the scope. `restores`
+lists each restore owed, as for publish below.
 
 ## Triage
 
@@ -163,15 +186,53 @@ itself a disclosure.
 
 Once the release carrying the fixes is cut, this shows the publication plan
 and sends nothing but reads. For each advisory judged a vulnerability (the
-release defaults to the highest `vMAJOR.MINOR.PATCH` tag): its record resolved
-in the release, its fix commit, the first release tag holding the fix, the
+release defaults to the highest published release): its record resolved in
+the release, its fix commit, the first published release holding the fix, the
 patched version that gives, and the affected range in GitHub's form.
+
+**What counts as a published release.** A `vMAJOR.MINOR.PATCH` tag counts only
+when both hold: origin holds the tag at the same object as this checkout
+(read once per plan with `git ls-remote --tags origin`), and GitHub reports a
+release for it that is neither a draft nor a prerelease. A tag that only this
+checkout holds, or one whose release run failed or is still drafting, gives no
+patched version: the next published release holding the fix gives it, and a
+fix in none up to the release is left out, saying so. The affected range then
+reaches below that later version, so it also names the skipped tag, which
+over-warns rather than under-warns. A `--release` naming a
+tag that is not a published release is refused with what it lacks and the
+remedy (push the tag with `git push origin <tag>`, or publish its release on
+GitHub). When origin's tags cannot be listed, or GitHub cannot be read for a
+release or answers for another tag, the plan refuses whole, recording
+nothing; the checkout's own tags are never taken in their place. Origin's tags
+vouch only for the repository the store was made for, so a plan, and so a
+publish, whose origin names another repository (a fork, say) is refused, as
+intake refuses it.
+
+The security rule keeps a security record out of every committed tree until
+its advisory is published, so the release usually carries no public record of
+it. Then the fix itself is the evidence: the private record resolved in the
+store's own ledger, naming its fix commit. Resolve it there once the fix has
+landed, from the store's folder, naming the commit by its full id:
+
+```bash
+cd ~/.abcd.noindex/worktrees/<root-sha>/embargo
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture resolve <iss-N> "<what fixed it>" --impact fix --commit <full commit id>
+```
+
+The resolve keeps the record's mode, so it stays this account's alone. The
+plan takes that commit only when it is a full object name of this repository's
+hash that git resolves to exactly itself as a commit, so an abbreviation, a
+tag's name or anything shaped like an option is left out with the reason; the
+first published release holding the commit gives the patched version, as for a
+public record. Such an entry carries `store_evidence: true`. A record resolved in the
+release is always taken first, whatever the store holds.
+
 `left_out` names each advisory the plan does not publish and why: its record
-is not resolved in the release, its fix is in no release tag, its package is
-not set on GitHub, or its text carries a secret, a private name, or another
-advisory still under embargo (a closed one's title included: it stays private
-on GitHub). Show the user the whole plan, then
-`approve_with`.
+is resolved neither in the release nor in the store with a fix commit the plan
+accepts, its fix is in no published release up to the release, its package is not set on GitHub, or its
+text carries a secret, a private name, or another advisory still under embargo
+(a closed one's title included: it stays private on GitHub). Show the user the
+whole plan, then `approve_with`.
 
 **Approval, one per act.** Pass `--approve <digest>` only after the person, in
 this session, has read that plan and said yes to it, and never on your own. A
@@ -179,17 +240,56 @@ digest for any other plan sends nothing. With it abcd publishes one advisory
 first as a canary and reads it back, then the rest the same way, stopping at
 the first mismatch, and confirms none is left in draft. A stopped run exits 1
 naming what is published and what is not; running publish again plans only
-what is still unpublished. An advisory GitHub already reports published or
-closed is left out of a plan, and its `published_at` or `closed_at` recorded
-from that, so a publication whose record failed is completed by the next run.
+what is still unpublished.
+
+Every plan first reads each advisory the store holds that is neither published
+nor closed, judged or not, as intake does, and records what GitHub reports on
+the same terms: `ended` lists each it recorded, so a publication whose record
+failed, or one made by hand on GitHub, is completed by the next run, and an
+advisory found so is left out of the plan; `unread` lists each left as the
+store holds it, with the reason; a 404 or 403 on one advisory's read leaves
+that one unread and the plan goes on. A candidate GitHub cannot say is also
+left out, with that reason. A missing `gh`, a `gh` signed in to no account or
+holding a token GitHub rejects, or a refusal whose words name the advisory
+scope, refuses the plan whole, recording nothing. When every advisory's read
+meets a 404 or 403, a token without the scope would look the same, so the
+plan asks GitHub once for the repository's advisory listing: if it answers,
+the scope is proven, those advisories are unread, and the plan goes on (a
+store whose one advisory was deleted on GitHub still plans); if GitHub
+refuses it, the plan refuses whole with the scope remedy; if it fails
+otherwise, the plan refuses whole and asks for a re-run. Neither list is
+bound into the digest.
+
+`restores` names each restore the store's state owes: every advisory recorded
+published whose private record is resolved in the store, and passes the same
+checks as the plan's evidence, while this checkout's `.abcd/work/issues/resolved/`
+holds no record of it. Its `restore_with` is the command, run from the
+checkout's root, that copies the record into the public ledger's `resolved/`
+folder. It is read from the store's state, not from the run that published, so
+every plan, every intake and every publication names it, a stopped run's
+failure included, until the record is in the checkout. The reminder stands
+until then even when the person decides never to commit the record: a record
+kept out of the ledger on purpose is named on every run. A record that fails
+those checks, or whose path holds a character the terminal would not show as
+written, names no command and gives the `reason`.
+
+abcd has no verb that restores a record; show the user the command, and the
+person runs it. The record was minted at intake from the reporter's original
+report, so before it lands, tell the person to compare its body with the
+advisory as published on GitHub and remove anything only the reporter should
+see. The person then lands the record in a change of its own.
 
 ## What stays the person's act
 
 In this release `embargo` does not fix, land or announce anything. These stay
 with the person:
 
-- fixing each vulnerability, and landing the fixes (with their records) so
-  they are in the release that publishes the advisories;
+- fixing each vulnerability, landing the fixes so they are in the release
+  that publishes the advisories, and resolving each private record in the
+  store with its fix commit;
+- restoring each record into the public ledger once its advisory is
+  published, with the command a plan or an intake names, after comparing its
+  body with the published advisory;
 - requesting a CVE for an advisory, on GitHub;
 - putting back any record details they redacted to land a fix, once the
   advisory is published;

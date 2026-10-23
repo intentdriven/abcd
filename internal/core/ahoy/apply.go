@@ -120,6 +120,18 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		p = waiting.prompter(p)
 	}
 
+	// git not answering is not an unmanaged repository: the repository may be
+	// registered, so install never ASKS to adopt it on that reading
+	// (iss-2610051434156079). An explicit --adopt is the person's own word and
+	// stands; without one, nothing is installed until git answers.
+	gitUnanswered := det.RepoIdentity.RootErr()
+	if det.RootSHA != "" {
+		gitUnanswered = nil
+	}
+	if gitUnanswered != nil && det.FolderKind == UnmanagedRepo && opts.Adopt == nil {
+		return InstallResult{}, fmt.Errorf("git gave no root commit for this repository, so abcd cannot tell whether it already manages it; run the install again once git answers, or pass --adopt to adopt it anyway: %w", gitUnanswered)
+	}
+
 	// Adoption gate for an unmanaged repo.
 	adopted := false
 	if det.FolderKind == UnmanagedRepo {
@@ -1197,6 +1209,14 @@ func (a *applyCtx) stepHistory() {
 		a.note(writeSessionStore, filepath.Join(root, "index.json"))
 	}
 	sha := a.det.RepoIdentity.RootSHA
+	if rerr := a.det.RepoIdentity.RootErr(); rerr != nil {
+		// git did not answer for the root commit: the repository is not
+		// registered or given a store this run, and says so, rather than
+		// being passed over as one with no commits (iss-2610051434156079).
+		a.refuse("could not register this repository on this machine: git gave no root commit for it (" +
+			fsutil.RedactRoot(errText(rerr), a.cwd, ".") + "); run `abcd ahoy install` again")
+		return
+	}
 	if sha == "" {
 		return
 	}

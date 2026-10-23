@@ -8,7 +8,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/report"
-	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // filing_match_surface_test.go is the wiring proof for the filing-time match
@@ -42,7 +42,7 @@ func TestInboxPromoteMatchesTheLedger(t *testing.T) {
 		t.Fatalf("report did not name an id:\n%s", filed)
 	}
 	id := filed[i : i+20]
-	t.Cleanup(report.SetAbcdRootCommitForTest(gitutil.RootCommit(repo)))
+	t.Cleanup(report.SetAbcdRootCommitForTest(gittest.RootCommit(t, repo)))
 
 	out := string(runCLI(t, "inbox", "promote", id))
 	if !strings.Contains(out, "matched "+held.ID) || !strings.Contains(out, "link written") {

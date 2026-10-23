@@ -307,7 +307,9 @@ func TestMemoryAddRefusesAMissingTitleRecallOrWriter(t *testing.T) {
 // A root the resolver refuses is named on stderr before the verb's own
 // refusal: rules.Resolution's notes are a front door's to print, and a memory
 // verb that dropped them left a no-root-commit refusal with no word of why the
-// repository was not used.
+// repository was not used. The verb's own refusal is git's: git will not
+// answer for a checkout another uid owns, which is not a repository with no
+// root commit (iss-2610051434156079), so it is exit 1, not ErrNoRoot's 2.
 func TestMemoryAddPrintsTheOwnershipRefusalBeforeItsOwn(t *testing.T) {
 	home, repo := memoryFixture(t)
 	sub := mustMkdirAll(t, filepath.Join(repo, "pkg"))
@@ -318,13 +320,13 @@ func TestMemoryAddPrintsTheOwnershipRefusalBeforeItsOwn(t *testing.T) {
 	var so, se bytes.Buffer
 	code := run([]string{"memory", "add", "--title", "The tests need the race flag",
 		"--recall", "test", "--recall", "race", "--by", "Example:model-1"}, strings.NewReader(raceBody), &so, &se)
-	if code != 2 {
-		t.Fatalf("exit = %d, want 2\nstdout:\n%s\nstderr:\n%s", code, so.String(), se.String())
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1\nstdout:\n%s\nstderr:\n%s", code, so.String(), se.String())
 	}
 	stderr := se.String()
-	refused, noRoot := strings.Index(stderr, "REFUSED"), strings.Index(stderr, "no root commit")
+	refused, noRoot := strings.Index(stderr, "REFUSED"), strings.Index(stderr, "git gave no root commit")
 	if refused < 0 || noRoot < 0 || refused > noRoot {
-		t.Errorf("stderr must name the refused root before the no-root-commit refusal:\n%s", stderr)
+		t.Errorf("stderr must name the refused root before git's root-commit refusal:\n%s", stderr)
 	}
 	if _, err := os.Stat(abcdhome.Path(home, "memory.json")); !os.IsNotExist(err) {
 		t.Error("a refused add wrote the machine layer")

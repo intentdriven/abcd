@@ -26,7 +26,7 @@ import (
 // invention rather than ignored as an unknown word.
 var hookEventVocabulary = []string{
 	"SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse",
-	"PostToolUseFailure", "PreCompact", "Stop", "SubagentStart", "SubagentStop",
+	"PostToolUseFailure", "PreCompact", "Stop", "StopFailure", "SubagentStart", "SubagentStop",
 	"Notification", "PermissionRequest",
 }
 

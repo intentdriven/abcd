@@ -9,7 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/lab"
-	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // labCheckout is a one-commit repository under a temp HOME, with the process
@@ -41,7 +41,7 @@ func runLab(t *testing.T, args ...string) (int, string, string) {
 // dual-binary gate holds.
 func asAbcd(t *testing.T, repo string) {
 	t.Helper()
-	t.Cleanup(lab.SetAbcdRootCommitForTest(gitutil.RootCommit(repo)))
+	t.Cleanup(lab.SetAbcdRootCommitForTest(gittest.RootCommit(t, repo)))
 }
 
 // The verb is wired: every sub-verb executes from the CLI, a gate refusal exits

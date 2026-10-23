@@ -380,7 +380,13 @@ func build(req Request, written *labelsAdded) (Result, error) {
 	// for nothing. The PURGE waits, though: it happens at the first write, so a
 	// failure anywhere in between leaves the previous output standing rather than
 	// clearing a good tree in exchange for one that never arrived.
-	rootCommit := gitutil.RootCommit(repoRoot)
+	rootCommit, err := gitutil.RootCommit(repoRoot)
+	if err != nil {
+		// Never the identity-less build: that one writes an "unknown" marker
+		// and refuses a non-empty directory as a repository with no root
+		// commit, neither of which a git that did not answer is evidence of.
+		return Result{}, fmt.Errorf("site: reading this repository's root commit, which names the build in its %s: %w", siteMarkerName, err)
+	}
 	outState, err := inspectOutDir(outDir, rootCommit)
 	if err != nil {
 		return Result{}, err

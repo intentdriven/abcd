@@ -19,6 +19,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
+	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
 // CallRecord is the per-call record the run record carries (criterion 5,
@@ -26,6 +27,14 @@ import (
 // model the provider reported, side by side, so a substitution is visible, and
 // the name of the credential the call used. It never carries a key or the
 // brief.
+//
+// It carries both sides of the call (itd-166): the asked side beside the
+// settings the receipt records as sent (the prompt's SHA-256 and the request
+// fields the adapter added on its own), and the served side as the response
+// named it (the upstream provider, the generation id, the finish reason, the
+// token counts and the cost). Every string the provider supplied is scrubbed,
+// cleaned and bounded by the adapter (openaiapi's admit). Unpinned lists each
+// field of the fixed lists the call could not pin, with its reason.
 type CallRecord struct {
 	Provider      string `json:"provider"`
 	ModelAsked    string `json:"model_asked"`
@@ -34,6 +43,26 @@ type CallRecord struct {
 	// value; empty for a provider that takes no key (itd-2609221017023290
 	// criterion 5).
 	Credential string `json:"credential,omitempty"`
+	// PromptSHA256 is the SHA-256 of the rendered messages, never their text
+	// (decision 5).
+	PromptSHA256 string `json:"prompt_sha256"`
+	// AdapterAdded names the request fields the adapter sent on its own
+	// (openaiapi.StreamUsageField), which are not settings sent.
+	AdapterAdded []string `json:"adapter_added"`
+	// ServedProvider is the upstream provider an aggregator names as the one
+	// that served the call; "" when the response names none.
+	ServedProvider string `json:"served_provider"`
+	// GenerationID is the response's own id; "" when it names none.
+	GenerationID string `json:"generation_id"`
+	// FinishReason is why the provider stopped; "" when it gave none.
+	FinishReason string `json:"finish_reason"`
+	// Usage is the token counts the response reported, nil when it reported
+	// none; a count it did not report is listed in Unpinned.
+	Usage *Usage `json:"usage"`
+	// Cost is the usage member's cost, in credits; nil when not reported.
+	Cost *Cost `json:"cost"`
+	// Unpinned lists every field of the fixed lists the call could not pin.
+	Unpinned []Unpinned `json:"unpinned"`
 }
 
 // CallRequest is one call: where it goes, the brief, the settings as sent and
@@ -65,11 +94,27 @@ func (c *APIConfig) Call(ctx context.Context, creds credential.Source, req CallR
 	if err != nil {
 		return nil, CallRecord{}, err
 	}
-	payload, rec, err := complete(ctx, p.Name, p.BaseURL, key, t.Model, req.Brief, req.Settings, req.Contract, c.denylist, opts...)
-	if err == nil {
-		rec.Credential = p.Key
+	payload, rec, err := complete(ctx, p, key, t.Model, req.Brief, req.Settings, req.Contract, c.denylist, opts...)
+	if err != nil {
+		// Decision 4: an ordinary call is never sent again without the
+		// field; the refusal names the setting that stops asking.
+		return nil, CallRecord{}, withStreamUsageSetting(err, p.Name)
 	}
-	return payload, rec, err
+	rec.Credential = p.Key
+	return payload, rec, nil
+}
+
+// withStreamUsageSetting adds to err, when the server refused a request's
+// usage in the stream by name (openaiapi.ErrStreamUsage), the setting in the
+// configured block of provider that stops asking for it. Any other error is
+// returned as it is.
+func withStreamUsageSetting(err error, provider string) error {
+	if !errors.Is(err, openaiapi.ErrStreamUsage) {
+		return err
+	}
+	return fmt.Errorf("%w; if this server does not take %s, set %s.%s.%s to false in %s, "+
+		"and its calls are sent without it, their usage recorded as not reported when the answer carries none",
+		err, openaiapi.StreamUsageField, apiKey, provider, streamUsageKey, layered.Config.MachineOrigin())
 }
 
 // resolveKey resolves a provider's key by name; a keyless block resolves to
@@ -94,13 +139,19 @@ func resolveKey(creds credential.Source, p Provider) (string, error) {
 
 // complete is the one place a call is made: the client built on the pinned
 // base URL, the answer read, and the reported model held to oracle.denylist.
-func complete(ctx context.Context, provider, baseURL, key, model string, brief openaiapi.Brief, settings Settings,
+// The request asks for usage in the stream unless p's block turns that off,
+// and a refusal of it is returned as the adapter gave it: Call names the
+// setting that stops asking, and the setup's verification (Connect) asks
+// once more without it. complete itself never sends a second request.
+func complete(ctx context.Context, p Provider, key, model string, brief openaiapi.Brief, settings Settings,
 	contract func([]byte) error, denylist []DenyEntry, opts ...openaiapi.Option) ([]byte, CallRecord, error) {
-	client, err := openaiapi.New(baseURL, key, opts...)
+	provider := p.Name
+	client, err := openaiapi.New(p.BaseURL, key, opts...)
 	if err != nil {
 		return nil, CallRecord{}, fmt.Errorf("oracle adapter: provider %s: %w", provider, err)
 	}
-	res, err := client.Complete(ctx, openaiapi.Request{Model: model, Brief: brief, Settings: settings}, contract)
+	req := openaiapi.Request{Model: model, Brief: brief, Settings: settings, NoStreamUsage: !p.AsksStreamUsage()}
+	res, err := client.Complete(ctx, req, contract)
 	if err != nil {
 		return nil, CallRecord{}, fmt.Errorf("oracle adapter: provider %s, model %s: %w", provider, model, err)
 	}
@@ -108,5 +159,71 @@ func complete(ctx context.Context, provider, baseURL, key, model string, brief o
 		return nil, CallRecord{}, fmt.Errorf("oracle adapter: provider %s was asked for %s and reported answering with %s, "+
 			"which %s refuses (%s, from %s); the answer is discarded", provider, model, res.ModelReported, denylistKey, e.Pattern, e.Origin)
 	}
-	return res.Content, CallRecord{Provider: provider, ModelAsked: res.ModelAsked, ModelReported: res.ModelReported}, nil
+	return res.Content, callRecord(p, brief, settings, res), nil
+}
+
+// callRecord is the call's both sides, built from the request this layer sent
+// and the response the adapter read: nothing in it was asked of the model,
+// and building it sends nothing (criterion 8).
+func callRecord(p Provider, brief openaiapi.Brief, settings Settings, res openaiapi.Result) CallRecord {
+	rec := CallRecord{Provider: p.Name, ModelAsked: res.ModelAsked, ModelReported: res.ModelReported,
+		PromptSHA256: openaiapi.PromptSHA256(brief), AdapterAdded: []string{},
+		ServedProvider: res.Provider, GenerationID: res.GenerationID, FinishReason: res.FinishReason}
+	if p.AsksStreamUsage() {
+		rec.AdapterAdded = append(rec.AdapterAdded, openaiapi.StreamUsageField)
+	}
+	var un Unpin
+	// The asked side: the model and the prompt are always the call's own. No
+	// provider pin exists yet (iss-2610161734413178), no setting names an
+	// effort or a context variant, and a sampling setting not sent leaves the
+	// server's default, whatever it is.
+	un.Add(AskedProviderPin, NotConfigured)
+	for _, s := range []struct {
+		f    Field
+		name string
+	}{{AskedTemperature, "temperature"}, {AskedTopP, "top_p"}, {AskedSeed, "seed"}} {
+		_, sent := settings[s.name]
+		un.Unless(sent, s.f, NotConfigured)
+	}
+	un.Add(AskedEffort, NotConfigured)
+	un.Add(AskedContext, NotConfigured)
+	un.Add(AskedHarnessVersion, NotReported)
+	if openaiapi.IsLocal(p.BaseURL) {
+		for _, f := range LocalFields {
+			un.Add(f, NotConfigured)
+		}
+	}
+	// The served side: the adapter refuses an answer that names no model, so
+	// the model is always the provider's own report.
+	un.Unless(res.Provider != "", ServedProvider, NotReported)
+	un.Unless(res.GenerationID != "", ServedGenerationID, NotReported)
+	un.Unless(res.FinishReason != "", ServedFinishReason, NotReported)
+	u := res.Usage
+	un.Unless(u != nil && u.PromptTokens != nil, ServedPromptTokens, NotReported)
+	un.Unless(u != nil && u.CompletionTokens != nil, ServedCompletionTokens, NotReported)
+	un.Unless(u != nil && u.ReasoningTokens != nil, ServedReasoningTokens, NotReported)
+	un.Unless(u != nil && u.CachedTokens != nil, ServedCacheReadTokens, NotReported)
+	un.Unless(u != nil && u.CacheWriteTokens != nil, ServedCacheWriteTokens, NotReported)
+	un.Unless(u != nil && u.Cost != nil, ServedCost, NotReported)
+	if u == nil {
+		rec.Unpinned = un.List()
+		return rec
+	}
+	deref := func(p *int) int {
+		if p == nil {
+			return 0
+		}
+		return *p
+	}
+	// The counts are recorded when any of them read; a usage member that
+	// carried only a cost leaves Usage nil, as one that carried nothing does.
+	if u.PromptTokens != nil || u.CompletionTokens != nil || u.ReasoningTokens != nil || u.CachedTokens != nil || u.CacheWriteTokens != nil {
+		rec.Usage = &Usage{PromptTokens: deref(u.PromptTokens), CompletionTokens: deref(u.CompletionTokens),
+			ReasoningTokens: deref(u.ReasoningTokens), CacheReadTokens: deref(u.CachedTokens), CacheWriteTokens: deref(u.CacheWriteTokens)}
+	}
+	if u.Cost != nil {
+		rec.Cost = &Cost{Amount: *u.Cost, Unit: CostCredits}
+	}
+	rec.Unpinned = un.List()
+	return rec
 }

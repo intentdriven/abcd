@@ -171,3 +171,30 @@ func TestWriteFileAtomicPreserveModeInRootKeepsTheExistingMode(t *testing.T) {
 		t.Fatal("WriteFileAtomicPreserveModeInRoot wrote through a symlinked ancestor")
 	}
 }
+
+// TestWriteFileAtomicModeOfInRootCarriesTheSourceMode: a write to a new path
+// that takes its mode from another file (a record moved between status
+// folders) carries that file's mode, defaults to 0644 when the source is
+// absent, and refuses a source path that escapes the root.
+func TestWriteFileAtomicModeOfInRootCarriesTheSourceMode(t *testing.T) {
+	dir, _ := rootFixture(t)
+	r := openFixtureRoot(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "from.txt"), []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFileAtomicModeOfInRoot(r, "sub/to.txt", "from.txt", []byte("b")); err != nil {
+		t.Fatalf("WriteFileAtomicModeOfInRoot: %v", err)
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "sub", "to.txt")); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("mode = %v, %v; want 0600", fi, err)
+	}
+	if err := WriteFileAtomicModeOfInRoot(r, "fresh.txt", "absent.txt", []byte("c")); err != nil {
+		t.Fatalf("absent source: %v", err)
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "fresh.txt")); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Fatalf("absent-source mode = %v, %v; want 0644", fi, err)
+	}
+	if err := WriteFileAtomicModeOfInRoot(r, "other.txt", "rellink/secret.txt", []byte("d")); err == nil {
+		t.Fatal("a source through a symlinked ancestor was read for its mode")
+	}
+}

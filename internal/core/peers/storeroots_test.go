@@ -11,7 +11,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/gittest"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // mergeUnrelatedRoot merges, with an empty diff, a root commit of an
@@ -29,7 +28,7 @@ func (f *fixture) mergeUnrelatedRoot() string {
 	}
 	other := strings.TrimSpace(string(out))
 	f.git(f.here(), "merge", "-q", "-s", "ours", "--allow-unrelated-histories", "--no-edit", other)
-	if gitutil.RootCommit(f.here()) != other {
+	if gittest.RootCommit(f.t, f.here()) != other {
 		f.t.Fatal("the fixture's rev-list does not meet the merged root first")
 	}
 	return other
@@ -72,7 +71,7 @@ func (f *fixture) wantStoresSkipped(n int) {
 // root commit.
 func (f *fixture) ownStore() string {
 	f.t.Helper()
-	return abcdhome.Path(f.home, "worktrees", gitutil.RootCommit(f.here()), storepath.Name)
+	return abcdhome.Path(f.home, "worktrees", gittest.RootCommit(f.t, f.here()), storepath.Name)
 }
 
 // TestPeersSkipsEmbargoStoreWhicheverRootGitListsFirst: after an empty-diff

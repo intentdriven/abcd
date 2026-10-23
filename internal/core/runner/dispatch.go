@@ -153,8 +153,7 @@ const none = "none"
 
 func (o Outcome) ran(route string, ans Answer) Outcome {
 	o.Answer = &ans
-	o.Receipt.Route.Ran = route
-	o.Receipt.Route.Model = ans.Model
+	o.Receipt.Route = RecordOf(o.Receipt.Route.Asked, route, ans)
 	return o
 }
 

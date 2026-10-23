@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // committedRepo stands up a git checkout with one commit, so it has a root
@@ -61,7 +60,7 @@ func TestManagedAgreesWithClassify(t *testing.T) {
 	if _, err := bootstrapHistory(); err != nil {
 		t.Fatal(err)
 	}
-	sha := gitutil.RootCommit(registered)
+	sha := gittest.RootCommit(t, registered)
 	if sha == "" {
 		t.Fatal("the registered fixture has no root commit")
 	}
@@ -154,7 +153,7 @@ func TestManagedContextReportsAnEndedContextAsItself(t *testing.T) {
 	if _, err := bootstrapHistory(); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeHistoryIndex(&historyIndex{Schema: 1, Repos: []historyRepo{{RootCommit: gitutil.RootCommit(registered), Path: registered, Status: "active"}}}); err != nil {
+	if err := writeHistoryIndex(&historyIndex{Schema: 1, Repos: []historyRepo{{RootCommit: gittest.RootCommit(t, registered), Path: registered, Status: "active"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if ok, err := ManagedContext(context.Background(), registered); !ok || err != nil {

@@ -90,7 +90,7 @@
     {
       "path": "abcd ahoy connect",
       "hidden": false,
-      "sentence": "Verify a provider with one call and configure it, or guide setup: Writes ~/.abcd.noindex/ and the key's home, nothing guided; refuses no --model off a terminal.",
+      "sentence": "Verify a provider and configure it, or guide setup: Writes ~/.abcd.noindex/ and the key's home, nothing guided; refuses no --model off a terminal.",
       "flags": [
         {
           "name": "answer",
@@ -159,6 +159,13 @@
           "name": "resume",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "stream-usage",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }
@@ -1509,7 +1516,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.",
+      "sentence": "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1559,7 +1566,7 @@
       "path": "abcd guard hook",
       "hidden": false,
       "block": "agents",
-      "sentence": "Judge the shell command in a host's pre-tool-use payload: Writes nothing; refuses a hazard or a badly built question with the host's deny.",
+      "sentence": "Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.",
       "flags": []
     },
     {
@@ -1776,6 +1783,16 @@
     },
     {
       "path": "abcd hook session-start",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd hook stop",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd hook stop-failure",
       "hidden": false,
       "flags": []
     },
@@ -3393,6 +3410,39 @@
       "group": "agents",
       "block": "agents",
       "sentence": "Print or set whose answer the agent loop is waiting on: Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.",
+      "flags": []
+    },
+    {
+      "path": "abcd mode autonomous",
+      "hidden": false,
+      "sentence": "Record that the person is away and sessions work on, until a time or open-ended: Writes the away record; refuses an end already past or past seven days.",
+      "flags": [
+        {
+          "name": "hold-pushes",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "until",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd mode back",
+      "hidden": false,
+      "sentence": "End the away mode, printing what was queued and recorded one line each: Writes its ending whatever the record's or lock's state; refuses outside a git checkout.",
+      "flags": []
+    },
+    {
+      "path": "abcd mode queue",
+      "hidden": false,
+      "sentence": "Queue one step for the person's return while they are away: Writes the away record; refuses when no away record holds.",
       "flags": []
     },
     {

@@ -71,6 +71,20 @@ func writeContained(base, abs string, data []byte) error {
 	})
 }
 
+// moveContained writes data to dst atomically inside an os.Root on base,
+// with the mode the file at src has: a record moved between status folders
+// keeps its mode (iss-2610181517504705), so a record kept 0600 is not widened
+// to the 0644 a new file takes.
+func moveContained(base, src, dst string, data []byte) error {
+	srcRel, err := containedRel(base, src)
+	if err != nil {
+		return err
+	}
+	return withContainedRoot(base, dst, func(root *os.Root, rel string) error {
+		return mapEscape(fsutil.WriteFileAtomicModeOfInRoot(root, rel, srcRel, data), src)
+	})
+}
+
 // removeContained removes abs inside an os.Root on base; an absent file is not
 // an error, matching os.Remove as its callers used it.
 func removeContained(base, abs string) error {
@@ -85,6 +99,12 @@ func removeContained(base, abs string) error {
 // writeLedgerFile is writeContained for a path in this ledger.
 func writeLedgerFile(repoRoot, issuesRoot, abs string, data []byte) error {
 	return writeContained(ledgerBase(repoRoot, issuesRoot), abs, data)
+}
+
+// moveLedgerFile is moveContained for a status move in this ledger: data is
+// written to dst with the mode src has.
+func moveLedgerFile(repoRoot, issuesRoot, src, dst string, data []byte) error {
+	return moveContained(ledgerBase(repoRoot, issuesRoot), src, dst, data)
 }
 
 // removeLedgerFile is removeContained for a path in this ledger.

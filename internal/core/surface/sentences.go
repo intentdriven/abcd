@@ -31,7 +31,7 @@ var sentences = map[string]string{
 
 	"abcd ahoy": "Detect abcd's install state and list its gaps, or report one mode a flag names: " +
 		"Writes nothing; refuses any argument or two modes at once.",
-	"abcd ahoy connect": "Verify a provider with one call and configure it, or guide setup: " +
+	"abcd ahoy connect": "Verify a provider and configure it, or guide setup: " +
 		"Writes " + abcdhome.Display() + "/ and the key's home, nothing guided; refuses no --model off a terminal.",
 	"abcd ahoy credential": "List the credentials abcd reads, explain one, or verify and store it: " +
 		"Writes the chosen home only with --home; refuses a value the adapter's call fails.",
@@ -139,13 +139,13 @@ var sentences = map[string]string{
 		"Writes nothing; refuses a lifeboat whose manifest does not verify.",
 
 	"abcd guard": "Judge a shell command against the hazard registry before it runs: " +
-		"Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.",
+		"Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
 	"abcd guard check": "Judge one shell command against the hazard registry: " +
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
 	"abcd guard approve": "Answer a headless agent's permission prompts over MCP: " +
 		"Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
 	"abcd guard hook": "Judge the shell command in a host's pre-tool-use payload: " +
-		"Writes nothing; refuses a hazard or a badly built question with the host's deny.",
+		"Writes branch records and a question's mode; refuses a hazard or a badly built question.",
 
 	"abcd history": "Keep session transcripts in the user-level store and read them back: " +
 		"Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb.",
@@ -352,6 +352,12 @@ var sentences = map[string]string{
 
 	"abcd mode": "Print or set whose answer the agent loop is waiting on: " +
 		"Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.",
+	"abcd mode autonomous": "Record that the person is away and sessions work on, until a time or open-ended: " +
+		"Writes the away record; refuses an end already past or past seven days.",
+	"abcd mode back": "End the away mode, printing what was queued and recorded one line each: " +
+		"Writes its ending whatever the record's or lock's state; refuses outside a git checkout.",
+	"abcd mode queue": "Queue one step for the person's return while they are away: " +
+		"Writes the away record; refuses when no away record holds.",
 
 	"abcd peers": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: " +
 		"Writes the fetched reservations; refuses outside a git checkout.",

@@ -8,7 +8,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/ideate"
-	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The store an `ideate record` run writes into is the CHECKOUT's research store,
@@ -63,7 +63,7 @@ func seedIdeateStore(t *testing.T, root string) {
 // through decisionTexts.
 func recordedVerdict(t *testing.T, repo, slug string) (note string) {
 	t.Helper()
-	dir := filepath.Join(repo, filepath.FromSlash(ideate.ResearchRelDir), gitutil.RootCommit(repo))
+	dir := filepath.Join(repo, filepath.FromSlash(ideate.ResearchRelDir), gittest.RootCommit(t, repo))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("the checkout's research store holds no verdict: %v", err)

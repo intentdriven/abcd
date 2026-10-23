@@ -3,9 +3,19 @@ package embargo
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // planFixture is a checkout with an embargo store, a fake gh, and helpers to
@@ -68,7 +78,47 @@ func (pf planFixture) resolve(issID, fix string) {
 	pf.commit(".abcd/work/issues/resolved/"+issID+"-private-report.md", rec, "resolve a record")
 }
 
-func (pf planFixture) tag(name string) { pf.f.repo.Git("tag", name) }
+// tag makes a published release: the tag in the checkout, pushed to the
+// fixture's origin, and GitHub reporting its release published.
+func (pf planFixture) tag(name string) {
+	pf.localTag(name)
+	pf.push(name)
+	pf.release(name, releaseJSON(name, false, false))
+}
+
+// localTag makes the tag in the checkout alone.
+func (pf planFixture) localTag(name string) { pf.f.repo.Git("tag", name) }
+
+// originPath is the fixture's origin: a bare repository kept inside the
+// checkout's .git, made on first use and named as origin's URL (for a
+// fixture whose origin names GitHub, in place of that URL, which the plan
+// does not read).
+func (pf planFixture) originPath() string {
+	bare := filepath.Join(pf.f.repo.Root(), ".git", "fixture-origin.git")
+	if _, err := os.Stat(bare); err != nil {
+		gittest.InitBare(pf.g.t, bare)
+		pf.f.repo.Git("config", "remote.origin.url", bare)
+	}
+	return bare
+}
+
+// push pushes the tag to the fixture's origin.
+func (pf planFixture) push(name string) {
+	pf.originPath()
+	pf.f.repo.Git("push", "-q", "origin", "refs/tags/"+name)
+}
+
+// releasePath is the API path of the GitHub release of tag.
+func releasePath(tag string) string { return "repos/example/example/releases/tags/" + tag }
+
+// release sets GitHub's answer for the release of tag.
+func (pf planFixture) release(tag, body string) { pf.g.answer("GET", releasePath(tag), "", 0, body) }
+
+// releaseJSON is a release as GitHub reports it.
+func releaseJSON(tag string, draft, prerelease bool) string {
+	b, _ := json.Marshal(map[string]any{"tag_name": tag, "draft": draft, "prerelease": prerelease, "name": "a sample release"})
+	return string(b)
+}
 
 func vulnJSON(name, rng string) map[string]any {
 	v := map[string]any{
@@ -223,9 +273,9 @@ func TestUnresolvedRecordLeftOut(t *testing.T) {
 	if r := leftOutReason(t, p, ghsaPublic); !strings.Contains(r, "names no fix commit") {
 		t.Fatalf("reason %q", r)
 	}
-	if len(pf.g.calls()) != 0 {
-		t.Fatal("an advisory left out by the release was read from GitHub")
-	}
+	// Every plan reads each held advisory's state (iss-2610171250479046),
+	// and sends nothing else.
+	noWrites(t, pf.g)
 }
 
 // TestMissingPackageLeftOut: an advisory with no package on GitHub is left
@@ -426,8 +476,9 @@ func TestPlanSendsOnlyGets(t *testing.T) {
 		t.Fatalf("plan %+v", p)
 	}
 	noWrites(t, pf.g)
-	if got := len(pf.g.calls()); got != 2 {
-		t.Fatalf("%d calls, want one read per advisory", got)
+	calls := pf.g.calls()
+	if len(calls) != 3 || !calls[0].has(releasePath("v0.9.0")) {
+		t.Fatalf("%d calls, want one read of the release, then one per advisory", len(calls))
 	}
 	if readFile(t, before) != stateBefore {
 		t.Fatal("building the plan changed the store's state")
@@ -480,4 +531,369 @@ func readFile(t *testing.T, p string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+// storeResolve writes issID's private record into the store's own resolved/
+// folder, this account's alone, naming fix as its resolved_by.commit (empty:
+// no resolved_by), and returns its path inside the store. It writes the
+// value as given, so a test can hold the plan to a store value capture's
+// shape check would not have let through.
+func (pf planFixture) storeResolve(t *testing.T, issID, fix string) string {
+	t.Helper()
+	rel := ".abcd/work/issues/resolved/" + issID + "-private-report.md"
+	rec := "---\nschema_version: 1\nid: \"" + issID + "\"\nslug: \"private-report\"\nseverity: \"major\"\n" +
+		"category: \"security\"\nsource: \"security-advisory\"\nresolution: \"fixed\"\nimpact: fix\n"
+	if fix != "" {
+		rec += "resolved_by:\n  commit: \"" + fix + "\"\n"
+	}
+	rec += "---\n\na sample private report.\n"
+	p := filepath.Join(pf.s.Root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(rec), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return rel
+}
+
+// TestStoreRecordedFixPlans: an advisory whose record is held out of every
+// committed tree, as the security rule asks, and resolved in the store's own
+// ledger through capture's resolve with its fix commit, is planned with the
+// first release tag holding that commit as its patched version, though no
+// release carries a public record of it.
+func TestStoreRecordedFixPlans(t *testing.T) {
+	pf := newPlanFixture(t)
+	res, err := capture.Capture(capture.CaptureRequest{
+		RepoRoot: pf.s.Root, Text: "a sample report title\n\nthe sample body", Severity: capture.SeverityMajor,
+		Category: "security", Source: "security-advisory", Slug: "private-report",
+		FoundDuring: "embargo intake 2026-10-12", Remedy: issueschema.MachineRemedy,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.seed(t, vulnAdvisory(ghsaOpen, res.ID))
+	fix := pf.commit("parser.go", "package parser\n", "fix: tighten the parser")
+	pf.tag("v0.9.0")
+	pf.commit("other.go", "package other\n", "later")
+	pf.tag("v0.10.0")
+	moved, err := capture.Resolve(capture.ResolveRequest{RepoRoot: pf.s.Root, ID: res.ID, Resolution: "fixed by tightening the parser",
+		Impact: "fix", ByCommit: fix})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(pf.s.Root, filepath.FromSlash(moved.Path)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out := pf.f.repo.Git("ls-tree", "-r", "--name-only", "v0.10.0", "--", ".abcd/work/issues/resolved/"); out != "" {
+		t.Fatalf("the release carries a public record: %q", out)
+	}
+	pf.remote(t, ghsaOpen, "draft", "the report", vulnJSON(examplePackage, ""))
+
+	p := pf.plan(t, "")
+	if p.Release != "v0.10.0" || len(p.Entries) != 1 || len(p.LeftOut) != 0 {
+		t.Fatalf("plan %+v", p)
+	}
+	e := p.Entries[0]
+	if e.GHSAID != ghsaOpen || e.IssueID != res.ID || e.FixCommit != fix || e.FirstTag != "v0.9.0" || e.PatchedVersion != "0.9.0" || !e.StoreEvidence {
+		t.Fatalf("entry %+v", e)
+	}
+	if len(e.Vulnerabilities) != 1 || e.Vulnerabilities[0].VulnerableVersionRange != "< 0.9.0" || e.Vulnerabilities[0].PatchedVersions != "0.9.0" {
+		t.Fatalf("vulnerabilities %+v", e.Vulnerabilities)
+	}
+	if p.ApproveWith == "" {
+		t.Fatal("a plan holding an entry offers no approval")
+	}
+}
+
+// TestStoreRecordedFixInNoTagLeftOut: a fix the store records that no release
+// tag holds is left out, saying so, and GitHub is not asked about it.
+func TestStoreRecordedFixInNoTagLeftOut(t *testing.T) {
+	pf := newPlanFixture(t)
+	pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+	r := pf.f.repo
+	pf.tag("v0.9.0")
+	r.Git("switch", "-q", "-c", "side")
+	fix := pf.commit("parser.go", "package parser\n", "fix on a branch no tag holds")
+	r.Git("switch", "-q", "main")
+	pf.storeResolve(t, issA, fix)
+	p := pf.plan(t, "")
+	if len(p.Entries) != 0 || !strings.Contains(leftOutReason(t, p, ghsaOpen), "no release tag") {
+		t.Fatalf("plan %+v", p)
+	}
+	// Every plan reads each held advisory's state (iss-2610171250479046),
+	// and sends nothing else.
+	noWrites(t, pf.g)
+}
+
+// TestStoreRecordedFixMustBeFullCommitID: the store is a trust boundary, so
+// the fix commit it names must be a full object name of this repository's
+// hash, naming a commit itself: an abbreviation (which the public record's
+// path accepts), an option-shaped value, another case, a name of the other
+// hash's length, a name of no object here, or a tag object's name is left
+// out with the reason and never reaches git as an option. A store record that
+// is not resolved, or names no fix, leaves the advisory out as before.
+func TestStoreRecordedFixMustBeFullCommitID(t *testing.T) {
+	for name, tc := range map[string]struct {
+		fix    func(pf planFixture, fix string) string
+		reason string
+	}{
+		"abbreviated":    {func(_ planFixture, fix string) string { return fix[:12] }, "not a full commit id"},
+		"option-shaped":  {func(pf planFixture, _ string) string { return "--output=" + pf.f.home + "/written" }, "not a full commit id"},
+		"upper case":     {func(_ planFixture, fix string) string { return strings.ToUpper(fix) }, "not a full commit id"},
+		"other length":   {func(_ planFixture, fix string) string { return fix + strings.Repeat("0", 64-len(fix)) }, "not a commit of this repository"},
+		"no such object": {func(_ planFixture, _ string) string { return strings.Repeat("0", 40) }, "not a commit of this repository"},
+		"tag object": {func(pf planFixture, _ string) string {
+			pf.f.repo.Git("tag", "-a", "-m", "an annotated tag", "annotated")
+			return pf.f.repo.Git("rev-parse", "refs/tags/annotated")
+		}, "not a commit of this repository"},
+		"no fix named": {func(_ planFixture, _ string) string { return "" }, "names no fix commit"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			pf := newPlanFixture(t)
+			pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+			fix := pf.commit("parser.go", "package parser\n", "fix")
+			pf.tag("v0.9.0")
+			pf.storeResolve(t, issA, tc.fix(pf, fix))
+			p := pf.plan(t, "")
+			r := leftOutReason(t, p, ghsaOpen)
+			if len(p.Entries) != 0 || !strings.Contains(r, tc.reason) || !strings.Contains(r, "not resolved in v0.9.0") {
+				t.Fatalf("reason %q, plan %+v", r, p)
+			}
+			if _, err := os.Stat(filepath.Join(pf.f.home, "written")); err == nil {
+				t.Fatal("a value from the store reached git as an option")
+			}
+			noWrites(t, pf.g)
+		})
+	}
+
+	// A private record still open in the store is no evidence of a fix.
+	pf := newPlanFixture(t)
+	pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+	pf.tag("v0.9.0")
+	p := pf.plan(t, "")
+	if r := leftOutReason(t, p, ghsaOpen); len(p.Entries) != 0 || !strings.Contains(r, "not resolved in v0.9.0") || !strings.Contains(r, "store") {
+		t.Fatalf("reason %q", r)
+	}
+}
+
+// TestPublicRecordPathUnchanged: an advisory whose record is resolved in the
+// release plans from that record exactly as before, whatever the store also
+// records: its fix commit is the public record's, and the entry is not
+// marked as taken from the store.
+func TestPublicRecordPathUnchanged(t *testing.T) {
+	pf := newPlanFixture(t)
+	pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+	fix := pf.commit("parser.go", "package parser\n", "fix")
+	pf.tag("v0.9.0")
+	other := pf.commit("other.go", "package other\n", "another fix")
+	pf.resolve(issA, fix)
+	pf.tag("v0.10.0")
+	pf.storeResolve(t, issA, other)
+	pf.remote(t, ghsaOpen, "draft", "the report", vulnJSON(examplePackage, ""))
+	p := pf.plan(t, "")
+	if len(p.Entries) != 1 {
+		t.Fatalf("plan %+v", p)
+	}
+	if e := p.Entries[0]; e.FixCommit != fix || e.FirstTag != "v0.9.0" || e.StoreEvidence {
+		t.Fatalf("entry %+v", e)
+	}
+	data, err := json.Marshal(p.Entries[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "store") {
+		t.Fatalf("a public-record entry carries a store field, which would change its digest: %s", data)
+	}
+}
+
+// storeRecordGuards are the ways a private record in the store's resolved/
+// folder can fail the checks the plan holds it to before taking anything
+// from it, each with the reason the plan gives. set lays the record (or
+// records) down in place of storeResolve's.
+var storeRecordGuards = map[string]struct {
+	set    func(t *testing.T, pf planFixture, fix string)
+	reason string
+}{
+	"another id": {func(t *testing.T, pf planFixture, fix string) {
+		rel := pf.storeResolve(t, issA, fix)
+		p := filepath.Join(pf.s.Root, filepath.FromSlash(rel))
+		data := strings.Replace(readFile(t, p), `id: "`+issA+`"`, `id: "`+issB+`"`, 1)
+		if err := os.WriteFile(p, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}, "carries another id"},
+	"symlinked record": {func(t *testing.T, pf planFixture, fix string) {
+		rel := pf.storeResolve(t, issA, fix)
+		p := filepath.Join(pf.s.Root, filepath.FromSlash(rel))
+		elsewhere := filepath.Join(t.TempDir(), "record.md")
+		if err := os.Rename(p, elsewhere); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(elsewhere, p); err != nil {
+			t.Fatal(err)
+		}
+	}, "could not be read as a regular file within its size limit"},
+	"over the cap": {func(t *testing.T, pf planFixture, fix string) {
+		rel := pf.storeResolve(t, issA, fix)
+		p := filepath.Join(pf.s.Root, filepath.FromSlash(rel))
+		data := readFile(t, p) + strings.Repeat("x", maxRecordBytes)
+		if err := os.WriteFile(p, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}, "could not be read as a regular file within its size limit"},
+	"held twice": {func(t *testing.T, pf planFixture, fix string) {
+		rel := pf.storeResolve(t, issA, fix)
+		p := filepath.Join(pf.s.Root, filepath.FromSlash(rel))
+		twin := filepath.Join(filepath.Dir(p), issA+"-another-report.md")
+		if err := os.WriteFile(twin, []byte(readFile(t, p)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}, "holds its private record twice"},
+}
+
+// TestStoreRecordGuardsLeaveOut: a private record in the store that carries
+// another advisory's id, is a link, is over its cap, or is held twice in
+// resolved/ is no evidence of a fix: the advisory is left out with the
+// reason, and nothing is taken from the record.
+func TestStoreRecordGuardsLeaveOut(t *testing.T) {
+	for name, tc := range storeRecordGuards {
+		t.Run(name, func(t *testing.T) {
+			pf := newPlanFixture(t)
+			pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+			fix := pf.commit("parser.go", "package parser\n", "fix")
+			pf.tag("v0.9.0")
+			tc.set(t, pf, fix)
+			pf.remote(t, ghsaOpen, "draft", "the report", vulnJSON(examplePackage, ""))
+			p := pf.plan(t, "")
+			if r := leftOutReason(t, p, ghsaOpen); len(p.Entries) != 0 || !strings.Contains(r, tc.reason) || !strings.Contains(r, "not resolved in v0.9.0") {
+				t.Fatalf("reason %q, plan %+v", r, p)
+			}
+		})
+	}
+}
+
+// TestPublishedStoreRecordGuardsNameNoRestore: an advisory GitHub reports
+// published whose private record in the store fails the same checks names
+// no restore command: copying a link, or another advisory's record, into
+// the public ledger is never offered.
+func TestPublishedStoreRecordGuardsNameNoRestore(t *testing.T) {
+	for name, tc := range storeRecordGuards {
+		t.Run(name, func(t *testing.T) {
+			pf := newPlanFixture(t)
+			pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+			fix := pf.commit("parser.go", "package parser\n", "fix")
+			pf.tag("v0.9.0")
+			tc.set(t, pf, fix)
+			a := advisoryJSON(ghsaOpen, "published", "high", "a sample summary", "the report")
+			a["published_at"] = endedAt.Format(time.RFC3339)
+			b, err := json.Marshal(a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pf.g.answer("GET", listPath+"/"+ghsaOpen, "", 0, string(b))
+			p := pf.plan(t, "")
+			if len(p.Restores) != 1 || p.Restores[0].RestoreWith != "" || !strings.Contains(p.Restores[0].Reason, tc.reason) {
+				t.Fatalf("restores %+v; want none named, saying %q", p.Restores, tc.reason)
+			}
+		})
+	}
+}
+
+// TestRestoreCommandQuoting: the restore command names the store's record
+// under ~ whenever the store sits under home, in home's own spelling or
+// through a link to it, with the rest single-quoted when a shell would not
+// read it as written; one outside home is quoted whole and left whole by
+// the surface's home redaction. A name holding a character the terminal
+// would not show as written names no command, saying why. Each command,
+// run by a shell with that home, names exactly the record.
+func TestRestoreCommandQuoting(t *testing.T) {
+	const rootSHA = "0123456789abcdef0123456789abcdef01234567"
+	storeUnder := func(home string) string {
+		return abcdhome.Path(home, "worktrees", rootSHA, "embargo")
+	}
+	for name, tc := range map[string]struct {
+		setup func(t *testing.T) (home, root string)
+		file  string
+		want  string // "~": the ~/ form; "abs": quoted whole; "": none
+	}{
+		"plain":         {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-private-report.md", "~"},
+		"space":         {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-a report.md", "~"},
+		"single quote":  {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-it's.md", "~"},
+		"dollar":        {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-$HOME.md", "~"},
+		"newline":       {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-a\nb.md", ""},
+		"bidi":          {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-a‮b.md", ""},
+		"control":       {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-a\x1bb.md", ""},
+		"outside home":  {func(t *testing.T) (string, string) { return t.TempDir(), storeUnder(t.TempDir()) }, "iss-1-private-report.md", "abs"},
+		"outside quote": {func(t *testing.T) (string, string) { return t.TempDir(), storeUnder(t.TempDir()) }, "iss-1-it's.md", "abs"},
+		"symlinked home": {func(t *testing.T) (string, string) {
+			real := t.TempDir()
+			link := filepath.Join(t.TempDir(), "home")
+			if err := os.Symlink(real, link); err != nil {
+				t.Fatal(err)
+			}
+			return link, storeUnder(real)
+		}, "iss-1-private-report.md", "~"},
+		"symlinked abcd home": {func(t *testing.T) (string, string) {
+			h, elsewhere := t.TempDir(), t.TempDir()
+			if err := os.Symlink(elsewhere, abcdhome.Path(h)); err != nil {
+				t.Fatal(err)
+			}
+			return h, storeUnder(h)
+		}, "iss-1-private-report.md", "~"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			home, root := tc.setup(t)
+			t.Setenv("HOME", home)
+			dir := filepath.Join(root, ".abcd", "work", "issues", "resolved")
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			src := filepath.Join(dir, tc.file)
+			if err := os.WriteFile(src, []byte("a record\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cmd, why := restoreCommand(home, Store{Root: root}, resolvedRel+"/"+tc.file)
+			if tc.want == "" {
+				if cmd != "" || !strings.Contains(why, "terminal") {
+					t.Fatalf("command %q, why %q; want none, saying why", cmd, why)
+				}
+				return
+			}
+			const dst = " .abcd/work/issues/resolved/"
+			shown, ok := strings.CutPrefix(cmd, "cp -- ")
+			if !ok || why != "" || !strings.HasSuffix(shown, dst) {
+				t.Fatalf("command %q, why %q", cmd, why)
+			}
+			shown = strings.TrimSuffix(shown, dst)
+			switch tc.want {
+			case "~":
+				if !strings.HasPrefix(shown, "~/") {
+					t.Fatalf("command %q does not name the record under ~", cmd)
+				}
+			case "abs":
+				if !strings.HasPrefix(shown, "'/") {
+					t.Fatalf("command %q does not quote the record's path whole", cmd)
+				}
+			}
+			if strings.Contains(cmd, home) || strings.Contains(cmd, storepath.Resolve(home)) {
+				t.Fatalf("command %q names the home directory", cmd)
+			}
+			if fsutil.RedactHome(cmd) != cmd {
+				t.Fatalf("home redaction changes the command %q to %q", cmd, fsutil.RedactHome(cmd))
+			}
+			if termsafe.Sanitize(cmd) != cmd {
+				t.Fatalf("the terminal would not show the command as written: %q", cmd)
+			}
+			sh := exec.Command("sh", "-c", "printf '%s' "+shown)
+			sh.Env = append(os.Environ(), "HOME="+home)
+			out, err := sh.Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if storepath.Resolve(string(out)) != storepath.Resolve(src) {
+				t.Fatalf("a shell reads %q as %q, not the record %q", shown, out, src)
+			}
+		})
+	}
 }
