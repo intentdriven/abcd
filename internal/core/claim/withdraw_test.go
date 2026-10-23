@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -12,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/ghcontract"
 )
 
@@ -596,5 +599,76 @@ func TestArmedMergesForCutNamesWhatTheReservationAdmitted(t *testing.T) {
 	}
 	if _, err := ArmedMergesForCut(p.dir, p.opts()); err == nil || !strings.Contains(err.Error(), "HTTP 502") {
 		t.Fatalf("a failed listing = %v; want its error", err)
+	}
+}
+
+// TestAWithdrawalRecordThatCannotBePushedPutsTheMergesBack: when origin
+// refuses the renewal recording the withdrawals, every merge withdrawn is
+// re-armed as it was, so none is left withdrawn with nothing pointing at it,
+// and each is named.
+func TestAWithdrawalRecordThatCannotBePushedPutsTheMergesBack(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	hook := "#!/bin/sh\nwhile read old new ref; do if git log -1 --format=%B \"$new\" | grep -q '^Abcd-Withdrawn:'; then " +
+		"echo 'no withdrawal records today' >&2; exit 1; fi; done\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(w.bare, "hooks", "pre-receive"), []byte(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	res, err := p.do(Request{Record: "rel-v0.16.0"})
+	if err != nil || res.Act != ActReserved {
+		t.Fatalf("reserve = %+v, %v; want the reservation made", res, err)
+	}
+	if len(res.Withdrew) != 0 || len(res.ForgeFailures) != 3 || res.Commit != w.remoteTip("rel-v0.16.0") {
+		t.Fatalf("result = %+v; want nothing recorded and three named", res)
+	}
+	for _, ff := range res.ForgeFailures {
+		if ff.Act != ForgeRecord || !strings.Contains(ff.Reason, "no withdrawal records today") || !strings.Contains(ff.Reason, "put back as it was") {
+			t.Fatalf("failure = %+v; want the record's refusal and the merge put back", ff)
+		}
+	}
+	if pr := f.pr(11); pr.method != "SQUASH" {
+		t.Fatalf("#11 = %+v; want re-armed with squash", pr)
+	}
+	if pr := f.pr(12); !pr.queued {
+		t.Fatalf("#12 = %+v; want queued again", pr)
+	}
+}
+
+// TestAnotherPersonsTakeOverCarriesTheStrandedWithdrawals: a release lapsed
+// mid-cut and taken over by another person keeps the first holder's
+// withdrawals, named as theirs; the first holder's copy re-arms them only once
+// the second cut ends too.
+func TestAnotherPersonsTakeOverCarriesTheStrandedWithdrawals(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	octo := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := octo.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	w.set(t0.Add(lease.Max + TakeoverMargin + time.Minute))
+	quinn := w.clone("99+quinn@users.noreply.github.com", "")
+	f.reset()
+	res, err := quinn.do(Request{Record: "rel-v0.16.0"})
+	if err != nil || res.Act != ActTakenOver {
+		t.Fatalf("take-over = %+v, %v", res, err)
+	}
+	if len(res.Stranded) != 3 || res.Stranded[0].By != "octo" || len(f.mutations()) != 0 {
+		t.Fatalf("result = %+v, mutations %v; want octo's three carried and nothing re-armed", res, f.mutations())
+	}
+	if _, ws := w.tipWithdrawals("rel-v0.16.0"); len(ws) != 3 || ws[0].By != "octo" || !ws[0].Pending() {
+		t.Fatalf("quinn's reservation records %+v; want octo's withdrawals carried", ws)
+	}
+	// octo's next act re-arms nothing while quinn's cut holds the branch.
+	if _, err := octo.reserve("iss-70", "o.go"); err != nil || len(f.mutations()) != 0 {
+		t.Fatalf("octo's act = %v, mutations %v; want nothing re-armed mid-cut", err, f.mutations())
+	}
+	// quinn releases: quinn re-arms none of octo's; octo's next act does.
+	if _, err := quinn.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil || len(f.mutations()) != 0 {
+		t.Fatalf("quinn's release = %v, mutations %v; want none of octo's re-armed", err, f.mutations())
+	}
+	res, err = octo.reserve("iss-71", "p.go")
+	if err != nil || len(res.Settles) != 1 || len(f.mutations()) != 3 {
+		t.Fatalf("octo's act after the cut = %+v, %v, mutations %v; want the three re-armed", res.Settles, err, f.mutations())
 	}
 }

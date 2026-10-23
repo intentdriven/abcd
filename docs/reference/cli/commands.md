@@ -4117,12 +4117,20 @@ rel-vX.Y.Z reservation, which holds every other session's merge until its
 tag is on origin). Then each holder's hand-backs of the last day, from the
 same view: the record and kind of each released tip marking one, newest
 first, the newest ten shown and the rest counted; one dated more than five
-minutes ahead of this computer's clock is not shown. The fetch is the only
-network act, and it reads origin's release tags with the reservations; it
-updates the remote-tracking reservation branches and the release tags abcd
-keeps under refs/abcd/release-tags/, stamps when it ran in the local tier,
-with when it first fetched each reservation dated ahead of this computer's
-clock or undated, and nothing else is written. The release-tag refs are ordinary
+minutes ahead of this computer's clock is not shown. Then each release's
+withdrawn pull requests (release_withdrawals): those a live release holds or
+admitted, those an ended one has still to re-arm (yours, or another person's,
+named with whose), and those its tombstone skipped for their owners. The fetch
+reads origin's release tags with the reservations; it updates the
+remote-tracking reservation branches and the release tags abcd keeps under
+refs/abcd/release-tags/, stamps when it ran in the local tier, with when it
+first fetched each reservation dated ahead of this computer's clock or
+undated. One more act follows it, only when a release has ended (its tag on
+origin, its tombstone, or its lease lapsed) with pull requests you withdrew for
+it not yet re-armed: each is re-armed through gh in the form it was taken from,
+pinned to its withdrawn head, or skipped when its head moved or it was closed
+or merged, and a tombstone recording every state is pushed to its branch
+(settled). Nothing else is written. The release-tag refs are ordinary
 refs of this checkout, so git log --all lists the commits they name and
 git push --mirror would push them. A checkout with no remote named origin
 lists no reservations.

@@ -154,12 +154,20 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"tag is on origin). Then each holder's hand-backs of the last day, from the\n" +
 			"same view: the record and kind of each released tip marking one, newest\n" +
 			"first, the newest ten shown and the rest counted; one dated more than five\n" +
-			"minutes ahead of this computer's clock is not shown. The fetch is the only\n" +
-			"network act, and it reads origin's release tags with the reservations; it\n" +
-			"updates the remote-tracking reservation branches and the release tags abcd\n" +
-			"keeps under refs/abcd/release-tags/, stamps when it ran in the local tier,\n" +
-			"with when it first fetched each reservation dated ahead of this computer's\n" +
-			"clock or undated, and nothing else is written. The release-tag refs are ordinary\n" +
+			"minutes ahead of this computer's clock is not shown. Then each release's\n" +
+			"withdrawn pull requests (release_withdrawals): those a live release holds or\n" +
+			"admitted, those an ended one has still to re-arm (yours, or another person's,\n" +
+			"named with whose), and those its tombstone skipped for their owners. The fetch\n" +
+			"reads origin's release tags with the reservations; it updates the\n" +
+			"remote-tracking reservation branches and the release tags abcd keeps under\n" +
+			"refs/abcd/release-tags/, stamps when it ran in the local tier, with when it\n" +
+			"first fetched each reservation dated ahead of this computer's clock or\n" +
+			"undated. One more act follows it, only when a release has ended (its tag on\n" +
+			"origin, its tombstone, or its lease lapsed) with pull requests you withdrew for\n" +
+			"it not yet re-armed: each is re-armed through gh in the form it was taken from,\n" +
+			"pinned to its withdrawn head, or skipped when its head moved or it was closed\n" +
+			"or merged, and a tombstone recording every state is pushed to its branch\n" +
+			"(settled). Nothing else is written. The release-tag refs are ordinary\n" +
 			"refs of this checkout, so git log --all lists the commits they name and\n" +
 			"git push --mirror would push them. A checkout with no remote named origin\n" +
 			"lists no reservations.\n" +
