@@ -407,7 +407,8 @@ SOTA fit-challenge.
     says the time is known after the pilot, with a bound when the person declares
     minutes per copy.
 36. **The expected cost comes from the person's own prices** (the technical facilitator
-    on the product thinker's delegation, 2026-10-22, for review on return): the
+    on the product thinker's delegation, 2026-10-22; confirmed by the product
+    thinker on 2026-10-23, relayed by the coordinating session): the
     declaration may give a price, or an expected cost per copy, for each metered cell,
     and the plan reckons the expected cost from it. A metered cell with no price shows
     "not estimated; bounded by your cap". Prices are never fetched for the plan, because
