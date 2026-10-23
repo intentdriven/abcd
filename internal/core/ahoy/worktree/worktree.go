@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -170,9 +171,10 @@ func levels(home, rel, what string, create bool) (bool, error) {
 
 // ValidName reports whether name is one plain path segment that cannot escape
 // the lane it is joined onto and cannot be read as an option: letters, digits,
-// '.', '_' and '-', not led by '-' or '.', and holding no "..".
+// '.', '_' and '-', not led by '-' or '.', and holding no "..". A name a
+// sibling store holds in the lane is not a worktree's (reserved).
 func ValidName(name string) bool {
-	if name == "" || name[0] == '-' || name[0] == '.' || strings.Contains(name, "..") {
+	if name == "" || name[0] == '-' || name[0] == '.' || strings.Contains(name, "..") || reserved(name) {
 		return false
 	}
 	for i := 0; i < len(name); i++ {
@@ -186,7 +188,16 @@ func ValidName(name string) bool {
 	return true
 }
 
+// reserved reports whether name is one abcd's sibling stores hold in the lane:
+// the embargo store (iss-2610230014564359), compared without case, since a
+// case-folding filesystem reaches the same directory through either spelling.
+func reserved(name string) bool { return strings.EqualFold(name, storepath.Name) }
+
 func invalidName(name string) *Refusal {
+	if reserved(name) {
+		return refuse(fmt.Sprintf("%q is the name of abcd's embargo store, which lives in the same lane", name),
+			"name the worktree something else")
+	}
 	return refuse(fmt.Sprintf("%q is not one plain path segment (letters, digits, '.', '_' and '-', not led by '-' or '.', and no '..')", name),
 		"name the worktree with one plain path segment")
 }
@@ -251,12 +262,16 @@ type Added struct {
 	Branch string
 }
 
-// Add makes a worktree in the lane of the repository at repoRoot: the lane is
-// derived and its levels made (LaneFor, Ensure), the name and branch are
-// judged, and nothing stands at the path, then git adds the worktree and its
-// directory is narrowed to 0700. Every refusal comes before anything is made
-// beyond the store's own levels, so a refused Add makes no worktree; a git
+// Add makes a worktree in the lane of the repository at repoRoot: the name
+// and branch are judged, the lane is derived and read (LaneFor), and nothing
+// may stand at the path; only then are the lane's levels made (Ensure), git
+// adds the worktree and its directory is narrowed to 0700. Every refusal
+// comes before anything is written, so a refused Add writes nothing; a git
 // that fails is a refusal whose cause is git's error (Refusal.Err).
+//
+// Once git has made the worktree, Add records where its branch starts
+// (start.go). That failing is a refusal returned with the Added it made,
+// since the worktree stands and git's own removal is the way back.
 func Add(repoRoot string, opts AddOptions) (Added, error) {
 	if opts.Git == nil {
 		return Added{}, errors.New("worktree: Add needs a git runner")
@@ -274,14 +289,17 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 	if _, err := gitutil.Run(repoRoot, "check-ref-format", "--branch", branch); err != nil {
 		return Added{}, refuse(fmt.Sprintf("%q is not a valid branch name", branch), "name a branch git accepts")
 	}
-	if !opts.Existing && !gitutil.IsFullSHA(opts.Base) {
-		return Added{}, fmt.Errorf("worktree: a new branch needs a base commit, got %q", opts.Base)
-	}
 	lane, err := LaneFor(repoRoot)
 	if err != nil {
 		return Added{}, err
 	}
-	if err := lane.Ensure(); err != nil {
+	if !opts.Existing && !gitutil.IsFullSHA(opts.Base) {
+		return Added{}, refuse(fmt.Sprintf("there is no base commit to cut the new branch %s from", branch),
+			"check an existing branch out instead, or give the repository a default branch")
+	}
+	// Read the lane as Ensure would judge it, making nothing, so the refusals
+	// below leave the home as it was.
+	if _, err := lane.present(); err != nil {
 		return Added{}, err
 	}
 	path := lane.Path(opts.Name)
@@ -307,6 +325,9 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 	default:
 		args = []string{"worktree", "add", "-b", branch, "--", path, opts.Base}
 	}
+	if err := lane.Ensure(); err != nil {
+		return Added{}, err
+	}
 	if _, err := opts.Git(repoRoot, args...); err != nil {
 		r := refuse("git could not add the worktree: "+err.Error(), "settle what git reports")
 		r.Err = err
@@ -318,5 +339,10 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 	// as git made it: the home above it is narrowed at every command, so other
 	// accounts cannot reach it.
 	_, _ = fsutil.NarrowToOwner(path)
-	return Added{Lane: lane, Path: path, Branch: branch}, nil
+	added := Added{Lane: lane, Path: path, Branch: branch}
+	if err := recordStart(repoRoot, lane, opts.Name, ref); err != nil {
+		return added, refuse(fmt.Sprintf("git made the worktree at %s, but where its branch starts could not be recorded: %v", path, err),
+			"settle what stops the write, then remove the worktree (`git worktree remove`) and add it again")
+	}
+	return added, nil
 }

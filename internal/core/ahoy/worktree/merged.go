@@ -6,7 +6,8 @@ package worktree
 // own, or when its content is on the default branch commit by commit (a
 // rebase merge) or as one change (a squash merge). Each test errs towards
 // unmerged, because an unmerged worktree is kept and a merged one may be
-// reclaimed.
+// reclaimed. A worktree the store added has its own commits counted from the
+// start Add recorded (start.go); any other is judged from its reflog alone.
 
 import (
 	"context"
@@ -87,9 +88,11 @@ func askForge(forge GH, dir string) (map[string][]pullRequest, string) {
 }
 
 // judge is the merged judgement of wt's branch against the default branch
-// def, read from dir, a checkout of the repository. A detached worktree, a
-// repository with no default branch and a tip git cannot name are unmerged.
-func judge(dir, def string, wt gitutil.Worktree, prs map[string][]pullRequest) judgement {
+// def, read from dir, a checkout of the repository. start is the commit the
+// store recorded the branch starting at when it added the worktree, or "" for
+// none. A detached worktree, a repository with no default branch and a tip git
+// cannot name are unmerged.
+func judge(dir, def string, wt gitutil.Worktree, start string, prs map[string][]pullRequest) judgement {
 	branch, ok := strings.CutPrefix(wt.Branch, "refs/heads/")
 	if !ok || def == "" {
 		return judgement{}
@@ -114,7 +117,7 @@ func judge(dir, def string, wt gitutil.Worktree, prs map[string][]pullRequest) j
 		// A branch cut and never committed to is an ancestor of its base too,
 		// and so is one fast-forwarded along it since; it is merged only when
 		// it holds a commit of its own.
-		if ownCommit(dir, wt.Branch, tip) {
+		if ownCommit(dir, wt.Branch, tip, start) {
 			return judgement{true, byAncestry}
 		}
 	}
@@ -142,11 +145,17 @@ func branchName(ref string) string {
 // its own that its tip still holds: an entry written by a commit, a
 // cherry-pick or a merge that made a merge commit, newer than the entry that
 // records where the branch began. A fast-forward, a reset and the branch's
-// creation make no commit. A reflog whose oldest entry is not that beginning
-// has lost part of the branch's history to expiry, and may hold commit entries
-// another branch's reflog brought with it, so it proves nothing; a branch with
-// no reflog to prove a commit is judged by the content tests alone.
-func ownCommit(dir, ref, tip string) bool {
+// creation make no commit. A branch with no reflog to prove a commit is judged
+// by the content tests alone.
+//
+// Where the reflog begins is not enough on its own: a reflog whose oldest
+// entry is not that beginning has lost part of the branch's history to expiry,
+// and a copied branch's can keep the source's beginning and commits once the
+// copy's own entries expire (iss-2610231011465325). So with start, the commit
+// the store recorded the branch starting at, a commit counts only when it is
+// not already in start, which no other branch's history can satisfy; without
+// it, the reflog must still reach the branch's beginning.
+func ownCommit(dir, ref, tip, start string) bool {
 	out, err := gitutil.RunCappedAsStored(dir, reflogCap, "log", "-g", "--format=%H%x00%gs", ref, "--")
 	if err != nil {
 		return false
@@ -173,10 +182,15 @@ func ownCommit(dir, ref, tip string) bool {
 			made = append(made, sha)
 		}
 	}
-	if !began {
+	if !began && start == "" {
 		return false
 	}
 	for _, sha := range made {
+		if start != "" {
+			if before, err := gitutil.IsAncestor(dir, sha, start); err != nil || before {
+				continue
+			}
+		}
 		if held, err := gitutil.IsAncestor(dir, sha, tip); err == nil && held {
 			return true
 		}

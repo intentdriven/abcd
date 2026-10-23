@@ -3,6 +3,8 @@ package worktree_test
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -242,4 +244,160 @@ func TestMergedJudgement(t *testing.T) {
 			t.Fatalf("a branch that gained commits after its merge: %+v", r)
 		}
 	})
+}
+
+// startRecord is where add keeps the start of the worktree name's branch.
+func startRecord(t *testing.T, repo *gittest.Repo, name string) string {
+	t.Helper()
+	l, err := worktree.LaneFor(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := worktree.StartForTest(l, name); !ok {
+		t.Fatalf("the store recorded no start for %s", name)
+	}
+	return filepath.Join(l.Dir, ".starts", name)
+}
+
+// copiedAndExpired is iss-2610231011465325's branch: a copy of a branch that
+// was itself created and committed to, merged, then force-reset and left
+// until its unreachable reflog expired. Its reflog keeps the source's
+// creation entry and a commit entry its tip still holds, though the copy made
+// no commit of its own.
+func copiedAndExpired(t *testing.T, repo *gittest.Repo) {
+	t.Helper()
+	repo.Git("branch", "src")
+	repo.Git("checkout", "-q", "src")
+	repo.Write("s1.txt", "s1\n")
+	repo.Commit("s1")
+	repo.Write("s2.txt", "s2\n")
+	repo.Commit("s2")
+	repo.Git("checkout", "-q", "main")
+	repo.Git("merge", "-q", "--ff-only", "src")
+	repo.Write("m2.txt", "m2\n")
+	repo.Commit("m2")
+	repo.Git("branch", "-c", "src", "cp")
+	repo.Git("branch", "-f", "cp", "src~1")
+	repo.Git("reflog", "expire", "--expire-unreachable=now", "--all")
+}
+
+// TestMergedJudgementReadsAStoreBranchFromItsStart: a worktree the store
+// added has its branch's own commits read from the start add recorded, so a
+// reflog carrying another branch's history proves nothing for it, while one
+// real commit merged any way still reads as merged.
+func TestMergedJudgementReadsAStoreBranchFromItsStart(t *testing.T) {
+	t.Run("a copy of a created branch, force-reset, its reflog expired", func(t *testing.T) {
+		repo, _ := repoWithCommit(t)
+		copiedAndExpired(t, repo)
+		if _, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "cp", Branch: "cp", Existing: true, Git: git}); err != nil {
+			t.Fatal(err)
+		}
+		startRecord(t, repo, "cp")
+		if r := judged(t, repo, unreachable, "cp"); r.Merged != "unmerged" || r.JudgedBy != "" {
+			t.Fatalf("a branch whose only commits came before the store added it is not merged: %+v", r)
+		}
+	})
+	t.Run("one real commit, merged by fast-forward", func(t *testing.T) {
+		repo, _ := repoWithCommit(t)
+		p := addToLane(t, repo, "ff")
+		startRecord(t, repo, "ff")
+		commitIn(t, repo, p, "f.txt", "f\n")
+		repo.Git("merge", "-q", "--ff-only", "ff")
+		if r := judged(t, repo, unreachable, "ff"); r.Merged != "merged" || r.JudgedBy != "ancestry" {
+			t.Fatalf("a fast-forward merge: %+v", r)
+		}
+	})
+	t.Run("one real commit, merged by squash", func(t *testing.T) {
+		repo, _ := repoWithCommit(t)
+		p := addToLane(t, repo, "sq")
+		startRecord(t, repo, "sq")
+		commitIn(t, repo, p, "s.txt", "s\n")
+		repo.Write("other.txt", "other\n")
+		repo.Commit("other")
+		repo.Git("merge", "-q", "--squash", "sq")
+		repo.Git("commit", "-q", "-m", "squashed")
+		if r := judged(t, repo, unreachable, "sq"); r.Merged != "merged" || r.JudgedBy != "content" {
+			t.Fatalf("a squash merge: %+v", r)
+		}
+	})
+	t.Run("one real commit, merged by rebase", func(t *testing.T) {
+		repo, _ := repoWithCommit(t)
+		p := addToLane(t, repo, "rb")
+		startRecord(t, repo, "rb")
+		c := commitIn(t, repo, p, "r.txt", "r\n")
+		repo.Write("other.txt", "other\n")
+		repo.Commit("other")
+		repo.Git("cherry-pick", c)
+		if r := judged(t, repo, unreachable, "rb"); r.Merged != "merged" || r.JudgedBy != "content" {
+			t.Fatalf("a rebase merge: %+v", r)
+		}
+	})
+	t.Run("an existing branch committed to after add, merged by fast-forward", func(t *testing.T) {
+		repo, _ := repoWithCommit(t)
+		repo.Git("branch", "topic")
+		got, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "topic", Branch: "topic", Existing: true, Git: git})
+		if err != nil {
+			t.Fatal(err)
+		}
+		startRecord(t, repo, "topic")
+		commitIn(t, repo, got.Path, "t.txt", "t\n")
+		repo.Git("merge", "-q", "--ff-only", "topic")
+		if r := judged(t, repo, unreachable, "topic"); r.Merged != "merged" || r.JudgedBy != "ancestry" {
+			t.Fatalf("an existing branch's commit made in the store: %+v", r)
+		}
+	})
+}
+
+// TestMergedJudgementFallsBackWithoutAStartRecord: a start record that is
+// missing, unreadable, not a regular file, or names another branch is no
+// record, and the branch is judged by the reflog rule as before: a real
+// commit merged by fast-forward is merged, a branch never committed to is not.
+func TestMergedJudgementFallsBackWithoutAStartRecord(t *testing.T) {
+	for name, spoil := range map[string]func(t *testing.T, repo *gittest.Repo, record string){
+		"missing": func(t *testing.T, _ *gittest.Repo, record string) {
+			if err := os.Remove(record); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"corrupted": func(t *testing.T, _ *gittest.Repo, record string) {
+			if err := os.WriteFile(record, []byte("{\"start\": \"not a commit\n\x00"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a symlink": func(t *testing.T, _ *gittest.Repo, record string) {
+			moved := filepath.Join(t.TempDir(), "record")
+			if err := os.Rename(record, moved); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(moved, record); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"naming another branch": func(t *testing.T, repo *gittest.Repo, record string) {
+			data, err := os.ReadFile(record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(record, []byte(strings.Replace(string(data), "refs/heads/", "refs/heads/other-", 1)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo, _ := repoWithCommit(t)
+			p := addToLane(t, repo, "real")
+			addToLane(t, repo, "fresh")
+			for _, wt := range []string{"real", "fresh"} {
+				spoil(t, repo, startRecord(t, repo, wt))
+			}
+			commitIn(t, repo, p, "r.txt", "r\n")
+			repo.Git("merge", "-q", "--ff-only", "real")
+			if r := judged(t, repo, unreachable, "real"); r.Merged != "merged" || r.JudgedBy != "ancestry" {
+				t.Fatalf("a real commit merged is merged by the reflog rule: %+v", r)
+			}
+			if r := judged(t, repo, unreachable, "fresh"); r.Merged != "unmerged" || r.JudgedBy != "" {
+				t.Fatalf("a branch never committed to stays unmerged: %+v", r)
+			}
+		})
+	}
 }

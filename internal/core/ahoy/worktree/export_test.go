@@ -16,3 +16,9 @@ func SwapRemoveForTest(fn func(repoRoot, path string) error) (restore func()) {
 	removeWorktree = fn
 	return func() { removeWorktree = prev }
 }
+
+// StartForTest reads the start record add kept for the worktree name in l.
+func StartForTest(l Lane, name string) (branch, start string, ok bool) {
+	rec, ok := readStart(l, name)
+	return rec.Branch, rec.Start, ok
+}

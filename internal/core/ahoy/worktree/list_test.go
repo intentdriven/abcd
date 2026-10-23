@@ -320,3 +320,29 @@ func TestListRefusesASymlinkedStore(t *testing.T) {
 	_, err = worktree.ListAll(worktree.AllOptions{})
 	mustRefusal(t, err)
 }
+
+// TestListKeepsTheStartRecordsOutOfTheRows: the start records add keeps in
+// the lane are the store's own bookkeeping, never a row of list or --all and
+// so never a candidate for prune.
+func TestListKeepsTheStartRecordsOutOfTheRows(t *testing.T) {
+	repo, _ := repoWithCommit(t)
+	addToLane(t, repo, "wt")
+	l, _ := worktree.LaneFor(repo.Root())
+	if _, err := os.Lstat(filepath.Join(l.Dir, ".starts")); err != nil {
+		t.Fatalf("add keeps its start records in the lane: %v", err)
+	}
+	got, err := worktree.List(repo.Root(), worktree.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Worktrees) != 1 || got.Worktrees[0].Name != "wt" {
+		t.Fatalf("one row, the worktree: %+v", got.Worktrees)
+	}
+	all, err := worktree.ListAll(worktree.AllOptions{Here: repo.Root()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all.Lanes) != 1 || len(all.Lanes[0].Worktrees) != 1 || all.Lanes[0].Worktrees[0].Name != "wt" {
+		t.Fatalf("--all: one lane of one row: %+v", all.Lanes)
+	}
+}

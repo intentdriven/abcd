@@ -10,6 +10,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -409,5 +410,125 @@ func TestAdoptRefusesAWorktreeOnAnotherBranch(t *testing.T) {
 	}
 	if ok, err := worktree.Adopt(repo.Root(), l, "absent", "absent"); ok || err != nil {
 		t.Fatalf("nothing at the path is nothing to adopt: %v %v", ok, err)
+	}
+}
+
+// TestAddRefusesBeforeWritingAnything is criterion 4: each refusal comes
+// before the store's levels are made, so a refused add leaves the home as it
+// was: a name that is not one plain segment, the embargo store's name in any
+// case (iss-2610230014564359, read from storepath.Name), a new branch whose
+// name is taken, an existing branch that is not there, and an invalid branch
+// name.
+func TestAddRefusesBeforeWritingAnything(t *testing.T) {
+	repo, home := repoWithCommit(t)
+	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	repo.Git("branch", "taken")
+	for name, tc := range map[string]struct {
+		opts worktree.AddOptions
+		want string
+	}{
+		"traversal":       {worktree.AddOptions{Name: "../x", Base: base}, "plain path segment"},
+		"option":          {worktree.AddOptions{Name: "-x", Base: base}, "plain path segment"},
+		"embargo":         {worktree.AddOptions{Name: storepath.Name, Base: base}, "embargo"},
+		"embargo folded":  {worktree.AddOptions{Name: strings.ToUpper(storepath.Name), Base: base}, "embargo"},
+		"branch taken":    {worktree.AddOptions{Name: "taken", Base: base}, "already exists"},
+		"no such branch":  {worktree.AddOptions{Name: "n", Branch: "absent", Existing: true}, "no local branch"},
+		"bad branch name": {worktree.AddOptions{Name: "n", Branch: "a..b", Base: base}, "not a valid branch name"},
+	} {
+		tc.opts.Git = git
+		_, err := worktree.Add(repo.Root(), tc.opts)
+		if r := mustRefusal(t, err); !strings.Contains(r.Reason, tc.want) {
+			t.Errorf("%s: want %q in the reason: %+v", name, tc.want, r)
+		}
+		if _, err := os.Lstat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s: a refused add writes nothing under the home: %v", name, err)
+		}
+	}
+	if worktree.ValidName(storepath.Name) {
+		t.Fatal("the embargo store's name is never a worktree's name")
+	}
+}
+
+// TestAddRefusesATakenName: a name a worktree already holds in the lane is
+// refused, and the lane and git's worktrees are left as they were.
+func TestAddRefusesATakenName(t *testing.T) {
+	repo, _ := repoWithCommit(t)
+	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	if _, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "wt", Base: base, Git: git}); err != nil {
+		t.Fatal(err)
+	}
+	l, _ := worktree.LaneFor(repo.Root())
+	lane, listing := names(t, l.Dir), repo.Git("worktree", "list", "--porcelain")
+	_, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "wt", Branch: "other", Base: base, Git: git})
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "occupied") {
+		t.Fatalf("want the taken name refused: %+v", r)
+	}
+	if after := names(t, l.Dir); !slices.Equal(lane, after) {
+		t.Fatalf("the lane is left as it was: %v -> %v", lane, after)
+	}
+	if after := repo.Git("worktree", "list", "--porcelain"); after != listing {
+		t.Fatalf("git lists no new worktree:\n%s", after)
+	}
+	if _, err := gitutil.Run(repo.Root(), "rev-parse", "--verify", "--quiet", "refs/heads/other"); err == nil {
+		t.Fatal("no branch is made for a refused add")
+	}
+}
+
+// TestAddRefusesARepositoryWithNoCommits is criterion 4's last case: no root
+// commit, no lane, a refusal saying so, and nothing written.
+func TestAddRefusesARepositoryWithNoCommits(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	repo := gittest.NewRepo(t)
+	_, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "wt", Git: git})
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "no root commit") {
+		t.Fatalf("the refusal names the missing root commit: %+v", r)
+	}
+	if n := names(t, home); slices.Contains(n, filepath.Base(abcdhome.Path(home))) {
+		t.Fatalf("nothing is written under the home: %v", n)
+	}
+}
+
+// TestAddRecordsTheStartCommit (iss-2610231011465325): add records where the
+// worktree's branch starts, in the lane beside the worktrees, owner-only: a
+// new branch's base, or an existing branch's tip as add checks it out. A
+// later add at the same name records its own start over the earlier one.
+func TestAddRecordsTheStartCommit(t *testing.T) {
+	repo, _ := repoWithCommit(t)
+	base := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	got, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "fresh", Base: base, Git: git})
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch, start, ok := worktree.StartForTest(got.Lane, "fresh")
+	if !ok || branch != "refs/heads/fresh" || start != base {
+		t.Fatalf("a new branch starts at its base: %q %q %v", branch, start, ok)
+	}
+	dir := filepath.Join(got.Lane.Dir, ".starts")
+	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() || fi.Mode().Perm() != 0o700 {
+		t.Fatalf("the start records' directory is 0700: %v %v", fi, err)
+	}
+	if fi, err := os.Lstat(filepath.Join(dir, "fresh")); err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("a start record is a 0600 file: %v %v", fi, err)
+	}
+
+	repo.Git("checkout", "-q", "-b", "topic")
+	repo.Write("t.txt", "t\n")
+	repo.Commit("topic work")
+	repo.Git("checkout", "-q", "main")
+	tip := strings.TrimSpace(repo.Git("rev-parse", "topic"))
+	if _, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "existing", Branch: "topic", Existing: true, Git: git}); err != nil {
+		t.Fatal(err)
+	}
+	if branch, start, ok := worktree.StartForTest(got.Lane, "existing"); !ok || branch != "refs/heads/topic" || start != tip {
+		t.Fatalf("an existing branch starts at its tip as add checks it out: %q %q %v", branch, start, ok)
+	}
+
+	repo.Git("worktree", "remove", got.Path)
+	if _, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "fresh", Branch: "again", Base: tip, Git: git}); err != nil {
+		t.Fatal(err)
+	}
+	if branch, start, ok := worktree.StartForTest(got.Lane, "fresh"); !ok || branch != "refs/heads/again" || start != tip {
+		t.Fatalf("a later add records its own start: %q %q %v", branch, start, ok)
 	}
 }

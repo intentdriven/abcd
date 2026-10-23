@@ -230,7 +230,7 @@ func scan(repoRoot string, lane Lane, forge GH) ([]entry, string, error) {
 			return nil, "", err
 		}
 		for _, n := range names {
-			if seen[filepath.Join(realLane, n)] {
+			if n == startsDir || seen[filepath.Join(realLane, n)] {
 				continue
 			}
 			e := entry{path: lane.Path(n), name: n, where: WhereStore, reason: reasonNotListed}
@@ -252,7 +252,7 @@ func scan(repoRoot string, lane Lane, forge GH) ([]entry, string, error) {
 			}
 		}
 	}
-	note := judgeAll(repoRoot, unjudged(es), forge)
+	note := judgeAll(repoRoot, lane, unjudged(es), forge)
 	return es, note, nil
 }
 
@@ -285,8 +285,9 @@ func unjudged(es []entry) []*entry {
 }
 
 // judgeAll judges each entry against the default branch of the repository at
-// dir, asking the forge once for every branch among them.
-func judgeAll(dir string, judged []*entry, forge GH) string {
+// dir, asking the forge once for every branch among them. A store entry on
+// the branch its start record in lane names is judged from that start.
+func judgeAll(dir string, lane Lane, judged []*entry, forge GH) string {
 	if len(judged) == 0 {
 		return ""
 	}
@@ -299,7 +300,13 @@ func judgeAll(dir string, judged []*entry, forge GH) string {
 			continue
 		}
 		e.clean = len(st) == 0
-		e.merged = judge(e.path, def, e.wt, prs)
+		start := ""
+		if e.where == WhereStore {
+			if rec, ok := readStart(lane, e.name); ok && rec.Branch == e.wt.Branch {
+				start = rec.Start
+			}
+		}
+		e.merged = judge(e.path, def, e.wt, start, prs)
 	}
 	return note
 }
@@ -454,6 +461,9 @@ func scanLane(lane Lane, forge GH) ([]entry, string, string, error) {
 	var commons []string
 	gone, live := 0, 0
 	for _, n := range names {
+		if n == startsDir {
+			continue
+		}
 		p := lane.Path(n)
 		e := entry{path: p, name: n, where: WhereStore}
 		fi, err := os.Lstat(p)
@@ -510,7 +520,7 @@ func scanLane(lane Lane, forge GH) ([]entry, string, string, error) {
 			}
 			group = append(group, &es[i])
 		}
-		if n := judgeAll(first, group, forge); n != "" && note == "" {
+		if n := judgeAll(first, lane, group, forge); n != "" && note == "" {
 			note = n
 		}
 	}
