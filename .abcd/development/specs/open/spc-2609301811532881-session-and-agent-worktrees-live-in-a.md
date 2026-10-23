@@ -200,10 +200,15 @@ checked in order (decision 2):
    lane's branches, through `ahoy`'s existing runner and its timeout, made by the
    caller's own identity.
 2. **By ancestry, with commits of its own.** The tip is an ancestor of the
-   default branch and is not the point the branch was created from (the oldest
-   entry of the branch's reflog). A branch cut and never committed to is not
-   merged, however clean; a branch with no reflog to prove its creation point is
-   judged by the content tests alone.
+   default branch, and the branch holds a commit of its own: a commit,
+   cherry-pick or merge entry in its reflog that the tip still holds, counted
+   only when the reflog still reaches the branch's start (its creation or copy
+   entry; a rename is read past). A branch cut and never committed to, or only
+   fast-forwarded, is not merged, however clean; a branch whose reflog no
+   longer reaches its start is judged by the content tests alone. A reflog can
+   still carry another branch's history in one shape (iss-2610231011465325), so
+   step 2 records the branch's start commit in the lane and this judgement reads
+   the branch's own commits from it (dcn-2610231011532659).
 3. **By content, commit by commit.** `git cherry <default> <branch>` lists at
    least one commit and every commit is marked equivalent (a rebase merge).
 4. **By content, as one change.** The stable patch-id of the branch's whole diff
@@ -453,7 +458,7 @@ _None open._ The board's "reclaimable" is the peers scan's judgement, not prune'
    - criteria: 1, 4, 19
    - needs: 1
    - packages: internal/core/ahoy/worktree, internal/surface/cli
-   - tests: add makes the worktree in the lane, prints its path, leaves the checkout's parent unchanged and sets `0o700`; `../x`, `-x`, a taken name, a name a sibling store holds in the lane (`embargo`, read from `internal/core/embargo/storepath.Name`, never copied; iss-2610230014564359) and a repository with no commits refuse and write nothing; `--branch` checks out an existing branch and makes none
+   - tests: add makes the worktree in the lane, prints its path, leaves the checkout's parent unchanged and sets `0o700`; `../x`, `-x`, a taken name, a name a sibling store holds in the lane (`embargo`, read from `internal/core/embargo/storepath.Name`, never copied; iss-2610230014564359) and a repository with no commits refuse and write nothing; `--branch` checks out an existing branch and makes none; add records the new branch's start commit in the lane, and the merged judgement reads the branch's own commits from it, not the reflog, so a copy of a created branch, force-reset and left until its reflog expires, is not merged (iss-2610231011465325)
 3. `list`, `list --all` and the merged judgement
    - criteria: 6, 7, 18
    - needs: 1
