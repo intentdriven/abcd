@@ -30,8 +30,6 @@ package claim
 // untouched and names them, with whose they are.
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -78,36 +76,31 @@ func (f ForgeFailure) Line() string {
 // Settle is what an act did for one release's withdrawals that were due:
 // those it re-armed or skipped (Settled, each in its new state), the
 // failures, and the tombstone that recorded it (Commit), or why none was
-// pushed (Failed). None of the rest is acted on: Unrecorded is each one
-// named as the act's person's that no reservation of theirs on the branch
-// recorded first, or whose first record another account pushed; AppPushed
-// each whose first record an app pushed; Unverified each the forge's record
-// of pushes does not settle yet (UnverifiedWhy), which a later act asks
-// about again; Restated each the tip records moved out of withdrawn or
-// admitted by a commit its withdrawer did not push, which is acted on as it
-// stood before (vouching); NotEnded, when set, is the holder of the
-// reservation a tombstone they did not push was written over, which ends
-// nothing. Unrecorded, AppPushed, Restated and NotEnded are named once for
-// each tip.
+// pushed (Failed). Every one it acted on is the act's person's own, read from
+// their newest push to the branch, as the forge's record of pushes shows it
+// (dcn-2610231033516293). NotRead counts the commits above that push that
+// other logins pushed, which are not read; Unplaced, when set, is why that
+// newest push could not be found or placed, and nothing of theirs was acted
+// on; NotEnded, when set, is the holder of a release whose tip is a tombstone
+// that holder's own newest push is not, which ends nothing. NotRead, Unplaced
+// and NotEnded are named once for each tip.
 type Settle struct {
-	Subject       string         `json:"subject"`
-	Commit        string         `json:"commit,omitempty"`
-	Settled       []Withdrawal   `json:"settled"`
-	Failures      []ForgeFailure `json:"failures,omitempty"`
-	Failed        string         `json:"failed,omitempty"`
-	Unrecorded    []Withdrawal   `json:"unrecorded,omitempty"`
-	AppPushed     []Withdrawal   `json:"app_pushed,omitempty"`
-	Unverified    []Withdrawal   `json:"unverified,omitempty"`
-	UnverifiedWhy string         `json:"unverified_why,omitempty"`
-	Restated      []Withdrawal   `json:"restated,omitempty"`
-	NotEnded      string         `json:"not_ended,omitempty"`
+	Subject  string         `json:"subject"`
+	Commit   string         `json:"commit,omitempty"`
+	Settled  []Withdrawal   `json:"settled"`
+	Failures []ForgeFailure `json:"failures,omitempty"`
+	Failed   string         `json:"failed,omitempty"`
+	// Person is whose record NotRead and Unplaced speak of.
+	Person   string      `json:"person,omitempty"`
+	NotRead  []PushCount `json:"not_read,omitempty"`
+	Unplaced string      `json:"unplaced,omitempty"`
+	NotEnded string      `json:"not_ended,omitempty"`
 }
 
-// Notes is each sentence naming the withdrawals the settle did not act on.
+// Notes is each sentence naming what the settle did not act on.
 func (s Settle) Notes() []string {
 	var out []string
-	for _, l := range []string{notEndedLine(s.Subject, s.NotEnded), restatedLine(s.Subject, s.Restated), UnrecordedLine(s.Subject, s.Unrecorded),
-		appPushedLine(s.Subject, s.AppPushed), unverifiedLine(s.Subject, s.Unverified, s.UnverifiedWhy)} {
+	for _, l := range []string{notEndedLine(s.Subject, s.NotEnded), unplacedLine(s.Subject, s.Person, s.Unplaced), notReadLine(s.Subject, s.Person, s.NotRead)} {
 		if l != "" {
 			out = append(out, l)
 		}
@@ -115,49 +108,19 @@ func (s Settle) Notes() []string {
 	return out
 }
 
-// noted fills s's withdrawals not acted on from v.
-func (s *Settle) noted(v vouching) {
-	s.Unrecorded, s.AppPushed, s.Unverified, s.UnverifiedWhy, s.Restated = v.Unrecorded, v.AppPushed, v.Unverified, v.Why, v.Restated
-}
-
 // said reports whether s says anything.
 func (s Settle) said() bool {
-	return s.Commit != "" || len(s.Settled)+len(s.Failures)+len(s.Unrecorded)+len(s.AppPushed)+len(s.Unverified)+len(s.Restated) > 0 ||
-		s.Failed != "" || s.NotEnded != ""
+	return s.Commit != "" || len(s.Settled)+len(s.Failures)+len(s.NotRead) > 0 || s.Failed != "" || s.Unplaced != "" || s.NotEnded != ""
 }
 
-// restatedLine is the sentence naming the withdrawals whose recorded state a
-// commit their withdrawer did not push changed.
-func restatedLine(subject string, ws []Withdrawal) string {
-	if len(ws) == 0 {
-		return ""
-	}
-	return fmt.Sprintf("%s on %s, withdrawn by %s, recorded settled by a commit %s did not push, as the forge's record of pushes says; "+
-		"a change of state counts only when its withdrawer pushed it, so abcd reads each as it stood before that commit",
-		strings.Join(numbers(ws), ", "), subject, ws[0].By, ws[0].By)
-}
-
-// notEndedLine is the sentence naming a release whose tombstone its holder
-// did not push.
+// notEndedLine is the sentence naming a release whose tip is a tombstone its
+// holder's own newest push is not.
 func notEndedLine(subject, holder string) string {
 	if holder == "" {
 		return ""
 	}
 	return fmt.Sprintf("%s's tip is a tombstone %s did not push, as the forge's record of pushes says, over %s's reservation, so it ends nothing "+
 		"and no withdrawal is re-armed: the release ends with %s's --release, or when its tag is on %s", subject, holder, holder, holder, Remote)
-}
-
-// UnrecordedLine is the sentence naming the withdrawals recorded as holder's
-// that no reservation of theirs recorded first: "#11 on rel-v0.16.0 is
-// recorded as withdrawn by octo, but no reservation of octo's recorded it:
-// it is not re-armed".
-func UnrecordedLine(subject string, ws []Withdrawal) string {
-	if len(ws) == 0 {
-		return ""
-	}
-	return fmt.Sprintf("%s on %s recorded as withdrawn by %s, but no reservation of %s's on its branch, pushed by %s, recorded them first, "+
-		"and abcd re-arms a withdrawal only from the reservation that recorded it, so none of them is re-armed: check each pull request by hand",
-		strings.Join(numbers(ws), ", "), subject, ws[0].By, ws[0].By, ws[0].By)
 }
 
 // SettledLine is the sentence naming one settled withdrawal.
@@ -329,19 +292,19 @@ func (p *prepared) pushRecord(tree, parent string, m message) (string, error) {
 // and why the merges could not be listed or touched at all, "" when they
 // could.
 //
-// again, when not nil, is a live renewal's: it withdraws again only a merge
-// m already records as this person's, withdrawn or kept, that the forge
-// lists armed now (a process cut off between its record and the forge, an
-// arming made since by hand, or a withdrawal the forge refused before), and
-// only those again returns, which the branch vouches for (vouchAgain); it
-// lists nothing when m records none such, asks again only once the listing
-// names one armed, and touches nothing else.
-func (p *prepared) withdrawArmed(tree, sha string, m message, again func([]Withdrawal) []Withdrawal) (commit string, recorded message, made []Withdrawal, fails []ForgeFailure, unchecked string) {
+// again is a live renewal's: it withdraws again only a merge m already
+// records as this person's, withdrawn or kept, that the forge lists armed now
+// (a process cut off between its record and the forge, an arming made since
+// by hand, or a withdrawal the forge refused before). m is read from this
+// person's own newest push (dcn-2610231033516293), so each such entry is
+// theirs; it lists nothing when m records none such, and touches nothing
+// else.
+func (p *prepared) withdrawArmed(tree, sha string, m message, again bool) (commit string, recorded message, made []Withdrawal, fails []ForgeFailure, unchecked string) {
 	commit, recorded = sha, m
 	retryable := func(w Withdrawal) bool {
 		return (w.Pending() || w.State == WithdrawnKept) && sameHolder(w.By, p.holder)
 	}
-	if again != nil && !slices.ContainsFunc(m.Withdrawn, retryable) {
+	if again && !slices.ContainsFunc(m.Withdrawn, retryable) {
 		return commit, recorded, nil, nil, ""
 	}
 	owner, name, err := releaseForge.repo(p.root)
@@ -359,19 +322,6 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again func([]Withd
 	}
 	branch := thisBranch(p.root)
 	ours := func(pr ArmedPR) bool { return !pr.CrossRepository && branch != "" && pr.HeadRef == branch }
-	var vouched []Withdrawal
-	if again != nil {
-		var armedAgain []Withdrawal
-		for _, pr := range armed {
-			if w, ok := withdrawalOf(m.Withdrawn, pr.Number); ok && !ours(pr) && retryable(w) {
-				armedAgain = append(armedAgain, w)
-			}
-		}
-		if len(armedAgain) == 0 {
-			return commit, recorded, nil, nil, ""
-		}
-		vouched = again(armedAgain)
-	}
 	all := slices.Clone(m.Withdrawn)
 	var due []ArmedPR
 	for _, pr := range armed {
@@ -381,8 +331,8 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again func([]Withd
 		if have, ok := withdrawalOf(all, pr.Number); ok && have.State == WithdrawnAdmitted {
 			continue // ruled into the cut already
 		}
-		if again != nil {
-			if _, ok := withdrawalOf(vouched, pr.Number); !ok {
+		if again {
+			if w, ok := withdrawalOf(all, pr.Number); !ok || !retryable(w) {
 				continue
 			}
 		}
@@ -473,62 +423,54 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again func([]Withd
 	return next, fixed, made, fails, ""
 }
 
-// vouchAgain is what a live renewal, just pushed as sha over the tip it read
-// (parent), may withdraw again: the withdrawals of ws, as sha records them,
-// that are this person's and still withdrawn or kept, and that the branch's
-// history and the forge's record of pushes vouch for (vouch), as a re-arm is
-// vouched for. The settle names each of the rest, not acted on: one no
-// reservation of theirs recorded first, or whose first record another
-// account or an app pushed, or that the record does not settle yet; those
-// it named before for the same withdrawals are not named again. ws is only
-// those the forge lists armed now (withdrawArmed), so it reads the branch
-// and asks the forge's record once, and only when one is.
-func (p *prepared) vouchAgain(tree, sha, parent string, ws []Withdrawal) ([]Withdrawal, Settle) {
-	retry := func(w Withdrawal) bool { return w.Pending() || w.State == WithdrawnKept }
-	s := Settle{Subject: p.id, Settled: []Withdrawal{}}
-	if !slices.ContainsFunc(ws, func(w Withdrawal) bool { return retry(w) && sameHolder(w.By, p.holder) }) {
-		return nil, s
+// ownRelease reads a release's tip as this act judged it (j) against the
+// forge's record of pushes (dcn-2610231033516293), before the act decides
+// anything: the release is judged as its holder's own newest push records it
+// (asker.ended), so a commit another login pushed over it, a tombstone among
+// them, neither ends nor renews it, and this person's withdrawals are carried
+// only as their own newest push records them (merged), so nothing another
+// login pushed is carried as theirs. The settle it returns counts the commits
+// above that push other logins pushed, which are not read. When either
+// cannot be found or placed, the act is refused and nothing is pushed: abcd
+// acts on nothing of this person's while it cannot read their record. An
+// origin with no forge holds no withdrawal to read, and a branch on which no
+// commit records one has nothing to read either: both are judged by the tip,
+// as before.
+func (p *prepared) ownRelease(tree string, j *judged) (Settle, error) {
+	s := Settle{Subject: p.id, Settled: []Withdrawal{}, Person: p.holder}
+	if !isRelease(p.id) || !j.present || j.Unreadable != "" {
+		return s, nil
 	}
-	links, complete, err := releaseChain(p.root, p.id, sha, tree)
+	if _, _, err := releaseForge.repo(p.root); err != nil {
+		return s, nil
+	}
+	links, complete, err := releaseChain(p.root, p.id, j.Commit, tree)
 	if err != nil {
-		s.Failed = "could not read the history of " + p.id + "'s branch to tell whose its withdrawals are (" + redacted(err) +
-			"), so none was withdrawn again; the next renewal tries again"
-		return nil, s
+		return s, refuse("could not read the history of %s's branch to tell which withdrawals are yours (%s); %s", p.id, redacted(err), nothingPushed)
 	}
-	v := vouch(links, complete, ws, p.holder, pushCheck{p.root, p.id, []string{parent, sha}}, retry)
-	s.noted(v)
-	s.shownOnce(p.root, p.id, againKey(s))()
-	return v.Due, s
-}
-
-// againKey names the withdrawals a live renewal's settle names as not acted
-// on, so shownOnce names the same ones once, not on every renewal: each
-// renewal moves the tip, so the tip cannot say they were named.
-func againKey(s Settle) string {
-	h := sha256.New()
-	for _, ws := range [][]Withdrawal{s.Unrecorded, s.AppPushed, s.Restated} {
-		for _, w := range ws {
-			h.Write([]byte(w.trailer() + "\n"))
-		}
-		h.Write([]byte("-\n"))
+	if complete && !slices.ContainsFunc(links, func(l chainLink) bool { return len(l.m.Withdrawn) > 0 }) {
+		return s, nil
 	}
-	return "again " + hex.EncodeToString(h.Sum(nil))
-}
-
-// restated is ws, the withdrawals on the tombstone tip at commit, with each
-// of this person's that a commit they did not push moved out of withdrawn or
-// admitted put back as it stood before (vouching.actedOn), so a reservation
-// made over that tombstone carries it to the release that re-arms it. A
-// branch that does not read leaves ws as it is.
-func (p *prepared) restated(tree, commit string, ws []Withdrawal) []Withdrawal {
-	if !slices.ContainsFunc(ws, func(w Withdrawal) bool { return !w.unsettled() }) {
-		return ws
+	k := &asker{c: pushCheck{p.root, p.id, []string{j.Commit}}, links: links, complete: complete}
+	defer k.save()
+	_, holder, held, why := k.ended()
+	if why != "" {
+		return s, refuse("%s; %s", unplacedLine(p.id, p.holder, why), nothingPushed)
 	}
-	links, complete, err := releaseChain(p.root, p.id, commit, tree)
-	if err != nil {
-		return ws
+	own := k.newest(p.holder)
+	if own.why != "" {
+		return s, refuse("%s; %s", unplacedLine(p.id, p.holder, own.why), nothingPushed)
 	}
-	return vouch(links, complete, ws, p.holder, pushCheck{p.root, p.id, []string{commit}}, Withdrawal.unsettled).actedOn(ws)
+	if holder != "" && held.found && held.commit != j.Commit {
+		// The release as its holder's own newest push records it, over the
+		// tip the act's push is written on.
+		j.message = held.m
+		j.verdict = lease.Judge(lease.Stamp{ClaimedAt: held.m.ClaimedAt, ExpiresAt: held.m.ExpiresAt}, lease.Default, p.now)
+		j.mine, j.thisCopy = sameHolder(held.m.Holder, p.holder), held.m.Copy == p.copy
+	}
+	j.Withdrawn = merged(j.Withdrawn, own, p.holder)
+	s.NotRead = own.above
+	return s, nil
 }
 
 // withdrawalOf is ws's entry for pull request n.
@@ -546,7 +488,7 @@ func withoutWithdrawal(ws []Withdrawal, n int) []Withdrawal {
 }
 
 // rearmMine settles each withdrawal in ws still to settle (withdrawn, or
-// admitted) whose holder is a's and that trust vouches for, and returns ws
+// admitted) whose withdrawer is a's holder, and returns ws
 // with their new states, the ones it settled, whether any state changed, and
 // the failures. A withdrawn one is re-armed in its own form, pinned to its
 // head; an admitted one is checked on the forge, which counts it done when
@@ -557,9 +499,9 @@ func withoutWithdrawal(ws []Withdrawal, n int) []Withdrawal {
 // maxRearmRefusals-th it is settled as refused, for its owner, and no copy
 // tries again. why is set, and nothing is touched, when the forge cannot be
 // named or gh acts as another account than a's holder.
-func rearmMine(a actor, ws []Withdrawal, trust func(Withdrawal) bool) (out, settled []Withdrawal, changed bool, fails []ForgeFailure, why string) {
+func rearmMine(a actor, ws []Withdrawal) (out, settled []Withdrawal, changed bool, fails []ForgeFailure, why string) {
 	out = slices.Clone(ws)
-	mine := func(w Withdrawal) bool { return w.unsettled() && sameHolder(w.By, a.holder) && trust(w) }
+	mine := func(w Withdrawal) bool { return w.unsettled() && sameHolder(w.By, a.holder) }
 	if !slices.ContainsFunc(ws, mine) {
 		return out, nil, false, nil, ""
 	}
@@ -572,7 +514,7 @@ func rearmMine(a actor, ws []Withdrawal, trust func(Withdrawal) bool) (out, sett
 	}
 	refusals := readRefusals(a.root, a.subject)
 	for i, w := range out {
-		if !w.unsettled() || !sameHolder(w.By, a.holder) || !trust(w) {
+		if !mine(w) {
 			continue
 		}
 		state, err := releaseForge.inspect(a.root, owner, name, w)
@@ -674,26 +616,26 @@ func keepRefusals(root, id string, counts map[string]int) {
 	_ = writeUnflushedIn(root, refusalsDir, id, []byte(b.String()))
 }
 
-// shownDirRel is where the tip at which each release's unrecorded and
-// app-pushed withdrawals were last named is kept, in the local tier, so each
-// is named once for each tip rather than on every act.
+// shownDirRel is where the tip at which each release's commits not read, and
+// a person's newest push not found, were last named is kept, in the local
+// tier, so each is named once for each tip rather than on every act.
 const shownDirRel = stateRelDir + "/withdrawals-shown"
 
-// shownOnce clears s's Unrecorded, AppPushed, Restated and NotEnded when
-// they were already named at commit, id's tip. Otherwise it returns what
-// keeps commit as the tip they were named at, for the caller to run once the
-// settle naming them is the one the act returns: a settle a lost push
-// discards names nothing, so it marks nothing shown.
+// shownOnce clears s's NotRead, Unplaced and NotEnded when they were already
+// named at commit, id's tip. Otherwise it returns what keeps commit as the tip
+// they were named at, for the caller to run once the settle naming them is
+// the one the act returns: a settle a lost push discards names nothing, so it
+// marks nothing shown.
 func (s *Settle) shownOnce(root, id, commit string) (shown func()) {
 	shown = func() {}
-	if len(s.Unrecorded)+len(s.AppPushed)+len(s.Restated) == 0 && s.NotEnded == "" || !isRelease(id) {
+	if len(s.NotRead) == 0 && s.Unplaced == "" && s.NotEnded == "" || !isRelease(id) {
 		return shown
 	}
 	if r, err := os.OpenRoot(root); err == nil {
 		data, rerr := fsutil.ReadGuardedInRoot(r, shownDirRel+"/"+id, 128)
 		r.Close()
 		if rerr == nil && strings.TrimSpace(string(data)) == commit {
-			s.Unrecorded, s.AppPushed, s.Restated, s.NotEnded = nil, nil, nil, ""
+			s.NotRead, s.Unplaced, s.NotEnded = nil, "", ""
 			return shown
 		}
 	}
@@ -711,13 +653,6 @@ func stranded(ws []Withdrawal, holder string) []Withdrawal {
 	return out
 }
 
-// releaseEnded reports whether a release tip may have ended: its tag on
-// origin, or a tombstone, which ends it only when its holder pushed it
-// (settleTip). A lease that lapsed is not an end.
-func releaseEnded(t tip, tagged bool) bool {
-	return tagged || t.message.released()
-}
-
 // settleEnded settles id's withdrawals of a's holder when its release has
 // ended (settleTip); own is true for the holder's own --release over a tip
 // that is already a tombstone. ok is false when there was nothing to say.
@@ -730,80 +665,96 @@ func settleEnded(a actor, tree, id string, own bool) (s Settle, ok bool) {
 }
 
 // settleTip settles id's withdrawals of a's holder over its tip t, already
-// read, once the release has ended (dcn-2610230328220298): its tag on
-// origin, or a tombstone its holder pushed (endedBy), or one the holder's
-// own --release finds there (own). A lease that lapsed is not an end: nothing
+// read, once the release has ended (dcn-2610230328220298): its tag on origin,
+// or its holder's own newest push a tombstone of theirs (asker.ended), or the
+// holder's own --release (own). A lease that lapsed is not an end: nothing
 // renews a release lease on its own, so a slow cut's lease lapses while it is
-// still being cut, and a lapse is reported, never acted on. A tombstone the
-// forge's record of pushes does not show the holder pushed ends nothing: it
-// is named, and nothing is acted on. Only a withdrawal whose first record
-// the branch's history vouches for, and the forge's record of pushes says its
-// withdrawer pushed, is acted on (vouch), in the state its withdrawer's own
-// pushes left it in; any other is named and left as it is. A tip holding
-// none of a's withdrawals still to settle is read for a change of state its
-// withdrawer did not push only while it is recent (lostWindow), as the walk
-// for lost withdrawals is. When t is not yet a tombstone (the
-// tag ended it), a tombstone over t, every withdrawal as it stands, is pushed
-// first, the compare-and-swap that claims the end: a copy whose push loses
-// says nothing, and the next act reads the tip the other pushed. A tip that is
-// already a tombstone is not claimed again: every re-arm is pinned to its
-// head and reads the forge first, so a second copy of the same person that
-// settles it at the same moment finds each one armed, which is harmless. Then
-// each is settled, and a tombstone recording the new states is pushed only
-// when a state changed, so a re-arm the forge keeps refusing writes nothing
-// to origin until it is settled. A push of that tombstone that fails leaves
-// what was re-armed armed, and the next act finds it armed and records it.
+// still being cut, and a lapse is reported, never acted on. A tip that is
+// neither tagged nor a tombstone is a release still held, and is not read
+// further. Otherwise a's holder's withdrawals are read from their own newest
+// push to the branch, as the forge's record of pushes shows it, asked afresh
+// (dcn-2610231033516293): the commits above it other logins pushed are
+// counted and not read, and when that push cannot be found or placed nothing
+// is acted on and the settle says why. A tip this copy already found holding
+// nothing more to do for the person is not read again, nor one whose branch
+// names no withdrawal of theirs; one whose reading failed is read again on
+// every act until lostWindow after this copy's first failed reading of it,
+// a time no writer sets. When the person's newest push is not yet
+// a tombstone (the tag ended the release, or their --release finds another
+// login's tombstone over it), a tombstone over t, carrying what their record
+// holds, is pushed first, the compare-and-swap that claims the end: a copy
+// whose push loses says nothing, and the next act reads the tip the other
+// pushed. Over their own tombstone it is not claimed again: every re-arm is
+// pinned to its head and reads the forge first, so a second copy of the same
+// person that settles it at the same moment finds each one armed, which is
+// harmless. Then each is settled, and a tombstone recording the new states is
+// pushed only when a state changed, so a re-arm the forge keeps refusing
+// writes nothing to origin until it is settled. A push of that tombstone that
+// fails leaves what was re-armed armed, and the next act finds it armed and
+// records it.
 func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
-	if t.Unreadable != "" || len(t.Withdrawn) == 0 {
-		return Settle{}, false
-	}
-	pending := slices.ContainsFunc(t.Withdrawn, func(w Withdrawal) bool { return w.unsettled() && sameHolder(w.By, a.holder) })
-	if !pending && a.now.Sub(t.ClaimedAt) > lostWindow {
+	if t.Unreadable != "" {
 		return Settle{}, false
 	}
 	tagged, err := taggedOnOrigin(a.root, id)
-	if err != nil || !releaseEnded(t, tagged) {
+	if err != nil || !tagged && !t.message.released() {
+		return Settle{}, false
+	}
+	if c := readTipCache(a.root, id, t.Commit); !own && (c.isDone(a.holder) || c.gaveUp(a.holder, a.now)) {
 		return Settle{}, false
 	}
 	a.subject = id
-	s = Settle{Subject: id, Settled: []Withdrawal{}}
+	s = Settle{Subject: id, Settled: []Withdrawal{}, Person: a.holder}
 	links, complete, err := releaseChain(a.root, id, t.Commit, tree)
 	if err != nil {
-		if !pending {
-			return Settle{}, false
-		}
-		s.Failed = "could not read the history of " + id + "'s branch to tell whose its withdrawals are (" + redacted(err) + "), so none was re-armed"
+		s.Failed = "could not read the history of " + id + "'s branch to tell which withdrawals are yours (" + redacted(err) + "), so none was re-armed"
 		return s, true
 	}
-	k := &asker{c: pushCheck{a.root, id, []string{t.Commit}}, links: links}
-	v := k.vouch(complete, t.Withdrawn, a.holder, Withdrawal.unsettled)
-	if len(v.Due) > 0 && !tagged {
-		owner := ""
-		if own {
-			owner = a.holder
-		}
-		switch verdict, holder, why := k.endedBy(owner); verdict {
-		case pushedByThem:
-		case pushNotVerified:
-			v.Unverified, v.Why, v.Due = append(v.Unverified, v.Due...), why, nil
-		default:
-			s.NotEnded, v.Due = holder, nil
-		}
+	if complete && !slices.ContainsFunc(links, func(l chainLink) bool {
+		return slices.ContainsFunc(l.m.Withdrawn, func(w Withdrawal) bool { return sameHolder(w.By, a.holder) })
+	}) {
+		// No commit on the branch names a withdrawal of theirs, so no push
+		// of theirs holds one.
+		return Settle{}, false
 	}
-	k.save()
-	s.noted(v)
-	shown := s.shownOnce(a.root, id, t.Commit)
-	if len(v.Due) == 0 {
-		shown()
+	k := &asker{c: pushCheck{a.root, id, []string{t.Commit}}, links: links, complete: complete}
+	defer k.save()
+	rec := k.newest(a.holder)
+	if rec.why != "" {
+		k.cache().markFailed(a.holder, a.now)
+		s.Unplaced = rec.why
+		s.shownOnce(a.root, id, t.Commit)()
 		return s, s.said()
 	}
+	due := slices.ContainsFunc(rec.mine(a.holder), Withdrawal.unsettled)
+	s.NotRead = rec.above
+	if !due {
+		k.cache().markDone(a.holder)
+		s.shownOnce(a.root, id, t.Commit)()
+		return s, s.said()
+	}
+	if !tagged && !own {
+		ended, holder, _, why := k.ended()
+		switch {
+		case why != "":
+			k.cache().markFailed(a.holder, a.now)
+			s.Unplaced = why
+		case !ended && holder != "":
+			s.NotEnded = holder
+		}
+		if !ended {
+			s.shownOnce(a.root, id, t.Commit)()
+			return s, s.said()
+		}
+	}
+	shown := s.shownOnce(a.root, id, t.Commit)
 	if why, _ := loginMismatch(a.root, a.holder); why != "" {
 		s.Failed = why
 		shown()
 		return s, true
 	}
-	base, acted := t.Commit, v.actedOn(t.Withdrawn)
-	if !t.message.released() {
+	base, acted := t.Commit, merged(t.Withdrawn, rec, a.holder)
+	if !rec.m.released() {
 		claimed, err := a.pushTombstone(tree, id, t.Commit, acted)
 		if err != nil {
 			return Settle{}, false
@@ -811,7 +762,7 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 		base, s.Commit = claimed, claimed
 	}
 	shown()
-	ws, settled, changed, fails, why := rearmMine(a, acted, func(w Withdrawal) bool { _, ok := entryIn(v.Due, w); return ok })
+	ws, settled, changed, fails, why := rearmMine(a, acted)
 	s.Settled, s.Failures, s.Failed = append(s.Settled, settled...), fails, why
 	if !changed {
 		return s, true
@@ -923,30 +874,6 @@ func SettleEndedReleases(root string, o Options) ([]Settle, error) {
 	return settles, nil
 }
 
-// admitVouched refuses an --admit of w, read on the tip at commit, unless the
-// commit that first recorded it was pushed by its withdrawer, as the forge's
-// record of pushes says (vouch): an admission arms the pull request under
-// the cutter's account, as a re-arm does. Nothing is pushed on a refusal.
-func (p *prepared) admitVouched(tree, commit string, w Withdrawal) error {
-	links, complete, err := releaseChain(p.root, p.id, commit, tree)
-	if err != nil {
-		return refuse("#%d was not admitted: the history of %s's branch could not be read (%s); %s", w.Number, p.id, redacted(err), nothingPushed)
-	}
-	v := vouch(links, complete, []Withdrawal{w}, w.By, pushCheck{p.root, p.id, []string{commit}}, Withdrawal.unsettled)
-	switch {
-	case len(v.Due) == 1:
-		return nil
-	case len(v.Unverified) == 1:
-		return refuse("#%d was not admitted: %s, and an admission arms only a withdrawal the forge's record shows its withdrawer recorded; "+
-			"run --admit %d again in a minute, once the forge's record has caught up; %s", w.Number, v.Why, w.Number, nothingPushed)
-	case len(v.AppPushed) == 1:
-		return refuse("#%d was not admitted: an app pushed the commit that recorded its withdrawal, which says nothing of which person sent it; "+
-			"arm it by hand if it belongs in the cut; %s", w.Number, nothingPushed)
-	}
-	return refuse("#%d was not admitted: no reservation of %s's on %s's branch, pushed by %s, recorded its withdrawal first, so it is not acted on; "+
-		"check the pull request by hand; %s", w.Number, w.By, p.id, w.By, nothingPushed)
-}
-
 // admitCheck reads pull request n's withdrawal w on the forge before an
 // --admit records anything: the state it settles in without arming (already
 // armed again counts), "" when it is to be armed, or the refusal saying why
@@ -975,25 +902,15 @@ func (p *prepared) admitCheck(w Withdrawal) (state string, err error) {
 	return state, nil
 }
 
-// settleOwnRelease settles, after --release pushed the tombstone sha over
-// the cutting copy's reservation (parent) carrying ws as they stood, every
-// one of this person's still to settle that the branch's history vouches for
-// and the forge's record says they pushed (vouch), and pushes a second
-// tombstone when any state changed. It returns the settle, the commit last
-// pushed and the withdrawals it records.
-func (p *prepared) settleOwnRelease(tree, sha, parent string, ws []Withdrawal) (Settle, string, []Withdrawal) {
+// settleOwnRelease settles, after --release pushed the tombstone sha
+// carrying ws, read from this person's own newest push (dcn-2610231033516293),
+// every one of theirs still to settle, and pushes a second tombstone when any
+// state changed. It returns the settle, the commit last pushed and the
+// withdrawals it records.
+func (p *prepared) settleOwnRelease(tree, sha string, ws []Withdrawal) (Settle, string, []Withdrawal) {
 	a := p.actor()
 	s := Settle{Subject: p.id, Settled: []Withdrawal{}, Commit: sha}
-	links, complete, err := releaseChain(p.root, p.id, sha, tree)
-	if err != nil {
-		s.Failed = "could not read the history of " + p.id + "'s branch to tell whose its withdrawals are (" + redacted(err) +
-			"), so none was re-armed; the next act of a copy of yours tries again"
-		return s, sha, ws
-	}
-	v := vouch(links, complete, ws, p.holder, pushCheck{p.root, p.id, []string{parent, sha}}, Withdrawal.unsettled)
-	s.noted(v)
-	s.shownOnce(p.root, p.id, sha)()
-	out, settled, changed, fails, why := rearmMine(a, v.actedOn(ws), func(w Withdrawal) bool { _, ok := entryIn(v.Due, w); return ok })
+	out, settled, changed, fails, why := rearmMine(a, ws)
 	s.Settled, s.Failures, s.Failed = append(s.Settled, settled...), fails, why
 	if !changed {
 		return s, sha, ws
@@ -1030,22 +947,21 @@ func stillBeingCut(r Reservation) bool {
 }
 
 // asCut is r, a reservation as the view lists it, as the release hold reads
-// whether it has ended (dcn-2610230328220298), by the rule settleTip holds a
-// tombstone to: a release tombstone ends it only when the forge's record of
-// pushes says the holder of the reservation it was written over pushed it
-// (endedBy), or when its tag is on origin. Over one that ends nothing, cut is
-// that reservation beneath, judged at now: still being cut (stillBeingCut)
-// while it is live or holds a withdrawal it has not settled, and notEnded is
-// true. why, set, is what kept the record (or the branch, or the tags) from
-// settling it, which is read as not ended too; cut is then r itself when the
-// reservation beneath does not read. A tombstone with no reservation beneath
-// it, or over one holding no withdrawal it has not settled, ends it: a second
-// release can take nothing from a cut that holds nothing withdrawn or
-// admitted, and the record is not asked. Anything else is r as listed.
-// reading is true for a caller that only reads (peers, the launch reading),
-// which may take the end from a verdict kept for the tip; the second-release
-// refusal asks the record every time.
-func asCut(root string, r Reservation, now time.Time, reading bool) (cut Reservation, notEnded bool, why string) {
+// whether it has ended (dcn-2610230328220298, dcn-2610231033516293): a
+// release tombstone ends it only when its holder's own newest push, as the
+// forge's record of pushes shows it, is a tombstone of theirs (asker.ended),
+// or when its tag is on origin. Over one that ends nothing, cut is the release
+// as that newest push records it, judged at now, and notEnded is true. why,
+// set, is what kept the record (or the branch, or the tags) from settling it,
+// which is read as not ended too, with cut r itself; once this copy has failed
+// to settle it for longer than lostWindow, a time no writer sets, it is read
+// as ended, so a release abandoned while its record could still be read does
+// not hold every later one back for good. A branch on which no commit records
+// a withdrawal still to settle ends with its tombstone: a second release can
+// take nothing from a cut that holds nothing withdrawn or admitted, and the
+// record is not asked. Anything else is r as listed. What the record placed
+// on each commit is read from the cache kept for the tip, when it holds it.
+func asCut(root string, r Reservation, now time.Time) (cut Reservation, notEnded bool, why string) {
 	if !isRelease(r.Record) || r.State != StateReleased || r.ReleasedBy != ReleasedByTombstone {
 		return r, false, ""
 	}
@@ -1064,21 +980,27 @@ func asCut(root string, r Reservation, now time.Time, reading bool) (cut Reserva
 	if err != nil {
 		return r, true, "the history of its branch could not be read (" + redacted(err) + ")"
 	}
-	i := 0
-	for i < len(links) && links[i].readable && links[i].m.released() {
-		i++
-	}
-	switch {
-	case i == len(links) && complete:
+	if complete && !slices.ContainsFunc(links, func(l chainLink) bool { return slices.ContainsFunc(l.m.Withdrawn, Withdrawal.unsettled) }) {
 		return r, false, ""
-	case i == len(links) || !links[i].readable:
-		return r, true, "the reservation its tombstone ended is not within the commits read, or does not read"
 	}
-	b := links[i].m
+	k := &asker{c: pushCheck{root, r.Record, []string{r.Commit}}, links: links, complete: complete, reading: true}
+	defer k.save()
+	ended, holder, h, why := k.ended()
+	switch {
+	case why != "":
+		if k.cache().endGaveUp(now) {
+			return r, false, ""
+		}
+		k.cache().markEndFailed(now)
+		return r, true, why
+	case ended || holder == "":
+		return r, false, ""
+	}
+	b := h.m
 	v := lease.Judge(lease.Stamp{ClaimedAt: b.ClaimedAt, ExpiresAt: b.ExpiresAt}, lease.Default, now)
 	cut = r
 	cut.Holder, cut.Footprint, cut.ClaimedAt, cut.EffectiveExpiry = b.Holder, b.Footprint, b.ClaimedAt, v.EffectiveExpiry
-	cut.Withdrawn, cut.Commit, cut.Stage = b.Withdrawn, links[i].commit, b.Stage
+	cut.Withdrawn, cut.Commit, cut.Stage = b.Withdrawn, h.commit, b.Stage
 	cut.ReleasedBy, cut.ReleasedAt, cut.HandedBack, cut.Copy = "", time.Time{}, "", ""
 	if own := ownCopyKey(root); own != "" && b.Copy == own {
 		cut.Copy = CopyThis
@@ -1086,17 +1008,6 @@ func asCut(root string, r Reservation, now time.Time, reading bool) (cut Reserva
 	cut.State = StateExpired
 	if v.Live {
 		cut.State = StateLive
-	}
-	if !stillBeingCut(cut) || !slices.ContainsFunc(cut.Withdrawn, Withdrawal.unsettled) {
-		return r, false, ""
-	}
-	k := &asker{c: pushCheck{root, r.Record, []string{r.Commit}}, links: links, reading: reading}
-	defer k.save()
-	switch verdict, _, why := k.endedBy(""); verdict {
-	case pushedByThem:
-		return r, false, ""
-	case pushNotVerified:
-		return cut, true, why
 	}
 	return cut, true, ""
 }
@@ -1117,7 +1028,7 @@ func otherLiveRelease(root, id string, now time.Time) error {
 		if r.Record == id {
 			continue
 		}
-		r, notEnded, why := asCut(root, r, now, false)
+		r, notEnded, why := asCut(root, r, now)
 		if why != "" {
 			return backOff("%s's tip is a tombstone, and whether it ends the release is not settled: %s; one release is cut at a time, so it is read as still being cut: "+
 				"wait for it to end (its tag on %s, or its holder's --release); %s", r.Record, why, Remote, nothingPushed)
@@ -1173,37 +1084,34 @@ func validPRNumber(n int) bool { return n > 0 && n <= 999999999 }
 // a reader: on a release still held, those it holds withdrawn and those it
 // admitted, with Lapsed set when it is still being cut (stillBeingCut) and
 // its lease lapsed before it ended, which ends nothing
-// (dcn-2610230328220298); on one ended (its tag on origin or any
-// tombstone), those still to re-arm, split as an act's settle splits them
-// (vouch): the reader's own that the branch's history vouches for and the
-// forge's record of pushes says they pushed (Due, which the reader's next act
-// re-arms); the reader's own that no reservation of theirs recorded first, or
-// whose first record another account pushed (Unrecorded), or an app pushed
-// (AppPushed), none of which anything re-arms; the reader's own the record
-// does not settle yet (Unverified, with UnverifiedWhy, which a later act
-// asks about again); and another person's (Stranded, which only that person
+// (dcn-2610230328220298); on one ended (its tag on origin, or its holder's
+// own tombstone), the reader's own still to re-arm (Due, which the reader's
+// next act re-arms) and another person's (Stranded, which only that person
 // re-arms); and those its last tombstone skipped for their owners (moved,
-// closed, mismatched, needing a manual merge, or refused). A merged one is
-// not listed: it needs nothing more.
+// closed, mismatched, needing a manual merge, or refused). The reader's own
+// are read from their own newest push to the branch, as the forge's record of
+// pushes shows it (dcn-2610231033516293): NotRead counts the commits above it
+// other logins pushed, which are not read, and Unplaced, when set, is why
+// that push (or whether the release has ended) could not be read, and none of
+// the reader's is listed. A merged one is not listed: it needs nothing more.
 type ReleaseWithdrawals struct {
-	Subject    string       `json:"subject"`
-	Ended      bool         `json:"ended"`
-	Lapsed     bool         `json:"lapsed,omitempty"`
-	LapsedAt   time.Time    `json:"lapsed_at,omitempty"`
-	Holder     string       `json:"holder,omitempty"`
-	Held       []Withdrawal `json:"held,omitempty"`
-	Admitted   []Withdrawal `json:"admitted,omitempty"`
-	Due        []Withdrawal `json:"due,omitempty"`
-	Unrecorded []Withdrawal `json:"unrecorded,omitempty"`
-	AppPushed  []Withdrawal `json:"app_pushed,omitempty"`
-	Unverified []Withdrawal `json:"unverified,omitempty"`
-	// UnverifiedWhy is why the record does not settle Unverified yet.
-	UnverifiedWhy string       `json:"unverified_why,omitempty"`
-	Stranded      []Withdrawal `json:"stranded,omitempty"`
-	Skipped       []Withdrawal `json:"skipped,omitempty"`
-	// NotEnded, when set, is the holder of the reservation the release's
-	// tombstone was written over, which the forge's record of pushes does not
-	// show they pushed: it ends nothing, so nothing of Due is re-armed yet.
+	Subject  string       `json:"subject"`
+	Ended    bool         `json:"ended"`
+	Lapsed   bool         `json:"lapsed,omitempty"`
+	LapsedAt time.Time    `json:"lapsed_at,omitempty"`
+	Holder   string       `json:"holder,omitempty"`
+	Held     []Withdrawal `json:"held,omitempty"`
+	Admitted []Withdrawal `json:"admitted,omitempty"`
+	Due      []Withdrawal `json:"due,omitempty"`
+	Stranded []Withdrawal `json:"stranded,omitempty"`
+	Skipped  []Withdrawal `json:"skipped,omitempty"`
+	// Reader is whose record NotRead and Unplaced speak of.
+	Reader   string      `json:"reader,omitempty"`
+	NotRead  []PushCount `json:"not_read,omitempty"`
+	Unplaced string      `json:"unplaced,omitempty"`
+	// NotEnded, when set, is the holder of a release whose tip is a tombstone
+	// that holder's own newest push is not: it ends nothing, so nothing is
+	// re-armed yet.
 	NotEnded string `json:"not_ended,omitempty"`
 }
 
@@ -1225,6 +1133,11 @@ func (r ReleaseWithdrawals) Lines() []string {
 	if r.NotEnded != "" {
 		out = append(out, notEndedLine(r.Subject, r.NotEnded))
 	}
+	for _, l := range []string{unplacedLine(r.Subject, r.Reader, r.Unplaced), notReadLine(r.Subject, r.Reader, r.NotRead)} {
+		if l != "" {
+			out = append(out, l)
+		}
+	}
 	if len(r.Due) > 0 {
 		out = append(out, fmt.Sprintf("%s has ended, and %s you withdrew for it are not re-armed yet: your next abcd act that fetches the reservations re-arms them",
 			r.Subject, strings.Join(numbers(r.Due), ", ")))
@@ -1240,30 +1153,40 @@ func (r ReleaseWithdrawals) Lines() []string {
 
 // ReleaseWithdrawals is every release in the view at now whose tip records a
 // withdrawal there is something to say about, for reader (the listing's own
-// GitHub username, "" when it is not known, which owns none). The reader's
-// own on an ended release are read against the branch's history at root and
-// the forge's record of pushes, as an act's settle reads them (vouch), so one
-// nothing re-arms never reads as due. The record is asked at most once for
-// each such release, and not at all for a withdrawal whose verdict an act
-// already kept for the tip (an app's push, or another account's).
+// GitHub username, "" when it is not known, which owns none). A release that
+// holds a withdrawal still to settle is read as the hold reads it (asCut), and
+// the reader's own withdrawals on it from their own newest push (asker.newest),
+// what the record placed on each commit taken from the cache kept for the tip
+// when it holds it, so the record is asked at most once for each tip that
+// reads.
 func (s Snapshot) ReleaseWithdrawals(root, reader string, now time.Time) []ReleaseWithdrawals {
 	var out []ReleaseWithdrawals
 	for _, r := range s.Reservations {
 		if !isRelease(r.Record) || len(r.Withdrawn) == 0 || r.State == StateUnreadable {
 			continue
 		}
-		cut, notEnded, why := asCut(root, r, now, true)
+		tip := r.Commit
+		cut, notEnded, why := asCut(root, r, now)
 		r = cut
 		rw := ReleaseWithdrawals{Subject: r.Record, Holder: r.Holder, Ended: r.State == StateReleased && !notEnded}
 		if notEnded {
 			if why == "" {
 				rw.NotEnded = r.Holder
 			} else {
-				rw.UnverifiedWhy = why
+				rw.Reader, rw.Unplaced = reader, why
 			}
 		}
-		var mine []Withdrawal
-		for _, w := range r.Withdrawn {
+		ws := r.Withdrawn
+		if reader != "" && why == "" && slices.ContainsFunc(ws, Withdrawal.unsettled) {
+			own := readerRecord(root, r.Record, tip, reader)
+			rw.Reader, rw.NotRead, rw.Unplaced = reader, own.above, own.why
+			if own.why != "" {
+				ws = slices.DeleteFunc(slices.Clone(ws), func(w Withdrawal) bool { return sameHolder(w.By, reader) })
+			} else {
+				ws = merged(ws, own, reader)
+			}
+		}
+		for _, w := range ws {
 			switch {
 			case w.State == WithdrawnMerged:
 			case skippedForOwner(w.State):
@@ -1274,54 +1197,34 @@ func (s Snapshot) ReleaseWithdrawals(root, reader string, now time.Time) []Relea
 			case !rw.Ended:
 				rw.Held = append(rw.Held, w)
 			case reader != "" && sameHolder(w.By, reader):
-				mine = append(mine, w)
+				rw.Due = append(rw.Due, w)
 			default:
 				rw.Stranded = append(rw.Stranded, w)
 			}
 		}
-		if len(mine) > 0 {
-			v, ended := vouchedForReader(root, r, reader, mine)
-			rw.Due, rw.Unrecorded, rw.AppPushed, rw.Unverified, rw.UnverifiedWhy, rw.NotEnded = v.Due, v.Unrecorded, v.AppPushed, v.Unverified, v.Why, ended
-		}
 		if r.State == StateExpired && stillBeingCut(r) {
 			rw.Lapsed, rw.LapsedAt = true, r.EffectiveExpiry
 		}
-		if len(rw.Held)+len(rw.Admitted)+len(rw.Due)+len(rw.Unrecorded)+len(rw.AppPushed)+len(rw.Unverified)+len(rw.Stranded)+len(rw.Skipped) > 0 || rw.Lapsed || rw.NotEnded != "" {
+		if len(rw.Held)+len(rw.Admitted)+len(rw.Due)+len(rw.Stranded)+len(rw.Skipped)+len(rw.NotRead) > 0 || rw.Lapsed || rw.NotEnded != "" || rw.Unplaced != "" {
 			out = append(out, rw)
 		}
 	}
 	return out
 }
 
-// vouchedForReader is vouching for ws, the reader's withdrawals on r's
-// ended tip (vouch); all of them are taken as not recorded when the branch's
-// history cannot be read. When the release is not tagged, the tombstone is
-// held to its holder's push as an act holds it (endedBy): one they did not
-// push ends nothing, and notEnded names that holder, with none due.
-func vouchedForReader(root string, r Reservation, reader string, ws []Withdrawal) (v vouching, notEnded string) {
+// readerRecord is reader's own record on id's release branch at tip
+// (asker.newest), read as a listing reads it: what the record placed on each
+// commit taken from the cache kept for the tip when it holds it.
+func readerRecord(root, id, tip, reader string) ownRecord {
 	tree, err := emptyTree(root)
 	if err != nil {
-		return vouching{Unrecorded: ws}, ""
+		return ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err) + ")"}
 	}
-	links, complete, err := releaseChain(root, r.Record, r.Commit, tree)
+	links, complete, err := releaseChain(root, id, tip, tree)
 	if err != nil {
-		return vouching{Unrecorded: ws}, ""
+		return ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err) + ")"}
 	}
-	k := &asker{c: pushCheck{root, r.Record, []string{r.Commit}}, links: links, reading: true}
+	k := &asker{c: pushCheck{root, id, []string{tip}}, links: links, complete: complete, reading: true}
 	defer k.save()
-	v = k.vouch(complete, ws, reader, Withdrawal.Pending)
-	if len(v.Due) == 0 {
-		return v, ""
-	}
-	if tagged, err := taggedOnOrigin(root, r.Record); err == nil && tagged {
-		return v, ""
-	}
-	switch verdict, holder, why := k.endedBy(""); verdict {
-	case pushedByThem:
-	case pushNotVerified:
-		v.Unverified, v.Why, v.Due = append(v.Unverified, v.Due...), why, nil
-	default:
-		v.Due, notEnded = nil, holder
-	}
-	return v, notEnded
+	return k.newest(reader)
 }

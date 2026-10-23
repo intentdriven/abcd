@@ -225,6 +225,16 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	// A release is judged, and this person's withdrawals read, as their own
+	// newest push and the release's holder's record it (ownRelease).
+	own, err := p.ownRelease(tree, &j)
+	if err != nil {
+		return Result{}, err
+	}
+	own.shownOnce(root, p.id, j.Commit)()
+	if own.said() {
+		settles = append(settles, own)
+	}
 	res, m, parent, err := decide(p, j)
 	if err != nil || res.Act == ActAlreadyReleased {
 		if err == nil {
@@ -262,24 +272,15 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// The admission is recorded before the forge re-arms it, so a push
 		// that loses leaves nothing armed.
 		admitting, _ = withdrawalOf(j.Withdrawn, p.req.Admit)
-		if err := p.admitVouched(tree, j.Commit, admitting); err != nil {
-			return Result{}, err
-		}
 		if admitState, err = p.admitCheck(admitting); err != nil {
 			return Result{}, err
 		}
 		m.Withdrawn = withWithdrawal(m.Withdrawn, Withdrawal{Number: admitting.Number, ID: admitting.ID, Form: admitting.Form,
 			Head: admitting.Head, By: admitting.By, State: WithdrawnAdmitted})
 	default:
-		// A reservation keeps what its tip still has withdrawn: its own
-		// admissions too while it is this person's reservation. Over a
-		// tombstone, an entry of this person's that a commit they did not
-		// push recorded settled is carried as it stood before (restated).
-		ws := j.Withdrawn
-		if isRelease(p.id) && j.present && j.message.released() {
-			ws = p.restated(tree, j.Commit, ws)
-		}
-		m.Withdrawn = carried(ws, j.mine && !j.message.released() && !j.derived)
+		// A reservation keeps what its record still has withdrawn: its own
+		// admissions too while it is this person's reservation.
+		m.Withdrawn = carried(j.Withdrawn, j.mine && !j.message.released() && !j.derived)
 		res.Stranded = stranded(m.Withdrawn, p.holder)
 	}
 	if !p.req.Release {
@@ -330,7 +331,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	res.ForkUnchecked = forkUnchecked
 	res.ForkAllowed = forkAllowed
 	if settleOwn {
-		s, final, ws := p.settleOwnRelease(tree, sha, j.Commit, m.Withdrawn)
+		s, final, ws := p.settleOwnRelease(tree, sha, m.Withdrawn)
 		settles = append(settles, s)
 		res.Commit, m.Withdrawn = final, ws
 	}
@@ -340,24 +341,11 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// them on a renewal of the reservation it just pushed before it
 		// touches the forge. A live renewal withdraws again only what it
 		// already records as this person's, withdrawn or kept (a withdrawal
-		// the forge refused), that the forge has armed, and only those the
-		// branch's history and the forge's record of pushes vouch for, as a
-		// re-arm is vouched for; the rest are named and left as they are.
-		var again func([]Withdrawal) []Withdrawal
-		var noted Settle
-		if res.Act == ActRenewed && res.RenewedLive {
-			again = func(armed []Withdrawal) []Withdrawal {
-				due, s := p.vouchAgain(tree, sha, j.Commit, armed)
-				noted = s
-				return due
-			}
-		}
-		commit, recorded, made, fails, unchecked := p.withdrawArmed(tree, sha, m, again)
+		// the forge refused), that the forge has armed: its record is read
+		// from this person's own newest push, so each such entry is theirs.
+		commit, recorded, made, fails, unchecked := p.withdrawArmed(tree, sha, m, res.Act == ActRenewed && res.RenewedLive)
 		res.ForgeFailures, res.ForgeUnchecked, res.Withdrew = fails, unchecked, made
 		res.Commit, m = commit, recorded
-		if noted.said() {
-			settles = append(settles, noted)
-		}
 	}
 	if p.req.Admit != 0 {
 		commit, err := p.admitAfter(tree, sha, m, admitting, admitState)
@@ -676,6 +664,10 @@ func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
 		return Result{}, message{}, "", refuse("the reservation on %s was released at %s, so the cut has ended and admits nothing; %s",
 			p.id, stamp(j.ReleasedAt), nothingPushed)
 	case !j.mine:
+		if w, ok := withdrawalOf(j.Withdrawn, n); ok && w.unsettled() && sameHolder(w.By, p.holder) {
+			return Result{}, message{}, "", refuse("%s is reserved by %s, not by you: only the copy cutting a release admits a pull request into it, so %s takes the release back with --take-over and admits it; %s",
+				p.id, j.Holder, p.holder, nothingPushed)
+		}
 		return Result{}, message{}, "", refuse("%s is reserved by %s, not by you: only the copy cutting a release admits a pull request into it; %s",
 			p.id, j.Holder, nothingPushed)
 	case !j.thisCopy:
@@ -703,7 +695,7 @@ func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
 		// (dcn-2610230833367984).
 		by := j.Withdrawn[i].By
 		return Result{}, message{}, "", refuse("#%d was withdrawn by %s, not by you, and only its withdrawer admits it, since an admission arms it under the admitter's account: "+
-			"%s admits it, or takes the release over themselves (abcd reserve %s --take-over) and admits it then; %s", n, by, by, p.id, nothingPushed)
+			"%s takes the release back with --take-over and admits it; %s", n, by, by, nothingPushed)
 	}
 	// An admission already recorded is admitted again: the forge is read
 	// once more, and the pull request armed when it is not, so an --admit

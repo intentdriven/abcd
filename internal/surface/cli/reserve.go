@@ -198,8 +198,11 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"whose head moved, that was closed or merged, or that can only be merged by hand\n" +
 			"(no merge queue), is skipped and named for its owner; every state is recorded on\n" +
 			"the tombstone (settles in --json), so no copy acts twice, a copy of another\n" +
-			"person never re-arms (stranded in --json), and a withdrawal no reservation of its\n" +
-			"withdrawer's recorded first is never acted on (unrecorded in settles).\n\n" +
+			"person never re-arms (stranded in --json). A person's withdrawals are read only\n" +
+			"from their own newest push to the release's branch, as the forge's record of\n" +
+			"pushes shows it: commits others pushed above it are counted and never read\n" +
+			"(not_read in settles), and when that push cannot be found or placed nothing is\n" +
+			"acted on for that person (unplaced in settles).\n\n" +
 			"Every act fetches the reservations from origin, judges the tip, writes one\n" +
 			"commit and makes one plain fast-forward push, with the repository's hooks\n" +
 			"running: a reservation, a renewal by the same person and copy, a take-over of\n" +

@@ -42,10 +42,11 @@ func releasedWithNothingArmed(t *testing.T) (*world, *fakeForge, *participant) {
 	return w, f, octo
 }
 
-// TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed: a commit
-// whose Abcd-Holder trailer names octo but which the forge's record says
-// mal pushed vouches for nothing, so octo's next act re-arms nothing and
-// names it; the same commits pushed by octo are re-armed.
+// TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed: commits
+// whose Abcd-Holder trailer names octo but which the forge's record says mal
+// pushed lie above octo's newest push, so octo's next act reads nothing from
+// them, re-arms nothing and counts them; the same commits pushed by octo are
+// octo's record, and are re-armed.
 func TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
 	record, tomb := w.forgedOver("rel-v0.16.0")
@@ -57,8 +58,9 @@ func TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed(t *testing
 	if len(f.mutations()) != 0 || f.pr(11).method != "" {
 		t.Fatalf("mutations %v, #11 %+v; want nothing re-armed for a record mal pushed", f.mutations(), f.pr(11))
 	}
-	if len(res.Settles) != 1 || len(res.Settles[0].Unrecorded) != 1 || res.Settles[0].Commit != "" {
-		t.Fatalf("settles = %+v; want #11 named unrecorded and nothing pushed", res.Settles)
+	if len(res.Settles) != 1 || !slices.Equal(res.Settles[0].NotRead, []PushCount{{Pusher: "mal", Commits: 2}}) || res.Settles[0].Commit != "" ||
+		!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "2 commits above octo's newest push to rel-v0.16.0's branch, pushed by mal (2), are not read") {
+		t.Fatalf("settles = %+v; want mal's two commits counted and nothing pushed", res.Settles)
 	}
 	// The genuine case: octo pushed them (the verdict kept for the tip is
 	// the other world's, so it goes too).
@@ -74,20 +76,25 @@ func TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed(t *testing
 }
 
 // TestARecordOfPushesThatIsPartialOrBehindDefersTheReArm: a record read
-// short, or one that has not caught up with the tip, settles nothing: the
-// withdrawal is named not yet verified, nothing is pushed, and a later act
-// re-arms it once the record is whole.
+// short, one that has not caught up with the tip, or one that fails, places
+// no newest push of octo's: nothing is acted on, nothing is pushed, the
+// first act names why for the tip, and a later act re-arms it once the
+// record is whole.
 func TestARecordOfPushesThatIsPartialOrBehindDefersTheReArm(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
 	w.forgedOver("rel-v0.16.0") // octo's own pushes, as the record reads by default
 	tip := w.remoteTip("rel-v0.16.0")
-	for name, set := range map[string]func(){
-		"partial": func() { f.partial = true },
-		"behind":  func() { f.lag = 1 },
-		"failed":  func() { f.pushersErr = errors.New("HTTP 502") },
+	for i, c := range []struct {
+		name string
+		set  func()
+	}{
+		{"partial", func() { f.partial = true }},
+		{"behind", func() { f.lag = 1 }},
+		{"failed", func() { f.pushersErr = errors.New("HTTP 502") }},
 	} {
+		name := c.name
 		f.partial, f.lag, f.pushersErr = false, 0, nil
-		set()
+		c.set()
 		res, err := octo.reserve("iss-8", "o.go")
 		if err != nil {
 			t.Fatal(err)
@@ -95,9 +102,10 @@ func TestARecordOfPushesThatIsPartialOrBehindDefersTheReArm(t *testing.T) {
 		if len(f.mutations()) != 0 || w.remoteTip("rel-v0.16.0") != tip {
 			t.Fatalf("%s: mutations %v, tip moved %v; want nothing done", name, f.mutations(), w.remoteTip("rel-v0.16.0") != tip)
 		}
-		if len(res.Settles) != 1 || len(res.Settles[0].Unverified) != 1 ||
-			!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "#11 on rel-v0.16.0 not yet verified") {
-			t.Fatalf("%s: settles = %+v; want #11 named not yet verified", name, res.Settles)
+		if i == 0 && (len(res.Settles) != 1 || res.Settles[0].Unplaced == "" ||
+			!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "abcd acts on none of octo's withdrawals on rel-v0.16.0: the forge's record of who pushed")) ||
+			i > 0 && len(res.Settles) != 0 {
+			t.Fatalf("%s: settles = %+v; want why named once for the tip", name, res.Settles)
 		}
 		if _, err := octo.do(Request{Record: "iss-8", Release: true}); err != nil {
 			t.Fatal(err)
@@ -114,9 +122,9 @@ func TestARecordOfPushesThatIsPartialOrBehindDefersTheReArm(t *testing.T) {
 }
 
 // TestAWithdrawalAnAppPushedIsLeftForItsPersonAndNamedOncePerTip: an app's
-// push says nothing of which person sent it, so the withdrawal it recorded
-// is named for its person to re-arm by hand, once for the tip, and never
-// re-armed.
+// push says nothing of which person sent it, so a reservation an app pushed
+// beneath octo's tombstone leaves whether the release ended unknown: nothing
+// is re-armed, and why is named once for the tip.
 func TestAWithdrawalAnAppPushedIsLeftForItsPersonAndNamedOncePerTip(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
 	record, _ := w.forgedOver("rel-v0.16.0")
@@ -125,8 +133,8 @@ func TestAWithdrawalAnAppPushedIsLeftForItsPersonAndNamedOncePerTip(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(f.mutations()) != 0 || len(res.Settles) != 1 || len(res.Settles[0].AppPushed) != 1 ||
-		!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "an app pushed the commit that recorded them") {
+	if len(f.mutations()) != 0 || len(res.Settles) != 1 || res.Settles[0].Unplaced == "" ||
+		!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "an app pushed commit "+record[:12]) {
 		t.Fatalf("settles = %+v, mutations %v; want #11 named as an app's and nothing re-armed", res.Settles, f.mutations())
 	}
 	// Named once for the tip: the next act says nothing of it.
@@ -167,8 +175,8 @@ func TestAnUnrecordedWithdrawalIsNamedOncePerTip(t *testing.T) {
 }
 
 // TestAnAdmissionOfAWithdrawalAnotherLoginRecordedIsRefused: --admit arms a
-// pull request under the cutter's account, so it is held to the same record
-// of pushes as a re-arm.
+// pull request under the cutter's account, so it admits only what the
+// cutter's own newest push records: a commit mal pushed over it is not read.
 func TestAnAdmissionOfAWithdrawalAnotherLoginRecordedIsRefused(t *testing.T) {
 	w := newWorld(t)
 	f := newFakeForge(t, map[int]*fakePR{11: {id: "PR_eleven", head: headA}})
@@ -185,7 +193,7 @@ func TestAnAdmissionOfAWithdrawalAnotherLoginRecordedIsRefused(t *testing.T) {
 	f.pusherOf[c] = "mal"
 	f.reset()
 	_, err := octo.do(Request{Record: "rel-v0.16.0", Admit: 11})
-	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "pushed by octo, recorded its withdrawal first") || len(f.mutations()) != 0 {
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "#11 is not among the pull requests rel-v0.16.0 withdrew (none)") || len(f.mutations()) != 0 {
 		t.Fatalf("admit = %v, mutations %v; want refused, nothing armed", err, f.mutations())
 	}
 	// Pushed by octo, it is admitted (the verdict kept for the tip is the
@@ -318,7 +326,7 @@ func TestAReArmRefusedFiveTimesIsLeftToItsOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, s := range append(res.Settles, rel.Settles...) {
-			if len(s.Unrecorded)+len(s.Unverified) > 0 {
+			if s.Unplaced != "" || len(s.NotRead) > 0 {
 				t.Fatalf("act %d: #12 reads as %+v", i, s)
 			}
 			for _, wd := range s.Settled {
@@ -473,10 +481,8 @@ func TestPeersNeverCallsAnUnrecordedWithdrawalDue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := snap.ReleaseWithdrawals(octo.dir, "octo", w.clock())
-	if len(got) != 1 || len(got[0].Due) != 0 || len(got[0].Unrecorded) != 1 ||
-		strings.Contains(strings.Join(got[0].Lines(), "\n"), "your next abcd act") {
-		t.Fatalf("listing = %+v %q; want #11 unrecorded and not due", got, got[0].Lines())
+	if got := snap.ReleaseWithdrawals(octo.dir, "octo", w.clock()); len(got) != 0 {
+		t.Fatalf("listing = %+v; want nothing of octo's on a branch octo never pushed to", got)
 	}
 }
 
@@ -508,8 +514,9 @@ func TestALiveRenewalWithdrawsAgainWhatItRecordsWithdrawnButFindsArmed(t *testin
 }
 
 // TestTheLaunchReadingExemptsOnlyAnAdmissionTheReaderPushed: the launch
-// check's exemption is held to the record of pushes: an admission another
-// login pushed is not exempt, and is named not verified.
+// check's exemption is read from the reader's own newest push: an admission a
+// commit mal pushed over it records is not exempt, and an app's push over it
+// leaves none exempt, naming why.
 func TestTheLaunchReadingExemptsOnlyAnAdmissionTheReaderPushed(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -524,35 +531,28 @@ func TestTheLaunchReadingExemptsOnlyAnAdmissionTheReaderPushed(t *testing.T) {
 	if err != nil || len(a.Admitted) != 1 || len(a.Unverified) != 0 {
 		t.Fatalf("reading = %+v, %v; want #11 admitted", a, err)
 	}
-	admission := w.remoteTip("rel-v0.16.0")
-	w.set(w.clock().Add(time.Minute))
-	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
-		t.Fatal(err)
-	}
-	tip := w.remoteTip("rel-v0.16.0")
-	// Another login pushed the admission, or the tip: either way not exempt.
-	for _, c := range []string{admission, tip} {
-		f.pusherOf = map[string]string{c: "mal"}
-		a, err = ArmedMergesForCut(p.dir, p.opts())
-		if err != nil || len(a.Admitted) != 0 || len(a.Unverified) != 1 || !strings.Contains(a.UnverifiedWhy, "another account pushed") {
-			t.Fatalf("mal pushed %s: reading = %+v, %v; want #11 not exempt", c[:8], a, err)
+	// A renewal-shaped commit mal pushes, recording #12 admitted too.
+	m, ws := w.tipWithdrawals("rel-v0.16.0")
+	for i := range ws {
+		if ws[i].Number == 12 {
+			ws[i].State = WithdrawnAdmitted
 		}
 	}
-}
-
-// TestReArmMineChecksTrustForEachEntryOfAMixedTip: with one entry vouched
-// for and one not on the same tip, only the vouched one is re-armed.
-func TestReArmMineChecksTrustForEachEntryOfAMixedTip(t *testing.T) {
-	w := newWorld(t)
-	f := newFakeForge(t, map[int]*fakePR{11: {id: "PR_eleven", head: headA}, 12: {id: "PR_twelve", head: headB}})
-	p := w.clone("1234+octo@users.noreply.github.com", "")
-	ws := []Withdrawal{
-		{Number: 11, ID: "PR_eleven", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending},
-		{Number: 12, ID: "PR_twelve", Form: FormAutoMerge, Head: headB, By: "octo", State: WithdrawnPending},
+	m.Withdrawn = ws
+	c := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
+	f.pusherOf[c] = "mal"
+	if _, err := Fetch(p.dir, p.opts()); err != nil {
+		t.Fatal(err)
 	}
-	_, settled, _, _, why := rearmMine(actor{root: p.dir, holder: "octo", subject: "rel-v0.16.0"}, ws, func(w Withdrawal) bool { return w.Number == 11 })
-	if why != "" || len(settled) != 1 || !slices.Equal(f.mutations(), []string{"enablePullRequestAutoMerge #11"}) {
-		t.Fatalf("settled %+v, mutations %v; want only #11", settled, f.mutations())
+	a, err = ArmedMergesForCut(p.dir, p.opts())
+	if err != nil || !slices.Equal(numbersOf(a.Admitted), []int{11}) || len(a.Unverified) != 0 {
+		t.Fatalf("mal's commit over it: reading = %+v, %v; want only #11, octo's own, exempt", a, err)
+	}
+	f.pusherOf[c] = "app"
+	forgetVerdicts(t, p.dir)
+	a, err = ArmedMergesForCut(p.dir, p.opts())
+	if err != nil || len(a.Admitted) != 0 || len(a.Unverified) != 2 || !strings.Contains(a.UnverifiedWhy, "an app pushed commit "+c[:12]) {
+		t.Fatalf("an app's commit over it: reading = %+v, %v; want none exempt and why named", a, err)
 	}
 }
 

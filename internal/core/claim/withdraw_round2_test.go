@@ -95,14 +95,6 @@ func TestALapsedReleaseIsNotEndedAndNothingReArms(t *testing.T) {
 		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "rel-v0.16.0's lease lapsed at 2026-10-04T14:00:00Z before the release ended") {
 		t.Fatalf("listing = %+v %q; want the lapse reported with the three held", got, got[0].Lines())
 	}
-	// A lapsed tip is not ended; a tag or a tombstone is.
-	lapsed := tip{message: message{ClaimedAt: t0, ExpiresAt: t0.Add(time.Hour)}}
-	if releaseEnded(lapsed, false) {
-		t.Fatal("a lapsed release reads as ended")
-	}
-	if !releaseEnded(lapsed, true) || !releaseEnded(tip{message: message{ReleasedAt: t0}}, false) {
-		t.Fatal("a tagged or tombstoned release reads as not ended")
-	}
 	// The cutting copy renews and goes on, then ends it: only now is it re-armed.
 	if res, err := cutter.do(Request{Record: "rel-v0.16.0"}); err != nil || res.Act != ActRenewed {
 		t.Fatalf("renewal = %+v, %v", res, err)
@@ -189,8 +181,8 @@ func TestASweepThatLosesTheTombstoneRaceReArmsNothing(t *testing.T) {
 
 // TestAWithdrawalNoReservationOfItsWithdrawerRecordedIsNeverActedOn: a
 // tombstone of another holder's, naming octo as the withdrawer of a pull
-// request under another's node id, is named to octo's copy and touches
-// nothing on the forge: octo re-arms only what octo's reservation recorded.
+// request under another's node id, touches nothing on the forge: octo pushed
+// nothing to that branch, so octo's record there holds nothing to act on.
 func TestAWithdrawalNoReservationOfItsWithdrawerRecordedIsNeverActedOn(t *testing.T) {
 	w := newWorld(t)
 	f := newFakeForge(t, map[int]*fakePR{
@@ -209,9 +201,8 @@ func TestAWithdrawalNoReservationOfItsWithdrawerRecordedIsNeverActedOn(t *testin
 	if len(f.calls) != 0 || f.pr(14).method != "" {
 		t.Fatalf("calls = %v, #14 = %+v; want the forge untouched", f.calls, f.pr(14))
 	}
-	if len(res.Settles) != 1 || len(res.Settles[0].Unrecorded) != 1 || res.Settles[0].Commit != "" ||
-		!strings.Contains(UnrecordedLine("rel-v0.17.0", res.Settles[0].Unrecorded), "no reservation of octo's on its branch, pushed by octo, recorded them first") {
-		t.Fatalf("settles = %+v; want the entry named and nothing pushed", res.Settles)
+	if len(res.Settles) != 0 {
+		t.Fatalf("settles = %+v; want nothing of octo's on a branch octo never pushed to", res.Settles)
 	}
 }
 
@@ -463,16 +454,10 @@ func TestReArmMineSkipsAnotherPersonsEntryOnTheSameTip(t *testing.T) {
 		{Number: 11, ID: "PR_eleven", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending},
 		{Number: 12, ID: "PR_twelve", Form: FormAutoMerge, Head: headB, By: "quinn", State: WithdrawnPending},
 	}
-	out, settled, _, fails, why := rearmMine(actor{root: p.dir, holder: "octo", subject: "rel-v0.16.0"}, ws, func(Withdrawal) bool { return true })
+	out, settled, _, fails, why := rearmMine(actor{root: p.dir, holder: "octo", subject: "rel-v0.16.0"}, ws)
 	if why != "" || len(fails) != 0 || len(settled) != 1 || settled[0].Number != 11 || out[1].State != WithdrawnPending ||
 		!slices.Equal(f.mutations(), []string{"enablePullRequestAutoMerge #11"}) {
 		t.Fatalf("rearmMine = %+v %+v %+v %q, mutations %v; want only octo's #11", out, settled, fails, why, f.mutations())
-	}
-	// Nor one the trust refuses.
-	f.reset()
-	ws[0].State = WithdrawnPending
-	if _, settled, _, _, _ := rearmMine(actor{root: p.dir, holder: "octo"}, ws, func(Withdrawal) bool { return false }); len(settled) != 0 || len(f.calls) != 0 {
-		t.Fatalf("an untrusted entry was re-armed: %v", f.calls)
 	}
 }
 

@@ -53,9 +53,8 @@ func TestAStateAnotherLoginChangedOnALiveReservationIsReArmedByTheRelease(t *tes
 	if _, tws := w.tipWithdrawals("rel-v0.16.0"); stateOf(tws, 11) != WithdrawnRearmed {
 		t.Fatalf("tip records #11 %q; want re-armed", stateOf(tws, 11))
 	}
-	if len(res.Settles) != 1 || !slices.Equal(numbersOf(res.Settles[0].Restated), []int{11}) ||
-		!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "#11 on rel-v0.16.0, withdrawn by octo, recorded settled by a commit octo did not push") {
-		t.Fatalf("settles = %+v; want #11 named as changed by a commit octo did not push", res.Settles)
+	if notes := settleNotes(res.Settles); !strings.Contains(notes, "1 commit above octo's newest push to rel-v0.16.0's branch, pushed by mal (1), are not read") {
+		t.Fatalf("settles = %+v; want mal's commit named as not read", res.Settles)
 	}
 	if !slices.Contains(f.posted(), "#11 abcd release hold: the merge of #11 is re-armed; the hold for release v0.16.0 has ended.") {
 		t.Fatalf("comments = %q; want #11's re-arm commented on", f.posted())
@@ -133,8 +132,8 @@ func TestAStateAnotherLoginsTombstoneChangedIsReArmedWhenTheReleaseEnds(t *testi
 	if len(f.mutations()) != 0 || len(f.posted()) != 3 || s.NotEnded != "octo" || s.Commit != "" {
 		t.Fatalf("settle = %+v, mutations %v, comments %q; want nothing acted on and the tombstone named", s, f.mutations(), f.posted())
 	}
-	if !strings.Contains(strings.Join(s.Notes(), "\n"), "rel-v0.16.0's tip is a tombstone octo did not push") || !slices.Equal(numbersOf(s.Restated), []int{11}) {
-		t.Fatalf("notes = %q; want the tombstone named as ending nothing, and #11 as changed by a commit octo did not push", s.Notes())
+	if !strings.Contains(strings.Join(s.Notes(), "\n"), "rel-v0.16.0's tip is a tombstone octo did not push") || !slices.Equal(s.NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) {
+		t.Fatalf("notes = %q; want the tombstone named as ending nothing, and counted as not read", s.Notes())
 	}
 	if res, err := octo.reserve("iss-9", "p.go"); err != nil || len(res.Settles) != 0 {
 		t.Fatalf("next act = %+v, %v; want the tombstone named once for its tip", res.Settles, err)
@@ -301,7 +300,7 @@ func TestAnAdmitOfAnotherPersonsWithdrawalIsRefused(t *testing.T) {
 	comments, tip := len(f.posted()), w.remoteTip("rel-v0.16.0")
 	_, err := o.do(Request{Record: "rel-v0.16.0", Admit: 11})
 	if err == nil || !strings.Contains(err.Error(), "#11 was withdrawn by mallory, not by you, and only its withdrawer admits it") ||
-		!strings.Contains(err.Error(), "mallory admits it, or takes the release over themselves (abcd reserve rel-v0.16.0 --take-over)") {
+		!strings.Contains(err.Error(), "mallory takes the release back with --take-over and admits it") {
 		t.Fatalf("admit = %v; want it refused, naming mallory and the remedy", err)
 	}
 	if len(f.mutations()) != 0 || len(f.posted()) != comments || w.remoteTip("rel-v0.16.0") != tip || f.pr(11).method != "" {
@@ -442,15 +441,19 @@ func TestStillBeingCutIsOnlyARelease(t *testing.T) {
 }
 
 // TestLocalCountsAndMarkersAreKeptOnlyForARelease: the refusal counts and
-// the shown marker are written only under a release's id, and a count line
+// the shown marker and the tip cache are written only under a release's id,
+// and a count line
 // that is not a number, a head and a count is passed over.
 func TestLocalCountsAndMarkersAreKeptOnlyForARelease(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	keepRefusals(p.dir, "iss-8", map[string]int{"11 " + headA: 2})
-	s := Settle{Unrecorded: []Withdrawal{{Number: 11}}}
+	s := Settle{NotRead: []PushCount{{Pusher: "mal", Commits: 1}}}
 	s.shownOnce(p.dir, "iss-8", headA)()
-	for _, d := range []string{refusalsDir, shownDirRel} {
+	c := readTipCache(p.dir, "iss-8", headA)
+	c.markDone("octo")
+	c.save()
+	for _, d := range []string{refusalsDir, shownDirRel, tipCacheDirRel} {
 		if _, err := os.Stat(filepath.Join(p.dir, d, "iss-8")); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("%s/iss-8 = %v; want nothing kept for a subject that is not a release", d, err)
 		}
@@ -493,7 +496,7 @@ func TestTheRecordOfPushesIsReadOnlyAsTheForgeAnswersIt(t *testing.T) {
 	}
 	releaseForge.pushers = saved
 	f.pushersErr = errors.New("HTTP 403")
-	if r := readPushRecord(octo.dir, "rel-v0.16.0", links, tip); !strings.Contains(r.why, "could not be read (HTTP 403)") || r.verdict(tip, "octo") != pushNotVerified {
+	if r := readPushRecord(octo.dir, "rel-v0.16.0", links, tip); !strings.Contains(r.why, "could not be read (HTTP 403)") {
 		t.Errorf("a failed lookup: why = %q", r.why)
 	}
 	f.pushersErr = nil
@@ -501,39 +504,26 @@ func TestTheRecordOfPushesIsReadOnlyAsTheForgeAnswersIt(t *testing.T) {
 	f.edit = func(ps []Push) []Push {
 		return slices.Concat([]Push{{Before: unseen, After: ps[0].After, Pusher: "octo"}, {Before: ps[0].Before, After: unseen, Pusher: "octo"}}, ps[1:])
 	}
-	if r := readPushRecord(octo.dir, "rel-v0.16.0", links, tip); !strings.Contains(r.why, "is not held here to place") || r.verdict(tip, "octo") != pushNotVerified {
-		t.Errorf("a push not held here: why = %q, verdict %v; want it settling nothing", r.why, r.verdict(tip, "octo"))
+	if r := readPushRecord(octo.dir, "rel-v0.16.0", links, tip); !strings.Contains(r.why, "is not held here to place") {
+		t.Errorf("a push not held here: why = %q; want it settling nothing", r.why)
 	}
 }
 
 // TestAFailedReadingOfTheBranchListsNothingDue: peers' reading of the
-// reader's withdrawals names every one not recorded when the checkout or the
-// branch's history does not read, never due, and reads only those still
-// withdrawn.
+// reader's own record names why when the checkout or the branch's history
+// does not read, and finds no newest push to list from.
 func TestAFailedReadingOfTheBranchListsNothingDue(t *testing.T) {
-	w, _, octo := releasedWithNothingArmed(t)
-	ws := []Withdrawal{{Number: 11, ID: "PR_eleven", Form: FormAutoSquash, Head: headA, By: "octo", State: WithdrawnPending}}
-	r := Reservation{Record: "rel-v0.16.0", Commit: strings.Repeat("e", 40)}
+	_, _, octo := releasedWithNothingArmed(t)
 	for name, root := range map[string]string{"no checkout": filepath.Join(t.TempDir(), "none"), "no such commit": octo.dir} {
-		v, _ := vouchedForReader(root, r, "octo", ws)
-		if len(v.Due) != 0 || !slices.Equal(numbersOf(v.Unrecorded), []int{11}) {
-			t.Errorf("%s: %+v; want #11 named not recorded, never due", name, v)
+		if o := readerRecord(root, "rel-v0.16.0", strings.Repeat("e", 40), "octo"); o.found || !strings.Contains(o.why, "could not be read") {
+			t.Errorf("%s: %+v; want no record and why named", name, o)
 		}
-	}
-	r.Commit = w.remoteTip("rel-v0.16.0")
-	if _, err := Fetch(octo.dir, octo.opts()); err != nil {
-		t.Fatal(err)
-	}
-	kept := ws[0]
-	kept.State = WithdrawnKept
-	if v, _ := vouchedForReader(octo.dir, r, "octo", []Withdrawal{kept}); len(v.Due)+len(v.Unrecorded)+len(v.AppPushed)+len(v.Unverified) != 0 {
-		t.Errorf("a kept withdrawal read as %+v; want it passed over", v)
 	}
 }
 
 // mixedTombstone pushes over octo's rel-v0.16.0 a record of #11 octo pushed,
-// one adding #12 that mal pushed, and octo's tombstone over both: #11 is
-// due, #12 unrecorded.
+// octo's tombstone over it, and a tombstone mal pushed over that adding #12:
+// #11 is due, and mal's commit is not read.
 func (w *world) mixedTombstone(f *fakeForge) {
 	w.t.Helper()
 	id := "rel-v0.16.0"
@@ -541,16 +531,16 @@ func (w *world) mixedTombstone(f *fakeForge) {
 	w12 := Withdrawal{Number: 12, ID: "PR_twelve", Form: FormQueue, Head: headB, By: "octo", State: WithdrawnPending}
 	rec := message{Record: id, Holder: "octo", Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: t0, ExpiresAt: t0.Add(time.Hour), Withdrawn: []Withdrawal{w11}}
 	c1 := w.pushChild(id, w.remoteTip(id), rec.text(), t0)
-	rec.Withdrawn = []Withdrawal{w11, w12}
-	c2 := w.pushChild(id, c1, rec.text(), t0)
-	f.pusherOf[c2] = "mal"
 	rec.ReleasedAt, rec.ExpiresAt = t0, t0
-	w.pushChild(id, c2, rec.text(), t0)
+	c2 := w.pushChild(id, c1, rec.text(), t0)
+	rec.Withdrawn = []Withdrawal{w11, w12}
+	c3 := w.pushChild(id, c2, rec.text(), t0)
+	f.pusherOf[c3] = "mal"
 }
 
 // TestASettleThatActsOnNothingNamesWhatItLeavesOncePerTip: a settle stopped
 // by gh acting as another account, or by a re-arm the forge did not answer,
-// names the unrecorded withdrawal once for the tip, not on every act.
+// names the commit it does not read once for the tip, not on every act.
 func TestASettleThatActsOnNothingNamesWhatItLeavesOncePerTip(t *testing.T) {
 	for _, stop := range []string{"login", "unanswered"} {
 		w, f, octo := releasedWithNothingArmed(t)
@@ -562,18 +552,19 @@ func TestASettleThatActsOnNothingNamesWhatItLeavesOncePerTip(t *testing.T) {
 			f.refuse["enablePullRequestAutoMerge #11"] = "connection reset"
 		}
 		first := settleAfter(t, octo)
-		if !slices.Equal(numbersOf(first.Unrecorded), []int{12}) || f.pr(11).method != "" {
-			t.Fatalf("%s: first settle = %+v; want #12 named unrecorded, #11 not re-armed", stop, first)
+		if !slices.Equal(first.NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) || f.pr(11).method != "" {
+			t.Fatalf("%s: first settle = %+v; want mal's commit named and #11 not re-armed", stop, first)
 		}
-		if again := settleAfter(t, octo); len(again.Unrecorded) != 0 {
-			t.Fatalf("%s: second settle = %+v; want #12 not named again for the same tip", stop, again)
+		if again := settleAfter(t, octo); len(again.NotRead) != 0 {
+			t.Fatalf("%s: second settle = %+v; want mal's commit not named again for the same tip", stop, again)
 		}
 	}
 }
 
 // TestALiveRenewalWithdrawsAgainWhileTheRecordLagsItsOwnPush: the record of
-// pushes not yet naming the renewal the act just pushed still settles the
-// withdrawal beneath it: the tip it read counts as the branch's tip.
+// pushes is read before the renewal decides, so one not yet naming the
+// renewal the act then pushes still lets it withdraw again what the holder's
+// own newest push records.
 func TestALiveRenewalWithdrawsAgainWhileTheRecordLagsItsOwnPush(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -583,7 +574,11 @@ func TestALiveRenewalWithdrawsAgainWhileTheRecordLagsItsOwnPush(t *testing.T) {
 	}
 	f.mu.Lock()
 	f.prs[11].method = "SQUASH" // re-armed by hand
-	f.lag = 1
+	held := map[string]bool{}
+	for _, l := range strings.Fields(runGit(t, w.bare, "rev-list", RefPrefix+"rel-v0.16.0")) {
+		held[l] = true
+	}
+	f.edit = func(ps []Push) []Push { return slices.DeleteFunc(ps, func(p Push) bool { return !held[p.After] }) }
 	f.mu.Unlock()
 	if _, err := octo.do(Request{Record: "rel-v0.16.0"}); err != nil {
 		t.Fatal(err)
@@ -594,7 +589,8 @@ func TestALiveRenewalWithdrawsAgainWhileTheRecordLagsItsOwnPush(t *testing.T) {
 }
 
 // TestALiveRenewalThatCannotReadItsBranchWithdrawsNothingAgain: a branch
-// whose history does not read names why, and nothing is withdrawn again.
+// whose history does not read refuses the act before it decides, naming
+// why, and nothing is pushed or withdrawn.
 func TestALiveRenewalThatCannotReadItsBranchWithdrawsNothingAgain(t *testing.T) {
 	w := newWorld(t)
 	armedForge(t)
@@ -607,16 +603,15 @@ func TestALiveRenewalThatCannotReadItsBranchWithdrawsNothingAgain(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, ws := w.tipWithdrawals("rel-v0.16.0")
-	due, s := p.vouchAgain(tree, strings.Repeat("e", 40), strings.Repeat("d", 40), ws)
-	if len(due) != 0 || !strings.Contains(s.Failed, "could not read the history of rel-v0.16.0's branch") {
-		t.Fatalf("due %v, settle %+v; want nothing withdrawn again and why named", due, s)
+	j := judged{tip: tip{head: head{Commit: strings.Repeat("e", 40)}}, present: true}
+	if _, err := p.ownRelease(tree, &j); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "could not read the history of rel-v0.16.0's branch") {
+		t.Fatalf("ownRelease = %v; want refused, naming why", err)
 	}
 }
 
 // TestALiveRenewalNamesWhatItDoesNotWithdrawAgainOnce: an armed withdrawal
-// another login recorded is named on the first live renewal that finds it
-// armed, and not on the next.
+// another login recorded is not read: the commit is named on the first live
+// renewal, and not on the next, and the merge is left armed.
 func TestALiveRenewalNamesWhatItDoesNotWithdrawAgainOnce(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -639,7 +634,7 @@ func TestALiveRenewalNamesWhatItDoesNotWithdrawAgainOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, s := range res.Settles {
-			if slices.Contains(numbersOf(s.Unrecorded), 14) {
+			if len(s.NotRead) > 0 {
 				named++
 			}
 		}
@@ -670,9 +665,9 @@ func TestTheLaunchReadingNamesAKeptWithdrawal(t *testing.T) {
 }
 
 // TestAReservationOverAnotherLoginsTombstoneCarriesWhatItChanged: octo
-// reserves the release again over a tombstone another login pushed, which
-// recorded octo's withdrawn #11 re-armed; the new reservation carries #11
-// withdrawn, and octo's --release re-arms it.
+// renews the release over a tombstone another login pushed, which recorded
+// octo's withdrawn #11 re-armed; the renewal is read from octo's own newest
+// push, so it carries #11 withdrawn, and octo's --release re-arms it.
 func TestAReservationOverAnotherLoginsTombstoneCarriesWhatItChanged(t *testing.T) {
 	w := newWorld(t)
 	f := commentedForge(t)
@@ -704,9 +699,10 @@ func TestAReservationOverAnotherLoginsTombstoneCarriesWhatItChanged(t *testing.T
 	}
 }
 
-// TestALiveRenewalAsksTheRecordOnlyForAMergeArmedAgain: a live renewal lists
-// the armed merges first, and asks the forge's record of pushes only when
-// one it records withdrawn is armed again.
+// TestALiveRenewalAsksTheRecordOnlyForAMergeArmedAgain: a live renewal asks
+// the forge's record of pushes once, before it decides, whatever it then
+// withdraws again: what it withdraws again is read from the holder's own
+// newest push.
 func TestALiveRenewalAsksTheRecordOnlyForAMergeArmedAgain(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -719,8 +715,8 @@ func TestALiveRenewalAsksTheRecordOnlyForAMergeArmedAgain(t *testing.T) {
 	if _, err := octo.do(Request{Record: "rel-v0.16.0"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := asks() - before; got != 0 {
-		t.Fatalf("a live renewal with nothing armed again asked the record %d times; want none", got)
+	if got := asks() - before; got != 1 {
+		t.Fatalf("a live renewal with nothing armed again asked the record %d times; want one", got)
 	}
 	f.mu.Lock()
 	f.prs[11].method = "SQUASH" // re-armed by hand
@@ -734,9 +730,9 @@ func TestALiveRenewalAsksTheRecordOnlyForAMergeArmedAgain(t *testing.T) {
 	}
 }
 
-// TestALiveRenewalVouchesOnlyAMergeArmedAgain: a renewal vouches only the
-// merges the forge lists armed again, so an entry it does not withdraw again
-// is never named, however the record of pushes reads its commit.
+// TestALiveRenewalVouchesOnlyAMergeArmedAgain: a renewal withdraws again
+// only a merge the holder's own newest push records, so an entry a commit
+// mal pushed added is never named or withdrawn.
 func TestALiveRenewalVouchesOnlyAMergeArmedAgain(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -757,11 +753,20 @@ func TestALiveRenewalVouchesOnlyAMergeArmedAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, s := range res.Settles {
-		if slices.Contains(numbersOf(s.Unrecorded), 14) {
-			t.Fatalf("settle %+v names #14; want only a merge armed again vouched", s)
+		if strings.Contains(strings.Join(s.Notes(), "\n"), "#14") {
+			t.Fatalf("settle %+v names #14; want it never read", s)
 		}
 	}
 	if f.pr(11).method != "" {
 		t.Fatalf("#11 = %+v; want it withdrawn again", f.pr(11))
 	}
+}
+
+// settleNotes is every note of settles, one per line.
+func settleNotes(settles []Settle) string {
+	var out []string
+	for _, s := range settles {
+		out = append(out, s.Notes()...)
+	}
+	return strings.Join(out, "\n")
 }

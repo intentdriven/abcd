@@ -4490,8 +4490,11 @@ the same person ends it from another copy with --take-over, then --release. One
 whose head moved, that was closed or merged, or that can only be merged by hand
 (no merge queue), is skipped and named for its owner; every state is recorded on
 the tombstone (settles in --json), so no copy acts twice, a copy of another
-person never re-arms (stranded in --json), and a withdrawal no reservation of its
-withdrawer's recorded first is never acted on (unrecorded in settles).
+person never re-arms (stranded in --json). A person's withdrawals are read only
+from their own newest push to the release's branch, as the forge's record of
+pushes shows it: commits others pushed above it are counted and never read
+(not_read in settles), and when that push cannot be found or placed nothing is
+acted on for that person (unplaced in settles).
 
 Every act fetches the reservations from origin, judges the tip, writes one
 commit and makes one plain fast-forward push, with the repository's hooks

@@ -619,10 +619,11 @@ func (c ghCommenter) Comment(root, subject, body string) (posted bool, read stri
 // every open pull request into origin's default branch (Base) that is armed
 // or queued, and this copy's own live release reservation (Release, "" when
 // it holds none) with the pull requests it admitted, each at the head it was
-// admitted at. An admission is taken only when the forge's record of pushes
-// says the reader pushed both the reservation's tip and the commit that
-// recorded the admission; one it does not settle is Unverified, with
-// UnverifiedWhy, and is not exempt. The cut is refused while any armed one is
+// admitted at. An admission is taken only from the reader's own newest push
+// to the release branch, as the forge's record of pushes shows it
+// (dcn-2610231033516293); when that push cannot be found or placed, every
+// admission the release lists is Unverified, with UnverifiedWhy, and none is
+// exempt. The cut is refused while any armed one is
 // not admitted at its current head. Lapsed names this copy's own release
 // reservation still being cut (stillBeingCut) whose lease lapsed before the
 // release ended (dcn-2610230328220298): it holds no merge then, and nothing
@@ -672,10 +673,15 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 	reader := readerHolder(root, o)
 	var lapsed []Reservation
 	for _, r := range snap.Reservations {
-		if reader != "" {
-			r, _, _ = asCut(root, r, now, true)
+		// Only a release whose tip names the reader as its holder, or a
+		// tombstone, which may stand over the reader's own reservation, can
+		// be the reader's cut: another person's is not read.
+		if reader == "" || !isRelease(r.Record) || !sameHolder(r.Holder, reader) && r.State != StateReleased {
+			continue
 		}
-		if r.Copy != CopyThis || reader == "" || !sameHolder(r.Holder, reader) || !stillBeingCut(r) {
+		tip := r.Commit
+		r, _, _ = asCut(root, r, now)
+		if r.Copy != CopyThis || !sameHolder(r.Holder, reader) || !stillBeingCut(r) {
 			continue
 		}
 		if r.State != StateLive {
@@ -683,9 +689,21 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 			continue
 		}
 		a.Release = r.Record
-		a.Admitted, a.Unverified, a.UnverifiedWhy = pushedAdmissions(root, r, reader)
-		for _, w := range r.Withdrawn {
-			if w.State == WithdrawnKept {
+		own := readerRecord(root, r.Record, tip, reader)
+		if own.why != "" {
+			for _, w := range r.Withdrawn {
+				if w.State == WithdrawnAdmitted {
+					a.Unverified = append(a.Unverified, w)
+				}
+			}
+			a.UnverifiedWhy = own.why + "; run the check again in a minute, once the forge's record has caught up"
+			continue
+		}
+		for _, w := range own.mine(reader) {
+			switch w.State {
+			case WithdrawnAdmitted:
+				a.Admitted = append(a.Admitted, w)
+			case WithdrawnKept:
 				a.Kept = append(a.Kept, w)
 			}
 		}
@@ -701,76 +719,4 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 		return ArmedMerges{}, errors.New(forgeReason(err))
 	}
 	return a, nil
-}
-
-// pushedAdmissions splits the admitted withdrawals of r, the reader's live
-// release reservation, into those the forge's record of pushes says the
-// reader pushed (the reservation's tip, and the commit that recorded each
-// admission: the oldest of the commits from the tip down that carry it
-// admitted) and those it does not settle, with why.
-func pushedAdmissions(root string, r Reservation, reader string) (ok, unverified []Withdrawal, why string) {
-	var admitted []Withdrawal
-	for _, w := range r.Withdrawn {
-		if w.State == WithdrawnAdmitted {
-			admitted = append(admitted, w)
-		}
-	}
-	if len(admitted) == 0 {
-		return nil, nil, ""
-	}
-	tree, err := emptyTree(root)
-	if err != nil {
-		return nil, admitted, "the release branch's history could not be read (" + redacted(err) + ")"
-	}
-	links, complete, err := releaseChain(root, r.Record, r.Commit, tree)
-	if err != nil {
-		return nil, admitted, "the release branch's history could not be read (" + redacted(err) + ")"
-	}
-	rec := readPushRecord(root, r.Record, links, r.Commit)
-	if rec.verdict(r.Commit, reader) != pushedByThem {
-		return nil, admitted, notPushedBy(rec, r.Commit, reader, "the reservation's tip",
-			"renew the reservation from this copy (abcd reserve "+r.Record+"), whose push is then the tip, and run the check again")
-	}
-	for _, w := range admitted {
-		at := ""
-		for _, l := range links {
-			e, found := entryIn(l.m.Withdrawn, w)
-			if !l.readable || !found || e.State != WithdrawnAdmitted {
-				break
-			}
-			at = l.commit
-		}
-		if at != "" && at == links[len(links)-1].commit && !complete {
-			// The walk stopped while the admission was still carried: the
-			// commit that recorded it lies past the walk, unread.
-			unverified = append(unverified, w)
-			why = "the commit that recorded the admission lies past the " + fmt.Sprint(maxChain) + " commits of the release branch read, " +
-				"which no later reading changes: " + byHand
-			continue
-		}
-		if at != "" && rec.verdict(at, reader) == pushedByThem {
-			ok = append(ok, w)
-			continue
-		}
-		unverified = append(unverified, w)
-		why = notPushedBy(rec, at, reader, "the commit that recorded the admission", byHand)
-	}
-	return ok, unverified, why
-}
-
-// byHand is the remedy for an admission no later reading exempts.
-const byHand = "check the pull request by hand, and take it off the merge path if it does not belong in the cut"
-
-// notPushedBy is why what names, commit, is not taken as reader's, ending
-// with what settles it: final, when the record's verdict is one no later
-// reading changes (another account's push, or an app's), and otherwise a
-// reading made again once the record has caught up.
-func notPushedBy(rec pushRecord, commit, reader, what, final string) string {
-	switch rec.verdict(commit, reader) {
-	case pushedByOther:
-		return "the forge's record says another account pushed " + what + ": " + final
-	case pushedByApp:
-		return "an app pushed " + what + ", which says nothing of which person sent it: " + final
-	}
-	return rec.reason() + "; run the check again in a minute, once the forge's record has caught up"
 }

@@ -15,9 +15,9 @@ import (
 
 // TestAFormAnotherLoginRewroteIsNeverReArmed: the form a withdrawal is
 // re-armed in is part of what its withdrawer recorded. A tombstone another
-// login pushes over the genuine record, changing the forms, records each
-// changed entry for the first time, so it is named unrecorded and never
-// re-armed; an entry it carried unchanged is re-armed in its own form.
+// login pushes over the genuine record, changing the forms, ends nothing and
+// is not read: octo's next act names it, and octo's own --release re-arms
+// every one in the form octo's own newest push recorded.
 func TestAFormAnotherLoginRewroteIsNeverReArmed(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -45,28 +45,25 @@ func TestAFormAnotherLoginRewroteIsNeverReArmed(t *testing.T) {
 		t.Fatal(err)
 	}
 	// mal's tombstone ends nothing; octo's own --release over it does.
-	if len(res.Settles) != 1 || !slices.Equal(numbersOf(res.Settles[0].Unrecorded), []int{11, 12}) || res.Settles[0].NotEnded != "octo" || len(f.mutations()) != 0 {
-		t.Fatalf("settles = %+v, mutations %v; want #11 and #12 named unrecorded, and nothing acted on", res.Settles, f.mutations())
+	if len(res.Settles) != 1 || !slices.Equal(res.Settles[0].NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) || res.Settles[0].NotEnded != "octo" || len(f.mutations()) != 0 {
+		t.Fatalf("settles = %+v, mutations %v; want mal's tombstone counted and named, and nothing acted on", res.Settles, f.mutations())
 	}
 	if _, err := octo.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
 		t.Fatal(err)
 	}
-	if pr := f.pr(11); pr.method != "" {
-		t.Fatalf("#11 = %+v; want it left withdrawn, never armed in the form mal wrote", pr)
+	if pr := f.pr(11); pr.method != "SQUASH" {
+		t.Fatalf("#11 = %+v; want it re-armed in the form octo recorded, never the one mal wrote", pr)
 	}
-	if pr := f.pr(12); pr.method != "" || pr.queued {
-		t.Fatalf("#12 = %+v; want it left withdrawn, never armed in the form mal wrote", pr)
-	}
-	if got := f.mutations(); !slices.Equal(got, []string{"enqueuePullRequest #13"}) {
-		t.Fatalf("mutations = %v; want only #13, carried unchanged, re-armed in its own form", got)
+	if pr := f.pr(12); pr.method != "" || !pr.queued {
+		t.Fatalf("#12 = %+v; want it queued again as octo recorded, never armed in the form mal wrote", pr)
 	}
 }
 
 // TestAnAdmissionArmsOnlyTheFormItsWithdrawerRecorded: a renewal-shaped
 // commit another login pushes over the live reservation, changing a
-// withdrawal's form, is that entry's first record, so --admit refuses it and
-// arms nothing; abcd's own correction of a form, pushed by the holder, still
-// vouches.
+// withdrawal's form, is not read, so --admit arms the form octo's own newest
+// push recorded; abcd's own correction of a form, pushed by the holder, is
+// octo's record too.
 func TestAnAdmissionArmsOnlyTheFormItsWithdrawerRecorded(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -89,16 +86,15 @@ func TestAnAdmissionArmsOnlyTheFormItsWithdrawerRecorded(t *testing.T) {
 	c := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
 	f.pusherOf[c] = "mal"
 	f.reset()
-	_, err := octo.do(Request{Record: "rel-v0.16.0", Admit: 11})
-	if err == nil || !strings.Contains(err.Error(), "recorded its withdrawal first") || len(f.mutations()) != 0 {
-		t.Fatalf("admit #11 = %v, mutations %v; want refused, nothing armed", err, f.mutations())
+	if _, err := octo.do(Request{Record: "rel-v0.16.0", Admit: 11}); err != nil || f.pr(11).method != "SQUASH" {
+		t.Fatalf("admit #11 = %v, #11 %+v; want it armed in the form octo recorded", err, f.pr(11))
 	}
 	if _, err := octo.do(Request{Record: "rel-v0.16.0", Admit: 13}); err != nil {
 		t.Fatalf("admit #13 = %v; want the holder's own correction to vouch", err)
 	}
 	// #13 is still queued, so the admission finds it armed and records it.
-	if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 13) != WithdrawnAdmitted || stateOf(ws, 11) != WithdrawnPending {
-		t.Fatalf("recorded %+v; want #13 admitted and #11 still withdrawn", ws)
+	if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 13) != WithdrawnAdmitted || stateOf(ws, 11) != WithdrawnAdmitted || ws[0].Form != FormAutoSquash {
+		t.Fatalf("recorded %+v; want #13 and #11 admitted, #11 in octo's own form", ws)
 	}
 }
 
@@ -106,8 +102,8 @@ func TestAnAdmissionArmsOnlyTheFormItsWithdrawerRecorded(t *testing.T) {
 // another login pushes over the live reservation, reading as the holder's
 // own renewal and recording a withdrawal the holder never made, of a pull
 // request armed after the reservation, never makes the holder's renewal
-// withdraw that pull request: the entry is named unrecorded, and the release
-// that follows leaves it armed.
+// withdraw that pull request: the commit is not read, and counted, and the
+// release that follows leaves it armed.
 func TestALiveRenewalWithdrawsAgainOnlyWhatItsWithdrawerRecorded(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -130,8 +126,8 @@ func TestALiveRenewalWithdrawsAgainOnlyWhatItsWithdrawerRecorded(t *testing.T) {
 	if got := f.mutations(); len(got) != 0 || f.pr(14).method != "MERGE" {
 		t.Fatalf("mutations = %v, #14 %+v; want #14 left armed", got, f.pr(14))
 	}
-	if len(res.Settles) != 1 || !slices.Equal(numbersOf(res.Settles[0].Unrecorded), []int{14}) {
-		t.Fatalf("settles = %+v; want #14 named unrecorded", res.Settles)
+	if len(res.Settles) != 1 || !slices.Equal(res.Settles[0].NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) {
+		t.Fatalf("settles = %+v; want mal's commit counted, not read", res.Settles)
 	}
 	f.reset()
 	w.set(t0.Add(2 * time.Hour))
@@ -143,17 +139,14 @@ func TestALiveRenewalWithdrawsAgainOnlyWhatItsWithdrawerRecorded(t *testing.T) {
 	}
 }
 
-// TestALiveRenewalWithdrawsAgainNothingTheRecordDoesNotSettle: the
-// withdrawal a live renewal would make again is held to the forge's record
-// of pushes as a re-arm is: a record behind the tip defers it, and an app's
-// push leaves it for its person.
+// TestALiveRenewalWithdrawsAgainNothingTheRecordDoesNotSettle: a renewal
+// reads the holder's withdrawals from their own newest push, so a record
+// behind the tip, or an app's push of it, leaves that push not known: the
+// renewal is refused, naming why, and nothing is pushed or withdrawn again.
 func TestALiveRenewalWithdrawsAgainNothingTheRecordDoesNotSettle(t *testing.T) {
-	for name, c := range map[string]struct {
-		set   func(f *fakeForge, record string)
-		check func(s Settle) bool
-	}{
-		"behind": {func(f *fakeForge, _ string) { f.lag = 2 }, func(s Settle) bool { return len(s.Unverified) == 1 }},
-		"app":    {func(f *fakeForge, record string) { f.pusherOf[record] = "app" }, func(s Settle) bool { return len(s.AppPushed) == 1 }},
+	for name, set := range map[string]func(f *fakeForge, record string){
+		"behind": func(f *fakeForge, _ string) { f.lag = 2 },
+		"app":    func(f *fakeForge, record string) { f.pusherOf[record] = "app" },
 	} {
 		w := newWorld(t)
 		f := newFakeForge(t, map[int]*fakePR{11: {id: "PR_eleven", head: headA, method: "SQUASH"}})
@@ -163,15 +156,15 @@ func TestALiveRenewalWithdrawsAgainNothingTheRecordDoesNotSettle(t *testing.T) {
 		}
 		record := w.remoteTip("rel-v0.16.0")
 		f.prs[11].method = "SQUASH" // armed again
-		c.set(f, record)
+		set(f, record)
 		f.reset()
 		w.set(t0.Add(time.Hour))
-		res, err := octo.do(Request{Record: "rel-v0.16.0"})
-		if err != nil || res.Act != ActRenewed {
-			t.Fatalf("%s: renewal = %+v, %v", name, res, err)
+		_, err := octo.do(Request{Record: "rel-v0.16.0"})
+		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of octo's withdrawals on rel-v0.16.0") {
+			t.Fatalf("%s: renewal = %v; want refused, naming why", name, err)
 		}
-		if len(f.mutations()) != 0 || len(res.Settles) != 1 || !c.check(res.Settles[0]) {
-			t.Fatalf("%s: mutations %v, settles %+v; want nothing withdrawn again and #11 named", name, f.mutations(), res.Settles)
+		if len(f.mutations()) != 0 || w.remoteTip("rel-v0.16.0") != record {
+			t.Fatalf("%s: mutations %v; want nothing withdrawn again and nothing pushed", name, f.mutations())
 		}
 	}
 }
@@ -252,19 +245,21 @@ func TestAKeptWithdrawalIsVouchedForByTheRecordBeneathIt(t *testing.T) {
 }
 
 // TestPeersNeverCallsAWithdrawalAnAppOrAnotherLoginPushedDue: the listing
-// reads the reader's own withdrawals on an ended release against the forge's
-// record of pushes as the act does, so one an app or another account pushed
-// is never "re-armed by your next act"; and once an act has given that
-// verdict for the tip, neither the next act nor the listing asks the forge
-// again.
+// reads the reader's own withdrawals on a release from their own newest push,
+// as the act does, so commits an app or another account pushed over it are
+// never "re-armed by your next act": another account's are counted and not
+// read, an app's leaves the reading unsettled, and once a record read in full
+// has placed them for the tip, the listing does not ask the forge again.
 func TestPeersNeverCallsAWithdrawalAnAppOrAnotherLoginPushedDue(t *testing.T) {
-	for pusher, field := range map[string]func(ReleaseWithdrawals) []Withdrawal{
-		"app": func(r ReleaseWithdrawals) []Withdrawal { return r.AppPushed },
-		"mal": func(r ReleaseWithdrawals) []Withdrawal { return r.Unrecorded },
+	for pusher, check := range map[string]func(ReleaseWithdrawals) bool{
+		"app": func(r ReleaseWithdrawals) bool { return strings.Contains(r.Unplaced, "an app pushed commit") },
+		"mal": func(r ReleaseWithdrawals) bool {
+			return slices.Equal(r.NotRead, []PushCount{{Pusher: "mal", Commits: 2}})
+		},
 	} {
 		w, f, octo := releasedWithNothingArmed(t)
-		record, _ := w.forgedOver("rel-v0.16.0")
-		f.pusherOf[record] = pusher
+		record, tomb := w.forgedOver("rel-v0.16.0")
+		f.pusherOf[record], f.pusherOf[tomb] = pusher, pusher
 		if _, err := Fetch(octo.dir, octo.opts()); err != nil {
 			t.Fatal(err)
 		}
@@ -279,51 +274,54 @@ func TestPeersNeverCallsAWithdrawalAnAppOrAnotherLoginPushedDue(t *testing.T) {
 			}
 			return got[0]
 		}
-		// The listing before any act: asked once, and not due.
 		got := listing()
-		if len(got.Due) != 0 || len(field(got)) != 1 || strings.Contains(strings.Join(got.Lines(), "\n"), "your next abcd act") {
+		if len(got.Due) != 0 || !check(got) || strings.Contains(strings.Join(got.Lines(), "\n"), "your next abcd act") {
 			t.Fatalf("%s: listing = %+v %q; want #11 not due", pusher, got, got.Lines())
 		}
-		asks := f.pushAsks
-		// The act and the listing after it read the verdict kept for the tip.
 		if _, err := octo.reserve("iss-8", "o.go"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := octo.do(Request{Record: "iss-8", Release: true}); err != nil {
 			t.Fatal(err)
 		}
+		asks := f.pushAsks
 		got = listing()
-		if len(got.Due) != 0 || len(field(got)) != 1 || f.pushAsks != asks || len(f.mutations()) != 0 {
-			t.Fatalf("%s: listing = %+v, asks %d then %d, mutations %v; want the kept verdict and no ask", pusher, got, asks, f.pushAsks, f.mutations())
+		if len(got.Due) != 0 || !check(got) || f.pushAsks != asks || len(f.mutations()) != 0 {
+			t.Fatalf("%s: listing = %+v, asks %d then %d, mutations %v; want the placements kept for the tip and no ask", pusher, got, asks, f.pushAsks, f.mutations())
 		}
 	}
 }
 
-// TestAVerdictKeptForATipIsNotReadForAnother: the kept verdicts are the
-// tip's they were given at, and only the ones that leave a withdrawal alone
-// are kept.
+// TestAVerdictKeptForATipIsNotReadForAnother: what a record read in full
+// placed on a tip's commits, and the persons found done there, are kept for
+// that tip alone.
 func TestAVerdictKeptForATipIsNotReadForAnother(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, tierRelDir), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	k := readVerdicts(root, "rel-v0.16.0", headA)
-	k.keep(headB, "Octo", pushedByApp)
-	k.keep(headC, "octo", pushedByThem)
-	k.keep(headC, "quinn", pushNotVerified)
+	k := readTipCache(root, "rel-v0.16.0", headA)
+	k.place(headB, pushedByApp, "")
+	k.place(headC, pushedByLogin, "Octo")
+	k.place(headA, pushedByNone, "")
+	k.markDone("quinn")
 	k.save()
-	again := readVerdicts(root, "rel-v0.16.0", headA)
-	if v, ok := again.of(headB, "octo"); !ok || v != pushedByApp {
-		t.Fatalf("kept verdict = %v, %v; want the app's", v, ok)
+	again := readTipCache(root, "rel-v0.16.0", headA)
+	if kind, _, ok := again.placed(headB); !ok || kind != pushedByApp {
+		t.Fatalf("kept = %v, %v; want the app's", kind, ok)
 	}
-	if _, ok := again.of(headC, "octo"); ok {
-		t.Fatal("a verdict that acts was kept")
+	if kind, login, ok := again.placed(headC); !ok || kind != pushedByLogin || login != "Octo" {
+		t.Fatalf("kept = %v %q, %v; want Octo's", kind, login, ok)
 	}
-	if _, ok := again.of(headC, "quinn"); ok {
-		t.Fatal("a verdict that can change was kept")
+	if _, _, ok := again.placed(headA); ok {
+		t.Fatal("a commit the record placed nothing on was kept")
 	}
-	if _, ok := readVerdicts(root, "rel-v0.16.0", headC).of(headB, "octo"); ok {
-		t.Fatal("a verdict kept for one tip was read for another")
+	if !again.isDone("Quinn") || again.isDone("octo") {
+		t.Fatal("the persons found done were not kept as they were")
+	}
+	other := readTipCache(root, "rel-v0.16.0", headC)
+	if _, _, ok := other.placed(headB); ok || other.isDone("quinn") {
+		t.Fatal("what was kept for one tip was read for another")
 	}
 }
 
@@ -434,15 +432,15 @@ func TestAnAdmittedMergeFoundArmedAtANewHeadCountsAsDone(t *testing.T) {
 
 // TestAnAdmissionTheRecordDoesNotSettleIsRefused: --admit arms under the
 // cutter's account, so a record of pushes that has not caught up, or an
-// app's push of the commit that recorded the withdrawal, refuses it with
-// nothing armed.
+// app's push of the commit that recorded the withdrawal, leaves the cutter's
+// newest push unknown and refuses it with nothing armed.
 func TestAnAdmissionTheRecordDoesNotSettleIsRefused(t *testing.T) {
 	for name, c := range map[string]struct {
 		set  func(f *fakeForge, record string)
 		want string
 	}{
-		"behind": {func(f *fakeForge, _ string) { f.lag = 1 }, "run --admit 11 again in a minute"},
-		"app":    {func(f *fakeForge, record string) { f.pusherOf[record] = "app" }, "an app pushed the commit that recorded its withdrawal"},
+		"behind": {func(f *fakeForge, _ string) { f.lag = 1 }, "does not end at the tip read here"},
+		"app":    {func(f *fakeForge, record string) { f.pusherOf[record] = "app" }, "an app pushed commit "},
 	} {
 		w := newWorld(t)
 		f := newFakeForge(t, map[int]*fakePR{11: {id: "PR_eleven", head: headA, method: "SQUASH"}})
@@ -511,8 +509,8 @@ func pushIndex(ps []Push, after string) int {
 
 // TestAPushCarryingSeveralCommitsIsPlacedOnEachOfThem: one push that moved
 // the branch over two commits is placed on both, so another login's push of
-// a withdrawal record together with the tombstone over it vouches for
-// nothing.
+// a withdrawal record together with the tombstone over it lies above octo's
+// newest push, and both are counted, not read.
 func TestAPushCarryingSeveralCommitsIsPlacedOnEachOfThem(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
 	record, tomb := w.forgedOver("rel-v0.16.0")
@@ -522,15 +520,16 @@ func TestAPushCarryingSeveralCommitsIsPlacedOnEachOfThem(t *testing.T) {
 		return slices.Concat(ps[:i], []Push{one}, ps[j+1:])
 	}
 	s := settleAfter(t, octo)
-	if len(f.mutations()) != 0 || !slices.Equal(numbersOf(s.Unrecorded), []int{11}) {
-		t.Fatalf("settle = %+v, mutations %v; want #11 unrecorded", s, f.mutations())
+	if len(f.mutations()) != 0 || !slices.Equal(s.NotRead, []PushCount{{Pusher: "mal", Commits: 2}}) {
+		t.Fatalf("settle = %+v, mutations %v; want mal's two commits counted", s, f.mutations())
 	}
 }
 
 // TestAForcedPushIsPlacedOnEveryCommitBeneathIt: a push whose earlier tip is
 // not on the branch's line (a forced one) may have carried any commit
-// beneath its own, so another login's forced push leaves every withdrawal
-// beneath it unrecorded, never re-armed.
+// beneath its own, so another login's forced push leaves the commits beneath
+// it carrying pushes of two accounts: octo's newest push is not known, and
+// nothing is re-armed.
 func TestAForcedPushIsPlacedOnEveryCommitBeneathIt(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
 	_, tomb := w.forgedOver("rel-v0.16.0") // octo's own pushes
@@ -548,8 +547,8 @@ func TestAForcedPushIsPlacedOnEveryCommitBeneathIt(t *testing.T) {
 		return slices.Concat(ps[:i], []Push{{Before: away, After: forced, Pusher: "mal"}, {Before: tomb, After: away, Pusher: "mal"}}, ps[i+1:])
 	}
 	s := settleAfter(t, octo)
-	if len(f.mutations()) != 0 || !slices.Equal(numbersOf(s.Unrecorded), []int{11}) {
-		t.Fatalf("settle = %+v, mutations %v; want #11 unrecorded", s, f.mutations())
+	if len(f.mutations()) != 0 || !strings.Contains(s.Unplaced, "pushes of more than one account") {
+		t.Fatalf("settle = %+v, mutations %v; want octo's newest push not known", s, f.mutations())
 	}
 }
 
@@ -570,8 +569,8 @@ func TestAPushIsPlacedOnlyOnTheCommitsAboveItsEarlierTip(t *testing.T) {
 
 // TestAPushThisCheckoutCannotPlaceIsPlacedOnTheWholeLine: another login's
 // push to a commit this checkout does not hold may have carried any commit
-// it read, so its pusher is placed on all of them and the withdrawal reads
-// unrecorded, never merely not yet verified.
+// it read, so the record settles none of them: nothing is re-armed, and why
+// is named.
 func TestAPushThisCheckoutCannotPlaceIsPlacedOnTheWholeLine(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
 	_, tomb := w.forgedOver("rel-v0.16.0") // octo's own pushes
@@ -586,15 +585,15 @@ func TestAPushThisCheckoutCannotPlaceIsPlacedOnTheWholeLine(t *testing.T) {
 			{Before: tomb, After: unseen2, Pusher: "mal"}}, ps[i+1:])
 	}
 	s := settleAfter(t, octo)
-	if len(f.mutations()) != 0 || !slices.Equal(numbersOf(s.Unrecorded), []int{11}) {
-		t.Fatalf("settle = %+v, mutations %v; want #11 unrecorded", s, f.mutations())
+	if len(f.mutations()) != 0 || !strings.Contains(s.Unplaced, "is not held here to place") {
+		t.Fatalf("settle = %+v, mutations %v; want octo's newest push not placed", s, f.mutations())
 	}
 }
 
 // TestARecordWithAPushMissingSettlesNothing: the forge's activity record
 // passes over an entry without a pusher; a record whose pushes do not run
 // unbroken down to the push that made the branch says nothing of who carried
-// every commit, so the withdrawal is not yet verified, never re-armed. The
+// every commit, so octo's newest push is not placed, and nothing is re-armed. The
 // case: the branch rewound under octo's push, which then carried a commit
 // whose own push the record dropped.
 func TestARecordWithAPushMissingSettlesNothing(t *testing.T) {
@@ -606,8 +605,8 @@ func TestARecordWithAPushMissingSettlesNothing(t *testing.T) {
 		return slices.Concat(ps[:i], []Push{{Before: before, After: tomb, Pusher: "octo"}, {Before: record, After: before, Pusher: "mal"}}, ps[j+1:])
 	}
 	s := settleAfter(t, octo)
-	if len(f.mutations()) != 0 || !slices.Equal(numbersOf(s.Unverified), []int{11}) || !strings.Contains(s.UnverifiedWhy, "a push missing") {
-		t.Fatalf("settle = %+v, mutations %v; want #11 not yet verified", s, f.mutations())
+	if len(f.mutations()) != 0 || !strings.Contains(s.Unplaced, "a push missing") {
+		t.Fatalf("settle = %+v, mutations %v; want octo's newest push not placed", s, f.mutations())
 	}
 	// Run unbroken, the same pushes settle it (another account's rewind
 	// carried nothing it recorded).
@@ -618,8 +617,8 @@ func TestARecordWithAPushMissingSettlesNothing(t *testing.T) {
 	}
 }
 
-// TestUnbrokenNeedsEveryLinkDownToTheBranchsFirstPush and the verdict's
-// backstop: a commit the record places no push on is not verified.
+// TestUnbrokenNeedsEveryLinkDownToTheBranchsFirstPush and the placement's
+// backstop: a commit the record places no push on places no one.
 func TestUnbrokenNeedsEveryLinkDownToTheBranchsFirstPush(t *testing.T) {
 	a, b, c := headA, headB, headC
 	for name, c := range map[string]struct {
@@ -636,32 +635,36 @@ func TestUnbrokenNeedsEveryLinkDownToTheBranchsFirstPush(t *testing.T) {
 			t.Errorf("%s: unbroken = %v; want %v", name, got, c.want)
 		}
 	}
-	rec := pushRecord{by: map[string][]Push{headA: {{After: headA, Pusher: "octo"}}}}
-	if got := rec.verdict(headB, "octo"); got != pushNotVerified {
-		t.Fatalf("a commit no push is placed on reads %v; want not verified", got)
+	rec := pushRecord{by: map[string][]Push{headA: {{After: headA, Pusher: "octo"}}, headC: {{After: headC, Pusher: "octo"}, {After: headC, Pusher: "mal"}}}}
+	if kind, _ := rec.placed(headB); kind != pushedByNone {
+		t.Fatalf("a commit no push is placed on reads %v; want none", kind)
 	}
-	if got := rec.verdict(headA, "octo"); got != pushedByThem {
-		t.Fatalf("octo's own push reads %v", got)
+	if kind, login := rec.placed(headA); kind != pushedByLogin || login != "octo" {
+		t.Fatalf("octo's own push reads %v %q", kind, login)
+	}
+	if kind, _ := rec.placed(headC); kind != pushedByMany {
+		t.Fatalf("two accounts' pushes read %v; want many", kind)
 	}
 }
 
 // TestARecordOfNoPushesSettlesNothing: an empty record of pushes, read in
-// full, vouches for no commit.
+// full, places no newest push of octo's.
 func TestARecordOfNoPushesSettlesNothing(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
 	w.forgedOver("rel-v0.16.0")
 	f.edit = func([]Push) []Push { return nil }
 	s := settleAfter(t, octo)
-	if len(f.mutations()) != 0 || !slices.Equal(numbersOf(s.Unverified), []int{11}) {
-		t.Fatalf("settle = %+v, mutations %v; want #11 not yet verified", s, f.mutations())
+	if len(f.mutations()) != 0 || s.Unplaced == "" {
+		t.Fatalf("settle = %+v, mutations %v; want nothing acted on, and why named", s, f.mutations())
 	}
 }
 
-// TestTheLaunchReadingExemptsNoAdmissionPastTheWalk: an admission carried by
-// every commit the walk reads lies past it, unread, so it is not exempt.
+// TestTheLaunchReadingExemptsNoAdmissionPastTheWalk: commits of another
+// login's filling the whole walk leave the reader's newest push past it,
+// unread, so no admission is exempt.
 func TestTheLaunchReadingExemptsNoAdmissionPastTheWalk(t *testing.T) {
 	w := newWorld(t)
-	armedForge(t)
+	f := armedForge(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
 		t.Fatal(err)
@@ -670,12 +673,15 @@ func TestTheLaunchReadingExemptsNoAdmissionPastTheWalk(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _ := w.tipWithdrawals("rel-v0.16.0")
-	w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, maxChain)
+	tip := w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, maxChain)
+	for _, c := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", fmt.Sprint(maxChain), tip)) {
+		f.pusherOf[c] = "mal"
+	}
 	if _, err := Fetch(p.dir, p.opts()); err != nil {
 		t.Fatal(err)
 	}
 	a, err := ArmedMergesForCut(p.dir, p.opts())
-	if err != nil || len(a.Admitted) != 0 || len(a.Unverified) != 1 || !strings.Contains(a.UnverifiedWhy, "lies past the") {
+	if err != nil || len(a.Admitted) != 0 || len(a.Unverified) != 1 || !strings.Contains(a.UnverifiedWhy, "is not within the 64 commits read") {
 		t.Fatalf("reading = %+v, %v; want #11 not exempt", a, err)
 	}
 }
@@ -704,15 +710,15 @@ func (w *world) pushChildren(id, parent string, m message, n int) string {
 // test that has the forge's record say otherwise of the same commits.
 func forgetVerdicts(t *testing.T, root string) {
 	t.Helper()
-	if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(verdictsDirRel))); err != nil {
+	if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(tipCacheDirRel))); err != nil {
 		t.Fatal(err)
 	}
 }
 
 // TestAnUnrecordedWithdrawalIsShownAgainWhenTheSettleNamingItIsLost: the
-// tip an unrecorded withdrawal was named at is kept only once the settle
-// naming it is returned, so a settle whose claim on the end was not pushed
-// marks nothing shown, and the next one names it.
+// tip a commit not read was named at is kept only once the settle naming it
+// is returned, so a settle whose claim on the end was not pushed marks
+// nothing shown, and the next one names it.
 func TestAnUnrecordedWithdrawalIsShownAgainWhenTheSettleNamingItIsLost(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
@@ -752,7 +758,7 @@ func TestAnUnrecordedWithdrawalIsShownAgainWhenTheSettleNamingItIsLost(t *testin
 		t.Fatalf("settle = %+v; want nothing said when its claim was not pushed", s)
 	}
 	s, ok = settleEnded(a, tree, "rel-v0.16.0", false)
-	if !ok || s.Commit == "" || !slices.Equal(numbersOf(s.Unrecorded), []int{14}) {
-		t.Fatalf("settle = %+v; want #14 named unrecorded by the settle that was pushed", s)
+	if !ok || s.Commit == "" || !slices.Equal(s.NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) {
+		t.Fatalf("settle = %+v; want mal's commit named by the settle that was pushed", s)
 	}
 }

@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -19,7 +20,15 @@ func TestAReleaseReArmsWhileTheRecordLagsItsOwnTombstone(t *testing.T) {
 	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
 		t.Fatal(err)
 	}
-	f.lag = 1 // the record has not yet caught up with the tombstone
+	// The record has not yet caught up with the tombstone: it holds no push
+	// made after this point.
+	held := map[string]bool{}
+	for _, l := range strings.Fields(runGit(t, w.bare, "rev-list", RefPrefix+"rel-v0.16.0")) {
+		held[l] = true
+	}
+	f.edit = func(ps []Push) []Push {
+		return slices.DeleteFunc(ps, func(p Push) bool { return !held[p.After] })
+	}
 	f.reset()
 	if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
 		t.Fatal(err)
@@ -29,77 +38,72 @@ func TestAReleaseReArmsWhileTheRecordLagsItsOwnTombstone(t *testing.T) {
 	}
 }
 
-// TestAReleaseNamesWhatItDoesNotActOnOncePerTip: --release names each
-// withdrawal it leaves alone (an app's push recorded it, no reservation of
-// the holder's recorded it, or the record does not settle it yet), and the
-// act after it, over the same tip, does not name the first two again.
+// TestAReleaseNamesWhatItDoesNotActOnOncePerTip: --release reads the
+// holder's own newest push. A commit another login pushed over it is not
+// read, and is named once for the tip: the release re-arms only what octo's
+// own push recorded, and the act after it names nothing again. An app's push
+// of octo's record, or a record behind the tip, leaves that push not known:
+// the release is refused, naming why, and nothing is pushed or armed.
 func TestAReleaseNamesWhatItDoesNotActOnOncePerTip(t *testing.T) {
-	w := newWorld(t)
-	f := newFakeForge(t, map[int]*fakePR{11: {id: "PR_eleven", head: headA, method: "SQUASH"}, 14: {id: "PR_fourteen", head: headA}})
-	octo := w.clone("1234+octo@users.noreply.github.com", "")
-	if _, err := octo.do(Request{Record: "rel-v0.16.0"}); err != nil {
-		t.Fatal(err)
+	setup := func() (*world, *fakeForge, *participant, string) {
+		w := newWorld(t)
+		f := newFakeForge(t, map[int]*fakePR{11: {id: "PR_eleven", head: headA, method: "SQUASH"}, 14: {id: "PR_fourteen", head: headA}})
+		octo := w.clone("1234+octo@users.noreply.github.com", "")
+		if _, err := octo.do(Request{Record: "rel-v0.16.0"}); err != nil {
+			t.Fatal(err)
+		}
+		record := w.remoteTip("rel-v0.16.0")
+		m, ws := w.tipWithdrawals("rel-v0.16.0")
+		m.Withdrawn = append(ws, Withdrawal{Number: 14, ID: "PR_fourteen", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending})
+		m.ClaimedAt, m.ExpiresAt = w.clock(), w.clock().Add(time.Hour)
+		planted := w.pushChild("rel-v0.16.0", record, m.text(), w.clock())
+		f.pusherOf[planted] = "mal"
+		f.reset()
+		w.set(t0.Add(time.Minute))
+		return w, f, octo, record
 	}
-	f.pusherOf[w.remoteTip("rel-v0.16.0")] = "app" // the commit recording #11
-	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	m.Withdrawn = append(ws, Withdrawal{Number: 14, ID: "PR_fourteen", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending})
-	m.ClaimedAt, m.ExpiresAt = w.clock(), w.clock().Add(time.Hour)
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
-	f.pusherOf[planted] = "mal"
-	f.reset()
-	w.set(t0.Add(time.Minute))
+	_, f, octo, _ := setup()
 	res, err := octo.do(Request{Record: "rel-v0.16.0", Release: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var s Settle
+	if !slices.Equal(f.mutations(), []string{"enablePullRequestAutoMerge #11"}) || f.pr(14).method != "" {
+		t.Fatalf("mutations %v; want only octo's #11 re-armed, #14 untouched", f.mutations())
+	}
+	notes := ""
 	for _, x := range res.Settles {
-		if x.Subject == "rel-v0.16.0" && x.Commit != "" {
-			s = x
-		}
+		notes += strings.Join(x.Notes(), "\n")
 	}
-	if !slices.Equal(numbersOf(s.AppPushed), []int{11}) || !slices.Equal(numbersOf(s.Unrecorded), []int{14}) || len(f.mutations()) != 0 {
-		t.Fatalf("release settles = %+v, mutations %v; want #11 app-pushed and #14 unrecorded, nothing armed", res.Settles, f.mutations())
+	if !strings.Contains(notes, "1 commit above octo's newest push to rel-v0.16.0's branch, pushed by mal (1), are not read") {
+		t.Fatalf("notes = %q; want mal's commit named", notes)
 	}
-	notes := strings.Join(s.Notes(), "\n")
-	if !strings.Contains(notes, "an app pushed the commit that recorded them") || !strings.Contains(notes, "#14 on rel-v0.16.0 recorded as withdrawn by octo") {
-		t.Fatalf("notes = %q", notes)
-	}
-	// Over the same tip, the next act names neither again.
 	res, err = octo.reserve("iss-8", "o.go")
-	if err != nil {
-		t.Fatal(err)
+	if err != nil || len(res.Settles) != 0 {
+		t.Fatalf("next act settles = %+v, %v; want nothing named again", res.Settles, err)
 	}
-	for _, x := range res.Settles {
-		if len(x.AppPushed)+len(x.Unrecorded) > 0 {
-			t.Fatalf("next act settles = %+v; want nothing named again for the same tip", res.Settles)
+	for name, set := range map[string]func(f *fakeForge, record string){
+		"app":    func(f *fakeForge, record string) { f.pusherOf[record] = "app" },
+		"behind": func(f *fakeForge, _ string) { f.lag = 2 },
+	} {
+		w, f, octo, record := setup()
+		set(f, record)
+		tip := w.remoteTip("rel-v0.16.0")
+		_, err := octo.do(Request{Record: "rel-v0.16.0", Release: true})
+		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of octo's withdrawals on rel-v0.16.0") ||
+			len(f.mutations()) != 0 || w.remoteTip("rel-v0.16.0") != tip {
+			t.Fatalf("%s: release = %v, mutations %v; want refused, naming why, nothing pushed", name, err, f.mutations())
 		}
-	}
-	// A record behind the tombstone and its parent leaves a fresh release's
-	// withdrawal not yet verified, named.
-	w2 := newWorld(t)
-	f2 := newFakeForge(t, map[int]*fakePR{11: {id: "PR_eleven", head: headA, method: "SQUASH"}})
-	p := w2.clone("1234+octo@users.noreply.github.com", "")
-	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
-		t.Fatal(err)
-	}
-	f2.lag = 2
-	f2.reset()
-	res, err = p.do(Request{Record: "rel-v0.16.0", Release: true})
-	if err != nil || len(res.Settles) != 1 || !slices.Equal(numbersOf(res.Settles[0].Unverified), []int{11}) ||
-		!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "#11 on rel-v0.16.0 not yet verified") || len(f2.mutations()) != 0 {
-		t.Fatalf("release = %+v, %v, mutations %v; want #11 named not yet verified", res.Settles, err, f2.mutations())
 	}
 }
 
-// TestAWithdrawalIsVouchedForOnlyWithinTheWalk: a first record within the
-// 64 commits read is vouched for; one the walk stops on with more beneath it
-// is not.
+// TestAWithdrawalIsVouchedForOnlyWithinTheWalk: octo's newest push within
+// the 64 commits read, beneath commits another login pushed, is read and
+// re-armed from; one past them is not found, and nothing is re-armed.
 func TestAWithdrawalIsVouchedForOnlyWithinTheWalk(t *testing.T) {
 	for _, c := range []struct {
 		renewals int
 		rearmed  bool
-	}{{maxChain - 2, true}, {maxChain - 1, false}} {
+	}{{maxChain - 1, true}, {maxChain, false}} {
 		w := newWorld(t)
 		f := newFakeForge(t, map[int]*fakePR{11: {id: "PR_eleven", head: headA, method: "SQUASH"}})
 		p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -108,7 +112,10 @@ func TestAWithdrawalIsVouchedForOnlyWithinTheWalk(t *testing.T) {
 		}
 		// The reservation and its record, then the renewals over them.
 		m, _ := w.tipWithdrawals("rel-v0.16.0")
-		w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, c.renewals)
+		top := w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, c.renewals)
+		for _, l := range strings.Fields(runGit(t, w.bare, "rev-list", "-n", fmt.Sprint(c.renewals), top)) {
+			f.pusherOf[l] = "mal"
+		}
 		w.tagOrigin("v0.16.0")
 		f.reset()
 		res, err := p.reserve("iss-8", "o.go")
@@ -185,7 +192,7 @@ func (p *participant) prepared(t *testing.T) *prepared {
 
 // TestASettleNamesOnlyItsOwnPersonsWithdrawals: another person's withdrawal
 // on an ended release is theirs to settle, so the act names it stranded on
-// a reservation, never as this person's unrecorded.
+// a reservation, never as this person's.
 func TestASettleNamesOnlyItsOwnPersonsWithdrawals(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
 	w.forgedOver("rel-v0.16.0") // octo's #11, octo's own pushes
@@ -193,7 +200,7 @@ func TestASettleNamesOnlyItsOwnPersonsWithdrawals(t *testing.T) {
 	m.Withdrawn = append(ws, Withdrawal{Number: 12, ID: "PR_twelve", Form: FormAutoMerge, Head: headB, By: "quinn", State: WithdrawnPending})
 	w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), t0)
 	s := settleAfter(t, octo)
-	if slices.Contains(numbersOf(s.Unrecorded), 12) || slices.Contains(numbersOf(s.Unverified), 12) || slices.Contains(numbersOf(s.AppPushed), 12) {
+	if s.Unplaced != "" || len(s.NotRead) != 0 || strings.Contains(strings.Join(s.Notes(), "\n"), "#12") {
 		t.Fatalf("settle = %+v; want quinn's #12 not named as octo's", s)
 	}
 	if got := f.mutations(); !slices.Equal(got, []string{"enablePullRequestAutoMerge #11"}) {
@@ -201,13 +208,13 @@ func TestASettleNamesOnlyItsOwnPersonsWithdrawals(t *testing.T) {
 	}
 }
 
-// TestAnUnrecordedWithdrawalIsNamedAgainOnANewTip: once for each tip, so a
-// new tip names it again.
+// TestAnUnrecordedWithdrawalIsNamedAgainOnANewTip: commits not read are named
+// once for each tip, so a new tip names them again.
 func TestAnUnrecordedWithdrawalIsNamedAgainOnANewTip(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
 	record, tomb := w.forgedOver("rel-v0.16.0")
 	f.pusherOf[record], f.pusherOf[tomb] = "mal", "mal"
-	if s := settleAfter(t, octo); len(s.Unrecorded) != 1 {
+	if s := settleAfter(t, octo); !slices.Equal(s.NotRead, []PushCount{{Pusher: "mal", Commits: 2}}) {
 		t.Fatalf("settle = %+v", s)
 	}
 	if _, err := octo.do(Request{Record: "iss-8", Release: true}); err != nil {
@@ -216,8 +223,8 @@ func TestAnUnrecordedWithdrawalIsNamedAgainOnANewTip(t *testing.T) {
 	m, _ := w.tipWithdrawals("rel-v0.16.0")
 	again := w.pushChild("rel-v0.16.0", tomb, m.text()+"\n", t0)
 	f.pusherOf[again] = "mal"
-	if s := settleAfter(t, octo); len(s.Unrecorded) != 1 {
-		t.Fatalf("settle on the new tip = %+v; want #11 named again", s)
+	if s := settleAfter(t, octo); !slices.Equal(s.NotRead, []PushCount{{Pusher: "mal", Commits: 3}}) {
+		t.Fatalf("settle on the new tip = %+v; want mal's commits named again", s)
 	}
 }
 

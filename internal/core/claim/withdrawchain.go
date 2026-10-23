@@ -3,10 +3,11 @@ package claim
 // withdrawchain.go reads a release branch's ancestry for what its tip alone
 // cannot say about the withdrawals it records (iss-2610222014550692):
 //
-//   - whose a withdrawal is. The By field is the writer's data, so a re-arm
-//     honours one only when the reservation commit that first recorded it was
-//     itself held by that person (vouched); any other entry is named and
-//     never acted on.
+//   - whose a withdrawal is, for the report of lost withdrawals alone, which
+//     reads the chain without the forge: one is counted only when the
+//     reservation commit that first recorded it was itself held by that
+//     person (vouched). An act never reads a withdrawal this way: it reads a
+//     person's withdrawals only from their own newest push (asker.newest).
 //   - which withdrawals a later commit lost. An older abcd ignores the
 //     Abcd-Withdrawn trailer, so its renewal, take-over or tombstone rewrites
 //     the tip without them; the walk finds each one still withdrawn on an
@@ -85,8 +86,8 @@ func entryIn(ws []Withdrawal, w Withdrawal) (Withdrawal, bool) {
 
 // vouched reports whether w, as the chain's tip records it, was first
 // recorded by a reservation its own By held (firstRecord), by the chain
-// alone: what a report reads. An act that re-arms also holds that commit to
-// the forge's record of who pushed it (vouch).
+// alone: what the report of lost withdrawals reads. An act reads a person's
+// withdrawals from their own newest push instead (asker.newest).
 func vouched(links []chainLink, complete bool, w Withdrawal) bool {
 	_, ok := firstRecord(links, complete, w)
 	return ok
