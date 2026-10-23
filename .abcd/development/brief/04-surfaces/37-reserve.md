@@ -32,7 +32,7 @@ hold, below), and does one of two things: it reserves the record, or it
 releases this copy's reservation of it. A third form, the holder query, takes
 no record and is described under "The holder" below. A reservation names every
 repository-relative path the work will change, one path to a flag, never split
-on commas, and the footprint is required. Its paths are meant to be files: a
+on commas, and the footprint is required. Each path should name a file. A
 path naming a directory holds off every other reservation of any file inside
 it, so a lane holding a whole package serialises every unrelated lane that
 touches one file there (iss-2610230016544142). A footprint path naming a
@@ -42,7 +42,8 @@ with how many tracked files lie beneath it and the branch they were counted on
 directory only it holds), telling the person to name the files instead
 (`directory_footprint`, a warning on stderr in the text form). A path neither
 holds as a directory, such as a file the work will add, draws nothing. Its
-lease is from one minute to 24 hours, two hours by default. A release takes no footprint, take-over or lease.
+lease is from one minute to 24 hours, two hours by default. A release takes no
+footprint, take-over or lease.
 Bare `abcd reserve` refuses as a usage error and points at `abcd peers`, which
 lists the reservations. The flags are in the appendix below.
 
