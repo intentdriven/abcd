@@ -792,7 +792,7 @@ abcd checklist add "Regenerate the CLI reference"
 
 #### `abcd checklist render`
 
-Print the checklist as a session's context is given it, open items first: Writes nothing; refuses outside a git checkout.
+Print the checklist as one block of text, open items first: Writes nothing; refuses outside a git checkout.
 
 **Usage:** `abcd checklist render`
 

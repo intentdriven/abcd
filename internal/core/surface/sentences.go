@@ -95,7 +95,7 @@ var sentences = map[string]string{
 		"Writes nothing; refuses outside a git checkout.",
 	"abcd checklist add": "Add one item to the checklist under a new stable id: " +
 		"Writes checklist.json and its last-good copy; refuses a schema violation or a secret, naming the field.",
-	"abcd checklist render": "Print the checklist as a session's context is given it, open items first: " +
+	"abcd checklist render": "Print the checklist as one block of text, open items first: " +
 		"Writes nothing; refuses outside a git checkout.",
 	"abcd checklist set": "Set one checklist item's state by its id: " +
 		"Writes checklist.json and its last-good copy; refuses an unknown id or state.",

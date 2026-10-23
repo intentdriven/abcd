@@ -65,7 +65,7 @@ The states are `working`, `waiting`, `done` and `dropped`.
 "${CLAUDE_PLUGIN_ROOT}/abcd" checklist render
 ```
 
-Prints the checklist as a session's context is given it: the open items
+Prints the checklist as one block of text: the open items
 first, then the done and dropped ones, one line each. With `--json` the text
 is the `text` field.
 

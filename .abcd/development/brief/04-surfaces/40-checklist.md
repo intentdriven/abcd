@@ -26,7 +26,7 @@ the process, touching no network.
 
 The bare verb lists every item and field and writes nothing. Adding an item
 mints a stable short id made from its title; setting changes an item's state;
-showing shows one item; rendering prints the text a session start injects,
+showing shows one item; rendering prints the list as one block of text,
 open items first.
 
 ## The file

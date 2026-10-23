@@ -1046,7 +1046,7 @@
     {
       "path": "abcd checklist render",
       "hidden": false,
-      "sentence": "Print the checklist as a session's context is given it, open items first: Writes nothing; refuses outside a git checkout.",
+      "sentence": "Print the checklist as one block of text, open items first: Writes nothing; refuses outside a git checkout.",
       "flags": []
     },
     {

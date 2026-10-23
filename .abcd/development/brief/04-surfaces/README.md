@@ -50,7 +50,7 @@ are wiring rather than user-facing surface are listed separately under
 | 38 | `/abcd:announce` | shipped | Post a short fixed-form announcement on the shared remote, so every other session, under any account, on any machine or in the cloud, sees what this one is doing | [`38-announce.md`](38-announce.md) |
 | 38 | `/abcd:land` | shipped | Push a branch once its preflight passed and queue its pull request where the merge gate allows, resumable by running it again | [`38-land.md`](38-land.md) |
 | 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
-| 40 | `/abcd:checklist` | shipped | Keep this working copy's checklist on disk, so what a session is doing survives a compaction or a crash and comes back at the next start | [`40-checklist.md`](40-checklist.md) |
+| 40 | `/abcd:checklist` | shipped | Keep this working copy's checklist on disk, so what a session is doing survives a compaction or a crash | [`40-checklist.md`](40-checklist.md) |
 
 ## How much of this table a machine keeps honest
 
