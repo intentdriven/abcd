@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -78,6 +77,10 @@ func (e *SecretError) Error() string {
 // *FieldError), an absent tier (ErrNoLocalTier), a scanner that cannot vouch
 // for the text (ErrScannerUnavailable), and a secret (a *SecretError). A
 // refused write leaves both files as they were.
+//
+// Write takes no lock: a read-change-write goes through Update, which holds the
+// checklist's lock across the read, the change and this write. A caller that
+// reads, changes and calls Write itself loses a concurrent writer's item.
 //
 // Last-good is written from this call's own validated and scanned bytes, never
 // copied from the file already on disk: that file may have been changed by
@@ -341,15 +344,21 @@ var ErrLockHeld = errors.New("checklist: another writer holds the checklist's lo
 // one inter-process primitive (iss-129), the one `abcd decide` and the memory
 // store take, never a lock of this package's own.
 func Update(repoRoot string, change func(Result) (Checklist, error)) error {
-	tier := filepath.Join(repoRoot, filepath.FromSlash(TierRelPath))
-	// Lstat, not Stat: a symlink standing in for the tier is not the tier, and
-	// the lock file is never created in a tier that is not there.
-	if fi, err := os.Lstat(tier); err != nil || !fi.IsDir() {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return fmt.Errorf("checklist: opening the checkout to write: %w", err)
+	}
+	defer root.Close()
+	// Through the checkout's os.Root, so a .abcd swapped for a symlink cannot
+	// carry the tier check or the lock file out of the checkout; Lstat, not
+	// Stat, as Write judges the tier, and the lock file is never created in a
+	// tier that is not there.
+	if fi, err := root.Lstat(TierRelPath); err != nil || !fi.IsDir() {
 		return fmt.Errorf("%w: %s/ is not a directory in this checkout, and it is never created on the way to a write",
 			ErrNoLocalTier, TierRelPath)
 	}
 	ran := false
-	err := fsutil.WithFileLock(filepath.Join(repoRoot, filepath.FromSlash(LockRelPath)), lockTimeout, func() error {
+	err = fsutil.WithFileLockIn(root, LockRelPath, lockTimeout, func() error {
 		ran = true
 		c, err := change(Read(repoRoot))
 		if err != nil {

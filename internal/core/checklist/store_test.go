@@ -424,3 +424,26 @@ func TestUpdateRefusesWhileAnotherWriterHoldsTheLock(t *testing.T) {
 		t.Fatalf("a refused update wrote the checklist: %v", err)
 	}
 }
+
+// TestUpdateNeverLocksOutsideTheCheckout: a .abcd that is a symlink to a
+// directory outside the checkout is not the checkout's tier, so Update writes
+// nothing and leaves no lock file behind, there or anywhere.
+func TestUpdateNeverLocksOutsideTheCheckout(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outside, ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, ".abcd")); err != nil {
+		t.Fatal(err)
+	}
+	err := checklist.Update(root, func(checklist.Result) (checklist.Checklist, error) { return sample(), nil })
+	if err == nil {
+		t.Fatal("an update through a symlinked .abcd was not refused")
+	}
+	for _, name := range []string{"checklist.lock", "checklist.json"} {
+		if _, err := os.Lstat(filepath.Join(outside, ".work.local", name)); !os.IsNotExist(err) {
+			t.Errorf("an update through a symlinked .abcd left %s outside the checkout (%v)", name, err)
+		}
+	}
+}

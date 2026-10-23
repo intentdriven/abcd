@@ -20,7 +20,8 @@ import (
 
 // checklist.go — the `abcd checklist` verbs, the front door onto
 // internal/core/checklist (itd-2610170638184486, spc-2610230805429429 step 2).
-// Every write goes through checklist.Write, so its schema and secret refusals
+// Every write goes through checklist.Update, under the checklist's lock, and
+// so through checklist.Write, whose schema and secret refusals
 // reach the caller as they are: the field and the rule or pattern kind, never
 // the value, at exit 2.
 //
@@ -235,8 +236,8 @@ func checklistRoot(verb string) (string, error) {
 }
 
 // checklistWrite is add's and set's shared path: read the checklist, apply
-// change, stamp it, write it through checklist.Write and print the item change
-// answers the index of.
+// change, stamp it and write it, all under the lock checklist.Update holds,
+// then print the item change answers the index of.
 //
 // A write starts from what the reader returns. When checklist.json fails its
 // checks the reader returns the last good copy, and the write builds on that;
