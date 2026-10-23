@@ -478,7 +478,7 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 			"--release names the release to pin; it defaults to this abcd's own version when\n" +
 			"that is a release. A file left exactly as abcd wrote it is replaced; one that was\n" +
 			"edited, or that abcd did not write, is never overwritten, and nothing is written.\n\n" +
-			"Exit 2 on a refusal, with nothing written.",
+			"Exit 2 on a refusal, with nothing written but an answer given to the live brief\nsession question.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) (err error) {
 			// A question drawn at a terminal and stopped by Ctrl-C ends the verb (exit 130).

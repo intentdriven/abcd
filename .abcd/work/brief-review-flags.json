@@ -219,14 +219,6 @@
     },
     {
       "chapter": "37-session.md",
-      "sentence": "an IPv6 visitor is counted by its /64, and",
-      "replacement": "an IPv6 visitor is counted by its /48, and",
-      "evidence": "internal/core/session/codes.go:108",
-      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
-      "applied": "2026-10-23T05:30:31Z"
-    },
-    {
-      "chapter": "37-session.md",
       "sentence": "the forwarded address is trusted only behind a declared proxy.",
       "replacement": "the forwarded address is trusted only behind a declared proxy, or, on a relay bound to loopback, as Tailscale Serve forwards a tailnet address from a loopback peer.",
       "evidence": "internal/surface/session/server.go:446",
@@ -274,14 +266,6 @@
       "applied": "2026-10-23T05:30:31Z"
     },
     {
-      "chapter": "37-session.md",
-      "sentence": "started or written.",
-      "replacement": "started or written, but for a blueprint that cannot be written once the app is recorded, which exits 2 with the app and the answer kept.",
-      "evidence": "internal/surface/cli/session.go:905",
-      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
-      "applied": "2026-10-23T05:30:31Z"
-    },
-    {
       "chapter": "22-site.md",
       "sentence": "Without one, the stage stops and says what remains: store the credential through the credential",
       "replacement": "Without one, the stage stops and says what remains (the `github-pages` provider needs none: it acts through the forge as the person running the verb): store the credential through the credential",
@@ -304,6 +288,22 @@
       "evidence": "internal/core/site/check.go:158",
       "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
       "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "started or written, but for a blueprint that cannot be written once the app is recorded, which exits 2 with the app and the answer kept.",
+      "replacement": "started or written, but for the live brief session question a person at a terminal answers first, whose answer is kept, and a blueprint that cannot be written once the app is recorded, which exits 2 with the app and the answer kept.",
+      "evidence": "internal/surface/cli/session.go:523",
+      "commit": "86c5e203040f34917cf2c3f91fafd950d515f916",
+      "applied": "2026-10-23T05:42:34Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "of joining until the window passes; an IPv6 visitor is counted by its /48, and",
+      "replacement": "of joining until the window passes; an IPv6 visitor is counted by its /48 (a tailnet address by itself, since a tailnet's devices share one /48), and",
+      "evidence": "internal/core/session/codes.go:103",
+      "commit": "86c5e203040f34917cf2c3f91fafd950d515f916",
+      "applied": "2026-10-23T05:42:34Z"
     }
   ]
 }

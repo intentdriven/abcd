@@ -4732,7 +4732,8 @@ the relay's origin followed by /auth/callback.
 that is a release. A file left exactly as abcd wrote it is replaced; one that was
 edited, or that abcd did not write, is never overwritten, and nothing is written.
 
-Exit 2 on a refusal, with nothing written.
+Exit 2 on a refusal, with nothing written but an answer given to the live brief
+session question.
 
 **Flags:**
 

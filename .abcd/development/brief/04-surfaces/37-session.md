@@ -86,7 +86,7 @@ forwarded from anyone and never logged. A team member registers the Yjs client
 ids their page edits under, which the roster carries for credit.
 
 Twenty wrong codes from one address within ten minutes shut that address out
-of joining until the window passes; an IPv6 visitor is counted by its /48, and
+of joining until the window passes; an IPv6 visitor is counted by its /48 (a tailnet address by itself, since a tailnet's devices share one /48), and
 the forwarded address is trusted only behind a declared proxy, or, on a relay bound to loopback, as Tailscale Serve forwards a tailnet address from a loopback peer.
 
 ## What it holds, and for how long
@@ -231,7 +231,7 @@ text is put on the page as text, never as markup.
 
 `0` done; `1` a failure after the relay started, when no app is recorded (stopped, the hour ran out, GitHub's conversion failed three times, or the app came back owned by another account than the organisation), or while the page or the blueprint was being
 written; `2` refused, with nothing
-started or written, but for a blueprint that cannot be written once the app is recorded, which exits 2 with the app and the answer kept.
+started or written, but for the live brief session question a person at a terminal answers first, whose answer is kept, and a blueprint that cannot be written once the app is recorded, which exits 2 with the app and the answer kept.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
