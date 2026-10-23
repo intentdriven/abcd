@@ -149,9 +149,9 @@ text is put on the page as text, never as markup.
 - **Finding the relay.** Nobody types a relay address. A page a local session
   serves takes its own origin. On a static host the page uses the relay the invite
   link's fragment names, if the repository's `.abcd/relay/relays.json` names
-  it, or else the first relay the file names; where the file cannot be read
+  it (a relay the file does not name is refused: the page says the link does not lead to this project's own session), or else, with no relay in the link, the first relay the file names; where GitHub answers that there is no file to read
   before sign-in, it asks in plain words whether the project's team sent the
-  link; that answer holds in that tab, for at most twelve hours. With none, it says live sessions are not set up yet and to ask the
+  link; that answer holds in that tab, for at most twelve hours. With none, where the file names no relay it says live sessions are not set up yet, and where there is no file it says it found no live session and to ask the host for the invite link; either way it says to ask the
   technical facilitator. The invite link carries the relay only when the
   guest's page could not find it alone.
 - **Signing in.** "Sign in with GitHub" goes through a relay the repository's

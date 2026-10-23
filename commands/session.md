@@ -202,14 +202,14 @@ print it or pass it on a command line.
 
 It refuses (exit 2, nothing started) a `--listen` that is not an IP address
 (or `localhost`) and a port, an `--origin` that is not an exact
-`scheme://host[:port]`, a `--repo` that is not `owner/name`, an `--owner` or
+`scheme://host[:port]` followed by the page's base path if it has one, a `--repo` that is not `owner/name`, an `--owner` or
 `ABCD_SESSION_REPOS` entry that is neither, an `ABCD_SESSION_ORIGINS` entry
 that is not an origin, `ABCD_SESSION_GITHUB_APP_TYPE` set to anything but
 `github-app`, a relay beyond loopback with no repository to serve, and an
 address it cannot listen on.
 
 The relay bounds what it holds: 256 connections, 16 from one address (an IPv4
-address or an IPv6 /48), past which a new one is refused with 503; 30 seconds
+address, an IPv6 /48, or a tailnet address by itself), past which a new one is refused with 503; 30 seconds
 for a connection to host, join or rejoin; 1,024 queued items and 8 MiB per
 connection, past which that connection is dropped; a member's updates to 60 a
 second in bursts of 200; an awareness message to 8 KiB, one connection's
@@ -261,9 +261,9 @@ the team wrote is never touched: the Blueprint then goes to
 live brief session question is unanswered, a person at a terminal is asked it
 first. A file left exactly as abcd wrote it is
 replaced; one that was edited, or that abcd did not write, is never
-overwritten, and then nothing is written (exit 2). It refuses outside a
+overwritten, and then nothing is written but an answer to that question (exit 2). It refuses outside a
 checkout abcd manages, in a checkout whose origin is not on github.com, a
-`--relay-origin` or `--origin` that is not `https://host[:port]`, a release
+`--relay-origin` that is not `https://host[:port]`, an `--origin` that is not one followed by an optional base path, a release
 older than the first to include `abcd session` (the relay runs it; this
 abcd's own release is always taken), and a release that publishes no checksum
 for the linux/amd64 binary.
@@ -316,14 +316,14 @@ the page says the link does not lead to this project's own session. Only
 GitHub's 404 means there is no list to read (a private repository before
 sign-in, or no file): then a relay from the link reaches nothing until the
 person answers one plain question naming the repository ("Only continue if
-someone on the owner/repo team sent you this link"). The answer is kept for
+someone on the project's team sent you this link", under the repository's name). The answer is kept for
 that browser tab and at most twelve hours. Members of a private repository
 then sign in as on a public one: GitHub returns them only to the callback the
 team's app lists, and the page presents the code and the token only to the
 relay GitHub returned them to, never to another relay a link named. Any other
 failure to read the list (a 403, a 429,
 a 5xx, no network) refuses the relay with "try again in a moment", and asks
-nothing. With no relay at all, the page says live sessions are not set up for
+nothing. With no relay at all, where there is no file to read the page says it found no live session and to ask the host for the invite link or the technical facilitator; where the file names none it says live sessions are not set up for
 this project yet and to ask the technical facilitator. So the team commits
 `relays.json` naming its cloud relay's https origin, the one
 `blueprint --relay-origin` writes.
