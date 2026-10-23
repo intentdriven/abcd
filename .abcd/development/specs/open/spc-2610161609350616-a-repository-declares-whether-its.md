@@ -78,6 +78,17 @@ refuses.
    - With no queue gating the default branch, `auto` arms auto-merge, and
      where the forge refuses that, it says so.
    - AM1's approval reading is retired.
+   - The mode is read from the default branch's committed
+     `.abcd/config.json` and the machine layer, never from the checkout of
+     the branch being landed, so a branch that commits `auto`, or deletes a
+     repository-level `human`, does not decide the gate for itself
+     (dcn-2610230058333177). Tests: a lane whose own config says `auto` over a
+     default branch at `human` arms nothing; a lane that deletes the
+     default branch's `human` arms nothing.
+   - A `facilitator.mode` refusal is passed through `termsafe.Sanitize`
+     wherever a front door prints it: the board (step 2), `abcd land` and
+     the loop (here), the guard (step 5). Test: a hostile key carrying
+     terminal control bytes prints escaped.
 5. The guard's hard rule
    - packages: internal/core/guard
    - tests: internal/core/guard
