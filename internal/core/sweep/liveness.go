@@ -1,6 +1,22 @@
 // Package sweep is the core of `abcd sweep` (spc-2610230730269295): it judges
 // what a repository has left lying around and clears only what is provably
 // finished.
+//
+// The liveness probe errs toward keeping: every doubt holds the worktree, and
+// every hold names its cause, so a false keep is visible and cheap to clear
+// by hand. Its known limits:
+//
+//   - It judges only worktrees this account owns: one whose top directory or
+//     .git another uid owns is held outright. Another account's process can
+//     enter this account's worktree only where this account's permissions let
+//     it, and the worktree store makes its directories 0700. So the process
+//     proof's remaining blind spot is a process run as root, or one in a tree
+//     shared through its group: such a process, like one under a hidepid
+//     /proc or in another pid namespace, is invisible to the process table.
+//     That is a documented gap, not a case the probe fails closed on.
+//   - The process table is read once, when the probe is made. A process that
+//     starts after that is not seen, so a caller removing a worktree makes a
+//     fresh probe immediately before each removal, never reusing one.
 package sweep
 
 import (
@@ -51,6 +67,15 @@ const (
 	// KindProcessCheck is the process check failing closed: it proves
 	// nothing, so it is a hint, but the worktree is kept as possibly live.
 	KindProcessCheck EvidenceKind = "process-check"
+	// KindReservationCheck is the reservations failing closed: no fetch is
+	// stamped, or the worktree's own view of them could not be read.
+	KindReservationCheck EvidenceKind = "reservation-check"
+	// KindChanges is a worktree whose changed paths the caller could not
+	// compute, so no footprint can be shown not to cover it.
+	KindChanges EvidenceKind = "changes"
+	// KindOwner is a worktree another account owns (a proof), or one whose
+	// owner could not be read (a hint).
+	KindOwner EvidenceKind = "owner"
 )
 
 // Evidence is one reason a worktree is held.
@@ -83,11 +108,30 @@ type Process struct {
 // means the check could not be made, and the probe then fails closed.
 type ProcessLister func(ctx context.Context) ([]Process, error)
 
+// CopyView reads the reservations as one worktree sees them, from its own
+// disk and the refs it shares with its repository, with no fetch.
+type CopyView func(worktree string, now time.Time) (claim.Snapshot, error)
+
+// OwnerCheck reports whether a worktree is owned by an account other than
+// this process's, and that account's uid when it is. An error means the owner
+// could not be read, and the worktree is then kept.
+type OwnerCheck func(worktree string) (uid int, foreign bool, err error)
+
 // ProbeOptions is what the probe reads. The caller fetches and reads the
 // stores; the probe reads only the worktree and the process table.
 type ProbeOptions struct {
 	// Reservations is the claim view after the sweep's fetch (claim.View).
+	// A FetchedAt of zero means no fetch is stamped, so the view cannot show
+	// that nothing is reserved: every worktree is then held.
 	Reservations claim.Snapshot
+	// CopyView reads each worktree's own view of the reservations, to find
+	// one made from that worktree (its tip naming the worktree's copy key);
+	// nil is claim.View on the worktree. It reads only local refs, so the
+	// sweep's one fetch, made before Reservations was read, serves it too.
+	CopyView CopyView
+	// Owner says whether another account owns the worktree; nil reads the
+	// owner of its top directory and its .git.
+	Owner OwnerCheck
 	// Runs is the build loop's run state (loop.Runs).
 	Runs []loop.State
 	// Processes lists the processes; nil is HostProcesses.
@@ -108,6 +152,10 @@ type Worktree struct {
 	// and untracked files. A footprint is a set of repository paths, never a
 	// worktree's location, so a reservation names a worktree by covering a
 	// path it changes.
+	//
+	// nil means the caller could not compute the changes, and the worktree is
+	// held as "changes unknown"; an empty, non-nil slice means it changes
+	// nothing.
 	Changed []string
 }
 
@@ -117,9 +165,12 @@ type Probe struct {
 	now          time.Time
 	window       time.Duration
 	reservations claim.Snapshot
+	copyView     CopyView
+	owner        OwnerCheck
 	runs         []loop.State
 	processes    []Process
 	unavailable  string
+	unread       string
 }
 
 // NewProbe reads the process table once and returns the probe that judges
@@ -135,7 +186,16 @@ func NewProbe(ctx context.Context, o ProbeOptions) *Probe {
 	if window <= 0 {
 		window = DefaultRecentWindow
 	}
-	p := &Probe{now: now(), window: window, reservations: o.Reservations, runs: o.Runs}
+	p := &Probe{now: now(), window: window, reservations: o.Reservations, copyView: o.CopyView, owner: o.Owner, runs: o.Runs}
+	if p.copyView == nil {
+		p.copyView = worktreeView
+	}
+	if p.owner == nil {
+		p.owner = foreignOwner
+	}
+	if o.Reservations.FetchedAt.IsZero() {
+		p.unread = "no fetch of the reservations is stamped, so none can be shown absent"
+	}
 	procs, err := list(ctx)
 	if err != nil {
 		p.unavailable = err.Error()
@@ -160,11 +220,31 @@ func NewProbe(ctx context.Context, o ProbeOptions) *Probe {
 // once at the top.
 func (p *Probe) ProcessCheckUnavailable() string { return p.unavailable }
 
+// ReservationsUnread is why the reservations cannot show that nothing is
+// reserved, "" when they can. Every worktree is then held, and a dry run says
+// so once at the top.
+func (p *Probe) ReservationsUnread() string { return p.unread }
+
 // Judge says whether the worktree is held, and by what.
 func (p *Probe) Judge(w Worktree) Liveness {
 	wt := fsutil.RealExistingPath(w.Path)
+	// Another account's worktree is held outright, and nothing else in it is
+	// read: this account's sweep is not the judge of another's tree.
+	uid, foreign, err := p.owner(wt)
+	if foreign {
+		return held([]Evidence{{Kind: KindOwner, Strength: Proven, Detail: fmt.Sprintf("owned by another account (uid %d)", uid)}})
+	}
 	var ev []Evidence
-	ev = append(ev, p.reservationsCovering(w.Changed)...)
+	if err != nil {
+		ev = append(ev, Evidence{Kind: KindOwner, Strength: Hint, Detail: "owner unreadable: " + err.Error()})
+	}
+	if p.unread != "" {
+		ev = append(ev, Evidence{Kind: KindReservationCheck, Strength: Hint, Detail: "reservations unread: " + p.unread})
+	}
+	ev = append(ev, p.reservationsHolding(wt, w.Changed)...)
+	if w.Changed == nil {
+		ev = append(ev, Evidence{Kind: KindChanges, Strength: Hint, Detail: "changes unknown"})
+	}
 	ev = append(ev, p.lanesNaming(wt)...)
 	if e, ok := p.processIn(wt); ok {
 		ev = append(ev, e)
@@ -178,9 +258,15 @@ func (p *Probe) Judge(w Worktree) Liveness {
 		}
 	}
 	if len(ev) == 0 {
-		return Liveness{Reason: fmt.Sprintf("nothing holds it: no live reservation covers its changes, no unfinished run names it, "+
-			"no process works in it, and nothing in it was written in the last %s", durationWords(p.window))}
+		return Liveness{Reason: fmt.Sprintf("nothing holds it: no live reservation was made from it or covers its changes, "+
+			"no unfinished run names it, no process works in it, and nothing in it was written in the last %s", durationWords(p.window))}
 	}
+	return held(ev)
+}
+
+// held is the liveness of a worktree the evidence holds, its reason the
+// evidence joined.
+func held(ev []Evidence) Liveness {
 	details := make([]string, len(ev))
 	for i, e := range ev {
 		details[i] = e.Detail
@@ -188,22 +274,85 @@ func (p *Probe) Judge(w Worktree) Liveness {
 	return Liveness{Held: true, Evidence: ev, Reason: strings.Join(details, "; ")}
 }
 
-// reservationsCovering is one proof per live reservation whose footprint
-// overlaps a path the worktree changes. This copy's own reservations count
-// too: a session in this checkout is as live as one elsewhere.
-func (p *Probe) reservationsCovering(changed []string) []Evidence {
+// reservationsHolding is the reservation proof and its hints. A live
+// reservation holds the worktree when its tip names the worktree's own copy
+// key, so a session that reserved from it holds it before changing anything,
+// or when its footprint overlaps a path the worktree changes; one found both
+// ways is named once. A reservation carries no branch, so none is matched to
+// the worktree's branch. An unreadable reservation still within its hold has
+// a footprint no one can read, so it keeps every worktree, as a hint.
+func (p *Probe) reservationsHolding(wt string, changed []string) []Evidence {
 	var out []Evidence
-	for _, r := range p.reservations.Reservations {
-		if r.State != claim.StateLive {
-			continue
-		}
-		if shared, ok := firstOverlap(r.Footprint, changed); ok {
+	named := map[string]bool{}
+	mine, err := p.copyView(wt, p.now)
+	if err != nil {
+		out = append(out, Evidence{Kind: KindReservationCheck, Strength: Hint, Detail: "this worktree's reservations unread: " + err.Error()})
+	}
+	for _, r := range mine.Reservations {
+		if r.State == claim.StateLive && r.Copy == claim.CopyThis && !named[r.Record] {
+			named[r.Record] = true
 			out = append(out, Evidence{Kind: KindReservation, Strength: Proven, Detail: fmt.Sprintf(
-				"reserved as %s by %s until %s, its footprint covering %s",
-				r.Record, r.Holder, r.EffectiveExpiry.UTC().Format(time.RFC3339), shared)})
+				"reserved as %s by %s from this worktree until %s",
+				r.Record, r.Holder, r.EffectiveExpiry.UTC().Format(time.RFC3339))})
+		}
+	}
+	for _, r := range p.reservations.Reservations {
+		switch {
+		case named[r.Record]:
+		case r.State == claim.StateLive:
+			if shared, ok := firstOverlap(r.Footprint, changed); ok {
+				named[r.Record] = true
+				out = append(out, Evidence{Kind: KindReservation, Strength: Proven, Detail: fmt.Sprintf(
+					"reserved as %s by %s until %s, its footprint covering %s",
+					r.Record, r.Holder, r.EffectiveExpiry.UTC().Format(time.RFC3339), shared)})
+			}
+		case r.State == claim.StateUnreadable && r.EffectiveExpiry.After(p.now):
+			holder := r.Holder
+			if holder == "" {
+				holder = "a holder its tip does not name readably"
+			}
+			out = append(out, Evidence{Kind: KindReservation, Strength: Hint, Detail: fmt.Sprintf(
+				"reservation %s by %s is unreadable (%s) and holds until %s, its footprint unknown",
+				r.Record, holder, r.Unreadable, r.EffectiveExpiry.UTC().Format(time.RFC3339))})
 		}
 	}
 	return out
+}
+
+// worktreeView is the default CopyView: claim.View on the worktree, which
+// reads only its local refs and its own copy key. A worktree that keeps no
+// copy key has made no reservation, so nothing is read from it.
+func worktreeView(wt string, now time.Time) (claim.Snapshot, error) {
+	if claim.OwnCopyKey(wt) == "" {
+		return claim.Snapshot{}, nil
+	}
+	return claim.View(wt, now)
+}
+
+// foreignOwner is the default OwnerCheck: the owner of the worktree's top
+// directory, then of its .git (a file in a linked worktree, a directory in a
+// main one), read through fsutil.OwnerUID and compared with this process's
+// uid. A .git that is absent is passed over; any other failure to read an
+// owner is an error, and the worktree is kept.
+func foreignOwner(wt string) (int, bool, error) {
+	self := os.Getuid()
+	for _, name := range []string{wt, filepath.Join(wt, ".git")} {
+		uid, err := fsutil.OwnerUID(name)
+		if name != wt && errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			var pe *fs.PathError
+			if errors.As(err, &pe) {
+				err = pe.Err
+			}
+			return 0, false, fmt.Errorf("cannot read the owner of %s: %v", filepath.Base(name), err)
+		}
+		if int(uid) != self {
+			return int(uid), true, nil
+		}
+	}
+	return self, false, nil
 }
 
 // firstOverlap is the first changed path a footprint path covers, or is
@@ -270,7 +419,7 @@ func (p *Probe) processIn(wt string) (Evidence, bool) {
 	if n == 0 {
 		return Evidence{}, false
 	}
-	detail := fmt.Sprintf("process %d works in it", first)
+	detail := fmt.Sprintf("in use: process %d works in it", first)
 	if n > 1 {
 		detail += fmt.Sprintf(" (and %d more)", n-1)
 	}
@@ -406,6 +555,12 @@ func (c lsofCommand) list(ctx context.Context) ([]Process, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, c.path, "-a", "-d", "cwd", "-Fn")
+	// lsof escapes a byte its locale cannot print (é as \xc3\xa9) and still
+	// exits 0, so it runs under a UTF-8 locale, and with nothing else from
+	// this process's environment. en_US.UTF-8 is the name every macOS ships;
+	// C.UTF-8 is missing from older ones. A name it escapes anyway (a
+	// newline, say) parseLsof refuses.
+	cmd.Env = []string{"LC_ALL=en_US.UTF-8"}
 	out := &boundedBuffer{limit: c.limit, over: cancel}
 	cmd.Stdout = out
 	// A child lsof leaves holding the pipe cannot keep Wait past the deadline.
@@ -416,6 +571,8 @@ func (c lsofCommand) list(ctx context.Context) ([]Process, error) {
 		return nil, fmt.Errorf("lsof printed more than %s", sizeWords(c.limit))
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return nil, fmt.Errorf("lsof timed out after %s", c.timeout)
+	case errors.Is(err, exec.ErrWaitDelay):
+		return nil, fmt.Errorf("lsof exited but left a process holding its output")
 	case errors.Is(err, fs.ErrNotExist):
 		return nil, fmt.Errorf("lsof is missing at %s", c.path)
 	case err != nil:
@@ -467,8 +624,11 @@ func sizeWords(n int64) string {
 // descriptor an `f<fd>` line and an `n<name>` line. It is strict, since a line
 // it misread could hide a process: an unknown field, a blank line, a NUL, a
 // field out of order, a pid that is not a number or a name that is not an
-// absolute path is an error. So is no process at all, because lsof always
-// lists itself. Errors name the line number, never its text.
+// absolute path is an error. So is a name holding a backslash: lsof writes a
+// byte it will not print as an escape (\xc3\xa9, \n), and an escaped name
+// read as a path would match no worktree, hiding the process. So is no process
+// at all, because lsof always lists itself. Errors name the line number, never
+// its text.
 func parseLsof(out []byte) ([]Process, error) {
 	if len(out) == 0 {
 		return nil, errors.New("no process listed, though lsof always lists itself")
@@ -502,6 +662,9 @@ func parseLsof(out []byte) ([]Process, error) {
 			}
 			if !path.IsAbs(val) {
 				return nil, fmt.Errorf("line %d: a name that is not an absolute path", n)
+			}
+			if strings.IndexByte(val, '\\') >= 0 {
+				return nil, fmt.Errorf("line %d: a name lsof escaped, which cannot be read as a path", n)
 			}
 			if fd == "cwd" {
 				procs = append(procs, Process{PID: pid, Cwd: val})

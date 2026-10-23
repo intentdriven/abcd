@@ -26,6 +26,19 @@ func stale() func() time.Time {
 
 func at(t time.Time) func() time.Time { return func() time.Time { return t } }
 
+// none is a worktree that changes nothing, as against nil, which is changes
+// the caller could not compute.
+var none = []string{}
+
+// probe is NewProbe over reservations stamped as fetched, so a test about
+// another proof is not held by the unread-reservations rule.
+func probe(o ProbeOptions) *Probe {
+	if o.Reservations.FetchedAt.IsZero() {
+		o.Reservations.FetchedAt = time.Unix(1, 0)
+	}
+	return NewProbe(context.Background(), o)
+}
+
 func cwds(paths ...string) ProcessLister {
 	var ps []Process
 	for i, p := range paths {
@@ -100,7 +113,7 @@ func frees(t *testing.T, l Liveness) {
 
 func TestNoProofAndNoHintFreesTheWorktree(t *testing.T) {
 	wt, _ := worktree(t)
-	p := NewProbe(context.Background(), ProbeOptions{Processes: cwds("/", "/usr"), Now: stale()})
+	p := probe(ProbeOptions{Processes: cwds("/", "/usr"), Now: stale()})
 	frees(t, p.Judge(Worktree{Path: wt, Changed: []string{"internal/a.go"}}))
 }
 
@@ -110,7 +123,7 @@ func TestALiveReservationWhoseFootprintCoversTheWorktreesChangesHoldsIt(t *testi
 	live := claim.Reservation{Record: "iss-2610230000000001", Holder: "alice", State: claim.StateLive,
 		Footprint: []string{"internal/core/sweep"}, EffectiveExpiry: now.Add(time.Hour)}
 	snap := claim.Snapshot{Reservations: []claim.Reservation{live}}
-	p := NewProbe(context.Background(), ProbeOptions{Reservations: snap, Processes: cwds(), Now: at(now)})
+	p := probe(ProbeOptions{Reservations: snap, Processes: cwds(), Now: at(now)})
 	l := p.Judge(Worktree{Path: wt, Changed: []string{"internal/core/sweep/liveness.go"}})
 	holdsBy(t, l, KindReservation, Proven)
 	if !strings.Contains(l.Reason, live.Record) || !strings.Contains(l.Reason, "alice") {
@@ -121,11 +134,12 @@ func TestALiveReservationWhoseFootprintCoversTheWorktreesChangesHoldsIt(t *testi
 	// not inside internal/core/sweep.
 	frees(t, p.Judge(Worktree{Path: wt, Changed: []string{"internal/core/sweeper/x.go"}}))
 
-	// Only a live reservation is a proof.
-	for _, state := range []string{claim.StateExpired, claim.StateReleased, claim.StateUnreadable} {
+	// Only a live reservation is a proof. (An unreadable one within its hold
+	// is a hint: TestAnUnreadableReservationWithinItsHoldKeepsEveryWorktree.)
+	for _, state := range []string{claim.StateExpired, claim.StateReleased} {
 		r := live
 		r.State = state
-		p := NewProbe(context.Background(), ProbeOptions{Reservations: claim.Snapshot{Reservations: []claim.Reservation{r}},
+		p := probe(ProbeOptions{Reservations: claim.Snapshot{Reservations: []claim.Reservation{r}},
 			Processes: cwds(), Now: at(now)})
 		frees(t, p.Judge(Worktree{Path: wt, Changed: []string{"internal/core/sweep/liveness.go"}}))
 	}
@@ -141,45 +155,45 @@ func TestAnUnfinishedRunNamingTheWorktreeAsALaneHoldsItWithinTheLease(t *testing
 	t0 := stale()()
 	runs := []loop.State{run(wt, t0, loop.StageImplement)}
 
-	in := NewProbe(context.Background(), ProbeOptions{Runs: runs, Processes: cwds(), Now: at(t0.Add(lease.Max - time.Second))})
-	l := in.Judge(Worktree{Path: wt})
+	in := probe(ProbeOptions{Runs: runs, Processes: cwds(), Now: at(t0.Add(lease.Max - time.Second))})
+	l := in.Judge(Worktree{Path: wt, Changed: none})
 	holdsBy(t, l, KindRun, Proven)
 	if !strings.Contains(l.Reason, "run-1") || !strings.Contains(l.Reason, "lane-1") {
 		t.Fatalf("reason = %q; want it to name the run and the lane", l.Reason)
 	}
 
 	// The lease lapses a day after the run last wrote its state.
-	out := NewProbe(context.Background(), ProbeOptions{Runs: runs, Processes: cwds(), Now: at(t0.Add(lease.Max))})
-	frees(t, out.Judge(Worktree{Path: wt}))
+	out := probe(ProbeOptions{Runs: runs, Processes: cwds(), Now: at(t0.Add(lease.Max))})
+	frees(t, out.Judge(Worktree{Path: wt, Changed: none}))
 
 	// A complete run holds nothing, within its lease or not.
-	done := NewProbe(context.Background(), ProbeOptions{Runs: []loop.State{run(wt, t0, loop.StageDone)},
+	done := probe(ProbeOptions{Runs: []loop.State{run(wt, t0, loop.StageDone)},
 		Processes: cwds(), Now: at(t0.Add(time.Minute))})
-	frees(t, done.Judge(Worktree{Path: wt}))
+	frees(t, done.Judge(Worktree{Path: wt, Changed: none}))
 
 	// A lane naming a sibling whose name extends this one names another tree.
-	other := NewProbe(context.Background(), ProbeOptions{Runs: []loop.State{run(wt+"c", t0, loop.StageImplement)},
+	other := probe(ProbeOptions{Runs: []loop.State{run(wt+"c", t0, loop.StageImplement)},
 		Processes: cwds(), Now: at(t0.Add(time.Minute))})
-	frees(t, other.Judge(Worktree{Path: wt}))
+	frees(t, other.Judge(Worktree{Path: wt, Changed: none}))
 }
 
 func TestAProcessWorkingInsideTheWorktreeHoldsIt(t *testing.T) {
 	wt, _ := worktree(t)
-	inside := NewProbe(context.Background(), ProbeOptions{Processes: cwds("/", filepath.Join(wt, "internal")), Now: stale()})
-	l := inside.Judge(Worktree{Path: wt})
+	inside := probe(ProbeOptions{Processes: cwds("/", filepath.Join(wt, "internal")), Now: stale()})
+	l := inside.Judge(Worktree{Path: wt, Changed: none})
 	holdsBy(t, l, KindProcess, Proven)
-	if !strings.Contains(l.Reason, "process 101") {
-		t.Fatalf("reason = %q; want it to name the process by its pid", l.Reason)
+	if l.Reason != "in use: process 101 works in it" {
+		t.Fatalf("reason = %q; want %q", l.Reason, "in use: process 101 works in it")
 	}
 
-	onIt := NewProbe(context.Background(), ProbeOptions{Processes: cwds(wt), Now: stale()})
-	holdsBy(t, onIt.Judge(Worktree{Path: wt}), KindProcess, Proven)
+	onIt := probe(ProbeOptions{Processes: cwds(wt), Now: stale()})
+	holdsBy(t, onIt.Judge(Worktree{Path: wt, Changed: none}), KindProcess, Proven)
 
 	// /a/b does not hold /a/bc, nor /a/bc /a/b.
-	beside := NewProbe(context.Background(), ProbeOptions{Processes: cwds(wt + "c"), Now: stale()})
-	frees(t, beside.Judge(Worktree{Path: wt}))
-	above := NewProbe(context.Background(), ProbeOptions{Processes: cwds(filepath.Dir(wt)), Now: stale()})
-	frees(t, above.Judge(Worktree{Path: wt}))
+	beside := probe(ProbeOptions{Processes: cwds(wt + "c"), Now: stale()})
+	frees(t, beside.Judge(Worktree{Path: wt, Changed: none}))
+	above := probe(ProbeOptions{Processes: cwds(filepath.Dir(wt)), Now: stale()})
+	frees(t, above.Judge(Worktree{Path: wt, Changed: none}))
 }
 
 func TestPathsAreComparedWithSymlinksResolvedOnBothSides(t *testing.T) {
@@ -190,25 +204,25 @@ func TestPathsAreComparedWithSymlinksResolvedOnBothSides(t *testing.T) {
 	}
 	// The worktree named through the link, the process reported at the real
 	// path, and the reverse.
-	p := NewProbe(context.Background(), ProbeOptions{Processes: cwds(filepath.Join(wt, "internal")), Now: stale()})
-	holdsBy(t, p.Judge(Worktree{Path: link}), KindProcess, Proven)
-	p = NewProbe(context.Background(), ProbeOptions{Processes: cwds(filepath.Join(link, "internal")), Now: stale()})
-	holdsBy(t, p.Judge(Worktree{Path: wt}), KindProcess, Proven)
+	p := probe(ProbeOptions{Processes: cwds(filepath.Join(wt, "internal")), Now: stale()})
+	holdsBy(t, p.Judge(Worktree{Path: link, Changed: none}), KindProcess, Proven)
+	p = probe(ProbeOptions{Processes: cwds(filepath.Join(link, "internal")), Now: stale()})
+	holdsBy(t, p.Judge(Worktree{Path: wt, Changed: none}), KindProcess, Proven)
 
 	t0 := stale()()
-	p = NewProbe(context.Background(), ProbeOptions{Runs: []loop.State{run(link, t0, loop.StageValidate)},
+	p = probe(ProbeOptions{Runs: []loop.State{run(link, t0, loop.StageValidate)},
 		Processes: cwds(), Now: at(t0.Add(time.Minute))})
-	holdsBy(t, p.Judge(Worktree{Path: wt}), KindRun, Proven)
+	holdsBy(t, p.Judge(Worktree{Path: wt, Changed: none}), KindRun, Proven)
 }
 
 func TestARecentWriteToTheTreeKeepsItAsAHint(t *testing.T) {
 	wt, _ := worktree(t)
-	p := NewProbe(context.Background(), ProbeOptions{Processes: cwds(), Now: time.Now})
-	holdsBy(t, p.Judge(Worktree{Path: wt}), KindRecentWrite, Hint)
+	p := probe(ProbeOptions{Processes: cwds(), Now: time.Now})
+	holdsBy(t, p.Judge(Worktree{Path: wt, Changed: none}), KindRecentWrite, Hint)
 
 	// The window is the caller's: an hour later, an hour's window has passed.
-	p = NewProbe(context.Background(), ProbeOptions{Processes: cwds(), Now: at(time.Now().Add(2 * time.Hour)), RecentWindow: time.Hour})
-	frees(t, p.Judge(Worktree{Path: wt}))
+	p = probe(ProbeOptions{Processes: cwds(), Now: at(time.Now().Add(2 * time.Hour)), RecentWindow: time.Hour})
+	frees(t, p.Judge(Worktree{Path: wt, Changed: none}))
 	if DefaultRecentWindow != 24*time.Hour {
 		t.Fatalf("DefaultRecentWindow = %s; want the spec's 24h", DefaultRecentWindow)
 	}
@@ -222,8 +236,8 @@ func TestARecentWriteToALinkedWorktreesIndexKeepsItAsAHint(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	p := NewProbe(context.Background(), ProbeOptions{Processes: cwds(), Now: time.Now})
-	l := p.Judge(Worktree{Path: wt})
+	p := probe(ProbeOptions{Processes: cwds(), Now: time.Now})
+	l := p.Judge(Worktree{Path: wt, Changed: none})
 	holdsBy(t, l, KindRecentWrite, Hint)
 	if !strings.Contains(l.Reason, "index") {
 		t.Fatalf("reason = %q; want it to say the index was written", l.Reason)
@@ -233,13 +247,13 @@ func TestARecentWriteToALinkedWorktreesIndexKeepsItAsAHint(t *testing.T) {
 	if err := os.Chtimes(filepath.Join(gitDir, "index"), old, old); err != nil {
 		t.Fatal(err)
 	}
-	frees(t, p.Judge(Worktree{Path: wt}))
+	frees(t, p.Judge(Worktree{Path: wt, Changed: none}))
 }
 
 func TestAProofOutranksTheHint(t *testing.T) {
 	wt, _ := worktree(t)
-	p := NewProbe(context.Background(), ProbeOptions{Processes: cwds(wt), Now: time.Now})
-	l := p.Judge(Worktree{Path: wt})
+	p := probe(ProbeOptions{Processes: cwds(wt), Now: time.Now})
+	l := p.Judge(Worktree{Path: wt, Changed: none})
 	if !l.Held || l.Evidence[0].Strength != Proven {
 		t.Fatalf("liveness = %+v; want a proof listed first", l)
 	}
@@ -247,14 +261,14 @@ func TestAProofOutranksTheHint(t *testing.T) {
 
 func TestAFailedProcessListerFailsClosed(t *testing.T) {
 	wt, _ := worktree(t)
-	p := NewProbe(context.Background(), ProbeOptions{
+	p := probe(ProbeOptions{
 		Processes: func(context.Context) ([]Process, error) { return nil, errors.New("lsof timed out after 5s") },
 		Now:       stale(),
 	})
 	if got := p.ProcessCheckUnavailable(); got != "lsof timed out after 5s" {
 		t.Fatalf("ProcessCheckUnavailable() = %q; want the lister's why", got)
 	}
-	l := p.Judge(Worktree{Path: wt})
+	l := p.Judge(Worktree{Path: wt, Changed: none})
 	holdsBy(t, l, KindProcessCheck, Hint)
 	if l.Reason != "process check unavailable: lsof timed out after 5s" {
 		t.Fatalf("reason = %q; want %q", l.Reason, "process check unavailable: lsof timed out after 5s")
@@ -301,7 +315,7 @@ func TestTheLsofProbeFailsClosed(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			start := time.Now()
-			p := NewProbe(context.Background(), ProbeOptions{Processes: c.cmd(t).list, Now: stale()})
+			p := probe(ProbeOptions{Processes: c.cmd(t).list, Now: stale()})
 			if took := time.Since(start); took > 3*time.Second {
 				t.Fatalf("the probe took %s; want it bounded by its deadline", took)
 			}
@@ -309,7 +323,7 @@ func TestTheLsofProbeFailsClosed(t *testing.T) {
 			if !strings.Contains(why, c.want) {
 				t.Fatalf("ProcessCheckUnavailable() = %q; want it to contain %q", why, c.want)
 			}
-			l := p.Judge(Worktree{Path: wt})
+			l := p.Judge(Worktree{Path: wt, Changed: none})
 			holdsBy(t, l, KindProcessCheck, Hint)
 			if l.Reason != "process check unavailable: "+why {
 				t.Fatalf("reason = %q; want %q", l.Reason, "process check unavailable: "+why)
@@ -353,6 +367,8 @@ func TestParseLsof(t *testing.T) {
 		{"a relative name", "p1\nfcwd\nnrelative\n"},
 		{"a blank line", "p1\n\nfcwd\nn/\n"},
 		{"a NUL", "p1\nfcwd\nn/a\x00b\n"},
+		{"a name lsof escaped", `p1` + "\nfcwd\n" + `n/tmp/\xc3\xa9-wt` + "\n"},
+		{"a newline lsof escaped", `p1` + "\nfcwd\n" + `n/tmp/a\nb` + "\n"},
 	}
 	for _, c := range bad {
 		if got, err := parseLsof([]byte(c.out)); err == nil {
@@ -407,12 +423,241 @@ func TestTheHostProbeFindsARealChildProcess(t *testing.T) {
 		_ = child.Process.Kill()
 		_ = child.Wait()
 	})
-	p := NewProbe(context.Background(), ProbeOptions{Now: stale()})
+	p := probe(ProbeOptions{Now: stale()})
 	if why := p.ProcessCheckUnavailable(); why != "" {
 		t.Skipf("the host probe is unavailable here: %s", why)
 	}
-	l := p.Judge(Worktree{Path: dir})
+	l := p.Judge(Worktree{Path: dir, Changed: none})
 	if !l.Held || !slices.Contains(kinds(l), KindProcess) {
 		t.Fatalf("liveness of the child's working directory = %+v; want held by a process", l)
+	}
+}
+
+func TestTheLsofProbeRunsUnderAUTF8LocaleAndRefusesAnEscapedName(t *testing.T) {
+	// Run with no locale set, lsof escapes a non-ASCII name (\xc3\xa9) and
+	// still exits 0; the child must get a UTF-8 locale whatever the parent has.
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LANG", "")
+	t.Setenv("LC_CTYPE", "")
+	cmd := lsofCommand{path: script(t, `[ "$LC_ALL" = en_US.UTF-8 ] || exit 7; printf 'p1\nfcwd\nn/tmp/é\n'`), timeout: 5 * time.Second, limit: 1 << 20}
+	got, err := cmd.list(context.Background())
+	if err != nil || !slices.Equal(dirs(got), []string{"/tmp/é"}) {
+		t.Fatalf("list() = %v, %v; want [/tmp/é], read under a UTF-8 locale", got, err)
+	}
+
+	// A name lsof escaped anyway fails the check closed, never reads as a path.
+	escaped := lsofCommand{path: script(t, `printf 'p1\nfcwd\nn/tmp/\\xc3\\xa9-wt\n'`), timeout: 5 * time.Second, limit: 1 << 20}
+	p := probe(ProbeOptions{Processes: escaped.list, Now: stale()})
+	why := p.ProcessCheckUnavailable()
+	if !strings.Contains(why, "unreadable output") || !strings.Contains(why, "escaped") {
+		t.Fatalf("ProcessCheckUnavailable() = %q; want an unreadable escaped name", why)
+	}
+	wt, _ := worktree(t)
+	holdsBy(t, p.Judge(Worktree{Path: wt, Changed: none}), KindProcessCheck, Hint)
+}
+
+func TestTheLsofProbeFailsClosedOnAChildHoldingItsOutput(t *testing.T) {
+	// lsof exits at once, but a child it left keeps the pipe open: WaitDelay
+	// ends the wait, and the check fails closed rather than reading a part.
+	cmd := lsofCommand{path: script(t, `sleep 4 & printf 'p1\nfcwd\nn/\n'; exit 0`), timeout: 10 * time.Second, limit: 1 << 20}
+	start := time.Now()
+	p := probe(ProbeOptions{Processes: cmd.list, Now: stale()})
+	if took := time.Since(start); took > 3*time.Second {
+		t.Fatalf("the probe took %s; want WaitDelay to bound it", took)
+	}
+	if why := p.ProcessCheckUnavailable(); !strings.Contains(why, "holding its output") {
+		t.Fatalf("ProcessCheckUnavailable() = %q; want a child holding lsof's output named", why)
+	}
+}
+
+// TestTheHostProbeFindsANonASCIIWorkingDirectory proves the host probe finds a
+// real process in a directory whose name is not ASCII, with the parent's
+// locale cleared, as a session started with no LANG would run it.
+func TestTheHostProbeFindsANonASCIIWorkingDirectory(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skipf("no process check on %s", runtime.GOOS)
+	}
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LANG", "")
+	t.Setenv("LC_CTYPE", "")
+	sleep, err := exec.LookPath("sleep")
+	if err != nil {
+		t.Skipf("no sleep to start: %v", err)
+	}
+	dir := filepath.Join(t.TempDir(), "café wt")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Skipf("cannot make a non-ASCII directory here: %v", err)
+	}
+	child := exec.Command(sleep, "30")
+	child.Dir = dir
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = child.Process.Kill()
+		_ = child.Wait()
+	})
+	p := probe(ProbeOptions{Now: stale()})
+	if why := p.ProcessCheckUnavailable(); why != "" {
+		t.Fatalf("the host probe is unavailable: %s", why)
+	}
+	if l := p.Judge(Worktree{Path: dir, Changed: none}); !slices.Contains(kinds(l), KindProcess) {
+		t.Fatalf("liveness of %q = %+v; want held by its process", dir, l)
+	}
+}
+
+// own is a per-worktree view holding the reservations given, for the worktree
+// named, and recording which worktrees it was asked about.
+func own(asked *[]string, rs ...claim.Reservation) func(string, time.Time) (claim.Snapshot, error) {
+	return func(path string, _ time.Time) (claim.Snapshot, error) {
+		*asked = append(*asked, path)
+		return claim.Snapshot{Reservations: rs}, nil
+	}
+}
+
+func TestAReservationMadeFromTheWorktreeHoldsItBeforeItChangesAnything(t *testing.T) {
+	wt, _ := worktree(t)
+	now := stale()()
+	mine := claim.Reservation{Record: "itd-2610230000000002", Holder: "bob", Copy: claim.CopyThis,
+		State: claim.StateLive, EffectiveExpiry: now.Add(time.Hour)}
+	var asked []string
+	p := probe(ProbeOptions{CopyView: own(&asked, mine), Processes: cwds(), Now: at(now)})
+	l := p.Judge(Worktree{Path: wt, Changed: none})
+	holdsBy(t, l, KindReservation, Proven)
+	if !strings.Contains(l.Reason, mine.Record) || !strings.Contains(l.Reason, "bob") {
+		t.Fatalf("reason = %q; want it to name the record and its holder", l.Reason)
+	}
+	if real, _ := filepath.EvalSymlinks(wt); len(asked) != 1 || asked[0] != real {
+		t.Fatalf("the per-worktree view was asked about %q; want [%s]", asked, real)
+	}
+
+	// Another copy's reservation with no overlap, or this copy's once it is
+	// no longer live, holds nothing.
+	other := mine
+	other.Copy = ""
+	frees(t, probe(ProbeOptions{CopyView: own(&asked, other), Processes: cwds(), Now: at(now)}).Judge(Worktree{Path: wt, Changed: none}))
+	gone := mine
+	gone.State = claim.StateExpired
+	frees(t, probe(ProbeOptions{CopyView: own(&asked, gone), Processes: cwds(), Now: at(now)}).Judge(Worktree{Path: wt, Changed: none}))
+
+	// The same reservation found both ways is named once.
+	mine.Footprint = []string{"internal"}
+	l = probe(ProbeOptions{Reservations: claim.Snapshot{Reservations: []claim.Reservation{mine}}, CopyView: own(&asked, mine),
+		Processes: cwds(), Now: at(now)}).Judge(Worktree{Path: wt, Changed: []string{"internal/a.go"}})
+	holdsBy(t, l, KindReservation, Proven)
+
+	// A per-worktree view that cannot be read keeps the worktree.
+	broken := func(string, time.Time) (claim.Snapshot, error) { return claim.Snapshot{}, errors.New("git failed") }
+	l = probe(ProbeOptions{CopyView: broken, Processes: cwds(), Now: at(now)}).Judge(Worktree{Path: wt, Changed: none})
+	holdsBy(t, l, KindReservationCheck, Hint)
+	if !strings.Contains(l.Reason, "git failed") {
+		t.Fatalf("reason = %q; want the view's failure named", l.Reason)
+	}
+}
+
+func TestTheDefaultCopyViewReadsNothingWhereNoCopyKeyIsKept(t *testing.T) {
+	snap, err := worktreeView(t.TempDir(), time.Now())
+	if err != nil || len(snap.Reservations) != 0 {
+		t.Fatalf("worktreeView over a tree with no copy key = %+v, %v; want nothing, no error", snap, err)
+	}
+}
+
+func TestChangesTheCallerCouldNotComputeKeepTheWorktree(t *testing.T) {
+	wt, _ := worktree(t)
+	p := probe(ProbeOptions{Processes: cwds(), Now: stale()})
+	l := p.Judge(Worktree{Path: wt})
+	holdsBy(t, l, KindChanges, Hint)
+	if l.Reason != "changes unknown" {
+		t.Fatalf("reason = %q; want %q", l.Reason, "changes unknown")
+	}
+	frees(t, p.Judge(Worktree{Path: wt, Changed: none}))
+}
+
+func TestReservationsNoFetchStampedKeepEveryWorktree(t *testing.T) {
+	wt, _ := worktree(t)
+	p := NewProbe(context.Background(), ProbeOptions{Processes: cwds(), Now: stale()})
+	why := p.ReservationsUnread()
+	if why == "" {
+		t.Fatal("ReservationsUnread() = \"\"; want why, with no fetch stamped")
+	}
+	l := p.Judge(Worktree{Path: wt, Changed: none})
+	holdsBy(t, l, KindReservationCheck, Hint)
+	if l.Reason != "reservations unread: "+why {
+		t.Fatalf("reason = %q; want %q", l.Reason, "reservations unread: "+why)
+	}
+	if got := probe(ProbeOptions{Processes: cwds(), Now: stale()}).ReservationsUnread(); got != "" {
+		t.Fatalf("ReservationsUnread() after a fetch = %q; want \"\"", got)
+	}
+}
+
+func TestAnUnreadableReservationWithinItsHoldKeepsEveryWorktree(t *testing.T) {
+	wt, _ := worktree(t)
+	now := stale()()
+	r := claim.Reservation{Record: "iss-2610230000000003", State: claim.StateUnreadable, Unreadable: "its message cannot be parsed",
+		EffectiveExpiry: now.Add(time.Hour)}
+	p := probe(ProbeOptions{Reservations: claim.Snapshot{Reservations: []claim.Reservation{r}}, Processes: cwds(), Now: at(now)})
+	l := p.Judge(Worktree{Path: wt, Changed: []string{"docs/x.md"}})
+	holdsBy(t, l, KindReservation, Hint)
+	if !strings.Contains(l.Reason, r.Record) || !strings.Contains(l.Reason, "holder") {
+		t.Fatalf("reason = %q; want it to name the record and its holder", l.Reason)
+	}
+	r.EffectiveExpiry = now.Add(-time.Second)
+	p = probe(ProbeOptions{Reservations: claim.Snapshot{Reservations: []claim.Reservation{r}}, Processes: cwds(), Now: at(now)})
+	frees(t, p.Judge(Worktree{Path: wt, Changed: []string{"docs/x.md"}}))
+}
+
+// TestAFreshCopyOnTheDefaultBranchIsKeptOnlyWhileInUse is the coordinator's
+// case: a copy sitting exactly on the default branch, changing nothing and
+// reserving nothing, is kept while a process works in it and freed once
+// nothing does and nothing in it is recent.
+func TestAFreshCopyOnTheDefaultBranchIsKeptOnlyWhileInUse(t *testing.T) {
+	wt, gitDir := worktree(t)
+	old := time.Now().Add(-72 * time.Hour)
+	for _, p := range []string{filepath.Join(wt, "internal", "a.go"), filepath.Join(wt, "internal"), filepath.Join(wt, ".git"), wt, filepath.Join(gitDir, "index")} {
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	l := probe(ProbeOptions{Processes: cwds(wt), Now: time.Now}).Judge(Worktree{Path: wt, Changed: none})
+	holdsBy(t, l, KindProcess, Proven)
+	if !strings.HasPrefix(l.Reason, "in use: ") {
+		t.Fatalf("reason = %q; want it to read as in use", l.Reason)
+	}
+	frees(t, probe(ProbeOptions{Processes: cwds(), Now: time.Now}).Judge(Worktree{Path: wt, Changed: none}))
+}
+
+func TestAWorktreeAnotherAccountOwnsIsKept(t *testing.T) {
+	wt, _ := worktree(t)
+	foreign := func(string) (int, bool, error) { return 4242, true, nil }
+	l := probe(ProbeOptions{Owner: foreign, Processes: cwds(), Now: stale()}).Judge(Worktree{Path: wt, Changed: none})
+	holdsBy(t, l, KindOwner, Proven)
+	if l.Reason != "owned by another account (uid 4242)" {
+		t.Fatalf("reason = %q; want %q", l.Reason, "owned by another account (uid 4242)")
+	}
+
+	// Reported as this account's, it falls through to the other proofs.
+	mine := func(string) (int, bool, error) { return 0, false, nil }
+	frees(t, probe(ProbeOptions{Owner: mine, Processes: cwds(), Now: stale()}).Judge(Worktree{Path: wt, Changed: none}))
+	holdsBy(t, probe(ProbeOptions{Owner: mine, Processes: cwds(wt), Now: stale()}).Judge(Worktree{Path: wt, Changed: none}), KindProcess, Proven)
+
+	// An owner that cannot be read keeps it.
+	unread := func(string) (int, bool, error) { return 0, false, errors.New("stat failed") }
+	l = probe(ProbeOptions{Owner: unread, Processes: cwds(), Now: stale()}).Judge(Worktree{Path: wt, Changed: none})
+	holdsBy(t, l, KindOwner, Hint)
+	if !strings.Contains(l.Reason, "stat failed") {
+		t.Fatalf("reason = %q; want the failure named", l.Reason)
+	}
+}
+
+func TestTheDefaultOwnerCheckReadsThisAccountsTreeAsItsOwn(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no uid on windows")
+	}
+	wt, _ := worktree(t)
+	if uid, foreign, err := foreignOwner(wt); err != nil || foreign {
+		t.Fatalf("foreignOwner(own temp tree) = %d, %t, %v; want this account's", uid, foreign, err)
+	}
+	if _, _, err := foreignOwner(filepath.Join(wt, "absent")); err == nil {
+		t.Fatal("foreignOwner(absent) = nil error; want the stat failure")
 	}
 }
