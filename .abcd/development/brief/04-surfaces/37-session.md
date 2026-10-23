@@ -17,7 +17,7 @@ amendments of 2026-10-14 and 2026-10-16 and brief invariant 7's inbound clause
 ([`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md)).
 
 This chapter describes the relay, its blueprint and the page. The route back
-to GitHub is the spec's later step.
+to GitHub is the page's own: it sends a session's changes as one pull request or pre-filled issues (see Sending).
 
 ## Sub-verbs
 
@@ -86,8 +86,8 @@ forwarded from anyone and never logged. A team member registers the Yjs client
 ids their page edits under, which the roster carries for credit.
 
 Twenty wrong codes from one address within ten minutes shut that address out
-of joining until the window passes; an IPv6 visitor is counted by its /64, and
-the forwarded address is trusted only behind a declared proxy.
+of joining until the window passes; an IPv6 visitor is counted by its /48, and
+the forwarded address is trusted only behind a declared proxy, or, on a relay bound to loopback, as Tailscale Serve forwards a tailnet address from a loopback peer.
 
 ## What it holds, and for how long
 
@@ -113,9 +113,9 @@ falls a thousand frames behind or misses a ping is dropped.
 
 ## The blueprint
 
-The blueprint is `.abcd/relay/render.yaml`, one free Render web service with
+The blueprint is `render.yaml` at the repository's root (or `.abcd/relay/render.yaml` beside a root `render.yaml` the team wrote), one free Render web service with
 the docker runtime, a `/healthz` health check, automatic deploys off (a
-redeploy ends every open session) and the sign-in app's two variables
+redeploy ends every open session) and the sign-in app's secret, with its client id until setup has recorded the app,
 unsynced, and `.abcd/relay/Dockerfile`, which downloads the named release's
 `abcd-linux-amd64` and checks it against the SHA-256 that release's
 `checksums.txt` publishes, read when the files are written and pinned in the
@@ -140,7 +140,7 @@ wrote, is refused with nothing written. The bundle's bytes and its entry
 module are checked against the committed provenance by a test.
 
 A static host's 404 fallback serves the page at `/<owner>/<repo>/brief/`; the
-HTML names its own files three levels up, so a base path works too. Its
+HTML names its own files from the site's root, or from under the base path the page is built for, so a base path works too. Its
 content-security policy loads scripts and styles from the page's own origin
 only and lets it connect over https and wss, or to loopback for a local
 relay; it sends no referrer, and every piece of brief, relay or participant
@@ -174,7 +174,7 @@ text is put on the page as text, never as markup.
   with a text per file, once, recording the base commit, the branch, the
   route back (one pull request by default, or one issue per change) and a
   snapshot of the seeded state. The seed is sent before the invite shows: a
-  QR code of the page's address with the relay and code in the fragment, the
+  QR code of the page's address with the code in the fragment, and the relay too only where a guest's page could not find it alone, the
   code in large letters, and buttons for a new code and to end the session.
 - **Editing.** The session opens on the brief's press release. A list of
   the brief's documents, grouped by folder, and a Markdown editor bound to
@@ -229,9 +229,9 @@ text is put on the page as text, never as markup.
 
 ## Exit codes
 
-`0` done; `1` a failure after the relay started, or while the page was being
+`0` done; `1` a failure after the relay started, when no app is recorded (stopped, the hour ran out, GitHub's conversion failed three times, or the app came back owned by another account than the organisation), or while the page or the blueprint was being
 written; `2` refused, with nothing
-started or written.
+started or written, but for a blueprint that cannot be written once the app is recorded, which exits 2 with the app and the answer kept.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

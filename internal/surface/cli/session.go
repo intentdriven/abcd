@@ -571,8 +571,10 @@ func newSessionPageCommand(asJSON *bool) *cobra.Command {
 			"session.js, session.css, and the vendored editor bundle with its licences under\n" +
 			"vendor/. The files are plain and static, embedded in this binary; serve them\n" +
 			"from any static host, such as GitHub Pages, whose 404.html fallback is how\n" +
-			"/<owner>/<repo>/brief/ reaches the page. The page connects only to the relay the\n" +
-			"person names and to api.github.com with their own token, and it sends the\n" +
+			"/<owner>/<repo>/brief/ reaches the page. The page connects only to the relay it\n" +
+			"finds itself (its own origin, the invite link's, or the first the repository's\n" +
+			"relays.json names) and to api.github.com with the person's own token, and it\n" +
+			"sends the\n" +
 			"person to github.com for sign-in and to open the pre-filled issues a session\n" +
 			"sends. It reads nothing from this checkout.\n\n" +
 			"--base-path names the path the site is served under, such as a project's\n" +

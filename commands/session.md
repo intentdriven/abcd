@@ -298,7 +298,8 @@ at `<base-path>/<owner>/<repo>/brief/`; the base path is plain path segments,
 and an address without the trailing slash is sent on to it. A relay admits a
 page served below a base path through an `--origin` naming it,
 `https://<host>/<base>/`. The page connects
-only to the relay the person names and to `api.github.com`, and it sends the
+only to the relay it finds (its own origin, the invite link's, or the first
+the repository's `relays.json` names) and to `api.github.com`, and it sends the
 person to `github.com` for sign-in and to open the pre-filled issues a session
 sends. The directory is the one the user names; never publish or deploy it for
 them. (A session started with `start` serves the same files itself.)

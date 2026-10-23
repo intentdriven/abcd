@@ -208,6 +208,102 @@
       "evidence": ".abcd/work/decisions/ (538 records) against .abcd/development/decisions/adrs/ (92 files)",
       "commit": "2a692195fd82fec4229e064a2fb0f15b34c80172",
       "applied": "2026-10-16T05:32:44Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "to GitHub is the spec's later step.",
+      "replacement": "to GitHub is the page's own: it sends a session's changes as one pull request or pre-filled issues (see Sending).",
+      "evidence": "internal/surface/session/web/session.js:2646",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "an IPv6 visitor is counted by its /64, and",
+      "replacement": "an IPv6 visitor is counted by its /48, and",
+      "evidence": "internal/core/session/codes.go:108",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "the forwarded address is trusted only behind a declared proxy.",
+      "replacement": "the forwarded address is trusted only behind a declared proxy, or, on a relay bound to loopback, as Tailscale Serve forwards a tailnet address from a loopback peer.",
+      "evidence": "internal/surface/session/server.go:446",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "The blueprint is `.abcd/relay/render.yaml`, one free Render web service with",
+      "replacement": "The blueprint is `render.yaml` at the repository's root (or `.abcd/relay/render.yaml` beside a root `render.yaml` the team wrote), one free Render web service with",
+      "evidence": "internal/core/session/blueprint.go:521",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "redeploy ends every open session) and the sign-in app's two variables",
+      "replacement": "redeploy ends every open session) and the sign-in app's secret, with its client id until setup has recorded the app,",
+      "evidence": "internal/core/session/blueprint.go:402",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "HTML names its own files three levels up, so a base path works too.",
+      "replacement": "HTML names its own files from the site's root, or from under the base path the page is built for, so a base path works too.",
+      "evidence": "internal/surface/session/web/web.go:62",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "QR code of the page's address with the relay and code in the fragment",
+      "replacement": "QR code of the page's address with the code in the fragment, and the relay too only where a guest's page could not find it alone",
+      "evidence": "internal/surface/session/web/session.js:1837",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "`0` done; `1` a failure after the relay started, or while the page was being",
+      "replacement": "`0` done; `1` a failure after the relay started, when no app is recorded (stopped, the hour ran out, GitHub's conversion failed three times, or the app came back owned by another account than the organisation), or while the page or the blueprint was being",
+      "evidence": "internal/surface/cli/session.go:838",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "started or written.",
+      "replacement": "started or written, but for a blueprint that cannot be written once the app is recorded, which exits 2 with the app and the answer kept.",
+      "evidence": "internal/surface/cli/session.go:905",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "22-site.md",
+      "sentence": "Without one, the stage stops and says what remains: store the credential through the credential",
+      "replacement": "Without one, the stage stops and says what remains (the `github-pages` provider needs none: it acts through the forge as the person running the verb): store the credential through the credential",
+      "evidence": "internal/core/site/setup.go:970",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "22-site.md",
+      "sentence": "The lint's site target runs seven independent gates over a rendered tree and reports",
+      "replacement": "The lint's site target runs eight independent gates over a rendered tree and reports",
+      "evidence": "internal/core/site/check.go:158",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "22-site.md",
+      "sentence": "loop-figure labels. The seven are named once in the code that runs them, and the",
+      "replacement": "loop-figure labels, and the base path of every root-absolute link. The eight are named once in the code that runs them, and the",
+      "evidence": "internal/core/site/check.go:158",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
     }
   ]
 }

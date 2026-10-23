@@ -4752,8 +4752,10 @@ Write the brief session's page into --out: index.html and an identical 404.html,
 session.js, session.css, and the vendored editor bundle with its licences under
 vendor/. The files are plain and static, embedded in this binary; serve them
 from any static host, such as GitHub Pages, whose 404.html fallback is how
-/<owner>/<repo>/brief/ reaches the page. The page connects only to the relay the
-person names and to api.github.com with their own token, and it sends the
+/<owner>/<repo>/brief/ reaches the page. The page connects only to the relay it
+finds itself (its own origin, the invite link's, or the first the repository's
+relays.json names) and to api.github.com with the person's own token, and it
+sends the
 person to github.com for sign-in and to open the pre-filled issues a session
 sends. It reads nothing from this checkout.
 

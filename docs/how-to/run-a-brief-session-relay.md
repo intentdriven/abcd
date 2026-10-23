@@ -98,7 +98,7 @@ address, and admits only the page it serves itself.
 
 ## On the team's own relay, on Render
 
-`abcd session setup` does steps 1 and 3 itself, with the team's client id
+`abcd session setup` does step 1 itself, and step 5 when given `--relay-origin`, with the team's client id
 already in `render.yaml`, and prints the rest.
 
 1. In the project's checkout, write the blueprint:

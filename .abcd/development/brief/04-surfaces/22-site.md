@@ -84,7 +84,7 @@ any secret step.
 
 **The host.** With a hosting credential on this machine, the provider adapter
 creates the host, routes the custom domain to it and reports the live address.
-Without one, the stage stops and says what remains: store the credential through the credential
+Without one, the stage stops and says what remains (the `github-pages` provider needs none: it acts through the forge as the person running the verb): store the credential through the credential
 walkthrough at `ahoy`, which verifies it with the provider's own account read
 before it keeps it, and re-run, or create the host in the
 provider's console.
@@ -266,11 +266,11 @@ entry and no links.
 
 ## The gates
 
-The lint's site target runs seven independent gates over a rendered tree and reports
+The lint's site target runs eight independent gates over a rendered tree and reports
 every failure rather than the first: provenance, hero drift against the identity
 block, banned tokens over composed text, `abcd …` snippets against the generated
 CLI reference, the unresolved-reference ratchet, the static mobile checks, and the
-loop-figure labels. The seven are named once in the code that runs them, and the
+loop-figure labels, and the base path of every root-absolute link. The eight are named once in the code that runs them, and the
 check's report prints each name as it runs it, passing or failing.
 
 Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and
