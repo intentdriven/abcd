@@ -437,7 +437,10 @@ The drain's state is one file beside the runs,
 `.abcd/.work.local/run/drain.json`: when it began, the rule's record, its cap
 and its pace, the window clock, every lane it opened with its outcome, and
 every hand-back it routed with the record change it made. It is written under
-its own lock, so two drains never open two lanes. A drain that has ended is
+its own lock, so two drains never open two lanes. A drain state of a later
+schema version is a newer abcd's: it is refused as that before it is parsed,
+and the person is told to run the newer abcd and not to remove the file, which
+holds that drain. A drain that has ended is
 kept for reading, and the next invocation begins a new one. The cap is set when
 a drain begins, and a different cap named while it runs is refused rather than
 ignored. The pace is the implement loop's, resolved through the same layers when
