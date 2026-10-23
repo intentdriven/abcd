@@ -2,6 +2,7 @@ package matrix
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -49,8 +50,8 @@ func TestADeclarationParsesIntoTasksCellsAndRepeats(t *testing.T) {
 		t.Fatalf("cells = %+v %+v", d.Builders, d.Reviewers)
 	}
 	if d.Repeats != (Repeats{Pilot: 3, Max: 20}) || d.SpendCap == nil || d.SpendCap.Amount != 25 || d.SpendCap.Unit != "usd" ||
-		d.LoadCap != 4 || d.Concurrency != 2 || d.Judging.GuestsMayJudge {
-		t.Fatalf("run settings = %+v %+v %d %d %+v", d.Repeats, d.SpendCap, d.LoadCap, d.Concurrency, d.Judging)
+		d.LoadCap == nil || *d.LoadCap != 4 || d.Concurrency != 2 || d.Judging.GuestsMayJudge {
+		t.Fatalf("run settings = %+v %+v %v %d %+v", d.Repeats, d.SpendCap, d.LoadCap, d.Concurrency, d.Judging)
 	}
 	if got := d.cells(); len(got) != 3 || got[2].role != RoleReviewer || got[0].role != RoleBuilder {
 		t.Fatalf("cells() = %+v", got)
@@ -130,13 +131,18 @@ func TestADeclarationIsHeldToItsShape(t *testing.T) {
 		"duplicate cell":      {`"id": "local-rev"`, `"id": "host-big"`, "twice"},
 		"no builders": {`{"id": "host-big", "route": "host"},
     {"id": "or-cheap", "route": "builder=runner:opencode@openrouter/vendor/model", "settings": {"temperature": 0.6}}`, ``, "builder"},
-		"empty route":      {`"route": "host"`, `"route": ""`, "route"},
-		"control in route": {`"route": "host"`, `"route": "ho\u001bst"`, "route"},
-		"zero load cap":    {`"load_cap": 4`, `"load_cap": 0`, "load_cap"},
-		"zero concurrency": {`"concurrency": 2`, `"concurrency": 0`, "concurrency"},
-		"cap unit":         {`"unit": "usd"`, `"unit": "eur"`, "unit"},
-		"cap amount":       {`"amount": 25`, `"amount": 0`, "amount"},
-		"too many repeats": {`"max": 20`, `"max": 100000`, "max"},
+		"empty route":            {`"route": "host"`, `"route": ""`, "route"},
+		"control in route":       {`"route": "host"`, `"route": "ho\u001bst"`, "route"},
+		"bidi in route":          {`"route": "host"`, `"route": "ho‮st"`, "route"},
+		"bidi in name":           {`"name": "routing check"`, `"name": "routing ‮check"`, "name"},
+		"bidi in criteria":       {`"criteria": "accurate against the source first"`, `"criteria": "accurate​ against the source first"`, "criteria"},
+		"zero load cap":          {`"load_cap": 4`, `"load_cap": 0`, "load_cap"},
+		"zero concurrency":       {`"concurrency": 2`, `"concurrency": 0`, "concurrency"},
+		"concurrency past bound": {`"concurrency": 2`, `"concurrency": 100000`, "concurrency"},
+		"negative load cap":      {`"load_cap": 4`, `"load_cap": -1`, "load_cap"},
+		"cap unit":               {`"unit": "usd"`, `"unit": "eur"`, "unit"},
+		"cap amount":             {`"amount": 25`, `"amount": 0`, "amount"},
+		"too many repeats":       {`"max": 20`, `"max": 100000`, "max"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -149,5 +155,39 @@ func TestADeclarationIsHeldToItsShape(t *testing.T) {
 				t.Fatalf("parseDeclaration = %v; want a refusal naming %q", err, c.want)
 			}
 		})
+	}
+}
+
+// Decision 12 ties the load cap to local cells: a declaration may leave it
+// out, and the run record asks for it only when a cell runs locally.
+func TestADeclarationMayLeaveTheLoadCapOut(t *testing.T) {
+	doc := strings.Replace(goodDeclaration, `"load_cap": 4,
+`, "", 1)
+	d, err := parseDeclaration([]byte(doc))
+	if err != nil {
+		t.Fatalf("parseDeclaration without a load cap: %v", err)
+	}
+	if d.LoadCap != nil {
+		t.Fatalf("load cap = %v; want none named", *d.LoadCap)
+	}
+}
+
+// The declaration bounds how many tasks and cells it names, so the run record
+// built from it always fits the bound its lab reads a record back within.
+func TestADeclarationBoundsItsTasksAndCells(t *testing.T) {
+	var cells, tasks []string
+	for i := range maxCells + 1 {
+		cells = append(cells, fmt.Sprintf(`{"id": "c-%d", "route": "host"}`, i))
+	}
+	for i := range maxTasks + 1 {
+		tasks = append(tasks, fmt.Sprintf(`{"id": "t-%d", "kind": "code", "intent": "itd-1"}`, i))
+	}
+	for name, doc := range map[string]string{
+		"cells": strings.Replace(goodDeclaration, `{"id": "local-rev", "route": "reviewer=runner:opencode@local/qwen"}`, strings.Join(cells, ","), 1),
+		"tasks": strings.Replace(goodDeclaration, `{"id": "feature-a", "kind": "code", "intent": "itd-2610161733316518"},`, strings.Join(tasks, ",")+",", 1),
+	} {
+		if _, err := parseDeclaration([]byte(doc)); err == nil || !strings.Contains(err.Error(), "at most") {
+			t.Errorf("%s past the bound: %v; want a refusal naming the bound", name, err)
+		}
 	}
 }

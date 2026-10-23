@@ -19,7 +19,7 @@
     "version": "1.2.3",
     "model_info": {
       "name": "vendor/model-2026-10",
-      "provider": "provider-a"
+      "provider": "vendor"
     }
   },
   "agent_result": {
@@ -34,6 +34,7 @@
         "kind": "code",
         "intent": "itd-2610161733316518",
         "source": "openrouter",
+        "served_provider": "provider-a",
         "settings": {
           "temperature": 0.6
         },
@@ -140,12 +141,6 @@
     "rewards": {
       "hidden_tests": 0.7777777777777778
     }
-  },
-  "exception_info": {
-    "exception_type": "abcd.failed",
-    "exception_message": "hidden tests failed",
-    "exception_traceback": "",
-    "occurred_at": "2026-10-23T01:03:38Z"
   },
   "started_at": "2026-10-23T01:02:03Z",
   "finished_at": "2026-10-23T01:03:38Z"

@@ -159,3 +159,76 @@ func TestAnOutageBeforeStartIsNotStartedNeverFailed(t *testing.T) {
 		t.Fatal("an unknown status was admitted")
 	}
 }
+
+// The acceptance criteria count a copy carrying a fallback receipt as a
+// failure; a copy the compliance check excluded broke a rule of the run, not
+// the model's task, so it is named and counted apart, neither a pass nor a
+// failure (the SOTA line: reject rule-breaking runs before ranking).
+func TestACopyTheComplianceCheckExcludedIsCountedApart(t *testing.T) {
+	c := fullTrial()
+	c.Status, c.Reason = StatusExcluded, "edited the hidden tests"
+	if err := c.validate(); err != nil {
+		t.Fatalf("a compliance exclusion is refused: %v", err)
+	}
+	if c.Failed() || c.Passed() || !c.Attempted() {
+		t.Fatalf("a compliance exclusion: failed %v passed %v; want counted apart, neither", c.Failed(), c.Passed())
+	}
+	f := fullTrial()
+	f.Status = StatusExcluded
+	f.Fallbacks = []runner.FallbackReceipt{{Role: "builder", Asked: "runner:opencode", Reason: runner.ReasonFailed, Ran: "host"}}
+	if !f.Failed() {
+		t.Fatal("a copy carrying a fallback receipt is not counted a failure")
+	}
+}
+
+// A trial record is read at a trust boundary (an imported Harbor or Inspect
+// document becomes one), so every count is held to zero or more and to a
+// bound, every cost to a readable figure in a known unit, and every string,
+// down to the receipts it carries, to bounded plain text: nothing that could
+// move a terminal's cursor, reorder a line or hide text reaches a record.
+func TestATrialHoldsItsCountsAndTextToBounds(t *testing.T) {
+	esc := "\x1b]0;x\a\x1b[2J"
+	long := strings.Repeat("r", maxReasonBytes+1)
+	cases := map[string]func(*TrialRecord){
+		"negative prompt tokens":  func(t *TrialRecord) { t.Usage.PromptTokens = -1 },
+		"unbounded cache reads":   func(t *TrialRecord) { t.Usage.CacheReadTokens = maxTokens + 1 },
+		"negative cost":           func(t *TrialRecord) { t.Cost = &oracle.Cost{Amount: -1, Unit: oracle.CostUSD} },
+		"cost in no known unit":   func(t *TrialRecord) { t.Cost = &oracle.Cost{Amount: 1, Unit: "eur"} },
+		"unbounded model time":    func(t *TrialRecord) { t.ModelTimeMS = maxMS + 1 },
+		"unbounded score":         func(t *TrialRecord) { t.Score = &Score{Passed: 1, Total: maxTests + 1} },
+		"escape in harness":       func(t *TrialRecord) { t.HarnessVersion = esc },
+		"escape in served model":  func(t *TrialRecord) { t.ModelServed = "\x1b[31mRED" },
+		"bidi in asked model":     func(t *TrialRecord) { t.ModelAsked = "vendor/‮model" },
+		"long served provider":    func(t *TrialRecord) { t.ServedProvider = strings.Repeat("p", oracle.MaxModelBytes+1) },
+		"escape in reason":        func(t *TrialRecord) { t.Reason = "failed" + esc },
+		"newline in reason":       func(t *TrialRecord) { t.Reason = "failed\nforged line" },
+		"long reason":             func(t *TrialRecord) { t.Reason = long },
+		"escape in score detail":  func(t *TrialRecord) { t.Score.Detail = esc },
+		"escape in a setting":     func(t *TrialRecord) { t.Settings = oracle.Settings{"temp\x1b": json.RawMessage(`1`)} },
+		"escape in a role":        func(t *TrialRecord) { t.Roles[0].Route.FinishReason = esc },
+		"escape in a call":        func(t *TrialRecord) { t.Calls[0].Override = esc },
+		"escape in a call record": func(t *TrialRecord) { t.Calls[0].ProviderCall.GenerationID = esc },
+		"negative receipt tokens": func(t *TrialRecord) {
+			u := *t.Roles[0].Route.Usage
+			u.CompletionTokens = -5
+			t.Roles[0].Route.Usage = &u
+		},
+		"escape in unpinned": func(t *TrialRecord) {
+			t.Unpinned = []oracle.Unpinned{{Field: oracle.Field(esc), Reason: oracle.NotReported}}
+		},
+		"too many calls": func(t *TrialRecord) {
+			for len(t.Calls) <= maxReceipts {
+				t.Calls = append(t.Calls, t.Calls[0])
+			}
+		},
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			tr := fullTrial()
+			mutate(&tr)
+			if tr.validate() == nil {
+				t.Fatal("validate admitted it")
+			}
+		})
+	}
+}

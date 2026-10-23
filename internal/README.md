@@ -145,7 +145,9 @@ plugin surface, and a future MCP server share one engine.
   trial result and an Inspect eval sample and back. A run is a lab procedure:
   it writes only under its lab's `state/matrix/`, through `lab.Procedure`, so
   it obeys the lab's halts and pins its binary through the lab's one hashing
-  path (`lab.BinaryIdentity`).
+  path (`lab.BinaryIdentity`). The run record and its declaration pass the
+  repository's secret scanner (`adapter/scanner`) before they are written, and
+  are written together or not at all (`lab.Procedure.WriteStates`).
 - **`core/surface/`** — the compatibility surface as DATA: the snapshot of every
   command, flag, and manifest entry a consumer binds to, and the diff that names
   what a release narrowed. It shares a word with the `surface/` front-door tier

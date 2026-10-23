@@ -135,20 +135,8 @@
       "total_cost": 0.0123
     }
   },
-  "model_fallbacks": [
-    {
-      "model": "vendor/model",
-      "fallback_model": "vendor/model-2026-10",
-      "count": 1
-    }
-  ],
   "started_at": "2026-10-23T01:02:03Z",
   "completed_at": "2026-10-23T01:03:38Z",
   "total_time": 95,
-  "working_time": 83,
-  "error": {
-    "message": "hidden tests failed",
-    "traceback": "",
-    "traceback_ansi": ""
-  }
+  "working_time": 83
 }

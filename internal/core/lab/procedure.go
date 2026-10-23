@@ -26,8 +26,9 @@ import (
 // procedureDir is the one directory of a lab home a procedure writes under.
 const procedureDir = stateDir + "/matrix"
 
-// maxStateBytes bounds one procedure record read back.
-const maxStateBytes = maxDocBytes
+// MaxStateBytes bounds one procedure record read back; a procedure never
+// writes one larger.
+const MaxStateBytes = maxDocBytes
 
 // stateSegRe is one segment of a procedure record's path: it becomes a
 // directory or file name, so it is held to a narrow shape first.
@@ -127,13 +128,53 @@ func (p *Procedure) WriteState(rel string, data []byte) error {
 	return nil
 }
 
+// StateFile is one procedure record of a set WriteStates writes.
+type StateFile struct {
+	Rel  string
+	Data []byte
+}
+
+// WriteStates writes a set of procedure records that only make sense
+// together, in order, each once, as WriteState does. Every path is checked
+// before anything is written, and a write that fails part-way removes each
+// record this call created (it created them exclusively, so they are its own),
+// so a failed set leaves nothing and can be written again.
+func (p *Procedure) WriteStates(files ...StateFile) error {
+	for _, f := range files {
+		if _, err := stateRel(f.Rel); err != nil {
+			return err
+		}
+	}
+	var written []string
+	for _, f := range files {
+		if err := p.WriteState(f.Rel, f.Data); err != nil {
+			return errors.Join(err, p.unwrite(written))
+		}
+		written = append(written, f.Rel)
+	}
+	return nil
+}
+
+// unwrite removes records this procedure just wrote, last first, and reports
+// any it could not remove.
+func (p *Procedure) unwrite(rels []string) error {
+	var errs []error
+	for i := len(rels) - 1; i >= 0; i-- {
+		full, _ := stateRel(rels[i])
+		if err := p.l.root.Remove(full); err != nil && !errors.Is(err, os.ErrNotExist) {
+			errs = append(errs, fmt.Errorf("cannot remove %s, written by a set that failed part-way: %v", p.l.display(full), redact(err, p.l.store.home)))
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // ReadState reads one procedure record back.
 func (p *Procedure) ReadState(rel string) ([]byte, error) {
 	full, err := stateRel(rel)
 	if err != nil {
 		return nil, err
 	}
-	data, err := fsutil.ReadGuardedInRoot(p.l.root, full, maxStateBytes)
+	data, err := fsutil.ReadGuardedInRoot(p.l.root, full, MaxStateBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("%s is not written: %w", p.l.display(full), os.ErrNotExist)
 	}

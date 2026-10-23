@@ -27,11 +27,9 @@ package matrix
 //     models/task/id.py at the same commit.
 //
 // Open at this step: neither fixture has been run through the upstream
-// validators (EvalLog.model_validate, TrialResult.model_validate), and
-// AgentContext.metadata, the member abcd's own fields ride in on Harbor, is
-// taken on inference rather than read from the confirmed field table.
+// validators (EvalLog.model_validate, TrialResult.model_validate).
 //
-// Three differences are handled here rather than papered over:
+// Four differences are handled here rather than papered over:
 //
 //   - Cached tokens. Harbor's n_input_tokens includes the cached prompt
 //     tokens, with the cache reads counted again in n_cache_tokens; Inspect's
@@ -43,14 +41,27 @@ package matrix
 //   - The repeat. Harbor's TrialResult has no attempt index, so the repeat and
 //     the cell ride in the trial name, <task>__<cell>__<repeat>, which abcd's
 //     ids (no underscore) keep unambiguous. Inspect's epoch is the repeat.
-//   - Asked and served. Inspect names a served model other than the one asked
-//     for as a ModelFallback; Harbor keeps the asked model in the trial's
-//     agent config (config.agent.model_name) and the served one in agent_info.
+//   - Asked and served. Harbor keeps the asked model in the trial's agent
+//     config (config.agent.model_name) and the served one in agent_info, whose
+//     provider is the model's vendor, the prefix of its id before the first
+//     '/', not the host that served it; the serving provider rides in the
+//     metadata. Inspect names a different model serving in place of the one
+//     asked for as a ModelFallback. A served id that is the asked id, or the
+//     asked id with a date stamp after '-', '@' or ':' (vendor/model served as
+//     vendor/model-2026-10 or vendor/model@20261001), is a dated snapshot of
+//     the same model and no fallback; any other served id is a different
+//     model (sameModel).
+//   - Errors. Inspect's error is the error that halted a sample, and Harbor
+//     retries an exception type it does not list and drops its reward, so a
+//     scored failure travels in its score alone: only a failed or excluded
+//     copy with no score (its runner failed, refused or answered
+//     unparsably) is exported as an error, its reason the message.
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -154,6 +165,7 @@ type harborAbcd struct {
 	Kind             TaskKind                 `json:"kind"`
 	Intent           string                   `json:"intent,omitempty"`
 	Source           Source                   `json:"source"`
+	ServedProvider   string                   `json:"served_provider"`
 	Settings         oracle.Settings          `json:"settings"`
 	Status           TrialStatus              `json:"status"`
 	Reason           string                   `json:"reason"`
@@ -184,7 +196,7 @@ func (t TrialRecord) Harbor() (HarborTrialResult, error) {
 	}
 	meta := harborAbcd{
 		SchemaVersion: t.SchemaVersion, Run: t.Run, Kind: t.Kind, Intent: t.Intent, Source: t.Source,
-		Settings: t.Settings, Status: t.Status, Reason: t.Reason, Score: t.Score,
+		ServedProvider: t.ServedProvider, Settings: t.Settings, Status: t.Status, Reason: t.Reason, Score: t.Score,
 		Roles: t.Roles, Calls: t.Calls, Fallbacks: t.Fallbacks,
 		ReasoningTokens: u.ReasoningTokens, CacheWriteTokens: u.CacheWriteTokens,
 		ModelTimeMS: t.ModelTimeMS, GateWaitMS: t.GateWaitMS, Unpinned: t.Unpinned,
@@ -214,8 +226,8 @@ func (t TrialRecord) Harbor() (HarborTrialResult, error) {
 	if t.ModelAsked != "" {
 		h.Config.Agent = &HarborAgentConfig{ModelName: t.ModelAsked}
 	}
-	if t.ModelServed != "" || t.ServedProvider != "" {
-		h.AgentInfo.ModelInfo = &HarborModelInfo{Name: t.ModelServed, Provider: t.ServedProvider}
+	if t.ModelServed != "" {
+		h.AgentInfo.ModelInfo = &HarborModelInfo{Name: t.ModelServed, Provider: vendor(t.ModelServed)}
 	}
 	if s := t.Score; s != nil && s.Total > 0 {
 		h.VerifierResult = &HarborVerifierResult{Rewards: map[string]float64{hiddenTestsScore: float64(s.Passed) / float64(s.Total)}}
@@ -252,16 +264,22 @@ func (h HarborTrialResult) Trial() (TrialRecord, error) {
 		return TrialRecord{}, fmt.Errorf("the trial uri %q is not the trial's", clip(h.TrialURI))
 	}
 	a := h.AgentResult
-	prompt := a.NInputTokens - a.NCacheTokens - meta.CacheWriteTokens
-	if prompt < 0 || a.NCacheTokens < 0 || a.NOutputTokens < 0 || meta.CacheWriteTokens < 0 {
-		return TrialRecord{}, fmt.Errorf("the token counts do not add up: input %d holds cache reads %d and writes %d", a.NInputTokens, a.NCacheTokens, meta.CacheWriteTokens)
+	// Checked arithmetic: each count is bounded before any is subtracted, so
+	// the prompt count cannot wrap into a plausible figure.
+	in, reads, writes := int64(a.NInputTokens), int64(a.NCacheTokens), int64(meta.CacheWriteTokens)
+	if in < 0 || in > 3*maxTokens || !countOK(reads) || !countOK(writes) || !countOK(int64(a.NOutputTokens)) {
+		return TrialRecord{}, fmt.Errorf("the token counts are not counts: input %d, cache reads %d and writes %d, output %d", in, reads, writes, a.NOutputTokens)
+	}
+	prompt := in - reads - writes
+	if !countOK(prompt) {
+		return TrialRecord{}, fmt.Errorf("the token counts do not add up: input %d holds cache reads %d and writes %d", in, reads, writes)
 	}
 	t := TrialRecord{
 		SchemaVersion: meta.SchemaVersion, Run: meta.Run, Key: key, Kind: meta.Kind, Intent: meta.Intent,
 		FrozenCommit: commit, Source: meta.Source, Runner: h.AgentInfo.Name, HarnessVersion: h.AgentInfo.Version,
-		Settings: meta.Settings, Status: meta.Status, Reason: meta.Reason, Score: meta.Score,
+		ServedProvider: meta.ServedProvider, Settings: meta.Settings, Status: meta.Status, Reason: meta.Reason, Score: meta.Score,
 		Roles: meta.Roles, Calls: meta.Calls, Fallbacks: meta.Fallbacks,
-		Usage: oracle.Usage{PromptTokens: prompt, CompletionTokens: a.NOutputTokens, ReasoningTokens: meta.ReasoningTokens,
+		Usage: oracle.Usage{PromptTokens: int(prompt), CompletionTokens: a.NOutputTokens, ReasoningTokens: meta.ReasoningTokens,
 			CacheReadTokens: a.NCacheTokens, CacheWriteTokens: meta.CacheWriteTokens},
 		Cost:        meta.Cost,
 		StartedAt:   timeOf(h.StartedAt),
@@ -272,7 +290,10 @@ func (h HarborTrialResult) Trial() (TrialRecord, error) {
 		t.ModelAsked = h.Config.Agent.ModelName
 	}
 	if mi := h.AgentInfo.ModelInfo; mi != nil {
-		t.ModelServed, t.ServedProvider = mi.Name, mi.Provider
+		if mi.Name == "" || mi.Provider != vendor(mi.Name) {
+			return TrialRecord{}, fmt.Errorf("the model info %q of %q is not a served model and its vendor", clip(mi.Provider), clip(mi.Name))
+		}
+		t.ModelServed = mi.Name
 	}
 	if a.CostUSD != nil {
 		if meta.Cost != nil {
@@ -282,6 +303,10 @@ func (h HarborTrialResult) Trial() (TrialRecord, error) {
 	}
 	if err := t.validate(); err != nil {
 		return TrialRecord{}, fmt.Errorf("the Harbor trial result is not a trial record: %w", err)
+	}
+	kind, ei := exception(t), h.ExceptionInfo
+	if (ei != nil) != (kind != "") || ei != nil && (ei.ExceptionType != kind || ei.ExceptionMessage != t.Reason) {
+		return TrialRecord{}, errors.New("the Harbor trial result's exception_info is not the one abcd writes for its status and score")
 	}
 	return t, nil
 }
@@ -402,8 +427,9 @@ func (t TrialRecord) Inspect() (InspectSample, error) {
 			InputTokens: u.PromptTokens, OutputTokens: u.CompletionTokens, ReasoningTokens: u.ReasoningTokens,
 			InputTokensCacheRead: u.CacheReadTokens, InputTokensCacheWrite: u.CacheWriteTokens,
 			// Inferred: the total counts the input, the output and both
-			// cache counts once each; it is derived and never read back.
-			TotalTokens: u.PromptTokens + u.CompletionTokens + u.CacheReadTokens + u.CacheWriteTokens,
+			// cache counts once each; it is derived, and read back only to
+			// check it.
+			TotalTokens: totalTokens(u),
 		}
 		if isUSD {
 			mu.TotalCost = &usd
@@ -416,10 +442,8 @@ func (t TrialRecord) Inspect() (InspectSample, error) {
 	}
 	if t.ModelServed != "" {
 		s.Output = &InspectModelOutput{Model: t.ModelServed}
-		if t.ModelAsked != "" && t.ModelAsked != t.ModelServed {
-			s.ModelFallbacks = []InspectModelFallback{{Model: t.ModelAsked, FallbackModel: t.ModelServed, Count: 1}}
-		}
 	}
+	s.ModelFallbacks = inspectFallbacks(t)
 	if sc := t.Score; sc != nil && sc.Total > 0 {
 		s.Scores = map[string]InspectScore{hiddenTestsScore: {Value: json.RawMessage(strconv.FormatFloat(float64(sc.Passed)/float64(sc.Total), 'g', -1, 64))}}
 	}
@@ -473,6 +497,14 @@ func (s InspectSample) Trial() (TrialRecord, error) {
 			}
 			t.Usage = oracle.Usage{PromptTokens: mu.InputTokens, CompletionTokens: mu.OutputTokens, ReasoningTokens: mu.ReasoningTokens,
 				CacheReadTokens: mu.InputTokensCacheRead, CacheWriteTokens: mu.InputTokensCacheWrite}
+			// Each count is bounded before the total is checked against
+			// their sum, so the sum cannot wrap.
+			if err := checkUsage(t.Usage); err != nil {
+				return TrialRecord{}, fmt.Errorf("the Inspect sample's usage: %w", err)
+			}
+			if mu.TotalTokens != totalTokens(t.Usage) {
+				return TrialRecord{}, fmt.Errorf("the sample's total_tokens %d is not its counts' sum %d", mu.TotalTokens, totalTokens(t.Usage))
+			}
 			if mu.TotalCost != nil {
 				if meta.Cost != nil {
 					return TrialRecord{}, errors.New("the Inspect sample carries its cost twice")
@@ -486,16 +518,60 @@ func (s InspectSample) Trial() (TrialRecord, error) {
 	if err := t.validate(); err != nil {
 		return TrialRecord{}, fmt.Errorf("the Inspect sample is not a trial record: %w", err)
 	}
+	if want := inspectFallbacks(t); len(want) != len(s.ModelFallbacks) || len(want) > 0 && want[0] != s.ModelFallbacks[0] {
+		return TrialRecord{}, errors.New("the Inspect sample's model_fallbacks are not the ones abcd writes for its asked and served models")
+	}
+	if (s.Error != nil) != (exception(t) != "") || s.Error != nil && (s.Error.Message != t.Reason || s.Error.Traceback != "" || s.Error.TracebackANSI != "") {
+		return TrialRecord{}, errors.New("the Inspect sample's error is not the one abcd writes for its status and score")
+	}
 	return t, nil
 }
 
-// exception is a failed or excluded copy's error type as a target names it,
-// "" for any other copy.
+// exception is the error type a target names for a failed or excluded copy
+// that has no score (its runner failed, refused or answered unparsably), ""
+// for any other copy: a scored failure is a result, not an error.
 func exception(t TrialRecord) string {
-	if (t.Status == StatusFailed || t.Status == StatusExcluded) && t.Reason != "" && !t.FinishedAt.IsZero() {
+	if (t.Status == StatusFailed || t.Status == StatusExcluded) && t.Score == nil && t.Reason != "" && !t.FinishedAt.IsZero() {
 		return "abcd." + string(t.Status)
 	}
 	return ""
+}
+
+// inspectFallbacks is the ModelFallback a trial's asked and served models
+// make: one when a different model served (sameModel), none otherwise.
+func inspectFallbacks(t TrialRecord) []InspectModelFallback {
+	if t.ModelAsked == "" || t.ModelServed == "" || sameModel(t.ModelAsked, t.ModelServed) {
+		return nil
+	}
+	return []InspectModelFallback{{Model: t.ModelAsked, FallbackModel: t.ModelServed, Count: 1}}
+}
+
+// snapshotRe is a date stamp a served id may add to the asked one: the asked
+// model's dated snapshot (-2026-10, -20261001, @20261001, :2026-10-01).
+var snapshotRe = regexp.MustCompile(`^[-@:]([0-9]{8}|[0-9]{4}-[0-9]{2}(-[0-9]{2})?)$`)
+
+// sameModel reports whether served is the asked model: the same id, or the
+// asked id with a date stamp after it.
+func sameModel(asked, served string) bool {
+	rest, ok := strings.CutPrefix(served, asked)
+	return ok && (rest == "" || snapshotRe.MatchString(rest))
+}
+
+// vendor is a model id's vendor, the prefix before its first '/', "" for an id
+// with none.
+func vendor(model string) string {
+	v, _, ok := strings.Cut(model, "/")
+	if !ok {
+		return ""
+	}
+	return v
+}
+
+// totalTokens is the total Inspect derives from the counts (inferred: input,
+// output and both cache counts once each). Every count is bounded by
+// maxTokens before it is summed, so the sum cannot overflow.
+func totalTokens(u oracle.Usage) int {
+	return u.PromptTokens + u.CompletionTokens + u.CacheReadTokens + u.CacheWriteTokens
 }
 
 // trialURI names a trial without naming a path on any machine.

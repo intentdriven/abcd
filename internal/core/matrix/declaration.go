@@ -16,9 +16,11 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // DeclarationSchema is the declaration's schema version.
@@ -41,7 +43,16 @@ const (
 const MaxRepeats = 1000
 
 // maxPaths bounds the paths one task names, and maxNameBytes its prose fields.
+//
+// MaxConcurrency bounds the copies a run makes at once; the run's plan holds it
+// to the machine (spec step 2).
+const MaxConcurrency = 64
+
+// maxTasks and maxCells bound what one declaration names, so the run record
+// built from it fits the bound its lab reads a record back within.
 const (
+	maxCells     = 64
+	maxTasks     = 64
 	maxPaths     = 64
 	maxNameBytes = 200
 	maxCriteria  = 4 << 10
@@ -82,8 +93,11 @@ type Declaration struct {
 	// SpendCap is the run's own spending cap, nil when the declaration names
 	// none; a run with a metered cell needs one from here or the person's own
 	// configuration (decision 17), never a default abcd supplies.
-	SpendCap    *Money  `json:"spend_cap,omitempty"`
-	LoadCap     int     `json:"load_cap"`
+	SpendCap *Money `json:"spend_cap,omitempty"`
+	// LoadCap is the cores the run's local cells may load (decision 12). A
+	// declaration may leave it out; the run record asks for it when a cell
+	// runs locally.
+	LoadCap     *int    `json:"load_cap,omitempty"`
 	Concurrency int     `json:"concurrency"`
 	Judging     Judging `json:"judging"`
 }
@@ -169,6 +183,9 @@ func (d Declaration) validate() error {
 	if len(d.Tasks) == 0 {
 		return errors.New("tasks names no task")
 	}
+	if len(d.Tasks) > maxTasks {
+		return fmt.Errorf("tasks names %d tasks; a run does at most %d", len(d.Tasks), maxTasks)
+	}
 	seen := map[string]bool{}
 	for i, t := range d.Tasks {
 		if !validID(t.ID) {
@@ -184,6 +201,9 @@ func (d Declaration) validate() error {
 	}
 	if len(d.Builders) == 0 {
 		return errors.New("builders names no builder cell; a matrix compares at least one")
+	}
+	if n := len(d.Builders) + len(d.Reviewers); n > maxCells {
+		return fmt.Errorf("builders and reviewers name %d cells; a run compares at most %d", n, maxCells)
 	}
 	cells := map[string]bool{}
 	for _, c := range d.cells() {
@@ -210,11 +230,11 @@ func (d Declaration) validate() error {
 			return fmt.Errorf("spend_cap: %w", err)
 		}
 	}
-	if d.LoadCap < 1 {
-		return fmt.Errorf("load_cap is %d; the run names a load cap of at least one core, below the machine's count", d.LoadCap)
+	if d.LoadCap != nil && *d.LoadCap < 1 {
+		return fmt.Errorf("load_cap is %d; a load cap is at least one core, below the machine's count", *d.LoadCap)
 	}
-	if d.Concurrency < 1 {
-		return fmt.Errorf("concurrency is %d; at least one copy runs at a time", d.Concurrency)
+	if d.Concurrency < 1 || d.Concurrency > MaxConcurrency {
+		return fmt.Errorf("concurrency is %d; from 1 to %d copies run at a time", d.Concurrency, MaxConcurrency)
 	}
 	return nil
 }
@@ -269,8 +289,8 @@ func (c roleCell) validate() error {
 	if c.Route == "" {
 		return errors.New("route names no route; a cell is `host` or a runner route")
 	}
-	if len(c.Route) > oracle.MaxRouteBytes || strings.IndexFunc(c.Route, notPrintable) >= 0 {
-		return fmt.Errorf("route is longer than %d bytes or carries a control or space character", oracle.MaxRouteBytes)
+	if len(c.Route) > oracle.MaxRouteBytes || strings.IndexFunc(c.Route, notPrintable) >= 0 || termsafe.Sanitize(c.Route) != c.Route {
+		return fmt.Errorf("route is longer than %d bytes or carries a space or a control, bidirectional or zero-width character", oracle.MaxRouteBytes)
 	}
 	if len(c.Settings) > oracle.MaxSettings {
 		return fmt.Errorf("settings names %d settings; at most %d", len(c.Settings), oracle.MaxSettings)
@@ -326,11 +346,13 @@ func paths(field string, ps []string) error {
 	return nil
 }
 
-// prose holds a prose field to one non-empty, bounded value with no control
-// character.
+// prose holds a prose field to one non-empty, bounded value of valid UTF-8,
+// its lines plain text: no control character but the line break, and no
+// bidirectional or zero-width one.
 func prose(field, s string, limit int) error {
-	if strings.TrimSpace(s) == "" || len(s) > limit || strings.IndexFunc(s, func(r rune) bool { return unicode.IsControl(r) && r != '\n' }) >= 0 {
-		return fmt.Errorf("%s is empty, longer than %d bytes or carries a control character", field, limit)
+	if strings.TrimSpace(s) == "" || len(s) > limit || !utf8.ValidString(s) ||
+		strings.ContainsRune(s, '\r') || termsafe.SanitizeBlock(s) != s {
+		return fmt.Errorf("%s is empty, longer than %d bytes or carries a control, bidirectional or zero-width character", field, limit)
 	}
 	return nil
 }

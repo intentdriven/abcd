@@ -157,3 +157,47 @@ func TestAProcedureRecordNotWrittenReadsAsNotExist(t *testing.T) {
 		t.Fatalf("ReadState of an unwritten record = %v; want os.ErrNotExist", err)
 	}
 }
+
+// A procedure's records that only make sense together are written together:
+// each once, in order, and a write that fails part-way removes what it wrote,
+// so a failed write leaves nothing and can be made again.
+func TestAProcedureWritesASetOfRecordsWholeOrNotAtAll(t *testing.T) {
+	m, home, root := passedLab(t)
+	p, err := OpenProcedure(root, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	dir := filepath.Join(labDir(home, m), "state", "matrix", "mx-261023012949-ab12")
+
+	if err := p.WriteState("mx-261023012949-ab12/b.json", []byte("taken\n")); err != nil {
+		t.Fatal(err)
+	}
+	err = p.WriteStates(StateFile{Rel: "mx-261023012949-ab12/a.json", Data: []byte("a\n")},
+		StateFile{Rel: "mx-261023012949-ab12/b.json", Data: []byte("b\n")})
+	if !errors.Is(err, ErrRefused) {
+		t.Fatalf("WriteStates over a written record = %v; want a refusal", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "a.json")); !os.IsNotExist(err) {
+		t.Fatalf("a set written part-way left a.json behind: %v", err)
+	}
+	if got := read(t, filepath.Join(dir, "b.json")); got != "taken\n" {
+		t.Fatalf("the refused set changed the record already written: %q", got)
+	}
+	// A bad path anywhere in the set refuses the set before anything is
+	// written.
+	err = p.WriteStates(StateFile{Rel: "mx-261023012949-ab12/c.json", Data: []byte("c\n")}, StateFile{Rel: "../x", Data: []byte("x")})
+	if !errors.Is(err, ErrRefused) {
+		t.Fatalf("WriteStates with a bad path = %v; want ErrRefused", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "c.json")); !os.IsNotExist(err) {
+		t.Fatalf("a set with a bad path wrote c.json: %v", err)
+	}
+	if err := p.WriteStates(StateFile{Rel: "mx-261023012949-ab12/c.json", Data: []byte("c\n")},
+		StateFile{Rel: "mx-261023012949-ab12/d.json", Data: []byte("d\n")}); err != nil {
+		t.Fatalf("WriteStates: %v", err)
+	}
+	if read(t, filepath.Join(dir, "c.json")) != "c\n" || read(t, filepath.Join(dir, "d.json")) != "d\n" {
+		t.Fatal("WriteStates did not write the set")
+	}
+}

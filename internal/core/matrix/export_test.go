@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -49,10 +50,9 @@ type shape struct {
 	free     []string            // paths that are free-form
 }
 
-// harborShape is TrialResult at d0fe0b24703f. agent_result.metadata is the
-// one member taken on inference: AgentContext's metadata dict is where the
-// field note says abcd's own record has to go, and the confirmed table does
-// not list it (open item).
+// harborShape is TrialResult at d0fe0b24703f. agent_result.metadata is
+// AgentContext's metadata dict (models/agent/context.py), where abcd's own
+// record goes.
 var harborShape = shape{
 	keys: map[string][]string{
 		"": {"id", "task_name", "trial_name", "trial_uri", "task_id", "task_checksum", "source", "config", "agent_info",
@@ -380,15 +380,171 @@ func TestTheRepeatLandsInTheTrialNameAndTheEpoch(t *testing.T) {
 			t.Errorf("trial_name %q was read", bad)
 		}
 	}
-	// The requested and the served model: Inspect names a served model other
-	// than the one asked for as a fallback; Harbor keeps the asked one in the
-	// trial's agent config.
-	s := inspectOf(t, tr)
-	if len(s.ModelFallbacks) != 1 || s.ModelFallbacks[0].Model != tr.ModelAsked || s.ModelFallbacks[0].FallbackModel != tr.ModelServed {
-		t.Fatalf("model_fallbacks = %+v", s.ModelFallbacks)
-	}
+	// Harbor keeps the asked model in the trial's agent config and the served
+	// one in agent_info.
 	if h.Config.Agent == nil || h.Config.Agent.ModelName != tr.ModelAsked || h.AgentInfo.ModelInfo == nil || h.AgentInfo.ModelInfo.Name != tr.ModelServed {
 		t.Fatalf("Harbor config.agent %+v, agent_info %+v", h.Config.Agent, h.AgentInfo)
+	}
+}
+
+// Inspect's ModelFallback is a different model serving in place of the one
+// asked for. A dated snapshot of the asked model (vendor/model served as
+// vendor/model-2026-10) is the same model, so it is no fallback; a different
+// model is.
+func TestOnlyADifferentServedModelIsAnInspectFallback(t *testing.T) {
+	tr := fullTrial()
+	if s := inspectOf(t, tr); len(s.ModelFallbacks) != 0 {
+		t.Fatalf("a dated snapshot of the asked model was exported as a fallback: %+v", s.ModelFallbacks)
+	}
+	for _, served := range []string{"vendor/model@20261001", "vendor/model:2026-10-01", "vendor/model-20261001", "vendor/model"} {
+		tr.ModelServed = served
+		if s := inspectOf(t, tr); len(s.ModelFallbacks) != 0 {
+			t.Errorf("served %q: exported as a fallback: %+v", served, s.ModelFallbacks)
+		}
+	}
+	for _, served := range []string{"other/model", "vendor/model-mini", "vendor/modelx"} {
+		tr.ModelServed = served
+		s := inspectOf(t, tr)
+		if len(s.ModelFallbacks) != 1 || s.ModelFallbacks[0].Model != tr.ModelAsked || s.ModelFallbacks[0].FallbackModel != served {
+			t.Errorf("served %q: model_fallbacks = %+v; want one fallback from the asked model", served, s.ModelFallbacks)
+		}
+		if back, err := roundTripInspect(tr); err != nil || !reflect.DeepEqual(back, tr) {
+			t.Errorf("served %q: round trip %v", served, err)
+		}
+		inspectShape.check(t, indent(t, s))
+	}
+	// A document whose fallback list is not the one abcd writes is not read.
+	tr = fullTrial()
+	s := inspectOf(t, tr)
+	s.ModelFallbacks = []InspectModelFallback{{Model: "x", FallbackModel: "y", Count: 1}}
+	if _, err := s.Trial(); err == nil {
+		t.Fatal("an Inspect sample whose model_fallbacks disagree with its models was read")
+	}
+}
+
+// Harbor's ModelInfo.provider is the model's vendor (the prefix of its id),
+// not the host that served it; the serving provider rides in abcd's metadata.
+func TestHarborsModelProviderIsTheVendorAndTheServingProviderRidesInTheMetadata(t *testing.T) {
+	tr := fullTrial()
+	h := harborOf(t, tr)
+	if mi := h.AgentInfo.ModelInfo; mi == nil || mi.Name != tr.ModelServed || mi.Provider != "vendor" {
+		t.Fatalf("model_info = %+v; want the served model and its vendor", h.AgentInfo.ModelInfo)
+	}
+	if !strings.Contains(string(h.AgentResult.Metadata[metadataKey]), `"served_provider":"provider-a"`) {
+		t.Fatalf("the serving provider is not in the metadata: %s", h.AgentResult.Metadata[metadataKey])
+	}
+	h.AgentInfo.ModelInfo.Provider = "provider-a"
+	if _, err := h.Trial(); err == nil {
+		t.Fatal("a Harbor result whose model provider is not the served model's vendor was read")
+	}
+}
+
+// A failure that was scored is a result, not an error: Inspect's error is the
+// "error that halted sample" and Harbor retries an unclassified exception and
+// drops its reward, so a scored failure travels in its score alone and only a
+// copy with no score (its runner failed, refused or answered unparsably) is
+// exported as an error.
+func TestOnlyAnUnscoredFailureIsExportedAsAnError(t *testing.T) {
+	scored := fullTrial()
+	if h := harborOf(t, scored); h.ExceptionInfo != nil || h.VerifierResult == nil {
+		t.Fatalf("a scored failure: exception_info %+v verifier_result %+v; want the reward and no exception", h.ExceptionInfo, h.VerifierResult)
+	}
+	if s := inspectOf(t, scored); s.Error != nil || s.Scores == nil {
+		t.Fatalf("a scored failure: error %+v scores %+v; want the score and no error", s.Error, s.Scores)
+	}
+	unscored := fullTrial()
+	unscored.Score, unscored.Reason = nil, "the runner answered unparsably"
+	h := harborOf(t, unscored)
+	if h.ExceptionInfo == nil || h.ExceptionInfo.ExceptionMessage != unscored.Reason || h.VerifierResult != nil {
+		t.Fatalf("an unscored failure: exception_info %+v verifier_result %+v", h.ExceptionInfo, h.VerifierResult)
+	}
+	if s := inspectOf(t, unscored); s.Error == nil || s.Error.Message != unscored.Reason {
+		t.Fatalf("an unscored failure: error %+v", s.Error)
+	}
+	// The error members are held to the upstream shapes as the fixtures are.
+	harborShape.check(t, indent(t, h))
+	inspectShape.check(t, indent(t, inspectOf(t, unscored)))
+	for name, rt := range map[string]func(TrialRecord) (TrialRecord, error){"Harbor": roundTripHarbor, "Inspect": roundTripInspect} {
+		if back, err := rt(unscored); err != nil || !reflect.DeepEqual(back, unscored) {
+			t.Errorf("an unscored failure through %s: %v", name, err)
+		}
+	}
+	// A document that marks a scored copy as an error is not abcd's.
+	h = harborOf(t, scored)
+	h.ExceptionInfo = &HarborExceptionInfo{ExceptionType: "abcd.failed", ExceptionMessage: scored.Reason, OccurredAt: scored.FinishedAt}
+	if _, err := h.Trial(); err == nil {
+		t.Fatal("a Harbor result marking a scored failure as an exception was read")
+	}
+	s := inspectOf(t, scored)
+	s.Error = &InspectEvalError{Message: scored.Reason}
+	if _, err := s.Trial(); err == nil {
+		t.Fatal("an Inspect sample marking a scored failure as an error was read")
+	}
+}
+
+// Token counts are read with checked arithmetic both ways: a negative count,
+// a count past its bound and a sum that does not add up are refused, never
+// wrapped into a plausible figure.
+func TestTokenCountsAreCheckedBothWays(t *testing.T) {
+	tr := fullTrial()
+	for name, mutate := range map[string]func(*HarborAgentContext){
+		"wrapping input":     func(a *HarborAgentContext) { a.NInputTokens, a.NCacheTokens = math.MinInt64, 1 },
+		"input past bound":   func(a *HarborAgentContext) { a.NInputTokens = maxTokens*3 + 1 },
+		"negative output":    func(a *HarborAgentContext) { a.NOutputTokens = -1 },
+		"cache past bound":   func(a *HarborAgentContext) { a.NInputTokens, a.NCacheTokens = math.MaxInt64, maxTokens+1 },
+		"cost not readable":  func(a *HarborAgentContext) { c := math.Inf(1); a.CostUSD = &c },
+		"cost below nothing": func(a *HarborAgentContext) { c := -0.5; a.CostUSD = &c },
+	} {
+		h := harborOf(t, tr)
+		mutate(h.AgentResult)
+		if _, err := h.Trial(); err == nil {
+			t.Errorf("Harbor %s: read", name)
+		}
+	}
+	for name, mutate := range map[string]func(*InspectModelUsage){
+		"negative input":   func(u *InspectModelUsage) { u.InputTokens = -1 },
+		"input past bound": func(u *InspectModelUsage) { u.InputTokens = maxTokens + 1 },
+		"total not a sum":  func(u *InspectModelUsage) { u.TotalTokens = 7 },
+		"wrapping total":   func(u *InspectModelUsage) { u.InputTokens, u.TotalTokens = math.MaxInt64, math.MinInt64 },
+	} {
+		s := inspectOf(t, tr)
+		mu := s.ModelUsage[tr.ModelServed]
+		mutate(&mu)
+		s.ModelUsage[tr.ModelServed] = mu
+		if _, err := s.Trial(); err == nil {
+			t.Errorf("Inspect %s: read", name)
+		}
+	}
+	big := fullTrial()
+	big.Usage.PromptTokens = maxTokens + 1
+	if _, err := big.Harbor(); err == nil {
+		t.Error("Harbor exported a count past its bound")
+	}
+	if _, err := big.Inspect(); err == nil {
+		t.Error("Inspect exported a count past its bound")
+	}
+}
+
+// What a target document names about its harness and models is untrusted
+// text: a terminal escape in it refuses the document.
+func TestImportedHarnessAndModelTextIsHeldToPlainText(t *testing.T) {
+	for name, mutate := range map[string]func(*HarborTrialResult){
+		"version": func(h *HarborTrialResult) { h.AgentInfo.Version = "]0;pwn[2J" },
+		"name":    func(h *HarborTrialResult) { h.AgentInfo.Name = "open[2Jcode" },
+		"served":  func(h *HarborTrialResult) { h.AgentInfo.ModelInfo.Name = "[31mRED" },
+		"asked":   func(h *HarborTrialResult) { h.Config.Agent.ModelName = "vendor/​model" },
+	} {
+		h := harborOf(t, fullTrial())
+		mutate(&h)
+		if _, err := h.Trial(); err == nil {
+			t.Errorf("Harbor %s: read", name)
+		}
+	}
+	s := inspectOf(t, fullTrial())
+	s.Output.Model = "[31mRED"
+	s.ModelUsage = map[string]InspectModelUsage{s.Output.Model: s.ModelUsage[fullTrial().ModelServed]}
+	if _, err := s.Trial(); err == nil {
+		t.Error("an Inspect sample whose served model carries an escape was read")
 	}
 }
 

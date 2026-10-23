@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,11 +16,21 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lab"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
+
+// The machine's own home, user and host name, read before TestMain repoints
+// HOME, so the leak checks below look for the values a record would leak.
+var realHome, realUser, realHost string
 
 // TestMain points HOME at a throwaway directory, so no test here reaches the
 // operator's real lab store.
 func TestMain(m *testing.M) {
+	realHome, _ = os.UserHomeDir()
+	realHost, _ = os.Hostname()
+	if u, err := user.Current(); err == nil {
+		realUser = u.Username
+	}
 	dir, err := os.MkdirTemp("", "abcd-matrix-home-")
 	if err != nil {
 		panic(err)
@@ -83,7 +95,7 @@ func TestTheRunRecordNamesCommitBinaryHashesTemplateMachineConcurrencyAndCap(t *
 		}
 	}
 	if rec.FrozenCommit != strings.Repeat("c", 40) || rec.Binary.SHA256 != sha64 || rec.Binary.Version != "0.16.0" ||
-		rec.Concurrency != 2 || rec.LoadCap != 4 || rec.SpendCap == nil || rec.SpendCap.Amount != 25 ||
+		rec.Concurrency != 2 || rec.LoadCap == nil || *rec.LoadCap != 4 || rec.SpendCap == nil || rec.SpendCap.Amount != 25 ||
 		rec.Machine.Cores != 12 || rec.RenderTemplate == nil || rec.Declaration.SHA256 == "" || rec.Declaration.Bytes != int64(len(goodDeclaration)) {
 		t.Fatalf("record = %+v", rec)
 	}
@@ -176,6 +188,42 @@ func TestTheRunRecordIsRefusedWhatItCannotStandOn(t *testing.T) {
 		"content ref":          func(in *runInputs) { in.HiddenTests[0].SHA256 = "x" },
 		"no declaration":       func(in *runInputs) { in.Declaration = nil },
 		"declaration refused":  func(in *runInputs) { in.Declaration = []byte(`{}`) },
+		// Every pin string is a bounded, plain recorded name; the weight
+		// file is a base name, never a path on the person's machine.
+		"absolute weights file":  func(in *runInputs) { in.Cells[2].LocalPin.WeightsFile = "/Users/someone/models/x.gguf" },
+		"weights file in a dir":  func(in *runInputs) { in.Cells[2].LocalPin.WeightsFile = "models/x.gguf" },
+		"weights file home":      func(in *runInputs) { in.Cells[2].LocalPin.WeightsFile = "~" },
+		"long runtime":           func(in *runInputs) { in.Cells[2].LocalPin.Runtime = strings.Repeat("r", oracle.MaxModelBytes+1) },
+		"escape in quantisation": func(in *runInputs) { in.Cells[2].LocalPin.Quantisation = "Q4\x1b[2J" },
+		"escape in kv cache":     func(in *runInputs) { in.Cells[2].LocalPin.KVCacheType = "f16\u202e" },
+		"negative context":       func(in *runInputs) { in.Cells[2].LocalPin.ContextLength = -1 },
+		"escape in order":        func(in *runInputs) { in.Cells[1].ProviderPin.Order = []string{"a\x1b]0;x\a"} },
+		"too many orders": func(in *runInputs) {
+			for range maxPinList + 1 {
+				in.Cells[1].ProviderPin.Order = append(in.Cells[1].ProviderPin.Order, "p")
+			}
+		},
+		"too many quantizations": func(in *runInputs) {
+			for range maxPinList + 1 {
+				in.Cells[1].ProviderPin.Quantizations = append(in.Cells[1].ProviderPin.Quantizations, "fp8")
+			}
+		},
+		"long canonical slug": func(in *runInputs) {
+			in.Cells[1].ProviderPin.CanonicalSlug = strings.Repeat("s", oracle.MaxModelBytes+1)
+		},
+		"escape in data policy": func(in *runInputs) { in.Cells[1].ProviderPin.DataCollection = "deny\x07" },
+		"too many harness defaults": func(in *runInputs) {
+			for i := range oracle.MaxSettings + 1 {
+				in.Cells[1].HarnessDefault = append(in.Cells[1].HarnessDefault, fmt.Sprintf("s%d", i))
+			}
+		},
+		"too many hidden tests": func(in *runInputs) {
+			for len(in.HiddenTests) <= maxRefs {
+				in.HiddenTests = append(in.HiddenTests, in.HiddenTests[0])
+			}
+		},
+		"escape in a model":  func(in *runInputs) { in.Cells[1].Model = "vendor/\u200bmodel" },
+		"local cell, no cap": func(in *runInputs) { in.Declaration = noLoadCap() },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -211,6 +259,92 @@ func TestTheRunRecordIsRefusedWhatItCannotStandOn(t *testing.T) {
 	}
 }
 
+// noLoadCap is the good declaration without its load cap.
+func noLoadCap() []byte {
+	return []byte(strings.Replace(goodDeclaration, `"load_cap": 4,
+`, "", 1))
+}
+
+// Decision 12: the load cap is the local cells'. A run with none names no load
+// cap and is not refused for it.
+func TestARunWithNoLocalCellNeedsNoLoadCap(t *testing.T) {
+	in := inputs(t)
+	in.Declaration = []byte(strings.Replace(string(noLoadCap()), `,
+  "reviewers": [
+    {"id": "local-rev", "route": "reviewer=runner:opencode@local/qwen"}
+  ]`, "", 1))
+	in.Cells = in.Cells[:2]
+	rec, err := newRunRecord(in)
+	if err != nil {
+		t.Fatalf("a run with no local cell and no load cap: %v", err)
+	}
+	js, _ := json.Marshal(rec)
+	if rec.LoadCap != nil || !strings.Contains(string(js), `"load_cap":null`) {
+		t.Fatalf("load cap = %v; want none, recorded as null:\n%s", rec.LoadCap, js)
+	}
+}
+
+// The largest run record a declaration can produce fits the bound its lab
+// reads a record back within: a record is never written that cannot be read.
+// Every string is at its bound and made of characters JSON would escape for
+// HTML, so the test also holds the encoding to writing them as they are.
+func TestTheLargestRunRecordFitsTheLabsReadBound(t *testing.T) {
+	long := func(c string) string { return strings.Repeat(c, oracle.MaxModelBytes) }
+	var sjs []string
+	for i := range 8 {
+		k := fmt.Sprintf("s%d_%s", i, strings.Repeat("k", 60))
+		sjs = append(sjs, fmt.Sprintf("%q: %q", k, strings.Repeat("<", oracle.MaxSettingBytes-2)))
+	}
+	route := "builder=runner:" + strings.Repeat("&", oracle.MaxRouteBytes-len("builder=runner:"))
+	var list, defaults []string
+	for i := range maxPinList {
+		list = append(list, long("<"))
+		defaults = append(defaults, fmt.Sprintf("d%02d%s", i, long(">")[3:]))
+	}
+	var cells []string
+	var pins []CellPin
+	for i := range maxCells {
+		id := fmt.Sprintf("c-%02d-%s", i, strings.Repeat("x", maxIDBytes-5))
+		cells = append(cells, fmt.Sprintf(`{"id": %q, "route": %q, "settings": {%s}}`, id, route, strings.Join(sjs, ", ")))
+		pins = append(pins, CellPin{Cell: id, Role: RoleBuilder, Source: SourceOpenRouter, Runner: long("n"), Model: long("<"),
+			HarnessVersion: long("h"), HarnessDefault: defaults,
+			ProviderPin: &ProviderPin{Order: list, Quantizations: list, DataCollection: long("&"), CanonicalSlug: long("<")}})
+	}
+	doc := strings.Replace(goodDeclaration, `{"id": "host-big", "route": "host"},
+    {"id": "or-cheap", "route": "builder=runner:opencode@openrouter/vendor/model", "settings": {"temperature": 0.6}}`, strings.Join(cells, ",\n"), 1)
+	doc = strings.Replace(doc, `,
+  "reviewers": [
+    {"id": "local-rev", "route": "reviewer=runner:opencode@local/qwen"}
+  ]`, "", 1)
+	if len(doc) > MaxDeclarationBytes {
+		t.Fatalf("the test's declaration is %d bytes, past the declaration's own bound", len(doc))
+	}
+	in := inputs(t)
+	in.Declaration, in.Cells = []byte(doc), pins
+	in.PromptSHA256, in.ToolDefinitionsSHA256 = map[string]string{}, map[string]string{}
+	for i := range maxHashes {
+		in.PromptSHA256[fmt.Sprintf("p%03d%s", i, long("<")[4:])] = hex64("1")
+		in.ToolDefinitionsSHA256[fmt.Sprintf("t%03d%s", i, long("<")[4:])] = hex64("2")
+	}
+	ref := ContentRef{Name: strings.Repeat("<", maxRefName), SHA256: hex64("5"), Bytes: 1 << 40}
+	in.HiddenTests, in.SeededMaterial = nil, nil
+	for range maxRefs {
+		in.HiddenTests = append(in.HiddenTests, ref)
+		in.SeededMaterial = append(in.SeededMaterial, ref)
+	}
+	rec, err := newRunRecord(in)
+	if err != nil {
+		t.Fatalf("the largest record is refused: %v", err)
+	}
+	js, err := encodeRun(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(js) > lab.MaxStateBytes {
+		t.Fatalf("the largest run record is %d bytes, past the %d its lab reads back", len(js), lab.MaxStateBytes)
+	}
+}
+
 // noCap is the good declaration without its spending cap.
 func noCap() []byte {
 	return []byte(strings.Replace(goodDeclaration, `"spend_cap": {"amount": 25, "unit": "usd"},
@@ -232,13 +366,28 @@ func TestTheRunRecordCarriesNoHostnameOrHomePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	js, _ := json.Marshal(rec)
-	host, _ := os.Hostname()
-	home, _ := os.UserHomeDir()
-	for _, leak := range []string{host, home, os.Getenv("USER")} {
+	if realHome == "" || realHome == os.Getenv("HOME") {
+		t.Fatalf("the machine's own home %q was not read before HOME was repointed", realHome)
+	}
+	if leaks := leaked(js); len(leaks) > 0 {
+		t.Errorf("the run record carries %q:\n%s", leaks, js)
+	}
+	// The check can fire: a record that did carry the home is caught.
+	if leaks := leaked([]byte(`{"model":"` + realHome + `/models/x.gguf"}`)); len(leaks) == 0 {
+		t.Fatal("the leak check misses the machine's own home path")
+	}
+}
+
+// leaked is every one of the machine's own home, user and host name that js
+// carries.
+func leaked(js []byte) []string {
+	var out []string
+	for _, leak := range []string{realHost, realHome, realUser} {
 		if len(leak) > 2 && strings.Contains(string(js), leak) {
-			t.Errorf("the run record carries %q:\n%s", leak, js)
+			out = append(out, leak)
 		}
 	}
+	return out
 }
 
 // A run is written into its lab through the procedure seam: under
@@ -328,5 +477,117 @@ func TestTheDrivingBinaryIsPinnedByItsHash(t *testing.T) {
 	}
 	if _, err := pinBinary(strings.NewReader("not a binary"), "0.16.0"); err == nil {
 		t.Fatal("a file with no build metadata was pinned")
+	}
+}
+
+// matrixLab mints a lab of a throwaway repository and passes its preflight,
+// and returns the repository's root, the home and the lab, with inputs for a
+// run at the lab's pin.
+func matrixLab(t *testing.T) (string, string, lab.Minted, runInputs) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	r := gittest.NewRepo(t)
+	r.Write("README.md", "root\n")
+	r.Commit("root")
+	t.Cleanup(lab.SetAbcdRootCommitForTest(strings.Repeat("e", 40)))
+	m, err := lab.Mint(r.Root(), "does a cheaper model build this as well?", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lab.Preflight(r.Root(), m.ID); err != nil {
+		t.Fatal(err)
+	}
+	in := inputs(t)
+	in.Lab, in.RootSHA, in.FrozenCommit = m.ID, m.RootSHA, m.Pin
+	return r.Root(), home, m, in
+}
+
+func runDir(home string, m lab.Minted, run string) string {
+	return abcdhome.Path(home, "lab", m.RootSHA, m.ID, "state", "matrix", run)
+}
+
+// Where the lab pinned a work binary, the run's binary is that one; and the
+// declaration written beside the record is the one the record keeps.
+func TestARunIsRefusedAnotherBinaryOrAnotherDeclaration(t *testing.T) {
+	root, home, m, in := matrixLab(t)
+	pinned := hex64("9")
+	pin := filepath.Join(abcdhome.Path(home, "lab", m.RootSHA, m.ID), "state", "work-binary.json")
+	if err := os.WriteFile(pin, []byte(`{"sha256":"`+pinned+`","revision":"`+m.Pin+`","at":"2026-10-23T00:00:00Z"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := newRunRecord(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRun(root, rec, in.Declaration); err == nil || !strings.Contains(err.Error(), "work binary") {
+		t.Fatalf("writeRun with a binary not the lab's = %v; want a refusal naming the work binary", err)
+	}
+	in.Binary.SHA256 = pinned
+	if rec, err = newRunRecord(in); err != nil {
+		t.Fatal(err)
+	}
+	other := []byte(strings.Replace(goodDeclaration, "routing check", "another check", 1))
+	if err := writeRun(root, rec, other); err == nil || !strings.Contains(err.Error(), "declaration") {
+		t.Fatalf("writeRun with another declaration = %v; want a refusal naming the declaration", err)
+	}
+	if _, err := os.Stat(runDir(home, m, rec.RunID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a refused run left %s behind: %v", runDir(home, m, rec.RunID), err)
+	}
+	if err := writeRun(root, rec, in.Declaration); err != nil {
+		t.Fatalf("writeRun with the lab's binary and the record's declaration: %v", err)
+	}
+}
+
+// The record names every route and launches none: it carries no credential
+// and no home path, whatever a pin or a route was given, so a record that would
+// is refused whole, with nothing written.
+func TestARunCarryingACredentialOrAHomePathIsRefusedUnwritten(t *testing.T) {
+	for name, mutate := range map[string]func(*runInputs){
+		"a token as a model":     func(in *runInputs) { in.Cells[1].Model = "ghp_" + testsecret.Synthetic(7, 36) },
+		"a home path in a model": func(in *runInputs) { in.Cells[2].Model = "file:/Users/alice/models/qwen.gguf" },
+		"the home in a route": func(in *runInputs) {
+			in.Declaration = []byte(strings.Replace(goodDeclaration, "reviewer=runner:opencode@local/qwen",
+				"reviewer=runner:opencode@local"+os.Getenv("HOME")+"/models/qwen", 1))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root, home, m, in := matrixLab(t)
+			mutate(&in)
+			rec, err := newRunRecord(in)
+			if err != nil {
+				t.Fatalf("newRunRecord: %v", err)
+			}
+			if err := writeRun(root, rec, in.Declaration); err == nil {
+				t.Fatal("writeRun wrote it")
+			}
+			if _, err := os.Stat(runDir(home, m, rec.RunID)); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("a refused run left %s behind: %v", runDir(home, m, rec.RunID), err)
+			}
+		})
+	}
+}
+
+// A run's two files are written together or not at all: a write that fails
+// part-way leaves nothing, so the run id can be written again.
+func TestARunWrittenPartWayLeavesNothing(t *testing.T) {
+	root, home, m, in := matrixLab(t)
+	rec, err := newRunRecord(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := lab.OpenProcedure(root, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.WriteState(rec.RunID+"/run.json", []byte("{}\n")); err != nil {
+		t.Fatal(err)
+	}
+	p.Close()
+	if err := writeRun(root, rec, in.Declaration); !errors.Is(err, lab.ErrRefused) {
+		t.Fatalf("writeRun over a written run.json = %v; want a refusal", err)
+	}
+	if _, err := os.Stat(filepath.Join(runDir(home, m, rec.RunID), "declaration.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a write that failed part-way left declaration.json behind: %v", err)
 	}
 }

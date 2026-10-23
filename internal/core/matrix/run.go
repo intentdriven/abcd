@@ -11,7 +11,13 @@ package matrix
 //
 // The record names every route but launches none (scope condition 1): it
 // carries no credential, no route file's content, no host name and no home
-// path.
+// path. Every string a pin or a route brings is a bounded recorded name, and
+// the record and its declaration pass the repository's secret scanner before
+// either is written, so a key-shaped string or a home path refuses the run.
+//
+// Both files stay in the lab, in the person's local tier: nothing publishes
+// them, and a path that does will run its own key and path check first
+// (dcn-2610230216194594).
 
 import (
 	"crypto/sha256"
@@ -20,17 +26,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"regexp"
 	"runtime"
 	"slices"
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/lab"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // RunSchema is the run record's schema version.
@@ -146,6 +156,29 @@ type ProviderPin struct {
 	CanonicalSlug     string   `json:"canonical_slug"`
 }
 
+// validate holds every string of the pin to a recorded name and each list to
+// maxPinList entries, and returns a copy that shares no slice with p.
+func (p ProviderPin) validate() (ProviderPin, error) {
+	for field, list := range map[string][]string{"order": p.Order, "quantizations": p.Quantizations} {
+		if len(list) > maxPinList {
+			return ProviderPin{}, fmt.Errorf("the provider pin's %s names %d entries; at most %d", field, len(list), maxPinList)
+		}
+		for _, v := range list {
+			if err := text("provider_pin."+field, v); err != nil {
+				return ProviderPin{}, err
+			}
+		}
+	}
+	if err := optional("provider_pin.data_collection", p.DataCollection); err != nil {
+		return ProviderPin{}, err
+	}
+	if err := optional("provider_pin.canonical_slug", p.CanonicalSlug); err != nil {
+		return ProviderPin{}, err
+	}
+	p.Order, p.Quantizations = slices.Clone(p.Order), slices.Clone(p.Quantizations)
+	return p, nil
+}
+
 // LocalPin is a local cell's pin, down to its weight file (scope condition 3).
 //
 // Typed here until abcd-f1's oracle.LocalPin (feat/local-model-pin-r2) reaches
@@ -159,6 +192,35 @@ type LocalPin struct {
 	Quantisation   string `json:"quantisation"`
 	ContextLength  int    `json:"context_length"`
 	KVCacheType    string `json:"kv_cache_type"`
+}
+
+// maxContextLength bounds a local pin's context length, well past any served
+// model's window.
+const maxContextLength = 1 << 24
+
+// validate holds every string of the pin to a recorded name and the weight
+// file to a base name: the record names the file, never where it sits on the
+// person's machine.
+func (p LocalPin) validate() error {
+	if !sha256Re.MatchString(p.WeightsSHA256) {
+		return errors.New("the local pin names no weight file sha256")
+	}
+	for field, v := range map[string]string{"runtime": p.Runtime, "runtime_version": p.RuntimeVersion,
+		"quantisation": p.Quantisation, "kv_cache_type": p.KVCacheType} {
+		if err := optional("local_pin."+field, v); err != nil {
+			return err
+		}
+	}
+	if p.WeightsFile != "" {
+		if err := text("local_pin.weights_file", p.WeightsFile); err != nil || strings.ContainsAny(p.WeightsFile, `/\`) ||
+			p.WeightsFile == "." || p.WeightsFile == ".." {
+			return fmt.Errorf("local_pin.weights_file %q is not a file's base name; the record names the weight file, never its path", clip(termsafe.Sanitize(p.WeightsFile)))
+		}
+	}
+	if p.ContextLength < 0 || p.ContextLength > maxContextLength {
+		return fmt.Errorf("local_pin.context_length is %d; it is from 0 to %d", p.ContextLength, maxContextLength)
+	}
+	return nil
 }
 
 // CellPin is one cell as the run pinned it: the declared cell's route and
@@ -208,11 +270,13 @@ type RunRecord struct {
 	SeededMaterial        []ContentRef      `json:"seeded_material"`
 	Machine               Machine           `json:"machine"`
 	Concurrency           int               `json:"concurrency"`
-	LoadCap               int               `json:"load_cap"`
-	SpendCap              *Money            `json:"spend_cap"`
-	SpendCapOrigin        string            `json:"spend_cap_origin"`
-	Cells                 []CellPin         `json:"cells"`
-	Unpinned              []oracle.Unpinned `json:"unpinned"`
+	// LoadCap is the cores the run's local cells may load (decision 12), nil
+	// when the run has no local cell and the declaration names none.
+	LoadCap        *int              `json:"load_cap"`
+	SpendCap       *Money            `json:"spend_cap"`
+	SpendCapOrigin string            `json:"spend_cap_origin"`
+	Cells          []CellPin         `json:"cells"`
+	Unpinned       []oracle.Unpinned `json:"unpinned"`
 }
 
 // runInputs is what a run's record is built from. Declaration is the person's
@@ -240,6 +304,29 @@ var runIDRe = regexp.MustCompile(`^mx-[0-9]{12}-[0-9a-f]{4}$`)
 var sha256Re = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 const maxRefName = 256
+
+// The bounds on what a run record lists, so the largest record a declaration
+// can produce fits the bound its lab reads a record back within
+// (TestTheLargestRunRecordFitsTheLabsReadBound).
+const (
+	maxPinList = 16
+	maxHashes  = 64
+	maxRefs    = 1024
+)
+
+// encodeRun is the run record as written: indented, and with every string as
+// it is rather than escaped for HTML, which would grow a record up to six
+// times past what its bounds allow.
+func encodeRun(rec RunRecord) ([]byte, error) {
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(rec); err != nil {
+		return nil, err
+	}
+	return []byte(b.String()), nil
+}
 
 // newRunRecord builds and checks a run's record. It refuses what a re-run could
 // not stand on (an unpinned commit, a binary with no digest, a declaration that
@@ -272,7 +359,7 @@ func newRunRecord(in runInputs) (RunRecord, error) {
 		SchemaVersion: RunSchema, RunID: in.RunID, Lab: in.Lab, RootSHA: in.RootSHA,
 		FrozenCommit: in.FrozenCommit, Binary: in.Binary,
 		Declaration: contentOf("declaration.json", in.Declaration),
-		Concurrency: d.Concurrency, LoadCap: d.LoadCap,
+		Concurrency: d.Concurrency,
 	}
 	un.Unless(in.Binary.Known && gitutil.IsFullSHA(in.Binary.Revision), RunBinaryRevision, oracle.NotReported)
 
@@ -303,15 +390,27 @@ func newRunRecord(in runInputs) (RunRecord, error) {
 	if m.OS == "" || m.Arch == "" || m.Cores < 1 || len(m.OS) > 32 || len(m.Arch) > 32 {
 		return RunRecord{}, fmt.Errorf("the machine is named by its OS, architecture and core count; have %+v", m)
 	}
-	if d.LoadCap >= m.Cores {
-		return RunRecord{}, fmt.Errorf("the load cap of %d is not below the machine's %d cores", d.LoadCap, m.Cores)
-	}
 	rec.Machine = m
 	un.Add(RunMachineCPU, oracle.NotReported)
 	un.Add(RunMachineMemory, oracle.NotReported)
 
 	if rec.Cells, err = pinCells(d, in.Cells, &un); err != nil {
 		return RunRecord{}, err
+	}
+	// The load cap is the local cells' (decision 12): a run with one names a
+	// cap below the machine's cores; a run with none needs none.
+	if d.LoadCap != nil {
+		if *d.LoadCap >= m.Cores {
+			return RunRecord{}, fmt.Errorf("the load cap of %d is not below the machine's %d cores", *d.LoadCap, m.Cores)
+		}
+		c := *d.LoadCap
+		rec.LoadCap = &c
+	} else {
+		for _, c := range rec.Cells {
+			if c.Source == SourceLocal {
+				return RunRecord{}, fmt.Errorf("the cell %s runs locally and the declaration names no load_cap; a run never starts local inference without a load cap below the machine's cores", c.Cell)
+			}
+		}
 	}
 	switch {
 	case d.SpendCap != nil:
@@ -346,7 +445,7 @@ func pinCells(d Declaration, pins []CellPin, un *oracle.Unpin) ([]CellPin, error
 		}
 		byID[p.Cell] = p
 	}
-	if len(byID) != len(declared) {
+	if len(pins) > len(declared) || len(byID) != len(declared) {
 		return nil, fmt.Errorf("the run pins %d cells and the declaration names %d", len(byID), len(declared))
 	}
 	out := make([]CellPin, 0, len(declared))
@@ -388,6 +487,9 @@ func pinCells(d Declaration, pins []CellPin, un *oracle.Unpin) ([]CellPin, error
 		} else {
 			un.Add(cellField(dc.ID, "harness_version"), oracle.NotReported)
 		}
+		if len(p.HarnessDefault) > oracle.MaxSettings {
+			return nil, fmt.Errorf("cell %s: harness_default names %d settings; at most %d", dc.ID, len(p.HarnessDefault), oracle.MaxSettings)
+		}
 		p.HarnessDefault = slices.Clone(p.HarnessDefault)
 		if p.HarnessDefault == nil {
 			p.HarnessDefault = []string{}
@@ -410,13 +512,22 @@ func pinCells(d Declaration, pins []CellPin, un *oracle.Unpin) ([]CellPin, error
 			if p.ProviderPin.AllowFallbacks {
 				return nil, fmt.Errorf("the OpenRouter cell %s allows fallbacks; a matrix cell keeps them off and retries an outage on the same pin", dc.ID)
 			}
+			pp, err := p.ProviderPin.validate()
+			if err != nil {
+				return nil, fmt.Errorf("cell %s: %w", dc.ID, err)
+			}
+			p.ProviderPin = &pp
 		case SourceLocal:
 			if p.LocalPin == nil {
 				// The local pin and probe are iss-2610161734428291's.
 				un.Add(cellField(dc.ID, "local_pin"), oracle.NotConfigured)
-			} else if !sha256Re.MatchString(p.LocalPin.WeightsSHA256) {
-				return nil, fmt.Errorf("the local cell %s's pin names no weight file sha256", dc.ID)
+				break
 			}
+			if err := p.LocalPin.validate(); err != nil {
+				return nil, fmt.Errorf("the local cell %s: %w", dc.ID, err)
+			}
+			lp := *p.LocalPin
+			p.LocalPin = &lp
 		}
 		out = append(out, p)
 	}
@@ -425,6 +536,9 @@ func pinCells(d Declaration, pins []CellPin, un *oracle.Unpin) ([]CellPin, error
 
 // hashes checks a map of names to sha256 digests, never nil.
 func hashes(field string, in map[string]string) (map[string]string, error) {
+	if len(in) > maxHashes {
+		return nil, fmt.Errorf("%s names %d hashes; at most %d", field, len(in), maxHashes)
+	}
 	out := make(map[string]string, len(in))
 	for k, v := range in {
 		if text(field, k) != nil || !sha256Re.MatchString(v) {
@@ -437,6 +551,9 @@ func hashes(field string, in map[string]string) (map[string]string, error) {
 
 // refs checks a list of content references, never nil.
 func refs(field string, in []ContentRef) ([]ContentRef, error) {
+	if len(in) > maxRefs {
+		return nil, fmt.Errorf("%s names %d artefacts; at most %d", field, len(in), maxRefs)
+	}
 	out := make([]ContentRef, 0, len(in))
 	for i, r := range in {
 		if err := r.validate(); err != nil {
@@ -448,8 +565,8 @@ func refs(field string, in []ContentRef) ([]ContentRef, error) {
 }
 
 func (r ContentRef) validate() error {
-	if err := text("name", r.Name); err != nil || len(r.Name) > maxRefName {
-		return fmt.Errorf("a kept artefact is named in at most %d bytes", maxRefName)
+	if err := token("name", r.Name, maxRefName); err != nil {
+		return fmt.Errorf("a kept artefact is named by a recorded name: %w", err)
 	}
 	if !sha256Re.MatchString(r.SHA256) || r.Bytes < 0 {
 		return fmt.Errorf("%s is not kept by a sha256 and a size", clip(r.Name))
@@ -457,13 +574,39 @@ func (r ContentRef) validate() error {
 	return nil
 }
 
-// text holds a recorded name to one non-empty, bounded token with no control
-// character or space.
-func text(field, s string) error {
-	if s == "" || len(s) > oracle.MaxModelBytes || strings.IndexFunc(s, func(r rune) bool { return unicode.IsControl(r) || unicode.IsSpace(r) }) >= 0 {
-		return fmt.Errorf("%s %q is empty, longer than %d bytes or carries a space or control character", field, clip(s), oracle.MaxModelBytes)
+// text holds a recorded name to one non-empty token of at most
+// oracle.MaxModelBytes (token).
+func text(field, s string) error { return token(field, s, oracle.MaxModelBytes) }
+
+// optional is text for a name a record may leave empty.
+func optional(field, s string) error {
+	if s == "" {
+		return nil
+	}
+	return text(field, s)
+}
+
+// token holds a recorded name to one non-empty, bounded token of valid UTF-8
+// with no space and nothing termsafe would mask (a control, bidirectional or
+// zero-width character), and never a path from a filesystem's root or a home:
+// a record carries names, never where something sits on a machine.
+func token(field, s string, limit int) error {
+	if s == "" || len(s) > limit || !utf8.ValidString(s) || termsafe.Sanitize(s) != s ||
+		strings.IndexFunc(s, unicode.IsSpace) >= 0 || rooted(s) {
+		return fmt.Errorf("%s %q is empty, longer than %d bytes, carries a space or a control, bidirectional or zero-width character, or is an absolute path",
+			field, clip(s), limit)
 	}
 	return nil
+}
+
+// rooted reports whether s is a path from a filesystem's root, a home (~) or
+// a drive.
+func rooted(s string) bool {
+	if strings.HasPrefix(s, "/") || strings.HasPrefix(s, `\`) || strings.HasPrefix(s, "~") {
+		return true
+	}
+	return len(s) >= 3 && s[1] == ':' && (s[2] == '/' || s[2] == '\\') &&
+		(s[0] >= 'A' && s[0] <= 'Z' || s[0] >= 'a' && s[0] <= 'z')
 }
 
 // writeRun writes a run's record and the declaration it was read from into its
@@ -486,12 +629,44 @@ func writeRun(repoRoot string, rec RunRecord, declaration []byte) error {
 	if contentOf("declaration.json", declaration) != rec.Declaration {
 		return errors.New("the declaration given is not the one the run record keeps")
 	}
-	js, err := json.MarshalIndent(rec, "", "  ")
+	js, err := encodeRun(rec)
 	if err != nil {
 		return err
 	}
-	if err := p.WriteState(rec.RunID+"/declaration.json", declaration); err != nil {
+	if len(js) > lab.MaxStateBytes {
+		return fmt.Errorf("the run record is %d bytes, past the %d its lab reads a record back within", len(js), lab.MaxStateBytes)
+	}
+	files := []lab.StateFile{{Rel: rec.RunID + "/declaration.json", Data: declaration}, {Rel: rec.RunID + "/run.json", Data: js}}
+	if err := screen(repoRoot, files); err != nil {
 		return err
 	}
-	return p.WriteState(rec.RunID+"/run.json", append(js, '\n'))
+	// The two are written together or not at all: a write that fails
+	// part-way removes what it wrote, so the run id can be written again.
+	return p.WriteStates(files...)
+}
+
+// screen passes each file through the repository's secret scanner, the one
+// the launch bundle and the decision records use, and refuses a file carrying
+// a credential or an identity (a home path, a user or host name, an address):
+// the record names every route and launches none. A scanner that cannot run,
+// or runs degraded, refuses rather than reporting clean. A refusal names the
+// file, line and kind, never the value.
+func screen(repoRoot string, files []lab.StateFile) error {
+	sc, err := scanner.New(repoRoot)
+	if err != nil {
+		return fmt.Errorf("the run is not written: the secret scanner cannot run: %w", err)
+	}
+	for _, f := range files {
+		findings := sc.ScanText(string(f.Data), path.Base(f.Rel))
+		if degraded, reason := sc.Unavailable(); degraded {
+			return fmt.Errorf("the run is not written: the secret scanner runs degraded: %s", reason)
+		}
+		for _, fd := range findings {
+			if scanner.IsTokenKind(fd.Kind) || scanner.IsIdentityKind(fd.Kind) {
+				return fmt.Errorf("the run is not written: %s line %d carries a %s; a run record names routes and models, never a credential, a home path or who or where the machine is",
+					path.Base(f.Rel), fd.Line, fd.Kind)
+			}
+		}
+	}
+	return nil
 }
