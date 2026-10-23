@@ -157,7 +157,12 @@ recorded form, pinned to its withdrawn head (`act: admitted`, `admitted`). It
 is refused (exit 2, nothing pushed) from any other copy, by any other person,
 on a lapsed or released reservation, for a pull request the reservation did
 not withdraw, and for one whose head moved, or that was closed or merged,
-since. Admitting one already admitted reads the forge again and arms it when
+since. It is also refused, since an admission arms the pull request under your
+account, unless the forge's record of pushes shows you pushed the commit that
+first recorded the withdrawal: when no reservation of yours recorded it first,
+or another account pushed the commit that did; when an app pushed that commit
+(arm it by hand if it belongs in the cut); and when the record does not settle
+it yet (run `--admit` again in a minute, once the record has caught up). Admitting one already admitted reads the forge again and arms it when
 it is not armed, so an `--admit` cut off between its record and its arming is
 finished by running it again (the release's settle arms it too). When the
 forge then refuses the arming, a second renewal puts it back to withdrawn and

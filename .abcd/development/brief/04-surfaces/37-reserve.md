@@ -457,7 +457,11 @@ withdrawing nothing, and an admission or a release is refused.
   second renewal. It is refused from another copy or by another person, on a
   lapsed or released reservation, for a pull request the reservation did not
   withdraw, and for one whose head moved, or that was closed or merged,
-  since; nothing is pushed then. An admission of one already admitted reads
+  since; and, since it arms under the cutter's account, unless the two
+  readings under "Whose a withdrawal is" vouch for it: no reservation of the
+  withdrawer's recorded it first, or another account pushed the commit that
+  did; an app pushed that commit; or the record does not settle it yet (the
+  refusal says to run it again in a minute). Nothing is pushed then. An admission of one already admitted reads
   the forge again and arms it when it is not, which finishes an admission cut
   off between its record and its arming. The launch check passes an admitted
   pull request only at the head it was admitted at, and only when the forge's
