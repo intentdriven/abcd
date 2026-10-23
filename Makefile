@@ -16,7 +16,7 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 # Go step `preflight` makes, below.
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
-.PHONY: build test vet clean preflight load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
+.PHONY: build test vet clean preflight precheck load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
 	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
@@ -341,6 +341,30 @@ preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift
 	go test -race -p "$$p" -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
+# The precheck (iss-2610230016523625): the minutes-long pass a lane runs before
+# it queues a preflight. A preflight waits behind every other preflight on the
+# machine and then spends its long unit stage before a test that reads the whole
+# tree fails on a sentence; on 2026-10-22 two lanes each lost a slot queued for
+# over an hour that way. The precheck runs preflight's gates (all but the load
+# check, which reads the machine and only warns), build and vet, the packages
+# whose tests audit the record and the generated pages, and the command
+# package's audit tests, chosen by what their names say they read so a new one
+# joins without a list to keep. It skips the full unit and race stages, needs no
+# load gate, mints no receipt and replaces no preflight: it only says early what
+# a preflight would refuse. TestPrecheckRunsEveryPreflightGateButTheLoadCheck
+# holds its gates to preflight's. It took six minutes (366 s) while the load on
+# 16 cores rose from 8 to 35 (2026-10-23), against a preflight's queue of an hour
+# or more and its half hour of tests.
+PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Appendices|Paragraph|Vocabulary|Scope|Relay|Chapter|Baseline|Domain|Definitions|Committed
+
+precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
+	go build ./...
+	go vet ./...
+	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema
+	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli
+
+precheck: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
+
 # The push receipt (iss-2608290810036869, iss-2608210738378295). The pre-push hook
 # never runs this target: git opens a push's connection before it runs the hook,
 # and a preflight inside it held that connection open until the transport's idle
@@ -396,7 +420,7 @@ preflight: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
 # about 8.8 ms, and no test asserts what a flush makes true. The skip needs a
 # test binary as well as this opt-in, so a binary built or run here, the lint
 # gates' `go run` tools included, still flushes. CI's test steps set the same.
-test preflight: export ABCD_TEST_SKIP_FLUSH := 1
+test preflight precheck: export ABCD_TEST_SKIP_FLUSH := 1
 
 # The load check (itd-2609231434459890): reads the machine's load and process
 # table once and warns about programs left running and extreme load. It exits 0
