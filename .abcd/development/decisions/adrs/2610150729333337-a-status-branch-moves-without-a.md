@@ -28,7 +28,7 @@ The hook already admits one family of commits that change no file: reservations,
 
 The push hook's receipt-less table gains a second row: the prefix `abcd-status/`, checked by the same `reservation_shape` check that reservations pass. That check admits only a fast-forward of commits that change no file. Every other push under the prefix is gated as any branch is: one that changes a file, rewrites the branch or deletes it.
 
-Rewrites and deletions are blocked on the forge too. A ruleset on `refs/heads/abcd-status/**` blocks deletion and non-fast-forward pushes, with no bypass. Its mirror is kept in `.abcd/work/rulesets/`, and it is applied through the rulesets' own apply verb (brief invariant 10).
+Rewrites and deletions are blocked on the forge too. A ruleset on `refs/heads/abcd-status/**` blocks deletion and non-fast-forward pushes, with no bypass. Its mirror is kept in `.abcd/work/rulesets/`, and the person applies it from that mirror, as every ruleset there is applied (brief invariant 10; corrected 2026-10-22, iss-2610222040438015: no apply verb exists for rulesets).
 
 Announcements are fetched only by verbs whose documented meaning is that fetch: `abcd announce`, `abcd status` and the land step (brief invariant 7, adr-38). The prompt hook renders the last fetch from disk.
 
