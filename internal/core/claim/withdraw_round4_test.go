@@ -704,3 +704,51 @@ func forgetVerdicts(t *testing.T, root string) {
 		t.Fatal(err)
 	}
 }
+
+// TestAnUnrecordedWithdrawalIsShownAgainWhenTheSettleNamingItIsLost: the
+// tip an unrecorded withdrawal was named at is kept only once the settle
+// naming it is returned, so a settle whose claim on the end was not pushed
+// marks nothing shown, and the next one names it.
+func TestAnUnrecordedWithdrawalIsShownAgainWhenTheSettleNamingItIsLost(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	octo := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := octo.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	m, ws := w.tipWithdrawals("rel-v0.16.0")
+	m.Withdrawn = append(ws, Withdrawal{Number: 14, ID: "PR_fourteen", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending})
+	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
+	f.pusherOf[planted] = "mal"
+	w.tagOrigin("v0.16.0")
+	if _, err := Fetch(octo.dir, octo.opts()); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := emptyTree(octo.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, _ := resolveHolder(octo.dir, identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, octo.opts(), false)
+	a := actor{root: octo.dir, who: identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, holder: h.Login,
+		copy: ownCopyKey(octo.dir), now: w.clock(), label: "abcd:v0.0.0"}
+	// origin goes away once the record is read, so the claim is not pushed.
+	away := w.bare + ".away"
+	f.edit = func(ps []Push) []Push {
+		if err := os.Rename(w.bare, away); err != nil {
+			t.Fatal(err)
+		}
+		return ps
+	}
+	s, ok := settleEnded(a, tree, "rel-v0.16.0")
+	f.edit = nil
+	if err := os.Rename(away, w.bare); err != nil {
+		t.Fatal(err)
+	}
+	if ok || s.said() {
+		t.Fatalf("settle = %+v; want nothing said when its claim was not pushed", s)
+	}
+	s, ok = settleEnded(a, tree, "rel-v0.16.0")
+	if !ok || s.Commit == "" || !slices.Equal(numbersOf(s.Unrecorded), []int{14}) {
+		t.Fatalf("settle = %+v; want #14 named unrecorded by the settle that was pushed", s)
+	}
+}
