@@ -215,6 +215,11 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		if tagged {
 			return Result{}, refuse("%s is already tagged on %s, so there is no cut to hold; %s", releaseTag(p.id), Remote, nothingPushed)
 		}
+		// One release is cut at a time: a second would withdraw the merges
+		// the first admitted, and neither cut could tell.
+		if err := otherLiveRelease(root, p.id, p.now); err != nil {
+			return Result{}, err
+		}
 	}
 	j, err := judge(p, tree)
 	if err != nil {
@@ -235,22 +240,33 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		}
 		return res, err
 	}
-	var own *Settle
+	// What the act does with the release's withdrawals, before its push.
+	settleOwn := false
+	var admitting Withdrawal
+	admitState := ""
 	switch {
 	case !isRelease(p.id) || !j.present || j.Unreadable != "":
 	case p.req.Release:
-		// The cutting copy ends its reservation: every withdrawal of this
-		// person's is re-armed, and the tombstone records each in its state.
-		ws, done, fails, why := rearmMine(p.actor(), j.Withdrawn)
-		m.Withdrawn = ws
-		if len(ws) > 0 {
-			own = &Settle{Subject: p.id, Settled: append([]Withdrawal{}, done...), Failures: fails, Failed: why}
+		// The cutting copy ends its reservation: the tombstone carries every
+		// withdrawal as it stands, and once it has landed every one of this
+		// person's is re-armed and a second tombstone records each state.
+		m.Withdrawn = j.Withdrawn
+		if slices.ContainsFunc(j.Withdrawn, func(w Withdrawal) bool { return w.Pending() && sameHolder(w.By, p.holder) }) {
+			if why, definite := loginMismatch(root, p.holder); definite {
+				return Result{}, refuse("%s was not released: %s; %s", p.id, why, nothingPushed)
+			}
+			settleOwn = true
 		}
-		res.Stranded = stranded(ws, p.holder)
+		res.Stranded = stranded(j.Withdrawn, p.holder)
 	case p.req.Admit != 0:
-		if err := p.admitOne(&m, p.req.Admit); err != nil {
+		// The admission is recorded before the forge re-arms it, so a push
+		// that loses leaves nothing armed.
+		admitting, _ = withdrawalOf(j.Withdrawn, p.req.Admit)
+		if admitState, err = p.admitCheck(admitting); err != nil {
 			return Result{}, err
 		}
+		m.Withdrawn = withWithdrawal(m.Withdrawn, Withdrawal{Number: admitting.Number, ID: admitting.ID, Form: admitting.Form,
+			Head: admitting.Head, By: admitting.By, State: WithdrawnAdmitted})
 	default:
 		// A reservation keeps what its tip still has withdrawn: its own
 		// admissions too while it is this person's reservation.
@@ -304,31 +320,27 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	res.DerivedUnchecked = p.derivedGap
 	res.ForkUnchecked = forkUnchecked
 	res.ForkAllowed = forkAllowed
-	if own != nil {
-		own.Commit = sha
-		settles = append(settles, *own)
+	if settleOwn {
+		s, final, ws := p.settleOwnRelease(tree, sha, m.Withdrawn)
+		settles = append(settles, s)
+		res.Commit, m.Withdrawn = final, ws
 	}
 	if isRelease(p.id) && !p.req.Release && p.req.Admit == 0 && (res.Act != ActRenewed || !res.RenewedLive) {
 		// A release reserved anew withdraws the merges already armed, now
-		// that its own push holds every other session's arming, and records
-		// them on a renewal of the reservation it just pushed.
-		made, fails, unchecked := p.withdrawArmed(m.Withdrawn)
-		res.ForgeFailures, res.ForgeUnchecked = fails, unchecked
-		if len(made) > 0 {
-			commit, rfails := p.recordWithdrawals(tree, sha, m, made)
-			res.ForgeFailures = append(res.ForgeFailures, rfails...)
-			if len(rfails) == 0 {
-				for _, w := range made {
-					m.Withdrawn = withWithdrawal(m.Withdrawn, w)
-				}
-				res.Withdrew = made
-			}
-			res.Commit = commit
-		}
+		// that its own push holds every other session's arming, recording
+		// them on a renewal of the reservation it just pushed before it
+		// touches the forge.
+		commit, recorded, made, fails, unchecked := p.withdrawArmed(tree, sha, m)
+		res.ForgeFailures, res.ForgeUnchecked, res.Withdrew = fails, unchecked, made
+		res.Commit, m = commit, recorded
 	}
 	if p.req.Admit != 0 {
-		i := slices.IndexFunc(m.Withdrawn, func(w Withdrawal) bool { return w.Number == p.req.Admit })
-		w := m.Withdrawn[i]
+		commit, err := p.admitAfter(tree, sha, m, admitting, admitState)
+		if err != nil {
+			return Result{}, err
+		}
+		res.Commit = commit
+		w, _ := withdrawalOf(m.Withdrawn, p.req.Admit)
 		res.Admitted = &w
 	}
 	res.Withdrawals = m.Withdrawn

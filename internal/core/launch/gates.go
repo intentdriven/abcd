@@ -212,10 +212,14 @@ func runGateSuite(req suiteRequest) suiteResult {
 	// The release hold's launch check (mergehold.go): a merge armed or queued
 	// that the cutting copy's release reservation has not admitted refuses
 	// the cut, whatever the artefact kind.
-	if row, findings := mergeHoldGate(req.RepoRoot); row.Status == "" {
+	row, findings, lost := mergeHoldGate(req.RepoRoot)
+	if row.Status == "" {
 		hard(gateMergeHold, row.Detail, findings, ErrMergeHeld)
 	} else {
 		res.Gates = append(res.Gates, row)
+	}
+	if lost != nil {
+		warn(*lost)
 	}
 
 	warn(docAuditGate(req.DocAudit))

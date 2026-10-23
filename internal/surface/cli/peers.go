@@ -54,6 +54,10 @@ type reservationsBlock struct {
 	// still to re-arm (this person's, due on their next act, or another
 	// person's, stranded for them) and those skipped for their owners.
 	ReleaseWithdrawals []claim.ReleaseWithdrawals `json:"release_withdrawals,omitempty"`
+	// LostWithdrawals is each recent release whose branch history records
+	// withdrawals a later commit dropped (an older abcd's renewal), which
+	// nothing re-arms (dcn-2610230328242929).
+	LostWithdrawals []claim.LostWithdrawals `json:"lost_withdrawals,omitempty"`
 	// Settled is each ended release whose withdrawals of this person's the
 	// listing re-armed or skipped after its fetch (`abcd peers` only).
 	Settled          []claim.Settle  `json:"settled,omitempty"`
@@ -156,18 +160,20 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"first, the newest ten shown and the rest counted; one dated more than five\n" +
 			"minutes ahead of this computer's clock is not shown. Then each release's\n" +
 			"withdrawn pull requests (release_withdrawals): those a live release holds or\n" +
-			"admitted, those an ended one has still to re-arm (yours, or another person's,\n" +
-			"named with whose), and those its tombstone skipped for their owners. The fetch\n" +
+			"admitted, a lease that lapsed before the release ended (reported, never acted\n" +
+			"on), those an ended one has still to re-arm (yours, or another person's, named\n" +
+			"with whose), and those its tombstone skipped for their owners; and those a\n" +
+			"later commit on a recent release's branch dropped (lost_withdrawals). The fetch\n" +
 			"reads origin's release tags with the reservations; it updates the\n" +
 			"remote-tracking reservation branches and the release tags abcd keeps under\n" +
 			"refs/abcd/release-tags/, stamps when it ran in the local tier, with when it\n" +
 			"first fetched each reservation dated ahead of this computer's clock or\n" +
 			"undated. One more act follows it, only when a release has ended (its tag on\n" +
-			"origin, its tombstone, or its lease lapsed) with pull requests you withdrew for\n" +
-			"it not yet re-armed: each is re-armed through gh in the form it was taken from,\n" +
-			"pinned to its withdrawn head, or skipped when its head moved or it was closed\n" +
-			"or merged, and a tombstone recording every state is pushed to its branch\n" +
-			"(settled). Nothing else is written. The release-tag refs are ordinary\n" +
+			"origin, or its tombstone) with pull requests you withdrew for it not yet\n" +
+			"re-armed: a tombstone is pushed first, then each is re-armed through gh in the\n" +
+			"form it was taken from, pinned to its withdrawn head, or skipped when its head\n" +
+			"moved, it was closed or merged, or it can only be merged by hand, and a second\n" +
+			"tombstone records every state (settled). Nothing else is written. The release-tag refs are ordinary\n" +
 			"refs of this checkout, so git log --all lists the commits they name and\n" +
 			"git push --mirror would push them. A checkout with no remote named origin\n" +
 			"lists no reservations.\n" +
@@ -477,6 +483,7 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 	}
 	out.LiveByHolder = snap.LiveByHolder()
 	out.ReleaseWithdrawals = snap.ReleaseWithdrawals(claim.ReaderHolder(root, claim.Options{Now: func() time.Time { return now }}), now)
+	out.LostWithdrawals = claim.LostReleaseWithdrawals(root, now)
 	// The hand-backs are read from the same view, as last fetched: no act of
 	// their own touches the network.
 	for _, h := range snap.RecentHandBacks(now) {
@@ -578,11 +585,17 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 		if st.Failed != "" {
 			fmt.Fprintln(w, "  "+st.Failed)
 		}
+		if line := claim.ForgedLine(st.Subject, st.Forged); line != "" {
+			fmt.Fprintln(w, "  "+line)
+		}
 	}
 	for _, rw := range out.ReleaseWithdrawals {
 		for _, line := range rw.Lines() {
 			fmt.Fprintln(w, "  "+line)
 		}
+	}
+	for _, l := range out.LostWithdrawals {
+		fmt.Fprintln(w, "  "+l.Line())
 	}
 	if len(out.LiveByHolder) > 0 {
 		names := make([]string, 0, len(out.LiveByHolder))

@@ -107,16 +107,50 @@ type fakeForge struct {
 	mu     sync.Mutex
 	prs    map[int]*fakePR
 	refuse map[string]string // "<mutation> #<n>" -> the forge's refusal
+	// answer is a refusal the forge answers in the GraphQL errors of an
+	// answer gh exits 0 on, "<mutation> #<n>" -> its message.
+	answer map[string]string
+	// logins is the account gh acts as in a checkout, by its directory; one
+	// not named acts as the GitHub username its git user.email names.
+	logins map[string]string
 	calls  []string
+	// comments is each comment the writer posted, "#<n> <body>".
+	comments []string
 }
 
 func newFakeForge(t *testing.T, prs map[int]*fakePR) *fakeForge {
 	t.Helper()
-	f := &fakeForge{t: t, prs: prs, refuse: map[string]string{}}
+	f := &fakeForge{t: t, prs: prs, refuse: map[string]string{}, answer: map[string]string{}, logins: map[string]string{}}
 	prev := releaseForge
-	releaseForge = mergeForge{repo: func(string) (string, string, error) { return "acme", "widgets", nil }, graphql: f.graphql}
+	releaseForge = mergeForge{repo: func(string) (string, string, error) { return "acme", "widgets", nil }, graphql: f.graphql, login: f.login}
 	t.Cleanup(func() { releaseForge = prev })
 	return f
+}
+
+// login is the account gh acts as in the checkout at root.
+func (f *fakeForge) login(root string) (string, error) {
+	f.mu.Lock()
+	l, ok := f.logins[root]
+	f.mu.Unlock()
+	if ok {
+		if l == "" {
+			return "", errors.New("gh is not logged in")
+		}
+		return l, nil
+	}
+	email := strings.TrimSpace(runGit(f.t, root, "config", "user.email"))
+	return NoReplyUsername(email), nil
+}
+
+// Comment is the comment writer's seam, kept rather than posted.
+func (f *fakeForge) Comment(_, owner, name string, number int, body string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if owner != "acme" || name != "widgets" {
+		f.t.Errorf("a comment went to %s/%s", owner, name)
+	}
+	f.comments = append(f.comments, fmt.Sprintf("#%d %s", number, body))
+	return nil
 }
 
 // mutationRe is the shape of the mutations the release hold sends.
@@ -172,12 +206,21 @@ func (f *fakeForge) graphql(_, doc string, vars map[string]string, ints map[stri
 		if why, ok := f.refuse[fmt.Sprintf("%s #%d", name, n)]; ok {
 			return nil, errors.New(why)
 		}
+		if why, ok := f.answer[fmt.Sprintf("%s #%d", name, n)]; ok {
+			return json.Marshal(map[string]any{"data": map[string]any{name: nil}, "errors": []any{map[string]any{"message": why}}})
+		}
 		switch name {
 		case "disablePullRequestAutoMerge":
 			p.method = ""
 		case "dequeuePullRequest":
 			p.queued = false
 		case "enablePullRequestAutoMerge", "enqueuePullRequest":
+			// The pin is in the document itself, not only in the variables:
+			// a variable the document does not use pins nothing.
+			if !strings.Contains(doc, "expectedHeadOid:$h") {
+				f.t.Errorf("%s sent without expectedHeadOid in its document: %s", name, doc)
+				return []byte(`{"data":null,"errors":[{"message":"unpinned"}]}`), nil
+			}
 			if vars["h"] != p.head {
 				return []byte(`{"data":null,"errors":[{"message":"Head sha didn't match expected head sha"}]}`), nil
 			}
@@ -585,7 +628,7 @@ func TestArmedMergesForCutNamesWhatTheReservationAdmitted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Base != "main" || a.Release != "rel-v0.16.0" || !slices.Equal(a.Admitted, []int{11}) || len(a.Armed) != 2 ||
+	if a.Base != "main" || a.Release != "rel-v0.16.0" || !slices.Equal(numbersOf(a.Admitted), []int{11}) || a.Admitted[0].Head != headA || len(a.Armed) != 2 ||
 		a.Armed[0].Number != 11 || a.Armed[1].Number != 14 || !a.Armed[1].AutoMerge {
 		t.Fatalf("armed merges = %+v; want #11 (admitted) and #14 armed, on main, under rel-v0.16.0", a)
 	}
@@ -602,11 +645,11 @@ func TestArmedMergesForCutNamesWhatTheReservationAdmitted(t *testing.T) {
 	}
 }
 
-// TestAWithdrawalRecordThatCannotBePushedPutsTheMergesBack: when origin
-// refuses the renewal recording the withdrawals, every merge withdrawn is
-// re-armed as it was, so none is left withdrawn with nothing pointing at it,
-// and each is named.
-func TestAWithdrawalRecordThatCannotBePushedPutsTheMergesBack(t *testing.T) {
+// TestAWithdrawalRecordThatCannotBePushedWithdrawsNothing: the record comes
+// first, so when origin refuses the renewal recording the withdrawals, the
+// forge is never touched: every merge stays armed as it was, none is left
+// withdrawn with nothing pointing at it, and each is named.
+func TestAWithdrawalRecordThatCannotBePushedWithdrawsNothing(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
 	hook := "#!/bin/sh\nwhile read old new ref; do if git log -1 --format=%B \"$new\" | grep -q '^Abcd-Withdrawn:'; then " +
@@ -623,15 +666,47 @@ func TestAWithdrawalRecordThatCannotBePushedPutsTheMergesBack(t *testing.T) {
 		t.Fatalf("result = %+v; want nothing recorded and three named", res)
 	}
 	for _, ff := range res.ForgeFailures {
-		if ff.Act != ForgeRecord || !strings.Contains(ff.Reason, "no withdrawal records today") || !strings.Contains(ff.Reason, "put back as it was") {
-			t.Fatalf("failure = %+v; want the record's refusal and the merge put back", ff)
+		if ff.Act != ForgeRecord || !strings.Contains(ff.Reason, "no withdrawal records today") || !strings.Contains(ff.Reason, "left armed as it was") {
+			t.Fatalf("failure = %+v; want the record's refusal and the merge left armed", ff)
 		}
 	}
+	if got := f.mutations(); len(got) != 0 {
+		t.Fatalf("mutations = %v; want the forge untouched when the record could not be pushed", got)
+	}
 	if pr := f.pr(11); pr.method != "SQUASH" {
-		t.Fatalf("#11 = %+v; want re-armed with squash", pr)
+		t.Fatalf("#11 = %+v; want still armed with squash", pr)
 	}
 	if pr := f.pr(12); !pr.queued {
-		t.Fatalf("#12 = %+v; want queued again", pr)
+		t.Fatalf("#12 = %+v; want still queued", pr)
+	}
+}
+
+// TestTheWithdrawalRecordReachesOriginBeforeTheForgeIsTouched: at the first
+// withdrawal the forge sees, origin's tip already records every merge about
+// to be withdrawn, as withdrawn, so a process killed there leaves a record.
+func TestTheWithdrawalRecordReachesOriginBeforeTheForgeIsTouched(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	var atFirst []Withdrawal
+	inner := releaseForge.graphql
+	releaseForge.graphql = func(root, doc string, vars map[string]string, ints map[string]int) ([]byte, error) {
+		if strings.HasPrefix(doc, "mutation") && atFirst == nil {
+			_, atFirst = w.tipWithdrawals("rel-v0.16.0")
+			if atFirst == nil {
+				atFirst = []Withdrawal{}
+			}
+		}
+		return inner(root, doc, vars, ints)
+	}
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(numbersOf(atFirst), []int{11, 12, 13}) || slices.ContainsFunc(atFirst, func(x Withdrawal) bool { return !x.Pending() }) {
+		t.Fatalf("origin recorded %+v when the forge was first touched; want #11, #12, #13 withdrawn", atFirst)
+	}
+	if got := f.mutations(); len(got) != 4 {
+		t.Fatalf("mutations = %v", got)
 	}
 }
 

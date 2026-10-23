@@ -10,11 +10,12 @@ package claim
 //   - --admit <pr> from the cutting copy re-arms one withdrawn pull request
 //     in its recorded form and records it admitted;
 //   - --release from the cutting copy re-arms every withdrawn, unadmitted
-//     one on the tombstone that ends the reservation, and any act of a copy
-//     of the same person, the cutting copy's included, does the same for a
-//     release it sees ended (its tag on origin, its tombstone, or its lease
-//     lapsed) with withdrawals of that person's not yet re-armed
-//     (dcn-2610222219297651);
+//     one after the tombstone that ends the reservation, and any act of a
+//     copy of the same person, the cutting copy's included, does the same for
+//     a release it sees ended (its tag on origin, or its tombstone) with
+//     withdrawals of that person's not yet re-armed (dcn-2610222219297651).
+//     A lapsed lease is not an end: it is reported, and nothing acts on it
+//     (dcn-2610230328220298);
 //   - every re-arm is in the form the pull request was taken from, pinned to
 //     the head it had, and one whose head moved, or that was closed or
 //     merged, is skipped and named (dcn-2610222219297487).
@@ -27,8 +28,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/intentdriven/abcd/internal/core/lease"
 )
 
 // ActAdmitted is an --admit that re-armed one withdrawn pull request and
@@ -40,6 +39,7 @@ const (
 	ForgeWithdraw = "withdraw"
 	ForgeRearm    = "re-arm"
 	ForgeRecord   = "record"
+	ForgeComment  = "comment"
 )
 
 // ForgeFailure is one pull request the forge, or the record of it, failed
@@ -55,7 +55,7 @@ func (f ForgeFailure) Line() string {
 	switch f.Act {
 	case ForgeWithdraw:
 		return fmt.Sprintf("#%d was not withdrawn: %s; it may still merge, and the launch check refuses the cut while it is armed", f.Number, f.Reason)
-	case ForgeRecord:
+	case ForgeRecord, ForgeComment:
 		return fmt.Sprintf("#%d: %s", f.Number, f.Reason)
 	}
 	return fmt.Sprintf("#%d was not re-armed: %s; it stays withdrawn, and the next act of a copy of its holder tries again", f.Number, f.Reason)
@@ -64,13 +64,28 @@ func (f ForgeFailure) Line() string {
 // Settle is what an act did for one release's withdrawals that were due:
 // those it re-armed or skipped (Settled, each in its new state), the
 // failures, and the tombstone that recorded it (Commit), or why none was
-// pushed (Failed).
+// pushed (Failed). Forged is each one recorded as the act's person's that the
+// branch's history does not vouch for: none of them is acted on.
 type Settle struct {
 	Subject  string         `json:"subject"`
 	Commit   string         `json:"commit,omitempty"`
 	Settled  []Withdrawal   `json:"settled"`
 	Failures []ForgeFailure `json:"failures,omitempty"`
 	Failed   string         `json:"failed,omitempty"`
+	Forged   []Withdrawal   `json:"forged,omitempty"`
+}
+
+// ForgedLine is the sentence naming the withdrawals recorded as holder's
+// that no reservation of theirs recorded first: "#11 on rel-v0.16.0 is
+// recorded as withdrawn by octo, but no reservation of octo's recorded it:
+// it is not re-armed".
+func ForgedLine(subject string, ws []Withdrawal) string {
+	if len(ws) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s on %s recorded as withdrawn by %s, but no reservation of %s's on its branch recorded them first, "+
+		"so abcd does not trust the record and re-arms none of them: check each pull request by hand",
+		strings.Join(numbers(ws), ", "), subject, ws[0].By, ws[0].By)
 }
 
 // SettledLine is the sentence naming one settled withdrawal.
@@ -86,6 +101,10 @@ func SettledLine(subject string, w Withdrawal) string {
 		return fmt.Sprintf("#%d was not re-armed after %s: it was closed", w.Number, subject)
 	case WithdrawnMerged:
 		return fmt.Sprintf("#%d was not re-armed after %s: it was merged", w.Number, subject)
+	case WithdrawnMismatch:
+		return fmt.Sprintf("#%d was not re-armed after %s: the node id recorded for it is not the forge's for #%d, so the record was not trusted to name it", w.Number, subject, w.Number)
+	case WithdrawnManual:
+		return fmt.Sprintf("#%d was not re-armed after %s: it can merge now and there is no merge queue to put it in, so it needs a manual merge by its owner", w.Number, subject)
 	case WithdrawnAdmitted:
 		return fmt.Sprintf("#%d admitted into %s", w.Number, subject)
 	}
@@ -115,88 +134,254 @@ func StrandedLine(subject string, ws []Withdrawal) string {
 }
 
 // actor is who an act's commits are written as: the person, their holder,
-// this copy's key, the clock and the Assisted-by label.
+// this copy's key, the clock and the Assisted-by label; subject is the
+// release whose withdrawals it settles, which a comment names.
 type actor struct {
-	root   string
-	who    identity
-	holder string
-	copy   string
-	now    time.Time
-	label  string
+	root    string
+	who     identity
+	holder  string
+	copy    string
+	now     time.Time
+	label   string
+	subject string
 }
 
 func (p *prepared) actor() actor {
-	return actor{root: p.root, who: p.who, holder: p.holder, copy: p.copy, now: p.now, label: p.label}
+	return actor{root: p.root, who: p.who, holder: p.holder, copy: p.copy, now: p.now, label: p.label, subject: p.id}
+}
+
+// longestLogin and longestLabel are the room a tombstone leaves for whoever
+// writes it: the longest GitHub username, and an Assisted-by label longer
+// than any abcd composes. Whichever copy of whichever person settles a
+// release writes its tombstone, so its fit is not measured by the cutter's
+// own login and label.
+var (
+	longestLogin = strings.Repeat("x", 39)
+	longestLabel = "abcd:" + strings.Repeat("9", 59)
+)
+
+// longestState is the longest word in WithdrawalStates.
+func longestState() string {
+	l := ""
+	for _, s := range WithdrawalStates {
+		if len(s) > len(l) {
+			l = s
+		}
+	}
+	return l
 }
 
 // tombstoneFits reports whether a release's tombstone carrying ws, each in
-// the longest state, would be written: under the cap and past the outbound
-// policy. A reservation records no withdrawal its own release could not
-// carry.
+// the longest state, would be written by any holder: under the cap and past
+// the outbound policy. A reservation records no withdrawal its own release
+// could not carry.
 func (p *prepared) tombstoneFits(ws []Withdrawal) bool {
 	m := p.tombstone(nil)
+	m.Holder = longestLogin
+	if len(m.AssistedBy) < len(longestLabel) {
+		m.AssistedBy = longestLabel
+	}
+	st := longestState()
 	for _, w := range ws {
-		w.State = WithdrawnPending
+		w.State = st
 		m.Withdrawn = append(m.Withdrawn, w)
 	}
 	return checkMessage(p.root, m.text()) == nil
 }
 
+// thisBranch is the branch the checkout at root is on, "" when detached or
+// unreadable: a pull request from it is the release pull request itself, which
+// the cut opened, and the hold neither withdraws nor judges it.
+func thisBranch(root string) string {
+	out, err := localGit(root, 4096, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// loginMismatch compares the account the session's gh token acts as, which
+// every withdrawal and re-arm is made under, with holder, the reservation's
+// holder as the act resolved it. It returns "" when they are the same
+// person; otherwise why nothing may be touched, and definite when gh named
+// another account (a lookup that failed is not definite).
+func loginMismatch(root, holder string) (why string, definite bool) {
+	if releaseForge.login == nil {
+		return "", false
+	}
+	if _, _, err := releaseForge.repo(root); err != nil {
+		return "", false // no forge to act on; the act names that itself
+	}
+	login, err := releaseForge.login(root)
+	switch {
+	case err != nil:
+		return "gh could not say which GitHub account it acts as, so no merge was withdrawn or re-armed", false
+	case !validUsername(login):
+		return "gh acts as an account that is not a GitHub username, so no merge was withdrawn or re-armed", true
+	case !sameHolder(login, holder):
+		return fmt.Sprintf("gh acts as %s, but the reservation's holder is %s, and every withdrawal and re-arm is made under gh's account: "+
+			"none was made; switch gh to %s (gh auth switch) and run it again", login, holder, holder), true
+	}
+	return "", false
+}
+
+// pushRecord writes m, a renewal of the reservation, over parent as p and
+// pushes it. It returns the commit pushed, or why it was not.
+func (p *prepared) pushRecord(tree, parent string, m message) (string, error) {
+	sha, err := writeCommit(p, m, tree, parent)
+	if err == nil {
+		err = push(p.root, pushArgs(sha, p.id))
+	}
+	if err != nil {
+		return "", err
+	}
+	return sha, nil
+}
+
 // withdrawArmed lists the merges armed or queued on origin's default branch
-// and withdraws each one not already among have, while the reservation can
-// record it, as by. It returns the withdrawals made (a partial one among
-// them), the failures, and why the listing could not be made at all, ""
-// when it was.
-func (p *prepared) withdrawArmed(have []Withdrawal) (made []Withdrawal, fails []ForgeFailure, unchecked string) {
+// and withdraws them for the release reservation m, just pushed as sha. The
+// record comes first (point 4 of the round-1 review): a renewal naming every
+// one about to be withdrawn, still withdrawn, is pushed over sha before the
+// forge is touched, so a process killed mid-way leaves a record of every
+// merge it may have withdrawn, and one it never reached reads as armed when
+// the re-arm comes to it, which counts as done. When the forge then refuses
+// one, or withdraws only half of one, a second renewal records what actually
+// happened. It skips the release pull request itself (a same-repository pull
+// request from this checkout's branch), one already admitted, and one past
+// what a tombstone can carry. It returns the commit last pushed (sha when
+// none was), what that commit records, the withdrawals made, the failures,
+// and why the merges could not be listed or touched at all, "" when they
+// could.
+func (p *prepared) withdrawArmed(tree, sha string, m message) (commit string, recorded message, made []Withdrawal, fails []ForgeFailure, unchecked string) {
+	commit, recorded = sha, m
 	owner, name, err := releaseForge.repo(p.root)
 	if err != nil {
-		return nil, nil, "could not withdraw the merges already armed: " + err.Error()
+		return commit, recorded, nil, nil, "could not withdraw the merges already armed: " + err.Error()
 	}
 	base := strings.TrimPrefix(originDefault(p.root), "refs/remotes/"+Remote+"/")
 	if base == "" {
-		return nil, nil, "could not withdraw the merges already armed: this checkout names no default branch of " + Remote
+		return commit, recorded, nil, nil, "could not withdraw the merges already armed: this checkout names no default branch of " + Remote
 	}
 	armed, err := releaseForge.armedPullRequests(p.root, owner, name, base)
 	if err != nil {
-		return nil, nil, "could not list the merges armed or queued on " + base + ": " + forgeReason(err) +
+		return commit, recorded, nil, nil, "could not list the merges armed or queued on " + base + ": " + forgeReason(err) +
 			"; none was withdrawn, and the launch check refuses the cut while any is armed"
 	}
-	all := slices.Clone(have)
+	branch := thisBranch(p.root)
+	all := slices.Clone(m.Withdrawn)
+	var due []ArmedPR
 	for _, pr := range armed {
+		if !pr.CrossRepository && branch != "" && pr.HeadRef == branch {
+			continue // the release pull request itself
+		}
+		if have, ok := withdrawalOf(all, pr.Number); ok && have.State == WithdrawnAdmitted {
+			continue // ruled into the cut already
+		}
 		w := Withdrawal{Number: pr.Number, ID: pr.ID, Form: withdrawalFormOf(pr.Queued, pr.Method), Head: pr.Head, By: p.holder, State: WithdrawnPending}
-		if !p.tombstoneFits(withWithdrawal(all, w)) {
+		next := withWithdrawal(all, w)
+		if len(next) > maxWithdrawals || !p.tombstoneFits(next) {
 			fails = append(fails, ForgeFailure{Number: pr.Number, Act: ForgeWithdraw,
-				Reason: fmt.Sprintf("the reservation has no room left to record it under the %d-byte cap", MaxMessageBytes)})
+				Reason: fmt.Sprintf("the reservation has no room left to record it (at most %d pull requests, under the %d-byte cap)", maxWithdrawals, MaxMessageBytes)})
 			continue
 		}
+		all, due = next, append(due, pr)
+	}
+	if len(due) == 0 {
+		return commit, recorded, nil, fails, ""
+	}
+	if why, _ := loginMismatch(p.root, p.holder); why != "" {
+		return commit, recorded, nil, fails, why + "; the launch check refuses the cut while any is armed"
+	}
+	// The record first: every one about to be withdrawn, as withdrawn.
+	first := m
+	first.Withdrawn = all
+	rec, err := p.pushRecord(tree, sha, first)
+	if err != nil {
+		reason := redacted(err)
+		for _, pr := range due {
+			fails = append(fails, ForgeFailure{Number: pr.Number, Act: ForgeRecord,
+				Reason: "was not withdrawn: the reservation recording it first was not pushed (" + reason + "), so it was left armed as it was; the launch check refuses the cut while it is armed"})
+		}
+		return commit, recorded, nil, fails, ""
+	}
+	commit, recorded = rec, first
+	// Then the forge, and a correction for whatever did not go as recorded.
+	actual := slices.Clone(all)
+	var changed []int
+	for _, pr := range due {
 		got, done, err := releaseForge.withdraw(p.root, pr, p.holder)
 		if err != nil {
 			fails = append(fails, ForgeFailure{Number: pr.Number, Act: ForgeWithdraw, Reason: err.Error()})
 		}
-		if done {
+		switch {
+		case !done:
+			actual = withoutWithdrawal(actual, pr.Number)
+			changed = append(changed, pr.Number)
+		case got.Form != withdrawalFormOf(pr.Queued, pr.Method):
+			actual = withWithdrawal(actual, got)
+			changed = append(changed, pr.Number)
 			made = append(made, got)
-			all = withWithdrawal(all, got)
+		default:
+			made = append(made, got)
+		}
+		if done {
+			if f := releaseForge.comment(p.root, owner, name, p.id, got); f != nil {
+				fails = append(fails, *f)
+			}
 		}
 	}
-	return made, fails, ""
+	if len(changed) == 0 {
+		return commit, recorded, made, fails, ""
+	}
+	fixed := m
+	fixed.Withdrawn = actual
+	next, err := p.pushRecord(tree, rec, fixed)
+	if err != nil {
+		reason := redacted(err)
+		for _, n := range changed {
+			fails = append(fails, ForgeFailure{Number: n, Act: ForgeRecord,
+				Reason: "the reservation records it as withdrawn in the form it was armed in, but the correction saying what the forge did was not pushed (" + reason +
+					"); its re-arm reads it on the forge first, and finds it armed when it still is"})
+		}
+		return commit, recorded, made, fails, ""
+	}
+	return next, fixed, made, fails, ""
+}
+
+// withdrawalOf is ws's entry for pull request n.
+func withdrawalOf(ws []Withdrawal, n int) (Withdrawal, bool) {
+	i := slices.IndexFunc(ws, func(w Withdrawal) bool { return w.Number == n })
+	if i < 0 {
+		return Withdrawal{}, false
+	}
+	return ws[i], true
+}
+
+// withoutWithdrawal is ws less the entry for pull request n.
+func withoutWithdrawal(ws []Withdrawal, n int) []Withdrawal {
+	return slices.DeleteFunc(slices.Clone(ws), func(w Withdrawal) bool { return w.Number == n })
 }
 
 // rearmMine re-arms each withdrawal in ws still withdrawn whose holder is
-// a's, and returns ws with their new states, the ones it settled and the
-// failures. why is set, and nothing is re-armed, when the forge cannot be
-// named.
-func rearmMine(a actor, ws []Withdrawal) (out, settled []Withdrawal, fails []ForgeFailure, why string) {
+// a's and that trust vouches for (the chain's record of it, vouched), and
+// returns ws with their new states, the ones it settled and the failures.
+// why is set, and nothing is re-armed, when the forge cannot be named or gh
+// acts as another account than a's holder.
+func rearmMine(a actor, ws []Withdrawal, trust func(Withdrawal) bool) (out, settled []Withdrawal, fails []ForgeFailure, why string) {
 	out = slices.Clone(ws)
-	due := slices.ContainsFunc(ws, func(w Withdrawal) bool { return w.Pending() && sameHolder(w.By, a.holder) })
-	if !due {
+	mine := func(w Withdrawal) bool { return w.Pending() && sameHolder(w.By, a.holder) && trust(w) }
+	if !slices.ContainsFunc(ws, mine) {
 		return out, nil, nil, ""
 	}
 	owner, name, err := releaseForge.repo(a.root)
 	if err != nil {
 		return out, nil, nil, "could not re-arm the withdrawn merges: " + err.Error()
 	}
+	if why, _ := loginMismatch(a.root, a.holder); why != "" {
+		return out, nil, nil, why
+	}
 	for i, w := range out {
-		if !w.Pending() || !sameHolder(w.By, a.holder) {
+		if !w.Pending() || !sameHolder(w.By, a.holder) || !trust(w) {
 			continue
 		}
 		state, err := releaseForge.rearm(a.root, owner, name, w)
@@ -206,6 +391,9 @@ func rearmMine(a actor, ws []Withdrawal) (out, settled []Withdrawal, fails []For
 		}
 		out[i].State = state
 		settled = append(settled, out[i])
+		if f := releaseForge.comment(a.root, owner, name, a.subject, out[i]); f != nil {
+			fails = append(fails, *f)
+		}
 	}
 	return out, settled, fails, ""
 }
@@ -222,20 +410,16 @@ func stranded(ws []Withdrawal, holder string) []Withdrawal {
 }
 
 // releaseEnded reports whether a release tip holds nothing any more: its tag
-// on origin, a tombstone, or its lease lapsed past the take-over margin.
-func releaseEnded(t tip, tagged bool, now time.Time) bool {
-	if tagged || t.message.released() {
-		return true
-	}
-	v := lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, now)
-	return !now.Before(v.EffectiveExpiry.Add(TakeoverMargin))
+// on origin, or a tombstone (dcn-2610230328220298). A lease that lapsed is
+// not an end: nothing renews a release lease on its own, so a slow cut's
+// lease lapses while it is still being cut, and a lapse is reported, never
+// acted on.
+func releaseEnded(t tip, tagged bool) bool {
+	return tagged || t.message.released()
 }
 
 // settleEnded settles id's withdrawals of a's holder when its release has
-// ended: re-arms each, then pushes a tombstone over the tip recording every
-// withdrawal in its new state, so no copy acts twice. ok is false when there
-// was nothing due. A push that fails leaves what was re-armed armed: the next
-// act finds it armed and counts it done.
+// ended (settleTip). ok is false when there was nothing to say.
 func settleEnded(a actor, tree, id string) (s Settle, ok bool) {
 	t, present, err := readSeen(a.root, id, trackingName(id), tree, a.now, true)
 	if err != nil || !present {
@@ -244,7 +428,16 @@ func settleEnded(a actor, tree, id string) (s Settle, ok bool) {
 	return settleTip(a, tree, id, t)
 }
 
-// settleTip is settleEnded over id's tip t, already read.
+// settleTip settles id's withdrawals of a's holder over its tip t, already
+// read, once the release has ended: its tag on origin or a tombstone. Only a
+// withdrawal the branch's own history vouches for is acted on (vouched); one
+// it does not is named (Forged) and left as it is. The order is the
+// compare-and-swap's: a tombstone over t, every withdrawal as it stands, is
+// pushed first, so of two copies settling at once only the one whose push
+// lands acts; then each is re-armed; then a second tombstone records every
+// state. A copy whose first push loses says nothing: the next act reads the
+// tip the other pushed. A second push that fails leaves what was re-armed
+// armed, and the next act finds it armed and records it.
 func settleTip(a actor, tree, id string, t tip) (s Settle, ok bool) {
 	if t.Unreadable != "" {
 		return Settle{}, false
@@ -253,28 +446,59 @@ func settleTip(a actor, tree, id string, t tip) (s Settle, ok bool) {
 		return Settle{}, false
 	}
 	tagged, err := taggedOnOrigin(a.root, id)
-	if err != nil || !releaseEnded(t, tagged, a.now) {
+	if err != nil || !releaseEnded(t, tagged) {
 		return Settle{}, false
 	}
+	a.subject = id
 	s = Settle{Subject: id, Settled: []Withdrawal{}}
-	ws, settled, fails, why := rearmMine(a, t.Withdrawn)
+	links, complete, err := releaseChain(a.root, id, t.Commit, tree)
+	if err != nil {
+		s.Failed = "could not read the history of " + id + "'s branch to tell whose its withdrawals are (" + redacted(err) + "), so none was re-armed"
+		return s, true
+	}
+	due, forged := vouchedPending(links, complete, t.Withdrawn, a.holder)
+	s.Forged = forged
+	if len(due) == 0 {
+		return s, len(forged) > 0
+	}
+	if why, _ := loginMismatch(a.root, a.holder); why != "" {
+		s.Failed = why
+		return s, true
+	}
+	claimed, err := a.pushTombstone(tree, id, t.Commit, t.Withdrawn)
+	if err != nil {
+		return Settle{}, false
+	}
+	s.Commit = claimed
+	ws, settled, fails, why := rearmMine(a, t.Withdrawn, func(w Withdrawal) bool { _, ok := entryIn(due, w); return ok })
 	s.Settled, s.Failures, s.Failed = append(s.Settled, settled...), fails, why
 	if len(settled) == 0 {
 		return s, true
 	}
+	final, err := a.pushTombstone(tree, id, claimed, ws)
+	if err != nil {
+		s.Failed = fmt.Sprintf("re-armed %s, but the tombstone recording it was not pushed (%s); the next act of a copy of yours finds them armed and records them",
+			strings.Join(numbers(settled), ", "), redacted(err))
+		return s, true
+	}
+	s.Commit = final
+	return s, true
+}
+
+// pushTombstone writes, as a, a tombstone over parent on id's branch
+// recording ws, and pushes it: a plain fast-forward, so it lands only over
+// the tip it was written on.
+func (a actor) pushTombstone(tree, id, parent string, ws []Withdrawal) (string, error) {
 	m := message{Record: id, Holder: a.holder, Copy: a.copy, ClaimedAt: a.now, ExpiresAt: a.now, ReleasedAt: a.now,
 		Withdrawn: ws, AssistedBy: a.label}
-	sha, err := writeEmptyCommit(a.root, a.who, a.now, m, tree, t.Commit)
+	sha, err := writeEmptyCommit(a.root, a.who, a.now, m, tree, parent)
 	if err == nil {
 		err = push(a.root, pushArgs(sha, id))
 	}
 	if err != nil {
-		s.Failed = fmt.Sprintf("re-armed %s, but the tombstone recording it was not pushed (%s); the next act finds them armed and records them",
-			strings.Join(numbers(settled), ", "), redacted(err))
-		return s, true
+		return "", err
 	}
-	s.Commit = sha
-	return s, true
+	return sha, nil
 }
 
 // sweepEnded settles every ended release subject but skip whose withdrawals
@@ -310,9 +534,9 @@ func sweepEnded(a actor, tree, skip string) (out []Settle, pushed bool) {
 // SettleEndedReleases is the fallback re-arm a listing makes (`abcd peers`),
 // after its own fetch: as this checkout's person, every ended release's
 // withdrawals of theirs not yet re-armed are re-armed and recorded on a
-// tombstone (dcn-2610222219297651). It asks the forge nothing and pushes
-// nothing when no such withdrawal is there, and acts only when this copy's
-// person and key are known without asking the network.
+// tombstone (dcn-2610222219297651, dcn-2610230328220298). It asks the forge
+// nothing and pushes nothing when no such withdrawal is there, and acts only
+// when this copy's person and key are known without asking the network.
 func SettleEndedReleases(root string, o Options) ([]Settle, error) {
 	refs, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", TrackingPrefix+releasePrefix+"*")
 	if err != nil || strings.TrimSpace(refs) == "" {
@@ -344,63 +568,105 @@ func SettleEndedReleases(root string, o Options) ([]Settle, error) {
 	return settles, nil
 }
 
-// admitOne re-arms the withdrawal for pull request n on m, the renewal an
-// --admit pushes, and marks it admitted there; the refusal says why it was
-// not, and nothing is pushed then.
-func (p *prepared) admitOne(m *message, n int) error {
-	i := slices.IndexFunc(m.Withdrawn, func(w Withdrawal) bool { return w.Number == n })
-	w := m.Withdrawn[i]
+// admitCheck reads pull request n's withdrawal w on the forge before an
+// --admit records anything: the state it settles in without arming (already
+// armed again counts), "" when it is to be armed, or the refusal saying why
+// it is not admitted, nothing pushed.
+func (p *prepared) admitCheck(w Withdrawal) (state string, err error) {
+	n := w.Number
 	owner, name, err := releaseForge.repo(p.root)
 	if err != nil {
-		return refuse("#%d was not admitted: %s; %s", n, err.Error(), nothingPushed)
+		return "", refuse("#%d was not admitted: %s; %s", n, err.Error(), nothingPushed)
 	}
-	state, err := releaseForge.rearm(p.root, owner, name, w)
+	if why, _ := loginMismatch(p.root, p.holder); why != "" {
+		return "", refuse("#%d was not admitted: %s; %s", n, why, nothingPushed)
+	}
+	state, err = releaseForge.inspect(p.root, owner, name, w)
 	switch {
 	case err != nil:
-		return refuse("#%d was not admitted: the forge refused its re-arm (%s), so it stays withdrawn; %s", n, err.Error(), nothingPushed)
+		return "", refuse("#%d was not admitted: the forge could not be read for it (%s), so it stays withdrawn; %s", n, err.Error(), nothingPushed)
 	case state == WithdrawnMoved:
-		return refuse("#%d was not admitted: its head moved since it was withdrawn at %s, and an admission re-arms only the commits withdrawn; "+
+		return "", refuse("#%d was not admitted: its head moved since it was withdrawn at %s, and an admission re-arms only the commits withdrawn; "+
 			"it stays withdrawn, for its owner to re-arm after the release; %s", n, w.Head[:12], nothingPushed)
 	case state == WithdrawnClosed || state == WithdrawnMerged:
-		return refuse("#%d was not admitted: it was %s since it was withdrawn; %s", n, state, nothingPushed)
+		return "", refuse("#%d was not admitted: it was %s since it was withdrawn; %s", n, state, nothingPushed)
+	case state == WithdrawnMismatch:
+		return "", refuse("#%d was not admitted: the node id the reservation records for it is not the forge's, so the record is not trusted to name it; %s", n, nothingPushed)
 	}
-	m.Withdrawn[i].State = WithdrawnAdmitted
+	return state, nil
+}
+
+// settleOwnRelease re-arms, after --release pushed the tombstone sha over
+// the cutting copy's reservation carrying ws as they stood, every one of this
+// person's still withdrawn that the branch's history vouches for, and pushes
+// a second tombstone recording each state. It returns the settle, the commit
+// last pushed and the withdrawals it records.
+func (p *prepared) settleOwnRelease(tree, sha string, ws []Withdrawal) (Settle, string, []Withdrawal) {
+	a := p.actor()
+	s := Settle{Subject: p.id, Settled: []Withdrawal{}, Commit: sha}
+	links, complete, err := releaseChain(p.root, p.id, sha, tree)
+	if err != nil {
+		s.Failed = "could not read the history of " + p.id + "'s branch to tell whose its withdrawals are (" + redacted(err) +
+			"), so none was re-armed; the next act of a copy of yours tries again"
+		return s, sha, ws
+	}
+	due, forged := vouchedPending(links, complete, ws, p.holder)
+	s.Forged = forged
+	out, settled, fails, why := rearmMine(a, ws, func(w Withdrawal) bool { _, ok := entryIn(due, w); return ok })
+	s.Settled, s.Failures, s.Failed = append(s.Settled, settled...), fails, why
+	if len(settled) == 0 {
+		return s, sha, ws
+	}
+	final, err := a.pushTombstone(tree, p.id, sha, out)
+	if err != nil {
+		s.Failed = fmt.Sprintf("re-armed %s, but the tombstone recording it was not pushed (%s); the next act of a copy of yours finds them armed and records them",
+			strings.Join(numbers(settled), ", "), redacted(err))
+		return s, sha, ws
+	}
+	s.Commit = final
+	return s, final, out
+}
+
+// otherLiveRelease refuses, with a back-off, a release reserved anew while
+// another release's reservation is live, as last fetched: one release is cut
+// at a time.
+func otherLiveRelease(root, id string, now time.Time) error {
+	snap, err := viewOf(root, now, true, isRelease)
+	if err != nil {
+		return nil
+	}
+	for _, r := range snap.Reservations {
+		if r.Record == id || r.State != StateLive {
+			continue
+		}
+		return backOff("%s is being cut by %s until %s, and one release is cut at a time: a second reservation would withdraw the merges the first admitted; "+
+			"wait for it to end (its tag on %s, or its holder's --release); %s", r.Record, r.Holder, stamp(r.EffectiveExpiry), Remote, nothingPushed)
+	}
 	return nil
 }
 
-// recordWithdrawals pushes, over sha (the reservation just pushed), the
-// renewal recording made beside the reservation's own withdrawals. When the
-// push fails, every one made is re-armed again, so no merge is left
-// withdrawn with nothing pointing at it; failures name what was not.
-func (p *prepared) recordWithdrawals(tree, sha string, m message, made []Withdrawal) (string, []ForgeFailure) {
-	for _, w := range made {
-		m.Withdrawn = withWithdrawal(m.Withdrawn, w)
+// admitAfter re-arms the admitted withdrawal w, its record already pushed as
+// sha, unless the forge already had it armed (state). When the arming fails,
+// a renewal puts it back to withdrawn, and the refusal says so.
+func (p *prepared) admitAfter(tree, sha string, m message, w Withdrawal, state string) (string, error) {
+	if state == WithdrawnFoundArmed {
+		return sha, nil
 	}
-	next, err := writeCommit(p, m, tree, sha)
-	if err == nil {
-		err = push(p.root, pushArgs(next, p.id))
+	got, err := releaseForge.arm(p.root, w)
+	if err == nil && got == WithdrawnRearmed {
+		return sha, nil
 	}
-	if err == nil {
-		return next, nil
+	reason := "the forge needs it merged by hand (it can merge now, and there is no merge queue to put it in)"
+	if err != nil {
+		reason = "the forge refused its re-arm (" + err.Error() + ")"
 	}
-	reason := redacted(err)
-	var fails []ForgeFailure
-	_, settled, rfails, why := rearmMine(p.actor(), made)
-	for _, w := range settled {
-		fails = append(fails, ForgeFailure{Number: w.Number, Act: ForgeRecord,
-			Reason: "withdrawn, but the reservation recording it was not pushed (" + reason + "), so it was put back as it was"})
+	back := m
+	back.Withdrawn = withWithdrawal(m.Withdrawn, Withdrawal{Number: w.Number, ID: w.ID, Form: w.Form, Head: w.Head, By: w.By, State: WithdrawnPending})
+	if _, perr := p.pushRecord(tree, sha, back); perr != nil {
+		return sha, refuse("#%d was recorded admitted, but %s, and the renewal putting it back to withdrawn was not pushed (%s): "+
+			"it is not armed; re-arm it by hand, or release the reservation, which re-arms it", w.Number, reason, redacted(perr))
 	}
-	for _, f := range rfails {
-		f.Act, f.Reason = ForgeRecord, "withdrawn, but the reservation recording it was not pushed ("+reason+"), and putting it back failed ("+f.Reason+"): re-arm it by hand"
-		fails = append(fails, f)
-	}
-	if why != "" {
-		for _, w := range made {
-			fails = append(fails, ForgeFailure{Number: w.Number, Act: ForgeRecord,
-				Reason: "withdrawn, but the reservation recording it was not pushed (" + reason + "), and it could not be put back (" + why + "): re-arm it by hand"})
-		}
-	}
-	return sha, fails
+	return sha, refuse("#%d was not admitted: %s, so it stays withdrawn, and a renewal recording that was pushed", w.Number, reason)
 }
 
 // validPRNumber reports whether n is a pull request number a trailer may
@@ -409,13 +675,18 @@ func validPRNumber(n int) bool { return n > 0 && n <= 999999999 }
 
 // ReleaseWithdrawals is one release's withdrawals as a listing names them to
 // a reader: on a release still held, those it holds withdrawn and those it
-// admitted; on one ended, those still to re-arm, split into the reader's own
-// (Due, which the reader's next act re-arms) and another person's
-// (Stranded, which only that person re-arms), and those its last tombstone
-// skipped for their owners (moved, closed or merged).
+// admitted, with Lapsed set when its lease lapsed before it ended, which
+// ends nothing (dcn-2610230328220298); on one ended (its tag on origin or
+// its tombstone), those still to re-arm, split into the reader's own (Due,
+// which the reader's next act re-arms) and another person's (Stranded, which
+// only that person re-arms), and those its last tombstone skipped for their
+// owners (moved, closed, merged, mismatched or needing a manual merge).
 type ReleaseWithdrawals struct {
 	Subject  string       `json:"subject"`
 	Ended    bool         `json:"ended"`
+	Lapsed   bool         `json:"lapsed,omitempty"`
+	LapsedAt time.Time    `json:"lapsed_at,omitempty"`
+	Holder   string       `json:"holder,omitempty"`
 	Held     []Withdrawal `json:"held,omitempty"`
 	Admitted []Withdrawal `json:"admitted,omitempty"`
 	Due      []Withdrawal `json:"due,omitempty"`
@@ -426,6 +697,11 @@ type ReleaseWithdrawals struct {
 // Lines is each sentence the listing shows for the release's withdrawals.
 func (r ReleaseWithdrawals) Lines() []string {
 	var out []string
+	if r.Lapsed {
+		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended: it holds no merge now, and nothing re-arms what it withdrew; "+
+			"%s renews it from the cutting copy (abcd reserve %s), or ends it with --release, after --take-over from another copy of theirs",
+			r.Subject, stamp(r.LapsedAt), r.Holder, r.Subject))
+	}
 	if len(r.Held) > 0 {
 		out = append(out, fmt.Sprintf("%s holds %s withdrawn until it ends: the cutting copy admits one with --admit <pr>",
 			r.Subject, strings.Join(numbers(r.Held), ", ")))
@@ -455,11 +731,10 @@ func (s Snapshot) ReleaseWithdrawals(reader string, now time.Time) []ReleaseWith
 		if !isRelease(r.Record) || len(r.Withdrawn) == 0 || r.State == StateUnreadable {
 			continue
 		}
-		rw := ReleaseWithdrawals{Subject: r.Record,
-			Ended: r.State == StateReleased || r.State == StateExpired && !now.Before(r.EffectiveExpiry.Add(TakeoverMargin))}
+		rw := ReleaseWithdrawals{Subject: r.Record, Holder: r.Holder, Ended: r.State == StateReleased}
 		for _, w := range r.Withdrawn {
 			switch {
-			case w.State == WithdrawnMoved || w.State == WithdrawnClosed || w.State == WithdrawnMerged:
+			case skippedForOwner(w.State):
 				rw.Skipped = append(rw.Skipped, w)
 			case w.State == WithdrawnAdmitted && !rw.Ended:
 				rw.Admitted = append(rw.Admitted, w)
@@ -471,6 +746,9 @@ func (s Snapshot) ReleaseWithdrawals(reader string, now time.Time) []ReleaseWith
 			default:
 				rw.Stranded = append(rw.Stranded, w)
 			}
+		}
+		if r.State == StateExpired && len(rw.Held) > 0 {
+			rw.Lapsed, rw.LapsedAt = true, r.EffectiveExpiry
 		}
 		if len(rw.Held)+len(rw.Admitted)+len(rw.Due)+len(rw.Stranded)+len(rw.Skipped) > 0 {
 			out = append(out, rw)

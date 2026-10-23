@@ -10,6 +10,11 @@ import (
 // the real forge, though the suite runs over this repository's own tree,
 // whose origin is on GitHub; a test of the row sets its own.
 
+const (
+	headX = "1111111111111111111111111111111111111111"
+	headY = "2222222222222222222222222222222222222222"
+)
+
 // withArmed sets the row's reading and the checkout's branch for one test.
 func withArmed(t *testing.T, a ArmedMerges, err error, branch string) {
 	t.Helper()
@@ -43,8 +48,8 @@ func mergeHeld(res suiteResult) bool {
 // that the cutting copy's release reservation has not admitted refuses the
 // cut, naming it; an admitted one and the release pull request itself pass.
 func TestTheLaunchCheckRefusesAnUnaccountedArmedMerge(t *testing.T) {
-	withArmed(t, ArmedMerges{Base: "main", Release: "rel-v0.16.0", Admitted: []int{11}, Armed: []ArmedMerge{
-		{Number: 11, HeadRef: "fix/a", AutoMerge: true, Method: "SQUASH"},
+	withArmed(t, ArmedMerges{Base: "main", Release: "rel-v0.16.0", Admitted: map[int]string{11: headX}, Armed: []ArmedMerge{
+		{Number: 11, Head: headX, HeadRef: "fix/a", AutoMerge: true, Method: "SQUASH"},
 		{Number: 14, HeadRef: "feat/b", AutoMerge: true, Method: "MERGE"},
 		{Number: 15, HeadRef: "release/v0.16.0", Queued: true},
 		{Number: 16, HeadRef: "release/v0.16.0", Queued: true, CrossRepository: true},
@@ -70,8 +75,8 @@ func TestTheLaunchCheckRefusesAnUnaccountedArmedMerge(t *testing.T) {
 // TestTheLaunchCheckPassesAFrozenBranch: nothing armed but what the
 // reservation admitted passes.
 func TestTheLaunchCheckPassesAFrozenBranch(t *testing.T) {
-	withArmed(t, ArmedMerges{Base: "main", Release: "rel-v0.16.0", Admitted: []int{11},
-		Armed: []ArmedMerge{{Number: 11, AutoMerge: true, Method: "SQUASH"}}}, nil, "main")
+	withArmed(t, ArmedMerges{Base: "main", Release: "rel-v0.16.0", Admitted: map[int]string{11: headX},
+		Armed: []ArmedMerge{{Number: 11, Head: headX, AutoMerge: true, Method: "SQUASH"}}}, nil, "main")
 	res := runGateSuite(suiteRequest{RepoRoot: t.TempDir(), Dirty: DirtySkip})
 	if row := mergeHoldRow(t, res); row.Status != "ran" || len(row.Findings) != 0 || mergeHeld(res) {
 		t.Fatalf("row = %+v; want it to pass", row)
@@ -112,5 +117,42 @@ func TestTheLaunchCheckIsNotArmedWithoutAReading(t *testing.T) {
 	res := runGateSuite(suiteRequest{RepoRoot: t.TempDir(), Dirty: DirtySkip})
 	if row := mergeHoldRow(t, res); row.Status != "not_armed" || mergeHeld(res) {
 		t.Fatalf("row = %+v; want not armed", row)
+	}
+}
+
+// TestTheLaunchCheckExemptsAnAdmittedMergeOnlyAtItsAdmittedHead: a push to
+// an admitted pull request since its admission brings commits nobody
+// admitted, and the cut is refused naming both heads.
+func TestTheLaunchCheckExemptsAnAdmittedMergeOnlyAtItsAdmittedHead(t *testing.T) {
+	withArmed(t, ArmedMerges{Base: "main", Release: "rel-v0.16.0", Admitted: map[int]string{11: headX},
+		Armed: []ArmedMerge{{Number: 11, Head: headY, AutoMerge: true, Method: "SQUASH"}}}, nil, "main")
+	res := runGateSuite(suiteRequest{RepoRoot: t.TempDir(), Dirty: DirtySkip})
+	row := mergeHoldRow(t, res)
+	if len(row.Findings) != 1 || !mergeHeld(res) ||
+		!strings.Contains(row.Findings[0].Detail, "pull request #11 was admitted into rel-v0.16.0 at 111111111111, but its head is now 222222222222") {
+		t.Fatalf("row = %+v; want the moved admission refused", row)
+	}
+}
+
+// TestTheLaunchCheckRefusesALapsedReleaseAndWarnsOfLostWithdrawals: a
+// release reservation that lapsed before the release ended holds nothing and
+// refuses the cut; withdrawals a later commit dropped are a warning row.
+func TestTheLaunchCheckRefusesALapsedReleaseAndWarnsOfLostWithdrawals(t *testing.T) {
+	withArmed(t, ArmedMerges{Base: "main", Lapsed: "rel-v0.16.0", LapsedAt: "2026-10-04T14:00:00Z",
+		Lost: []string{"#11 withdrawn for rel-v0.15.0 by octo are lost"}}, nil, "main")
+	res := runGateSuite(suiteRequest{RepoRoot: t.TempDir(), Dirty: DirtySkip})
+	row := mergeHoldRow(t, res)
+	if len(row.Findings) != 1 || !mergeHeld(res) ||
+		!strings.Contains(row.Findings[0].Detail, "your release reservation rel-v0.16.0 lapsed at 2026-10-04T14:00:00Z before the release ended") {
+		t.Fatalf("row = %+v; want the lapse refused", row)
+	}
+	var lost *GateSummary
+	for i := range res.Gates {
+		if res.Gates[i].Name == gateMergeHoldLost {
+			lost = &res.Gates[i]
+		}
+	}
+	if lost == nil || lost.Tier != TierWarn || len(lost.Findings) != 1 || !strings.Contains(strings.Join(res.Warnings, "\n"), "#11 withdrawn for rel-v0.15.0 by octo are lost") {
+		t.Fatalf("lost row = %+v, warnings %v; want a warning naming them", lost, res.Warnings)
 	}
 }

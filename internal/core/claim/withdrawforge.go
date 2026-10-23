@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/github"
 	"github.com/intentdriven/abcd/internal/core/tools"
@@ -54,10 +55,31 @@ type mergeForge struct {
 	// graphql sends one GraphQL document with its string variables and its
 	// integer ones, and returns the forge's answer.
 	graphql func(root, doc string, vars map[string]string, ints map[string]int) ([]byte, error)
+	// login is the GitHub username the session's gh token acts as: every
+	// withdrawal and re-arm is made under it, so each is refused unless it is
+	// the reservation's holder.
+	login func(root string) (string, error)
+	// comments is the pull-request comment writer's seam
+	// (dcn-2610230328230097): nil, and nothing sets it outside the tests, so
+	// abcd posts nothing on other people's pull requests until the product
+	// thinker decides it does.
+	comments PRCommenter
+}
+
+// PRCommenter posts one comment on pull request number of owner/name.
+type PRCommenter interface {
+	Comment(root, owner, name string, number int, body string) error
 }
 
 // releaseForge is the forge every withdrawal, admission and re-arm goes to.
-var releaseForge = mergeForge{repo: originRepo, graphql: ghGraphQL}
+var releaseForge = mergeForge{repo: originRepo, graphql: ghGraphQL, login: ghLogin}
+
+// ghLogin is the login the session's gh token answers the user endpoint
+// with (forgeUser, asked once per process for each checkout and credential).
+func ghLogin(root string) (string, error) {
+	login, _, err := forgeUser(root)
+	return login, err
+}
 
 // SetMergeForgeForTest replaces the forge the release hold talks to for a
 // test outside this package (the launch check's), returning what restores
@@ -65,7 +87,7 @@ var releaseForge = mergeForge{repo: originRepo, graphql: ghGraphQL}
 func SetMergeForgeForTest(repo func(root string) (string, string, error),
 	graphql func(root, doc string, vars map[string]string, ints map[string]int) ([]byte, error)) (restore func()) {
 	prev := releaseForge
-	releaseForge = mergeForge{repo: repo, graphql: graphql}
+	releaseForge = mergeForge{repo: repo, graphql: graphql, login: prev.login}
 	return func() { releaseForge = prev }
 }
 
@@ -300,14 +322,30 @@ func (f mergeForge) withdraw(root string, pr ArmedPR, by string) (w Withdrawal, 
 // rearm puts w back on the forge's merge path in the form it was taken from,
 // pinned to the head it had (dcn-2610222219297487), and returns the state it
 // settles in: rearmed; armed when it is already armed or queued; or moved,
-// closed or merged, skipped for its owner. An error leaves it withdrawn, for
-// a later act to try again.
+// closed, merged, mismatch or manual, skipped for its owner. An error leaves
+// it withdrawn, for a later act to try again.
 func (f mergeForge) rearm(root, owner, name string, w Withdrawal) (string, error) {
+	state, err := f.inspect(root, owner, name, w)
+	if err != nil || state != "" {
+		return state, err
+	}
+	return f.arm(root, w)
+}
+
+// inspect reads the pull request w names, by its number, and returns the
+// state a re-arm settles it in without arming it, "" when it is to be armed.
+// The forge's node id for the number must be the one recorded: every
+// mutation names the pull request by node id, and node ids are global, so a
+// record pairing one pull request's number with another's id (in this
+// repository or any other) is never acted on (mismatch).
+func (f mergeForge) inspect(root, owner, name string, w Withdrawal) (string, error) {
 	n, err := f.pullRequest(root, owner, name, w.Number)
 	if err != nil {
 		return "", errors.New(forgeReason(err))
 	}
 	switch {
+	case n.ID != w.ID:
+		return WithdrawnMismatch, nil
 	case n.State == "MERGED":
 		return WithdrawnMerged, nil
 	case n.State == "CLOSED":
@@ -317,28 +355,84 @@ func (f mergeForge) rearm(root, owner, name string, w Withdrawal) (string, error
 	case n.armed():
 		return WithdrawnFoundArmed, nil
 	}
+	return "", nil
+}
+
+// cleanStatus is the forge's refusal of an arming when the pull request can
+// merge now and the repository has no merge queue to put it in: auto-merge
+// has nothing to wait for.
+const cleanStatus = "clean status"
+
+// arm sends w's re-arm, pinned to its head. A refusal for clean status
+// settles it as needing a manual merge (dcn-2610230328230096): abcd never
+// merges it outright, and never tries the arming again.
+func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 	var serr error
 	if w.Form == FormQueue {
 		serr = f.send(root, EnqueueMutation, map[string]string{"id": w.ID, "h": w.Head}, nil, nil)
 	} else {
 		serr = f.send(root, EnableAutoMergeMutation, map[string]string{"id": w.ID, "m": mergeMethodOf(w.Form), "h": w.Head}, nil, nil)
 	}
-	if serr != nil {
+	switch {
+	case serr != nil && strings.Contains(strings.ToLower(serr.Error()), cleanStatus):
+		return WithdrawnManual, nil
+	case serr != nil:
 		return "", errors.New(forgeReason(serr))
 	}
 	return WithdrawnRearmed, nil
 }
 
+// The events a pull-request comment reports.
+const (
+	commentWithdrawn = "withdrawn"
+	commentSettled   = "settled"
+)
+
+// commentBody is the fixed-form comment the writer posts on w's pull request
+// for subject's hold: every value in it is validated data (a number, a
+// release subject, a form, an object name, a GitHub username, a state), so it
+// carries no free text, no session URL and no tool footer.
+func commentBody(subject string, w Withdrawal) string {
+	return "abcd release hold: " + SettledLine(subject, w) + " (withdrawn by @" + w.By + ")."
+}
+
+// comment posts commentBody through the seam, when one is set and the body
+// passes the outbound policy; the failure it returns names why it was not
+// posted, nil when it was or nothing is set.
+func (f mergeForge) comment(root, owner, name, subject string, w Withdrawal) *ForgeFailure {
+	if f.comments == nil {
+		return nil
+	}
+	body := commentBody(subject, w)
+	if err := checkText(root, commentFamily, body); err != nil {
+		return &ForgeFailure{Number: w.Number, Act: ForgeComment, Reason: "the comment was not posted: " + err.Error()}
+	}
+	if err := f.comments.Comment(root, owner, name, w.Number, body); err != nil {
+		return &ForgeFailure{Number: w.Number, Act: ForgeComment, Reason: "the comment was not posted: " + forgeReason(err)}
+	}
+	return nil
+}
+
+// commentFamily is the pull-request comment as the outbound check names it.
+var commentFamily = &family{name: "pull request comment", shorten: "name fewer pull requests"}
+
 // ArmedMerges is what the launch check judges a cut by (iss-2610222014550692):
 // every open pull request into origin's default branch (Base) that is armed
 // or queued, and this copy's own live release reservation (Release, "" when
-// it holds none) with the pull requests it admitted. The cut is refused while
-// any armed one is not admitted.
+// it holds none) with the pull requests it admitted, each at the head it was
+// admitted at. The cut is refused while any armed one is not admitted at its
+// current head. Lapsed names this copy's own release reservation when its
+// lease lapsed before the release ended (dcn-2610230328220298): it holds no
+// merge then, and nothing re-arms what it withdrew, so the check names it.
+// Lost is each recent release's withdrawals a later commit dropped.
 type ArmedMerges struct {
-	Base     string    `json:"base"`
-	Armed    []ArmedPR `json:"armed"`
-	Release  string    `json:"release,omitempty"`
-	Admitted []int     `json:"admitted,omitempty"`
+	Base     string            `json:"base"`
+	Armed    []ArmedPR         `json:"armed"`
+	Release  string            `json:"release,omitempty"`
+	Admitted []Withdrawal      `json:"admitted,omitempty"`
+	Lapsed   string            `json:"lapsed,omitempty"`
+	LapsedAt time.Time         `json:"lapsed_at,omitempty"`
+	Lost     []LostWithdrawals `json:"lost,omitempty"`
 }
 
 // ArmedMergesForCut reads ArmedMerges for the checkout at root: the
@@ -367,16 +461,22 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 	}
 	reader := readerHolder(root, o)
 	for _, r := range snap.Reservations {
-		if r.State != StateLive || r.Copy != CopyThis || reader == "" || !sameHolder(r.Holder, reader) {
+		if r.Copy != CopyThis || reader == "" || !sameHolder(r.Holder, reader) {
 			continue
 		}
-		a.Release = r.Record
-		for _, w := range r.Withdrawn {
-			if w.State == WithdrawnAdmitted {
-				a.Admitted = append(a.Admitted, w.Number)
+		switch r.State {
+		case StateLive:
+			a.Release = r.Record
+			for _, w := range r.Withdrawn {
+				if w.State == WithdrawnAdmitted {
+					a.Admitted = append(a.Admitted, w)
+				}
 			}
+		case StateExpired:
+			a.Lapsed, a.LapsedAt = r.Record, r.EffectiveExpiry
 		}
 	}
+	a.Lost = LostReleaseWithdrawals(root, now)
 	if a.Armed, err = releaseForge.armedPullRequests(root, owner, name, a.Base); err != nil {
 		return ArmedMerges{}, errors.New(forgeReason(err))
 	}

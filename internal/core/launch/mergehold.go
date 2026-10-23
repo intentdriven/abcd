@@ -7,8 +7,14 @@ package launch
 // release withdraws every such merge and --admit rules one back in, so a cut
 // that starts from a frozen branch passes; a merge armed since by hand on the
 // forge, or one whose withdrawal the forge refused, is still armed and is
-// named here. The release pull request itself, opened from the branch this
-// checkout is on, is not judged: it is the cut.
+// named here. An admitted one passes only at the head it was admitted at: a
+// push to it since brings commits nobody admitted. The release pull request
+// itself, opened from the branch this checkout is on, is not judged: it is
+// the cut. A release reservation of this copy's whose lease lapsed before the
+// release ended holds no merge, and the check refuses the cut until it is
+// renewed (dcn-2610230328220298). Withdrawals a later commit on a release
+// branch dropped (an older abcd's renewal) are named as warnings: those pull
+// requests stay withdrawn with nothing to re-arm them (dcn-2610230328242929).
 //
 // The row is armed only where the reservations live on GitHub: a checkout
 // with no remote named origin, or whose origin is not one repository on
@@ -24,7 +30,6 @@ package launch
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -45,7 +50,9 @@ var ErrNotOnForge = errors.New("origin is not one repository on github.com")
 // or queued: its number, its head branch (and whether that branch is in
 // another repository), and how it is armed.
 type ArmedMerge struct {
-	Number          int
+	Number int
+	// Head is its head commit now.
+	Head            string
 	HeadRef         string
 	CrossRepository bool
 	Queued          bool
@@ -57,13 +64,22 @@ type ArmedMerge struct {
 
 // ArmedMerges is what the row judges: every merge armed or queued into Base,
 // and this copy's own live release reservation (Release, "" when it holds
-// none) with the pull requests it admitted.
+// none) with the pull requests it admitted, each by number to the head it was
+// admitted at. Lapsed is this copy's own release reservation whose lease
+// lapsed before the release ended, "" when none did, and LapsedAt when; Lost
+// is each sentence naming withdrawals a later commit dropped.
 type ArmedMerges struct {
 	Base     string
 	Release  string
-	Admitted []int
+	Admitted map[int]string
 	Armed    []ArmedMerge
+	Lapsed   string
+	LapsedAt string
+	Lost     []string
 }
+
+// gateMergeHoldLost is the warning row naming lost withdrawals.
+const gateMergeHoldLost = "merge-hold-lost"
 
 // ReadArmedMerges reads ArmedMerges for the checkout at root, registered by
 // the front door; nil leaves the row not armed. It answers ErrNotOnForge off
@@ -81,28 +97,50 @@ var currentBranch = func(root string) string {
 }
 
 // mergeHoldGate judges the cut by the merges armed now. It returns the row
-// and its findings; a row that is not armed carries none.
-func mergeHoldGate(root string) (GateSummary, []GateFinding) {
+// and its findings, and the warning row naming lost withdrawals (nil when
+// there are none); a row that is not armed carries none.
+func mergeHoldGate(root string) (GateSummary, []GateFinding, *GateSummary) {
 	if ReadArmedMerges == nil {
 		return GateSummary{Name: gateMergeHold, Status: "not_armed",
-			Detail: "no reading of the merges armed on the forge is registered on this path"}, nil
+			Detail: "no reading of the merges armed on the forge is registered on this path"}, nil, nil
 	}
 	a, err := ReadArmedMerges(root)
 	switch {
 	case errors.Is(err, ErrNotOnForge):
 		return GateSummary{Name: gateMergeHold, Status: "not_armed",
-			Detail: "origin is not one repository on github.com, so no merge armed there can be listed"}, nil
+			Detail: "origin is not one repository on github.com, so no merge armed there can be listed"}, nil, nil
 	case err != nil:
 		return GateSummary{Name: gateMergeHold, Detail: "the merges armed could not be listed"}, []GateFinding{{Detail: "the merges armed or queued on origin's default branch could not be listed (" +
-			err.Error() + "), and one the release reservation does not account for may be among them; run the cut again once the forge answers"}}
+			err.Error() + "), and one the release reservation does not account for may be among them; run the cut again once the forge answers"}}, nil
 	}
 	branch := currentBranch(root)
 	var findings []GateFinding
+	if a.Lapsed != "" {
+		findings = append(findings, GateFinding{Detail: "your release reservation " + a.Lapsed + " lapsed at " + a.LapsedAt +
+			" before the release ended: it holds no other session's merge now, and nothing re-arms what it withdrew; renew it from this copy (abcd reserve " +
+			a.Lapsed + ") before the cut goes on, or end it (abcd reserve " + a.Lapsed + " --release), which re-arms what it withdrew"})
+	}
 	for _, pr := range a.Armed {
-		if slices.Contains(a.Admitted, pr.Number) || !pr.CrossRepository && branch != "" && pr.HeadRef == branch {
+		if !pr.CrossRepository && branch != "" && pr.HeadRef == branch {
+			continue
+		}
+		if head, ok := a.Admitted[pr.Number]; ok {
+			if head == pr.Head {
+				continue
+			}
+			findings = append(findings, GateFinding{Detail: fmt.Sprintf("pull request #%d was admitted into %s at %s, but its head is now %s: "+
+				"the commits pushed since were not admitted, and it could merge them mid-cut; turn its auto-merge off or take it out of the queue (gh pr merge %d --disable-auto)",
+				pr.Number, a.Release, short(head), short(pr.Head), pr.Number)})
 			continue
 		}
 		findings = append(findings, GateFinding{Detail: armedFinding(a, pr)})
+	}
+	var lost *GateSummary
+	if len(a.Lost) > 0 {
+		lost = &GateSummary{Name: gateMergeHoldLost, Status: "ran", Detail: fmt.Sprintf("%d release(s) with withdrawals a later commit dropped", len(a.Lost))}
+		for _, l := range a.Lost {
+			lost.Findings = append(lost.Findings, GateFinding{Detail: l})
+		}
 	}
 	detail := fmt.Sprintf("%d armed or queued merge(s) into %s not admitted", len(findings), a.Base)
 	if a.Release != "" {
@@ -110,7 +148,15 @@ func mergeHoldGate(root string) (GateSummary, []GateFinding) {
 	} else {
 		detail += "; this copy holds no release reservation"
 	}
-	return GateSummary{Name: gateMergeHold, Detail: detail}, findings
+	return GateSummary{Name: gateMergeHold, Detail: detail}, findings, lost
+}
+
+// short is an object name's first twelve characters.
+func short(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
 }
 
 // armedFinding is the sentence naming one armed merge the reservation does

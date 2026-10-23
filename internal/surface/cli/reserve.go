@@ -38,9 +38,21 @@ func init() {
 		case err != nil:
 			return launch.ArmedMerges{}, errors.New(termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 		}
-		out := launch.ArmedMerges{Base: a.Base, Release: a.Release, Admitted: a.Admitted}
+		out := launch.ArmedMerges{Base: a.Base, Release: a.Release, Lapsed: a.Lapsed}
+		if a.Lapsed != "" {
+			out.LapsedAt = a.LapsedAt.UTC().Format(time.RFC3339)
+		}
+		if len(a.Admitted) > 0 {
+			out.Admitted = map[int]string{}
+			for _, w := range a.Admitted {
+				out.Admitted[w.Number] = w.Head
+			}
+		}
+		for _, l := range a.Lost {
+			out.Lost = append(out.Lost, termsafe.Sanitize(l.Line()))
+		}
 		for _, pr := range a.Armed {
-			out.Armed = append(out.Armed, launch.ArmedMerge{Number: pr.Number, HeadRef: pr.HeadRef, CrossRepository: pr.CrossRepository,
+			out.Armed = append(out.Armed, launch.ArmedMerge{Number: pr.Number, Head: pr.Head, HeadRef: pr.HeadRef, CrossRepository: pr.CrossRepository,
 				Queued: pr.Queued, AutoMerge: pr.AutoMerge, Method: pr.Method})
 		}
 		return out, nil
@@ -158,18 +170,24 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"the same command again from the same copy renews it.\n\n" +
 			"A release reserved anew (not renewed from the same copy while live) also withdraws\n" +
 			"every pull request into origin's default branch that has auto-merge on or sits in\n" +
-			"the merge queue, through gh under your own identity, and records each on the\n" +
-			"reservation with the form it was armed in and its head (withdrew in --json). A\n" +
-			"withdrawal the forge refuses is named and the reservation stands (forge_failures);\n" +
-			"the launch check then refuses the cut while that pull request is armed. --admit\n" +
-			"<pr>, from the copy cutting the release, re-arms one withdrawn pull request in its\n" +
-			"recorded form, pinned to its withdrawn head, and records it admitted. --release\n" +
-			"from that copy re-arms every other one the same way; once the release has ended\n" +
-			"(its tag on origin, its tombstone, or its lease lapsed), any act of a copy of the\n" +
-			"same person that fetches the reservations does so. One whose head moved, or that\n" +
-			"was closed or merged, is skipped and named for its owner; every state is recorded\n" +
-			"on the tombstone (settles in --json), so no copy acts twice, and a copy of another\n" +
-			"person never re-arms (stranded in --json).\n\n" +
+			"the merge queue, but the release pull request from this checkout's branch,\n" +
+			"through gh under your own identity (refused when gh acts as another account),\n" +
+			"and records each on the reservation first, with the form it was armed in and its\n" +
+			"head (withdrew in --json). A withdrawal the forge refuses is named and the\n" +
+			"reservation stands (forge_failures); the launch check then refuses the cut while\n" +
+			"that pull request is armed. One release is cut at a time: another release live\n" +
+			"backs this one off. --admit <pr>, from the copy cutting the release, records one\n" +
+			"withdrawn pull request admitted, then re-arms it in its recorded form, pinned to\n" +
+			"its withdrawn head. --release from that copy pushes the tombstone, then re-arms\n" +
+			"every other one the same way; once the tag is on origin, any act of a copy of\n" +
+			"the same person that fetches the reservations does so. A lapsed lease ends\n" +
+			"nothing: it is reported, and the cut renews it by reserving again. After a crash,\n" +
+			"the same person ends it from another copy with --take-over, then --release. One\n" +
+			"whose head moved, that was closed or merged, or that can only be merged by hand\n" +
+			"(no merge queue), is skipped and named for its owner; every state is recorded on\n" +
+			"the tombstone (settles in --json), so no copy acts twice, a copy of another\n" +
+			"person never re-arms (stranded in --json), and a withdrawal no reservation of its\n" +
+			"withdrawer's recorded first is never acted on (forged in settles).\n\n" +
 			"Every act fetches the reservations from origin, judges the tip, writes one\n" +
 			"commit and makes one plain fast-forward push, with the repository's hooks\n" +
 			"running: a reservation, a renewal by the same person and copy, a take-over of\n" +
@@ -424,6 +442,9 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	for _, st := range out.Settles {
 		for _, wd := range st.Settled {
 			fmt.Fprintf(w, "  %s\n", claim.SettledLine(st.Subject, wd))
+		}
+		if line := claim.ForgedLine(st.Subject, st.Forged); line != "" {
+			fmt.Fprintf(w, "  note: %s\n", line)
 		}
 	}
 	if len(out.Stranded) > 0 {

@@ -56,11 +56,33 @@ const (
 	WithdrawnMoved  = "moved"
 	WithdrawnClosed = "closed"
 	WithdrawnMerged = "merged"
+	// WithdrawnMismatch: skipped, never acted on: the node id recorded for it
+	// is not the one the forge answers for its number, so the record is not
+	// trusted to name it.
+	WithdrawnMismatch = "mismatch"
+	// WithdrawnManual: the forge refused its re-arm because the pull request
+	// is already mergeable and the repository has no merge queue to put it
+	// in ("clean status"); abcd never merges someone else's pull request
+	// outright (dcn-2610230328230096), so it needs a manual merge by its
+	// owner, and no copy tries again.
+	WithdrawnManual = "manual"
 )
 
 // WithdrawalStates is the closed vocabulary of states.
 var WithdrawalStates = []string{WithdrawnPending, WithdrawnAdmitted, WithdrawnRearmed, WithdrawnFoundArmed,
-	WithdrawnMoved, WithdrawnClosed, WithdrawnMerged}
+	WithdrawnMoved, WithdrawnClosed, WithdrawnMerged, WithdrawnMismatch, WithdrawnManual}
+
+// skippedForOwner reports whether state is one a re-arm settles a withdrawal in
+// without re-arming it, for its owner to act on.
+func skippedForOwner(state string) bool {
+	return slices.Contains([]string{WithdrawnMoved, WithdrawnClosed, WithdrawnMerged, WithdrawnMismatch, WithdrawnManual}, state)
+}
+
+// maxWithdrawals bounds the withdrawals one release tip records: a writer
+// can push a tip with more, and a reader refuses it as unreadable, so a
+// carried list never grows without bound (the cap and the outbound policy
+// bound each message besides).
+const maxWithdrawals = 40
 
 // Withdrawal is one pull request a release reservation withdrew, as its
 // trailer records it. Every value is validated data, never a writer's text.
@@ -91,7 +113,7 @@ func (w Withdrawal) trailer() string {
 
 // reasonWithdrawn is why a tip whose withdrawals do not read is unreadable.
 const reasonWithdrawn = "a pull request it records as withdrawn is not one number, node id, form, head, holder and state, " +
-	"each pull request once, on a release"
+	"each pull request once, at most 40, on a release"
 
 // withdrawnNumberRe is a pull request's number as a trailer carries it: no sign, no
 // leading zero, at most nine digits.
@@ -130,7 +152,7 @@ func validateWithdrawn(m *message, t trailers) string {
 	if len(vals) == 0 {
 		return ""
 	}
-	if !isRelease(m.Record) {
+	if !isRelease(m.Record) || len(vals) > maxWithdrawals {
 		return reasonWithdrawn
 	}
 	seen := map[int]bool{}
