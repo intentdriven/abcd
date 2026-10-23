@@ -663,16 +663,20 @@ _None open._ Both points were settled on 2026-10-02:
    - criteria: 9, 10
    - packages: internal/core/record/findingkey, internal/core/intent, internal/core/capture, internal/core/issueschema, internal/core/lint, internal/surface/cli, commands/
    - tests: `Derive` is stable over reordered ends, collapsed whitespace and a status-folder move, and differs by class; the duplicate check in `validateConsistencyFindings` uses the key; the same payload content ingested in two runs gives one key and the filed record carries `finding_ref`; keyed resolved and won't-fix records make the row `addressed` naming them, with nothing filed and the record untouched; an open keyed record links; a legacy open record links by prose with nothing written; `issueschema.Known` admits `finding_ref` and capture and `record_schema` refuse a malformed value; the report renders the key column and the addressed cell
+   - needs: none
 2. A1: the cross-document lint codes
    - criteria: 1
    - packages: internal/core/lint, .abcd/record-lint.json
    - tests: `builds_on_reciprocal`, `routed_from_acknowledged` and `related_issues_backlink` each fire on a fixture pair naming the rule and both files with the key, and stay silent on a reciprocated pair; an unresolved target is left to `record_schema`; a `routed_from` whose source lacks the item label is skipped; the rules are known to `validateRuleNames` and land at warn, so record-lint over this tree exits as before
+   - needs: 1
 3. A4: overflow measurement and chunked review
    - criteria: 8
    - packages: internal/core/intent, internal/surface/cli, commands/
    - tests: a corpus under the limit emits one request with no `overflow`; over the limit, the result and the report state corpus bytes, limit, groups and chunks, and every pair of documents shares a chunk; a scoped run pins its scope into every chunk; an oversize document is named as unreviewed; the ingest refuses a chunk set missing one chunk or mixing two emits, writing nothing; cross-chunk findings sharing a key are one row; `consistency.max_request_bytes` is read through the layered resolver and values outside 64 KiB–1 MiB are refused
+   - needs: 1
 4. A3 and A2: the pre-commit gate and its setup question
    - blocked: waits for the core-owned managed pre-commit gates (iss-84 with itd-62, ruling J23); steps 1 to 3 do not
    - criteria: 2, 3, 4, 5, 6, 7
    - packages: internal/core/consistencygate, internal/core/intent, internal/core/capture, internal/core/lint, internal/core/ahoy, internal/surface/cli, commands/
    - tests: stop refuses an introduced finding by its key and warn prints it and proceeds, neither writing an issue or a report; automatic adds the `related_intents` back-link through `capture.Link`, files the judgement finding with its key, stages both with the note, and proceeds; a finding standing at HEAD never stops; no route, a harness route, a repository route, a DR5-refused route and an unreachable provider each call no model, exit 0 and write the owed list, which the board renders and a later ingest clears; with a local route the staged scope's corpus is seeds plus one-hop neighbours and the lint half covers the whole corpus; one envelope carries kind rules, A1 and the pass; `ahoy` raises `config.consistency_hook_missing`, explains the three answers, honours `--consistency-hook` and writes `consistency.on_finding`; a machine-layer `on_finding` is refused; the surface snapshot and command reference regenerated
+   - needs: 1, 2, 3

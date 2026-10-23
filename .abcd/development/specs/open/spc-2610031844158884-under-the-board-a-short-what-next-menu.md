@@ -434,23 +434,28 @@ designed to the marked option, and the reason is given beneath it.
    - packages: internal/core/mode
    - tests: TestHoldPutsBackWhatItFound, TestHoldRefusesWithoutATier, each watched fail first; the mode and guard tests pass unchanged
    - waits on nothing; may land before the board
+   - needs: none
 2. The menu's question and its moves
    - criteria: B2, B5, and the core half of B1
    - packages: internal/core/board, internal/core/question, internal/core/record
    - tests: TestMenuOffersFourMoves, TestMenuMovesFollowTheState, TestMenuQuestionPassesTheLimits, TestNextActionsList, each watched fail first; the limits test and the asking-rules golden updated for "Nothing for now"
    - lands after spc-2610031844142274 step 3, and waits on PR #788's question type reaching the base
+   - needs: none
 3. The menu in a Terminal, and the one write stated where the promise is made
    - criteria: B1, B3, B4, B7
    - packages: internal/surface/cli, internal/term, internal/core/surface, docs/reference, .abcd/development/brief/04-surfaces, commands/abcd.md
    - tests: TestTerminalMenuAnswersByArrowsAndByNumber, TestNoMenuWhereNobodyCanAnswer, TestMenuHoldsTheStatusWhileItWaits, TestStartBuildingStartsAtOnce, TestStartRefusalInPlainWords, TestBoardMenuSettingIsMachineOnly, TestAbcdPageStatesTheOneWrite, each watched fail first; the sentence and the command reference regenerated with `go generate ./internal/surface/cli`
    - lands after steps 1 and 2, spc-2610031844142274 step 4, and spc-2610030911534855 step 2 (the answer loop)
+   - needs: 1, 2
 4. The menu in the host session
    - criteria: the page half of B6
    - packages: internal/surface/cli, commands/abcd.md, docs/reference
    - tests: TestMenuJSONIsTheHostToolInput, TestShowListsReadyAndActions, TestAbcdPageAsksTheMenuThroughTheHostTool, each watched fail first
    - lands after step 3 and spc-2610031844142274 step 5
+   - needs: 2, 3
 5. The receipt and the close
    - criteria: B6's receipt; the intent's close; iss-2609201954342967 resolved, both its parts now shipped
    - packages: .abcd/work/issues
    - tests: B6's receipt taken at the step's branch tip before the pull request; a docs-fidelity review recorded for HEAD, then `abcd spec close spc-2610031844158884` (the intent already declares `impact: additive`) with `Delivers: itd-2610031215002409` and `Resolves: iss-2609201954342967` trailers
    - lands after step 4
+   - needs: 3, 4

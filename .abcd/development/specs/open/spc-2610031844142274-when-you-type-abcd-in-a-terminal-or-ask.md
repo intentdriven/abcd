@@ -389,24 +389,29 @@ designed to the marked option, and the reason is given beneath it.
    - criteria: none of this spec's; iss-2610031207397996's remedy, which the facilitator's view and the title fit build on
    - packages: internal/surface/cli, internal/core/statusblock, internal/term, go.mod, .abcd/development/brief/04-surfaces
    - tests: the defect's golden board at 80 columns with a long title and the receipts line, and the non-TTY no-escape assertion, each watched fail first; lands with `Resolves: iss-2610031207397996`, and adopts golang.org/x/term unless spc-2610030911534855 step 1 (PR #788) has already
+   - needs: none
 2. Spec ids and the in-flight marker on the block
    - criteria: the data half of A5
    - packages: internal/core/statusblock, internal/core/implement/loop
    - tests: TestPlannedRowsCarryTheirSpec, TestInFlightNeedsAnOpenSpecAndABranch, each watched fail first; the existing block tests pass unchanged
    - lands after step 1, which edits the same block and its test
+   - needs: 1
 3. The renderer: two views, two forms, the label's colour
    - criteria: A1, A3 (the form), A5 (the render), A6, A7
    - packages: internal/core/board, internal/textwidth, internal/core/statusline
    - tests: TestFitCutsByDisplayWidth, TestProductViewGolden, TestFacilitatorViewGolden, TestMarkdownFormGolden, TestFenceSafeMarkdownTitles, TestLabelPaintsOnlyAtTrueColor, TestBoardWithoutColourKeepsWordsAndSymbols, TestBoardFitsTheWindow, each watched fail first; the badge tests pass unchanged
    - lands after step 2
+   - needs: 1, 2
 4. The bare command draws the views
    - criteria: A1, A2, A5 and A6 end to end
    - packages: internal/surface/cli, README.md, docs/reference, .abcd/development/brief/04-surfaces
    - tests: TestBareBoardOpensOnTheProductView, TestPipedBoardCarriesNoEscape, TestFormatAndJSONAreRefusedTogether, each watched fail first; the existing board tests pass with `--view facilitator`; the command reference and the brief appendix regenerated with `go generate ./internal/surface/cli`
    - lands after step 3
+   - needs: 1, 3
 5. The page relays the markdown form; the receipt and the close
    - criteria: A3 (the page), A4; the intent's close
    - packages: commands/abcd.md
    - tests: TestAbcdPageRelaysTheMarkdownForm, watched fail first; A4's receipt taken at the step's branch tip before the pull request; a docs-fidelity review recorded for HEAD, then `abcd spec close spc-2610031844142274` (the intent already declares `impact: additive`) with a `Delivers: itd-2610031214560142` trailer
    - lands after step 4
    - the page half (commands/abcd.md and TestAbcdPageRelaysTheMarkdownForm) landed in commit 1c1be5e3e on 2026-10-07; A4's receipt, the docs-fidelity review and the close are still owed, so the step is not marked landed
+   - needs: 3, 4
