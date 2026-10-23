@@ -4,7 +4,8 @@ package cli
 // spc-2609301811532881): `add` makes a worktree in the repository's lane,
 // bare `abcd ahoy worktree` and `list` render the repository's worktrees and
 // its lane, `list --all` every lane on the machine, and `prune` reclaims the
-// lane's merged, clean worktrees. The core judges each row and masks every string in it, since a
+// lane's merged, clean worktrees and lists its quiet ones, reclaiming a quiet
+// one only when --yes names it. The core judges each row and masks every string in it, since a
 // branch, a lock reason and a path are another checkout's bytes; this door
 // lays the rows out and maps a refusal or a fault to exit 2.
 
@@ -13,10 +14,12 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -26,6 +29,10 @@ import (
 // worktreeForge is the forge client the worktree verbs ask, once a run, for
 // the merged judgement: the repository's own bounded `gh`. A test replaces it.
 var worktreeForge worktree.GH = landing.GH
+
+// worktreeNow is prune's clock: the quiet window is measured back from it,
+// and the notes archive is stamped with it. A test moves it on.
+var worktreeNow = time.Now
 
 // worktreeAddTimeout bounds add's `git worktree add`: gitutil.CheckoutBound,
 // the bound the build loop's lane checkout has, since a checkout's time scales
@@ -184,12 +191,16 @@ func branchTaken(root, name string) error {
 	return fmt.Errorf("a branch named %s already exists; check it out with `--branch %s`", name, name)
 }
 
-// newAhoyWorktreePruneCommand builds `ahoy worktree prune [--dry-run]`. It
-// exits 0 when it reclaimed a worktree, 1 when the run completed and
-// reclaimed nothing, and 2 on a refusal or a fault (decision 8); a dry run
-// answers the code the real run would.
+// newAhoyWorktreePruneCommand builds `ahoy worktree prune [--dry-run] [--yes
+// <name>]…`. It lists each quiet candidate with its dossier, and reclaims one
+// only when --yes names it. It exits 0 when it reclaimed a worktree, 1 when
+// the run completed and reclaimed nothing, and 2 on a refusal or a fault, a
+// quiet window the configuration refuses and a --yes name the lane does not
+// hold among them (decision 8); a dry run answers the code the real run
+// would.
 func newAhoyWorktreePruneCommand(asJSON *bool) *cobra.Command {
 	var dryRun bool
+	var yes []string
 	cmd := &cobra.Command{
 		Use:   "prune",
 		Short: "Reclaim the merged, clean worktrees of this repository's lane, archiving their notes first",
@@ -203,7 +214,18 @@ func newAhoyWorktreePruneCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return worktreeFault("prune", err)
 			}
-			got, err := worktree.Prune(root, worktree.PruneOptions{DryRun: dryRun, Forge: worktreeForge, Held: loop.HeldWorktrees, Cwd: cwd})
+			roots, notes := layered.RootsFor(root)
+			for _, n := range notes {
+				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(fsutil.RedactHome(n)))
+			}
+			days, err := worktree.QuietDays(roots)
+			if err != nil {
+				return worktreeFault("prune", err)
+			}
+			got, err := worktree.Prune(root, worktree.PruneOptions{
+				DryRun: dryRun, Forge: worktreeForge, Held: loop.HeldWorktrees, Cwd: cwd, Now: worktreeNow,
+				QuietDays: days, Yes: yes,
+			})
 			if err != nil {
 				return worktreeFault("prune", err)
 			}
@@ -217,6 +239,7 @@ func newAhoyWorktreePruneCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "archive and remove nothing; report what a real run would")
+	cmd.Flags().StringArrayVar(&yes, "yes", nil, "reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run")
 	return cmd
 }
 
@@ -242,10 +265,42 @@ func renderPruned(w io.Writer, got worktree.Pruned) {
 			line += "; notes: " + r.Notes
 		}
 		fmt.Fprintln(w, line)
+		if r.Dossier != nil {
+			renderDossier(w, *r.Dossier)
+		}
 	}
 	if got.ForgeNote != "" {
 		fmt.Fprintf(w, "note: %s\n", got.ForgeNote)
 	}
+}
+
+// renderDossier lays out a quiet candidate's dossier under its row, in the
+// spec's order: dirty state first, so uncommitted work is the first thing
+// read.
+func renderDossier(w io.Writer, d worktree.Dossier) {
+	dirty := "none (the tree is clean)"
+	if n := d.Dirty.Modified + d.Dirty.Untracked; n > 0 {
+		dirty = fmt.Sprintf("%d modified, %d untracked: %s", d.Dirty.Modified, d.Dirty.Untracked, strings.Join(d.Dirty.Paths, ", "))
+		if more := n - len(d.Dirty.Paths); more > 0 {
+			dirty += fmt.Sprintf(" and %d more", more)
+		}
+	}
+	fmt.Fprintf(w, "      dirty: %s\n", dirty)
+	fmt.Fprintf(w, "      commits: %d not on the default branch\n", d.Commits)
+	for _, s := range d.Subjects {
+		fmt.Fprintf(w, "        %s\n", s)
+	}
+	if more := d.Commits - len(d.Subjects); more > 0 {
+		fmt.Fprintf(w, "        and %d more\n", more)
+	}
+	if d.Diff != "" {
+		fmt.Fprintf(w, "      diff: %s\n", d.Diff)
+	}
+	if len(d.Records) > 0 {
+		fmt.Fprintf(w, "      records: %s\n", strings.Join(d.Records, ", "))
+	}
+	fmt.Fprintf(w, "      last activity: %s\n", d.LastActivity)
+	fmt.Fprintf(w, "      next: %s\n", d.Recommendation)
 }
 
 // hereOrNone is the checkout the caller stands in, or "" outside one: --all

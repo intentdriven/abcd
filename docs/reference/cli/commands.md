@@ -205,7 +205,8 @@ Reclaim this lane's merged, clean worktrees, archiving their notes first: Writes
 **Flags:**
 
 ```
-      --dry-run   archive and remove nothing; report what a real run would
+      --dry-run           archive and remove nothing; report what a real run would
+      --yes stringArray   reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run
 ```
 
 ### `abcd announce`

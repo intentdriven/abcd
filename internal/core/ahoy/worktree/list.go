@@ -118,6 +118,12 @@ type entry struct {
 	reason string // why the state columns are not judged; "" when they are
 	clean  bool
 	merged judgement
+	// status is git's listing of the tree's changes, which the quiet rule
+	// reads for the last activity and the dossier's dirty state.
+	status []gitutil.StatusEntry
+	// openPR is whether the forge lists an open pull request from the
+	// branch; false when no forge answered.
+	openPR bool
 }
 
 // row renders e for display.
@@ -338,7 +344,8 @@ func judgeAll(dir string, lane Lane, judged []*entry, forge GH) string {
 			e.reason = "git could not read its status: " + firstLine(err.Error())
 			continue
 		}
-		e.clean = len(st) == 0
+		e.clean, e.status = len(st) == 0, st
+		e.openPR = openFrom(prs, e.wt)
 		start := ""
 		if e.where == WhereStore {
 			if rec, ok := readStart(lane, e.name); ok && rec.Branch == e.wt.Branch {

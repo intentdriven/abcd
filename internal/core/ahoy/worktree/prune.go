@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -75,6 +76,14 @@ type PruneOptions struct {
 	// the archive entry just written for it. A dry run asks it at the same
 	// point, so it reports the row a real run would. nil checks nothing more.
 	PreRemove func(abs string) (keep bool, reason string)
+	// QuietDays is the quiet window in days (QuietDays reads it): an
+	// unmerged worktree with no activity inside it and no open pull request
+	// is a quiet candidate. 0 judges no worktree quiet.
+	QuietDays int
+	// Yes names the quiet candidates to reclaim. Each must be in the lane, or
+	// the run is refused before anything is removed; a named worktree that is
+	// not a quiet candidate this run is kept, saying why.
+	Yes []string
 }
 
 // PruneRow is one worktree's outcome.
@@ -91,6 +100,9 @@ type PruneRow struct {
 	Notes string `json:"notes,omitempty"`
 	// Archive names the notes entry written, home-redacted.
 	Archive string `json:"archive,omitempty"`
+	// Dossier is what a quiet candidate holds, so a person can choose to
+	// name it.
+	Dossier *Dossier `json:"dossier,omitempty"`
 }
 
 // Pruned is Prune's answer.
@@ -159,6 +171,10 @@ func prune(repoRoot, only string, opts PruneOptions) (Pruned, error) {
 		return Pruned{}, refuse(fmt.Sprintf("this repository's lane holds no worktree named %q", only),
 			"name one `abcd ahoy worktree list` shows in the store")
 	}
+	yes, err := namedInLane(lane, es, opts.Yes)
+	if err != nil {
+		return Pruned{}, err
+	}
 	held, err := opts.Held(repoRoot)
 	if err != nil {
 		return Pruned{}, fmt.Errorf("reading what the build loop holds: %w", err)
@@ -171,9 +187,9 @@ func prune(repoRoot, only string, opts PruneOptions) (Pruned, error) {
 	for _, e := range es {
 		r := e.row(displayFor(e.where))
 		row := PruneRow{Name: r.Name, Branch: r.Branch, Path: r.Path, Where: r.Where, Outcome: OutcomeKept}
-		row.Reason = keptFor(e, held, cwd)
+		row.Reason = refusedFor(e, held, cwd)
 		if row.Reason == "" {
-			reclaim(repoRoot, lane, e, opts, &row)
+			decide(repoRoot, lane, e, opts, yes[e.name], &row)
 		}
 		row.Reason = termsafe.Sanitize(fsutil.RedactHome(row.Reason))
 		out.Rows = append(out.Rows, row)
@@ -190,9 +206,59 @@ func inLane(lane Lane, name string, e entry) bool {
 		fsutil.RealExistingPath(e.path) == fsutil.RealExistingPath(lane.Path(name))
 }
 
-// keptFor is why e is kept before its notes are read, in the spec's order, or
-// "" for a worktree prune may reclaim.
-func keptFor(e entry, held Held, cwd string) string {
+// namedInLane checks every --yes name against the lane before anything is
+// judged for removal: a name the lane does not hold refuses the run. The
+// answer is the set of names, each one a worktree in the lane.
+func namedInLane(lane Lane, es []entry, names []string) (map[string]bool, error) {
+	yes := map[string]bool{}
+	for _, name := range names {
+		if !slices.ContainsFunc(es, func(e entry) bool { return inLane(lane, name, e) }) {
+			return nil, refuse(fmt.Sprintf("--yes names %q, which this repository's lane does not hold; nothing was removed", name),
+				"name a quiet candidate `abcd ahoy worktree prune` lists")
+		}
+		yes[name] = true
+	}
+	return yes, nil
+}
+
+// reasonDirty keeps a worktree with uncommitted changes, named or not:
+// removal is never forced.
+const reasonDirty = "dirty: uncommitted changes"
+
+// decide is the outcome of a worktree no refusal keeps: reclaimed when merged
+// and clean, a quiet candidate when quiet, and reclaimed when quiet, clean
+// and named; kept otherwise, saying why. A named worktree goes through the
+// same archive and removal as a merged one, never a path of its own.
+func decide(repoRoot string, lane Lane, e entry, opts PruneOptions, named bool, row *PruneRow) {
+	q := quietness{}
+	if !e.merged.merged {
+		q = quietFor(e, opts)
+	}
+	if q.quiet {
+		row.Dossier = dossierFor(repoRoot, e, q)
+	}
+	switch {
+	case q.quiet && !named:
+		row.Outcome = OutcomeQuiet
+	case named && !q.quiet:
+		row.Reason = notQuiet(e, q, opts.QuietDays)
+	case !e.clean:
+		row.Reason = reasonDirty
+	case !e.merged.merged && !named:
+		row.Reason = "unmerged"
+	default:
+		reclaim(repoRoot, lane, e, opts, row)
+		// The dossier is for a person still deciding; a reclaimed row's
+		// recommendation would name a step already taken.
+		if row.Outcome != OutcomeKept {
+			row.Dossier = nil
+		}
+	}
+}
+
+// refusedFor is why e is kept whatever its state, in the spec's order, or ""
+// for a worktree whose state then decides.
+func refusedFor(e entry, held Held, cwd string) string {
 	switch {
 	case e.where == WhereOutside:
 		return "outside the store; never touched"
@@ -207,12 +273,6 @@ func keptFor(e entry, held Held, cwd string) string {
 	}
 	if run := held.By(e.name); run != "" {
 		return "held by the build loop's run " + run
-	}
-	switch {
-	case !e.clean:
-		return "dirty: uncommitted changes"
-	case !e.merged.merged:
-		return "unmerged"
 	}
 	return ""
 }

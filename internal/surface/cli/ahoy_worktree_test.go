@@ -291,6 +291,100 @@ func TestAhoyWorktreePruneRedactsFileNamesInItsReasons(t *testing.T) {
 	}
 }
 
+// worktreeDaysOn sets the door's clock days past now, for one test.
+func worktreeDaysOn(t *testing.T, days int) {
+	t.Helper()
+	prev := worktreeNow
+	worktreeNow = func() time.Time { return time.Now().AddDate(0, 0, days) }
+	t.Cleanup(func() { worktreeNow = prev })
+}
+
+// TestAhoyWorktreePruneListsAndNamesQuietCandidates is criterion 11 at the
+// door: fifteen days on, a quiet candidate is listed with its dossier, dirty
+// state first, and left (exit 1); `--yes <name>` removes that one alone
+// (exit 0); a name not in the lane refuses the run (exit 2), nothing removed.
+func TestAhoyWorktreePruneListsAndNamesQuietCandidates(t *testing.T) {
+	repo := worktreeFixture(t)
+	gone := laneWorktree(t, repo, "gone")
+	repo.Git("-C", gone, "commit", "-q", "--allow-empty", "-m", "try the idea (itd-2609091014076309)")
+	stay := laneWorktree(t, repo, "stay")
+	worktreeDaysOn(t, 15)
+
+	out, code := runWorktree(t, false, "prune")
+	if code != 1 || !strings.Contains(out, "quiet  gone") || !strings.Contains(out, "quiet  stay") {
+		t.Fatalf("both are quiet candidates, left in place (exit %d):\n%s", code, out)
+	}
+	at := func(s string) int {
+		i := strings.Index(out, s)
+		if i < 0 {
+			t.Fatalf("the dossier carries %q:\n%s", s, out)
+		}
+		return i
+	}
+	if !(at("dirty: none") < at("commits: 1 not on the default branch") && at("commits: 1") < at("try the idea") &&
+		at("try the idea") < at("records: itd-2609091014076309") && at("records:") < at("last activity: ") &&
+		at("last activity: ") < at("next: open a pull request")) {
+		t.Fatalf("the dossier's order, dirty state first:\n%s", out)
+	}
+	for _, p := range []string{gone, stay} {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("a candidate no one named stands: %v", err)
+		}
+	}
+
+	if out, code := runWorktree(t, false, "prune", "--yes", "gone", "--yes", "nope"); code != 2 || !strings.Contains(out, "nope") {
+		t.Fatalf("a name not in the lane refuses the run (exit %d):\n%s", code, out)
+	}
+	if _, err := os.Stat(gone); err != nil {
+		t.Fatalf("a refused run removes nothing: %v", err)
+	}
+
+	js, code := runWorktree(t, true, "prune", "--yes", "gone")
+	var got worktree.Pruned
+	if err := json.Unmarshal([]byte(js), &got); err != nil || code != 0 {
+		t.Fatalf("exit %d (%v):\n%s", code, err, js)
+	}
+	for _, r := range got.Rows {
+		switch {
+		case r.Name == "gone" && r.Outcome != worktree.OutcomeReclaimed:
+			t.Errorf("the named candidate is reclaimed: %+v", r)
+		case r.Name == "stay" && (r.Outcome != worktree.OutcomeQuiet || r.Dossier == nil):
+			t.Errorf("the other candidate is listed and left: %+v", r)
+		}
+	}
+	if _, err := os.Stat(gone); err == nil {
+		t.Fatal("the named candidate is removed")
+	}
+	if _, err := os.Stat(stay); err != nil {
+		t.Fatalf("the other candidate stands: %v", err)
+	}
+}
+
+// TestAhoyWorktreePruneReadsTheQuietWindow: the door reads
+// worktrees.quiet_days through the layered resolver, so a window wider than
+// the quiet spell lists no candidate, and a bad value refuses the run naming
+// its file before anything is judged.
+func TestAhoyWorktreePruneReadsTheQuietWindow(t *testing.T) {
+	repo := worktreeFixture(t)
+	idle := laneWorktree(t, repo, "idle")
+	worktreeDaysOn(t, 15)
+
+	repo.Write(".abcd/config.json", `{"worktrees":{"quiet_days":20}}`)
+	if out, code := runWorktree(t, false, "prune"); code != 1 || strings.Contains(out, "quiet  idle") || !strings.Contains(out, "unmerged") {
+		t.Fatalf("a twenty-day window lists no candidate (exit %d):\n%s", code, out)
+	}
+	for _, bad := range []string{`{"worktrees":{"quiet_days":0}}`, `{"worktrees":{"quiet_dayz":3}}`} {
+		repo.Write(".abcd/config.json", bad)
+		out, code := runWorktree(t, false, "prune", "--yes", "idle")
+		if code != 2 || !strings.Contains(out, ".abcd/config.json") {
+			t.Fatalf("%s refuses the run naming its file (exit %d):\n%s", bad, code, out)
+		}
+	}
+	if _, err := os.Stat(idle); err != nil {
+		t.Fatalf("nothing is removed: %v", err)
+	}
+}
+
 // TestAhoyWorktreeAddPrintsThePath is criteria 1 and 19: add makes the
 // worktree in the lane on a new branch cut from the default branch, prints
 // its path home-redacted (and as `path` in JSON), leaves the checkout's

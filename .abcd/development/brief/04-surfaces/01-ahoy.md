@@ -1583,5 +1583,6 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--dry-run` | bool |
+| `--yes` | stringArray |
 
 <!-- surface-appendix:end -->

@@ -87,6 +87,22 @@ func askForge(forge GH, dir string) (map[string][]pullRequest, string) {
 	return by, ""
 }
 
+// openFrom reports whether the forge listed an open pull request from wt's
+// branch. A pull request from a fork's branch of the same name counts too:
+// this errs towards an active worktree, which is kept.
+func openFrom(prs map[string][]pullRequest, wt gitutil.Worktree) bool {
+	branch, ok := strings.CutPrefix(wt.Branch, "refs/heads/")
+	if !ok {
+		return false
+	}
+	for _, pr := range prs[branch] {
+		if pr.State == "OPEN" {
+			return true
+		}
+	}
+	return false
+}
+
 // judge is the merged judgement of wt's branch against the default branch
 // def, read from dir, a checkout of the repository. start is the commit the
 // store recorded the branch starting at when it added the worktree, or "" for
