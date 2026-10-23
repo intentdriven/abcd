@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -23,6 +24,28 @@ const reserveStore = "the reservation"
 // account the session's token is; nil means the real call. Tests replace it so
 // none touches the network.
 var reserveForgeUser func(root string) (login string, id int64, err error)
+
+// The launch check of the release hold (iss-2610222014550692) reads the
+// merges armed on the forge and this copy's release reservation through the
+// reservation package, which the launch package cannot import; this front
+// door, which holds both, registers the reading.
+func init() {
+	launch.ReadArmedMerges = func(root string) (launch.ArmedMerges, error) {
+		a, err := claim.ArmedMergesForCut(root, claim.Options{})
+		switch {
+		case errors.Is(err, claim.ErrNotOnGitHub):
+			return launch.ArmedMerges{}, launch.ErrNotOnForge
+		case err != nil:
+			return launch.ArmedMerges{}, errors.New(termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		}
+		out := launch.ArmedMerges{Base: a.Base, Release: a.Release, Admitted: a.Admitted}
+		for _, pr := range a.Armed {
+			out.Armed = append(out.Armed, launch.ArmedMerge{Number: pr.Number, HeadRef: pr.HeadRef, CrossRepository: pr.CrossRepository,
+				Queued: pr.Queued, AutoMerge: pr.AutoMerge, Method: pr.Method})
+		}
+		return out, nil
+	}
+}
 
 // reserveOutput is the --json document of one reservation act: what was done,
 // to which record, for whom, from which copy (this or another, never a copy's

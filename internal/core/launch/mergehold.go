@@ -1,0 +1,136 @@
+package launch
+
+// mergehold.go is the launch check of the release hold (iss-2610222014550692,
+// dcn-2610222219289525): a cut is refused while any pull request into
+// origin's default branch has auto-merge on or sits in the merge queue and
+// the cutting copy's release reservation has not admitted it. Reserving the
+// release withdraws every such merge and --admit rules one back in, so a cut
+// that starts from a frozen branch passes; a merge armed since by hand on the
+// forge, or one whose withdrawal the forge refused, is still armed and is
+// named here. The release pull request itself, opened from the branch this
+// checkout is on, is not judged: it is the cut.
+//
+// The row is armed only where the reservations live on GitHub: a checkout
+// with no remote named origin, or whose origin is not one repository on
+// github.com, reports it not armed. A forge that cannot list the merges
+// refuses the cut, since an armed merge it cannot see may be there.
+//
+// The reading is the reservation package's (claim.ArmedMergesForCut), which
+// this package cannot import (claim reaches launch through the changelog), so
+// the front door that holds both registers it (ReadArmedMerges), as the
+// documentation audit is measured by the caller. With none registered the
+// row reports itself not armed.
+
+import (
+	"errors"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
+)
+
+// gateMergeHold is the row's name.
+const gateMergeHold = "merge-hold"
+
+// ErrMergeHeld reports that a merge the release reservation does not account
+// for is armed or queued, or that the merges could not be listed.
+var ErrMergeHeld = errors.New("a merge the release reservation does not account for is armed")
+
+// ErrNotOnForge is a reading's answer for a checkout whose origin is not one
+// repository on github.com, or that has no origin: there is nothing to list.
+var ErrNotOnForge = errors.New("origin is not one repository on github.com")
+
+// ArmedMerge is one open pull request into the default branch that is armed
+// or queued: its number, its head branch (and whether that branch is in
+// another repository), and how it is armed.
+type ArmedMerge struct {
+	Number          int
+	HeadRef         string
+	CrossRepository bool
+	Queued          bool
+	AutoMerge       bool
+	// Method is the arming's merge method, upper case, "" when auto-merge is
+	// off.
+	Method string
+}
+
+// ArmedMerges is what the row judges: every merge armed or queued into Base,
+// and this copy's own live release reservation (Release, "" when it holds
+// none) with the pull requests it admitted.
+type ArmedMerges struct {
+	Base     string
+	Release  string
+	Admitted []int
+	Armed    []ArmedMerge
+}
+
+// ReadArmedMerges reads ArmedMerges for the checkout at root, registered by
+// the front door; nil leaves the row not armed. It answers ErrNotOnForge off
+// GitHub, and an error, never an empty list, when the forge does not answer.
+var ReadArmedMerges func(root string) (ArmedMerges, error)
+
+// currentBranch is the branch the checkout at root is on, "" when detached
+// or unreadable.
+var currentBranch = func(root string) string {
+	out, err := gitutil.Run(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+// mergeHoldGate judges the cut by the merges armed now. It returns the row
+// and its findings; a row that is not armed carries none.
+func mergeHoldGate(root string) (GateSummary, []GateFinding) {
+	if ReadArmedMerges == nil {
+		return GateSummary{Name: gateMergeHold, Status: "not_armed",
+			Detail: "no reading of the merges armed on the forge is registered on this path"}, nil
+	}
+	a, err := ReadArmedMerges(root)
+	switch {
+	case errors.Is(err, ErrNotOnForge):
+		return GateSummary{Name: gateMergeHold, Status: "not_armed",
+			Detail: "origin is not one repository on github.com, so no merge armed there can be listed"}, nil
+	case err != nil:
+		return GateSummary{Name: gateMergeHold, Detail: "the merges armed could not be listed"}, []GateFinding{{Detail: "the merges armed or queued on origin's default branch could not be listed (" +
+			err.Error() + "), and one the release reservation does not account for may be among them; run the cut again once the forge answers"}}
+	}
+	branch := currentBranch(root)
+	var findings []GateFinding
+	for _, pr := range a.Armed {
+		if slices.Contains(a.Admitted, pr.Number) || !pr.CrossRepository && branch != "" && pr.HeadRef == branch {
+			continue
+		}
+		findings = append(findings, GateFinding{Detail: armedFinding(a, pr)})
+	}
+	detail := fmt.Sprintf("%d armed or queued merge(s) into %s not admitted", len(findings), a.Base)
+	if a.Release != "" {
+		detail += " by " + a.Release
+	} else {
+		detail += "; this copy holds no release reservation"
+	}
+	return GateSummary{Name: gateMergeHold, Detail: detail}, findings
+}
+
+// armedFinding is the sentence naming one armed merge the reservation does
+// not account for, and what settles it.
+func armedFinding(a ArmedMerges, pr ArmedMerge) string {
+	var how string
+	switch {
+	case pr.Queued && pr.AutoMerge:
+		how = "has auto-merge on (" + strings.ToLower(pr.Method) + ") and sits in the merge queue"
+	case pr.Queued:
+		how = "sits in the merge queue"
+	default:
+		how = "has auto-merge on (" + strings.ToLower(pr.Method) + ")"
+	}
+	n := fmt.Sprint(pr.Number)
+	if a.Release == "" {
+		return "pull request #" + n + " " + how + " into " + a.Base + ", and this copy holds no release reservation: reserve the release first " +
+			"(abcd reserve rel-vX.Y.Z), which withdraws it, then admit it with --admit " + n + " if it belongs in the cut"
+	}
+	return "pull request #" + n + " " + how + " into " + a.Base + ", and " + a.Release + " has not admitted it, so it could merge mid-cut: " +
+		"turn its auto-merge off or take it out of the queue (gh pr merge " + n + " --disable-auto), or, if it belongs in the cut and " +
+		a.Release + " withdrew it, admit it (abcd reserve " + a.Release + " --admit " + n + ")"
+}

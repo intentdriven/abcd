@@ -328,3 +328,57 @@ func (f mergeForge) rearm(root, owner, name string, w Withdrawal) (string, error
 	}
 	return WithdrawnRearmed, nil
 }
+
+// ArmedMerges is what the launch check judges a cut by (iss-2610222014550692):
+// every open pull request into origin's default branch (Base) that is armed
+// or queued, and this copy's own live release reservation (Release, "" when
+// it holds none) with the pull requests it admitted. The cut is refused while
+// any armed one is not admitted.
+type ArmedMerges struct {
+	Base     string    `json:"base"`
+	Armed    []ArmedPR `json:"armed"`
+	Release  string    `json:"release,omitempty"`
+	Admitted []int     `json:"admitted,omitempty"`
+}
+
+// ArmedMergesForCut reads ArmedMerges for the checkout at root: the
+// reservations as last fetched (it fetches nothing and writes nothing), and
+// the forge's listing now. A checkout with no remote named origin, or whose
+// origin is not one repository on github.com, answers ErrNotOnGitHub; a
+// listing the forge does not give answers its error, never an empty list.
+func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
+	if ok, err := HasOrigin(root); err != nil {
+		return ArmedMerges{}, err
+	} else if !ok {
+		return ArmedMerges{}, ErrNotOnGitHub
+	}
+	owner, name, err := releaseForge.repo(root)
+	if err != nil {
+		return ArmedMerges{}, err
+	}
+	var a ArmedMerges
+	if a.Base = strings.TrimPrefix(originDefault(root), "refs/remotes/"+Remote+"/"); a.Base == "" {
+		return ArmedMerges{}, errors.New("this checkout names no default branch of " + Remote + ", so the merges armed into it cannot be listed")
+	}
+	now := o.now()
+	snap, err := viewOf(root, now, true, isRelease)
+	if err != nil {
+		return ArmedMerges{}, err
+	}
+	reader := readerHolder(root, o)
+	for _, r := range snap.Reservations {
+		if r.State != StateLive || r.Copy != CopyThis || reader == "" || !sameHolder(r.Holder, reader) {
+			continue
+		}
+		a.Release = r.Record
+		for _, w := range r.Withdrawn {
+			if w.State == WithdrawnAdmitted {
+				a.Admitted = append(a.Admitted, w.Number)
+			}
+		}
+	}
+	if a.Armed, err = releaseForge.armedPullRequests(root, owner, name, a.Base); err != nil {
+		return ArmedMerges{}, errors.New(forgeReason(err))
+	}
+	return a, nil
+}

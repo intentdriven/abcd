@@ -563,3 +563,38 @@ func TestReArmCountsAnArmedMergeAsDoneAndSkipsAClosedOne(t *testing.T) {
 		t.Fatalf("the second tombstone records %+v", ws)
 	}
 }
+
+// TestArmedMergesForCutNamesWhatTheReservationAdmitted: the launch check's
+// reading lists every merge armed or queued now, and this copy's own release
+// with what it admitted; another copy holds no release of its own.
+func TestArmedMergesForCutNamesWhatTheReservationAdmitted(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.do(Request{Record: "rel-v0.16.0", Admit: 11}); err != nil {
+		t.Fatal(err)
+	}
+	f.prs[14].method = "MERGE" // armed by hand on the forge since
+	a, err := ArmedMergesForCut(p.dir, p.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Base != "main" || a.Release != "rel-v0.16.0" || !slices.Equal(a.Admitted, []int{11}) || len(a.Armed) != 2 ||
+		a.Armed[0].Number != 11 || a.Armed[1].Number != 14 || !a.Armed[1].AutoMerge {
+		t.Fatalf("armed merges = %+v; want #11 (admitted) and #14 armed, on main, under rel-v0.16.0", a)
+	}
+	other := w.clone("1234+octo@users.noreply.github.com", "")
+	if a, err := ArmedMergesForCut(other.dir, other.opts()); err != nil || a.Release != "" || len(a.Armed) != 2 {
+		t.Fatalf("from another copy = %+v, %v; want no release of its own", a, err)
+	}
+	// A forge that cannot list refuses, never an empty list.
+	releaseForge.graphql = func(string, string, map[string]string, map[string]int) ([]byte, error) {
+		return nil, errors.New("HTTP 502")
+	}
+	if _, err := ArmedMergesForCut(p.dir, p.opts()); err == nil || !strings.Contains(err.Error(), "HTTP 502") {
+		t.Fatalf("a failed listing = %v; want its error", err)
+	}
+}

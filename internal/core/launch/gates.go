@@ -44,6 +44,7 @@ const (
 	gateDirtyTree     = "dirty-tree"
 	gateDocAuditor    = "documentation-auditor"
 	gateHookCompliant = "hook-compliance"
+	// gateMergeHold, the release hold's launch check, is named in mergehold.go.
 )
 
 // GateFinding is one concern a gate raised, located where it can be fixed.
@@ -206,6 +207,15 @@ func runGateSuite(req suiteRequest) suiteResult {
 			res.Refusals = append(res.Refusals, reason)
 			res.errs = append(res.errs, fmt.Errorf("%w: %s", ErrDirtyTree, reason))
 		}
+	}
+
+	// The release hold's launch check (mergehold.go): a merge armed or queued
+	// that the cutting copy's release reservation has not admitted refuses
+	// the cut, whatever the artefact kind.
+	if row, findings := mergeHoldGate(req.RepoRoot); row.Status == "" {
+		hard(gateMergeHold, row.Detail, findings, ErrMergeHeld)
+	} else {
+		res.Gates = append(res.Gates, row)
 	}
 
 	warn(docAuditGate(req.DocAudit))
