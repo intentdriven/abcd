@@ -58,6 +58,46 @@ func TestMergedJudgement(t *testing.T) {
 			t.Fatalf("a branch never committed to is not merged: %+v", r)
 		}
 	})
+	t.Run("fast-forwarded with no commit of its own", func(t *testing.T) {
+		// The branch moved past its creation point by a fast-forward to the
+		// default branch, so its tip is a later ancestor of it; it still
+		// holds no work of its own.
+		repo, _ := repoWithCommit(t)
+		p := addToLane(t, repo, "fresh")
+		repo.Write("later.txt", "later\n")
+		repo.Commit("later")
+		repo.Git("-C", p, "merge", "-q", "--ff-only", "main")
+		if r := judged(t, repo, unreachable, "fresh"); r.Merged != "unmerged" || r.JudgedBy != "" {
+			t.Fatalf("a fast-forwarded branch with no commit of its own is not merged: %+v", r)
+		}
+	})
+	t.Run("checked out on the default branch itself", func(t *testing.T) {
+		repo, _ := repoWithCommit(t)
+		repo.Git("checkout", "-q", "-b", "side")
+		repo.Write("later.txt", "later\n")
+		repo.Commit("later")
+		repo.Git("checkout", "-q", "main")
+		repo.Git("merge", "-q", "--ff-only", "side")
+		repo.Git("checkout", "-q", "side")
+		if _, err := worktree.Add(repo.Root(), worktree.AddOptions{Name: "onmain", Branch: "main", Existing: true, Git: git}); err != nil {
+			t.Fatal(err)
+		}
+		if r := judged(t, repo, unreachable, "onmain"); r.Merged != "unmerged" || r.JudgedBy != "" {
+			t.Fatalf("the default branch is never merged into itself: %+v", r)
+		}
+	})
+	t.Run("one real commit, later fast-forwarded", func(t *testing.T) {
+		repo, _ := repoWithCommit(t)
+		p := addToLane(t, repo, "real")
+		repo.Write("later.txt", "later\n")
+		repo.Commit("later")
+		repo.Git("-C", p, "merge", "-q", "--ff-only", "main")
+		commitIn(t, repo, p, "r.txt", "r\n")
+		repo.Git("merge", "-q", "--ff-only", "real")
+		if r := judged(t, repo, unreachable, "real"); r.Merged != "merged" || r.JudgedBy != "ancestry" {
+			t.Fatalf("a branch with a commit of its own, merged by fast-forward: %+v", r)
+		}
+	})
 	t.Run("rebase merge", func(t *testing.T) {
 		repo, _ := repoWithCommit(t)
 		p := addToLane(t, repo, "rb")

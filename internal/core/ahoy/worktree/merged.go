@@ -37,7 +37,8 @@ const (
 	// prListLimit is how many pull requests the one forge listing asks for,
 	// newest first.
 	prListLimit = 500
-	// reflogCap bounds a branch's reflog, one object name a line.
+	// reflogCap bounds a branch's reflog, an object name and a subject a
+	// line.
 	reflogCap = 1 << 20
 	// cherryCap bounds `git cherry`, one object name a line.
 	cherryCap = 1 << 20
@@ -104,10 +105,16 @@ func judge(dir, def string, wt gitutil.Worktree, prs map[string][]pullRequest) j
 			return judgement{true, byForge}
 		}
 	}
+	// The default branch, checked out in a worktree of its own, holds every
+	// commit of the default branch and none merged into it.
+	if wt.Branch == def || branch == branchName(def) {
+		return judgement{}
+	}
 	if ok, err := gitutil.IsAncestor(dir, tip, def); err == nil && ok {
-		// A branch cut and never committed to is an ancestor of its base
-		// too; it is merged only past the point it was created at.
-		if created := creationPoint(dir, wt.Branch); created != "" && created != tip {
+		// A branch cut and never committed to is an ancestor of its base too,
+		// and so is one fast-forwarded along it since; it is merged only when
+		// it holds a commit of its own.
+		if ownCommit(dir, wt.Branch, tip) {
 			return judgement{true, byAncestry}
 		}
 	}
@@ -131,18 +138,40 @@ func branchName(ref string) string {
 	return ref
 }
 
-// creationPoint is the commit ref was created at, the oldest entry of its
-// reflog, or "" when the reflog cannot prove it.
-func creationPoint(dir, ref string) string {
-	out, err := gitutil.RunCappedAsStored(dir, reflogCap, "log", "-g", "--format=%H", ref, "--")
-	if err != nil || out == "" {
-		return ""
+// ownCommit reports whether ref's reflog proves the branch made a commit of
+// its own that its tip still holds: an entry written by a commit, a
+// cherry-pick or a merge that made a merge commit. A fast-forward, a reset
+// and the branch's creation make no commit, and a branch with no reflog to
+// prove one is judged by the content tests alone.
+func ownCommit(dir, ref, tip string) bool {
+	out, err := gitutil.RunCappedAsStored(dir, reflogCap, "log", "-g", "--format=%H%x00%gs", ref, "--")
+	if err != nil {
+		return false
 	}
-	lines := strings.Split(out, "\n")
-	if last := strings.TrimSpace(lines[len(lines)-1]); gitutil.IsFullSHA(last) {
-		return last
+	for _, line := range strings.Split(out, "\n") {
+		sha, subject, ok := strings.Cut(line, "\x00")
+		if !ok || !gitutil.IsFullSHA(sha) || !madeACommit(subject) {
+			continue
+		}
+		if held, err := gitutil.IsAncestor(dir, sha, tip); err == nil && held {
+			return true
+		}
 	}
-	return ""
+	return false
+}
+
+// madeACommit reports whether a reflog subject is one git writes when the
+// branch gains a commit it made: "commit: …", "commit (amend): …",
+// "commit (merge): …", "cherry-pick: …", or a merge that was no fast-forward.
+func madeACommit(subject string) bool {
+	switch {
+	case strings.HasPrefix(subject, "commit:"), strings.HasPrefix(subject, "commit ("),
+		strings.HasPrefix(subject, "cherry-pick:"):
+		return true
+	case strings.HasPrefix(subject, "merge "):
+		return strings.Contains(subject, ": Merge made by")
+	}
+	return false
 }
 
 // rebased reports whether every commit tip holds that def does not has an
