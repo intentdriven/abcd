@@ -44,6 +44,9 @@ test:
 # below its job's timeout-minutes, so a hang there still dumps goroutines
 # (internal/core/lint/evallanebudget_test.go holds both).
 EVAL_TIMEOUT ?= 20m
+ifeq ($(strip $(EVAL_TIMEOUT)),)
+override EVAL_TIMEOUT := 20m
+endif
 
 smoke:
 	go test -tags smoke -timeout $(EVAL_TIMEOUT) ./evals/...
@@ -285,8 +288,8 @@ asking-sync-check:
 # Both lanes are named even though `smoke` compiles a superset of
 # `evals-cold-reading`'s files: they are separate tag sets, so a cold-reading
 # file reaching for a smoke-only helper compiles under one and not the other,
-# which is the split CI's two jobs cover. About five seconds each on a warm
-# cache, against roughly a minute for the gates already here.
+# which is the split CI's two jobs cover. Under a minute each in CI, and
+# several on a loaded machine, hence EVAL_TIMEOUT above.
 #
 # The test stages wait their turn on the machine (iss-2610102020442624,
 # iss-2610140638074587). Before them the load gate (`abcd implement load

@@ -20,10 +20,19 @@ import (
 // The CI half is the race lane's argument (racelanebudget_test.go): a package
 // timeout that reaches past its job's timeout-minutes never fires, because the
 // runner cancels the job first and a cancellation carries no goroutine dump. So
-// every workflow step that runs an eval lane sets EVAL_TIMEOUT itself, below the
-// timeout-minutes of the job it runs in.
+// every workflow step that runs an eval lane sets EVAL_TIMEOUT itself, and the
+// job's timeout-minutes must hold that budget after everything before it: the
+// -timeout of every earlier step in the job (release.yml's verify job runs smoke
+// after its 40m race step) plus evalJobHeadroom for the untimed steps.
 
 const minLocalEvalBudget = 20 * time.Minute
+
+// evalJobHeadroom is what a job spends in steps that declare no -timeout before
+// its eval step: checkout, setup-go and the load check took about half a minute
+// in CI's smoke and cold-reading-evals jobs (merge-group runs of 2026-10-24), and
+// release.yml's verify job 2.8 minutes before its race step (racelanebudget_test.go).
+// Rounded up to three.
+const evalJobHeadroom = 3 * time.Minute
 
 var (
 	evalTargets     = []string{"smoke", "evals-cold-reading"}
@@ -33,6 +42,7 @@ var (
 	jobHeader       = regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*$`)
 	stepHeader      = regexp.MustCompile(`^\s+- `)
 	jobTimeout      = regexp.MustCompile(`(?m)^    timeout-minutes: (\d+)\s*$`)
+	stepTestTimeout = regexp.MustCompile(`^\s+run: .*\bgo test\b.*\s-timeout[ =](\S+)`)
 )
 
 func TestEvalLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
@@ -91,10 +101,15 @@ func TestEvalLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 				t.Errorf("%s: the job declares no timeout-minutes", where)
 				continue
 			}
+			if s.before < 0 {
+				t.Errorf("%s: an earlier step's go test -timeout is not a duration", where)
+				continue
+			}
 			mins, _ := strconv.Atoi(jm[1])
-			if job := time.Duration(mins) * time.Minute; pkg >= job {
-				t.Errorf("%s: EVAL_TIMEOUT %s does not fit under the job's timeout-minutes %d; "+
-					"a hang would be cancelled with no goroutine dump", where, pkg, mins)
+			if need := evalJobHeadroom + s.before + pkg; need >= time.Duration(mins)*time.Minute {
+				t.Errorf("%s: EVAL_TIMEOUT %s after %s of earlier step timeouts and %s of headroom (%s) "+
+					"does not fit under the job's timeout-minutes %d; a hang would be cancelled with no goroutine dump",
+					where, pkg, s.before, evalJobHeadroom, need, mins)
 			}
 		}
 	}
@@ -103,9 +118,12 @@ func TestEvalLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	}
 }
 
-// evalStep is one workflow step that runs an eval lane, with the job it runs in.
+// evalStep is one workflow step that runs an eval lane, with the job it runs in
+// and the sum of the go test -timeout values of the job's earlier steps (-1 when
+// one of them is not a duration).
 type evalStep struct {
 	job, target, step, jobBlock string
+	before                      time.Duration
 }
 
 // evalSteps finds every step in a workflow whose run line is `make smoke` or
@@ -114,10 +132,18 @@ func evalSteps(workflow string) []evalStep {
 	lines := strings.Split(workflow, "\n")
 	var out []evalStep
 	job, jobAt, stepAt := "", -1, -1
+	var before time.Duration
 	for i, l := range lines {
 		if m := jobHeader.FindStringSubmatch(l); m != nil {
-			job, jobAt, stepAt = m[1], i, -1
+			job, jobAt, stepAt, before = m[1], i, -1, 0
 			continue
+		}
+		if m := stepTestTimeout.FindStringSubmatch(l); m != nil && before >= 0 {
+			if d, err := time.ParseDuration(m[1]); err == nil {
+				before += d
+			} else {
+				before = -1
+			}
 		}
 		if stepHeader.MatchString(l) {
 			stepAt = i
@@ -134,7 +160,7 @@ func evalSteps(workflow string) []evalStep {
 			}
 		}
 		block, _ := workflowJobBlock(workflow, job)
-		out = append(out, evalStep{job: job, target: m[1], step: strings.Join(lines[stepAt:end], "\n"), jobBlock: block})
+		out = append(out, evalStep{job: job, target: m[1], step: strings.Join(lines[stepAt:end], "\n"), jobBlock: block, before: before})
 	}
 	return out
 }
