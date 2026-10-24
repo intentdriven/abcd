@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/detect.go"
 remedy: "classify the PATH entry from ~/.abcd.noindex/path-entry when no plugin root resolves, and report the install mode from the record rather than leaving it empty"
+resolution: "the install mode is read from the copy ~/.abcd.noindex/path-entry records when no plugin root resolves"
+impact: fix
+resolved_by:
+  spec: "spc-2610241007434505"
 ---
 
 ahoy reports an empty install_mode for a working, recorded PATH entry whenever no plugin root resolves: detectInstallMode returns "" when !pluginOK, so after a successful README install (~/.local/bin/abcd on PATH and named by ~/.abcd.noindex/path-entry) a plain-terminal or session run still says nothing is installed.

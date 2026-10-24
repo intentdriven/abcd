@@ -945,9 +945,21 @@ func detectBinDirOnPath(dir string, installed bool) []Gap {
 // unresolved (nothing to attribute a mode to). A mode that another `abcd` earlier
 // on PATH shadows is reported as shadowed rather than as a healthy install: the
 // entry is correct and it is still not what runs.
+//
+// With no plugin root, the copy ~/.abcd.noindex/path-entry records is still an
+// install when its bytes match the record: a plain-terminal run after the
+// README's install line resolves no plugin root, and the copy it left is
+// abcd's all the same (iss-2610240916382802).
 func detectInstallMode(pluginRoot string, pluginOK bool) string {
 	if !pluginOK {
-		return ""
+		rec, ok := readPathEntry()
+		if !ok || !isOwnedCopyFile(rec.path) {
+			return ""
+		}
+		if _, shadowed := shadowingEntry("", rec.path); shadowed {
+			return "pinned (shadowed on PATH)"
+		}
+		return "pinned"
 	}
 	target := effectiveBinTarget(pluginRoot)
 	if target == "" {
