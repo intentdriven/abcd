@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/shellpath"
 	"github.com/intentdriven/abcd/internal/core/tools"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The review findings on the setup redesign (itd-2610240823055889,
@@ -346,5 +348,99 @@ func TestPersonOnlyQuestionsComeInThePlansOrder(t *testing.T) {
 	dl, sl, tl := strings.Index(plan, "abcd download"), strings.Index(plan, "status line"), strings.Index(plan, "gitleaks")
 	if dl < 0 || sl < 0 || tl < 0 || dl > sl || sl > tl {
 		t.Errorf("the plan lists the questions out of the run's order:\n%s", plan)
+	}
+}
+
+// hooksRepo is a real clone whose committed hooks setup writes, with no
+// hooks path at any scope.
+func hooksRepo(t *testing.T) string {
+	t.Helper()
+	setupHermetic(t)
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "gitconfig"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	return gittest.NewRepo(t).Root()
+}
+
+func clonesHooksPath(t *testing.T, repo string) string {
+	t.Helper()
+	out, _ := exec.Command("git", "-C", repo, "config", "--local", "--get", "core.hooksPath").Output()
+	return strings.TrimSpace(string(out))
+}
+
+// isArmQuestion reports whether q is the commit-checks question.
+func isArmQuestion(q string) bool {
+	_, ask := splitConfirm(q)
+	return strings.Contains(ask, "commit checks")
+}
+
+// TestUnarmedHooksAreNeverClean is iss-2610241134315056: committed hooks git
+// does not run leave the install partial, with the exact command to arm them.
+func TestUnarmedHooksAreNeverClean(t *testing.T) {
+	repo := hooksRepo(t)
+	res, err := Install(repo, installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(GuardHookRelPath))); err != nil {
+		t.Fatalf("no committed hook: %v", err)
+	}
+	if res.Status == "clean" || res.Status == "already_up_to_date" {
+		t.Fatalf("status %q with the committed hooks unarmed", res.Status)
+	}
+	if !strings.Contains(needsJoined(res.Report), "git config --local core.hooksPath .githooks") {
+		t.Errorf("the report does not give the command:\n%s", needsJoined(res.Report))
+	}
+	if clonesHooksPath(t, repo) != "" {
+		t.Error("--yes armed the hooks")
+	}
+}
+
+// TestArmingTheHooksIsItsOwnQuestion: at a terminal the person is asked, and
+// a yes sets core.hooksPath in this clone's .git/config and says so.
+func TestArmingTheHooksIsItsOwnQuestion(t *testing.T) {
+	repo := hooksRepo(t)
+	p := &planPrompter{choice: PlanProceed, confirm: isArmQuestion}
+	res, err := Install(repo, planOpts(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var qs []string
+	for _, q := range p.asked {
+		if isArmQuestion(q) {
+			qs = append(qs, q)
+		}
+	}
+	if len(qs) != 1 || !strings.Contains(qs[0], "core.hooksPath") || !strings.Contains(qs[0], ".git/config") {
+		t.Fatalf("the question was not asked once naming the key and the file: %q", qs)
+	}
+	if !strings.Contains(strings.Join(p.plans[0].AsksYou, "\n"), "commit checks") {
+		t.Errorf("the plan does not list the question: %q", p.plans[0].AsksYou)
+	}
+	if got := clonesHooksPath(t, repo); got != ".githooks" {
+		t.Fatalf("core.hooksPath = %q after a yes", got)
+	}
+	if !strings.Contains(strings.Join(res.Report.Done, "\n"), "core.hooksPath") {
+		t.Errorf("Done does not say the checks were switched on: %q", res.Report.Done)
+	}
+	if res.Status != "clean" && strings.Contains(needsJoined(res.Report), "core.hooksPath") {
+		t.Errorf("the report still asks for the hooks path:\n%s", needsJoined(res.Report))
+	}
+}
+
+// TestAForeignHooksPathIsNeverOffered: a global dispatcher is left alone.
+func TestAForeignHooksPathIsNeverOffered(t *testing.T) {
+	repo := hooksRepo(t)
+	if err := os.WriteFile(os.Getenv("GIT_CONFIG_GLOBAL"), []byte("[core]\n\thooksPath = \""+filepath.Join(t.TempDir(), "dispatcher")+"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := &planPrompter{choice: PlanProceed, confirm: func(string) bool { return true }}
+	if _, err := Install(repo, planOpts(), p); err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(p.asked, isArmQuestion) {
+		t.Errorf("a foreign hooks path was offered a local one: %q", p.asked)
+	}
+	if clonesHooksPath(t, repo) != "" {
+		t.Error("a local hooks path was set over a dispatcher")
 	}
 }

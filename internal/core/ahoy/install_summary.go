@@ -352,6 +352,11 @@ var optionalSkippedHelp = map[string]SummaryItem{
 		Why:    "Which parts of README.md abcd keeps current, if any, is the owner's choice, so abcd writes none without an answer.",
 		Action: "Run abcd ahoy install at a terminal, without --yes, and answer it; or, to answer it without being asked, pass --readme-parts " + ReadmePartsChoices + " to abcd ahoy install; none answers no and is not asked again.",
 	},
+	HooksArmGapID: {
+		What:   "git was not pointed at this repository's commit checks in this clone, so they do not run.",
+		Why:    "core.hooksPath chooses every hook git runs in the clone, so only your own answer at a terminal sets it.",
+		Action: hooksArmAction,
+	},
 	ConventionsRetireGapID: {
 		What:   "An agent tool's own conventions file that only repeats AGENTS.md was left in place.",
 		Why:    "Removing a file from your project needs your own answer; until it goes, that tool reads it in place of AGENTS.md.",

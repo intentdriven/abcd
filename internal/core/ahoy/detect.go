@@ -158,6 +158,8 @@ func detect(cwd string, judgeTools bool) (DetectionResult, error) {
 		banlistHealth := detectBanlistHealth(abs)
 		res.Banlist = &banlistHealth
 		gaps = append(gaps, detectBanlistScaffold(banlistHealth)...)
+		// Committed hooks git does not run in this clone (iss-2610241134315056).
+		gaps = append(gaps, detectHooksArm(abs, banlistHealth)...)
 		// The attribution prompt is opt-in, so this reports nothing at all for a repo
 		// that never adopted it — and a hand-deleted hook for one that did.
 		gaps = append(gaps, detectAttributionHook(abs, banlistHealth.HooksPath)...)

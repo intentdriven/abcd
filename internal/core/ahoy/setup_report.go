@@ -156,6 +156,10 @@ func remainingSteps(cwd string, gaps []Gap) []ReportStep {
 	var out []ReportStep
 	for _, g := range gaps {
 		switch {
+		case g.ID == HooksArmGapID:
+			out = append(out, hooksArmStep())
+		case g.ID == HooksElsewhereGapID:
+			out = append(out, ReportStep{Step: g.FixHint, Why: strings.TrimSuffix(reportFirstSentence(g.Detail, g.Title), ".") + "."})
 		case g.Category == Dependency && g.Tool != nil:
 			// An optional tool is offered at a terminal, one question each,
 			// and is not a step the person owes. The gap is the final

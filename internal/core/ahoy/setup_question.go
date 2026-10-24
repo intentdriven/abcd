@@ -135,6 +135,7 @@ var setupConfirmIDs = []struct {
 	{OracleRoutingMachineGapID, func(s string) bool { return s == machineRoutingQuestion() }},
 	{OracleRoutingRepoGapID, func(s string) bool { return s == repoRoutingQuestion() }},
 	{ShellPathOfferGapID, isShellPathQuestion},
+	{HooksArmGapID, isArmHooksQuestion},
 	{StatusLineOfferGapID, isStatusLineOfferQuestion},
 	{DownloadQuestionID, isDownloadQuestion},
 	{DrainRuleOfferGapID, func(s string) bool { return s == drainRuleQuestion() }},

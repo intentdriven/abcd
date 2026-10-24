@@ -4666,6 +4666,8 @@ func optionalSkipReason(id string) string {
 		return "an agent tool's own conventions file that only repeats AGENTS.md is removed from the project only against a prompt answered at a terminal"
 	case ahoy.ReadmeOfferGapID:
 		return "which parts of README.md abcd keeps current is the owner's choice, so abcd writes none until --readme-parts or the README question answers it"
+	case ahoy.HooksArmGapID:
+		return "core.hooksPath chooses every hook git runs in this clone, so it is only set against a prompt answered at a terminal; or run " + ahoy.ArmHooksCommand
 	}
 	return ""
 }

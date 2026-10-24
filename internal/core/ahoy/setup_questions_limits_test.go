@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/core/shellpath"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // heldQuestion is the value question h as setup builds it (valueQuestion, the
@@ -91,7 +93,8 @@ func TestEverySetupQuestionPassesTheLimits(t *testing.T) {
 	qs = append(qs,
 		confirmQuestion(t, len(qs)+1, OracleRoutingMachineGapID, machineRoutingQuestion(), oracleRoutingMachineQuestionTail),
 		confirmQuestion(t, len(qs)+2, OracleRoutingRepoGapID, repoRoutingQuestion(), oracleRoutingRepoQuestionTail),
-		shellPathLimitQuestion(t, len(qs)+3))
+		shellPathLimitQuestion(t, len(qs)+3),
+		armHooksLimitQuestion(t, len(qs)+4))
 
 	var asks []question.Ask
 	for _, q := range qs {
@@ -202,4 +205,22 @@ func shellPathLimitQuestion(t *testing.T, n int) question.Question {
 	text := shellPathQuestion(dir, plan)
 	_, tail := splitConfirm(text)
 	return confirmQuestion(t, n, ShellPathOfferGapID, text, tail)
+}
+
+// armHooksLimitQuestion is the commit-checks offer in its tallest form: a
+// clone whose .git/hooks holds hooks of its own that would stop running.
+func armHooksLimitQuestion(t *testing.T, n int) question.Question {
+	t.Helper()
+	repo := gittest.NewRepo(t).Root()
+	for _, dir := range []string{filepath.Join(repo, ".githooks"), filepath.Join(repo, ".git", "hooks")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, h := range []string{"pre-commit", "pre-merge-commit", "commit-msg", "prepare-commit-msg", "pre-push"} {
+			if err := os.WriteFile(filepath.Join(dir, h), []byte("#!/bin/sh\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return confirmQuestion(t, n, HooksArmGapID, armHooksQuestion(repo), armHooksAsk)
 }

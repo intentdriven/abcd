@@ -19,7 +19,8 @@ import (
 // rather than by the approval of its category: the commit identity's gaps,
 // which stepGitIdentity asks about at a terminal.
 func personOnlyGap(id string) bool {
-	return slices.Contains(establishGapIDs, id) || id == UnrecordedGapID || id == LegacyPinGapID || id == ShellPathOfferGapID
+	return slices.Contains(establishGapIDs, id) || id == UnrecordedGapID || id == LegacyPinGapID || id == ShellPathOfferGapID ||
+		id == HooksArmGapID
 }
 
 // shellSettingsAsks is the line the plan lists for the shell settings
@@ -79,7 +80,7 @@ func approvalGaps(cwd string, det DetectionResult, opts InstallOptions, target s
 
 // personOnlyAsks is the plan's list of the questions that follow whatever the
 // answer to it, in the order the run asks them: the abcd download, the shell
-// settings, the status line, the commit identity, and one
+// settings, the commit checks, the status line, the commit identity, and one
 // question for each tool abcd offers to install. Each is listed only where
 // the run will put it.
 func personOnlyAsks(cwd string, det DetectionResult, opts InstallOptions, target string) []string {
@@ -92,6 +93,9 @@ func personOnlyAsks(cwd string, det DetectionResult, opts InstallOptions, target
 	// only where there will be one.
 	if entryWillExist(cwd, det, target, dl) {
 		out = append(out, shellSettingsAsks(cwd, det, target)...)
+	}
+	if armOffered(cwd, det) {
+		out = append(out, "the commit checks: core.hooksPath set to "+guardHooksDirRelPath+" in this clone's .git/config")
 	}
 	present := gapIDSet(det.Gaps)
 	if present[StatusLineOfferGapID] && statusLineReachable(cwd, det, dl) {

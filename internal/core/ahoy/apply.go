@@ -71,6 +71,11 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		if err == nil && res.needs == nil && res.Status != "refused" && res.Status != "aborted" {
 			res.needs = remainingSteps(abs, det.Gaps)
 		}
+		// An early return judged nothing it did not change: committed hooks
+		// git does not run keep it from being reported up to date.
+		if err == nil && res.Status == "already_up_to_date" && hooksUnrun(det.Gaps) {
+			res.Status = "partial"
+		}
 	}()
 
 	// Not a repository, or no harness: nothing to act on, said in one message.
@@ -329,6 +334,10 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// After stepPathEntry: the shell-settings offer judges the entry this run
 	// left on disk, and is the first of the consent questions.
 	ac.stepShellPath()
+	// After stepBanlist, which commits the guard, and before the outbound
+	// shim, which plans against the hooks path this leaves: the commit checks'
+	// own question (iss-2610241134315056).
+	ac.stepArmHooks()
 	// After the PATH-entry steps: abcd.binary names the verified copy they left.
 	ac.stepOutboundBinary()
 	// After stepOutboundBinary: the shim finds abcd through the abcd.binary it
@@ -380,6 +389,12 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	}
 	status := "clean"
 	if len(remaining) > 0 {
+		status = "partial"
+	}
+	if hooksUnrun(final.Gaps) {
+		// Committed hooks git does not run are not a finished setup, whether
+		// the question was declined, not asked, or the value is the person's
+		// (iss-2610241134315056).
 		status = "partial"
 	}
 	if ac.configMalformed {
@@ -2443,14 +2458,14 @@ const credentialAtRestGapID = "history.credential_at_rest"
 // the retirement of a tool's own conventions file (see
 // stepConventionsFiles) and the README question (see stepReadme). In the
 // order they are reported.
-var optionalGapIDs = []string{LegacyPinGapID, UnrecordedGapID, ReadmeOfferGapID, ShellPathOfferGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+var optionalGapIDs = []string{LegacyPinGapID, UnrecordedGapID, ReadmeOfferGapID, ShellPathOfferGapID, HooksArmGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 // terminalOnlyGapIDs are the optional offers put only to a person at a
 // terminal, and their categories: off one, neither the category nor the offer
 // is asked, so a piped answer stream keeps the order it had before they
 // existed. The README question has no category to ask (resolveApproval leaves
 // it out everywhere: the question is the consent).
-var terminalOnlyGapIDs = []string{LegacyPinGapID, UnrecordedGapID, ReadmeOfferGapID, ShellPathOfferGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+var terminalOnlyGapIDs = []string{LegacyPinGapID, UnrecordedGapID, ReadmeOfferGapID, ShellPathOfferGapID, HooksArmGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 var terminalOnlyCategories = []GapCategory{DrainRule, ConventionsFile}
 
@@ -2621,6 +2636,8 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Pr
 	// The shell-settings offer is its own consent too, asked only at a
 	// terminal (stepShellPath).
 	delete(present, ShellPath)
+	// So is pointing git at the committed hooks (stepArmHooks).
+	delete(present, HooksPathCategory)
 	approved := map[GapCategory]bool{}
 	switch {
 	case opts.ApprovedCategories != nil:
