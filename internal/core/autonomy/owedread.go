@@ -644,7 +644,12 @@ func (r *owedReader) stackIdx() *stackIndex {
 	idx := &stackIndex{heads: map[string][]string{}, tips: map[string][]string{}}
 	for _, name := range r.ownNames() {
 		c, ok := r.branches[name]
-		if !ok || r.expired() {
+		if !ok {
+			continue
+		}
+		if r.expired() {
+			// An index cut short can miss a base, which reads as none.
+			r.cut = true
 			continue
 		}
 		idx.heads[c.head] = append(idx.heads[c.head], name)
