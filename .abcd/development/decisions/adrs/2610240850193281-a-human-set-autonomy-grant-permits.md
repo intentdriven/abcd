@@ -58,17 +58,34 @@ badge:
 - The person alone sets it, in their home (`~/.abcd.noindex/`), keyed on the
   repository's root commit. A repository's `.abcd/config.json` may remove a
   capability from it and never add one.
-- It is built from named capabilities with presets on top; the capability set
-  and the presets are the planning interview's to settle (itd-2610240850336695).
+- It is built from four capabilities, `push-branch`, `open-pr`, `queue-merge`
+  and `decide-as <role>`, with presets on top; a grant that names none carries
+  "ship work" (`push-branch`, `open-pr`, `decide-as facilitator`) once the
+  pre-run sweep has confirmed the outstanding design work
+  (itd-2610240850336695, Decisions 2 to 4).
 - Merging to the default branch, cutting a release and force-pushing are in no
   preset, and abcd refuses them in code at every level.
 - It ends at a time the person names; an ended or unreadable grant reads as no
   grant.
+- It holds whether the person is present or away: being away stays its own
+  record, and ending it does not end the grant.
+- It is the one place that lets abcd merge on its own; the planned
+  `facilitator.mode: auto` folds into its `queue-merge` capability.
+- Only the person sets it: the guard refuses a session that sets or writes it.
 - The badge stays the agent's report of whose answer is owed; the status line
   shows the grant beside it.
 
 This supersedes `dcn-2610181016510153` on rights, not on the away mode's other
 behaviour.
+
+The grant and the fence are two axes, as Codex keeps its approval policy apart
+from its sandbox mode. Where abcd puts up a fence, the grant is embedded in it:
+the agents abcd's runner launches run inside the operating-system sandbox of
+itd-2610161621364075 (its part A), and the grant says what they may do there
+without asking. Where abcd cannot fence, the person's own interactive sessions
+(that intent's part B), the grant stands alone, abcd claims no boundary, and
+the person's host settings stay the outer fence (product thinker, planning
+interview, 2026-10-24).
 
 ## Alternatives Considered
 
