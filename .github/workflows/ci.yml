@@ -801,6 +801,8 @@ jobs:
       - name: Load check (skipped on CI, says why)
         run: go run ./cmd/abcd implement load --site eval-harness
       - name: Smoke every command
+        env:
+          EVAL_TIMEOUT: "8m"
         run: make smoke
 
   # The cold-reading evals (evals/coldreading_*_test.go), on EVERY event. This job
@@ -847,6 +849,8 @@ jobs:
       - name: Load check (skipped on CI, says why)
         run: go run ./cmd/abcd implement load --site eval-harness
       - name: Falsify the cold-reading read-block
+        env:
+          EVAL_TIMEOUT: "8m"
         run: make evals-cold-reading
 
   # The work-in-progress guard (spc-2610120941441282 step 7, itd-2610120738075547
