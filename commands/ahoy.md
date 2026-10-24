@@ -334,14 +334,22 @@ target's `.abcd/.work.local/scratch/` (create the directory via
    (`"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy --json`, `banlist.hooks_path`) and act
    on it:
 
-   - `unarmed` — point git at the committed hooks, once per clone:
+   - `unarmed` — point git at the committed hooks, once per clone. Where no
+     hooks path is set at any scope, `abcd ahoy install` run at a terminal asks
+     this as its own question (the `banlist.hooks_unarmed` gap), naming
+     `core.hooksPath` and the clone's `.git/config`, sets it on a yes and reads
+     it back; off a terminal, under `--yes` or on a no, the report lists the
+     command, and the install is `partial`, never `clean`, until git runs the
+     hooks:
 
      ```bash
-     git config core.hooksPath .githooks
+     git config --local core.hooksPath .githooks
      ```
 
      Report the hooks as scaffolded but unarmed if the user declines that
-     config change — never silently.
+     config change — never silently. A local value naming another directory
+     is the person's (`banlist.hooks_path_elsewhere`): abcd does not replace
+     it.
    - `foreign` — a hooks path set outside the clone (a global or system hooks
      dispatcher) is in force. Leave it alone: never set a local
      `core.hooksPath` over it, which would shadow the dispatcher in this clone.
@@ -446,18 +454,22 @@ it can, each on one line
    it (the visibility, the docs target, deep scanning, the house-style rule,
    the artefact kind, the model routing tables, the drain rule, the README
    parts, and the status line's parts, all on), and the questions it asks
-   whatever the answer. It asks once: `proceed`, `customise` or `cancel`.
+   whatever the answer. It asks once: `proceed`, `customise` or `cancel`; a
+   bare Enter is no answer, so it asks again, and end of input cancels.
    Proceed makes every change and takes every default listed; customise asks
    each kind of change and each value in turn before anything is written;
    cancel, or deciding later, writes nothing. For a repository abcd does not
    manage yet, proceed and customise also adopt it, so the plan is the one
    question that adopts.
 3. **The questions only a person can answer.** The abcd download, the shell
-   settings, the status line (one entry in the assistant's settings), the
-   commit identity and each missing tool are each their own question, naming
-   the value and where it is written, whatever the answer to the plan, in that
-   order. None is ever asked behind the plan or behind an approval of a kind
-   of change.
+   settings, the commit checks (`core.hooksPath` in this clone's
+   `.git/config`), the status line (one entry in the assistant's settings),
+   the commit identity and each tool abcd offers to install are each their own
+   question, naming the value and where it is written, whatever the answer to
+   the plan, in that order, and the plan lists exactly the ones the run will
+   ask. None is ever asked behind the plan or behind an approval of a kind of
+   change: at a terminal a tool's question is its own consent, so no
+   `dependency` approval is asked there, and customising never drops it.
 4. **The abcd download.** Where abcd is not on the `PATH` and the plugin's
    verified cache cannot supply a copy, setup offers to download abcd before it
    offers the status line: the release the running abcd was stamped as, or, in
@@ -476,15 +488,20 @@ it can, each on one line
    or `interview.list` set to `numbered`) and `NO_COLOR` work as before.
 6. **The report.** The run ends in three parts: **Done**, one line per change
    with where it landed; **Needs you**, a numbered checklist, each item the
-   exact step and why; and **Next**, one step. `--details` adds the full
+   exact step and why; and **Next**, one step. A change the person said yes to
+   that then failed (a tool download that failed its sha256 or its signed build
+   record, an abcd download that did not verify, a shell-settings edit, the
+   commit checks) is a **Needs you** item carrying the reason and the step by
+   hand, such as the copy to put back over a startup file abcd could not
+   restore, never only a note behind `--details`. `--details` adds the full
    record (every path written and every note). A repository already fully set
    up is reported in one line, `abcd is already set up here; nothing
    changed.`, and nothing is written.
 
 A first run at a terminal with the suggested answers therefore asks the plan
 and the person-only questions alone: the abcd download, the shell settings,
-the plan screen and the commit identity, plus the status line where it can be
-wired and one question for each missing tool it offers to install.
+the commit checks and the commit identity, plus the status line where it can be
+wired and one question for each tool it offers to install.
 
 In a source checkout of abcd, `go run ./cmd/abcd ahoy install` is treated as
 current: `go run` builds the checkout as it stands, so its unstamped vintage is
@@ -531,11 +548,18 @@ abcd-owned entry already on `PATH`, which is adopted exactly where it stands.
 system-wide one — and fails loudly when it is not writable. abcd never escalates
 privileges, so never suggest re-running any of this under `sudo`; report the
 failure and let the user pick a directory they own. If the report carries a
-`path.bin_dir_not_on_path` gap, relay its one-line `export` fix verbatim. Do not
+`path.bin_dir_not_on_path` gap, relay its fix hint verbatim: it is what is true
+of the person's shell settings. Where the file their shell reads already adds
+the folder (their own line, or the one this run added), the step is to open a
+new terminal, because the shell reads that file when it starts; where abcd
+will not edit the file, it is the one-line `export` with the reason; only
+where setup will ask does it name the question. Do not
 edit the user's shell settings yourself: `abcd ahoy install` run at a terminal
-asks the person whether to add that line to the file their shell reads, names
-the file and the line, and adds it only on a yes (the
-`path.shell_settings_offered` gap). It keeps a copy of the file first, never
+asks the person whether to add that line to the file their shell reads, and
+its one line names both, as in ``Add `export PATH="$HOME/.local/bin:$PATH"` to
+~/.zshrc?``; `?` shows the rest, including that the line puts the folder ahead
+of the rest of the `PATH`. It adds the line only on a yes (the
+`path.shell_settings_offered` gap), keeps a copy of the file first, never
 edits a file that is a link kept elsewhere, and `abcd ahoy uninstall` removes
 the line again. Off a terminal, under `--yes`, or on a no, the line stays the
 person's to add.
@@ -667,8 +691,9 @@ and say where they were given. The plan screen is the first: relay its plan
 (the changes, each default with where to change it, and the questions that
 follow) as its material, and its three answers, `proceed`, `customise` and
 `cancel`, as options. Then relay each person-only question the run reaches
-(the download, the shell settings, the status line, the commit identity, a
-tool) as its own question, never folded into the plan's answer:
+(the download, the shell settings, the commit checks, the status line, the
+commit identity, a tool) as its own question, never folded into the plan's
+answer:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --answers <file> --answered-in "Claude Code" --json
@@ -777,12 +802,24 @@ behalf. For an autonomous routine the human identity is set by whatever launches
 it, before its first commit: on a fresh machine with no record, the commit check
 lets through the human identity the launcher supplied and refuses a machine's.
 
-**The tool question.** When a `dependency` gap is present and its category is
-approved, each tool abcd has no usable copy of is its own question, and a piped
-answer never answers it: installing puts a program on the machine. A copy
-already installed some other way is used, and nothing asked or installed, when
-its version lies in the range abcd works with; abcd's own recorded copy is used
-the same way. At a terminal the install shows the explanation and asks
+**The tool question.** When a `dependency` gap is present, each tool abcd has
+no usable copy of is its own question, asked last of the person-only
+questions, and a piped answer never answers it: installing puts a program on
+the machine. At a terminal that question is its own consent, so no
+`dependency` approval is asked first and customising the plan never drops it;
+off a terminal the category's approval keeps its place in the fixed order, and
+no tool is installed. A copy already installed some other way is used, and
+nothing asked or installed, when its version lies in the range abcd works
+with. abcd's own recorded copy is used while its version is the one abcd's
+release pins; at another version in the range it still runs and, when setup
+runs its steps, the pin is offered as an update (`deps.gitleaks_upgrade`, never
+required, and a no keeps the copy that works), and outside the
+range it is not run and abcd's pinned copy is offered over it
+(`deps.gitleaks_incompatible`). The download replaces only a copy that is still
+the bytes abcd wrote, never another file. The detection pass the hooks and the
+status board run starts no tool: it counts a copy on the `PATH` as installed,
+and only `abcd ahoy install` (and `--dry-run`) runs a copy's version command to
+judge it. At a terminal the install shows the explanation and asks
 `Install <tool> now: download <tool> <version> into <bin folder>, <checks>? [y/N]`.
 Through this page, ask the technical facilitator with the host's question tool
 instead: present the gap's `tool` explanation (what it is, whether this

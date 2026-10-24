@@ -641,8 +641,10 @@ inspect it by hand (iss-2609120447482255).
 
 **Setup asks before it puts abcd's folder on the `PATH`.** When the folder the
 entry is in is not on `PATH`, install asks a person at a terminal, once, whether
-to add one line to the startup file their login shell reads, naming the file and
-the line (`path.shell_settings_offered`, adr-2610241022330872,
+to add one line to the startup file their login shell reads, its one line
+naming the line and the file (``Add `export PATH="$HOME/.local/bin:$PATH"` to
+~/.zshrc?``), and `?` saying the rest, that the folder goes ahead of the rest
+of the `PATH` among it (`path.shell_settings_offered`, adr-2610241022330872,
 itd-2610240919030303). zsh gets `${ZDOTDIR:-$HOME}/.zshrc`; bash gets the login
 file on macOS (the first of `.bash_profile`, `.bash_login` and `.profile`, else
 a new `.bash_profile`) and `~/.bashrc` on Linux. On a yes abcd keeps a copy of
@@ -654,7 +656,16 @@ owned by the person and writable by no one else. Settings that already add the
 folder are left alone, and a file that is a link kept elsewhere (shared
 dotfiles) is never offered: its line goes on the checklist, as it does on a no,
 under the approve-everything flag, and off a terminal. Uninstall removes the
-line abcd added and nothing else in the file.
+line abcd added and nothing else in the file. The `path.bin_dir_not_on_path`
+step says what is true of those settings, as the plan reads them: where a file
+the shell reads already adds the folder (the person's line, or the one a yes
+just added) it is to open a new terminal, because the shell reads the file
+when it starts; where abcd will not edit the file it is the `export` line with
+the reason; only where setup will ask does it name the question. Only abcd's
+own marked line for this folder, compared whole, counts as abcd's: the marker
+on a line that adds another folder adds nothing. An edit after a yes that
+fails is a step on the report's checklist, the copy to put back by hand where
+abcd could not restore the file.
 
 **The name-guard scaffolding is reported at the granularity the technical
 facilitator can act on.** Each absent artefact is a gap abcd will create; every other state is a
@@ -781,11 +792,16 @@ anything, in this order:
    approve-everything flag, an explicit category set and the after-update
    run are not shown the plan.
 3. **The person-only questions** (`person_only.go`): the abcd download, the
-   shell settings, the status line, the commit identity and each missing
-   tool, each its own question naming the value and where it is written,
-   whatever the answer to the plan, in that order. The identity is never
-   listed under, or declined by, the settings approval
-   (iss-2610240824005655).
+   shell settings, the commit checks (`commit_checks.go`), the status line,
+   the commit identity and each tool abcd offers to install, each its own
+   question naming the value and where it is written, whatever the answer to
+   the plan, asked in that order and listed by the plan only where the run
+   will put it: the shell settings only where the run leaves an entry, a tool
+   only where abcd offers its own copy. The identity is never listed under,
+   or declined by, the settings approval (iss-2610240824005655), and at a
+   terminal no `dependency` approval is asked, so customising never drops a
+   tool's question. At the stdin door's plan screen a bare Enter is no answer
+   and asks again.
 4. **The abcd download** (`abcd_download.go`). Where nothing is at the `PATH`
    target and the plugin's verified cache cannot supply a copy, setup asks to
    download the release this abcd was stamped as (in a source checkout of
@@ -802,8 +818,11 @@ anything, in this order:
    (`ask.ErrExplain`). The answers record keeps the whole question.
 6. **The report** (`setup_report.go`): done, one line per change with where;
    needs you, a numbered checklist of exact steps, each with why; next, one
-   step. A repository already fully set up is one line, and a details flag
-   adds the full record.
+   step. A change the person approved that then failed (a tool or abcd
+   download that did not verify, a shell-settings edit, the commit checks) is
+   a needs-you step with its reason and the step by hand, not only a note. A
+   repository already fully set up is one line, and a details flag adds the
+   full record.
 
 Run from a source checkout of abcd through `go run ./cmd/abcd`, setup is a
 build of that checkout as it stands, so the stale-binary refusal treats it as
@@ -838,11 +857,12 @@ approvals had before they listed anything.
 | `config-change` | visibility, oracle adapter, the `PATH` entry, the repository's own git identity, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
 | `machine-identity` | the person's own commit identity record on their machine; moving the identity pin a repository still stores to its owner's machine (itd-2610240918547728) | never a category approval: each is its own question, asked only at a terminal, written only on that yes; never under the approve-everything flag or a piped answer, and reported as optional work it skipped |
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`), for one that exists but cannot be read whole, a folder, a pipe, a file past the size cap or one without read permission (`marker.unreadable`), and for one whose block is missing or out of date in a folder that does not let abcd create a file there, which the write needs for its lock and temporary file (`marker.unwritable`) |
-| `dependency` | a tool a capability uses with no copy abcd can run: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json`; missing, or installed some other way at a version outside the range abcd works with | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the download abcd's release pins and how far it is checked, any copy already installed and which copy will run, what the install does) and its download is made only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a compatible copy already installed is used and nothing installed; a no is reported as what the capability continues on |
+| `dependency` | a tool a capability uses with no copy abcd can run: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json`; missing, or installed some other way at a version outside the range abcd works with | at a terminal each tool is its own question, asked last of the person-only questions, and no category approval is asked (so customising never drops it); off one the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the download abcd's release pins and how far it is checked, any copy already installed and which copy will run, what the install does) and its download is made only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a compatible copy already installed is used and nothing installed; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd.noindex/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal said in counts (how many agents, how many at each tier, their fan-out bounds), naming no agent so the question fits, and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `drain-rule` | the offer of the repository's drain eligibility record (ruling BX2, itd-82): abcd's strict baseline as an accepted decision record carrying the four `drain_` fields, minted through the decision store's seam | the rule stated in one question and the record written only on a consent answered at a terminal; never under the approve-everything flag and never off a terminal, where neither its category nor the offer is asked (so a piped answer stream keeps its order), and reported as optional work it skipped; a decline records nothing, so the next install offers again; raised only while no accepted record states the rule, so a record stating it badly is never offered a second; only ever the baseline, never a loosened rule |
 | `conventions-file` | an agent tool's own conventions file at the repository root, read in place of `AGENTS.md` (itd-2610030814013772): `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI at its default settings, `.rules`, `.cursorrules` and `.github/copilot-instructions.md` for Zed, each classified with one guarded read inside the project and never through a link, and named as it is spelt on disk | a file holding the owner's words (or one that cannot be read whole) is never edited, moved, merged or removed and raises the warning `conventions.owner_file`, which install reports in `warnings`, printed first; a file that only repeats `AGENTS.md` (a link the system resolves to the root `AGENTS.md`, or, before there is one, a link whose target names it; that link's target saved as text, an exact copy, a lone `@AGENTS.md` line, or one blank once abcd's block is stripped; a dangling link's target, a saved target or an import counts only in its plain spelling, `AGENTS.md` or `../AGENTS.md`, never one stepping into a folder and back) raises the optional `conventions.retire_offered`, asked after the drain rule as one question per file (`retire`, `keep`, `later`, the default) and only at a terminal, as the drain rule is; on `retire` the file is classified again and removed from the working tree only if it still repeats, else left and named, and the removal takes the entry it checked, in its folder held open, so a folder swapped for a link cannot carry it elsewhere; keep and later record nothing, so the next install asks again |
+| `hooks-path` | pointing git at the committed hooks in this clone (`banlist.hooks_unarmed`, iss-2610241134315056): abcd's guard is committed and no hooks path is set at any scope | its own question at a terminal, never an approval: a yes sets `core.hooksPath` to `.githooks` in the clone's `.git/config` and reads it back; off a terminal, under the approve-everything flag or on a no, the report lists the command, and the install is never reported clean while the hooks it committed do not run; a hooks path set outside the clone, or a local one naming another directory, is never replaced |
 | `readme` | the README question (itd-2610031348087517), raised as the optional `readme.offered` while `readme.parts` is absent from `.abcd/config.json` | never asked as a category: the question pair is the consent, asked after `stepMarker` and before the status-line offer, only of a person at a terminal, in a run without the approve-everything flag, and only once `.abcd/config.json` exists; every other run reports the gap under optional work it skipped and names the install flag that answers the pair, which it does in any run; the chosen parts are written into `README.md` on every setup run (below) |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
 
@@ -1347,7 +1367,8 @@ byte-identical to a fresh install save for the setup date.
   the install runs, **then** the version is updated, the marker block refreshed,
   and existing config keys preserved.
 - **Given** a tool a capability uses has no copy abcd can run, **when** the
-  dependency category is approved, **then** the person is shown the tool
+  tool's own question is reached (at a terminal, whatever the approvals; off
+  one, once the dependency category is approved), **then** the person is shown the tool
   registry's explanation and asked per tool; the pinned, checked download is
   made only on a yes typed at a terminal or relayed by a host naming the tool,
   nothing is written unless it passes its check, the result reports what was

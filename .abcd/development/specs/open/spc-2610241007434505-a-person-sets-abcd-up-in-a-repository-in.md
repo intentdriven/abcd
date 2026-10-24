@@ -83,10 +83,16 @@ approvals' gap list.
 3. **A person-only step is its own question naming value and where.** Met for
    the identity (`TestIdentityQuestionStandsWithoutTheSettingsApproval`,
    `TestSettingsApprovalDoesNotListTheIdentity`), the download and the status
-   line (`TestDownloadComesBeforeTheStatusLine`), and each tool (its question
-   unchanged, now with the explanation as its material). The shell settings
-   question is the seam `stepShellSettings`/`shellSettingsAsks`, which
-   itd-2610240919030303 fills.
+   line (`TestDownloadComesBeforeTheStatusLine`), the commit checks
+   (`TestArmingTheHooksIsItsOwnQuestion`), and each tool (its question
+   unchanged, now with the explanation as its material, and at a terminal
+   never behind the dependency approval:
+   `TestCustomiseStillAsksTheToolQuestion`). The plan lists exactly the
+   questions the run puts, in the order it puts them (download, shell
+   settings, commit checks, status line, identity, tools):
+   `TestThePlanListsAToolOnlyWhenItWillAsk`,
+   `TestPersonOnlyQuestionsComeInThePlansOrder`. The shell settings question
+   is `stepShellPath`/`shellSettingsAsks`, which itd-2610240919030303 fills.
 4. **The download before the status line.** Met:
    `TestDownloadComesBeforeTheStatusLine` (a yes wires the status line in the
    same run; a no never asks about it), `TestFetchVerifiedChecksBothRecords`.
@@ -100,9 +106,16 @@ approvals' gap list.
    `TestQuestionMarkDrawsTheWholeQuestion`. The answers door writes each
    question whole, since it is a record, not a person.
 7. **A three-part report.** Met: `TestReportHasThreeParts`; the CLI prints
-   it.
+   it. A change the person approved that then failed is a needs-you step with
+   its reason, not only a note (`TestAFailedAbcdDownloadIsANeedsYouStep`,
+   `TestAFailedShellEditIsANeedsYouStep`), the step after a yes to the shell
+   settings is to open a new terminal
+   (`TestAfterAYesTheReportSaysOpenANewTerminal`), and committed hooks git
+   does not run keep the install from being reported clean
+   (`TestUnarmedHooksAreNeverClean`, iss-2610241134315056).
 8. **A fully set-up repository prints one line.** Met:
-   `TestFullySetUpRerunIsOneLine`.
+   `TestFullySetUpRerunIsOneLine`. At the stdin door's plan screen a bare
+   Enter is no answer and asks again (`TestPlanScreenBareEnterAsksAgain`).
 
 ## Footprint
 

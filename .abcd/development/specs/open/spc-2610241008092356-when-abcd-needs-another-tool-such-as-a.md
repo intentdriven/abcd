@@ -45,9 +45,11 @@ the downloaded asset. No version is ever looked up (invariant 7).
 
 `Installer.Plan(name)` decides, from the disk, PATH and the version a copy
 already installed reports through the tool's verify argv, with no network:
-`use-abcd-copy` (an intact recorded copy), `use-existing` (a copy installed
-some other way whose version lies in `Compatible`), `install` (abcd's own copy
-offered, saying which of the two will run in abcd and in the person's shell),
+`use-abcd-copy` (an intact recorded copy at the pinned version), `use-existing`
+(a copy installed some other way whose version lies in `Compatible`), `install`
+(abcd's own copy offered, saying which of the two will run in abcd and in the
+person's shell; over abcd's own copy too, as an upgrade while that copy is in
+`Compatible`, which keeps running on a no, and in its place when it is not),
 or `unavailable` (no download for the platform, or the bin folder holds a
 program of that name abcd did not install). `Installer.Install` refuses in CI,
 uses the plan, asks the front door's `Confirm` with the plan in the
@@ -111,13 +113,21 @@ check is not built here.
    record, failed download), `TestAFailedVerifyRemovesTheCopy`,
    `TestHowEachToolIsCheckedIsSaid`, `TestGhsRecordedBuildRecordVerifiesAgainstItsPinnedSigner`
    and `TestABuildRecordFromAnotherSignerOrForOtherBytesFails` over the
-   recorded real gh v2.103.2 bundles.
+   recorded real gh v2.103.2 bundles. At setup, a yes whose download then
+   fails is a needs-you step in the default report carrying the reason
+   (`TestAFailedToolDownloadIsANeedsYouStep`), and a required tool's step
+   says it is required (`TestRequiredToolStepIsNotCalledOptional`).
 3. A compatible copy is used and nothing installed; otherwise abcd's copy is
    offered, saying which runs, and the other copy is never changed:
    `TestACompatibleCopyIsUsedAndNothingInstalled`,
    `TestAnIncompatibleCopyGetsAbcdsOwnAndSaysWhichRuns`,
-   `TestABinFolderCopyAbcdDidNotInstallIsNeverReplaced`; at ahoy
-   `TestAnIncompatibleGitleaksIsAGapOfItsOwn`.
+   `TestABinFolderCopyAbcdDidNotInstallIsNeverReplaced`; abcd's own copy is
+   used only in `Compatible`, replaced only while it is still the bytes abcd
+   wrote: `TestAnOwnedCopyOutsideTheRangeIsReplaced`,
+   `TestAnOwnedCopyAtAnotherPinIsAnUpgrade`,
+   `TestAForeignFileAtAnOwnedPathIsNeverReplaced`; at ahoy
+   `TestAnIncompatibleGitleaksIsAGapOfItsOwn`, and the detection pass the
+   hooks run starts no tool (`TestDetectionNeverRunsTheTool`).
 4. abcd runs its copy whatever PATH says, and uninstall removes only its
    copies: `TestResolvePrefersAbcdsCopyWhateverPathSays`,
    `TestUninstallRemovesOnlyAbcdsIntactCopies`; at ahoy
