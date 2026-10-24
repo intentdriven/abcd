@@ -9,7 +9,11 @@ found_during: "autonomous run 2026-10-24, gated preflight of chore/capture-holdu
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/autonomy"
-remedy: "Drive both tests from an injected clock or a deadline the test controls rather than wall-clock time, so a slow machine cannot change their outcome."
+remedy: "Mark the owed-work reading incomplete when any git read fails past its budget, and make the two clock-judging tests measure the budget from the ask and retry under a budget wide enough to retry in."
+resolution: "A git read failing past the deadline now marks the owed-work reading incomplete, so the verdict fails open; the claim and session-end tests no longer judge this machine's git start-up time."
+impact: fix
+resolved_by:
+  commit: "3ef8e5b51"
 ---
 
 Two tests fail under machine load rather than on a defect: TestReadOwedHonoursDeadline in internal/core/autonomy found the read marked complete when the forge timed out, and TestHookSessionEndRetriesATransientRootFailure in internal/surface/cli ran out of retry time and staged nothing, both during a gated preflight at load 17 on ten cores
@@ -23,3 +27,7 @@ The first reading above was wrong: load was not the cause. All three tests below
 - `TestHookSessionEndRetriesATransientRootFailure` (internal/surface/cli) tests the retry under the real 1.2-second budget. On this machine one detection through the test's git shim costs most of that, so no retry fits.
 
 The same failure is filed from another worktree as iss-2610241829569682 (not yet on the default branch). <!-- record-lint: forward-looking -->
+
+## Grounds
+
+- pursued: we expect the three tests to pass on a machine where git starts slowly and the owed-work check never to report a cut-short reading as whole; a run where a git read past the deadline still yields Incomplete false would show it wrong
