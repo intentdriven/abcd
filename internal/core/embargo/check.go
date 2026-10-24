@@ -217,14 +217,14 @@ func Check(req CheckRequest) (CheckResult, error) {
 		}
 		st, err := s.Verify()
 		if err != nil {
-			return CheckResult{}, err
+			return CheckResult{}, atStore(err, s.Root)
 		}
 		stores = append(stores, heldStore{root: s.Root, st: st})
 	}
 	for _, root := range reach.Others {
 		st, err := readOtherStore(root)
 		if err != nil {
-			return CheckResult{}, err
+			return CheckResult{}, atStore(err, root)
 		}
 		stores = append(stores, heldStore{root: root, st: st})
 	}
