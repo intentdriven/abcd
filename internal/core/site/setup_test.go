@@ -990,9 +990,9 @@ func ghFreePath(t *testing.T) {
 // TestSetupOffersAMissingGh is the gh offer at site setup (the DQ3 ruling,
 // itd-63 criterion 2): with gh missing the forge stage puts the install to the
 // question with the registry's explanation. A no runs nothing and the note
-// carries the command; a yes reaches the registry's step (here Homebrew is
-// absent, so the step says so and nothing ran). Either way the forge stage is
-// not reached and says what remains.
+// carries the download; a yes reaches the pinned download (here a test
+// binary's installer has no network, so the download fails and nothing is
+// written). Either way the forge stage is not reached and says what remains.
 func TestSetupOffersAMissingGh(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -1000,7 +1000,7 @@ func TestSetupOffersAMissingGh(t *testing.T) {
 		want string
 	}{
 		{"no", tools.Answer{Why: "answered no at the terminal"}, "gh not installed (answered no at the terminal)"},
-		{"yes", tools.Answer{Yes: true}, "Homebrew (brew) is not on PATH, so the step cannot run"},
+		{"yes", tools.Answer{Yes: true}, "a test binary never reaches the network"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t)
@@ -1013,11 +1013,11 @@ func TestSetupOffersAMissingGh(t *testing.T) {
 					return tc.ans
 				}
 			})
-			if len(seen) != 1 || seen[0] != "gh: brew install gh" {
+			if len(seen) != 1 || !strings.HasPrefix(seen[0], "gh: download gh 2.103.2 into ") {
 				t.Fatalf("gh was not offered with its step: %v", seen)
 			}
 			notes := strings.Join(res.Notes, "\n")
-			for _, want := range []string{tc.want, "brew install gh"} {
+			for _, want := range []string{tc.want, "2.103.2"} {
 				if !strings.Contains(notes, want) {
 					t.Errorf("the notes lack %q:\n%s", want, notes)
 				}

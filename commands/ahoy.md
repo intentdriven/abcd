@@ -91,10 +91,14 @@ Then summarise the JSON for the user:
 - `gaps` — how many are outstanding, and for each actionable one its `title`,
   `category`, and `fix_hint`; call out which are `required`. A `dependency` gap
   carries `tool`, the tool registry's explanation: relay `what`, the
-  `requirement` for `capability_name`, `without_it`, `does`, the exact `step`
-  and `effects` (what the install does on the machine and over the network,
-  Homebrew's own analytics included) rather than a bare command, so the
-  person can judge the install.
+  `requirement` for `capability_name`, `without_it`, `does`, the `download`
+  (the version abcd's release fixes, its URL, the bin folder it goes into and
+  `checks`, how far it is checked, which says "checksum only" for a tool
+  whose makers sign nothing) and `effects` rather than a bare command, so the
+  person can judge the install. A `deps.<tool>_incompatible` gap names a copy
+  already installed whose version abcd does not work with: relay `tool.plan`'s
+  `existing` (where it is and why it does not fit) and `runs` (which copy
+  abcd will run, and which the person's shell runs).
 - A report-only gap, one with `resolvable` false, is a note abcd only reports:
   `install` never closes it, and the person has to act. Relay each one's
   `detail` and `fix_hint` as they stand, rather than folding it into the
@@ -774,12 +778,16 @@ it, before its first commit: on a fresh machine with no record, the commit check
 lets through the human identity the launcher supplied and refuses a machine's.
 
 **The tool question.** When a `dependency` gap is present and its category is
-approved, each missing tool is its own question, and a piped answer never
-answers it: installing runs a program on the machine. At a terminal the install
-shows the explanation and asks `Install <tool> now by running <step>? [y/N]`.
+approved, each tool abcd has no usable copy of is its own question, and a piped
+answer never answers it: installing puts a program on the machine. A copy
+already installed some other way is used, and nothing asked or installed, when
+its version lies in the range abcd works with; abcd's own recorded copy is used
+the same way. At a terminal the install shows the explanation and asks
+`Install <tool> now: download <tool> <version> into <bin folder>, <checks>? [y/N]`.
 Through this page, ask the technical facilitator with the host's question tool
 instead: present the gap's `tool` explanation (what it is, whether this
-capability needs it, what works without it, the exact step, what the install
+capability needs it, what works without it, the download and how far it is
+checked, any copy already installed and which copy will run, what the install
 does), and only on their yes run
 
 ```bash
@@ -789,16 +797,23 @@ does), and only on their yes run
 `--install-tool` is the relayed yes, for the named tool only, and it also
 answers the `dependency` category's question, which is then not asked (so a
 piped answer stream has one question fewer); never pass it without the user's
-answer. The result's `changes` reports what ran and whether
-its verify passed; a no, a failed step or a missing package manager is a `notes`
-line ending in what the capability continues on (`continuing on the native
-secret scanner`). The step runs in its own process group, bounded at 15
-minutes, and a timeout kills that group; a process the step moves out of the
-group (`setsid`) escapes the kill and can outlive the run, so abcd stops
-waiting on its output 10 seconds after the step ends and reports a step that
-left one behind as failed. `--yes` never installs a tool, and a run with `CI` set
-to any value, or with `GITHUB_ACTIONS=true`, installs none and is not asked. A name that is not a tool `ahoy install` checks
-for is refused, naming the ones it does.
+answer. The install downloads the one build abcd's release names (no version is
+ever looked up), checks its sha256 against the one abcd's release pins, and,
+for a tool whose makers sign their builds (gh), checks its signed build record
+against the pinned signing workflow, all before anything is written. Only then
+is the program written into the person's own bin folder (`$XDG_BIN_HOME`, else
+`$XDG_DATA_HOME/../bin`, else `~/.local/bin`) with no admin rights, verified by
+its version, and recorded in `~/.abcd.noindex/tools.json`, so abcd runs that
+copy whatever comes first on PATH and `abcd ahoy uninstall` removes it while it
+is still the bytes abcd wrote. The result's `changes` reports what was
+installed and how far it was checked; a no, a failed check or a failed download
+is a `notes` line saying why, that nothing was written, and what the capability
+continues on (`continuing on the native secret scanner`). abcd never changes a
+copy it did not install: when the bin folder already holds one of that name, it
+installs nothing and says so. No step it shows or runs needs admin rights.
+`--yes` never installs a tool, and a run with `CI` set to any value, or with
+`GITHUB_ACTIONS=true`, installs none and is not asked. A name that is not a tool
+`ahoy install` checks for is refused, naming the ones it does.
 
 **The seeded documentation check.** A repository with no
 `.abcd/docs-lint.json` gets one. Its `roots` list `docs` when that folder
@@ -1157,7 +1172,13 @@ abcd took the row — or removed, when none was recorded — and the receipt's
 `~/.abcd.noindex/backups/` first; a status line that is not abcd's is left
 alone, and `~/.abcd.noindex/statusline.json` itself stays, because it is the
 user's configuration. Run `uninstall` before removing abcd: a status line left
-pointing at a removed abcd is blank in every repository. It never touches
+pointing at a removed abcd is blank in every repository. It also removes each
+tool copy abcd installed, by the record in `~/.abcd.noindex/tools.json`, while
+it is still the bytes abcd wrote: report `tools`, one entry per recorded copy
+with its `path` (tilde form) and `note` (removed, already gone, or changed since
+and left untouched), and `tools_note` when the record could not be read. A copy
+of the same tool installed any other way was never recorded and is never
+touched. It never touches
 `hooks.json`. An entry that was
 installed with `--bin-dir` into a directory outside `PATH` cannot be found by a
 `PATH` scan — pass the same `--bin-dir <dir>` to `uninstall` to remove it.
@@ -1226,10 +1247,11 @@ named.
 The call goes through the GitHub CLI (`gh`), so the write is made by the user's
 own authenticated identity and abcd never holds a token. If `gh` is absent, the
 verb explains it from the tool registry (what it is, that these verbs require
-it, the exact install step and what that install does) and offers to install
-it, running the step only on a yes typed at a terminal. `--yes` never answers
+it, the checked download and what that install does) and offers to install
+it, downloading it only on a yes typed at a terminal. `--yes` never answers
 that offer, and neither does a piped answer, so through this page the offer is
-declined: the verb refuses, and its notes carry the explanation and the command.
+declined: the verb refuses, and its notes carry the explanation and the
+by-hand download (its URL, the sha256 to check, and where the program goes).
 Relay them; the install is the user's to run, by hand or by running the verb at
 a terminal. `ahoy --remote` never offers the install, since it writes nothing,
 and names this verb as the one that does. It is idempotent — a repository already in the desired

@@ -135,10 +135,10 @@ authenticated identity: abcd never holds a token.
 That identity is the GitHub CLI's, so a missing `gh` is met with the
 explain-then-install mode (itd-63): after the first three gates and before the
 read, the verb explains `gh` from the tool registry and offers to install it,
-running the registry's step only on a yes typed at a terminal. The pre-given
+making the registry's checked download only on a yes typed at a terminal. The pre-given
 yes answers the settings change and never the install of a program, and a
 piped answer is not a person's answer, so both decline the offer; the verb then
-refuses, its notes carrying the explanation and the command. A failed or
+refuses, its notes carrying the explanation and the by-hand download. A failed or
 unverified install refuses the same way, before any request leaves the
 machine. The read never offers the install, because looking is never acting;
 it names the apply as the verb that does.
@@ -838,7 +838,7 @@ approvals had before they listed anything.
 | `config-change` | visibility, oracle adapter, the `PATH` entry, the repository's own git identity, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
 | `machine-identity` | the person's own commit identity record on their machine; moving the identity pin a repository still stores to its owner's machine (itd-2610240918547728) | never a category approval: each is its own question, asked only at a terminal, written only on that yes; never under the approve-everything flag or a piped answer, and reported as optional work it skipped |
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`), for one that exists but cannot be read whole, a folder, a pipe, a file past the size cap or one without read permission (`marker.unreadable`), and for one whose block is missing or out of date in a folder that does not let abcd create a file there, which the write needs for its lock and temporary file (`marker.unwritable`) |
-| `dependency` | a tool a capability uses and cannot find: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json` | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the exact install step, what the install does) and its install step runs only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a no is reported as what the capability continues on |
+| `dependency` | a tool a capability uses with no copy abcd can run: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json`; missing, or installed some other way at a version outside the range abcd works with | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the download abcd's release pins and how far it is checked, any copy already installed and which copy will run, what the install does) and its download is made only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a compatible copy already installed is used and nothing installed; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd.noindex/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal said in counts (how many agents, how many at each tier, their fan-out bounds), naming no agent so the question fits, and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `drain-rule` | the offer of the repository's drain eligibility record (ruling BX2, itd-82): abcd's strict baseline as an accepted decision record carrying the four `drain_` fields, minted through the decision store's seam | the rule stated in one question and the record written only on a consent answered at a terminal; never under the approve-everything flag and never off a terminal, where neither its category nor the offer is asked (so a piped answer stream keeps its order), and reported as optional work it skipped; a decline records nothing, so the next install offers again; raised only while no accepted record states the rule, so a record stating it badly is never offered a second; only ever the baseline, never a loosened rule |
@@ -1055,17 +1055,27 @@ the answer is a flag naming the tool, which is how a host relays the answer its
 own question tool got; the approve-everything flag never installs a tool, and a
 CI runner never installs one and is not asked: the canonical CI detector
 (`internal/cienv`, `GITHUB_ACTIONS=true` or a truthy `CI`) refuses, and so does
-`CI` set to any value, `false` and `0` included. What runs is the
-registry's fixed argv for the platform, never a shell string and never a command
-composed from input, and only when the package manager resolves on `PATH`
-outside the repository (`internal/core/tools`). The step runs in a process group
-of its own, bounded at 15 minutes (its verify at 30 seconds), and a timeout kills
-that group through the handle abcd holds. The kill has one limit: a process the
-step moves into another group or session (`setsid`, `setpgid`) is out of its
-reach and can outlive the run. abcd stops reading output 10 seconds after the
-step exits or is killed, so such a process holding the output open cannot hold
-the run past its bound, and a step that exits cleanly while leaving one behind
-is reported as failed, saying so.
+`CI` set to any value, `false` and `0` included. What is fetched is fixed in
+abcd's own release (`internal/core/tools/release.go`, [adr-2610241057124151](../../decisions/adrs/2610241057124151-abcd-installs-the-tools-it-needs-from.md)):
+one GitHub release download per tool and platform, named by its full URL with
+its sha256 pinned beside it, so no version is ever looked up (invariant 7) and a
+tool updates only when abcd does. The download is bounded in size and time,
+https only, and reaches GitHub's release hosts alone; its sha256 must equal the
+pin, and for a tool whose makers sign their builds (gh) its signed build record
+must verify in process against the pinned signing workflow, both before
+anything is written. A tool that publishes no signed build record (gitleaks) is
+checked by checksum only, and the question and the result say so. Only then is
+the program read out of the archive by its exact name and written atomically
+into the person's own bin folder (`$XDG_BIN_HOME`, else `$XDG_DATA_HOME/../bin`,
+else `~/.local/bin`), never one inside the repository and never with admin
+rights; no step abcd shows or runs needs them. Its verify must report the pinned
+version, or the copy is removed again. The copy is recorded, path and digest, in
+`~/.abcd.noindex/tools.json`: abcd runs that copy whatever comes first on
+`PATH` while it is still the bytes abcd wrote, and uninstall removes it on the
+same condition. A copy installed some other way is used when its version lies in
+the tool's compatible range, and is never changed: when the bin folder already
+holds a program of that name abcd did not install, it installs nothing and says
+why.
 
 The non-interactive flags pre-answer the prompts: approve every resolvable
 category, decide the adoption question either way, set the marker target, the
@@ -1336,12 +1346,14 @@ byte-identical to a fresh install save for the setup date.
 - **Given** a repo with the install run at an older setup version, **when**
   the install runs, **then** the version is updated, the marker block refreshed,
   and existing config keys preserved.
-- **Given** a tool a capability uses is not on `PATH`, **when** the dependency
-  category is approved, **then** the person is shown the tool registry's
-  explanation and asked per tool; the registry's fixed install step runs only
-  on a yes typed at a terminal or relayed by a host naming the tool, the result
-  reports what ran and whether its verify passed, and a no reports what the
-  capability continues on (itd-63).
+- **Given** a tool a capability uses has no copy abcd can run, **when** the
+  dependency category is approved, **then** the person is shown the tool
+  registry's explanation and asked per tool; the pinned, checked download is
+  made only on a yes typed at a terminal or relayed by a host naming the tool,
+  nothing is written unless it passes its check, the result reports what was
+  installed and how far it was checked (checksum only for a tool that signs
+  nothing), and a no reports what the capability continues on (itd-63,
+  itd-2610240918594138).
 - **Given** no oracle adapter is wired, **when** detection resolves the oracle,
   **then** it stays host-delegated: abcd needs no API keys or model config,
   because it emits prompts the host runs (adr-25), and an adapter can be

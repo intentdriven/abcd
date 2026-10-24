@@ -3,7 +3,6 @@ package ahoy
 import (
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -260,12 +259,19 @@ func detectPluginRoot(ok bool) []Gap {
 var DependencyTools = []string{"gitleaks"}
 
 // detectDependencies names each external tool a capability here would use and
-// cannot find, with the tool registry's explanation rather than a bare command
-// (itd-63). gitleaks is the one ahoy checks: optional over the native secret
-// scanner, and REQUIRED in a repository that armed it in
-// .abcd/config/gitleaks.json, whose release refuses without it. An
+// has no copy of that abcd can run, with the tool registry's explanation
+// rather than a bare command (itd-63). gitleaks is the one ahoy checks:
+// optional over the native secret scanner, and REQUIRED in a repository that
+// armed it in .abcd/config/gitleaks.json, whose release refuses without it. An
 // armed repository that names an existing binary by path has no gap: the
 // adapter judges that path itself, and a refusal there is not a missing tool.
+//
+// Whether a copy is there is the installer's plan (itd-2610240918594138): abcd's
+// own recorded copy, or one installed some other way whose version lies in the
+// range abcd works with, is no gap; a copy outside that range is a gap of its
+// own (deps.<tool>_incompatible) that names the copy and why, so the install
+// offers abcd's copy beside it without changing it. The plan reads the disk and
+// the copy's version output and asks the network nothing.
 //
 // trufflehog is not offered: nothing in abcd runs it (iss-2609261447331434),
 // and a gap asking a person to install a program abcd never uses is not an
@@ -278,19 +284,35 @@ func detectDependencies(cwd string) []Gap {
 			return nil
 		}
 	}
-	if onPath(cwd, "gitleaks") {
+	guard, err := filepath.Abs(cwd)
+	if err != nil {
+		guard = cwd
+	}
+	plan := newToolInstaller(guard).Plan("gitleaks")
+	if plan.Action == tools.UseOwned || plan.Action == tools.UseExisting {
 		return nil
 	}
 	e := tools.Explain("gitleaks", capability)
-	return []Gap{{
+	e.Plan = &plan
+	g := Gap{
 		ID: "deps.gitleaks_missing", Category: Dependency, Scope: "machine",
 		Title:      "gitleaks not on PATH",
 		Detail:     string(e.Requirement) + " for " + e.CapabilityName + "; without it: " + e.WithoutIt + ".",
-		FixHint:    e.StepText() + " (abcd ahoy install explains it and runs it only on your yes)",
+		FixHint:    e.StepText() + " (abcd ahoy install explains it and installs it only on your yes)",
 		Required:   e.Requirement == tools.Required,
 		Resolvable: true,
 		Tool:       &e,
-	}}
+	}
+	if plan.Existing != nil {
+		g.ID = "deps.gitleaks_incompatible"
+		g.Title = "the gitleaks on PATH is not a version abcd works with"
+		g.Detail = plan.Existing.Path + ": " + plan.Existing.Why + "; " + g.Detail
+	}
+	if plan.Action == tools.Unavailable {
+		g.FixHint = plan.Why
+		g.Resolvable = false
+	}
+	return []Gap{g}
 }
 
 // onPath reports whether tool is installed where abcd would run it from: PATH
@@ -298,8 +320,10 @@ func detectDependencies(cwd string) []Gap {
 // PATH resolves inside the checkout, lexically or after symlinks, is
 // repository content that the installer refuses to run, so it does not count
 // as installed either; the judgement is the installer's own (tools.WithinTree).
+// abcd's own recorded copy counts wherever it is (tools.Resolve), since that is
+// the copy abcd runs.
 func onPath(root, tool string) bool {
-	p, err := exec.LookPath(tool)
+	p, err := tools.Resolve(tool)
 	if err != nil || !filepath.IsAbs(p) {
 		return false
 	}

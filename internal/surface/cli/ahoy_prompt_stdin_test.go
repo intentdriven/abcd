@@ -133,7 +133,7 @@ var categoryPromptOrder = []string{
 // Fewer than two questions is a no-op, not a failure. Which categories a repo
 // has gaps in depends on the HOST: the dependency approval exists only while
 // the opt-in scanners are off PATH, and PATH is the one thing the hermetic repo
-// does not redirect. A maintainer who follows abcd's own `brew install gitleaks`
+// does not redirect. A maintainer who follows abcd's own gitleaks install
 // hint must not thereby turn preflight red — so a caller that needs a minimum
 // number of questions asserts that itself, over a repo state it controls.
 func assertCategoryQuestionOrder(t *testing.T, transcript string) {
