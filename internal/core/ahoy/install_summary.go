@@ -48,6 +48,8 @@ const (
 	writeStatusLineBackup        writeKind = "status-line-backup"
 	writeRouting                 writeKind = "routing"
 	writeDrainRule               writeKind = "drain-rule"
+	writeShellPath               writeKind = "shell-path"
+	writeShellPathBackup         writeKind = "shell-path-backup"
 	writeToolFileRetired         writeKind = "conventions-file-retired"
 	writeRules                   writeKind = "rules"
 	writeIdentityRecord          writeKind = "identity-record"
@@ -66,7 +68,7 @@ var allWriteKinds = []writeKind{
 	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsFolder, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeOutboundHook, writeOutboundForge, writeOutboundBinary, writeOutboundShim, writeOutboundChain, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeReadmeParts, writeReadmeCreated, writeReadmePartsRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPinRemoved, writeProductionMode, writeArtefactKind, writeCommandEntry, writeSessionStore, writeIdentityRecord,
-	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
+	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule, writeShellPath, writeShellPathBackup,
 }
 
 // writeKindHelp is the plain-language explanation of each kind of write.
@@ -240,6 +242,16 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		What:   "Recorded which open issues abcd drain may fix without asking you, as a decision record in this repository.",
 		Why:    "abcd drain refuses to run in a repository until it records that rule; this one is abcd's strict default.",
 		Action: "Commit the record. Edit its drain_ fields to change the rule; abcd drain names any loosening.",
+	},
+	writeShellPath: {
+		What:   "Added one line to your shell settings that puts the folder abcd is installed in on your PATH.",
+		Why:    "Without it a new terminal cannot run abcd by name.",
+		Action: "Open a new terminal. abcd ahoy uninstall takes the line out again.",
+	},
+	writeShellPathBackup: {
+		What:   "Kept a copy of your shell settings file, as it was, before abcd added its PATH line.",
+		Why:    "If your shell settings look wrong afterwards, the copy is the file exactly as it stood.",
+		Action: "Nothing. To undo the change by hand, copy the file listed back over your shell settings file.",
 	},
 }
 

@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/shellpath"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 )
 
@@ -25,5 +26,13 @@ func TestMain(m *testing.M) {
 	// build metadata; the copy's claimed release is stood in, and the reader's
 	// own tests call it directly (cold_cache_adopt_provenance_test.go).
 	copyRelease = func([]byte) (string, error) { return stubCopyRelease, nil }
+	// No test plans against, or edits, the machine's own shell settings: the
+	// shell-settings offer sees no shell it edits unless a test names one
+	// (shell_path_test.go).
+	shellEnv = func() shellpath.Env {
+		e := shellpath.CurrentEnv()
+		e.Shell, e.ZDotDir = "", ""
+		return e
+	}
 	os.Exit(m.Run())
 }

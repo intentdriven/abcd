@@ -618,8 +618,9 @@ home-scoped `path-entry` record names it, read exactly as the hook shims read
 it; any other dangling link asserts no provenance (iss-2609100506263330).
 Three states are named
 rather than lumped together: an owned entry whose target has gone is dangling; an
-install directory absent from `PATH` is required but not resolvable, for which
-abcd prints a one-line export fix and never edits a shell profile; and any
+install directory absent from `PATH` is required but not resolvable, carrying
+the one-line export fix, beside which a person at a terminal is offered the
+line added to their shell settings (below); and any
 `abcd` that comes *before* abcd's own entry is shadowed, because an entry that is
 correct and never reached is not an install (iss-171). A link whose target has
 gone is the exception to "never reached" in wording, not in the gap: it runs
@@ -637,6 +638,23 @@ rather than only named: its size, when it was last modified, and whether its
 embedded Go build metadata identifies it as an abcd build and of which version,
 read without running it, so the person deciding whether to clear it need not
 inspect it by hand (iss-2609120447482255).
+
+**Setup asks before it puts abcd's folder on the `PATH`.** When the folder the
+entry is in is not on `PATH`, install asks a person at a terminal, once, whether
+to add one line to the startup file their login shell reads, naming the file and
+the line (`path.shell_settings_offered`, adr-2610241022330872,
+itd-2610240919030303). zsh gets `${ZDOTDIR:-$HOME}/.zshrc`; bash gets the login
+file on macOS (the first of `.bash_profile`, `.bash_login` and `.profile`, else
+a new `.bash_profile`) and `~/.bashrc` on Linux. On a yes abcd keeps a copy of
+the file in `~/.abcd.noindex/backups/`, adds
+`export PATH="$HOME/.local/bin:$PATH"` at the end with abcd's marker comment
+after it, reads the file back, records the line in `~/.abcd.noindex/shell-path.json`, and
+says to open a new terminal. It edits only a regular file it can read whole,
+owned by the person and writable by no one else. Settings that already add the
+folder are left alone, and a file that is a link kept elsewhere (shared
+dotfiles) is never offered: its line goes on the checklist, as it does on a no,
+under the approve-everything flag, and off a terminal. Uninstall removes the
+line abcd added and nothing else in the file.
 
 **The name-guard scaffolding is reported at the granularity the technical
 facilitator can act on.** Each absent artefact is a gap abcd will create; every other state is a

@@ -326,12 +326,20 @@ type StatusLineReceipt struct {
 	Note     string `json:"note"`
 }
 
+// ShellPathReceipt is what uninstall did with the PATH line abcd added to the
+// person's shell settings.
+type ShellPathReceipt struct {
+	Removed bool   `json:"removed"`
+	Note    string `json:"note"`
+}
+
 // UninstallReceipt is the outcome of Uninstall.
 type UninstallReceipt struct {
 	Marker     MarkerReceipt     `json:"marker"`
 	Readme     ReadmeReceipt     `json:"readme"`
 	Symlink    SymlinkReceipt    `json:"symlink"`
 	StatusLine StatusLineReceipt `json:"status_line"`
+	ShellPath  ShellPathReceipt  `json:"shell_path"`
 }
 
 // DoctorReport is the outcome of Doctor: the detection envelope plus read-only

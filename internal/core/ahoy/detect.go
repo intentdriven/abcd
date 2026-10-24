@@ -984,9 +984,11 @@ func detectShadowedEntry(pluginRoot, target string) []Gap {
 
 // detectBinDirOnPath reports an install directory that is not on PATH. It is a
 // gap in its own right: the entry exists and abcd still cannot be run by name,
-// which otherwise reads as a broken install. The remedy is printed, never
-// applied — abcd states the one-line export and leaves the user's shell profile
-// alone (script-first), so the gap is required but NOT resolvable.
+// which otherwise reads as a broken install. The gap is required but NOT
+// resolvable: it is the diagnosis, carrying the one-line export. The remedy
+// abcd can apply is a separate, optional offer (detectShellPath): the line
+// added to the person's shell settings, asked at a terminal and made only on a
+// yes (itd-2610240919030303).
 func detectBinDirOnPath(dir string, installed bool) []Gap {
 	if dir == "" || dirOnPath(dir) {
 		return nil
@@ -998,13 +1000,13 @@ func detectBinDirOnPath(dir string, installed bool) []Gap {
 	if !installed {
 		return nil
 	}
-	return []Gap{{
+	return append([]Gap{{
 		ID: "path.bin_dir_not_on_path", Category: ConfigChange, Scope: "machine",
 		Title:    displayPath(dir) + " is not on PATH",
 		Detail:   "abcd is installed at " + displayPath(filepath.Join(dir, binName)) + ". " + pathReachMessage(dir),
-		FixHint:  "Add it to your shell profile: " + exportPathLine(dir),
+		FixHint:  "Run `abcd ahoy install` at a terminal, which offers to add this line to your shell settings, or add it yourself: " + exportPathLine(dir),
 		Required: true, Resolvable: false,
-	}}
+	}}, detectShellPath(dir)...)
 }
 
 // detectInstallMode reports the current PATH-target install mode: "dev (tip

@@ -1,11 +1,13 @@
 package ahoy
 
 import (
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/core/shellpath"
 )
 
 // heldQuestion is the value question h as setup builds it (valueQuestion, the
@@ -88,7 +90,8 @@ func TestEverySetupQuestionPassesTheLimits(t *testing.T) {
 	}
 	qs = append(qs,
 		confirmQuestion(t, len(qs)+1, OracleRoutingMachineGapID, machineRoutingQuestion(), oracleRoutingMachineQuestionTail),
-		confirmQuestion(t, len(qs)+2, OracleRoutingRepoGapID, repoRoutingQuestion(), oracleRoutingRepoQuestionTail))
+		confirmQuestion(t, len(qs)+2, OracleRoutingRepoGapID, repoRoutingQuestion(), oracleRoutingRepoQuestionTail),
+		shellPathLimitQuestion(t, len(qs)+3))
 
 	var asks []question.Ask
 	for _, q := range qs {
@@ -183,4 +186,20 @@ func readmeLimitAsks(t *testing.T) []question.Ask {
 		out = append(out, v.Asks...)
 	}
 	return out
+}
+
+// shellPathLimitQuestion is the shell-settings offer in its tallest form: a
+// new file abcd would create, in a folder below the home.
+func shellPathLimitQuestion(t *testing.T, n int) question.Question {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home) // paths shown in the tilde form, as a person sees them
+	dir := filepath.Join(home, ".local", "bin")
+	plan := shellpath.PlanFor(shellpath.Env{Home: home, Shell: "/bin/bash", GOOS: "darwin"}, dir)
+	if plan.State != shellpath.Offer {
+		t.Fatalf("no offer to hold to the limits: %+v", plan)
+	}
+	text := shellPathQuestion(dir, plan)
+	_, tail := splitConfirm(text)
+	return confirmQuestion(t, n, ShellPathOfferGapID, text, tail)
 }
