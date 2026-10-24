@@ -927,14 +927,21 @@ no more than a tenth of one core for ten minutes, every waiter behind the hold
 says so in one more `waiting for capacity:` line, as a fact: `the holder (pid
 N, <checkout>) has held the test slot for M using little CPU (under 10% of a
 core for the last 10m0s); if it is yours and stuck, stop it by its own pid`.
-The holder says the same on its own standard error while others queue for its
-slot. Little CPU is not a verdict: a slow run waiting on its subprocesses uses
+The holder says the same on its own standard error while others queue at any
+gate it holds. Little CPU is not a verdict: a slow run waiting on its subprocesses uses
 little too, so only its owner can judge. Each watcher judges from its own
 looks, so a waiter that joins late watches ten minutes before it says
 anything; a child that comes and goes between looks counts as work, and a tree
 with a waiter of its own queued at a gate is not counted quiet. The hold stays
 in force and nothing is signalled. Stop a command by its own pid, never by
 pattern.
+
+What it does not do: a slow run whose tree keeps starting short git
+children counts as working and is never reported, which was the case that
+prompted the notice, so the absence of a notice is no sign that a holder is
+working. Only a holder in your own account's hold record is watched, and a
+waiter that joined in the last ten minutes has not measured the holder yet
+(iss-2610241457170255).
 
 While it waits, in a checkout, the waiter also keeps your own reservations
 from lapsing, so a record you reserved by hand stays yours while your

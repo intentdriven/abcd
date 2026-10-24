@@ -430,6 +430,9 @@ type WaitResult struct {
 	// its tree has used little CPU for QuietSpan (load_quiet.go). It is said,
 	// never acted on.
 	Quiet *QuietHolder `json:"quiet_holder,omitempty"`
+	// HoldGates are the gates whose hold this wait took, when it opened: its
+	// own, and the race gate's too for a race command above one slot.
+	HoldGates []string `json:"-"`
 	// Unmark stops the command form's mark (WaitRequest.Mark). The caller calls
 	// it once its command has started, or could not be started; nil when there
 	// is no mark.
@@ -600,7 +603,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 						return res, fmt.Errorf("the hold %s could not be given up: %w", abcdhome.Display(holdFileName(res.Hold.Gate)), err)
 					}
 				}
-				res.Status, res.Hold, res.Waiters = "", nil, first
+				res.Status, res.Hold, res.HoldGates, res.Waiters = "", nil, nil, first
 				res.Backoffs++
 				// The run of looks ends here. A waiter that opened beside this
 				// one past its cap is one this wait had stopped counting, ahead
@@ -866,6 +869,15 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				own.Until, own.Form = t.Add(WaitCommandCap), HoldCommand
 			}
 		}
+		// The checkout is only for naming the holder: a record past
+		// maxHoldBytes reads as no hold at all, which would admit a second
+		// holder, so a checkout too long for the record, as written with its
+		// escapes, is left out of it.
+		probe := own
+		probe.Gate = GateTests // the longer gate name, so every gate's record fits
+		if raw, err := json.Marshal(probe); err == nil && len(raw)+1 > maxHoldBytes {
+			own.Dir = ""
+		}
 		for _, gate := range free {
 			rec := own
 			rec.Gate = gate
@@ -877,7 +889,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				return fmt.Errorf("%s: %w", abcdhome.Display(holdFileName(gate)), err)
 			}
 		}
-		res.Hold = &own
+		res.Hold, res.HoldGates = &own, free
 		return nil
 	})
 	switch {

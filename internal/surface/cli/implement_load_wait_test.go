@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -289,5 +290,108 @@ func TestImplementLoadWaitSaysAQuietHolder(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output lacks %q:\n%s", want, out)
 		}
+	}
+}
+
+// lockedBuffer is a writer a goroutine writes while the test reads it.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
+
+// TestStartQuietWatchSaysItsOwnQuiet drives the holder's own watch at a short
+// interval against a quiet tree on macOS's reader, a fresh ps child of the
+// holder at every read: the reads are left out, and the holder says once,
+// on its own output, that it has held the slot using little CPU while a
+// waiter queues.
+func TestStartQuietWatchSaysItsOwnQuiet(t *testing.T) {
+	var mu sync.Mutex
+	t0 := time.Date(2026, 10, 24, 14, 0, 0, 0, time.UTC)
+	now, n := t0, 0
+	prevRead, prevArgs, prevNow, prevEvery := loadReader, loadArgsReader, loadNow, loadQuietEvery
+	t.Cleanup(func() { loadReader, loadArgsReader, loadNow, loadQuietEvery = prevRead, prevArgs, prevNow, prevEvery })
+	loadQuietEvery = time.Millisecond
+	loadNow = func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
+	loadReader = func() (machineload.Snapshot, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		now = now.Add(time.Minute)
+		n++
+		aged := now.Sub(t0)
+		ps := machineload.Proc{PID: 9000 + n, PPID: 777, PGID: 777, UID: 501, CPU: 20 * time.Millisecond, Name: "ps"}
+		snap := machine(3, 3, 3,
+			machineload.Proc{PID: 777, PPID: 1, PGID: 777, UID: 501, Age: time.Minute + aged, Name: "abcd"},
+			machineload.Proc{PID: 778, PPID: 777, PGID: 777, UID: 501, Age: time.Minute + aged, CPU: time.Second, Name: "make"},
+			machineload.Proc{PID: 60000, PPID: 1, PGID: 60000, UID: 501, Age: aged, Name: "abcd"},
+			ps)
+		snap.ReaderPID = ps.PID
+		return snap, nil
+	}
+	loadArgsReader = func([]int) (map[int][]string, error) {
+		return map[int][]string{60000: {"implement", "load", "--wait", "--", "make", "preflight"}}, nil
+	}
+	var out lockedBuffer
+	stop := startQuietWatch(&out, implement.WaitHolder{PID: 777, Opened: t0, Form: implement.HoldCommand, Gate: implement.GateTests, Dir: "/work/repo"}, nil)
+	for deadline := time.Now().Add(10 * time.Second); !strings.Contains(out.String(), "using little CPU") && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	stop()
+	got := out.String()
+	if strings.Count(got, "using little CPU") != 1 {
+		t.Fatalf("want the quiet said once:\n%s", got)
+	}
+	for _, want := range []string{"this command (pid 777, /work/repo) has held the test slot for", "another waiter queues (pid 60000)", "stop it by its own pid"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output lacks %q:\n%s", want, got)
+		}
+	}
+}
+
+// TestImplementLoadWaitReleasesItsHoldBeforeStoppingTheWatch: the holder's
+// watch can be in the middle of a slow read of the table when the command
+// ends, and the hold is released without waiting for that read.
+func TestImplementLoadWaitReleasesItsHoldBeforeStoppingTheWatch(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	prevEvery, prevMark := loadQuietEvery, loadMark
+	t.Cleanup(func() { loadQuietEvery, loadMark = prevEvery, prevMark })
+	loadQuietEvery = 10 * time.Millisecond
+	loadMark = func() (func(), error) { return func() {}, nil }
+	home, _ := os.UserHomeDir()
+	hold := abcdhome.Path(home, implement.WaitHoldFileName)
+	started := filepath.Join(t.TempDir(), "started")
+	read := loadReader
+	var mu sync.Mutex
+	released := map[bool]int{}
+	loadReader = func() (machineload.Snapshot, error) {
+		if _, err := os.Stat(started); err == nil {
+			// The watch's read: slow until the hold is gone, as a ps run on a
+			// loaded machine can be, or three seconds at most.
+			gone := false
+			for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+				if _, err := os.Stat(hold); errors.Is(err, os.ErrNotExist) {
+					gone = true
+					break
+				}
+			}
+			mu.Lock()
+			released[gone]++
+			mu.Unlock()
+		}
+		return read()
+	}
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "sh", "-c", `touch "$1"; sleep 0.2`, "sh", started)
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+	if released[true] == 0 || released[false] != 0 {
+		t.Fatalf("watch reads ending with the hold released / still held: %d / %d; want the hold released while a read was in flight", released[true], released[false])
 	}
 }

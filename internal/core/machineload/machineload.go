@@ -68,6 +68,10 @@ type Snapshot struct {
 	// load average that reads while the process table does not is still a reading.
 	Procs    []Proc
 	HasProcs bool
+	// ReaderPID is the process that read the table, when it is in it: on
+	// macOS the reader's own ps, which lists itself as a child of the caller.
+	// Zero when the table was read without a child (Linux's /proc).
+	ReaderPID int
 }
 
 // ErrUnsupported is returned by Read on a platform the readers do not cover.

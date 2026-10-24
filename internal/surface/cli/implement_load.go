@@ -194,7 +194,10 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"the slot, and the holder says so on its own standard error while others queue.\n" +
 			"Little CPU is a fact, not a verdict: a slow run waiting on its subprocesses uses\n" +
 			"little too. The hold stays in force and nothing is signalled; a tree with a\n" +
-			"waiter of its own queued at a gate is not counted quiet. A\n" +
+			"waiter of its own queued at a gate is not counted quiet. A tree that keeps\n" +
+			"starting short children (git) counts as working and is never named, so no\n" +
+			"notice is no sign that a holder is working; only your own account's hold is\n" +
+			"watched, and each waiter needs " + implement.QuietSpan.String() + " of its own looks first. A\n" +
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
 			"While it waits, in a checkout, the waiter keeps your own reservations from\n" +
 			"lapsing: at once and then every five minutes it renews each of your live\n" +
@@ -324,10 +327,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	}
 	stopWatch := func() {}
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
-		stopWatch = startQuietWatch(cmd.ErrOrStderr(), *res.Hold)
+		stopWatch = startQuietWatch(cmd.ErrOrStderr(), *res.Hold, res.HoldGates)
 	}
 	code, runErr := runGated(cmd, command, unmark)
-	stopWatch()
 	unmark()
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
 		home, _ := os.UserHomeDir()
@@ -336,6 +338,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 				abcdhome.Display(implement.HoldFileName(res.Hold.Gate)), err)
 		}
 	}
+	// The watch is stopped only after the hold is released: a look in flight
+	// can take a slow ps run, and the slot is not kept for it.
+	stopWatch()
 	if runErr != nil {
 		return &exitError{Code: 127, Msg: "abcd implement load --wait: the command could not be started: " + runErr.Error()}
 	}
@@ -419,12 +424,15 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 // startQuietWatch looks at the holder's own process tree every
 // loadQuietEvery while its command runs (implement.HoldWatch), and says on w,
 // once each time it goes quiet, when the tree has used little CPU for
-// implement.QuietSpan while others queue at its gate, so the command's owner
+// implement.QuietSpan while others queue at any gate it holds, so the command's owner
 // sees it beside the command's output and can judge whether it is still
 // working. It never stops the command: that is the owner's to do.
-func startQuietWatch(w io.Writer, h implement.WaitHolder) (stop func()) {
+func startQuietWatch(w io.Writer, h implement.WaitHolder, gates []string) (stop func()) {
+	if len(gates) == 0 {
+		gates = []string{h.Gate}
+	}
 	hw := &implement.HoldWatch{Read: loadReader, ReadArgs: loadArgsReader, Now: loadNow,
-		Self: machineload.Self{PID: h.PID, UID: uint32(os.Geteuid())}, Race: h.Gate == implement.GateRace}
+		Self: machineload.Self{PID: h.PID, UID: uint32(os.Geteuid())}, Gates: gates}
 	done := make(chan struct{})
 	finished := make(chan struct{})
 	go func() {

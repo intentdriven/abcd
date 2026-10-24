@@ -2442,7 +2442,10 @@ its command runs, so once the holder's whole process tree has used no more than
 the slot, and the holder says so on its own standard error while others queue.
 Little CPU is a fact, not a verdict: a slow run waiting on its subprocesses uses
 little too. The hold stays in force and nothing is signalled; a tree with a
-waiter of its own queued at a gate is not counted quiet. A
+waiter of its own queued at a gate is not counted quiet. A tree that keeps
+starting short children (git) counts as working and is never named, so no
+notice is no sign that a holder is working; only your own account's hold is
+watched, and each waiter needs 10m0s of its own looks first. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 While it waits, in a checkout, the waiter keeps your own reservations from

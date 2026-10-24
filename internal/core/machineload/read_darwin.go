@@ -50,14 +50,20 @@ func Read() (Snapshot, error) {
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		return snap, fmt.Errorf("could not read the process table (%s: %w)", psPath, err)
+	}
+	// ps -ax lists itself, as a child of the reader: say which process it
+	// was, so a caller judging its own process tree can leave it out.
+	reader := cmd.Process.Pid
+	if err := cmd.Wait(); err != nil {
 		return snap, fmt.Errorf("could not read the process table (%s: %w)", psPath, err)
 	}
 	procs, err := parseDarwinPS(out.Bytes())
 	if err != nil {
 		return snap, fmt.Errorf("could not read the process table (%w)", err)
 	}
-	snap.Procs, snap.HasProcs = procs, true
+	snap.Procs, snap.HasProcs, snap.ReaderPID = procs, true, reader
 	return snap, nil
 }
 

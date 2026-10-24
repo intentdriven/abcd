@@ -154,6 +154,25 @@ func treeCPU(procs []machineload.Proc, pid int) map[int]time.Duration {
 	return out
 }
 
+// readerName is the base name of the program machineload.Read runs on macOS
+// to read the table.
+const readerName = "ps"
+
+// withoutReaders is snap without the processes that only read the table: the
+// one that read this snapshot (Snapshot.ReaderPID, on macOS a ps child of the
+// reader, which lists itself), and any ps that is a direct child of holder,
+// the holder's own read caught by another's look. Each is gone by the next
+// look, and a member gone between looks counts as work, so left in, a
+// holder's own reads would keep it from ever being quiet. The holder starts
+// no ps but its reads, and another's reader is gone before its arguments
+// could be asked for, so for it the name is the handle there is.
+func withoutReaders(snap machineload.Snapshot, holder int) machineload.Snapshot {
+	snap.Procs = slices.DeleteFunc(slices.Clone(snap.Procs), func(p machineload.Proc) bool {
+		return (snap.ReaderPID != 0 && p.PID == snap.ReaderPID) || (p.PPID == holder && p.Name == readerName)
+	})
+	return snap
+}
+
 // queuedUnder reports whether any of the waiters queued at either gate, as
 // self reads the table, descends from pid.
 func queuedUnder(snap machineload.Snapshot, self machineload.Self, args map[int][]string, pid int) bool {
@@ -174,6 +193,7 @@ func judgeHolder(w *quietWatch, h *WaitHolder, snap machineload.Snapshot, self m
 		*w = quietWatch{}
 		return nil
 	}
+	snap = withoutReaders(snap, h.PID)
 	quiet := w.observe(snap.Procs, h.PID, h.StartUnix, queuedUnder(snap, self, args, h.PID), t)
 	if quiet <= 0 {
 		return nil
@@ -194,9 +214,10 @@ type HoldWatch struct {
 	Now      func() time.Time
 	// Self is the holder.
 	Self machineload.Self
-	// Race is the holder's gate, the race gate's when set.
-	Race bool
-	w    quietWatch
+	// Gates are the gates the holder holds (WaitResult.HoldGates): a race
+	// command above one slot holds both, and a waiter at either waits on it.
+	Gates []string
+	w     quietWatch
 }
 
 // Look takes one look and returns how long the holder's tree has been quiet
@@ -212,11 +233,18 @@ func (hw *HoldWatch) Look() (time.Duration, []int) {
 	if err != nil {
 		return 0, nil
 	}
+	snap = withoutReaders(snap, hw.Self.PID)
 	// The holder is this process, so its start needs no proving; one read
 	// from its age would differ by a second between looks on macOS.
 	quiet := hw.w.observe(snap.Procs, hw.Self.PID, 0, queuedUnder(snap, hw.Self, args, hw.Self.PID), hw.Now())
-	waiting := slices.DeleteFunc(machineload.QueuedAt(snap, hw.Self, args, hw.Race), func(q int) bool {
-		return machineload.Descends(snap.Procs, q, hw.Self.PID)
-	})
+	var waiting []int
+	for _, gate := range hw.Gates {
+		for _, q := range machineload.QueuedAt(snap, hw.Self, args, gate == GateRace) {
+			if !machineload.Descends(snap.Procs, q, hw.Self.PID) && !slices.Contains(waiting, q) {
+				waiting = append(waiting, q)
+			}
+		}
+	}
+	slices.Sort(waiting)
 	return quiet, waiting
 }
