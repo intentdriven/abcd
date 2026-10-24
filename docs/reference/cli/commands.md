@@ -2324,14 +2324,18 @@ loop; `make preflight` runs its test stages through it. It blocks until the
 one-minute load average is below the wait limit (`wait-load <load>` in the same
 file; by default twice the online core count), no other `go test -race` run is
 live, no other `make preflight` is running and no other waiter is ahead of it in
-the queue (one that started earlier, or within two seconds of it, and has the
-lower pid: two whose start and pid disagree, as after the process ids wrap, wait
-on neither) or running its command, under any account: all of it is
+the queue (one that started earlier, whatever its pid, or within two seconds of
+it with the lower pid) or running its command, under any account: all of it is
 read from the process table, which shows every account's processes: no file
 another account can write is read; the gate reads only the process table (and,
 for the wait limit, your own load-limits). A waiter ahead of yours still delays
 yours until it opens or reaches its own --timeout, whatever account it runs
-under and whatever its own account's wait limit is. A preflight whose own
+under and whatever its own account's wait limit is, with one exception: a
+waiter ahead with a higher pid, as after the process ids wrap, may run an abcd
+built before this order, which waits on every lower pid and so on yours, so once
+such waiters alone have kept yours shut for 5m0s on end, and a step more
+for each such waiter ahead beyond the first, yours stops counting them. A
+preflight whose own
 waiter is queued
 takes that waiter's place in the queue, and a waiter beneath a waiter running its
 command (`--wait -- make preflight`) takes that ancestor's place, ahead of every
@@ -2339,10 +2343,12 @@ queued waiter. Once it finds all of that clear it waits
 a random 15s to 1m0s and checks everything again, and opens only if the
 re-check is clear too, so two starters in one quiet minute do not start together.
 With a command it then shows itself as running it and looks once more 2s
-later, before starting it: across accounts, which share no hold, two waiters whose
-start and pid disagree can open in one moment, and the one with the higher pid
-stands back, gives up its hold, re-draws its jitter and waits again (at most 3
-times), while the lower pid runs its command.
+later, before starting it: across accounts, which share no hold, two waiters can
+open in one moment, and each stands back from the other unless it started earlier
+and has the lower pid too: it gives up its hold, re-draws its jitter and waits
+again (at most 3 times), while the other runs its command. So the later
+start stands back whatever the pids, and the earlier one from a lower pid as well,
+which an older abcd (v0.15.1 and earlier) lets run.
 The load limit is twice the cores because a busy multi-session machine already
 idles near one core-count of load, so a limit of the cores never opens; one
 waiter at a time is kept by the process table, the hold below and that last
@@ -2372,13 +2378,16 @@ rule) or running its command, the load is at the wait limit, or the race gate's
 own hold is in force (each gate is shut only by its own gate's hold). That keeps
 race stages apart among the preflights whose checkouts have the race gate: one
 at a time within an account, and across accounts all but a narrow window (a
-race waiter gone before its race run shows, or two waiters whose start and pid
-disagree after a pid wrap). An account at one opens its race gate at once
+race waiter gone before its race run shows, or, after a pid wrap, two waiters
+whose start and pid disagree: one running v0.15.1, which counts a waiter ahead
+only with the lower pid as well, or two of the start order whose whole-second
+ages read a tie differently or the later of which stopped counting the earlier
+past its 5m0s cap). An account at one opens its race gate at once
 whatever another account set, and a checkout older than the gate runs its race
 stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's
 waiter never queues
 behind a race waiter, and a preflight whose waiter is at its race gate is in its
-test stages. A waiter that has opened stands back only from a lower pid that
+test stages. A waiter that has opened stands back only from a waiter that
 opened in the same moment at its own gate, never from one at the other gate.
 
 How many preflights may be in their test stages at once is your own machine's
