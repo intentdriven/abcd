@@ -32,7 +32,7 @@ func depGap(t *testing.T, gaps []Gap, id string) Gap {
 // command.
 func TestDependencyGapCarriesTheRegistryExplanation(t *testing.T) {
 	emptyPath(t)
-	g := depGap(t, detectDependencies(t.TempDir()), "deps.gitleaks_missing")
+	g := depGap(t, detectDependencies(t.TempDir(), true), "deps.gitleaks_missing")
 	if g.Tool == nil || g.Tool.Tool != "gitleaks" || !g.Tool.Known {
 		t.Fatalf("gap carries no registry explanation: %+v", g)
 	}
@@ -59,7 +59,7 @@ func TestArmedRepositoryMakesGitleaksRequired(t *testing.T) {
 		[]byte(`{"schema_version":1,"enabled":true}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	g := depGap(t, detectDependencies(repo), "deps.gitleaks_missing")
+	g := depGap(t, detectDependencies(repo, true), "deps.gitleaks_missing")
 	if !g.Required || g.Tool == nil || g.Tool.Capability != tools.TranscriptScanArmed {
 		t.Fatalf("armed repository's gap: %+v", g)
 	}
@@ -72,7 +72,7 @@ func TestArmedRepositoryMakesGitleaksRequired(t *testing.T) {
 // person to install it (iss-2609261447331434).
 func TestNoTrufflehogGap(t *testing.T) {
 	emptyPath(t)
-	for _, g := range detectDependencies(t.TempDir()) {
+	for _, g := range detectDependencies(t.TempDir(), true) {
 		if strings.Contains(g.ID, "trufflehog") {
 			t.Fatalf("ahoy still offers trufflehog: %+v", g)
 		}
@@ -146,7 +146,7 @@ func depCtx(t *testing.T, confirm tools.Confirm) *applyCtx {
 	repo := t.TempDir()
 	return &applyCtx{
 		cwd:         repo,
-		det:         DetectionResult{Gaps: detectDependencies(repo)},
+		det:         DetectionResult{Gaps: detectDependencies(repo, true)},
 		approved:    map[GapCategory]bool{Dependency: true},
 		confirmTool: confirm,
 	}
@@ -222,7 +222,7 @@ func TestDependencyYesRunsTheStepAndReportsIt(t *testing.T) {
 func TestEveryToolAhoyNamesIsRegistered(t *testing.T) {
 	emptyPath(t)
 	emitted := map[string]bool{}
-	for _, g := range detectDependencies(t.TempDir()) {
+	for _, g := range detectDependencies(t.TempDir(), true) {
 		if g.Tool == nil {
 			t.Fatalf("dependency gap %s carries no explanation", g.ID)
 		}
@@ -306,12 +306,12 @@ func TestAnIncompatibleGitleaksIsAGapOfItsOwn(t *testing.T) {
 	}
 	t.Cleanup(func() { newToolInstaller = prev })
 
-	g := depGap(t, detectDependencies(t.TempDir()), "deps.gitleaks_incompatible")
+	g := depGap(t, detectDependencies(t.TempDir(), true), "deps.gitleaks_incompatible")
 	if !strings.Contains(g.Detail, "8.10.0 is outside the versions abcd works with") || g.Tool == nil || g.Tool.Plan == nil {
 		t.Fatalf("gap = %+v", g)
 	}
 	version = "8.24.3"
-	if gaps := detectDependencies(t.TempDir()); len(gaps) != 0 {
+	if gaps := detectDependencies(t.TempDir(), true); len(gaps) != 0 {
 		t.Fatalf("a compatible gitleaks is a gap: %+v", gaps)
 	}
 }

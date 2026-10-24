@@ -522,10 +522,24 @@ func replace(path string, cur, next []byte, backup string) error {
 		return nil
 	}
 	if rerr := fsutil.WriteFileAtomicPreserveMode(path, cur); rerr != nil {
-		return errors.New(shown + " did not read back as written, and putting it back failed too (" +
-			fsutil.RedactHome(rerr.Error()) + "): copy " + copyAt + " over it by hand")
+		return &RestoreError{File: shown, Backup: copyAt, Cause: fsutil.RedactHome(rerr.Error())}
 	}
 	return errors.New(shown + " did not read back as written, so it was put back from the copy at " + copyAt)
+}
+
+// RestoreError is the one failure that leaves a startup file other than as it
+// was: it did not read back as written, and putting it back from the copy
+// failed too, so the person has a step to take by hand. Its fields are in the
+// tilde form.
+type RestoreError struct {
+	File   string // the startup file
+	Backup string // the copy of it as it was
+	Cause  string // why putting it back failed
+}
+
+func (e *RestoreError) Error() string {
+	return e.File + " did not read back as written, and putting it back failed too (" + e.Cause +
+		"): copy " + e.Backup + " over it by hand"
 }
 
 // readBack confirms path holds exactly want.

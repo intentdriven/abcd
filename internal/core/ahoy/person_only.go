@@ -5,6 +5,8 @@ import (
 	"slices"
 
 	"github.com/intentdriven/abcd/internal/core/shellpath"
+	"github.com/intentdriven/abcd/internal/core/tools"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // The steps only a person can approve (itd-2610240823055889, criterion 3):
@@ -77,15 +79,20 @@ func approvalGaps(cwd string, det DetectionResult, opts InstallOptions, target s
 
 // personOnlyAsks is the plan's list of the questions that follow whatever the
 // answer to it, in the order the run asks them: the abcd download, the shell
-// settings, the status line, the commit identity, and one question for each
-// missing tool.
+// settings, the status line, the commit identity, and one
+// question for each tool abcd offers to install. Each is listed only where
+// the run will put it.
 func personOnlyAsks(cwd string, det DetectionResult, opts InstallOptions, target string) []string {
 	var out []string
 	tag, dl := downloadOffer(cwd, det, opts, target)
 	if dl {
 		out = append(out, "the abcd download: abcd "+tag+" to "+displayPath(target))
 	}
-	out = append(out, shellSettingsAsks(cwd, det, target)...)
+	// The shell question judges the entry the run leaves, so it is listed
+	// only where there will be one.
+	if entryWillExist(cwd, det, target, dl) {
+		out = append(out, shellSettingsAsks(cwd, det, target)...)
+	}
 	present := gapIDSet(det.Gaps)
 	if present[StatusLineOfferGapID] && statusLineReachable(cwd, det, dl) {
 		out = append(out, "the status line: one entry in your assistant's settings, "+displayPath(harnessSettingsPath()))
@@ -102,10 +109,25 @@ func personOnlyAsks(cwd string, det DetectionResult, opts InstallOptions, target
 			break
 		}
 	}
+	// A tool is asked about only where abcd offers its own copy: a copy it
+	// will use, or a tool it cannot install here, asks nothing.
 	for _, g := range det.Gaps {
-		if g.Category == Dependency && g.Tool != nil && !onPath(cwd, g.Tool.Tool) {
+		if g.Category == Dependency && g.Tool != nil && g.Resolvable && g.Tool.Plan != nil && g.Tool.Plan.Action == tools.InstallOwn {
 			out = append(out, "installing "+g.Tool.Tool+", a tool abcd uses")
 		}
 	}
 	return out
+}
+
+// entryWillExist reports whether the run leaves abcd's PATH entry on disk:
+// it is there now, the download question can put it there, or the plugin's
+// verified cache supplies the copy.
+func entryWillExist(cwd string, det DetectionResult, target string, downloadOffered bool) bool {
+	if target == "" {
+		return false
+	}
+	if present, err := fsutil.ExistsNoFollow(target); err == nil && present {
+		return true
+	}
+	return downloadOffered || (det.pluginRoot != "" && cachePresent(pluginDataDir(det.pluginRoot).dir, cwd))
 }

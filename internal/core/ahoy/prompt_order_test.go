@@ -80,17 +80,21 @@ func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 		"user-state",
 		"plugin-owned",
 	}
+	// At a terminal each tool is its own question, so the dependency
+	// approval is not asked there (asksToolsItself).
+	atTerminal := want[1:]
 	for i := 0; i < 64; i++ {
 		p := &recordingPrompter{confirm: true, terminal: true}
 		resolveApproval(allCategoryGaps(), InstallOptions{}, nil, p)
-		if askedCategories(p.asked) != strings.Join(want, "|") {
-			t.Fatalf("run %d asked in a different order:\n got %v\nwant %v", i, askedCategories(p.asked), want)
+		if askedCategories(p.asked) != strings.Join(atTerminal, "|") {
+			t.Fatalf("run %d asked in a different order:\n got %v\nwant %v", i, askedCategories(p.asked), atTerminal)
 		}
 	}
 	// Off a terminal the drain-rule and conventions-file questions are not
 	// asked (stepDrainRule, stepConventionsFiles), and not counted as
 	// declined: the rest keep their order, so a piped stream written before
-	// the offers existed still lines up.
+	// the offers existed still lines up. The dependency approval keeps its
+	// first place there.
 	offTerminal := make([]string, 0, len(want))
 	for _, q := range want {
 		if q != string(DrainRule) && q != string(ConventionsFile) {

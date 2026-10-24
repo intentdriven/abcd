@@ -53,7 +53,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	if !gitInstalled() {
 		return InstallResult{Status: "refused", Notes: []string{missingGitStop()}}, nil
 	}
-	det, err := Detect(abs)
+	det, err := detectJudged(abs)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -298,7 +298,6 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	}
 
 	// Ordered apply steps.
-	ac.stepDependencies()
 	ac.stepSkeleton()
 	cfg := ac.stepConfigValues()
 	ac.stepVisibility(cfg)
@@ -355,6 +354,10 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	ac.stepIdentityMigrate()
 	ac.stepIdentityRecord()
 	ac.stepGitIdentity()
+	// The tools last of the questions only a person answers, in the order the
+	// plan lists them (personOnlyAsks): nothing above runs a tool, and the
+	// final detection below judges the copy this step leaves.
+	ac.stepDependencies()
 	// After every step that asks its questions first: the kind is the last
 	// answer a piped install gives (itd-2609150819432059).
 	ac.stepArtefact()
@@ -362,7 +365,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	ac.noteReachability()
 
 	// Re-detect to compute what remains.
-	final, err := Detect(abs)
+	final, err := detectJudged(abs)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -397,7 +400,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		writeKinds:         ac.writeKinds,
 		unverifiedCheck:    ac.unverifiedCheck,
 		unverifiedWhy:      ac.unverifiedWhy,
-		needs:              remainingSteps(abs, final.Gaps),
+		needs:              append(ac.needs, remainingSteps(abs, final.Gaps)...),
 	}, nil
 }
 
@@ -540,6 +543,10 @@ type applyCtx struct {
 	shellAdded bool            // stepShellPath added the PATH line this run
 	opts       InstallOptions  // the run's options, as the plan left them
 	downloaded bool            // stepDownload wrote the verified release to the PATH target
+	// needs is what a step the person approved left for them when it failed:
+	// the step to take by hand and why, reported in the default report ahead
+	// of the gaps the run left (itd-2610240918594138, criterion 2).
+	needs []ReportStep
 }
 
 // note is the receipt seam; it lives in receipt.go with the path scrub it
@@ -556,6 +563,13 @@ func (a *applyCtx) refuse(reason string) { a.notes = append(a.notes, reason) }
 // notes as a refusal, because the person reads both in one place, but it is a
 // separate call so a reader of the code never mistakes a success for a refusal.
 func (a *applyCtx) inform(line string) { a.notes = append(a.notes, line) }
+
+// needYou records what a change the person said yes to, and that then failed,
+// leaves them to do: the exact step, and why. A failure of an approved change
+// is never only a note behind --details.
+func (a *applyCtx) needYou(step, why string) {
+	a.needs = append(a.needs, ReportStep{Step: step, Why: why})
+}
 
 // refuseMalformedConfig records, once per run, that .abcd/config.json could not
 // be parsed and that no step will touch it. Three steps read the file
@@ -620,14 +634,26 @@ func (a *applyCtx) has(id string) bool { return a.gapPresent[id] }
 // asked. The category approval gates reaching this step at all; it never
 // stands in for the per-tool answer.
 func (a *applyCtx) stepDependencies() {
-	if !a.approved[Dependency] {
+	if !a.approved[Dependency] && !a.asksToolsItself() {
 		return
 	}
 	for _, g := range a.det.Gaps {
 		if g.Category != Dependency || g.Tool == nil {
 			continue
 		}
-		res := newToolInstaller(a.cwd).Install(g.Tool.Tool, g.Tool.Capability, a.confirmTool)
+		// Whether the person said yes, so a download that then fails is a
+		// step left for them rather than a note.
+		said := false
+		confirm := a.confirmTool
+		if confirm != nil {
+			inner := confirm
+			confirm = func(e tools.Explanation) tools.Answer {
+				ans := inner(e)
+				said = ans.Yes
+				return ans
+			}
+		}
+		res := newToolInstaller(a.cwd).Install(g.Tool.Tool, g.Tool.Capability, confirm)
 		if res.Ready && !res.Ran {
 			continue
 		}
@@ -641,8 +667,18 @@ func (a *applyCtx) stepDependencies() {
 			}
 		}
 		a.refuse(receiptPath(a.cwd, "dependency: "+res.Summary()))
+		if said {
+			a.needYou("Install "+g.Tool.Tool+" yourself: "+g.Tool.StepText(),
+				receiptPath(a.cwd, "abcd's download of "+g.Tool.Tool+" after your yes did not install: "+strings.TrimSuffix(res.Why, ".")+"."))
+		}
 	}
 }
+
+// asksToolsItself reports whether each tool's question reaches a person at a
+// terminal, which makes it its own consent: the kind-of-change approval is
+// then not asked for the tools (resolveApproval), and no answer to another
+// approval drops a tool's question (itd-2610240823055889, criterion 3).
+func (a *applyCtx) asksToolsItself() bool { return !a.autoYes && atTerminal(a.prompter) }
 
 // newToolInstaller is the tool installer seam, guarded on the repository the
 // install runs in; a test swaps it for one that records instead of executing.
@@ -2341,7 +2377,7 @@ func uninstallTools() ([]tools.Removal, string) {
 // Doctor runs the detection pass plus a read-only cross-machine audit. Zero
 // writes.
 func Doctor(cwd string) (DoctorReport, error) {
-	det, err := Detect(cwd)
+	det, err := detectJudged(cwd)
 	if err != nil {
 		return DoctorReport{}, err
 	}
@@ -2607,6 +2643,13 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Pr
 			for _, c := range terminalOnlyCategories {
 				delete(present, c)
 			}
+		} else {
+			// At a terminal each tool is its own question (stepDependencies,
+			// asksToolsItself), so the tools are never put behind an approval
+			// whose no would drop their questions (itd-2610240823055889,
+			// criterion 3). A piped stream still meets the approval, in its
+			// fixed place, where no tool question can reach a person anyway.
+			delete(present, Dependency)
 		}
 		for _, c := range presentInPromptOrder(present) {
 			if c == Dependency && opts.ApproveDependency {

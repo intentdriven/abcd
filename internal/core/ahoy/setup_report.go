@@ -158,12 +158,20 @@ func remainingSteps(cwd string, gaps []Gap) []ReportStep {
 		switch {
 		case g.Category == Dependency && g.Tool != nil:
 			// An optional tool is offered at a terminal, one question each,
-			// and is not a step the person owes.
-			if !g.Required || onPath(cwd, g.Tool.Tool) {
+			// and is not a step the person owes. The gap is the final
+			// detection's, so a required tool it still names is not usable.
+			if !g.Required {
 				continue
 			}
+			why := g.Tool.Tool + " is required here"
+			if g.Tool.CapabilityName != "" {
+				why = g.Tool.Tool + " is required for " + g.Tool.CapabilityName
+			}
+			if g.Tool.WithoutIt != "" {
+				why += "; without it " + g.Tool.WithoutIt
+			}
 			out = append(out, ReportStep{Step: "Install " + g.Tool.Tool + " yourself: " + g.Tool.StepText(),
-				Why: g.Tool.Tool + " is optional; " + strings.TrimSuffix(g.Title, ".") + "."})
+				Why: strings.TrimSuffix(why, ".") + "."})
 		case g.Required && g.FixHint != "" && !optionalGapID(g.ID):
 			out = append(out, ReportStep{Step: g.FixHint, Why: strings.TrimSuffix(reportFirstSentence(g.Detail, g.Title), ".") + "."})
 		}

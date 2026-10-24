@@ -4855,8 +4855,11 @@ func (p *stdinPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
 		if c, ok := ahoy.PlanChoiceOf(line); ok {
 			return c, true
 		}
+		// A bare Enter is no answer, as at every [y/N] question here: the
+		// screen asks again, and end of input cancels.
 		if line == "" && err == nil {
-			return ahoy.PlanProceed, true
+			fmt.Fprint(p.w, "Type proceed, customise or cancel.\n")
+			continue
 		}
 		return ahoy.PlanCancel, true
 	}

@@ -17,6 +17,7 @@ package ahoy
 //   - `abcd ahoy uninstall` takes the line out again (uninstallShellPath).
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 
@@ -34,8 +35,12 @@ const ShellPathOfferGapID = "path.shell_settings_offered"
 // tests never plan against the machine's own shell settings (TestMain).
 var shellEnv = shellpath.CurrentEnv
 
-// shellPathAskPrefix opens the question the offer ends on.
-const shellPathAskPrefix = "Add the line to "
+// shellApply makes the edit on a yes. A variable so a test can make it fail.
+var shellApply = shellpath.Apply
+
+// shellPathAskPrefix opens the question the offer ends on, which names the
+// line (shellpath.ExportLine) and the file.
+const shellPathAskPrefix = "Add `export PATH="
 
 // detectShellPath raises the offer beside path.bin_dir_not_on_path while the
 // plan says the line may be added.
@@ -87,9 +92,20 @@ func (a *applyCtx) stepShellPath() {
 	if !a.prompter.Confirm(shellPathQuestion(dir, plan)) {
 		return
 	}
-	applied, err := shellpath.Apply(shellEnv(), plan)
+	applied, err := shellApply(shellEnv(), plan)
 	if err != nil {
 		a.refuse("the PATH line was not added to " + displayPath(plan.File) + ": " + displayText(err.Error()) + ".")
+		// The person said yes, so what is left is theirs to do, in the
+		// default report: put the file back by hand where abcd could not, and
+		// otherwise add the line themselves.
+		var re *shellpath.RestoreError
+		if errors.As(err, &re) {
+			a.needYou("Copy "+displayText(re.Backup)+" over "+displayText(re.File)+" by hand",
+				displayText(re.File)+" did not read back as abcd wrote it, and putting it back from the copy failed too ("+displayText(re.Cause)+").")
+			return
+		}
+		a.needYou("Add `"+plan.Export+"` to "+displayPath(plan.File)+" yourself",
+			"abcd's edit of "+displayPath(plan.File)+" after your yes wrote nothing: "+strings.TrimSuffix(displayText(err.Error()), ".")+".")
 		return
 	}
 	a.shellAdded = true
@@ -107,6 +123,8 @@ func (a *applyCtx) stepShellPath() {
 
 // shellPathQuestion is the reason, the file, the line and the question: core
 // never prints, so what the person consents to travels as the confirm's text.
+// The one line names the line and the file, so the question shown without ?
+// still says what a yes writes and where (itd-2610240919030303).
 func shellPathQuestion(dir string, plan shellpath.Plan) string {
 	file := displayPath(plan.File)
 	where := "the end of " + file
@@ -114,9 +132,10 @@ func shellPathQuestion(dir string, plan shellpath.Plan) string {
 		where = "a new " + file
 	}
 	return displayPath(dir) + " is not on your PATH. abcd can add this line to " + where +
-		", keeping a copy first; abcd ahoy uninstall removes it:\n" +
+		", keeping a copy first. It puts " + displayPath(dir) + " ahead of the rest of your PATH, so this abcd answers " +
+		"before any older copy, and abcd ahoy uninstall removes it:\n" +
 		"  " + plan.Line + "\n" +
-		shellPathAskPrefix + file + "?"
+		"Add `" + plan.Export + "` to " + file + "?"
 }
 
 // isShellPathQuestion reports whether text is the shell-settings offer.

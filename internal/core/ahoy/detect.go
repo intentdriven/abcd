@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/shellpath"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
@@ -49,7 +50,18 @@ const (
 // Detect runs the full detection pass over cwd and returns the canonical
 // envelope. Total over a normal folder: broken-plugin conditions surface as
 // gaps, never as a hard error. An error is returned only for malformed input.
-func Detect(cwd string) (DetectionResult, error) {
+//
+// It is the pass the hooks and the status board run, so it starts no tool: a
+// tool's copy found on the PATH counts as installed, and its version is
+// judged only by the passes a person starts (detectJudged).
+func Detect(cwd string) (DetectionResult, error) { return detect(cwd, false) }
+
+// detectJudged is Detect with each tool's copy held to the versions abcd
+// works with, by running its version command: the pass install and the bare
+// `abcd ahoy` run, never a hook.
+func detectJudged(cwd string) (DetectionResult, error) { return detect(cwd, true) }
+
+func detect(cwd string, judgeTools bool) (DetectionResult, error) {
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
 		return DetectionResult{}, err
@@ -109,7 +121,7 @@ func Detect(cwd string) (DetectionResult, error) {
 	// machine-scope fact, reported from any folder.
 	gaps = append(gaps, detectFilterRoots()...)
 	if kind != UnmanagedFolder {
-		gaps = append(gaps, detectDependencies(abs)...)
+		gaps = append(gaps, detectDependencies(abs, judgeTools)...)
 		gaps = append(gaps, detectSkeleton(abs)...)
 		gaps = append(gaps, detectLocalTier(abs)...)
 		gaps = append(gaps, detectCommittedTiers(abs)...)
@@ -167,7 +179,7 @@ func Detect(cwd string) (DetectionResult, error) {
 // (readmeView), which the plugin page relays the question pair from; Detect
 // alone, which the hooks and the status board call, derives no part.
 func DryRun(cwd string) (DetectionResult, error) {
-	det, err := Detect(cwd)
+	det, err := detectJudged(cwd)
 	if err != nil || !hasGapID(det.Gaps, ReadmeOfferGapID) {
 		return det, err
 	}
@@ -276,7 +288,11 @@ var DependencyTools = []string{"gitleaks"}
 // trufflehog is not offered: nothing in abcd runs it (iss-2609261447331434),
 // and a gap asking a person to install a program abcd never uses is not an
 // explanation anyone can act on.
-func detectDependencies(cwd string) []Gap {
+//
+// judge is whether a copy found on the PATH is held to that range by running
+// its version command: true for the passes a person starts, false for the
+// pass the hooks run, where a copy on the PATH counts as installed.
+func detectDependencies(cwd string, judge bool) []Gap {
 	capability := tools.TranscriptScan
 	if cfg, err := gitleaks.LoadConfig(cwd); err == nil && cfg.Enabled {
 		capability = tools.TranscriptScanArmed
@@ -288,7 +304,9 @@ func detectDependencies(cwd string) []Gap {
 	if err != nil {
 		guard = cwd
 	}
-	plan := newToolInstaller(guard).Plan("gitleaks")
+	in := newToolInstaller(guard)
+	in.PathOnly = !judge
+	plan := in.Plan("gitleaks")
 	if plan.Action == tools.UseOwned || plan.Action == tools.UseExisting {
 		return nil
 	}
@@ -303,7 +321,18 @@ func detectDependencies(cwd string) []Gap {
 		Resolvable: true,
 		Tool:       &e,
 	}
-	if plan.Existing != nil {
+	switch {
+	case plan.Upgrade:
+		// abcd's own copy works; the pin is offered over it, never required.
+		g.ID = "deps.gitleaks_upgrade"
+		g.Title = "abcd's copy of gitleaks is " + plan.Owned.Version + "; abcd's release pins " + plan.Pinned
+		g.Detail = plan.Owned.Path + " still works and keeps running unless you say yes; " + g.Detail
+		g.Required = false
+	case plan.Owned != nil:
+		g.ID = "deps.gitleaks_incompatible"
+		g.Title = "abcd's copy of gitleaks is not a version abcd works with"
+		g.Detail = plan.Owned.Path + ": " + plan.Owned.Why + "; " + g.Detail
+	case plan.Existing != nil:
 		g.ID = "deps.gitleaks_incompatible"
 		g.Title = "the gitleaks on PATH is not a version abcd works with"
 		g.Detail = plan.Existing.Path + ": " + plan.Existing.Why + "; " + g.Detail
@@ -1024,13 +1053,31 @@ func detectBinDirOnPath(dir string, installed bool) []Gap {
 	if !installed {
 		return nil
 	}
-	return append([]Gap{{
+	g := Gap{
 		ID: "path.bin_dir_not_on_path", Category: ConfigChange, Scope: "machine",
 		Title:    displayPath(dir) + " is not on PATH",
 		Detail:   "abcd is installed at " + displayPath(filepath.Join(dir, binName)) + ". " + pathReachMessage(dir),
-		FixHint:  "Run `abcd ahoy install` at a terminal, which offers to add this line to your shell settings, or add it yourself: " + exportPathLine(dir),
 		Required: true, Resolvable: false,
-	}}, detectShellPath(dir)...)
+	}
+	// The step is what is true of the person's shell settings, as the
+	// shell-settings plan reads them: never an offer setup will not make, and
+	// never the line again once the settings hold it.
+	switch plan := shellpath.PlanFor(shellEnv(), dir); plan.State {
+	case shellpath.AlreadyAdded:
+		file := displayPath(plan.File)
+		g.Detail = "Your shell reads " + file + " when it starts, and " + file + " already puts " + displayPath(dir) +
+			" on the PATH; this terminal started before it did, so `abcd` cannot be run by name in it yet."
+		g.FixHint = "Open a new terminal, then run `abcd` there."
+	case shellpath.Offer:
+		g.FixHint = "Run `abcd ahoy install` at a terminal, which offers to add this line to " + displayPath(plan.File) +
+			", or add it yourself: " + plan.Export
+	default:
+		g.FixHint = "Add this line to your shell settings yourself: " + plan.Export
+		if plan.Reason != "" {
+			g.FixHint += " (abcd does not add it: " + displayText(plan.Reason) + ")"
+		}
+	}
+	return append([]Gap{g}, detectShellPath(dir)...)
 }
 
 // detectInstallMode reports the current PATH-target install mode: "dev (tip

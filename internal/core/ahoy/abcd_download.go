@@ -130,29 +130,36 @@ func (a *applyCtx) stepDownload() {
 		a.refuse(did + ": the download of abcd " + tag + " was declined; the README's install line puts it there by hand")
 		return
 	}
+	// Past the yes, every way of writing nothing is a step left for the
+	// person in the default report, with why, not only a note.
+	failed := func(why string) {
+		a.refuse(did + ": " + why)
+		a.needYou("Put abcd on your PATH with the README's install line, then run abcd ahoy install again",
+			"you said yes to the download of abcd "+tag+", and "+why+".")
+	}
 	rel, err := a.opts.DownloadAbcd(tag)
 	if err != nil {
-		a.refuse(did + ": the download of abcd " + tag + " failed or did not verify, so nothing was written: " + errText(err))
+		failed("the download of abcd " + tag + " failed or did not verify, so nothing was written: " + errText(err))
 		return
 	}
 	sum := sha256.Sum256(rel.Bytes)
 	got := hex.EncodeToString(sum[:])
 	if rel.SHA256 != "" && got != strings.ToLower(rel.SHA256) {
-		a.refuse(did + ": the downloaded abcd " + tag + " does not hash to the checksum it was verified against, so nothing was written")
+		failed("the downloaded abcd " + tag + " does not hash to the checksum it was verified against, so nothing was written")
 		return
 	}
 	if err := os.MkdirAll(filepath.Dir(a.binTarget), 0o755); err != nil {
-		a.refuse(did + ": " + displayPath(filepath.Dir(a.binTarget)) + " could not be created: " + errText(err))
+		failed(displayPath(filepath.Dir(a.binTarget)) + " could not be created: " + errText(err))
 		return
 	}
 	// Re-checked at the write: an entry that appeared while the question was
 	// open is never replaced.
 	if classifyBinTarget(a.binTarget, a.det.pluginRoot) != binTargetAbsent {
-		a.refuse(did + ": " + displayPath(a.binTarget) + " appeared while the question was open, and it is left as it is")
+		failed(displayPath(a.binTarget) + " appeared while the question was open, and it is left as it is")
 		return
 	}
 	if err := fsutil.WriteFileAtomic(a.binTarget, rel.Bytes, 0o755); err != nil {
-		a.refuse(did + ": " + displayPath(a.binTarget) + " could not be written: " + errText(err))
+		failed(displayPath(a.binTarget) + " could not be written: " + errText(err))
 		return
 	}
 	a.verifiedCopy = a.binTarget

@@ -127,7 +127,9 @@ func buildSetupPlan(det DetectionResult, asksYou []string) SetupPlan {
 	for _, scope := range []string{"repo", "machine", "user"} {
 		var items []string
 		for _, g := range det.Gaps {
-			if g.Scope != scope || !g.Resolvable || personOnlyGap(g.ID) || offers[g.ID] || g.Category == Readme {
+			// A tool is never one of the changes: it is installed only on
+			// its own question, which the plan lists among the questions.
+			if g.Scope != scope || !g.Resolvable || personOnlyGap(g.ID) || offers[g.ID] || g.Category == Readme || g.Category == Dependency {
 				continue
 			}
 			if t := strings.Join(strings.Fields(g.Title), " "); t != "" && !slices.Contains(items, t) {
