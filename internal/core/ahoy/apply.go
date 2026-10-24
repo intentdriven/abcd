@@ -32,6 +32,7 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	}
 	res.readmeAwaitsConfig = slices.Contains(res.OptionalSkipped, ReadmeOfferGapID) && !readmeStorable(cwd)
 	res.explain()
+	res.composeReport()
 	return res, nil
 }
 
@@ -46,6 +47,12 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		p = RefusingPrompter{}
 	}
 
+	// No git, no repository or no agent harness: there is nothing to set up,
+	// so setup stops before its first question with one message naming what
+	// is missing (setup_basics.go).
+	if !gitInstalled() {
+		return InstallResult{Status: "refused", Notes: []string{missingGitStop()}}, nil
+	}
 	det, err := Detect(abs)
 	if err != nil {
 		return InstallResult{}, err
@@ -61,11 +68,14 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		if err == nil && res.Warnings == nil {
 			res.Warnings = installWarnings(det.Gaps, hostReach)
 		}
+		if err == nil && res.needs == nil && res.Status != "refused" && res.Status != "aborted" {
+			res.needs = remainingSteps(abs, det.Gaps)
+		}
 	}()
 
-	// Unmanaged folder: nothing to act on.
-	if det.FolderKind == UnmanagedFolder {
-		return InstallResult{Status: "aborted"}, nil
+	// Not a repository, or no harness: nothing to act on, said in one message.
+	if reason := setupBasicsStop(det); reason != "" {
+		return InstallResult{Status: "refused", Notes: []string{reason}}, nil
 	}
 
 	// A committed `.abcd` that exists but is NOT a real directory — a symlink
@@ -130,6 +140,24 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	}
 	if gitUnanswered != nil && det.FolderKind == UnmanagedRepo && opts.Adopt == nil {
 		return InstallResult{}, fmt.Errorf("git gave no root commit for this repository, so abcd cannot tell whether it already manages it; run the install again once git answers, or pass --adopt to adopt it anyway: %w", gitUnanswered)
+	}
+
+	// The plan screen (setup_plan.go): for a repository abcd does not manage
+	// yet it is asked before the adoption, which proceeding or customising
+	// approves, so the plan is the one question that adopts.
+	planAsked := false
+	var planChoice PlanChoice
+	if det.FolderKind == UnmanagedRepo && opts.Adopt == nil {
+		var np Prompter
+		np, planChoice, planAsked = askSetupPlan(det, opts, personOnlyAsks(abs, det, opts, plannedBinTarget(opts, det)), p)
+		if planAsked {
+			if planChoice == PlanCancel {
+				return InstallResult{Status: "aborted"}, nil
+			}
+			p = np
+			yes := true
+			opts.Adopt = &yes
+		}
 	}
 
 	// Adoption gate for an unmanaged repo.
@@ -228,10 +256,25 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		}, nil
 	}
 
+	// A repository abcd already manages is shown the plan once the run knows
+	// there is something to do.
+	if !planAsked {
+		var np Prompter
+		np, planChoice, planAsked = askSetupPlan(det, opts, personOnlyAsks(abs, det, opts, binTargetPath), p)
+		if planAsked {
+			if planChoice == PlanCancel {
+				return InstallResult{Status: "aborted"}, nil
+			}
+			p = np
+		}
+	}
+
 	// A value flag that would change a saved setting is held to the settings
 	// approval like any other settings change, so it puts the config-change
 	// question even where no config-change gap would (iss-2610071538032843).
-	approved, declined := resolveApproval(det.Gaps, opts, overrideChanges(abs, opts.ValueOverrides), p)
+	// The status line is never asked about where it cannot be wired
+	// (iss-2610240823574047).
+	approved, declined := resolveApproval(approvalGaps(abs, det, opts, binTargetPath), opts, overrideChanges(abs, opts.ValueOverrides), p)
 
 	ac := &applyCtx{
 		cwd:         abs,
@@ -250,6 +293,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		provenance:  opts.VerifyProvenance,
 		readmeFlag:  opts.ReadmeParts,
 		waiting:     waiting,
+		opts:        opts,
 	}
 
 	// Ordered apply steps.
@@ -275,6 +319,9 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// After stepMarker, before stepSymlink: the README pair's place in
 	// setup's fixed order (decision 7).
 	ac.stepReadme()
+	// Before stepSymlink: where abcd is not on the PATH and no verified copy
+	// is to hand, the download question puts it there (abcd_download.go).
+	ac.stepDownload()
 	ac.stepSymlink()
 	// After stepSymlink, never before: the record names the entry that step
 	// leaves on PATH, and the hooks read it before they will run that entry.
@@ -284,6 +331,9 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// After stepOutboundBinary: the shim finds abcd through the abcd.binary it
 	// wrote, and the two notes read in that order.
 	ac.stepOutboundShim()
+	// After the PATH entry and before the status line: the shell settings, a
+	// question of its own (person_only.go).
+	ac.stepShellSettings()
 	// After stepPathEntry: the harness command names the entry the two steps
 	// above actually left on PATH.
 	ac.stepStatusLine()
@@ -342,6 +392,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		writeKinds:         ac.writeKinds,
 		unverifiedCheck:    ac.unverifiedCheck,
 		unverifiedWhy:      ac.unverifiedWhy,
+		needs:              remainingSteps(abs, final.Gaps),
 	}, nil
 }
 
@@ -479,6 +530,9 @@ type applyCtx struct {
 	docsTargetForced bool     // a --docs-target override overwrote a valid value, or this run chose the first one
 	markerRetract    []string // marker files a narrowed docs-target override de-selected
 	configMalformed  bool     // config.json could not be parsed; the refusal note was given once
+
+	opts       InstallOptions // the run's options, as the plan left them
+	downloaded bool           // stepDownload wrote the verified release to the PATH target
 }
 
 // note is the receipt seam; it lives in receipt.go with the path scrub it
@@ -912,7 +966,7 @@ func WalkConfigValueQuestions(cwd string, opts InstallOptions, approves func(id 
 	}
 	// install's gates before its first question, in its order: each ends the
 	// run before a value is asked.
-	if det.FolderKind == UnmanagedFolder || abcdDirHazard(abs) != "" {
+	if !gitInstalled() || setupBasicsStop(det) != "" || abcdDirHazard(abs) != "" {
 		return nil
 	}
 	if !opts.AllowStaleBinary && staleBinaryRefusal(currentVintage(), abs) != "" {
@@ -1477,7 +1531,7 @@ func (a *applyCtx) stepSymlink() {
 		// Nothing is written, but an owned copy is still the entry this run
 		// reports as abcd's, so it is verified first, read-only
 		// (iss-2610120955431790).
-		if !a.devMode {
+		if !a.devMode && !a.downloaded {
 			a.adoptOwnedCopy(a.binTarget)
 		}
 		return
@@ -2509,7 +2563,7 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Pr
 	present := map[GapCategory]bool{}
 	lines := map[GapCategory][]string{}
 	for _, g := range gaps {
-		if g.Resolvable {
+		if g.Resolvable && !personOnlyGap(g.ID) {
 			present[g.Category] = true
 			lines[g.Category] = append(lines[g.Category], g.Title)
 		}

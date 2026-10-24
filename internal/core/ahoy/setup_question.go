@@ -135,6 +135,7 @@ var setupConfirmIDs = []struct {
 	{OracleRoutingMachineGapID, func(s string) bool { return s == machineRoutingQuestion() }},
 	{OracleRoutingRepoGapID, func(s string) bool { return s == repoRoutingQuestion() }},
 	{StatusLineOfferGapID, isStatusLineOfferQuestion},
+	{DownloadQuestionID, isDownloadQuestion},
 	{DrainRuleOfferGapID, func(s string) bool { return s == drainRuleQuestion() }},
 	{"history.lineage", func(s string) bool {
 		return strings.HasPrefix(s, "Re-founded from ") && strings.HasSuffix(s, "? Link lineage?")
@@ -250,6 +251,8 @@ func SetupMachineWide(id string) bool {
 func SetupFixedValues(id string) (values []string, ok bool) {
 	var q question.Question
 	switch {
+	case id == PlanQuestionID:
+		q = SetupPlanQuestion(0, SetupPlan{})
 	case id == "adopt", strings.HasPrefix(id, approvePrefix), confirmIDKnown(id):
 		q = SetupConfirmQuestion(0, "")
 	case strings.HasPrefix(id, elementPromptPrefix):

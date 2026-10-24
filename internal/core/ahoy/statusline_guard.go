@@ -41,8 +41,15 @@ var (
 		"led by a badge saying whether abcd is here and whose answer the work is waiting on; " +
 		"in every other repository the line you have now runs untouched. " +
 		"Switch parts of it off any time in " + statusline.SettingsDisplay + "."
-	statusLineOfferAsk = "Install abcd's status line?"
+	// statusLineOfferAsk opens the offer's one line, which names the entry
+	// and the file it is written to (itd-2610240823055889, criterion 3).
+	statusLineOfferAsk = "Install abcd's status line"
 )
+
+// statusLineOfferLine is the offer's one line: the file and the command.
+func statusLineOfferLine(settings, entry string) string {
+	return statusLineOfferAsk + " in " + settings + ", running " + entry + " " + statusVerb + "?"
+}
 
 // statusLineOfferQuestion is the reason, the one change and the question, as
 // the confirm's text: core never prints, so what ac-8 and risk 4 require the
@@ -60,12 +67,14 @@ func statusLineOfferQuestion(hs harnessSettings, entry string) string {
 		"  after: " + displayPath(entry) + " " + statusVerb + "\n" +
 		"abcd records the command you have now and `abcd ahoy uninstall` puts it back; " +
 		"a copy of the file is kept in " + abcdhome.Display("backups") + "/ before it changes, and declining writes nothing.\n" +
-		statusLineOfferAsk
+		statusLineOfferLine(displayPath(hs.path), displayPath(entry))
 }
 
 // isStatusLineOfferQuestion reports whether text is the status-line offer.
 func isStatusLineOfferQuestion(text string) bool {
-	return strings.HasPrefix(text, statusLineOfferLead) && strings.HasSuffix(text, "\n"+statusLineOfferAsk)
+	i := strings.LastIndex(text, "\n")
+	return strings.HasPrefix(text, statusLineOfferLead) && i >= 0 &&
+		strings.HasPrefix(text[i+1:], statusLineOfferAsk+" in ") && strings.HasSuffix(text, "?")
 }
 
 // statusLineEntry is the absolute path the harness command will run, or why
@@ -85,7 +94,13 @@ func (a *applyCtx) statusLineEntry() (entry, why string) {
 		return "", "the PATH entry on record, " + displayPath(rec.path) + ", is not there"
 	}
 	switch classifyBinTarget(rec.path, a.det.pluginRoot) {
-	case binTargetOwnedSymlink, binTargetOwnedCopy, binTargetDevShim:
+	case binTargetOwnedSymlink, binTargetOwnedCopy:
+	case binTargetDevShim:
+		// The dev shim rebuilds abcd from the source tip on every call, and
+		// the status line runs on every refresh, so the line runs only a
+		// release copy; in a source checkout, the download question puts one
+		// there (itd-2610240823055889).
+		return "", "the PATH entry on record, " + displayPath(rec.path) + ", is the dev shim, which rebuilds abcd on every call; the status line runs only a release copy"
 	default:
 		return "", "the PATH entry on record, " + displayPath(rec.path) + ", is not abcd's own"
 	}

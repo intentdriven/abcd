@@ -220,6 +220,11 @@ type InstallOptions struct {
 	// cannot import it, because update imports ahoy. Nil refuses every
 	// promotion: there is no unverified path.
 	VerifyProvenance ProvenanceCheck
+	// DownloadAbcd fetches and verifies a release binary for the download
+	// question setup asks where abcd is not on the PATH (abcd_download.go):
+	// the front door supplies abcd update's checked fetch, since update
+	// imports this package. Nil offers no download.
+	DownloadAbcd DownloadRelease
 	// OnlyWaiting is the setup the yes to the after-update offer runs
 	// (spc-2610170635097509, step 7): only the questions and changed
 	// defaults Waiting returns for this repository are put to the prompter,
@@ -274,6 +279,11 @@ type InstallResult struct {
 	// (iss-164).
 	Headline string        `json:"headline"`
 	Summary  []SummaryItem `json:"summary"`
+	// Report is the three-part report setup ends on (setup_report.go): done,
+	// needs you and next, or one line for a repository already set up.
+	Report SetupReport `json:"report"`
+	// needs is the needs-you checklist the run found in its last detection.
+	needs []ReportStep
 	// writeKinds runs parallel to Writes: what each write is, which the summary
 	// explains. Unexported, so the wire shape is unchanged.
 	writeKinds []writeKind
