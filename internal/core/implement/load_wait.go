@@ -350,6 +350,13 @@ type WaitRequest struct {
 	// same moment that this one stood back from (machineload.StandBackFrom) and
 	// the jitter waited before looking again.
 	OnBackoff func(first []int, jitter time.Duration)
+	// OnQuiet is called at the first look that finds the holder of the command
+	// hold in force quiet (QuietHolder, load_quiet.go), and again each time it
+	// goes quiet after it picked up.
+	OnQuiet func(WaitResult)
+	// Dir is the checkout the waiter runs in, recorded in its hold so a waiter
+	// behind it can name it; "" is the working directory.
+	Dir string
 }
 
 // WaitHolder is a hold: the record under ~/.abcd.noindex/ and what the report
@@ -366,6 +373,9 @@ type WaitHolder struct {
 	// record without one, as an abcd released before the race gate writes
 	// it, is the first gate's.
 	Gate string `json:"gate,omitempty"`
+	// Dir is the checkout the holder ran in (WaitRequest.Dir); a record an
+	// older abcd wrote has none.
+	Dir string `json:"dir,omitempty"`
 }
 
 // WaitResult is the waiter's report.
@@ -416,6 +426,10 @@ type WaitResult struct {
 	// Backoffs is how many times the waiter stood back from another that opened
 	// in the same moment (machineload.StandBackFrom).
 	Backoffs int `json:"backoffs,omitempty"`
+	// Quiet is the holder of the command hold in force at the last look when
+	// its tree has used little CPU for QuietSpan (load_quiet.go). It is said,
+	// never acted on.
+	Quiet *QuietHolder `json:"quiet_holder,omitempty"`
 	// Unmark stops the command form's mark (WaitRequest.Mark). The caller calls
 	// it once its command has started, or could not be started; nil when there
 	// is no mark.
@@ -456,6 +470,9 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	jitter := req.Jitter
 	if jitter == nil {
 		jitter = waitJitter
+	}
+	if req.Dir == "" {
+		req.Dir, _ = os.Getwd()
 	}
 	res := WaitResult{WaitedOn: []string{}, RaceRuns: []int{}, Gate: GateTests}
 	if req.Race {
@@ -508,6 +525,10 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	var crossedSince time.Time
 	crossedN := 0
 	var crossedSeen []int
+	// quiet follows the command hold in force between looks, and quietSaid
+	// is true once its present quiet has been said.
+	var quiet quietWatch
+	quietSaid := false
 	pastCap := func() bool { return !crossedSince.IsZero() && now().Sub(crossedSince) >= crossedCapFor(crossedN) }
 	// A crossed waiter that has left the queue (exited, or opened) starts the
 	// count again: a waiter it held back may now open, and a count kept
@@ -544,7 +565,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	}
 	for {
 		res.Polls++
-		shut, done, only, err := waitLook(req, root, home, &res, now, false, pastCap())
+		shut, done, only, err := waitLook(req, root, home, &res, now, false, pastCap(), &quiet)
 		if err != nil {
 			return res, err
 		}
@@ -562,7 +583,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			}
 			sleep(j)
 			res.Polls++
-			shut, done, only, err = waitLook(req, root, home, &res, now, true, pastCap())
+			shut, done, only, err = waitLook(req, root, home, &res, now, true, pastCap(), &quiet)
 			if err != nil {
 				return res, err
 			}
@@ -618,6 +639,10 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 				req.OnWait(res)
 			}
 		}
+		if res.Quiet != nil && !quietSaid && req.OnQuiet != nil {
+			req.OnQuiet(res)
+		}
+		quietSaid = res.Quiet != nil
 		left := deadline.Sub(now())
 		if left <= 0 {
 			res.Status = WaitTimedOut
@@ -686,8 +711,9 @@ func sleepMark() (func(), error) {
 // hold; one without it that finds nothing shut reports no condition and not
 // done, and the caller re-checks after the jitter. With uncrossed set it does
 // not count crossed waiters (machineload.Ahead.Crossed, WaitCrossedCap).
-// crossedOnly says what crossedLook holds.
-func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time, take, uncrossed bool) (shut []string, done bool, crossedOnly crossedLook, err error) {
+// crossedOnly says what crossedLook holds. quiet follows the command hold in
+// force between looks (judgeHolder).
+func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time, take, uncrossed bool, quiet *quietWatch) (shut []string, done bool, crossedOnly crossedLook, err error) {
 	snap, readErr := req.Read()
 	if errors.Is(readErr, machineload.ErrUnsupported) {
 		res.Status = WaitUnchecked
@@ -718,8 +744,10 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	var runs, racing []int
 	var ahead machineload.Ahead
 	var raceAhead, crossed, queued []int
+	var args map[int][]string
 	if procsOK {
-		args, err := req.ReadArgs(machineload.GateCandidates(snap, req.Self))
+		var err error
+		args, err = req.ReadArgs(machineload.GateCandidates(snap, req.Self))
 		if err != nil {
 			procsOK = false
 			res.Reason = termsafe.Sanitize(err.Error())
@@ -828,7 +856,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 		if len(shut) > 0 || !take || len(free) == 0 {
 			return nil
 		}
-		own := WaitHolder{PID: req.Self.PID, Opened: t, Until: t.Add(WaitSettle), Form: HoldSettle, Gate: res.Gate}
+		own := WaitHolder{PID: req.Self.PID, Opened: t, Until: t.Add(WaitSettle), Form: HoldSettle, Gate: res.Gate, Dir: req.Dir}
 		if s, ok := procStart(snap, req.Self.PID, t); ok {
 			own.StartUnix = s
 			// The command form rests on its holder's life, so it needs the
@@ -860,6 +888,13 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			abcdhome.Display(waitLockFileName))
 	case err != nil:
 		return nil, false, crossedLook{}, fmt.Errorf("the hold could not be judged or written: %w", err)
+	}
+	// A look that could not read the table, or the hold (another waiter had
+	// the flock), cannot judge the holder's tree: the watch keeps its
+	// baseline, and the verdict of the last look that could stands, so a
+	// passing unreadable look neither clears a quiet nor says it again.
+	if procsOK && err == nil {
+		res.Quiet = judgeHolder(quiet, res.Holder, snap, req.Self, args, t)
 	}
 	if len(crossed) > 0 && (len(shut) == 0 || (crossedShut && slices.Equal(shut, []string{WaitOnWaiter}))) {
 		crossedOnly = crossedLook{n: len(crossed), crossed: crossed, queued: queued}

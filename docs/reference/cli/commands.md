@@ -2435,7 +2435,14 @@ command that is a race run (go, then `test` with -race) is gated as one for both
 gates: above one preflight at a time it stays shut while another race run is
 live, judges and takes the race gate's hold as well as its own, and from the
 moment it opens every race gate and every other such command counts it as a
-race run, so a second one waits for the first. A
+race run, so a second one waits for the first. A command hold lasts as long as
+its command runs, so once the holder's whole process tree has used no more than
+10% of a core for 10m0s, each waiter behind it says so in one more
+`waiting for capacity:` line naming its pid, its checkout and how long it has held
+the slot, and the holder says so on its own standard error while others queue.
+Little CPU is a fact, not a verdict: a slow run waiting on its subprocesses uses
+little too. The hold stays in force and nothing is signalled; a tree with a
+waiter of its own queued at a gate is not counted quiet. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 While it waits, in a checkout, the waiter keeps your own reservations from

@@ -298,6 +298,21 @@ in one moment, so the command form shows itself as running its command from the
 moment it opens and looks once more two seconds later; it stands back from the
 other unless it started earlier and has the lower pid too, gives up its hold,
 re-draws its jitter and waits again, at most three times, while the other runs.
+A command hold lasts as long as its command runs: on 2026-10-24 a long, slow
+`go test` of the loop suite held the first gate for 45 minutes while nine
+preflights queued, and they could not tell whether it was working
+(iss-2610241419324875). So each waiter behind a command hold, and the holder
+itself while its command runs, follows the CPU of the holder's whole process
+tree between its looks, from the cumulative CPU times the process table
+carries; a child gone between looks counts as work. When the tree has used no
+more than a tenth of a core for ten minutes (`QuietShare`, `QuietSpan`), the
+waiters' `waiting for capacity:` line says so as a fact, with the holder's pid,
+the checkout its hold record names and how long it has held the slot, and the
+holder says it on its own standard error while others queue. It is not a
+diagnosis: a slow run waiting on its subprocesses uses little CPU too. A tree
+with a waiter of its own queued at a gate is not counted quiet. The gate only
+says it: the hold stays in force and nothing is signalled, since a process is
+stopped only by its owner through its own handle.
 The later start stands back whatever the pids; the earlier one stands back from
 a lower pid as well, which an older abcd (v0.15.1 and earlier) runs past.
 It runs a command given after `--` and exits with its code,

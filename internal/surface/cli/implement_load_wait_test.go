@@ -249,3 +249,45 @@ func TestImplementLoadWaitSaysWhenItStandsBack(t *testing.T) {
 		t.Fatalf("exit %d; want 0 and a line standing back from pid 40001\n%s%s", code, out, errOut)
 	}
 }
+
+// TestImplementLoadWaitSaysAQuietHolder: a command hold whose holder's tree
+// has used little CPU for the quiet span is named again in the waiting line,
+// as a fact, with its pid, checkout and how long it has held the slot, and
+// the wait still times out behind it: the gate says, it never stops the holder
+// (iss-2610241419324875).
+func TestImplementLoadWaitSaysAQuietHolder(t *testing.T) {
+	t0 := waitFixture(t, machine(3, 3, 3))
+	opened := t0.Add(-time.Minute)
+	home, _ := os.UserHomeDir()
+	raw, _ := json.Marshal(implement.WaitHolder{PID: 777, StartUnix: opened.Unix(), Opened: opened,
+		Until: opened.Add(implement.WaitCommandCap), Form: implement.HoldCommand, Dir: "/work/repo"})
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, implement.WaitHoldFileName), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The holder and its make age with the clock and use no CPU.
+	loadReader = func() (machineload.Snapshot, error) {
+		aged := loadNow().Sub(t0)
+		return machine(3, 3, 3,
+			machineload.Proc{PID: 777, PPID: 1, PGID: 777, UID: 501, Age: time.Minute + aged, Name: "abcd"},
+			machineload.Proc{PID: 778, PPID: 777, PGID: 777, UID: 501, Age: time.Minute + aged, CPU: time.Second, Name: "make"}), nil
+	}
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "12m")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1 (timed out)\n%s%s", code, out, errOut)
+	}
+	if n := strings.Count(out, "waiting for capacity:"); n != 2 {
+		t.Fatalf("%d waiting lines, want 2 (the wait, then the quiet holder):\n%s", n, out)
+	}
+	for _, want := range []string{
+		"another waiter holds the gate (pid 777, until",
+		"; the holder (pid 777, /work/repo) has held the test slot for 11m0s using little CPU (under 10% of a core for the last 10m0s); if it is yours and stuck, stop it by its own pid",
+		"load gate still shut after 12m0s",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output lacks %q:\n%s", want, out)
+		}
+	}
+}

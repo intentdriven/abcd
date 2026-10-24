@@ -1,0 +1,222 @@
+package implement
+
+import (
+	"slices"
+	"time"
+
+	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/termsafe"
+)
+
+// A command hold lasts as long as its command runs (iss-2610241419324875). On
+// 2026-10-24 a `go test -timeout 60m` of the loop suite, admitted through the
+// first gate, held the slot for 45 minutes on a loaded machine, working
+// through tests at 30 to 70 seconds each, most of its time in git
+// subprocesses, so its test binary showed little CPU. About nine preflights
+// queued behind it, and none of them could tell whether it was working; a peer
+// asked its owner, who stopped it.
+//
+// So the gate watches the CPU the holder's whole process tree (the holder and
+// every descendant by parent pid, git children included) uses between looks,
+// from the cumulative CPU times the process table already carries
+// (machineload.Proc.CPU), and when the tree has used no more than QuietShare
+// of one core for QuietSpan, it says so as a fact: to each waiter in its
+// waiting line, naming the holder's pid, the checkout its record names and how
+// long it has held the slot, and to the holder's own standard error while
+// others queue (HoldWatch). Little CPU is not a diagnosis: a slow run waiting
+// on its subprocesses' I/O uses little too, so the notice leaves the judgement
+// to the holder's owner. The hold stays in force, and nothing is ever
+// signalled: a process is stopped by its owner, through its own handle, never
+// by the gate (the LOAD rule). Each watcher judges from its own looks, so a
+// waiter that joins the queue late watches a full span before it says
+// anything.
+//
+// A child that exits between two looks takes its CPU out of the table, so a
+// member gone since the baseline counts as work, as a new one counts all its
+// CPU: a run that keeps starting short git children is not quiet. A tree with
+// a waiter of its own queued at either gate (`--wait -- make preflight`, whose
+// preflight waits at its own race gate) is waiting at that gate, and is not
+// said to be quiet.
+
+// QuietSpan is how long a holder's tree must have used little CPU before the
+// waiters are told. A test stage that is compiling or running tests shows CPU
+// within minutes even on a loaded machine, so ten minutes outlasts any pause
+// in that work, and is well short of the 45 minutes the slow run that
+// prompted it held its slot.
+const QuietSpan = 10 * time.Minute
+
+// QuietShare is the most CPU, in cores, a tree may average over QuietSpan and
+// still be called quiet: a tenth of one core, sixty seconds of CPU in ten
+// minutes. A go test that is compiling or running CPU-bound tests uses whole
+// cores, so the line falls well below the least such work does; a run that
+// is mostly waiting falls under it, which is what the waiters are told.
+const QuietShare = 0.1
+
+// HoldWatchEvery is how often the holder's own watch looks while its command
+// runs. Each look is a run of ps, so it looks less often than a waiter polls.
+const HoldWatchEvery = time.Minute
+
+// QuietHolder is a command hold's holder whose tree has used little CPU for
+// QuietSpan: a fact the waiters are told, not a verdict on the holder.
+type QuietHolder struct {
+	PID int `json:"pid"`
+	// Checkout is the directory the holder ran in, as its record names it;
+	// empty for a record an older abcd wrote.
+	Checkout string `json:"checkout,omitempty"`
+	// HeldS is how long it has held the slot, since its hold opened.
+	HeldS float64 `json:"held_s"`
+	// QuietS is how long its tree has used no more than QuietShare of a core.
+	QuietS float64 `json:"quiet_s"`
+}
+
+// quietWatch follows one holder's tree between looks. Its zero value watches
+// nothing.
+type quietWatch struct {
+	pid   int
+	start int64
+	// since is the baseline's moment, and base each tree member's CPU then.
+	since time.Time
+	base  map[int]time.Duration
+	// quietSince is when the tree went quiet, zero while it is not.
+	quietSince time.Time
+}
+
+// observe takes one look at the tree under pid, whose start time is start,
+// at t, and returns how long it has been quiet, zero while it is not.
+// waiting says the tree has a waiter of its own queued, which is never quiet.
+//
+// A look whose tree has used more than QuietSpan's worth of QuietShare since
+// the baseline is busy: the baseline moves to it and any quiet ends. A look
+// QuietSpan or more past the baseline that has not is quiet: the quiet begins
+// at the baseline (or goes on), and the baseline moves to it, so a tree that
+// picks up again ends the quiet within one span's worth of CPU. A member gone
+// since the baseline exited, which is work too.
+func (w *quietWatch) observe(procs []machineload.Proc, pid int, start int64, waiting bool, t time.Time) time.Duration {
+	tree := treeCPU(procs, pid)
+	if w.base == nil || w.pid != pid || w.start != start || waiting {
+		*w = quietWatch{pid: pid, start: start, since: t, base: tree}
+		return 0
+	}
+	var used time.Duration
+	for p, was := range w.base {
+		now, ok := tree[p]
+		if !ok {
+			w.since, w.base, w.quietSince = t, tree, time.Time{}
+			return 0
+		}
+		used += max(now-was, 0)
+	}
+	for p, now := range tree {
+		if _, ok := w.base[p]; !ok {
+			used += now
+		}
+	}
+	if used > time.Duration(QuietShare*float64(QuietSpan)) {
+		w.since, w.base, w.quietSince = t, tree, time.Time{}
+		return 0
+	}
+	if t.Sub(w.since) >= QuietSpan {
+		if w.quietSince.IsZero() {
+			w.quietSince = w.since
+		}
+		w.since, w.base = t, tree
+	}
+	if w.quietSince.IsZero() {
+		return 0
+	}
+	return t.Sub(w.quietSince)
+}
+
+// treeCPU is the cumulative CPU of pid and each of its descendants, by pid.
+func treeCPU(procs []machineload.Proc, pid int) map[int]time.Duration {
+	kids := map[int][]machineload.Proc{}
+	out := map[int]time.Duration{}
+	for _, p := range procs {
+		if p.PID == pid {
+			out[pid] = p.CPU
+		} else {
+			kids[p.PPID] = append(kids[p.PPID], p)
+		}
+	}
+	if _, ok := out[pid]; !ok {
+		return out
+	}
+	for next := []int{pid}; len(next) > 0; {
+		parent := next[0]
+		next = next[1:]
+		for _, c := range kids[parent] {
+			if _, seen := out[c.PID]; !seen {
+				out[c.PID] = c.CPU
+				next = append(next, c.PID)
+			}
+		}
+	}
+	return out
+}
+
+// queuedUnder reports whether any of the waiters queued at either gate, as
+// self reads the table, descends from pid.
+func queuedUnder(snap machineload.Snapshot, self machineload.Self, args map[int][]string, pid int) bool {
+	for _, race := range []bool{false, true} {
+		for _, q := range machineload.QueuedAt(snap, self, args, race) {
+			if machineload.Descends(snap.Procs, q, pid) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// judgeHolder says whether the holder of the command hold h, in force at
+// this look, is quiet, from the snapshot and the arguments the look read.
+func judgeHolder(w *quietWatch, h *WaitHolder, snap machineload.Snapshot, self machineload.Self, args map[int][]string, t time.Time) *QuietHolder {
+	if h == nil || h.Form != HoldCommand {
+		*w = quietWatch{}
+		return nil
+	}
+	quiet := w.observe(snap.Procs, h.PID, h.StartUnix, queuedUnder(snap, self, args, h.PID), t)
+	if quiet <= 0 {
+		return nil
+	}
+	return &QuietHolder{PID: h.PID, Checkout: termsafe.Sanitize(h.Dir), HeldS: t.Sub(h.Opened).Seconds(), QuietS: quiet.Seconds()}
+}
+
+// HoldWatch is the holder's own watch while its command runs: the waiter
+// that opened with a command hold looks every HoldWatchEvery, and once its
+// tree has used little CPU for QuietSpan while others queue at its gate it
+// says so on its own standard error, so the command's owner sees it beside
+// the command's output and can judge whether it is still working. It reads
+// only the process table, and signals nothing.
+type HoldWatch struct {
+	// Read and ReadArgs read the machine; Now is the clock.
+	Read     func() (machineload.Snapshot, error)
+	ReadArgs func([]int) (map[int][]string, error)
+	Now      func() time.Time
+	// Self is the holder.
+	Self machineload.Self
+	// Race is the holder's gate, the race gate's when set.
+	Race bool
+	w    quietWatch
+}
+
+// Look takes one look and returns how long the holder's tree has been quiet
+// and the waiters queued at its gate outside the tree, in pid order; the
+// quiet time is zero while the tree is not quiet. A table that cannot be read
+// says nothing.
+func (hw *HoldWatch) Look() (time.Duration, []int) {
+	snap, err := hw.Read()
+	if err != nil || !snap.HasProcs {
+		return 0, nil
+	}
+	args, err := hw.ReadArgs(machineload.GateCandidates(snap, hw.Self))
+	if err != nil {
+		return 0, nil
+	}
+	// The holder is this process, so its start needs no proving; one read
+	// from its age would differ by a second between looks on macOS.
+	quiet := hw.w.observe(snap.Procs, hw.Self.PID, 0, queuedUnder(snap, hw.Self, args, hw.Self.PID), hw.Now())
+	waiting := slices.DeleteFunc(machineload.QueuedAt(snap, hw.Self, args, hw.Race), func(q int) bool {
+		return machineload.Descends(snap.Procs, q, hw.Self.PID)
+	})
+	return quiet, waiting
+}

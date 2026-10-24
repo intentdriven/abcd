@@ -920,6 +920,22 @@ it exits and releases the hold, so the command is never left running without
 its waiter. A symlinked `~/.abcd.noindex` is refused, and so is a home that lies inside a git working tree, unless that home is the account's own home itself, before anything is created under it (exit 1). Relay a timeout as
 printed; do not loop around it.
 
+A command hold lasts as long as its command runs, so the gate watches the CPU
+the holder's whole process tree (the waiter and every descendant, git children
+included) uses between looks (iss-2610241419324875). Once that tree has used
+no more than a tenth of one core for ten minutes, every waiter behind the hold
+says so in one more `waiting for capacity:` line, as a fact: `the holder (pid
+N, <checkout>) has held the test slot for M using little CPU (under 10% of a
+core for the last 10m0s); if it is yours and stuck, stop it by its own pid`.
+The holder says the same on its own standard error while others queue for its
+slot. Little CPU is not a verdict: a slow run waiting on its subprocesses uses
+little too, so only its owner can judge. Each watcher judges from its own
+looks, so a waiter that joins late watches ten minutes before it says
+anything; a child that comes and goes between looks counts as work, and a tree
+with a waiter of its own queued at a gate is not counted quiet. The hold stays
+in force and nothing is signalled. Stop a command by its own pid, never by
+pattern.
+
 While it waits, in a checkout, the waiter also keeps your own reservations
 from lapsing, so a record you reserved by hand stays yours while your
 preflight waits its turn: at once and then every five minutes it renews each
