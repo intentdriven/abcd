@@ -2560,3 +2560,18 @@ check and the away mode inside the checklist itself; carving them into a
 separate intent followed from the release cut waiting on them, and from
 planning the draft before its criteria are walked being the worse of the two
 routes.
+
+## 2026-10-24: setting abcd up is short, plain, and finishes (product thinker, routing confirmed)
+
+The proposal: "a thorough rethink of the CLI onboarding process (abcd install); it's complicated, too much text, and doesn't seem to be working. SOTA, rethink and then probably a fully functioning and polished TUI."
+
+| Part | Type | Home |
+| --- | --- | --- |
+| setup that is short, plain and finishes | capability | itd-2610240823055889 |
+| state-of-the-art research on setup flows and terminal interfaces | research | a research report, summarised in the intent's Research section |
+| the polished terminal interface | capability | builds on itd-2610030810370060 |
+| today's failures (status-line order, identity hidden, source build refused) | defects | iss-2610240823574047, iss-2610240824005655, iss-2610240824047504 |
+
+Verdict at filing: SPLIT, confirmed by the product thinker. The initial routing did not survive the two pre-interview reviews: both found the setup intent still held four parts, and on the product thinker's second SPLIT the commit identity (itd-2610240918547728, reversing part of itd-131, confirmed), third-party tool installs (itd-2610240918594138) and the shell-settings edit (itd-2610240919030303, reversing the never-edit-a-shell-profile rule, confirmed) became their own intents. The research's recommendation against a terminal UI framework moved the "polished TUI" part from a new interface to calmer use of the existing question package. Typed links: the three split intents build on itd-2610240823055889. A sixth part, that every flow says up front what it automates and what it asks, was routed to its own draft (itd-2610240913343804) rather than kept in setup.
+
+Grade: the first routing was right at the level of intent versus issue, and wrong at the level of how many intents one setup rethink holds; both reviewers caught it independently.
