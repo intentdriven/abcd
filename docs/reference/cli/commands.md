@@ -300,13 +300,15 @@ A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
 open question, has no unanswered claim section, is not held, names no unsettled blocker
 in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling
-worktree or local branch holds it in another bucket, no session holds a live claim on
-it, and no other copy holds a reservation on it on origin, as this checkout last fetched
-the reservations; a peer, claim or view that cannot be read counts as holding it). The
-check reads the reservations from disk alone, and names another copy's with its holder,
-its expiry and the view's age; this copy's own is never a holder. A refusal names the
-check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent
-instead of taking one named.
+worktree or local branch holds it in another bucket having changed it since its
+merge-base with this checkout, so a branch holding this checkout's older copy
+untouched does not count; no session holds a live claim on it; and no other copy holds
+a reservation on it on origin, as this checkout last fetched the reservations; a peer,
+claim or view that cannot be read, or a copy that cannot be compared, counts as holding
+it). The check reads the reservations from disk alone, and names another copy's with
+its holder, its expiry and the view's age; this copy's own is never a holder. A refusal
+names the check, the reason and the remedy, and writes nothing. `abcd build next` picks
+the intent instead of taking one named.
 
 In a checkout with a remote named origin, the run reserves its key there, as
 `abcd reserve` does, once the checks pass and before the run is created: a new run, and a
