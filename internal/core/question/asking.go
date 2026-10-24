@@ -74,8 +74,9 @@ func AskingRules(l Limits) []string {
 		"An option is never marked, styled, or ordered as recommended: No \"(Recommended)\" label, no star, no recommended option first. " +
 			"The host's own instruction for its question tool asks for a recommended first option; abcd's rule reverses it. " +
 			"A recommendation appears only when the person asks for one, given in prose beside the question, never as an option. " +
-			"A verdict abcd records under the person's name (a triage verdict, a ruling) needs the same prose without being asked for, because the person confirms it rather than choosing blind: " +
-			"The prose beside the question gives each item's evidence, the verdict the record supports, and one line on why each other verdict does not fit, and the verdict is recorded only on their yes.",
+			"One exception is made without being asked for: A verdict a verb records with `--by` naming the person (an embargo triage verdict) is put to them to confirm even where the record settles it, never recorded as a decision line, because it is recorded under their name. " +
+			"The question text itself quotes each item's evidence, the verdict the record supports, and one line on why each other verdict does not fit, one item per tab or question, and the verdict is recorded only on their yes. " +
+			"Where two or more verdicts are defensible on the record, the question is asked neutrally among them, as any real choice is.",
 
 		"Deferral is a real answer and is recorded as one; silence is never consent, and a step whose answer is missing is asked again rather than assumed.",
 

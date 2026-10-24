@@ -16,12 +16,14 @@ unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
 ### question-drafter 0.1.4
 
-PATCH: the generated asking-rules block now says that a verdict abcd records
-under the person's name is put to them with each item's evidence, the verdict
-the record supports and one line on why each other verdict does not fit, in
-prose beside a single confirm question, and is recorded only on their yes. The
-prose is the caller's, beside the question; the drafter's own behaviour is
-unchanged. Unmeasured, in the `0.x` band.
+PATCH: the generated asking-rules block now says that a verdict a verb records
+with `--by` naming the person is put to them to confirm even where the record
+settles it, with the question text itself quoting each item's evidence, the
+verdict the record supports and one line on why each other verdict does not
+fit, one item per tab or question; where two or more verdicts are defensible it
+is asked neutrally among them. The drafter's own behaviour is unchanged: it
+drafts the question from the material it is handed. Unmeasured, in the `0.x`
+band.
 
 ## 2026-10-18 (iss-2610172148157726 — a fix to a surface new since the last release is no fix)
 
