@@ -131,6 +131,10 @@ type Installer struct {
 	// Release is the pinned release for a registered tool; the registry's by
 	// default, replaced in tests to point a download at a local server.
 	Release func(name string) (Release, bool)
+	// PathOnly makes Plan start no program: a copy the PATH finds counts as
+	// usable without its version being read. The detection pass the hooks
+	// run sets it; an install never does.
+	PathOnly bool
 }
 
 // Default is the production installer for a verb run from guard (its
@@ -230,7 +234,9 @@ type Copy struct {
 	Compatible bool `json:"compatible"`
 	// Why says why it is not compatible.
 	Why string `json:"why,omitempty"`
-	abs string
+	// Unjudged reports that its version was not read (Installer.PathOnly).
+	Unjudged bool `json:"unjudged,omitempty"`
+	abs      string
 }
 
 // Download is the checked download an install would make.
@@ -268,13 +274,23 @@ type Plan struct {
 	Owned *Copy `json:"owned,omitempty"`
 	// Runs says which copy abcd runs, and which the person's shell runs.
 	Runs string `json:"runs,omitempty"`
+	// Upgrade reports that the download replaces abcd's own copy, which
+	// still works, with the version abcd's release pins.
+	Upgrade bool `json:"upgrade,omitempty"`
 	// Why says why the tool is unavailable.
 	Why string `json:"why,omitempty"`
 }
 
 // Plan decides what to do about name. It never downloads, never writes, and
 // runs only the verify command of a copy PATH already finds, to read its
-// version.
+// version, and not even that under PathOnly.
+//
+// abcd's own recorded copy is used only while its version lies in the range
+// abcd works with and is the one abcd's release pins. A copy of abcd's at
+// another version in the range still runs, and the pin is offered as an
+// upgrade over it; one outside the range is not run, and abcd's pinned copy
+// is offered in its place. Either way the download replaces only a copy that
+// is still the bytes abcd wrote (Install).
 func (in *Installer) Plan(name string) Plan {
 	p := Plan{Tool: name}
 	tool, ok := registry[name]
@@ -288,15 +304,35 @@ func (in *Installer) Plan(name string) Plan {
 	p.Pinned = rel.Version
 	p.Compatible = rel.Compatible.String()
 	if e, ok := owned(in.Home, name); ok {
-		p.Action = UseOwned
-		p.Owned = &Copy{Path: displayIn(in.Home, e.Path), Version: e.Version, Compatible: true, abs: e.Path}
-		p.Runs = "abcd runs its own copy at " + p.Owned.Path + " (" + e.Version + ")"
-		if shell := in.shellRuns(name, e.Path); shell != "" {
-			p.Runs += "; in your shell, " + name + " runs " + displayIn(in.Home, shell) + ", which comes first on your PATH"
+		c := Copy{Path: displayIn(in.Home, e.Path), Version: e.Version, Compatible: rel.Compatible.Contains(e.Version), abs: e.Path}
+		if !c.Compatible {
+			c.Why = "abcd's own copy is version " + e.Version + ", outside the versions abcd works with (" + p.Compatible + ")"
 		}
-		return p
+		p.Owned = &c
+		if c.Compatible {
+			p.Runs = "abcd runs its own copy at " + c.Path + " (" + e.Version + ")"
+			if shell := in.shellRuns(name, e.Path); shell != "" {
+				p.Runs += "; in your shell, " + name + " runs " + displayIn(in.Home, shell) + ", which comes first on your PATH"
+			}
+			if e.Version == rel.Version {
+				p.Action = UseOwned
+				return p
+			}
+			p.Upgrade = true
+		}
 	}
-	if prog, err := in.admit(name); err == nil {
+	if p.Owned != nil {
+		// abcd's own copy decides; another copy on the PATH is not judged.
+	} else if prog, err := in.admit(name); err == nil && in.PathOnly {
+		lex := prog
+		if l, err := in.LookPath(name); err == nil {
+			lex = l
+		}
+		p.Existing = &Copy{Path: displayIn(in.Home, lex), Unjudged: true, abs: prog}
+		p.Action = UseExisting
+		p.Runs = "abcd runs the copy already installed at " + p.Existing.Path + "; abcd ahoy install checks its version"
+		return p
+	} else if err == nil {
 		c := in.judge(tool, rel, prog)
 		if lex, err := in.LookPath(name); err == nil {
 			c.Path = displayIn(in.Home, lex) // the spelling the person's PATH gives
@@ -326,14 +362,19 @@ func (in *Installer) Plan(name string) Plan {
 		Version: rel.Version, URL: asset.URL, SHA256: asset.SHA256, Member: asset.Member,
 		Dest: displayIn(in.Home, dest), Checks: rel.Checks(), ChecksumOnly: rel.Signer == nil, dest: dest,
 	}
-	if exists(dest) {
-		// Not abcd's: Owned found no intact recorded copy above.
+	if exists(dest) && (p.Owned == nil || p.Owned.abs != dest) {
+		// Not abcd's: Owned found no intact recorded copy there.
 		p.Action = Unavailable
 		p.Why = p.Download.Dest + " already holds a copy of " + name + " that abcd did not install, and abcd never changes another copy; " +
 			"move or remove it yourself to let abcd install its own, or set XDG_BIN_HOME to another folder of yours"
 		return p
 	}
 	p.Action = InstallOwn
+	if p.Upgrade {
+		// The copy that works keeps running unless the person says yes.
+		p.Runs += "; after the update abcd runs " + rel.Version + " at " + p.Download.Dest
+		return p
+	}
 	p.Runs = "after the install abcd runs its own copy at " + p.Download.Dest + " whatever comes first on your PATH"
 	if p.Existing != nil {
 		if in.before(filepath.Dir(p.Existing.abs), dir) {
@@ -498,17 +539,20 @@ func (in *Installer) Install(name string, capability Capability, confirm Confirm
 	}
 	dl := plan.Download
 	r.pinned = dl.Version
-	if confirm == nil {
-		r.Declined = true
-		r.Why = "no one was asked"
-		return r
+	ans := Answer{Why: "no one was asked"}
+	if confirm != nil {
+		ans = confirm(e)
 	}
-	ans := confirm(e)
 	if !ans.Yes {
 		r.Declined = true
 		r.Why = ans.Why
 		if r.Why == "" {
 			r.Why = "the answer was no"
+		}
+		if plan.Upgrade {
+			// abcd's own copy still works and keeps running.
+			r.Ready, r.Runs, r.OnDecline = true, plan.Runs, ""
+			r.Path, r.Version = plan.Owned.Path, plan.Owned.Version
 		}
 		return r
 	}
@@ -558,9 +602,29 @@ func (in *Installer) Install(name string, capability Capability, confirm Confirm
 			"you own, so set XDG_BIN_HOME to one"
 		return r
 	}
+	// The one file the download may replace is abcd's own recorded copy,
+	// judged again here: a copy that is no longer the bytes abcd wrote is
+	// someone else's, and is never changed.
+	var previous []byte
 	if exists(dl.dest) {
-		r.Why = dl.Dest + " appeared while abcd was downloading, and abcd never changes a copy it did not install"
-		return r
+		own, mine := owned(in.Home, name)
+		if plan.Owned == nil || plan.Owned.abs != dl.dest || !mine || own.Path != dl.dest {
+			r.Why = dl.Dest + " appeared, or changed, while abcd was downloading, and abcd never changes a copy it did not install"
+			return r
+		}
+		if previous, err = os.ReadFile(dl.dest); err != nil {
+			r.Why = "could not keep abcd's copy at " + dl.Dest + " before replacing it (" + err.Error() + "); nothing was written"
+			return r
+		}
+	}
+	// putBack leaves the bin folder as it was: abcd's earlier copy where it
+	// replaced one, nothing where it wrote a new one.
+	putBack := func() {
+		if previous != nil {
+			_ = fsutil.WriteFileAtomic(dl.dest, previous, 0o755)
+			return
+		}
+		_ = os.Remove(dl.dest)
 	}
 	if err := fsutil.WriteFileAtomic(dl.dest, prog, 0o755); err != nil {
 		r.Why = "could not write " + dl.Dest + " (" + err.Error() + "); abcd installs only into a folder you own, so set " +
@@ -582,7 +646,7 @@ func (in *Installer) Install(name string, capability Capability, confirm Confirm
 	}
 	if r.Why != "" {
 		r.Why += "; abcd removed the copy it wrote"
-		_ = os.Remove(dl.dest)
+		putBack()
 		return r
 	}
 	progSum := sha256.Sum256(prog)
@@ -593,7 +657,7 @@ func (in *Installer) Install(name string, capability Capability, confirm Confirm
 		err = writeRecord(in.Home, rec)
 	}
 	if err != nil {
-		_ = os.Remove(dl.dest)
+		putBack()
 		r.Why = "the copy works, but " + displayIn(in.Home, filepath.Join(in.Home, filepath.FromSlash(recordRel))) +
 			" could not record it (" + err.Error() + "), so abcd could neither run it by its path nor remove it on uninstall; abcd removed it again"
 		return r

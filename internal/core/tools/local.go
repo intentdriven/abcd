@@ -203,16 +203,24 @@ var userHome = os.UserHomeDir
 var pathLookup = exec.LookPath
 
 // Resolve is where abcd runs name from: abcd's own recorded copy when there is
-// one and it is intact, whatever comes first on PATH (the intent's fourth
-// criterion), and otherwise the PATH lookup. Every caller that runs a
-// registered tool resolves it here, never by a bare exec.LookPath.
+// one, it is intact and its version lies in the range abcd works with,
+// whatever comes first on PATH (the intent's fourth criterion), and otherwise
+// the PATH lookup. Every caller that runs a registered tool resolves it here,
+// never by a bare exec.LookPath.
 func Resolve(name string) (string, error) {
 	if home, err := userHome(); err == nil {
-		if e, ok := owned(home, name); ok {
+		if e, ok := owned(home, name); ok && ownedCompatible(name, e) {
 			return e.Path, nil
 		}
 	}
 	return pathLookup(name)
+}
+
+// ownedCompatible reports whether abcd's recorded copy e of name is a version
+// abcd works with, by the version the record names (nothing is run).
+func ownedCompatible(name string, e Installed) bool {
+	rel, ok := registryRelease(name)
+	return ok && rel.Compatible.Contains(e.Version)
 }
 
 // Removal reports what uninstall did with one recorded copy.
