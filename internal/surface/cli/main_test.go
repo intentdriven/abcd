@@ -66,6 +66,11 @@ func TestMain(m *testing.M) {
 		os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
 	}
 	pageRunnerExtraEnv = []string{cliTestAsBinaryEnv + "=1"}
+	// The machine's login shell never shapes a setup run here: with no shell
+	// named, the shell-settings offer (itd-2610240919030303) is not raised,
+	// and a test that wants it names one with t.Setenv.
+	os.Setenv("SHELL", "")
+	os.Unsetenv("ZDOTDIR")
 	ahoy.SetCurrentVintageForTest(func() vintage.Current {
 		return vintage.Current{Revision: "testvintage", Known: true}
 	})

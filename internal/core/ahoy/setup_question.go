@@ -134,6 +134,7 @@ var setupConfirmIDs = []struct {
 	{"adopt", func(s string) bool { return s == "Adopt this unmanaged repo into abcd?" }},
 	{OracleRoutingMachineGapID, func(s string) bool { return s == machineRoutingQuestion() }},
 	{OracleRoutingRepoGapID, func(s string) bool { return s == repoRoutingQuestion() }},
+	{ShellPathOfferGapID, isShellPathQuestion},
 	{StatusLineOfferGapID, isStatusLineOfferQuestion},
 	{DrainRuleOfferGapID, func(s string) bool { return s == drainRuleQuestion() }},
 	{"history.lineage", func(s string) bool {
@@ -234,10 +235,11 @@ func splitConfirm(text string) ([]question.Block, string) {
 
 // SetupMachineWide reports whether the setup question id changes the machine
 // rather than the repository: the status line, which every repository on the
-// machine shows, and the machine's routing table. Its answer is recorded in
+// machine shows, the machine's routing table, and the PATH line in the
+// person's shell settings. Its answer is recorded in
 // the home's interviews, the rest in the repository's local tier.
 func SetupMachineWide(id string) bool {
-	return strings.HasPrefix(id, elementPromptPrefix) || id == OracleRoutingMachineGapID
+	return strings.HasPrefix(id, elementPromptPrefix) || id == OracleRoutingMachineGapID || id == ShellPathOfferGapID
 }
 
 // SetupFixedValues returns the values an answers file may give the setup

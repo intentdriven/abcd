@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/shellpath"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"slices"
 	"sort"
@@ -279,6 +280,9 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// After stepSymlink, never before: the record names the entry that step
 	// leaves on PATH, and the hooks read it before they will run that entry.
 	ac.stepPathEntry()
+	// After stepPathEntry: the shell-settings offer judges the entry this run
+	// left on disk, and is the first of the consent questions.
+	ac.stepShellPath()
 	// After the PATH-entry steps: abcd.binary names the verified copy they left.
 	ac.stepOutboundBinary()
 	// After stepOutboundBinary: the shim finds abcd through the abcd.binary it
@@ -479,6 +483,9 @@ type applyCtx struct {
 	docsTargetForced bool     // a --docs-target override overwrote a valid value, or this run chose the first one
 	markerRetract    []string // marker files a narrowed docs-target override de-selected
 	configMalformed  bool     // config.json could not be parsed; the refusal note was given once
+
+	shellPlan  *shellpath.Plan // what stepShellPath found for the entry's folder; nil when it did not look
+	shellAdded bool            // stepShellPath added the PATH line this run
 }
 
 // note is the receipt seam; it lives in receipt.go with the path scrub it
@@ -2036,7 +2043,9 @@ func (a *applyCtx) noteReachability() {
 		return // nothing was installed here; a refusal already said why
 	}
 	if dir := filepath.Dir(a.binTarget); !dirOnPath(dir) {
-		a.refuse(pathReachMessage(dir))
+		if n := a.shellPathNote(dir); n != "" {
+			a.refuse(n)
+		}
 	}
 	if e, ok := shadowingEntry(a.det.pluginRoot, a.binTarget); ok {
 		a.refuse(shadowMessage(e, a.binTarget))
@@ -2211,6 +2220,13 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 			target = filepath.Join(abs, binName)
 		}
 	}
+	// Shell settings: the PATH line abcd added, found by its record or, with
+	// none, by its exact text for the entry's folder (shellpath.Remove).
+	shellDir := ""
+	if target != "" {
+		shellDir = filepath.Dir(target)
+	}
+	receipt.ShellPath = uninstallShellPath(shellDir)
 	if target == "" {
 		receipt.Symlink.Note = "no user-scope install location; left untouched"
 		return receipt, nil
@@ -2356,14 +2372,14 @@ const credentialAtRestGapID = "history.credential_at_rest"
 // the retirement of a tool's own conventions file (see
 // stepConventionsFiles) and the README question (see stepReadme). In the
 // order they are reported.
-var optionalGapIDs = []string{OptionalPinGapID, ReadmeOfferGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+var optionalGapIDs = []string{OptionalPinGapID, ReadmeOfferGapID, ShellPathOfferGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 // terminalOnlyGapIDs are the optional offers put only to a person at a
 // terminal, and their categories: off one, neither the category nor the offer
 // is asked, so a piped answer stream keeps the order it had before they
 // existed. The README question has no category to ask (resolveApproval leaves
 // it out everywhere: the question is the consent).
-var terminalOnlyGapIDs = []string{ReadmeOfferGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+var terminalOnlyGapIDs = []string{ReadmeOfferGapID, ShellPathOfferGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 var terminalOnlyCategories = []GapCategory{DrainRule, ConventionsFile}
 
@@ -2521,6 +2537,9 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Pr
 	// The README question is its own consent (open question 5): its category
 	// is never asked, approved or declined.
 	delete(present, Readme)
+	// The shell-settings offer is its own consent too, asked only at a
+	// terminal (stepShellPath).
+	delete(present, ShellPath)
 	approved := map[GapCategory]bool{}
 	switch {
 	case opts.ApprovedCategories != nil:

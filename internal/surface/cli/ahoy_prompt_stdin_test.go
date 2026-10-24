@@ -215,6 +215,10 @@ func gitRepoWithIdentity(t *testing.T, repo, name, email string) {
 func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	repo := hermeticRepo(t)
 	gitRepoWithIdentity(t, repo, "Alex Reppel", "alex@example.com")
+	// A zsh login shell, so the shell-settings offer is raised whatever shell
+	// the machine running the test uses (itd-2610240919030303).
+	t.Setenv("SHELL", "/bin/zsh")
+	t.Setenv("ZDOTDIR", "")
 
 	base := []string{"ahoy", "install", "--yes", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
@@ -260,8 +264,10 @@ func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	// table is accepted only on an answer, so --yes names them as well; and so
 	// is the drain eligibility record (ruling BX2), which decides what an
 	// unattended agent may change; and so is the README question
-	// (spc-2610031704338417), which only the owner answers.
-	want := "git_identity.unpinned readme.offered oracle_routing.machine_offered oracle_routing.repo_offered drain_rule.offered"
+	// (spc-2610031704338417), which only the owner answers; and so is the
+	// shell-settings offer (itd-2610240919030303), which edits a file of the
+	// person's only on their own yes.
+	want := "git_identity.unpinned readme.offered path.shell_settings_offered oracle_routing.machine_offered oracle_routing.repo_offered drain_rule.offered"
 	if strings.Join(res.OptionalSkipped, " ") != want {
 		t.Fatalf("optional_skipped = %v, want [%s]\n%s", res.OptionalSkipped, want, jsonOut)
 	}

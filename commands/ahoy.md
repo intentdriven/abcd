@@ -464,8 +464,14 @@ abcd-owned entry already on `PATH`, which is adopted exactly where it stands.
 system-wide one — and fails loudly when it is not writable. abcd never escalates
 privileges, so never suggest re-running any of this under `sudo`; report the
 failure and let the user pick a directory they own. If the report carries a
-`path.bin_dir_not_on_path` gap, relay its one-line `export` fix verbatim and
-leave the user's shell profile alone.
+`path.bin_dir_not_on_path` gap, relay its one-line `export` fix verbatim. Do not
+edit the user's shell settings yourself: `abcd ahoy install` run at a terminal
+asks the person whether to add that line to the file their shell reads, names
+the file and the line, and adds it only on a yes (the
+`path.shell_settings_offered` gap). It keeps a copy of the file first, never
+edits a file that is a link kept elsewhere, and `abcd ahoy uninstall` removes
+the line again. Off a terminal, under `--yes`, or on a no, the line stays the
+person's to add.
 
 The entry install writes is the abcd-owned copy of the verified release binary,
 taken from the persistent plugin data directory a session's hooks provision.

@@ -4297,6 +4297,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "  readme: %s\n", termsafe.Sanitize(receipt.Readme.Note))
 				fmt.Fprintf(w, "  symlink: %s\n", symlinkNote(receipt))
 				fmt.Fprintf(w, "  status line: %s\n", receipt.StatusLine.Note)
+				fmt.Fprintf(w, "  shell settings: %s\n", termsafe.Sanitize(receipt.ShellPath.Note))
 			})
 		},
 	}
