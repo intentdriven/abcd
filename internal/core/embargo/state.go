@@ -251,7 +251,7 @@ func spelledExactly(root, lead string) error {
 }
 
 // misspelled is spelledExactly's refusal for found, a name on the state's
-// path that is exact spelled another way. The folder may hold the store's
+// path that is the exact name spelled another way. The folder may hold the store's
 // private records, so the remedy renames it where it stands and moves
 // nothing out of the store.
 func misspelled(lead, found, exact string) error {
