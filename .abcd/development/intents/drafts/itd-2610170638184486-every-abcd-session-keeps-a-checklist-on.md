@@ -269,6 +269,11 @@ technical decisions on state-of-the-art grounds, each marked.
 - **The release:** this intent and the coordination intent form the
   autonomous-agents bundle, built as the next big release once current work
   settles; dashboard work joins later (product thinker).
+- **The bundle gains a third member (product thinker, 2026-10-24).** The
+  person's grant, itd-2610240850336695, joins the autonomous-agents bundle, so
+  the grant, the checklist and the coordination intent are planned together.
+  Its Decision 14 narrows "they say so" above: the person sets the away mode
+  and the grant by the explicit command, never by a sentence in chat.
 - **Credentials:** autonomous sessions never use the product thinker's own
   forge login; each runs under its own weaker credential, owned by the
   coordination intent. The checklist records the credential's kind, scope and
