@@ -452,6 +452,17 @@ func Apply(env Env, p Plan) (Applied, error) {
 		if pruned != nil {
 			out.PruneNote = "older copies of " + shown + " in " + abcdhome.Display("backups") + "/ could not be pruned (" + pruned.Error() + ")"
 		}
+		judged, err := os.Lstat(p.File)
+		if err != nil || !judged.Mode().IsRegular() {
+			return Applied{}, ErrChanged
+		}
+		beforeReplace()
+		// The rename replaces the leaf without following it, so a link put at
+		// the path since it was judged would be lost rather than written
+		// through; the leaf is judged again here and refused when it moved.
+		if now, err := os.Lstat(p.File); err != nil || !now.Mode().IsRegular() || !os.SameFile(judged, now) {
+			return Applied{}, ErrChanged
+		}
 		if err := replace(p.File, cur, next, backup); err != nil {
 			return Applied{}, err
 		}
@@ -491,6 +502,10 @@ func createFile(path string, data []byte) error {
 // so a test can make the write land something other than what was asked,
 // which is what the read-back exists to catch.
 var writeFile = fsutil.WriteFileAtomicPreserveMode
+
+// beforeReplace runs between the last judgement of the leaf and the replace.
+// A variable so a test can swap the leaf in that moment.
+var beforeReplace = func() {}
 
 // replace writes next over path, whose bytes now are cur and whose copy is at
 // backup, reads it back, and puts cur back when it does not read as written.

@@ -331,3 +331,38 @@ func TestCopiesArePrunedToTen(t *testing.T) {
 		t.Errorf("another file's copy was pruned: %v", err)
 	}
 }
+
+// TestApplyRefusesALinkSwappedInBeforeTheReplace holds the last moment before
+// the write: a link put at the path after the file was judged is refused, and
+// both the link and the file it names are left as they were.
+func TestApplyRefusesALinkSwappedInBeforeTheReplace(t *testing.T) {
+	e, dir := env(t, "/bin/zsh", "darwin")
+	rc := filepath.Join(e.Home, ".zshrc")
+	write(t, rc, "export EDITOR=vi\n", 0o644)
+	kept := filepath.Join(t.TempDir(), "dotfiles-zshrc")
+	write(t, kept, "export EDITOR=vi\n", 0o644)
+
+	p := PlanFor(e, dir)
+	if p.State != Offer {
+		t.Fatalf("plan = %+v, want an offer", p)
+	}
+	beforeReplace = func() {
+		if err := os.Remove(rc); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(kept, rc); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { beforeReplace = func() {} })
+
+	if _, err := Apply(e, p); !errors.Is(err, ErrChanged) {
+		t.Fatalf("apply over a swapped-in link = %v, want ErrChanged", err)
+	}
+	if fi, err := os.Lstat(rc); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("the link was replaced: %v %v", fi, err)
+	}
+	if got := read(t, kept); got != "export EDITOR=vi\n" {
+		t.Errorf("the linked file changed: %q", got)
+	}
+}
