@@ -235,7 +235,8 @@ release is always taken first, whatever the store holds.
 `left_out` names each advisory the plan does not publish and why: its record
 is resolved neither in the release nor in the store with a fix commit the plan
 accepts, its fix is in no published release up to the release, its package is not set on GitHub, or its
-text carries a secret, a private name, or another advisory still under embargo
+summary, description, or any affected package's name or vulnerable functions
+carry a secret, a private name, or another advisory still under embargo
 (a closed one's title included: it stays private on GitHub). Show the user the
 whole plan, then `approve_with`.
 
