@@ -931,7 +931,7 @@ The holder says the same on its own standard error while others queue at any
 gate it holds. Little CPU is not a verdict: a slow run waiting on its subprocesses uses
 little too, so only its owner can judge. Each watcher judges from its own
 looks, so a waiter that joins late watches ten minutes before it says
-anything; a child that comes and goes between looks counts as work, and a tree
+anything; a child seen at one look and gone by the next counts as work, and a tree
 with a waiter of its own queued at a gate is not counted quiet. The hold stays
 in force and nothing is signalled. Stop a command by its own pid, never by
 pattern.

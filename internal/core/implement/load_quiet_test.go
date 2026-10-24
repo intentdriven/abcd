@@ -400,3 +400,56 @@ func TestWaitLinesShowEachHoldersAgeAndCPU(t *testing.T) {
 		t.Fatalf("a span later the holders = %+v, want both measured, 777 at half a core and 80000 at none", later)
 	}
 }
+
+// TestWaitSpanLineIsMeasuredWhenLooksVaryInLength: the line said a span
+// after the first is timed from the same moment as the holders' meters, so a
+// look that takes longer than the first (a slow ps run on a loaded machine)
+// cannot bring the line forward to before the holders are measured.
+func TestWaitSpanLineIsMeasuredWhenLooksVaryInLength(t *testing.T) {
+	home := t.TempDir()
+	holder, tree, _ := quietHolder(t, home)
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(home, 60000, clock, poll{load: 3, procs: append([]machineload.Proc{holder}, tree...)})
+	// Every look but the first spends ten seconds reading the arguments.
+	args, looks := req.ReadArgs, 0
+	req.ReadArgs = func(pids []int) (map[int][]string, error) {
+		if looks++; looks > 1 {
+			clock.Sleep(10 * time.Second)
+		}
+		return args(pids)
+	}
+	req.Read = withTreeCPU(req.Read, clock, func(d time.Duration) time.Duration { return d })
+	req.Timeout = QuietSpan + time.Minute
+	var lines []WaitResult
+	req.OnWait = func(r WaitResult) { lines = append(lines, r) }
+	if _, err := WaitLoad(req); err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 2 || len(lines[1].Holders) != 1 || !lines[1].Holders[0].Measured {
+		t.Fatalf("lines = %+v; want the second, a span after the first, to carry a measured holder", lines)
+	}
+}
+
+// TestWaitRaceGateCountsARaceCommandOnce: at the race gate a race command's
+// waiter and the go test -race beneath it are one holder, as the first
+// gate's slots count them, so its tree's CPU is not counted twice.
+func TestWaitRaceGateCountsARaceCommandOnce(t *testing.T) {
+	home := t.TempDir()
+	clock := &fakeClock{now: waitT0}
+	procs := []machineload.Proc{
+		{PID: 70000, PPID: 1, PGID: 70000, UID: 502, Age: 5 * time.Minute, Name: "abcd"},
+		{PID: 70001, PPID: 70000, PGID: 70000, UID: 502, Age: 5 * time.Minute, Name: "go"},
+	}
+	req := waitReq(home, 60000, clock, poll{load: 3, procs: procs,
+		args: map[int][]string{70000: {"implement", "load", "--wait", "--", "go", "test", "-race", "./..."}}})
+	req.Getenv = slotsEnv("2")
+	req.Race = true
+	req.Timeout = 0
+	res, err := WaitLoad(req)
+	if err != nil || res.Status != WaitTimedOut || !reflect.DeepEqual(res.RaceRuns, []int{70000, 70001}) {
+		t.Fatalf("result %+v, err %v; want the gate shut by the race command and its run", res, err)
+	}
+	if want := []GateHolder{{PID: 70000, AgeS: 300}}; !reflect.DeepEqual(res.Holders, want) {
+		t.Fatalf("holders = %+v, want the race command once: %+v", res.Holders, want)
+	}
+}

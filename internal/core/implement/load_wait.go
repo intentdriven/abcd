@@ -433,6 +433,9 @@ type WaitResult struct {
 	// Holders is each holder ahead at the last look, in pid order, the hold
 	// record's first (GateHolder, load_quiet.go).
 	Holders []GateHolder `json:"holders,omitempty"`
+	// lookedAt is the moment of the last look, the one its holders were
+	// measured at.
+	lookedAt time.Time
 	// HoldGates are the gates whose hold this wait took, when it opened: its
 	// own, and the race gate's too for a race command above one slot.
 	HoldGates []string `json:"-"`
@@ -644,20 +647,23 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		// A waiting line is said at the first look that finds the gate shut,
 		// and again once every QuietSpan while it stays shut, so the holders'
 		// CPU, measured over a span, reaches the line; a line saying a holder
-		// has gone quiet stands for the span's line.
+		// has gone quiet stands for the span's line. Each is timed by its
+		// look's moment, the one the holders' meters take their samples at,
+		// so a look slower than the first cannot bring the span's line
+		// forward to before the holders it names are measured.
 		switch {
 		case !announced:
-			announced, announcedAt = true, now()
+			announced, announcedAt = true, res.lookedAt
 			if req.OnWait != nil {
 				req.OnWait(res)
 			}
 		case res.Quiet != nil && !quietSaid:
-			announcedAt = now()
+			announcedAt = res.lookedAt
 			if req.OnQuiet != nil {
 				req.OnQuiet(res)
 			}
-		case now().Sub(announcedAt) >= QuietSpan:
-			announcedAt = now()
+		case res.lookedAt.Sub(announcedAt) >= QuietSpan:
+			announcedAt = res.lookedAt
 			if req.OnWait != nil {
 				req.OnWait(res)
 			}
@@ -741,6 +747,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 		return nil, true, crossedLook{}, nil
 	}
 	t := now()
+	res.lookedAt = t
 	res.Holder, res.RaceRuns, res.Reason = nil, []int{}, ""
 	res.Preflights, res.Waiters, res.UngatedTests = nil, nil, nil
 	if readErr != nil {

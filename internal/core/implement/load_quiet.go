@@ -225,7 +225,10 @@ func (m *cpuMeter) measure(procs []machineload.Proc, pid int, t time.Time) (floa
 
 // measureHolders names each holder ahead at this look, the hold record's
 // holder first (when it holds the command form), then the work in the slots,
-// each once, and meters each: a holder first seen at this look starts its
+// each once, a slot beneath another holder named counting as part of it, as
+// the first gate's slots count them (machineload.Ahead.Busy): at the race
+// gate a race command's waiter and the go test -race under it are one holder,
+// whose tree would otherwise be counted twice. Each is metered: a holder first seen at this look starts its
 // meter, and one no longer ahead drops it. A pid whose start time moved past
 // holdStartSlack is a new process, and starts a new meter.
 func measureHolders(w *holderWatch, h *WaitHolder, slots []int, snap machineload.Snapshot, t time.Time) []GateHolder {
@@ -256,7 +259,16 @@ func measureHolders(w *holderWatch, h *WaitHolder, slots []int, snap machineload
 	if h != nil && h.Form == HoldCommand {
 		add(h.PID, true, t.Sub(h.Opened))
 	}
+	beneath := func(pid int) bool {
+		if h != nil && h.Form == HoldCommand && machineload.Descends(snap.Procs, pid, h.PID) {
+			return true
+		}
+		return slices.ContainsFunc(slots, func(other int) bool { return machineload.Descends(snap.Procs, pid, other) })
+	}
 	for _, pid := range slots {
+		if beneath(pid) {
+			continue
+		}
 		for _, p := range snap.Procs {
 			if p.PID == pid {
 				add(pid, false, p.Age)
