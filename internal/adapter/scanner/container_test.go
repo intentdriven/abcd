@@ -1514,6 +1514,112 @@ func TestGzipHeaderFieldsAreCovered(t *testing.T) {
 	assertCaughtOrRefused(t, scanOne(t, sc, "header.gz", abs), "header.gz")
 }
 
+// gzipMembers returns the concatenated members a multistream gzip holds, one
+// per body, with extra[i] (when non-nil) as member i's FEXTRA field.
+func gzipMembers(t *testing.T, bodies [][]byte, extra map[int][]byte) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	for i, body := range bodies {
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		zw.Extra = extra[i]
+		if _, err := zw.Write(body); err != nil {
+			t.Fatal(err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		out.Write(buf.Bytes())
+	}
+	return out.Bytes()
+}
+
+// TestEveryGzipMemberHeaderIsCovered: a gzip file may hold several members,
+// each with its own header, and the reader decodes them all as one stream. The
+// header of the second and every later member carries FEXTRA, FNAME and
+// FCOMMENT exactly as the first does, so each is judged, at the top level and
+// inside a zip or a tar.
+func TestEveryGzipMemberHeaderIsCovered(t *testing.T) {
+	root := t.TempDir()
+	sc, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := gzipOf(t, secretBody(fakeToken()))
+	harmless := []byte("harmless\n")
+	for _, at := range []int{1, 2} {
+		raw := gzipMembers(t, [][]byte{harmless, harmless, harmless}, map[int][]byte{at: member})
+		if _, err := io.ReadAll(mustGzip(t, raw)); err != nil {
+			t.Skip("this Go version rejects the crafted header")
+		}
+		for name, payload := range map[string][]byte{
+			"m" + strconv.Itoa(at+1) + ".gz":     raw,
+			"m" + strconv.Itoa(at+1) + "-gz.zip": zipOf(t, "inner.gz", raw),
+			"m" + strconv.Itoa(at+1) + "-gz.tar": tarOf(t, "inner.gz", raw),
+		} {
+			abs := writeFile(t, root, name, string(payload))
+			assertCaughtOrRefused(t, scanOne(t, sc, name, abs), name)
+		}
+	}
+}
+
+// TestMultiMemberGzipIsStillDecoded: reading a gzip one member at a time keeps
+// what the multistream reader gave — a clean file of several members is
+// decoded, a token in a later member's body is found, and a tar split across
+// members still reads as one tar.
+func TestMultiMemberGzipIsStillDecoded(t *testing.T) {
+	root := t.TempDir()
+	sc, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clean := gzipMembers(t, [][]byte{[]byte("one\n"), []byte("two\n"), []byte("three\n")}, nil)
+	abs := writeFile(t, root, "clean.gz", string(clean))
+	if res := scanOne(t, sc, "clean.gz", abs); res.HardFails != 0 || !contains(res.ContentDecoded, "clean.gz") {
+		t.Errorf("a clean three-member gzip is decoded: %+v", res)
+	}
+	secret := gzipMembers(t, [][]byte{[]byte("one\n"), secretBody(fakeToken())}, nil)
+	abs = writeFile(t, root, "secret.gz", string(secret))
+	if res := scanOne(t, sc, "secret.gz", abs); res.HardFails == 0 {
+		t.Errorf("a token in the second member's body must hard-fail: %+v", res)
+	}
+	tr := tarOf(t, "conf/.env", secretBody(fakeToken()))
+	split := gzipMembers(t, [][]byte{tr[:700], tr[700:]}, nil)
+	abs = writeFile(t, root, "split.tgz", string(split))
+	if res := scanOne(t, sc, "split.tgz", abs); res.HardFails == 0 || !contains(res.ContentDecoded, "split.tgz") {
+		t.Errorf("a tar split across two members is decoded and its token found: %+v", res)
+	}
+}
+
+// TestGzipMemberCountIsBounded: each member after the first is a decode
+// operation, so a file of more members than the operation bound allows is
+// refused with the bound it hit rather than read a header pass apiece.
+func TestGzipMemberCountIsBounded(t *testing.T) {
+	root := t.TempDir()
+	sc, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodies := make([][]byte, maxDecodeEntries+2)
+	for i := range bodies {
+		bodies[i] = []byte("x")
+	}
+	abs := writeFile(t, root, "many.gz", string(gzipMembers(t, bodies, nil)))
+	res := scanOne(t, sc, "many.gz", abs)
+	if why := res.ContentUnverifiedWhy["many.gz"]; !strings.Contains(why, "members") {
+		t.Errorf("a gzip past the member bound is unverified naming it, got %q: %+v", why, res)
+	}
+}
+
+func mustGzip(t *testing.T, raw []byte) io.Reader {
+	t.Helper()
+	zr, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return zr
+}
+
 // TestTarPAXRecordIsCovered: a PAX record's key is the archive's choosing and
 // its value may hold any bytes at all — the format forbids NULs only in the
 // four records the walk already knew about.
