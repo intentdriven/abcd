@@ -1,7 +1,7 @@
 {
   "bypass_actors": [
     {
-      "actor_id": "RESERVATION_SWEEP_APP_ID",
+      "actor_id": 5456387,
       "actor_type": "Integration",
       "bypass_mode": "always"
     }
