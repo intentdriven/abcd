@@ -140,6 +140,9 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 	r.branchItems()
 	r.reservationItems()
 	r.handBack()
+	if r.cut {
+		r.ranOut("the rest of this copy's work")
+	}
 	sort.SliceStable(r.items, func(i, j int) bool {
 		a, b := r.items[i], r.items[j]
 		if ka, kb := kindRank(a.Kind), kindRank(b.Kind); ka != kb {
@@ -176,6 +179,7 @@ type owedReader struct {
 	own            map[string]bool
 	stacks         *stackIndex       // read once, for diskStackBase
 	incomplete     bool              // the time budget ran out before everything was read
+	cut            bool              // a git read failed once the budget had run out
 	stackBase      map[string]string // a branch's base's tip on disk, for the hand-back
 
 	items       []OwedItem
@@ -207,8 +211,14 @@ func (r *owedReader) note(format string, a ...any) {
 
 // git runs one git command bound to the check's context: past its deadline
 // git is killed and the call fails.
+// A failure once the deadline has passed is marked, so a reader that treats
+// a failed read as "nothing there" cannot pass a cut-short reading as whole.
 func (r *owedReader) git(args ...string) (string, error) {
-	return gitutil.RunLimitedContext(r.ctx, r.root, 1<<20, args...)
+	out, err := gitutil.RunLimitedContext(r.ctx, r.root, 1<<20, args...)
+	if err != nil && r.expired() {
+		r.cut = true
+	}
+	return out, err
 }
 
 // ancestor reports whether a is an ancestor of b; false when git cannot say,
@@ -254,6 +264,12 @@ func (r *owedReader) readRefs() {
 	r.branches = map[string]*localBranch{}
 	out, err := r.git("for-each-ref", "--format=%(refname:short)%00%(objectname)%00%(upstream)%00%(upstream:track)", "refs/heads")
 	if err != nil {
+		// A listing the deadline cut short is a reading not done, not a
+		// copy with no branches: the verdict must fail open and say so.
+		if r.expired() {
+			r.ranOut("the local branches")
+			return
+		}
 		r.note("the local branches could not be listed")
 		return
 	}
