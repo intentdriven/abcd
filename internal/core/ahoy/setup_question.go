@@ -140,6 +140,10 @@ var setupConfirmIDs = []struct {
 		return strings.HasPrefix(s, "Re-founded from ") && strings.HasSuffix(s, "? Link lineage?")
 	}},
 	{"git_identity.establish", func(s string) bool { return strings.HasPrefix(s, "Commit to this repository as ") }},
+	{UnrecordedGapID, func(s string) bool {
+		return strings.HasPrefix(s, "Record ") && strings.Contains(s, " as who you commit as on this machine? ")
+	}},
+	{LegacyPinGapID, func(s string) bool { return strings.HasPrefix(s, legacyPinQuestionPrefix) }},
 	{"remote.apply", func(s string) bool { return strings.HasPrefix(s, "Change GitHub settings on ") }},
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/adapter/gitleaks"
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
@@ -362,6 +363,7 @@ const (
 	UnsetGapID        = "git_identity.unset"
 	CommitterGapID    = "git_identity.committer"
 	ToolIdentityGapID = "git_identity.tool"
+	UncheckableGapID  = "git_identity.uncheckable"
 )
 
 // routineRunnerRecord is where establishing the human identity for an
@@ -371,58 +373,71 @@ const routineRunnerRecord = "iss-2608210932052003"
 
 // establishHint is the fix every resolvable identity gap shares: install
 // proposes the human identity and asks, and nothing writes it unasked.
-const establishHint = "run abcd ahoy install at a terminal: it proposes the pinned identity (else your global git identity) for this repository's user.name/user.email and writes it only if you confirm"
+const establishHint = "run abcd ahoy install at a terminal: it proposes the identity you recorded on this machine (else your global git identity) for this repository's user.name/user.email and writes it only if you confirm"
+
+// changeRecordHint says how a person changes their own record. It names the
+// record's file, which is theirs, and no one else's identity.
+func changeRecordHint(ref identity.RecordRef) string {
+	return "if the record is wrong, edit " + ref.Display + ", or remove it and run abcd ahoy install at a terminal to be asked again"
+}
 
 // detectGitIdentity compares the git author and committer identities a commit
-// would use against the committed .abcd/config/identity.json pin (iss-62,
-// itd-131). An author mismatch or unset identity is a required, resolvable gap;
-// a committer that diverges is one too in a pinned repo and advisory in an
-// un-pinned one; a machine identity in either role is required wherever it is
-// found, because the human is the author of record whether or not the repo has
-// pinned who that is. An un-pinned repo also gets an advisory gap (adopt the
-// gate); a match yields nothing.
+// would use against the person's OWN record, kept on their machine
+// (itd-2610240918547728; iss-62 and itd-131 before it). Nothing a repository
+// commits names who may commit to it, so no gap here ever names anyone but the
+// person running it. An author mismatch or unset identity is a required,
+// resolvable gap; a committer that diverges is one too when a record applies
+// and advisory otherwise; a machine identity in either role is required
+// wherever it is found, because the human is the author of record whether or
+// not they have recorded who that is. No record yet is an advisory gap
+// (record one); a repository that still stores the identity pin itd-131
+// committed gets the migration gap (detectLegacyPin).
 func detectGitIdentity(cwd string) []Gap {
+	gaps := detectLegacyPin(cwd)
 	res, err := identity.Check(cwd)
 	if err != nil {
-		// A present-but-unreadable pin is an adopted-but-broken gate (required);
-		// an error with no pin is a git/environment issue (advisory).
-		_, statErr := os.Stat(filepath.Join(cwd, identity.PinRelPath))
-		pinPresent := statErr == nil
-		return []Gap{{
-			ID: "git_identity.uncheckable", Category: ConfigChange, Scope: "repo",
+		// A record that is there and cannot be trusted or read is a gate that
+		// fails closed (required); any other error is a git/environment issue
+		// (advisory).
+		return append(gaps, Gap{
+			ID: UncheckableGapID, Category: ConfigChange, Scope: "repo",
 			Title:      "git identity could not be checked",
 			Detail:     err.Error(),
-			FixHint:    "fix the pin JSON in " + identity.PinRelPath + " (both name and email), or ensure git is available",
-			Required:   pinPresent,
+			FixHint:    "fix or remove your own identity record (" + identity.MachineRecordRef().Display + ", or the one for this repository under " + abcdhome.Display("identity/") + "), or ensure git is available",
+			Required:   errors.Is(err, identity.ErrRecordRefused),
 			Resolvable: false,
-		}}
+		})
 	}
-	var gaps []Gap
 	switch res.Status {
 	case identity.StatusMismatch:
 		gaps = append(gaps, Gap{
 			ID: MismatchGapID, Category: ConfigChange, Scope: "repo",
-			Title:      "git commit identity does not match the pin",
+			Title:      "git commit identity is not the one you recorded",
 			Detail:     res.Reason,
-			FixHint:    establishHint + "; or set user.name/user.email by hand (or update the pin if the identity changed)",
+			FixHint:    establishHint + "; or set user.name/user.email by hand; " + changeRecordHint(res.RecordAt),
 			Required:   true,
 			Resolvable: true,
 		})
 	case identity.StatusUnset:
 		gaps = append(gaps, Gap{
 			ID: UnsetGapID, Category: ConfigChange, Scope: "repo",
-			Title:      "git author identity is not configured",
-			Detail:     res.Reason,
-			FixHint:    establishHint + "; or set git user.name/user.email to the pinned identity in " + identity.PinRelPath,
-			Required:   true,
+			Title:   "git author identity is not configured",
+			Detail:  res.Reason,
+			FixHint: establishHint + "; or set git user.name/user.email to your own identity",
+			// Required once the person has recorded who they are. Before that,
+			// git itself refuses a commit with no identity, and a repository
+			// set up where none is configured yet (CI, a fresh container) is
+			// not left with required work it cannot do (criterion 5: the
+			// launcher supplies the identity).
+			Required:   res.Recorded,
 			Resolvable: true,
 		})
-	case identity.StatusNoPin:
+	case identity.StatusNoRecord:
 		gaps = append(gaps, Gap{
-			ID: OptionalPinGapID, Category: ConfigChange, Scope: "repo",
-			Title:      "no git identity pin",
-			Detail:     res.Reason,
-			FixHint:    "ahoy install can pin the current git identity to " + identity.PinRelPath,
+			ID: UnrecordedGapID, Category: MachineIdentity, Scope: "machine",
+			Title:      "you have not recorded who you commit as on this machine",
+			Detail:     res.Reason + "; until you do, a commit is refused only when it is made under a machine's identity",
+			FixHint:    "run abcd ahoy install at a terminal: it proposes your usual git identity and records it in " + identity.MachineRecordRef().Display + " only if you confirm",
 			Required:   false,
 			Resolvable: true,
 		})
@@ -433,7 +448,7 @@ func detectGitIdentity(cwd string) []Gap {
 			Title:      "git committer identity diverges",
 			Detail:     res.CommitterReason,
 			FixHint:    "unset any GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL override and committer.name/committer.email key; or " + establishHint,
-			Required:   res.Status != identity.StatusNoPin,
+			Required:   res.Recorded,
 			Resolvable: true,
 		})
 	}
@@ -441,13 +456,66 @@ func detectGitIdentity(cwd string) []Gap {
 		gaps = append(gaps, Gap{
 			ID: ToolIdentityGapID, Category: ConfigChange, Scope: "repo",
 			Title:      "commits would be made under a machine identity",
-			Detail:     tool + " is a machine identity; the human is the author of record, and the attribution gate refuses a machine in these fields",
+			Detail:     tool + " is a machine identity; the human is the author of record, and the commit check refuses a machine in these fields",
 			FixHint:    establishHint + ". An autonomous routine has no one to ask: whatever launches it sets the human identity before the first commit (" + routineRunnerRecord + "), and abcd does not write it unasked",
 			Required:   true,
 			Resolvable: true,
 		})
 	}
 	return gaps
+}
+
+// detectLegacyPin reports a repository that still stores the identity pin
+// itd-131 committed (.abcd/config/identity.json). On its owner's machine the
+// gap offers the move; on anyone else's it says only that the stored identity
+// is not theirs and is no longer read, and names no one.
+func detectLegacyPin(cwd string) []Gap {
+	plan, found, err := identity.PlanMigration(cwd, userHome())
+	if err != nil {
+		// A pin that is there and cannot be read (malformed, or refused by the
+		// guarded reader: a symlink, not a regular file, over the size cap) is
+		// the present-but-unreadable path the gate has always reported.
+		return []Gap{{
+			ID: UncheckableGapID, Category: ConfigChange, Scope: "repo",
+			Title:      "git identity could not be checked",
+			Detail:     err.Error(),
+			FixHint:    "repair or remove " + identity.LegacyPinRelPath + " (a regular file, not a symlink); abcd no longer reads it to check commits, only to move it to its owner's machine",
+			Required:   false,
+			Resolvable: false,
+		}}
+	}
+	if !found {
+		return nil
+	}
+	if !plan.Owner {
+		return []Gap{{
+			ID: LegacyPinGapID, Category: MachineIdentity, Scope: "repo",
+			Title: "this repository stores a commit identity that is not yours",
+			Detail: identity.LegacyPinRelPath + " stores the identity of whoever set the repository up. abcd no longer reads it: " +
+				"your commits are checked against your own record on your machine, and it is not copied there",
+			FixHint:    "nothing to do; the person it names moves it out of the repository when they next run abcd ahoy install",
+			Required:   false,
+			Resolvable: false,
+		}}
+	}
+	g := Gap{
+		ID: LegacyPinGapID, Category: MachineIdentity, Scope: "repo",
+		Title: "this repository stores your commit identity",
+		Detail: identity.LegacyPinRelPath + " stores " + plan.Pin.Name + " <" + plan.Pin.Email + ">, which tells every other contributor to commit as you; " +
+			"abcd now keeps each person's identity on their own machine",
+		FixHint:    "run abcd ahoy install at a terminal: it moves the identity to " + plan.Target.Display + " and removes " + identity.LegacyPinRelPath + " from the repository, only if you confirm",
+		Required:   false,
+		Resolvable: true,
+	}
+	if plan.Pin.ProductionMode != "" {
+		g.FixHint += "; its production_mode is kept, in " + provenance.DeclaredModeRelPath
+	}
+	if plan.Blocker != "" {
+		g.Detail += "; " + plan.Blocker
+		g.FixHint = "settle what blocks the move, then run abcd ahoy install at a terminal"
+		g.Resolvable = false
+	}
+	return []Gap{g}
 }
 
 // toolRoles words which roles hold a machine identity, or "" when none does.

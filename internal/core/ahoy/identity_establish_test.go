@@ -136,8 +136,8 @@ func TestDetectGitIdentity_ForgeCommitterIsNotATool(t *testing.T) {
 }
 
 // TestStepGitIdentity_ProposesPinAndWritesOnlyOnConfirm is criterion 1: a
-// repo-local override that differs from the pin is met with the pinned
-// identity as the proposal, and repo-local config is written only after the
+// repo-local override that differs from the person's own record is met with
+// that record as the proposal, and repo-local config is written only after the
 // person confirms — at the moment of asking, nothing has changed yet.
 func TestStepGitIdentity_ProposesPinAndWritesOnlyOnConfirm(t *testing.T) {
 	clearIdentityEnv(t)
@@ -261,17 +261,17 @@ func TestStepGitIdentity_EnvOverrideIsNotRewritten(t *testing.T) {
 	}
 }
 
-// TestStepIdentityPin_RefusesAToolIdentity: adopting the gate must never
-// canonicalise the harness's own identity as the repo's human.
-func TestStepIdentityPin_RefusesAToolIdentity(t *testing.T) {
+// TestStepIdentityRecord_RefusesAToolIdentity: a record must never name the
+// harness's own identity as the person.
+func TestStepIdentityRecord_RefusesAToolIdentity(t *testing.T) {
 	clearIdentityEnv(t)
 	dir := idGitRepo(t, "Claude", "noreply@anthropic.com")
-	a := establishCtx(dir, &identityPrompter{terminal: true, answer: true}, OptionalPinGapID)
-	a.stepIdentityPin()
-	if _, ok, _ := identity.LoadPin(dir); ok {
-		t.Fatal("a tool identity was pinned as the repo's human")
+	a := establishCtx(dir, &identityPrompter{terminal: true, answer: true}, UnrecordedGapID)
+	a.stepIdentityRecord()
+	if _, _, ok, _ := identity.LoadRecord(os.Getenv("HOME"), ""); ok {
+		t.Fatal("a tool identity was recorded as the person")
 	}
 	if len(a.notes) == 0 {
-		t.Fatal("the refusal to pin a tool identity was not said")
+		t.Fatal("the refusal to record a tool identity was not said")
 	}
 }

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/history"
-	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
@@ -169,9 +168,10 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	}
 
 	// Idempotency: zero required+resolvable gaps => exact no-op. Three exceptions
-	// fall through: the advisory git-identity pin and the status-line offer, the
-	// optional gaps install closes against a confirmed answer (never under
-	// --yes), as their fix hints advertise; and an explicit value override that
+	// fall through: the person's own identity record (and the move of a pin
+	// the repository still stores) and the status-line offer, the optional
+	// gaps install closes against a confirmed answer (never under --yes), as
+	// their fix hints advertise; and an explicit value override that
 	// differs from the persisted config, which forces an apply-as-update on an
 	// otherwise-clean repo (iss-107).
 	// An explicit --dev (or a plain install over an existing dev shim) forces an
@@ -297,9 +297,13 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	ac.stepConventionsFiles()
 	ac.stepRules()
 	ac.stepVersionStamp()
-	// Before the pin: an identity mended here is the one the pin then records.
+	// The person's own identity record first (itd-2610240918547728): a pin the
+	// repository still stores moves to its owner's machine, else a person with
+	// no record is offered one; each is its own question, asked only at a
+	// terminal. Then the repository's git identity is mended against it.
+	ac.stepIdentityMigrate()
+	ac.stepIdentityRecord()
 	ac.stepGitIdentity()
-	ac.stepIdentityPin()
 	// After every step that asks its questions first: the kind is the last
 	// answer a piped install gives (itd-2609150819432059).
 	ac.stepArtefact()
@@ -544,45 +548,6 @@ func droppedOverrides(overrides map[string]string) string {
 	}
 	sort.Strings(pairs)
 	return strings.Join(pairs, ", ")
-}
-
-// stepIdentityPin adopts the iss-62 identity gate for an un-pinned repo: it
-// writes .abcd/config/identity.json from the current git author identity (the
-// proposal), gated on ConfigChange approval (the confirmation). A mismatch is
-// never auto-resolved — abcd must not silently change the pin or the user's git
-// identity — so it stays a guided manual fix.
-//
-// It does NOT auto-adopt under --yes: pinning captures whatever git identity is
-// currently set, so a blanket approval could pin a wrong/sandbox identity as
-// canonical (the very value the gate exists to reject). Under --yes the
-// un-pinned gap simply remains, to be adopted against a confirmed answer — typed
-// at a terminal, or piped to a non-interactive run (iss-167). The exclusion is
-// reported in InstallResult.OptionalSkipped, never left silent (iss-166).
-func (a *applyCtx) stepIdentityPin() {
-	if a.autoYes || !a.approved[ConfigChange] || !a.has(OptionalPinGapID) {
-		return
-	}
-	// Each way of recording nothing is said, not dropped (iss-2609260057127611).
-	eff, err := identity.EffectiveIdentity(a.cwd)
-	if err != nil {
-		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": git's user.name and user.email could not be read: " + errText(err))
-		return
-	}
-	if eff.Name == "" || eff.Email == "" {
-		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": git has no user.name and user.email set here; set them and run abcd ahoy install again")
-		return
-	}
-	// The pin names the repo's human; a machine identity is the one value it
-	// must never canonicalise (itd-131).
-	if identity.IsToolIdentity(identity.RoleAuthor, eff.Name, eff.Email) {
-		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": the current git identity " + eff.Name + " <" + eff.Email + "> is a machine's, not a person's; set your own user.name and user.email and run abcd ahoy install again")
-		return
-	}
-	if err := identity.WritePin(a.cwd, identity.Pin{Name: eff.Name, Email: eff.Email}); err != nil {
-		a.refuse("could not record who commits to this repository in " + identity.PinRelPath + ": " + errText(err))
-		return
-	}
-	a.note(writeIdentityPin, identity.PinRelPath)
 }
 
 func (a *applyCtx) has(id string) bool { return a.gapPresent[id] }
@@ -2334,10 +2299,6 @@ func auditGaps(cwd string, det DetectionResult) []Gap {
 // approval + gap helpers
 // ---------------------------------------------------------------------------
 
-// OptionalPinGapID is the one optional gap --yes does not cover. Named here so
-// the front doors can point at it without re-deriving the string.
-const OptionalPinGapID = "git_identity.unpinned"
-
 // malformedConfigGapID is the one gap that means "abcd will not touch this
 // repo's config until a human repairs it". It is required and non-resolvable, so
 // it never appears in an actionable count, and both the detector that raises it
@@ -2350,26 +2311,27 @@ const malformedConfigGapID = "config.malformed"
 const credentialAtRestGapID = "history.credential_at_rest"
 
 // optionalGapIDs are the advisory gaps install closes only against an answered
-// prompt, never under --yes: the identity pin (see stepIdentityPin), the
+// prompt, never under --yes: the identity pin's move and the person's own
+// identity record (see stepIdentityMigrate, stepIdentityRecord), the
 // status-line offer (see stepStatusLine), the two model-tier routing offers
 // (see stepOracleRouting), the drain eligibility record (see stepDrainRule),
 // the retirement of a tool's own conventions file (see
 // stepConventionsFiles) and the README question (see stepReadme). In the
 // order they are reported.
-var optionalGapIDs = []string{OptionalPinGapID, ReadmeOfferGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+var optionalGapIDs = []string{LegacyPinGapID, UnrecordedGapID, ReadmeOfferGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 // terminalOnlyGapIDs are the optional offers put only to a person at a
 // terminal, and their categories: off one, neither the category nor the offer
 // is asked, so a piped answer stream keeps the order it had before they
 // existed. The README question has no category to ask (resolveApproval leaves
 // it out everywhere: the question is the consent).
-var terminalOnlyGapIDs = []string{ReadmeOfferGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+var terminalOnlyGapIDs = []string{LegacyPinGapID, UnrecordedGapID, ReadmeOfferGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 var terminalOnlyCategories = []GapCategory{DrainRule, ConventionsFile}
 
 // optionalSkipped lists the optional gaps a run left un-applied without asking.
-// --yes approves every resolvable category but never adopts the identity pin
-// or wires the status line, so the skip is deliberate — and therefore has to
+// --yes approves every resolvable category but never records who a person
+// commits as or wires the status line, so the skip is deliberate — and therefore has to
 // be reported rather than left ambient (iss-166). Outside --yes each is offered
 // as a confirmation, except the terminal-only offers off a terminal (see
 // stepDrainRule and stepConventionsFiles) and the README question in a
@@ -2410,7 +2372,14 @@ func optionalAsked(cwd, id string, p Prompter) bool {
 // under --yes), so their presence must not be short-circuited by the
 // "already_up_to_date" early return.
 func optionalPending(gaps []Gap) []string {
-	present := gapIDSet(gaps)
+	// Only a gap install can close is pending: the identity pin a repository
+	// stores for someone else is reported, never offered (detectLegacyPin).
+	present := map[string]bool{}
+	for _, g := range gaps {
+		if g.Resolvable {
+			present[g.ID] = true
+		}
+	}
 	var out []string
 	for _, id := range optionalGapIDs {
 		if present[id] {
@@ -2519,8 +2488,11 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Pr
 		lines[ConfigChange] = append(lines[ConfigChange], flagChanges...)
 	}
 	// The README question is its own consent (open question 5): its category
-	// is never asked, approved or declined.
+	// is never asked, approved or declined. So are the person's own identity
+	// questions (itd-2610240918547728): each is asked as its own question at
+	// a terminal, never behind a group approval.
 	delete(present, Readme)
+	delete(present, MachineIdentity)
 	approved := map[GapCategory]bool{}
 	switch {
 	case opts.ApprovedCategories != nil:

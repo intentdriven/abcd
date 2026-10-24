@@ -43,8 +43,8 @@ var categoryApprovalWords = map[GapCategory]approvalWords{
 	Dependency: {ask: "Offer to install the tools listed above?", yes: nextLabel,
 		next: "Asks before installing each tool listed above, one question per tool."},
 	SafeAutocreate: {ask: "Create the files and folders listed above?", yes: writesLabel, writes: true},
-	// The settings approval writes some listed changes on its own (the
-	// identity pin, the PATH entry) and asks for each value not yet chosen
+	// The settings approval writes some listed changes on its own (the PATH
+	// entry) and asks for each value not yet chosen
 	// before saving any (stepConfigValues), so its yes says both.
 	ConfigChange: {ask: "Change the settings listed above?", yes: writesLabel,
 		next: "Writes the listed changes that need no answer and asks for each value not yet chosen; if one is left unanswered, no value is saved."},

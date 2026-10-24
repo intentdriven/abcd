@@ -256,11 +256,12 @@ type InstallResult struct {
 	// silent failure, so the reason travels with the result.
 	Notes []string `json:"notes,omitempty"`
 	// OptionalSkipped names the optional gaps a --yes run deliberately did not
-	// apply: the advisory git-identity pin, the status-line offer and the two
-	// model-tier routing offers (which accept a table only on an answer). --yes
-	// approves every resolvable CATEGORY, but it never writes the pin, because
-	// the pin captures whatever git identity happens to be configured and an
-	// unattended run would canonicalise a sandbox or agent identity; and it never
+	// apply: the person's own identity record (and moving a pin the
+	// repository still stores), the status-line offer and the two model-tier
+	// routing offers (which accept a table only on an answer). --yes approves
+	// every resolvable CATEGORY, but it never records who a person commits as,
+	// because that captures whatever git identity happens to be configured and
+	// an unattended run would record a sandbox or agent identity; and it never
 	// wires the status line, because that rewrites a harness-wide user setting
 	// and takes element choices only a prompt can carry. The exclusion is
 	// reported rather than assumed: a run that says "already up to date" while

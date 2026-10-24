@@ -1,48 +1,25 @@
 // Package identity checks that the git author and committer identities a commit
-// would use in a managed repo match the identity pinned in
-// .abcd/config/identity.json, and recognises a machine identity in either role.
+// would use match the person's OWN identity record, kept on their own machine
+// under the user-level home (record.go), and recognises a machine identity in
+// either role. Nothing in a repository names who may commit to it
+// (itd-2610240918547728, adr-2610241022541063); a repository that still
+// stores the identity pin itd-131 introduced is migrated (migrate.go).
 //
-// It is the single source of truth for the iss-62 managed-repo identity gate:
-// `ahoy doctor` surfaces a divergence as a detection gap, and the installed
-// pre-commit hook calls Check to fail closed before a mis-attributed commit can
-// land — so a stray repo-local override (e.g. a sandbox "Test User") is caught
-// up front rather than discovered later.
+// It is the single source of truth for the managed-repo identity gate:
+// `ahoy doctor` surfaces a divergence as a detection gap, and `abcd ahoy
+// --identity` exits non-zero on one, so a stray repo-local override (e.g. a
+// sandbox "Test User") or a harness's machine identity is caught before the
+// commit rather than discovered later.
 package identity
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 
-	"github.com/intentdriven/abcd/internal/core/provenance"
-	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
-
-// PinRelPath is the committed identity pin, relative to the repo root.
-const PinRelPath = ".abcd/config/identity.json"
-
-// Pin is the expected commit identity, committed so every checkout enforces the
-// same value regardless of local git config.
-type Pin struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	// ProductionMode is the repo's DEFAULT production mode: how the text of a
-	// record this repository mints was produced, unless the minting verb says
-	// otherwise (itd-178). It rides the pin rather than a second config file
-	// because this is already the repo's attribution seam and already has a
-	// reader; a second file would be a second reader of the same question.
-	//
-	// Optional and omitted when empty, so a pin written before the member existed
-	// round-trips byte-identically. An absent member means provenance.DefaultMode.
-	// The self-contained pre-commit identity guard seds `name` and `email` out of
-	// this file by name, so an added member is invisible to it.
-	ProductionMode string `json:"production_mode,omitempty"`
-}
 
 // Effective is the identity git would actually stamp on a commit in the repo,
 // resolved as git resolves the author: the GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL
@@ -53,17 +30,19 @@ type Effective struct {
 	Email string
 }
 
-// Status is the outcome of comparing the effective identity to the pin.
+// Status is the outcome of comparing the effective identity to the person's
+// own record.
 type Status int
 
 const (
-	// StatusOK: a pin exists and the effective identity matches it.
+	// StatusOK: a record applies and the effective identity matches it.
 	StatusOK Status = iota
-	// StatusNoPin: no identity.json — the repo has not opted into the gate.
-	StatusNoPin
-	// StatusMismatch: a pin exists and the effective identity differs.
+	// StatusNoRecord: no record on this machine applies to the repo. Nothing
+	// to compare against; a machine identity is still refused (Blocks).
+	StatusNoRecord
+	// StatusMismatch: a record applies and the effective identity differs.
 	StatusMismatch
-	// StatusUnset: a pin exists but git has no author identity configured.
+	// StatusUnset: git has no author identity configured.
 	StatusUnset
 )
 
@@ -71,8 +50,8 @@ func (s Status) String() string {
 	switch s {
 	case StatusOK:
 		return "ok"
-	case StatusNoPin:
-		return "no-pin"
+	case StatusNoRecord:
+		return "no-record"
 	case StatusMismatch:
 		return "mismatch"
 	case StatusUnset:
@@ -84,158 +63,57 @@ func (s Status) String() string {
 
 // Result carries the comparison outcome and the identities for reporting.
 //
-// Status and Effective describe the AUTHOR, with the meaning they have always
-// had. The committer is reported beside them rather than folded into Status, so
-// every existing reader of the author statuses reads exactly what it did.
+// Status and Effective describe the AUTHOR. The committer is reported beside
+// them rather than folded into Status.
 type Result struct {
-	Status    Status
-	Pin       Pin
+	Status Status
+	// Record is the person's own record, when one applies (Recorded).
+	Record   Record
+	Recorded bool
+	// RecordAt names the record that applies, or would: the repository's own
+	// record when one exists, else the machine-wide default.
+	RecordAt  RecordRef
 	Effective Effective
 	Reason    string
 
 	// Committer is the committer identity git would stamp (effectiveCommitter).
 	Committer Effective
 	// CommitterDiverges reports a committer that differs from the author and is
-	// not the pinned identity either: a GIT_COMMITTER_* override, a committer.*
-	// config key, or an author override the committer does not share. A
-	// committer that is the same wrong identity as the author is not reported
-	// again — the author status already says so, and one fix mends both.
+	// not the recorded identity either: a GIT_COMMITTER_* override, a
+	// committer.* config key, or an author override the committer does not
+	// share. A committer that is the same wrong identity as the author is not
+	// reported again — the author status already says so, and one fix mends
+	// both.
 	CommitterDiverges bool
 	// CommitterReason says what diverges, for the person reading the gap.
 	CommitterReason string
 
 	// AuthorIsTool and CommitterIsTool report a machine identity in that role
-	// (IsToolIdentity), pinned or not: the routine case, made visible.
+	// (IsToolIdentity), recorded or not.
 	AuthorIsTool    bool
 	CommitterIsTool bool
 }
 
-// Blocks reports whether a pre-commit hook should refuse the commit. A mismatch
-// or an unset author identity blocks, and so does a committer that diverges from
-// the pin; a match, or an un-pinned (opted-out) repo, does not — an absent pin
-// must never break commits in a repo that has not adopted the gate.
+// Blocks reports whether a pre-commit hook should refuse the commit, on the
+// shell guard's terms: a mismatch with the person's own record, an unset
+// author, or a machine identity in either role blocks wherever it is found;
+// a committer that diverges blocks when a record applies. With no record, a
+// human identity — whatever launched the run supplied — commits.
 func (r Result) Blocks() bool {
 	if r.Status == StatusMismatch || r.Status == StatusUnset {
 		return true
 	}
-	return r.Status != StatusNoPin && r.CommitterDiverges
+	if r.AuthorIsTool || r.CommitterIsTool {
+		return true
+	}
+	return r.Recorded && r.CommitterDiverges
 }
 
-// LoadPin reads .abcd/config/identity.json. It returns (pin, true, nil) when the
-// pin is present and well formed, (Pin{}, false, nil) when the file is absent,
-// and an error when it is malformed or missing a field — validating this
-// external input rather than trusting it.
-func LoadPin(root string) (Pin, bool, error) {
-	path := filepath.Join(root, PinRelPath)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return Pin{}, false, nil
-		}
-		return Pin{}, false, fmt.Errorf("reading %s: %w", PinRelPath, err)
-	}
-	var p Pin
-	if err := json.Unmarshal(data, &p); err != nil {
-		return Pin{}, false, fmt.Errorf("malformed %s: %w", PinRelPath, err)
-	}
-	p.Name = strings.TrimSpace(p.Name)
-	p.Email = strings.TrimSpace(p.Email)
-	if p.Name == "" || p.Email == "" {
-		return Pin{}, false, fmt.Errorf("%s must set both name and email", PinRelPath)
-	}
-	// The optional member is validated at the boundary exactly as a malformed pin
-	// is: a value outside the closed set would otherwise be stamped, unread, onto
-	// every record the repo mints.
-	p.ProductionMode = strings.TrimSpace(p.ProductionMode)
-	if p.ProductionMode != "" {
-		if _, err := provenance.ParseMode(p.ProductionMode); err != nil {
-			return Pin{}, false, fmt.Errorf("malformed %s: %w", PinRelPath, err)
-		}
-	}
-	return p, true, nil
-}
-
-// DeclaredProductionMode is the repo's default production mode: the pin's
-// optional member, or provenance.DefaultMode when the repo has no pin or the pin
-// declares none. It is the ONE resolution of that question, so no surface
-// re-derives "absent means hand-written" for itself.
-func DeclaredProductionMode(root string) (provenance.Mode, error) {
-	pin, pinned, err := LoadPin(root)
-	if err != nil {
-		return "", err
-	}
-	if !pinned {
-		return provenance.DefaultMode, nil
-	}
-	return provenance.ModeOrDefault(pin.ProductionMode)
-}
-
-// WritePin writes the pin to .abcd/config/identity.json (creating the config
-// directory), pretty-printed with a trailing newline. It is how a repo adopts
-// the identity gate. Both fields are required.
-func WritePin(root string, p Pin) error {
-	p.Name = strings.TrimSpace(p.Name)
-	p.Email = strings.TrimSpace(p.Email)
-	if p.Name == "" || p.Email == "" {
-		return fmt.Errorf("identity pin requires both name and email")
-	}
-	// The optional member is refused here on the same terms LoadPin refuses it,
-	// so the writer can never store a pin its own reader rejects.
-	p.ProductionMode = strings.TrimSpace(p.ProductionMode)
-	if p.ProductionMode != "" {
-		if _, err := provenance.ParseMode(p.ProductionMode); err != nil {
-			return fmt.Errorf("identity pin: %w", err)
-		}
-	}
-	// The self-contained pre-commit identity guard reads the pin with a naive
-	// sed that captures the raw bytes between the JSON quotes and compares them
-	// literally to `git config`, so the stored value must round-trip through that
-	// sed. Two things ensure it (iss-63): the pin is marshalled WITHOUT HTML
-	// escaping (below), so &, <, > — legal in a git user.name like
-	// "Marks & Spencer" — are stored literally rather than escaped; and the
-	// characters JSON must escape regardless (a double-quote, a backslash, or a
-	// control character), which the sed can never read back, are refused here so
-	// a pin can never hold one and fail-close a correct identity. This keeps the
-	// hook zero-dependency rather than delegating the gate to a possibly-stale
-	// binary.
-	if unpinnable(p.Name) {
-		return fmt.Errorf("identity pin name must not contain a double-quote, backslash, or control character (it breaks the self-contained pre-commit identity guard); adjust git config user.name")
-	}
-	if unpinnable(p.Email) {
-		return fmt.Errorf("identity pin email must not contain a double-quote, backslash, or control character; adjust git config user.email")
-	}
-	// Marshal WITHOUT HTML escaping (so &, <, > survive literally) and route the
-	// bytes through the canonical atomic primitive (temp + fchmod + fsync +
-	// rename + parent-dir fsync): a plain in-place os.WriteFile truncates the pin
-	// before rewriting it — a crash mid-write leaves a corrupt or empty
-	// identity.json — and it follows a symlink at path. json.Encoder appends the
-	// trailing newline.
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(p); err != nil {
-		return err
-	}
-	// Contain the write under an os.Root opened at the repo: PinRelPath joins
-	// `.abcd/config/identity.json`, and a committed `.abcd` ancestor symlink would
-	// otherwise land the pin outside the working tree (GHSA-xrf8-4432-gw2f). The
-	// InRoot writer resolves every component through the root — creating the
-	// missing config/ parent included — so a symlinked ancestor is refused rather
-	// than followed. The leaf's own symlink is still replaced, not written through.
-	osRoot, err := os.OpenRoot(root)
-	if err != nil {
-		return err
-	}
-	defer osRoot.Close()
-	return fsutil.WriteFileAtomicInRoot(osRoot, PinRelPath, buf.Bytes(), 0o644)
-}
-
-// unpinnable reports whether s holds a character the identity pin cannot safely
-// carry: a double-quote or backslash (which JSON must always escape) or a
-// control character — none of which the self-contained pre-commit hook's sed can
-// read back to compare against `git config` (iss-63). Characters like &, <, >
-// are pinnable because WritePin marshals without HTML escaping.
+// unpinnable reports whether s holds a character the identity record cannot
+// safely carry: a double-quote or backslash (which JSON must always escape) or
+// a control character — none of which the self-contained pre-commit hook's sed
+// can read back to compare against `git config` (iss-63). Characters like &,
+// <, > are fine because records are marshalled without HTML escaping.
 func unpinnable(s string) bool {
 	for _, r := range s {
 		if r == '"' || r == '\\' || r < 0x20 {
@@ -357,12 +235,25 @@ func commitConfigEnv() []string {
 	return append(gitutil.ScrubbedEnv(), gitutil.CommandLineConfig()...)
 }
 
-// Check resolves the effective author and committer, loads the pin, and
-// compares them.
+// Check resolves the effective author and committer, loads the person's own
+// record for the repository at root (from the home directory os.UserHomeDir
+// names), and compares them.
 func Check(root string) (Result, error) {
-	pin, pinned, err := LoadPin(root)
+	return CheckWithHome(root, UserHome())
+}
+
+// CheckWithHome is Check for the person whose home directory is home.
+func CheckWithHome(root, home string) (Result, error) {
+	rootSHA, err := gitutil.RootCommit(root)
 	if err != nil {
 		return Result{}, err
+	}
+	rec, ref, recorded, err := LoadRecord(home, rootSHA)
+	if err != nil {
+		return Result{}, err
+	}
+	if !recorded {
+		ref = MachineRecordRef()
 	}
 	eff, err := EffectiveIdentity(root)
 	if err != nil {
@@ -372,46 +263,48 @@ func Check(root string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	res := authorResult(pin, pinned, eff)
+	res := authorResult(rec, recorded, ref, eff)
 	res.Committer = committer
-	res.CommitterDiverges, res.CommitterReason = committerDivergence(pin, pinned, eff, committer)
+	res.CommitterDiverges, res.CommitterReason = committerDivergence(rec, recorded, eff, committer)
 	res.AuthorIsTool = eff != (Effective{}) && IsToolIdentity(RoleAuthor, eff.Name, eff.Email)
 	res.CommitterIsTool = committer != (Effective{}) && IsToolIdentity(RoleCommitter, committer.Name, committer.Email)
 	return res, nil
 }
 
-// authorResult is the author half of Check, unchanged in meaning.
-func authorResult(pin Pin, pinned bool, eff Effective) Result {
-	if !pinned {
-		return Result{Status: StatusNoPin, Effective: eff, Reason: "no " + PinRelPath + "; repo has not adopted the identity gate"}
+// authorResult is the author half of Check.
+func authorResult(rec Record, recorded bool, ref RecordRef, eff Effective) Result {
+	res := Result{Record: rec, Recorded: recorded, RecordAt: ref, Effective: eff}
+	switch {
+	case eff.Name == "" || eff.Email == "":
+		res.Status = StatusUnset
+		res.Reason = "git author identity is not configured (user.name/user.email)"
+	case !recorded:
+		res.Status = StatusNoRecord
+		res.Reason = "you have not recorded who you commit as on this machine (" + ref.Display + ")"
+	case eff.Name != rec.Name || eff.Email != rec.Email:
+		res.Status = StatusMismatch
+		res.Reason = fmt.Sprintf("commit identity %q <%s> is not the one you recorded, %q <%s> (%s)", eff.Name, eff.Email, rec.Name, rec.Email, ref.Display)
+	default:
+		res.Status = StatusOK
 	}
-	if eff.Name == "" || eff.Email == "" {
-		return Result{Status: StatusUnset, Pin: pin, Effective: eff, Reason: "git author identity is not configured (user.name/user.email)"}
-	}
-	if eff.Name != pin.Name || eff.Email != pin.Email {
-		return Result{
-			Status: StatusMismatch, Pin: pin, Effective: eff,
-			Reason: fmt.Sprintf("commit identity %q <%s> does not match the pin %q <%s>", eff.Name, eff.Email, pin.Name, pin.Email),
-		}
-	}
-	return Result{Status: StatusOK, Pin: pin, Effective: eff}
+	return res
 }
 
 // committerDivergence is the committer half: a committer that differs from the
-// author, unless it is the pinned identity (then the author is the one that is
-// wrong, and the author status says so).
-func committerDivergence(pin Pin, pinned bool, author, committer Effective) (bool, string) {
+// author, unless it is the recorded identity (then the author is the one that
+// is wrong, and the author status says so).
+func committerDivergence(rec Record, recorded bool, author, committer Effective) (bool, string) {
 	if committer == author {
 		return false, ""
 	}
-	if pinned && committer.Name == pin.Name && committer.Email == pin.Email {
+	if recorded && committer.Name == rec.Name && committer.Email == rec.Email {
 		return false, ""
 	}
 	if committer.Name == "" || committer.Email == "" {
 		return true, fmt.Sprintf("git committer identity is not configured, while the author is %q <%s>", author.Name, author.Email)
 	}
-	if pinned {
-		return true, fmt.Sprintf("committer %q <%s> does not match the pin %q <%s>", committer.Name, committer.Email, pin.Name, pin.Email)
+	if recorded {
+		return true, fmt.Sprintf("committer %q <%s> is not the identity you recorded, %q <%s>", committer.Name, committer.Email, rec.Name, rec.Email)
 	}
 	return true, fmt.Sprintf("committer %q <%s> differs from the author %q <%s>", committer.Name, committer.Email, author.Name, author.Email)
 }
