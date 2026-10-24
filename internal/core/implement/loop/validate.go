@@ -574,10 +574,9 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 		v.Verdict, v.Pass = word.word, word.pass
 		// The route's answer, as its step placed and recorded it, is the
 		// route's review: judged on the bytes this verifier read, once.
+		// Only a reviewer's verdict parses, so only a reviewer reaches here.
 		if a := c.Await.Answered; a != nil && a.Route == oracle.ReviewRP && a.SHA256 == answerDigest(raw) {
-			if _, reviewer := reviewerVerdicts[v.Role]; reviewer {
-				v.Route = &runner.RouteRecord{Asked: a.Route, Ran: a.Route}
-			}
+			v.Route = &runner.RouteRecord{Asked: a.Route, Ran: a.Route}
 		}
 		return nil
 	}
