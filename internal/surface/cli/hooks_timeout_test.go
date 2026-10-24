@@ -35,6 +35,8 @@ var wantHookTimeouts = map[string]int{
 	"PreCompact":       0,
 	"SessionEnd":       0,
 	"SubagentStop":     0,
+	"Stop":             30,
+	"StopFailure":      0,
 }
 
 // decodedHooksManifest reads the committed manifest through the same decoded

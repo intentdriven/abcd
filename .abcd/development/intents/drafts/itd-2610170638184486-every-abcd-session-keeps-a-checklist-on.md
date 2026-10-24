@@ -6,6 +6,8 @@ kind: null
 suggested_kind: null
 reclassification_history: []
 builds_on: []
+related_issues: [iss-2610170619247185, iss-2610222026223032]
+related_intents: [itd-2610170634394993, itd-2610180912189125, itd-2610222029228127]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
@@ -73,15 +75,113 @@ unowned pull request.
 
 ## Mechanism
 
-> _Prompted (the claim-recording gradient): why the authors expect this to work, as a falsifiable "we expect X because Y" — not the outcome restated. Replace this line with the claim, or with the exact token `None stated.` alone on its line to record the claim as considered and declined._
+_Facilitator-proposed on 2026-10-22, for the product thinker's sign-off._
+
+We expect autonomous sessions to stop stalling and to come back from a
+compaction with their work intact, because everything a session now keeps
+only in its context (what it owns, what each item waits on, the promises it
+made, when it looks again) is written to a file the host re-injects after
+every start and compaction, and a session that tries to stop is shown that
+file's next item. Shown wrong if, over a measured run of autonomous sessions
+across at least one night and three automatic compactions, the share of
+hours a session sits idle while holding work it could do, and the number of
+items a session loses or repeats after a compaction, are no lower than in
+the same run with only the stall fix (itd-2610180912189125).
 
 ## Scope Conditions
 
-> _Required (the claim-recording gradient): the population, platform, scale, or assumptions this claim holds under, one per top-level bullet — `abcd intent plan` stamps each with a persistent identity. Replace this line with those bullets, or with the exact token `None stated.` alone on its line._
+_Facilitator-proposed on 2026-10-22, for the product thinker's sign-off._
+
+- Holds for sessions on a host whose hooks fire at session start (with the
+  compact source), at prompt submission and at stop, and can add text to the
+  model's context; Claude Code is the first such host. On a host without
+  them, the checklist is kept but nothing re-injects it.
+- Holds for a checklist that fits the host's limit on injected text (10,000
+  characters on Claude Code, 2026-10-22); a longer checklist is cut to its
+  open items, newest first, and says what it left out.
+- Holds for one working copy per checklist on one computer; the copies
+  beyond it are itd-2610222029228127.
+- Holds while the session itself writes the checklist as it works: no hook
+  can make a session act before an automatic compaction, so an item the
+  session never wrote down is not recovered.
 
 ## Acceptance Criteria
 
-> _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
+_Draft for the product thinker to walk in the planning interview: derived by
+the agent on 2026-10-18 from the press release and the decisions below, and
+revised on 2026-10-22 for the product thinker's answers of that night and
+iss-2610222026223032; none of it yet confirmed. The away mode, the stop check
+and the question reroute are criteria of itd-2610180912189125, the slice that
+builds on this draft, and are not repeated here. The three criteria for the
+shared copies and the phone moved to itd-2610222029228127 on 2026-10-22
+(dcn-2610222025212338)._
+
+- **Given** Alice, the product thinker, has said the sessions work on until
+  09:00, **when** a session writes its checklist, **then** the file in its
+  working copy's local tier holds the design decisions signed off, whether
+  the technical facilitator is set to auto, the kinds of choice still raised
+  with a person, each item waiting and on whom, its trigger promises, and the
+  work it owns, read from its reservations, its pull requests and its
+  branches.
+- **Given** a session with a checklist, **when** it starts or its context is
+  compacted, **then** the last complete checklist is added to its context by
+  the session-start hook, the compact source included.
+- **Given** an autonomous session partway through a multi-step plan (lanes
+  dispatched, pull requests it watches, a promise to a peer, its next step),
+  **when** the host compacts its context automatically, **then** the session
+  resumes from the checklist it wrote before the compaction, naming the same
+  next step and the same open items, with nothing it had written down lost
+  (iss-2610222026223032).
+- **Given** a session that owns a reservation, pull request or branch its
+  checklist does not list, or whose owned work changed after the checklist
+  was last written, **when** it ends a turn while the person is away, or the
+  person next writes to it while present, **then** it is told its checklist
+  is behind and which of those it does not list, so the file is current
+  before any compaction can come. A step that left no such trace cannot be
+  seen, and the scope conditions say so.
+- **Given** a session killed while writing its checklist, or a reboot,
+  **when** the next session starts in that working copy, **then** it reads and
+  is given the last complete checklist, never a truncated or empty one, and an
+  unreadable file falls back to the last good copy and says so.
+- **Given** a checklist promise "when pull request 42 merges, add the
+  wrapper", **when** the session next looks (at a start, a wake or a stop
+  check) after 42 has merged, **then** the promise is named as its next item,
+  with no watcher process kept running.
+- **Given** a session whose items all wait on something outside, **when** it
+  records the wait, **then** its checklist names what each item waits for and
+  when it looks again, sooner than half its reservations' lease, and its state
+  reads waiting, never stopped.
+- **Given** Alice says she is away until 09:00, **when** the away mode is
+  set, **then** the blocker sweep runs at once: every session writes into its
+  checklist any undecided design decision, step only a person's hands can do,
+  work it depends on from another session, and credential missing or
+  expiring; the orchestrator puts them to Alice together; and the unattended
+  run starts only once she has answered them (dcn-2610222025217495).
+- **Given** the sweep finds a credential that expires before the window ends,
+  **when** the session records it, **then** the checklist holds its kind, its
+  scope and its expiry, and never its value or anything that retrieves it;
+  a write that carries a secret is refused, naming the field without echoing
+  it (adr-2610222026265719, brief invariant 24).
+- **Given** Alice comes back, **when** they read what the sessions left them,
+  **then** they see two short lists across every session: the steps only
+  their own hands can do, and the decisions taken while they were away, each
+  with its grounds and how to reverse it.
+- **Given** Nia, the technical facilitator, is set to auto, **when** a session
+  meets a technical trade-off, **then** it decides and records it; **and
+  given** Nia is set to a person and is present, **when** the trade-off is one
+  of security, performance or compatibility, **then** it is raised with them,
+  and any other is decided and recorded; **and given** the person is away,
+  **when** a session meets such a trade-off, **then** it decides it and lists
+  it, with its grounds and how to undo it, for the person's return
+  (dcn-2610222025225277).
+- **Given** a feature whose design trade-offs are listed in its checklist,
+  **when** a session asks whether the human design work for it is done,
+  **then** the answer is yes only when every genuine trade-off has a recorded
+  answer from the product thinker.
+- **Given** a session's state shown to a person, **when** what the session
+  wrote about itself disagrees with what the machine can see (its claim
+  renewal, its process, its last commit), **then** the state shown follows
+  the machine, with the session's own words beside it as a hint.
 
 ## Scope Split
 
@@ -103,11 +203,72 @@ session's interview on 2026-10-17:
   one line, what it waits on, when it was last seen), published only when it
   changes and only after the session has written its checklist; and each
   autonomous session's own credential.
+- **The first slice (itd-2610180912189125, which builds on this draft):** the
+  away mode held by abcd and repeated at start, compaction and prompt, the
+  stop check, and the question reroute, carved out on 2026-10-18 as the fix
+  for iss-2610170619247185 so the security and bug-fix release waits on it
+  alone (dcn-2610180913379049, dcn-2610180913388445). Its away mode grants
+  no rights; the person's standing instruction decides what is pushed
+  (dcn-2610181016510153). This draft keeps the rest and reuses the slice's
+  away record and hook path.
+- **Moved back from the first slice by its review round 1 (2026-10-18,
+  dcn-2610180937181929), named remaining work of this draft:**
+  - the report shown once on the first prompt after the away mode ends: the
+    queued steps, the decisions recorded in the window and the stops the
+    host forced, with who ended the mode and from which working copy;
+  - the window's decisions gathered from every working copy, by `abcd
+    decide` appending each decision's id to the away record under its lock
+    while the window is open, since sibling worktrees hold their own
+    decision records;
+  - the status line naming the away mode and its end;
+  - a bare `abcd mode` printing the away record, the queue and the owed
+    items with no plugin host;
+  - the brief's surface text for these.
+
+  The slice keeps `abcd mode back` printing the queue and the recorded stops,
+  one plain line each, so nothing queued goes unread meanwhile.
+- **Moved back from the first slice by its trim after review round 2
+  (2026-10-18, dcn-2610181016510153 and dcn-2610181017056307, on the release
+  orchestrator's ruling), named remaining work of this draft:**
+  - making the away mode the person's act alone, should a later design give
+    it rights worth guarding: the guard entry refusing an agent's `abcd mode
+    autonomous` (the binary on PATH and the plugin root's), and its routes
+    through `sh -c` and a script file a shell runs; the shell-write refusal
+    on the away store under `~/.abcd.noindex/away/`; the file-tool refusal,
+    with the PreToolUse matcher gaining `Edit`, `Write`, `MultiEdit` and
+    `NotebookEdit`; the refused attempts recorded in the store, shown on the
+    person's next prompt and listed by `abcd mode back`; and the live checks
+    that the person's `!` command reaches no pre-tool hook and that a
+    message relayed from another session starting with `!` is not run as a
+    shell command. The slice's away mode grants no push rights, and the
+    person's standing instruction decides what is sent, so none of this
+    holds up the stall fix; and since the OS fence (spc-2610161751056096)
+    covers only runner-launched agents, it stays a mistake filter in the
+    person's own sessions;
+  - the guard reading `go run ./cmd/abcd` (go's flags stepped over, an
+    `@<version>` allowed) and a built `abcd-<goos>-<arch>` as `abcd`, for
+    every entry that names the program, `abcd-source-ledger-flip` included,
+    which commands/guard.md today names as unseen. It widens what every
+    entry matches, so it gets its own security review here rather than
+    riding on the cut;
+  - a reuse cache for the away stop check's forge listing (a listing younger
+    than ten minutes reused, and on a failed read a cached listing younger
+    than half the default lease used with its age named), so a run of blocks
+    costs one call; the slice makes one uncached listing per check under a
+    ten-second deadline;
+  - anything `abcd mode back` prints beyond one plain line per queued step
+    and recorded stop: grouping, formatting or a summary of the window.
+
+- **The shared copies and the phone (itd-2610222029228127, split out on
+  2026-10-22):** the private shared option, the public option and the phone
+  app, with the decisions about them below, which now bind that draft
+  (dcn-2610222025212338).
 
 ## Decisions
 
 The product thinker's answers of 2026-10-17, restated, and the agent's
-technical decisions on state-of-the-art grounds, each marked.
+technical decisions on state-of-the-art grounds, each marked. The first
+five bullets now bind itd-2610222029228127, where they are carried.
 
 - **Where the checklist lives:** on this computer only for now. A published
   option on GitHub (public) and a private shared option (for example through
@@ -177,10 +338,46 @@ technical decisions on state-of-the-art grounds, each marked.
   process, its last commit); what the agent writes about itself is a hint,
   since agent-written status lags.
 
+The product thinker's answers of 2026-10-22, restated, each a decision
+record:
+
+- **The phone and the shared copies are their own intent**
+  (dcn-2610222025212338): not asked, because the answer that full uploads
+  come later (dcn-2610222025114805) settled it.
+- **The blocker sweep runs when the person says they are away**, and the run
+  starts after they answer (dcn-2610222025217495).
+- **Overnight trade-offs of security, speed and compatibility are decided
+  and listed** with how to undo each (dcn-2610222025225277).
+- **A checklist never holds a credential's value** (dcn-2610222025224993),
+  written up as adr-2610222026265719 and brief invariant 24.
+- **Waiting holds up one item, never a whole session**
+  (dcn-2610222025230680), written up as the principle
+  `waiting-holds-one-item-never-a-session`.
+
+The facilitator's decisions of 2026-10-22, on state-of-the-art grounds:
+
+- **No hook makes a session write its checklist before a compaction**
+  (Claude Code's hooks reference, read 2026-10-22: the PreCompact hook can
+  run a command or block the compaction but cannot make the model act, and
+  PostCompact has no decision control). iss-2610222026223032's remedy asks
+  the PreCompact hook to make the session bring its list up to date; that
+  is not available, so the checklist is kept current as the session works,
+  the stop check tells a session at each turn's end when its checklist is
+  behind, and the session-start hook's compact source re-injects it.
+
 ## Open Questions
 
-_None for the product thinker at this point; the acceptance criteria are walked
-in the planning interview._
+For the product thinker's sign-off, not yet answered:
+
+- **Delivery in two specs (proposed).** This intent owns two specs, built
+  in order: first the checklist on disk, its crash-safe write and its
+  re-injection at start and after compaction, which is
+  iss-2610222026223032's remedy and resolves it; then the waits, trigger
+  promises, timed wakes, the blocker sweep, the return lists, the
+  facilitator's mode and the design-done answer. The issue's remedy asks
+  for the first as this intent's first slice; the stall fix
+  (itd-2610180912189125) was carved out as its own intent, so this one is
+  a spec of the intent, not another intent.
 
 ## Audit Notes
 

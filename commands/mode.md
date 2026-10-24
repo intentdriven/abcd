@@ -1,7 +1,7 @@
 ---
 name: mode
 description: "Print or set whose answer the agent loop is waiting on: Writes the state only when setting it; refuses an unknown state or a checkout with no local tier."
-argument-hint: "[managed|facilitator|product-thinker]"
+argument-hint: "[managed|facilitator|product-thinker|autonomous|back|queue]"
 block: agents
 user-invocable: false
 ---
@@ -37,7 +37,9 @@ and it marks the question open. The answer resets the state to `managed`: the
 plugin's hook on the question tool's result resets it when the answer comes
 back, and on a host that does not run that hook the prompt hook resets it on
 the next human message. Either says so once on stderr, so you do not set it
-back yourself.
+back yourself. While the away mode below holds, the guard refuses every
+question instead, whatever its chip, and sets nothing: its reason says which
+acts to queue and that every other question is decided with `abcd decide`.
 
 **The agent, at a stop that is not a question.** When you stop to obtain a
 verdict any other way, such as a hand-off or a step the person runs, record
@@ -64,6 +66,69 @@ named, and nothing is written. The state lives per checkout at
 `.abcd/.work.local/mode`, which only a repository abcd manages has, so outside
 one the set form refuses (exit 2) and creates nothing — say so, and point at
 `/abcd:ahoy install` if the user wanted this repository managed.
+
+## The away mode — `autonomous`, `queue`, `back`
+
+The person's word that they are away and sessions should work on until they
+are back. It sits beside the badge and is not a fourth word. One record holds
+it for every working copy of the repository on this machine, in
+`~/.abcd.noindex/away/<root-sha>/record.json`, changed under its lock, which
+only `back` goes around when it cannot have it.
+
+**The away mode grants no rights.** The person's own standing instruction
+stays what decides whether a session commits, pushes, or opens or merges a
+pull request, exactly as before. Never read the away mode as permission.
+
+Set it when the person says they are away — they run it themselves, or you
+run it on their word in this session:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" mode autonomous --until 09:00 --json
+```
+
+`--until` takes a clock time (its next occurrence, local time) or a timestamp
+(`2026-10-19T09:00`, or RFC 3339). Without it the mode is open-ended; every
+record ends seven days after it was set at most, and an `--until` past that,
+or one already past, is refused (exit 2) with nothing written. Add
+`--hold-pushes` only when the person says pushes wait for their return: it
+narrows what sessions do and grants nothing. Tell the user the `terms` the
+verb prints. A prompt never ends the mode.
+
+While it holds, an act only the person may approve is queued for their
+return instead of asked, and you carry on with other work:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" mode queue "<step>" --json
+```
+
+A queue with no away record holding is refused (exit 2): ask the person
+instead, the product thinker or the technical facilitator, whichever the
+question is for. While the mode holds, `mode product-thinker` and `mode facilitator`
+are refused too, naming `abcd decide`: decide the question and record it, or
+queue the act.
+
+End it only when the person who was away, the product thinker or the
+technical facilitator, says in this session that they are back:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" mode back
+```
+
+It prints one plain line per queued step, per item handed back and per
+recorded stop (a stop at the host's cap is labelled "possibly forced by the
+cap"), records who ended it and from which working copy, and closes the
+record; on a record whose time has passed it prints the same and closes it.
+Relay every line to the user. A record or lock that is not a regular file this
+account owns that no one else can write, or a record that does not parse, is
+refused by `autonomous` and `queue` (exit 2), naming the file; so is one past
+64 KiB, except that `autonomous` carries a record merely past 64 KiB, letting
+its oldest lines go. `back` ends the mode
+whatever state the record is in: one past 64 KiB is printed whole and kept
+with its oldest lines let go and counted; one that does not parse, or is not
+safely this account's, is replaced by a closed record, printing nothing from
+it; a lock not had in time is gone around. Each is named on its own line:
+relay those too. A queue that is full is refused (exit 2) and never cut: say
+so, and carry on with other work.
 
 ## Where the host has no status surface
 

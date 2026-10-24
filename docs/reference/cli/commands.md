@@ -300,13 +300,15 @@ A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
 open question, has no unanswered claim section, is not held, names no unsettled blocker
 in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling
-worktree or local branch holds it in another bucket, no session holds a live claim on
-it, and no other copy holds a reservation on it on origin, as this checkout last fetched
-the reservations; a peer, claim or view that cannot be read counts as holding it). The
-check reads the reservations from disk alone, and names another copy's with its holder,
-its expiry and the view's age; this copy's own is never a holder. A refusal names the
-check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent
-instead of taking one named.
+worktree or local branch holds it in another bucket having changed it since its
+merge-base with this checkout, so a branch holding this checkout's older copy
+untouched does not count; no session holds a live claim on it; and no other copy holds
+a reservation on it on origin, as this checkout last fetched the reservations; a peer,
+claim or view that cannot be read, or a copy that cannot be compared, counts as holding
+it). The check reads the reservations from disk alone, and names another copy's with
+its holder, its expiry and the view's age; this copy's own is never a holder. A refusal
+names the check, the reason and the remedy, and writes nothing. `abcd build next` picks
+the intent instead of taking one named.
 
 In a checkout with a remote named origin, the run reserves its key there, as
 `abcd reserve` does, once the checks pass and before the run is created: a new run, and a
@@ -1609,7 +1611,7 @@ abcd embark probe ../lifeboat
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.
+Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.
 
 **Usage:** `abcd guard`
 
@@ -1850,7 +1852,7 @@ heredoc (`abcd guard check <<'EOF'` ... `EOF`) passes it through untouched.
 
 #### `abcd guard hook`
 
-Judge the shell command in a host's pre-tool-use payload: Writes nothing; refuses a hazard or a badly built question with the host's deny.
+Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.
 
 **Usage:** `abcd guard hook`
 
@@ -1913,7 +1915,11 @@ product-thinker, Tech and Setup to facilitator), so it is never refused on
 the mode, and the question is marked open in the local tier; the answer
 resets the mode to managed, from `abcd hook question-answered` on the
 question tool's PostToolUse or else on the next human message. A questions
-field the hook cannot read lets the question run and warns loudly.
+field the hook cannot read lets the question run and warns loudly. While
+the away mode holds (`abcd mode autonomous`), every question is refused
+first, whatever its chip, with one reason that routes it by the act it asks
+about: an act only the person may approve to `abcd mode queue`, every other
+question to `abcd decide`; no mode is set and nothing is marked open.
 
 ### `abcd help`
 
@@ -2318,14 +2324,18 @@ loop; `make preflight` runs its test stages through it. It blocks until the
 one-minute load average is below the wait limit (`wait-load <load>` in the same
 file; by default twice the online core count), no other `go test -race` run is
 live, no other `make preflight` is running and no other waiter is ahead of it in
-the queue (one that started earlier, or within two seconds of it, and has the
-lower pid: two whose start and pid disagree, as after the process ids wrap, wait
-on neither) or running its command, under any account: all of it is
+the queue (one that started earlier, whatever its pid, or within two seconds of
+it with the lower pid) or running its command, under any account: all of it is
 read from the process table, which shows every account's processes: no file
 another account can write is read; the gate reads only the process table (and,
 for the wait limit, your own load-limits). A waiter ahead of yours still delays
 yours until it opens or reaches its own --timeout, whatever account it runs
-under and whatever its own account's wait limit is. A preflight whose own
+under and whatever its own account's wait limit is, with one exception: a
+waiter ahead with a higher pid, as after the process ids wrap, may run an abcd
+built before this order, which waits on every lower pid and so on yours, so once
+such waiters alone have kept yours shut for 5m0s on end, and a step more
+for each such waiter ahead beyond the first, yours stops counting them. A
+preflight whose own
 waiter is queued
 takes that waiter's place in the queue, and a waiter beneath a waiter running its
 command (`--wait -- make preflight`) takes that ancestor's place, ahead of every
@@ -2333,10 +2343,12 @@ queued waiter. Once it finds all of that clear it waits
 a random 15s to 1m0s and checks everything again, and opens only if the
 re-check is clear too, so two starters in one quiet minute do not start together.
 With a command it then shows itself as running it and looks once more 2s
-later, before starting it: across accounts, which share no hold, two waiters whose
-start and pid disagree can open in one moment, and the one with the higher pid
-stands back, gives up its hold, re-draws its jitter and waits again (at most 3
-times), while the lower pid runs its command.
+later, before starting it: across accounts, which share no hold, two waiters can
+open in one moment, and each stands back from the other unless it started earlier
+and has the lower pid too: it gives up its hold, re-draws its jitter and waits
+again (at most 3 times), while the other runs its command. So the later
+start stands back whatever the pids, and the earlier one from a lower pid as well,
+which an older abcd (v0.15.1 and earlier) lets run.
 The load limit is twice the cores because a busy multi-session machine already
 idles near one core-count of load, so a limit of the cores never opens; one
 waiter at a time is kept by the process table, the hold below and that last
@@ -2366,13 +2378,16 @@ rule) or running its command, the load is at the wait limit, or the race gate's
 own hold is in force (each gate is shut only by its own gate's hold). That keeps
 race stages apart among the preflights whose checkouts have the race gate: one
 at a time within an account, and across accounts all but a narrow window (a
-race waiter gone before its race run shows, or two waiters whose start and pid
-disagree after a pid wrap). An account at one opens its race gate at once
+race waiter gone before its race run shows, or, after a pid wrap, two waiters
+whose start and pid disagree: one running v0.15.1, which counts a waiter ahead
+only with the lower pid as well, or two of the start order whose whole-second
+ages read a tie differently or the later of which stopped counting the earlier
+past its 5m0s cap). An account at one opens its race gate at once
 whatever another account set, and a checkout older than the gate runs its race
 stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's
 waiter never queues
 behind a race waiter, and a preflight whose waiter is at its race gate is in its
-test stages. A waiter that has opened stands back only from a lower pid that
+test stages. A waiter that has opened stands back only from a waiter that
 opened in the same moment at its own gate, never from one at the other gate.
 
 How many preflights may be in their test stages at once is your own machine's
@@ -2414,11 +2429,12 @@ symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 While it waits, in a checkout, the waiter keeps your own reservations from
 lapsing: at once and then every five minutes it renews each of your live
-reservations from this copy that is half through its lease, for its own term or
+reservations that is half through its lease and whose latest commit this copy
+pushed, for its own term or
 two hours, whichever is longer, and says each renewal on standard error. It
 never reserves anything new, takes nothing over and revives nothing that has
 lapsed, so a lease shorter than ten minutes can still lapse between two rounds;
-a renewal that fails is said once, and the wait goes on. The renewal runs beside the gate, never in it, so
+a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on. The renewal runs beside the gate, never in it, so
 the gate's order and its open never wait on one, and it stops when the gate
 opens. Since it runs through git and gh, no waiter counts another's git or gh
 child as its command: gate make or go, never git or gh itself.
@@ -4087,6 +4103,88 @@ all. With --json the notice is a field. Both forms make no network request.
 Exit 2 on a refusal — an unknown state, no local tier, or no checkout —
 and nothing is written on any of them.
 
+The away mode sits beside the badge, not as a fourth word: `abcd mode
+autonomous [--until <time>] [--hold-pushes]` records that the person is away,
+`abcd mode queue "<step>"` keeps a step for their return, and `abcd mode back`
+ends it and prints what was queued and recorded. While it holds, setting
+`product-thinker` or `facilitator` is refused (exit 2), naming `abcd decide`:
+a stop parked on a person who is away is a question nobody answers. The away
+mode grants no rights; the person's standing instruction decides what is pushed.
+
+#### `abcd mode autonomous`
+
+Record that the person is away and sessions work on, until a time or open-ended: Writes the away record; refuses an end already past or past seven days.
+
+**Usage:** `abcd mode autonomous [flags]`
+
+Record that the person is away, for every working copy of this repository on
+this machine: who set it (the holder name reservations resolve without a
+network read, else git's user.name), from which working copy, and when it ends.
+
+--until takes a clock time (its next occurrence, local time, as 09:00) or a
+timestamp (2026-10-19T09:00, or RFC 3339). Without it the mode is open-ended,
+and every record ends seven days after it was set at most: an --until past that,
+or one already past, is refused. --hold-pushes records the person's word that
+pushes wait for their return; it narrows what sessions do and grants nothing.
+
+The away mode grants no rights: the person's own standing instruction decides
+what is committed, pushed, and opened or merged as a pull request. It ends at its
+time or with `abcd mode back`; a prompt never ends it. Setting it again keeps
+whatever is queued or recorded and not yet read.
+
+The record lives in ~/.abcd.noindex/away/<root-sha>/record.json, keyed on the repository's
+root commit, and is changed under its lock, which only `abcd mode back` goes
+around. A record merely past its 64 KiB is carried, its oldest lines let go.
+Exit 2 on a refusal (an unreadable or past --until, one past seven days, no local
+tier, no checkout, or a record or lock that is not safely this account's) with
+nothing written. No network request.
+
+**Flags:**
+
+```
+      --hold-pushes    the person's word that pushes wait for their return (grants nothing)
+      --until string   when the mode ends: a clock time (09:00) or a timestamp; open-ended (seven days at most) when omitted
+```
+
+#### `abcd mode back`
+
+End the away mode, printing what was queued and recorded one line each: Writes its ending whatever the record's or lock's state; refuses outside a git checkout.
+
+**Usage:** `abcd mode back`
+
+End the away mode: print one plain line per queued step, per item handed back
+and per recorded stop (a stop at the host's cap is labelled "possibly forced by
+the cap"), record who ended it and from which working copy, and close the record.
+On a record whose time has already passed it prints the same and closes it. With
+no record, or one already closed, it says there is nothing to end.
+
+A session runs it only on the person's word in that session. It ends the mode
+whatever state the record is in: one past its 64 KiB is printed whole and kept
+with its oldest lines let go and counted; one that does not parse, or is not
+safely this account's, is replaced by a closed record, printing nothing from
+it; and a lock not had in time is gone around. Each is named on its own line.
+No network request.
+
+#### `abcd mode queue`
+
+Queue one step for the person's return while they are away: Writes the away record; refuses when no away record holds.
+
+**Usage:** `abcd mode queue <step>`
+
+Queue one step for the person's return, while the away mode holds: an act only
+the person may approve, which a session queues instead of asking, then carries on
+with other work. `abcd mode back` prints each queued step on one line.
+
+Exit 2 when no away record holds (ask the person instead), on an empty step or one
+over 500 characters, when the queue is full (it is never cut), and when the record
+or its lock is not safely this account's, with nothing written. No network request.
+
+**Example:**
+
+```
+abcd mode queue "approve the embargo close for the example advisory"
+```
+
 ### `abcd peers`
 
 List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.
@@ -4357,6 +4455,7 @@ Reserve an issue, intent or release on the shared remote, or release it: Writes 
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
 abcd reserve <record-id> --release
 abcd reserve --holder
+abcd reserve --sweep [--apply] [--older-than <days>]
 
 Reserve an issue or an intent on the shared remote before starting work on it, so
 every other participant sees it is taken. The reservation is the branch
@@ -4423,13 +4522,32 @@ the record is held by someone else or by your other copy, so back off; exit 2
 on every other refusal and failure. Nothing is pushed on a refusal, and a failed
 push leaves no reservation and nothing in the checkout.
 
+--sweep lists the spent reservation branches on origin and, with --apply, deletes
+them, each with a lease on the exact tip it judged, so a branch re-reserved
+meanwhile survives. A branch is spent when its tip has been untouched, its lease
+past the five-minute margin included, for --older-than days (default 7, at
+least 1), and either its record is resolved, won't-fixed, shipped or superseded
+on origin's default branch, or every commit on it is a reservation or a plain
+release, whether or not any is a release, since a lapsed lease already lets any
+session take the record over. A hand-back on a record still open, a commit of
+a kind the sweep cannot classify, a history it cannot read to its root, and an
+unreadable tip keep the branch.
+The reservations ruleset lets only its bypass actor delete these branches, so
+the scheduled reservation-sweep workflow is what applies it; anyone else's
+--apply is refused by origin. It takes no record id and no other flag; exit 0
+when it ran (a branch that moved since it was judged is kept, not a failure),
+exit 2 when it could not run or origin refused a deletion.
+
 **Flags:**
 
 ```
+      --apply                   with --sweep, delete the spent branches, each only while its tip is the one judged
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
       --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
       --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
+      --older-than int          with --sweep, the days a branch must have been untouched past its lease (at least 1) (default 7)
       --release                 release your reservation from this copy by pushing a tombstone
+      --sweep                   list the spent reservation branches on origin, which --apply deletes; a dry run without it
       --take-over               move your own live reservation from another copy to this one
 ```
 

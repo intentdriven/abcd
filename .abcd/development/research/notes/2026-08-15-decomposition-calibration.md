@@ -2495,6 +2495,49 @@ After filing, two adversarial reviews (design and record discipline, each an Opu
 
 The SOTA survey was filed as research/notes/2026-10-16-model-matrix-sota.md, and itd-166 was widened to the asked and served sides it was routed. The routing survived as a five-record split; its plumbing row was the part the initial routing got wrong.
 
+## 2026-10-22: abcd drain from a plain terminal (facilitator-on-delegation, routing not yet put to the product thinker)
+
+| part | type | home |
+|---|---|---|
+| abcd drain --drive in a plain terminal drives itself: repeats its moves, steps each lane, runs its preflight, starts every role through the person's runner, stops at its cap, an empty ledger or Ctrl-C | capability | intent itd-2610222215485265, promoted from iss-2610222000271964, refining the shipped itd-2610161016401115 |
+| abcd drives agents with no host session only on the person's own invocation, on a paid key, bounded, handing back what it cannot finish | trust rule | adr-2610222222326104 (proposed): the record itd-2609201916151817's decision 5 owed for the opt-in reversal of the host-delegated boundary |
+| the agents it starts are fenced by the operating system | trust rule | cited: itd-2610161621364075 part A covers every runner launch |
+| a routed judge's answer steers an unattended lane, so it runs alone in its own directory | trust rule | cited: the shipped judge's directory and grant rules |
+| where an unattended terminal drain may run, given the product thinker's C1 answer | cited | the coordination intent's open choice 1; not decided here |
+| the loop, its log, its lock and its signals | plumbing | the brief's drain chapter, at planning |
+
+Verdict: SPLIT, proposed: the capability is the intent, the trust rule an ADR. Typed links: `refines` itd-2610161016401115, whose press release promised a plain-terminal drain and whose delivery stopped at one move per call. Advisory reversal flags: one, the host-delegated boundary in AGENTS.md (adr-25), reversed for this opt-in path as itd-2609201916151817's decision 5 anticipated; the first routing graded it FILE-AS-IS with no flag, and the Opus and Sonnet review round 1 found the flag the code already named (drive.go), so the initial routing did not survive.
+
+## 2026-10-22: the checklist and coordination routings, confirmed by the product thinker's answers
+
+The 2026-10-18 checklist routing (below) was graded unconfirmed until the
+product thinker answered. Their answers of 2026-10-22 cover two of its rows
+by name (the credential rule and the waiting stance); the phone split
+follows from their answer on uploads and was not asked; the compaction row
+is the facilitator's routing, put to them at the plan's sign-off. As filed:
+
+| part | type | home, as filed on 2026-10-22 |
+|---|---|---|
+| the private shared option, the public option and the phone | capability | its own draft, itd-2610222029228127, building on both intents (dcn-2610222025212338: not asked, because the answer that full uploads come later settled it) |
+| the checklist records a credential's kind, scope and expiry, never its value or anything that retrieves it | trust rule | adr-2610222026265719 (accepted) and brief invariant 24 |
+| a wait holds one item, never the session, and a declared dependency holds only the landing | stance | the principle `waiting-holds-one-item-never-a-session` |
+| autonomous work survives the host's automatic compaction (iss-2610222026223032, filed by the product thinker the same night) | capability | the checklist intent itself, as the first of two proposed specs; not a new intent, since it is the checklist's on-disk file and its re-injection |
+
+The coordination intent's two deferred records were filed at the same
+time: its trust rule as adr-2610222026262980 (proposed until the plan's
+sign-off, then a brief invariant) and its stance as the principle
+`coordination-lives-on-the-shared-remote`.
+
+Verdict: SPLIT; two rows confirmed by the product thinker's named answers,
+the other two facilitator-routed and unconfirmed until the plan's sign-off;
+the coordination split of 2026-10-17 stands. One part of the issue's remedy did not survive a check of
+the host's hooks reference: no hook can make a session write before an
+automatic compaction, so the checklist is kept current at each turn's end
+instead (recorded in the checklist draft's decisions). Advisory reversal
+flags: one, from the facilitator's confirming question, which the product
+thinker answered by reversing: the model budget shared across sessions
+reverses itd-2610100704270254's "each abcd run" (dcn-2610222025116937).
+
 ## 2026-10-17: headless agents in parallel coordinate through the shared remote (product thinker, routing confirmed)
 
 | part | type | home |
@@ -2518,3 +2561,45 @@ The proposal: when abcd's plugin was updated, offer the person to run setup agai
 | setup changes nothing without the person's yes | trust rule | existing consent rules; no new record |
 
 Verdict: SPLIT. The initial routing proposed one intent (FILE-AS-IS) with the what-changed summary inside it; the product thinker chose to split the summary into its own record, so the routing did not survive as proposed. Both drafts carry `builds_on: [itd-111, itd-105]`. The product thinker then asked for the two new drafts and the two shipped intents they build on to be one bundle; a bundle can only join records not yet shipped, so the two drafts are to be planned as one bundle, linked to the shipped pair through `builds_on`.
+
+## 2026-10-18: every session keeps a checklist on disk (facilitator-on-delegation, routing not yet put to the product thinker)
+
+| part | type | home |
+|---|---|---|
+| the away mode with an owner and an end time, repeated at every start, compaction and prompt; the stop check that refuses to end a turn with owed work while the person is away; the question reroute and the queue of steps for the person's hands | capability | intent itd-2610180912189125 (planned, spc-2610180914469489), the first slice, which builds on the draft |
+| the per-session checklist on disk and its re-injection; waits per item; trigger promises; timed wakes; the states working, waiting and stopped | capability | itd-2610170638184486 (draft) |
+| the pre-run blocker sweep, asked by message | capability | the same draft, by the product thinker's choice |
+| the two lists for the person's return across sessions | capability | the same draft; the slice's per-repository form moved back here in its review round 1 (dcn-2610180937181929), leaving it only `abcd mode back` printing the queue |
+| the technical facilitator set to auto or to a person, and whether a feature's design work is done | capability | the same draft, reading the existing `facilitator.mode` of itd-2610150602547271; no second toggle |
+| the private shared option, the public option and the phone | capability | proposed as its own intent in the bundle; split not filed |
+| the checklist records a credential's kind, scope and expiry, never its value or anything that retrieves it | trust rule | proposed ADR and brief invariant clause at planning; not filed |
+| a public upload passes the embargo check | cited | brief invariant 22; no new rule |
+| the stop check's one forge listing per check, made only while the person is away | rule clause | brief invariant 7, amended by the slice's step 3 (step 6 before its review round 1) |
+| a wait holds one item, never the session, and a declared dependency holds only the landing | stance | proposed principle; not filed |
+| a state shown to a person follows what the machine sees, and the agent's own words are a hint | stance | the coordination intent's decision 6 and the principle `enforcement-claims-are-facts`, cited; no new principle |
+| the checklist's JSON format and its crash-safe write | plumbing | the brief's internals, through `internal/fsutil`'s atomic writer |
+| idle time per session for a coordinator; each autonomous session's own credential | capability | the coordination intent (headless agents coordinate through the shared remote), not this draft |
+
+Verdict: SPLIT, proposed. The routing is the agent's and has not been put to
+the product thinker; it is graded as unconfirmed until the planning interview
+on 2026-10-23. Only the first slice was filed, on the orchestrating session's
+instruction, so the security and bug-fix release can wait on it alone
+(dcn-2610180913379049, dcn-2610180913388445). The other proposed records (the
+shared-options and phone intent, the credential ADR, the waiting principle)
+are described in the facilitator's note for Thursday and filed only once the
+routing is confirmed.
+
+Typed links: itd-2610180912189125 builds on the draft and is the remedy home
+of iss-2610170619247185 with it; the coordination intent is the bundle
+sibling, kept apart by the draft's scope split. Advisory reversal flags: none.
+Two refinements of the issue's remedy wording are recorded rather than
+flagged: the away record is held per repository on the machine rather than
+per checkout (dcn-2610180913399499), and a coordinator's view of idle time
+comes through the coordination intent's central view rather than `abcd
+peers`.
+
+The initial routing moved once before filing. The draft first held the stop
+check and the away mode inside the checklist itself; carving them into a
+separate intent followed from the release cut waiting on them, and from
+planning the draft before its criteria are walked being the worse of the two
+routes.

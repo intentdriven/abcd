@@ -81,7 +81,7 @@ Nothing else is carried. The commit is authored as the person, as reservations a
   - **Decided the same day: where the block is rendered.** The render lives with the reader in `internal/core/claim` (`PromptNotes`), not in `internal/core/rules`. The rules package knows nothing of the status branches, and the hook joins the two texts at its one emit point. The render and stalled-remote tests are in `internal/core/claim` and in the hook's surface test.
 - **C13, C14:** `.githooks/pre-push` gains a second receipt-less row, `abcd-status/`. It reuses `reservation_shape`: a fast-forward of commits that change no file. Every other push under the prefix is gated as any branch is.
 - **C15:**
-  - **The ruleset:** `.abcd/work/rulesets/status-protection.json` mirrors a ruleset on `refs/heads/abcd-status/**` that blocks deletion and non-fast-forward pushes with no bypass. It is applied through the rulesets' own apply verb (invariant 10).
+  - **The ruleset:** `.abcd/work/rulesets/status-protection.json` mirrors a ruleset on `refs/heads/abcd-status/**` that blocks deletion and non-fast-forward pushes with no bypass. It is applied by the person with the rulesets README's `gh api` command, as every ruleset in the folder is: invariant 10 lets abcd change a remote only through a dedicated, confirmed apply verb, and none exists for rulesets. It went live on 2026-10-17 as ruleset 25302453, and the mirror matched it on 2026-10-22.
   - **The ADR:** [adr-2610150729333337](../../decisions/adrs/2610150729333337-a-status-branch-moves-without-a.md) is the trust rule.
   - **The brief:** invariants 7 and 10 gain clauses naming `abcd announce`, `abcd status` and the status branch, written in the change that builds them.
 - **C16, C17:**

@@ -21,7 +21,7 @@ Typed links: `builds_on` [itd-2609091014076309](itd-2609091014076309-session-and
 
 ## Press Release
 
-> **When you leave abcd working through the night, the agents it starts on its own can change their own work and nothing else on your computer.** Each agent abcd launches runs inside a fence your computer's operating system enforces, not only abcd's own checks. The agent can edit the copy of the project it was given and the notes abcd keeps for that piece of work. Your other projects, your settings, and the choices you made about how abcd runs stay out of its reach. On a computer that cannot put up the fence, abcd says so before the first agent starts, so you never find out in the morning.
+> **When you leave abcd working through the night, the agents it starts on its own can change their own work and nothing else on your computer.** Each agent abcd launches runs inside a fence your computer's operating system enforces, not only abcd's own checks. The agent can edit the copy of the project it was given and the notes abcd keeps for that piece of work. It cannot change your other projects, your settings, or the choices you made about how abcd runs, and it cannot read your passwords, keys and sign-ins. On a computer that cannot put up the fence, abcd says so before the first agent starts, so you never find out in the morning.
 >
 > "I used to leave a run going and wonder over breakfast what else it had touched," said Maya, an autonomous-development practitioner. "Now the agents abcd starts can only change the work they were given. The one night my laptop couldn't fence them in, abcd told me before it began, and the choice was mine."
 

@@ -234,6 +234,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	if perr := push(root, pushArgs(sha, p.id)); perr != nil {
 		return Result{}, lostRace(p, tree, j, perr)
 	}
+	notePushed(root, p.id, sha)
 	res.Commit = sha
 	res.Copy = CopyThis
 	res.DerivedUnchecked = p.derivedGap

@@ -142,3 +142,43 @@ func TestPullRequestTargetWorkflowsHaveNoCheckout(t *testing.T) {
 		t.Fatal("no pull_request_target workflow found — the sweep matched nothing; external-review.yml should trip this")
 	}
 }
+
+// goDirectiveRe reads go.mod's go directive; golangImageRe reads a golang
+// container image tag.
+var (
+	goDirectiveRe = regexp.MustCompile(`(?m)^go\s+(\S+)\s*$`)
+	golangImageRe = regexp.MustCompile(`\bgolang:([0-9][^\s"'` + "`" + `]*)`)
+)
+
+// TestTheIntakeRunbookImageTracksGoMod holds the contained `go test` step in
+// the external-contribution runbook to the toolchain go.mod declares. The
+// official image runs with GOTOOLCHAIN=local and the step cuts the network,
+// so a tag behind go.mod refuses the build there, and the contained run it
+// exists to make gives way to a bare one. The tag is the one Go version
+// outside go.mod, and it was left behind by two bumps in a row.
+func TestTheIntakeRunbookImageTracksGoMod(t *testing.T) {
+	root := repoRoot(t)
+	mod, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := goDirectiveRe.FindSubmatch(mod)
+	if m == nil {
+		t.Fatal("go.mod declares no go directive")
+	}
+	want := string(m[1])
+	rel := filepath.Join(".abcd", "work", "intake.md")
+	data, err := os.ReadFile(filepath.Join(root, rel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags := golangImageRe.FindAllStringSubmatch(string(data), -1)
+	if len(tags) == 0 {
+		t.Fatalf("%s names no golang image; the check would pass by finding nothing", rel)
+	}
+	for _, tag := range tags {
+		if tag[1] != want {
+			t.Errorf("%s runs golang:%s, but go.mod declares go %s; bump the tag with go.mod", rel, tag[1], want)
+		}
+	}
+}

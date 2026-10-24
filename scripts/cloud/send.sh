@@ -23,7 +23,7 @@
 # The connector's launch script answers through a fixed contract (documented
 # in it): exit 0 with `id=` and `link=` lines; 3 no host tool; 4 no login;
 # 5 an expired login; 6 an unknown environment; 7 another refusal; 8 an answer
-# naming no session. This script renders each without naming the host (C12).
+# naming no session; 9 an environment the connector cannot start in. This script renders each without naming the host (C12).
 #
 # Usage: send.sh [--connector <name>] <item-id>
 #   (default connector: the only one declared)
@@ -77,7 +77,7 @@ prefix="$(bash "$here/connector.sh" get "$connector" wip_prefix)" || exit 1
 # --- 1. The environment id, from the local tier ------------------------------
 
 if [ ! -f "$ENV_FILE" ] || [ -L "$ENV_FILE" ]; then
-	refuse "there is no environment id: write the id of the cloud environment to start sessions in, alone on one line, to $ENV_FILE (it is never committed)."
+	refuse "there is no environment id: write the id of the self-hosted cloud environment to start sessions in (its ccpool_ id), alone on one line, to $ENV_FILE (it is never committed)."
 fi
 env_id=""
 lines=0
@@ -125,6 +125,7 @@ case "$rc" in
 5) unreachable "the login cloud sessions are started with has expired: the person must renew it by hand (abcd stores no login), then send again. An unattended run stops here." ;;
 6) unreachable "the host does not know the environment named in $ENV_FILE. Check the id there." ;;
 7) unreachable "the host refused the start (its answer is above)." ;;
+9) unreachable "the connector cannot start a session in the environment named in $ENV_FILE, so the host was not asked (its reason is above)." ;;
 8)
 	echo "send: the host answered without naming a session, so a session may have started. Check the host's own list of sessions before sending $item again." >&2
 	exit 1
