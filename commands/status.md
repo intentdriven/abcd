@@ -75,6 +75,7 @@ The payload carries:
 - `read_error`: why the status branches as fetched could not be read, when
   they could not;
 - `reservations`, `live_by_holder`, `hand_backs_by_holder`, `release_holds`,
+  `lapsed_releases`,
   `view`, `fetch_error` and `derived_unchecked`, the same fields
   `/abcd:peers` lists;
 - `grants`, the line that an announcement informs and grants nothing.

@@ -150,6 +150,49 @@ func (s Snapshot) Holds(now time.Time) []Hold {
 	return out
 }
 
+// Lapsed is a release cut whose reservation expired with no tag on origin and
+// no release (iss-2610241104098581): its holder stopped renewing it, so it
+// holds no merge, and the cut is neither done nor withdrawn. Every surface
+// that lists the holds names it, so no session keeps work waiting on a holder
+// that is gone. Every value in it is validated data, never a writer's text.
+type Lapsed struct {
+	Release string `json:"release"`
+	Subject string `json:"subject"`
+	Holder  string `json:"holder"`
+	// Copy is CopyThis when the reservation names this checkout's own copy.
+	Copy string `json:"copy,omitempty"`
+	// RenewedAt is the reservation's last claim, and LapsedAt when it stopped
+	// holding.
+	RenewedAt time.Time `json:"renewed_at"`
+	LapsedAt  time.Time `json:"lapsed_at"`
+}
+
+// Text is the line every surface shows a lapsed cut by: "release v0.16.0: the
+// cut by @maya lapsed at …, last renewed …, with no tag v0.16.0 on origin; no
+// merge is held, and a cut resumed from any copy reserves it again with
+// `abcd reserve rel-v0.16.0`".
+func (l Lapsed) Text() string {
+	return fmt.Sprintf("release %s: the cut by @%s lapsed at %s, last renewed %s, with no tag %s on origin; "+
+		"no merge is held, and a cut resumed from any copy reserves it again with `abcd reserve %s`",
+		l.Release, l.Holder, stamp(l.LapsedAt), stamp(l.RenewedAt), l.Release, l.Subject)
+}
+
+// Lapsed is every release cut the view shows lapsed at now: each release
+// reservation that expired, in the view's order. A release whose tag reached
+// origin or whose holder released it is released, not expired, and is not
+// one. It reads nothing.
+func (s Snapshot) Lapsed(now time.Time) []Lapsed {
+	var out []Lapsed
+	for _, r := range s.Reservations {
+		if !isRelease(r.Record) || r.State != StateExpired || !now.After(r.EffectiveExpiry) {
+			continue
+		}
+		out = append(out, Lapsed{Release: releaseTag(r.Record), Subject: r.Record, Holder: r.Holder, Copy: r.Copy,
+			RenewedAt: r.ClaimedAt, LapsedAt: r.EffectiveExpiry})
+	}
+	return out
+}
+
 // releaseHolds is every release being cut as this checkout last fetched the
 // reservations, from disk alone: no fetch, no push and nothing written
 // (invariant 7). Each hold's Mine says whether it is under the username a
