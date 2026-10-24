@@ -28,7 +28,10 @@ The following are non-negotiable invariants — any architectural choice that vi
    The reservations on the shared remote (itd-2609091034175565) are fetched
    and pushed only by verbs whose documented meaning says so: `reserve`, whose
    meaning is one fetch of the reservations and one push to the record's
-   `abcd-reserved/` branch, and `peers`, whose meaning includes one fetch of
+   `abcd-reserved/` branch; `reserve --sweep`, whose meaning is one fetch of
+   the reservations and the default branch and, with `--apply`, one push per
+   spent branch deleting it, leased on the tip it judged
+   (iss-2610142200389875); and `peers`, whose meaning includes one fetch of
    the reservations, where every fetch of the reservations, theirs and each
    one below, also copies `origin`'s `v*` tags into `refs/abcd/release-tags/`
    (`+refs/tags/v*:refs/abcd/release-tags/v*`), outside `refs/tags/`, so it
