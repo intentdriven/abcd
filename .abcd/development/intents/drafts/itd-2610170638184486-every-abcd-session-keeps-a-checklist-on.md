@@ -223,6 +223,16 @@ session's interview on 2026-10-17:
   - anything `abcd mode back` prints beyond one plain line per queued step
     and recorded stop: grouping, formatting or a summary of the window.
 
+
+- **Moved out to itd-2610240850336695 (the person's grant, 2026-10-24).** The
+  parked person-only work above (the guard refusing a session's own `abcd mode
+  autonomous` by every route, the shell and file-tool refusals on the away
+  store, the wider PreToolUse matcher, the recorded attempts and the two live
+  checks) is that intent's Decision 5, because it gives the away mode the rights
+  worth guarding. That intent `builds_on` this one: when this draft's pre-run
+  blocker sweep ships, it runs before an away grant takes effect, so the person
+  is asked every undecided design decision first (its Decision 16).
+
 ## Decisions
 
 The product thinker's answers of 2026-10-17, restated, and the agent's

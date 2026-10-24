@@ -5,9 +5,9 @@ status: proposed
 date: 2026-10-24
 supersedes: null
 superseded_by: null
-related_intents: [itd-2610240850336695, itd-2610180912189125, itd-2610170638184486]
+related_intents: [itd-2610240850336695, itd-2610241015120503, itd-2610180912189125, itd-2610170638184486, itd-2610161621364075, itd-97, itd-2610150602547271]
 related_rfcs: []
-related_adrs: [adr-2610150603484802]
+related_adrs: [adr-2610150603484802, adr-42]
 ---
 
 # ADR-2610240850193281: A human-set autonomy grant permits, separately from the agent-written waiting-on badge
@@ -50,42 +50,55 @@ merge at all). None of them expires a grant on a clock.
 We will treat a grant and a fence as different things. A grant says what a
 session may do without asking; it needs no sandbox, because it widens nothing
 the session could not already do and only removes the stop. A fence restricts,
-and stays advisory where abcd cannot enforce it, as `--hold-pushes` already is.
+and stays a mistake filter where abcd cannot enforce it (adr-42), as
+`--hold-pushes` already is.
 
 We will therefore give the person one autonomy grant, kept apart from the
 badge:
 
-- The person alone sets it, in their home (`~/.abcd.noindex/`), keyed on the
-  repository's root commit. A repository's `.abcd/config.json` may remove a
-  capability from it and never add one.
-- It is built from four capabilities, `push-branch`, `open-pr`, `queue-merge`
-  and `decide-as <role>`, with presets on top; a grant that names none carries
-  "ship work" (`push-branch`, `open-pr`, `decide-as facilitator`) once the
-  pre-run sweep has confirmed the outstanding design work
-  (itd-2610240850336695, Decisions 2 to 4).
-- Merging to the default branch, cutting a release and force-pushing are in no
-  preset, and abcd refuses them in code at every level.
-- It ends at a time the person names; an ended or unreadable grant reads as no
-  grant.
+- The person alone sets it, by an explicit command (`/abcd:mode autonomous`,
+  or `abcd mode autonomous` at a terminal), never from a sentence in chat, and
+  it lives in their home (`~/.abcd.noindex/`), keyed on the repository's root
+  commit. A repository's committed `.abcd/config.json` may remove a capability
+  from it and never add one.
+- It is built from `push-branch`, `open-pr` and `decide-as <role>`, with three
+  presets on top (`nothing`, `ship-work`, `everything`); a grant that names
+  none carries `ship-work` (`push-branch`, `open-pr`, `decide-as facilitator`).
+- On the grant alone, abcd's own commands refuse merging to the default
+  branch, cutting a release and force-pushing, and the guard filters the shell
+  routes to them where its hooks run. A release or merge the person asks for
+  in the session is the person's act, not the grant's, and is not refused.
+- It ends at a time the person names, or seven days after it was set; an ended
+  or unreadable grant reads as no grant.
 - It holds whether the person is present or away: being away stays its own
-  record, and ending it does not end the grant.
-- It is the one place that lets abcd merge on its own; the planned
-  `facilitator.mode: auto` folds into its `queue-merge` capability.
-- Only the person sets it: the guard refuses a session that sets or writes it.
+  record, and ending the absence does not end the grant.
+- It reaches a session only through abcd's hook output, and is checked again
+  at each push and pull request, so where abcd's hooks do not run there is no
+  grant.
+- Only the person sets it: the guard refuses a session that sets or writes it,
+  by every route abcd can be invoked through.
 - The badge stays the agent's report of whose answer is owed; the status line
   shows the grant beside it.
 
-This supersedes `dcn-2610181016510153` on rights, not on the away mode's other
-behaviour.
+Whether abcd may merge on its own (`queue-merge`, and the repository's planned
+`facilitator.mode: auto`) and what a cloud session may do are not decided
+here; they are itd-2610241015120503's, because each would reverse an accepted
+rule (ruling AM1 in the landing's merge gate, adr-2610150603484802, invariant
+23).
+
+This reverses dcn-2610181016510153 in whole, on rights and on who sets the
+mode (it let a session set it "on their word"), and reinstates
+dcn-2610181003456444's person-only guard with a wider grant;
+dcn-2610241016208164 records the reversal from the decisions' side.
 
 The grant and the fence are two axes, as Codex keeps its approval policy apart
 from its sandbox mode. Where abcd puts up a fence, the grant is embedded in it:
 the agents abcd's runner launches run inside the operating-system sandbox of
-itd-2610161621364075 (its part A), and the grant says what they may do there
-without asking. Where abcd cannot fence, the person's own interactive sessions
-(that intent's part B), the grant stands alone, abcd claims no boundary, and
-the person's host settings stay the outer fence (product thinker, planning
-interview, 2026-10-24).
+itd-2610161621364075, and the grant says what they may do there without asking.
+Where abcd cannot fence, the person's own interactive sessions (the part B that
+intent names for a draft of its own), the grant stands alone, abcd claims no
+boundary, and the person's host settings stay the outer fence (product thinker,
+planning interview, 2026-10-24).
 
 ## Alternatives Considered
 
@@ -106,12 +119,13 @@ interview, 2026-10-24).
 ## Consequences
 
 - A session may push its own branch and open a pull request under a grant
-  without asking, and `abcd mode back` must list what it did.
-- abcd takes on a refusal it does not have today: merge to the default branch,
-  release and force-push, refused at every grant level by the guard.
+  without asking, and the morning list must name what it did.
+- abcd takes on a refusal it does not have today: on the grant alone, its own
+  commands refuse merging to the default branch, a release cut and a
+  force-push, with the guard as the shell-side mistake filter.
+- The shipped away mode's "or asking a session to" route is withdrawn: a
+  breaking change for anyone who sets it in prose.
 - The badge loses its human writer on the `/abcd:mode` page; the page leads
   with the grant.
-- `facilitator.mode` must be reconciled with the grant: folded in, or kept as
-  the repository's opt-in for merging.
 - The grant is a permission, not a sandbox: a session that ignores it is not
-  stopped by it, and the documentation must say so.
+  stopped by it, and the documentation says so.

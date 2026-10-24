@@ -150,6 +150,7 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610170634394993` — Headless agents in parallel coordinate through the shared remote, not conversation
 - `itd-2610170638184486` — Every session keeps a checklist on disk, so no run stalls and no stall spreads
 - `itd-2610240850336695` — The person grants their sessions what they may do alone, until a time
+- `itd-2610241015120503` — The person and the repository agree when abcd may merge, and what a cloud session may do
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief

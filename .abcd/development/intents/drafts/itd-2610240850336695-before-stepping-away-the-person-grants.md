@@ -5,119 +5,192 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
+builds_on: [itd-2610180912189125, itd-2610170638184486]
+related_adrs: [adr-2610240850193281]
 severity: minor
-impact: additive
+impact: breaking
 origin: researcher-authored
 production_mode: hand-written
 ---
 
 # The person grants their sessions what they may do alone, until a time
 
+Typed links: `builds_on`
+[itd-2610180912189125](../shipped/itd-2610180912189125-a-session-told-to-work-on-while-its.md)
+(the shipped away mode, whose record and hooks this grant sits beside, and
+whose "or asking a session to" route Decision 14 **reverses**) and
+[itd-2610170638184486](itd-2610170638184486-every-abcd-session-keeps-a-checklist-on.md)
+(the checklist, whose pre-run blocker sweep asks the person for every undecided
+design decision before they leave, and whose parked person-only guard work this
+intent takes over, Decision 5); `related_adrs`
+[adr-2610240850193281](../../decisions/adrs/2610240850193281-a-human-set-autonomy-grant-permits.md)
+(the decision this intent delivers). Merging and cloud sessions are split out
+to their own draft (Decision 13).
+
 ## Press Release
 
-> Before stepping away, the person grants their sessions exactly what they may do alone (push their own branches, open pull requests, queue a merge that needs no approval, decide as the technical facilitator) until a time they name, and abcd enforces that grant instead of leaving it to a sentence in chat. Alice, a solo founder who is also the product thinker, types one command before the evening: `abcd mode autonomous --away --until 09:00`, which grants the default "ship work" preset unless they name another. Every session on the machine reads the same grant, so none of them stops to ask whether it may push the branch it just finished, and none of them merges to `main` outside the merge queue, cuts a release or force-pushes, because no preset grants those. The status line shows the grant and the time left beside the waiting-on badge, which stays the agent's own report of whose answer is owed. At 09:00 the grant lapses by itself and sessions go back to asking. In the morning `abcd mode back` lists what each session did under the grant, so Alice can see what was pushed and opened in their name.
+> **Before stepping away, a person grants their sessions exactly what they may do alone, and abcd holds them to it instead of leaving it to a sentence in chat.** Alice, a solo founder who is also the product thinker, types `/abcd:mode autonomous --away --until 09:00` before the evening. That grants the default "ship work" preset: every session of this repository on Alice's computer may push the branches it made, open their pull requests and answer its own technical questions, without stopping to ask. None of them merges to `main`, cuts a release or force-pushes on the grant alone, because no preset grants those and abcd's own commands refuse them. The status line shows the grant and its end beside the badge that says whose answer is owed. At 09:00 the grant lapses by itself and sessions go back to asking, and Alice's morning list shows each push and pull request a session made under it. Alice can grant while still at the keyboard too, to stop being asked whether a session may push; and a session told in chat "I'm away, carry on" does not grant itself anything, it names the command.
+>
+> "I used to come back to sessions that had waited all night to ask whether they could push," said Alice, a solo founder. "Now I say once what they may do, and in the morning I see exactly what they did with it."
 
 ## Why This Matters
 
-_Written by the agent on 2026-10-24 from the session that filed
-iss-2610240827243654 and the product thinker's framing in it; the planning
-interview confirms or rewrites it._
+_Written by the agent on 2026-10-24 from the session in which the product
+thinker found the gap; confirmed by the planning interview the same day._
 
-On 2026-10-24 the product thinker asked a session to build an issue. The build
-was refused, and the steps that would get it started (commit the record on a
-branch, run the preflight, push, open a pull request) stopped on the agent's
-own rule that a push or pull request needs a standing permission. The product
-thinker asked why the session paused when "haven't we set the TF role to
+On 2026-10-24 the product thinker asked a session to build an issue. Getting
+it started meant committing the issue record on a branch, running the
+preflight, pushing and opening a pull request, and the session stopped at the
+push on its own rule that a push or pull request needs a standing permission.
+The product thinker asked why it paused when "haven't we set the TF role to
 autonomous?", and found that no such setting exists:
 
-- The badge (`managed`, `facilitator`, `product-thinker`) is the only thing
-  `/abcd:mode` offers, and it is in practice agent-written: a question's chip
-  sets it and the answer resets it.
+- The badge (`managed`, `facilitator`, `product-thinker`) is the only thing the
+  mode page offers, and in practice the agent writes it: a question's chip sets
+  it and the answer resets it.
 - The away mode (`abcd mode autonomous`) is the human-set control, but it
   "grants no rights": nothing in `build`, `implement`, `drain` or `landing`
-  reads it, and `--hold-pushes` only changes the stop hook's wording.
+  reads it, and `--hold-pushes` changes only the stop hook's wording.
 - The one setting meant to grant something, `facilitator.mode: auto|human`,
   lives in the repository's config and is not built.
 
 So the person's permission has nowhere to live but a sentence in chat, which
-one session hears and its peers do not, and which compaction can drop.
+one session hears and its peers do not, and which compaction can drop. The
+shipped away mode also promises it can be set by "asking a session to", which
+lets a sentence in chat stand for the person's act; this intent withdraws that
+route (Decision 14), which is why its impact is `breaking`.
 
 The away mode was designed with a narrow push grant and then reversed
-(`dcn-2610181003456444`, superseded by `dcn-2610181016510153`), because the
-guard cannot fence the person's own interactive sessions. That reasoning treats
-a grant as a fence. The state of the art treats them separately: Claude Code's
-permission modes, Codex's approval presets and Cline's auto-approve toggles are
-grants enforced by the harness, each kept apart from the session's "needs
-input" status, and each keeps a short list of irreversible acts gated at every
-level. [adr-2610240850193281](../../decisions/adrs/2610240850193281-a-human-set-autonomy-grant-permits.md)
-records the decision this intent delivers.
-
-Related: the shipped away mode (itd-2610180912189125) and the checklist draft
-itd-2610170638184486, whose press release already names "the technical
-facilitator set to auto" as part of a session's checklist.
+(dcn-2610181003456444, then dcn-2610181016510153), because the guard cannot
+fence the person's own sessions. That reasoning treats a grant as a fence; the
+state of the art keeps them apart (see SOTA).
 
 ## Mechanism
 
 _Confirmed by the product thinker in the planning interview, 2026-10-24._
 
 We expect sessions to stop pausing on the acts a grant covers, because the
-grant is a record every session reads at its start and after each compaction,
-not a sentence one session heard in chat; and we expect no rise in harm,
-because the acts a person cannot undo are in no preset and refused in code,
-not left to the agent's judgement. As one night: the person runs `abcd mode
-autonomous --away --until 09:00` and leaves. A session fixing an issue on its
-own branch pushes it and opens its pull request without asking; a second
-session started an hour later, which never heard the person, reads the grant
-and does the same; a third, compacted at 23:00, reads it again and carries on.
-In the morning there are pull requests waiting, nothing on the default branch
-has changed under `ship-work`, and a force-push or release a session attempted
-was refused. Under `everything` a pull request may already have landed through
-the merge queue's checks, undone by a revert.
+grant is a record each session reads at its start, after each compaction and
+again at each push or pull request it makes, not a sentence one session heard
+in chat; and we expect no rise in harm, because the acts a person cannot undo
+are in no preset, abcd's own commands refuse them on the grant alone, and the
+guard filters the shell routes to them where its hooks run. As one night: the
+person runs `/abcd:mode autonomous --away --until 09:00` and leaves. A session
+fixing an issue on its own branch pushes it and opens its pull request without
+asking; a second session started an hour later, which never heard the person,
+reads the grant and does the same; a third, compacted at 23:00, reads it again
+and carries on. In the morning there are pull requests waiting, nothing on the
+default branch has changed, and a force-push or release a session attempted
+through abcd was refused.
 
 The claim is wrong if a session under a grant stops to ask about an act the
-grant covers (the record did not reach it), or if a session under a grant does
-something the person cannot easily undo (the refusals did not hold).
+grant covers (the record did not reach it), or if a session acting on the grant
+alone does something the person cannot easily undo through abcd (the refusals
+did not hold).
 
 ## Scope Conditions
 
 _Confirmed by the product thinker in the planning interview, 2026-10-24._
 
 - One person on one machine grants their own local sessions of one repository,
-  keyed on its root commit. A cloud session is outside that grant and is
-  autonomous by default (Decision 11).
+  keyed on its root commit. Cloud sessions are outside this intent (Decision
+  13): here a cloud session reads no grant.
 - The grant holds only where abcd can enforce it: a host whose hooks run abcd's
-  guard. Where abcd cannot enforce it, the grant does not apply at all and the
-  session asks as it would with no grant (Decision 12).
+  guard. Where they do not, the grant does not apply and the session asks as it
+  would with no grant (Decision 12).
 - The grant is a permission, not a lock: it removes the stop for the acts it
   covers, and does not claim to stop a session that acts without asking, as a
-  session can today. The refusals cover only the acts a person cannot undo.
+  session can today. The guard is a mistake filter (adr-42); the refusals that
+  hold are the ones abcd's own commands make.
 
 ## Acceptance Criteria
 
-_Confirmed by the product thinker in the planning interview, 2026-10-24._
+_Confirmed by the product thinker in the planning interview, 2026-10-24;
+rewritten to the adversarial reviews' findings the same day._
 
-- Given the person has set a grant that includes `push-branch` until 09:00,
-  When a session pushes a branch it created before 09:00, Then no session asks
-  for permission and the push is recorded against the grant.
-- Given any grant, When a session tries to merge to the default branch outside
-  the merge queue, cut a release or force-push, Then abcd refuses it and names the act as outside
-  every preset.
-- Given a host where abcd's hooks do not run, When a session there reads a
-  grant, Then it reads as no grant and the session asks.
-- Given a grant whose end has passed, or a grant record that cannot be read,
-  When a session reads it, Then it reads as no grant and the session asks as it
-  would without one.
-- Given a repository's `.abcd/config.json` names a capability, When the grant
-  is read, Then the repository can remove that capability from the grant but
-  never add one the person did not grant.
-- Given a grant is in force, When the status line renders, Then it shows the
-  grant's preset and time left beside the waiting-on badge.
-- Given a session, When it runs `abcd mode autonomous` itself or writes the
-  away store through a shell or a file tool, Then the guard refuses it, records
-  the attempt, and the person sees it on their next prompt.
-- Given the person runs `abcd mode back`, When it prints, Then it lists each
-  act a session took under the grant, with the session and the capability.
+- **Given** a grant carrying `push-branch` until 09:00, **when** a session
+  pushes a branch this working copy created, before 09:00, **then** it pushes
+  without asking for permission, and the morning list names the push, the
+  session and the capability.
+- **Given** a grant carrying `open-pr`, **when** a session opens a pull request
+  from a branch this working copy created, **then** it opens without asking and
+  the morning list names it.
+- **Given** any grant, **when** a session acting on the grant alone asks abcd to
+  merge to the default branch, cut a release or force-push, **then** abcd's
+  command refuses it and names the act as outside every preset; **and given**
+  the same act through a raw shell where abcd's hooks run, **then** the guard
+  refuses it as a mistake filter.
+- **Given** a grant set or revoked while sessions are running, **when** a
+  running session next pushes or opens a pull request, **then** it acts on the
+  grant as it now stands, not as it stood when the session started.
+- **Given** a grant whose end has passed, or a grant record that cannot be
+  read, **when** a session reads it, **then** it reads as no grant and the
+  session asks as it would without one.
+- **Given** a grant set with no `--until`, **when** it is recorded, **then** it
+  ends seven days later and the status line names that end.
+- **Given** a host where abcd's hooks do not run, **when** a session there would
+  act on a grant, **then** the grant reaches it as no grant and it asks.
+- **Given** a grant naming `decide-as facilitator` only, **when** a session meets
+  a product question, **then** it waits for the person and records no answer of
+  its own; **and given** a technical question, **then** it answers, recording
+  the answer as a decision.
+- **Given** a grant naming the `nothing` preset, **when** a session pushes,
+  **then** it asks; **given** `everything`, **then** it pushes, opens pull
+  requests and answers both roles' questions; **given** a list of capabilities,
+  **then** only those apply.
+- **Given** the repository's committed `.abcd/config.json` withholds a
+  capability, **when** the grant is read, **then** the effective grant omits it,
+  and a capability the repository names that the person did not grant is
+  ignored; an uncommitted change to that file widens nothing.
+- **Given** a grant in this repository, **when** a session in a sibling
+  worktree of it reads the grant, **then** the grant applies there, and a
+  session in another repository reads none.
+- **Given** a grant set while the person is present, **when** they later end
+  the absence with `abcd mode back`, **then** the grant still holds until its
+  own end or until it is revoked.
+- **Given** a grant is in force, **when** the status line renders, **then** it
+  shows the grant's preset and end beside the waiting-on badge.
+- **Given** a session, **when** it runs `abcd mode autonomous` itself by any
+  route (the binary on PATH, the plugin root's, `go run ./cmd/abcd`, a built
+  `bin/abcd-<goos>-<arch>`, through `sh -c` or a script), or writes the grant
+  record or the away store through a shell or a file tool, **then** the guard
+  refuses it, records the attempt, and the person sees it on their next prompt.
+- **Given** the person writes "I'm away, carry on" in chat, **when** a session
+  reads it, **then** it records no grant and no absence and names the command.
+- **Given** the person reads the morning list, **when** it prints, **then** it
+  lists each act a session took under the grant, with the session, the
+  capability and the time.
+
+## Prior Art
+
+- itd-2610180912189125 (shipped): the away mode, record and hooks; this intent
+  sits beside it and withdraws its "asking a session to" route.
+- itd-2610170638184486 (draft): the checklist and its pre-run blocker sweep,
+  which asks the person for every undecided design decision before they leave;
+  its parked person-only guard work moves here.
+- itd-2610161621364075 (planned): the operating-system fence for the agents
+  abcd's runner launches; the grant is embedded in that fence where it exists.
+- itd-148 (planned) and iss-2610240859590333: a session working in its own
+  worktree, which the grant's "a branch this working copy created" relies on.
+- adr-42: the guard is a mistake filter, not a boundary.
+
+## SOTA
+
+- Claude Code permission modes (default, acceptEdits, plan, auto,
+  bypassPermissions) with allow, ask and deny rules: mature; the mode is kept
+  apart from the session's "needs input" state, and a short list stays
+  prompted in every mode.
+- OpenAI Codex CLI: a sandbox axis and an approval axis, with named presets;
+  mature.
+- Cline auto-approve: one toggle per capability; mature.
+- GitHub Copilot coding agent: may push only to its own branch and can never
+  approve or merge; mature.
+- None of them expires a grant on a clock.
+
+**Path:** 3, bespoke, because the grant is abcd's own record read by abcd's own
+hooks and commands across the person's sessions of one repository, which none
+of the tools above holds; the shape follows them (capabilities with presets, a
+status kept apart from the grant, irreversible acts outside every level).
 
 ## Decisions
 
@@ -126,86 +199,96 @@ _Confirmed by the product thinker in the planning interview, 2026-10-24._
    runner's agents under itd-2610161621364075, the grant is embedded in that
    fence; the person's own sessions get the grant alone. Recorded in
    adr-2610240850193281.
-2. **The capability set is four (product thinker, 2026-10-24).**
-   `push-branch` (push a branch the session created), `open-pr` (open a pull
-   request from it), `queue-merge` (queue a pull request whose ruleset needs no
-   approval) and `decide-as` (answer its own questions as a named role).
-   Merging to the default branch outside the queue, cutting a release and
-   force-pushing are outside every preset. Which presets bundle them is still
-   open.
+2. **The capability set (product thinker, 2026-10-24).** `push-branch` (push a
+   branch this working copy created), `open-pr` (open a pull request from it)
+   and `decide-as` (answer its own questions as a named role). A fourth,
+   `queue-merge`, moved to the merging draft by Decision 13. Merging to the
+   default branch, cutting a release and force-pushing are in no preset.
 3. **`decide-as` takes either role or both (product thinker, 2026-10-24).**
    The person names `facilitator`, `product-thinker` or both on each grant; a
    session answers only the roles named, recording each answer as a decision,
-   and a question for a role not named waits for the person.
-4. **The default preset is "ship work", once outstanding design work is
-   confirmed (product thinker, 2026-10-24).** A grant that names no preset
-   carries `push-branch`, `open-pr` and `decide-as facilitator`. It takes
-   effect only after the pre-run blocker sweep of itd-2610170638184486 has put
-   the outstanding design work to the person, so a session is not left alone
-   with a product decision nobody made.
-
-Consequence for itd-2610170638184486: its parked work making the away mode the
-person's act alone (the guard refusing an agent's own grant, and the refusal of
-shell and file-tool writes to the away store) was parked "should a later design
-give it rights worth guarding". This intent gives it those rights.
-
-5. **That person-only work moves into this intent (product thinker,
-   2026-10-24).** The grant ships with what protects it: the guard refuses an
-   agent's own `abcd mode autonomous` (the binary on PATH, the plugin root's,
-   and routes through `sh -c` and a script a shell runs), shell and file-tool
-   writes to the away store are refused, the PreToolUse matcher gains `Edit`,
-   `Write`, `MultiEdit` and `NotebookEdit`, and refused attempts are recorded
-   and shown to the person. itd-2610170638184486 drops it from its remaining
-   work when this intent is planned.
-6. **The planned facilitator setting folds into the grant (product thinker,
-   2026-10-24).** The grant is the one place that lets abcd merge on its own:
-   `queue-merge` replaces `facilitator.mode: auto` (adr-2610150603484802,
-   itd-97, itd-2610150602547271). A repository keeps only the power to
-   narrow: it may withhold `queue-merge`, never grant it. Planning reconciles
-   those records with this one.
+   and a question for a role not named waits for the person. It never widens
+   what invariant 19 lets a machine take alone.
+4. **The default preset is "ship work" (product thinker, 2026-10-24).** A grant
+   that names no preset carries `push-branch`, `open-pr` and `decide-as
+   facilitator`. Its first wording made it wait on the checklist's blocker
+   sweep; Decision 16 amends that.
+5. **The person-only work moves into this intent (product thinker,
+   2026-10-24).** The grant ships with what protects it: the guard refuses a
+   session's own `abcd mode autonomous` by every route (the binary on PATH, the
+   plugin root's, `go run ./cmd/abcd`, a built `bin/abcd-<goos>-<arch>`, and
+   routes through `sh -c` and a script a shell runs); shell and file-tool writes
+   to the grant record and the away store are refused; the PreToolUse matcher
+   gains `Edit`, `Write`, `MultiEdit` and `NotebookEdit`; refused attempts are
+   recorded and shown to the person. It also takes the two live checks
+   dcn-2610181003456444 required: that the person's `!` command reaches no
+   pre-tool hook, and that a message relayed from another session starting with
+   `!` is not run as a shell command. itd-2610170638184486 drops this from its
+   remaining work.
+6. **The facilitator-setting fold (product thinker, 2026-10-24).** Moved to the
+   merging draft by Decision 13.
 7. **A grant covers one repository (product thinker, 2026-10-24).** It is
    keyed on the repository's root commit, as the away record is, so every
    worktree and clone of it on this machine shares it; another repository
    needs its own grant.
 8. **A grant holds whether the person is present or away (product thinker,
    2026-10-24).** Being away stays its own record, with its question reroute
-   and stop check; the grant is a separate record beside it, so a person at
-   the keyboard can grant `push-branch` and stop being asked. Ending the away
-   mode does not end the grant; the grant ends at its own time or when the
-   person revokes it. The verb's shape (a flag on `abcd mode autonomous` or a
-   verb of its own) is planning's to settle, and the press release's example
-   follows it.
+   and stop check; the grant is a separate record beside it. Ending the
+   absence does not end the grant; the grant ends at its own time or when the
+   person revokes it.
 9. **Three presets ship (product thinker, 2026-10-24).** `nothing` (sessions
-   keep asking), `ship-work` (the default: `push-branch`, `open-pr`,
-   `decide-as facilitator`) and `everything` (all four capabilities,
-   `decide-as` both roles). A grant may instead list capabilities one by one.
+   keep asking), `ship-work` (the default) and `everything` (every capability
+   this intent carries, `decide-as` both roles). A grant may instead list
+   capabilities one by one.
 10. **`abcd mode autonomous` becomes the grant; being away is a flag on it
     (technical facilitator, 2026-10-24).** `abcd mode autonomous` with no
     `--grant` grants `ship-work`; `--grant <preset|capability,...>` names
-    another; `--until` ends it; `--away` also records the absence, with the
-    question reroute and stop check the away mode carries today. Today the
-    bare verb means away and grants nothing, so the change is breaking for
-    anyone who runs `abcd mode autonomous` expecting absence only: planning
-    settles the migration and the intent's impact. `abcd mode back` ends the
-    absence; how the grant is revoked on its own is planning's to name.
-    Decision 8's "a flag on `abcd mode autonomous` or a verb of its own" is
-    settled by this one.
+    another; `--until` ends it; `--away` also records the absence. `abcd mode
+    back` ends the absence only.
 11. **Cloud sessions are autonomous by default (product thinker,
-    2026-10-24).** A cloud session cannot read the person's home, so it does
-    not wait for a grant from it: it runs as if granted by default. Which
-    preset that default is, and where a cloud session reads it, are open.
+    2026-10-24).** Moved to the merging draft by Decision 13, where it meets
+    invariant 23 and Decision 12; here a cloud session reads no grant.
 12. **No enforcement, no grant (product thinker, 2026-10-24).** Where abcd
-    cannot enforce the grant (no hooks, so no guard and no refusals), the grant
-    does not apply: the session reads it as absent and asks. A grant is never
-    left to the agent's reading alone.
+    cannot enforce the grant (no hooks, so no guard), the grant does not apply:
+    the session reads it as absent and asks. The grant reaches a session only
+    through abcd's hook output, never as plain text a session reads for
+    itself, so a host without hooks never sees it as permission.
+13. **The split (product thinker, 2026-10-24, after the two adversarial
+    reviews).** This intent keeps the grant, its protection and the refusals.
+    `queue-merge`, the facilitator-setting fold and the cloud default move to
+    a draft of their own, with the findings they carry: the inversion of
+    ruling AM1 (abcd arms a merge only where the ruleset requires a person's
+    approval), the reversal of adr-2610150603484802, and invariant 23.
+14. **The grant is set only by the person's explicit command, never from a
+    sentence in chat (product thinker, 2026-10-24).** The person runs
+    `/abcd:mode autonomous` (or `abcd mode autonomous` at a terminal); a
+    session asked in prose ("I'm away, carry on") refuses and names the
+    command. This withdraws the shipped away mode's "or asking a session to"
+    route, so the impact is `breaking`. How the guard tells the person's slash
+    command from a session's own call is the spec's to settle, starting from
+    the live checks of Decision 5.
+15. **A grant with no end falls back to a cap (product thinker, 2026-10-24).**
+    `--until` is optional; a grant that names no end lasts seven days at most,
+    the away mode's existing cap, and the status line shows the end either way.
+16. **The grant works without the blocker sweep (product thinker,
+    2026-10-24).** The default preset takes effect when the person sets it; it
+    does not wait for itd-2610170638184486's sweep. When the sweep ships, it
+    runs before an away grant takes effect, so the person is asked every
+    undecided design decision first; until then the person decides that for
+    themselves.
+17. **The refusals apply to a session acting on the grant alone (recorded
+    without a question: one defensible answer).** A release the person asks
+    for in the session, or a cut the release orchestrator runs on the person's
+    instruction, is the person's act, not the grant's, and is not refused. The
+    record settles it: AGENTS.md has sessions cut releases on the person's
+    word, and refusing that would refuse the person.
 
 ## Open Questions
 
-- The migration for today's `abcd mode autonomous` (absence only) and the
-  intent's impact, given Decision 10 makes the bare verb a grant.
-- The spelling of revoking the grant without ending the absence.
-- Decision 11: which preset a cloud session gets by default, where it reads
-  it, and whether Decision 12 holds for a cloud host abcd's hooks cannot reach.
+- The spelling of revoking the grant without ending the absence (the spec's to
+  name).
+- How the guard tells the person's `/abcd:mode autonomous` from a session's own
+  call (Decision 14), once the live checks of Decision 5 have run.
 
 ## Audit Notes
 
