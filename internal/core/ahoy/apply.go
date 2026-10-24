@@ -588,12 +588,14 @@ func (a *applyCtx) stepIdentityPin() {
 func (a *applyCtx) has(id string) bool { return a.gapPresent[id] }
 
 // stepDependencies is the explain-then-install mode at ahoy (itd-63). For each
-// dependency gap whose tool is still missing it hands the tool registry's
-// explanation to the front door's confirmation, and runs the registry's step
-// only on a yes. What ran, and whether it verified, is a change; a no, a failure
-// or a caller that asked nothing is a note carrying the explanation and the
-// capability's standing ("continuing on the native secret scanner"), never a
-// silent skip. The category approval gates reaching this step at all; it never
+// dependency gap it hands the tool registry's explanation to the front door's
+// confirmation and, only on a yes, installs the pinned, checked download into
+// the person's own bin folder (itd-2610240918594138). What was installed, and
+// how far it was checked, is a change; a no, a failure or a caller that asked
+// nothing is a note carrying the explanation and the capability's standing
+// ("continuing on the native secret scanner"), never a silent skip. A copy that
+// became usable since detection (installed meanwhile) is used, and nothing is
+// asked. The category approval gates reaching this step at all; it never
 // stands in for the per-tool answer.
 func (a *applyCtx) stepDependencies() {
 	if !a.approved[Dependency] {
@@ -603,11 +605,11 @@ func (a *applyCtx) stepDependencies() {
 		if g.Category != Dependency || g.Tool == nil {
 			continue
 		}
-		if onPath(a.cwd, g.Tool.Tool) {
+		res := newToolInstaller(a.cwd).Install(g.Tool.Tool, g.Tool.Capability, a.confirmTool)
+		if res.Ready && !res.Ran {
 			continue
 		}
-		res := newToolInstaller(a.cwd).Install(g.Tool.Tool, g.Tool.Capability, a.confirmTool)
-		if res.Ran && res.Installed && res.Verified {
+		if res.Ready {
 			a.changes = append(a.changes, receiptPath(a.cwd, "dependency: "+res.Summary()))
 			continue
 		}
@@ -2200,6 +2202,9 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 	// independent of whether the entry below is still there to be removed.
 	receipt.StatusLine = uninstallStatusLine()
 
+	// Tools: the copies abcd installed, by its record, and nothing else.
+	receipt.Tools, receipt.ToolsNote = uninstallTools()
+
 	// Symlink: remove only if it points at this plugin's binary. The entry is
 	// found the same way detection finds it — an owned entry anywhere on PATH,
 	// else the default location — so uninstall reaches the install that exists
@@ -2282,6 +2287,24 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 		}
 	}
 	return receipt, nil
+}
+
+// uninstallTools removes the tool copies the installed-tools record names,
+// each only while it is still the bytes abcd wrote (tools.Uninstall). A home
+// abcd cannot judge removes nothing and says why.
+func uninstallTools() ([]tools.Removal, string) {
+	home, refused := homeScope()
+	if refused != "" {
+		return []tools.Removal{}, "tool copies left untouched: " + refused
+	}
+	out, err := tools.Uninstall(home)
+	if out == nil {
+		out = []tools.Removal{}
+	}
+	if err != nil {
+		return out, "tool copies: " + errText(err)
+	}
+	return out, ""
 }
 
 // Doctor runs the detection pass plus a read-only cross-machine audit. Zero

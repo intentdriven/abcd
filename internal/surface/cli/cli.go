@@ -4297,6 +4297,12 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "  readme: %s\n", termsafe.Sanitize(receipt.Readme.Note))
 				fmt.Fprintf(w, "  symlink: %s\n", symlinkNote(receipt))
 				fmt.Fprintf(w, "  status line: %s\n", receipt.StatusLine.Note)
+				for _, r := range receipt.Tools {
+					fmt.Fprintf(w, "  tool %s: %s (%s)\n", r.Tool, termsafe.Sanitize(r.Note), termsafe.Sanitize(r.Path))
+				}
+				if receipt.ToolsNote != "" {
+					fmt.Fprintf(w, "  tools: %s\n", termsafe.Sanitize(receipt.ToolsNote))
+				}
 			})
 		},
 	}
@@ -4651,9 +4657,10 @@ func toolConfirm(p ahoy.Prompter, named map[string]bool, yes bool, w io.Writer) 
 // --install-tool: the gh offer at ahoy remote apply (the product thinker's
 // DQ3 ruling, 2026-09-29). Its only yes is one typed at a terminal; --yes, a
 // piped stream and a caller with no terminal each decline, carrying the
-// command the person can run themselves.
+// by-hand install the person can make themselves (the URL, the sha256 to check
+// and where the program goes: never a step that needs admin rights).
 func terminalToolConfirm(p ahoy.Prompter, yes bool, w io.Writer) tools.Confirm {
-	return askToolAtTerminal(p, yes, w, func(e tools.Explanation) string { return "install it yourself with " + e.StepText() })
+	return askToolAtTerminal(p, yes, w, func(e tools.Explanation) string { return "install it yourself: " + e.ManualText() })
 }
 
 // askToolAtTerminal asks the install question of a person at a terminal and
@@ -4669,10 +4676,10 @@ func askToolAtTerminal(p ahoy.Prompter, yes bool, w io.Writer, otherwise func(to
 			for _, line := range e.Lines() {
 				fmt.Fprintln(w, termsafe.Sanitize(line))
 			}
-			if !dp.confirmTool(e.Tool, "Install "+e.Tool+" now by running "+e.StepText()+"?") {
+			if !dp.confirmTool(e.Tool, "Install "+e.Tool+" now: "+e.StepText()+"?") {
 				return tools.Answer{Why: "answered no at the terminal"}
 			}
-			fmt.Fprintf(w, "running %s; a package manager can take a few minutes\n", e.StepText())
+			fmt.Fprintf(w, "downloading %s; nothing is written until it passes its check\n", e.Tool)
 			return tools.Answer{Yes: true, Why: "answered yes at the terminal"}
 		}
 		sp, ok := p.(*stdinPrompter)
@@ -4682,11 +4689,11 @@ func askToolAtTerminal(p ahoy.Prompter, yes bool, w io.Writer, otherwise func(to
 		for _, line := range e.Lines() {
 			fmt.Fprintln(w, termsafe.Sanitize(line))
 		}
-		fmt.Fprintf(w, "Install %s now by running %s? [y/N] ", e.Tool, e.StepText())
+		fmt.Fprintf(w, "Install %s now: %s? [y/N] ", e.Tool, e.StepText())
 		line, _ := sp.r.ReadString('\n')
 		switch strings.ToLower(strings.TrimSpace(line)) {
 		case "y", "yes":
-			fmt.Fprintf(w, "running %s; a package manager can take a few minutes\n", e.StepText())
+			fmt.Fprintf(w, "downloading %s; nothing is written until it passes its check\n", e.Tool)
 			return tools.Answer{Yes: true, Why: "answered yes at the terminal"}
 		}
 		return tools.Answer{Why: "answered no at the terminal"}

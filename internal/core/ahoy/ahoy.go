@@ -331,6 +331,12 @@ type UninstallReceipt struct {
 	Readme     ReadmeReceipt     `json:"readme"`
 	Symlink    SymlinkReceipt    `json:"symlink"`
 	StatusLine StatusLineReceipt `json:"status_line"`
+	// Tools is what became of each tool copy abcd installed and recorded in
+	// ~/.abcd.noindex/tools.json: removed while still the bytes abcd wrote,
+	// left untouched otherwise (itd-2610240918594138, criterion 4).
+	Tools []tools.Removal `json:"tools"`
+	// ToolsNote is set when the record could not be read or rewritten.
+	ToolsNote string `json:"tools_note,omitempty"`
 }
 
 // DoctorReport is the outcome of Doctor: the detection envelope plus read-only
