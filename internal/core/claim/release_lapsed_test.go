@@ -50,7 +50,9 @@ func TestALapsedReleaseIsNamedAsHoldingNoMerge(t *testing.T) {
 	}
 	text := l.Text()
 	for _, want := range []string{"release v0.16.0", "@octo", "lapsed at " + stamp(t0.Add(lease.Max)),
-		"last renewed " + stamp(t0), "no tag v0.16.0 on origin", "no merge is held", "abcd reserve rel-v0.16.0"} {
+		"last renewed " + stamp(t0), "no tag v0.16.0 on origin", "no merge is held",
+		"From " + stamp(t0.Add(lease.Max+TakeoverMargin)) + ", any copy reserves it again with `abcd reserve rel-v0.16.0`",
+		"`abcd reserve rel-v0.16.0 --release`, to withdraw it"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the lapsed line %q does not say %q", text, want)
 		}

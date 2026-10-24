@@ -95,8 +95,9 @@ payload adds:
   merge, with its `release`, `subject`, `holder`, `copy: "this"` when it was
   made from this checkout, `renewed_at` (its last claim), `lapsed_at` and
   `text`, the line the text form shows it by: the cut lapsed, no merge is
-  held, and a cut resumed from any copy reserves the release again. Tell the
-  user no merge waits on it (iss-2610241104098581).
+  held, and from five minutes after the lapse any copy reserves the release
+  again, to resume the cut or, followed by `--release`, to withdraw it. Tell
+  the user no merge waits on it (iss-2610241104098581).
 - `release_holds`: each release being cut (a live `rel-vX.Y.Z` reservation,
   or an unreadable one within its hold, which holds every other session's
   merge until its tag is on origin; see `/abcd:reserve`), with its `release`,

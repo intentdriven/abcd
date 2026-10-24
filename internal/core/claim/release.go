@@ -152,9 +152,9 @@ func (s Snapshot) Holds(now time.Time) []Hold {
 
 // Lapsed is a release cut whose reservation expired with no tag on origin and
 // no release (iss-2610241104098581): its holder stopped renewing it, so it
-// holds no merge, and the cut is neither done nor withdrawn. Every surface
-// that lists the holds names it, so no session keeps work waiting on a holder
-// that is gone. Every value in it is validated data, never a writer's text.
+// holds no merge, and the cut is neither done nor withdrawn. `abcd peers` and
+// `abcd status` name it, so no session keeps work waiting on a holder that is
+// gone. Every value in it is validated data, never a writer's text.
 type Lapsed struct {
 	Release string `json:"release"`
 	Subject string `json:"subject"`
@@ -167,14 +167,19 @@ type Lapsed struct {
 	LapsedAt  time.Time `json:"lapsed_at"`
 }
 
-// Text is the line every surface shows a lapsed cut by: "release v0.16.0: the
-// cut by @maya lapsed at …, last renewed …, with no tag v0.16.0 on origin; no
-// merge is held, and a cut resumed from any copy reserves it again with
-// `abcd reserve rel-v0.16.0`".
+// Text is the line a listing shows a lapsed cut by: "release v0.16.0: the cut
+// by @maya lapsed at …, last renewed …, with no tag v0.16.0 on origin; no merge
+// is held. From …, any copy reserves it again with `abcd reserve rel-v0.16.0`,
+// to resume the cut or, followed by `--release`, to withdraw it". The time is
+// the lapse plus TakeoverMargin, before which another copy's reserve backs
+// off; the withdrawal is a take-over and a release, since only the holder
+// releases a reservation.
 func (l Lapsed) Text() string {
 	return fmt.Sprintf("release %s: the cut by @%s lapsed at %s, last renewed %s, with no tag %s on origin; "+
-		"no merge is held, and a cut resumed from any copy reserves it again with `abcd reserve %s`",
-		l.Release, l.Holder, stamp(l.LapsedAt), stamp(l.RenewedAt), l.Release, l.Subject)
+		"no merge is held. From %s, any copy reserves it again with `abcd reserve %s`, to resume the cut or, "+
+		"followed by `abcd reserve %s --release`, to withdraw it",
+		l.Release, l.Holder, stamp(l.LapsedAt), stamp(l.RenewedAt), l.Release, stamp(l.LapsedAt.Add(TakeoverMargin)),
+		l.Subject, l.Subject)
 }
 
 // Lapsed is every release cut the view shows lapsed at now: each release
