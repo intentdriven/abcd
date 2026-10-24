@@ -733,7 +733,11 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				slices.Sort(racing)
 			}
 			ahead = machineload.QueueAhead(snap, req.Self, args)
-			res.UngatedTests = machineload.UngatedTests(snap, req.Self, args)
+			// Named only while the load is what shuts the gate, the condition
+			// they add to, as the race runs are named only when they shut it.
+			if slices.Contains(shut, WaitOnLoad) {
+				res.UngatedTests = machineload.UngatedTests(snap, req.Self, args)
+			}
 			var raceCrossed []int
 			raceAhead, raceCrossed = machineload.RaceAhead(snap, req.Self, args)
 			crossed = ahead.Crossed
