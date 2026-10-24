@@ -131,6 +131,10 @@ type DetectionResult struct {
 	// by DryRun while the question is open (readme.offered) and omitted
 	// otherwise (spc-2610031704338417).
 	Readme *ReadmeView `json:"readme,omitempty"`
+	// Sessions is the live brief session questions as the plugin page relays
+	// them, carried by DryRun while they are open (sessions.offered) and
+	// omitted otherwise (spc-2610141709430146 step 6).
+	Sessions *SessionsView `json:"sessions,omitempty"`
 
 	// pluginRoot is the resolved plugin root; not serialized.
 	pluginRoot string
@@ -202,6 +206,12 @@ type InstallOptions struct {
 	// readme.parts (readme_apply.go); a value ParseReadmeParts refuses refuses
 	// the install before any write.
 	ReadmeParts string
+	// LiveSessions is --live-sessions as given: local, cloud, both or none;
+	// "" is the flag not given. It answers the live brief session questions
+	// in any run, --yes included, and is stored as sessions.live
+	// (sessions_ask.go); a value ParseLiveSessions refuses refuses the
+	// install before any write.
+	LiveSessions string
 	// ApproveDependency answers the dependency category's question yes without
 	// asking it: the front door sets it when the person named a tool to
 	// install (--install-tool), which is that answer given in advance. Every

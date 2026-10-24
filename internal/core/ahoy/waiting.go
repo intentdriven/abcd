@@ -174,6 +174,7 @@ func armedQuestions(cwd string, det DetectionResult) []WaitingItem {
 	}
 	byGap("identity.refounding_candidate", "history.lineage")
 	byGap(ReadmeOfferGapID, ReadmePromptKey)
+	byGap(SessionsOfferGapID, SessionsPromptKey)
 	for _, id := range []string{StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID} {
 		byGap(id, id)
 	}

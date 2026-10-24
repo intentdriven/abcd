@@ -323,6 +323,11 @@ var optionalSkippedHelp = map[string]SummaryItem{
 		Why:    "Which parts of README.md abcd keeps current, if any, is the owner's choice, so abcd writes none without an answer.",
 		Action: "Run abcd ahoy install at a terminal, without --yes, and answer it; or, to answer it without being asked, pass --readme-parts " + ReadmePartsChoices + " to abcd ahoy install; none answers no and is not asked again.",
 	},
+	SessionsOfferGapID: {
+		What:   "The live brief session question was not asked; live sessions are not set up.",
+		Why:    "Whether the team edits its brief live, and where sessions may run, is the owner's choice, so abcd sets nothing up without an answer.",
+		Action: "Run abcd ahoy install at a terminal, without --yes, and answer it; or, to answer it without being asked, pass --live-sessions " + LiveSessionsChoices + " to abcd ahoy install; none answers no and is not asked again.",
+	},
 	ConventionsRetireGapID: {
 		What:   "An agent tool's own conventions file that only repeats AGENTS.md was left in place.",
 		Why:    "Removing a file from your project needs your own answer; until it goes, that tool reads it in place of AGENTS.md.",

@@ -110,6 +110,14 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		}
 	}
 
+	// A --live-sessions value that is not an answer stops the run before its
+	// first write, naming the answers.
+	if opts.LiveSessions != "" {
+		if perr := ParseLiveSessions(opts.LiveSessions); perr != nil {
+			return InstallResult{Status: "refused", Notes: []string{perr.Error()}}, nil
+		}
+	}
+
 	// The yes to the after-update offer (--only-waiting): only what waits is
 	// put, and the yes approved every kind of change.
 	opts, waiting, err := onlyWaitingRun(abs, det, opts)
@@ -185,6 +193,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		!overridesWouldChange(abs, opts.ValueOverrides) &&
 		!attributionWouldChange(abs, opts) &&
 		!readmeWouldChange(abs, opts) &&
+		!sessionsWouldChange(abs, opts) &&
 		!outboundWouldChange(abs, opts) &&
 		!modeForced {
 		// One state reaches here that is NOT a no-op: a config.json that could not
@@ -234,22 +243,23 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	approved, declined := resolveApproval(det.Gaps, opts, overrideChanges(abs, opts.ValueOverrides), p)
 
 	ac := &applyCtx{
-		cwd:         abs,
-		det:         det,
-		approved:    approved,
-		overrides:   opts.ValueOverrides,
-		prompter:    p,
-		gapPresent:  gapIDSet(det.Gaps),
-		autoYes:     opts.Yes,
-		devMode:     opts.Dev,
-		modeForced:  modeForced,
-		binTarget:   binTargetPath,
-		attribution: opts.Attribution,
-		outbound:    opts.Outbound,
-		confirmTool: opts.ConfirmTool,
-		provenance:  opts.VerifyProvenance,
-		readmeFlag:  opts.ReadmeParts,
-		waiting:     waiting,
+		cwd:          abs,
+		det:          det,
+		approved:     approved,
+		overrides:    opts.ValueOverrides,
+		prompter:     p,
+		gapPresent:   gapIDSet(det.Gaps),
+		autoYes:      opts.Yes,
+		devMode:      opts.Dev,
+		modeForced:   modeForced,
+		binTarget:    binTargetPath,
+		attribution:  opts.Attribution,
+		outbound:     opts.Outbound,
+		confirmTool:  opts.ConfirmTool,
+		provenance:   opts.VerifyProvenance,
+		readmeFlag:   opts.ReadmeParts,
+		sessionsFlag: opts.LiveSessions,
+		waiting:      waiting,
 	}
 
 	// Ordered apply steps.
@@ -275,6 +285,8 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// After stepMarker, before stepSymlink: the README pair's place in
 	// setup's fixed order (decision 7).
 	ac.stepReadme()
+	// After the README pair: the live brief session questions.
+	ac.stepSessions()
 	ac.stepSymlink()
 	// After stepSymlink, never before: the record names the entry that step
 	// leaves on PATH, and the hooks read it before they will run that entry.
@@ -471,6 +483,7 @@ type applyCtx struct {
 	binTarget       string         // the resolved PATH entry this run installs (never re-derived)
 	confirmTool     tools.Confirm
 	readmeFlag      string          // --readme-parts as given; "" when not given
+	sessionsFlag    string          // --live-sessions as given; "" when not given
 	provenance      ProvenanceCheck // the build-provenance check a cache promotion must pass; nil refuses
 	unverifiedCheck string          // the hand check for an owned copy whose provenance failed; non-empty reports UnverifiedCopyGapID
 	unverifiedWhy   string          // why that copy was not verified, when a fact other than the check says so (an older release than the mark)
@@ -2354,16 +2367,17 @@ const credentialAtRestGapID = "history.credential_at_rest"
 // status-line offer (see stepStatusLine), the two model-tier routing offers
 // (see stepOracleRouting), the drain eligibility record (see stepDrainRule),
 // the retirement of a tool's own conventions file (see
-// stepConventionsFiles) and the README question (see stepReadme). In the
+// stepConventionsFiles), the README question (see stepReadme) and the live
+// brief session question (see stepSessions). In the
 // order they are reported.
-var optionalGapIDs = []string{OptionalPinGapID, ReadmeOfferGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+var optionalGapIDs = []string{OptionalPinGapID, ReadmeOfferGapID, SessionsOfferGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 // terminalOnlyGapIDs are the optional offers put only to a person at a
 // terminal, and their categories: off one, neither the category nor the offer
 // is asked, so a piped answer stream keeps the order it had before they
 // existed. The README question has no category to ask (resolveApproval leaves
 // it out everywhere: the question is the consent).
-var terminalOnlyGapIDs = []string{ReadmeOfferGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+var terminalOnlyGapIDs = []string{ReadmeOfferGapID, SessionsOfferGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 var terminalOnlyCategories = []GapCategory{DrainRule, ConventionsFile}
 
@@ -2397,7 +2411,7 @@ func optionalAskable(cwd string, gaps []Gap, p Prompter) []string {
 // answer is stored in exists (readmeStorable).
 func optionalAsked(cwd, id string, p Prompter) bool {
 	switch {
-	case id == ReadmeOfferGapID:
+	case id == ReadmeOfferGapID, id == SessionsOfferGapID:
 		return atTerminal(p) && readmeStorable(cwd)
 	case slices.Contains(terminalOnlyGapIDs, id):
 		return atTerminal(p)
@@ -2519,8 +2533,10 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Pr
 		lines[ConfigChange] = append(lines[ConfigChange], flagChanges...)
 	}
 	// The README question is its own consent (open question 5): its category
-	// is never asked, approved or declined.
+	// is never asked, approved or declined. So is the live brief session
+	// question.
 	delete(present, Readme)
+	delete(present, Sessions)
 	approved := map[GapCategory]bool{}
 	switch {
 	case opts.ApprovedCategories != nil:

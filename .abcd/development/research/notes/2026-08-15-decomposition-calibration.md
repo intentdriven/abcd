@@ -2444,6 +2444,16 @@ The planning interview added two criteria from the product thinker's pushback on
 
 A third added criterion, that an announcement names nobody, was struck when the product thinker returned to GitHub usernames.
 
+## 2026-10-16: Emacs keys in the brief editor
+
+| part | type | home |
+|---|---|---|
+| a per-person option that switches the brief editor to Emacs keys, off by default, remembered per browser | capability | intent itd-2610161904178040 (draft), blocked by the live brief session intent itd-2610091016262335 |
+| page commands as Emacs-style chords | capability | not filed: the product thinker chose the editor option only |
+| the editor extension the option needs | plumbing | the spec, at planning; a new vendored dependency needs sign-off first |
+
+Verdict: FILE-AS-IS. The scope question (editor option per person, editor always on, editor plus page commands) was put to the product thinker, who chose the per-person editor option, so the routing survived as proposed.
+
 ## 2026-10-16: the agents abcd launches on its own work inside an OS sandbox (product thinker, routing to be read)
 
 | part | type | home |

@@ -125,6 +125,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
+      --live-sessions string    answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up
       --only-waiting            ask only the setup that waits after an abcd update: the questions this repository never answered and the settings whose default changed, never one answered or deferred with decide later; every kind of change is approved up front, as the yes to the offer abcd update news makes approves them; with the approve-everything flag no question is answered, so each still waits
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
       --outbound                opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
@@ -3976,7 +3977,9 @@ Gate the built website, rendering it first when absent: Writes only inside the o
 **Flags:**
 
 ```
-      --out string   built output directory to check (rendered first if absent) (default "site")
+      --base-path string   path the site is served below on its host, such as /widgets/ for a project's GitHub Pages address; every root-absolute link is placed under it (default "/")
+      --out string         built output directory to check (rendered first if absent) (default "site")
+      --project            gate a project site, every page built from what abcd writes to the repository and the interface words, styles and scripts taken from the binary; .abcd/site.json then holds the site's settings only
 ```
 
 ### `abcd memory`
@@ -4705,6 +4708,238 @@ beside the run, write-once; an ingest that lands no record leaves the run open.
 abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md
 ```
 
+### `abcd session`
+
+Set up live brief sessions, start one here, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb.
+
+**Usage:** `abcd session`
+
+Set up live brief sessions for this project, start one on this computer, run
+the relay a team's cloud sessions go through, write the blueprint that deploys
+that relay to the team's own Render account, or write the session's static page
+for the team to serve.
+The relay holds each session's edits in memory only, as opaque bytes, and drops
+them when the host closes the session or nobody has been connected for half an
+hour; it writes nothing to disk and logs nothing. abcd runs no relay of its own:
+the team runs it, on the host's computer reached over Tailscale Serve
+(`abcd session start`), or on the team's own relay (`abcd session serve`).
+
+Bare `abcd session` prints this help and writes nothing.
+
+#### `abcd session blueprint`
+
+Write the team relay's Render blueprint and Dockerfile, pinned to a release: Writes render.yaml and .abcd/relay/; refuses an edited file or no GitHub origin.
+
+**Usage:** `abcd session blueprint [flags]`
+
+Write the team's own relay deployment into this checkout: render.yaml, a Render
+Blueprint declaring one free web service, at the repository's root, where
+Render's Deploy button reads it, and .abcd/relay/Dockerfile,
+which downloads the released abcd binary for linux/amd64 and checks it against
+the SHA-256 that release's checksums.txt publishes. The checksum is read from the
+release page when the files are written (the one network read this verb makes,
+named on stderr) and pinned in the Dockerfile. The relay serves sessions for this
+checkout's origin repository on github.com, named in render.yaml as
+ABCD_SESSION_REPOS, a plain value; it refuses a checkout without one.
+
+render.yaml also names, in ABCD_SESSION_ORIGINS, the page origins the relay
+admits: each --origin, an https origin followed by the page's base path when it
+is served below one, or https://abcdesign.app by default, and,
+once repository setup has recorded the team's GitHub App in
+.abcd/relay/github-app.json, its public client id, so Render's form asks
+only for the secret. A root render.yaml the team wrote is never touched: the
+Blueprint then goes to .abcd/relay/render.yaml, picked by its Blueprint Path on
+Render's New Blueprint form.
+
+While the live brief session question is unanswered, a person at a terminal is
+asked it first, as repository setup asks it.
+
+--relay-origin names the deployed relay's https origin, once Render has given it
+one; the verb then also writes .abcd/relay/relays.json, naming it as the relay
+this repository trusts, which the session page reads from the repository, and
+prints the callback URL the team's GitHub App must list for the relay's sign-in:
+the relay's origin followed by /auth/callback.
+
+--release names the release to pin; it defaults to this abcd's own version when
+that is a release. A file left exactly as abcd wrote it is replaced; one that was
+edited, or that abcd did not write, is never overwritten, and nothing is written.
+
+Exit 2 on a refusal, with nothing written.
+
+**Flags:**
+
+```
+      --origin stringArray    a session page origin the relay admits, as https://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; default https://abcdesign.app)
+      --relay-origin string   the deployed relay's https origin, as https://host[:port]; given, .abcd/relay/relays.json names it as the relay this repository trusts
+      --release string        the abcd release tag to pin, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)
+```
+
+#### `abcd session page`
+
+Write the brief session's static page and its editor bundle into a directory: Writes only the page's six files; refuses a directory holding anything else.
+
+**Usage:** `abcd session page [flags]`
+
+Write the brief session's page into --out: index.html and an identical 404.html,
+session.js, session.css, and the vendored editor bundle with its licences under
+vendor/. The files are plain and static, embedded in this binary; serve them
+from any static host, such as GitHub Pages, whose 404.html fallback is how
+/<owner>/<repo>/brief/ reaches the page. The page connects only to the relay the
+person names and to api.github.com with their own token, and it sends the
+person to github.com for sign-in and to open the pre-filled issues a session
+sends. It reads nothing from this checkout.
+
+--base-path names the path the site is served under, such as a project's
+GitHub Pages address owner.github.io/<repo>/: the page then loads its files from
+under it and opens at <base-path>/<owner>/<repo>/brief/. It is plain path
+segments, and the root by default.
+
+It writes those six files and nothing else, and removes nothing. --out may be
+absent, empty, or a directory an earlier run wrote, whose files are replaced; a
+directory holding anything else, a symlink or a file is refused.
+
+Exit 2 on a refusal, with nothing written.
+
+**Flags:**
+
+```
+      --base-path string   the path the site is served under, as plain path segments (default "/")
+      --out string         the directory to write the page into: absent, empty, or one an earlier run wrote
+```
+
+#### `abcd session serve`
+
+Run the brief session relay in the foreground, on loopback by default: Writes nothing; refuses a bad --listen, or no repository to serve beyond loopback.
+
+**Usage:** `abcd session serve [flags]`
+
+Run the brief session relay in the foreground until interrupted. It listens on
+this computer alone (127.0.0.1:8787) unless --listen names another address,
+which is the second, explicit choice: the team's own relay deployment listens on
+0.0.0.0 behind its host's proxy, with --behind-proxy. On a person's own machine,
+teammates reach it through Tailscale Serve, on the tailnet only; the start line
+prints the command. Never Funnel: a guest outside the tailnet joins through the
+team's relay instead.
+
+It serves sessions only for the repositories it is given: each --repo owner/name,
+every repository of each --owner, and each entry of ABCD_SESSION_REPOS, a
+comma list of either. Nobody signs in against, or hosts, any other. Listening
+beyond this computer it refuses to start without one; on loopback it serves this
+checkout's origin repository, or any repository outside a GitHub checkout.
+
+It serves the session WebSocket at /session, the sign-in's callback at
+/auth/callback (the callback URL the team's GitHub App lists) and its exchange
+at /auth/token, the GitHub App's public client id at /config and a health check
+at /healthz. It admits a browser only from https://abcdesign.app or a loopback
+page, or, when --origin is given, from exactly the origins it names, and otherwise, when
+ABCD_SESSION_ORIGINS is set, from exactly the origins that comma list names.
+An entry for a page served below a base path names it, as abcd session page
+--base-path wrote it (https://host/base/); the callback forwards a sign-in only
+to the page's own base path, the root for an entry that names none.
+Sign-in goes through the team's GitHub App only, and nobody pastes a token: the
+relay takes only a GitHub App user access token. Its client id is read from
+--client-id or ABCD_SESSION_GITHUB_CLIENT_ID, and its secret from
+ABCD_SESSION_GITHUB_CLIENT_SECRET; with both, members sign in with GitHub's web
+flow. Without both, sign-in is not offered and only guests can join: GitHub's
+device flow, which needs no secret, belongs to abcd session start alone, whose
+relay serves its own session page.
+ABCD_SESSION_GITHUB_APP_TYPE set to anything but github-app is refused: the
+relay takes no OAuth app.
+
+Exit 2 on a refusal, with nothing started.
+
+**Flags:**
+
+```
+      --behind-proxy         trust the last X-Forwarded-For entry as the client's address; only for the team relay behind its host's proxy
+      --client-id string     the team's GitHub sign-in app's public client id (default: ABCD_SESSION_GITHUB_CLIENT_ID)
+      --listen string        the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer (default "127.0.0.1:8787")
+      --origin stringArray   a page origin to admit, as scheme://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; also ABCD_SESSION_ORIGINS); given, it replaces the default of https://abcdesign.app and loopback pages
+      --owner stringArray    a GitHub user or organisation whose every repository to serve sessions for (repeatable)
+      --repo stringArray     a repository to serve sessions for, as owner/name (repeatable; also ABCD_SESSION_REPOS)
+```
+
+#### `abcd session setup`
+
+Set up live brief sessions with the team's own GitHub sign-in app: Writes its client id, the answer and the blueprint; refuses no GitHub origin or no answer.
+
+**Usage:** `abcd session setup [flags]`
+
+Set up live brief sessions for this project, the step repository setup asks
+about (Set up live brief sessions? Where may sessions run?). It runs by hand at any
+time, a no at repository setup included. Where sessions may run comes from
+--where, else from .abcd/config.json (sessions.live), else, at a terminal, from
+the question; the answer is recorded there.
+
+It registers the team's own GitHub sign-in app through GitHub's App manifest
+flow: it prints an address on this computer whose page opens GitHub with the app
+filled in (Contents and Pull requests read and write, Metadata read, no
+webhook), and the person clicks Create GitHub App. It keeps only the app's public
+client id, in .abcd/relay/github-app.json; the client secret, the webhook
+secret and the private key GitHub hands back are never written or shown. An app
+already recorded is kept, and setup says to remove the session page's own
+address from its callback URLs if it is listed, as an earlier setup had it.
+
+It then says what is left, with GitHub's own pages: installing the app on the
+repository; for local sessions, ticking Enable Device Flow on the app's settings
+page, which a manifest cannot do; for the cloud only, leaving it off. For the
+cloud it writes the relay's blueprint (as abcd session blueprint does) and gives
+Render's Deploy button, whose form asks for the client secret, which the person
+generates on the app's settings page and pastes straight in. --relay-origin
+records the deployed relay's address in .abcd/relay/relays.json and names the
+callback URL the app must list, the relay's origin followed by /auth/callback;
+given before the app is created, the manifest sets it.
+
+It asks api.github.com whether the owner is an organisation, and converts the
+app GitHub created; for the cloud it reads the release's checksums. It waits up
+to an hour for the app to be created. Where sessions may run is recorded once
+the app is. Exit 2 on a refusal before then, with nothing written; a blueprint
+that cannot be written afterwards exits 2 with the app and the answer kept.
+
+**Flags:**
+
+```
+      --relay-origin string   the deployed relay's https origin, once Render shows it, as https://host[:port]; recorded in .abcd/relay/relays.json
+      --release string        the abcd release the cloud relay pins, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)
+      --where string          where sessions may run: local, cloud or both (default: the answer recorded in .abcd/config.json)
+```
+
+#### `abcd session start`
+
+Start a live brief session on this computer, over your tailnet: Writes only an answer it asks; refuses no recorded GitHub App, no Tailscale or no GitHub origin.
+
+**Usage:** `abcd session start [flags]`
+
+Start a live brief session on this computer, for a project whose brief should
+not leave the team's tailnet. It runs the session relay on loopback and serves the
+session page from it, so nothing goes to abcdesign.app, and prints the one
+Tailscale step that shares it on your tailnet and the link to open.
+
+It serves sessions for this checkout's origin repository on github.com. Team
+members sign in with GitHub's device flow: the page shows a short code to confirm
+on github.com, so no secret sits on this computer. The GitHub App's public client
+id comes from --client-id, ABCD_SESSION_GITHUB_CLIENT_ID, or
+.abcd/relay/github-app.json, which repository setup writes; without
+one it refuses, since nobody could sign in, and a person at a terminal is first
+asked the live brief session question while it is unanswered. Anyone else joins
+as a guest with a
+name, and suggests changes.
+
+It asks Tailscale for this computer's tailnet name and changes nothing in
+Tailscale. It answers only that name and its own loopback address, as hosts and
+as page origins. People outside your tailnet join as guests once you share this
+computer with them in Tailscale. Never Funnel.
+
+It runs in the foreground until interrupted; every session ends with it.
+Exit 2 on a refusal, with nothing started.
+
+**Flags:**
+
+```
+      --client-id string   the team's GitHub App's public client id (default: ABCD_SESSION_GITHUB_CLIENT_ID, then .abcd/relay/github-app.json)
+      --port int           the port on this computer to listen on (0 lets the system choose) (default 8787)
+```
+
 ### `abcd site`
 
 Report what the website declares and what was built: Writes nothing; refuses any argument.
@@ -4726,11 +4961,13 @@ Render the website into the output directory: Writes there, plus a missing label
 **Flags:**
 
 ```
-      --commit string    commit for the footer and the build stamp (default: git HEAD)
-      --date string      date for the build stamp (default: the newest release's date)
-      --out string       directory to render into (default "site")
-      --preview          stamp the build as unreleased at this commit, for a preview deployment of an untagged tree
-      --version string   version for the footer and the build stamp (default: the newest dated CHANGELOG heading)
+      --base-path string   path the site is served below on its host, such as /widgets/ for a project's GitHub Pages address; every root-absolute link is placed under it (default "/")
+      --commit string      commit for the footer and the build stamp (default: git HEAD)
+      --date string        date for the build stamp (default: the newest release's date)
+      --out string         directory to render into (default "site")
+      --preview            stamp the build as unreleased at this commit, for a preview deployment of an untagged tree
+      --project            build a project site, every page built from what abcd writes to the repository and the interface words, styles and scripts taken from the binary; .abcd/site.json then holds the site's settings only
+      --version string     version for the footer and the build stamp (default: the newest dated CHANGELOG heading)
 ```
 
 #### `abcd site setup`
@@ -4742,10 +4979,12 @@ Take the website from this checkout to a live address: Writes its files, and the
 **Flags:**
 
 ```
-      --confirm         replace a workflow or host configuration that differs from what setup writes
-      --domain string   custom domain to route to the host when the composition names none
-      --name string     host name when the composition names none (default: the repository's name)
-      --yes             confirm the forge and host changes without being asked (never the install of a missing gh); without it an unanswered run declines them
+      --confirm            replace a workflow or host configuration that differs from what setup writes
+      --domain string      custom domain to route to the host when the composition names none
+      --name string        host name when the composition names none (default: the repository's name)
+      --provider string    hosting provider when the composition names none: cloudflare or github-pages (default cloudflare); github-pages asks whether to switch the project site on
+      --replace-existing   publish over a site the host already serves for this repository without asking; with --yes and no --replace-existing, setup refuses when such a site exists
+      --yes                confirm the forge and host changes without being asked (never the install of a missing gh, nor publishing over a site already live, which takes --replace-existing); without it an unanswered run declines them
 ```
 
 ### `abcd spec`
