@@ -87,7 +87,12 @@ func TestDrawnPrompterAsksAReadmePartWithItsExample(t *testing.T) {
 	swap := drawnPut
 	t.Cleanup(func() { drawnPut = swap })
 	var put question.Ask
-	drawnPut = func(_ ask.Terminal, a question.Ask) ([]ask.Answer, error) {
+	drawnPut = func(tm ask.Terminal, a question.Ask) ([]ask.Answer, error) {
+		// The one-line form comes first; ? asks for the whole question,
+		// which is the one drawn next (itd-2610240823055889).
+		if tm.Explain {
+			return nil, ask.ErrExplain
+		}
 		put = a
 		return []ask.Answer{{Value: "on"}}, nil
 	}

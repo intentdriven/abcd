@@ -66,7 +66,7 @@ func TestAhoyInstallPipedAnswersNeverRewriteTheIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stdout, stderr, err := runCLIPipedStdinSplit(t, strings.Repeat("y\n", 16), "ahoy", "install", "--adopt",
+	stdout, stderr, err := runCLIPipedStdinSplit(t, strings.Repeat("y\n", 16), "ahoy", "install", "--details", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false")
 	if err != nil {

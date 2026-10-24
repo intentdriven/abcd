@@ -95,8 +95,8 @@ func (a *applyCtx) offerStatusLine() {
 	}
 	entry, why := a.statusLineEntry()
 	if entry == "" {
-		a.refuse("refused to wire the status line: " + why + "; nothing was written. " +
-			"Put abcd on your PATH with `abcd ahoy install` first, then run it again to wire the status line.")
+		a.refuse("refused to wire the status line: " + why + "; nothing was written, and the status line was not offered. " +
+			"Answer yes to the abcd download when setup offers it, or put abcd on your PATH with the README's install line, then run `abcd ahoy install` again to wire the status line.")
 		return
 	}
 	if !a.prompter.Confirm(statusLineOfferQuestion(hs, entry)) {

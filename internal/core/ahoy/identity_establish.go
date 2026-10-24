@@ -172,7 +172,10 @@ var establishGapIDs = []string{MismatchGapID, UnsetGapID, CommitterGapID, ToolId
 // The write is a plain `git config --local`, as the person running it; the step
 // never escalates privileges and never touches global or system config.
 func (a *applyCtx) stepGitIdentity() {
-	if !a.anyGap(establishGapIDs) || !a.approved[ConfigChange] {
+	// The identity is its own question, never behind the settings approval:
+	// a no to the settings must not decline the identity the person wanted
+	// answered (iss-2610240824005655).
+	if !a.anyGap(establishGapIDs) {
 		return
 	}
 	const did = "did not change who commits to this repository"

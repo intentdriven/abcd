@@ -66,7 +66,7 @@ func TestAhoyInstallAcceptsPipedAnswersFromNonTTYStdin(t *testing.T) {
 	// One `y` per question: the adoption gate, then one per gap category. This
 	// is what `yes | abcd ahoy install` — the documented form — supplies.
 	answers := strings.Repeat("y\n", 12)
-	out, errOut, err := runCLIPipedStdinSplit(t, answers, "ahoy", "install",
+	out, errOut, err := runCLIPipedStdinSplit(t, answers, "ahoy", "install", "--details",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 	if err != nil {
@@ -175,7 +175,7 @@ func categoryQuestionsAsked(transcript string) []string {
 func TestAhoyInstallEmptyStdinStillDeclines(t *testing.T) {
 	hermeticRepo(t)
 
-	out, err := runCLIPipedStdin(t, "", "ahoy", "install", "--json")
+	out, err := runCLIPipedStdin(t, "", "ahoy", "install", "--details", "--json")
 	if err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s", err, out)
 	}
@@ -221,7 +221,7 @@ func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	t.Setenv("SHELL", "/bin/zsh")
 	t.Setenv("ZDOTDIR", "")
 
-	base := []string{"ahoy", "install", "--yes", "--adopt",
+	base := []string{"ahoy", "install", "--details", "--yes", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"}
 
@@ -309,12 +309,12 @@ func TestAhoyInstallPipedAnswersNeverRecordTheIdentity(t *testing.T) {
 	repo := hermeticRepo(t)
 	gitRepoWithIdentity(t, repo, "Alex Reppel", "alex@example.com")
 
-	if out, err := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",
+	if out, err := runCLIErr(t, "ahoy", "install", "--details", "--yes", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"); err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s", err, out)
 	}
-	out, errOut, err := runCLIPipedStdinSplit(t, strings.Repeat("y\n", 8), "ahoy", "install")
+	out, errOut, err := runCLIPipedStdinSplit(t, strings.Repeat("y\n", 8), "ahoy", "install", "--details")
 	if err != nil {
 		t.Fatalf("piped re-install exited non-zero: %v\n%s", err, errOut)
 	}

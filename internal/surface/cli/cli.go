@@ -4095,6 +4095,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		answersPath   string
 		answeredIn    string
 		readmeParts   string
+		details       bool
 	)
 	installCmd := &cobra.Command{
 		Use:  "install",
@@ -4119,6 +4120,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			opts.Outbound = outbound
 			opts.OnlyWaiting = onlyWaiting(cmd)
 			opts.VerifyProvenance = ahoyReleaseProvenance
+			opts.DownloadAbcd = ahoyDownloadRelease
 			named, err := installToolNames(installTools)
 			if err != nil {
 				return err
@@ -4166,6 +4168,12 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				// A repository already fully set up is one line
+				// (itd-2610240823055889, criterion 8).
+				if res.Report.OneLine != "" && !details {
+					fmt.Fprintln(w, res.Report.OneLine)
+					return
+				}
 				// The warnings come first, before the headline: each names a
 				// thing that keeps abcd's rules from an agent tool here, which
 				// only the person can end (itd-2610030814013772).
@@ -4176,18 +4184,29 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintln(w)
 				}
 				fmt.Fprintf(w, "abcd ahoy install — %s\n", res.Status)
-				// Core's plain summary first (iss-164): what changed for the
-				// person, why it matters and what to do. The exact record of
-				// paths and identifiers follows as detail.
 				if res.Headline != "" {
 					fmt.Fprintf(w, "\n%s\n", res.Headline)
 				}
+				// A refusal's message is the one thing to read.
+				if res.Status == "refused" {
+					fmt.Fprintln(w)
+					for _, n := range res.Notes {
+						fmt.Fprintf(w, "  note: %s\n", termsafe.Sanitize(n))
+					}
+				}
+				renderSetupReport(w, res.Report)
+				if !details {
+					if len(res.Notes) > 0 && res.Status != "refused" {
+						fmt.Fprint(w, "\nabcd ahoy install --details shows the full record, with every note.\n")
+					}
+					return
+				}
+				// The exact record of paths and identifiers, with core's plain
+				// summary of each (iss-164), under --details.
 				for _, it := range res.Summary {
 					fmt.Fprintf(w, "\n  - %s\n    %s\n    %s\n", it.What, it.Why, it.Action)
 				}
-				if len(res.Summary) > 0 {
-					fmt.Fprint(w, "\ndetail:\n")
-				}
+				fmt.Fprint(w, "\ndetail:\n")
 				for _, c := range res.Changes {
 					fmt.Fprintf(w, "  changed: %s\n", c)
 				}
@@ -4260,6 +4279,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	// word as the flag's argument placeholder, so a quoted answer would render
 	// this boolean as "--yes y" in the help and the generated reference.
 	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes recording who you commit as on this machine (asked only at a terminal), the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal")
+	installCmd.Flags().BoolVar(&details, "details", false, "print the full record after the report: core's summary of every write and every note, each path written, the declined kinds of change and the gaps left")
 	installCmd.Flags().BoolVar(&adopt, "adopt", false, "adopt an unmanaged repo without prompting")
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
@@ -4344,6 +4364,27 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
 
 	return ahoyCmd
+}
+
+// renderSetupReport prints setup's three-part report (itd-2610240823055889,
+// criterion 7): done, one line per change with where; needs you, a numbered
+// checklist, each step with why; and the one next step.
+func renderSetupReport(w io.Writer, rep ahoy.SetupReport) {
+	if len(rep.Done) > 0 {
+		fmt.Fprint(w, "\nDone:\n")
+		for _, d := range rep.Done {
+			fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(d))
+		}
+	}
+	if len(rep.NeedsYou) > 0 {
+		fmt.Fprint(w, "\nNeeds you:\n")
+		for i, s := range rep.NeedsYou {
+			fmt.Fprintf(w, "  %d. %s\n     Why: %s\n", i+1, termsafe.Sanitize(s.Step), termsafe.Sanitize(s.Why))
+		}
+	}
+	if rep.Next != "" {
+		fmt.Fprintf(w, "\nNext: %s\n", termsafe.Sanitize(rep.Next))
+	}
 }
 
 // runAhoyDryRun is `ahoy --dry-run`: the detection result as its canonical JSON
@@ -4677,10 +4718,9 @@ func askToolAtTerminal(p ahoy.Prompter, yes bool, w io.Writer, otherwise func(to
 			return tools.Answer{Why: "--yes never installs a tool; " + otherwise(e) + ", or run without --yes at a terminal"}
 		}
 		if dp, ok := p.(*drawnPrompter); ok {
-			for _, line := range e.Lines() {
-				fmt.Fprintln(w, termsafe.Sanitize(line))
-			}
-			if !dp.confirmTool(e.Tool, "Install "+e.Tool+" now by running "+e.StepText()+"?") {
+			// The question is its one line; the explanation is its material,
+			// which ? shows (itd-2610240823055889, criterion 6).
+			if !dp.confirmTool(e.Tool, strings.Join(e.Lines(), "\n")+"\nInstall "+e.Tool+" now by running "+e.StepText()+"?") {
 				return tools.Answer{Why: "answered no at the terminal"}
 			}
 			fmt.Fprintf(w, "running %s; a package manager can take a few minutes\n", e.StepText())
@@ -4775,6 +4815,45 @@ func (p *stdinPrompter) echo(answer string) {
 // eligibility rule, and whether to remove a tool's own conventions file that
 // only repeats AGENTS.md) are never put to a pipe.
 func (p *stdinPrompter) AtTerminal() bool { return p.tty }
+
+// Plan puts the plan screen to a person typing at a terminal, which makes
+// the stdin door an ahoy.PlanPrompter there: the plan, then its one line,
+// and ? shows what each answer does before asking again. Off a terminal the
+// plan is not put (asked false): a piped stream answers the approvals one
+// by one, in their fixed order, as before.
+func (p *stdinPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
+	if !p.tty {
+		return "", false
+	}
+	q := ahoy.SetupPlanQuestion(0, plan)
+	for _, b := range q.Material {
+		if b.Kind == question.KindList {
+			for _, it := range b.Items {
+				fmt.Fprintf(p.w, "  - %s\n", termsafe.Sanitize(it))
+			}
+			continue
+		}
+		fmt.Fprintf(p.w, "\n%s\n", termsafe.Sanitize(b.Text))
+	}
+	for {
+		fmt.Fprintf(p.w, "\n%s [proceed/customise/cancel] %s: ", q.Ask, ahoy.ExplainHint)
+		line, err := p.r.ReadString('\n')
+		line = strings.TrimSpace(line)
+		if line == "?" {
+			for _, o := range q.Options {
+				fmt.Fprintf(p.w, "  %s — %s\n", strings.ToLower(o.Label), o.Meaning)
+			}
+			continue
+		}
+		if c, ok := ahoy.PlanChoiceOf(line); ok {
+			return c, true
+		}
+		if line == "" && err == nil {
+			return ahoy.PlanProceed, true
+		}
+		return ahoy.PlanCancel, true
+	}
+}
 
 func (p *stdinPrompter) Confirm(question string) bool {
 	fmt.Fprintf(p.w, "%s [y/N] ", question)
