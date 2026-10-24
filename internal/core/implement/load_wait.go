@@ -398,6 +398,10 @@ type WaitResult struct {
 	// name the pids in the text report; the JSON report carries the condition.
 	Preflights []int `json:"-"`
 	Waiters    []int `json:"-"`
+	// UngatedTests are the go test runs no gate admitted
+	// (machineload.UngatedTests), named beside the load they add to; they
+	// shut nothing (iss-2610241130157455).
+	UngatedTests []int `json:"ungated_tests,omitempty"`
 	// Gate is the gate waited at, GateTests or GateRace.
 	Gate string `json:"gate"`
 	// Slots is how many preflights may be in their test stages at once, and
@@ -692,7 +696,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	}
 	t := now()
 	res.Holder, res.RaceRuns, res.Reason = nil, []int{}, ""
-	res.Preflights, res.Waiters = nil, nil
+	res.Preflights, res.Waiters, res.UngatedTests = nil, nil, nil
 	if readErr != nil {
 		res.Reason = termsafe.Sanitize(readErr.Error())
 	}
@@ -729,6 +733,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				slices.Sort(racing)
 			}
 			ahead = machineload.QueueAhead(snap, req.Self, args)
+			res.UngatedTests = machineload.UngatedTests(snap, req.Self, args)
 			var raceCrossed []int
 			raceAhead, raceCrossed = machineload.RaceAhead(snap, req.Self, args)
 			crossed = ahead.Crossed
