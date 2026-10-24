@@ -2862,7 +2862,9 @@ alone. It is refused, changing nothing, while the run has an outage (open or giv
 for a blank --yielded, for a lane with neither an implementer out nor an await a rate
 limit kept, or for a worktree that is not the one the loop derives.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
-at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
+at the judged head; on an intent lane it marks the lane's step landed on the open spec with a `- landed:`
+line naming the judged head (unless the spec lists no steps or already marks it); on
+the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
 declared fixed it runs `capture resolve` with the lane's commit, committing them on the
 lane's branch with Delivers: and Resolves: trailers and an Assisted-by: naming the model

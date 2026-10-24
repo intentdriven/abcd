@@ -441,6 +441,56 @@ func closeLocked(repoRoot, specID string) (Spec, error) {
 	return sp, nil
 }
 
+// MarkLanded marks step n of the open spec specID landed by value
+// (MarkStepLanded) and writes it back in place, keeping its mode, the read and
+// the write one critical section under the store's lock. It reports whether
+// the spec changed. A spec that is not open is not written: one already
+// carrying the same mark reports no change, so a landing resumed after its
+// close goes on, and any other is refused, since a closed spec's steps are
+// history. A tree with no spec store holds no spec to mark.
+func MarkLanded(repoRoot, specID string, n int, value string) (bool, error) {
+	if !recordid.ValidSpecID(specID) {
+		return false, fmt.Errorf("spec: id %q must match ^spc-[0-9]+$", specID)
+	}
+	var changed bool
+	err := withStoreLock(repoRoot, mintLockTimeout, storeMustExist, func() error {
+		store, err := Load(repoRoot)
+		if err != nil {
+			return err
+		}
+		sp, ok := store.Lookup(specID)
+		if !ok {
+			return fmt.Errorf("spec: %s not found", specID)
+		}
+		abs := filepath.Join(repoRoot, sp.Path)
+		data, err := readRepoFile(abs, sp.Path)
+		if err != nil {
+			return err
+		}
+		out, ch, err := MarkStepLanded(string(data), n, value)
+		if err != nil {
+			return fmt.Errorf("%w (in %s)", err, sp.Path)
+		}
+		if !ch {
+			return nil
+		}
+		// A spec no longer open is history: a mark already on it (a landing
+		// resumed after its close) is kept, and none is written there.
+		if sp.Status != StatusOpen {
+			return fmt.Errorf("spec: %s is %s, and only an open spec's steps are marked landed", specID, sp.Status)
+		}
+		if err := fsutil.WriteFileAtomicPreserveMode(abs, []byte(out)); err != nil {
+			return fmt.Errorf("spec: writing %s: %w", sp.Path, err)
+		}
+		changed = true
+		return nil
+	})
+	if errors.Is(err, errStoreAbsent) {
+		return false, fmt.Errorf("spec: %s not found", specID)
+	}
+	return changed, err
+}
+
 // Discard takes back a spec a refused operation minted a moment ago, under the
 // store's lock, so the removal cannot interleave with another writer's read and
 // write of the same file — a repoint writing it back would resurrect it. Only a

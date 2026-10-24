@@ -482,7 +482,11 @@ over each of the run's lanes' own diff.
 
 1. It checks the lane's worktree is clean and its branch is at the head the
    validators judged.
-2. On the lane that closes the spec it runs `spec close` in the lane's worktree
+2. On an intent lane it marks the lane's step landed on the open spec, a
+   `- landed:` line naming the judged head (not when the spec lists no steps or
+   already marks it; a commit doing only that declares
+   `Assisted-by: abcd:<version>`). On
+   the lane that closes the spec it runs `spec close` in the lane's worktree
    and ingests the verdict of the audit that lane took, and for each capture the
    lane's receipts declared fixed it runs `capture resolve` with that commit. It
    commits them on the lane's branch with `Delivers:` (when the close ships the

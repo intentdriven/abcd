@@ -745,8 +745,17 @@ until the last step.
    record is written. The commit is made with the repository's hooks running,
    so the commit-msg outbound gate judges it; a hook that refuses stops the
    landing with the records staged, and the step resumes once what the hook
-   names is settled. A lane that neither closes the spec nor fixed a capture
-   records nothing.
+   names is settled. On an intent lane whose spec lists its steps, the
+   records first mark the lane's step landed on the open spec, a `- landed:`
+   line naming the judged head, before any close moves the spec, so a later
+   `abcd build` of the spec or a `--remainder` close reads the step as landed
+   (iss-2610110918418459); a step the branch already marks keeps its mark,
+   and an issue lane marks nothing. A branch whose spec is not open, or lists
+   the lane's step under another title, is refused at the landing's first
+   step, before anything is written. A records commit that only marks the step
+   carries abcd's text alone, so it declares `Assisted-by: abcd:<version>`
+   rather than the lane's models. A lane that marks no step, neither closes
+   the spec nor fixed a capture records nothing.
 3. It pushes the lane's branch to `origin` only once the repository's
    preflight receipt (`.abcd/.work.local/preflight-receipts/<head>`, in any
    worktree git lists) names the lane's head, the gate the pre-push hook

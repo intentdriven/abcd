@@ -534,7 +534,12 @@ A lane's stages run in order:
    it is replanned.
 5. `land` — one `implement step` per move, the lane staying at `land` until
    the last. The loop checks the lane's worktree is clean at the judged head;
-   on the lane that closes the spec it runs `spec close` in the lane's worktree
+   on an intent lane it marks the lane's step landed on the open spec (a
+   `- landed:` line naming the judged head, unless the spec lists no steps or
+   already marks it, and a commit doing only that declares
+   `Assisted-by: abcd:<version>`, so a
+   later build or a `--remainder` close does not take the step again); on the
+   lane that closes the spec it runs `spec close` in the lane's worktree
    and ingests the audit that lane took, and it runs `capture resolve` for each
    capture the receipts named in `resolves`, with that commit, committing them
    on the lane's branch with `Delivers:` and `Resolves:` trailers and an

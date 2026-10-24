@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
@@ -328,6 +329,87 @@ func Unlanded(steps []Step) []Step {
 		}
 	}
 	return out
+}
+
+// landedLineRe is a step's `- landed:` line, its indentation and marker kept,
+// and bulletRe the indentation and marker of any bullet under a step.
+var (
+	landedLineRe = regexp.MustCompile(`^([ \t]+[-*+][ \t]+)(?i:landed)[ \t]*:`)
+	bulletRe     = regexp.MustCompile(`^([ \t]+[-*+][ \t]+)`)
+)
+
+// MarkStepLanded returns content with step n marked landed by value (a pull
+// request or a commit): a `- landed:` line is added after the step's own
+// lines, or replaces a null one, and every other line is kept as written; a
+// file holding any CRLF ending is written back with CRLF endings throughout
+// (iss-2610110918418459). It reports whether the
+// content changed: a step already marked with value is left as it is. A step
+// marked with another value is refused rather than overwritten, as are a step
+// the spec does not list, a spec that lists none, and a value that is empty,
+// null or more than one line of plain text. It refuses what ParseSteps refuses.
+func MarkStepLanded(content string, n int, value string) (string, bool, error) {
+	if value == "" || value != strings.TrimSpace(value) || frontmatter.IsNull(value) ||
+		strings.IndexFunc(value, unicode.IsControl) >= 0 {
+		return "", false, fmt.Errorf("spec: a step's landed value is one line naming a pull request or a commit, not %s", termsafe.DescribeRefused(value))
+	}
+	steps, err := ParseSteps(content)
+	if err != nil {
+		return "", false, err
+	}
+	if n < 1 || n > len(steps) {
+		return "", false, fmt.Errorf("spec: %s lists %d step(s), none numbered %d", StepsHeading, len(steps), n)
+	}
+	if got := steps[n-1].Landed; got == value {
+		return content, false, nil
+	} else if got != "" {
+		return "", false, fmt.Errorf("spec: %s step %d is already marked landed by %s, not %s", StepsHeading, n, termsafe.Sanitize(got), value)
+	}
+	crlf := strings.Contains(content, "\r\n")
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	start, end, err := stepsSection(lines, mdrecord.Mask(lines))
+	if err != nil {
+		return "", false, err
+	}
+	// ParseSteps admitted the section, so every non-blank line of step n after
+	// its item line, up to the next item, is indented under it.
+	item, last, null, prefix := -1, -1, -1, "   - "
+	for i, seen := start, 0; i < end; i++ {
+		line := lines[i]
+		if stepItemRe.MatchString(line) {
+			if seen++; seen == n {
+				item, last = i, i
+			} else if seen > n {
+				break
+			}
+			continue
+		}
+		if seen != n || strings.TrimSpace(line) == "" {
+			continue
+		}
+		if last == item {
+			if m := bulletRe.FindStringSubmatch(line); m != nil {
+				prefix = m[1]
+			}
+		}
+		last = i
+		if m := landedLineRe.FindStringSubmatch(line); m != nil {
+			null, prefix = i, m[1]
+		}
+	}
+	if item < 0 {
+		return "", false, fmt.Errorf("spec: %s step %d was parsed but not found", StepsHeading, n)
+	}
+	mark := prefix + "landed: " + value
+	if null >= 0 {
+		lines[null] = mark
+	} else {
+		lines = slices.Insert(lines, last+1, mark)
+	}
+	out := strings.Join(lines, "\n")
+	if crlf {
+		out = strings.ReplaceAll(out, "\n", "\r\n")
+	}
+	return out, true, nil
 }
 
 // renderSteps renders steps as the body of a `## Steps` section, renumbered
