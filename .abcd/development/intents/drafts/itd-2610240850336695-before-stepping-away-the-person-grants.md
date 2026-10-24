@@ -29,7 +29,7 @@ to their own draft (Decision 13).
 
 ## Press Release
 
-> **Before stepping away, a person grants their sessions exactly what they may do alone, and abcd holds them to it instead of leaving it to a sentence in chat.** Alice, a solo founder who is also the product thinker, types `/abcd:mode autonomous --away --until 09:00` before the evening. That grants the default "ship work" preset: every session of this repository on Alice's computer may push the branches it made, open their pull requests and answer its own technical questions, without stopping to ask. None of them merges to `main`, cuts a release or force-pushes on the grant alone, because no preset grants those and abcd's own commands refuse them. The status line shows the grant and its end beside the badge that says whose answer is owed. At 09:00 the grant lapses by itself and sessions go back to asking, and Alice's morning list shows each push and pull request a session made under it. Alice can grant while still at the keyboard too, to stop being asked whether a session may push; and a session told in chat "I'm away, carry on" does not grant itself anything, it names the command.
+> **Before stepping away, a person grants their sessions exactly what they may do alone, and abcd holds them to it instead of leaving it to a sentence in chat.** Alice, a solo founder who is also the product thinker, types `/abcd:mode autonomous --away --until 09:00` before the evening. That grants the default "ship work" preset: every session of this repository on Alice's computer may push the branches it made, open their pull requests and answer its own technical questions, without stopping to ask. None of them merges to `main` or cuts a release on the grant alone, and none ever force-pushes, because no preset grants those and abcd's own commands refuse them. The status line shows the grant and its end beside the badge that says whose answer is owed. At 09:00 the grant lapses by itself and sessions go back to asking, and Alice's morning list shows each push and pull request a session made under it. Alice can grant while still at the keyboard too, to stop being asked whether a session may push; and a session told in chat "I'm away, carry on" does not grant itself anything, it names the command.
 >
 > "I used to come back to sessions that had waited all night to ask whether they could push," said Alice, a solo founder. "Now I say once what they may do, and in the morning I see exactly what they did with it."
 
@@ -116,10 +116,13 @@ rewritten to the adversarial reviews' findings the same day._
   from a branch this working copy created, **then** it opens without asking and
   the morning list names it.
 - **Given** any grant, **when** a session acting on the grant alone asks abcd to
-  merge to the default branch, cut a release or force-push, **then** abcd's
-  command refuses it and names the act as outside every preset; **and given**
-  the same act through a raw shell where abcd's hooks run, **then** the guard
-  refuses it as a mistake filter.
+  merge to the default branch or cut a release, **then** abcd's command refuses
+  it and names the act as outside every preset; **and given** the same act
+  through a raw shell where abcd's hooks run, **then** the guard refuses it as a
+  mistake filter.
+- **Given** any grant or none, **when** a session force-pushes, even on the
+  person's word in the session, **then** abcd refuses it and names the person's
+  own terminal as the place to run it.
 - **Given** a grant set or revoked while sessions are running, **when** a
   running session next pushes or opens a pull request, **then** it acts on the
   grant as it now stands, not as it stood when the session started.
@@ -281,7 +284,13 @@ status kept apart from the grant, irreversible acts outside every level).
     for in the session, or a cut the release orchestrator runs on the person's
     instruction, is the person's act, not the grant's, and is not refused. The
     record settles it: AGENTS.md has sessions cut releases on the person's
-    word, and refusing that would refuse the person.
+    word, and refusing that would refuse the person. Decision 18 narrows this
+    for force-pushes.
+18. **A session never force-pushes, even on the person's word (product
+    thinker, 2026-10-24).** Force-pushing is refused whatever the grant and
+    whatever the person says in the session; the person runs it themselves in
+    their own terminal. Merging to the default branch and cutting a release
+    stay as Decision 17 says.
 
 ## Open Questions
 

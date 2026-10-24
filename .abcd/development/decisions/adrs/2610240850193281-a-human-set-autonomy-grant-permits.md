@@ -65,9 +65,11 @@ badge:
   presets on top (`nothing`, `ship-work`, `everything`); a grant that names
   none carries `ship-work` (`push-branch`, `open-pr`, `decide-as facilitator`).
 - On the grant alone, abcd's own commands refuse merging to the default
-  branch, cutting a release and force-pushing, and the guard filters the shell
-  routes to them where its hooks run. A release or merge the person asks for
-  in the session is the person's act, not the grant's, and is not refused.
+  branch and cutting a release, and the guard filters the shell routes to them
+  where its hooks run. A release or merge the person asks for in the session is
+  the person's act, not the grant's, and is not refused. A session never
+  force-pushes, even on the person's word: the person runs it in their own
+  terminal.
 - It ends at a time the person names, or seven days after it was set; an ended
   or unreadable grant reads as no grant.
 - It holds whether the person is present or away: being away stays its own
