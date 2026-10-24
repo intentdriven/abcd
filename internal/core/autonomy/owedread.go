@@ -129,6 +129,11 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		r.list = listOpen(ctx, forge, root, r.person, deadline)
 		if !r.list.read {
 			r.note("the pull requests were not read (%s), so the check judged from disk alone", r.list.unread)
+			// The check's own budget, not the forge's, ended the listing:
+			// what it leaves unjudged is a reading cut short.
+			if r.expired() {
+				r.ranOut("the open pull requests")
+			}
 		}
 		if r.list.truncated {
 			r.note("the forge listed %d open pull requests, its limit, so the listing may be truncated: a reservation no listed pull request carries is not counted as uncarried", len(r.list.prs))
