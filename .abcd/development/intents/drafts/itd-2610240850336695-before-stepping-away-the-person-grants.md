@@ -201,9 +201,6 @@ give it rights worth guarding". This intent gives it those rights.
 
 ## Open Questions
 
-- Which presets exist beyond the default? The interview offered three
-  ("nothing", "ship work" and "everything"); planning confirms the set and
-  their names.
 - The migration for today's `abcd mode autonomous` (absence only) and the
   intent's impact, given Decision 10 makes the bare verb a grant.
 - The spelling of revoking the grant without ending the absence.
