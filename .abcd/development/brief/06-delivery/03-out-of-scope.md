@@ -152,6 +152,7 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610222029228127` — Every session's checklist reaches a shared copy and the phone
 - `itd-2610222215485265` — abcd drain --drive works through the ledger from a plain terminal
 - `itd-2610240933025076` — abcd plans unattended and asks only what a person owns
+- `itd-2610241331131356` — The session view reads live agent state from a workspace manager
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
