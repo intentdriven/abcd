@@ -329,8 +329,8 @@ when there is none (iss-2609250834251447); the explicit flag writes that key,
 clone-local, to the `PATH` copy whose build provenance the same run verified,
 and writes nothing, saying why, when there is no such copy, when the entry is
 the dev shim or when it lies inside the working tree (iss-2610152024267547).
-It never sets `core.hooksPath`, which chooses every hook git runs in the
-clone. So that the check runs with no manual step, the explicit flag alone also
+The flag never sets `core.hooksPath`, which chooses every hook git runs in the
+clone; setup's own commit-checks question is the one place that does. So that the check runs with no manual step, the explicit flag alone also
 writes the same embedded template, marked as abcd's, as the clone's own
 `commit-msg` in the common git directory's `hooks/` (shared by every worktree),
 where no hooks path is set at any scope and nothing occupies that path; it
@@ -854,7 +854,7 @@ approvals had before they listed anything.
 | `category` | Examples | Apply behaviour |
 |---|---|---|
 | `safe-autocreate` | the repo skeleton, history-store directories, the name-guard artefacts | applied once the category is approved, no per-item prompt; create-if-absent, never overwriting |
-| `config-change` | visibility, oracle adapter, the `PATH` entry, the repository's own git identity, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
+| `config-change` | visibility, oracle adapter, the `PATH` entry, the artefact kind (the repository's own git identity carries this category but is its own question, never listed under or declined by the settings approval) | transparent confirm; skip-if-set with a "current value" notice |
 | `machine-identity` | the person's own commit identity record on their machine; moving the identity pin a repository still stores to its owner's machine (itd-2610240918547728) | never a category approval: each is its own question, asked only at a terminal, written only on that yes; never under the approve-everything flag or a piped answer, and reported as optional work it skipped |
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`), for one that exists but cannot be read whole, a folder, a pipe, a file past the size cap or one without read permission (`marker.unreadable`), and for one whose block is missing or out of date in a folder that does not let abcd create a file there, which the write needs for its lock and temporary file (`marker.unwritable`) |
 | `dependency` | a tool a capability uses with no copy abcd can run: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json`; missing, or installed some other way at a version outside the range abcd works with | at a terminal each tool is its own question, asked last of the person-only questions, and no category approval is asked (so customising never drops it); off one the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the download abcd's release pins and how far it is checked, any copy already installed and which copy will run, what the install does) and its download is made only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a compatible copy already installed is used and nothing installed; a no is reported as what the capability continues on |
@@ -1068,7 +1068,8 @@ prompt wait rather than decline, which is the contract every prompting CLI has.
 A run that must neither block nor prompt closes stdin and pre-answers with
 flags.
 
-**Installing a tool is the one question a piped answer never answers.** It runs
+**A piped answer never installs a tool**, just as it never answers the identity,
+shell-settings or commit-checks questions. Installing a tool runs
 a program on the machine, so it is asked only of a person at a terminal, after
 the tool registry's explanation is shown, and its default is no. Off a terminal
 the answer is a flag naming the tool, which is how a host relays the answer its
@@ -1175,13 +1176,12 @@ automation's name such as `semantic-release-bot`), recorded or not, because the
 human is the author of record either way. The machine
 identities are one list, `internal/core/identity/tool-identities.txt`, which the
 CI attribution gate reads too, role asymmetry included: a `noreply@` mailbox is
-a machine as the author, and the forge's own committer stamp passes. Once the
-config-change category is approved, the install proposes the human identity
-(the person's own record, else their global git identity, read from disk, never
-from the repository, and never looked up over
-the network, per adr-38, and never a machine's) and sets `user.name` and
-`user.email` in the repository's own `.git/config` only when the person confirms
-at a terminal. Otherwise it writes nothing and its notes say why: under the
+a machine as the author, and the forge's own committer stamp passes. The
+install proposes the human identity (the person's own record, else their global
+git identity, read from disk, never from the repository, and never looked up
+over the network, per adr-38, and never a machine's) as its own question, behind
+no category approval, and sets `user.name` and `user.email` in the repository's
+own `.git/config` only when the person confirms at a terminal. Otherwise it writes nothing and its notes say why: under the
 approve-everything flag; with no terminal, where it asks nothing at all, so a
 piped or routine run can neither write unasked nor wait on an answer no one can
 give; when an environment override or an `author.*` or `committer.*` key
@@ -1217,7 +1217,11 @@ write is create-if-absent **and** contained: paths resolve through an `os.Root` 
 at the repo, so a symlink committed at the hooks directory or at the local tier
 cannot land an artefact outside it. The private stub is written only where git
 reports the path as ignored. A clone arms the hooks once by pointing git at the
-hooks directory; abcd never sets that config, and no surface reports a committed
+hooks directory. Setup asks that as its own question at a terminal and sets
+`core.hooksPath` to `.githooks` in the clone's `.git/config` only on a yes,
+reading the value back; it never sets it under the approve-everything flag or
+off a terminal, and never over a hooks path set elsewhere. Until the hooks run,
+the install is reported partial, never clean, and no surface reports a committed
 hook as a running one.
 
 **The README parts** (spc-2610031704338417) are a named sibling of the
