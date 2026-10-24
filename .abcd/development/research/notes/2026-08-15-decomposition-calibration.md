@@ -2603,3 +2603,16 @@ check and the away mode inside the checklist itself; carving them into a
 separate intent followed from the release cut waiting on them, and from
 planning the draft before its criteria are walked being the worse of the two
 routes.
+
+## 2026-10-24: the session view reads live agent state from a workspace manager (facilitator, routing confirmed)
+
+Source: a reframed private ideate verdict that rejected making an outside terminal workspace manager the default environment for abcd-managed repositories. The public record names the tool only by capability class.
+
+| part | kind | home |
+|---|---|---|
+| the session view shows the live per-session state an installed workspace manager reports, read-only | capability | itd-2610241331131356 (this draft) |
+| abcd never installs, starts, configures or depends on such a tool | trust rule | adr-22 and the principle `basics-built-in-adapters-bring-power`, cited; no new rule |
+| the outside tool never places worktrees | trust rule | adr-2610031751065746, cited; no new rule |
+| the native central session view the adapter adds to | capability | itd-2610170634394993, not this draft |
+
+Verdict: FILE-AS-IS, held. The facilitator confirmed the routing and chose to hold the draft until its base, itd-2610170634394993, is planned. Typed link: builds on itd-2610170634394993. Advisory reversal flags: none.
