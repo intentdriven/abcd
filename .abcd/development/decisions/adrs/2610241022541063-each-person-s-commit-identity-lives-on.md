@@ -35,7 +35,7 @@ person's. And an unattended routine on a fresh machine (a cloud container)
 has no person at a terminal to establish an identity for.
 
 The product thinker accepted the reversal on 2026-10-24, in the Decisions of
-[itd-2610240918547728](../../intents/planned/itd-2610240918547728-every-person-who-commits-to-a-repository.md),
+[itd-2610240918547728](../../intents/shipped/itd-2610240918547728-every-person-who-commits-to-a-repository.md),
 after considering and declining the alternative of dropping the pin and
 checking only that the author is a human.
 

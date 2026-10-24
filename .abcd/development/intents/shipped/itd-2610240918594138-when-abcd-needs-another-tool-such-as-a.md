@@ -57,7 +57,9 @@ _Each criterion confirmed by the product thinker, one at a time, on 2026-10-24; 
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-cf94c62eaabe -->
+Fidelity review OWED (receipt rcp-cf94c62eaabe).
+<!-- abcd-review-end receipt=rcp-cf94c62eaabe -->
 
 ## Grounds
 
