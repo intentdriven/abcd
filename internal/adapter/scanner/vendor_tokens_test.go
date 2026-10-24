@@ -23,9 +23,21 @@ func letters(s string) string {
 	}, s)
 }
 
+// digits maps a synthetic run onto digits alone.
+func digits(s string) string {
+	return strings.Map(func(r rune) rune { return '0' + r%10 }, s)
+}
+
 // pypiLocation is the base64 of the macaroon header naming pypi.org, split so
 // the source holds no run that reads as a token's opening.
 const pypiLocation = "AgEIcHlw" + "aS5vcmc"
+
+// testPyPILocation is the same header naming test.pypi.org, split likewise.
+const testPyPILocation = "AgENdGVzdC5w" + "eXBpLm9yZw"
+
+// gitlabRunnerRegistration is GitLab's runner registration token prefix,
+// split so the source holds no run that reads as a token's opening.
+const gitlabRunnerRegistration = "GR13" + "48941"
 
 // vendorToken is one prefix-anchored vendor token, its kind, and the same
 // shape one character short of the minimum.
@@ -55,6 +67,26 @@ func vendorTokens() []vendorToken {
 		{"token:slack_webhook",
 			"hooks.slack.com/services/T" + slackID(118) + "/B" + slackID(119) + "/" + syn(120, 24),
 			"hooks.slack.com/services/T" + slackID(118) + "/B" + slackID(119) + "/" + syn(120, 23)},
+		// A hostname is case-insensitive; the path keeps Slack's own case.
+		{"token:slack_webhook",
+			"Hooks.Slack.COM/services/T" + slackID(121) + "/B" + slackID(122) + "/" + syn(123, 24),
+			"Hooks.Slack.COM/services/T" + slackID(121) + "/B" + slackID(122) + "/" + syn(123, 23)},
+		{"token:slack_webhook",
+			"hooks.slack.com/workflows/T" + slackID(124) + "/A" + slackID(125) + "/" + digits(syn(126, 18)) + "/" + syn(127, 24),
+			"hooks.slack.com/workflows/T" + slackID(124) + "/A" + slackID(125) + "/" + digits(syn(126, 18)) + "/" + syn(127, 23)},
+		{"token:pypi", "pypi-" + testPyPILocation + syn(128, 120), "pypi-" + testPyPILocation + syn(128, 49)},
+		{"token:gitlab", "gldt-" + syn(130, 20), "gldt-" + syn(130, 19)},
+		{"token:gitlab", "glrt-" + syn(131, 20), "glrt-" + syn(131, 19)},
+		{"token:gitlab", "glrt-t1_" + syn(132, 27) + ".01" + hex(133, 7), "glrt-" + syn(132, 15) + ".01" + hex(133, 7)},
+		{"token:gitlab", "glft-" + syn(134, 20), "glft-" + syn(134, 19)},
+		{"token:gitlab", "glsoat-" + syn(135, 20), "glsoat-" + syn(135, 19)},
+		{"token:gitlab", "glffct-" + syn(136, 20), "glffct-" + syn(136, 19)},
+		{"token:gitlab", "glimt-" + syn(137, 25), "glimt-" + syn(137, 24)},
+		{"token:gitlab", "glagent-" + syn(138, 50), "glagent-" + syn(138, 49)},
+		{"token:gitlab", "gloas-" + syn(139, 64), "gloas-" + syn(139, 63)},
+		{"token:gitlab", "glptt-" + hex(140, 40), "glptt-" + hex(140, 39)},
+		{"token:gitlab", "glcbt-" + syn(141, 3) + "_" + syn(142, 20), "glcbt-" + syn(141, 3) + "_" + syn(142, 19)},
+		{"token:gitlab", gitlabRunnerRegistration + syn(143, 20), gitlabRunnerRegistration + syn(143, 19)},
 	}
 }
 

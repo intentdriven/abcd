@@ -369,6 +369,23 @@ func DefaultPatterns() []Pattern {
 			Severity: SeverityHardFail, Suggestion: "DELETE AND ROTATE",
 		},
 		{
+			// GitLab's other prefix-anchored tokens, by gitleaks' gitlab rules:
+			// deploy (gldt-), runner authentication (glrt-, with the routable
+			// suffix glpat- carries), feed (glft-), SCIM (glsoat-) and feature
+			// flag client (glffct-) tokens, 20 of [\w-]; incoming mail (glimt-,
+			// 25); Kubernetes agent (glagent-, 50); OAuth application secret
+			// (gloas-, 64); pipeline trigger (glptt-, 40 hex); CI/CD job (glcbt-,
+			// up to five alphanumerics, '_' and 20 of [\w-]); and the runner
+			// registration token (GR1348941 and 20 of [\w-]).
+			Name: "gitlab_token", Kind: "token:gitlab", Label: "GitLab token (gldt-, glrt-, glft-, glptt-, gloas-, …)",
+			Re: regexp.MustCompile(`\b(?:glrt-[A-Za-z0-9_-]{20,}(?:\.[0-9a-z]{9})?` +
+				`|gl(?:dt|ft|soat|ffct)-[A-Za-z0-9_-]{20,}` +
+				`|glimt-[A-Za-z0-9_-]{25,}|glagent-[A-Za-z0-9_-]{50,}|gloas-[A-Za-z0-9_-]{64,}` +
+				`|glptt-[0-9a-f]{40,}|glcbt-[A-Za-z0-9]{1,5}_[A-Za-z0-9_-]{20,}` +
+				`|GR1348941[A-Za-z0-9_-]{20,})`),
+			Severity: SeverityHardFail, Suggestion: "DELETE AND ROTATE",
+		},
+		{
 			// Hugging Face access token: hf_ and 34 letters.
 			Name: "huggingface_token", Kind: "token:huggingface", Label: "Hugging Face token (hf_)",
 			Re: regexp.MustCompile(`\bhf_[A-Za-z]{34,}`), Severity: SeverityHardFail,
@@ -398,10 +415,12 @@ func DefaultPatterns() []Pattern {
 		},
 		{
 			// PyPI API token: pypi- and a base64url macaroon whose opening
-			// bytes encode its location, pypi.org, so every upload token opens
-			// on the same fifteen characters.
+			// bytes encode its location, so every upload token opens on the
+			// same characters: AgEIcHlwaS5vcmc for pypi.org, and
+			// AgENdGVzdC5weXBpLm9yZw for test.pypi.org.
 			Name: "pypi_token", Kind: "token:pypi", Label: "PyPI API token (pypi-)",
-			Re: regexp.MustCompile(`\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}`), Severity: SeverityHardFail,
+			Re:         regexp.MustCompile(`\bpypi-(?:AgEIcHlwaS5vcmc|AgENdGVzdC5weXBpLm9yZw)[A-Za-z0-9_-]{50,}`),
+			Severity:   SeverityHardFail,
 			Suggestion: "DELETE AND ROTATE — revoke it on PyPI",
 		},
 		{
@@ -414,9 +433,14 @@ func DefaultPatterns() []Pattern {
 		{
 			// Slack incoming webhook: the URL is the credential. The workspace
 			// (T…) and channel (B…) ids are upper-case alphanumerics and the
-			// secret is 24 alphanumerics.
-			Name: "slack_webhook", Kind: "token:slack_webhook", Label: "Slack incoming webhook URL",
-			Re:       regexp.MustCompile(`\bhooks\.slack\.com/services/T[A-Z0-9]{8,}/B[A-Z0-9]{8,}/[A-Za-z0-9]{24,}`),
+			// secret is 24 alphanumerics; a workflow webhook carries the
+			// workspace and app (A…) ids and a numeric id before its 24. The
+			// host is matched case-insensitively, as every resolver reads it;
+			// the path keeps the case Slack issues it in.
+			Name: "slack_webhook", Kind: "token:slack_webhook", Label: "Slack webhook URL",
+			Re: regexp.MustCompile(`\b(?i:hooks\.slack\.com)/` +
+				`(?:services/T[A-Z0-9]{8,}/B[A-Z0-9]{8,}|workflows/T[A-Z0-9]{8,}/A[A-Z0-9]{8,}/[0-9]{8,})` +
+				`/[A-Za-z0-9]{24,}`),
 			Severity: SeverityHardFail, Suggestion: "DELETE AND ROTATE — regenerate the webhook in Slack",
 		},
 		{
