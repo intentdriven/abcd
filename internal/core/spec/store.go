@@ -442,7 +442,7 @@ func closeLocked(repoRoot, specID string) (Spec, error) {
 }
 
 // MarkLanded marks step n of the open spec specID landed by value
-// (MarkStepLanded) and writes it back in place, keeping its mode, the read and
+// (markStepLanded) and writes it back in place, keeping its mode, the read and
 // the write one critical section under the store's lock. It reports whether
 // the spec changed. A spec that is not open is not written: one already
 // carrying the same mark reports no change, so a landing resumed after its
@@ -467,7 +467,7 @@ func MarkLanded(repoRoot, specID string, n int, value string) (bool, error) {
 		if err != nil {
 			return err
 		}
-		out, ch, err := MarkStepLanded(string(data), n, value)
+		out, ch, err := markStepLanded(string(data), n, value)
 		if err != nil {
 			return fmt.Errorf("%w (in %s)", err, sp.Path)
 		}

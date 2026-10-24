@@ -338,7 +338,7 @@ var (
 	bulletRe     = regexp.MustCompile(`^([ \t]+[-*+][ \t]+)`)
 )
 
-// MarkStepLanded returns content with step n marked landed by value (a pull
+// markStepLanded returns content with step n marked landed by value (a pull
 // request or a commit): a `- landed:` line is added after the step's own
 // lines, or replaces a null one, and every other line is kept as written; a
 // file holding any CRLF ending is written back with CRLF endings throughout
@@ -347,7 +347,7 @@ var (
 // marked with another value is refused rather than overwritten, as are a step
 // the spec does not list, a spec that lists none, and a value that is empty,
 // null or more than one line of plain text. It refuses what ParseSteps refuses.
-func MarkStepLanded(content string, n int, value string) (string, bool, error) {
+func markStepLanded(content string, n int, value string) (string, bool, error) {
 	if value == "" || value != strings.TrimSpace(value) || frontmatter.IsNull(value) ||
 		strings.IndexFunc(value, unicode.IsControl) >= 0 {
 		return "", false, fmt.Errorf("spec: a step's landed value is one line naming a pull request or a commit, not %s", termsafe.DescribeRefused(value))

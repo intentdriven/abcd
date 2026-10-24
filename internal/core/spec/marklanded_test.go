@@ -26,7 +26,7 @@ func TestMarkStepLandedWritesTheLineUnderTheStep(t *testing.T) {
 		{3, "3. The page\n   - landed: abc123\n\n## Progress"},
 	}
 	for _, tc := range cases {
-		got, changed, err := MarkStepLanded(markSpec, tc.n, "abc123")
+		got, changed, err := markStepLanded(markSpec, tc.n, "abc123")
 		if err != nil || !changed {
 			t.Fatalf("step %d: marking is a change: changed=%v err=%v", tc.n, changed, err)
 		}
@@ -52,31 +52,31 @@ func TestMarkStepLandedWritesTheLineUnderTheStep(t *testing.T) {
 // nothing; another value over a landed step is refused, never overwritten; an
 // unlisted step and an unstepped spec are refused; CRLF endings are kept.
 func TestMarkStepLandedKeepsAMarkAndRefusesAnother(t *testing.T) {
-	once, _, err := MarkStepLanded(markSpec, 1, "abc123")
+	once, _, err := markStepLanded(markSpec, 1, "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again, changed, err := MarkStepLanded(once, 1, "abc123"); err != nil || changed || again != once {
+	if again, changed, err := markStepLanded(once, 1, "abc123"); err != nil || changed || again != once {
 		t.Fatalf("the same mark again changes nothing: changed=%v err=%v", changed, err)
 	}
-	if _, _, err := MarkStepLanded(once, 1, "def456"); err == nil || !strings.Contains(err.Error(), "abc123") {
+	if _, _, err := markStepLanded(once, 1, "def456"); err == nil || !strings.Contains(err.Error(), "abc123") {
 		t.Fatalf("another mark over a landed step is refused naming the one it has: %v", err)
 	}
 	for _, n := range []int{0, 4} {
-		if _, _, err := MarkStepLanded(markSpec, n, "abc123"); err == nil {
+		if _, _, err := markStepLanded(markSpec, n, "abc123"); err == nil {
 			t.Fatalf("step %d is not listed, and is refused", n)
 		}
 	}
-	if _, _, err := MarkStepLanded("# alpha\n\n## Summary\n\nx\n", 1, "abc123"); err == nil {
+	if _, _, err := markStepLanded("# alpha\n\n## Summary\n\nx\n", 1, "abc123"); err == nil {
 		t.Fatal("a spec that lists no steps has none to mark")
 	}
 	for _, v := range []string{"", "a\nb", "null"} {
-		if _, _, err := MarkStepLanded(markSpec, 1, v); err == nil {
+		if _, _, err := markStepLanded(markSpec, 1, v); err == nil {
 			t.Fatalf("value %q is refused", v)
 		}
 	}
 	crlf := strings.ReplaceAll(markSpec, "\n", "\r\n")
-	got, _, err := MarkStepLanded(crlf, 1, "abc123")
+	got, _, err := markStepLanded(crlf, 1, "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestMarkLandedRewritesTheOpenSpecInPlace(t *testing.T) {
 // TestAMarkedStepLeavesTheRemainder: the remainder copy a --remainder close
 // writes carries only the steps the marks leave unlanded.
 func TestAMarkedStepLeavesTheRemainder(t *testing.T) {
-	marked, _, err := MarkStepLanded(markSpec, 1, "abc123")
+	marked, _, err := markStepLanded(markSpec, 1, "abc123")
 	if err != nil {
 		t.Fatal(err)
 	}

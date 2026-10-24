@@ -748,7 +748,7 @@ until the last step.
    names is settled. On an intent lane whose spec lists its steps, the
    records first mark the lane's step landed on the open spec, a `- landed:`
    line naming the judged head, before any close moves the spec, so a later
-   `abcd build` of the spec or a `--remainder` close reads the step as landed
+   `abcd build` of the spec or a remainder close reads the step as landed
    (iss-2610110918418459); a step the branch already marks keeps its mark,
    and an issue lane marks nothing. A branch whose spec is not open, or lists
    the lane's step under another title, is refused at the landing's first
