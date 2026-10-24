@@ -395,3 +395,42 @@ func TestImplementLoadWaitReleasesItsHoldBeforeStoppingTheWatch(t *testing.T) {
 		t.Fatalf("watch reads ending with the hold released / still held: %d / %d; want the hold released while a read was in flight", released[true], released[false])
 	}
 }
+
+// TestImplementLoadWaitLinesShowEachHolder: the first waiting line names the
+// holder's age and says it is not yet measured; the line a span later gives
+// its tree's CPU over that span (iss-2610241457170255).
+func TestImplementLoadWaitLinesShowEachHolder(t *testing.T) {
+	t0 := waitFixture(t, machine(3, 3, 3))
+	opened := t0.Add(-time.Minute)
+	home, _ := os.UserHomeDir()
+	raw, _ := json.Marshal(implement.WaitHolder{PID: 777, StartUnix: opened.Unix(), Opened: opened,
+		Until: opened.Add(implement.WaitCommandCap), Form: implement.HoldCommand, Dir: "/work/repo"})
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, implement.WaitHoldFileName), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The holder's make keeps a whole core busy.
+	loadReader = func() (machineload.Snapshot, error) {
+		aged := loadNow().Sub(t0)
+		return machine(3, 3, 3,
+			machineload.Proc{PID: 777, PPID: 1, PGID: 777, UID: 501, Age: time.Minute + aged, Name: "abcd"},
+			machineload.Proc{PID: 778, PPID: 777, PGID: 777, UID: 501, Age: time.Minute + aged, CPU: aged, Name: "make"}), nil
+	}
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "11m")
+	if code != 1 {
+		t.Fatalf("exit %d, want 1 (timed out)\n%s%s", code, out, errOut)
+	}
+	if n := strings.Count(out, "waiting for capacity:"); n != 2 {
+		t.Fatalf("%d waiting lines, want 2:\n%s", n, out)
+	}
+	for _, want := range []string{
+		"; holding: pid 777 for 1m0s, not yet measured\n",
+		"; holding: pid 777 for 11m0s, using 100% of a core over the last 10m0s\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output lacks %q:\n%s", want, out)
+		}
+	}
+}

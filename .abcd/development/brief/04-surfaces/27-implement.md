@@ -313,11 +313,14 @@ diagnosis: a slow run waiting on its subprocesses uses little CPU too. A tree
 with a waiter of its own queued at a gate is not counted quiet. The gate only
 says it: the hold stays in force and nothing is signalled, since a process is
 stopped only by its owner through its own handle.
-It does not cover the case that prompted it: a slow tree that keeps starting
-short git children counts as working and is never reported, so the absence of
-a notice is no sign that a holder is working; only same-account hold records
-are watched, and each waiter needs ten minutes of its own samples before it
-can say anything (iss-2610241457170255).
+Every waiting line also names each holder ahead, the hold record's and the
+work the process table shows in a slot of any account, with its age and its
+tree's CPU over the last ten minutes of this waiter's looks, or `not yet
+measured` before then, and the line is said again each span while the gate
+stays shut (iss-2610241457170255). A child that starts and exits between two
+looks is never seen, so a tree of short git children reads low and, for the
+quiet notice, counts as working; only the hold record's holder, of the
+waiter's own account, is said quiet with its checkout.
 The later start stands back whatever the pids; the earlier one stands back from
 a lower pid as well, which an older abcd (v0.15.1 and earlier) runs past.
 It runs a command given after `--` and exits with its code,

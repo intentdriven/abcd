@@ -194,10 +194,13 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"the slot, and the holder says so on its own standard error while others queue.\n" +
 			"Little CPU is a fact, not a verdict: a slow run waiting on its subprocesses uses\n" +
 			"little too. The hold stays in force and nothing is signalled; a tree with a\n" +
-			"waiter of its own queued at a gate is not counted quiet. A tree that keeps\n" +
-			"starting short children (git) counts as working and is never named, so no\n" +
-			"notice is no sign that a holder is working; only your own account's hold is\n" +
-			"watched, and each waiter needs " + implement.QuietSpan.String() + " of its own looks first. A\n" +
+			"waiter of its own queued at a gate is not counted quiet; only your own\n" +
+			"account's hold is said quiet. Every waiting line also names each holder ahead,\n" +
+			"of any account, after `holding:`, with its age and its tree's CPU over the last\n" +
+			implement.QuietSpan.String() + ", or `not yet measured` until this waiter has watched it that long, and\n" +
+			"is said again every " + implement.QuietSpan.String() + " while the gate stays shut. A child that starts\n" +
+			"and exits between two looks is never seen, so a tree of short children (git)\n" +
+			"reads low, and counts as working for the quiet notice. A\n" +
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
 			"While it waits, in a checkout, the waiter keeps your own reservations from\n" +
 			"lapsing: at once and then every five minutes it renews each of your live\n" +
@@ -617,7 +620,24 @@ func waitConditions(res implement.WaitResult) string {
 			parts = append(parts, why)
 		}
 	}
+	if len(parts) > 0 && len(res.Holders) > 0 {
+		parts = append(parts, "holding: "+holdersText(res.Holders))
+	}
 	return strings.Join(parts, "; ")
+}
+
+// holdersText names each holder ahead with its age and its tree's CPU over
+// the last span, or that this waiter has not watched it a span yet.
+func holdersText(hs []implement.GateHolder) string {
+	list := make([]string, len(hs))
+	for i, h := range hs {
+		cpu := "not yet measured"
+		if h.Measured {
+			cpu = fmt.Sprintf("using %.0f%% of a core over the last %s", h.CPU*100, implement.QuietSpan)
+		}
+		list[i] = fmt.Sprintf("pid %d for %s, %s", h.PID, seconds(h.AgeS).Round(time.Second), cpu)
+	}
+	return strings.Join(list, "; ")
 }
 
 // pidsText names pids after one or, for several, a count and many.

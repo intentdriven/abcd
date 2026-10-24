@@ -430,6 +430,9 @@ type WaitResult struct {
 	// its tree has used little CPU for QuietSpan (load_quiet.go). It is said,
 	// never acted on.
 	Quiet *QuietHolder `json:"quiet_holder,omitempty"`
+	// Holders is each holder ahead at the last look, in pid order, the hold
+	// record's first (GateHolder, load_quiet.go).
+	Holders []GateHolder `json:"holders,omitempty"`
 	// HoldGates are the gates whose hold this wait took, when it opened: its
 	// own, and the race gate's too for a race command above one slot.
 	HoldGates []string `json:"-"`
@@ -528,10 +531,12 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	var crossedSince time.Time
 	crossedN := 0
 	var crossedSeen []int
-	// quiet follows the command hold in force between looks, and quietSaid
-	// is true once its present quiet has been said.
-	var quiet quietWatch
+	// watch follows the holders ahead between looks, quietSaid is true once
+	// the present quiet of the hold's holder has been said, and announcedAt
+	// is when a waiting line was last said.
+	var watch holderWatch
 	quietSaid := false
+	var announcedAt time.Time
 	pastCap := func() bool { return !crossedSince.IsZero() && now().Sub(crossedSince) >= crossedCapFor(crossedN) }
 	// A crossed waiter that has left the queue (exited, or opened) starts the
 	// count again: a waiter it held back may now open, and a count kept
@@ -568,7 +573,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	}
 	for {
 		res.Polls++
-		shut, done, only, err := waitLook(req, root, home, &res, now, false, pastCap(), &quiet)
+		shut, done, only, err := waitLook(req, root, home, &res, now, false, pastCap(), &watch)
 		if err != nil {
 			return res, err
 		}
@@ -586,7 +591,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			}
 			sleep(j)
 			res.Polls++
-			shut, done, only, err = waitLook(req, root, home, &res, now, true, pastCap(), &quiet)
+			shut, done, only, err = waitLook(req, root, home, &res, now, true, pastCap(), &watch)
 			if err != nil {
 				return res, err
 			}
@@ -636,14 +641,26 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 				res.WaitedOn = append(res.WaitedOn, c)
 			}
 		}
-		if !announced {
-			announced = true
+		// A waiting line is said at the first look that finds the gate shut,
+		// and again once every QuietSpan while it stays shut, so the holders'
+		// CPU, measured over a span, reaches the line; a line saying a holder
+		// has gone quiet stands for the span's line.
+		switch {
+		case !announced:
+			announced, announcedAt = true, now()
 			if req.OnWait != nil {
 				req.OnWait(res)
 			}
-		}
-		if res.Quiet != nil && !quietSaid && req.OnQuiet != nil {
-			req.OnQuiet(res)
+		case res.Quiet != nil && !quietSaid:
+			announcedAt = now()
+			if req.OnQuiet != nil {
+				req.OnQuiet(res)
+			}
+		case now().Sub(announcedAt) >= QuietSpan:
+			announcedAt = now()
+			if req.OnWait != nil {
+				req.OnWait(res)
+			}
 		}
 		quietSaid = res.Quiet != nil
 		left := deadline.Sub(now())
@@ -714,9 +731,9 @@ func sleepMark() (func(), error) {
 // hold; one without it that finds nothing shut reports no condition and not
 // done, and the caller re-checks after the jitter. With uncrossed set it does
 // not count crossed waiters (machineload.Ahead.Crossed, WaitCrossedCap).
-// crossedOnly says what crossedLook holds. quiet follows the command hold in
-// force between looks (judgeHolder).
-func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time, take, uncrossed bool, quiet *quietWatch) (shut []string, done bool, crossedOnly crossedLook, err error) {
+// crossedOnly says what crossedLook holds. watch follows the holders ahead
+// between looks (judgeHolder, measureHolders).
+func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now func() time.Time, take, uncrossed bool, watch *holderWatch) (shut []string, done bool, crossedOnly crossedLook, err error) {
 	snap, readErr := req.Read()
 	if errors.Is(readErr, machineload.ErrUnsupported) {
 		res.Status = WaitUnchecked
@@ -906,7 +923,12 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	// baseline, and the verdict of the last look that could stands, so a
 	// passing unreadable look neither clears a quiet nor says it again.
 	if procsOK && err == nil {
-		res.Quiet = judgeHolder(quiet, res.Holder, snap, req.Self, args, t)
+		res.Quiet = judgeHolder(&watch.quiet, res.Holder, snap, req.Self, args, t)
+		slots := ahead.Busy
+		if req.Race {
+			slots = racing
+		}
+		res.Holders = measureHolders(watch, res.Holder, slots, snap, t)
 	}
 	if len(crossed) > 0 && (len(shut) == 0 || (crossedShut && slices.Equal(shut, []string{WaitOnWaiter}))) {
 		crossedOnly = crossedLook{n: len(crossed), crossed: crossed, queued: queued}

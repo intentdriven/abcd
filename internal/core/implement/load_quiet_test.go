@@ -361,3 +361,42 @@ func TestWaitHoldWithALongCheckoutStillReads(t *testing.T) {
 		})
 	}
 }
+
+// TestWaitLinesShowEachHoldersAgeAndCPU: every waiting line carries each
+// holder ahead, the hold record's and a waiter of another account running
+// its command alike, with its age, and its tree's CPU over the last
+// QuietSpan once this waiter has watched it that long; before then it is not
+// yet measured (iss-2610241457170255).
+func TestWaitLinesShowEachHoldersAgeAndCPU(t *testing.T) {
+	home := t.TempDir()
+	holder, tree, _ := quietHolder(t, home)
+	other := []machineload.Proc{
+		{PID: 80000, PPID: 1, PGID: 80000, UID: 502, Age: 3 * time.Minute, Name: "abcd"},
+		{PID: 80001, PPID: 80000, PGID: 80000, UID: 502, Age: 3 * time.Minute, Name: "make"},
+	}
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(home, 60000, clock, poll{load: 3,
+		procs: append(append([]machineload.Proc{holder}, tree...), other...),
+		args:  map[int][]string{80000: {"implement", "load", "--wait", "--", "make", "preflight"}, 80001: {"preflight"}}})
+	// The hold's tree keeps half a core busy; the other's uses none.
+	req.Read = withTreeCPU(req.Read, clock, func(d time.Duration) time.Duration { return d / 2 })
+	req.Timeout = QuietSpan + 2*time.Minute
+	var lines []WaitResult
+	req.OnWait = func(r WaitResult) { lines = append(lines, r) }
+	res, err := WaitLoad(req)
+	if err != nil || res.Status != WaitTimedOut {
+		t.Fatalf("result %+v, err %v; want a timeout", res, err)
+	}
+	if len(lines) != 2 {
+		t.Fatalf("%d waiting lines, want 2: the first look's and one a span later", len(lines))
+	}
+	want := []GateHolder{{PID: 777, Hold: true, AgeS: 60}, {PID: 80000, AgeS: 180}}
+	if !reflect.DeepEqual(lines[0].Holders, want) {
+		t.Fatalf("first line's holders = %+v, want %+v, neither yet measured", lines[0].Holders, want)
+	}
+	later := lines[1].Holders
+	if len(later) != 2 || !later[0].Measured || !later[1].Measured ||
+		later[0].CPU < 0.45 || later[0].CPU > 0.55 || later[1].CPU != 0 || later[0].AgeS < 11*60 {
+		t.Fatalf("a span later the holders = %+v, want both measured, 777 at half a core and 80000 at none", later)
+	}
+}

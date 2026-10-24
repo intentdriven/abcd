@@ -69,6 +69,23 @@ type QuietHolder struct {
 	QuietS float64 `json:"quiet_s"`
 }
 
+// GateHolder is one holder ahead of a waiter, as each waiting line names it:
+// the hold record's holder, or work the process table shows in its slot (a
+// waiter running its command, a make preflight in its test stages, or at the
+// race gate a race run).
+type GateHolder struct {
+	PID int `json:"pid"`
+	// Hold says it is the holder of this account's hold record; its age is
+	// then how long it has held the slot, and otherwise how long it has run.
+	Hold bool    `json:"hold,omitempty"`
+	AgeS float64 `json:"age_s"`
+	// Measured says this waiter has watched it for QuietSpan, and CPU is
+	// then its tree's CPU over the last QuietSpan, in cores. Until then it
+	// is not yet measured, and CPU is zero.
+	Measured bool    `json:"measured"`
+	CPU      float64 `json:"cpu_cores,omitempty"`
+}
+
 // quietWatch follows one holder's tree between looks. Its zero value watches
 // nothing.
 type quietWatch struct {
@@ -149,6 +166,107 @@ func treeCPU(procs []machineload.Proc, pid int) map[int]time.Duration {
 				out[c.PID] = c.CPU
 				next = append(next, c.PID)
 			}
+		}
+	}
+	return out
+}
+
+// holderWatch is what a wait keeps between its looks about the holders
+// ahead of it: the quiet watch of the hold record's holder, and a CPU meter
+// for each holder, by pid.
+type holderWatch struct {
+	quiet  quietWatch
+	meters map[int]*cpuMeter
+}
+
+// cpuMeter follows one holder's tree between a waiter's looks: when it was
+// first seen, with what start time, each member's CPU at the last look, and
+// the CPU the tree used in each interval between looks, by the interval's
+// end. A member that starts and exits between two looks is never seen, and
+// one gone since the last look adds nothing more, so the meter can read low
+// for a tree of short-lived children; it never reads high.
+type cpuMeter struct {
+	first time.Time
+	start int64
+	prev  map[int]time.Duration
+	used  []cpuInterval
+}
+
+type cpuInterval struct {
+	end  time.Time
+	used time.Duration
+}
+
+// measure takes one look at the tree under pid, started at start, at t, and
+// returns its CPU over the last QuietSpan in cores, and whether this meter
+// has watched it that long.
+func (m *cpuMeter) measure(procs []machineload.Proc, pid int, t time.Time) (float64, bool) {
+	tree := treeCPU(procs, pid)
+	var used time.Duration
+	for p, now := range tree {
+		if was, ok := m.prev[p]; ok {
+			used += max(now-was, 0)
+		} else {
+			used += now
+		}
+	}
+	m.prev = tree
+	m.used = append(m.used, cpuInterval{end: t, used: used})
+	m.used = slices.DeleteFunc(m.used, func(i cpuInterval) bool { return !i.end.After(t.Add(-QuietSpan)) })
+	if t.Sub(m.first) < QuietSpan {
+		return 0, false
+	}
+	var total time.Duration
+	for _, i := range m.used {
+		total += i.used
+	}
+	return total.Seconds() / QuietSpan.Seconds(), true
+}
+
+// measureHolders names each holder ahead at this look, the hold record's
+// holder first (when it holds the command form), then the work in the slots,
+// each once, and meters each: a holder first seen at this look starts its
+// meter, and one no longer ahead drops it. A pid whose start time moved past
+// holdStartSlack is a new process, and starts a new meter.
+func measureHolders(w *holderWatch, h *WaitHolder, slots []int, snap machineload.Snapshot, t time.Time) []GateHolder {
+	if w.meters == nil {
+		w.meters = map[int]*cpuMeter{}
+	}
+	var out []GateHolder
+	seen := map[int]bool{}
+	add := func(pid int, hold bool, age time.Duration) {
+		if seen[pid] {
+			return
+		}
+		seen[pid] = true
+		start, ok := procStart(snap, pid, t)
+		if !ok {
+			return
+		}
+		m := w.meters[pid]
+		if m == nil || start-m.start > holdStartSlack || m.start-start > holdStartSlack {
+			m = &cpuMeter{first: t, start: start, prev: treeCPU(withoutReaders(snap, pid).Procs, pid)}
+			w.meters[pid] = m
+			out = append(out, GateHolder{PID: pid, Hold: hold, AgeS: age.Seconds()})
+			return
+		}
+		cpu, measured := m.measure(withoutReaders(snap, pid).Procs, pid, t)
+		out = append(out, GateHolder{PID: pid, Hold: hold, AgeS: age.Seconds(), Measured: measured, CPU: cpu})
+	}
+	if h != nil && h.Form == HoldCommand {
+		add(h.PID, true, t.Sub(h.Opened))
+	}
+	for _, pid := range slots {
+		for _, p := range snap.Procs {
+			if p.PID == pid {
+				add(pid, false, p.Age)
+				break
+			}
+		}
+	}
+	for pid := range w.meters {
+		if !seen[pid] {
+			delete(w.meters, pid)
 		}
 	}
 	return out

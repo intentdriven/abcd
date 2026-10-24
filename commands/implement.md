@@ -936,12 +936,20 @@ with a waiter of its own queued at a gate is not counted quiet. The hold stays
 in force and nothing is signalled. Stop a command by its own pid, never by
 pattern.
 
-What it does not do: a slow run whose tree keeps starting short git
-children counts as working and is never reported, which was the case that
-prompted the notice, so the absence of a notice is no sign that a holder is
-working. Only a holder in your own account's hold record is watched, and a
-waiter that joined in the last ten minutes has not measured the holder yet
-(iss-2610241457170255).
+Every waiting line also names each holder ahead, after `holding:`: the hold
+record's holder and, from the process table, every waiter running its
+command or `make preflight` in its test stages (at the race gate, every race
+run), whatever its account. Each comes with its age (how long it has held the
+slot, or run) and its tree's CPU over the last ten minutes, or `not yet
+measured` until this waiter has watched it that long (`pid 777 for 11m0s,
+using 2% of a core over the last 10m0s`). The line is said again every ten
+minutes while the gate stays shut, so the figure reaches it
+(iss-2610241457170255). Two limits remain. A child that starts and exits
+between two looks is never seen, so a tree of short git children can read
+lower than it used, and for the quiet notice such a tree counts as working.
+And only a holder in your own account's hold record can be said quiet with
+its checkout named; another account's holder is shown with its age and CPU
+alone.
 
 While it waits, in a checkout, the waiter also keeps your own reservations
 from lapsing, so a record you reserved by hand stays yours while your
