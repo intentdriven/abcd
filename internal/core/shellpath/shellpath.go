@@ -309,10 +309,10 @@ func readFollowing(path string) ([]byte, bool) {
 }
 
 // addsDir reports whether raw already puts dir on the PATH: abcd's own marked
-// line, or an uncommented line that names the PATH and the folder in any of
-// the spellings a person writes it in. The check is textual and conservative:
-// it can mistake a line for one that adds the folder, which costs the offer,
-// never a second line.
+// line for dir (MarkedLine, exactly), or an uncommented line that names the
+// PATH and the folder in any of the spellings a person writes it in. The
+// check is textual and conservative: it can mistake a line for one that adds
+// the folder, which costs the offer, never a second line.
 func addsDir(raw []byte, home, dir string) bool {
 	forms := []string{dir}
 	if home != "" && within(home, dir) && dir != home {
@@ -320,12 +320,15 @@ func addsDir(raw []byte, home, dir string) bool {
 		rel = filepath.ToSlash(rel)
 		forms = append(forms, "$HOME/"+rel, "${HOME}/"+rel, "~/"+rel)
 	}
+	marked := MarkedLine(home, dir)
 	for _, ln := range strings.Split(string(raw), "\n") {
 		t := strings.TrimSpace(ln)
 		if t == "" || strings.HasPrefix(t, "#") {
 			continue
 		}
-		if strings.HasSuffix(t, Marker) {
+		// abcd's own line for this folder, compared whole as Remove compares
+		// it: the marker on a line that adds another folder adds nothing.
+		if t == marked {
 			return true
 		}
 		if !strings.Contains(strings.ToLower(t), "path") {

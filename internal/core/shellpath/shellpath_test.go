@@ -366,3 +366,20 @@ func TestApplyRefusesALinkSwappedInBeforeTheReplace(t *testing.T) {
 		t.Errorf("the linked file changed: %q", got)
 	}
 }
+
+// TestMarkedLineForAnotherFolderAddsNothing: abcd's marker on a line that adds
+// some other folder is not a line that adds the folder asked about, so the
+// plan still offers (the marked line is compared whole, as Remove compares it).
+func TestMarkedLineForAnotherFolderAddsNothing(t *testing.T) {
+	e, dir := env(t, "/bin/zsh", "darwin")
+	other := `export PATH="$HOME/other/bin:$PATH" ` + Marker
+	write(t, filepath.Join(e.Home, ".zshrc"), other+"\n", 0o644)
+	if p := PlanFor(e, dir); p.State != Offer {
+		t.Errorf("plan = %+v, want an offer: the marked line adds another folder", p)
+	}
+	// abcd's own marked line for this folder is already added.
+	write(t, filepath.Join(e.Home, ".zshrc"), MarkedLine(e.Home, dir)+"\n", 0o644)
+	if p := PlanFor(e, dir); p.State != AlreadyAdded {
+		t.Errorf("plan = %+v, want already added", p)
+	}
+}
