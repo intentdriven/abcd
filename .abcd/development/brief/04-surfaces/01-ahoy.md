@@ -735,11 +735,68 @@ reason, and the shim degrades. For the pre-tool-use guard that degradation is an
 unguarded line and exit 1, never the exit 0 the host reads as approval. Session
 start carries no `PATH` rung at all and fails closed.
 
+## The setup flow: basics, one plan, the person's own questions, three-part report
+
+Setup is short, plain, and finishes (itd-2610240823055889,
+[adr-2610241101463288](../../decisions/adrs/2610241101463288-setup-asks-short-questions-and-lists-its.md),
+which amends brief invariant 1 for setup). It checks everything before it asks
+anything, in this order:
+
+1. **The basics.** No `git` command, a folder that is not the top of a git
+   repository, or an account with no agent harness stops the run before its
+   first question, with one message naming what is missing, writing nothing
+   and exiting 2 (`setup_basics.go`). Every other missing basic, a folder not
+   on `PATH`, a required tool, is a step on the report's checklist.
+2. **The plan screen** (`setup_plan.go`). At a terminal, and through an answers
+   file (`approve.plan`), setup shows one plan: every change grouped by where
+   it lands, every default it takes with where to change it (visibility,
+   docs target, deep scanning, the house-style rule, the artefact kind, the
+   model routing tables, the drain rule, the README parts, the status line's
+   parts, all on), and the person-only questions that follow. It asks once:
+   proceed, customise or cancel. Proceed answers every approval of a kind of
+   change and takes every listed default without asking; customise asks the
+   approvals and the values in turn, as before the plan; cancel writes
+   nothing. For a repository abcd does not manage, the plan is asked before the
+   adoption and proceeding adopts it. A piped answer stream, the
+   approve-everything flag, an explicit category set and the after-update
+   run are not shown the plan.
+3. **The person-only questions** (`person_only.go`): the abcd download, the
+   shell settings, the status line, the commit identity and each missing
+   tool, each its own question naming the value and where it is written,
+   whatever the answer to the plan, in that order. The identity is never
+   listed under, or declined by, the settings approval
+   (iss-2610240824005655).
+4. **The abcd download** (`abcd_download.go`). Where nothing is at the `PATH`
+   target and the plugin's verified cache cannot supply a copy, setup asks to
+   download the release this abcd was stamped as (in a source checkout of
+   abcd, the newest release tag the checkout holds, read from disk), before
+   the status line; on a yes it fetches the release binary through `abcd
+   update`'s checked fetch (`update.FetchVerified`: `checksums.txt`, then the
+   signed build provenance), writes it to the target and records it in
+   `~/.abcd.noindex/path-entry`, so the status line is wired in the same run.
+   The status-line offer is left out of the approvals, and never asked, when
+   it cannot be wired (iss-2610240823574047), and its entry is a release copy,
+   never the track-latest dev shim.
+5. **One line each** (`setup_brief.go`). Every question is drawn on its one
+   line with its answers' labels; `?` draws the whole question and asks again
+   (`ask.ErrExplain`). The answers record keeps the whole question.
+6. **The report** (`setup_report.go`): done, one line per change with where;
+   needs you, a numbered checklist of exact steps, each with why; next, one
+   step. A repository already fully set up is one line, and a details flag
+   adds the full record.
+
+Run from a source checkout of abcd through `go run ./cmd/abcd`, setup is a
+build of that checkout as it stands, so the stale-binary refusal treats it as
+current (`gorun_vintage.go`, iss-2610240824047504). With no plugin root, the
+copy `~/.abcd.noindex/path-entry` records still reports its install mode
+(iss-2610240916382802).
+
 ## Gaps, and how the apply pass asks about them
 
 Each detected discrepancy becomes a **gap** with a stable id, a category, a
-scope, a title, detail and a fix hint. The category is what the apply pass asks
-about, one question per category present, never one per item. The question
+scope, a title, detail and a fix hint. Under customise, and off a terminal,
+the category is what the apply pass asks about, one question per category
+present, never one per item. The question
 shows what approving it would do (iss-2610071528375981): one line per change,
 the gap's title, which names the file or the setting, with a value flag that
 would change a saved setting listed under the settings approval; then the
@@ -1361,6 +1418,7 @@ Sub-verbs: none.
 | `--answers` | string |
 | `--attribution` | bool |
 | `--bin-dir` | string |
+| `--details` | bool |
 | `--dev` | bool |
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |

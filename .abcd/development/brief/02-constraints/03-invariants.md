@@ -6,7 +6,7 @@
 
 The following are non-negotiable invariants — any architectural choice that violates them is wrong even if it works.
 
-1. **Transparent prompts** — every `AskUserQuestion` shows current state, consequences of each option, and how to change later. No silent defaults. See [`05-internals/04-universal-patterns.md § 1`](../05-internals/04-universal-patterns.md#1-transparent-prompts).
+1. **Transparent prompts** — every `AskUserQuestion` shows current state, consequences of each option, and how to change later. No silent defaults. Setup (`abcd ahoy install`) meets the rule in two steps ([adr-2610241101463288](../../decisions/adrs/2610241101463288-setup-asks-short-questions-and-lists-its.md)): one plan screen lists every change and every default before anything is written, each default with where to change it, and each setup question is one line whose answer `?` shows the whole question, current state, consequences and how to change later, before asking again. See [`05-internals/04-universal-patterns.md § 1`](../05-internals/04-universal-patterns.md#1-transparent-prompts).
 
 2. **Adapter over native default** — every capability abcd once delegated to a bundled tool has a native default; the external tool is an opt-in adapter over the same seam ([adr-22](../../decisions/adrs/0022-bundled-deps-as-pluggable-adapters.md)). A missing or misbehaving adapter degrades to the native path; abcd never blocks on an absent tool. See [`05-internals/04-universal-patterns.md`](../05-internals/04-universal-patterns.md).
 
@@ -136,6 +136,16 @@ The following are non-negotiable invariants — any architectural choice that vi
    `TestPresentReadsDiskOnly`
    ([adr-2610181003541997](../../decisions/adrs/2610181003541997-the-away-mode-s-stop-check-reads-the.md),
    which refines adr-38 for this verb's meaning alone).
+   Setup (`abcd ahoy install`) downloads abcd only on a yes to the question
+   that names the download, the release and the file it is written to, which
+   is that fetch's documented meaning: the release's binary for this computer,
+   checked against the release's `checksums.txt` and the build provenance its
+   release workflow signed before anything is written, exactly as `abcd
+   update` checks a swap
+   ([adr-2610241101463288](../../decisions/adrs/2610241101463288-setup-asks-short-questions-and-lists-its.md)).
+   The release is the one the running abcd was stamped as, or, in a source
+   checkout of abcd, the newest release tag the checkout holds, read from
+   disk; no version-discovery request is made.
    Inbound, abcd listens on a network only through the dashboard, only while
    someone has started it on purpose, and only for the people let in: it
    listens on this computer's own Tailscale addresses alone, never every

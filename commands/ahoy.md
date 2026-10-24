@@ -425,6 +425,69 @@ are committed.
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --json
 ```
 
+#### The setup flow
+
+Setup checks everything before it asks anything, then asks as few questions as
+it can, each on one line
+([adr-2610241101463288](../.abcd/development/decisions/adrs/2610241101463288-setup-asks-short-questions-and-lists-its.md)).
+
+1. **The basics.** With no `git` command, in a folder that is not the top of a
+   git repository, or on an account with no agent harness, there is nothing to
+   set up: the install stops before its first question, writes nothing, and
+   exits 2 with one message naming what is missing. Relay that message as it
+   stands. Every other missing basic goes on the report's checklist at the end.
+2. **The plan screen.** At a terminal, and through an answers file, setup shows
+   one plan: every change it would make, grouped by where it lands (this
+   repository, this machine), every default it would take with where to change
+   it (the visibility, the docs target, deep scanning, the house-style rule,
+   the artefact kind, the model routing tables, the drain rule, the README
+   parts, and the status line's parts, all on), and the questions it asks
+   whatever the answer. It asks once: `proceed`, `customise` or `cancel`.
+   Proceed makes every change and takes every default listed; customise asks
+   each kind of change and each value in turn before anything is written;
+   cancel, or deciding later, writes nothing. For a repository abcd does not
+   manage yet, proceed and customise also adopt it, so the plan is the one
+   question that adopts.
+3. **The questions only a person can answer.** The abcd download, the shell
+   settings, the status line (one entry in the assistant's settings), the
+   commit identity and each missing tool are each their own question, naming
+   the value and where it is written, whatever the answer to the plan, in that
+   order. None is ever asked behind the plan or behind an approval of a kind
+   of change.
+4. **The abcd download.** Where abcd is not on the `PATH` and the plugin's
+   verified cache cannot supply a copy, setup offers to download abcd before it
+   offers the status line: the release the running abcd was stamped as, or, in
+   a source checkout of abcd, the newest release tag the checkout holds. On a
+   yes it fetches that release's binary for this computer, checks it against
+   the release's `checksums.txt` and the build provenance its release workflow
+   signed (the check `abcd update` makes), writes it to `~/.local/bin/abcd` (or
+   the `--bin-dir` folder) and records it in `~/.abcd.noindex/path-entry`, so
+   the status line is wired in the same run. Setup never asks about the status
+   line when it cannot wire it. `--yes` never downloads; a no writes nothing,
+   and the README's install line does the same by hand.
+5. **One line each.** Every question is one line naming what it decides; `?`
+   (typed as the answer, or as the first key in the arrow-key list) shows the
+   whole question (what each answer does, what holds now and where to change
+   it later) and asks again. The numbered list (`ABCD_ACCESSIBLE`, `TERM=dumb`
+   or `interview.list` set to `numbered`) and `NO_COLOR` work as before.
+6. **The report.** The run ends in three parts: **Done**, one line per change
+   with where it landed; **Needs you**, a numbered checklist, each item the
+   exact step and why; and **Next**, one step. `--details` adds the full
+   record (every path written and every note). A repository already fully set
+   up is reported in one line, `abcd is already set up here; nothing
+   changed.`, and nothing is written.
+
+A first run at a terminal with the suggested answers therefore asks the plan
+and the person-only questions alone: the abcd download, the shell settings,
+the plan screen and the commit identity, plus the status line where it can be
+wired and one question for each missing tool it offers to install.
+
+In a source checkout of abcd, `go run ./cmd/abcd ahoy install` is treated as
+current: `go run` builds the checkout as it stands, so its unstamped vintage is
+not refused as stale there. Any other unstamped binary is still refused. On
+the `PATH` there means a release copy, as anywhere else: the `--dev` shim
+rebuilds abcd on every call and is never the status line's entry.
+
 **This writes.** It applies the actionable gaps the detection pass found — the
 marker block (into `AGENTS.md` only, and only where `--docs-target agents_md`
 names it; the default, `skip`, names none), the `.abcd/` scaffolding, the owned
@@ -475,9 +538,10 @@ release the cache attestation names; when the check fails or cannot
 reach GitHub's attestations API or the Sigstore TUF repository, install writes
 no entry and its note names what failed and how to check the release by hand
 with `gh attestation verify`. Relay that note verbatim.
-When no verified copy is there, install writes no entry at all rather than a
-symlink into the plugin root, which stops working at the next plugin update, and
-its note names the command to run first: the install one-liner in the README,
+When no verified copy is there, install writes no symlink into the plugin root,
+which stops working at the next plugin update: where nothing is at the `PATH`
+target it asks the download question above instead, and on a no (or under
+`--yes`) its note names the other way, the install one-liner in the README,
 which downloads the release binary, verifies it against that release's own
 checksums and records it, after which a re-run of `ahoy install` adopts it.
 Relay that note verbatim. Every install run checks the abcd-owned copy
@@ -525,9 +589,10 @@ deferred with decide later, is left as it is. With `--yes` it answers no
 question at all: the artefact kind and the house-style question are left
 unwritten, each still waiting, and a note names the run that asks them.
 
-**One line answers one question.** The install asks one approval per gap
-category present — often several — and every line after the last one you supply
-reads end-of-input and DECLINES. `yes` is the reliable form because it never
+**One line answers one question.** Off a terminal, a piped answer stream is not
+shown the plan: the install asks one approval per gap category present — often
+several — and every line after the last one you supply reads end-of-input and
+DECLINES. `yes` is the reliable form because it never
 runs out; a single `printf 'y\n'` answers the first question only and silently
 declines the rest. The questions come in a fixed order (dependency,
 safe-autocreate, config-change, status-line, oracle-routing, drain-rule, conventions-file, user-state, plugin-owned), so a
@@ -577,31 +642,42 @@ EVERY question, so only reach for it once they have agreed to all of them.
 
 **At a terminal the questions are drawn; through this page they are relayed
 in an answers file.** When stdin, stdout and stderr are all terminals, the
-install draws each question itself (the material, the question, each answer
-with its meaning, and decide later last), answered by the arrow keys or by
-its number, and Ctrl-C ends the run with exit 130, keeping the answers given
-before it. Every answer is recorded, with the question as it was asked and
+install draws each question itself on its one line with its answers' labels
+(the plan screen with its plan), answered by the arrow keys or by its number;
+`?` draws the whole question (the material, each answer with its meaning, and
+decide later last) and asks it again, and Ctrl-C ends the run with exit 130,
+keeping the answers given before it. Every answer is recorded, with the question as it was asked and
 where it was answered, in `.abcd/.work.local/interviews/setup-<stamp>.json`,
 and the answers that change the machine (the status line, the machine's
 routing table) in `~/.abcd.noindex/interviews/`; a run that ends aborted or
 refused changed nothing and records nothing. Through this page, put each
 question to the user with the host's question tool, quoting the question
 exactly as the install writes it, then pass their answers in an answers file
-and say where they were given:
+and say where they were given. The plan screen is the first: relay its plan
+(the changes, each default with where to change it, and the questions that
+follow) as its material, and its three answers, `proceed`, `customise` and
+`cancel`, as options. Then relay each person-only question the run reaches
+(the download, the shell settings, the status line, the commit identity, a
+tool) as its own question, never folded into the plan's answer:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --answers <file> --answered-in "Claude Code" --json
 ```
 
 The file is one JSON object: `{"schema_version": 1, "interview": "setup",
-"answers": [{"id": "adopt", "value": "yes"}, {"id": "visibility", "value":
+"answers": [{"id": "approve.plan", "value": "proceed"}, {"id": "visibility", "value":
 "private", "note": "<optional>"}]}`. Each answer names its question by id
-(a value question's key, `adopt`, `approve.<category>` for a kind of change,
-or the offer's gap id) and gives one of the values the question offers, or
-`later` to decide later; an unknown or repeated key is refused. With
+(a value question's key, `approve.plan` for the plan screen, `abcd.download`
+for the download, or the offer's gap id) and gives one of the values the
+question offers, or `later` to decide later; an unknown or repeated key is
+refused. The plan answers every kind of change at once, so an
+`approve.<category>` id an earlier release asked for is refused with exit 2,
+naming `approve.plan`, before anything is written; from a file, `proceed` and
+`customise` both approve every kind of change, and each value still comes
+from the file. With
 `--answers`, each question is written as plain text on stderr. A value
-the question does not offer, or a missing answer to the adoption, an
-approval or a setting value the run would ask (the visibility, the docs
+the question does not offer, or a missing answer to the plan screen or a
+setting value the run would ask (the visibility, the docs
 target, deep scanning), stops the run with exit 2 before anything is
 written, naming the question's id, the flag that answers it, if any, and the
 line to add; nothing is recorded. Put that question to the user, add their
@@ -614,10 +690,9 @@ replaces the piped answer stream for that run.
 
 **A value flag needs the settings approval.** `--visibility`, `--docs-target`,
 `--oracle-backend` and `--scan-deep` are held to the config-change approval
-like any other settings change: a flag that would change a saved setting puts
-the config-change question even when nothing else would, and only a yes, given
-at the prompt, as `approve.config-change` in the answers file, or by `--yes`,
-saves it. `later`, a no or end of input drops the flag: nothing it would change
+like any other settings change: a flag that would change a saved setting is
+listed on the plan, and only `proceed`, a yes to the config-change question
+under `customise`, `approve.plan` in the answers file, or `--yes` saves it. `later`, a no or end of input drops the flag: nothing it would change
 is saved or moved, and the run names each dropped flag in a note.
 
 **Stdin must end, or the prompt waits.** With stdin at end-of-input every
@@ -644,7 +719,9 @@ a commit would carry diverges from the identity pin, or is a machine identity
 (`git_identity.mismatch`, `git_identity.unset`, `git_identity.committer`,
 `git_identity.tool`), the install proposes the human identity (the pin, else
 the global git identity) and asks whether to commit to this repository as it,
-but only at a terminal. Off a terminal it asks nothing and writes nothing, and a
+naming the identity and `.git/config`, but only at a terminal. It is its own
+question: the plan and the settings approval never list it, and no answer to
+either declines it. Off a terminal it asks nothing and writes nothing, and a
 piped `yes` does not answer it; neither does `--yes`. Relay the result's note to
 the user and tell them to run `abcd ahoy install` in their own terminal, or to
 set `user.name` and `user.email` themselves; never set them on the user's
@@ -784,12 +861,14 @@ is an `artefact.invalid` gap instead: the file is the user's, so the install
 reports it and never overwrites it.
 
 **The status-line offer.** When the harness's user-level settings file exists
-(`$CLAUDE_CONFIG_DIR/settings.json`, or `~/.claude/settings.json`) and its
-`statusLine` is absent or is a command that is not abcd's, the install asks
-whether to install abcd's status line — one paragraph of reason, then one
-question, then one on/off prompt per element after the badge (repository,
-branch, model, context, five-hour and seven-day usage, intent and issue
-counts; default on). The question shows the one change: the file, and the
+(`$CLAUDE_CONFIG_DIR/settings.json`, or `~/.claude/settings.json`), its
+`statusLine` is absent or is a command that is not abcd's, and abcd's `PATH`
+entry is on record (or the download question can put it there first), the
+install asks whether to install abcd's status line in that file, running that
+entry — one paragraph of reason, then one question, then, under `customise`,
+one on/off prompt per element after the badge (repository, branch, model,
+context, five-hour and seven-day usage, intent and issue counts; default on,
+which `proceed` takes without asking). The question shows the one change: the file, and the
 `statusLine` entry's value now and after. Present the reason and the change to
 the user and relay their answer; never answer it for them.
 
