@@ -196,19 +196,14 @@ func TestAhoyDryRunFlagPrintsTheDetectionEnvelope(t *testing.T) {
 }
 
 // TestAhoyIdentityFlagHoldsTheCommitIdentityToThePin is criterion 1's flag half
-// for the identity check: a commit identity that diverges from the pin exits
-// non-zero naming the fix, and a matching one passes.
+// for the identity check: a commit identity that diverges from the person's own
+// record exits non-zero naming the fix and the record, and a matching one
+// passes.
 func TestAhoyIdentityFlagHoldsTheCommitIdentityToThePin(t *testing.T) {
 	hermeticEnv(t)
 	repo := gittest.NewRepo(t)
 	t.Chdir(repo.Root())
-	pin := filepath.Join(repo.Root(), filepath.FromSlash(identity.PinRelPath))
-	if err := os.MkdirAll(filepath.Dir(pin), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(pin, []byte(`{"name":"Pinned Person","email":"pinned@example.com"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeOwnRecord(t, `{"name":"Pinned Person","email":"pinned@example.com"}`)
 
 	t.Setenv("GIT_AUTHOR_NAME", "Someone Else")
 	t.Setenv("GIT_AUTHOR_EMAIL", "else@example.com")
@@ -218,6 +213,9 @@ func TestAhoyIdentityFlagHoldsTheCommitIdentityToThePin(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `git config user.name "Pinned Person"`) {
 		t.Errorf("the refusal does not name the fix: %v", err)
+	}
+	if !strings.Contains(err.Error(), identity.MachineRecordRef().Display) {
+		t.Errorf("the refusal does not name the record and how to change it: %v", err)
 	}
 
 	// The author alone matching is not a match: this repo configures no

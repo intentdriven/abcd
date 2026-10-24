@@ -90,8 +90,8 @@ flags.
 - **The remote apply** is **the one abcd verb that mutates state outside this
   machine.** See below.
 - **The identity check** exits non-zero when the author or the committer a
-  commit would carry does not match the repo's identity pin, and names a machine
-  identity in either role whether or not it fails. Read-only, CLI-only, for an
+  commit would carry does not match the identity the person recorded on their
+  own machine, or is a machine identity in either role, recorded or not. Read-only, CLI-only, for an
   operator or CI.
 - **The provider board** explains the optional OpenAI-compatible
   provider adapter (itd-2609081951381895): what an aggregator is, that abcd
@@ -595,7 +595,9 @@ would find available); the repo skeleton; the repo's identity, both its
 root-commit SHA against the registry and the git author and committer a commit
 would carry, each resolved as git resolves it (the environment override, then
 the role's own `author.*` or `committer.*` key, then `user.*`), against the
-committed identity pin and the list of machine identities; the registry's own wiring; the ignore
+person's own identity record on their machine and the list of machine
+identities, and whether the repository still stores the identity pin it once
+committed; the registry's own wiring; the ignore
 block against the visibility policy; marker-block drift against the current
 template; the `PATH` entry; the hook manifest; the recorded setup version; and
 the two-layer name-guard scaffolding.
@@ -748,7 +750,7 @@ the settings listed above?"), never the category's internal name. Yes says how
 many listed changes it writes, or, for a category whose changes are each asked
 again (a tool, an offer, a conventions file), which questions it goes on to;
 the settings approval's says it writes the changes that need no answer (the
-identity pin, the `PATH` entry) and asks for each value not yet chosen, saving
+`PATH` entry) and asks for each value not yet chosen, saving
 none if one is left unanswered. Every change is listed on every route, never cut to
 fit, so every door records the same question; a list taller than the host's
 rows is shown with the question check's note rather than refused. The question check refuses an answer
@@ -758,7 +760,8 @@ approvals had before they listed anything.
 | `category` | Examples | Apply behaviour |
 |---|---|---|
 | `safe-autocreate` | the repo skeleton, history-store directories, the name-guard artefacts | applied once the category is approved, no per-item prompt; create-if-absent, never overwriting |
-| `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin, the repository's own git identity, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
+| `config-change` | visibility, oracle adapter, the `PATH` entry, the repository's own git identity, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
+| `machine-identity` | the person's own commit identity record on their machine; moving the identity pin a repository still stores to its owner's machine (itd-2610240918547728) | never a category approval: each is its own question, asked only at a terminal, written only on that yes; never under the approve-everything flag or a piped answer, and reported as optional work it skipped |
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`), for one that exists but cannot be read whole, a folder, a pipe, a file past the size cap or one without read permission (`marker.unreadable`), and for one whose block is missing or out of date in a folder that does not let abcd create a file there, which the write needs for its lock and temporary file (`marker.unwritable`) |
 | `dependency` | a tool a capability uses and cannot find: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json` | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the exact install step, what the install does) and its install step runs only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
@@ -840,7 +843,7 @@ form: it never runs out.
 **Answers arrive from stdin whether or not stdin is a terminal**
 (iss-167). The prompts are the same prompts; only the reader differs. At a
 terminal a human types them; off one, a caller pipes them, which is how a host
-agent drives the git-identity pin, the one approval no flag covers. Off a
+agent drives the approvals no flag covers. Off a
 terminal each answer is echoed to the diagnostic stream, so a piped run leaves a
 transcript rather than a column of questions with no visible reply.
 
@@ -1031,25 +1034,46 @@ seeds the warning and the result says what was heard. The question is asked
 only when the seed is written: a repository that already carries a docs-lint
 config keeps its own severity and is not asked.
 
-Blanket approval does **not** adopt an unmanaged repo or pin an unset git
-identity: those still need their own answer. The identity-pin exclusion is
+Blanket approval does **not** adopt an unmanaged repo or record who a person
+commits as: those still need their own answer. The identity-record exclusion is
 stated rather than assumed — the flag's own help names it, the install envelope
 carries it as skipped-and-optional, and the completion output prints it with the
 way to apply it (iss-166).
 
+**Each person commits as themselves** (itd-2610240918547728, which reverses
+the committed pin of itd-131; adr-2610241022541063). Nothing in a repository
+names who may commit to it. Each person's identity is their own record, on
+their own machine: `~/.abcd.noindex/identity/<root-sha>.json` for one
+repository, keyed on its root commit, else `~/.abcd.noindex/identity.json` for
+every other repository on the machine, read under the guards the rules loader
+applies (a regular file this account owns that no other account can write,
+size-capped, refused behind a symlinked `~/.abcd.noindex`); a record that is
+there and fails a guard fails the check closed. The committed shell guard in
+abcd's own `.githooks/pre-commit` reads the same two files in the same order,
+with no binary. With no record (`git_identity.unrecorded`, advisory) the
+install proposes the person's usual git identity at a terminal, as its own
+question, and records it only on a yes. A repository that still stores the
+pin (`git_identity.repo_pin`) has it moved on its owner's machine (the person
+whose git identity is the stored one), on a yes at a terminal: recorded as
+that person's record for the repository, its `production_mode` kept in
+`.abcd/config/provenance.json`, and `identity.json` removed from the working
+tree. On anyone else's machine it is not copied, not removed, and not named.
+
 **Who commits is proposed, never assumed** (itd-131). Detection raises
-`git_identity.mismatch` or `git_identity.unset` for the author,
+`git_identity.mismatch` for an author that is not the person's own record and
+`git_identity.unset` for an author with none (required once a record applies),
 `git_identity.committer` for a committer that diverges on its own (required
-where the repo pins an identity, advisory where it does not), and
+where a record applies, advisory where none does), and
 `git_identity.tool` wherever the author or the committer is a machine identity
 (the harness's own default, a `[bot]` account, a vendor's address, a configured
-automation's name such as `semantic-release-bot`), pinned or not, because the
+automation's name such as `semantic-release-bot`), recorded or not, because the
 human is the author of record either way. The machine
 identities are one list, `internal/core/identity/tool-identities.txt`, which the
 CI attribution gate reads too, role asymmetry included: a `noreply@` mailbox is
 a machine as the author, and the forge's own committer stamp passes. Once the
 config-change category is approved, the install proposes the human identity
-(the pin, else the global git identity, read from disk and never looked up over
+(the person's own record, else their global git identity, read from disk, never
+from the repository, and never looked up over
 the network, per adr-38, and never a machine's) and sets `user.name` and
 `user.email` in the repository's own `.git/config` only when the person confirms
 at a terminal. Otherwise it writes nothing and its notes say why: under the
@@ -1059,7 +1083,9 @@ give; when an environment override or an `author.*` or `committer.*` key
 outranks `user.*`, so the write would change nothing; and when there is no human
 identity to propose. An autonomous routine is therefore detected here and
 established by whatever launches it, before its first commit
-(iss-2608210932052003). The pin is never recorded from a machine identity.
+(iss-2608210932052003); on a fresh machine with no record, the commit check lets
+the human identity the launcher supplied through and refuses a machine's. A
+record is never written from a machine identity.
 
 ### What the apply pass writes
 
@@ -1219,8 +1245,8 @@ byte-identical to a fresh install save for the setup date.
   bare invocation never adopts. **Given** a folder that is not a git repository,
   it reports `unmanaged-folder` and that there is nothing to act on.
 - **Given** a fresh repo with no `.abcd/` directory, **when** the install runs to
-  completion, **then** the repo carve-out is written, the identity pin is
-  recorded where the git-identity gate is adopted, the visibility-driven ignore
+  completion, **then** the repo carve-out is written, nothing in the repository
+  names who commits to it, the visibility-driven ignore
   entries are present, the registry entry exists, the marker block from the
   canonical template is installed in the files a chosen docs target names and in
   none at the default, and the hook-manifest check runs verify-only
@@ -1267,11 +1293,20 @@ byte-identical to a fresh install save for the setup date.
   the doctor runs, **then** detection notices the stale registered path and
   the install refreshes it: the root SHA is unchanged, so the entry is updated
   rather than duplicated.
-- **Given** a pinned repo whose repo-local `user.name` and `user.email` differ
-  from the pin, **when** the install runs at a terminal, **then** it proposes
-  the pinned identity and writes repo-local config only after the person
-  confirms; declined, git config is unchanged.
-- **Given** a committer that differs from the author or the pin, or an author or
+- **Given** a person whose repo-local `user.name` and `user.email` differ from
+  their own record, **when** the install runs at a terminal, **then** it
+  proposes the recorded identity and writes repo-local config only after the
+  person confirms; declined, git config is unchanged.
+- **Given** a person with no record on this machine, **when** the install runs
+  at a terminal, **then** it proposes their usual git identity as its own
+  question and records it on their machine on a yes; off a terminal it records
+  nothing and says so.
+- **Given** a contributor in a repository that still stores another person's
+  identity, **when** they set up and commit, **then** nothing names that
+  person and their commits are checked against their own record; on the
+  stored identity's owner's machine the install moves it to their record, removes it from the repository, keeps its `production_mode`,
+  and says so.
+- **Given** a committer that differs from the author or the record, or an author or
   committer that is a machine identity, **when** detection runs, **then** the
   divergence is reported as its own gap, and with no terminal the install asks
   nothing, writes nothing and says so.

@@ -27,12 +27,11 @@ func notesCarryAll(notes []string, want ...string) bool {
 	return false
 }
 
-// TestIdentityPinFailureIsNoted is iss-2609260057127611's first write: the pin
-// step dropped a failed identity.WritePin, and an unset git identity, without a
-// word, so a run that recorded no identity said nothing about it.
-func TestIdentityPinFailureIsNoted(t *testing.T) {
+// TestIdentityRecordFailureIsNoted is iss-2609260057127611's first write,
+// carried to the person's own record: a run that records no identity says so.
+func TestIdentityRecordFailureIsNoted(t *testing.T) {
 	for name, gitName := range map[string]string{
-		"write refused":  `Quote "Person"`, // WritePin refuses a double-quote
+		"write refused":  `Quote "Person"`, // WriteRecord refuses a double-quote
 		"identity unset": "",
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -41,12 +40,12 @@ func TestIdentityPinFailureIsNoted(t *testing.T) {
 				email = ""
 			}
 			dir := idGitRepo(t, gitName, email)
-			a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{ConfigChange: true}, gapPresent: map[string]bool{OptionalPinGapID: true}}
-			a.stepIdentityPin()
-			if _, ok, _ := identity.LoadPin(dir); ok {
-				t.Fatal("precondition: no pin is written")
+			a := &applyCtx{cwd: dir, gapPresent: map[string]bool{UnrecordedGapID: true}, prompter: &identityPrompter{terminal: true, answer: true}}
+			a.stepIdentityRecord()
+			if _, _, ok, _ := identity.LoadRecord(os.Getenv("HOME"), ""); ok {
+				t.Fatal("precondition: no record is written")
 			}
-			if !notesCarryAll(a.notes, identity.PinRelPath) {
+			if !notesCarryAll(a.notes, "did not record who you commit as") {
 				t.Errorf("no note says the identity was not recorded; notes: %v", a.notes)
 			}
 		})

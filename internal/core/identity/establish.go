@@ -17,20 +17,57 @@ type Proposal struct {
 	From string
 }
 
-// Propose returns the identity to offer: the committed pin, else the global git
-// identity (user.name/user.email in the caller's global config). The chain is
-// disk-only by decision (itd-131, adr-38): no network lookup in an implicit
-// path. A machine identity is never proposed. ok is false when neither source
-// holds a complete human identity.
+// Propose returns the identity to offer when the effective one diverges: the
+// person's own record on this machine, else their global git identity
+// (user.name/user.email in the caller's global config). The chain is disk-only
+// by decision (itd-131, adr-38): no network lookup in an implicit path. A
+// machine identity is never proposed, and nothing a repository commits is ever
+// read as the proposal (itd-2610240918547728): a contributor is never offered
+// anyone's identity but their own. ok is false when neither source holds a
+// complete human identity.
 func Propose(root string) (Proposal, bool, error) {
-	pin, pinned, err := LoadPin(root)
+	return ProposeWithHome(root, UserHome())
+}
+
+// ProposeWithHome is Propose for the person whose home directory is home.
+func ProposeWithHome(root, home string) (Proposal, bool, error) {
+	rootSHA, err := gitutil.RootCommit(root)
 	if err != nil {
 		return Proposal{}, false, err
 	}
-	if pinned {
-		p := Proposal{Identity: Effective{Name: pin.Name, Email: pin.Email}, From: "the identity pinned in " + PinRelPath}
-		return p, !IsToolIdentity(RoleAuthor, pin.Name, pin.Email), nil
+	rec, ref, recorded, err := LoadRecord(home, rootSHA)
+	if err != nil {
+		return Proposal{}, false, err
 	}
+	if recorded {
+		p := Proposal{Identity: Effective{Name: rec.Name, Email: rec.Email}, From: "the identity you recorded in " + ref.Display}
+		return p, !IsToolIdentity(RoleAuthor, rec.Name, rec.Email), nil
+	}
+	return proposeGlobal(root)
+}
+
+// ProposeRecord returns the identity to offer a person who has not recorded
+// who they commit as on this machine: their usual git identity, which is the
+// global user.name/user.email, else the identity git resolves in this
+// repository when that is a complete human one. A machine identity is never
+// proposed. ok is false when no human identity can be read from disk.
+func ProposeRecord(root string) (Proposal, bool, error) {
+	p, ok, err := proposeGlobal(root)
+	if err != nil || ok {
+		return p, ok, err
+	}
+	eff, err := EffectiveIdentity(root)
+	if err != nil {
+		return Proposal{}, false, err
+	}
+	if eff.Name == "" || eff.Email == "" || IsToolIdentity(RoleAuthor, eff.Name, eff.Email) {
+		return Proposal{}, false, nil
+	}
+	return Proposal{Identity: eff, From: "the git identity this repository commits under"}, true, nil
+}
+
+// proposeGlobal is the global git identity, when it is a complete human one.
+func proposeGlobal(root string) (Proposal, bool, error) {
 	name, err := gitConfigScope(root, "--global", "user.name")
 	if err != nil {
 		return Proposal{}, false, err

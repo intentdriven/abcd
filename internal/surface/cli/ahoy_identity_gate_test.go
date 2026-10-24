@@ -8,12 +8,14 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // identityGateRepo is a hermetic, real git repo whose user.* config is the
-// given identity and whose committed pin is Alex Reppel, with every identity
-// environment override cleared so a case sets only what it means to.
+// given identity, for a person who recorded Alex Reppel as who they commit as
+// on this machine, with every identity environment override cleared so a case
+// sets only what it means to.
 func identityGateRepo(t *testing.T, name, email string) string {
 	t.Helper()
 	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"} {
@@ -21,14 +23,21 @@ func identityGateRepo(t *testing.T, name, email string) string {
 	}
 	repo := hermeticRepo(t)
 	gitRepoWithIdentity(t, repo, name, email)
-	if err := os.MkdirAll(filepath.Join(repo, ".abcd", "config"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config", "identity.json"),
-		[]byte(`{"name":"Alex Reppel","email":"alex@example.com"}`+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeOwnRecord(t, `{"name":"Alex Reppel","email":"alex@example.com"}`+"\n")
 	return repo
+}
+
+// writeOwnRecord writes body as the person's machine-wide identity record
+// under the test's HOME.
+func writeOwnRecord(t *testing.T, body string) {
+	t.Helper()
+	p := filepath.Join(os.Getenv("HOME"), filepath.FromSlash(identity.MachineRecordRef().Rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestAhoyIdentityRefusesADivergentCommitter: the gate's canonical entrypoint

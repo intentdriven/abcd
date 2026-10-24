@@ -608,8 +608,8 @@ line to add; nothing is recorded. Put that question to the user, add their
 answer, and run again. The questions the run itself decides to ask (the
 status line's elements, the offers, the artefact kind) are checked when
 they are asked: a stop there leaves the steps before it done, says so, and
-the next run asks only what is still open. The git identity, the
-drain rule and installing a tool are never answered from a file. `--answers`
+the next run asks only what is still open. The git identity, the identity
+record, the drain rule and installing a tool are never answered from a file. `--answers`
 replaces the piped answer stream for that run.
 
 **A value flag needs the settings approval.** `--visibility`, `--docs-target`,
@@ -627,29 +627,68 @@ prompt WAIT for the answer that never comes, rather than declining. For a run
 that must not block and must not prompt, close stdin or pre-answer everything:
 `abcd ahoy install --yes --refuse-adopt < /dev/null`.
 
-`--yes` approves every resolvable category but never adopts the optional
-git-identity pin, because the pin records whatever git identity is currently
-configured, never wires the status line (below), because that rewrites a
+`--yes` approves every resolvable category but never records who the person
+commits as (below), because that would record whatever git identity is
+currently configured, never wires the status line (below), because that rewrites a
 harness-wide setting, never accepts a model-tier routing table (below),
 because a table decides which model every delegated step asks for, and never
 adds the drain eligibility record (below), because the record decides what an
 unattended agent may change in the repository. When the result carries `optional_skipped`, report it and
-offer the `yes |` form above as the way to apply it, except `drain_rule.offered`
-and `conventions.retire_offered`, which only a person at a terminal is asked,
+offer the `yes |` form above as the way to apply it, except
+`git_identity.unrecorded`, `git_identity.repo_pin`, `drain_rule.offered` and
+`conventions.retire_offered`, which only a person at a terminal is asked,
 and `readme.offered`, which this page relays as the README question pair
 below and answers with `--readme-parts`.
 
+**Each person's commit identity is their own, kept on their own machine.**
+Nothing in a repository names who may commit to it. The person's record lives
+under their home directory: `~/.abcd.noindex/identity/<root-sha>.json` for one
+repository (keyed on its root commit, so a work identity can stay with work
+repositories), else `~/.abcd.noindex/identity.json` for every other repository
+on the machine. Both hold `{"name": "…", "email": "…"}`, must be a file the
+person owns that no other account can write, and are refused behind a
+symlinked `~/.abcd.noindex`. The commit check holds the author and committer
+to that record, and refuses a machine identity (an AI tool's or a bot's) in
+either role whether or not there is one; with no record, a human identity
+commits. A wrong record is changed by editing the file, or by removing it and
+running `abcd ahoy install` at a terminal to be asked again.
+
+**The identity record question is a person's alone.** When no record applies
+(`git_identity.unrecorded`), the install proposes the person's usual git
+identity (the global `user.name`/`user.email`, else the one git resolves in
+this repository, never a machine's) and records it in
+`~/.abcd.noindex/identity.json` only on a yes. It is its own question, asked
+only at a terminal and behind no category approval. Off a terminal, or under
+`--yes`, it records nothing and the result lists `git_identity.unrecorded` in
+`optional_skipped`; relay that and tell the user to run `abcd ahoy install` in
+their own terminal. Never write the record on the user's behalf.
+
+**A repository that still stores an identity is migrated.** A repository set up
+before this change committed one person's identity in
+`.abcd/config/identity.json` (`git_identity.repo_pin`). abcd no longer reads it
+to check commits. On its owner's machine (the person whose git identity is the
+stored one) the install asks, at a terminal, whether to move it: a yes records
+it as that person's record for this repository, keeps any `production_mode` it
+declared in `.abcd/config/provenance.json`, removes `identity.json` from the
+working tree, and says each of those; the owner commits the removal. On anyone
+else's machine the gap says only that the stored identity is not theirs and is
+not read, names no one, and nothing is copied or removed. The stored file is read through
+the guarded reader: one that is a symlink, not a regular file, or over 64 KiB
+is reported as `git_identity.uncheckable` and not read.
+
 **The git identity question is a person's alone.** When the author or committer
-a commit would carry diverges from the identity pin, or is a machine identity
-(`git_identity.mismatch`, `git_identity.unset`, `git_identity.committer`,
-`git_identity.tool`), the install proposes the human identity (the pin, else
-the global git identity) and asks whether to commit to this repository as it,
-but only at a terminal. Off a terminal it asks nothing and writes nothing, and a
+a commit would carry diverges from the person's own record, or is a machine
+identity (`git_identity.mismatch`, `git_identity.unset`,
+`git_identity.committer`, `git_identity.tool`), the install proposes the human
+identity (the person's own record, else their global git identity, never one a
+repository names) and asks whether to commit to this repository as it, but only
+at a terminal. Off a terminal it asks nothing and writes nothing, and a
 piped `yes` does not answer it; neither does `--yes`. Relay the result's note to
 the user and tell them to run `abcd ahoy install` in their own terminal, or to
 set `user.name` and `user.email` themselves; never set them on the user's
 behalf. For an autonomous routine the human identity is set by whatever launches
-it, before its first commit.
+it, before its first commit: on a fresh machine with no record, the commit check
+lets through the human identity the launcher supplied and refuses a machine's.
 
 **The tool question.** When a `dependency` gap is present and its category is
 approved, each missing tool is its own question, and a piped answer never
@@ -1346,7 +1385,8 @@ renders one domain's rules instead.
 ## Scoping note: `--identity` is CLI-only
 
 `abcd ahoy --identity` exits non-zero when the author or the committer a commit
-would carry diverges from the committed pin. It exists to be wired into a pre-commit hook or CI, where
+would carry diverges from the identity the person recorded on their machine, or
+is a machine identity. It exists to be wired into a pre-commit hook or CI, where
 its exit code is the whole point, so it stays a bare-CLI entrypoint rather than a
 plugin mode; report it only if a user asks how the identity gate fails
 closed.

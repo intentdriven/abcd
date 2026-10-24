@@ -50,7 +50,9 @@ const (
 	writeDrainRule               writeKind = "drain-rule"
 	writeToolFileRetired         writeKind = "conventions-file-retired"
 	writeRules                   writeKind = "rules"
-	writeIdentityPin             writeKind = "identity-pin"
+	writeIdentityRecord          writeKind = "identity-record"
+	writeIdentityPinRemoved      writeKind = "identity-pin-removed"
+	writeProductionMode          writeKind = "production-mode"
 	writeGitIdentity             writeKind = "git-identity"
 	writeArtefactKind            writeKind = "artefact-kind"
 	writeReadmeParts             writeKind = "readme-parts"
@@ -63,7 +65,7 @@ const (
 var allWriteKinds = []writeKind{
 	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsFolder, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeOutboundHook, writeOutboundForge, writeOutboundBinary, writeOutboundShim, writeOutboundChain, writeRules, writeConventionsBlock,
-	writeConventionsBlockRemoved, writeReadmeParts, writeReadmeCreated, writeReadmePartsRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
+	writeConventionsBlockRemoved, writeReadmeParts, writeReadmeCreated, writeReadmePartsRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPinRemoved, writeProductionMode, writeArtefactKind, writeCommandEntry, writeSessionStore, writeIdentityRecord,
 	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
 }
 
@@ -189,10 +191,20 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		Why:    "Commits here were about to be made under a different identity, such as a leftover test account or an agent's, and the human is the author of record.",
 		Action: "Nothing. Your global git settings are unchanged; to undo it, run git config --local --unset user.name and git config --local --unset user.email.",
 	},
-	writeIdentityPin: {
-		What:   "Recorded the git name and email that commit to this repository.",
-		Why:    "abcd can then warn when a commit is about to be made under a different identity, such as an agent's.",
-		Action: "Nothing, unless the recorded name or email is wrong; then correct it in .abcd/config/identity.json, because running abcd ahoy install again leaves a recorded name and email as they are.",
+	writeIdentityRecord: {
+		What:   "Recorded on this machine the git name and email you commit as, in abcd's folder in your home directory.",
+		Why:    "abcd then refuses a commit made under a different identity, such as an agent's or a mistyped email, and it names only you: nothing in the repository says who may commit to it.",
+		Action: "Nothing, unless the recorded name or email is wrong; then edit the file named above, or remove it and run abcd ahoy install again at a terminal to be asked.",
+	},
+	writeIdentityPinRemoved: {
+		What:   "Removed .abcd/config/identity.json, the commit identity this repository stored, after recording it on your machine.",
+		Why:    "A committed identity told every other contributor to commit as you; each person's identity now lives on their own machine.",
+		Action: "Commit the removal; your own record stays on your machine, and the repository no longer names who may commit to it.",
+	},
+	writeProductionMode: {
+		What:   "Kept the repository's production mode, which .abcd/config/identity.json declared, in .abcd/config/provenance.json.",
+		Why:    "It is the repository's own setting, how the text of the records it mints was produced, so it stays committed when the identity leaves.",
+		Action: "Commit .abcd/config/provenance.json with the removal; records minted here keep the production mode it declares.",
 	},
 	writeArtefactKind: {
 		What:   "Recorded what this repository releases, a plugin, a binary or an application, in .abcd/config/artefact.json.",
@@ -293,10 +305,15 @@ var declinedCategoryHelp = map[GapCategory]SummaryItem{
 
 // optionalSkippedHelp explains each optional step an unattended run left alone.
 var optionalSkippedHelp = map[string]SummaryItem{
-	OptionalPinGapID: {
-		What:   "Recording who commits to this repository was left for you to confirm.",
-		Why:    "It would record whatever git name and email happen to be set, which in an unattended run may be an agent's.",
-		Action: "Check that git config user.name and git config user.email give your own name and email, then run abcd ahoy install without --yes and answer y to the config-change question; abcd records those two values.",
+	UnrecordedGapID: {
+		What:   "Recording who you commit as on this machine was left for you to confirm.",
+		Why:    "It records a person's own identity, which only that person answers, at a terminal; an unattended run may be running as an agent.",
+		Action: "Run abcd ahoy install at a terminal, without --yes, and answer the identity question; abcd proposes your usual git identity and records it only on your yes.",
+	},
+	LegacyPinGapID: {
+		What:   "Moving the commit identity this repository stores to your machine was left for you to confirm.",
+		Why:    "It writes to your home directory and removes a committed file, so only your own answer at a terminal does it.",
+		Action: "Run abcd ahoy install at a terminal, without --yes, and answer the question about .abcd/config/identity.json.",
 	},
 	StatusLineOfferGapID: {
 		What:   "abcd's status line was not set up.",
