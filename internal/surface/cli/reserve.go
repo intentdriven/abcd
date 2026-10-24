@@ -9,12 +9,31 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
+
+// The reservation acts this binary makes consult the embargo check an
+// announcement does (claim.checkEmbargo): the reserve verb names it, and the
+// callers that build their own options, the implement loop's build and drain
+// among them, get it registered here.
+func init() { claim.RegisterEmbargoCheck(reserveEmbargoCheck) }
+
+// reserveEmbargoCheck is the announcement's embargo check, with the store
+// that could not be read named when one could not, so the person is told
+// which store to settle.
+func reserveEmbargoCheck(root, home, text string, records []string) (bool, error) {
+	held, err := announceEmbargoCheck(root, home, text, records)
+	var r *embargo.RefusalError
+	if err != nil && errors.As(err, &r) && r.Store != "" {
+		err = fmt.Errorf("%w; the store at %s", err, r.Store)
+	}
+	return held, err
+}
 
 // reserveStore is the noun the checkout resolution names in its refusal.
 const reserveStore = "the reservation"
@@ -145,6 +164,12 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"the act says why (generated_unread in --json). Your own reservation sharing a\n" +
 			"path with yours from another copy is made, and warns on stderr (own_overlap in\n" +
 			"--json).\n\n" +
+			"A reservation, a renewal and a take-over consult the embargo store on this\n" +
+			"machine before anything is pushed, as an announcement does: a record the store\n" +
+			"holds, or a footprint naming something under embargo, is refused (exit 2) with\n" +
+			"nothing pushed, and so is the act when a store cannot be read, naming that\n" +
+			"store. A release does not consult it. A build's and a drain's reservations\n" +
+			"consult it too.\n\n" +
 			"The holder is your GitHub username, from the first of these that names it:\n" +
 			"user.email, when it is a GitHub no-reply address; reservation.github_username\n" +
 			"in the machine configuration (the repository's own configuration is never read\n" +
@@ -235,7 +260,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			}
 			noteMachineHome(cmd.ErrOrStderr(), "abcd reserve")
 			res, err := claim.Reserve(root, claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
-				TakeOver: takeOver, Release: release, WarnOwnOverlap: true}, claim.Options{ForgeUser: reserveForgeUser})
+				TakeOver: takeOver, Release: release, WarnOwnOverlap: true}, claim.Options{Embargo: reserveEmbargoCheck, ForgeUser: reserveForgeUser})
 			if err != nil {
 				return reserveRefusal(err)
 			}

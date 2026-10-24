@@ -155,14 +155,18 @@ func (j judged) released() bool {
 	return j.present && (j.derived || j.Unreadable == "" && j.message.released())
 }
 
-// Reserve performs one act against origin: fetch, judge, write one commit,
-// then one plain push, which is the compare-and-swap. A release pushes the
+// Reserve performs one act against origin: ask the embargo check (for a
+// reservation, renewal or take-over; checkEmbargo), fetch, judge, write one commit, then one plain
+// push, which is the compare-and-swap. A release pushes the
 // tombstone; every other request reserves, renews or takes over, by what the
 // tip it judged allows. A refusal pushes nothing; a failure leaves nothing
 // locally but an unreferenced commit git's collection removes.
 func Reserve(root string, req Request, o Options) (Result, error) {
 	p, err := prepare(root, req, o, func(root string) error { return originPresent(root, "reservations") })
 	if err != nil {
+		return Result{}, err
+	}
+	if err := checkEmbargo(p, o); err != nil {
 		return Result{}, err
 	}
 	tree, err := emptyTree(root)

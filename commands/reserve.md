@@ -199,6 +199,14 @@ refusal without the user's word. It allows that one fork only: a fork of it is
 refused naming both, and a value that is neither `"refuse"` nor one owner and
 one name is refused, naming the file, once origin is a fork.
 
+**Exit 2 on a record under embargo.** A reservation, a renewal and a take-over
+consult the embargo store on this machine before anything is pushed, as an
+announcement does: a record the store holds, or a footprint that names
+something under embargo, is refused with nothing pushed, and so is the act when
+a store cannot be read, naming that store and its repair. A release does not
+consult it. A build's and a drain's reservations consult it too. Work on such a record goes unreserved; never reserve it
+under another id to get past the refusal.
+
 **Exit 2 is every other refusal**: an id that is not an issue, an intent or a
 release (`rel-vX.Y.Z`), no footprint for a record or one for a release, a
 release already tagged on `origin`, a path that is not repository-relative, a lease out of bounds, a
