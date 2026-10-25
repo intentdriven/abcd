@@ -21,14 +21,21 @@ in the tree rather than only a web console.
   checks must never share one.
 - `reservations-protection.json` — deletion and force-push protection for
   `refs/heads/abcd-reserved/**`, the branches `abcd reserve` pushes
-  (itd-2609091034175565). **No bypass actors.** It is its own ruleset because it
-  guards abcd's reservation namespace, not `main`: a reservation ends with a
-  tombstone pushed as a fast-forward, never a deletion or a forced push, and the
-  committed pre-push hook refuses both only for a push made through the hooks.
-  The land stage reads only the rulesets that target the default branch, so this
-  one never changes how a lane merges. Ruled by the product thinker on
-  2026-10-12. A later sweep that deletes reservation branches (itd-118) needs it
-  amended first.
+  (itd-2609091034175565). It is its own ruleset because it guards abcd's
+  reservation namespace, not `main`: a reservation ends with a tombstone pushed
+  as a fast-forward, never a deletion or a forced push, and the committed
+  pre-push hook refuses both only for a push made through the hooks. The land
+  stage reads only the rulesets that target the default branch, so this one
+  never changes how a lane merges. Ruled by the product thinker on 2026-10-12.
+  **One bypass actor: the reservation-sweep GitHub App**
+  (`actor_type: Integration`, `bypass_mode: always`), and nobody else
+  ([adr-2610161940004937](../../development/decisions/adrs/2610161940004937-spent-reservation-branches-are-deleted.md),
+  iss-2610142200389875). The scheduled `reservation-sweep` workflow mints a
+  one-hour token for that App and runs `abcd reserve --sweep --apply`, which
+  deletes only spent branches, each leased on the tip it judged. Until the App
+  exists, the mirror's `actor_id` is the placeholder `RESERVATION_SWEEP_APP_ID`:
+  apply it with the App's numeric id, then refresh the mirror from the live
+  ruleset as below, which writes the number in.
 - `status-protection.json` — deletion and force-push protection for
   `refs/heads/abcd-status/**`, the branches `abcd announce` pushes, one per
   person (itd-2609151838312703, adr-2610150729333337). **No bypass actors.** An

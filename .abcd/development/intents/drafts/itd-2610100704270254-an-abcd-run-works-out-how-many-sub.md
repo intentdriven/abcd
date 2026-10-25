@@ -43,6 +43,7 @@ production_mode: hand-written
 ## Decisions
 
 - 2026-10-10: the product thinker filed this as one intent ("File as proposed"), after the facilitator pointed out that their rough rule, "times 2 minus 1", gives 15 of the class below eight but 4.5, not 3, of the class above. Asked whose sub-agents the budget covers, they chose "Each abcd run": only the agents a build or a drain starts count, not a session's hand-started agents or another session's. Asked how the classes trade, they chose "Double per class": each class up counts double and each class down half, four, eight, sixteen and thirty-two from the top, mixed by share. They added that the setting is the repository's, with abcd's bundled default, and is never kept in an agent's memory or anywhere like it.
+- 2026-10-22: the product thinker reversed the answer "Each abcd run" above: the budget is one pool shared across sessions, and one busy session can slow the others (dcn-2610222025116937, a typed reversal recorded on the coordination intent itd-2610170634394993, which also reverses dcn-2610180720379757). The class weights and the repository's setting stand.
 
 ## Audit Notes
 

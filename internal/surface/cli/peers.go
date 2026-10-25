@@ -345,6 +345,9 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 	if rerr != nil || rep.HeldHere(id) {
 		return err
 	}
+	// Every location, a peer's untouched older copy of the record
+	// included (peers.Report.Holders leaves those out): the question here is
+	// where the record is, not who holds it.
 	locs := rep.Locate(id)
 	if len(locs) == 0 {
 		return err

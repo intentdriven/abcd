@@ -8,10 +8,10 @@ with the external tool available as an **opt-in adapter** over the same seam
 present tool is an upgrade, never a prerequisite — a missing or misbehaving
 adapter degrades to the native path rather than breaking abcd.
 
-## The runner route's fence (proposed)
+## The runner route's fence
 
-**Proposed, awaiting the product thinker's sign-off.** One route is planned to
-need an external program: the agents abcd's runner launches run inside a fence
+**Signed off by the product thinker on 2026-10-22** (dcn-2610222041417934). One
+route needs an external program: the agents abcd's runner launches run inside a fence
 the operating system enforces, and that fence is Anthropic's sandbox-runtime
 (`srt`, which needs Node, and on Linux bubblewrap and `socat`), installed by
 the person
@@ -19,8 +19,10 @@ the person
 spc-2610161751056096). It is adr-22's first declared exception, scoped to the
 runner route: a fence has no native default to degrade to, so a machine
 without one refuses a runner launch, and the person's per-machine off switch
-in `~/.abcd.noindex/config.json` takes the place of degradation. Nothing of it
-is built yet, and every other route still needs no external tool.
+in `~/.abcd.noindex/config.json` takes the place of degradation. Where `srt` is
+missing, abcd offers to install it and installs only after the person's
+explicit yes (dcn-2610222041424027). Nothing of it is built yet, and every
+other route still needs no external tool.
 
 ## Adapters over native defaults
 
