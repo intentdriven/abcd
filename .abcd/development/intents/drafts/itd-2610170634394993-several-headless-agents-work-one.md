@@ -75,6 +75,15 @@ Surveyed 2026-10-17 against primary sources ([research note](../../research/note
 
 Path taken: 2. The forge and the shared remote are the native floor (the queue, compare-and-swap pushes, branches cloud sessions can push), and the pass, the dependency line, the generation number and the budgets are bespoke to abcd's records, behind a seam.
 
+
+**Carried in from itd-2610240850336695, its Decision 19 (product thinker,
+2026-10-24).** When sessions push under a credential of their own, the
+repository gains a ruleset refusing non-fast-forward pushes on every branch,
+with a bypass for the person's admin role: a session and abcd then cannot
+force-push anywhere, and the person still can, through `gh` or the forge's web
+interface. Until then the person's grant ships with the force-push stop on
+feature branches resting on this machine's pre-push hook and the guard.
+
 ## Open Questions
 
 Answered on 2026-10-18 by the planning prep (facilitator, each a decision

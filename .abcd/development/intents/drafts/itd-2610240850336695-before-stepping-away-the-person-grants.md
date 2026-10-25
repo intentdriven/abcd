@@ -121,8 +121,10 @@ rewritten to the adversarial reviews' findings the same day._
   through a raw shell where abcd's hooks run, **then** the guard refuses it as a
   mistake filter.
 - **Given** any grant or none, **when** a session force-pushes, even on the
-  person's word in the session, **then** abcd refuses it and names the person's
-  own terminal as the place to run it.
+  person's word in the session, **then** the push is refused (by the forge on
+  the default branch, release tags and abcd's own branches; by the pre-push
+  hook and the guard on every other branch) and the refusal names the person's
+  own `gh` or the forge's web interface as the place to do it.
 - **Given** a grant set or revoked while sessions are running, **when** a
   running session next pushes or opens a pull request, **then** it acts on the
   grant as it now stands, not as it stood when the session started.
@@ -291,6 +293,22 @@ status kept apart from the grant, irreversible acts outside every level).
     whatever the person says in the session; the person runs it themselves in
     their own terminal. Merging to the default branch and cutting a release
     stay as Decision 17 says.
+19. **The force-push stop is deterministic where the forge holds it, and the
+    gap until then is recorded (product thinker, 2026-10-24).** A session and
+    abcd must never force-push; the person may, through `gh` or the forge's
+    web interface. The deterministic form is a forge rule: a ruleset refusing
+    non-fast-forward pushes on every branch, with a bypass for the person's
+    admin role. It holds only once sessions push under a credential of their
+    own, without that role (itd-2610170634394993, its Decision 5), because
+    while a session pushes under the person's own login the bypass lets it
+    through and the login can lift the rule. Today the forge already refuses a
+    force-push to the default branch, release tags and abcd's own reservation
+    and status branches, for everyone. On every other branch this intent ships
+    with the stop that runs on this machine (the committed pre-push hook
+    refusing a non-fast-forward push, and the guard refusing `--no-verify` and
+    a changed hooks path), which is a mistake filter, not a guarantee. The gap
+    closes when the credential split lands; the all-branch ruleset is carried
+    in itd-2610170634394993.
 
 ## Open Questions
 
@@ -298,6 +316,8 @@ status kept apart from the grant, irreversible acts outside every level).
   name).
 - How the guard tells the person's `/abcd:mode autonomous` from a session's own
   call (Decision 14), once the live checks of Decision 5 have run.
+- Deferred, recorded (Decision 19): the deterministic force-push stop on
+  feature branches waits for sessions' own credential (itd-2610170634394993).
 
 ## Audit Notes
 
