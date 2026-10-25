@@ -332,7 +332,7 @@ with `*CONCURRENCY` to force it).
   `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
   `check-attribution`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
-  `go vet ./...`, `go test -timeout 20m ./...`, and
+  `go vet ./...`, `go test -timeout 40m ./...`, and
   `go test -race -timeout 40m ./internal/...`. The load
   check runs first (`load-check`, a warning, never a failure) and is not a gate:
   it exits 0 whatever it finds. The eval
