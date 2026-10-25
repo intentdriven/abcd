@@ -531,8 +531,9 @@ The script abcdev.app serves at `/install.sh` does what the one-liners do,
 the same `gh attestation verify` step and its warning included, and one thing
 more: after the install it records the release in
 `~/.abcd.noindex/release-mark`, the newest-release mark the plugin's bootstrap
-and `abcd update` keep, and only ever raises it. It does not write
-`~/.abcd.noindex/path-entry`.
+and `abcd update` keep, and only ever raises it. Like the one-liners, it
+refuses a `~/.abcd.noindex` that is a symlink before it downloads anything, and
+records the installed path and its SHA-256 in `~/.abcd.noindex/path-entry`.
 
 ## What adopting a repository commits
 

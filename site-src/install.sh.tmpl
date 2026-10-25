@@ -15,14 +15,31 @@
 # attestation verify` and installs nothing if that fails; without gh, or with a
 # gh that is not signed in, the checksum stands alone and a warning says so
 # (iss-2610120617521209), as the one-liners do (installoneliner_run_test.go).
-# Beyond the one-liners, after the install it records the release in
-# ~/.abcd.noindex/release-mark, the newest-release mark hooks/bootstrap.sh and
-# `abcd update` keep (iss-2610120601505029).
+# Like the one-liners, it refuses a symlinked ~/.abcd.noindex before it fetches
+# anything, and after the install it records the installed path and its SHA-256
+# in ~/.abcd.noindex/path-entry, the record the hooks and `abcd ahoy` read to
+# know the PATH copy as abcd's own (iss-2610240827243654). Beyond the
+# one-liners, it also records the release in ~/.abcd.noindex/release-mark, the
+# newest-release mark hooks/bootstrap.sh and `abcd update` keep
+# (iss-2610120601505029).
 #
 # Everything between `set -eu` and the last line is a definition. Only the final
 # `main "$@"` runs anything, so a download truncated in transit executes nothing.
 
 set -eu
+
+# refuse_symlinked_home stops before anything is fetched when ~/.abcd.noindex
+# is a symlink. The hooks, ahoy and the bootstrap refuse a record behind such a
+# link rather than follow it (iss-2609281017573862), so the path-entry this
+# script writes would be ignored by every reader, and would land in whatever
+# the link points at, a dotfiles checkout typically. The one-liners make the
+# same test first. It is defined here, ahead of the fetch code below, so the
+# test that holds every form to "guard before the first fetch" reads it in the
+# order main runs it.
+refuse_symlinked_home() {
+	[ ! -L "$HOME/.abcd.noindex" ] ||
+		die "~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run. Nothing is installed."
+}
 
 # curl reads a configuration surface this script's argv knows nothing about, and
 # the HTTPS pin below does not close it. Unless -q is curl's FIRST argument, it
@@ -127,6 +144,7 @@ verify() {
 	else
 		die "neither sha256sum nor shasum is available, so the download cannot be verified. Nothing is installed."
 	fi
+	verified_sha256=$(printf '%s\n' "${line%% *}" | tr 'ABCDEF' 'abcdef')
 }
 
 # verify_provenance checks the build provenance of the downloaded binary $1
@@ -203,6 +221,26 @@ install_binary() {
 		die "cannot create $2. abcd never escalates privileges — pick a directory you own with --bin-dir DIR."
 	install -m 0755 "$1" "$2/abcd" ||
 		die "cannot install into $2. abcd never escalates privileges — pick a directory you own with --bin-dir DIR."
+}
+
+# record_path_entry records the binary just installed as $1/abcd in
+# ~/.abcd.noindex/path-entry: its path and the SHA-256 ($2) the release
+# manifest vouched for, two lines, exactly as the one-liners write them. The
+# hooks and `abcd ahoy` read it to know the PATH copy as abcd's own. The record
+# replaces whatever named a copy before. It refuses, rather than writes
+# through, a ~/.abcd.noindex or a path-entry that is a symlink; the first was
+# refused before the download, and is tested again here in case it was swapped
+# in since. A record that cannot be written stops the install with that
+# reason, as the one-liners' `set -eu` does; the binary is already in place.
+record_path_entry() {
+	[ ! -L "$HOME/.abcd.noindex" ] ||
+		die "~/.abcd.noindex became a symlink during the install, so path-entry was not recorded; abcd refuses such a link rather than follows it. Replace it with a real directory and re-run."
+	[ ! -L "$HOME/.abcd.noindex/path-entry" ] ||
+		die "~/.abcd.noindex/path-entry is a symlink, which abcd refuses rather than follows, so the install could not be recorded. Remove it and re-run."
+	mkdir -p -m 0700 "$HOME/.abcd.noindex" ||
+		die "cannot create ~/.abcd.noindex, so the install could not be recorded in its path-entry."
+	printf 'path=%s\nbinary_sha256=%s\n' "$1/abcd" "$2" > "$HOME/.abcd.noindex/path-entry" ||
+		die "cannot write ~/.abcd.noindex/path-entry, so the install could not be recorded."
 }
 
 # tag_parts prints MAJOR MINOR PATCH and a pre-release flag for a vX.Y.Z[-pre]
@@ -339,6 +377,7 @@ main() {
 	*) bin_dir="$PWD/$bin_dir" ;;
 	esac
 
+	refuse_symlinked_home
 	os=$(detect_os)
 	arch=$(detect_arch)
 	require_released_platform "$os" "$arch"
@@ -352,6 +391,7 @@ main() {
 	verify "$binary"
 	verify_provenance "$binary" "$bin_dir"
 	install_binary "$binary" "$bin_dir"
+	record_path_entry "$bin_dir" "$verified_sha256"
 	record_mark "$bin_dir"
 	report "$bin_dir"
 }

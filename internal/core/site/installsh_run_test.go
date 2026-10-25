@@ -464,24 +464,91 @@ func TestInstallerOnlyRaisesTheMark(t *testing.T) {
 	}
 }
 
-// TestInstallerWritesNoMarkThroughASymlinkedHome: abcd refuses a
-// ~/.abcd.noindex that is a symlink rather than following it, and the
-// installer writes nothing through one: the binary installs, and the line
-// says the mark was not recorded and why.
-func TestInstallerWritesNoMarkThroughASymlinkedHome(t *testing.T) {
+// TestInstallerRefusesASymlinkedHome: abcd refuses a ~/.abcd.noindex that is
+// a symlink rather than following it, and the installer, which records the
+// owned PATH copy in ~/.abcd.noindex/path-entry, refuses one before it fetches
+// anything, as the one-liners do: nothing is installed, nothing is written
+// through the link, and the refusal says why. Every reader ignores a record
+// behind the link (iss-2609281017573862), so an install that went ahead would
+// report a finished install no hook recognises.
+func TestInstallerRefusesASymlinkedHome(t *testing.T) {
 	elsewhere := t.TempDir()
 	r := runInstaller(t, ghVerifies, func(home string) {
 		if err := os.Symlink(elsewhere, abcdhome.Path(home)); err != nil {
 			t.Fatal(err)
 		}
 	})
+	if r.err == nil {
+		t.Fatalf("a symlinked ~/.abcd.noindex must refuse the install:\n%s", r.out)
+	}
+	if _, err := os.Lstat(filepath.Join(r.binDir, "abcd")); !os.IsNotExist(err) {
+		t.Errorf("a refused install must install nothing: %v", err)
+	}
+	if calls := r.ghCalls(t); len(calls) != 0 {
+		t.Errorf("the refusal must come before anything is fetched or verified: %q", calls)
+	}
+	for _, f := range []string{"release-mark", "path-entry"} {
+		if _, err := os.Lstat(filepath.Join(elsewhere, f)); !os.IsNotExist(err) {
+			t.Errorf("%s was written through the symlink: %v", f, err)
+		}
+	}
+	for _, want := range []string{"symlink", "Nothing is installed"} {
+		if !strings.Contains(r.out, want) {
+			t.Errorf("the refusal must say %q:\n%s", want, r.out)
+		}
+	}
+}
+
+// --- the owned PATH copy's record (iss-2610240827243654) ---
+
+// TestInstallerRecordsThePathEntry: a verified install records the binary it
+// installed in ~/.abcd.noindex/path-entry, as the one-liners do — the path it
+// copied the binary to and the SHA-256 the release manifest vouched for — so
+// the hooks and ahoy recognise the copy as abcd's own, whichever form
+// installed it. A --bin-dir install records that directory's copy.
+func TestInstallerRecordsThePathEntry(t *testing.T) {
+	for _, gh := range []ghBehaviour{ghVerifies, ghAbsent} {
+		r := runInstaller(t, gh, nil)
+		if r.err != nil {
+			t.Fatalf("install failed: %v\n%s", r.err, r.out)
+		}
+		sum := sha256.Sum256(r.release)
+		raw, err := os.ReadFile(abcdhome.Path(r.home, "path-entry"))
+		if err != nil {
+			t.Fatalf("a verified install must record ~/.abcd.noindex/path-entry: %v\n%s", err, r.out)
+		}
+		want := "path=" + filepath.Join(r.binDir, "abcd") + "\nbinary_sha256=" + hex.EncodeToString(sum[:]) + "\n"
+		if string(raw) != want {
+			t.Errorf("path-entry must hold exactly the installed path and its digest:\ngot  %q\nwant %q", raw, want)
+		}
+		fi, err := os.Stat(abcdhome.Path(r.home, "path-entry"))
+		if err != nil || fi.Mode().Perm()&0o022 != 0 {
+			t.Errorf("path-entry must not be group- or world-writable, or every reader ignores it: %v %v", fi.Mode(), err)
+		}
+	}
+}
+
+// TestInstallerRecordsTheBinDirInThePathEntry: --bin-dir moves the record
+// with the binary.
+func TestInstallerRecordsTheBinDirInThePathEntry(t *testing.T) {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("the installer runs on macOS and Linux only")
+	}
+	script := filepath.Join(t.TempDir(), "install.sh")
+	tmpl, err := os.ReadFile(filepath.Join(repoRoot(), "site-src", "install.sh.tmpl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(script, renderInstallScript(tmpl, fixtureStamp), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "elsewhere")
+	r := runInstallForm(t, []string{"sh", script, "--bin-dir", dir}, ghVerifies, nil)
 	if r.err != nil {
 		t.Fatalf("install failed: %v\n%s", r.err, r.out)
 	}
-	if _, err := os.Stat(filepath.Join(elsewhere, "release-mark")); !os.IsNotExist(err) {
-		t.Errorf("the mark was written through the symlink: %v", err)
-	}
-	if !strings.Contains(r.out, "symlink") {
-		t.Errorf("the run must say the mark was not recorded because of the symlink:\n%s", r.out)
+	raw, err := os.ReadFile(abcdhome.Path(r.home, "path-entry"))
+	if err != nil || !strings.HasPrefix(string(raw), "path="+filepath.Join(dir, "abcd")+"\n") {
+		t.Errorf("a --bin-dir install must record that directory's copy; got %q (%v)\n%s", raw, err, r.out)
 	}
 }

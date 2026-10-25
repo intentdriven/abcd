@@ -64,17 +64,17 @@ func stepOf(t *testing.T, job, name string) string {
 }
 
 // TestTheReleaseIsPublishedOnlyOnceEveryAssetIsAttached: release.yml creates
-// the Release as a draft with the binaries, the archive and checksums.txt and
-// hands its numeric id to site.yml; site.yml's render attaches site.tar.gz to
-// that draft, and only then does its publish job publish the Release, before
-// the deploy moves the website. A published Release never has an asset added
+// the Release as a draft with the binaries, the archive, install.sh and
+// checksums.txt and hands its numeric id to site.yml; site.yml's render
+// attaches site.tar.gz to that draft, and only then does its publish job
+// publish the Release, before the deploy moves the website. A published Release never has an asset added
 // to it, and every read and write of the draft names it by its id.
 func TestTheReleaseIsPublishedOnlyOnceEveryAssetIsAttached(t *testing.T) {
 	release := readWorkflow(t, releaseWorkflowRel)
 	site := readWorkflow(t, siteWorkflowRel)
 
 	rel := topJob(t, release, "release")
-	if !strings.Contains(rel, `gh release create "${TAG}" bin/abcd-* bin/checksums.txt --draft `) {
+	if !strings.Contains(rel, `gh release create "${TAG}" bin/abcd-* bin/install.sh bin/checksums.txt --draft `) {
 		t.Error("release.yml must create the Release as a --draft with its built assets")
 	}
 	if strings.Contains(codeOf(release), "draft=false") {
