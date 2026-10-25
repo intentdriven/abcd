@@ -334,8 +334,11 @@ status kept apart from the grant, irreversible acts outside every level).
     asks, as Decision 12 has it for a host without hooks.
 22. **The bundle ships as one release (product thinker, 2026-10-24).** The
     bundle review proposed two releases; the product thinker kept one, so
-    every member, the phone page, sharing and the dependency lines included,
-    lands in the same cut.
+    every member, the dependency lines and the model budget included, lands
+    in the same cut. The phone page and the shared and public options are not
+    members: they were split out of the checklist on 2026-10-22 into
+    itd-2610222029228127, which the question put to the product thinker
+    wrongly counted in.
 
 ## Open Questions
 
