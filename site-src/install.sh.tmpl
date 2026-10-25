@@ -239,8 +239,23 @@ record_path_entry() {
 		die "~/.abcd.noindex/path-entry is a symlink, which abcd refuses rather than follows, so the install could not be recorded. Remove it and re-run."
 	mkdir -p -m 0700 "$HOME/.abcd.noindex" ||
 		die "cannot create ~/.abcd.noindex, so the install could not be recorded in its path-entry."
-	printf 'path=%s\nbinary_sha256=%s\n' "$1/abcd" "$2" > "$HOME/.abcd.noindex/path-entry" ||
+	# The hooks match the recorded path against `command -v abcd`, so it is
+	# the directory's physical path: a trailing slash, a `..` or a symlinked
+	# directory would otherwise record a path the hooks never see.
+	entry_dir=$(cd -P "$1" 2>/dev/null && pwd -P) ||
+		die "cannot resolve $1, so the install could not be recorded in its path-entry."
+	# Written to a private temporary file and moved into place, as the Go
+	# writer does: mode 0600 whatever the umask or an earlier record's mode,
+	# and a hook reading at the same moment sees the old record or the new
+	# one, never a truncated one. The hooks refuse a group-writable record.
+	entry_tmp=$(mktemp "$HOME/.abcd.noindex/.path-entry.XXXXXX") ||
 		die "cannot write ~/.abcd.noindex/path-entry, so the install could not be recorded."
+	if ! { printf 'path=%s\nbinary_sha256=%s\n' "$entry_dir/abcd" "$2" > "$entry_tmp" &&
+		chmod 0600 "$entry_tmp" &&
+		mv -f "$entry_tmp" "$HOME/.abcd.noindex/path-entry"; }; then
+		rm -f "$entry_tmp" 2>/dev/null || :
+		die "cannot write ~/.abcd.noindex/path-entry, so the install could not be recorded."
+	fi
 }
 
 # tag_parts prints MAJOR MINOR PATCH and a pre-release flag for a vX.Y.Z[-pre]

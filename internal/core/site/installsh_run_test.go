@@ -517,7 +517,7 @@ func TestInstallerRecordsThePathEntry(t *testing.T) {
 		if err != nil {
 			t.Fatalf("a verified install must record ~/.abcd.noindex/path-entry: %v\n%s", err, r.out)
 		}
-		want := "path=" + filepath.Join(r.binDir, "abcd") + "\nbinary_sha256=" + hex.EncodeToString(sum[:]) + "\n"
+		want := "path=" + filepath.Join(physical(t, r.binDir), "abcd") + "\nbinary_sha256=" + hex.EncodeToString(sum[:]) + "\n"
 		if string(raw) != want {
 			t.Errorf("path-entry must hold exactly the installed path and its digest:\ngot  %q\nwant %q", raw, want)
 		}
@@ -525,6 +525,72 @@ func TestInstallerRecordsThePathEntry(t *testing.T) {
 		if err != nil || fi.Mode().Perm()&0o022 != 0 {
 			t.Errorf("path-entry must not be group- or world-writable, or every reader ignores it: %v %v", fi.Mode(), err)
 		}
+	}
+}
+
+// physical resolves dir's symlinks, as the installer's `cd -P && pwd -P` does,
+// so an expectation names the path the hooks will compare (t.TempDir sits
+// under a symlinked /var on macOS).
+func physical(t *testing.T, dir string) string {
+	t.Helper()
+	p, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// renderedInstaller writes the rendered install script to a temporary file.
+func renderedInstaller(t *testing.T) string {
+	t.Helper()
+	script := filepath.Join(t.TempDir(), "install.sh")
+	tmpl, err := os.ReadFile(filepath.Join(repoRoot(), "site-src", "install.sh.tmpl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(script, renderInstallScript(tmpl, fixtureStamp), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return script
+}
+
+// TestInstallerRecordsAPrivatePathEntryUnderALooseUmask: the hooks refuse a
+// group-writable record, so the installer writes path-entry 0600 whatever the
+// umask, rather than leaving a record its own readers ignore.
+func TestInstallerRecordsAPrivatePathEntryUnderALooseUmask(t *testing.T) {
+	script := renderedInstaller(t)
+	r := runInstallForm(t, []string{"sh", "-c", `umask 002 && exec sh "$0"`, script}, ghVerifies, nil)
+	if r.err != nil {
+		t.Fatalf("install failed: %v\n%s", r.err, r.out)
+	}
+	fi, err := os.Stat(abcdhome.Path(r.home, "path-entry"))
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("path-entry must be 0600 under umask 002, or the hooks refuse it: %v %v", fi.Mode(), err)
+	}
+}
+
+// TestInstallerRecordsThePhysicalBinDir: the hooks match the recorded path
+// against `command -v abcd`, so a --bin-dir given with a trailing slash
+// through a symlinked directory is recorded as the directory's physical path.
+func TestInstallerRecordsThePhysicalBinDir(t *testing.T) {
+	script := renderedInstaller(t)
+	base := t.TempDir()
+	real := filepath.Join(base, "real")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	r := runInstallForm(t, []string{"sh", script, "--bin-dir", link + "/"}, ghVerifies, nil)
+	if r.err != nil {
+		t.Fatalf("install failed: %v\n%s", r.err, r.out)
+	}
+	raw, err := os.ReadFile(abcdhome.Path(r.home, "path-entry"))
+	want := "path=" + filepath.Join(physical(t, real), "abcd") + "\n"
+	if err != nil || !strings.HasPrefix(string(raw), want) {
+		t.Errorf("path-entry must record the physical directory; got %q, want prefix %q (%v)", raw, want, err)
 	}
 }
 
@@ -548,7 +614,7 @@ func TestInstallerRecordsTheBinDirInThePathEntry(t *testing.T) {
 		t.Fatalf("install failed: %v\n%s", r.err, r.out)
 	}
 	raw, err := os.ReadFile(abcdhome.Path(r.home, "path-entry"))
-	if err != nil || !strings.HasPrefix(string(raw), "path="+filepath.Join(dir, "abcd")+"\n") {
+	if err != nil || !strings.HasPrefix(string(raw), "path="+filepath.Join(physical(t, dir), "abcd")+"\n") {
 		t.Errorf("a --bin-dir install must record that directory's copy; got %q (%v)\n%s", raw, err, r.out)
 	}
 }
