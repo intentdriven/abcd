@@ -680,20 +680,16 @@ func pairWaiter(pid int, uid uint32, age time.Duration) ([]machineload.Proc, map
 		}
 }
 
-// TestWaitTwoWaitersThatDisagreeOpenApart: a waiter that started earlier with
-// the higher pid, as after the ids wrap, and one that started later with the
-// lower pid. Neither is ahead of the other in the queue, so both find the
-// machine free at once; what keeps them from opening in one moment is the
-// settle wait and re-check, and within one account the hold. The waiter whose
-// re-check comes first opens and runs its command; the other's re-check, at
-// that same instant or later, finds the hold (one account) or the first
-// running its command (any account), and it opens only once that command has
-// exited. The fake table shows the first as running from the instant it
-// opens, by its mark, and its command WaitOpenPause later: on a real machine
-// the mark shows a moment after, and across accounts, which share no hold, a
-// re-check falling inside that moment still opens; the open look then stands
-// the higher pid back (TestWaitOpenersInOneMomentStandBackByPid).
-func TestWaitTwoWaitersThatDisagreeOpenApart(t *testing.T) {
+// TestWaitTwoWaitersAcrossAPidWrapOpenInStartOrder: a waiter that started
+// earlier with the higher pid, as after the ids wrap, and one that started
+// later with the lower pid. The earlier start is ahead in the queue whatever
+// its pid (iss-2610222125175640), so the later one is shut from its first
+// look: on the earlier one while it is queued, then on it running its command
+// (any account) and its hold (one account), and it first finds the machine
+// free, and opens, only once that command has exited. Counting a waiter ahead
+// only with the lower pid as well, the later one found the machine free at its
+// first look and could open first.
+func TestWaitTwoWaitersAcrossAPidWrapOpenInStartOrder(t *testing.T) {
 	const (
 		early, late = 96274, 50460
 		runFor      = 5 * time.Minute
@@ -705,10 +701,8 @@ func TestWaitTwoWaitersThatDisagreeOpenApart(t *testing.T) {
 		sameAccount  bool
 		secondJitter time.Duration
 	}{
-		{"one account, the early waiter first, one instant", early, late, true, testJitter},
-		{"one account, the late waiter first, later", late, early, true, testJitter + 15*time.Second},
-		{"two accounts, the early waiter first, one instant", early, late, false, testJitter},
-		{"two accounts, the late waiter first, later", late, early, false, testJitter + 15*time.Second},
+		{"one account", early, late, true, testJitter},
+		{"two accounts", early, late, false, testJitter},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			homes := map[int]string{c.first: t.TempDir(), c.then: t.TempDir()}
@@ -802,21 +796,21 @@ func TestWaitTwoWaitersThatDisagreeOpenApart(t *testing.T) {
 			}
 
 			res, settled, at = waiter(c.then, c.secondJitter)
-			if !settled.Equal(waitT0) {
-				t.Fatalf("second waiter %d first settled at %s, want at its first look: the first waiter is not ahead of it", c.then, settled)
+			if settled.Before(opened.Add(runFor)) {
+				t.Fatalf("second waiter %d first found the machine free at %s, want not before the first's command exits at %s: the first started earlier, so it is ahead", c.then, settled, opened.Add(runFor))
 			}
-			if res.Status != WaitOpen {
-				t.Fatalf("second waiter %d: %+v, want open once the first's command exits", c.then, res)
+			if res.Status != WaitOpen || res.Backoffs != 0 {
+				t.Fatalf("second waiter %d: %+v, want open once the first's command exits, never standing back", c.then, res)
 			}
 			if at.Before(opened.Add(runFor)) {
 				t.Fatalf("second waiter %d opened at %s, while the first's command ran from %s to %s", c.then, at, opened, opened.Add(runFor))
 			}
-			want := WaitOnWaiter
+			want := []string{WaitOnWaiter}
 			if c.sameAccount {
-				want = WaitOnLock
+				want = append(want, WaitOnLock)
 			}
-			if !slices.Contains(res.WaitedOn, want) {
-				t.Fatalf("second waiter %d waited on %v, want %s among them", c.then, res.WaitedOn, want)
+			if !slices.Equal(res.WaitedOn, want) {
+				t.Fatalf("second waiter %d waited on %v, want %v: the first queued ahead from its first look", c.then, res.WaitedOn, want)
 			}
 		})
 	}
@@ -894,29 +888,56 @@ func (m *marks) mark() (func(), error) {
 	}, nil
 }
 
-// TestWaitOpenersInOneMomentStandBackByPid is the stall the review of
-// 2026-10-16 found. Two waiters whose start and pid disagree, as after the ids
-// wrap, wait on neither, and across accounts no hold keeps them apart: their
-// re-checks fall in one moment, before either shows in the table as running
-// its command, and both open. Under `--wait -- make preflight` each
-// preflight's own gate then waits on the other's running waiter, and both
-// stand until their two-hour timeouts. So the command form shows itself as
-// running from the moment it opens, waits WaitOpenPause and looks once more,
-// and the waiter with the higher pid stands back from one with the lower that
-// opened within that moment: it does not start its command, it gives up its
-// hold, re-draws its jitter and waits again, and opens once the other's
-// command has exited. The lower pid keeps going. Within one account the hold
-// already admits only one, and nothing changes.
-func TestWaitOpenersInOneMomentStandBackByPid(t *testing.T) {
+// TestWaitOpenersInOneMomentStandBack is the stall the review of 2026-10-16
+// found, with the order of iss-2610222125175640. Across accounts no hold keeps
+// two waiters apart: their re-checks can fall in one moment, before either
+// shows in the table as running its command, and both open. Under `--wait --
+// make preflight` each preflight's own gate then waits on the other's running
+// waiter, and both stand until their two-hour timeouts. So the command form
+// shows itself as running from the moment it opens, waits WaitOpenPause and
+// looks once more, and it stands back from an opener of that moment unless it
+// precedes it by start and by pid alike: it does not start its command, it
+// gives up its hold, re-draws its jitter and waits again.
+//
+// The later start stands back from the earlier whatever their pids: standing
+// the higher pid back instead held an hour-old waiter back for every young
+// low-pid starter. Two waiters of this code meet in that moment only once the
+// later has stopped counting the earlier ahead (WaitCrossedCap), and the
+// fixture's later start does so. The earlier start stands back from a lower
+// pid that opened beside it too: an older abcd (v0.15.1 and earlier) goes on
+// past every higher pid, so going on as well would run both. Within one
+// account the hold admits only one, and the earlier start opens first.
+func TestWaitOpenersInOneMomentStandBack(t *testing.T) {
 	const (
 		early, late = 96274, 50460 // early: higher pid; late: lower pid
 		runFor      = 5 * time.Minute
 	)
 	ages := map[int]time.Duration{early: 86 * time.Minute, late: 83 * time.Minute}
-	// Both re-checks fall at this instant.
-	at := waitT0.Add(testJitter)
-	cmdAt := at.Add(WaitOpenPause)
 	never := func(time.Time) bool { return false }
+	// openedAt is the other waiter as it opens at at: its mark from that
+	// instant, its command WaitOpenPause later for runFor, then gone.
+	openedAt := func(at time.Time) opener {
+		cmdAt := at.Add(WaitOpenPause)
+		return opener{
+			child: func(now time.Time) (string, time.Time, bool) {
+				if now.Before(cmdAt) {
+					return "sleep", at, now.After(at)
+				}
+				return "sh", at, true
+			},
+			gone: func(now time.Time) bool { return !now.Before(cmdAt.Add(runFor)) },
+		}
+	}
+	// standsBackAt is the other waiter as it opens at at and stands back
+	// WaitOpenPause later: its mark for that moment, then queued again.
+	standsBackAt := func(at time.Time) opener {
+		return opener{
+			child: func(now time.Time) (string, time.Time, bool) {
+				return "sleep", at, now.After(at) && !now.After(at.Add(WaitOpenPause))
+			},
+			gone: never,
+		}
+	}
 
 	run := func(t *testing.T, self, other int, home string, uids map[int]uint32, o opener) (WaitResult, *marks, []time.Time, time.Time) {
 		t.Helper()
@@ -930,9 +951,9 @@ func TestWaitOpenersInOneMomentStandBackByPid(t *testing.T) {
 		req.Timeout = 30 * time.Minute
 		req.Mark = m.mark
 		var backoffs []time.Time
-		req.OnBackoff = func(lower []int, j time.Duration) {
-			if !reflect.DeepEqual(lower, []int{other}) || j != testJitter {
-				t.Errorf("waiter %d stood back from %v, re-drawing %s; want from %d, re-drawing %s", self, lower, j, other, testJitter)
+		req.OnBackoff = func(first []int, j time.Duration) {
+			if !reflect.DeepEqual(first, []int{other}) || j != testJitter {
+				t.Errorf("waiter %d stood back from %v, re-drawing %s; want from %d, re-drawing %s", self, first, j, other, testJitter)
 			}
 			if h := readHold(t, home); h != nil && h.PID == self {
 				t.Errorf("waiter %d stood back but kept its hold %+v", self, h)
@@ -946,84 +967,259 @@ func TestWaitOpenersInOneMomentStandBackByPid(t *testing.T) {
 		return res, m, backoffs, clock.Now()
 	}
 
-	t.Run("two accounts", func(t *testing.T) {
+	t.Run("two accounts, the later start stands back from the earlier", func(t *testing.T) {
 		uids := map[int]uint32{early: 502, late: 501}
-		homes := map[int]string{early: t.TempDir(), late: t.TempDir()}
+		// The later start waits on the earlier, queued, for WaitCrossedCap,
+		// then re-checks, and the earlier opens in that same instant.
+		at := waitT0.Add(WaitCrossedCap + testJitter)
+		cmdAt := at.Add(WaitOpenPause)
+		res, m, backoffs, done := run(t, late, early, t.TempDir(), uids, openedAt(at))
+		if !reflect.DeepEqual(backoffs, []time.Time{cmdAt}) || res.Backoffs != 1 {
+			t.Fatalf("later start %d stood back at %v (%d), want once, at %s, when its look found the earlier start opened beside it", late, backoffs, res.Backoffs, cmdAt)
+		}
+		if len(m.stops) == 0 || !m.stops[0].Equal(cmdAt) {
+			t.Fatalf("later start %d stopped its marks at %v, want its first stopped as it stood back, at %s", late, m.stops, cmdAt)
+		}
+		if res.Status != WaitOpen || done.Before(cmdAt.Add(runFor)) || !slices.Contains(res.WaitedOn, WaitOnWaiter) {
+			t.Fatalf("later start %d: %+v, done at %s; want open once the earlier start's command exited at %s, having waited on it", late, res, done, cmdAt.Add(runFor))
+		}
+	})
 
-		// The lower pid, as the other's table shows the higher: its mark from
-		// the moment it opened, until it stands back.
-		res, m, backoffs, done := run(t, late, early, homes[late], uids, opener{
-			child: func(now time.Time) (string, time.Time, bool) {
-				return "sleep", at, now.After(at) && !now.After(cmdAt)
-			},
-			gone: never,
-		})
+	t.Run("two accounts, a stand-back counts the cap again", func(t *testing.T) {
+		uids := map[int]uint32{early: 502, late: 501}
+		// As above, but the earlier start stands back too, as one of this
+		// code does from a lower pid, and is queued again. The later start
+		// counts the cap afresh from its next look, so the earlier one, ahead
+		// of it, has the next moment to itself.
+		at := waitT0.Add(WaitCrossedCap + testJitter)
+		cmdAt := at.Add(WaitOpenPause)
+		res, _, backoffs, done := run(t, late, early, t.TempDir(), uids, standsBackAt(at))
+		want := cmdAt.Add(testJitter + WaitCrossedCap + testJitter + WaitOpenPause)
+		if res.Status != WaitOpen || len(backoffs) != 1 || !done.Equal(want) {
+			t.Fatalf("later start %d: %+v, stood back at %v, done at %s; want open at %s, the cap counted again from its first look after standing back", late, res, backoffs, done, want)
+		}
+	})
+
+	t.Run("two accounts, the earlier start stands back from a lower pid", func(t *testing.T) {
+		uids := map[int]uint32{early: 502, late: 501}
+		at := waitT0.Add(testJitter)
+		cmdAt := at.Add(WaitOpenPause)
+		res, m, backoffs, done := run(t, early, late, t.TempDir(), uids, openedAt(at))
+		if !reflect.DeepEqual(backoffs, []time.Time{cmdAt}) || res.Backoffs != 1 {
+			t.Fatalf("earlier start %d stood back at %v (%d), want once, at %s, when its look found the lower pid opened beside it", early, backoffs, res.Backoffs, cmdAt)
+		}
+		if len(m.stops) == 0 || !m.stops[0].Equal(cmdAt) {
+			t.Fatalf("earlier start %d stopped its marks at %v, want its first stopped as it stood back, at %s", early, m.stops, cmdAt)
+		}
+		if res.Status != WaitOpen || done.Before(cmdAt.Add(runFor)) || !slices.Contains(res.WaitedOn, WaitOnWaiter) {
+			t.Fatalf("earlier start %d: %+v, done at %s; want open once the lower pid's command exited at %s, having waited on it", early, res, done, cmdAt.Add(runFor))
+		}
+
+		// A lower pid that stands back in the same moment, as one of this
+		// code that started later does, is queued again and behind it.
+		res, _, backoffs, done = run(t, early, late, t.TempDir(), uids, standsBackAt(at))
+		if res.Status != WaitOpen || res.Backoffs != 1 || len(backoffs) != 1 || !done.Equal(cmdAt.Add(testJitter+testJitter+WaitOpenPause)) {
+			t.Fatalf("earlier start %d beside a lower pid that stood back: %+v, done at %s; want open after one stand-back, at its next re-check", early, res, done)
+		}
+	})
+
+	t.Run("an opener that precedes the other by start and pid goes on", func(t *testing.T) {
+		const first, second = 50460, 96274
+		uids := map[int]uint32{first: 501, second: 502}
+		saved := ages
+		ages = map[int]time.Duration{first: 86 * time.Minute, second: 83 * time.Minute}
+		defer func() { ages = saved }()
+		at := waitT0.Add(testJitter)
+		cmdAt := at.Add(WaitOpenPause)
+		res, m, backoffs, done := run(t, first, second, t.TempDir(), uids, standsBackAt(at))
 		if res.Status != WaitOpen || res.Backoffs != 0 || len(backoffs) != 0 || !done.Equal(cmdAt) {
-			t.Fatalf("lower pid %d: %+v, stood back at %v, done at %s; want open at %s without standing back: the other opener has the higher pid", late, res, backoffs, done, cmdAt)
+			t.Fatalf("first %d: %+v, stood back at %v, done at %s; want open at %s without standing back", first, res, backoffs, done, cmdAt)
 		}
 		if !reflect.DeepEqual(m.starts, []time.Time{at}) || len(m.stops) != 0 || res.Unmark == nil {
-			t.Fatalf("lower pid %d marked at %v and stopped at %v; want marked once it opened, at %s, and left to its caller to stop", late, m.starts, m.stops, at)
+			t.Fatalf("first %d marked at %v and stopped at %v; want marked once it opened, at %s, and left to its caller to stop", first, m.starts, m.stops, at)
 		}
 		res.Unmark()
 		if len(m.stops) != 1 {
 			t.Fatalf("the result's Unmark stopped %d marks, want 1", len(m.stops))
-		}
-
-		// The higher pid, as its table shows the lower: its mark from the
-		// moment it opened, then its command for runFor.
-		res, m, backoffs, done = run(t, early, late, homes[early], uids, opener{
-			child: func(now time.Time) (string, time.Time, bool) {
-				if now.Before(cmdAt) {
-					return "sleep", at, now.After(at)
-				}
-				return "sh", at, true
-			},
-			gone: func(now time.Time) bool { return !now.Before(cmdAt.Add(runFor)) },
-		})
-		if !reflect.DeepEqual(backoffs, []time.Time{cmdAt}) || res.Backoffs != 1 {
-			t.Fatalf("higher pid %d stood back at %v (%d), want once, at %s, when its look found the lower pid opened beside it", early, backoffs, res.Backoffs, cmdAt)
-		}
-		if len(m.stops) == 0 || !m.stops[0].Equal(cmdAt) {
-			t.Fatalf("higher pid %d stopped its marks at %v, want its first stopped as it stood back, at %s", early, m.stops, cmdAt)
-		}
-		if res.Status != WaitOpen || done.Before(cmdAt.Add(runFor)) || !slices.Contains(res.WaitedOn, WaitOnWaiter) {
-			t.Fatalf("higher pid %d: %+v, done at %s; want open once the lower pid's command exited at %s, having waited on it", early, res, done, cmdAt.Add(runFor))
 		}
 	})
 
 	t.Run("one account", func(t *testing.T) {
 		uids := map[int]uint32{early: 501, late: 501}
 		home := t.TempDir()
-		// The lower pid opens; the higher, shut by its hold, never marks.
-		res, _, backoffs, done := run(t, late, early, home, uids, opener{
+		at := waitT0.Add(testJitter)
+		cmdAt := at.Add(WaitOpenPause)
+		// The earlier start opens; the later, shut by the queue and then the
+		// hold, never marks until the earlier's command has exited.
+		res, _, backoffs, done := run(t, early, late, home, uids, opener{
 			child: func(time.Time) (string, time.Time, bool) { return "", time.Time{}, false },
 			gone:  never,
 		})
 		if res.Status != WaitOpen || res.Backoffs != 0 || len(backoffs) != 0 || !done.Equal(cmdAt) {
-			t.Fatalf("lower pid %d: %+v, stood back at %v, done at %s; want open at %s", late, res, backoffs, done, cmdAt)
+			t.Fatalf("earlier start %d: %+v, stood back at %v, done at %s; want open at %s", early, res, backoffs, done, cmdAt)
 		}
 		hold := readHold(t, home)
-		if hold == nil || hold.PID != late {
-			t.Fatalf("hold %+v, want the lower pid's", hold)
+		if hold == nil || hold.PID != early {
+			t.Fatalf("hold %+v, want the earlier start's", hold)
 		}
-		// The higher pid's re-check comes in the same moment and finds the
-		// hold, as the one account's two waiters share it.
-		res, m, backoffs, done := run(t, early, late, home, uids, opener{
-			child: func(now time.Time) (string, time.Time, bool) {
-				if now.Before(cmdAt) {
-					return "sleep", at, now.After(at)
-				}
-				return "sh", at, true
-			},
-			gone: func(now time.Time) bool { return !now.Before(cmdAt.Add(runFor)) },
-		})
+		res, m, backoffs, done := run(t, late, early, home, uids, openedAt(at))
 		if res.Status != WaitOpen || res.Backoffs != 0 || len(backoffs) != 0 || len(m.starts) != 1 {
-			t.Fatalf("higher pid %d: %+v, stood back at %v, marked at %v; want it shut by the hold, never standing back, and opening once", early, res, backoffs, m.starts)
+			t.Fatalf("later start %d: %+v, stood back at %v, marked at %v; want it shut by the queue and the hold, never standing back, and opening once", late, res, backoffs, m.starts)
 		}
-		if done.Before(cmdAt.Add(runFor)) || !slices.Contains(res.WaitedOn, WaitOnLock) {
-			t.Fatalf("higher pid %d: done at %s, waited on %v; want open after the lower pid's command, having waited on the hold", early, done, res.WaitedOn)
+		if done.Before(cmdAt.Add(runFor)) || !slices.Equal(res.WaitedOn, []string{WaitOnWaiter, WaitOnLock}) {
+			t.Fatalf("later start %d: done at %s, waited on %v; want open after the earlier start's command, having waited on it and the hold", late, done, res.WaitedOn)
 		}
 	})
+}
+
+// TestOpenLookStandsBackFromTheEarlierStart is the open look alone, on the
+// table abcd-ae read on 2026-10-22: a waiter 19 s old with pid 8034 and one
+// 71 min old with pid 58628 open in one moment. The young one stands back
+// from the old one, which started first; the old one stands back from the
+// young one too, whose lower pid an older abcd (v0.15.1 and earlier) goes on
+// past; and one that precedes the other by start and pid alike goes on.
+func TestOpenLookStandsBackFromTheEarlierStart(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		self, other int
+		ages        map[int]time.Duration
+		want        []int
+	}{
+		{"the young low pid", 8034, 58628, map[int]time.Duration{8034: 19 * time.Second, 58628: 71 * time.Minute}, []int{58628}},
+		{"the old high pid", 58628, 8034, map[int]time.Duration{8034: 19 * time.Second, 58628: 71 * time.Minute}, []int{8034}},
+		{"the old low pid", 8034, 58628, map[int]time.Duration{8034: 71 * time.Minute, 58628: 19 * time.Second}, nil},
+		{"a tie, the lower pid", 8034, 58628, map[int]time.Duration{8034: time.Minute, 58628: time.Minute + time.Second}, nil},
+		{"a tie, the higher pid", 58628, 8034, map[int]time.Duration{8034: time.Minute + time.Second, 58628: time.Minute}, []int{8034}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			clock := &fakeClock{now: waitT0}
+			uids := map[int]uint32{c.self: 501, c.other: 502}
+			req := waitReq(t.TempDir(), c.self, clock)
+			req.Read = openerRead(clock, c.self, c.other, uids, c.ages, opener{
+				child: func(time.Time) (string, time.Time, bool) { return "sleep", waitT0, true },
+				gone:  func(time.Time) bool { return false },
+			})
+			req.ReadArgs = openerArgs(uids, c.ages, c.self, c.other)
+			req.Self = machineload.Self{PID: c.self, UID: 501}
+			req.Command = true
+			got, stop := openLook(req, clock.Sleep)
+			stop()
+			if !slices.Equal(got, c.want) {
+				t.Fatalf("stands back from %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// TestWaitBreaksAMutualWaitWithAPidOrderedWaiter is the compatibility case of
+// iss-2610161634043273, which ordering by start alone meets again: an abcd
+// built before the start order (v0.15.0 and earlier, or a branch cut before
+// it) waits on every lower pid, so an hour-old one with pid 58628 waits on
+// this young waiter's pid 8034 while this one waits on it, the earlier start.
+// No back-off breaks it (WaitBackoffCap bounds only the open look, which a
+// queued wait never reaches). A waiter ahead by start with the higher pid is
+// crossed, and once crossed waiters alone have held the gate shut for
+// WaitCrossedCap this waiter stops counting them, re-checks and opens; the
+// old one then sees it running and waits. A shorter wait times out still on
+// the crossed waiter, and anything else that shuts the gate in between starts
+// the cap again.
+func TestWaitBreaksAMutualWaitWithAPidOrderedWaiter(t *testing.T) {
+	old := poll{load: 3, procs: []machineload.Proc{
+		{PID: 58627, PPID: 1, PGID: 58627, UID: 502, Age: 71 * time.Minute, Name: "go"},
+		{PID: 58628, PPID: 58627, PGID: 58627, UID: 502, Age: 71 * time.Minute, Name: "abcd"},
+	}, args: map[int][]string{
+		58627: {"run", "./cmd/abcd", "implement", "load", "--wait", "--timeout", "8h", "--", "make", "preflight"},
+		58628: {"implement", "load", "--wait", "--timeout", "8h", "--", "make", "preflight"},
+	}}
+	for _, command := range []bool{false, true} {
+		clock := &fakeClock{now: waitT0}
+		req := waitReq(t.TempDir(), 8034, clock, old)
+		req.Command = command
+		req.Timeout = time.Hour
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := waitT0.Add(WaitCrossedCap + testJitter)
+		if command {
+			want = want.Add(WaitOpenPause)
+		}
+		if res.Status != WaitOpen || res.Backoffs != 0 || !slices.Equal(res.WaitedOn, []string{WaitOnWaiter}) || !clock.Now().Equal(want) {
+			t.Fatalf("command %v: %+v, done at %s; want open at %s, after waiting on the crossed waiter for WaitCrossedCap, with no back-off", command, res, clock.Now(), want)
+		}
+	}
+
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(t.TempDir(), 8034, clock, old)
+	req.Timeout = WaitCrossedCap - time.Second
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || !slices.Equal(res.Still, []string{WaitOnWaiter}) || !slices.Equal(res.Waiters, []int{58628}) {
+		t.Fatalf("within the cap: %+v, want a timeout still on the crossed waiter 58628", res)
+	}
+
+	// The load shuts the gate at the eighth look: the cap counts from the
+	// next look on which the crossed waiter alone holds it shut.
+	busy := old
+	busy.load = 99
+	polls := []poll{old, old, old, old, old, old, old, busy, old}
+	clock = &fakeClock{now: waitT0}
+	req = waitReq(t.TempDir(), 8034, clock, polls...)
+	req.Timeout = time.Hour
+	if res, err = WaitLoad(req); err != nil {
+		t.Fatal(err)
+	}
+	restart := waitT0.Add(8 * WaitPollInterval)
+	if want := restart.Add(WaitCrossedCap + testJitter); res.Status != WaitOpen || !clock.Now().Equal(want) {
+		t.Fatalf("with the load in between: %+v, done at %s; want open at %s, the cap counted again from %s", res, clock.Now(), want, restart)
+	}
+}
+
+// TestWaitNeverJumpsACrossedWaiterThatMoves: a crossed waiter that is only
+// waiting out its settle jitter, then opens and runs its command, is waited
+// on throughout; the cap counts only while crossed waiters alone hold the gate
+// shut, and a waiter running its command ends that.
+func TestWaitNeverJumpsACrossedWaiterThatMoves(t *testing.T) {
+	const runFor = 10 * time.Minute
+	queued := poll{load: 3, procs: []machineload.Proc{
+		{PID: 58627, PPID: 1, PGID: 58627, UID: 502, Age: 71 * time.Minute, Name: "go"},
+		{PID: 58628, PPID: 58627, PGID: 58627, UID: 502, Age: 71 * time.Minute, Name: "abcd"},
+	}, args: map[int][]string{
+		58627: {"run", "./cmd/abcd", "implement", "load", "--wait", "--", "make", "preflight"},
+		58628: {"implement", "load", "--wait", "--", "make", "preflight"},
+	}}
+	running := queued
+	running.procs = append(slices.Clone(queued.procs), machineload.Proc{PID: 58629, PPID: 58628, PGID: 58627, UID: 502, Name: "sh"})
+	polls := []poll{queued, queued, queued, queued}
+	for i := 0; i < int(runFor/WaitPollInterval); i++ {
+		polls = append(polls, running)
+	}
+	polls = append(polls, poll{load: 3})
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(t.TempDir(), 8034, clock, polls...)
+	req.Timeout = time.Hour
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone := waitT0.Add(time.Duration(len(polls)-1) * WaitPollInterval)
+	if res.Status != WaitOpen || clock.Now().Before(gone) || !slices.Equal(res.WaitedOn, []string{WaitOnWaiter}) {
+		t.Fatalf("%+v, done at %s; want open only once the crossed waiter's command is gone, at %s", res, clock.Now(), gone)
+	}
+}
+
+// TestWaitCrossedCapOutlastsAQueuedStartOrderedWaiter: a waiter of this code
+// that another account's table shows queued while the machine is free to that
+// account is waiting out what that account alone sees: its own settle hold
+// (WaitSettle), the poll that follows it, its jitter and its open look. The
+// cap outlasts all of them, so a crossed waiter of this code is never jumped
+// for them.
+func TestWaitCrossedCapOutlastsAQueuedStartOrderedWaiter(t *testing.T) {
+	if longest := WaitSettle + WaitPollInterval + WaitJitterMax + WaitOpenPause; WaitCrossedCap <= longest {
+		t.Fatalf("WaitCrossedCap %s, want more than %s", WaitCrossedCap, longest)
+	}
 }
 
 // TestWaitBackoffsAreBounded: a waiter that finds another opening beside it
@@ -1153,5 +1349,220 @@ func TestWaitKeepsItsHoldUnderAnOrdinaryHome(t *testing.T) {
 	}
 	if _, err := os.Stat(abcdhome.Path(home)); err != nil {
 		t.Fatalf("no ~/.abcd.noindex under an ordinary home: %v", err)
+	}
+}
+
+// peer is another account's plain waiter in a crossed-cap fixture: queued
+// until runsFrom (zero: throughout), then running a command, and gone from
+// goneAt (zero: never). race puts it at the race gate.
+type peer struct {
+	pid      int
+	age      time.Duration
+	race     bool
+	runsFrom time.Time
+	goneAt   time.Time
+}
+
+// peerTable is the fake machine as the waiter self, started selfAge before the
+// clock's start, sees it beside peers.
+func peerTable(clock *fakeClock, self int, selfAge time.Duration, peers ...peer) (func() (machineload.Snapshot, error), func([]int) (map[int][]string, error)) {
+	_, args := pairWaiter(self, 501, selfAge)
+	for _, p := range peers {
+		args[p.pid] = []string{"implement", "load", "--wait", "--timeout", "8h"}
+		if p.race {
+			args[p.pid] = []string{"implement", "load", "--race-gate", "--timeout", "2h"}
+		}
+	}
+	read := func() (machineload.Snapshot, error) {
+		now := clock.Now()
+		procs, _ := pairWaiter(self, 501, selfAge)
+		procs = append([]machineload.Proc{{PID: 1, PPID: 0, PGID: 1, UID: 0, Age: 50 * time.Hour, Name: "launchd"}}, procs...)
+		var running []int
+		for _, p := range peers {
+			if !p.goneAt.IsZero() && !now.Before(p.goneAt) {
+				continue
+			}
+			procs = append(procs, machineload.Proc{PID: p.pid, PPID: 1, PGID: p.pid, UID: 502, Age: p.age, Name: "abcd"})
+			if !p.runsFrom.IsZero() && !now.Before(p.runsFrom) {
+				running = append(running, p.pid)
+			}
+		}
+		for j := range procs {
+			procs[j].Age += now.Sub(waitT0)
+		}
+		for _, pid := range running {
+			for _, p := range peers {
+				if p.pid == pid {
+					procs = append(procs, machineload.Proc{PID: pid + 1, PPID: pid, PGID: pid, UID: 502, Age: now.Sub(p.runsFrom), Name: "sh"})
+				}
+			}
+		}
+		return machineload.Snapshot{Load1: 3, HasLoad: true, Cores: 16, Procs: procs, HasProcs: true}, nil
+	}
+	readArgs := func(pids []int) (map[int][]string, error) {
+		out := map[int][]string{}
+		for _, p := range pids {
+			if a, ok := args[p]; ok {
+				out[p] = a
+			}
+		}
+		return out, nil
+	}
+	return read, readArgs
+}
+
+// peerWait runs a plain wait for self against peers on a clock starting at
+// from, with a fixed jitter.
+func peerWait(t *testing.T, self int, selfAge time.Duration, from time.Time, jitter time.Duration, race bool, peers ...peer) (WaitResult, time.Time) {
+	t.Helper()
+	clock := &fakeClock{now: from}
+	req := waitReq(t.TempDir(), self, clock)
+	req.Read, req.ReadArgs = peerTable(clock, self, selfAge, peers...)
+	req.Self = machineload.Self{PID: self, UID: 501}
+	req.Timeout = 30 * time.Minute
+	req.Jitter = func() time.Duration { return jitter }
+	if race {
+		req.Race, req.Getenv = true, slotsEnv("2")
+	}
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res, clock.Now()
+}
+
+// TestWaitStaggersTheCrossedCapByPlaceInTheQueue: after a wrap the table
+// holds A, a pid-ordered waiter (v0.15.0) with pid 73003 started 70 min ago,
+// and two waiters of this code, B1 with pid 58628 started 60 min ago and B2
+// with pid 8034 started 1 min ago. A waits on both lower pids, and both count
+// A ahead, crossed; B2 counts B1 ahead, crossed too. Once the preflight that
+// held them all shut ends, at the clocks' start, both stop counting crossed
+// waiters after a while. With one cap for both, B2, whose looks may fall up to
+// a poll before B1's and whose jitter may be the shortest while B1's is the
+// longest, re-checked first and overtook B1 (the plain form takes no last
+// look). The cap grows with the number of crossed waiters ahead
+// (crossedCapFor), so B2 stops counting B1 only after B1 has opened and shows
+// running, and waits for it.
+func TestWaitStaggersTheCrossedCapByPlaceInTheQueue(t *testing.T) {
+	const runFor = 10 * time.Minute
+	a := peer{pid: 73003, age: 70 * time.Minute}
+	res, opened := peerWait(t, 58628, 60*time.Minute, waitT0.Add(WaitPollInterval-time.Second), WaitJitterMax, false,
+		a, peer{pid: 8034, age: time.Minute})
+	if res.Status != WaitOpen {
+		t.Fatalf("B1: %+v, want open once A alone has held it shut past its cap", res)
+	}
+	res, done := peerWait(t, 8034, time.Minute, waitT0, WaitJitterMin, false,
+		a, peer{pid: 58628, age: 60 * time.Minute, runsFrom: opened, goneAt: opened.Add(runFor)})
+	if res.Status != WaitOpen || done.Before(opened.Add(runFor)) {
+		t.Fatalf("B2: %+v, done at %s; want open only once B1, which opened at %s, has run its command until %s", res, done, opened, opened.Add(runFor))
+	}
+}
+
+// TestWaitCrossedCapCountsOnlyWhileCrossedWaitersAloneShut: at either gate a
+// crossed waiter A (started earlier, higher pid) beside a queued waiter N
+// that started earlier with the lower pid, which this one waits on whatever
+// the cap. The cap counts only from the look after N has left, and the wait
+// opens WaitCrossedCap and a jitter after that. With A alone the cap counts
+// from the first look, at the race gate as at the first gate.
+func TestWaitCrossedCapCountsOnlyWhileCrossedWaitersAloneShut(t *testing.T) {
+	nGone := waitT0.Add(8 * WaitPollInterval)
+	for _, race := range []bool{false, true} {
+		a := peer{pid: 73003, age: 70 * time.Minute, race: race}
+		n := peer{pid: 5000, age: 30 * time.Minute, race: race, goneAt: nGone}
+		res, done := peerWait(t, 8034, time.Minute, waitT0, testJitter, race, a, n)
+		if want := nGone.Add(WaitCrossedCap + testJitter); res.Status != WaitOpen || !done.Equal(want) {
+			t.Fatalf("race gate %v, with N: %+v, done at %s; want open at %s, the cap counted from N's leaving at %s", race, res, done, want, nGone)
+		}
+		res, done = peerWait(t, 8034, time.Minute, waitT0, testJitter, race, a)
+		if want := waitT0.Add(WaitCrossedCap + testJitter); res.Status != WaitOpen || !done.Equal(want) || !slices.Equal(res.WaitedOn, []string{WaitOnWaiter}) {
+			t.Fatalf("race gate %v, A alone: %+v, done at %s; want open at %s, past the cap on the crossed waiter", race, res, done, want)
+		}
+	}
+}
+
+// TestWaitCrossedCapStagger: each crossed waiter more ahead adds a step longer
+// than one waiter's open can take as another waiter sees it: a look up to a
+// poll later, the longest jitter, the open look, and another poll for the two
+// waiters' looks falling up to one apart, less the shortest jitter the later
+// waiter's re-check waits.
+func TestWaitCrossedCapStagger(t *testing.T) {
+	step := crossedCapFor(2) - crossedCapFor(1)
+	if crossedCapFor(1) != WaitCrossedCap || crossedCapFor(0) != WaitCrossedCap {
+		t.Fatalf("crossedCapFor(1) = %s, crossedCapFor(0) = %s; want WaitCrossedCap, %s", crossedCapFor(1), crossedCapFor(0), WaitCrossedCap)
+	}
+	if need := 2*WaitPollInterval + WaitJitterMax + WaitOpenPause - WaitJitterMin; step <= need {
+		t.Fatalf("stagger step %s, want more than %s", step, need)
+	}
+}
+
+// TestWaitCrossedCountStartsAgainWhenOneLeaves: as in the stagger scenario,
+// but A exits part-way through the count, at 4m30. B1 then has nothing ahead
+// and opens after its jitter, while B2 still counts B1 crossed, now one where
+// it counted two. Kept against the smaller cap, B2's count, begun at the
+// clocks' start, ran out at once and B2 opened before B1. A crossed waiter
+// leaving starts the count again, so B2 waits for B1.
+func TestWaitCrossedCountStartsAgainWhenOneLeaves(t *testing.T) {
+	const runFor = 10 * time.Minute
+	a := peer{pid: 73003, age: 70 * time.Minute, goneAt: waitT0.Add(4*time.Minute + 30*time.Second)}
+	res, opened := peerWait(t, 58628, 60*time.Minute, waitT0.Add(5*time.Second), WaitJitterMax, false,
+		a, peer{pid: 8034, age: time.Minute})
+	if res.Status != WaitOpen {
+		t.Fatalf("B1: %+v, want open once A has gone", res)
+	}
+	res, done := peerWait(t, 8034, time.Minute, waitT0, WaitJitterMin, false,
+		a, peer{pid: 58628, age: 60 * time.Minute, runsFrom: opened, goneAt: opened.Add(runFor)})
+	if res.Status != WaitOpen || done.Before(opened.Add(runFor)) {
+		t.Fatalf("B2: %+v, done at %s; want open only once B1, which opened at %s, has run its command until %s", res, done, opened, opened.Add(runFor))
+	}
+}
+
+// wholeSeconds wraps read as macOS reads the table: every age in whole
+// seconds, and each look taking 0.3 s on clock, so the fractional part of a
+// start rotates through every phase from one look to the next.
+func wholeSeconds(clock *fakeClock, read func() (machineload.Snapshot, error)) func() (machineload.Snapshot, error) {
+	return func() (machineload.Snapshot, error) {
+		s, err := read()
+		for i := range s.Procs {
+			s.Procs[i].Age = s.Procs[i].Age.Truncate(time.Second)
+		}
+		clock.Sleep(300 * time.Millisecond)
+		return s, err
+	}
+}
+
+// TestWaitTieEdgeFlickerKeepsTheCrossedCount: after a wrap the table holds A,
+// a pid-ordered waiter (v0.15.0) with pid 73003 started 70 min ago, and two of
+// this code, X with pid 60000 and B with pid 8034, X started 2.5 s before B.
+// Read in whole seconds, the gap between them is 2 s at some looks (a tie, so
+// B, the lower pid, is ahead of X) and 3 s at others (X ahead of B, crossed),
+// so B counts one crossed waiter at some looks and two at others. Starting
+// the count again whenever that number fell kept B from ever reaching its cap,
+// and A's wait on B's lower pid held both until their timeouts. X, still
+// queued, has not left: B's count runs on, B opens, and X, which waits on B at
+// every look where the two tie, opens once B's command has run.
+func TestWaitTieEdgeFlickerKeepsTheCrossedCount(t *testing.T) {
+	const runFor = 10 * time.Minute
+	a := peer{pid: 73003, age: 70 * time.Minute}
+	run := func(self int, selfAge time.Duration, peers ...peer) (WaitResult, time.Time) {
+		t.Helper()
+		clock := &fakeClock{now: waitT0}
+		req := waitReq(t.TempDir(), self, clock)
+		read, args := peerTable(clock, self, selfAge, peers...)
+		req.Read, req.ReadArgs = wholeSeconds(clock, read), args
+		req.Self = machineload.Self{PID: self, UID: 501}
+		req.Timeout = time.Hour
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res, clock.Now()
+	}
+	res, opened := run(8034, time.Minute, a, peer{pid: 60000, age: time.Minute + 2500*time.Millisecond})
+	if res.Status != WaitOpen || opened.After(waitT0.Add(crossedCapFor(2)+2*time.Minute)) {
+		t.Fatalf("B: %+v, done at %s; want open within a couple of minutes of its cap, the flickering X still queued", res, opened)
+	}
+	res, done := run(60000, time.Minute+2500*time.Millisecond, a, peer{pid: 8034, age: time.Minute, runsFrom: opened, goneAt: opened.Add(runFor)})
+	if res.Status != WaitOpen || done.Before(opened.Add(runFor)) {
+		t.Fatalf("X: %+v, done at %s; want open only once B, which opened at %s, has run its command until %s", res, done, opened, opened.Add(runFor))
 	}
 }

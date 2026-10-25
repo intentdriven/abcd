@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/rulesets/reservations-protection.json"
 remedy: "Decide with itd-118: a sweep of tombstoned reservation branches older than N days through a ruleset bypass for one named automation, or the ruleset amended to allow deleting a tombstoned tip."
+resolution: "abcd reserve --sweep judges each reservation branch and, under the reservation-sweep workflow's App token, deletes the spent ones leased on their judged tip; the ruleset mirror names that App as its only bypass (adr-2610161940004937)"
+impact: additive
 ---
 
 The reservations ruleset forbids deleting refs/heads/abcd-reserved/** with no bypass, so every spent reservation branch stays on the forge forever, counting against its per-repository branch limits and against the intent's 'needs occasional clean-up' (decision 10 of itd-2609091034175565); the rulesets README notes the itd-118 sweep needs the ruleset amended first.
