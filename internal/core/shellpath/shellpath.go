@@ -147,14 +147,14 @@ func ExportLine(home, dir string) string {
 	return `export PATH="` + shellDir(home, dir) + `:$PATH"`
 }
 
-// MarkedLine is ExportLine with Marker, the one line abcd adds.
-func MarkedLine(home, dir string) string {
+// markedLine is ExportLine with Marker, the one line abcd adds.
+func markedLine(home, dir string) string {
 	return ExportLine(home, dir) + " " + Marker
 }
 
-// ChecklistLine is the line the checklist names when the person declines, or
+// checklistLine is the line the checklist names when the person declines, or
 // abcd will not edit the file: the export line, for the person to add.
-func ChecklistLine(home, dir string) string { return ExportLine(home, dir) }
+func checklistLine(home, dir string) string { return ExportLine(home, dir) }
 
 // shellDir renders dir for a double-quoted shell string.
 func shellDir(home, dir string) string {
@@ -174,7 +174,7 @@ const unsafeInQuotes = "\"$`\\\n"
 // startup file the person's login shell reads, and which file and line that
 // is. It never writes.
 func PlanFor(env Env, dir string) Plan {
-	p := Plan{dir: dir, Line: MarkedLine(env.Home, dir), Export: ExportLine(env.Home, dir)}
+	p := Plan{dir: dir, Line: markedLine(env.Home, dir), Export: ExportLine(env.Home, dir)}
 	if onPath(env.Path, dir) {
 		p.State = OnPath
 		return p
@@ -309,7 +309,7 @@ func readFollowing(path string) ([]byte, bool) {
 }
 
 // addsDir reports whether raw already puts dir on the PATH: abcd's own marked
-// line for dir (MarkedLine, exactly), or an uncommented line that names the
+// line for dir (markedLine, exactly), or an uncommented line that names the
 // PATH and the folder in any of the spellings a person writes it in. The
 // check is textual and conservative: it can mistake a line for one that adds
 // the folder, which costs the offer, never a second line.
@@ -320,7 +320,7 @@ func addsDir(raw []byte, home, dir string) bool {
 		rel = filepath.ToSlash(rel)
 		forms = append(forms, "$HOME/"+rel, "${HOME}/"+rel, "~/"+rel)
 	}
-	marked := MarkedLine(home, dir)
+	marked := markedLine(home, dir)
 	for _, ln := range strings.Split(string(raw), "\n") {
 		t := strings.TrimSpace(ln)
 		if t == "" || strings.HasPrefix(t, "#") {
@@ -570,7 +570,7 @@ func Remove(env Env, dir string) (Removed, error) {
 		if dir == "" || env.Home == "" {
 			return Removed{Note: "abcd added no line to a shell settings file"}, nil
 		}
-		line := MarkedLine(env.Home, dir)
+		line := markedLine(env.Home, dir)
 		for _, shell := range []string{"zsh", "bash"} {
 			_, read, _ := files(env, shell)
 			for _, f := range read {

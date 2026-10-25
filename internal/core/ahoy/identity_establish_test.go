@@ -268,7 +268,7 @@ func TestStepIdentityRecord_RefusesAToolIdentity(t *testing.T) {
 	dir := idGitRepo(t, "Claude", "noreply@anthropic.com")
 	a := establishCtx(dir, &identityPrompter{terminal: true, answer: true}, UnrecordedGapID)
 	a.stepIdentityRecord()
-	if _, _, ok, _ := identity.LoadRecord(os.Getenv("HOME"), ""); ok {
+	if _, _, ok, _ := identity.LoadRecordForTest(os.Getenv("HOME"), ""); ok {
 		t.Fatal("a tool identity was recorded as the person")
 	}
 	if len(a.notes) == 0 {

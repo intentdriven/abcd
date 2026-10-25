@@ -149,7 +149,7 @@ func TestCheck_RepoRecordOutranksTheMachineRecord(t *testing.T) {
 	runGitT(t, dir, "commit", "--allow-empty", "-m", "root", "--no-verify")
 	sha := gittest.RootCommit(t, dir)
 	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
-	ref, err := RepoRecordRef(sha)
+	ref, err := repoRecordRef(sha)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,9 +286,9 @@ func TestWriteRecord_RoundTrip(t *testing.T) {
 	if err := WriteRecord(home, MachineRecordRef(), want); err != nil {
 		t.Fatal(err)
 	}
-	got, ref, ok, err := LoadRecord(home, "")
+	got, ref, ok, err := loadRecord(home, "")
 	if err != nil || !ok {
-		t.Fatalf("LoadRecord after WriteRecord: ok=%v err=%v", ok, err)
+		t.Fatalf("loadRecord after WriteRecord: ok=%v err=%v", ok, err)
 	}
 	if got != want || ref != MachineRecordRef() {
 		t.Fatalf("round-trip mismatch: got %+v at %+v, want %+v", got, ref, want)
@@ -304,7 +304,7 @@ func TestWriteRecord_RoundTrip(t *testing.T) {
 
 func TestWriteRecord_RepoScope(t *testing.T) {
 	home := recordHome(t)
-	ref, err := RepoRecordRef(strings.Repeat("ab", 20))
+	ref, err := repoRecordRef(strings.Repeat("ab", 20))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,11 +312,11 @@ func TestWriteRecord_RepoScope(t *testing.T) {
 	if err := WriteRecord(home, ref, want); err != nil {
 		t.Fatal(err)
 	}
-	got, at, ok, err := LoadRecord(home, strings.Repeat("ab", 20))
+	got, at, ok, err := loadRecord(home, strings.Repeat("ab", 20))
 	if err != nil || !ok || got != want || at != ref {
 		t.Fatalf("got %+v at %+v ok=%v err=%v", got, at, ok, err)
 	}
-	if _, err := RepoRecordRef("../../etc"); err == nil {
+	if _, err := repoRecordRef("../../etc"); err == nil {
 		t.Fatal("a root name that is not an object name must be refused")
 	}
 }
@@ -364,7 +364,7 @@ func TestWriteRecord_LegalIdentitiesRoundTrip(t *testing.T) {
 		if err := WriteRecord(home, MachineRecordRef(), want); err != nil {
 			t.Fatalf("legal identity %+v must write: %v", want, err)
 		}
-		got, _, ok, err := LoadRecord(home, "")
+		got, _, ok, err := loadRecord(home, "")
 		if err != nil || !ok || got != want {
 			t.Fatalf("round-trip %+v: got %+v ok=%v err=%v", want, got, ok, err)
 		}

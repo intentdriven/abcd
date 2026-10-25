@@ -210,7 +210,7 @@ func TestInstallRecordsTheIdentityAtATerminal(t *testing.T) {
 	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, ok, _ := identity.LoadRecord(home, ""); ok {
+	if _, _, ok, _ := identity.LoadRecordForTest(home, ""); ok {
 		t.Fatal("precondition: --yes must not record the current identity")
 	}
 	det, err := Detect(repo)
@@ -227,7 +227,7 @@ func TestInstallRecordsTheIdentityAtATerminal(t *testing.T) {
 	if _, err := Install(repo, InstallOptions{}, &recordingPrompter{confirm: true, terminal: true}); err != nil {
 		t.Fatal(err)
 	}
-	got, _, ok, err := identity.LoadRecord(home, "")
+	got, _, ok, err := identity.LoadRecordForTest(home, "")
 	if err != nil || !ok {
 		t.Fatalf("an install at a terminal did not record the identity: ok=%v err=%v", ok, err)
 	}

@@ -135,7 +135,7 @@ func TestStepIdentityRecord_RecordsOnYesAtATerminal(t *testing.T) {
 	if len(p.asked) != 1 || !strings.Contains(p.asked[0], "Alex Reppel <alex@example.com>") {
 		t.Fatalf("want one question proposing the usual identity, got %q", p.asked)
 	}
-	got, _, ok, err := identity.LoadRecord(os.Getenv("HOME"), "")
+	got, _, ok, err := identity.LoadRecordForTest(os.Getenv("HOME"), "")
 	if err != nil || !ok || got.Name != "Alex Reppel" || got.Email != "alex@example.com" {
 		t.Fatalf("record not written: %+v ok=%v err=%v", got, ok, err)
 	}
@@ -163,7 +163,7 @@ func TestStepIdentityRecord_WritesNothingOffATerminalUnderYesOrOnNo(t *testing.T
 			p := &identityPrompter{terminal: true, answer: true}
 			ctx := a(dir, p)
 			ctx.stepIdentityRecord()
-			if _, _, ok, _ := identity.LoadRecord(os.Getenv("HOME"), ""); ok {
+			if _, _, ok, _ := identity.LoadRecordForTest(os.Getenv("HOME"), ""); ok {
 				t.Fatal("a record was written without a yes at a terminal")
 			}
 			if name != "declined" && len(p.asked) != 0 {

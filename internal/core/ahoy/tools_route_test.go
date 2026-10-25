@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
@@ -332,11 +333,11 @@ func TestUninstallRemovesTheToolCopiesAbcdRecorded(t *testing.T) {
 		}
 	}
 	sum := sha256.Sum256([]byte("program"))
-	if err := os.MkdirAll(filepath.Join(home, ".abcd.noindex"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	rec := `{"schema_version":1,"tools":{"gitleaks":{"path":"` + ours + `","sha256":"` + hex.EncodeToString(sum[:]) + `","version":"8.30.1"}}}`
-	if err := os.WriteFile(filepath.Join(home, ".abcd.noindex", "tools.json"), []byte(rec), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "tools.json"), []byte(rec), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	receipt, err := Uninstall(t.TempDir(), "")

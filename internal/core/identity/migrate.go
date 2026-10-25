@@ -34,12 +34,12 @@ type LegacyPin struct {
 	Unknown []string
 }
 
-// LoadLegacyPin reads the committed pin at root through the guarded reader
+// loadLegacyPin reads the committed pin at root through the guarded reader
 // (fsutil.ReadGuardedInRoot): resolved inside an os.Root at the working tree,
 // a symlinked pin refused rather than followed, only a regular file accepted,
 // and capped at 64 KiB. found is false when the repository has none; a pin
 // that is there and refused is an error.
-func LoadLegacyPin(root string) (LegacyPin, bool, error) {
+func loadLegacyPin(root string) (LegacyPin, bool, error) {
 	osRoot, err := os.OpenRoot(root)
 	if err != nil {
 		return LegacyPin{}, false, err
@@ -111,7 +111,7 @@ type MigrationPlan struct {
 // would do for the person whose home directory is home. found is false when the
 // repository stores no pin.
 func PlanMigration(root, home string) (MigrationPlan, bool, error) {
-	pin, found, err := LoadLegacyPin(root)
+	pin, found, err := loadLegacyPin(root)
 	if err != nil || !found {
 		return MigrationPlan{}, found, err
 	}
@@ -140,11 +140,11 @@ func PlanMigration(root, home string) (MigrationPlan, bool, error) {
 		return MigrationPlan{}, true, err
 	}
 	plan.Target = MachineRecordRef()
-	if ref, err := RepoRecordRef(rootSHA); err == nil {
+	if ref, err := repoRecordRef(rootSHA); err == nil {
 		plan.Target = ref
 	}
 	if plan.Owner {
-		plan.Existing, plan.ExistingFound, err = ReadRecordAt(home, plan.Target)
+		plan.Existing, plan.ExistingFound, err = readRecord(home, plan.Target)
 		if err != nil {
 			return MigrationPlan{}, true, err
 		}

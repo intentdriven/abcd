@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/sigstore/sigstore-go/pkg/root"
 )
 
@@ -601,7 +602,7 @@ func TestUninstallRemovesOnlyAbcdsIntactCopies(t *testing.T) {
 	if !strings.Contains(string(b), "removed abcd's copy") || !strings.Contains(string(b), "changed since abcd installed it") {
 		t.Fatalf("removals = %s", b)
 	}
-	if exists(filepath.Join(r.home, ".abcd.noindex", "tools.json")) {
+	if exists(abcdhome.Path(r.home, "tools.json")) {
 		t.Fatal("the record outlived the copies")
 	}
 }

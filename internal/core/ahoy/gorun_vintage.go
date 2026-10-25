@@ -42,7 +42,7 @@ func goRunOfCheckout(cwd string) bool {
 // checkoutModule is the module path the go.mod at the top of the checkout
 // holding cwd declares, or "" when there is none.
 func checkoutModule(cwd string) string {
-	top, err := gitutil.Run(cwd, "rev-parse", "--show-toplevel")
+	top, err := gitutil.Toplevel(cwd)
 	if err != nil || top == "" {
 		return ""
 	}

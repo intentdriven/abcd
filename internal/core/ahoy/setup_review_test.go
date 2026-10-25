@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/shellpath"
 	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -102,12 +103,12 @@ func TestAFailedAbcdDownloadIsANeedsYouStep(t *testing.T) {
 func TestAFailedShellEditIsANeedsYouStep(t *testing.T) {
 	prev := shellApply
 	shellApply = func(shellpath.Env, shellpath.Plan) (shellpath.Applied, error) {
-		return shellpath.Applied{}, &shellpath.RestoreError{File: "~/.zshrc", Backup: "~/.abcd.noindex/backups/shell-zshrc.20261024T000000Z", Cause: "disk full"}
+		return shellpath.Applied{}, &shellpath.RestoreError{File: "~/.zshrc", Backup: abcdhome.Display("backups", "shell-zshrc.20261024T000000Z"), Cause: "disk full"}
 	}
 	t.Cleanup(func() { shellApply = prev })
 	_, res, _ := shellPathRun(t, true, true, interactiveOpts())
 	needs := needsJoined(res.Report)
-	if !strings.Contains(needs, "~/.abcd.noindex/backups/shell-zshrc.20261024T000000Z") || !strings.Contains(needs, "~/.zshrc") {
+	if !strings.Contains(needs, abcdhome.Display("backups", "shell-zshrc.20261024T000000Z")) || !strings.Contains(needs, "~/.zshrc") {
 		t.Fatalf("the failed edit is not a needs-you step with the copy to put back:\n%s\nnotes %q", needs, res.Notes)
 	}
 }

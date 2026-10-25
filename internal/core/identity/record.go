@@ -68,10 +68,10 @@ func MachineRecordRef() RecordRef {
 	return RecordRef{Scope: ScopeMachine, Rel: abcdhome.Rel(machineRecordLeaf), Display: abcdhome.Display(machineRecordLeaf)}
 }
 
-// RepoRecordRef is the record for the repository whose root commit is rootSHA.
+// repoRecordRef is the record for the repository whose root commit is rootSHA.
 // The name must be a full object name (40 or 64 lowercase hex digits): it
 // becomes a file name, so nothing else is accepted.
-func RepoRecordRef(rootSHA string) (RecordRef, error) {
+func repoRecordRef(rootSHA string) (RecordRef, error) {
 	if !validRootSHA(rootSHA) {
 		return RecordRef{}, fmt.Errorf("%q is not a full root-commit object name", rootSHA)
 	}
@@ -79,11 +79,11 @@ func RepoRecordRef(rootSHA string) (RecordRef, error) {
 	return RecordRef{Scope: ScopeRepository, Rel: abcdhome.Rel(repoRecordDir, leaf), Display: abcdhome.Display(repoRecordDir, leaf)}, nil
 }
 
-// RecordRefs is the lookup order for a repository: its own record, when the
+// recordRefs is the lookup order for a repository: its own record, when the
 // repository has a root commit, then the machine-wide default.
-func RecordRefs(rootSHA string) []RecordRef {
+func recordRefs(rootSHA string) []RecordRef {
 	var refs []RecordRef
-	if ref, err := RepoRecordRef(rootSHA); err == nil {
+	if ref, err := repoRecordRef(rootSHA); err == nil {
 		refs = append(refs, ref)
 	}
 	return append(refs, MachineRecordRef())
@@ -105,7 +105,7 @@ func validRootSHA(s string) bool {
 // read: the gate fails closed on it, exactly as the shell guard does.
 var ErrRecordRefused = errors.New("identity record refused")
 
-// LoadRecord returns the record that applies to the repository whose root
+// loadRecord returns the record that applies to the repository whose root
 // commit is rootSHA ("" for a repository with no commit yet), for the person
 // whose home directory is home: the repository's own record, else the
 // machine-wide default. found is false when neither exists.
@@ -117,11 +117,11 @@ var ErrRecordRefused = errors.New("identity record refused")
 // guard, or does not parse, or lacks a field, is an error wrapping
 // ErrRecordRefused, never a fall-through to the next file: a record the gate
 // cannot read must not read as no record.
-func LoadRecord(home, rootSHA string) (rec Record, ref RecordRef, found bool, err error) {
+func loadRecord(home, rootSHA string) (rec Record, ref RecordRef, found bool, err error) {
 	if home == "" {
 		return Record{}, RecordRef{}, false, nil
 	}
-	for _, ref := range RecordRefs(rootSHA) {
+	for _, ref := range recordRefs(rootSHA) {
 		rec, ok, err := readRecord(home, ref)
 		if err != nil {
 			return Record{}, ref, false, err
@@ -133,11 +133,14 @@ func LoadRecord(home, rootSHA string) (rec Record, ref RecordRef, found bool, er
 	return Record{}, RecordRef{}, false, nil
 }
 
-// ReadRecordAt reads the one record ref names, with LoadRecord's guards.
-func ReadRecordAt(home string, ref RecordRef) (Record, bool, error) {
-	return readRecord(home, ref)
+// LoadRecordForTest is loadRecord for another package's tests, which read
+// back the record a verb wrote; no production code outside this package reads
+// the record by hand.
+func LoadRecordForTest(home, rootSHA string) (Record, RecordRef, bool, error) {
+	return loadRecord(home, rootSHA)
 }
 
+// readRecord reads the one record ref names, with loadRecord's guards.
 func readRecord(home string, ref RecordRef) (Record, bool, error) {
 	data, refusal, err := fsutil.ReadHomeDeclaration(home, ref.Rel, recordLimit)
 	switch refusal {
@@ -213,8 +216,8 @@ func marshalRecord(r Record) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// UserHome is the person's home directory, or "" when it cannot be resolved.
-func UserHome() string {
+// userHome is the person's home directory, or "" when it cannot be resolved.
+func userHome() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""

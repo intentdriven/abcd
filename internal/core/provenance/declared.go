@@ -59,7 +59,7 @@ func DeclaredMode(root string) (Mode, error) {
 	if err := json.Unmarshal(data, &f); err != nil {
 		return "", fmt.Errorf("malformed %s: %w", LegacyPinRelPath, err)
 	}
-	m, err = ModeOrDefault(strings.TrimSpace(f.ProductionMode))
+	m, err = modeOrDefault(strings.TrimSpace(f.ProductionMode))
 	if err != nil {
 		return "", fmt.Errorf("malformed %s: %w", LegacyPinRelPath, err)
 	}

@@ -239,16 +239,16 @@ func commitConfigEnv() []string {
 // record for the repository at root (from the home directory os.UserHomeDir
 // names), and compares them.
 func Check(root string) (Result, error) {
-	return CheckWithHome(root, UserHome())
+	return checkWithHome(root, userHome())
 }
 
-// CheckWithHome is Check for the person whose home directory is home.
-func CheckWithHome(root, home string) (Result, error) {
+// checkWithHome is Check for the person whose home directory is home.
+func checkWithHome(root, home string) (Result, error) {
 	rootSHA, err := gitutil.RootCommit(root)
 	if err != nil {
 		return Result{}, err
 	}
-	rec, ref, recorded, err := LoadRecord(home, rootSHA)
+	rec, ref, recorded, err := loadRecord(home, rootSHA)
 	if err != nil {
 		return Result{}, err
 	}

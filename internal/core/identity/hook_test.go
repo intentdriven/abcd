@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -110,7 +111,7 @@ func TestPreCommitHook_IdentityGate(t *testing.T) {
 	}{
 		{name: "no record passes a human", gitName: "Whoever", gitEmail: "who@ever.com"},
 		{name: "match passes", record: `{"name":"Alex","email":"a@b.com"}`, gitName: "Alex", gitEmail: "a@b.com"},
-		{name: "mismatch blocks, naming the record and how to change it", record: `{"name":"Alex","email":"a@b.com"}`, gitName: "Alex", gitEmail: "typo@b.com", wantBlock: true, wantSay: "~/.abcd.noindex/identity.json, or remove it"},
+		{name: "mismatch blocks, naming the record and how to change it", record: `{"name":"Alex","email":"a@b.com"}`, gitName: "Alex", gitEmail: "typo@b.com", wantBlock: true, wantSay: abcdhome.Display("identity.json") + ", or remove it"},
 		{name: "pretty-printed match passes", record: "{\n  \"name\": \"Alex\",\n  \"email\": \"a@b.com\"\n}\n", gitName: "Alex", gitEmail: "a@b.com"},
 		{name: "non-canonical key blocks (fail closed)", record: `{"NAME":"Alex","email":"a@b.com"}`, gitName: "Alex", gitEmail: "a@b.com", wantBlock: true},
 		{name: "empty value blocks (fail closed)", record: `{"name":"","email":""}`, gitName: "Alex", gitEmail: "a@b.com", wantBlock: true},
@@ -192,7 +193,7 @@ func TestPreCommitHook_RefusesAnUntrustedRecord(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(real, "identity.json"), []byte(rec), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink(real, filepath.Join(home, ".abcd.noindex")); err != nil {
+			if err := os.Symlink(real, abcdhome.Path(home)); err != nil {
 				t.Fatal(err)
 			}
 		}, wantBlock: true},
@@ -201,7 +202,7 @@ func TestPreCommitHook_RefusesAnUntrustedRecord(t *testing.T) {
 			if err := os.MkdirAll(real, 0o700); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Symlink(real, filepath.Join(home, ".abcd.noindex")); err != nil {
+			if err := os.Symlink(real, abcdhome.Path(home)); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -240,7 +241,7 @@ func TestPreCommitHook_RepoRecordOutranksTheMachineRecord(t *testing.T) {
 			hookGit(t, dir, env, "commit", "--no-verify", "-m", "root")
 			sha := gittest.RootCommit(t, dir)
 			writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
-			ref, err := RepoRecordRef(sha)
+			ref, err := repoRecordRef(sha)
 			if err != nil {
 				t.Fatal(err)
 			}

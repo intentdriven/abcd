@@ -57,7 +57,7 @@ func TestOfferAddsOneLineAndRemoveTakesOnlyIt(t *testing.T) {
 	if p.State != Offer || p.File != rc || p.Line != wantLine || p.Create {
 		t.Fatalf("plan = %+v, want an offer to add %q to %s", p, wantLine, rc)
 	}
-	if p.Export != `export PATH="$HOME/.local/bin:$PATH"` || ChecklistLine(e.Home, dir) != p.Export {
+	if p.Export != `export PATH="$HOME/.local/bin:$PATH"` || checklistLine(e.Home, dir) != p.Export {
 		t.Errorf("checklist line = %q", p.Export)
 	}
 	got, err := Apply(e, p)
@@ -378,7 +378,7 @@ func TestMarkedLineForAnotherFolderAddsNothing(t *testing.T) {
 		t.Errorf("plan = %+v, want an offer: the marked line adds another folder", p)
 	}
 	// abcd's own marked line for this folder is already added.
-	write(t, filepath.Join(e.Home, ".zshrc"), MarkedLine(e.Home, dir)+"\n", 0o644)
+	write(t, filepath.Join(e.Home, ".zshrc"), markedLine(e.Home, dir)+"\n", 0o644)
 	if p := PlanFor(e, dir); p.State != AlreadyAdded {
 		t.Errorf("plan = %+v, want already added", p)
 	}

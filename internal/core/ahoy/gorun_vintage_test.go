@@ -7,13 +7,16 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/vintage"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // sourceCheckout is a git checkout whose go.mod declares module.
 func sourceCheckout(t *testing.T, module string) string {
 	t.Helper()
 	dir := t.TempDir()
-	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+	cmd := exec.Command("git", "-C", dir, "init", "-q")
+	cmd.Env = gittest.Env(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, out)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module "+module+"\n\ngo 1.26\n"), 0o644); err != nil {

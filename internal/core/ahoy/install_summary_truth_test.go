@@ -22,7 +22,7 @@ func TestIdentityRecordActionSaysHowToCorrectIt(t *testing.T) {
 	p := &identityPrompter{terminal: true, answer: true}
 	a := &applyCtx{cwd: dir, gapPresent: gapPresent, prompter: p}
 	a.stepIdentityRecord()
-	rec, _, ok, err := identity.LoadRecord(os.Getenv("HOME"), "")
+	rec, _, ok, err := identity.LoadRecordForTest(os.Getenv("HOME"), "")
 	if err != nil || !ok || rec.Name != "Wrong Person" || len(p.asked) != 0 {
 		t.Fatalf("precondition: a re-run leaves a record as it is; got %+v ok=%v err=%v asked=%q", rec, ok, err, p.asked)
 	}

@@ -77,7 +77,7 @@ func TestMigration_NonOwnerIsNotGivenThePin(t *testing.T) {
 	if _, err := ApplyMigration(dir, home, plan); err == nil {
 		t.Fatal("ApplyMigration must refuse a person who is not the owner")
 	}
-	if _, _, found, err := LoadRecord(home, gittestRoot(t, dir)); found || err != nil {
+	if _, _, found, err := loadRecord(home, gittestRoot(t, dir)); found || err != nil {
 		t.Fatalf("the maintainer's identity reached a contributor's machine: found=%v err=%v", found, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, LegacyPinRelPath)); err != nil {
@@ -114,7 +114,7 @@ func TestMigration_KeepsADifferentRecord(t *testing.T) {
 	dir := committedRepo(t, "A Maintainer", "maintainer@example.com")
 	writeRepoPin(t, dir, `{"name":"A Maintainer","email":"maintainer@example.com"}`)
 	home := recordHome(t)
-	ref, err := RepoRecordRef(gittestRoot(t, dir))
+	ref, err := repoRecordRef(gittestRoot(t, dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestMigration_KeepsADifferentRecord(t *testing.T) {
 	if !res.KeptDifferent || res.Recorded || !res.Removed {
 		t.Fatalf("want the existing record kept and the pin removed: %+v", res)
 	}
-	got, _, _, _ := LoadRecord(home, gittestRoot(t, dir))
+	got, _, _, _ := loadRecord(home, gittestRoot(t, dir))
 	if got.Email != "maintainer@work.example" {
 		t.Fatalf("the person's own record was overwritten: %+v", got)
 	}
@@ -174,7 +174,7 @@ func TestLoadLegacyPin_ReadsThroughTheGuardedReader(t *testing.T) {
 	if err := os.Symlink(filepath.Join("..", "..", filepath.Base(real)), pin); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := LoadLegacyPin(dir); err == nil {
+	if _, _, err := loadLegacyPin(dir); err == nil {
 		t.Fatal("a symlinked pin was followed")
 	}
 	if err := os.Remove(pin); err != nil {
@@ -183,7 +183,7 @@ func TestLoadLegacyPin_ReadsThroughTheGuardedReader(t *testing.T) {
 	if err := os.WriteFile(pin, []byte(`{"name":"A Maintainer","email":"maintainer@example.com","pad":"`+strings.Repeat("x", 70<<10)+`"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := LoadLegacyPin(dir); err == nil {
+	if _, _, err := loadLegacyPin(dir); err == nil {
 		t.Fatal("a pin over 64 KiB was read")
 	}
 }

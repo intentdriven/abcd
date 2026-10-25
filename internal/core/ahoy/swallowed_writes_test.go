@@ -42,7 +42,7 @@ func TestIdentityRecordFailureIsNoted(t *testing.T) {
 			dir := idGitRepo(t, gitName, email)
 			a := &applyCtx{cwd: dir, gapPresent: map[string]bool{UnrecordedGapID: true}, prompter: &identityPrompter{terminal: true, answer: true}}
 			a.stepIdentityRecord()
-			if _, _, ok, _ := identity.LoadRecord(os.Getenv("HOME"), ""); ok {
+			if _, _, ok, _ := identity.LoadRecordForTest(os.Getenv("HOME"), ""); ok {
 				t.Fatal("precondition: no record is written")
 			}
 			if !notesCarryAll(a.notes, "did not record who you commit as") {

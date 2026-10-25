@@ -26,16 +26,16 @@ type Proposal struct {
 // anyone's identity but their own. ok is false when neither source holds a
 // complete human identity.
 func Propose(root string) (Proposal, bool, error) {
-	return ProposeWithHome(root, UserHome())
+	return proposeWithHome(root, userHome())
 }
 
-// ProposeWithHome is Propose for the person whose home directory is home.
-func ProposeWithHome(root, home string) (Proposal, bool, error) {
+// proposeWithHome is Propose for the person whose home directory is home.
+func proposeWithHome(root, home string) (Proposal, bool, error) {
 	rootSHA, err := gitutil.RootCommit(root)
 	if err != nil {
 		return Proposal{}, false, err
 	}
-	rec, ref, recorded, err := LoadRecord(home, rootSHA)
+	rec, ref, recorded, err := loadRecord(home, rootSHA)
 	if err != nil {
 		return Proposal{}, false, err
 	}
