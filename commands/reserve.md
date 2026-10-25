@@ -43,6 +43,8 @@ The payload carries `act` (`reserved`, `renewed`, `taken_over`, `released` or
 `already_released`), `record`, `holder`, `copy` (`this` or `another`, never a
 copy's key), `footprint`, `claimed_at`, `effective_expiry`, `commit`, and
 `replaced` when a take-over replaced a reservation: its `holder`, `copy`,
+`your_copy` (for your own other copy, the worktree of this checkout that held
+it, "your worktree … on this machine", or "your copy on another computer"),
 `commit`, `effective_expiry`, and `unreadable` when it could not be read. When
 origin's default branch could not be read, `derived_unchecked` says why: the
 act went on, but whether the record is already finished there was not checked.

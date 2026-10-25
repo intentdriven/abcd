@@ -53,6 +53,17 @@ func TestASiblingWorktreesReservationIsNamedAsThatWorktree(t *testing.T) {
 	if err != nil || res.Replaced == nil || res.Replaced.YourCopy != "your worktree "+shown+" on this machine" {
 		t.Fatalf("the take-over = %+v, %v; want it to name the worktree it replaced", res.Replaced, err)
 	}
+	// The side worktree's renewal now finds the main one holding it.
+	here, err := filepath.EvalSymlinks(main.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = side.do(Request{Record: "iss-5", Renew: true})
+	var nh *NotHeld
+	want = "iss-5 is held by your worktree " + fsutil.RedactHome(here) + " on this machine, until 2026-10-03T16:00:00Z; nothing was pushed"
+	if !errors.As(err, &nh) || err.Error() != want || nh.YourCopy != "your worktree "+fsutil.RedactHome(here)+" on this machine" {
+		t.Fatalf("the side worktree's renewal = %v (%+v); want %q", err, nh, want)
+	}
 	// A copy on another computer keeps its words.
 	other := w.clone("1234+octo@users.noreply.github.com", "")
 	_, err = other.reserve("iss-5", "a.go")
