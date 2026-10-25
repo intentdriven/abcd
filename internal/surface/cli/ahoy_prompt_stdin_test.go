@@ -216,6 +216,7 @@ func gitRepoWithIdentity(t *testing.T, repo, name, email string) {
 func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	repo := hermeticRepo(t)
 	gitRepoWithIdentity(t, repo, "Alex Reppel", "alex@example.com")
+	armClone(t, repo)
 	// A zsh login shell, so the shell-settings offer is raised whatever shell
 	// the machine running the test uses (itd-2610240919030303).
 	t.Setenv("SHELL", "/bin/zsh")

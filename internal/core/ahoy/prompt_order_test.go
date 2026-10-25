@@ -144,12 +144,13 @@ func TestResolveApprovalAsksUnknownCategoriesLast(t *testing.T) {
 		Gap{ID: "alpha.a", Category: GapCategory("alpha"), Resolvable: true},
 	)
 	for i := 0; i < 32; i++ {
+		// At a terminal the dependency approval is not asked (asksToolsItself).
 		p := &recordingPrompter{confirm: true, terminal: true}
 		resolveApproval(gaps, InstallOptions{}, nil, p)
-		if len(p.asked) != 11 {
-			t.Fatalf("asked %d questions, want 11: %v", len(p.asked), p.asked)
+		if len(p.asked) != 10 {
+			t.Fatalf("asked %d questions, want 10: %v", len(p.asked), p.asked)
 		}
-		tail := askedCategories(p.asked[9:])
+		tail := askedCategories(p.asked[8:])
 		if tail != "alpha|zeta" {
 			t.Fatalf("run %d: unknown categories not asked last and sorted: %v", i, p.asked)
 		}

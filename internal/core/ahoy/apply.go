@@ -74,7 +74,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		// An early return judged nothing it did not change: committed hooks
 		// git does not run keep it from being reported up to date.
 		if err == nil && res.Status == "already_up_to_date" && hooksUnrun(det.Gaps) {
-			res.Status = "partial"
+			res.heldByHooks, res.Status = res.Status, "partial"
 		}
 	}()
 
@@ -391,17 +391,18 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	if len(remaining) > 0 {
 		status = "partial"
 	}
-	if hooksUnrun(final.Gaps) {
+	heldByHooks := ""
+	if hooksUnrun(final.Gaps) && status != "partial" {
 		// Committed hooks git does not run are not a finished setup, whether
 		// the question was declined, not asked, or the value is the person's
 		// (iss-2610241134315056).
-		status = "partial"
+		heldByHooks, status = status, "partial"
 	}
 	if ac.configMalformed {
 		// The config could not be parsed, so nothing that depends on it ran.
 		// config.malformed is a diagnostic (non-resolvable) gap and so never
 		// counts in Remaining, but a run that refused its own config is not clean.
-		status = "partial"
+		status, heldByHooks = "partial", ""
 	}
 	return InstallResult{
 		Status:             status,
@@ -416,6 +417,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		unverifiedCheck:    ac.unverifiedCheck,
 		unverifiedWhy:      ac.unverifiedWhy,
 		needs:              append(ac.needs, remainingSteps(abs, final.Gaps)...),
+		heldByHooks:        heldByHooks,
 	}, nil
 }
 
@@ -2007,7 +2009,12 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 // already produced, whose otherwise-clean install is why symlink.unrecorded is
 // a gap in its own right.
 func (a *applyCtx) stepPathEntry() {
-	if a.det.pluginRoot == "" || a.binTarget == "" || !a.approved[ConfigChange] {
+	// A forced mode switch (--dev, or a plain install over the shim) is the
+	// person's own word, and stepSymlink writes the entry on it alone; the
+	// entry it writes is recorded on the same word, or every hook ignores it
+	// (symlink.unrecorded). The settings approval used to arrive with it only
+	// because the identity gaps were approved with the settings.
+	if a.det.pluginRoot == "" || a.binTarget == "" || (!a.approved[ConfigChange] && !a.modeForced) {
 		return
 	}
 	target := a.binTarget

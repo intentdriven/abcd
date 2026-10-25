@@ -292,7 +292,7 @@ func TestThePlanListsAToolOnlyWhenItWillAsk(t *testing.T) {
 // question, so customising the plan never drops it behind an approval.
 func TestCustomiseStillAsksTheToolQuestion(t *testing.T) {
 	setupHermetic(t)
-	emptyPath(t)
+	t.Setenv("PATH", gitOnlyDir(t))
 	var calls [][]string
 	fakeToolRun(t, &calls)
 	asked := 0
@@ -443,4 +443,14 @@ func TestAForeignHooksPathIsNeverOffered(t *testing.T) {
 	if clonesHooksPath(t, repo) != "" {
 		t.Error("a local hooks path was set over a dispatcher")
 	}
+}
+
+// settled is res's status but for committed hooks git does not run, which
+// a test about something else on a real clone under --yes leaves unarmed:
+// those runs are partial for that reason alone (iss-2610241134315056).
+func settled(res InstallResult) string {
+	if res.heldByHooks != "" {
+		return res.heldByHooks
+	}
+	return res.Status
 }

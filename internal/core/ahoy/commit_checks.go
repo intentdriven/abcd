@@ -44,8 +44,7 @@ const HooksElsewhereGapID = "banlist.hooks_path_elsewhere"
 const ArmHooksCommand = "git config --local core.hooksPath " + guardHooksDirRelPath
 
 // armHooksAsk is the question the offer ends on.
-const armHooksAsk = "Switch on this repository's commit checks, setting core.hooksPath to " + guardHooksDirRelPath +
-	" in this clone's .git/config?"
+const armHooksAsk = "Run the commit checks: set core.hooksPath to " + guardHooksDirRelPath + " in .git/config?"
 
 // localHooksPathUnset reports whether this clone's own config sets no
 // core.hooksPath. known is false when git did not answer (not a repository,
@@ -174,14 +173,10 @@ func (a *applyCtx) stepArmHooks() {
 // armHooksQuestion is what the person consents to: which hooks start
 // running, what stops running, how to undo it, and the question.
 func armHooksQuestion(cwd string) string {
-	text := "git does not run the commit checks committed in " + guardHooksDirRelPath
-	if names := committedHooks(cwd); len(names) > 0 {
-		text += " (" + strings.Join(names, ", ") + ")"
-	}
-	text += " in this clone: core.hooksPath is not set. Setting it makes git run the hooks in " +
-		guardHooksDirRelPath + " instead of those in .git/hooks"
+	text := "git does not run the hooks committed in " + guardHooksDirRelPath + " here: core.hooksPath is not set. " +
+		"Setting it runs them instead of .git/hooks"
 	if own := ownGitHooks(cwd); len(own) > 0 {
-		text += ", so " + strings.Join(own, ", ") + " in .git/hooks stop running"
+		text += " (" + strings.Join(own, ", ") + " there stop running)"
 	}
 	return text + "; `git config --local --unset core.hooksPath` undoes it.\n" + armHooksAsk
 }
@@ -190,11 +185,6 @@ func armHooksQuestion(cwd string) string {
 func isArmHooksQuestion(text string) bool {
 	_, ask := splitConfirm(text)
 	return ask == armHooksAsk
-}
-
-// committedHooks names the hooks in the committed directory.
-func committedHooks(cwd string) []string {
-	return hookNames(filepath.Join(cwd, guardHooksDirRelPath))
 }
 
 // ownGitHooks names the hooks in this clone's .git/hooks that git runs now,

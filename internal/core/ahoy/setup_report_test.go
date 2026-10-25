@@ -51,8 +51,10 @@ func TestFullySetUpRerunIsOneLine(t *testing.T) {
 	// A first commit gives the repository the root commit abcd registers it by.
 	idMustGit(t, repo, "commit", "--allow-empty", "-q", "-m", "first")
 	clearIdentityEnv(t)
-	// Fully set up includes the commit checks git runs (iss-2610241134315056).
-	if _, err := Install(repo, planOpts(), &planPrompter{choice: PlanProceed, confirm: isArmHooksQuestion}); err != nil {
+	// Fully set up includes the commit checks git runs (iss-2610241134315056)
+	// and the person's own identity record, each answered yes.
+	first := func(q string) bool { return isArmHooksQuestion(q) || setupConfirmID(q) == UnrecordedGapID }
+	if _, err := Install(repo, planOpts(), &planPrompter{choice: PlanProceed, confirm: first}); err != nil {
 		t.Fatal(err)
 	}
 	again := &planPrompter{choice: PlanProceed}

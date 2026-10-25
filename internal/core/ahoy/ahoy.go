@@ -298,6 +298,10 @@ type InstallResult struct {
 	// skipped and ends with no .abcd/config.json to keep its answer in, so the
 	// summary names the starter files first (iss-2610120505551170).
 	readmeAwaitsConfig bool
+	// heldByHooks is the status the run would have had but for committed
+	// hooks git does not run, which make it partial (iss-2610241134315056);
+	// "" when they did not.
+	heldByHooks string
 }
 
 // ReadmeAwaitsConfig reports whether the run left the README question

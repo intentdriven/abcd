@@ -180,6 +180,8 @@ func armedQuestions(cwd string, det DetectionResult) []WaitingItem {
 	}
 	byGap("identity.refounding_candidate", "history.lineage")
 	byGap(ReadmeOfferGapID, ReadmePromptKey)
+	// The commit checks' own question, where git runs no committed hook here.
+	byGap(HooksArmGapID, HooksArmGapID)
 	for _, id := range []string{StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID} {
 		byGap(id, id)
 	}

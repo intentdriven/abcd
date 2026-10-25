@@ -86,7 +86,7 @@ func TestInstallWritesNoToolConventionsFile(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.Status != tc.wantStatus {
+			if settled(res) != tc.wantStatus {
 				t.Errorf("status = %q (remaining %v, notes %v), want %q", res.Status, res.Remaining, res.Notes, tc.wantStatus)
 			}
 			for _, name := range toolFilesSetupNeverWrites {
@@ -275,7 +275,7 @@ func TestChangingTheOneSettingMovesTheBlock(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.Status != "clean" {
+			if settled(res) != "clean" {
 				t.Fatalf("status = %q (remaining %v, notes %v), want clean", res.Status, res.Remaining, res.Notes)
 			}
 			claude := filepath.Join(repo, "CLAUDE.md")

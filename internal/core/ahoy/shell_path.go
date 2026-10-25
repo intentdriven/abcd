@@ -132,8 +132,7 @@ func shellPathQuestion(dir string, plan shellpath.Plan) string {
 		where = "a new " + file
 	}
 	return displayPath(dir) + " is not on your PATH. abcd can add this line to " + where +
-		", keeping a copy first. It puts " + displayPath(dir) + " ahead of the rest of your PATH, so this abcd answers " +
-		"before any older copy, and abcd ahoy uninstall removes it:\n" +
+		", keeping a copy first; it goes ahead of the rest of your PATH, and ahoy uninstall removes it:\n" +
 		"  " + plan.Line + "\n" +
 		"Add `" + plan.Export + "` to " + file + "?"
 }
