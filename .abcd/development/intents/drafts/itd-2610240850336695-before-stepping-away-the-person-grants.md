@@ -320,6 +320,22 @@ status kept apart from the grant, irreversible acts outside every level).
     The checklist's 2026-10-17 ruling that the person says they are away "or
     set it in the app" is narrowed by Decision 14, the same person's later
     ruling: a sentence in chat sets nothing.
+21. **A grant holds only in a fenced session (product thinker, 2026-10-24,
+    after the bundle's design review).** The person's own sessions run as the
+    person's operating-system user, so they can read the person's forge login
+    and any key that mints a session's own credential; a weaker credential
+    alone stops nothing there. A grant therefore takes effect only in a
+    session that runs inside an operating-system fence keeping the person's
+    login and the issuing key out of reach: the fence of itd-2610161621364075
+    for the agents abcd's runner launches, and, for the person's own
+    interactive sessions, the host's own sandbox, which abcd never switches on
+    (it does not edit host settings) but detects and reports, as that intent's
+    part B names. A session abcd cannot confirm is fenced reads no grant and
+    asks, as Decision 12 has it for a host without hooks.
+22. **The bundle ships as one release (product thinker, 2026-10-24).** The
+    bundle review proposed two releases; the product thinker kept one, so
+    every member, the phone page, sharing and the dependency lines included,
+    lands in the same cut.
 
 ## Open Questions
 
@@ -328,8 +344,10 @@ status kept apart from the grant, irreversible acts outside every level).
 - How the guard tells the person's `/abcd:mode autonomous` from a session's own
   call (Decision 14), once the live checks of Decision 5 have run.
 - Planning is by the bundle form, all three members at once (Decision 20), so
-  it waits until itd-2610170634394993 and itd-2610170638184486 are plannable:
-  each has open questions and no adversarial review on record.
+  it waits until itd-2610170634394993 and itd-2610170638184486 are plannable;
+  both were reviewed on 2026-10-24 and their findings are not yet applied.
+- Decision 21 depends on the fence for the person's own sessions, which
+  itd-2610161621364075 names as its part B, a draft not yet filed.
 
 ## Audit Notes
 
