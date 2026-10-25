@@ -226,19 +226,17 @@ func notStaged(stderrs []string) string {
 // had the same silent loss as a sub-agent's. One failed root-commit lookup at
 // session end no longer gives the session up; the hook asks again and stages.
 func TestHookSessionEndRetriesATransientRootFailure(t *testing.T) {
-	// The retry is begun only when its pause and detection, costed at the
-	// first detection's time, end inside sessionEndRetryBudget. On a loaded
-	// machine the first detection alone can eat the 1.2 seconds, and the
-	// hook then rightly skips the retry, so the budget is widened here: this
-	// test proves the retry, TestHookSessionEndSkipsTheRetryPastItsBudget the
-	// skip.
-	widenSessionEndRetryBudget(t, time.Minute)
 	repo, rootSHA := sessionEndRepo(t)
 	tp := filepath.Join(t.TempDir(), "session.jsonl")
 	if err := os.WriteFile(tp, []byte(`{"role":"user","text":"hello"}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	failRootCommitGit(t, 1)
+	// The retry, not the budget, is under test: on a machine where one
+	// detection through the shim costs most of the 1.2 seconds, the real
+	// budget leaves no room to ask again and the test would judge the clock.
+	// TestHookSessionEndSkipsTheRetryPastItsBudget pins the skip itself.
+	widenSessionEndRetryBudget(t, 30*time.Second)
 
 	_, stderr, failed := runHookAllowingFailure(endPayload(t, "sess-end-retry", repo, tp), "hook", "session-end")
 	if failed {
