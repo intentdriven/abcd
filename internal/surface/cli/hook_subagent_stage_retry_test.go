@@ -232,6 +232,12 @@ func TestHookSessionEndRetriesATransientRootFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	failRootCommitGit(t, 1)
+	// The retry, not the budget, is under test: on a machine where one
+	// detection through the shim costs most of the 1.2 seconds, the real
+	// budget leaves no room to ask again and the test would judge the clock.
+	old := sessionEndRetryBudget
+	sessionEndRetryBudget = 30 * time.Second
+	t.Cleanup(func() { sessionEndRetryBudget = old })
 
 	_, stderr, failed := runHookAllowingFailure(endPayload(t, "sess-end-retry", repo, tp), "hook", "session-end")
 	if failed {
