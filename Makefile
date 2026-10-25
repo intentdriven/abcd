@@ -363,7 +363,11 @@ preflight: export ABCD_LOAD_CHECKED := preflight
 # in parallel, since nearly every one sets HOME through t.Setenv. Each opts in
 # from its TestMain through internal/testshard, which shards only a whole-package
 # run, so a -run, a profile or -json runs as before, and go test's cache still
-# reads every shard's inputs. CI sets no shards (iss-2610251004378066).
+# reads every shard's inputs. CI sets no shards (iss-2610251004378066). A
+# sharded package counts as one of the stage's -p packages and runs three
+# processes, so the stage can run up to six more test processes than its -p
+# while all three are running at once; none of the three uses t.Parallel, so
+# each process keeps to about one core.
 preflight: export ABCD_TEST_SHARDS := 3
 
 # Every Go step preflight makes — its own recipe lines and every go run and go

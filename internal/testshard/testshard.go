@@ -25,8 +25,9 @@
 // so makes the set-up its share needs.
 //
 // make preflight exports the variable; CI does not, so its runs are unchanged.
-// go test's cache is unaffected: the variable is an environment read, which
-// go test records like any other.
+// The merged test log names the variable, so go test's cache keys a sharded
+// result to the shard count and never replays it for a run as one process,
+// which could hide a test that passes only after another in the same process.
 package testshard
 
 import (
@@ -221,9 +222,10 @@ func shardLog(file string, i int) string { return file + ".shard" + strconv.Itoa
 // cmd/go/internal/test).
 const testlogMagic = "# test log\n"
 
-// mergeLogs writes the n shards' test logs into file as one log, each
-// shard's inputs after a chdir back to the package directory every shard
-// started in, so the relative paths in each resolve as they did, and removes
+// mergeLogs writes the n shards' test logs into file as one log: ShardsEnv
+// first, which no shard logs since each reads it before its tests start, then
+// each shard's inputs after a chdir back to the package directory every shard
+// started in, so the relative paths in each resolve as they did. It removes
 // the shards' own. A shard that wrote no log adds nothing: it failed, and go
 // test caches no failure.
 func mergeLogs(file string, n int) error {
@@ -233,6 +235,7 @@ func mergeLogs(file string, n int) error {
 	}
 	var b strings.Builder
 	b.WriteString(testlogMagic)
+	b.WriteString("getenv " + ShardsEnv + "\n")
 	for i := range n {
 		data, err := os.ReadFile(shardLog(file, i))
 		if err != nil {

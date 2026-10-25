@@ -36,7 +36,16 @@ func probe(t *testing.T) {
 	if dir == "" {
 		return
 	}
-	if err := os.WriteFile(filepath.Join(dir, t.Name()), []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+	// O_EXCL: a test dealt to two shards fails the second time it runs.
+	f, err := os.OpenFile(filepath.Join(dir, t.Name()), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatalf("%s ran twice: %v", t.Name(), err)
+	}
+	_, err = f.WriteString(strconv.Itoa(os.Getpid()))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
 		t.Fatal(err)
 	}
 	if t.Name() == "TestProbeFail" && os.Getenv(failEnv) != "" {
@@ -94,8 +103,8 @@ func selfTest(t *testing.T, fail bool) (string, int, map[string]string, string) 
 
 // TestEveryTestRunsOnceAcrossTheShards: with the shards asked for, every test
 // of the package runs, each once, in more than one process, the run passes,
-// and go test's test log is one log, merged from every shard's, with no
-// shard's own left behind (iss-2610251004378066).
+// and go test's test log is one log, naming the shard count and merged from
+// every shard's, with no shard's own left behind (iss-2610251004378066).
 func TestEveryTestRunsOnceAcrossTheShards(t *testing.T) {
 	if os.Getenv(selfTestEnv) != "" {
 		return
@@ -119,7 +128,7 @@ func TestEveryTestRunsOnceAcrossTheShards(t *testing.T) {
 	if n := strings.Count(out, "=== testshard: shard "); n != 3 {
 		t.Errorf("the output names %d shards; want 3:\n%s", n, out)
 	}
-	if !strings.HasPrefix(log, testlogMagic) || strings.Count(log, testlogMagic) != 1 || strings.Count(log, "\nchdir ") != 3 {
+	if !strings.HasPrefix(log, testlogMagic+"getenv "+ShardsEnv+"\n") || strings.Count(log, testlogMagic) != 1 || strings.Count(log, "\nchdir ") != 3 {
 		t.Errorf("the test log is not one log of three shards:\n%s", log)
 	}
 }
