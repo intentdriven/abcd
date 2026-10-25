@@ -84,6 +84,11 @@ force-push anywhere, and the person still can, through `gh` or the forge's web
 interface. Until then the person's grant ships with the force-push stop on
 feature branches resting on this machine's pre-push hook and the guard.
 
+**The bundle gains a third member (product thinker, 2026-10-24).** The
+person's grant, itd-2610240850336695, joins the autonomous-agents bundle with
+this intent and the checklist, so its force-push stop lands with this intent's
+credential split and the all-branch ruleset above.
+
 ## Open Questions
 
 Answered on 2026-10-18 by the planning prep (facilitator, each a decision

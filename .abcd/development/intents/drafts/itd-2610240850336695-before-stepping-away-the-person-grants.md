@@ -309,6 +309,17 @@ status kept apart from the grant, irreversible acts outside every level).
     a changed hooks path), which is a mistake filter, not a guarantee. The gap
     closes when the credential split lands; the all-branch ruleset is carried
     in itd-2610170634394993.
+20. **The grant joins the autonomous-agents bundle (product thinker,
+    2026-10-24).** It is planned and shipped as one bundle with
+    itd-2610170634394993 (sessions' own weaker credential, and coordination
+    through the remote) and itd-2610170638184486 (the checklist), the bundle
+    the product thinker named on 2026-10-17 as the next big release. So the
+    force-push gap of Decision 19 never ships: the all-branch ruleset lands
+    with the credential split, in the same release as the grant. This
+    supersedes Decision 19's "ships with the stop that runs on this machine".
+    The checklist's 2026-10-17 ruling that the person says they are away "or
+    set it in the app" is narrowed by Decision 14, the same person's later
+    ruling: a sentence in chat sets nothing.
 
 ## Open Questions
 
@@ -316,8 +327,9 @@ status kept apart from the grant, irreversible acts outside every level).
   name).
 - How the guard tells the person's `/abcd:mode autonomous` from a session's own
   call (Decision 14), once the live checks of Decision 5 have run.
-- Deferred, recorded (Decision 19): the deterministic force-push stop on
-  feature branches waits for sessions' own credential (itd-2610170634394993).
+- Planning is by the bundle form, all three members at once (Decision 20), so
+  it waits until itd-2610170634394993 and itd-2610170638184486 are plannable:
+  each has open questions and no adversarial review on record.
 
 ## Audit Notes
 
