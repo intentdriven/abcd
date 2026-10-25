@@ -94,20 +94,78 @@ _Draft for the planning interview._
   never add one the person did not grant.
 - Given a grant is in force, When the status line renders, Then it shows the
   grant's preset and time left beside the waiting-on badge.
+- Given a session, When it runs `abcd mode autonomous` itself or writes the
+  away store through a shell or a file tool, Then the guard refuses it, records
+  the attempt, and the person sees it on their next prompt.
 - Given the person runs `abcd mode back`, When it prints, Then it lists each
   act a session took under the grant, with the session and the capability.
 
+## Decisions
+
+1. **Grant and fence are two axes (product thinker, 2026-10-24).** The grant
+   is adopted as a permission with no boundary claimed. Where abcd fences, the
+   runner's agents under itd-2610161621364075, the grant is embedded in that
+   fence; the person's own sessions get the grant alone. Recorded in
+   adr-2610240850193281.
+2. **The capability set is four (product thinker, 2026-10-24).**
+   `push-branch` (push a branch the session created), `open-pr` (open a pull
+   request from it), `queue-merge` (queue a pull request whose ruleset needs no
+   approval) and `decide-as` (answer its own questions as a named role).
+   Merging to the default branch outside the queue, cutting a release and
+   force-pushing are outside every preset. Which presets bundle them is still
+   open.
+3. **`decide-as` takes either role or both (product thinker, 2026-10-24).**
+   The person names `facilitator`, `product-thinker` or both on each grant; a
+   session answers only the roles named, recording each answer as a decision,
+   and a question for a role not named waits for the person.
+4. **The default preset is "ship work", once outstanding design work is
+   confirmed (product thinker, 2026-10-24).** A grant that names no preset
+   carries `push-branch`, `open-pr` and `decide-as facilitator`. It takes
+   effect only after the pre-run blocker sweep of itd-2610170638184486 has put
+   the outstanding design work to the person, so a session is not left alone
+   with a product decision nobody made.
+
+Consequence for itd-2610170638184486: its parked work making the away mode the
+person's act alone (the guard refusing an agent's own grant, and the refusal of
+shell and file-tool writes to the away store) was parked "should a later design
+give it rights worth guarding". This intent gives it those rights.
+
+5. **That person-only work moves into this intent (product thinker,
+   2026-10-24).** The grant ships with what protects it: the guard refuses an
+   agent's own `abcd mode autonomous` (the binary on PATH, the plugin root's,
+   and routes through `sh -c` and a script a shell runs), shell and file-tool
+   writes to the away store are refused, the PreToolUse matcher gains `Edit`,
+   `Write`, `MultiEdit` and `NotebookEdit`, and refused attempts are recorded
+   and shown to the person. itd-2610170638184486 drops it from its remaining
+   work when this intent is planned.
+6. **The planned facilitator setting folds into the grant (product thinker,
+   2026-10-24).** The grant is the one place that lets abcd merge on its own:
+   `queue-merge` replaces `facilitator.mode: auto` (adr-2610150603484802,
+   itd-97, itd-2610150602547271). A repository keeps only the power to
+   narrow: it may withhold `queue-merge`, never grant it. Planning reconciles
+   those records with this one.
+7. **A grant covers one repository (product thinker, 2026-10-24).** It is
+   keyed on the repository's root commit, as the away record is, so every
+   worktree and clone of it on this machine shares it; another repository
+   needs its own grant.
+8. **A grant holds whether the person is present or away (product thinker,
+   2026-10-24).** Being away stays its own record, with its question reroute
+   and stop check; the grant is a separate record beside it, so a person at
+   the keyboard can grant `push-branch` and stop being asked. Ending the away
+   mode does not end the grant; the grant ends at its own time or when the
+   person revokes it. The verb's shape (a flag on `abcd mode autonomous` or a
+   verb of its own) is planning's to settle, and the press release's example
+   follows it.
+
 ## Open Questions
 
-- Which capabilities exist, and which presets bundle them?
-- Does `decide-as` take `facilitator`, `product-thinker` or both, and what does
-  the badge do while the agent wears that hat?
-- Where does the planned `facilitator.mode: auto|human` go: folded into the
-  grant, or kept as the repository's own opt-in for merging?
-- Is the grant per repository (root commit) or per machine?
-- Does setting a grant require the person to be away, or can it hold while
-  they are present?
-- Does this intent absorb part of itd-2610170638184486, or sit beside it?
+- Which presets exist beyond the default? The interview offered three
+  ("nothing", "ship work" and "everything"); planning confirms the set and
+  their names.
+- The verb's shape: a flag on `abcd mode autonomous`, or a verb of its own now
+  that the grant holds while the person is present (Decision 8).
+- The Mechanism, Scope Conditions and Acceptance Criteria above are the
+  agent's drafts and are not yet confirmed.
 
 ## Audit Notes
 
