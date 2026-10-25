@@ -47,21 +47,28 @@ func TestTheReadLeavesTheHookTimeToMarkWhatItShowed(t *testing.T) {
 
 // TestNothingIsMarkedPastTheHooksDeadline: a block marked after the deadline
 // the hook set keeps nothing, so its lines are shown again rather than the
-// hook be held past its second.
+// hook be held past its second. The read gets the stretched budget and a
+// deadline no machine's git outruns, and the notes' own deadline is then
+// moved into the past: the test is of the marking, not of how long the read
+// took (iss-2610251853204621).
 func TestNothingIsMarkedPastTheHooksDeadline(t *testing.T) {
+	stretchPromptBudget(t)
 	w := newWorld(t)
 	maya := w.clone("5+maya@users.noreply.github.com", "")
 	pat := w.clone("9+pat@users.noreply.github.com", "")
 	maya.announceAs("merging", "#1012")
 	pat.status(nil)
-	deadline := time.Now().Add(400 * time.Millisecond)
+	deadline := time.Now().Add(time.Minute)
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
 	if err != nil || !strings.Contains(n.Text, "merging #1012") {
 		t.Fatalf("PromptNotes = %q, %v", n.Text, err)
 	}
-	time.Sleep(time.Until(deadline) + 50*time.Millisecond)
+	if want := deadline.Add(-promptWriteReserve); !n.by.Equal(want) {
+		t.Fatalf("the notes are marked by %v; want the hook's deadline less its write reserve, %v", n.by, want)
+	}
+	n.by = time.Now().Add(-time.Millisecond)
 	n.MarkShown()
 	if got := pat.notes(); !strings.Contains(got, "merging #1012") {
 		t.Fatalf("after a block marked past the hook's deadline, the block:\n%s\nwant the line again", got)
