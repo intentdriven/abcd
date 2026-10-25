@@ -10,6 +10,14 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/claim/status_deadline_test.go"
 remedy: "Read under a deadline wide enough for any machine, check that the notes carry the hook's deadline less promptWriteReserve, then move the notes' deadline into the past and mark. The past-deadline branch of MarkShown is then tested whatever the read costs, with no sleep."
+resolution: "The test now stretches the prompt read budget as the package's other status-reading tests do, reads under a one-minute deadline, checks that the notes carry the hook's deadline less promptWriteReserve, then moves that deadline into the past and marks, so MarkShown's past-deadline branch is tested whatever the read costs and without a sleep."
+impact: internal
+resolved_by:
+  commit: "69446d002"
 ---
 
 TestNothingIsMarkedPastTheHooksDeadline (internal/core/claim) fails under -race on a loaded machine. It gives the whole status read a real 400ms deadline, but it tests only that a block marked after the hook's deadline keeps nothing. The read itself (git through the status state, then render) outran 400ms in the joint preflight's race stage on 2026-10-25, so PromptNotes returned 'status unavailable' and the test failed before it reached the marking. It is the same class as iss-2610241911001655: a load-dependent budget standing in front of the behaviour under test.
+
+## Grounds
+
+- pursued: the test passes at any load while marking past the deadline keeps nothing; shown wrong if it fails on a loaded machine, or passes with MarkShown keeping a block past its deadline
