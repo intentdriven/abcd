@@ -11,6 +11,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/testshard"
 )
 
 // cliTestAsBinaryEnv marks a child process of this test binary that must act
@@ -64,6 +65,12 @@ func TestMain(m *testing.M) {
 	// child on the terminal end (ahoy_connect_pty_test.go).
 	if actAsConnectChild(os.Getenv(connectPtyChildEnv), os.Args[1:]) {
 		os.Exit(Run(os.Args[1:], os.Stdout, os.Stderr))
+	}
+	// The package is too long for one test process under the preflight's
+	// package budget on a loaded machine (iss-2610251004378066); each shard
+	// runs this TestMain again and makes the set-up below for itself.
+	if code, ok := testshard.Shard(); ok {
+		os.Exit(code)
 	}
 	pageRunnerExtraEnv = []string{cliTestAsBinaryEnv + "=1"}
 	ahoy.SetCurrentVintageForTest(func() vintage.Current {

@@ -355,6 +355,17 @@ endif
 # prerequisite run on its own.
 preflight: export ABCD_LOAD_CHECKED := preflight
 
+# The three longest packages (internal/core/implement/loop, internal/core/claim
+# and internal/surface/cli) run their tests as three processes each in both
+# test stages, each process under the stage's package budget: as one process
+# implement/loop took 60 minutes alone at a load of about 13 on a 10-core Mac
+# (2026-10-25) and was killed at 40 with no test hung, and its tests cannot run
+# in parallel, since nearly every one sets HOME through t.Setenv. Each opts in
+# from its TestMain through internal/testshard, which shards only a whole-package
+# run, so a -run, a profile or -json runs as before, and go test's cache still
+# reads every shard's inputs. CI sets no shards (iss-2610251004378066).
+preflight: export ABCD_TEST_SHARDS := 3
+
 # Every Go step preflight makes — its own recipe lines and every go run and go
 # test its prerequisites make — runs on the toolchain go.mod declares, the one
 # CI's setup-go installs, never the go on PATH (iss-2609261850045839). A test
