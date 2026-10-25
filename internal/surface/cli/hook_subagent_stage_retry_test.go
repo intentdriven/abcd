@@ -232,6 +232,12 @@ func TestHookSessionEndRetriesATransientRootFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	failRootCommitGit(t, 1)
+	// The retry is what is held here, not the machine's speed: the hook's
+	// 1.2 s budget is spent by one detection on a loaded machine, which then
+	// leaves no time to ask again, so the test gives the retry room.
+	prev := sessionEndRetryBudget
+	sessionEndRetryBudget = 30 * time.Second
+	t.Cleanup(func() { sessionEndRetryBudget = prev })
 
 	_, stderr, failed := runHookAllowingFailure(endPayload(t, "sess-end-retry", repo, tp), "hook", "session-end")
 	if failed {
