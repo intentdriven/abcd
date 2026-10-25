@@ -183,9 +183,7 @@ jobs:
         run: bash scripts/check-reviews.sh
 
       - name: Smoke every command (self-discovering harness)
-        env:
-          EVAL_TIMEOUT: "8m"
-        run: make smoke
+        run: make smoke EVAL_TIMEOUT=8m
 
       # --- The pinned plugin archive (adr-2609231048308186; ruling E1) --------
       # The ship committed the release's plugin archive — its download address

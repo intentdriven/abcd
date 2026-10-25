@@ -20,7 +20,9 @@ import (
 // The CI half is the race lane's argument (racelanebudget_test.go): a package
 // timeout that reaches past its job's timeout-minutes never fires, because the
 // runner cancels the job first and a cancellation carries no goroutine dump. So
-// every workflow step that runs an eval lane sets EVAL_TIMEOUT itself, and the
+// every workflow step that runs an eval lane sets EVAL_TIMEOUT itself (in its env,
+// or as a make argument where the step is rendered from the release scaffold,
+// whose gates carry a run line only), and the
 // job's timeout-minutes must hold that budget after everything before it: the
 // -timeout of every earlier step in the job (release.yml's verify job runs smoke
 // after its 40m race step) plus evalJobHeadroom for the untimed steps.
@@ -38,7 +40,7 @@ var (
 	evalTargets     = []string{"smoke", "evals-cold-reading"}
 	evalTimeoutVar  = regexp.MustCompile(`(?m)^EVAL_TIMEOUT \?= (\S+)\s*$`)
 	evalStepTimeout = regexp.MustCompile(`(?m)^\s+EVAL_TIMEOUT: "?([^"\s]+)"?\s*$`)
-	evalRun         = regexp.MustCompile(`^\s+run: make (smoke|evals-cold-reading)\s*$`)
+	evalRun         = regexp.MustCompile(`^\s+run: make (smoke|evals-cold-reading)(?: EVAL_TIMEOUT=(\S+))?\s*$`)
 	jobHeader       = regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*$`)
 	stepHeader      = regexp.MustCompile(`^\s+- `)
 	jobTimeout      = regexp.MustCompile(`(?m)^    timeout-minutes: (\d+)\s*$`)
@@ -87,6 +89,9 @@ func TestEvalLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 			steps++
 			where := file + " job " + s.job + " (make " + s.target + ")"
 			sm := evalStepTimeout.FindStringSubmatch(s.step)
+			if s.arg != "" {
+				sm = []string{"", s.arg}
+			}
 			if sm == nil {
 				t.Errorf("%s sets no EVAL_TIMEOUT, so the package timeout is the Makefile's %s and the job is cancelled before it fires", where, local)
 				continue
@@ -123,6 +128,7 @@ func TestEvalLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 // one of them is not a duration).
 type evalStep struct {
 	job, target, step, jobBlock string
+	arg                         string // EVAL_TIMEOUT given as a make argument
 	before                      time.Duration
 }
 
@@ -160,7 +166,7 @@ func evalSteps(workflow string) []evalStep {
 			}
 		}
 		block, _ := workflowJobBlock(workflow, job)
-		out = append(out, evalStep{job: job, target: m[1], step: strings.Join(lines[stepAt:end], "\n"), jobBlock: block, before: before})
+		out = append(out, evalStep{job: job, target: m[1], step: strings.Join(lines[stepAt:end], "\n"), jobBlock: block, arg: m[2], before: before})
 	}
 	return out
 }
