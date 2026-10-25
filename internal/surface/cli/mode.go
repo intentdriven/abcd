@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -57,7 +58,14 @@ func newModeCommand(asJSON *bool) *cobra.Command {
 			"nobody and prints nothing; with a surface installed nothing is printed at\n" +
 			"all. With --json the notice is a field. Both forms make no network request.\n\n" +
 			"Exit 2 on a refusal — an unknown state, no local tier, or no checkout —\n" +
-			"and nothing is written on any of them.",
+			"and nothing is written on any of them.\n\n" +
+			"The away mode sits beside the badge, not as a fourth word: `abcd mode\n" +
+			"autonomous [--until <time>] [--hold-pushes]` records that the person is away,\n" +
+			"`abcd mode queue \"<step>\"` keeps a step for their return, and `abcd mode back`\n" +
+			"ends it and prints what was queued and recorded. While it holds, setting\n" +
+			"`product-thinker` or `facilitator` is refused (exit 2), naming `abcd decide`:\n" +
+			"a stop parked on a person who is away is a question nobody answers. The away\n" +
+			"mode grants no rights; the person's standing instruction decides what is pushed.",
 		Args:      cobra.MaximumNArgs(1),
 		ValidArgs: stateWords(),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -78,6 +86,9 @@ func newModeCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return modeRefusal(err)
 			}
+			if err := refuseParkWhileAway(cmd.ErrOrStderr(), cwd, st); err != nil {
+				return modeRefusal(err)
+			}
 			if err := mode.Set(cwd, st); err != nil {
 				return modeRefusal(err)
 			}
@@ -92,7 +103,27 @@ func newModeCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
+	cmd.AddCommand(newModeAutonomousCommand(asJSON), newModeBackCommand(asJSON), newModeQueueCommand(asJSON))
 	return cmd
+}
+
+// refuseParkWhileAway refuses parking the badge on a person while the away
+// mode holds for this checkout's repository. Reading the away record fails
+// open: one that cannot be read safely reads as not away, and says so in one
+// line on errw; a repository with no root commit has no away record at all.
+func refuseParkWhileAway(errw io.Writer, cwd string, st mode.State) error {
+	if st == mode.Managed {
+		return nil
+	}
+	root, err := mode.Root(cwd)
+	if err != nil {
+		return nil // mode.Set reports the root refusal itself.
+	}
+	_, away, err := autonomy.AwayAt(root, autonomy.Options{})
+	if err != nil && errors.Is(err, autonomy.ErrUnsafe) {
+		fmt.Fprintf(errw, "abcd mode: %v; read as not away\n", err)
+	}
+	return mode.RefuseParkWhileAway(st, away)
 }
 
 // stateWords is the closed vocabulary as strings, for shell completion.
@@ -111,7 +142,7 @@ func stateWords() []string {
 // default exit 1. The store's own wording is kept: it names the three words,
 // or the tier, or the checkout, and it carries no local path.
 func modeRefusal(err error) error {
-	if errors.Is(err, mode.ErrUnknownState) || errors.Is(err, mode.ErrNoLocalTier) || errors.Is(err, gitutil.ErrNoCheckoutRoot) {
+	if errors.Is(err, mode.ErrUnknownState) || errors.Is(err, mode.ErrNoLocalTier) || errors.Is(err, mode.ErrAway) || errors.Is(err, gitutil.ErrNoCheckoutRoot) {
 		return &exitError{Code: 2, Msg: "abcd mode: " + err.Error() + " (nothing written)"}
 	}
 	return fmt.Errorf("abcd mode: %w", err)

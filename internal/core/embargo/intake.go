@@ -44,6 +44,13 @@ type IntakeResult struct {
 	Minted        []MintedRecord `json:"minted"`
 	Held          []string       `json:"held"`
 	NeedsSeverity []string       `json:"needs_severity"`
+	// Ended lists each held advisory GitHub no longer lists in triage or
+	// draft and reports published or closed, as now recorded; Unread each
+	// one whose end was not recorded, left as the store holds it, and why.
+	Ended  []ForgeEnd       `json:"ended"`
+	Unread []UnreadAdvisory `json:"unread"`
+	// Restores is each restore the store's state owes (restoresOwed).
+	Restores []Restore `json:"restores"`
 }
 
 // mapSeverity maps GitHub's advisory severity onto the ledger's: critical to
@@ -90,7 +97,9 @@ func originRepo(top string) (string, error) {
 // Intake lists the repository's advisories in the triage and draft states
 // through the person's own gh and mints one private record per advisory the
 // store does not yet hold, in the store's own ledger and never in the
-// checkout's (adr-2610120558328615, decision 1). The listing is judged whole
+// checkout's (adr-2610120558328615, decision 1). Each held advisory the
+// listing no longer names is read on its own, and an end GitHub reports for
+// it (published or closed, by any hand) is recorded (readHeld). The listing is judged whole
 // before anything is written: an advisory whose id, state or CVE id this abcd
 // does not recognise refuses the intake with nothing recorded.
 func Intake(req IntakeRequest) (IntakeResult, error) {
@@ -147,6 +156,19 @@ func Intake(req IntakeRequest) (IntakeResult, error) {
 
 	res := IntakeResult{Store: s.Root, StoreCreated: created, Repo: repo, IntakeAt: now,
 		Minted: []MintedRecord{}, Held: []string{}, NeedsSeverity: []string{}}
+	// A held advisory GitHub no longer lists in triage or draft has left
+	// them on GitHub, by abcd's hand or another's: its state is read one at
+	// a time, and an end GitHub reports is recorded (iss-2610171250479046).
+	// The listing has just answered, which proves the scope, so a 404 or
+	// 403 on every one of those reads leaves each unread rather than
+	// refusing the intake.
+	inListing := map[string]bool{}
+	for _, id := range ids {
+		inListing[id] = true
+	}
+	if _, res.Ended, res.Unread, err = readHeld(s, &st, inListing, true, now); err != nil {
+		return IntakeResult{}, err
+	}
 	held := map[string]int{}
 	for i, a := range st.Advisories {
 		held[a.GHSAID] = i
@@ -195,6 +217,7 @@ func Intake(req IntakeRequest) (IntakeResult, error) {
 	if err := s.SaveState(st); err != nil {
 		return IntakeResult{}, err
 	}
+	res.Restores = restoresOwed(req.Home, s, st)
 	return res, nil
 }
 

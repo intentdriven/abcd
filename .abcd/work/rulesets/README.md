@@ -36,12 +36,13 @@ in the tree rather than only a web console.
   so neither a deletion nor a forced push has a use. It is required, not
   optional: the committed pre-push hook refuses both, and a file-changing push,
   only for a push made through the hooks, and a hosted cloud session runs no
-  hooks at all, so there this ruleset is the only refusal on the forge. **Not
-  yet applied**: applying it is a change to the remote a person makes
-  (`gh api -X POST repos/intentdriven/abcd/rulesets --input
-  .abcd/work/rulesets/status-protection.json`), and its id joins the list
-  below when it is. Nothing on the forge can refuse a push that changes a file
-  on a status branch. GitHub's push rulesets, which restrict file paths, are
+  hooks at all, so there this ruleset is the only refusal on the forge.
+  Applied by the person on 2026-10-17 (id 25302453), with
+  `gh api -X POST repos/intentdriven/abcd/rulesets --input
+  .abcd/work/rulesets/status-protection.json`; like every ruleset here it is a
+  change to the remote a person makes, and no verb of abcd's applies it. The
+  mirror matched the live ruleset when read on 2026-10-22. Nothing on the forge
+  can refuse a push that changes a file on a status branch. GitHub's push rulesets, which restrict file paths, are
   offered for private and internal repositories only, and they target no
   branch: a push rule applies to every push to the repository and its fork
   network, so one cannot be scoped to `abcd-status/`. Branch rulesets restrict
@@ -67,7 +68,7 @@ in the tree rather than only a web console.
   strength of a default nobody chose. Collapsing the two would make the file read as
   a promise about settings nothing enforces.
 
-Refresh the rulesets after any settings change (ids: 19969675, 21045110, 24921633, 24933439):
+Refresh the rulesets after any settings change (ids: 19969675, 21045110, 24921633, 24933439, 25302453):
 
 ```sh
 gh api repos/intentdriven/abcd/rulesets/<id> \

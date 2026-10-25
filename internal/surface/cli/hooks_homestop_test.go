@@ -36,6 +36,8 @@ var stopWrapperEvents = []struct {
 	{"PreCompact", 1, []string{"hook prompt-router-reset"}},
 	{"SessionEnd", 1, []string{"hook session-end"}},
 	{"SubagentStop", 1, []string{"hook subagent-stop"}},
+	{"Stop", 1, []string{"hook stop"}},
+	{"StopFailure", 1, []string{"hook stop-failure"}},
 }
 
 // oldHomeWithPathEntry stands up a home holding the old ~/.abcd, whose

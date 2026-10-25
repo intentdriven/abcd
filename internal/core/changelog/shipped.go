@@ -5,6 +5,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
@@ -96,6 +97,14 @@ type Record struct {
 	// value nobody could read would drop real content from a release record on a
 	// typo, which is the worse of the two failures.
 	ShippedInErr string
+	// FoundAtNew reports that the record's `found_at:` is a path that resolves
+	// in the tree the record was read from and not in the anchor tag's: the
+	// record is about a surface the last release did not have, so a fix to it
+	// is no fix a reader of that release could see (iss-2610172148157726).
+	// found_at may be words, a conceptual location capture allows; words, a
+	// path at the anchor, one removed since and one at neither end all leave
+	// it false, so it is set only where the answer is certain.
+	FoundAtNew bool
 	// PressRelease is the body of the record's `## Press Release` section, empty
 	// when it has none. It is the source a release page's quotes are verified
 	// against, read from the same blob as Title and Summary so the page and the
@@ -291,12 +300,13 @@ func ShippedSince(root string, baseRef string) (RecordSet, error) {
 	// ADDED only. A record that names the release which carried it is not part of
 	// this cut: folder membership says it arrived since the anchor, the record says
 	// the work shipped earlier, and the record is the more specific claim.
+	probe := newPathProbe(root, baseRef)
 	for key, paths := range headRecords {
 		if _, atBase := baseRecords[key]; atBase {
 			continue
 		}
 		for _, p := range paths {
-			if rec := newRecord(root, "HEAD", baseRef, p); rec.ShippedIn == "" {
+			if rec := newRecord(root, "HEAD", baseRef, p, probe); rec.ShippedIn == "" {
 				set.Added = append(set.Added, rec)
 			}
 		}
@@ -313,7 +323,7 @@ func ShippedSince(root string, baseRef string) (RecordSet, error) {
 			continue
 		}
 		for _, p := range paths {
-			set.Removed = append(set.Removed, newRecord(root, baseRef, baseRef, p))
+			set.Removed = append(set.Removed, newRecord(root, baseRef, baseRef, p, nil))
 		}
 	}
 	sortRecords(set.Added)
@@ -396,7 +406,7 @@ const maxRecordBytes = 4 << 20
 // cannot be read, or an impact that cannot be parsed, yields an unlabelled
 // record carrying the reason rather than an error: one malformed record must not
 // hide the rest of the cut from the operator who has to fix it.
-func newRecord(root, ref, baseRef, relPath string) Record {
+func newRecord(root, ref, baseRef, relPath string, probe *pathProbe) Record {
 	rec := Record{Path: relPath, ID: recordID(relPath)}
 	blob, err := gitutil.RunLimited(root, maxRecordBytes, "cat-file", "blob", ref+":"+relPath)
 	if err != nil {
@@ -415,6 +425,9 @@ func newRecord(root, ref, baseRef, relPath string) Record {
 	// the cut, so it stayed and refused the release as unlabelled with no way to
 	// honour the exclusion.
 	rec.ShippedIn, rec.ShippedInErr = parseShippedIn(root, baseRef, fields["shipped_in"].Value)
+	if foundAt, ok := frontmatter.ScalarString(fields["found_at"].Value); ok && ref == "HEAD" {
+		rec.FoundAtNew = probe.newSince(foundAt)
+	}
 	// A YAML null is an ABSENT impact, not a malformed one. ParseImpact is a value
 	// validator and knows only the empty string as absent, so the null spellings
 	// ("~", "null", "Null", "NULL") reached it as values and came back as "invalid
@@ -434,6 +447,127 @@ func newRecord(root, ref, baseRef, relPath string) Record {
 	}
 	rec.Impact = impact
 	return rec
+}
+
+// pathProbe answers, for one cut, whether a path is new since the anchor:
+// present in HEAD's tree, absent from the anchor tag's, and not where a file
+// the anchor had was moved to. renamed is every rename target between the two,
+// read once per cut; nil when no anchor resolved or git could not say, and
+// then nothing is new, since a path is marked only where the answer is
+// certain.
+type pathProbe struct {
+	root    string
+	base    string
+	renamed map[string]bool
+}
+
+// newPathProbe reads the renames between baseRef and HEAD
+// (`diff --name-status -M`). A git that cannot answer, a partial clone missing
+// the blobs rename detection compares among them, leaves the probe with no
+// rename set, so it marks nothing.
+func newPathProbe(root, baseRef string) *pathProbe {
+	return newPathProbeWithin(root, baseRef, renameLimit)
+}
+
+// renameLimit pins the rename detection a probe asks of git, so a
+// repository's own diff.renameLimit cannot change what a cut marks.
+const renameLimit = 1000
+
+// newPathProbeWithin is newPathProbe under a named rename limit. Past its
+// limit git skips rename detection and still exits 0, so a cut whose added
+// and deleted paths could exceed it is one where no rename is certain, and
+// the probe marks nothing.
+func newPathProbeWithin(root, baseRef string, limit int) *pathProbe {
+	pr := &pathProbe{root: root, base: baseRef}
+	if baseRef == "" {
+		return pr
+	}
+	out, err := gitutil.Run(root, "diff", "-z", "--no-ext-diff", "--no-textconv", "--name-status", "-M",
+		"-l"+strconv.Itoa(limit), baseRef, "HEAD", "--")
+	if err != nil {
+		return pr
+	}
+	renamed := map[string]bool{}
+	added, deleted := 0, 0
+	f := strings.Split(out, "\x00")
+	for i := 0; i < len(f); i++ {
+		status := f[i]
+		if status == "" {
+			continue
+		}
+		if (status[0] == 'R' || status[0] == 'C') && i+2 < len(f) {
+			renamed[f[i+2]] = true
+			i += 2
+			continue
+		}
+		switch status[0] {
+		case 'A':
+			added++
+		case 'D':
+			deleted++
+		}
+		i++ // one path follows every other status
+	}
+	// What is left unpaired is what git would have had to compare; past the
+	// limit it may not have, and said so only on stderr.
+	if added*deleted > limit*limit {
+		return pr
+	}
+	pr.renamed = renamed
+	return pr
+}
+
+// newSince reports whether p, a record's found_at, is a plain repository path
+// that resolves in HEAD's tree and not in the anchor's, and is neither a
+// rename target since the anchor nor a directory holding one. Anything it
+// cannot be certain of is false: no probe or rename set, a value that is not a
+// clean relative path (words, an absolute path, one climbing out with "..",
+// pathspec magic), or a tree git could not read.
+func (pr *pathProbe) newSince(p string) bool {
+	if pr == nil || pr.renamed == nil {
+		return false
+	}
+	p = strings.TrimSpace(p)
+	if p == "" || strings.ContainsAny(p, " \t\n\r") || path.IsAbs(p) {
+		return false
+	}
+	clean := path.Clean(p)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, ":") {
+		return false
+	}
+	if pr.renamed[clean] {
+		return false
+	}
+	for target := range pr.renamed {
+		if strings.HasPrefix(target, clean+"/") {
+			return false
+		}
+	}
+	atHead, err := pr.present("HEAD", clean)
+	if err != nil || !atHead {
+		return false
+	}
+	atBase, err := pr.present(pr.base, clean)
+	return err == nil && !atBase
+}
+
+// present reports whether ref's tree holds an entry at exactly p, read with
+// ls-tree, which needs the trees and never a blob, so a blobless partial clone
+// answers it, and which tells an absent path (no line, no error) from a tree
+// it could not read (an error). p is a cleaned relative path with no leading
+// colon, so ls-tree reads it as a path, not as pathspec magic; ls-tree does
+// not glob.
+func (pr *pathProbe) present(ref, p string) (bool, error) {
+	out, err := gitutil.Run(pr.root, "ls-tree", "-z", "--name-only", ref, "--", p)
+	if err != nil {
+		return false, err
+	}
+	for _, name := range strings.Split(out, "\x00") {
+		if name == p {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // parseShippedIn reads the `shipped_in:` frontmatter value and decides whether it

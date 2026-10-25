@@ -117,6 +117,25 @@ The following are non-negotiable invariants — any architectural choice that vi
    status branch holding a standing announcement it has not asked about. The
    prompt hook shows the announcements, the doubts and the release holds from
    the last completed fetch, from disk alone, and asks the network nothing.
+   The away mode (itd-2610180912189125) is the person's word that sessions
+   work on while they are away: setting it (`abcd mode autonomous`) invokes,
+   for as long as it holds, the stop check's one read of the forge at each
+   turn's end, at most one listing of the open pull requests through the
+   forge client (`gh pr list`: head and base branch, author, body, merge
+   state, review decision and check rollup), every open one when the
+   person's forge login is known, so another person's pull request can be
+   told from the session's own, and the person's own alone when it is not,
+   under a ten-second deadline, with
+   no cache, so a run of eight blocked stops costs up to eight bounded
+   listings. A listing that fails or is late is named as not read, never
+   hidden, and the check judges from disk alone: every pushed branch of the
+   session's own is compared with the last-fetched default branch, naming
+   when it was fetched, and a reservation is never reported as carried by no
+   pull request. Whenever the away mode does not hold, the stop check reads disk
+   only, and no turn's end touches the network, held by
+   `TestPresentReadsDiskOnly`
+   ([adr-2610181003541997](../../decisions/adrs/2610181003541997-the-away-mode-s-stop-check-reads-the.md),
+   which refines adr-38 for this verb's meaning alone).
    Inbound, abcd listens on a network only through the dashboard, only while
    someone has started it on purpose, and only for the people let in: it
    listens on this computer's own Tailscale addresses alone, never every

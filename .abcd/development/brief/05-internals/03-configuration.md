@@ -1327,14 +1327,20 @@ names a `statusMessage`, the host's spinner text while the hook runs, because th
 salvage sends the script's output nowhere; the text states no duration, since
 those limits differ. A test pins every event's timeout and the message
 (`internal/surface/cli/hooks_timeout_test.go`). `SessionEnd` and
-`SubagentStop` are the two
+`SubagentStop` are among the four
 exceptions and download nothing at all: each fires where the harness cancels a slow
 hook rather than wait — one as the session exits, the other inside a live session as
 a sub-agent finishes — so a fetch there races that cancellation and loses the
 transcript the hook exists to capture (iss-2608210934566223). Both resolve the
 plugin root, then PATH, then say the transcript was not captured. `SubagentStop`
 additionally never exits non-zero beyond that refusal, because exit 2 is the host's
-BLOCKING code on that event.
+BLOCKING code on that event. `Stop` and `StopFailure` carry the away
+mode's stop check (`hook stop`, `hook stop-failure`, spc-2610180914469489) and fire
+at a turn's end, where a fetch would hold the session; each resolves the plugin
+root, then PATH, then says what did not happen, at exit 1, never `Stop`'s
+blocking 2: `Stop` that the stop check did not run, `StopFailure` that a turn
+ended on an API error was not recorded. `Stop` declares a 30-second `timeout`, room for the check's one forge
+listing under its own ten-second deadline; `StopFailure` declares none.
 
 `SessionEnd` carries `hook session-end`, which stages the session's own transcript;
 `SubagentStop` carries `hook subagent-stop`, which stages a finished sub-agent's

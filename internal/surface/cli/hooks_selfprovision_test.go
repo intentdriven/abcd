@@ -55,6 +55,8 @@ var binaryHooks = []binaryHook{
 	{event: "PreCompact", verb: "prompt-router-reset"},
 	{event: "SessionEnd", verb: "session-end", neverBootstraps: true},
 	{event: "SubagentStop", verb: "subagent-stop", neverBootstraps: true},
+	{event: "Stop", verb: "stop", neverBootstraps: true},
+	{event: "StopFailure", verb: "stop-failure", neverBootstraps: true},
 }
 
 // hookCommand returns the single command string for an event, failing on any
