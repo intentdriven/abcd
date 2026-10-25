@@ -150,8 +150,10 @@ pass:
   alone, with no fetch and no push: another person's live reservation (or an
   unreadable one within its hold) is named with its holder, its expiry and the
   view's age, `reserved by octo until 2026-10-03T15:00:00Z, as of the last
-  fetch 12 minutes ago`, and so is yours from another computer, its reason and
-  remedy naming `--take-over` (another person's never does). This copy's own
+  fetch 12 minutes ago`, and so is your own from another copy, named as the
+  worktree when it is one of this checkout's and otherwise as your copy on
+  another computer, its reason and remedy naming `--take-over` (another
+  person's never does). This copy's own
   reservation is never a holder. `/abcd:peers` fetches them afresh; a view
   nothing here fetched holds none.
 

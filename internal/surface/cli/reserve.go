@@ -78,6 +78,7 @@ type reserveHandedBack struct {
 type reserveReplaced struct {
 	Holder          string `json:"holder,omitempty"`
 	Copy            string `json:"copy,omitempty"`
+	YourCopy        string `json:"your_copy,omitempty"`
 	Commit          string `json:"commit"`
 	EffectiveExpiry string `json:"effective_expiry"`
 	Unreadable      string `json:"unreadable,omitempty"`
@@ -285,7 +286,7 @@ func reserveView(res claim.Result) reserveOutput {
 		out.Footprint = append(out.Footprint, termsafe.Sanitize(f))
 	}
 	if r := res.Replaced; r != nil {
-		out.Replaced = &reserveReplaced{Holder: r.Holder, Copy: r.Copy, Commit: r.Commit,
+		out.Replaced = &reserveReplaced{Holder: r.Holder, Copy: r.Copy, YourCopy: termsafe.Sanitize(r.YourCopy), Commit: r.Commit,
 			EffectiveExpiry: rfc3339(r.EffectiveExpiry), Unreadable: r.Unreadable}
 	}
 	if h := res.HandedBack; h != nil {
@@ -336,7 +337,7 @@ func renderReserve(w io.Writer, out reserveOutput) {
 		case r.Unreadable != "":
 			fmt.Fprintf(w, "  replaced: the unreadable reservation %s (%s), held until %s\n", shortCommit(r.Commit), r.Unreadable, r.EffectiveExpiry)
 		case r.Copy == claim.CopyAnother:
-			fmt.Fprintf(w, "  replaced: your copy on another computer, which held it until %s\n", r.EffectiveExpiry)
+			fmt.Fprintf(w, "  replaced: %s, which held it until %s\n", r.YourCopy, r.EffectiveExpiry)
 		default:
 			fmt.Fprintf(w, "  replaced: %s's reservation, which lapsed at %s\n", r.Holder, r.EffectiveExpiry)
 		}

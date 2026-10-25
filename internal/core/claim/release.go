@@ -91,6 +91,13 @@ type Hold struct {
 	// Only releaseHolds sets them.
 	Mine bool `json:"mine"`
 	Own  bool `json:"own"`
+	// Sibling is the home-redacted worktree of this checkout that keeps the
+	// copy cutting it, when the hold is Mine and not Own and one does: the
+	// person's copy on this machine, not on another computer. Only
+	// releaseHolds sets it.
+	Sibling string `json:"sibling,omitempty"`
+	// key is the copy key the reservation names; never shown.
+	key string
 	// EffectiveExpiry is when the hold ends unless it is renewed, released or
 	// its tag reaches origin first.
 	EffectiveExpiry time.Time `json:"effective_expiry"`
@@ -144,7 +151,7 @@ func (s Snapshot) Holds(now time.Time) []Hold {
 		default:
 			continue
 		}
-		out = append(out, Hold{Release: releaseTag(r.Record), Subject: r.Record, Holder: r.Holder, Copy: r.Copy,
+		out = append(out, Hold{Release: releaseTag(r.Record), Subject: r.Record, Holder: r.Holder, Copy: r.Copy, key: r.key,
 			EffectiveExpiry: r.EffectiveExpiry, Unreadable: r.Unreadable, Unsighted: r.Unsighted, Undated: r.HeldFromFetch})
 	}
 	return out
@@ -220,6 +227,9 @@ func releaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 	for i, h := range holds {
 		holds[i].Mine = h.Unreadable == "" && reader != "" && sameHolder(h.Holder, reader)
 		holds[i].Own = holds[i].Mine && h.Copy == CopyThis
+		if holds[i].Mine && !holds[i].Own {
+			holds[i].Sibling = siblingCopy(root, h.key)
+		}
 	}
 	return holds, nil
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The working copy's local state, in the checkout's local tier. The tier is
@@ -101,3 +102,43 @@ func CopyKey(root string) (string, error) { return copyKey(root) }
 // OwnCopyKey is this working copy's key when one is kept, read without
 // minting one; "" otherwise. A read that writes nothing (a dry run) reads it.
 func OwnCopyKey(root string) string { return ownCopyKey(root) }
+
+// siblingCopy is where the checkout at root keeps key as another working
+// tree's copy key, home-redacted: the person's own copy on this machine, in a
+// sibling worktree, which a reservation from it names (iss-2610250013552001).
+// Each worktree's local tier is its own copy, so a key this copy does not
+// hold is not by itself another computer's. "" when no other worktree keeps
+// it, or the worktrees cannot be listed. It reads each key and mints none.
+func siblingCopy(root, key string) string {
+	if !validCopyKey(key) {
+		return ""
+	}
+	self, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return ""
+	}
+	var found string
+	_ = gitutil.EachWorktree(root, func(w gitutil.Worktree) {
+		if found != "" || w.Bare {
+			return
+		}
+		if p, err := filepath.EvalSymlinks(w.Path); err != nil || p == self {
+			return
+		}
+		data, err := fsutil.ReadGuarded(filepath.Join(w.Path, filepath.FromSlash(copyKeyRel)), 256)
+		if err == nil && strings.TrimSpace(string(data)) == key {
+			found = fsutil.RedactHome(w.Path)
+		}
+	})
+	return found
+}
+
+// yourCopyAt names a copy of the person's own that is not this one: "your
+// worktree <sibling> on this machine" when siblingCopy found it, else "your
+// copy on another computer".
+func yourCopyAt(sibling string) string {
+	if sibling != "" {
+		return "your worktree " + sibling + " on this machine"
+	}
+	return "your copy on another computer"
+}
