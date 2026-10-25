@@ -151,6 +151,7 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610170638184486` — Every session keeps a checklist on disk, so no run stalls and no stall spreads
 - `itd-2610222029228127` — Every session's checklist reaches a shared copy and the phone
 - `itd-2610222215485265` — abcd drain --drive works through the ledger from a plain terminal
+- `itd-2610240850336695` — The person grants their sessions what they may do alone, until a time
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
