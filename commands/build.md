@@ -142,10 +142,17 @@ pass:
   settled chain is named in the passing row.
 - `steps` — the spec's `## Steps` reads, and at least one step is not landed.
 - `peers` — no peer holds the intent: no sibling worktree or local branch holds
-  it in another bucket, no session other than `--session` holds a live
-  claim on it, and no other copy holds a reservation on it on `origin`. A peer that
+  it in another bucket having changed it since its merge-base with this
+  checkout, no session other than `--session` holds a live
+  claim on it, and no other copy holds a reservation on it on `origin`. A branch
+  cut before the intent moved here, which never touched the record, holds this
+  checkout's older copy, not the intent, and does not count; a branch cut after
+  the default branch shipped what this checkout, being behind, still holds as
+  planned does count. A worktree is judged off its disk, so an uncommitted move
+  or edit counts. A peer that
   cannot be read (a worktree git will not answer for, a ledger holding one id
-  twice) and an unreadable claim count as holding it: what they hold is unknown.
+  twice) and an unreadable claim count as holding it: what they hold is unknown,
+  and so does a copy that cannot be compared with every merge-base.
   The reservations are read as this checkout last fetched them, from disk
   alone, with no fetch and no push: another person's live reservation (or an
   unreadable one within its hold) is named with its holder, its expiry and the

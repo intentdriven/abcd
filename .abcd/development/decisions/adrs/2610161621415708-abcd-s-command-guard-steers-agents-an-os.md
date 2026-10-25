@@ -51,7 +51,7 @@ We will decide limiting the network as a separate, later record.
 
 ## Consequences
 
-- The machine-load gate and every `pgrep`-style waiter run in abcd, outside the boundary: inside a sandbox `ps` sees only the sandbox's own processes, so a check run there would read a busy machine as clear.
+- The machine-load gate and every `pgrep`-style waiter run in abcd, outside the boundary: inside a sandbox the process table is not the machine's: on macOS `ps` cannot start at all and `pgrep` sees no process (the spec's step 1 evidence, 2026-10-17), and elsewhere it may see only the sandbox's own, so a check run there cannot read the machine.
 - A run without a boundary is the person's choice, recorded in their user layer under `~/.abcd.noindex/`; no repository file can make it for them.
 - Network limiting is deferred to its own record. When it comes, its honest claim is a declared list of hosts, which narrows mistakes and does not stop code being sent elsewhere: allowing the forge allows a push to any repository the credential reaches.
 - Drains and builds a person's own session drives stay unconfined by abcd; reporting their isolation is proposed as a separate part of the intent.
@@ -59,5 +59,5 @@ We will decide limiting the network as a separate, later record.
 - Platform limits become the intent's scope conditions: Go tools' TLS under Seatbelt, git over SSH behind a proxy, the keychain credential helper, `sandbox-exec`'s deprecation on macOS, nested bubblewrap, and Ubuntu's restriction on unprivileged user namespaces.
 - A brief invariant states the rule once this record is accepted.
 - The boundary sits behind a seam (`internal/core/fence`): a fence-neutral policy and one interface each mechanism implements, so the mechanism the spec picks (sandbox-runtime, `spc-2610161751056096`) can be replaced by another without changing the runner or the loop.
-- The mechanism is a program abcd does not ship, and a boundary has no native default to degrade to, so on the runner route it is a requirement: [adr-22](0022-bundled-deps-as-pluggable-adapters.md)'s first declared exception, proposed until the product thinker signs it off, with the person's off switch in their user layer in place of degradation.
-- A signing key is not opened to a confined agent. Where the person's commits are signed, the spec proposes that a confined agent commits unsigned and abcd signs outside the boundary when it lands the work, a question for the product thinker.
+- The mechanism is a program abcd does not ship, and a boundary has no native default to degrade to, so on the runner route it is a requirement: [adr-22](0022-bundled-deps-as-pluggable-adapters.md)'s first declared exception, signed off by the product thinker on 2026-10-22 (dcn-2610222041417934), with the person's off switch in their user layer in place of degradation.
+- A signing key is not opened to a confined agent. Where the person's commits are signed, a confined agent commits unsigned and abcd signs outside the boundary when it lands the work (the product thinker's ruling of 2026-10-22, dcn-2610222041439951).

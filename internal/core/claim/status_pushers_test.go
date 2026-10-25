@@ -272,7 +272,9 @@ func TestEachForgeLookupEndsAtTheBudget(t *testing.T) {
 	start := time.Now()
 	res := pat.status(func(ctx context.Context, _, branch string) ([]Push, error) {
 		asked = append(asked, branch)
-		if d, ok := ctx.Deadline(); !ok || d.After(start.Add(2*pusherBudget)) {
+		// Measured from the ask, not from start: the fetch before it is git
+		// work whose length is the machine's, not the budget's.
+		if d, ok := ctx.Deadline(); !ok || time.Until(d) > pusherBudget {
 			t.Errorf("the lookup for %s was asked with deadline %v (set %v); want the budget's", branch, d, ok)
 		}
 		select {

@@ -1,7 +1,7 @@
 ---
 name: reserve
 description: "Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3."
-argument-hint: "<record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>] | rel-vX.Y.Z [--lease <duration>] | <record-id|rel-vX.Y.Z> --release | --holder"
+argument-hint: "<record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>] | rel-vX.Y.Z [--lease <duration>] | <record-id|rel-vX.Y.Z> --release | --holder | --sweep [--apply] [--older-than <days>]"
 block: agents
 user-invocable: false
 ---
@@ -289,6 +289,44 @@ record being reopened on a branch (moved from `resolved/` or `wontfix/` back to
 flag, `--take-over` included, gets past it. Merge the reopen first: once
 origin's default branch holds the record open again, reserve it
 (dcn-2610161135122294). Tell the user that, rather than retrying.
+
+## Sweep spent reservations
+
+A release deletes nothing, so spent reservation branches stay on origin until
+the sweep removes them. To see which it would remove, a dry run that deletes
+nothing:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" reserve --sweep --json
+```
+
+A branch is spent only when its tip has been untouched for `--older-than`
+days (default 7, at least 1), counting from the latest of its commit date, its
+own times and its lease's end plus the five-minute margin, and either its
+record is resolved, won't-fixed, shipped or superseded on origin's default
+branch, or every commit on it is a reservation or a plain release, whether or
+not any is a release: a lapsed lease already lets any session take the record
+over, so a reservation never released is spent once its lapse is that old. A
+hand-back on a record still open, a commit of a kind the sweep cannot
+classify, a history it cannot read to its root, and an unreadable tip all keep
+the branch.
+
+The payload carries `mode` (`dry_run` or `apply`), `as_of`,
+`older_than_days`, `spent`, `kept`, `deleted`, `default_branch_unread` when
+origin's default branch could not be read (no branch is then judged spent by
+its record), and `branches`: each with `record`, `branch`, `commit`, `kind`,
+`spent`, `reason` (`terminal`, `released`, `lapsed` or `lapsed_unreleased`
+when spent; `recent`, `hand_back`, `unknown_kind`, `history_unread` or
+`unreadable` when kept), `why`, `settled_at`, and under `--apply` its
+`outcome` (`deleted`, `moved` or `failed`) and `error`.
+
+`--apply` deletes each spent branch with a lease on the exact tip it judged,
+so a branch re-reserved meanwhile survives as `moved`. The reservations
+ruleset lets only its bypass actor delete these branches, so the scheduled
+`reservation-sweep` workflow applies it; a person's `--apply` is refused by
+origin, and the committed pre-push hook refuses the deletion before that. Do
+not run `--apply` by hand; relay the dry run instead. Exit 0 when the sweep
+ran; exit 2 when it could not, or origin refused a deletion.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
