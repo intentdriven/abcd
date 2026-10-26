@@ -595,21 +595,21 @@ change it made, so nothing is dropped silently.
 ### Held back for now
 
 A person holds one issue, or every issue whose `found_at` path lies in a path
-or contains it, back from the drain in progress with `--skip <iss-N|path>
---reason <why>` (iss-2610090642385898): a peer's fix in flight in one package,
-or an issue a person means to take themselves. The move adds the entry to the
-drain's skip list in its state, beginning a drain when none is in progress, and
-every move passes a held-back issue over before anything is pushed or asked
-over it, naming it among the passed issues with the check `skipped`, the entry
-and its reason. `--skip` may be given more than once, all with the one
-`--reason`; a target already on the list takes the new reason; `--unskip` takes
-an entry off. The list is the drain's, not the ledger's: nothing is written onto
-the issue, and the list clears when the drain ends, so a hold for now never
+or contains it, back from the drain in progress, with a reason
+(iss-2610090642385898): a peer's fix in flight in one package, or an issue a
+person means to take themselves. The move adds the entry to the drain's skip
+list in its state, beginning a drain when none is in progress, and every move
+passes a held-back issue over before anything is pushed or asked over it,
+naming it among the passed issues with the check `skipped`, the entry and its
+reason. Several targets may be held back at once, all with the one reason; a
+target already on the list takes the new reason; an entry can be taken off
+again. The list is the drain's, not the ledger's: nothing is written onto the
+issue, and the list clears when the drain ends, so a hold for now never
 outlives the drain it was given to. A drain left with only held-back issues has
 nothing eligible to take and ends, clearing the list. A target that is neither
-an issue id nor a clean repository-relative path, a `--skip` without a reason
-or a reason without a `--skip`, and a list past sixty-four entries are refused
-with nothing written.
+an issue id nor a clean repository-relative path, a hold without a reason or a
+reason without a hold, and a list past sixty-four entries are refused with
+nothing written.
 
 ### The summary's counts
 
@@ -688,8 +688,8 @@ none, when it is given at another path than the one the request names, when it
 cannot be read or is not exactly the request's shape, and when the remedy it
 judges has been rewritten since; each refusal writes nothing. It refuses a
 skip target that is neither an issue id nor a clean repository-relative path,
-a `--skip` without `--reason`, a `--reason` without `--skip`, and a skip list
-past its cap, each writing nothing. The dry run
+a hold without its reason, a reason without a hold, and a skip list past its
+cap, each writing nothing. The dry run
 refuses the run's own flags. A run that
 opens nothing or merges nothing exits 0 and says why. A checkout that cannot be resolved,
 or a ledger holding one id in two status folders, is refused as every capture

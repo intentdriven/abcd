@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/capture"
 )
 
 // The drain's skip list (spc-2609212015054359 step 4; iss-2610090642385898):
@@ -80,21 +82,30 @@ func TestTheSkipListClearsWhenTheDrainEnds(t *testing.T) {
 	}
 }
 
-// TestAPathOnTheSkipListHoldsBackEveryIssueInIt: a path holds back every issue
-// whose found_at lies in it, naming the path.
+// TestAPathOnTheSkipListHoldsBackEveryIssueInIt: a path holds back an issue
+// whose found_at lies in it, naming the path, and leaves an issue elsewhere
+// to be taken.
 func TestAPathOnTheSkipListHoldsBackEveryIssueInIt(t *testing.T) {
-	repo := drainRepoAt(t, "internal/core/capture/eligible.go")
+	repo := briefRepo(t, agentsMarked)
+	issueRepoRule(t, repo)
+	repo.Write("internal/core/capture/eligible.go", "package capture\n")
+	repo.Write("docs/page.md", "# A page\n")
+	repo.Commit("the files the issues are about")
+	fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "internal/core/capture/eligible.go")
+	fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("bug"), "Name the flag in the page.", "docs/page.md")
+	repo.Commit("the ledger")
 	res, err := Drain(repo.Root(), Options{}, DrainOptions{Skip: []string{"internal/core/"}, SkipReason: "a fix is in flight there"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{secondIssue, eligibleIssue} {
-		if p := passedFor(t, res, id); p.Check != CheckSkipped || !strings.Contains(p.Reason, "in internal/core,") {
-			t.Fatalf("an issue in the held-back path is passed over naming it: %+v", p)
-		}
+	if p := passedFor(t, res, eligibleIssue); p.Check != CheckSkipped || !strings.Contains(p.Reason, "in internal/core,") {
+		t.Fatalf("an issue in the held-back path is passed over naming it: %+v", p)
 	}
-	if res.Judging != nil {
-		t.Fatalf("no judgement is asked over a held-back issue: %+v", res.Judging)
+	if res.Judging == nil || res.Judging.Issue != secondIssue {
+		t.Fatalf("an issue outside the path is still taken: %+v", res.Judging)
+	}
+	if len(res.Skips) != 1 || res.Skips[0].Target != "internal/core" {
+		t.Fatalf("the path is stored clean, its trailing slash dropped: %+v", res.Skips)
 	}
 }
 
