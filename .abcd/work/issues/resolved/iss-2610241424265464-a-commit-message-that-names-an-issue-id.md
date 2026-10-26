@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".githooks/commit-msg"
 remedy: "Run the message-only half of RS004 (every issue id the message names has a Refs: or Resolves: declaration) in the commit-msg hook, beside abcd lint outbound, so the refusal comes at the commit; keep RS004 in preflight and CI for the range."
+resolution: "the committed commit-msg hook runs scripts/check-issue-resolution.sh's new message form over the message without its comment lines, so a bare issue mention is refused at the commit; preflight and CI keep RS004 over the range"
+impact: internal
 ---
 
 A commit message that names an issue id without a Refs: or Resolves: line passes the commit-msg hook and is refused only by lint-issues RS004 inside make preflight. On 2026-10-24 that cost a whole preflight run (tens of minutes under the load gate) for a one-line amend, on a machine where preflight capacity was the scarce resource.

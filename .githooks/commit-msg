@@ -30,6 +30,23 @@
 # check gives a finding. Go is a prerequisite for developing this repository, so
 # the refusal asks for nothing new.
 #
+# The hook also runs RS004's message half (iss-2610241424265464): every issue id
+# the message names must have a `Resolves:` or `Refs:` line declaring it. The
+# judgement is scripts/check-issue-resolution.sh's `message` form, the same gate
+# preflight and CI run over the range, never a second copy here; a bare mention
+# is refused at the commit instead of by a preflight tens of minutes later. It
+# runs before the hook writes any file, and reads the message on its standard
+# input, so the script a shell runs here follows no write the shell guard cannot
+# place (script-written-then-run; the guard still warns, misreading is_scissors'
+# test as one, iss-2610261852072295). It
+# reads the message WITHOUT its comment lines, the one place the hook judges less
+# than the whole: git's own status comments name the branch, a branch is often
+# named after its issue (`capture/iss-N`), and git strips those comments from an
+# edited message after this hook runs. A comment line a -F message keeps is left
+# to the range check, which reads the recorded message. This half is abcd's own:
+# RS004 is a rule this repository adopted, so the commit-msg hook `ahoy install
+# --outbound` writes for a managed repository does not run it.
+#
 # REACH, stated rather than implied. git runs this hook for `git commit` (an
 # amend and a reword through `git commit` included) and for a `git merge` that
 # creates a commit. `git commit --no-verify`, `git rebase`, `git cherry-pick`,
@@ -59,7 +76,7 @@ case $- in *x*) set +x ;; esac
 # because the sweep below reads it. The list is expansion-free and runs before
 # `declare` is consulted, so what it names is dropped even when the sweep is
 # neutered — and the scissors cut below is steered by no builtin at all.
-unset -f git grep awk mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ go cd pwd trap \
+unset -f git grep awk mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ go cd pwd trap env bash \
   declare continue break return local export set true 2>/dev/null || true
 # A field separator the caller cannot choose, pinned before the sweep splits on it.
 IFS=$' \t\n'
@@ -112,7 +129,7 @@ if [ -n "$guard_path" ]; then
   PATH="$PATH:$guard_path"
 fi
 export PATH
-for tool in git mktemp rm; do
+for tool in git mktemp rm env bash; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "commit-msg: BLOCKED — $tool is not on the hook's pinned PATH ($PATH)." >&2
     echo "            the hook pins PATH so a repo-scoped override cannot substitute a fake tool," >&2
@@ -264,9 +281,20 @@ if ((first >= 0)); then
     fi
   done
 fi
+is_comment() {
+  if [[ $comment == auto ]]; then
+    [[ -n $1 && $auto_candidates == *"${1:0:1}"* ]]
+  else
+    [[ ${1:0:${#comment}} == "$comment" ]]
+  fi
+}
 message=""
+mentions_text=""
 for ((i = 0; i < keep; i++)); do
   message+="${lines[i]}"$'\n'
+  if ! is_comment "${lines[i]}"; then
+    mentions_text+="${lines[i]}"$'\n'
+  fi
 done
 
 # An empty message is git's to refuse (or to allow, under --allow-empty-message);
@@ -275,6 +303,37 @@ done
 if ! [[ $message =~ [^[:space:]] ]]; then
   exit 0
 fi
+
+# RS004's message half. The gate runs as a child bash, started through env with
+# the shell-startup variables removed, so neither a BASH_ENV file nor an exported
+# SHELLOPTS the committer carries runs inside it; every function was already
+# dropped above, which takes its export with it.
+rs_gate="$src/scripts/check-issue-resolution.sh"
+if [ ! -f "$rs_gate" ]; then
+  echo "commit-msg: BLOCKED — no issue-resolution gate at $rs_gate to judge the message's issue ids with." >&2
+  echo "            nothing in the message was found wrong; restore scripts/check-issue-resolution.sh and commit again." >&2
+  exit 1
+fi
+rc=0
+out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
+  env -u BASH_ENV -u ENV -u SHELLOPTS -u BASHOPTS -u CDPATH bash "$rs_gate" message - <<<"$mentions_text" 2>&1)" || rc=$?
+case "$rc" in
+  0)
+    say "commit-msg: " "$out"
+    ;;
+  1)
+    echo "commit-msg: BLOCKED — the commit message names an issue id without declaring its relation to it (RS004)." >&2
+    say "            " "$out"
+    echo "            add the declaration line named above and commit again." >&2
+    exit 1
+    ;;
+  *)
+    echo "commit-msg: BLOCKED — the issue-resolution gate could not judge the message (exit $rc)." >&2
+    say "            " "$out"
+    exit 1
+    ;;
+esac
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/abcd-commit-msg.XXXXXX")"
 trap 'rm -rf "$work" || true' EXIT INT TERM HUP

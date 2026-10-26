@@ -203,6 +203,44 @@ func TestCommitMsgHookJudgesTextBelowAScissorsLineGitKeeps(t *testing.T) {
 
 // git runs commit-msg for a merge that creates a commit, and git does NOT run
 // pre-commit for one: the merge message is one of the places a leaked URL lands.
+// RS004's message half runs in the hook too (iss-2610241424265464): a message
+// naming an issue id with no Refs: or Resolves: line declaring it is refused at
+// the commit, not by lint-issues inside a preflight tens of minutes later.
+func TestCommitMsgHookRefusesAnUndeclaredIssueMention(t *testing.T) {
+	c := newCommitMsgHookCase(t)
+	refused, out := c.commitWith("a.txt", "fix: the walk behind iss-12\n\nAssisted-by: None\n")
+	if !refused {
+		t.Fatalf("a commit message naming an undeclared issue id was committed\n%s", out)
+	}
+	if !strings.Contains(out, "commit-msg: BLOCKED") || !strings.Contains(out, "RS004") || !strings.Contains(out, "Refs: iss-12") {
+		t.Errorf("the refusal does not name the rule and the declaration that clears it\n%s", out)
+	}
+	if _, err := c.tryGit("rev-parse", "--verify", "HEAD"); err == nil {
+		t.Errorf("a commit exists after the refusal; the hook must fail before the commit is made")
+	}
+}
+
+func TestCommitMsgHookPassesADeclaredIssueMention(t *testing.T) {
+	c := newCommitMsgHookCase(t)
+	if refused, out := c.commitWith("a.txt", "fix: the walk behind iss-12\n\nRefs: iss-12\nAssisted-by: None\n"); refused {
+		t.Fatalf("a commit message declaring its mention was refused\n%s", out)
+	}
+}
+
+// TestCommitMsgHookLeavesCommentLinesOutOfTheMentionCheck: git's own status
+// comments name the branch, and a branch is often named after the issue it
+// works (`capture/iss-12`). An edited message carries those comments to the
+// hook and git strips them after it, so judging them would refuse every
+// edited commit on such a branch for a line no commit records. A comment line
+// a -F message keeps is left to the range check in preflight and CI.
+func TestCommitMsgHookLeavesCommentLinesOutOfTheMentionCheck(t *testing.T) {
+	c := newCommitMsgHookCase(t)
+	c.git("checkout", "-q", "-b", "capture/iss-12")
+	if refused, out := c.commitWith("a.txt", "fix: the walk\n\nAssisted-by: None\n", "-e"); refused {
+		t.Fatalf("an edited commit on a branch named after an issue was refused for git's own comment\n%s", out)
+	}
+}
+
 func TestCommitMsgHookRefusesASessionURLInAMergeMessage(t *testing.T) {
 	c := newCommitMsgHookCase(t)
 	if refused, out := c.commitWith("a.txt", "chore: seed\n\nAssisted-by: None\n"); refused {
@@ -375,6 +413,9 @@ func TestCommitMsgHookSaysATreeThatDoesNotBuildCannotJudge(t *testing.T) {
 		"go.mod":               "module example.com/broken\n\ngo 1.21\n",
 		"cmd/abcd/main.go":     "package main\n\nfunc main() {\n",
 		".githooks/commit-msg": string(hook),
+		// The issue-id gate runs before the build; a stub that passes lets
+		// the hook reach the build this case is about.
+		"scripts/check-issue-resolution.sh": "#!/usr/bin/env bash\nexit 0\n",
 	} {
 		p := filepath.Join(src, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
