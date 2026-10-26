@@ -2,11 +2,9 @@ package ahoy
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/question"
 )
 
@@ -183,43 +181,14 @@ func TestTheSettingsApprovalSaysValuesAreAskedFirst(t *testing.T) {
 }
 
 // TestTheSettingsYesSaysItWritesWhatNeedsNoAnswer: the settings approval's
-// yes writes some listed changes with no further question (the identity pin,
-// the PATH entry), so its meaning must say it writes, not that nothing is
-// written without an answer. Driven through an install whose only listed
-// setting is the pin: the pin is written and no question about it follows
-// the approval.
+// yes writes some listed changes with no further question (the PATH entry),
+// so its meaning must say it writes, not that nothing is written without an
+// answer. (It was driven through the identity pin, which left the settings
+// approval when each person's identity moved to their own machine.)
 func TestTheSettingsYesSaysItWritesWhatNeedsNoAnswer(t *testing.T) {
-	setupHermetic(t)
-	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
-	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
-	repo := t.TempDir()
-	idMustGit(t, repo, "init")
-	idMustGit(t, repo, "config", "user.name", "Alex Reppel")
-	idMustGit(t, repo, "config", "user.email", "alex@example.com")
-	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
-		t.Fatal(err)
-	}
-	p := &recordingPrompter{confirm: true}
-	if _, err := Install(repo, InstallOptions{}, p); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok, _ := identity.LoadPin(repo); !ok {
-		t.Fatal("precondition: approving the settings did not write the pin")
-	}
-	var settings string
-	for _, q := range p.asked {
-		switch c := askedCategory(q); {
-		case c == ConfigChange:
-			settings = q
-		case c == "" && setupConfirmID(q) == "git_identity.establish":
-			t.Fatalf("the pin was asked about after the approval: %q", q)
-		}
-	}
-	if settings == "" {
-		t.Fatalf("the settings approval was not asked: %q", p.asked)
-	}
-	yes := SetupConfirmQuestion(1, settings).Options[0].Meaning
+	q := categoryApprovalText(ConfigChange, []string{"the PATH entry"})
+	yes := SetupConfirmQuestion(1, q).Options[0].Meaning
 	if !strings.HasPrefix(yes, "Writes") || strings.Contains(yes, "not written") {
-		t.Fatalf("the settings yes means %q, but it wrote the pin with no further question", yes)
+		t.Fatalf("the settings yes means %q, but it writes what needs no answer", yes)
 	}
 }

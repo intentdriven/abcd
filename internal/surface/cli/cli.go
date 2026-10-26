@@ -3319,8 +3319,9 @@ const ideateRoutingRule = "  a big, unproven idea? `abcd ideate` runs the option
 
 // resolveProductionMode turns the --production-mode flag into the value a MINT
 // path stamps: the operator's declared choice, or the repo's own declared
-// default from the identity pin (itd-91's seam), which is hand-written when the
-// pin declares none.
+// default (provenance.DeclaredMode: .abcd/config/provenance.json, else the
+// legacy identity pin's member), which is hand-written when neither declares
+// one.
 //
 // The value is validated HERE as well as in the core, because a surface refusal
 // costs nothing and names the closed set before any id is minted — and because
@@ -3338,7 +3339,7 @@ func resolveProductionMode(repoRoot, flag string) (string, error) {
 		}
 		return string(m), nil
 	}
-	m, err := identity.DeclaredProductionMode(repoRoot)
+	m, err := provenance.DeclaredMode(repoRoot)
 	if err != nil {
 		return "", &exitError{Code: 2, Msg: "abcd: " + err.Error() + " (nothing written)"}
 	}
@@ -4069,7 +4070,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 
 	ahoyCmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the detection result as its JSON envelope, whether or not --json is passed")
 	ahoyCmd.Flags().BoolVar(&identityMode, "identity", false,
-		"check git's commit author and committer against .abcd/config/identity.json, exiting non-zero when either diverges (for a pre-commit hook or CI)")
+		"check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)")
 	ahoyCmd.Flags().BoolVar(&remoteMode, "remote", false,
 		"report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change")
 	ahoyCmd.Flags().BoolVar(&providersMode, "providers", false,
@@ -4094,6 +4095,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		answersPath   string
 		answeredIn    string
 		readmeParts   string
+		details       bool
 	)
 	installCmd := &cobra.Command{
 		Use:  "install",
@@ -4118,6 +4120,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			opts.Outbound = outbound
 			opts.OnlyWaiting = onlyWaiting(cmd)
 			opts.VerifyProvenance = ahoyReleaseProvenance
+			opts.DownloadAbcd = ahoyDownloadRelease
 			named, err := installToolNames(installTools)
 			if err != nil {
 				return err
@@ -4165,6 +4168,12 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				// A repository already fully set up is one line
+				// (itd-2610240823055889, criterion 8).
+				if res.Report.OneLine != "" && !details {
+					fmt.Fprintln(w, res.Report.OneLine)
+					return
+				}
 				// The warnings come first, before the headline: each names a
 				// thing that keeps abcd's rules from an agent tool here, which
 				// only the person can end (itd-2610030814013772).
@@ -4175,18 +4184,29 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintln(w)
 				}
 				fmt.Fprintf(w, "abcd ahoy install — %s\n", res.Status)
-				// Core's plain summary first (iss-164): what changed for the
-				// person, why it matters and what to do. The exact record of
-				// paths and identifiers follows as detail.
 				if res.Headline != "" {
 					fmt.Fprintf(w, "\n%s\n", res.Headline)
 				}
+				// A refusal's message is the one thing to read.
+				if res.Status == "refused" {
+					fmt.Fprintln(w)
+					for _, n := range res.Notes {
+						fmt.Fprintf(w, "  note: %s\n", termsafe.Sanitize(n))
+					}
+				}
+				renderSetupReport(w, res.Report)
+				if !details {
+					if len(res.Notes) > 0 && res.Status != "refused" {
+						fmt.Fprint(w, "\nabcd ahoy install --details shows the full record, with every note.\n")
+					}
+					return
+				}
+				// The exact record of paths and identifiers, with core's plain
+				// summary of each (iss-164), under --details.
 				for _, it := range res.Summary {
 					fmt.Fprintf(w, "\n  - %s\n    %s\n    %s\n", it.What, it.Why, it.Action)
 				}
-				if len(res.Summary) > 0 {
-					fmt.Fprint(w, "\ndetail:\n")
-				}
+				fmt.Fprint(w, "\ndetail:\n")
 				for _, c := range res.Changes {
 					fmt.Fprintf(w, "  changed: %s\n", c)
 				}
@@ -4258,7 +4278,8 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	// No backquotes in a flag's usage string: cobra reads the first backquoted
 	// word as the flag's argument placeholder, so a quoted answer would render
 	// this boolean as "--yes y" in the help and the generated reference.
-	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal")
+	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes recording who you commit as on this machine (asked only at a terminal), the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal")
+	installCmd.Flags().BoolVar(&details, "details", false, "print the full record after the report: core's summary of every write and every note, each path written, the declined kinds of change and the gaps left")
 	installCmd.Flags().BoolVar(&adopt, "adopt", false, "adopt an unmanaged repo without prompting")
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
@@ -4297,6 +4318,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "  readme: %s\n", termsafe.Sanitize(receipt.Readme.Note))
 				fmt.Fprintf(w, "  symlink: %s\n", symlinkNote(receipt))
 				fmt.Fprintf(w, "  status line: %s\n", receipt.StatusLine.Note)
+				fmt.Fprintf(w, "  shell settings: %s\n", termsafe.Sanitize(receipt.ShellPath.Note))
+				for _, r := range receipt.Tools {
+					fmt.Fprintf(w, "  tool %s: %s (%s)\n", r.Tool, termsafe.Sanitize(r.Note), termsafe.Sanitize(r.Path))
+				}
+				if receipt.ToolsNote != "" {
+					fmt.Fprintf(w, "  tools: %s\n", termsafe.Sanitize(receipt.ToolsNote))
+				}
 			})
 		},
 	}
@@ -4344,6 +4372,27 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	return ahoyCmd
 }
 
+// renderSetupReport prints setup's three-part report (itd-2610240823055889,
+// criterion 7): done, one line per change with where; needs you, a numbered
+// checklist, each step with why; and the one next step.
+func renderSetupReport(w io.Writer, rep ahoy.SetupReport) {
+	if len(rep.Done) > 0 {
+		fmt.Fprint(w, "\nDone:\n")
+		for _, d := range rep.Done {
+			fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(d))
+		}
+	}
+	if len(rep.NeedsYou) > 0 {
+		fmt.Fprint(w, "\nNeeds you:\n")
+		for i, s := range rep.NeedsYou {
+			fmt.Fprintf(w, "  %d. %s\n     Why: %s\n", i+1, termsafe.Sanitize(s.Step), termsafe.Sanitize(s.Why))
+		}
+	}
+	if rep.Next != "" {
+		fmt.Fprintf(w, "\nNext: %s\n", termsafe.Sanitize(rep.Next))
+	}
+}
+
 // runAhoyDryRun is `ahoy --dry-run`: the detection result as its canonical JSON
 // envelope, always, whether or not --json is passed (spc-16 T1).
 func runAhoyDryRun(cmd *cobra.Command, cwd string) error {
@@ -4356,41 +4405,48 @@ func runAhoyDryRun(cmd *cobra.Command, cwd string) error {
 	return enc.Encode(res)
 }
 
-// runAhoyIdentity is `ahoy --identity`, the iss-62 gate's canonical, testable
-// entrypoint. It exits non-zero when the commit's author or committer diverges
-// from the committed pin (itd-131), so a pre-commit hook (or CI) can fail
-// closed. A match, or an un-pinned repo, exits zero; a machine identity is named
-// either way, because the routine case must be visible where the gate runs.
+// runAhoyIdentity is `ahoy --identity`, the identity gate's canonical,
+// testable entrypoint. It exits non-zero when the commit's author or committer
+// is not the identity the person recorded on their own machine, or is a
+// machine identity in either role (itd-2610240918547728), so a pre-commit hook
+// (or CI) can fail closed. A match, or a human identity with no record yet,
+// exits zero. Nothing it prints names anyone but the person running it.
 func runAhoyIdentity(cmd *cobra.Command, cwd string) error {
 	res, err := identity.Check(cwd)
 	if err != nil {
 		return err
 	}
 	if res.Blocks() {
-		var why []string
+		var why, fix []string
 		if res.Status == identity.StatusMismatch || res.Status == identity.StatusUnset {
 			why = append(why, res.Reason)
 		}
-		fix := fmt.Sprintf("git config user.name %q && git config user.email %q", res.Pin.Name, res.Pin.Email)
-		if res.CommitterDiverges {
-			why = append(why, res.CommitterReason)
-			fix += " (and unset any GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL override and committer.name/committer.email key)"
+		for _, t := range []struct {
+			is  bool
+			who identity.Effective
+			as  string
+		}{{res.AuthorIsTool, res.Effective, "author"}, {res.CommitterIsTool, res.Committer, "committer"}} {
+			if t.is {
+				why = append(why, "the "+t.as+" "+t.who.Name+" <"+t.who.Email+"> is a machine identity; the human is the author of record")
+			}
 		}
-		return fmt.Errorf("%s\n  fix: %s", termsafe.Sanitize(strings.Join(why, "; ")), termsafe.Sanitize(fix))
+		if res.Recorded {
+			fix = append(fix, fmt.Sprintf("git config user.name %q && git config user.email %q", res.Record.Name, res.Record.Email))
+		} else {
+			fix = append(fix, "set user.name and user.email (or the GIT_AUTHOR_*/GIT_COMMITTER_* an unattended run's launcher supplies) to your own identity")
+		}
+		if res.CommitterDiverges && res.Recorded {
+			why = append(why, res.CommitterReason)
+			fix = append(fix, "unset any GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL override and committer.name/committer.email key")
+		}
+		if res.Recorded {
+			fix = append(fix, "if your record is wrong, edit "+res.RecordAt.Display+", or remove it and run abcd ahoy install at a terminal to be asked again")
+		}
+		return fmt.Errorf("%s\n  fix: %s", termsafe.Sanitize(strings.Join(why, "; ")), termsafe.Sanitize(strings.Join(fix, "; ")))
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "identity ok (%s)\n", res.Status)
 	if res.CommitterDiverges {
 		fmt.Fprintf(cmd.OutOrStdout(), "  note: %s\n", termsafe.Sanitize(res.CommitterReason))
-	}
-	for _, t := range []struct {
-		is  bool
-		who identity.Effective
-		as  string
-	}{{res.AuthorIsTool, res.Effective, "author"}, {res.CommitterIsTool, res.Committer, "committer"}} {
-		if t.is {
-			fmt.Fprintf(cmd.OutOrStdout(), "  note: the %s %s is a machine identity; the human is the author of record (abcd ahoy reports it as %s)\n",
-				t.as, termsafe.Sanitize(t.who.Name+" <"+t.who.Email+">"), ahoy.ToolIdentityGapID)
-		}
 	}
 	return nil
 }
@@ -4596,8 +4652,10 @@ func symlinkNote(r ahoy.UninstallReceipt) string {
 // so an id this switch does not know renders no reason rather than a wrong one.
 func optionalSkipReason(id string) string {
 	switch id {
-	case ahoy.OptionalPinGapID:
-		return "the pin records the current git identity, so it is only written against an answered prompt"
+	case ahoy.UnrecordedGapID:
+		return "it records who you commit as, which only you answer, so it is only written against a prompt answered at a terminal"
+	case ahoy.LegacyPinGapID:
+		return "moving the stored identity writes to your home directory and removes a committed file, so it is only done against a prompt answered at a terminal"
 	case ahoy.StatusLineOfferGapID:
 		return "the status line rewrites a setting of the host harness and takes element choices, so it is only written against an answered prompt"
 	case ahoy.OracleRoutingMachineGapID, ahoy.OracleRoutingRepoGapID:
@@ -4608,6 +4666,8 @@ func optionalSkipReason(id string) string {
 		return "an agent tool's own conventions file that only repeats AGENTS.md is removed from the project only against a prompt answered at a terminal"
 	case ahoy.ReadmeOfferGapID:
 		return "which parts of README.md abcd keeps current is the owner's choice, so abcd writes none until --readme-parts or the README question answers it"
+	case ahoy.HooksArmGapID:
+		return "core.hooksPath chooses every hook git runs in this clone, so it is only set against a prompt answered at a terminal; or run " + ahoy.ArmHooksCommand
 	}
 	return ""
 }
@@ -4651,9 +4711,10 @@ func toolConfirm(p ahoy.Prompter, named map[string]bool, yes bool, w io.Writer) 
 // --install-tool: the gh offer at ahoy remote apply (the product thinker's
 // DQ3 ruling, 2026-09-29). Its only yes is one typed at a terminal; --yes, a
 // piped stream and a caller with no terminal each decline, carrying the
-// command the person can run themselves.
+// by-hand install the person can make themselves (the URL, the sha256 to check
+// and where the program goes: never a step that needs admin rights).
 func terminalToolConfirm(p ahoy.Prompter, yes bool, w io.Writer) tools.Confirm {
-	return askToolAtTerminal(p, yes, w, func(e tools.Explanation) string { return "install it yourself with " + e.StepText() })
+	return askToolAtTerminal(p, yes, w, func(e tools.Explanation) string { return "install it yourself: " + e.ManualText() })
 }
 
 // askToolAtTerminal asks the install question of a person at a terminal and
@@ -4666,13 +4727,12 @@ func askToolAtTerminal(p ahoy.Prompter, yes bool, w io.Writer, otherwise func(to
 			return tools.Answer{Why: "--yes never installs a tool; " + otherwise(e) + ", or run without --yes at a terminal"}
 		}
 		if dp, ok := p.(*drawnPrompter); ok {
-			for _, line := range e.Lines() {
-				fmt.Fprintln(w, termsafe.Sanitize(line))
-			}
-			if !dp.confirmTool(e.Tool, "Install "+e.Tool+" now by running "+e.StepText()+"?") {
+			// The question is its one line; the explanation is its material,
+			// which ? shows (itd-2610240823055889, criterion 6).
+			if !dp.confirmTool(e.Tool, strings.Join(e.Lines(), "\n")+"\nInstall "+e.Tool+" now: "+e.StepText()+"?") {
 				return tools.Answer{Why: "answered no at the terminal"}
 			}
-			fmt.Fprintf(w, "running %s; a package manager can take a few minutes\n", e.StepText())
+			fmt.Fprintf(w, "downloading %s; nothing is written until it passes its check\n", e.Tool)
 			return tools.Answer{Yes: true, Why: "answered yes at the terminal"}
 		}
 		sp, ok := p.(*stdinPrompter)
@@ -4682,11 +4742,11 @@ func askToolAtTerminal(p ahoy.Prompter, yes bool, w io.Writer, otherwise func(to
 		for _, line := range e.Lines() {
 			fmt.Fprintln(w, termsafe.Sanitize(line))
 		}
-		fmt.Fprintf(w, "Install %s now by running %s? [y/N] ", e.Tool, e.StepText())
+		fmt.Fprintf(w, "Install %s now: %s? [y/N] ", e.Tool, e.StepText())
 		line, _ := sp.r.ReadString('\n')
 		switch strings.ToLower(strings.TrimSpace(line)) {
 		case "y", "yes":
-			fmt.Fprintf(w, "running %s; a package manager can take a few minutes\n", e.StepText())
+			fmt.Fprintf(w, "downloading %s; nothing is written until it passes its check\n", e.Tool)
 			return tools.Answer{Yes: true, Why: "answered yes at the terminal"}
 		}
 		return tools.Answer{Why: "answered no at the terminal"}
@@ -4764,6 +4824,48 @@ func (p *stdinPrompter) echo(answer string) {
 // eligibility rule, and whether to remove a tool's own conventions file that
 // only repeats AGENTS.md) are never put to a pipe.
 func (p *stdinPrompter) AtTerminal() bool { return p.tty }
+
+// Plan puts the plan screen to a person typing at a terminal, which makes
+// the stdin door an ahoy.PlanPrompter there: the plan, then its one line,
+// and ? shows what each answer does before asking again. Off a terminal the
+// plan is not put (asked false): a piped stream answers the approvals one
+// by one, in their fixed order, as before.
+func (p *stdinPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
+	if !p.tty {
+		return "", false
+	}
+	q := ahoy.SetupPlanQuestion(0, plan)
+	for _, b := range q.Material {
+		if b.Kind == question.KindList {
+			for _, it := range b.Items {
+				fmt.Fprintf(p.w, "  - %s\n", termsafe.Sanitize(it))
+			}
+			continue
+		}
+		fmt.Fprintf(p.w, "\n%s\n", termsafe.Sanitize(b.Text))
+	}
+	for {
+		fmt.Fprintf(p.w, "\n%s [proceed/customise/cancel] %s: ", q.Ask, ahoy.ExplainHint)
+		line, err := p.r.ReadString('\n')
+		line = strings.TrimSpace(line)
+		if line == "?" {
+			for _, o := range q.Options {
+				fmt.Fprintf(p.w, "  %s — %s\n", strings.ToLower(o.Label), o.Meaning)
+			}
+			continue
+		}
+		if c, ok := ahoy.PlanChoiceOf(line); ok {
+			return c, true
+		}
+		// A bare Enter is no answer, as at every [y/N] question here: the
+		// screen asks again, and end of input cancels.
+		if line == "" && err == nil {
+			fmt.Fprint(p.w, "Type proceed, customise or cancel.\n")
+			continue
+		}
+		return ahoy.PlanCancel, true
+	}
+}
 
 func (p *stdinPrompter) Confirm(question string) bool {
 	fmt.Fprintf(p.w, "%s [y/N] ", question)

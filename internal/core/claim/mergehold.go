@@ -66,13 +66,17 @@ func (m MergeHold) Reason() string {
 			reasons = append(reasons, fmt.Sprintf("release %s is held by an unreadable reservation (%s), until %s",
 				h.Release, h.Unreadable, until))
 		case h.Mine:
-			reasons = append(reasons, fmt.Sprintf("release %s is being cut by your copy on another computer, until %s", h.Release, until))
+			reasons = append(reasons, fmt.Sprintf("release %s is being cut by %s, until %s", h.Release, h.yourCopy(), until))
 		default:
 			reasons = append(reasons, fmt.Sprintf("release %s is being cut by %s, until %s", h.Release, h.Holder, until))
 		}
 	}
 	return strings.Join(reasons, "; ") + ", and a session cutting a release has the final say on what merges before its tag"
 }
+
+// yourCopy names the copy of the reader's own that holds a release
+// (yourCopyAt).
+func (h Hold) yourCopy() string { return yourCopyAt(h.Sibling) }
 
 // Waits is what ends each hold, for the caller's next step: ask the holder,
 // or wait for the tag or the hold's end. "" when nothing holds.
@@ -82,6 +86,8 @@ func (m MergeHold) Waits() string {
 		switch {
 		case h.Unreadable != "":
 			waits = append(waits, "wait until "+h.Release+" is tagged or the hold ends at "+stamp(h.EffectiveExpiry))
+		case h.Mine && h.Sibling != "":
+			waits = append(waits, "merge it from "+h.Sibling+", the worktree cutting "+h.Release+", or wait until "+h.Release+" is tagged or that copy releases "+h.Subject)
 		case h.Mine:
 			waits = append(waits, "merge it from the copy cutting "+h.Release+", or wait until "+h.Release+" is tagged or that copy releases "+h.Subject)
 		default:
@@ -121,8 +127,8 @@ func (h Hold) notCounted() string {
 	case h.Unreadable != "":
 		what = fmt.Sprintf("release %s is held by an unreadable reservation (%s) %s", h.Release, h.Unreadable, ahead)
 	case h.Mine:
-		what = fmt.Sprintf("release %s is reserved by your copy on another computer with a date more than %d minutes ahead of this clock",
-			h.Release, lease.Skew/time.Minute)
+		what = fmt.Sprintf("release %s is reserved by %s with a date more than %d minutes ahead of this clock",
+			h.Release, h.yourCopy(), lease.Skew/time.Minute)
 	default:
 		what = fmt.Sprintf("release %s is reserved by %s with a date more than %d minutes ahead of this clock",
 			h.Release, h.Holder, lease.Skew/time.Minute)
