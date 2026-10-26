@@ -1,6 +1,9 @@
 package gitutil
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // Worktree is one record of `git worktree list --porcelain`: a working tree
 // this repository knows about, as git names it.
@@ -9,6 +12,16 @@ type Worktree struct {
 	Head   string // the object name HEAD points at; "" for a bare entry
 	Branch string // the full ref ("refs/heads/…"); "" when detached or bare
 	Bare   bool
+	// Detached is git's `detached` attribute: HEAD names a commit, not a branch.
+	Detached bool
+	// Locked is git's `locked` attribute, with its reason when one was given
+	// ("" for a bare `locked`): git refuses to remove or prune the worktree.
+	Locked     bool
+	LockReason string
+	// Prunable is git's `prunable` attribute, with its reason: git would drop
+	// the entry on `git worktree prune` (most often its directory is gone).
+	Prunable       bool
+	PrunableReason string
 }
 
 // MaxWorktreeListing is the cap a caller listing a repository's worktrees
@@ -44,8 +57,9 @@ func ListWorktrees(root string, maxBytes int) ([]Worktree, error) {
 // ParseWorktreeList parses the porcelain output of `git worktree list`, whose
 // attributes are separated by sep: "\x00" for the -z form, "\n" otherwise. A
 // record opens at its `worktree <path>` attribute; an attribute before the
-// first record, and one this reader does not use (locked, prunable, detached),
-// is ignored.
+// first record, and one this reader does not know, is ignored. A `locked` or
+// `prunable` reason is git's own text: the newline form C-quotes a reason
+// holding a newline or a quote, and it is unquoted here (reasonOf).
 func ParseWorktreeList(out, sep string) []Worktree {
 	var wts []Worktree
 	p := porcelain{lines: sep == "\n", emit: func(w Worktree) { wts = append(wts, w) }}
@@ -87,7 +101,30 @@ func (p *porcelain) field(field string) {
 		p.cur.Branch = val
 	case "bare":
 		p.cur.Bare = true
+	case "detached":
+		p.cur.Detached = true
+	case "locked":
+		p.cur.Locked, p.cur.LockReason = true, p.reasonOf(val)
+	case "prunable":
+		p.cur.Prunable, p.cur.PrunableReason = true, p.reasonOf(val)
 	}
+}
+
+// reasonOf is a lock or prune reason as git meant it. The -z form never quotes,
+// so its bytes are the reason. The newline form C-quotes a reason that holds a
+// newline, a quote or a control byte (git-worktree(1)); git's C quoting is a
+// subset of a Go string literal's escapes (\n, \t, \", \\ and three-digit
+// octal), so strconv.Unquote reads it. An unquoted reason never holds a quote,
+// so one led by a quote is quoted; one that does not unquote is kept as it
+// stands rather than dropped.
+func (p *porcelain) reasonOf(val string) string {
+	if !p.lines || len(val) < 2 || val[0] != '"' || val[len(val)-1] != '"' {
+		return val
+	}
+	if u, err := strconv.Unquote(val); err == nil {
+		return u
+	}
+	return val
 }
 
 // end hands over the record being read, if any.

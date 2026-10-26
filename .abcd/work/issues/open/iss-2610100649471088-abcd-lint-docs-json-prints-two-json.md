@@ -9,7 +9,7 @@ found_during: "abcd inbox report rpt-2610071636212229 from a managed repository 
 origin: researcher-authored
 production_mode: hand-written
 found_at: "abcd lint docs --json, abcd lint --json"
-remedy: "none (filed automatically)"
+remedy: "Make abcd lint docs --json write one document whose findings read like abcd lint's: after rendering, return the blocker exit as an empty-message exit error with code 1 (internal/surface/cli/cli.go:955), as lint site and bare lint do (site.go:139, lint.go:76), so no error envelope follows the result; encode findings with the keys file, line, ruleId, severity and message that repolint.Finding uses (internal/core/repolint/repolint.go:68-74), keeping finding_ref and lint's blocker, warn and info values; write an empty list rather than null when there are no findings; and update the key list at commands/lint.md:120-121, resolving with impact breaking since documented keys change; proven by a CLI test, like TestUpdateJSONRefusalIsOneDocument, that over a one-blocker fixture stdout decodes to exactly one JSON value with lowercase finding keys and the process exits 1, and that a clean fixture carries an empty findings list. (All three halves of the report reproduce in the code as it stands; the key rename breaks readers of the documented capitalised keys, which is why the impact is breaking.)"
 ---
 
 abcd lint docs --json prints two JSON documents on a blocker, and names its finding fields differently from abcd lint

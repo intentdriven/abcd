@@ -653,6 +653,17 @@ so that a later drain takes issues a person would have decided. What guards it:
   liveness the checkout cannot read: no release tag, a tag newer than the
   checkout's own, or a value that is not a release tag.
 
+## Approval prompts while it runs
+
+A drain is unattended, as a build is, so while one has not stopped and its
+state was written within the reservation lease, the host's approval prompts
+for shell commands in its checkout and in the lanes the host runs are refused rather than shown,
+on the terms [`34-build.md`](34-build.md#approval-prompts-while-it-runs) sets
+out (iss-2610171110154902). A lane handed back does not end it, since the
+drain routes the hand-back and goes on unattended; refusal stops when the
+drain stops or after two hours with no activity. The move that begins a drain
+says so once, on stderr.
+
 ## What it refuses
 
 The dry run and the bare verb both refuse, exit 2 with nothing written, when

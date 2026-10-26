@@ -186,8 +186,141 @@ None open: the product thinker settled them on 2026-10-11 (Decisions, below).
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-72909a4e917b -->
-Fidelity review OWED (receipt rcp-72909a4e917b).
+<!-- abcd-review: INGESTED receipt=rcp-72909a4e917b -->
+Fidelity review — receipt rcp-72909a4e917b (verifier abcd:intent-auditor claude-opus-5-5).
+
+Provenance: abcd:intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:17e87db78710bffb85a47c32fc345f272bc3664c6b1ac38269149f83d854a9c8
+Input attestations: diff:89d8d9110..64661b186 (PR #1026 land/decisions-folder, merged 2026-10-16 as 64661b18623a3307b00581557d975b3b94209749; digest over git diff --binary --no-renames of that range)@sha256:4792750bab070e96cf4f41f9feefc1122a17ba46eca985da9ba55f6901920276; commits:1fab6e304 and 7a1494402, follow-ups naming the intent, landed in PR #1038 as 2696127a8@-; tree:origin/main 2e03c61e454bf09ecda8cee0ae2f377157b522f7, the state judged (the worktree HEAD 18170d03f adds only other intents' audit notes)@-; forge:PR #1026 body, comments, reviews and its 14 status checks (all SUCCESS), read with gh pr view@-;
+
+Acceptance rollup: MET 6 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: Both writers, abcd decide "< text>" and ideate's public-verdict pointer, go through decisions.Record. It mints the id with recordid.Minter.Mint over the dcn family, which is registered in the adr-45 seam's familyRoots, and creates exactly one file in .abcd/work/decisions/ by exclusive create, under a lock held on the folder itself that leaves no artefact. TestRecordWritesOneFileAndNothingElse asserts that git status names only the new record path, and PR #1026 merged with every check green.
+  evidence: internal/core/decisions/record.go:96 — "id, err := minter.Mint(Family)"
+  evidence: internal/core/decisions/record.go:108 — "if err := fsutil.CreateExclusiveIn(r, rel, []byte(content), 0o644); err != nil {"
+  evidence: internal/core/decisions/record.go:160 — "The lock is on the directory, so it leaves no"
+  evidence: internal/core/recordid/resolve.go:237 — "{"dcn", DecisionsRelDir},"
+  evidence: internal/core/decisions/record_test.go:81 — "if got := status(t, root); len(got) != 1 || got[0] != "?? "+d.Path {"
+  evidence: internal/surface/cli/decide.go:108 — "d, err := decisions.Record(repoRoot, text)"
+  evidence: internal/core/ideate/record.go:215 — "d, err := decisions.Record(repoRoot, pointer)"
+- ac-2 — MET: Bare abcd decide reads the folder on every run. List sorts by id, and the id is the date stamp; ReadListing reverses that to newest first. Each block is the id and then the body, and the JSON form carries id, date, slug, path and text. TestListingIsDateOrderedAndDerived asserts the order in both forms and that listing leaves the tree unchanged. The site's Decision log renders every exported dcn record with no cap, grouped by month, each row its id, date and full body; its test builds developmentDeckCap+5 records and finds every one, and abcd's site.json opts in. No index is committed, because site-render builds into the local tier, so recording a decision writes nothing else. The order is newest first, by the product thinker's 2026-10-15 ruling (spec decision 21), which is still date order.
+  evidence: internal/core/decisions/decisions.go:209 — "sort.SliceStable(out, func(i, j int) bool { return idLess(out[i].ID, out[j].ID) })"
+  evidence: internal/core/decisions/record.go:226 — "for i, j := 0, len(ds)-1; i < j; i, j = i+1, j-1 {"
+  evidence: internal/core/decisions/record_test.go:218 — "t.Errorf("reading the listing changed the tree: %q", s)"
+  evidence: internal/core/site/decisionlog.go:62 — "func (e *explorer) decisionLogPage() (string, error) {"
+  evidence: internal/core/site/decisionlog_test.go:22 — "const decisionCount = developmentDeckCap + 5"
+  evidence: internal/core/site/decisionlog_test.go:63 — "func TestDecisionLogPageListsEveryEntry(t *testing.T) {"
+  evidence: .abcd/site.json:63 — ""decisions": true"
+  evidence: Makefile:223 — "@go run ./cmd/abcd site build --out .abcd/.work.local/scratch/site-render-check >/dev/null"
+- ac-3 — MET_WITH_CONCERNS: The log is absent at origin/main; c2fdca9e1 removed it. The only live-surface mentions left are the frozen-log handling for managed repositories, through decisions.FrozenLog, and absence assertions in tests. A sweep of every tracked file outside the history set finds no dated-entry citation of the log. Every dcn handle cited outside test fixtures resolves, all 182 relative links to decision records reach a file, and 12 sampled rewrites each point at the entry whose words they quote. First concern: the review list is not itemised in the change. Commit 88fdb204b gives only totals (435 items: 210 mapped, 15 to the folder, 40 reworded, 170 left as history). PR #1026 has no comments and carries no list, no per-class counts and no script source or sha256, although spec step 6 promised all of them. So 'never guessed' can be spot-checked but not audited item by item. Second concern: the reviews charter's live link to ../DECISIONS.md survived the merge. It was fixed the next day in 1fab6e304, and only because the release docs review found it. TestNoLiveDecisionsLogPath exempts the whole of .abcd/work/reviews/ as history, so it would not catch a repeat.
+  evidence: git show origin/main:.abcd/work/DECISIONS.md — "fatal: path '.abcd/work/DECISIONS.md' does not exist in 'origin/main'"
+  evidence: internal/core/decisions/frozenlog.go:18 — "const FrozenLog = ".abcd/work/DECISIONS.md""
+  evidence: internal/core/decisions/livepath_tree_test.go:78 — "func TestNoLiveDecisionsLogPath(t *testing.T) {"
+  evidence: .abcd/development/intents/shipped/itd-111-a-stale-abcd-never-answers-silently.md:153 — "2026-09-29 (recorded in [dcn-2609300000000011]"
+  evidence: git show 88fdb204b (commit message) — "The citations the migration script could not map with certainty, 435 on"
+  evidence: .abcd/development/specs/closed/spc-2610110931381316-append-only-logs-conflict-on-every-merge.md:292 — "round-trip verdict, the citation counts per class, and the review list with"
+  evidence: PR #1026 body (gh pr view 1026) — "every citation of the log rewritten or resolved by hand"
+  evidence: internal/core/decisions/livepath_tree_test.go:28 — "".abcd/work/reviews/","
+  evidence: git show 1fab6e304 -- .abcd/work/reviews/README.md — "decisions pending graduation to ADRs"
+- ac-4 — MET: TestTwoBranchesRecordingMergeCleanly cuts two branches from one base in a repository with no .gitattributes and records one decision on each through Record. It merges both into an integration branch; the git helper fails on any non-zero exit, a conflict included. It then asserts that both files are present and that git check-attr reports merge unspecified for each. abcd's own .gitattributes lost the log's union line in 69235f66a, and its only merge attribute left is CHANGELOG.md's. On the forge, 10 main-line merges since landing had decision records added on both sides after their merge base, among them PR #1114 (24 on the branch, 3 on main) and PR #1112 (1 against 35). Every one of them landed.
+  evidence: internal/core/decisions/record_test.go:123 — "func TestTwoBranchesRecordingMergeCleanly(t *testing.T) {"
+  evidence: internal/core/decisions/record_test.go:144 — "git(t, root, "merge", "--no-ff", "-q", "-m", "merge "+branch, branch)"
+  evidence: internal/core/decisions/record_test.go:150 — "got != p+": merge: unspecified""
+  evidence: .gitattributes:12 — "CHANGELOG.md merge=union"
+  evidence: git show 69235f66a -- .gitattributes — "-.abcd/work/DECISIONS.md merge=union"
+  evidence: merge 6fe563eeb (PR #1114) — "Merge pull request #1114 from intentdriven/chore/coordination-checklist-plans"
+  evidence: merge 34d9b582d (PR #1112) — "Merge pull request #1112 from intentdriven/fix/lane-e-captures"
+- ac-5 — MET: TestInstallLeavesAFrozenLogByteForByte installs over a repository whose DECISIONS.md has a CRLF line and no trailing newline. It asserts the file's sha256 is unchanged, the receipt claims no write of it, and the decisions folder is seeded beside it. TestInstallScaffoldsNoMergeAttribute asserts no merge= line in .gitattributes, and merge unspecified for a record, the README and the frozen log's path; ahoy's only attribute writer is the hooks' EOL pin. New decisions go to the folder whether or not a frozen log is present: TestListingNamesAFrozenLog records one beside a log. The shipped rewriter cannot touch the frozen log, because relink holds it in its append-only set.
+  evidence: internal/core/ahoy/record_tiers_test.go:249 — "func TestInstallLeavesAFrozenLogByteForByte(t *testing.T) {"
+  evidence: internal/core/ahoy/record_tiers_test.go:275 — "if sha256.Sum256(got) != before {"
+  evidence: internal/core/ahoy/record_tiers_test.go:293 — "func TestInstallScaffoldsNoMergeAttribute(t *testing.T) {"
+  evidence: internal/core/ahoy/record_tiers_test.go:308 — "if strings.Contains(line, "merge=") {"
+  evidence: internal/core/ahoy/banlist_scaffold.go:949 — "// pinHookEOL appends the hooks' EOL attribute to .gitattributes, creating the file"
+  evidence: internal/core/decisions/record_test.go:228 — "func TestListingNamesAFrozenLog(t *testing.T) {"
+  evidence: internal/core/relink/relink.go:72 — "decisions.FrozenLog: true,"
+- ac-6 — MET: On a repository holding only .git, TestInstallCreatesTheCommittedTiers has install create both committed tiers and seed .abcd/work/decisions/README.md, the folder's static seed, leaving nothing for detection to report. TestInstallSeedsTheDecisionsFolder closes skeleton.decisions_folder_missing on an existing shared tier and asserts that no .abcd/work/DECISIONS.md is laid. The seed table names the folder's README and no log. That replaces the header-seeded single log an earlier release laid, which 8a88783a1 removed, and the host-run adoption page lays the same folder.
+  evidence: internal/core/ahoy/record_tiers_test.go:21 — "func TestInstallCreatesTheCommittedTiers(t *testing.T) {"
+  evidence: internal/core/ahoy/record_tiers_test.go:202 — "func TestInstallSeedsTheDecisionsFolder(t *testing.T) {"
+  evidence: internal/core/ahoy/record_tiers_test.go:237 — "t.Errorf("install laid a single decisions log: %v", err)"
+  evidence: internal/core/ahoy/record_tiers.go:98 — "tier: path.Dir(decisions.RelDir), file: decisions.RelDir + "/README.md", present: decisions.RelDir,"
+  evidence: internal/core/ahoy/record_tiers.go:33 — "// No single decisions log is seeded, and one a repository already keeps is never"
+  evidence: commands/ahoy.md:250 — "`decisions/` folder, one file per decision, with a `README.md` so git keeps"
+- ac-7 — MET_WITH_CONCERNS: The gate is gone. 69235f66a deleted internal/core/lint/decisionsappend.go and its suite, record-lint's decisions-append mode, the Makefile's lint-decisions target and the two CI steps, and none of them is present at origin/main. make preflight lists no lint-decisions, and no CI step invokes the mode. AGENTS.md, CONTRIBUTING, the brief, the principles and the rules files never name it; only its two subject ADRs do, as retired. TestNoLiveDecisionsLogPath refuses the name on live surfaces. Concern: three open issues still name it as a live gate, and the tree test does not scan the ledger. The deferral_reason of iss-2608271804494611 says lint-decisions reads DECISIONS.md. The remedies of iss-2608271804496010 and iss-2608271817300337 ask for proof by lint-decisions green, a target that no longer exists. This delivery's own commit f6a899b20 edited that last remedy line and left the gate's name in place.
+  evidence: git show 69235f66a (commit message) — "the log: internal/core/lint/decisionsappend.go and its suite, record-lint's"
+  evidence: Makefile:321 — "preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading"
+  evidence: .github/workflows/ci.yml:541 — "go run ./cmd/record-lint"
+  evidence: internal/core/decisions/livepath_tree_test.go:66 — "liveGateRe = regexp.MustCompile(`decisions-append|lint-decisions`)"
+  evidence: .abcd/work/issues/open/iss-2608271804494611-work-tier-and-root-prose-sit-under-no.md:12 — "lint-decisions reads DECISIONS.md"
+  evidence: .abcd/work/issues/open/iss-2608271804496010-four-pruned-adrs-are-still-cited-by-name.md:10 — "proven by lint-decisions and links_resolve green"
+  evidence: .abcd/work/issues/open/iss-2608271817300337-adr-seed-pilot-gate-arming-trust-rules.md:10 — "proven by lint-decisions and record-lint green"
+  evidence: git log -1 -- .abcd/work/issues/open/iss-2608271817300337-adr-seed-pilot-gate-arming-trust-rules.md — "f6a899b20 2026-10-15 docs: name the ADR mint as abcd decide --adr everywhere it is cited"
+- ac-8 — MET: I rebuilt the migration independently from the log as it stood on main just before the merge (89d8d9110, the same 538 entries as the migration commit's parent). The 538 dated top-level entries map to the 538 dcn records the merge added, with none missing and none extra. Each record's id is its entry's date at 000000 plus the entry's place, in file order, among the entries of that date, and its frontmatter date is the entry's own. In all 538 cases the body equals its entry byte for byte once the leading '- ' and the two-space continuation indent are removed. The 54 entries written out of date order now sort to their dates, which the PR states as '54 moved'. The listing and the site order by id and so render in date order, and all 739 records in the folder today parse, so the reader skips none.
+  evidence: git show 89d8d9110:.abcd/work/DECISIONS.md — "Append-only, one line per decision, newest last. Date-prefixed. Architecture-shaping"
+  evidence: git show c2fdca9e1 (commit message) — "become 538 records under .abcd/work/decisions/, each id carrying its"
+  evidence: .abcd/work/decisions/dcn-2607060000000001-rebuild-abcd-from-scratch-in-go-no.md:6 — "2026-07-06 — Rebuild abcd from scratch in Go, no external tools (specstory,"
+  evidence: internal/core/decisions/decisions.go:209 — "sort.SliceStable(out, func(i, j int) bool { return idLess(out[i].ID, out[j].ID) })"
+  evidence: PR #1026 body (gh pr view 1026) — "538 entries in, 538 records out, a byte-for-byte round trip, entries in date order (54 moved)"
+
+Gap audit:
+- honoured:
+  - A decision is a record with an id allocated through the same seam that mints captures, intents, specs and ADRs, written to its own file in one flat folder, .abcd/work/decisions/
+    evidence: internal/core/decisions/record.go:96 — "id, err := minter.Mint(Family)"
+    evidence: internal/core/recordid/resolve.go:237 — "{"dcn", DecisionsRelDir},"
+  - Two branches that each record a decision merge the way two branches that each capture an issue do: git sees two new files and has nothing to reconcile, with no merge attribute
+    evidence: internal/core/decisions/record_test.go:123 — "func TestTwoBranchesRecordingMergeCleanly(t *testing.T) {"
+    evidence: merge 6fe563eeb (PR #1114) — "Merge pull request #1114 from intentdriven/chore/coordination-checklist-plans"
+  - A command and the site list every decision in date order, read from the folder each time
+    evidence: internal/surface/cli/decide.go:120 — "func listDecisions(cmd *cobra.Command, asJSON bool) error {"
+    evidence: internal/core/site/decisionlog.go:62 — "func (e *explorer) decisionLogPage() (string, error) {"
+  - The old single file, .abcd/work/DECISIONS.md, is retired, and abcd's own history moved over intact: 538 entries became 538 records, verbatim and in date order
+    evidence: internal/core/decisions/livepath_tree_test.go:81 — "if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(decisions.FrozenLog))); !errors.Is(err, fs.ErrNotExist) {"
+    evidence: git show c2fdca9e1 (commit message) — "become 538 records under .abcd/work/decisions/, each id carrying its"
+  - A repository abcd manages records its new decisions the same way, and abcd never touches its existing log
+    evidence: internal/core/ahoy/record_tiers_test.go:275 — "if sha256.Sum256(got) != before {"
+    evidence: internal/core/relink/relink.go:72 — "decisions.FrozenLog: true,"
+    evidence: internal/core/repolint/rule_decisions.go:65 — "/ folder to go to; run `abcd ahoy install` to lay it (the log stays as it is)"
+  - No hand-written merge attribute is needed any more: the union line abcd carried for the log is gone, and install scaffolds none
+    evidence: git show 69235f66a -- .gitattributes — "-.abcd/work/DECISIONS.md merge=union"
+    evidence: internal/core/ahoy/record_tiers_test.go:308 — "if strings.Contains(line, "merge=") {"
+- diverged:
+  - Every link and citation that named the old file now points at the decision's own file. Delivered: a citation of a dated entry points at that entry's record, but of the 435 hand-reviewed items 15 now name the folder, 40 were reworded and 170 still name the log as history. In all, 209 lines in 107 tracked files still name DECISIONS.md: the history set, the log's subject records, and the frozen-log handling for managed repositories.
+    evidence: git show 88fdb204b (commit message) — "reworded, and 170 that narrate what the log was are left as history."
+    evidence: internal/core/decisions/frozenlog.go:18 — "const FrozenLog = ".abcd/work/DECISIONS.md""
+  - The change shows its work (spec step 6): the review list with each item's resolution, the citation counts per class, and the script's source with its sha256, so that a reviewer can rerun it. Delivered: PR #1026 has no comments and states only totals and the round-trip verdict, with no list, no per-class counts and no script. Commit 88fdb204b gives the review list only as totals.
+    evidence: .abcd/development/specs/closed/spc-2610110931381316-append-only-logs-conflict-on-every-merge.md:293 — "the resolution of each item. It also carries the script's source in a"
+    evidence: PR #1026 body (gh pr view 1026) — "every citation of the log rewritten or resolved by hand"
+  - The decisions-append gate is retired by the shape and named as live nowhere. Delivered: it is gone from code, CI, preflight and the conventions, but three open issues still name lint-decisions as a live gate, outside the tree test's scan. One of those remedy lines was edited by this delivery's commit f6a899b20.
+    evidence: .abcd/work/issues/open/iss-2608271817300337-adr-seed-pilot-gate-arming-trust-rules.md:10 — "proven by lint-decisions and record-lint green"
+    evidence: .abcd/work/issues/open/iss-2608271804494611-work-tier-and-root-prose-sit-under-no.md:12 — "lint-decisions reads DECISIONS.md"
+  - TestNoLiveDecisionsLogPath holds the tree to the retirement from then on. Delivered: it exempts all of .abcd/work/reviews/ as history, the live charter README included. So the charter's link to ../DECISIONS.md passed it at the merge and was caught only by the release docs review, which led to the fix in 1fab6e304.
+    evidence: internal/core/decisions/livepath_tree_test.go:28 — "".abcd/work/reviews/","
+    evidence: git show 1fab6e304 -- .abcd/work/reviews/README.md — "decisions pending graduation to ADRs"
+- missing:
+  - A managed repository's owner can convert the existing log with the same one-off script. Nothing an owner could run exists. The script stayed in a gitignored local tier and was never committed, and PR #1026 does not carry its source as the spec required. No user doc names a way to convert, and no copy was found in the main checkout's local tier or in the machine's abcd store.
+    evidence: .abcd/development/intents/shipped/itd-2609151138388536-append-only-logs-conflict-on-every-merge.md:34 — "> which its owner can convert with the same one-off script."
+    evidence: .abcd/development/specs/closed/spc-2610110931381316-append-only-logs-conflict-on-every-merge.md:293 — "the resolution of each item. It also carries the script's source in a"
+    evidence: git ls-tree -r --name-only origin/main — "no tracked path matches decisions-migrate"
+
+Scope-condition dispositions:
+- cond-2610110931385884 — survived: The delivery is bound to git throughout. Record resolves the checkout root through gitutil.CheckoutRoot and refuses outside a repository. The merge proof and every field merge run through git, and nothing is claimed for another version-control system.
+  evidence: internal/core/decisions/record.go:65 — "root, err := gitutil.CheckoutRoot(dir, "the decisions folder")"
+  evidence: internal/core/decisions/record_test.go:112 — "t.Error("Record outside a repository succeeded; it must refuse")"
+  evidence: internal/core/decisions/record_test.go:144 — "git(t, root, "merge", "--no-ff", "-q", "-m", "merge "+branch, branch)"
+- cond-2610110931387631 — survived: In abcd the log is gone and 201 records with minted ids have been added since landing. In a managed repository, install seeds the folder and leaves an existing log byte for byte, and every recording goes to the folder. The readers only read the frozen log, relink holds it append-only, and the lint warns without asking it to change. So the shape governs exactly the decisions recorded after adoption. There are two edges, neither a contradiction. An earlier release's binary still files an ADR for the bare form until it is updated, an accepted cost (spec decision 17). And embark carries neither the folder nor a frozen log into a target repository (iss-2610150733180751, open), which concerns history, not new decisions.
+  evidence: internal/core/ahoy/record_tiers_test.go:275 — "if sha256.Sum256(got) != before {"
+  evidence: internal/core/relink/relink.go:72 — "decisions.FrozenLog: true,"
+  evidence: internal/core/repolint/rule_decisions.go:65 — "/ folder to go to; run `abcd ahoy install` to lay it (the log stays as it is)"
+  evidence: .abcd/work/decisions/dcn-2610162257477571-refines-dcn-2610162239308903-the-load.md:6 — "2026-10-16 — Refines dcn-2610162239308903, the load gate's queue"
+  evidence: .abcd/work/issues/open/iss-2610150733180751-embark-carries-neither-a-source.md:15 — "embark carries neither a source repository's decision records nor its frozen decision log"
+- cond-2610110931381195 — survived: Concurrency came and the folder absorbed it. Of the 19 main-line merges since landing whose branch added decision records, 10 met a main that had added records of its own since their merge base, among them PR #1114 (24 against 3), PR #1112 (1 against 35) and PR #1074 (12 against 2). All of them landed with no conflict on the folder. No issue captured since landing reports a decision conflict, which is the falsifier the intent's Grounds name.
+  evidence: merge 6fe563eeb (PR #1114) — "Merge pull request #1114 from intentdriven/chore/coordination-checklist-plans"
+  evidence: merge 34d9b582d (PR #1112) — "Merge pull request #1112 from intentdriven/fix/lane-e-captures"
+  evidence: merge 83f037c28 (PR #1074) — "Merge pull request #1074 from intentdriven/feat/headless-approvals"
+  evidence: internal/core/decisions/record_test.go:123 — "func TestTwoBranchesRecordingMergeCleanly(t *testing.T) {"
+- cond-2610110931383463 — survived: All 739 records are dated, and Parse refuses a body that does not open with its date. No record already on main has been edited in place: each edit or deletion of a decision file since landing (11 commits modifying, 2 deleting) acted on a record its own branch had added and not yet merged. Amendments arrive as new records; 39 are named as corrections, refinements, supersessions or amendments, for example dcn-2610162257477571, which refines dcn-2610162239308903. Immutability is a convention that nothing enforces mechanically, as the spec says, but it held.
+  evidence: internal/core/decisions/decisions.go:146 — "return Decision{}, fmt.Errorf("decisions: %s: the body must open with its date, %s", rel, d.Date)"
+  evidence: .abcd/work/decisions/dcn-2610162257477571-refines-dcn-2610162239308903-the-load.md:6 — "2026-10-16 — Refines dcn-2610162239308903, the load gate's queue"
+  evidence: .abcd/development/specs/closed/spc-2610110931381316-append-only-logs-conflict-on-every-merge.md:95 — "- **Immutable, like every other record.** A correction is a new record. Nothing"
 <!-- abcd-review-end receipt=rcp-72909a4e917b -->
 
 ## Grounds

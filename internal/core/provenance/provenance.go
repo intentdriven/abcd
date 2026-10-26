@@ -131,7 +131,7 @@ var modeValues = []Mode{ModeHandWritten, ModeDictatedAndFormatted, ModeScribeTra
 
 // ParseMode is the boundary validator for a PRESENT production mode. An empty
 // value is an error here, never a default: the defaulting rule has exactly one
-// door (ModeOrDefault), so a caller cannot absorb an unset value by accident and
+// door (modeOrDefault), so a caller cannot absorb an unset value by accident and
 // a config member that is present but blank is a fault rather than a shrug.
 func ParseMode(v string) (Mode, error) {
 	for _, known := range modeValues {
@@ -142,11 +142,11 @@ func ParseMode(v string) (Mode, error) {
 	return "", fmt.Errorf("invalid production mode %q: want exactly one of %s (lower-case, no surrounding whitespace)", v, ModeList())
 }
 
-// ModeOrDefault is the ONE defaulting door: an absent value means DefaultMode,
+// modeOrDefault is the ONE defaulting door: an absent value means DefaultMode,
 // and anything else goes through ParseMode. Every write path normalises here, so
 // the "absent means hand-written" rule is stated once rather than at each
 // writer.
-func ModeOrDefault(v string) (Mode, error) {
+func modeOrDefault(v string) (Mode, error) {
 	if v == "" {
 		return DefaultMode, nil
 	}
@@ -188,7 +188,7 @@ func NewStamp(kind Kind, mode string) (Stamp, error) {
 		return Stamp{}, fmt.Errorf("unknown origin kind %q: want %s or %s",
 			kind, KindResearcherAuthored, KindExtractedFromRecord)
 	}
-	m, err := ModeOrDefault(mode)
+	m, err := modeOrDefault(mode)
 	if err != nil {
 		return Stamp{}, err
 	}
@@ -216,7 +216,7 @@ func NewReadingStamp(run, item, mode string) (Stamp, error) {
 			"origin %s needs an item identifier spelled <%s-N>, and %q is not one; the run and the item resolve as a pair, never separately",
 			KindContributedByReading, issueschema.ReadingItemFamily, item)
 	}
-	m, err := ModeOrDefault(mode)
+	m, err := modeOrDefault(mode)
 	if err != nil {
 		return Stamp{}, err
 	}

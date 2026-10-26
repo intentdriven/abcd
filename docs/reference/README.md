@@ -1,7 +1,7 @@
 # Reference
 
 Information-oriented documentation — dry, accurate descriptions of the machinery:
-configuration keys, environment variables, file schemas, and the command reference.
+the command reference, the writing rules, and the terminology crosswalk.
 
 - Hand-written reference pages live directly here; today these are the writing
   style guide and the terminology crosswalk below.

@@ -73,9 +73,10 @@ the derived version, the deciding impact, the records, and the guard verdict.
 Under `--json` the cut is the `cut` field of the preview's report, with
 `cut_error` in its place when the cut cannot be read.
 
-The preview's exit code is the bundle's. A refused cut is reported and changes
-nothing about that exit, but a failing bundle gate does, and the preview
-refuses a repository with no `.abcd/config/artefact.json`. A script that read
+The preview exits 0 whatever it finds: a refused cut and a failing bundle gate
+are reported and change nothing about that exit. It fails only when it cannot
+run, as in a repository with no `.abcd/config/artefact.json`, which it refuses.
+A script that read
 the cut from a command that always exited 0 checks the `cut` field rather than
 the exit code.
 

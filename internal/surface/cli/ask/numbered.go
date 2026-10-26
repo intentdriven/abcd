@@ -120,6 +120,8 @@ func (t Terminal) numbered(a question.Ask) ([]Answer, error) {
 			case text == "p" && paged():
 				page--
 				show("")
+			case text == "?" && t.Explain:
+				return nil, ErrExplain
 			case text == "":
 				filter, page = "", 0
 				show("")

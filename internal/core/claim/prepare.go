@@ -228,7 +228,7 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 		return nil, refuse("a release reservation holds every merge and takes no footprint; %s", nothingPushed)
 	}
 	if !release && !req.Release && !req.Renew && len(req.Footprint) == 0 {
-		return nil, refuse("a reservation names the files the work will change: pass --footprint <path> once per path; %s", nothingPushed)
+		return nil, refuse("a reservation names the files the work will change: pass --footprint <path> once per path, a renewal of one you hold included; %s", nothingPushed)
 	}
 	for _, p := range req.Footprint {
 		if !validFootprint(p) {

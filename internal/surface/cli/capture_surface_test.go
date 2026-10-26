@@ -940,6 +940,23 @@ func TestCaptureProductionModeDefaultsToThePin(t *testing.T) {
 	}
 }
 
+// TestCaptureProductionModeDefaultsToTheDeclaredFile: the repository's own
+// committed declaration, which the mode moved to when the identity left the
+// repository (itd-2610240918547728), is the default.
+func TestCaptureProductionModeDefaultsToTheDeclaredFile(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config", "provenance.json"), []byte(`{"production_mode":"dictated-and-formatted"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rec := captureRecordFields(t, repo, "a finding taking the declared default")
+	if rec["production_mode"] != "dictated-and-formatted" {
+		t.Errorf("production_mode = %q, want the declared dictated-and-formatted", rec["production_mode"])
+	}
+}
+
 // captureRecordFields files an issue through the CLI and returns the written
 // record's frontmatter as key/value pairs, read off the bytes that landed.
 func captureRecordFields(t *testing.T, repo, text string, extra ...string) map[string]string {
