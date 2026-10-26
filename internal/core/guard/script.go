@@ -2223,6 +2223,12 @@ type shellCall struct {
 	script, rcfile int
 }
 
+// optionName is a shell option's name as zsh and ksh compare it: case and
+// every `_` and `-` ignored.
+func optionName(s string) string {
+	return strings.ToLower(strings.NewReplacer("_", "", "-", "").Replace(s))
+}
+
 // parseShellCall walks a shell's arguments the way its own parser reads them.
 // An argument the line does not fix leaves the rest unread (unresolved).
 func parseShellCall(name string, args []string) shellCall {
@@ -2270,7 +2276,13 @@ func parseShellCall(name string, args []string) shellCall {
 		case a == "--emulate":
 			i += 2
 			continue
-		case strings.HasPrefix(a, "--"):
+		case strings.HasPrefix(a, "--") || strings.HasPrefix(a, "+-"):
+			// A long option, set by `--` and, in zsh, unset by `+-`; read as a
+			// cluster of letters, a `+-` option's `o` would take the script
+			// for an option's name. Only noexec itself keeps a syntax check:
+			// any other long option may turn execution back on (`--exec`, a
+			// `no` inversion), so after it the script is judged.
+			c.noexec = optionName(a[2:]) == "noexec" && a[0] == '-'
 		case len(a) >= 2 && (a[0] == '-' || a[0] == '+'):
 			set := a[0] == '-'
 			var values []bool // for each o/O in the cluster: its sign
@@ -2307,8 +2319,10 @@ func parseShellCall(name string, args []string) shellCall {
 					c.norcs = true
 				case v == "noexec":
 					c.noexec = on
-				case v == "exec":
-					c.noexec = !on
+				case strings.Contains(v, "exec"):
+					// `exec`, or a `no` inversion of noexec: the script may
+					// run, so it is judged.
+					c.noexec = false
 				}
 			}
 			i += 1 + len(values)

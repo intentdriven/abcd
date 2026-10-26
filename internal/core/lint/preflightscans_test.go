@@ -179,22 +179,70 @@ func TestVulncheckRunsCIsVersionAndPassesAClearModule(t *testing.T) {
 	}
 }
 
-// TestVulncheckSaysAFindingLikelyStandsOnTheDefaultBranch: a branch that
-// changes neither go.mod nor go.sum most likely did not bring the finding in,
-// and govulncheck is not a required check, so the scan warns that the finding
-// most likely stands on the default branch, names each fix, and does not stop
-// a preflight no branch cut from there could pass.
-func TestVulncheckSaysAFindingLikelyStandsOnTheDefaultBranch(t *testing.T) {
+// TestVulncheckSaysAFindingStandsOnTheDefaultBranch: a branch that changes
+// neither go.mod nor go.sum, whose fork point's tree reports the same
+// vulnerability, did not bring the finding in, and govulncheck is not a
+// required check, so the scan warns that the finding stands on the default
+// branch, names each fix, and does not stop a preflight no branch cut from
+// there could pass.
+func TestVulncheckSaysAFindingStandsOnTheDefaultBranch(t *testing.T) {
 	r := newScanRepo(t, false)
 	r.stub("go", govulncheckFinding)
 	code, out := r.run("vulncheck")
 	if code != 0 {
 		t.Fatalf("a finding the branch did not bring in: exit %d, want 0\n%s", code, out)
 	}
-	for _, want := range []string{"WARNING", "origin/main", "neither go.mod nor go.sum", "net/http@go1.26.10"} {
+	for _, want := range []string{"WARNING", "origin/main", "neither go.mod nor go.sum", "fork point", "net/http@go1.26.10"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the refusal does not say %q:\n%s", want, out)
 		}
+	}
+	if n := strings.Count(r.args("go"), "govulncheck@v1.7.0 ./..."); n != 2 {
+		t.Errorf("the scan ran %d time(s), want twice, the head and the fork point:\n%s", n, r.args("go"))
+	}
+}
+
+// TestVulncheckStopsAFindingTheBranchsOwnCodeBringsIn: govulncheck judges
+// reachability, so a branch that moves no dependency can still newly reach a
+// vulnerable symbol in a module the default branch already requires
+// (iss-2610262259078996). The fork point's tree is scanned the same way, and
+// an id it does not report stops the preflight, named; an id it does report is
+// not blamed on the branch.
+func TestVulncheckStopsAFindingTheBranchsOwnCodeBringsIn(t *testing.T) {
+	r := newScanRepo(t, false)
+	// The stub runs where the scan runs: the branch's own tree holds
+	// feature.txt, the fork point's does not.
+	r.stub("go", `echo 'Vulnerability #1: GO-2026-0001'
+if [ -f feature.txt ]; then echo 'Vulnerability #2: GO-2026-0002'; echo '    Fixed in: example.com/dep@v1.2.4'; fi
+exit 3`)
+	code, out := r.run("vulncheck")
+	if code != 1 {
+		t.Fatalf("a finding the branch's code brings in: exit %d, want 1\n%s", code, out)
+	}
+	if strings.Contains(out, "WARNING") {
+		t.Errorf("a finding the branch brings in is only warned about:\n%s", out)
+	}
+	if !strings.Contains(out, "  GO-2026-0002\n") || strings.Contains(out, "  GO-2026-0001\n") {
+		t.Errorf("the stop does not name the new id alone:\n%s", out)
+	}
+	if !strings.Contains(out, "example.com/dep@v1.2.4") {
+		t.Errorf("the stop does not name the fix:\n%s", out)
+	}
+}
+
+// TestVulncheckStopsWhenTheForkPointCannotBeScanned: with no scan of the
+// fork point there is nothing to show the default branch carries the
+// finding, so it stops as any finding does.
+func TestVulncheckStopsWhenTheForkPointCannotBeScanned(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("go", `if [ -f feature.txt ]; then echo 'Vulnerability #1: GO-2026-0001'; exit 3; fi
+echo 'go: cannot load the module' >&2; exit 1`)
+	code, out := r.run("vulncheck")
+	if code != 1 {
+		t.Fatalf("a finding with the fork point unscanned: exit %d, want 1\n%s", code, out)
+	}
+	if strings.Contains(out, "WARNING") || !strings.Contains(out, "could not be scanned") {
+		t.Errorf("the unscanned fork point is not said, or the finding is only warned about:\n%s", out)
 	}
 }
 

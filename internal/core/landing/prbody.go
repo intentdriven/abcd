@@ -118,11 +118,9 @@ func judgeBody(dir string, c composedBody) string {
 		return "the outbound check, which could not run (" + err.Error() + ")"
 	}
 	if fault := assistedby.JudgeBody(c.body); fault == assistedby.BodyNoTrailer {
-		return "the disclosure check: it carries " + fault.String() + ", since the branch's commits disclose none; " +
-			"add an Assisted-by line before posting"
+		return "the disclosure check: it carries " + fault.String() + "; add an Assisted-by line before posting"
 	} else if fault != assistedby.BodyClean {
-		return "the disclosure check: it carries " + fault.String() + ", taken from the branch's commits; " +
-			"correct or remove that line before posting"
+		return "the disclosure check: it carries " + fault.String() + "; correct or remove that line before posting"
 	}
 	if guard.ForgeMentionsOptedIn(dir) {
 		if ids := issuemention.Undeclared(c.title, c.body); len(ids) > 0 {

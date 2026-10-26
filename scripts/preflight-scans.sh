@@ -5,9 +5,10 @@
 # 2026-10-26 they failed 12 of 32 failed CI runs, each found only after a push
 # and a hosted run; here a finding stops the preflight as a prerequisite, before
 # its test stages wait at the machine's load gate. The one exception is a
-# govulncheck finding on a branch that moves no dependency: govulncheck is not a
-# required check, and such a finding most likely stands on the default branch,
-# so stopping would hold every branch for a fix none of them can make. It warns.
+# govulncheck finding on a branch that moves no dependency, when the same scan
+# of the fork point's tree reports every vulnerability it names: govulncheck is
+# not a required check, and that finding stands on the default branch, so
+# stopping would hold every branch for a fix none of them can make. It warns.
 #
 # Each takes its version from .github/workflows/ci.yml, the one pin, so the scan
 # run here is CI's: govulncheck from the `go run …/govulncheck@<version>` line of
@@ -72,6 +73,33 @@ default_ref() {
 	fi
 }
 
+# vuln_ids prints the vulnerability ids a govulncheck report names, one a line.
+vuln_ids() {
+	printf '%s\n' "$1" | sed -n 's/^Vulnerability #[0-9]*: \(GO-[0-9][0-9]*-[0-9][0-9]*\).*/\1/p' | sort -u
+}
+
+# ids_not_at prints the ids report $3 names that the same scan of commit $1's
+# tree, at govulncheck $2, does not; it fails when that scan cannot run, with
+# the scan's last lines on stderr.
+ids_not_at() {
+	local commit="$1" version="$2" report="$3" tree rc=0 out
+	tree="$(mktemp -d "${TMPDIR:-/tmp}/preflight-scans.XXXXXX")" || return 1
+	if ! git archive "$commit" | tar -x -C "$tree"; then
+		rm -rf "$tree"
+		return 1
+	fi
+	out="$(cd "$tree" && go run "golang.org/x/vuln/cmd/govulncheck@$version" ./... 2>&1)" || rc=$?
+	rm -rf "$tree"
+	case "$rc" in
+	0 | 3) ;;
+	*)
+		printf '%s\n' "$out" | tail -n 5 | sed 's/^/  /' >&2
+		return 1
+		;;
+	esac
+	comm -23 <(vuln_ids "$report") <(vuln_ids "$out")
+}
+
 vulncheck() {
 	local version rc=0 out def base fixes
 	version="$(vuln_pin)"
@@ -95,20 +123,32 @@ vulncheck() {
 	# A branch that moves no dependency most likely did not bring the finding
 	# in: a newly published vulnerability, or the toolchain go.mod declares,
 	# fails the default branch too, and every branch cut from it
-	# (iss-2610261151481013). The module was already required there, though
-	# this branch's own code may be what newly reaches it.
+	# (iss-2610261151481013). But govulncheck judges reachability, so this
+	# branch's own code may be what newly reaches a module already required:
+	# the fork point's tree is scanned the same way, and only a finding it
+	# carries too warns (iss-2610262259078996).
 	def="$(default_ref)"
 	if [ -n "$def" ] && base="$(git merge-base HEAD "$def" 2>/dev/null)" &&
 		git diff --quiet "$base" HEAD -- go.mod go.sum; then
-		say "WARNING — govulncheck $version found a known vulnerability the module's code reaches, and this branch changes neither go.mod nor go.sum against $def,"
-		say "  so the vulnerable module was already required there and the finding most likely stands on $def itself. It does not stop the preflight:"
-		say "  govulncheck is not a required check, and no branch cut from $def can fix it alone. Fix it on a branch of its own (the toolchain"
-		say "  line in go.mod, or the module go.sum names); if this branch's own code is what reaches it, CI's govulncheck job shows it on the pull request."
-		if [ -n "$fixes" ]; then
-			say "The fixes govulncheck names:"
-			printf '%s\n' "$fixes" | sed 's/^/  /'
+		local added
+		if [ -z "$(vuln_ids "$out")" ]; then
+			say "The report names no vulnerability id this script can read, so whether $def carries the finding too cannot be told."
+		elif ! added="$(ids_not_at "$base" "$version" "$out")"; then
+			say "The fork point with $def could not be scanned, so whether this branch brought the finding in cannot be told."
+		elif [ -z "$added" ]; then
+			say "WARNING — govulncheck $version found a known vulnerability the module's code reaches; this branch changes neither go.mod nor go.sum"
+			say "  against $def, and the same scan of the fork point's tree reports every one of its ids too, so the finding stands on $def."
+			say "  It does not stop the preflight: govulncheck is not a required check, and no branch cut from $def can fix it alone."
+			say "  Fix it on a branch of its own (the toolchain line in go.mod, or the module go.sum names)."
+			if [ -n "$fixes" ]; then
+				say "The fixes govulncheck names:"
+				printf '%s\n' "$fixes" | sed 's/^/  /'
+			fi
+			return 0
+		else
+			say "This branch changes neither go.mod nor go.sum against $def, but its own code newly reaches what the fork point's does not:"
+			printf '%s\n' "$added" | sed 's/^/  /'
 		fi
-		return 0
 	fi
 	say "govulncheck $version found a known vulnerability the module's code reaches; the preflight stops before its test stages."
 	if [ -n "$fixes" ]; then

@@ -121,7 +121,7 @@ func TestAComposedBodyThatFailsACheckSaysSo(t *testing.T) {
 
 // TestADisclosureFaultIsNamedForWhatItIs: only a body with no disclosure is
 // told to add one; a body carrying a line the guard refuses, a Co-authored-by
-// a commit wrote, is told to correct that line.
+// added to a kept body file by hand, is told to correct that line.
 func TestADisclosureFaultIsNamedForWhatItIs(t *testing.T) {
 	dir := t.TempDir()
 	note := judgeBody(dir, composedBody{title: "fix: x", body: "fix: x\n\nAssisted-by: None\nCo-authored-by: Alice Example <alice@example.com>\n"})

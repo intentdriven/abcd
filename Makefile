@@ -167,9 +167,11 @@ check-attribution:
 # read from ci.yml. A scan that cannot run here (no gitleaks on PATH, or no
 # network for govulncheck's database) is skipped loudly, never passed in
 # silence, and CI's scan still runs. A govulncheck finding on a branch that
-# changes neither go.mod nor go.sum most likely stands on the default branch
-# (iss-2610261151481013), and govulncheck is not a required check, so it warns
-# and does not stop the run; a gitleaks that runs and cannot scan stops it.
+# changes neither go.mod nor go.sum, when the fork point's own tree reports
+# every vulnerability it names, stands on the default branch
+# (iss-2610261151481013, iss-2610262259078996), and govulncheck is not a
+# required check, so it warns and does not stop the run; any other finding
+# stops it, and so does a gitleaks that runs and cannot scan.
 secrets-check:
 	@bash scripts/preflight-scans.sh secrets
 

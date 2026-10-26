@@ -44,17 +44,34 @@ func TestScriptReadingReviewFindings(t *testing.T) {
 
 // A shell under noexec reads its script and runs none of it, so a syntax
 // check (`bash -n s.sh`) is no run of the hazard the script holds; an
-// interactive shell ignores the option, and a later +n turns it back off
-// (iss-2610262219309883).
+// interactive shell ignores the option, and whatever turns execution back on
+// after it, a `+n`, zsh's and ksh's `--exec`, a `+-` long option, an `exec`
+// option by name, leaves a run to judge (iss-2610262219309883).
 func TestASyntaxCheckIsNoRunOfTheScript(t *testing.T) {
 	dir := scriptTree(t, map[string]string{"s.sh": hazardLine})
 	runScriptCases(t, dir, []scriptCase{
 		{`bash -n {d}/s.sh`, VerdictAllow, ""},
 		{`bash -o noexec {d}/s.sh`, VerdictAllow, ""},
 		{`sh -n {d}/s.sh`, VerdictAllow, ""},
+		{`zsh -n {d}/s.sh`, VerdictAllow, ""},
 		{`bash -n +n {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
 		{`bash -n -i {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`zsh -n --exec {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`ksh -n --exec {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`zsh -f -n +-noexec {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`zsh -n -o exec {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`zsh -n -o no_no_exec {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
 		{`bash {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+	})
+}
+
+// A `+-` long option is one option, not a cluster of letters: its `o` takes
+// no word after it, so the script that follows is still read and judged.
+func TestAPlusDashLongOptionLeavesTheScriptRead(t *testing.T) {
+	dir := scriptTree(t, map[string]string{"s.sh": hazardLine})
+	runScriptCases(t, dir, []scriptCase{
+		{`zsh +-login {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`zsh -f +-norcs {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
 	})
 }
 
