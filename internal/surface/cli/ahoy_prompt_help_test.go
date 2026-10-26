@@ -25,7 +25,7 @@ func TestAhoyInstallRendersCoreHelpAboveEachValueQuestion(t *testing.T) {
 	// questions no flag answered: visibility and the docs target. The oracle is
 	// not asked while host-delegated is the only reviewer abcd ships
 	// (iss-2610031236155833): it is recorded, and the report says so.
-	out, errOut, err := runCLIPipedStdinSplit(t, "private\n\n", "ahoy", "install", "--yes", "--adopt", "--json")
+	out, errOut, err := runCLIPipedStdinSplit(t, "private\n\n", "ahoy", "install", "--details", "--yes", "--adopt", "--json")
 	if err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s\n%s", err, out, errOut)
 	}
@@ -138,7 +138,7 @@ func TestAhoyInstallShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
 		{"untracked", untracked.Root(), without, withCaveat},
 	} {
 		t.Chdir(c.root)
-		out, errOut, err := runCLIPipedStdinSplit(t, "private\n\n", "ahoy", "install", "--yes", "--adopt", "--json")
+		out, errOut, err := runCLIPipedStdinSplit(t, "private\n\n", "ahoy", "install", "--details", "--yes", "--adopt", "--json")
 		if err != nil {
 			t.Fatalf("%s: install exited non-zero: %v\n%s\n%s", c.name, err, out, errOut)
 		}
@@ -165,7 +165,7 @@ func TestAhoyInstallTextLeadsWithThePlainSummary(t *testing.T) {
 	hermeticEnv(t)
 	repo := gittest.NewRepo(t).Root()
 	t.Chdir(repo)
-	args := []string{"ahoy", "install", "--yes", "--adopt", "--visibility", "private", "--docs-target", "agents_md",
+	args := []string{"ahoy", "install", "--details", "--yes", "--adopt", "--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"}
 	out, errOut, err := runCLIPipedStdinSplit(t, "", append(args, "--json")...)
 	if err != nil {
@@ -224,7 +224,7 @@ func TestAhoyInstallYesKeepsValuePromptsOffStdout(t *testing.T) {
 	hermeticEnv(t)
 	repo := gittest.NewRepo(t).Root()
 	t.Chdir(repo)
-	out, errOut, err := runCLIPipedStdinSplit(t, "", "ahoy", "install", "--yes", "--adopt")
+	out, errOut, err := runCLIPipedStdinSplit(t, "", "ahoy", "install", "--details", "--yes", "--adopt")
 	if err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s\n%s", err, out, errOut)
 	}
@@ -245,7 +245,7 @@ func TestAhoyInstallYesSaysUpFrontThatValuesAreStillAsked(t *testing.T) {
 	hermeticEnv(t)
 	repo := gittest.NewRepo(t).Root()
 	t.Chdir(repo)
-	_, errOut, err := runCLIPipedStdinSplit(t, "private\n\n", "ahoy", "install", "--yes", "--adopt", "--json")
+	_, errOut, err := runCLIPipedStdinSplit(t, "private\n\n", "ahoy", "install", "--details", "--yes", "--adopt", "--json")
 	if err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s", err, errOut)
 	}
@@ -283,7 +283,7 @@ func TestAhoyInstallYesSaysUpFrontThatValuesAreStillAsked(t *testing.T) {
 
 	repo2 := gittest.NewRepo(t).Root()
 	t.Chdir(repo2)
-	_, errOut, err = runCLIPipedStdinSplit(t, "", "ahoy", "install", "--yes", "--adopt", "--json",
+	_, errOut, err = runCLIPipedStdinSplit(t, "", "ahoy", "install", "--details", "--yes", "--adopt", "--json",
 		"--visibility", "private", "--docs-target", "skip", "--oracle-backend", "host-delegated", "--scan-deep", "false")
 	if err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s", err, errOut)

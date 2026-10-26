@@ -90,7 +90,7 @@ func TestSiteSetupRefusesAnUnmanagedFolder(t *testing.T) {
 // TestSiteSetupNeverInstallsGhOnAScriptedYes is the end-to-end no at site
 // setup (the DQ3 ruling): with gh missing from a repository whose origin is on
 // the forge, a piped y and --yes each reach the gh offer through the CLI and
-// decline it, so the install step is never attempted (brew's absence would
+// decline it, so the install is never attempted (the test binary's lack of a network would
 // otherwise be the reason), no question is put to the pipe, the notes carry
 // why and the command to run by hand, and the forge stage is not reached.
 func TestSiteSetupNeverInstallsGhOnAScriptedYes(t *testing.T) {
@@ -125,7 +125,7 @@ func TestSiteSetupNeverInstallsGhOnAScriptedYes(t *testing.T) {
 				t.Fatalf("not JSON (err %v): %v\n%s\n%s", err, jerr, out, errOut)
 			}
 			notes := strings.Join(res.Notes, "\n")
-			if !strings.Contains(notes, tc.why) || !strings.Contains(notes, "brew install gh") {
+			if !strings.Contains(notes, tc.why) || !strings.Contains(notes, "download gh 2.103.2") {
 				t.Errorf("the notes lack %q or the command to run:\n%s", tc.why, notes)
 			}
 			if strings.Contains(notes, "is not on PATH, so the step cannot run") {

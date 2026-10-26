@@ -150,7 +150,14 @@ func dogfoodStalenessFrom(cur vintage.Current, cwd string) DogfoodReport {
 // or modified/dirty build), and a dogfood binary behind its own source tip.
 // Everything else — a determinable vintage that is not a dogfood-stale binary —
 // proceeds. The check is disk-only; it never touches the network.
+//
+// A go run build of the checkout being installed is current by construction
+// and proceeds: go run never stamps a revision, so its vintage reads unknown,
+// yet it is built from this tree as it stands (iss-2610240824047504).
 func staleBinaryRefusal(cur vintage.Current, cwd string) string {
+	if !cur.Known && goRunOfCheckout(cwd) {
+		return ""
+	}
 	if !cur.Known {
 		return "the running abcd binary's vintage cannot be determined (an unstamped or modified/dirty build), so it may be applying stale install logic. Rebuild it with `make build`, or re-run with --allow-stale-binary to proceed anyway."
 	}

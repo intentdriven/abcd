@@ -120,7 +120,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"resumed one, with the files the spec's `## Footprint` packages line names (an issue's\n" +
 			"found_at path for an issue id), so every other participant sees it is taken. A spec with\n" +
 			"no footprint, or an issue with no found_at path, is refused at the reservation and nothing\n" +
-			"is started. Another person's reservation, or your own from another computer, refuses\n" +
+			"is started. Another person's reservation, or your own from another copy, refuses\n" +
 			"the start as contention; --take-over moves your own live reservation from another copy\n" +
 			"to this one, never another person's. `abcd implement step` renews the reservation, fences\n" +
 			"the landing's push and its arming with it and releases it once the run lands; a run\n" +
@@ -227,6 +227,9 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			res, err := loop.Start(root, args[0], o)
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			if !res.Resumed {
+				noticeUnattended(cmd, prefix)
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				verb := "started"
@@ -378,6 +381,11 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			res, err := loop.Next(root, o, loop.NextOptions{Max: maxPicks, UntilEmpty: untilEmpty})
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			// Once per series: its later picks start runs of the series it
+			// already told the person about.
+			if res.Start != nil && !res.Start.Resumed && (res.Series == nil || res.Series.Started) {
+				noticeUnattended(cmd, prefix)
 			}
 			for i := range res.Excluded {
 				res.Excluded[i].Reason = fsutil.RedactHome(res.Excluded[i].Reason)

@@ -91,6 +91,13 @@ type Hold struct {
 	// Only releaseHolds sets them.
 	Mine bool `json:"mine"`
 	Own  bool `json:"own"`
+	// Sibling is the home-redacted worktree of this checkout that keeps the
+	// copy cutting it, when the hold is Mine and not Own and one does: the
+	// person's copy on this machine, not on another computer. Only
+	// releaseHolds sets it.
+	Sibling string `json:"sibling,omitempty"`
+	// key is the copy key the reservation names; never shown.
+	key string
 	// EffectiveExpiry is when the hold ends unless it is renewed, released or
 	// its tag reaches origin first.
 	EffectiveExpiry time.Time `json:"effective_expiry"`
@@ -144,8 +151,56 @@ func (s Snapshot) Holds(now time.Time) []Hold {
 		default:
 			continue
 		}
-		out = append(out, Hold{Release: releaseTag(r.Record), Subject: r.Record, Holder: r.Holder, Copy: r.Copy,
+		out = append(out, Hold{Release: releaseTag(r.Record), Subject: r.Record, Holder: r.Holder, Copy: r.Copy, key: r.key,
 			EffectiveExpiry: r.EffectiveExpiry, Unreadable: r.Unreadable, Unsighted: r.Unsighted, Undated: r.HeldFromFetch})
+	}
+	return out
+}
+
+// Lapsed is a release cut whose reservation expired with no tag on origin and
+// no release (iss-2610241104098581): its holder stopped renewing it, so it
+// holds no merge, and the cut is neither done nor withdrawn. `abcd peers` and
+// `abcd status` name it, so no session keeps work waiting on a holder that is
+// gone. Every value in it is validated data, never a writer's text.
+type Lapsed struct {
+	Release string `json:"release"`
+	Subject string `json:"subject"`
+	Holder  string `json:"holder"`
+	// Copy is CopyThis when the reservation names this checkout's own copy.
+	Copy string `json:"copy,omitempty"`
+	// RenewedAt is the reservation's last claim, and LapsedAt when it stopped
+	// holding.
+	RenewedAt time.Time `json:"renewed_at"`
+	LapsedAt  time.Time `json:"lapsed_at"`
+}
+
+// Text is the line a listing shows a lapsed cut by: "release v0.16.0: the cut
+// by @maya lapsed at …, last renewed …, with no tag v0.16.0 on origin; no merge
+// is held. From …, any copy reserves it again with `abcd reserve rel-v0.16.0`,
+// to resume the cut or, followed by `--release`, to withdraw it". The time is
+// the lapse plus TakeoverMargin, before which another copy's reserve backs
+// off; the withdrawal is a take-over and a release, since only the holder
+// releases a reservation.
+func (l Lapsed) Text() string {
+	return fmt.Sprintf("release %s: the cut by @%s lapsed at %s, last renewed %s, with no tag %s on origin; "+
+		"no merge is held. From %s, any copy reserves it again with `abcd reserve %s`, to resume the cut or, "+
+		"followed by `abcd reserve %s --release`, to withdraw it",
+		l.Release, l.Holder, stamp(l.LapsedAt), stamp(l.RenewedAt), l.Release, stamp(l.LapsedAt.Add(TakeoverMargin)),
+		l.Subject, l.Subject)
+}
+
+// Lapsed is every release cut the view shows lapsed at now: each release
+// reservation that expired, in the view's order. A release whose tag reached
+// origin or whose holder released it is released, not expired, and is not
+// one. It reads nothing.
+func (s Snapshot) Lapsed(now time.Time) []Lapsed {
+	var out []Lapsed
+	for _, r := range s.Reservations {
+		if !isRelease(r.Record) || r.State != StateExpired || !now.After(r.EffectiveExpiry) {
+			continue
+		}
+		out = append(out, Lapsed{Release: releaseTag(r.Record), Subject: r.Record, Holder: r.Holder, Copy: r.Copy,
+			RenewedAt: r.ClaimedAt, LapsedAt: r.EffectiveExpiry})
 	}
 	return out
 }
@@ -172,6 +227,9 @@ func releaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 	for i, h := range holds {
 		holds[i].Mine = h.Unreadable == "" && reader != "" && sameHolder(h.Holder, reader)
 		holds[i].Own = holds[i].Mine && h.Copy == CopyThis
+		if holds[i].Mine && !holds[i].Own {
+			holds[i].Sibling = siblingCopy(root, h.key)
+		}
 	}
 	return holds, nil
 }

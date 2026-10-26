@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core"
+	"github.com/intentdriven/abcd/internal/core/shellpath"
 	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
@@ -463,7 +464,7 @@ func shadowMessage(e pathEntry, target string) string {
 // PATH, shared by the detection gap and the install-time note.
 func pathReachMessage(dir string) string {
 	return displayPath(dir) + " is not on PATH, so `abcd` cannot be run by name. " +
-		"Add it to your shell profile: " + exportPathLine(dir)
+		"Add this line to your shell settings: " + exportPathLine(dir)
 }
 
 // dirWritable reports whether a file can actually be created in dir. It probes
@@ -481,13 +482,10 @@ func dirWritable(dir string) bool {
 }
 
 // exportPathLine renders the one-line PATH fix for dir, in the form a user can
-// paste. abcd prints it and never patches a shell profile (script-first).
+// paste: the line the shell-settings offer adds, without its marker
+// (shellpath.ExportLine), so the printed fix and the added line never differ.
 func exportPathLine(dir string) string {
-	d := displayPath(dir)
-	if strings.HasPrefix(d, "~/") {
-		d = "$HOME/" + strings.TrimPrefix(d, "~/")
-	}
-	return `export PATH="` + d + `:$PATH"`
+	return shellpath.ExportLine(userHome(), dir)
 }
 
 // ---------------------------------------------------------------------------

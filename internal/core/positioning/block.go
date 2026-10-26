@@ -8,8 +8,9 @@
 // advisory by default and never rewrites a surface: a re-render is always a
 // proposed diff a human adopts (spc-19, itd-102).
 //
-// This is repo POSITIONING, not commit-author identity: the git author gate
-// pinned in .abcd/config/identity.json lives in internal/core/identity and
+// This is repo POSITIONING, not commit-author identity: the git author gate,
+// which checks each person's own record on their machine, lives in
+// internal/core/identity and
 // shares nothing with this package but the English word.
 package positioning
 
