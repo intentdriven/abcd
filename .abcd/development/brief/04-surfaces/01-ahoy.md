@@ -82,11 +82,16 @@ flags.
 - **The remote report** reports, read-only, the GitHub-native secret-scanning toggles on
   the repository this checkout's own origin names, and the changes an apply
   would make. A toggle it could not read reports `unknown`, never `disabled`.
-  The same request also reads the repository's merge hygiene, which abcd mirrors
-  and never sets: those settings encode the technical facilitator's workflow rather than a
-  security posture, and each is reported only when the API answered for it,
-  because `false` and "the API did not say" are different facts
-  (iss-2608270512210664).
+  The same request also reads the repository's merge hygiene, and a second
+  reads its fork pull-request approval policy (whose pull-request workflows
+  wait for the technical facilitator's approval before they run, one of the
+  controls that bear on which workflows report a required check's name). abcd
+  mirrors these and never sets them: they encode the technical facilitator's
+  workflow rather than a posture abcd holds the repository to, and each is
+  reported only when the API answered for it, because `false` and "the API did not say" are
+  different facts (iss-2608270512210664). A policy read that fails otherwise
+  than GitHub's 404 is said in a note, and an apply keeps the policy the
+  mirror already records.
 - **The remote apply** is **the one abcd verb that mutates state outside this
   machine.** See below.
 - **The identity check** exits non-zero when the author or the committer a
@@ -114,7 +119,8 @@ It enables GitHub's native secret scanning and then push protection, in that
 order, because GitHub refuses push protection on a repository whose secret
 scanning is off. It then mirrors the desired state into the repo's committed
 settings mirror: a managed block holding the two toggles abcd drives, and an
-observed block holding the merge-hygiene settings it only reads.
+observed block holding the merge-hygiene settings and the fork pull-request
+approval policy it only reads.
 
 It answers to adr-44 and invariant 10 — no uninvited remote mutation, through a
 verb the user invokes **and** confirms — with four gates that refuse rather than
