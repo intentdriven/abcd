@@ -2618,3 +2618,31 @@ The proposal: "a thorough rethink of the CLI onboarding process (abcd install); 
 Verdict at filing: SPLIT, confirmed by the product thinker. The initial routing did not survive the two pre-interview reviews: both found the setup intent still held four parts, and on the product thinker's second SPLIT the commit identity (itd-2610240918547728, reversing part of itd-131, confirmed), third-party tool installs (itd-2610240918594138) and the shell-settings edit (itd-2610240919030303, reversing the never-edit-a-shell-profile rule, confirmed) became their own intents. The research's recommendation against a terminal UI framework moved the "polished TUI" part from a new interface to calmer use of the existing question package. Typed links: the three split intents build on itd-2610240823055889. A sixth part, that every flow says up front what it automates and what it asks, was routed to its own draft (itd-2610240913343804) rather than kept in setup.
 
 Grade: the first routing was right at the level of intent versus issue, and wrong at the level of how many intents one setup rethink holds; both reviewers caught it independently.
+
+## 2026-10-26: private repos land checked work without renting CI (technical facilitator, routing not yet put to the product thinker)
+
+| part | type | home |
+|---|---|---|
+| how a managed repository's changes are checked and landed: results reused across worktrees, one check per landing, the local landing queue, the result posted as a status, the route chosen from the plan with its price | capability | itd-2610261025516272 (draft) |
+| a self-reported local result may replace duplicate hosted work and gate a landing only for the person's and their agents' changes, never an outside contribution, and a release cut never reuses a result | trust rule | proposed ADR and brief invariant at planning; not filed |
+| each check runs once, where it is cheapest to trust | stance | proposed principle at planning; not filed |
+| the gate list's schema, the receipt's fields, `-trimpath`, the declared tests whose inputs the cache cannot see | plumbing | the spec and the brief |
+
+Verdict: SPLIT, proposed. The routing is the agent's and has not been put to
+the product thinker; it is graded as unconfirmed until they answer.
+
+Typed links proposed: supersedes itd-115 (its no-wait landing want is met on
+every plan, and the local queue replaces its poll-and-update fallback);
+refines itd-106; builds on itd-2610161647248332. itd-2610110940216682 stays
+the hosted-CI shape for a repository whose default branch a queue gates, a
+sibling with no typed link. Advisory reversal flags: none; the strict
+up-to-date setting stays on wherever the plan allows it, so iss-172's
+invariant holds. One refinement is flagged rather than reversed: the draft's
+pull-request criterion tightens itd-2610110940216682's first criterion.
+
+The routing moved once, at filing. The drafting missed itd-2610110940216682;
+the create command's near-miss list surfaced it (score 0.297, below the
+threshold). The draft was then scoped to the repositories without a queue,
+plus the local half for every repository, and the sibling keeps the hosted
+shape. A lexical near-miss at 0.3 was the only thing that found a draft with
+the same title idea, which is worth a look by the automated rung.

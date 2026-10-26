@@ -155,6 +155,7 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610240913343804` — No surprises: abcd says up front what it will do on its own and what it will ask
 - `itd-2610240933025076` — abcd plans unattended and asks only what a person owns
 - `itd-2610241015120503` — The person and the repository agree when abcd may merge, and what a cloud session may do
+- `itd-2610261025516272` — Private repos land checked work without renting CI
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
