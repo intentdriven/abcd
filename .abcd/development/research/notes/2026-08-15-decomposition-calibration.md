@@ -2618,3 +2618,18 @@ The proposal: "a thorough rethink of the CLI onboarding process (abcd install); 
 Verdict at filing: SPLIT, confirmed by the product thinker. The initial routing did not survive the two pre-interview reviews: both found the setup intent still held four parts, and on the product thinker's second SPLIT the commit identity (itd-2610240918547728, reversing part of itd-131, confirmed), third-party tool installs (itd-2610240918594138) and the shell-settings edit (itd-2610240919030303, reversing the never-edit-a-shell-profile rule, confirmed) became their own intents. The research's recommendation against a terminal UI framework moved the "polished TUI" part from a new interface to calmer use of the existing question package. Typed links: the three split intents build on itd-2610240823055889. A sixth part, that every flow says up front what it automates and what it asks, was routed to its own draft (itd-2610240913343804) rather than kept in setup.
 
 Grade: the first routing was right at the level of intent versus issue, and wrong at the level of how many intents one setup rethink holds; both reviewers caught it independently.
+
+## 2026-10-26: abcd sizes its own test admission from what it measures (product thinker, routing confirmed)
+
+The proposal: "is there a way to autonomously adjust the number of preflights depending on load?", with the earlier ask that `load.preflights` be adjusted up or down as more evidence comes in.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| admission sized from measured runs, every heavy stage metered, a short-run lane | capability | itd-2610262127138979 |
+| the person's setting is the ceiling and a repository never raises it | trust rule | already standing in the LOAD rules domain; restated in the intent, no new ADR |
+| the per-machine measurement log under `~/.abcd.noindex/` | plumbing | the brief, at planning |
+| self-optimisation of the whole setup (CPU, tokens, everything measurable) | capability | stays iss-2610241215547722; this intent is its narrowest case |
+
+Verdict at filing: FILE-AS-IS for the capability, confirmed by the product thinker ("yes, file it"). Typed links: none written by the lexical pass; the seven issues it gathers are named in Why This Matters and become its remedy home at planning. Advisory reversal flags: none.
+
+Grade: the first routing survived confirmation. It moved once before filing, from "an intent already exists" (the person's recollection) to a new one: the nearest draft, itd-2610100704270254, budgets sub-agents by model class and does not touch preflights or load.
