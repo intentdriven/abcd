@@ -43,10 +43,12 @@ import (
 // (spc-2610180914469489 step 5): hooks/stop.sh and hooks/stop-failure.sh are
 // the same launcher as hooks/subagent-stop.sh, and each warns as
 // unrecognised-launcher twice, its command line and the file whole, exactly
-// as that one already did.
+// as that one already did. Raised to 35 when the PermissionRequest hook's
+// shim landed (hooks/permission-request.sh, iss-2610171110154902), for the
+// same two warns.
 const (
 	maxSweepBlocks = 26
-	maxSweepWarns  = 33
+	maxSweepWarns  = 35
 )
 
 func TestFalsePositiveSweepCeiling(t *testing.T) {

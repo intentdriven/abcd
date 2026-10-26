@@ -482,7 +482,11 @@ over each of the run's lanes' own diff.
 
 1. It checks the lane's worktree is clean and its branch is at the head the
    validators judged.
-2. On the lane that closes the spec it runs `spec close` in the lane's worktree
+2. On an intent lane it marks the lane's step landed on the open spec, a
+   `- landed:` line naming the judged head (not when the spec lists no steps or
+   already marks it; a commit doing only that declares
+   `Assisted-by: abcd:<version>`). On
+   the lane that closes the spec it runs `spec close` in the lane's worktree
    and ingests the verdict of the audit that lane took, and for each capture the
    lane's receipts declared fixed it runs `capture resolve` with that commit. It
    commits them on the lane's branch with `Delivers:` (when the close ships the
@@ -574,8 +578,8 @@ renewal only renews this person's own reservation from this copy: it never
 reserves a released record again and never takes one over. At step 5, before
 the merge rule decides, the **land fence** fetches the reservation and arms
 nothing unless it is still this person's, from this copy, and live: it names
-the other person and the expiry, says the reservation moved to your copy on
-another computer, or says it was released (reserve it again with `abcd build
+the other person and the expiry, says the reservation moved to your other copy
+(naming the worktree when it is one of this checkout's), or says it was released (reserve it again with `abcd build
 <id>`), and a fetch origin does not answer is named too, each as contention
 (exit 3 when nothing else moves). When it holds, the fence renews it for a
 day, with a ruleset mirror at the lane's base or without one: every landing
@@ -586,8 +590,9 @@ a day is also past any merge queue's `check_response_timeout_minutes`. The
 fence then reads the **release hold** from the
 reservations it just fetched (a run holding no reservation fetches them for
 it): while a release reservation (`rel-vX.Y.Z`, `/abcd:reserve`) is live and
-not this copy's own, it arms nothing, naming the release, its holder or "your
-copy on another computer", and that a session cutting a release has the final
+not this copy's own, it arms nothing, naming the release, its holder or your
+own other copy ("your worktree … on this machine" for a sibling worktree,
+else "your copy on another computer"), and that a session cutting a release has the final
 say on what merges before its tag, as contention (exit 3); the pull request
 stays open for the cutting session to merge or hold. A release whose tag is on
 `origin`, or whose holder released it, holds nothing. Past the fence the reservation holds only

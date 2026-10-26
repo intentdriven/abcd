@@ -1,6 +1,6 @@
 # Roles
 
-`abcd` is built for three roles: A **product thinker**, a **technical facilitator**, and a **team of AI agents**. The product thinker is always a person. The facilitator is an AI by default and a person when activated, and activating one changes what waits for approval rather than what the role is. The agents do the building.
+`abcd` is built for three roles: A **product thinker**, a **technical facilitator**, and a **team of AI agents**. The product thinker is always a person. The facilitator is a person in a fresh install; letting a repository make it an AI is a design target, not yet shipped, and which of the two holds the role changes what waits for approval rather than what the role is. The agents do the building.
 
 ## Product thinker
 
@@ -10,7 +10,7 @@ As a **product thinker**, you know who the user is. You know what *done* looks l
 
 You judge three things, and nothing else. What should exist, why, for whom, and what *good* means. Whether what was delivered matches what you asked for. And, once you are using the thing, whether it behaves as you expected: that last judgement is the one no review can make for you, and it arrives long after the work is done.
 
-You do not judge how the software was built, and `abcd` does not ask you to. Anything it puts in front of you is written in plain language, carries a concrete example from the product you are building, states a trade-off as the options it is choosing between, and asks you to pick rather than to compose an answer. That register is a setting, and it belongs to you: If the way you are being addressed does not work for you, change it.
+You do not judge how the software was built, and `abcd` does not ask you to. Anything it puts in front of you is written in plain language, carries a concrete example from the product you are building, states a trade-off as the options it is choosing between, and asks you to pick rather than to compose an answer. Making that register a setting of yours, so you can change how you are addressed when it does not work for you, is a design target, not yet shipped.
 
 What happens in between, turning your why into engineering work agents can act on, is the facilitator's job.
 
@@ -20,7 +20,7 @@ What happens in between, turning your why into engineering work agents can act o
 
 The **facilitator** is a *translator*, not an engineer-on-the-team in the traditional sense. The work is to take what you wrote, shape it into plans an AI coding agent can execute well, run the audit and review machinery, and answer the questions the agents raise while they build.
 
-This role is an AI by default. Activating a person changes what the loop waits for, so a question that a machine facilitator would answer and move past becomes a question that waits for someone. The command line is where a facilitator works, whichever kind it is.
+A fresh install starts with a person in this role, and a person in it changes what the loop waits for, so a question that a machine facilitator would answer and move past becomes a question that waits for someone. The command line is where a facilitator works, whichever kind it is.
 
 Every judgement about evidence, technique, and whether something was verifiable at all stops here. Only a decision the product thinker can actually answer travels further.
 
