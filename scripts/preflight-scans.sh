@@ -4,7 +4,10 @@
 # gitleaks over the commits the branch would land. Between 2026-10-18 and
 # 2026-10-26 they failed 12 of 32 failed CI runs, each found only after a push
 # and a hosted run; here a finding stops the preflight as a prerequisite, before
-# its test stages wait at the machine's load gate.
+# its test stages wait at the machine's load gate. The one exception is a
+# govulncheck finding on a branch that moves no dependency: govulncheck is not a
+# required check, and such a finding most likely stands on the default branch,
+# so stopping would hold every branch for a fix none of them can make. It warns.
 #
 # Each takes its version from .github/workflows/ci.yml, the one pin, so the scan
 # run here is CI's: govulncheck from the `go run …/govulncheck@<version>` line of
@@ -20,7 +23,8 @@
 #   preflight-scans.sh vulncheck   # govulncheck over ./... (exit 1 on a finding)
 #   preflight-scans.sh secrets     # gitleaks over <merge-base>..HEAD (exit 1 on a finding)
 #   preflight-scans.sh pins        # print the two versions ci.yml pins
-# Exit 0 clean or skipped, 1 a finding, 2 a usage or environment fault.
+# Exit 0 clean, skipped or warned, 1 a finding, 2 a usage or environment fault
+# (a gitleaks that ran and could not scan among them: CI's would fail too).
 set -euo pipefail
 export LC_ALL=C
 
@@ -81,25 +85,35 @@ vulncheck() {
 	*)
 		printf '%s\n' "$out" | tail -n 5 | sed 's/^/  /'
 		say "SKIPPED — govulncheck $version could not run (exit $rc), so the module was not checked for known vulnerabilities."
-		say "  Offline, it cannot fetch its vulnerability database. CI's govulncheck job still runs; to scan here, run again with the network."
+		say "  The lines above say why: offline it cannot fetch its vulnerability database, and a module it cannot load stops it too."
+		say "  CI's govulncheck job still runs."
 		return 0
 		;;
 	esac
 	printf '%s\n' "$out"
-	say "govulncheck $version found a known vulnerability the module's code reaches; the preflight stops before its test stages."
 	fixes="$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*Fixed in:[[:space:]]*//p' | sort -u)"
-	if [ -n "$fixes" ]; then
-		say "The fixes govulncheck names:"
-		printf '%s\n' "$fixes" | sed 's/^/  /'
-	fi
-	# A branch that moves no dependency did not bring the finding in: a newly
-	# published vulnerability, or the toolchain go.mod declares, fails the
-	# default branch too, and every branch cut from it (iss-2610261151481013).
+	# A branch that moves no dependency most likely did not bring the finding
+	# in: a newly published vulnerability, or the toolchain go.mod declares,
+	# fails the default branch too, and every branch cut from it
+	# (iss-2610261151481013). The module was already required there, though
+	# this branch's own code may be what newly reaches it.
 	def="$(default_ref)"
 	if [ -n "$def" ] && base="$(git merge-base HEAD "$def" 2>/dev/null)" &&
 		git diff --quiet "$base" HEAD -- go.mod go.sum; then
-		say "This branch changes neither go.mod nor go.sum against $def, so the finding most likely stands on $def itself."
-		say "  Fix it there, on a branch of its own (the toolchain line in go.mod, or the module go.sum names), then rebase this one onto it."
+		say "WARNING — govulncheck $version found a known vulnerability the module's code reaches, and this branch changes neither go.mod nor go.sum against $def,"
+		say "  so the vulnerable module was already required there and the finding most likely stands on $def itself. It does not stop the preflight:"
+		say "  govulncheck is not a required check, and no branch cut from $def can fix it alone. Fix it on a branch of its own (the toolchain"
+		say "  line in go.mod, or the module go.sum names); if this branch's own code is what reaches it, CI's govulncheck job shows it on the pull request."
+		if [ -n "$fixes" ]; then
+			say "The fixes govulncheck names:"
+			printf '%s\n' "$fixes" | sed 's/^/  /'
+		fi
+		return 0
+	fi
+	say "govulncheck $version found a known vulnerability the module's code reaches; the preflight stops before its test stages."
+	if [ -n "$fixes" ]; then
+		say "The fixes govulncheck names:"
+		printf '%s\n' "$fixes" | sed 's/^/  /'
 	fi
 	return 1
 }
@@ -129,13 +143,21 @@ secrets() {
 	fi
 	local scope="${base:+$base..}HEAD"
 	say "gitleaks: scanning $scope"
-	out="$(gitleaks git --redact --no-banner --log-opts="$scope" . 2>&1)" || rc=$?
+	# gitleaks exits 1 on a leak and on its own errors alike, so a leak is given
+	# a code of its own.
+	out="$(gitleaks git --redact --no-banner --exit-code 77 --log-opts="$scope" . 2>&1)" || rc=$?
 	printf '%s\n' "$out"
-	if [ "$rc" -ne 0 ]; then
-		say "gitleaks found a secret in $scope (exit $rc); the preflight stops. Remove it from the history (rewrite the branch), and rotate it if it was ever pushed."
+	case "$rc" in
+	0) return 0 ;;
+	77)
+		say "gitleaks found a secret in $scope; the preflight stops. Remove it from the history (rewrite the branch), and rotate it if it was ever pushed."
 		return 1
-	fi
-	return 0
+		;;
+	*)
+		say "gitleaks could not scan $scope (exit $rc); the lines above say why. CI's gitleaks job, a required check, would most likely fail the same way, so the preflight stops."
+		exit 2
+		;;
+	esac
 }
 
 [ $# -eq 1 ] || usage

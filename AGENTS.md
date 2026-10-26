@@ -344,7 +344,10 @@ with `*CONCURRENCY` to force it).
   `secrets-check` and `vulncheck` are CI's gitleaks and govulncheck scans at
   the versions `ci.yml` pins (`scripts/preflight-scans.sh`), run before the
   push so their findings cost no hosted run; a scan that cannot run here (no
-  gitleaks on PATH, no network) is skipped loudly and left to CI.
+  gitleaks on PATH, no network) is skipped loudly and left to CI, and a
+  govulncheck finding on a branch that moves no dependency warns rather than
+  stops (govulncheck is not a required check, and the finding most likely
+  stands on the default branch).
 - **Preflight judges with CI's toolchain.** `make fmt-check`, the format gate
   CI's check job runs, is preflight's first gate, straight after the load
   check. It resolves gofmt from the toolchain `go.mod` declares rather than from

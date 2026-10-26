@@ -567,7 +567,7 @@ func forgeDisclosureSignal(command, what string, fault assistedby.BodyFault) pay
 		id: forgeDisclosureEntryID, verdict: VerdictBlock, family: familyForge,
 		reason: "The " + what + " this `" + command + "` hands the forge carries " + fault.String() + ". This repository checks " +
 			"the text it posts (outbound.forge in .abcd/config.json), and a pull request's body discloses assistance as its " +
-			"commits do, judged as the attribution gate judges it after the push.",
+			"commits do, judged as abcd's attribution gate judges a pull request's body.",
 		successor: fix,
 	}
 }

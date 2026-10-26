@@ -171,16 +171,18 @@ func TestVulncheckRunsCIsVersionAndPassesAClearModule(t *testing.T) {
 }
 
 // TestVulncheckSaysAFindingLikelyStandsOnTheDefaultBranch: a branch that
-// changes neither go.mod nor go.sum did not bring the finding in, so the
-// refusal says it most likely stands on the default branch and names each fix.
+// changes neither go.mod nor go.sum most likely did not bring the finding in,
+// and govulncheck is not a required check, so the scan warns that the finding
+// most likely stands on the default branch, names each fix, and does not stop
+// a preflight no branch cut from there could pass.
 func TestVulncheckSaysAFindingLikelyStandsOnTheDefaultBranch(t *testing.T) {
 	r := newScanRepo(t, false)
 	r.stub("go", govulncheckFinding)
 	code, out := r.run("vulncheck")
-	if code != 1 {
-		t.Fatalf("a finding: exit %d, want 1\n%s", code, out)
+	if code != 0 {
+		t.Fatalf("a finding the branch did not bring in: exit %d, want 0\n%s", code, out)
 	}
-	for _, want := range []string{"origin/main", "neither go.mod nor go.sum", "net/http@go1.26.10"} {
+	for _, want := range []string{"WARNING", "origin/main", "neither go.mod nor go.sum", "net/http@go1.26.10"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the refusal does not say %q:\n%s", want, out)
 		}
@@ -225,7 +227,7 @@ func TestSecretsCheckScansTheBranchsOwnCommits(t *testing.T) {
 		t.Fatalf("a clean scan: exit %d\n%s", code, out)
 	}
 	base := r.git("merge-base", "HEAD", "refs/remotes/origin/main")
-	if !strings.Contains(r.args("gitleaks"), "git --redact --no-banner --log-opts="+base+"..HEAD .") {
+	if !strings.Contains(r.args("gitleaks"), "git --redact --no-banner --exit-code 77 --log-opts="+base+"..HEAD .") {
 		t.Fatalf("gitleaks ran %q, want CI's scan over %s..HEAD", r.args("gitleaks"), base)
 	}
 	if strings.Contains(out, "not the") {
@@ -235,9 +237,24 @@ func TestSecretsCheckScansTheBranchsOwnCommits(t *testing.T) {
 
 func TestSecretsCheckRefusesAFinding(t *testing.T) {
 	r := newScanRepo(t, false)
-	r.stub("gitleaks", `case "$1" in version) echo 8.24.3; exit 0 ;; esac; echo 'leaks found: 1'; exit 1`)
+	r.stub("gitleaks", `case "$1" in version) echo 8.24.3; exit 0 ;; esac; echo 'leaks found: 1'; exit 77`)
 	if code, out := r.run("secrets"); code != 1 {
 		t.Fatalf("a finding: exit %d, want 1\n%s", code, out)
+	}
+}
+
+// TestSecretsCheckThatCannotScanIsNotCalledAFinding: gitleaks exits 1 on its
+// own errors as on a leak, so an error must not read as a secret in the
+// history; it stops the preflight as the fault CI's required job would hit.
+func TestSecretsCheckThatCannotScanIsNotCalledAFinding(t *testing.T) {
+	r := newScanRepo(t, false)
+	r.stub("gitleaks", `case "$1" in version) echo 8.24.3; exit 0 ;; esac; echo 'error: unable to read config' >&2; exit 1`)
+	code, out := r.run("secrets")
+	if code != 2 {
+		t.Fatalf("a scan that could not run: exit %d, want 2\n%s", code, out)
+	}
+	if strings.Contains(out, "found a secret") || !strings.Contains(out, "could not scan") {
+		t.Errorf("an error is reported as a finding, or not said:\n%s", out)
 	}
 }
 

@@ -88,7 +88,9 @@ inbound = outbound statement is the whole of it.
   provisions; with no banlist it warns loudly and lets the commit through),
   the commit-msg outbound check (it refuses a live agent-session URL or a tool's attribution footer in a commit message, through
   this checkout's own `abcd lint outbound`, built from `./cmd/abcd`, and refuses the commit when it cannot run
-  the check) and the pre-push receipt check: a push of a commit the remote does
+  the check; in this repository it also refuses a message that names an issue id with no `Resolves:` or `Refs:`
+  line declaring it, the message half of the RS004 gate, leaving merge commits to the range check)
+  and the pre-push receipt check: a push of a commit the remote does
   not hold yet needs a passing `make preflight` run on that commit with nothing
   uncommitted beside it, and the hook checks the receipt that run mints rather
   than running the preflight while the push holds its connection open. The

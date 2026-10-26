@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/issuemention"
@@ -25,8 +27,9 @@ import (
 // one CI refused for a missing Assisted-by line, after the push.
 //
 // The body is the branch's own record: the subject of each commit, then each
-// commit's Refs:, Resolves: and Delivers: lines and its Assisted-by: lines, once
-// each, in the order the commits give them. It carries no commit's prose. It is
+// commit's Refs:, Resolves: and Delivers: lines, then abcd's own Assisted-by
+// label and the models the commits' Assisted-by: lines name, once each, in the
+// order the commits give them. It carries no commit's prose. It is
 // judged with the checks the shell guard applies to a posted body: the
 // outbound policy, the disclosure (assistedby.JudgeBody) and, where the
 // repository opted in, the mentions (issuemention); a body failing one is still
@@ -61,10 +64,12 @@ func composeBody(dir, tracking, head string) (composedBody, error) {
 	if err != nil {
 		return composedBody{}, err
 	}
-	var subjects, declared, assisted []string
-	// allNone holds while every commit declares Assisted-by: None and names no
-	// model: one commit that says nothing makes None a claim nobody made.
-	allNone := true
+	// abcd composed the body's text, so it declares abcd's label, and the
+	// change it describes carries the models' work, so their lines follow
+	// (ruling R4, internal/core/implement/loop/composed_attribution.go). A
+	// commit's None is not carried: the body is text a tool assembled.
+	var subjects, declared []string
+	assisted := []string{"Assisted-by: " + assistedby.ComposedValue(core.Version)}
 	for _, rec := range strings.Split(out, "\x1e") {
 		subject, msg, ok := strings.Cut(rec, "\x1f")
 		subject = strings.TrimSpace(subject)
@@ -72,20 +77,13 @@ func composeBody(dir, tracking, head string) (composedBody, error) {
 			continue
 		}
 		subjects = append(subjects, subject)
-		helped, none := false, false
 		for _, l := range strings.Split(strings.ReplaceAll(msg, "\r", ""), "\n") {
 			switch v, isTrailer := strings.CutPrefix(l, "Assisted-by: "); {
 			case declareLineRe.MatchString(l), deliversLineRe.MatchString(l):
 				declared = appendOnce(declared, l)
 			case isTrailer && (assistedby.IsModelValue(v) || assistedby.IsComposed(v)):
 				assisted = appendOnce(assisted, l)
-				helped = true
-			case isTrailer && (v == "None" || v == "none"):
-				none = true
 			}
-		}
-		if helped || !none {
-			allNone = false
 		}
 	}
 	if len(subjects) == 0 {
@@ -98,16 +96,7 @@ func composeBody(dir, tracking, head string) (composedBody, error) {
 	for _, s := range subjects {
 		b.WriteString("- " + s + "\n")
 	}
-	trailers := declared
-	switch {
-	case len(assisted) > 0:
-		trailers = append(trailers, assisted...)
-	case allNone:
-		trailers = append(trailers, "Assisted-by: None")
-	}
-	if len(trailers) > 0 {
-		b.WriteString("\n" + strings.Join(trailers, "\n") + "\n")
-	}
+	b.WriteString("\n" + strings.Join(append(declared, assisted...), "\n") + "\n")
 	return composedBody{title: subjects[0], body: b.String(), commits: len(subjects)}, nil
 }
 
@@ -128,9 +117,12 @@ func judgeBody(dir string, c composedBody) string {
 	} else if err != nil {
 		return "the outbound check, which could not run (" + err.Error() + ")"
 	}
-	if fault := assistedby.JudgeBody(c.body); fault != assistedby.BodyClean {
+	if fault := assistedby.JudgeBody(c.body); fault == assistedby.BodyNoTrailer {
 		return "the disclosure check: it carries " + fault.String() + ", since the branch's commits disclose none; " +
 			"add an Assisted-by line before posting"
+	} else if fault != assistedby.BodyClean {
+		return "the disclosure check: it carries " + fault.String() + ", taken from the branch's commits; " +
+			"correct or remove that line before posting"
 	}
 	if guard.ForgeMentionsOptedIn(dir) {
 		if ids := issuemention.Undeclared(c.title, c.body); len(ids) > 0 {
@@ -148,8 +140,14 @@ func judgeBody(dir string, c composedBody) string {
 // included, and gets the bare create command.
 func writeBody(dir, branch, body string) (string, string) {
 	rel := path.Join(bodyRelDir, "pr-body-"+strings.Trim(unsafeNameRe.ReplaceAllString(branch, "-"), "-")+".md")
+	// check-ignore exits 1 for a path git does not ignore, and 128 when it
+	// cannot answer at all.
 	if err := gitutil.WorkingTreeCommand(dir, "check-ignore", "-q", "--", rel).Run(); err != nil {
-		return "", "the local tier (" + bodyRelDir + ") is not ignored by git in this checkout, so land wrote no body file"
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+			return "", "the local tier (" + bodyRelDir + ") is not ignored by git in this checkout, so land wrote no body file"
+		}
+		return "", "git could not say whether it ignores the local tier (" + err.Error() + "), so land wrote no body file"
 	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {

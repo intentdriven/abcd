@@ -124,9 +124,10 @@ that name with none at this head, since the proof may lie past the bound.
    `--title` (the branch's first commit's subject) and `--body-file`, naming a
    body land composed from the branch's commits into the checkout's
    `.abcd/.work.local/scratch/land/`: each commit's subject as a list, then
-   their `Refs:`, `Resolves:` and `Delivers:` lines and their `Assisted-by:`
-   lines, once each (`Assisted-by: None` only when every commit declares it),
-   and no commit's prose. land judges that body as the shell guard judges a
+   their `Refs:`, `Resolves:` and `Delivers:` lines, once each, then abcd's
+   own `Assisted-by: abcd:<version>` label, since abcd composed the text, and
+   the models the commits' `Assisted-by:` lines name (a commit's `None` is not
+   carried), and no commit's prose. land judges that body as the shell guard judges a
    posted one (the outbound policy, the disclosure line, and the issue-id
    declarations where the repository opted into them), and a body that fails
    one is still written, with the stop's note naming the check, so the user

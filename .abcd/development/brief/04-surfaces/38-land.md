@@ -114,7 +114,8 @@ bound: the refusal says so and gives the push to run by hand.
    With no
    pull request the step stops with the `gh pr create` command; the verb never opens one (ruling R2), and the next run
    queues it. The command names a body land composed from the branch's commits (iss-220): each subject, then their
-   `Refs:`, `Resolves:`, `Delivers:` and `Assisted-by:` lines once each, written to the checkout's local tier (land makes none) and
+   `Refs:`, `Resolves:` and `Delivers:` lines once each, then abcd's own `Assisted-by: abcd:<version>` label and the
+   models the commits' `Assisted-by:` lines name (ruling R4), written to the checkout's local tier (land makes none) and
    judged with the shell guard's checks of a posted body, the failing check named in the stop's note, so the body
    the hosted checks read was checked before it was posted.
 

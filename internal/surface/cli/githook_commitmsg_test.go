@@ -207,7 +207,7 @@ func TestCommitMsgHookJudgesTextBelowAScissorsLineGitKeeps(t *testing.T) {
 // naming an issue id with no Refs: or Resolves: line declaring it is refused at
 // the commit, not by lint-issues inside a preflight tens of minutes later.
 func TestCommitMsgHookRefusesAnUndeclaredIssueMention(t *testing.T) {
-	c := newCommitMsgHookCase(t)
+	c := newOwnRepoHookCase(t)
 	refused, out := c.commitWith("a.txt", "fix: the walk behind iss-12\n\nAssisted-by: None\n")
 	if !refused {
 		t.Fatalf("a commit message naming an undeclared issue id was committed\n%s", out)
@@ -221,7 +221,7 @@ func TestCommitMsgHookRefusesAnUndeclaredIssueMention(t *testing.T) {
 }
 
 func TestCommitMsgHookPassesADeclaredIssueMention(t *testing.T) {
-	c := newCommitMsgHookCase(t)
+	c := newOwnRepoHookCase(t)
 	if refused, out := c.commitWith("a.txt", "fix: the walk behind iss-12\n\nRefs: iss-12\nAssisted-by: None\n"); refused {
 		t.Fatalf("a commit message declaring its mention was refused\n%s", out)
 	}
@@ -234,11 +234,72 @@ func TestCommitMsgHookPassesADeclaredIssueMention(t *testing.T) {
 // edited commit on such a branch for a line no commit records. A comment line
 // a -F message keeps is left to the range check in preflight and CI.
 func TestCommitMsgHookLeavesCommentLinesOutOfTheMentionCheck(t *testing.T) {
-	c := newCommitMsgHookCase(t)
+	c := newOwnRepoHookCase(t)
 	c.git("checkout", "-q", "-b", "capture/iss-12")
 	if refused, out := c.commitWith("a.txt", "fix: the walk\n\nAssisted-by: None\n", "-e"); refused {
 		t.Fatalf("an edited commit on a branch named after an issue was refused for git's own comment\n%s", out)
 	}
+}
+
+// git's own message for a merge names the branch it merges, and a branch is
+// often named after its issue (`Merge branch 'capture/iss-12'`). The range
+// check skips merge commits (--no-merges), so the hook leaves a merge to it.
+func TestCommitMsgHookLeavesAMergeMessageToTheRangeCheck(t *testing.T) {
+	c := newOwnRepoHookCase(t)
+	if refused, out := c.commitWith("a.txt", "chore: seed\n\nAssisted-by: None\n"); refused {
+		t.Fatalf("seed refused\n%s", out)
+	}
+	c.git("checkout", "-q", "-b", "capture/iss-12")
+	if refused, out := c.commitWith("b.txt", "fix: the walk behind iss-12\n\nRefs: iss-12\nAssisted-by: None\n"); refused {
+		t.Fatalf("side commit refused\n%s", out)
+	}
+	c.git("checkout", "-q", "main")
+	if out, err := c.tryGit("merge", "--no-ff", "--no-edit", "capture/iss-12"); err != nil {
+		t.Fatalf("git's own message for merging a branch named after its issue was refused\n%s", out)
+	}
+}
+
+// RS004 is a rule abcd's own record adopted. Run by a global dispatcher for
+// every repository on the machine, the hook holds another repository's
+// message to the outbound policy alone.
+func TestCommitMsgHookLeavesAnotherRepositorysIssueIdsAlone(t *testing.T) {
+	c := newCommitMsgHookCase(t)
+	if refused, out := c.commitWith("a.txt", "fix: the walk behind iss-12\n\nAssisted-by: None\n"); refused {
+		t.Fatalf("a commit in another repository was refused under abcd's issue rule\n%s", out)
+	}
+}
+
+// newOwnRepoHookCase is a case whose repository is the hook's own, the shape
+// of a checkout of abcd: it carries the hook, the issue-resolution gate and an
+// abcd source, so the hook judges RS004 for its commits. The source is a stub
+// whose abcd exits 0, so a case here is judged by RS004 alone.
+func newOwnRepoHookCase(t *testing.T) *commitMsgHookCase {
+	t.Helper()
+	c := newCommitMsgHookCase(t)
+	hook, err := os.ReadFile(filepath.Join(c.hooks, "commit-msg"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate, err := os.ReadFile(filepath.Join(c.root, "scripts", "check-issue-resolution.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rel, body := range map[string]string{
+		"go.mod":                            "module example.com/stub\n\ngo 1.21\n",
+		"cmd/abcd/main.go":                  "package main\n\nfunc main() {}\n",
+		".githooks/commit-msg":              string(hook),
+		"scripts/check-issue-resolution.sh": string(gate),
+	} {
+		p := filepath.Join(c.dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c.git("config", "core.hooksPath", ".githooks")
+	return c
 }
 
 func TestCommitMsgHookRefusesASessionURLInAMergeMessage(t *testing.T) {
@@ -413,9 +474,6 @@ func TestCommitMsgHookSaysATreeThatDoesNotBuildCannotJudge(t *testing.T) {
 		"go.mod":               "module example.com/broken\n\ngo 1.21\n",
 		"cmd/abcd/main.go":     "package main\n\nfunc main() {\n",
 		".githooks/commit-msg": string(hook),
-		// The issue-id gate runs before the build; a stub that passes lets
-		// the hook reach the build this case is about.
-		"scripts/check-issue-resolution.sh": "#!/usr/bin/env bash\nexit 0\n",
 	} {
 		p := filepath.Join(src, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {

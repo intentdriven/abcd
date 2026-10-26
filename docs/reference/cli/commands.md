@@ -128,7 +128,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
       --only-waiting            ask only the setup that waits after an abcd update: the questions this repository never answered and the settings whose default changed, never one answered or deferred with decide later; every kind of change is approved up front, as the yes to the offer abcd update news makes approves them; with the approve-everything flag no question is answered, so each still waits
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
-      --outbound                opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
+      --outbound                opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which also refuses a pull request body (gh pr create, new or edit) with no Assisted-by line in an accepted form, or one carrying a Co-authored-by line; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
       --readme-parts string     answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
@@ -3518,7 +3518,8 @@ credentials, so run it only on a branch whose content you trust.
      default branch and a ruleset requires a person's approval), pinned to the
      head, then confirmed in the queue. An arming someone else made is left as it
      is. With no pull request it composes the body from the branch's commits (each
-     subject, and their Refs:, Resolves:, Delivers: and Assisted-by: lines) into the
+     subject, their Refs:, Resolves: and Delivers: lines, abcd's own Assisted-by label
+     and the models their Assisted-by: lines name) into the
      checkout's .abcd/.work.local/ where it has one, judges it as the shell guard
      judges a posted body, prints the `gh pr create` command naming it with
      --body-file, and stops; it never opens one.

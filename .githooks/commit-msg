@@ -43,9 +43,12 @@
 # than the whole: git's own status comments name the branch, a branch is often
 # named after its issue (`capture/iss-N`), and git strips those comments from an
 # edited message after this hook runs. A comment line a -F message keeps is left
-# to the range check, which reads the recorded message. This half is abcd's own:
-# RS004 is a rule this repository adopted, so the commit-msg hook `ahoy install
-# --outbound` writes for a managed repository does not run it.
+# to the range check, which reads the recorded message, and so is a merge commit,
+# whose message git writes. This half is abcd's own: RS004 is a rule this
+# repository adopted, so the hook runs it only for a commit in this repository
+# (a linked worktree included), never for another repository a global dispatcher
+# runs it for, and the commit-msg hook `ahoy install --outbound` writes for a
+# managed repository does not run it.
 #
 # REACH, stated rather than implied. git runs this hook for `git commit` (an
 # amend and a reword through `git commit` included) and for a `git merge` that
@@ -304,36 +307,63 @@ if ! [[ $message =~ [^[:space:]] ]]; then
   exit 0
 fi
 
-# RS004's message half. The gate runs as a child bash, started through env with
-# the shell-startup variables removed, so neither a BASH_ENV file nor an exported
-# SHELLOPTS the committer carries runs inside it; every function was already
-# dropped above, which takes its export with it.
-rs_gate="$src/scripts/check-issue-resolution.sh"
-if [ ! -f "$rs_gate" ]; then
-  echo "commit-msg: BLOCKED — no issue-resolution gate at $rs_gate to judge the message's issue ids with." >&2
-  echo "            nothing in the message was found wrong; restore scripts/check-issue-resolution.sh and commit again." >&2
-  exit 1
+# RS004's message half, for a commit in the hook's own repository only: the
+# committing working tree must share its git common directory with $src, so a
+# linked worktree of it counts and any other repository a global dispatcher
+# runs this hook for does not. A merge commit is left to the range check, which
+# skips merges: git's own merge message names the branch it merges. Both are
+# read in git's own environment for this commit, before anything is unset. An
+# amended merge has no MERGE_HEAD and is judged.
+common_dir() {
+  local d
+  d="$(git rev-parse --git-common-dir 2>/dev/null)" || return 0
+  case "$d" in /*) ;; *) d="$PWD/$d" ;; esac
+  (cd "$d" 2>/dev/null && pwd -P) || true
+}
+here_common="$(common_dir)"
+src_common="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX && common_dir)" || src_common=""
+judge_mentions=1
+if [ -z "$here_common" ] || [ "$here_common" != "$src_common" ]; then
+  judge_mentions=0
 fi
-rc=0
-out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
-  GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
-  env -u BASH_ENV -u ENV -u SHELLOPTS -u BASHOPTS -u CDPATH bash "$rs_gate" message - <<<"$mentions_text" 2>&1)" || rc=$?
-case "$rc" in
-  0)
-    say "commit-msg: " "$out"
-    ;;
-  1)
-    echo "commit-msg: BLOCKED — the commit message names an issue id without declaring its relation to it (RS004)." >&2
-    say "            " "$out"
-    echo "            add the declaration line named above and commit again." >&2
+merge_head="$(git rev-parse -q --verify MERGE_HEAD 2>/dev/null || true)"
+if [ -n "$merge_head" ]; then
+  judge_mentions=0
+fi
+
+# The gate runs as a child bash, started through env with the shell-startup
+# variables removed, so neither a BASH_ENV file nor an exported SHELLOPTS the
+# committer carries runs inside it; every function was already dropped above,
+# which takes its export with it.
+if [ "$judge_mentions" -eq 1 ]; then
+  rs_gate="$src/scripts/check-issue-resolution.sh"
+  if [ ! -f "$rs_gate" ]; then
+    echo "commit-msg: BLOCKED — no issue-resolution gate at $rs_gate to judge the message's issue ids with." >&2
+    echo "            nothing in the message was found wrong; restore scripts/check-issue-resolution.sh and commit again." >&2
     exit 1
-    ;;
-  *)
-    echo "commit-msg: BLOCKED — the issue-resolution gate could not judge the message (exit $rc)." >&2
-    say "            " "$out"
-    exit 1
-    ;;
-esac
+  fi
+  rc=0
+  out="$(cd "$src" && unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+    GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_PREFIX &&
+    env -u BASH_ENV -u ENV -u SHELLOPTS -u BASHOPTS -u CDPATH bash "$rs_gate" message - <<<"$mentions_text" 2>&1)" || rc=$?
+  case "$rc" in
+    0)
+      say "commit-msg: " "$out"
+      ;;
+    1)
+      echo "commit-msg: BLOCKED — the commit message names an issue id without declaring its relation to it (RS004)." >&2
+      say "            " "$out"
+      echo "            add the declaration line named above and commit again." >&2
+      exit 1
+      ;;
+    *)
+      echo "commit-msg: BLOCKED — the issue-resolution gate could not judge the message (exit $rc)." >&2
+      say "            " "$out"
+      exit 1
+      ;;
+  esac
+fi
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/abcd-commit-msg.XXXXXX")"
 trap 'rm -rf "$work" || true' EXIT INT TERM HUP

@@ -1158,7 +1158,10 @@ the flag keeps both and restores a hand-deleted hook.
   `gh issue` command (create, new, edit, comment) hands the forge are judged
   against the same outbound policy before the command runs, and a live
   agent-session URL or a tool attribution footer in them is refused
-  (`forge-text-outbound`, in `commands/guard.md`). This half writes no hook and
+  (`forge-text-outbound`, in `commands/guard.md`). A pull request's body
+  (`gh pr create`, `new` or `edit`) is also held to the disclosure the
+  bundled `COMMITTING` rule asks of it: one `Assisted-by:` line in an accepted
+  form, and no `Co-authored-by:` line (`forge-text-disclosure`). This half writes no hook and
   needs no `abcd.binary`: the guard is the abcd already running in the session,
   so there is no binary to find and none to be missing. The guard reads
   `outbound.forge` alone; remove both keys, or set them to `false`, to turn

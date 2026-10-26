@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/issuemention"
 )
@@ -63,6 +64,7 @@ func TestNoPullRequestComposesTheBodyFromTheCommits(t *testing.T) {
 		"- fix: the walk skips a record family\n",
 		"- docs: say which families the walk reads\n",
 		"\nRefs: iss-1\n", "\nResolves: iss-2\n", "\nDelivers: itd-3\n",
+		"\nAssisted-by: " + assistedby.ComposedValue(core.Version) + "\n",
 		"\nAssisted-by: Claude:claude-opus-5-5\n", "\nAssisted-by: ExampleVendor:model-b\n",
 	} {
 		if !strings.Contains(body, want) {
@@ -92,18 +94,52 @@ func TestNoPullRequestComposesTheBodyFromTheCommits(t *testing.T) {
 	}
 }
 
-// TestAComposedBodyWithoutADisclosureSaysSo: a branch whose commits disclose
-// nothing composes a body the guard would block, and the stop says which check
-// it fails rather than handing over a body that will be refused.
-func TestAComposedBodyWithoutADisclosureSaysSo(t *testing.T) {
+// TestAComposedBodyThatFailsACheckSaysSo: in a repository that opted into the
+// mention check, a branch whose subject names an issue it never declares
+// composes a body the guard would block, and the stop says which check it
+// fails rather than handing over a body that will be refused.
+func TestAComposedBodyThatFailsACheckSaysSo(t *testing.T) {
 	f := newFixture(t, queueRuleset)
+	f.repo.Write(".abcd/config.json", `{"outbound": {"forge": true, "declare_mentions": true}}`+"\n")
+	f.repo.Git("add", ".abcd/config.json")
+	f.repo.Git("commit", "-q", "--amend", "-m", "fix: the walk behind iss-7\n\nAssisted-by: None")
 	res, err := f.land(f.options())
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := step(t, res, "enqueue")
-	if s.Status != StatusStopped || !strings.Contains(s.Note, "Assisted-by") || !strings.Contains(s.Note, "fails") {
-		t.Fatalf("enqueue step %+v, want the stop to name the disclosure the body lacks", s)
+	if s.Status != StatusStopped || !strings.Contains(s.Note, "iss-7") || !strings.Contains(s.Note, "fails") {
+		t.Fatalf("enqueue step %+v, want the stop to name the mention the body leaves undeclared", s)
+	}
+}
+
+// TestADisclosureFaultIsNamedForWhatItIs: only a body with no disclosure is
+// told to add one; a body carrying a line the guard refuses, a Co-authored-by
+// a commit wrote, is told to correct that line.
+func TestADisclosureFaultIsNamedForWhatItIs(t *testing.T) {
+	dir := t.TempDir()
+	note := judgeBody(dir, composedBody{title: "fix: x", body: "fix: x\n\nAssisted-by: None\nCo-authored-by: Alice Example <alice@example.com>\n"})
+	if !strings.Contains(note, "Co-authored-by") || !strings.Contains(note, "correct or remove") {
+		t.Errorf("a body carrying a Co-authored-by line: %q, want the line named and corrected", note)
+	}
+	if strings.Contains(note, "disclose none") || strings.Contains(note, "add an Assisted-by") {
+		t.Errorf("a body that discloses is told it discloses none: %q", note)
+	}
+	if note := judgeBody(dir, composedBody{title: "fix: x", body: "fix: x\n"}); !strings.Contains(note, "add an Assisted-by line") {
+		t.Errorf("a body with no disclosure: %q, want it told to add one", note)
+	}
+}
+
+// TestAnUnansweredIgnoreCheckIsNotCalledNotIgnored: check-ignore exits 128
+// when git cannot answer (here, no repository at all), which says nothing
+// about whether the tier is ignored.
+func TestAnUnansweredIgnoreCheckIsNotCalledNotIgnored(t *testing.T) {
+	path, note := writeBody(t.TempDir(), "feat/x", "fix: x\n")
+	if path != "" {
+		t.Fatalf("a body was written where git could not answer: %s", path)
+	}
+	if strings.Contains(note, "is not ignored") || !strings.Contains(note, "could not say") {
+		t.Errorf("note %q, want it to say git could not answer", note)
 	}
 }
 
@@ -132,19 +168,20 @@ func TestNoLocalTierWritesNoBody(t *testing.T) {
 	}
 }
 
-// TestAllNoneCommitsComposeNone: Assisted-by: None is the body's line only
-// when every commit declares it; one assisted commit makes the body an
-// assisted one, and one that declares nothing leaves the body without it.
-func TestAllNoneCommitsComposeNone(t *testing.T) {
+// TestTheComposedBodyDeclaresAbcdsLabel: abcd composed the body's text, so it
+// carries abcd's own label whatever the commits declare (ruling R4), then the
+// models they name; a commit's None is not carried, since a tool assembled the
+// text the body is.
+func TestTheComposedBodyDeclaresAbcdsLabel(t *testing.T) {
+	label := "\nAssisted-by: " + assistedby.ComposedValue(core.Version) + "\n"
 	for name, tc := range map[string]struct {
 		second string
 		want   string
 		unwant string
 	}{
-		"all none":   {"Assisted-by: None", "\nAssisted-by: None\n", "Assisted-by: Claude"},
-		"one helped": {"Assisted-by: Claude:claude-opus-5-5", "\nAssisted-by: Claude:claude-opus-5-5\n", "Assisted-by: None"},
-		// A commit that declares nothing has not said no model helped.
-		"one silent": {"", "- fix: the walk again\n", "Assisted-by: None"},
+		"all none":   {"Assisted-by: None", label, "Assisted-by: None"},
+		"one helped": {"Assisted-by: Claude:claude-opus-5-5", label + "Assisted-by: Claude:claude-opus-5-5\n", "Assisted-by: None"},
+		"one silent": {"", label, "Assisted-by: None"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newFixture(t, queueRuleset)
