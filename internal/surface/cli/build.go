@@ -228,6 +228,9 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
+			if !res.Resumed {
+				noticeUnattended(cmd, prefix)
+			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				verb := "started"
 				if res.Resumed {
@@ -378,6 +381,11 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			res, err := loop.Next(root, o, loop.NextOptions{Max: maxPicks, UntilEmpty: untilEmpty})
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			// Once per series: its later picks start runs of the series it
+			// already told the person about.
+			if res.Start != nil && !res.Start.Resumed && (res.Series == nil || res.Series.Started) {
+				noticeUnattended(cmd, prefix)
 			}
 			for i := range res.Excluded {
 				res.Excluded[i].Reason = fsutil.RedactHome(res.Excluded[i].Reason)

@@ -690,15 +690,16 @@ carries the prompt-router entries it expects. Neither install nor uninstall ever
 mutates it: the manifest is plugin-static. A missing or malformed manifest
 surfaces as a non-resolvable diagnostic.
 
-The shipped manifest wires nine event types, and every event command is a
-resolving shim rather than a plain binary call. Five of them self-provision.
-`UserPromptSubmit`, `PreToolUse`, `PostToolUse` and `PreCompact` each attempt
+The shipped manifest wires ten event types, and every event command is a
+resolving shim rather than a plain binary call. Six of them self-provision.
+`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and
+`PreCompact` each attempt
 `hooks/bootstrap.sh` only when the plugin-root binary is missing, recording the
 try in a `.bootstrap.attempt` marker that throttles the next one to a ten-minute
 window. `UserPromptSubmit`, the hook that runs on every message, declares a
 120-second `timeout`, the time a salvage on a slow link has before the host
-cancels it; `PreToolUse`, `PostToolUse` and `PreCompact` declare none and take
-the host's ten-minute default, so a slow first download finishes there. `SessionStart`
+cancels it; `PreToolUse`, `PostToolUse`, `PermissionRequest` and `PreCompact`
+declare none and take the host's ten-minute default, so a slow first download finishes there. `SessionStart`
 declares 240 seconds, the script's worst case with room to spare,
 `SessionEnd`, `SubagentStop` and `StopFailure` declare none, and `Stop` declares
 30 seconds, room for the away mode's stop check to make its one forge listing
@@ -713,7 +714,7 @@ the binary in place the script's own fast path costs a file test and does the
 provisioning housekeeping that keeps the next plugin update served from the
 local cache rather than the network, and it is the one place a binary that no
 longer matches its provenance record is called out. It stamps the same marker,
-so the four throttled events see a recent try, and reads no throttle of its
+so the five throttled events see a recent try, and reads no throttle of its
 own. `SessionEnd` and `SubagentStop` are the deliberate exceptions and download
 nothing: both fire where the host cancels a slow hook rather than wait — one as
 the session is going away, the other inside a live session as a sub-agent

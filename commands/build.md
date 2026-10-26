@@ -182,6 +182,27 @@ check, and reports `resumed: true` with the same run and an empty `checks`: the
 run's own lanes move and claim the intent, so judging it again would refuse the
 run as its own peer.
 
+**Approval prompts are refused while the run runs.** A new run says so once,
+in one line on stderr (stdout's JSON is untouched; a resume says nothing).
+While the run is unfinished and its state was written within the last two
+hours (the reservation lease), the host's approval prompt for a shell command
+in this checkout or in a lane the host runs is refused, not shown, because nobody is
+at the terminal to answer it: the agent is told to rewrite the command so it
+needs no approval, each step its own plain command and a script's steps on
+the command line rather than in a file, a heredoc or a `bash -c` string, or to
+skip the step and say why in its report. Sent again unchanged, it is refused
+again; this refusal never turns into an approval. A lane abcd starts through
+the claude runner runs with the host's hooks off, so its prompts never reach
+this refusal: the guard answers them (`abcd guard approve`, below). In a
+session with no run, the prompt
+shows as usual. `build next` says the same once, as it starts a run or begins
+a series.
+
+Refusal stops when the run finishes, when it hands a lane back or holds one
+(the work is then the person's), or after two hours with no activity in the
+run. No verb ends a run early, so a person who interrupts a build and carries
+on by hand sees the prompts again two hours after the run last moved.
+
 ## Pick the next intent
 
 When the argument is `next`, let the run choose the intent:

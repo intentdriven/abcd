@@ -152,6 +152,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"hook"}, {"hook", "prompt-router"}, {"hook", "prompt-router-reset"},
 		{"hook", "session-start"}, {"hook", "session-end"},
 		{"hook", "subagent-stop"}, {"hook", "question-answered"},
+		{"hook", "permission-request"},
 		{"hook", "stop"}, {"hook", "stop-failure"},
 	} {
 		if cmd := findByPath(root, path); cmd != nil {
@@ -1567,8 +1568,8 @@ type hookInput struct {
 	// prompt payloads: a name the person gave it or one a hook set earlier,
 	// never a generated one. Read by session naming (hook_session_name.go).
 	SessionTitle string `json:"session_title"`
-	// ToolName is supplied by the PostToolUse hook; read by `hook
-	// question-answered` only.
+	// ToolName is supplied by the PostToolUse and PermissionRequest hooks;
+	// read by `hook question-answered` and `hook permission-request`.
 	ToolName string `json:"tool_name"`
 	// TranscriptPath is supplied by the Stop hook; it names the session
 	// transcript on disk. Read by `hook session-end` only.
@@ -2316,6 +2317,10 @@ envelope carries it as system_message.`,
 	// store resolution it needs.
 	hookCmd.AddCommand(newSubagentStopCommand())
 
+	// permission-request — PermissionRequest on the shell tool: refuse the
+	// host's approval prompt while a build or drain runs with nobody at the
+	// terminal (hook_permission_request.go).
+	hookCmd.AddCommand(newPermissionRequestCommand())
 	// stop and stop-failure — Stop and StopFailure: the away mode's stop
 	// check (spc-2610180914469489 step 5). Their bodies live in hook_stop.go.
 	hookCmd.AddCommand(newHookStopCommand(), newHookStopFailureCommand())
