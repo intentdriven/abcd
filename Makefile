@@ -38,8 +38,18 @@ test:
 # cold-reading evals below. Behind the `smoke` build tag so they stay out of the
 # unit-test lane; run explicitly here, under `make preflight`, in CI's smoke job,
 # and in the release verify gate.
+# The eval lanes' budget (iss-2610241228178135): with no -timeout, go test kills
+# the evals package at ten minutes, which a loaded development machine reached
+# with no test hung. Each workflow step that runs an eval lane sets its own,
+# below its job's timeout-minutes, so a hang there still dumps goroutines
+# (internal/core/lint/evallanebudget_test.go holds both).
+EVAL_TIMEOUT ?= 20m
+ifeq ($(strip $(EVAL_TIMEOUT)),)
+override EVAL_TIMEOUT := 20m
+endif
+
 smoke:
-	go test -tags smoke ./evals/...
+	go test -tags smoke -timeout $(EVAL_TIMEOUT) ./evals/...
 
 # The cold-reading evals alone (evals/coldreading_*_test.go): the read-block eval
 # that falsifies the assembler's blindfold by planting sentinel warm content in a
@@ -65,7 +75,7 @@ smoke:
 # second cold-reading eval joins the lane by carrying that constraint, with no
 # edit to this target or to the workflow.
 evals-cold-reading:
-	go test -tags coldreading ./evals/...
+	go test -tags coldreading -timeout $(EVAL_TIMEOUT) ./evals/...
 
 # Format gate, resolved through the toolchain go.mod declares
 # (iss-2609081953452204). Not `gofmt` off PATH: gofmt's rules move between
@@ -278,8 +288,8 @@ asking-sync-check:
 # Both lanes are named even though `smoke` compiles a superset of
 # `evals-cold-reading`'s files: they are separate tag sets, so a cold-reading
 # file reaching for a smoke-only helper compiles under one and not the other,
-# which is the split CI's two jobs cover. About five seconds each on a warm
-# cache, against roughly a minute for the gates already here.
+# which is the split CI's two jobs cover. Under a minute each in CI, and
+# several on a loaded machine, hence EVAL_TIMEOUT above.
 #
 # The test stages wait their turn on the machine (iss-2610102020442624,
 # iss-2610140638074587). Before them the load gate (`abcd implement load

@@ -114,7 +114,9 @@ jobs:
     if: github.event_name != 'push' || github.ref_type != 'tag'
     # The race step's own -timeout (40m, sized in ci.yml) must fire before this
     # does, or a hang reads as a cancelled job with no goroutine dump: 40m for
-    # the slowest package plus about 10m this job spends before it starts.
+    # the slowest package plus about 10m this job spends before it starts. The
+    # smoke step after it fits the same way: 40m, its own 8m, and three minutes
+    # for the untimed steps (evallanebudget_test.go).
     timeout-minutes: 55
     runs-on: ubuntu-latest
     permissions:
@@ -181,7 +183,7 @@ jobs:
         run: bash scripts/check-reviews.sh
 
       - name: Smoke every command (self-discovering harness)
-        run: make smoke
+        run: make smoke EVAL_TIMEOUT=8m
 
       # --- The pinned plugin archive (adr-2609231048308186; ruling E1) --------
       # The ship committed the release's plugin archive — its download address
