@@ -1129,8 +1129,9 @@ func writeState(root *os.Root, st State) error {
 	return nil
 }
 
-// runIDs lists the run directories under the run tier, in name order (which is
-// mint order). An absent tier holds none.
+// runIDs lists the run directories under the run tier, in name order: mint
+// order to the second, but two runs minted in one second sort by their random
+// digits, so readRuns orders by creation instead. An absent tier holds none.
 func runIDs(root *os.Root) ([]string, error) {
 	f, err := root.Open(RunRelDir)
 	if errors.Is(err, fs.ErrNotExist) {
