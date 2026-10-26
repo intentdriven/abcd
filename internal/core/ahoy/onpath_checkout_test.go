@@ -52,7 +52,7 @@ func TestAProgramInsideTheCheckoutIsNotInstalled(t *testing.T) {
 			if onPath(repo, "gitleaks") {
 				t.Error("onPath counts a gitleaks inside the checkout as installed")
 			}
-			depGap(t, detectDependencies(repo), "deps.gitleaks_missing")
+			depGap(t, detectDependencies(repo, true), "deps.gitleaks_missing")
 		})
 	}
 
@@ -61,7 +61,7 @@ func TestAProgramInsideTheCheckoutIsNotInstalled(t *testing.T) {
 	if !onPath(repo, "gitleaks") {
 		t.Fatal("onPath does not count a gitleaks outside the checkout")
 	}
-	for _, g := range detectDependencies(repo) {
+	for _, g := range detectDependencies(repo, true) {
 		if g.ID == "deps.gitleaks_missing" {
 			t.Fatalf("a gitleaks outside the checkout is reported missing: %+v", g)
 		}

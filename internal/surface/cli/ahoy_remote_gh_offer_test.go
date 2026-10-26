@@ -23,12 +23,12 @@ func TestTerminalToolConfirmAsksOnlyAPersonAtATerminal(t *testing.T) {
 
 	piped := &stdinPrompter{r: bufio.NewReader(strings.NewReader("y\n")), w: &w}
 	if ans := terminalToolConfirm(piped, false, &w)(e); ans.Yes ||
-		!strings.Contains(ans.Why, "no terminal to ask at") || !strings.Contains(ans.Why, "brew install gh") {
+		!strings.Contains(ans.Why, "no terminal to ask at") || !strings.Contains(ans.Why, "gh_2.103.2_") {
 		t.Fatalf("a piped y: %+v", ans)
 	}
 	tty := &stdinPrompter{r: bufio.NewReader(strings.NewReader("y\n")), w: &w, tty: true}
 	if ans := terminalToolConfirm(tty, true, &w)(e); ans.Yes ||
-		!strings.Contains(ans.Why, "--yes") || !strings.Contains(ans.Why, "brew install gh") {
+		!strings.Contains(ans.Why, "--yes") || !strings.Contains(ans.Why, "gh_2.103.2_") {
 		t.Fatalf("--yes at a terminal: %+v", ans)
 	}
 	if ans := terminalToolConfirm(ahoy.RefusingPrompter{}, false, &w)(e); ans.Yes {
@@ -49,7 +49,7 @@ func TestTerminalToolConfirmAsksOnlyAPersonAtATerminal(t *testing.T) {
 		t.Fatalf("a y typed at a terminal was not a yes: %+v", ans)
 	}
 	asked := w.String()
-	q := strings.Index(asked, "Install gh now by running brew install gh? [y/N]")
+	q := strings.Index(asked, "Install gh now: download gh 2.103.2 into ")
 	if q < 0 {
 		t.Fatalf("the question does not show the exact step:\n%s", asked)
 	}
@@ -58,15 +58,14 @@ func TestTerminalToolConfirmAsksOnlyAPersonAtATerminal(t *testing.T) {
 			t.Errorf("%q is not shown before the question:\n%s", want, asked)
 		}
 	}
-	if !strings.Contains(asked[q:], "running brew install gh") {
+	if !strings.Contains(asked[q:], "[y/N]") || !strings.Contains(asked[q:], "downloading gh; nothing is written until it passes its check") {
 		t.Errorf("the step is not announced as it starts:\n%s", asked)
 	}
 }
 
 // TestAhoyRemoteApplyNeverInstallsGhOnAScriptedYes is the end-to-end no: a
 // piped y and --yes each reach the gh offer and decline it, so the step is
-// never attempted (brew's absence would otherwise be the reason), and the
-// refusal carries the command to run.
+// never attempted, and the refusal carries the by-hand download to make.
 func TestAhoyRemoteApplyNeverInstallsGhOnAScriptedYes(t *testing.T) {
 	hermeticEnv(t)
 	repo := gittest.NewRepo(t)
@@ -95,7 +94,7 @@ func TestAhoyRemoteApplyNeverInstallsGhOnAScriptedYes(t *testing.T) {
 			t.Fatalf("%v: not JSON: %v\n%s\n%s", tc.args, jerr, out, errOut)
 		}
 		notes := strings.Join(res.Notes, "\n")
-		if res.Status != "refused" || !strings.Contains(notes, tc.why) || !strings.Contains(notes, "brew install gh") {
+		if res.Status != "refused" || !strings.Contains(notes, tc.why) || !strings.Contains(notes, "download gh 2.103.2") {
 			t.Errorf("%v: status %q, notes lack %q or the step:\n%s", tc.args, res.Status, tc.why, notes)
 		}
 		if strings.Contains(notes, "is not on PATH, so the step cannot run") {

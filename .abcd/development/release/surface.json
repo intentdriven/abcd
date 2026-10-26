@@ -260,6 +260,13 @@
           "hidden": false
         },
         {
+          "name": "details",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "dev",
           "shorthand": "",
           "type": "bool",

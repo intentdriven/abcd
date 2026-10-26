@@ -26,7 +26,7 @@ func TestInstallScaffoldsTheBanlistArtefacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != "clean" {
+	if settled(res) != "clean" {
 		t.Fatalf("install status = %q (remaining=%v), want clean", res.Status, res.Remaining)
 	}
 

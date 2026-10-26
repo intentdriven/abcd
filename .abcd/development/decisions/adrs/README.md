@@ -220,4 +220,8 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610222026262980](2610222026262980-coordination-between-headless-agents-is.md) | Coordination between headless agents is bounded by deadlines, fenced by the claim's tip, version-checked, and done under each session's own credential | proposed | 2026-10-22 |
 | [adr-2610222026265719](2610222026265719-a-session-s-checklist-names-a-credential.md) | A session's checklist names a credential by its kind, scope and expiry, never its value or anything that retrieves it | accepted | 2026-10-22 |
 | [adr-2610222222326104](2610222222326104-abcd-drives-agents-with-no-host-session.md) | abcd drives agents with no host session only on the person's own invocation, on a paid key, and hands back what it cannot finish | proposed | 2026-10-22 |
+| [adr-2610241022330872](2610241022330872-setup-edits-the-shell-settings-to-put.md) | Setup edits the shell settings to put abcd's folder on the PATH, on a yes | accepted | 2026-10-24 |
+| [adr-2610241022541063](2610241022541063-each-person-s-commit-identity-lives-on.md) | Each person's commit identity lives on their own machine, not in the repository | accepted | 2026-10-24 |
+| [adr-2610241057124151](2610241057124151-abcd-installs-the-tools-it-needs-from.md) | abcd installs the tools it needs from downloads pinned in its own release | accepted | 2026-10-24 |
+| [adr-2610241101463288](2610241101463288-setup-asks-short-questions-and-lists-its.md) | Setup asks short questions and lists its defaults on one plan | accepted | 2026-10-24 |
 <!-- /index -->

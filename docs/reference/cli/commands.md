@@ -53,7 +53,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 ```
       --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
-      --identity    check git's commit author and committer against .abcd/config/identity.json, exiting non-zero when either diverges (for a pre-commit hook or CI)
+      --identity    check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)
       --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
       --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
 ```
@@ -122,6 +122,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --answers string          answer the setup questions from this answers file (JSON: schema_version, interview "setup", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key
       --attribution             opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
+      --details                 print the full record after the report: core's summary of every write and every note, each path written, the declined kinds of change and the gaps left
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
@@ -132,7 +133,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
       --visibility string       repo visibility: private | public
-      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
+      --yes                     approve every resolvable change category without prompting; excludes recording who you commit as on this machine (asked only at a terminal), the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
 ```
 
 #### `abcd ahoy remote`
