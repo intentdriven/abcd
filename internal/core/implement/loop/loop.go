@@ -1056,6 +1056,9 @@ func readRuns(root *os.Root) ([]State, error) {
 		}
 		out = append(out, st)
 	}
+	// Oldest first is by creation: two runs minted in one second carry ids
+	// that sort by their random digits, so the id only breaks a tie.
+	slices.SortStableFunc(out, func(a, b State) int { return a.CreatedAt.Compare(b.CreatedAt) })
 	return out, nil
 }
 
