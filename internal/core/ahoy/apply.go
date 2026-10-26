@@ -1787,6 +1787,13 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 			ghAttestationVerifyCommand(cacheAssetName(), att.releaseTag) + "` after downloading it. " + coldCacheRemedy)
 		return
 	}
+	// The bytes must also claim the release the attestation names.
+	if cerr := checkReleaseClaim(data, att.releaseTag); cerr != nil {
+		a.refuse("refused to install the PATH entry: the cached artefact " + displayPath(artefact) +
+			" verifies as built by the release workflow, but " + errText(cerr) +
+			", so nothing was installed. Nothing on this machine needs changing: keep the abcd you have until the release is corrected.")
+		return
+	}
 	if equal {
 		a.verifiedCopy = target
 		return // the entry already is the verified artefact
@@ -1878,6 +1885,10 @@ func checkOwnedCopy(target, tag string, provenance ProvenanceCheck) (note, handC
 				perr = errors.New("it is " + why + " (to go back to " + tag + " on purpose, run `" + LowerReleaseMarkCommand(tag) + "`)")
 			}
 		}
+	} else if cerr := checkReleaseClaim(data, tag); cerr != nil {
+		// A tag the caller names binds the copy only if the copy claims it.
+		handCheck = ghAttestationVerifyCommand(target, tag)
+		return notThisReleaseNote(target, cerr, tag, handCheck), handCheck, ""
 	}
 	if perr == nil {
 		if provenance == nil {
@@ -1909,6 +1920,17 @@ func olderThanMarkNote(target, why, tag, handCheck string) string {
 		"`" + handCheck + "` would show only that it is a genuine build of " + tag + "; that proves authenticity, not recency, and does not lift the newest-release floor. " +
 		"Reinstall the newest release with the install one-liner in the README (https://github.com/intentdriven/abcd#install), or run `abcd update`, then re-run `abcd ahoy install`. " +
 		"To go back to " + tag + " on purpose, run `" + LowerReleaseMarkCommand(tag) + "`."
+}
+
+// notThisReleaseNote is the refusal for an owned copy bound to a release its
+// own build metadata does not claim. It is not unverifiedCopyNote, for the
+// reason olderThanMarkNote is not: no retry changes which release a build is.
+func notThisReleaseNote(target string, cerr error, tag, handCheck string) string {
+	return "refused to adopt the PATH entry " + displayPath(target) + ": the copy there is the one " + abcdhome.Display("path-entry") +
+		" records, but " + errText(cerr) + ", so it was not adopted and was left as it is. " +
+		"A retry will not change that: the copy is refused for which release it is, not because its build provenance could not be reached, " +
+		"and `" + handCheck + "` checks who built it, not which release it is. " +
+		"Reinstall the release with the install one-liner in the README (https://github.com/intentdriven/abcd#install), or run `abcd update`, then re-run `abcd ahoy install`."
 }
 
 // unverifiedCopyNote is the refusal for an owned copy left on PATH whose

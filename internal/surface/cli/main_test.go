@@ -51,6 +51,10 @@ func TestMain(m *testing.M) {
 	ahoyReleaseProvenance = func(string, []byte) (string, error) {
 		return "https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main", nil
 	}
+	// The fixtures' cache artefacts carry no Go build metadata, so the claim
+	// a promotion holds them to is stood in as well; ahoy's own tests hold
+	// the binding itself.
+	ahoy.AcceptReleaseClaimsForTest()
 	// The deep installability tier re-executes the running binary as its
 	// isolated child. Under `go test` that binary is this test binary, so it
 	// stands in for abcd when the runner marks it: the real subprocess path runs
