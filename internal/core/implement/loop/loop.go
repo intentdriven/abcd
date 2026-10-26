@@ -902,8 +902,8 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		}
 		route := route
 		if route == nil && await.Answered != nil {
-			// The verifier judged the return it read against the answer
-			// placed, and recorded the route only on a reviewer it matched.
+			// Only a reviewer's await carries a placed answer (DriveReview
+			// places it), so the route read back is that reviewer's.
 			noted = validatorRoute(lane, await.Receipt)
 			route = noted
 		}
