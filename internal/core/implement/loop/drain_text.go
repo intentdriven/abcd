@@ -44,5 +44,8 @@ func (st DrainState) textWritten() bool {
 	for _, p := range st.PendingHandBacks {
 		texts = append(texts, p.Why)
 	}
+	for _, s := range st.Skips {
+		texts = append(texts, s.Target, s.Reason)
+	}
 	return !slices.ContainsFunc(texts, func(s string) bool { return termsafe.Sanitize(s) != s })
 }
