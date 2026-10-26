@@ -73,6 +73,11 @@ func TestForgeTextBlocksAPostingCommandCarryingALeak(t *testing.T) {
 		`gh pr create --body="Summary` + "\n\n" + footer + `"`,
 		`gh pr create -b"Summary` + "\n\n" + footer + `"`,
 		`gh pr create -b="Session: ` + url + `"`,
+		// pflag reads a text shorthand behind boolean ones in the same word:
+		// --draft then --body, --editor then --body (iss-2610262229344994).
+		`gh pr create -db "Summary` + "\n\n" + footer + `"`,
+		`gh pr create -db"Summary` + "\n\n" + footer + `"`,
+		`gh pr comment 12 -eb "` + url + `"`,
 		`gh pr new --body "` + url + `"`,
 		`gh pr edit 12 --body "` + url + `"`,
 		`gh pr comment 12 --body "` + url + `"`,

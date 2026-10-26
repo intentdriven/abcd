@@ -675,7 +675,9 @@ line longer than 64 KiB is a **block** (`command-too-long`), because the guard
 does not read it.
 
 A script file a shell runs is **read and judged** before the command is: a
-shell's script operand (`bash build.sh`), a `source` or `.` operand (searched on
+shell's script operand (`bash build.sh`; not under `-n` or `-o noexec`, a
+syntax check that runs none of it, unless `-i` makes the shell interactive,
+which ignores the option), a `source` or `.` operand (searched on
 `PATH` and then in the working directory when it has no slash, as bash does,
 while zsh's `source` looks in the working directory first and its `.` only on
 `PATH`; a `PATH=` prefix
@@ -1064,7 +1066,8 @@ teaches the safe form: remove the session URL, and
 replace a tool footer with the repository's own disclosure trailer
 (`Assisted-by: <Vendor>:<model-version>`). It reads `--title`/`-t`,
 `--body`/`-b` and `--body-file`/`-F` in every spelling (`--body x`,
-`--body=x`, `-b x`, `-bx`, `-b=x`), a value written out in full on the line, and
+`--body=x`, `-b x`, `-bx`, `-b=x`, and each behind gh's boolean shorthands, `-db x`),
+a value written out in full on the line, and
 a `"$(cat <<'EOF' … EOF)"` body, read as the document it prints. A body file is
 read through the guard's guarded read, from the directory the command runs in:
 regular files only, no symlinked leaf (a symlink to a file is followed first),
@@ -1102,8 +1105,7 @@ declaration.
 It does not see: a body or a path the line does not fix (`--body "$BODY"`,
 `--body-file "$F"`, a substitution other than the `cat` document above), a body
 on standard input (`--body-file -`), a flag spelled by a substitution
-(`--$(echo body)`), a short flag bundled behind another (`-db x`), text typed
-into an editor or a browser (`--editor`, `--web`), text gh takes from the
+(`--$(echo body)`), text typed into an editor or a browser (`--editor`, `--web`), text gh takes from the
 commits (`--fill`) or a template (`--template`), a posting command inside a
 script the line runs, and every other posting path: `gh api`, `gh pr review`,
 `gh release`, `gh pr merge --body`, `gh pr close --comment`,

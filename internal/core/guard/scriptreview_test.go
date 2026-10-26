@@ -42,6 +42,22 @@ func TestScriptReadingReviewFindings(t *testing.T) {
 	}
 }
 
+// A shell under noexec reads its script and runs none of it, so a syntax
+// check (`bash -n s.sh`) is no run of the hazard the script holds; an
+// interactive shell ignores the option, and a later +n turns it back off
+// (iss-2610262219309883).
+func TestASyntaxCheckIsNoRunOfTheScript(t *testing.T) {
+	dir := scriptTree(t, map[string]string{"s.sh": hazardLine})
+	runScriptCases(t, dir, []scriptCase{
+		{`bash -n {d}/s.sh`, VerdictAllow, ""},
+		{`bash -o noexec {d}/s.sh`, VerdictAllow, ""},
+		{`sh -n {d}/s.sh`, VerdictAllow, ""},
+		{`bash -n +n {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`bash -n -i {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`bash {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+	})
+}
+
 // The site bound holds before any lookup: a line naming thousands of bare
 // names makes at most a bounded number of filesystem lookups.
 func TestScriptSiteBoundHoldsBeforeLookups(t *testing.T) {

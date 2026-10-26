@@ -2215,6 +2215,9 @@ func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, t
 type shellCall struct {
 	cmdString, stdin, versionOnly, unresolved  bool
 	interactive, login, norc, noprofile, norcs bool
+	// noexec is `-n` or `-o noexec`: a non-interactive shell reads its
+	// commands and runs none of them, a syntax check (iss-2610262219309883).
+	noexec bool
 	// script and rcfile index the arguments: the script operand and the
 	// --rcfile/--init-file value, -1 for none.
 	script, rcfile int
@@ -2281,6 +2284,8 @@ func parseShellCall(name string, args []string) shellCall {
 					c.interactive = c.interactive || set
 				case 'l':
 					c.login = c.login || set
+				case 'n':
+					c.noexec = set
 				case 'f':
 					if zsh && set {
 						c.norcs = true
@@ -2300,6 +2305,10 @@ func parseShellCall(name string, args []string) shellCall {
 					c.interactive = true
 				case (v == "norcs" && on) || (v == "rcs" && !on):
 					c.norcs = true
+				case v == "noexec":
+					c.noexec = on
+				case v == "exec":
+					c.noexec = !on
 				}
 			}
 			i += 1 + len(values)
@@ -2455,6 +2464,12 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 				out = append(out, child(p, "the startup file "+p, targetStartup))
 			}
 		}
+	}
+	// Under noexec a non-interactive shell reads its script and runs none of
+	// it, so the script is no run to judge; an interactive shell ignores the
+	// option. The startup files above are still judged.
+	if c.noexec && !c.interactive {
+		return out, sigs
 	}
 	if c.script >= 0 {
 		idx := site + 1 + c.script

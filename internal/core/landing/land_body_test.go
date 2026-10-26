@@ -140,12 +140,50 @@ func TestADisclosureFaultIsNamedForWhatItIs(t *testing.T) {
 // when git cannot answer (here, no repository at all), which says nothing
 // about whether the tier is ignored.
 func TestAnUnansweredIgnoreCheckIsNotCalledNotIgnored(t *testing.T) {
-	path, note := writeBody(t.TempDir(), "feat/x", "fix: x\n")
+	path, _, note := writeBody(t.TempDir(), "feat/x", "0123456789abcdef0123456789abcdef01234567", "fix: x\n")
 	if path != "" {
 		t.Fatalf("a body was written where git could not answer: %s", path)
 	}
 	if strings.Contains(note, "is not ignored") || !strings.Contains(note, "could not say") {
 		t.Errorf("note %q, want it to say git could not answer", note)
+	}
+}
+
+// TestAnEditedBodyFileIsKept: a person who edits the body land composed, then
+// runs land again before posting, keeps the edit, and the stop judges the text
+// the command will post; a new commit names a body file of its own.
+func TestAnEditedBodyFileIsKept(t *testing.T) {
+	f := newFixture(t, queueRuleset)
+	res, err := f.land(f.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _ := bodyFileOf(t, step(t, res, "enqueue").Command)
+	edited := "- fix: the walk, as I would put it\n\nAssisted-by: None\n"
+	if err := os.WriteFile(first, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err = f.land(f.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := step(t, res, "enqueue")
+	again, body := bodyFileOf(t, s.Command)
+	if again != first || body != edited {
+		t.Fatalf("the rerun named %s holding %q; want the edited %s kept", again, body, first)
+	}
+	if !strings.Contains(s.Note, "kept") {
+		t.Errorf("the note does not say the file was kept: %s", s.Note)
+	}
+	f.repo.Write("second.txt", "more\n")
+	f.repo.Git("add", "second.txt")
+	f.repo.Git("commit", "-q", "-m", "fix: the walk again\n\nAssisted-by: None")
+	res, err = f.land(f.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next, _ := bodyFileOf(t, step(t, res, "enqueue").Command); next == first {
+		t.Errorf("a new head reused the body file %s composed for the old one", first)
 	}
 }
 

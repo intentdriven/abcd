@@ -251,9 +251,15 @@ const (
 	forgeBodyFile = "body file"
 )
 
+// ghBoolShorts are the boolean shorthands of gh's posting commands (--draft,
+// --editor, --fill, --web, --help), the ones pflag lets a text flag follow in
+// one word: `-db x` is --draft then --body x.
+const ghBoolShorts = "defwh"
+
 // forgeFlag names the text flag a word sets (forgeTitle, forgeBody,
 // forgeBodyFile), and the value attached to it, if any: `--body`, `--body=x`,
-// `-b`, `-bx` and `-b=x`.
+// `-b`, `-bx`, `-b=x`, and each of those behind boolean shorthands (`-db x`,
+// `-dbx`). Any other shorthand takes the rest of the word as its own value.
 func forgeFlag(w string) (name, val string, attached bool) {
 	longs := map[string]string{"--title": forgeTitle, "--body": forgeBody, "--body-file": forgeBodyFile}
 	if strings.HasPrefix(w, "--") {
@@ -267,14 +273,18 @@ func forgeFlag(w string) (name, val string, attached bool) {
 		return "", "", false
 	}
 	shorts := map[byte]string{'t': forgeTitle, 'b': forgeBody, 'F': forgeBodyFile}
-	l, ok := shorts[w[1]]
-	if !ok {
-		return "", "", false
+	for i := 1; i < len(w); i++ {
+		if l, ok := shorts[w[i]]; ok {
+			if i+1 == len(w) {
+				return l, "", false
+			}
+			return l, strings.TrimPrefix(w[i+1:], "="), true
+		}
+		if !strings.ContainsRune(ghBoolShorts, rune(w[i])) {
+			break
+		}
 	}
-	if len(w) == 2 {
-		return l, "", false
-	}
-	return l, strings.TrimPrefix(w[2:], "="), true
+	return "", "", false
 }
 
 // forgeValues reads the text flags in the words from start on, up to `--`.

@@ -138,31 +138,53 @@ func judgeBody(dir string, c composedBody) string {
 // makes no tier: a checkout without one (a new worktree whose receipt another
 // worktree minted) keeps nothing of land's, the release hold's sightings
 // included, and gets the bare create command.
-func writeBody(dir, branch, body string) (string, string) {
-	rel := path.Join(bodyRelDir, "pr-body-"+strings.Trim(unsafeNameRe.ReplaceAllString(branch, "-"), "-")+".md")
+//
+// The file is named after the branch and its head, and a file already there
+// is kept, never rewritten (kept, with its text): the commits fix what land
+// composes, so a file at that name is land's own from an earlier run or the
+// person's edit of it, which a rerun must not throw away
+// (iss-2610262229362789). A new commit names a new file.
+func writeBody(dir, branch, head, body string) (file string, kept []byte, why string) {
+	rel := path.Join(bodyRelDir, "pr-body-"+strings.Trim(unsafeNameRe.ReplaceAllString(branch, "-"), "-")+"-"+short(head)+".md")
 	// check-ignore exits 1 for a path git does not ignore, and 128 when it
 	// cannot answer at all.
 	if err := gitutil.WorkingTreeCommand(dir, "check-ignore", "-q", "--", rel).Run(); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && ee.ExitCode() == 1 {
-			return "", "the local tier (" + bodyRelDir + ") is not ignored by git in this checkout, so land wrote no body file"
+			return "", nil, "the local tier (" + bodyRelDir + ") is not ignored by git in this checkout, so land wrote no body file"
 		}
-		return "", "git could not say whether it ignores the local tier (" + err.Error() + "), so land wrote no body file"
+		return "", nil, "git could not say whether it ignores the local tier (" + err.Error() + "), so land wrote no body file"
 	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return "", "the body file could not be written (" + err.Error() + ")"
+		return "", nil, "the body file could not be written (" + err.Error() + ")"
 	}
 	defer root.Close()
 	if fi, err := root.Lstat(TierRelDir); errors.Is(err, fs.ErrNotExist) || (err == nil && !fi.IsDir()) {
-		return "", "this checkout has no local tier (" + TierRelDir + "), and land makes none, so it wrote no body file"
+		return "", nil, "this checkout has no local tier (" + TierRelDir + "), and land makes none, so it wrote no body file"
 	} else if err != nil {
-		return "", "the local tier could not be read (" + err.Error() + "), so land wrote no body file"
+		return "", nil, "the local tier could not be read (" + err.Error() + "), so land wrote no body file"
+	}
+	file = filepath.Join(dir, filepath.FromSlash(rel))
+	if fi, err := root.Lstat(rel); err == nil {
+		if !fi.Mode().IsRegular() {
+			return "", nil, "something other than a file stands at " + rel + ", so land wrote no body file"
+		}
+		text, err := root.ReadFile(rel)
+		if err != nil {
+			return "", nil, "the body file already at " + rel + " could not be read (" + err.Error() + ")"
+		}
+		if text == nil {
+			text = []byte{}
+		}
+		return file, text, ""
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", nil, "the body file's place could not be read (" + err.Error() + "), so land wrote no body file"
 	}
 	if err := fsutil.WriteFileAtomicInRoot(root, rel, []byte(body), 0o644); err != nil {
-		return "", "the body file could not be written (" + err.Error() + ")"
+		return "", nil, "the body file could not be written (" + err.Error() + ")"
 	}
-	return filepath.Join(dir, filepath.FromSlash(rel)), ""
+	return file, nil, ""
 }
 
 // createStop is the stop when the branch has no pull request: the create
@@ -175,12 +197,19 @@ func createStop(res *Result, dir, tracking string) {
 		res.add("enqueue", StatusStopped, note+"; no body was composed ("+err.Error()+")", base)
 		return
 	}
-	file, why := writeBody(dir, res.Branch, c.body)
+	file, kept, why := writeBody(dir, res.Branch, res.Head, c.body)
 	if file == "" {
 		res.add("enqueue", StatusStopped, note+"; "+why, base)
 		return
 	}
-	note += fmt.Sprintf("; the body was composed from the branch's %d commit(s) into %s", c.commits, file)
+	if kept != nil {
+		// The text the create command posts is the file's, so that is judged.
+		c.body = string(kept)
+		note += "; the body file already at " + file + " was kept as it is (an earlier run composed it at this head, " +
+			"or it was edited since): delete it to compose it again"
+	} else {
+		note += fmt.Sprintf("; the body was composed from the branch's %d commit(s) into %s", c.commits, file)
+	}
 	if fails := judgeBody(dir, c); fails != "" {
 		note += "; it fails " + fails
 	}

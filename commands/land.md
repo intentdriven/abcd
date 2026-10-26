@@ -150,7 +150,11 @@ that name with none at this head, since the proof may lie past the bound.
    posted one (the outbound policy, the disclosure line, and the issue-id
    declarations where the repository opted into them), and a body that fails
    one is still written, with the stop's note naming the check, so the user
-   fixes it before posting. Where git does not ignore the local tier, or the
+   fixes it before posting. The file is named after the branch and its head
+   commit, and a file already at that name is kept as it is, never rewritten,
+   so a body edited before posting survives running land again; the note says
+   so, the kept text is what land judges, and deleting the file has the next
+   run compose it afresh. Where git does not ignore the local tier, or the
    checkout has none (land makes none), land writes no file and the command
    is the bare `gh pr create`.
 
