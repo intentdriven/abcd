@@ -2,14 +2,19 @@
 id: itd-115
 slug: abcd-managed-repos-merge-prs-without-the
 spec_id: null
-kind: null
+kind: standalone
 suggested_kind: null
-reclassification_history: []
+reclassification_history:
+  - { date: 2026-10-26, from: standalone, to: superseded, reason: "Its want, a ready pull request that never waits behind another, is met on every plan by itd-2610261025516272: GitHub's queue where the plan has one, the local landing queue elsewhere (product thinker, 2026-10-26)" }
 builds_on: []
 severity: minor
+kind_at_supersession: standalone
+superseded_by: itd-2610261025516272
 ---
 
 # A Ready PR Merges Without Ever Wedging BEHIND
+
+> **Superseded by itd-2610261025516272** on 2026-10-26: Its want, a ready pull request that never waits behind another, is met on every plan by itd-2610261025516272: GitHub's queue where the plan has one, the local landing queue elsewhere (product thinker, 2026-10-26)
 
 ## Press Release
 
@@ -123,5 +128,5 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
 
 [iss-172]: ../../../work/issues/open/iss-172-abcd-managed-repos-need-pr-queue-hygiene.md
 [itd-1]: ../disciplines/itd-1-acceptance-gates.md
-[itd-92]: itd-92-abcd-verifies-branch-protection-on.md
+[itd-92]: ../drafts/itd-92-abcd-verifies-branch-protection-on.md
 [itd-114]: itd-114-abcd-mints-collision-proof-record-ids.md

@@ -2619,7 +2619,7 @@ Verdict at filing: SPLIT, confirmed by the product thinker. The initial routing 
 
 Grade: the first routing was right at the level of intent versus issue, and wrong at the level of how many intents one setup rethink holds; both reviewers caught it independently.
 
-## 2026-10-26: private repos land checked work without renting CI (technical facilitator, routing not yet put to the product thinker)
+## 2026-10-26: private repos land checked work without renting CI (product thinker, routing confirmed)
 
 | part | type | home |
 |---|---|---|
@@ -2628,10 +2628,11 @@ Grade: the first routing was right at the level of intent versus issue, and wron
 | each check runs once, where it is cheapest to trust | stance | proposed principle at planning; not filed |
 | the gate list's schema, the receipt's fields, `-trimpath`, the declared tests whose inputs the cache cannot see | plumbing | the spec and the brief |
 
-Verdict: SPLIT, proposed. The routing is the agent's and has not been put to
-the product thinker; it is graded as unconfirmed until they answer.
+Verdict: SPLIT, confirmed. The routing was the agent's, put to the product
+thinker as a recommendation with its reasons, and accepted with a plain yes
+on the same day, unchanged; the initial routing survived confirmation.
 
-Typed links proposed: supersedes itd-115 (its no-wait landing want is met on
+Typed links, as confirmed: supersedes itd-115 (its no-wait landing want is met on
 every plan, and the local queue replaces its poll-and-update fallback);
 refines itd-106; builds on itd-2610161647248332. itd-2610110940216682 stays
 the hosted-CI shape for a repository whose default branch a queue gates, a

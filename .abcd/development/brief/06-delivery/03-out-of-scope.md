@@ -78,7 +78,6 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-108` — The plugin installs from the curated release artifact, not the repo, and every cut release reaches users automatically
 - `itd-109` — Acceptance Criteria Verify Themselves, And The Manual Rest Renders For A Human
 - `itd-113` — The MCP Front Door Opens — abcd's Core Verbs From Any MCP-Capable Harness
-- `itd-115` — A Ready PR Merges Without Ever Wedging BEHIND
 - `itd-116` — Validated GitHub Issues Become Ledger Entries Without Retyping
 - `itd-118` — Merged work leaves no residue: abcd-managed repos delete a PR branch on merge, and abcd tidies the stale local branch, tracking ref, and worktree
 - `itd-126` — A Team Shares One Bibliography Without Sharing Anyone's Corpus

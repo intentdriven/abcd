@@ -5,12 +5,14 @@ spec_id: null
 kind: null
 suggested_kind: null
 reclassification_history: []
-builds_on: []
+builds_on: [itd-2610161647248332]
 severity: minor
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
 related_issues: [iss-2609012313465609, iss-2610110939559446, iss-172]
+supersedes: [itd-115]
+refines: [itd-106]
 ---
 
 # Private repos land checked work without renting CI
@@ -87,7 +89,7 @@ Path taken: 2. A native floor (the declared gate list and its inputs, the receip
 
 ## Decomposition (itd-84 hand-run, 2026-10-26)
 
-Proposed, awaiting the product thinker's confirmation. Verdict: **SPLIT**.
+Confirmed by the product thinker on 2026-10-26 (decision 1 below). Verdict: **SPLIT**.
 
 | Part | Type | Home |
 |------|------|------|
@@ -96,7 +98,7 @@ Proposed, awaiting the product thinker's confirmation. Verdict: **SPLIT**.
 | Each check runs once, where it is cheapest to trust | stance | a principle at planning |
 | The gate list's schema, the receipt's fields, `-trimpath`, the declared tests | plumbing | the spec and the brief |
 
-Typed links proposed:
+Typed links, as confirmed:
 
 - `supersedes` itd-115: its want, a ready pull request that never waits behind another, is met here on every plan, through GitHub's queue where the plan has one and through the local queue elsewhere, which replaces its poll-and-update fallback.
 - itd-2610110940216682 stays the shape of hosted CI where a queue gates the default branch, as a sibling with no typed link. This intent's pull-request criterion (no work beyond confirming a passed landing check) tightens that draft's first criterion (the quick checks on one platform), flagged for the product thinker as a refinement of it, not a reversal.
@@ -112,6 +114,10 @@ No reversal flag. iss-172's invariant protects testing the merge before the defa
 - **Who counts as the person's own.** The person's identity and the agents working under it only, or every collaborator with write access.
 - **The self-hosted runner route.** Offer it for the person's own changes, since it gives a check that the pushing agent does not run itself and costs no minutes, or leave it out, since it shares the machine and the load gate with the local checks.
 - **abcd's own repository.** It is public, so its minutes are free and its queue gives an independent check of every merge. Keep the queue and adopt only reuse and one check per landing, or move it to the local queue too.
+
+## Decisions
+
+1. **The routing is confirmed as proposed (2026-10-26).** The product thinker accepted the split and the typed links with a plain yes, given the agent's recommendation. This intent holds the capability alone. The trust rule (a self-reported local result may replace duplicate hosted work and gate a landing only for the person's and their agents' changes, never an outside contribution, and a release cut never reuses a result) becomes an ADR at planning, then a brief invariant. The stance that each check runs once, where it is cheapest to trust, becomes a principle at planning. itd-115 is superseded by this intent, the link to itd-106 is a refinement, and itd-2610161647248332 is a builds-on edge. The graded table is in the decomposition-calibration note under this date.
 
 ## Audit Notes
 
