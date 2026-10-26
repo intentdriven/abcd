@@ -41,7 +41,10 @@ type Reservation struct {
 	// Holder is the GitHub username the tip names; "" when it is unreadable.
 	Holder string
 	// Copy is CopyThis when the tip names this checkout's own copy, else "".
-	Copy      string
+	Copy string
+	// key is the copy key the tip names, for finding it among this
+	// checkout's other worktrees (siblingCopy); never shown.
+	key       string
 	Footprint []string
 	ClaimedAt time.Time
 	// EffectiveExpiry is when it stops holding: the lease clamped to a day,
@@ -242,6 +245,12 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	return snap, nil
 }
 
+// YourCopy names the copy of the person's own that holds r when it is not
+// this one: "your worktree <path> on this machine" when a sibling worktree of
+// the checkout at root keeps its key, else "your copy on another computer"
+// (iss-2610250013552001).
+func (r Reservation) YourCopy(root string) string { return yourCopyAt(siblingCopy(root, r.key)) }
+
 // listed is one tip as the view shows it, judged at now. derivedBy is what
 // released it outside its own tip (ReleasedByDefaultBranch or ReleasedByTag),
 // "" when nothing did.
@@ -258,7 +267,7 @@ func listed(t tip, id, derivedBy, own string, now time.Time) Reservation {
 	} else {
 		v := lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, now)
 		r.Holder, r.Footprint, r.ClaimedAt, r.EffectiveExpiry = t.Holder, t.Footprint, t.ClaimedAt, v.EffectiveExpiry
-		r.Stage = t.Stage
+		r.Stage, r.key = t.Stage, t.Copy
 		if own != "" && t.Copy == own {
 			r.Copy = CopyThis
 		}

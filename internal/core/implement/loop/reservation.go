@@ -371,7 +371,7 @@ func renewAtFence(c Context, lane Lane, term time.Duration, act fenceAct) (time.
 			return time.Time{}, r
 		case claim.NotHeldAnotherCopy:
 			return time.Time{}, contend(stage, "", lane.ID,
-				"the reservation on "+id+" moved to your copy on another computer"+not+" here",
+				"the reservation on "+id+" moved to "+nh.YourCopy+not+" here",
 				"carry the lane on from that copy, or take the reservation back here (`abcd reserve "+id+" --take-over --footprint <path>`), then "+again)
 		case claim.NotHeldReleased:
 			if nh.Derived {
@@ -515,7 +515,7 @@ func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) (out release
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherPerson:
 		out = released{clause: "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherCopy:
-		out = released{clause: "left the reservation on " + id + " as it stands: your copy on another computer holds it"}
+		out = released{clause: "left the reservation on " + id + " as it stands: " + nh.YourCopy + " holds it"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldMoved:
 		out = released{clause: "left the reservation on " + id + " as it stands: it was renewed or reserved again since the drain took it"}
 	case errors.Is(err, claim.ErrRefused) && !isPushFailure(err):

@@ -459,8 +459,8 @@ func (snap *peerSnapshot) reservationHolder(id string) (holder string, yours boo
 		if snap.takeOver {
 			return "", false
 		}
-		return fmt.Sprintf("your copy on another computer reserved it until %s, %s; to continue here, run `abcd build %s --take-over`",
-			stamp(r.EffectiveExpiry), snap.reserved.AsOf(snap.now), id), true
+		return fmt.Sprintf("%s reserved it until %s, %s; to continue here, run `abcd build %s --take-over`",
+			r.YourCopy(snap.root), stamp(r.EffectiveExpiry), snap.reserved.AsOf(snap.now), id), true
 	}
 	return snap.reserved.HeldBy(id, snap.now), false
 }
