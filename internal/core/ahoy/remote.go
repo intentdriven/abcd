@@ -281,7 +281,10 @@ func OfferGH(guard string, confirm tools.Confirm) (notes []string, ok bool) {
 		return nil, true
 	}
 	res := newToolInstaller(guard).Install("gh", tools.GitHubSettings, confirm)
-	if res.Ran && res.Installed && res.Verified {
+	if res.Ready && !res.Ran {
+		return nil, true
+	}
+	if res.Ready {
 		return []string{res.Summary() + "; the install does not sign gh in, so if GitHub refuses the request, run gh auth login"}, true
 	}
 	notes = []string{"the GitHub CLI (gh) is not on PATH: " + res.Summary()}

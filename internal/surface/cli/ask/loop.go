@@ -21,6 +21,11 @@ import (
 // keeps the answers already given and exits 130.
 var ErrInterrupted = errors.New("interrupted")
 
+// ErrExplain is ? answered at a question put with Terminal.Explain: nothing
+// is recorded, and the front door shows the question's full explanation and
+// asks it again (itd-2610240823055889, criterion 6).
+var ErrExplain = errors.New("the full explanation was asked for")
+
 // ExitInterrupted is the exit code a front door ends with on ErrInterrupted:
 // 128 plus SIGINT, as a shell reports an interrupted command.
 const ExitInterrupted = 130
@@ -46,6 +51,10 @@ type Terminal struct {
 	Mode term.ColorMode
 	// ASCII draws the marks without a UTF-8 locale.
 	ASCII bool
+	// Explain makes ? answer the question with ErrExplain: a request for its
+	// full explanation, never an answer. In the numbered reader it is a line
+	// holding ? alone; in the arrow-key list, ? as the first key typed.
+	Explain bool
 	// Roots are where Put reads the interview.list setting from
 	// (layered.InterviewList): the machine's ~/.abcd.noindex/config.json under
 	// Roots.Home, a repository's under Roots.Repo refused.
@@ -184,6 +193,9 @@ type loop struct {
 // then a newline), and the session's own handler for a signal from outside.
 func (t Terminal) arrows(a question.Ask) ([]Answer, error) {
 	l := &loop{t: t, p: NewPicker(a), headTab: -1}
+	if t.Explain {
+		l.p.AllowExplain()
+	}
 	s, err := term.StartRaw(t.In, term.Hooks{Resized: l.redrawAll, Continued: l.redrawFresh})
 	if err != nil {
 		return nil, &rawRefused{err: err}
@@ -221,6 +233,14 @@ func (t Terminal) arrows(a question.Ask) ([]Answer, error) {
 				_ = s.Restore()
 				_, _ = io.WriteString(t.Out, "\n")
 				return nil, ErrInterrupted
+			case Explain:
+				l.finished = true
+				err := l.collapseExplain()
+				l.mu.Unlock()
+				if err != nil {
+					return nil, err
+				}
+				return nil, ErrExplain
 			case Suspended:
 				if err := s.Suspend(); err != nil {
 					l.mu.Unlock()
@@ -316,6 +336,13 @@ func (l *loop) collapse() error {
 	_, rows := term.Size(l.t.In, l.t.Getenv)
 	f := Frame{Mode: l.t.Mode, ASCII: l.t.ASCII}
 	return l.paint(l.p.Collapsed(f), l.headLines+l.liveLines, rows, 0)
+}
+
+// collapseExplain clears the question on screen for the explanation the
+// front door draws next. The caller holds mu.
+func (l *loop) collapseExplain() error {
+	_, rows := term.Size(l.t.In, l.t.Getenv)
+	return l.paint(nil, l.headLines+l.liveLines, rows, 0)
 }
 
 // paint moves up over the onScreen lines last drawn (no further than the

@@ -14,8 +14,9 @@ import (
 // ConfigRelPath is the committed positioning configuration, relative to the repo
 // root. It sits beside the repo's other per-concern lint configuration
 // (.abcd/docs-lint.json, .abcd/record-lint.json, .abcd/rules.json) rather than
-// inside .abcd/config/, where identity.json already means the git commit-author
-// pin — two different things must not share a filename.
+// inside .abcd/config/, where identity.json meant the git commit-author pin
+// (now each person's own record, kept on their machine) — two different
+// things must not share a filename.
 const ConfigRelPath = ".abcd/positioning.json"
 
 // maxConfigBytes caps the guarded config read. The configuration is a short

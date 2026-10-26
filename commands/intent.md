@@ -153,8 +153,9 @@ rewritten — linking an existing draft with `capture promote --intent` writes t
 `production_mode` is the closed choice `--production-mode` carries:
 `hand-written`, `dictated-and-formatted`, or `scribe-transcribed`. Any other
 value is refused and nothing is written. An absent flag takes the repo's
-declared default from `.abcd/config/identity.json`, falling back to
-`hand-written`. `abcd intent plan` takes the same flag, which stamps the **spec**
+declared default from `.abcd/config/provenance.json` (or, in a repository not
+yet migrated, the `production_mode` of its `.abcd/config/identity.json`),
+falling back to `hand-written`. `abcd intent plan` takes the same flag, which stamps the **spec**
 it mints; the intent's own stamp was written when its draft was created and is
 never rewritten.
 

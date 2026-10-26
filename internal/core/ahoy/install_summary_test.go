@@ -131,7 +131,7 @@ func TestEveryWriteKindIsExplained(t *testing.T) {
 		}
 		assertPlainItem(t, it)
 	}
-	for _, id := range []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID} {
+	for _, id := range []string{UnrecordedGapID, LegacyPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID} {
 		it, ok := optionalSkippedHelp[id]
 		if !ok {
 			t.Errorf("optional step %q has no explanation", id)

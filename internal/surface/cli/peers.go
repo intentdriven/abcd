@@ -46,6 +46,10 @@ type reservationsBlock struct {
 	// ReleaseHolds is every release being cut, which holds every other
 	// session's merge (itd-2609151838312703 C7, C8).
 	ReleaseHolds []holdRow `json:"release_holds"`
+	// LapsedReleases is every release whose cut stopped renewing its
+	// reservation with no tag on origin: it holds no merge, and is named so
+	// that no session waits on a holder that is gone (iss-2610241104098581).
+	LapsedReleases []lapsedRow `json:"lapsed_releases"`
 	// HandBacksByHolder is each holder's hand-back tombstones of the last day,
 	// newest first and bounded (spc-2610161044461448 step 18).
 	HandBacksByHolder []handBackHolder `json:"hand_backs_by_holder"`
@@ -106,6 +110,17 @@ type holdRow struct {
 	Own             bool   `json:"own"`
 	Unsighted       bool   `json:"unsighted"`
 	Text            string `json:"text"`
+}
+
+// lapsedRow is one lapsed release cut as the listing shows it (claim.Lapsed).
+type lapsedRow struct {
+	Release   string `json:"release"`
+	Subject   string `json:"subject"`
+	Holder    string `json:"holder"`
+	Copy      string `json:"copy,omitempty"`
+	RenewedAt string `json:"renewed_at"`
+	LapsedAt  string `json:"lapsed_at"`
+	Text      string `json:"text"`
 }
 
 // reservationView dates the listing: when abcd last fetched the reservations
@@ -406,6 +421,7 @@ func (b *reservationsBlock) fill(root string, now time.Time, gap string, err err
 func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err error) (failed string, ok bool) {
 	out := b
 	out.Reservations, out.LiveByHolder, out.ReleaseHolds = []reservationRow{}, map[string]int{}, []holdRow{}
+	out.LapsedReleases = []lapsedRow{}
 	out.HandBacksByHolder = []handBackHolder{}
 	if errors.Is(err, claim.ErrNoOrigin) {
 		return "", false
@@ -444,6 +460,11 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 		out.Reservations = append(out.Reservations, row)
 	}
 	out.LiveByHolder = snap.LiveByHolder()
+	for _, l := range snap.Lapsed(now) {
+		out.LapsedReleases = append(out.LapsedReleases, lapsedRow{Release: l.Release, Subject: l.Subject,
+			Holder: termsafe.Sanitize(l.Holder), Copy: l.Copy, RenewedAt: rfc3339(l.RenewedAt), LapsedAt: rfc3339(l.LapsedAt),
+			Text: termsafe.Sanitize(l.Text())})
+	}
 	// The hand-backs are read from the same view, as last fetched: no act of
 	// their own touches the network.
 	for _, h := range snap.RecentHandBacks(now) {
@@ -531,6 +552,9 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 	}
 	for _, h := range out.ReleaseHolds {
 		fmt.Fprintln(w, "  "+h.Text)
+	}
+	for _, l := range out.LapsedReleases {
+		fmt.Fprintln(w, "  "+l.Text)
 	}
 	if len(out.LiveByHolder) > 0 {
 		names := make([]string, 0, len(out.LiveByHolder))

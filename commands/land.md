@@ -174,7 +174,8 @@ does, and makes the same judgement. While another session holds a live
 release reservation (`rel-vX.Y.Z`, ended by the tag `vX.Y.Z` reaching
 `origin` or by its holder releasing it), or an unreadable one within its hold,
 nothing is pushed, armed or queued, and the refusal names the release, its
-holder (or "your copy on another computer") and until when. A session cutting
+holder (or "your worktree … on this machine" when another worktree of this
+checkout cut it, else "your copy on another computer") and until when. A session cutting
 a release has the final say on what merges before its tag, so the copy that
 reserved the release lands through its own hold; the hold is judged for the
 checkout land runs in, so landing a branch checked out in another worktree

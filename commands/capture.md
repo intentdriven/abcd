@@ -177,8 +177,9 @@ with `--intent` leaves its `origin` alone.
 `production_mode` is the closed choice `--production-mode` carries:
 `hand-written`, `dictated-and-formatted`, or `scribe-transcribed`. Any other
 value is refused and nothing is written. On `capture` and `capture promote` an
-absent flag takes the repo's declared default from `.abcd/config/identity.json`,
-falling back to `hand-written`. On `capture resolve` and `capture wontfix` the
+absent flag takes the repo's declared default from `.abcd/config/provenance.json`
+(or, in a repository not yet migrated, the `production_mode` of its
+`.abcd/config/identity.json`), falling back to `hand-written`. On `capture resolve` and `capture wontfix` the
 flag **restamps** the record — a resolution note is new text with its own mode —
 and an absent flag leaves the record's existing stamp alone. A restamp of a
 record that predates disclosure (one carrying no `origin`), or of one whose

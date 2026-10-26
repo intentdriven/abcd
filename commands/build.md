@@ -55,7 +55,7 @@ reserves nothing and carries none.
   <itd-N> with; fill its packages line, then run abcd build again; nothing was
   started`. An issue whose `found_at` names no repository-relative path is
   refused the same way. Report the refusal as it stands: the footprint is the spec's to name, never one invented here.
-- Another person's live reservation, or yours from another computer, refuses
+- Another person's live reservation, or yours from another copy, refuses
   the start as contention, exit 3: back off and take other work. Each
   worktree is its own copy, so a build in a sibling worktree of this checkout
   whose footprint overlaps one already reserved there backs off the same way. For your own
@@ -157,8 +157,10 @@ pass:
   alone, with no fetch and no push: another person's live reservation (or an
   unreadable one within its hold) is named with its holder, its expiry and the
   view's age, `reserved by octo until 2026-10-03T15:00:00Z, as of the last
-  fetch 12 minutes ago`, and so is yours from another computer, its reason and
-  remedy naming `--take-over` (another person's never does). This copy's own
+  fetch 12 minutes ago`, and so is your own from another copy, named as the
+  worktree when it is one of this checkout's and otherwise as your copy on
+  another computer, its reason and remedy naming `--take-over` (another
+  person's never does). This copy's own
   reservation is never a holder. `/abcd:peers` fetches them afresh; a view
   nothing here fetched holds none.
 
@@ -541,7 +543,12 @@ A lane's stages run in order:
    it is replanned.
 5. `land` — one `implement step` per move, the lane staying at `land` until
    the last. The loop checks the lane's worktree is clean at the judged head;
-   on the lane that closes the spec it runs `spec close` in the lane's worktree
+   on an intent lane it marks the lane's step landed on the open spec (a
+   `- landed:` line naming the judged head, unless the spec lists no steps or
+   already marks it, and a commit doing only that declares
+   `Assisted-by: abcd:<version>`, so a
+   later build or a `--remainder` close does not take the step again); on the
+   lane that closes the spec it runs `spec close` in the lane's worktree
    and ingests the audit that lane took, and it runs `capture resolve` for each
    capture the receipts named in `resolves`, with that commit, committing them
    on the lane's branch with `Delivers:` and `Resolves:` trailers and an

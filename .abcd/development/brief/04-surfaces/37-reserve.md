@@ -299,7 +299,13 @@ copy's own release is shown as "you are cutting release v0.16.0 from this
 copy: every other session's merges are held", and a release dated ahead whose
 first sighting the checkout cannot keep is shown as not counted, in land's
 notice's words, with `own` and `unsighted` on each `release_holds` row of
-its machine-readable form. The subject is `rel-v` and three plain numbers,
+its machine-readable form. A release reservation that expired with no tag
+on origin is a cut its holder stopped renewing: it holds no merge, and
+`abcd peers` and `abcd status` name it as lapsed, with its holder, its last
+renewal and that from five minutes after the lapse any copy reserves the
+release again, to resume the cut or, followed by a release, to withdraw it
+(`lapsed_releases`, iss-2610241104098581), so no session waits on a holder
+that is gone. The subject is `rel-v` and three plain numbers,
 with no leading zero and no suffix, so one release never makes two branches. It differs from a record's reservation in four ways:
 
 - It takes no footprint, and refuses one: it holds every merge, not some

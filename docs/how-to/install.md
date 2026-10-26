@@ -484,6 +484,14 @@ Add this line to your shell profile:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+Or let setup add it: abcd's setup, run at a terminal, asks whether to add that
+line to the file your shell reads (`~/.zshrc` for zsh; for bash,
+`~/.bash_profile` on macOS and `~/.bashrc` on Linux), names the file, and adds
+the line only if you say yes. It keeps a copy of the file in
+`~/.abcd.noindex/backups/` first, never edits a file that is a link to one kept
+elsewhere, and abcd's uninstall takes the line out again. Open a new terminal
+afterwards.
+
 The one-liners above take no options — they always install to `~/.local/bin`
 and print no `PATH` warning — and they record that install as this machine's
 `abcd` in `~/.abcd.noindex/path-entry`, replacing whatever the record named before, so
