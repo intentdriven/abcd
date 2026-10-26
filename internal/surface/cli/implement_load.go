@@ -482,7 +482,12 @@ func waitConditions(res implement.WaitResult) string {
 	for _, c := range res.Still {
 		switch c {
 		case implement.WaitOnLoad:
-			parts = append(parts, fmt.Sprintf("load %.1f is not below %s (%s)", res.Load, num(res.WaitLoad), waitLimitText(res)))
+			part := fmt.Sprintf("load %.1f is not below %s (%s)", res.Load, num(res.WaitLoad), waitLimitText(res))
+			if len(res.UngatedTests) > 0 {
+				part += ", with " + pidsText(res.UngatedTests, "a go test run outside the gate adding to it",
+					"go test runs outside the gate adding to it")
+			}
+			parts = append(parts, part)
 		case implement.WaitOnRaceRun:
 			pids := make([]string, len(res.RaceRuns))
 			for i, p := range res.RaceRuns {

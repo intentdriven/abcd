@@ -754,7 +754,13 @@ earlier, whatever its pid, or within two seconds of it with the lower pid) or
 running its command, under any account. All of that is read from the process
 table, which shows every account's processes, judged from each process's
 arguments with the waiter's own process and ancestors excluded: no file another
-account can write is read; the gate reads only the process table. A waiter queued ahead of yours still delays yours, under
+account can write is read; the gate reads only the process table. A plain
+`go test` that no waiter and no preflight started never waits at the gate, so
+it adds to the load the gate waits on: while the load holds the gate shut, the
+waiting line names each such run by pid ("with 2 go test runs outside the gate
+adding to it (pids …)", `ungated_tests` in `--json`), and on a shared machine a
+package's tests run through `--wait -- go test …` rather than plain
+(iss-2610241130157455). A waiter queued ahead of yours still delays yours, under
 any account, until it opens or reaches its own `--timeout` (it may be shut by
 its own account's stricter `wait-load`, which you cannot see), and a waiter
 running its command holds every later gate for the command's length, by
