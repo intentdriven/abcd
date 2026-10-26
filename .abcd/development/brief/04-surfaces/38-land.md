@@ -113,7 +113,10 @@ bound: the refusal says so and gives the push to run by hand.
    says the pull request is now disarmed and gives the command that arms it.
    With no
    pull request the step stops with the `gh pr create` command; the verb never opens one (ruling R2), and the next run
-   queues it.
+   queues it. The command names a body land composed from the branch's commits (iss-220): each subject, then their
+   `Refs:`, `Resolves:`, `Delivers:` and `Assisted-by:` lines once each, written to the checkout's local tier (land makes none) and
+   judged with the shell guard's checks of a posted body, the failing check named in the stop's note, so the body
+   the hosted checks read was checked before it was posted.
 
 ## The merge gate
 

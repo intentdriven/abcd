@@ -3517,8 +3517,11 @@ credentials, so run it only on a branch whose content you trust.
      queue where the merge gate allows it (today: only where a merge queue gates the
      default branch and a ruleset requires a person's approval), pinned to the
      head, then confirmed in the queue. An arming someone else made is left as it
-     is. With no pull request it prints the `gh pr create` command and stops; it
-     never opens one.
+     is. With no pull request it composes the body from the branch's commits (each
+     subject, and their Refs:, Resolves:, Delivers: and Assisted-by: lines) into the
+     checkout's .abcd/.work.local/ where it has one, judges it as the shell guard
+     judges a posted body, prints the `gh pr create` command naming it with
+     --body-file, and stops; it never opens one.
 
 land.push and land.enqueue are read from .abcd/config.json (in the working
 directory's checkout and the branch's own) and ~/.abcd.noindex/config.json,

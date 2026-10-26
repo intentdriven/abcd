@@ -40,9 +40,11 @@ package landing
 //  6. enqueue (land.enqueue): the open pull request for the branch, armed by
 //     the merge gate (mergeGate), pinned to the head, and confirmed in the
 //     merge queue (PRStateQuery, asked of the repository the forge client
-//     named when origin was checked); with no pull request it prints the
-//     `gh pr create` command and stops. It never opens a pull request, never overrides an arming
-//     someone else made, and never edits the repository's settings.
+//     named when origin was checked); with no pull request it composes the
+//     body from the branch's commits into the local tier, prints the
+//     `gh pr create` command naming it, and stops (prbody.go). It never opens a
+//     pull request, never overrides an arming someone else made, and never
+//     edits the repository's settings.
 //
 // The trust boundaries: the remote is `origin` only, and its every fetch and
 // push URL must be the repository the forge client resolves here; a pull
@@ -1145,8 +1147,9 @@ const (
 )
 
 // listOwnPR lists branch's one open pull request from this repository. ok is
-// false with a nil error when there is none, and the stop is reported.
-func listOwnPR(res *Result, o Options, dir string) (openPR, bool, error) {
+// false with a nil error when there is none, and the stop is reported, with the
+// body composed from the commits tracking..HEAD (createStop).
+func listOwnPR(res *Result, o Options, dir, tracking string) (openPR, bool, error) {
 	out, err := forge(o, dir, openPRArgs(res.Branch)...)
 	if err != nil {
 		return openPR{}, false, err
@@ -1168,8 +1171,7 @@ func listOwnPR(res *Result, o Options, dir string) (openPR, bool, error) {
 		return openPR{}, false, refuse("pull request #"+fmt.Sprint(listed[0].Number)+" for "+res.Branch+" comes from another repository (a fork), and land arms only a pull request from this repository's own branch",
 			"merge it by hand on the forge, or open one from this repository's branch, then run abcd land again")
 	case len(prs) == 0:
-		res.add("enqueue", StatusStopped, "no open pull request for "+res.Branch+"; land opens none: open it with the command, then run abcd land again to queue it",
-			"gh pr create --base "+shellQuote(res.Default)+" --head "+shellQuote(res.Branch))
+		createStop(res, dir, tracking)
 		return openPR{}, false, nil
 	case len(prs) > 1:
 		return openPR{}, false, refuse("the forge lists more than one open pull request for "+res.Branch+" from this repository", "close all but one, then run abcd land again")
@@ -1185,7 +1187,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
 		return nil
 	}
-	pr, ok, err := listOwnPR(res, o, dir)
+	pr, ok, err := listOwnPR(res, o, dir, tracking)
 	if err != nil || !ok {
 		return err
 	}
@@ -1197,7 +1199,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 	for moved && pr.HeadRefOid != res.Head && waited < headWaitCap {
 		o.Sleep(headWaitInterval)
 		waited += headWaitInterval
-		if pr, ok, err = listOwnPR(res, o, dir); err != nil || !ok {
+		if pr, ok, err = listOwnPR(res, o, dir, tracking); err != nil || !ok {
 			return err
 		}
 	}
