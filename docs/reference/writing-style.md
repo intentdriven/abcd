@@ -76,12 +76,14 @@ the whole machine-enforced surface:
 | Citations are well-formed, crosswalked, and within source policy. | machine-enforced (the `citation_*` rules) |
 | User-facing prose stays host-agnostic; naming a specific tool is confined to attribution. | machine-enforced (the `harness/*` rules) |
 | Reserved names the repository has banned do not appear (e.g. a record file naming itself). | machine-enforced (the verb-managed `names/*` rules) |
+| A quote attributed in the `said <Name>,` or `says <Name>,` form names a persona the registry holds. | machine-enforced (`persona_registry`) |
+| The retired one-word name for both people does not appear; text names the product thinker or the technical facilitator. | machine-enforced (`roles/retired-role-word`) |
 | No live agent-session URL and no tool attribution footer in user-facing prose. | machine-enforced (`harness_leak`) |
 
 ## Escapes
 
 A line that legitimately trips a **banned-token** rule — the `present_tense/*`,
-`punctuation/*`, `spelling/*`, `harness/*` and `names/*` families — carries
+`punctuation/*`, `spelling/*`, `harness/*`, `roles/*`, and `names/*` families — carries
 `<!-- docs-lint: allow -->` with a reason (a quoted title keeping its original
 spelling, a code-side name, attribution); the escape is deliberate and
 reviewable, never a default. The other
