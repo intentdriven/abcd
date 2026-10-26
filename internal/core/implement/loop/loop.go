@@ -901,9 +901,9 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
 		}
 		route := route
-		if _, reviewer := reviewerVerdicts[await.Role]; route == nil && reviewer && await.Answered != nil {
-			// Only the ruthless and the security reviewer take the route; the
-			// verifier judged the return it read against the answer placed.
+		if route == nil && await.Answered != nil {
+			// Only a reviewer's await carries a placed answer (DriveReview
+			// places it), so the route read back is that reviewer's.
 			noted = validatorRoute(lane, await.Receipt)
 			route = noted
 		}
