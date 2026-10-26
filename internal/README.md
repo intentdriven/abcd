@@ -163,7 +163,16 @@ plugin surface, and a future MCP server share one engine.
   and `core/site`'s authorship tally counts it apart from assistance and `None`.
   Both also read the model form through it: the loop to judge a receipt's
   model, the site to chart one. The attribution gate decides the grammar in
-  shell; a test ties the two.
+  shell; a test ties the two. It also holds the gate's pull-request body check
+  (`JudgeBody`, the body arm with its fence stripping), which the shell guard
+  judges a body with before gh posts it and `core/landing` judges the body it
+  composes with; a test runs the gate itself over the same corpus.
+- **`core/issuemention/`** — RS004's vocabulary: the issue ids a text names and
+  the `Resolves:`/`Refs:` lines that declare its relation to them. It is a leaf
+  because the shell guard (`core/guard`) judges a pull request's title and body
+  with it, and `core/capture`, which reads history with it, imports the guard.
+  scripts/check-issue-resolution.sh decides the rule; a test runs the gate over
+  the same corpus.
 - **`core/cite/`** — the live half of the citation gate: the bounded fetcher and
   the refresh that writes the committed baseline `core/lint` then enforces with
   zero network. It is the only place abcd dials out on behalf of documentation,

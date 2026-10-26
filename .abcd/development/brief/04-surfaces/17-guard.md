@@ -101,7 +101,13 @@ a checkout with more than one worktree), `interpreter-reads-stream` (a shell
 handed its script through a pipe, as in `cat x | sh`) or `forge-text-outbound`
 (a posting `gh pr` or `gh issue` command whose title or body carries a live
 agent-session URL or a tool attribution footer, in a repository that opted into
-the forge-text check, iss-2610142210511831), is enforced but not
+the forge-text check, iss-2610142210511831), and its two pull-request checks,
+`forge-text-disclosure` (a `gh pr create`, `new` or `edit` whose body carries no
+`Assisted-by:` line in an accepted form, judged as the attribution gate's body
+arm judges it, iss-2609061525437969) and `forge-text-mention` (a pull request
+whose title and body name an issue id no `Resolves:` or `Refs:` line declares,
+RS004 before the push, in a repository that also sets
+`outbound.declare_mentions`, iss-2610261152125261), are enforced but not
 taught; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
 script that deletes, which the guard refuses as `shell-c-variable-delete`
 (iss-2610161612200864), are taught by two rules the generator adds after the
