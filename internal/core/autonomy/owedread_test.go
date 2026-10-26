@@ -1276,3 +1276,25 @@ func TestCarriedOnlyByOwnPullRequest(t *testing.T) {
 		}
 	}
 }
+
+// TestAListingCutByTheBudgetIsIncomplete: a forge listing the check's own
+// budget ended, not the forge's deadline, leaves the reservations unjudged
+// against the pull requests, so the reading is incomplete and names the
+// listing as what was cut, not a later read that happened to fail.
+func TestAListingCutByTheBudgetIsIncomplete(t *testing.T) {
+	f := newFx(t)
+	f.reserveFresh("iss-1")
+	f.forge.hang = true
+	o := f.opts()
+	o.Record = f.awayRecord(false)
+	o.ForgeDeadline = time.Minute
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	owed, err := ReadOwed(ctx, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !owed.Incomplete || !strings.Contains(strings.Join(owed.Notes, " "), "ran out of its time budget before reading the open pull requests") {
+		t.Fatalf("a listing cut by the budget is not named as the cut: incomplete %v, %s", owed.Incomplete, describe(owed))
+	}
+}

@@ -418,10 +418,13 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--apply` | bool |
 | `--footprint` | stringArray |
 | `--holder` | bool |
 | `--lease` | duration |
+| `--older-than` | int |
 | `--release` | bool |
+| `--sweep` | bool |
 | `--take-over` | bool |
 
 <!-- surface-appendix:end -->

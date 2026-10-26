@@ -106,13 +106,15 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
 			"open question, has no unanswered claim section, is not held, names no unsettled blocker\n" +
 			"in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling\n" +
-			"worktree or local branch holds it in another bucket, no session holds a live claim on\n" +
-			"it, and no other copy holds a reservation on it on origin, as this checkout last fetched\n" +
-			"the reservations; a peer, claim or view that cannot be read counts as holding it). The\n" +
-			"check reads the reservations from disk alone, and names another copy's with its holder,\n" +
-			"its expiry and the view's age; this copy's own is never a holder. A refusal names the\n" +
-			"check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent\n" +
-			"instead of taking one named.\n\n" +
+			"worktree or local branch holds it in another bucket having changed it since its\n" +
+			"merge-base with this checkout, so a branch holding this checkout's older copy\n" +
+			"untouched does not count; no session holds a live claim on it; and no other copy holds\n" +
+			"a reservation on it on origin, as this checkout last fetched the reservations; a peer,\n" +
+			"claim or view that cannot be read, or a copy that cannot be compared, counts as holding\n" +
+			"it). The check reads the reservations from disk alone, and names another copy's with\n" +
+			"its holder, its expiry and the view's age; this copy's own is never a holder. A refusal\n" +
+			"names the check, the reason and the remedy, and writes nothing. `abcd build next` picks\n" +
+			"the intent instead of taking one named.\n\n" +
 			"In a checkout with a remote named origin, the run reserves its key there, as\n" +
 			"`abcd reserve` does, once the checks pass and before the run is created: a new run, and a\n" +
 			"resumed one, with the files the spec's `## Footprint` packages line names (an issue's\n" +
