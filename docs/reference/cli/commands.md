@@ -354,6 +354,16 @@ ceiling is free. A lane whose validators still do not pass after its fix rounds 
 handed back: it stops as unachievable with the last round's findings, the run starts nothing
 further for it, and `abcd implement step` refuses naming the hand-back.
 
+A new run reads its review set once, too: review.reviewers (one or two model classes per
+code-review role, for both roles or per role; bundled: middle and below), review.judge (a
+class; refused until a judge agent clears itd-81's calibration gate) and, from
+~/.abcd.noindex/config.json alone, review.max_reviewers (1 or 2, bundled 2) and the class map
+models.classes (top, middle, below, smallest, each a <provider>/<model> route over the
+bundled map). A repository list above the machine's ceiling is clamped with one line on
+stderr naming both files; a repository's ceiling or class map is skipped with a warning.
+An unknown class or a malformed set is refused at the review stage and writes nothing.
+The result's review and the run record name each class with its model and each layer.
+
 The run then moves one step per `abcd implement step`, driven by the host session.
 
 The runner configuration is read before the run is created: roles.<role>.runner (host,

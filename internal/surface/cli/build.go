@@ -155,6 +155,15 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"ceiling is free. A lane whose validators still do not pass after its fix rounds is\n" +
 			"handed back: it stops as unachievable with the last round's findings, the run starts nothing\n" +
 			"further for it, and `abcd implement step` refuses naming the hand-back.\n\n" +
+			"A new run reads its review set once, too: review.reviewers (one or two model classes per\n" +
+			"code-review role, for both roles or per role; bundled: middle and below), review.judge (a\n" +
+			"class; refused until a judge agent clears itd-81's calibration gate) and, from\n" +
+			abcdhome.Display("config.json") + " alone, review.max_reviewers (1 or 2, bundled 2) and the class map\n" +
+			"models.classes (top, middle, below, smallest, each a <provider>/<model> route over the\n" +
+			"bundled map). A repository list above the machine's ceiling is clamped with one line on\n" +
+			"stderr naming both files; a repository's ceiling or class map is skipped with a warning.\n" +
+			"An unknown class or a malformed set is refused at the review stage and writes nothing.\n" +
+			"The result's review and the run record name each class with its model and each layer.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
 			"The runner configuration is read before the run is created: roles.<role>.runner (host,\n" +
 			"the default, or a runner) and the runners this machine enables under runner.<name> in\n" +
@@ -228,6 +237,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
+			printReviewDiagnostics(cmd.ErrOrStderr(), res.Diagnostics)
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				verb := "started"
 				if res.Resumed {
@@ -236,6 +246,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "build %s: %s run %s\n", termsafe.Sanitize(args[0]), verb, res.RunID)
 				fmt.Fprintf(w, "  state:   %s\n", res.State)
 				renderPace(w, res.Pace)
+				renderReview(w, res.Review)
 				renderBudget(w, res.Checks)
 				renderLaneLine(w, res.Lane)
 				renderPending(w, res.Pending)
@@ -379,6 +390,9 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
+			if res.Start != nil {
+				printReviewDiagnostics(cmd.ErrOrStderr(), res.Start.Diagnostics)
+			}
 			for i := range res.Excluded {
 				res.Excluded[i].Reason = fsutil.RedactHome(res.Excluded[i].Reason)
 			}
@@ -432,6 +446,7 @@ func renderNext(w io.Writer, res loop.NextResult) {
 	fmt.Fprintf(w, "           (the lane's worktree stage commits it as %s's first commit)\n", res.Start.Lane.ID)
 	fmt.Fprintf(w, "  state:   %s\n", res.Start.State)
 	renderPace(w, res.Start.Pace)
+	renderReview(w, res.Start.Review)
 	renderBudget(w, res.Start.Checks)
 	renderLaneLine(w, res.Start.Lane)
 	renderPending(w, res.Start.Pending)
@@ -487,6 +502,26 @@ func renderPace(w io.Writer, p *loop.Pace) {
 		return
 	}
 	fmt.Fprintf(w, "  pace:    %s\n", termsafe.Sanitize(p.String()))
+}
+
+// renderReview renders a run's review set: each role's reviewers at their
+// classes, each class with the model it holds, and the layer of each value; a
+// run started before review sets says so.
+func renderReview(w io.Writer, rs *loop.ReviewSet) {
+	if rs == nil {
+		fmt.Fprintln(w, "  review:  none (the run started before review sets; each role runs one reviewer)")
+		return
+	}
+	fmt.Fprintf(w, "  review:  %s\n", termsafe.Sanitize(rs.String()))
+}
+
+// printReviewDiagnostics says the review set's non-fatal reports (a list
+// clamped to the machine's ceiling, a repository's class map or ceiling
+// skipped) on stderr, one line each.
+func printReviewDiagnostics(w io.Writer, diagnostics []string) {
+	for _, d := range diagnostics {
+		fmt.Fprintln(w, termsafe.Sanitize(fsutil.RedactHome(d)))
+	}
 }
 
 // renderLaneLine renders one lane as a line, and its footprint once its stages
@@ -701,6 +736,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", st.RunID, st.Key, st.Spec, state, st.Driver)
 					fmt.Fprintf(w, "  state:   %s\n", loop.StateRelPath(st.RunID))
 					renderPace(w, st.Pace)
+					renderReview(w, st.Review)
 					renderSlots(w, st)
 					if st.NextEligibleAt != nil {
 						fmt.Fprintf(w, "  paused until %s\n", st.NextEligibleAt.UTC().Format("2006-01-02T15:04:05Z07:00"))
@@ -1220,6 +1256,7 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 	}
 	fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", rec.RunID, termsafe.Sanitize(rec.Key), termsafe.Sanitize(rec.Spec), state, rec.Driver)
 	renderPace(w, rec.Pace)
+	renderReview(w, rec.Review)
 	renderRecordPick(w, rec.Pick)
 	for _, l := range rec.Lanes {
 		fmt.Fprintf(w, "  %s:  spec step %d, %q — %s\n", l.ID, l.SpecStep, termsafe.Sanitize(l.StepTitle), l.Stage)
