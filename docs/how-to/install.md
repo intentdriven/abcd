@@ -759,7 +759,8 @@ it did on its `readme:` line, for example
 make preflight   # the pre-push gate: the load check first (load-check, a
                  # warning, never a failure), then fmt-check, lint-reviews,
                  # lint-issues, record-lint, issue-drift,
-                 # docs-lint, check-attribution, site-render, smoke and
+                 # docs-lint, check-attribution, secrets-check, vulncheck,
+                 # site-render, smoke and
                  # evals-cold-reading, then
                  # build, vet, test and race, all on the toolchain go.mod declares
 go run ./cmd/abcd            # bare status board for the current directory

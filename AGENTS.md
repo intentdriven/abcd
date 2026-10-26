@@ -151,7 +151,7 @@ make preflight      # the pre-push gate: the load check first (load-check,
                     # lint-reviews +
                     # lint-issues + record-lint +
                     # issue-drift + docs-lint + check-attribution +
-                    # site-render +
+                    # secrets-check + vulncheck + site-render +
                     # smoke + evals-cold-reading,
                     # then build + vet +
                     # test + race (internal), all on the go.mod toolchain
@@ -328,9 +328,9 @@ with `*CONCURRENCY` to force it).
 
 ## Definition of done
 
-- `make preflight` is clean — the eight gates (`fmt-check`, `lint-reviews`,
+- `make preflight` is clean — the ten gates (`fmt-check`, `lint-reviews`,
   `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
-  `check-attribution`, `site-render`), both tagged eval
+  `check-attribution`, `secrets-check`, `vulncheck`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test -timeout 40m ./...`, and
   `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,
@@ -341,6 +341,10 @@ with `*CONCURRENCY` to force it).
   lanes are named separately because their files carry a build tag, so
   `go test ./...` compiles none of them; each takes under a minute in CI and
   runs under `-timeout $(EVAL_TIMEOUT)`, 20m by default.
+  `secrets-check` and `vulncheck` are CI's gitleaks and govulncheck scans at
+  the versions `ci.yml` pins (`scripts/preflight-scans.sh`), run before the
+  push so their findings cost no hosted run; a scan that cannot run here (no
+  gitleaks on PATH, no network) is skipped loudly and left to CI.
 - **Preflight judges with CI's toolchain.** `make fmt-check`, the format gate
   CI's check job runs, is preflight's first gate, straight after the load
   check. It resolves gofmt from the toolchain `go.mod` declares rather than from
