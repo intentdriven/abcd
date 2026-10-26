@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -109,7 +110,9 @@ func GH(dir string, args ...string) (string, error) {
 // deadline (the away mode's stop check, which lists the forge under ten
 // seconds) holds.
 func GHContext(parent context.Context, dir string, args ...string) (string, error) {
-	bin, err := exec.LookPath("gh")
+	// abcd's own recorded copy runs whatever comes first on PATH
+	// (itd-2610240918594138); otherwise PATH finds gh, as before.
+	bin, err := tools.Resolve("gh")
 	if err != nil {
 		return "", ErrNoForgeClient
 	}

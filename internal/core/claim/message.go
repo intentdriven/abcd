@@ -2,6 +2,7 @@ package claim
 
 import (
 	"bytes"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -307,6 +308,64 @@ func (t trailers) one(key string) (string, bool) {
 // message is unreadable, "" when it reads.
 func parseMessage(record, text string) (message, string) {
 	return validateReservation(record, collectTrailers(text, reservationFamily.keys))
+}
+
+// ReservationMessage is one reservation commit's message as the drain reads
+// it (parseMessage): a reservation, a renewal or a take-over, or, carrying
+// ReleasedAt, a tombstone, which marks a hand-back when it carries HandedBack
+// and RecordBlob. Every value is data a writer chose, never instruction text.
+type ReservationMessage struct {
+	Record    string
+	Holder    string
+	Copy      string
+	Footprint []string
+	ClaimedAt time.Time
+	ExpiresAt time.Time
+	// ReleasedAt is a tombstone's release, zero on a reservation.
+	ReleasedAt time.Time
+	// HandedBack is a hand-back tombstone's kind, one of HandBackKinds, and
+	// RecordBlob the blob of the record it was handed back over; both "" on
+	// any other message.
+	HandedBack string
+	RecordBlob string
+	AssistedBy string
+	// Lead is the message before its trailer paragraph: the subject, and any
+	// paragraph after it. The drain reads none of it.
+	Lead string
+	// Other is the trailer paragraph's lines that carry no key the reader
+	// knows, verbatim. The drain ignores them; a reader that must fail
+	// closed on a key it does not know refuses on them.
+	Other []string
+}
+
+// Released reports whether the message is a tombstone.
+func (r ReservationMessage) Released() bool { return !r.ReleasedAt.IsZero() }
+
+// ReadReservationMessage reads a reservation commit's message (its text
+// after the commit headers) through the reader the drain reads a reservation
+// branch with, for the record its Abcd-Reservation trailer names. The error
+// is the drain's own reason the message is unreadable: past MaxMessageBytes,
+// or refused by validateReservation. It reads the message only; the commit's
+// tree, which must be the empty tree, is the caller's to judge.
+func ReadReservationMessage(text string) (ReservationMessage, error) {
+	if len(text) > MaxMessageBytes {
+		return ReservationMessage{}, errors.New(reasonMessageTooBig)
+	}
+	t := collectTrailers(text, reservationFamily.keys)
+	record, _ := t.one(keyReservation)
+	if !isRelease(record) && recordid.CitedIDRe.MatchString(record) {
+		record = recordid.CanonCitedID(record)
+	}
+	m, why := validateReservation(record, t)
+	if why != "" {
+		return ReservationMessage{}, errors.New(why)
+	}
+	return ReservationMessage{
+		Record: m.Record, Holder: m.Holder, Copy: m.Copy, Footprint: m.Footprint,
+		ClaimedAt: m.ClaimedAt, ExpiresAt: m.ExpiresAt, ReleasedAt: m.ReleasedAt,
+		HandedBack: m.HandedBack, RecordBlob: m.RecordBlob, AssistedBy: m.AssistedBy,
+		Lead: t.lead, Other: t.other,
+	}, nil
 }
 
 // validateReservation is the reservation family's validator: the trailers must

@@ -153,8 +153,9 @@ rewritten — linking an existing draft with `capture promote --intent` writes t
 `production_mode` is the closed choice `--production-mode` carries:
 `hand-written`, `dictated-and-formatted`, or `scribe-transcribed`. Any other
 value is refused and nothing is written. An absent flag takes the repo's
-declared default from `.abcd/config/identity.json`, falling back to
-`hand-written`. `abcd intent plan` takes the same flag, which stamps the **spec**
+declared default from `.abcd/config/provenance.json` (or, in a repository not
+yet migrated, the `production_mode` of its `.abcd/config/identity.json`),
+falling back to `hand-written`. `abcd intent plan` takes the same flag, which stamps the **spec**
 it mints; the intent's own stamp was written when its draft was created and is
 never rewritten.
 
@@ -334,7 +335,7 @@ any question is a valid answer, but silence is not consent.
 - In abcd's own interviews, draft each question through the abcd:question-drafter agent: hand it the material to quote, whom the question is for, the decision, and the defensible answers, and ask the question it returns. It applies these rules and counts the rows the way the check does, so the question fits. When it refuses a draft or the draft runs over a limit, fix the brief and redraft it without telling the person: The drafter's refusals and retries are the agent's own work, and the next thing the person sees is the question itself. A host with no agents drafts the question itself, to the same rules.
 - Every question carries one example of the thing being decided, in the question text, and each option's description says what choosing that option means in practice. An abcd question carries no side preview: While a preview shows, the host hides every option's description and cuts the preview to the rows it has, so the meaning goes where it always shows. A question that offers a choice between two forms explains the difference between them, so an answer is never given on wording alone.
 - Each option's description names its gain and its cost, never one option's alone, so the trade-offs between the options read in the same neutral form.
-- An option is never marked, styled, or ordered as recommended: No "(Recommended)" label, no star, no recommended option first. The host's own instruction for its question tool asks for a recommended first option; abcd's rule reverses it. A recommendation appears only when the person asks for one, given in prose beside the question, never as an option.
+- An option is never marked, styled, or ordered as recommended: No "(Recommended)" label, no star, no recommended option first. The host's own instruction for its question tool asks for a recommended first option; abcd's rule reverses it. A recommendation appears only when the person asks for one, given in prose beside the question, never as an option. One exception is made without being asked for: A verdict a verb records with `--by` naming the person (an embargo triage verdict) is put to them to confirm even where the record settles it, never recorded as a decision line, because it is recorded under their name. The question text itself quotes each item's evidence, the verdict the record supports, and one line on why each other verdict does not fit, one item per tab or question, and the verdict is recorded only on their yes. Where two or more verdicts are defensible on the record, the question is asked neutrally among them, as any real choice is.
 - Deferral is a real answer and is recorded as one; silence is never consent, and a step whose answer is missing is asked again rather than assumed.
 - In abcd's own interviews, address the person in their register: The product thinker gets outcomes and choices in product terms, with no record ids, no code, and no internals; the technical facilitator gets the mechanism, the ids, and the trade-offs.
 - In abcd's own interviews, when it is not known which role the person holds, the first question asks that, and the mode records the answer so the next question does not ask again.

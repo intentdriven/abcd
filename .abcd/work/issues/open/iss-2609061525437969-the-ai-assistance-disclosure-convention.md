@@ -21,3 +21,7 @@ The AI-assistance disclosure convention covers commits only: the COMMITTING rule
 - The session-link half is in force (the outward-text rule and the outbound policy); only the disclosure line on bodies and issues is missing, and the guard is where creation is seen before it is public.
 - SOTA check: Ghostty's AI policy (https://github.com/ghostty-org/ghostty/blob/main/AI_POLICY.md, read 2026-09-29) requires disclosure of any AI use in pull requests and issues, while the Linux kernel's coding-assistants page (https://docs.kernel.org/process/coding-assistants.html, read 2026-09-29) specifies the commit tag only, so disclosure on bodies is established practice but not universal.
 - Rejected: a CI-only check, which judges a body after the forge has kept it.
+
+## Recurrence (2026-10-26)
+
+- In abcd's own repository a pull request went out with the trailer on every commit and none on its body. The shell guard's forge-text check read the body before it posted and passed it, because it judges leaks only. CI's attribution job then failed on the body arm, and the auto-merge request waited about three hours with nothing reporting why until the checks were read by hand. That is the cost the CI-only enforcement carries: the check runs after the forge has kept the text, and a landing that waits on auto-merge does not surface it.

@@ -62,7 +62,7 @@ func TestOutboundSwitchWritesAbcdBinaryToTheVerifiedCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != "already_up_to_date" {
+	if settled(res) != "already_up_to_date" {
 		t.Errorf("a second --outbound status = %q (writes %v, notes %v), want already_up_to_date", res.Status, res.Writes, res.Notes)
 	}
 }
@@ -190,7 +190,7 @@ func TestHalfOptedRepositoryIsCompleted(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.Status != "clean" {
+			if settled(res) != "clean" {
 				t.Errorf("completing install status = %q (remaining %v), want clean", res.Status, res.Remaining)
 			}
 			if !outboundOptedIn(repo.Root()) || !guard.ForgeTextOptedIn(repo.Root()) {

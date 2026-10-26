@@ -134,7 +134,7 @@ func shimShown(cwd, gitDir, rel string) string {
 // where abcd's copy of the check is at chain for the person's hook to call.
 func notWired(why, where, chain string) string {
 	return "the commit-message check is not wired into git in this clone: " + why +
-		". abcd never replaces a hook, sets core.hooksPath or changes global git config, so it keeps its copy of the check at " +
+		". Wiring the check never replaces a hook, sets core.hooksPath or changes global git config, so abcd keeps its copy of the check at " +
 		chain + ", a name git never runs; to run the check, add this line to " + where + ": " + outboundShimChainLine
 }
 

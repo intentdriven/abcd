@@ -106,19 +106,21 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
 			"open question, has no unanswered claim section, is not held, names no unsettled blocker\n" +
 			"in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling\n" +
-			"worktree or local branch holds it in another bucket, no session holds a live claim on\n" +
-			"it, and no other copy holds a reservation on it on origin, as this checkout last fetched\n" +
-			"the reservations; a peer, claim or view that cannot be read counts as holding it). The\n" +
-			"check reads the reservations from disk alone, and names another copy's with its holder,\n" +
-			"its expiry and the view's age; this copy's own is never a holder. A refusal names the\n" +
-			"check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent\n" +
-			"instead of taking one named.\n\n" +
+			"worktree or local branch holds it in another bucket having changed it since its\n" +
+			"merge-base with this checkout, so a branch holding this checkout's older copy\n" +
+			"untouched does not count; no session holds a live claim on it; and no other copy holds\n" +
+			"a reservation on it on origin, as this checkout last fetched the reservations; a peer,\n" +
+			"claim or view that cannot be read, or a copy that cannot be compared, counts as holding\n" +
+			"it). The check reads the reservations from disk alone, and names another copy's with\n" +
+			"its holder, its expiry and the view's age; this copy's own is never a holder. A refusal\n" +
+			"names the check, the reason and the remedy, and writes nothing. `abcd build next` picks\n" +
+			"the intent instead of taking one named.\n\n" +
 			"In a checkout with a remote named origin, the run reserves its key there, as\n" +
 			"`abcd reserve` does, once the checks pass and before the run is created: a new run, and a\n" +
 			"resumed one, with the files the spec's `## Footprint` packages line names (an issue's\n" +
 			"found_at path for an issue id), so every other participant sees it is taken. A spec with\n" +
 			"no footprint, or an issue with no found_at path, is refused at the reservation and nothing\n" +
-			"is started. Another person's reservation, or your own from another computer, refuses\n" +
+			"is started. Another person's reservation, or your own from another copy, refuses\n" +
 			"the start as contention; --take-over moves your own live reservation from another copy\n" +
 			"to this one, never another person's. `abcd implement step` renews the reservation, fences\n" +
 			"the landing's push and its arming with it and releases it once the run lands; a run\n" +
@@ -225,6 +227,9 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			res, err := loop.Start(root, args[0], o)
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			if !res.Resumed {
+				noticeUnattended(cmd, prefix)
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				verb := "started"
@@ -376,6 +381,11 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			res, err := loop.Next(root, o, loop.NextOptions{Max: maxPicks, UntilEmpty: untilEmpty})
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			// Once per series: its later picks start runs of the series it
+			// already told the person about.
+			if res.Start != nil && !res.Start.Resumed && (res.Series == nil || res.Series.Started) {
+				noticeUnattended(cmd, prefix)
 			}
 			for i := range res.Excluded {
 				res.Excluded[i].Reason = fsutil.RedactHome(res.Excluded[i].Reason)
@@ -895,7 +905,9 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"for a blank --yielded, for a lane with neither an implementer out nor an await a rate\n" +
 			"limit kept, or for a worktree that is not the one the loop derives.\n" +
 			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
-			"at the judged head; on the lane that closes the spec it runs `spec close` in the lane's\n" +
+			"at the judged head; on an intent lane it marks the lane's step landed on the open spec with a `- landed:`\n" +
+			"line naming the judged head (unless the spec lists no steps or already marks it); on\n" +
+			"the lane that closes the spec it runs `spec close` in the lane's\n" +
 			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
 			"declared fixed it runs `capture resolve` with the lane's commit, committing them on the\n" +
 			"lane's branch with Delivers: and Resolves: trailers and an Assisted-by: naming the model\n" +

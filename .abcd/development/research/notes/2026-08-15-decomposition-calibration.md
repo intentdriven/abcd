@@ -2495,6 +2495,49 @@ After filing, two adversarial reviews (design and record discipline, each an Opu
 
 The SOTA survey was filed as research/notes/2026-10-16-model-matrix-sota.md, and itd-166 was widened to the asked and served sides it was routed. The routing survived as a five-record split; its plumbing row was the part the initial routing got wrong.
 
+## 2026-10-22: abcd drain from a plain terminal (facilitator-on-delegation, routing not yet put to the product thinker)
+
+| part | type | home |
+|---|---|---|
+| abcd drain --drive in a plain terminal drives itself: repeats its moves, steps each lane, runs its preflight, starts every role through the person's runner, stops at its cap, an empty ledger or Ctrl-C | capability | intent itd-2610222215485265, promoted from iss-2610222000271964, refining the shipped itd-2610161016401115 |
+| abcd drives agents with no host session only on the person's own invocation, on a paid key, bounded, handing back what it cannot finish | trust rule | adr-2610222222326104 (proposed): the record itd-2609201916151817's decision 5 owed for the opt-in reversal of the host-delegated boundary |
+| the agents it starts are fenced by the operating system | trust rule | cited: itd-2610161621364075 part A covers every runner launch |
+| a routed judge's answer steers an unattended lane, so it runs alone in its own directory | trust rule | cited: the shipped judge's directory and grant rules |
+| where an unattended terminal drain may run, given the product thinker's C1 answer | cited | the coordination intent's open choice 1; not decided here |
+| the loop, its log, its lock and its signals | plumbing | the brief's drain chapter, at planning |
+
+Verdict: SPLIT, proposed: the capability is the intent, the trust rule an ADR. Typed links: `refines` itd-2610161016401115, whose press release promised a plain-terminal drain and whose delivery stopped at one move per call. Advisory reversal flags: one, the host-delegated boundary in AGENTS.md (adr-25), reversed for this opt-in path as itd-2609201916151817's decision 5 anticipated; the first routing graded it FILE-AS-IS with no flag, and the Opus and Sonnet review round 1 found the flag the code already named (drive.go), so the initial routing did not survive.
+
+## 2026-10-22: the checklist and coordination routings, confirmed by the product thinker's answers
+
+The 2026-10-18 checklist routing (below) was graded unconfirmed until the
+product thinker answered. Their answers of 2026-10-22 cover two of its rows
+by name (the credential rule and the waiting stance); the phone split
+follows from their answer on uploads and was not asked; the compaction row
+is the facilitator's routing, put to them at the plan's sign-off. As filed:
+
+| part | type | home, as filed on 2026-10-22 |
+|---|---|---|
+| the private shared option, the public option and the phone | capability | its own draft, itd-2610222029228127, building on both intents (dcn-2610222025212338: not asked, because the answer that full uploads come later settled it) |
+| the checklist records a credential's kind, scope and expiry, never its value or anything that retrieves it | trust rule | adr-2610222026265719 (accepted) and brief invariant 24 |
+| a wait holds one item, never the session, and a declared dependency holds only the landing | stance | the principle `waiting-holds-one-item-never-a-session` |
+| autonomous work survives the host's automatic compaction (iss-2610222026223032, filed by the product thinker the same night) | capability | the checklist intent itself, as the first of two proposed specs; not a new intent, since it is the checklist's on-disk file and its re-injection |
+
+The coordination intent's two deferred records were filed at the same
+time: its trust rule as adr-2610222026262980 (proposed until the plan's
+sign-off, then a brief invariant) and its stance as the principle
+`coordination-lives-on-the-shared-remote`.
+
+Verdict: SPLIT; two rows confirmed by the product thinker's named answers,
+the other two facilitator-routed and unconfirmed until the plan's sign-off;
+the coordination split of 2026-10-17 stands. One part of the issue's remedy did not survive a check of
+the host's hooks reference: no hook can make a session write before an
+automatic compaction, so the checklist is kept current at each turn's end
+instead (recorded in the checklist draft's decisions). Advisory reversal
+flags: one, from the facilitator's confirming question, which the product
+thinker answered by reversing: the model budget shared across sessions
+reverses itd-2610100704270254's "each abcd run" (dcn-2610222025116937).
+
 ## 2026-10-17: headless agents in parallel coordinate through the shared remote (product thinker, routing confirmed)
 
 | part | type | home |
@@ -2560,3 +2603,18 @@ check and the away mode inside the checklist itself; carving them into a
 separate intent followed from the release cut waiting on them, and from
 planning the draft before its criteria are walked being the worse of the two
 routes.
+
+## 2026-10-24: setting abcd up is short, plain, and finishes (product thinker, routing confirmed)
+
+The proposal: "a thorough rethink of the CLI onboarding process (abcd install); it's complicated, too much text, and doesn't seem to be working. SOTA, rethink and then probably a fully functioning and polished TUI."
+
+| Part | Type | Home |
+| --- | --- | --- |
+| setup that is short, plain and finishes | capability | itd-2610240823055889 |
+| state-of-the-art research on setup flows and terminal interfaces | research | a research report, summarised in the intent's Research section |
+| the polished terminal interface | capability | builds on itd-2610030810370060 |
+| today's failures (status-line order, identity hidden, source build refused) | defects | iss-2610240823574047, iss-2610240824005655, iss-2610240824047504 |
+
+Verdict at filing: SPLIT, confirmed by the product thinker. The initial routing did not survive the two pre-interview reviews: both found the setup intent still held four parts, and on the product thinker's second SPLIT the commit identity (itd-2610240918547728, reversing part of itd-131, confirmed), third-party tool installs (itd-2610240918594138) and the shell-settings edit (itd-2610240919030303, reversing the never-edit-a-shell-profile rule, confirmed) became their own intents. The research's recommendation against a terminal UI framework moved the "polished TUI" part from a new interface to calmer use of the existing question package. Typed links: the three split intents build on itd-2610240823055889. A sixth part, that every flow says up front what it automates and what it asks, was routed to its own draft (itd-2610240913343804) rather than kept in setup.
+
+Grade: the first routing was right at the level of intent versus issue, and wrong at the level of how many intents one setup rethink holds; both reviewers caught it independently.

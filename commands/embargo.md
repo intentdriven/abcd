@@ -71,7 +71,7 @@ lists each restore owed, as for publish below.
 "${CLAUDE_PLUGIN_ROOT}/abcd" embargo triage --json <iss-N|GHSA-id> <verdict> --by "<who decided>" [...]
 ```
 
-The verdict is the person's decision. Ask for it; never choose it yourself.
+The verdict is the person's decision, recorded under their name, so never record one they have not given. Do not hand the choice back bare either: ask the product thinker to confirm, under a `Product` chip, with the question text itself carrying, one advisory per tab, the advisory's title, in outcome terms throughout, with no record ids, no code and no verb's verdict words: its evidence (what someone could do with it and who is exposed), the verdict the record supports, and one line on why each other verdict does not fit. Where two verdicts are each defensible, ask between them neutrally instead. Run triage with `--by` naming them only on their yes.
 
 | Verdict | Needs | What happens |
 | --- | --- | --- |

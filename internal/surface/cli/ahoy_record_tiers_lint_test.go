@@ -27,6 +27,7 @@ func TestAhoyInstallLeavesTheLayoutLintClean(t *testing.T) {
 	if b, err := git.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, b)
 	}
+	armClone(t, repo)
 	out := runCLI(t, "ahoy", "install", "--yes", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
@@ -86,5 +87,18 @@ func TestAhoyInstalledRepoClonesLintClean(t *testing.T) {
 		if f.RuleID == "three-tier-layout" || f.RuleID == "decision-durability" {
 			t.Errorf("%s in a fresh clone of an installed repo: %s (%s)", f.RuleID, f.Message, f.File)
 		}
+	}
+}
+
+// armClone points the clone's git at the committed hooks, as a person's yes
+// to the commit-checks question does: a --yes run never sets it, and a clone
+// whose committed hooks do not run is never reported clean or up to date
+// (iss-2610241134315056), which is not what these tests are about.
+func armClone(t *testing.T, repo string) {
+	t.Helper()
+	cmd := exec.Command("git", "-C", repo, "config", "--local", "core.hooksPath", ".githooks")
+	cmd.Env = gittest.Env(t)
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git config core.hooksPath: %v: %s", err, b)
 	}
 }

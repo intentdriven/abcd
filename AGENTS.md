@@ -86,7 +86,10 @@ the person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one
 by default and two at most, never set by a repository), and race stages kept
 apart among checkouts that have the race gate: one at a time within an account,
 and across accounts all but a narrow window (a race waiter gone before its race
-run shows, or two waiters whose start and pid disagree after a pid wrap).
+run shows, or, after a pid wrap, two waiters whose start and pid disagree: one
+running abcd v0.15.1, or two of the start order whose whole-second ages read a
+tie differently or the later of which stopped counting the earlier past its
+five-minute cap).
 `SHELL` is the teaching half of the shell-hazard guard: it is generated from the
 same hazard registry `abcd guard` enforces in the repository, one rule per entry
 (the command, why it is dangerous, and what to run instead; a rule from the
@@ -329,12 +332,15 @@ with `*CONCURRENCY` to force it).
   `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
   `check-attribution`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
-  `go vet ./...`, `go test -timeout 20m ./...`, and
-  `go test -race -timeout 40m ./internal/...`. The load
+  `go vet ./...`, `go test -timeout 40m ./...`, and
+  `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,
+  which runs the three longest packages as three test processes each
+  (`internal/testshard`). The load
   check runs first (`load-check`, a warning, never a failure) and is not a gate:
   it exits 0 whatever it finds. The eval
   lanes are named separately because their files carry a build tag, so
-  `go test ./...` compiles none of them; each costs about five seconds.
+  `go test ./...` compiles none of them; each takes under a minute in CI and
+  runs under `-timeout $(EVAL_TIMEOUT)`, 20m by default.
 - **Preflight judges with CI's toolchain.** `make fmt-check`, the format gate
   CI's check job runs, is preflight's first gate, straight after the load
   check. It resolves gofmt from the toolchain `go.mod` declares rather than from

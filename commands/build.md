@@ -55,7 +55,7 @@ reserves nothing and carries none.
   <itd-N> with; fill its packages line, then run abcd build again; nothing was
   started`. An issue whose `found_at` names no repository-relative path is
   refused the same way. Report the refusal as it stands: the footprint is the spec's to name, never one invented here.
-- Another person's live reservation, or yours from another computer, refuses
+- Another person's live reservation, or yours from another copy, refuses
   the start as contention, exit 3: back off and take other work. Each
   worktree is its own copy, so a build in a sibling worktree of this checkout
   whose footprint overlaps one already reserved there backs off the same way. For your own
@@ -142,16 +142,25 @@ pass:
   settled chain is named in the passing row.
 - `steps` — the spec's `## Steps` reads, and at least one step is not landed.
 - `peers` — no peer holds the intent: no sibling worktree or local branch holds
-  it in another bucket, no session other than `--session` holds a live
-  claim on it, and no other copy holds a reservation on it on `origin`. A peer that
+  it in another bucket having changed it since its merge-base with this
+  checkout, no session other than `--session` holds a live
+  claim on it, and no other copy holds a reservation on it on `origin`. A branch
+  cut before the intent moved here, which never touched the record, holds this
+  checkout's older copy, not the intent, and does not count; a branch cut after
+  the default branch shipped what this checkout, being behind, still holds as
+  planned does count. A worktree is judged off its disk, so an uncommitted move
+  or edit counts. A peer that
   cannot be read (a worktree git will not answer for, a ledger holding one id
-  twice) and an unreadable claim count as holding it: what they hold is unknown.
+  twice) and an unreadable claim count as holding it: what they hold is unknown,
+  and so does a copy that cannot be compared with every merge-base.
   The reservations are read as this checkout last fetched them, from disk
   alone, with no fetch and no push: another person's live reservation (or an
   unreadable one within its hold) is named with its holder, its expiry and the
   view's age, `reserved by octo until 2026-10-03T15:00:00Z, as of the last
-  fetch 12 minutes ago`, and so is yours from another computer, its reason and
-  remedy naming `--take-over` (another person's never does). This copy's own
+  fetch 12 minutes ago`, and so is your own from another copy, named as the
+  worktree when it is one of this checkout's and otherwise as your copy on
+  another computer, its reason and remedy naming `--take-over` (another
+  person's never does). This copy's own
   reservation is never a holder. `/abcd:peers` fetches them afresh; a view
   nothing here fetched holds none.
 
@@ -172,6 +181,27 @@ refuses. Starting again while the run is in progress creates nothing, runs no
 check, and reports `resumed: true` with the same run and an empty `checks`: the
 run's own lanes move and claim the intent, so judging it again would refuse the
 run as its own peer.
+
+**Approval prompts are refused while the run runs.** A new run says so once,
+in one line on stderr (stdout's JSON is untouched; a resume says nothing).
+While the run is unfinished and its state was written within the last two
+hours (the reservation lease), the host's approval prompt for a shell command
+in this checkout or in a lane the host runs is refused, not shown, because nobody is
+at the terminal to answer it: the agent is told to rewrite the command so it
+needs no approval, each step its own plain command and a script's steps on
+the command line rather than in a file, a heredoc or a `bash -c` string, or to
+skip the step and say why in its report. Sent again unchanged, it is refused
+again; this refusal never turns into an approval. A lane abcd starts through
+the claude runner runs with the host's hooks off, so its prompts never reach
+this refusal: the guard answers them (`abcd guard approve`, below). In a
+session with no run, the prompt
+shows as usual. `build next` says the same once, as it starts a run or begins
+a series.
+
+Refusal stops when the run finishes, when it hands a lane back or holds one
+(the work is then the person's), or after two hours with no activity in the
+run. No verb ends a run early, so a person who interrupts a build and carries
+on by hand sees the prompts again two hours after the run last moved.
 
 ## Pick the next intent
 
@@ -534,7 +564,12 @@ A lane's stages run in order:
    it is replanned.
 5. `land` — one `implement step` per move, the lane staying at `land` until
    the last. The loop checks the lane's worktree is clean at the judged head;
-   on the lane that closes the spec it runs `spec close` in the lane's worktree
+   on an intent lane it marks the lane's step landed on the open spec (a
+   `- landed:` line naming the judged head, unless the spec lists no steps or
+   already marks it, and a commit doing only that declares
+   `Assisted-by: abcd:<version>`, so a
+   later build or a `--remainder` close does not take the step again); on the
+   lane that closes the spec it runs `spec close` in the lane's worktree
    and ingests the audit that lane took, and it runs `capture resolve` for each
    capture the receipts named in `resolves`, with that commit, committing them
    on the lane's branch with `Delivers:` and `Resolves:` trailers and an

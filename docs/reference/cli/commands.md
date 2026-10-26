@@ -53,7 +53,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 ```
       --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
-      --identity    check git's commit author and committer against .abcd/config/identity.json, exiting non-zero when either diverges (for a pre-commit hook or CI)
+      --identity    check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)
       --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
       --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
 ```
@@ -122,6 +122,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --answers string          answer the setup questions from this answers file (JSON: schema_version, interview "setup", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key
       --attribution             opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
+      --details                 print the full record after the report: core's summary of every write and every note, each path written, the declined kinds of change and the gaps left
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
@@ -132,7 +133,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
       --visibility string       repo visibility: private | public
-      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
+      --yes                     approve every resolvable change category without prompting; excludes recording who you commit as on this machine (asked only at a terminal), the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
 ```
 
 #### `abcd ahoy remote`
@@ -300,20 +301,22 @@ A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
 open question, has no unanswered claim section, is not held, names no unsettled blocker
 in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling
-worktree or local branch holds it in another bucket, no session holds a live claim on
-it, and no other copy holds a reservation on it on origin, as this checkout last fetched
-the reservations; a peer, claim or view that cannot be read counts as holding it). The
-check reads the reservations from disk alone, and names another copy's with its holder,
-its expiry and the view's age; this copy's own is never a holder. A refusal names the
-check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent
-instead of taking one named.
+worktree or local branch holds it in another bucket having changed it since its
+merge-base with this checkout, so a branch holding this checkout's older copy
+untouched does not count; no session holds a live claim on it; and no other copy holds
+a reservation on it on origin, as this checkout last fetched the reservations; a peer,
+claim or view that cannot be read, or a copy that cannot be compared, counts as holding
+it). The check reads the reservations from disk alone, and names another copy's with
+its holder, its expiry and the view's age; this copy's own is never a holder. A refusal
+names the check, the reason and the remedy, and writes nothing. `abcd build next` picks
+the intent instead of taking one named.
 
 In a checkout with a remote named origin, the run reserves its key there, as
 `abcd reserve` does, once the checks pass and before the run is created: a new run, and a
 resumed one, with the files the spec's `## Footprint` packages line names (an issue's
 found_at path for an issue id), so every other participant sees it is taken. A spec with
 no footprint, or an issue with no found_at path, is refused at the reservation and nothing
-is started. Another person's reservation, or your own from another computer, refuses
+is started. Another person's reservation, or your own from another copy, refuses
 the start as contention; --take-over moves your own live reservation from another copy
 to this one, never another person's. `abcd implement step` renews the reservation, fences
 the landing's push and its arming with it and releases it once the run lands; a run
@@ -2322,14 +2325,18 @@ loop; `make preflight` runs its test stages through it. It blocks until the
 one-minute load average is below the wait limit (`wait-load <load>` in the same
 file; by default twice the online core count), no other `go test -race` run is
 live, no other `make preflight` is running and no other waiter is ahead of it in
-the queue (one that started earlier, or within two seconds of it, and has the
-lower pid: two whose start and pid disagree, as after the process ids wrap, wait
-on neither) or running its command, under any account: all of it is
+the queue (one that started earlier, whatever its pid, or within two seconds of
+it with the lower pid) or running its command, under any account: all of it is
 read from the process table, which shows every account's processes: no file
 another account can write is read; the gate reads only the process table (and,
 for the wait limit, your own load-limits). A waiter ahead of yours still delays
 yours until it opens or reaches its own --timeout, whatever account it runs
-under and whatever its own account's wait limit is. A preflight whose own
+under and whatever its own account's wait limit is, with one exception: a
+waiter ahead with a higher pid, as after the process ids wrap, may run an abcd
+built before this order, which waits on every lower pid and so on yours, so once
+such waiters alone have kept yours shut for 5m0s on end, and a step more
+for each such waiter ahead beyond the first, yours stops counting them. A
+preflight whose own
 waiter is queued
 takes that waiter's place in the queue, and a waiter beneath a waiter running its
 command (`--wait -- make preflight`) takes that ancestor's place, ahead of every
@@ -2337,10 +2344,12 @@ queued waiter. Once it finds all of that clear it waits
 a random 15s to 1m0s and checks everything again, and opens only if the
 re-check is clear too, so two starters in one quiet minute do not start together.
 With a command it then shows itself as running it and looks once more 2s
-later, before starting it: across accounts, which share no hold, two waiters whose
-start and pid disagree can open in one moment, and the one with the higher pid
-stands back, gives up its hold, re-draws its jitter and waits again (at most 3
-times), while the lower pid runs its command.
+later, before starting it: across accounts, which share no hold, two waiters can
+open in one moment, and each stands back from the other unless it started earlier
+and has the lower pid too: it gives up its hold, re-draws its jitter and waits
+again (at most 3 times), while the other runs its command. So the later
+start stands back whatever the pids, and the earlier one from a lower pid as well,
+which an older abcd (v0.15.1 and earlier) lets run.
 The load limit is twice the cores because a busy multi-session machine already
 idles near one core-count of load, so a limit of the cores never opens; one
 waiter at a time is kept by the process table, the hold below and that last
@@ -2370,13 +2379,16 @@ rule) or running its command, the load is at the wait limit, or the race gate's
 own hold is in force (each gate is shut only by its own gate's hold). That keeps
 race stages apart among the preflights whose checkouts have the race gate: one
 at a time within an account, and across accounts all but a narrow window (a
-race waiter gone before its race run shows, or two waiters whose start and pid
-disagree after a pid wrap). An account at one opens its race gate at once
+race waiter gone before its race run shows, or, after a pid wrap, two waiters
+whose start and pid disagree: one running v0.15.1, which counts a waiter ahead
+only with the lower pid as well, or two of the start order whose whole-second
+ages read a tie differently or the later of which stopped counting the earlier
+past its 5m0s cap). An account at one opens its race gate at once
 whatever another account set, and a checkout older than the gate runs its race
 stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's
 waiter never queues
 behind a race waiter, and a preflight whose waiter is at its race gate is in its
-test stages. A waiter that has opened stands back only from a lower pid that
+test stages. A waiter that has opened stands back only from a waiter that
 opened in the same moment at its own gate, never from one at the other gate.
 
 How many preflights may be in their test stages at once is your own machine's
@@ -2862,7 +2874,9 @@ alone. It is refused, changing nothing, while the run has an outage (open or giv
 for a blank --yielded, for a lane with neither an implementer out nor an await a rate
 limit kept, or for a worktree that is not the one the loop derives.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
-at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
+at the judged head; on an intent lane it marks the lane's step landed on the open spec with a `- landed:`
+line naming the judged head (unless the spec lists no steps or already marks it); on
+the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
 declared fixed it runs `capture resolve` with the lane's commit, committing them on the
 lane's branch with Delivers: and Resolves: trailers and an Assisted-by: naming the model
@@ -4444,6 +4458,7 @@ Reserve an issue, intent or release on the shared remote, or release it: Writes 
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
 abcd reserve <record-id> --release
 abcd reserve --holder
+abcd reserve --sweep [--apply] [--older-than <days>]
 
 Reserve an issue or an intent on the shared remote before starting work on it, so
 every other participant sees it is taken. The reservation is the branch
@@ -4510,13 +4525,32 @@ the record is held by someone else or by your other copy, so back off; exit 2
 on every other refusal and failure. Nothing is pushed on a refusal, and a failed
 push leaves no reservation and nothing in the checkout.
 
+--sweep lists the spent reservation branches on origin and, with --apply, deletes
+them, each with a lease on the exact tip it judged, so a branch re-reserved
+meanwhile survives. A branch is spent when its tip has been untouched, its lease
+past the five-minute margin included, for --older-than days (default 7, at
+least 1), and either its record is resolved, won't-fixed, shipped or superseded
+on origin's default branch, or every commit on it is a reservation or a plain
+release, whether or not any is a release, since a lapsed lease already lets any
+session take the record over. A hand-back on a record still open, a commit of
+a kind the sweep cannot classify, a history it cannot read to its root, and an
+unreadable tip keep the branch.
+The reservations ruleset lets only its bypass actor delete these branches, so
+the scheduled reservation-sweep workflow is what applies it; anyone else's
+--apply is refused by origin. It takes no record id and no other flag; exit 0
+when it ran (a branch that moved since it was judged is kept, not a failure),
+exit 2 when it could not run or origin refused a deletion.
+
 **Flags:**
 
 ```
+      --apply                   with --sweep, delete the spent branches, each only while its tip is the one judged
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
       --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
       --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
+      --older-than int          with --sweep, the days a branch must have been untouched past its lease (at least 1) (default 7)
       --release                 release your reservation from this copy by pushing a tombstone
+      --sweep                   list the spent reservation branches on origin, which --apply deletes; a dry run without it
       --take-over               move your own live reservation from another copy to this one
 ```
 

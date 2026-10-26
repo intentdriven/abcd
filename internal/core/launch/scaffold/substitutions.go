@@ -17,7 +17,7 @@ var abcdExtraGates = []Gate{
 	{Name: "Record-lint (design-record drift gate)", Run: "go run ./cmd/record-lint"},
 	{Name: "Docs-lint (docs-currency gate)", Run: "go run ./cmd/abcd lint docs --release-gate"},
 	{Name: "Reviews-charter discipline (RD001-RD004)", Run: "bash scripts/check-reviews.sh"},
-	{Name: "Smoke every command (self-discovering harness)", Run: "make smoke"},
+	{Name: "Smoke every command (self-discovering harness)", Run: "make smoke EVAL_TIMEOUT=8m"},
 }
 
 // AbcdSubstitutions is abcd-cli's own fact set: the fixed inputs that regenerate

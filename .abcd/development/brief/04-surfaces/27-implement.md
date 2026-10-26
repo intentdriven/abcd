@@ -267,9 +267,8 @@ concurrent sessions gate a preflight or a race run with, and `make preflight`
 runs its own test stages through it: it blocks until the one-minute load is
 below the wait limit, no other `go test -race` run is live, no other
 `make preflight` is running and no other waiter is ahead of it in the queue (one
-that started earlier, or within two seconds of it, and has the lower pid: two
-whose start and pid disagree, as after the process ids wrap, wait on neither) or
-running its command, under any account; a waiter beneath a waiter
+that started earlier, whatever its pid, or within two seconds of it with the
+lower pid; iss-2610222125175640) or running its command, under any account; a waiter beneath a waiter
 running its command takes that ancestor's place, ahead of every queued waiter. All of that is read from
 the process table, which shows every account's processes, judged from each
 candidate's arguments with the waiter's own ancestry excluded
@@ -277,16 +276,30 @@ candidate's arguments with the waiter's own ancestry excluded
 reads only the process table. A waiter queued ahead still delays the
 ones behind it, under any account, until it opens or reaches its own timeout,
 even when only its own account's stricter wait limit keeps it shut; there is no
-channel by which it could tell them so without a shared writable file. A waiter
-running its command holds every later gate for the command's length, by design. A look that finds the machine clear does not open the
+channel by which it could tell them so without a shared writable file. The one
+exception is a crossed waiter, ahead by start with a higher pid, as after the
+process ids wrap: an abcd built before the start order (v0.15.0 and earlier)
+waits on every lower pid, so it may be waiting on this one while this one
+waits on it, and nothing in the table tells it apart. Every cycle of waits
+passes through a crossed wait, since every other wait from any abcd points at a
+lower pid, so a wait stops counting crossed waiters once they alone have kept
+it shut for five minutes on end (`WaitCrossedCap`), longer than a waiter that
+orders by start shows queued while the machine is free to another account,
+plus a step for each crossed waiter ahead beyond the first, so the earlier of
+two waiters behind the same one opens before the later stops counting it; no
+back-off breaks that cycle, since the back-off cap bounds only the last look,
+and a stand-back starts the count again.
+A waiter running its command holds every later gate for the command's length, by design. A look that finds the machine clear does not open the
 gate: the waiter waits a random 15 to 60 seconds and checks everything again,
 and opens only if that re-check is clear too (iss-2610102020442624). Within one
 account it also takes a hold under the abcd home, which a waiter beneath the
-holder ignores. Across accounts, which share no hold, two waiters whose start
-and pid disagree can still open in one moment, so the command form shows itself
-as running its command from the moment it opens and looks once more two seconds
-later; the one with the higher pid stands back, gives up its hold, re-draws its
-jitter and waits again, at most three times, while the lower pid runs.
+holder ignores. Across accounts, which share no hold, two waiters can still open
+in one moment, so the command form shows itself as running its command from the
+moment it opens and looks once more two seconds later; it stands back from the
+other unless it started earlier and has the lower pid too, gives up its hold,
+re-draws its jitter and waits again, at most three times, while the other runs.
+The later start stands back whatever the pids; the earlier one stands back from
+a lower pid as well, which an older abcd (v0.15.1 and earlier) runs past.
 It runs a command given after `--` and exits with its code,
 forwarding an interrupt to it, and gives up after its timeout at exit 1, naming
 what it was still waiting on. Inside `make preflight` each test stage then
@@ -304,13 +317,17 @@ open beside it. At one preflight at a
 time the race gate opens at once, with no look at the machine, no hold, no
 jitter and no settle, so the preflight runs exactly as before. Above one it is
 shut only by another live `go test -race` run, a race waiter queued ahead of
-it by the same rule (started earlier, or within two seconds of it, and with the
+it by the same rule (started earlier, or within two seconds of it with the
 lower pid) or running its command, the load limit and
 the race gate's own hold, so race stages are kept apart among the preflights
 whose checkouts have the race gate, one at a time within an account and across
 accounts all but a narrow window: a race waiter exits as it opens, before its
 preflight's race run shows in the table, and after a pid wrap two race waiters
-whose start and pid disagree wait on neither. A preflight run from a checkout
+whose start and pid disagree can both open: one of v0.15.1 and an earlier one
+of the start order with a higher pid wait on neither, and two of the start
+order disagree for a look where whole-second ages put their starts at the tie
+tolerance's edge, or once the later has stopped counting the earlier past its
+cap. A preflight run from a checkout
 older than the gate runs its race stage ungated, so two at once is safe only
 once no such checkout runs one. The setting is each account's own: an account
 at one opens its race gate at once, so its race stage can start beside an
@@ -342,7 +359,7 @@ admits a waiter while fewer than that many units of work are in their test
 stages (a running preflight, or a waiter running its command, counted once
 where one runs beneath the other), a waiter queued ahead still shuts it, a live
 race run does not shut it by itself and the load limit still does, and an
-opener still stands back from a lower pid that opened beside it, whose mark
+opener still stands back from one that opened beside it, as above, whose mark
 then counts it as a unit in its test stages; an opener stands back only from a
 waiter at its own gate; a lone race run gated in the command form, its
 command `go test -race`, is gated as a race run for both gates: it stays

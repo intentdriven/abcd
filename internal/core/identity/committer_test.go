@@ -109,8 +109,8 @@ func TestCheck_AuthorNotCommitterUnpinned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != StatusNoPin {
-		t.Fatalf("want StatusNoPin, got %v", res.Status)
+	if res.Status != StatusNoRecord {
+		t.Fatalf("want StatusNoRecord, got %v", res.Status)
 	}
 	if !res.CommitterDiverges {
 		t.Fatalf("author≠committer was not detected: %+v", res)
@@ -172,6 +172,11 @@ func TestCheck_FlagsAToolIdentity(t *testing.T) {
 	}
 	if res.AuthorIsTool || !res.CommitterIsTool {
 		t.Fatalf("want only the committer flagged as a tool identity, got author=%v committer=%v", res.AuthorIsTool, res.CommitterIsTool)
+	}
+	// Criterion 5: with no record on a fresh machine, a commit is never made
+	// as the tool.
+	if !res.Blocks() {
+		t.Fatal("a machine identity in the committer role must block, record or not")
 	}
 }
 
