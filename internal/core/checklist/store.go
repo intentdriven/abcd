@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -138,7 +139,14 @@ const (
 
 // Result is a Read's answer: the checklist (zero for FromNothing), the file it
 // came from, and the reason as one sentence a render can print as it stands.
-// The reason names files, fields and pattern kinds, never a value.
+// The reason names files, fields and bundled pattern kinds, never a value.
+//
+// WHY the reason is fixed text: the session-start hook injects it into every
+// session's context, where nothing taken from the repository may go
+// (iss-2608241115201044, cli.go's session-start notices). So no clause carries
+// an error's text, which can quote the tracked .abcd/config/pii.json or name
+// the checkout's absolute path, nor a pattern kind that file declared; each
+// names a file abcd defines and a cause in abcd's own words.
 type Result struct {
 	Checklist Checklist
 	Source    Source
@@ -155,7 +163,7 @@ type Result struct {
 func Read(repoRoot string) Result {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
-		return Result{Source: FromNothing, Reason: fmt.Sprintf("No checklist to show: the checkout could not be opened (%v).", err)}
+		return Result{Source: FromNothing, Reason: "No checklist to show: the checkout could not be opened."}
 	}
 	defer root.Close()
 	sc, scanErr := newScanner(repoRoot)
@@ -193,7 +201,7 @@ func load(repoRoot string, root *os.Root, sc *scanner.Scanner, scanErr error, re
 	case errors.Is(err, fsutil.ErrTooBig):
 		return Checklist{}, fmt.Sprintf("is larger than the %d-byte read cap", maxReadBytes)
 	default:
-		return Checklist{}, fmt.Sprintf("could not be read (%v)", err)
+		return Checklist{}, "could not be read"
 	}
 	c, err := Decode(data)
 	if err != nil {
@@ -211,17 +219,35 @@ func load(repoRoot string, root *os.Root, sc *scanner.Scanner, scanErr error, re
 		return Checklist{}, "fails the schema"
 	}
 	if scanErr != nil {
-		return Checklist{}, "could not be checked for secrets (" + scanErr.Error() + ")"
+		return Checklist{}, scannerDown
 	}
 	field, kind, err := scan(sc, c)
 	switch {
 	case err != nil:
-		return Checklist{}, "could not be checked for secrets (" + err.Error() + ")"
-	case field != "":
+		return Checklist{}, scannerDown
+	case field != "" && bundledKinds()[kind]:
 		return Checklist{}, "carries a secret in " + field + " (" + kind + ")"
+	case field != "":
+		return Checklist{}, "carries a secret in " + field + " (a pattern abcd does not ship)"
 	}
 	return c, ""
 }
+
+// scannerDown is load's clause for a scanner that cannot vouch for the text.
+// The scanner's own reason quotes .abcd/config/pii.json, a tracked file, so
+// it stays with `abcd lint`, which a person runs.
+const scannerDown = "could not be checked for secrets, because the secret scanner is unavailable; `abcd lint` says why"
+
+// bundledKinds is the set of pattern kinds abcd ships. A finding's kind
+// outside it was named by the repository's scanner config (or an augmenter's
+// rules), which the reason never repeats.
+var bundledKinds = sync.OnceValue(func() map[string]bool {
+	kinds := map[string]bool{}
+	for _, p := range scanner.DefaultPatterns() {
+		kinds[p.Kind] = true
+	}
+	return kinds
+})
 
 // newScanner builds the native scanner for repoRoot, with the repository's
 // pattern overrides folded in, and refuses one that is degraded: the

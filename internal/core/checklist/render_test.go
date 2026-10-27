@@ -134,3 +134,18 @@ func TestRenderOfNothingIsTheLineAlone(t *testing.T) {
 		t.Errorf("render of nothing = %q, want the reason line alone", text)
 	}
 }
+
+// TestRenderKeepsAFallbackReasonOverAnEmptyList: the reason is the line the
+// render drops last, so a tight budget drops "No items." and the intro first.
+func TestRenderKeepsAFallbackReasonOverAnEmptyList(t *testing.T) {
+	res := fromFile()
+	res.Source = checklist.FromLastGood
+	res.Reason = "Showing the last good copy, because checklist.json is not a regular file; the copy was written by a checked write and validated and scanned clean again."
+	if text := checklist.Render(res, len(res.Reason)+1); text != res.Reason+"\n" {
+		t.Errorf("render within the reason's own bytes = %q, want the reason line alone", text)
+	}
+	full := checklist.Render(res, 10_000)
+	if !strings.HasPrefix(full, res.Reason+"\n") || !strings.HasSuffix(full, "No items.\n") {
+		t.Errorf("an ample budget = %q, want the reason, the intro and No items.", full)
+	}
+}

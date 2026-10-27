@@ -24,8 +24,9 @@ const renderIntro = "This working copy's checklist (`abcd checklist` lists every
 // the rest from the end (the closed items before any open one), and ends with
 // a line saying how many it left out and that `abcd checklist` shows them all.
 // The budget is in bytes, which never undercounts a host that measures in
-// characters. When not even the reason fits, the render is empty; a FromNothing
-// result renders as the reason line alone.
+// characters. An empty list that does not fit renders as the reason alone. When
+// not even the reason fits, the render is empty; a FromNothing result renders
+// as the reason line alone.
 //
 // Every field the reader passed is one line with no control character
 // (Validate), so each prints as it stands.
@@ -39,7 +40,12 @@ func Render(res Result, budget int) string {
 	}
 	head = append(head, renderIntro)
 	if len(res.Checklist.Items) == 0 {
-		return fit(budget, append(head, "No items."))
+		// The reason is the line kept longest: the intro and "No items." go
+		// first, as the list and its count do below.
+		if text := fit(budget, append(head, "No items.")); text != "" {
+			return text
+		}
+		return fit(budget, head[:len(head)-1])
 	}
 
 	var open, closed []string
