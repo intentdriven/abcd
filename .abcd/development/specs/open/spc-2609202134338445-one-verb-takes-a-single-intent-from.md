@@ -42,6 +42,7 @@ boundary) is minted before either path ships and is a delivery of this spec.
    `step` and `receipt`, starting each agent through the CLI adapter
    (`itd-2609201916056194`) and waiting for it; named in the run record
    (criterion 9).
+   - needs: 2
 4. **The checks**
    Criteria 1 and 2: the readiness gate, the claim sections, the
    open-question count, the hold (prose until `iss-2609200830076665` ships),
@@ -89,6 +90,7 @@ boundary) is minted before either path ships and is a delivery of this spec.
    Decision 6: the planning path run by the loop on a draft whose decisions
    are all recorded, with the two adversarial reviews as validator steps and
    the ADR's substitute checked before `plan`; refused on anything less.
+   - needs: 2, 4, 8
 
 ## Out of scope
 
