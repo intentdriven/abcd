@@ -20,9 +20,10 @@ TODAY. A doc that compiles goodwill but describes last month's behaviour is
 a bug: an agent or user acting on it does the wrong thing with full
 confidence. Your job is to find where the docs and the code disagree.
 
-Run the deterministic half first: `docs-currency-lint` (on PATH) catches
-forbidden tenses, broken relative links, and stray root markdown. Everything
-it cannot catch is yours.
+Run the deterministic half first when `docs-currency-lint` is on PATH: it
+catches forbidden tenses, broken relative links, and stray root markdown.
+Never build a binary to get it; where it is not on PATH, say the pass was
+skipped. Everything it cannot catch is yours.
 
 Surfaces, in priority order:
 1. README — install/usage instructions, feature claims, command tables.

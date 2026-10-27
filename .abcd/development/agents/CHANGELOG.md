@@ -20,8 +20,10 @@ MINOR: the Method section no longer tells the reviewer to run the project's
 test and lint commands. The reviewer runs no tests, builds or lint gates,
 asks the author for the test evidence (the gated preflight's output, or a
 named test watched fail then pass), and reports a finding that needs a run to
-confirm as unconfirmed, naming the command to run through the load gate. On a
-machine several sessions share, each review had run a test no load gate
+confirm as unconfirmed, naming the command to run through the load gate. Its
+Preconditions now read the build-and-checks precondition from the author's
+gated output in the brief, and the verdict line says when none was supplied.
+On a machine several sessions share, each review had run a test no load gate
 admitted, beside the preflight the gate did admit. Output contract unchanged.
 Unmeasured, in the `0.x` band.
 
@@ -30,8 +32,17 @@ Unmeasured, in the `0.x` band.
 MINOR: tests and evals that pin documented behaviour are read as evidence,
 never run, for the same reason; a claim only a run could settle is reported
 UNVERIFIED, naming the test to run through the load gate. The deterministic
-`docs-currency-lint` pass is unchanged. Output contract unchanged.
+`docs-currency-lint` pass runs only when that prebuilt lint is on PATH, never
+by building a binary, and a skipped pass is said. Output contract unchanged.
 Unmeasured, in the `0.x` band.
+
+### security-reviewer 0.4.0
+
+MINOR: step 4 no longer lets the reviewer verify by running the code. It runs
+no tests, builds or the project's code, and hands a finding that needs a run
+to the author as an unconfirmed reproduction to run through the load gate,
+for the same reason. Output contract unchanged. Unmeasured, in the `0.x`
+band.
 
 ## 2026-10-24 (iss-2610241103012197 — a person-only verdict is put with its evidence)
 
