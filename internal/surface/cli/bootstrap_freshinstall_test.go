@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -76,27 +78,102 @@ func runBootstrapNoGo(t *testing.T, root string, fx *bootstrapFixture) (string, 
 	return string(out), code
 }
 
-// buildRealAbcd builds the committed cmd/abcd and returns the artefact's bytes,
-// so the fresh-install check serves the binary a real release serves rather than
-// a stand-in that could not answer anything. The build is the ONE thing that
-// needs a Go toolchain, and it happens on the test host, never on the simulated
-// no-Go machine the script then runs against.
+// freshInstallTag is the release the fresh-install check publishes. Not
+// bootstrapTag: Go stamps a tag as the main module's version only where the
+// tag is a version of the module's path, and a v9 tag is not one of
+// github.com/intentdriven/abcd's (a major above 1 would end the path in /v9).
+const freshInstallTag = "v0.99.0"
+
+// buildRealAbcd builds the committed cmd/abcd as a release build of
+// freshInstallTag and returns the artefact's bytes, so the fresh-install check
+// serves the binary a real release serves rather than a stand-in that could
+// not answer anything. The build is the ONE thing that needs a Go toolchain,
+// and it happens on the test host, never on the simulated no-Go machine the
+// script then runs against.
+//
+// A release is built at its tag from a clean tree, so Go stamps the tag as the
+// main module's version: the release the bootstrap holds a download to. A
+// build in the checkout claims (devel) and is refused as no release's build,
+// so HEAD's tree is committed afresh in a scratch repository, tagged, and
+// built there. It is HEAD's tree, so uncommitted edits are not in it. The
+// build is made once per test binary and shared.
 func buildRealAbcd(t *testing.T) []byte {
 	t.Helper()
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("no Go toolchain on the test host to build the release artefact from")
+	realAbcdOnce.Do(func() { realAbcdBody, realAbcdSkip, realAbcdErr = buildRealAbcdOnce() })
+	if realAbcdSkip != "" {
+		t.Skip(realAbcdSkip)
 	}
-	out := filepath.Join(t.TempDir(), "abcd-artefact")
-	cmd := exec.Command("go", "build", "-o", out, "./cmd/abcd")
-	cmd.Dir = bootstrapRepoFile(t, ".")
-	if msg, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("building cmd/abcd for the fresh-install check: %v (%s)", err, msg)
+	if realAbcdErr != nil {
+		t.Fatal(realAbcdErr)
 	}
-	body, err := os.ReadFile(out)
+	return realAbcdBody
+}
+
+var (
+	realAbcdOnce sync.Once
+	realAbcdBody []byte
+	realAbcdSkip string
+	realAbcdErr  error
+)
+
+func buildRealAbcdOnce() (body []byte, skip string, err error) {
+	for _, tool := range []string{"go", "git", "tar"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			return nil, "no " + tool + " on the test host to build the release artefact with", nil
+		}
+	}
+	scratch, err := os.MkdirTemp("", "abcd-release-build-")
 	if err != nil {
-		t.Fatalf("reading the built artefact: %v", err)
+		return nil, "", err
 	}
-	return body
+	defer os.RemoveAll(scratch)
+	src := filepath.Join(scratch, "src")
+	if err := os.Mkdir(src, 0o755); err != nil {
+		return nil, "", err
+	}
+	tarball := filepath.Join(scratch, "head.tar")
+	// The scratch repository's git reads no configuration but its own: no
+	// hooks, no signing, and none of the caller's GIT_* variables. GOFLAGS is
+	// left out too: -buildvcs=false there would build a binary claiming no
+	// release.
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "GIT_") && !strings.HasPrefix(kv, "GOFLAGS=") {
+			env = append(env, kv)
+		}
+	}
+	env = append(env, "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	repo, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		return nil, "", err
+	}
+	var failed error
+	run := func(dir string, name string, args ...string) {
+		if failed != nil {
+			return
+		}
+		cmd := exec.Command(name, args...)
+		cmd.Dir, cmd.Env = dir, env
+		if msg, err := cmd.CombinedOutput(); err != nil {
+			failed = fmt.Errorf("building the release artefact: %s %v: %v (%s)", name, args, err, msg)
+		}
+	}
+	run(repo, "git", "archive", "--format=tar", "-o", tarball, "HEAD")
+	run(src, "tar", "-xf", tarball)
+	run(src, "git", "init", "-q")
+	run(src, "git", "add", "-A")
+	run(src, "git", "-c", "user.name=release", "-c", "user.email=release@example.invalid", "commit", "-q", "-m", "release")
+	run(src, "git", "tag", freshInstallTag)
+	out := filepath.Join(scratch, "abcd-artefact")
+	run(src, "go", "build", "-o", out, "./cmd/abcd")
+	if failed != nil {
+		return nil, "", failed
+	}
+	body, err = os.ReadFile(out)
+	if err != nil {
+		return nil, "", fmt.Errorf("reading the built artefact: %v", err)
+	}
+	return body, "", nil
 }
 
 // TestBootstrapFreshInstallSelfCheck is the §4 checklist as a gate. A fresh
@@ -105,7 +182,7 @@ func buildRealAbcd(t *testing.T) []byte {
 func TestBootstrapFreshInstallSelfCheck(t *testing.T) {
 	body := buildRealAbcd(t)
 	root := bootstrapRoot(t)
-	fx := bootstrapServer(t, body, bootstrapManifest(body))
+	fx := bootstrapServerAt(t, freshInstallTag, body, bootstrapManifest(body))
 
 	out, code := runBootstrapNoGo(t, root, fx)
 	if code != 0 {
