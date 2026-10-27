@@ -40,7 +40,8 @@ func TestJSONErrorEnvelopeNoAbsolutePathLeak(t *testing.T) {
 		{
 			name: "memory ask --page-json missing file",
 			args: []string{"library", "ask", "q", "--file-back", "--page-json", absMissing, "--json"},
-			base: "page.json",
+			// The operand file is named by the flag that carried it.
+			base: "--page-json",
 		},
 	}
 

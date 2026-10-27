@@ -6970,6 +6970,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// (usage_errors.go).
 		note := staleUsageNote(root, args, msg)
 		msg = withholdOperands(root, msg)
+		// The backstop: whatever a verb's own wording still repeats of the
+		// arguments is withheld here, for stderr and the --json object alike
+		// (usage_errors.go). The note is added after it: it names a verb only
+		// when the plugin surface on disk documents that verb.
+		msg = withholdArguments(root, args, msg)
 		if note != "" {
 			msg += "\nabcd: " + note
 		}

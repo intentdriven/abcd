@@ -546,8 +546,8 @@ func stopOf(t *testing.T, f func()) (stop *setupStop) {
 
 // TestSetupAnswerTheQuestionDoesNotOfferRefuses holds the answers door's own
 // check, whichever question it is put: a file's value the question does not
-// offer stops the run with exit 2, naming the value given and the values
-// offered, records nothing, and keeps no answer given before it.
+// offer stops the run with exit 2, naming the values offered without repeating
+// the value given, records nothing, and keeps no answer given before it.
 func TestSetupAnswerTheQuestionDoesNotOfferRefuses(t *testing.T) {
 	p := &answersPrompter{
 		setupQuestions: setupQuestions{cwd: t.TempDir(), w: io.Discard},
@@ -555,7 +555,7 @@ func TestSetupAnswerTheQuestionDoesNotOfferRefuses(t *testing.T) {
 		stamp:          interview.Terminal,
 	}
 	stop := stopOf(t, func() { p.Prompt("visibility", []string{"private", "public"}, "") })
-	if stop.code != 2 || stop.keep || !strings.Contains(stop.msg, `"privat"`) || !strings.Contains(stop.msg, "private|public|later") {
+	if stop.code != 2 || stop.keep || strings.Contains(stop.msg, "privat\"") || !strings.Contains(stop.msg, "not repeated here") || !strings.Contains(stop.msg, "private|public|later") {
 		t.Fatalf("stop %+v", stop)
 	}
 	if got := p.recorded(); len(got) != 0 {

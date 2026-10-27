@@ -464,3 +464,91 @@ func TestRefusalHelpersNeverRepeatWhatWasPassed(t *testing.T) {
 		p.answer(q, "pass --yes")
 	}()
 }
+
+// tokenMarker is a run-time argument shaped like an access token: mixed case,
+// digits and an underscore, the shape a variable a script expanded carries.
+func tokenMarker() string {
+	return "Tk_" + strings.ToUpper(usageMarker()[2:8]) + usageMarker()[8:] + "9x"
+}
+
+// TestBoundaryWithholdsATokenGivenAsARecordID passes a token-shaped argument
+// where three verbs take a record id or a release. Each verb's own refusal
+// quotes what it was given; the boundary pass in Run withholds it from stderr
+// and from the --json error object, and the refusal still says what shape the
+// argument takes.
+func TestBoundaryWithholdsATokenGivenAsARecordID(t *testing.T) {
+	cases := []refusalCase{
+		{
+			name:  "spec close",
+			setup: scratchRepoWithCommit,
+			args:  func(_, m string) []string { return []string{"spec", "close", m} },
+			code:  2,
+			names: []string{"spc-", "not repeated here"},
+		},
+		{
+			name:  "reserve",
+			setup: scratchRepoWithCommit,
+			args:  func(_, m string) []string { return []string{"reserve", m, "--footprint", "x"} },
+			code:  2,
+			names: []string{"iss-N or itd-N", "not repeated here"},
+		},
+	}
+	for _, c := range cases {
+		tok, args := tokenMarker(), c.args
+		c.args = func(dir, _ string) []string { return args(dir, tok) }
+		c.hide = func(string) string { return tok }
+		checkRefusalCase(t, c)
+	}
+
+	// build answers --json with its own refusal document ahead of the error
+	// object, which the boundary pass does not read: the key check words its
+	// row without the key, so neither document carries it.
+	t.Setenv("HOME", t.TempDir())
+	dir := scratchRepoWithCommit(t)
+	if err := os.MkdirAll(filepath.Join(dir, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tok := tokenMarker()
+	for _, form := range [][]string{{"build", tok}, {"--json", "build", tok}} {
+		code, out, errOut := runRefusal(t, "", form...)
+		if code != 2 {
+			t.Errorf("%v: exit %d, want 2\nstdout: %s\nstderr: %s", form[0], code, out, errOut)
+		}
+		if repeats(out, tok) || repeats(errOut, tok) {
+			t.Errorf("%v: build repeated what was passed\nstdout: %s\nstderr: %s", form[0], out, errOut)
+		}
+		if !strings.Contains(out+errOut, "itd-N or iss-N") {
+			t.Errorf("%v: build does not say the form a key takes\nstdout: %s\nstderr: %s", form[0], out, errOut)
+		}
+	}
+}
+
+// TestWithholdArgumentsKeepsWhatARefusalMustName holds the boundary pass to
+// its three exemptions — a short argument, a command name, a well-formed record
+// id — and to whole-word matching, so a refusal keeps naming its verb, the
+// record it could not find and the words it is built from.
+func TestWithholdArgumentsKeepsWhatARefusalMustName(t *testing.T) {
+	root := NewRootCommand()
+	tok := tokenMarker()
+	cases := []struct {
+		name string
+		args []string
+		msg  string
+		want string
+	}{
+		{"positional", []string{"spec", "close", tok}, `spec id "` + tok + `" is malformed`, `spec id "(argument 3, not repeated here)" is malformed`},
+		{"flag value with =", []string{"lint", "--config=" + tok}, "cannot read " + tok, "cannot read (argument 2, not repeated here)"},
+		{"after the terminator", []string{"capture", "--", "-" + tok}, "refused -" + tok, "refused (argument 3, not repeated here)"},
+		{"escaped by %q", []string{"build", "a\tb" + tok}, fmt.Sprintf("refused %q", "a\tb"+tok), `refused "(argument 2, not repeated here)"`},
+		{"a record id stays", []string{"spec", "show", "spc-2610231038335615"}, "no spec spc-2610231038335615", "no spec spc-2610231038335615"},
+		{"a command name stays", []string{"implement", "load"}, "abcd implement load: refused", "abcd implement load: refused"},
+		{"a short argument stays", []string{"capture", "--limit=7"}, "limit 7 of 70", "limit 7 of 70"},
+		{"inside a longer word stays", []string{"x", "drainage"}, "the drainagescheme", "the drainagescheme"},
+		{"a flag name stays", []string{"--severity", tok}, "--severity is closed; " + tok, "--severity is closed; (argument 2, not repeated here)"},
+	}
+	for _, c := range cases {
+		if got := withholdArguments(root, c.args, c.msg); got != c.want {
+			t.Errorf("%s:\n got %q\nwant %q", c.name, got, c.want)
+		}
+	}
+}
