@@ -236,6 +236,30 @@ func TestPruneKeepsANamedWorktreeThatIsNotQuiet(t *testing.T) {
 	}
 }
 
+// TestPruneNeverOffersADetachedWorktreeAsQuiet: a worktree on a detached
+// HEAD holds commits no branch does, and removing it drops the HEAD reflog
+// that is their last reference. So however long it has been quiet it is no
+// candidate, and naming it keeps it, saying its commits are on no branch.
+func TestPruneNeverOffersADetachedWorktreeAsQuiet(t *testing.T) {
+	repo, home := pruneFixture(t)
+	det := addToLane(t, repo, "det")
+	repo.Git("-C", det, "checkout", "-q", "--detach")
+	commitIn(t, repo, det, "d.txt", "d\n")
+	tip := strings.TrimSpace(repo.Git("-C", det, "rev-parse", "HEAD"))
+
+	if r := pruneRow(t, quietPrune(t, repo, worktree.PruneOptions{}), "det"); r.Outcome == worktree.OutcomeQuiet || r.Dossier != nil {
+		t.Errorf("a detached worktree is offered as a quiet candidate: %+v", r)
+	}
+	got := quietPrune(t, repo, worktree.PruneOptions{Yes: []string{"det"}})
+	if r := pruneRow(t, got, "det"); r.Outcome != "kept" || !strings.Contains(r.Reason, "no branch") {
+		t.Errorf("a named detached worktree: %+v", r)
+	}
+	if !exists(det) || got.Reclaimed() != 0 || len(notesEntries(t, repo, home)) != 0 {
+		t.Fatalf("the detached worktree stands, nothing archived: %+v", got.Rows)
+	}
+	repo.Git("-C", det, "cat-file", "-e", tip)
+}
+
 // TestPruneRefusesAYesNameNotInTheLane: every --yes name is checked before
 // anything is judged for removal, so a name the lane does not hold refuses
 // the whole run and nothing is archived or removed, the named candidate

@@ -108,14 +108,21 @@ type quietness struct {
 	// last is the last activity; known says it could be read.
 	last  time.Time
 	known bool
+	// detached is a worktree with no branch checked out, never quiet.
+	detached bool
 }
 
 // quietFor applies the quiet rule to an unmerged worktree. A last activity
 // that cannot be read is not quiet, because a quiet candidate is one a
-// person may name for removal.
+// person may name for removal. Nor is a detached HEAD: its commits may be
+// on no branch, and removing the worktree drops the HEAD reflog that is
+// their last reference, so "its branch stays" would not hold.
 func quietFor(e entry, opts PruneOptions) quietness {
 	if opts.QuietDays <= 0 {
 		return quietness{}
+	}
+	if e.wt.Branch == "" {
+		return quietness{detached: true}
 	}
 	q := quietness{open: e.openPR}
 	q.last, q.known = lastActivity(e)
@@ -160,6 +167,8 @@ func notQuiet(e entry, q quietness, days int) string {
 		return named + "merged: a merged worktree needs no name, and prune alone reclaims it once it is clean"
 	case days <= 0:
 		return named + "this run judges no worktree quiet"
+	case q.detached:
+		return named + "not quiet: its HEAD is detached, so its commits may be on no branch"
 	case q.open:
 		return named + "not quiet: a pull request for its branch is open"
 	case !q.known:
