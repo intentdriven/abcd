@@ -18,7 +18,7 @@ supersedes: [itd-118]
 
 # One command shows everything a repository has left lying around, and clears what is provably finished
 
-Typed links: `refines` and `blocked_by` [itd-2609091014076309](itd-2609091014076309-session-and-agent-worktrees-live-in-a.md) (the worktree store: its prune is the one reclaim this command calls, never a second copy); `supersedes` [itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md) (the seed for tidying what a merge leaves behind, which this command absorbs; the product thinker confirmed it on 2026-10-23); graduated from [iss-2610222001116066](../../../work/issues/open/iss-2610222001116066-abcd-has-no-single-verb-that-cleans-up-a.md); reservations through [iss-2610142200389875](../../../work/issues/open/iss-2610142200389875-the-reservations-ruleset-forbids.md) (the reservation sweep).
+Typed links: `refines` and `blocked_by` [itd-2609091014076309](itd-2609091014076309-session-and-agent-worktrees-live-in-a.md) (the worktree store: its prune is the one reclaim this command calls, never a second copy); `supersedes` [itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md) (the seed for tidying what a merge leaves behind, which this command absorbs; the product thinker confirmed it on 2026-10-23); graduated from [iss-2610222001116066](../../../work/issues/open/iss-2610222001116066-abcd-has-no-single-verb-that-cleans-up-a.md); reservations through [iss-2610142200389875](../../../work/issues/resolved/iss-2610142200389875-the-reservations-ruleset-forbids.md) (the reservation sweep).
 
 ## Press Release
 
@@ -28,7 +28,7 @@ Typed links: `refines` and `blocked_by` [itd-2609091014076309](itd-2609091014076
 
 ## Why This Matters
 
-Cleanup in abcd is a set of separate jobs, and nothing joins them up. Worktrees pile up in the machine store, and the store's reclaim ([itd-2609091014076309](itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)) is planned but not built. Merged branches stay behind ([itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md) is a seed). Reservation branches are deleted only by a daily workflow ([iss-2610142200389875](../../../work/issues/open/iss-2610142200389875-the-reservations-ruleset-forbids.md)). Inbox reports wait until someone runs `/abcd:inbox`.
+Cleanup in abcd is a set of separate jobs, and nothing joins them up. Worktrees pile up in the machine store, and the store's reclaim ([itd-2609091014076309](itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)) is planned but not built. Merged branches stay behind ([itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md) is a seed). Reservation branches are deleted only by a daily workflow ([iss-2610142200389875](../../../work/issues/resolved/iss-2610142200389875-the-reservations-ruleset-forbids.md)). Inbox reports wait until someone runs `/abcd:inbox`.
 
 The 2026-10-22 crash recovery showed the cost:
 - **Scale.** The checkout held 193 worktrees: 134 merged by ancestry, 5 merged by content, 54 unmerged. Origin held 86 reservation branches, 66 of them expired.
