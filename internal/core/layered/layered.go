@@ -624,6 +624,11 @@ func (s *Stack) Claim(namespace string, keys ...string) error {
 func claimIn(d *doc, obj map[string]json.RawMessage, at string, rest []string, top bool, allowed map[string]bool, keys []string) error {
 	if !top && len(rest) > 0 {
 		seg := rest[0]
+		if seg != "*" {
+			if err := refuseDotted(d, obj, at, seg); err != nil {
+				return err
+			}
+		}
 		var names []string
 		if seg == "*" {
 			for k := range obj {
@@ -703,6 +708,30 @@ func refuseMiscased(d *doc, obj map[string]json.RawMessage, at, seg string) erro
 	return fmt.Errorf("%s (%s layer): %q is spelt in another case than %q; keys are read exactly as spelt, "+
 		"so it would change nothing and a lower layer or the default would decide; spell it %q",
 		d.originFor(want), d.layer, BoundKey(joinKey(at, near[0])), BoundKey(want), BoundKey(want))
+}
+
+// refuseDotted refuses a member of obj that spells the claimed segment seg
+// and a key below it as one dotted key ("facilitator.mode" for facilitator,
+// in any case): the records name settings that way, but Lookup reads only the
+// nested spelling, so such a member would be ignored and the layer below it
+// would decide, as with a miscased one (refuseMiscased). It is judged even
+// beside the nested spelling, which the duplicate-key check does not treat as
+// the same key. Both keys are bounded and %q-escaped.
+func refuseDotted(d *doc, obj map[string]json.RawMessage, at, seg string) error {
+	var dotted []string
+	for k := range obj {
+		if head, _, ok := strings.Cut(k, "."); ok && strings.EqualFold(head, seg) {
+			dotted = append(dotted, k)
+		}
+	}
+	if len(dotted) == 0 {
+		return nil
+	}
+	sort.Strings(dotted)
+	want := joinKey(at, seg)
+	return fmt.Errorf("%s (%s layer): %q is one dotted key, and keys are read nested, so it would change nothing and a lower layer or the default would decide; "+
+		"write it as an object under %q",
+		d.originFor(want), d.layer, BoundKey(joinKey(at, dotted[0])), BoundKey(want))
 }
 
 // Value is a resolved configuration value with its provenance.

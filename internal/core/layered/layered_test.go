@@ -446,3 +446,49 @@ func TestClaimRefusesAMiscasedNamespace(t *testing.T) {
 		t.Fatalf("wildcard claim refused: %v", err)
 	}
 }
+
+// A claimed key written as one dotted member ("pace.work_minutes") is not the
+// nested key a reader looks up, so it would be ignored and the layer below
+// would decide. It is refused in any case, beside the nested spelling too.
+func TestClaimRefusesADottedSpellingOfANamespace(t *testing.T) {
+	for _, c := range []struct {
+		name, repo, machine, ns, file, layer, found string
+	}{
+		{"top level, machine file", `{"pace":{"work_minutes":90}}`, `{"pace.work_minutes":30}`, "pace", "abcd.noindex/config.json", "machine", `"pace.work_minutes"`},
+		{"miscased, beside the nested spelling", `{"pace":{"work_minutes":90},"Pace.Work_minutes":30}`, "", "pace", ".abcd/config.json", "repo", `"Pace.Work_minutes"`},
+		{"inner segment", `{"oracle":{"backend":"host","rp.url":"x"}}`, "", "oracle.rp", ".abcd/config.json", "repo", `"oracle.rp.url"`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t)
+			if c.repo != "" {
+				f.repoFile(Config, c.repo)
+			}
+			if c.machine != "" {
+				f.machineFile(Config, c.machine)
+			}
+			s, err := Load(Config, f.roots)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = s.Claim(c.ns, "work_minutes", "url")
+			if err == nil {
+				t.Fatal("a dotted spelling was ignored, so the layer below would decide")
+			}
+			for _, want := range []string{c.found, c.file, c.layer + " layer"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("err = %v, want it to name %s", err, want)
+				}
+			}
+		})
+	}
+	// A dotted key that only resembles the namespace passes.
+	f := newFixture(t)
+	f.repoFile(Config, `{"pace":{"work_minutes":90},"paces.x":{},"pacer.work_minutes":1}`)
+	s, err := Load(Config, f.roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Claim("pace", "work_minutes"); err != nil {
+		t.Fatalf("a key that only resembles the namespace refused: %v", err)
+	}
+}

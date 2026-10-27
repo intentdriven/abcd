@@ -243,6 +243,47 @@ func TestARefusedHomeMakesTheFacilitatorAPerson(t *testing.T) {
 	}
 }
 
+// A repository's human under a refused home is still the repository's: the
+// human answer is reported from the layer that set it, not the refused one.
+func TestHumanInTheRepoUnderARefusedHomeIsReportedFromTheRepo(t *testing.T) {
+	r := configRoots(t, `{"facilitator":{"mode":"human"}}`, "")
+	r.Home, r.HomeRefused = "", true
+	f, err := readMode(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Mode != ModeHuman || f.Layer != "repo" || !strings.Contains(f.Origin, ".abcd/config.json") {
+		t.Errorf("mode = %+v, want human from the repository file", f)
+	}
+}
+
+// The records write the setting as facilitator.mode, so a file may hold it as
+// one dotted key. The reader takes only the nested spelling, and silently
+// ignoring the dotted one would let a repository's auto beat the person's
+// machine-wide human, so it is refused in whichever layer it sits, naming the
+// file and the nested spelling a reader takes.
+func TestADottedFacilitatorModeKeyIsRefusedNamingItsFile(t *testing.T) {
+	for _, c := range []struct {
+		name, repo, machine, file, layer, key string
+	}{
+		{"dotted in the machine file over auto in the repo", `{"facilitator":{"mode":"auto"}}`, `{"facilitator.mode":"human"}`, "abcd.noindex/config.json", "machine", "facilitator.mode"},
+		{"dotted in the repo", `{"facilitator.mode":"auto"}`, "", ".abcd/config.json", "repo", "facilitator.mode"},
+		{"dotted and miscased beside the nested spelling", `{"facilitator":{"mode":"human"},"Facilitator.Mode":"auto"}`, "", ".abcd/config.json", "repo", "Facilitator.Mode"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f, err := readMode(configRoots(t, c.repo, c.machine))
+			if err == nil {
+				t.Fatalf("mode = %+v, want the dotted key refused", f)
+			}
+			for _, want := range []string{`"` + c.key + `"`, `"facilitator"`, c.file, c.layer + " layer"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("err = %v, want it to name %s", err, want)
+				}
+			}
+		})
+	}
+}
+
 // A namespace spelt in another case is not the facilitator namespace, and
 // silently ignoring it would let a repository's auto beat the person's
 // machine-wide human, so it is refused in whichever layer it sits, naming the
