@@ -347,3 +347,70 @@ func TestQuietDaysReadsTheLayeredConfiguration(t *testing.T) {
 		t.Errorf("a bad machine value is refused, never replaced by the default: %v", err)
 	}
 }
+
+// TestQuietCountsTheWorktreesCreationAsActivity: a worktree just added from
+// an old tip has made no commit and changed no file, yet it is a session's
+// fresh checkout; its creation (git's link file in it) counts as activity,
+// so it is not quiet.
+func TestQuietCountsTheWorktreesCreationAsActivity(t *testing.T) {
+	repo, _ := pruneFixture(t)
+	fresh := addToLane(t, repo, "fresh")
+	justNow := fifteenDaysOn().Add(-time.Hour)
+	if err := os.Chtimes(filepath.Join(fresh, ".git"), justNow, justNow); err != nil {
+		t.Fatal(err)
+	}
+	if r := pruneRow(t, quietPrune(t, repo, worktree.PruneOptions{}), "fresh"); r.Outcome == worktree.OutcomeQuiet {
+		t.Fatalf("a worktree created an hour ago is offered as quiet: %+v", r)
+	}
+}
+
+// TestTheDossierNamesIgnoredFilesARemovalDrops: git status lists no ignored
+// file, but removing the worktree deletes them, and only the local tier is
+// archived; so the dossier counts the ignored paths outside the tier and the
+// recommendation says they go with it.
+func TestTheDossierNamesIgnoredFilesARemovalDrops(t *testing.T) {
+	repo, _ := pruneFixture(t)
+	idle := addToLane(t, repo, "idle")
+	exclude := filepath.Join(repo.Root(), ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exclude, []byte("*.local\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now()
+	touchAt(t, idle, "env.local", old)
+	if err := os.MkdirAll(filepath.Join(idle, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	touchAt(t, idle, ".abcd/.work.local/NEXT.md", old)
+
+	r := pruneRow(t, quietPrune(t, repo, worktree.PruneOptions{}), "idle")
+	if r.Outcome != worktree.OutcomeQuiet || r.Dossier == nil {
+		t.Fatalf("the idle worktree is a quiet candidate: %+v", r)
+	}
+	if got := r.Dossier.Ignored; got.Count != 1 || len(got.Paths) != 1 || got.Paths[0] != "env.local" {
+		t.Errorf("ignored = %+v, want env.local alone (the tier is archived, not dropped)", got)
+	}
+	if !strings.Contains(r.Dossier.Recommendation, "ignored") {
+		t.Errorf("the recommendation does not say the ignored files go with it: %q", r.Dossier.Recommendation)
+	}
+}
+
+// TestTheDossierSaysWhenTheBranchHistoryCouldNotBeRead: with no default
+// branch to measure against, the dossier cannot count the branch's own
+// commits, so its recommendation says so rather than read as nothing to lose.
+func TestTheDossierSaysWhenTheBranchHistoryCouldNotBeRead(t *testing.T) {
+	repo, _ := pruneFixture(t)
+	idle := addToLane(t, repo, "idle")
+	commitIn(t, repo, idle, "work.txt", "work\n")
+	repo.Git("branch", "-m", "main", "mainline")
+
+	r := pruneRow(t, quietPrune(t, repo, worktree.PruneOptions{}), "idle")
+	if r.Outcome != worktree.OutcomeQuiet || r.Dossier == nil {
+		t.Fatalf("the idle worktree is a quiet candidate: %+v", r)
+	}
+	if !strings.Contains(r.Dossier.Recommendation, "could not be read") {
+		t.Errorf("the recommendation reads as nothing to lose: %q", r.Dossier.Recommendation)
+	}
+}

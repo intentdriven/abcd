@@ -632,3 +632,27 @@ func TestAhoyWorktreeAddStopsACheckoutPastItsBound(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestAhoyWorktreePruneDossierShowsIgnoredFiles: the dossier's dirty line
+// reads "none" for a tree whose only files are ignored, so a line of its own
+// says what a removal deletes unarchived.
+func TestAhoyWorktreePruneDossierShowsIgnoredFiles(t *testing.T) {
+	repo := worktreeFixture(t)
+	idle := laneWorktree(t, repo, "idle")
+	exclude := filepath.Join(repo.Root(), ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exclude, []byte("*.local\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(idle, "env.local"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	worktreeDaysOn(t, 15)
+
+	out, _ := runWorktree(t, false, "prune")
+	if !strings.Contains(out, "ignored: 1 removed with it, unarchived: env.local") {
+		t.Fatalf("the dossier does not name the ignored file a removal deletes:\n%s", out)
+	}
+}

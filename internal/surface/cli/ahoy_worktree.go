@@ -286,6 +286,13 @@ func renderDossier(w io.Writer, d worktree.Dossier) {
 		}
 	}
 	fmt.Fprintf(w, "      dirty: %s\n", dirty)
+	if n := d.Ignored.Count; n > 0 {
+		line := fmt.Sprintf("%d removed with it, unarchived: %s", n, strings.Join(d.Ignored.Paths, ", "))
+		if more := n - len(d.Ignored.Paths); more > 0 {
+			line += fmt.Sprintf(" and %d more", more)
+		}
+		fmt.Fprintf(w, "      ignored: %s\n", line)
+	}
 	fmt.Fprintf(w, "      commits: %d not on the default branch\n", d.Commits)
 	for _, s := range d.Subjects {
 		fmt.Fprintf(w, "        %s\n", s)

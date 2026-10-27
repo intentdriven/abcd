@@ -306,8 +306,12 @@ The report names the archive path, home-redacted.
 
 An unmerged worktree in the lane is quiet when its last activity is older than
 the quiet window and no pull request for its branch is open (where a forge is
-reachable; without one the window alone decides) (decision 3). Last activity is
-the later of the branch tip's committer date and the newest modification time of
+reachable; without one the window alone decides) (decision 3). A worktree on a
+detached HEAD is never quiet: its commits may be on no branch, and a removal
+drops the HEAD reflog that is their last reference. Last activity is the latest
+of the branch tip's committer date, the modification time of the worktree's
+`.git` link file (written when the worktree is added, so a checkout added from
+an old tip is as recent as its creation), and the newest modification time of
 the files `git status` reports changed or untracked. The window is the layered
 configuration key `worktrees.quiet_days` in `.abcd/config.json`, read through
 `internal/core/layered` (the repository file, then `~/.abcd.noindex/config.json`, then
@@ -316,12 +320,15 @@ misspelt key or a value below 1 is refused naming its file, never replaced by
 the default.
 
 Prune lists each quiet candidate with a dossier, in this order: its dirty state
-first (counts of modified and untracked files, and the first paths), the
-subjects of the branch's commits not on the default branch, a diff summary
+first (counts of modified and untracked files, and the first paths), the paths
+git ignores outside the local tier (a removal deletes them, and only the tier is
+archived), the subjects of the branch's commits not on the default branch, a diff summary
 (`--shortstat` from the merge base), the record ids the subjects and changed
 paths cite, its last activity, and a recommendation ("commit or discard the
-changes, then name it", "reclaim with `prune --yes <name>`", or "open a pull
-request if the work is wanted"). A candidate is left in place unless named with
+changes, then name it", "reclaim with `prune --yes <name>`", "open a pull
+request if the work is wanted", or, when the branch's commits could not be
+read, "check its branch for work first"), which names any ignored paths that go
+with it. A candidate is left in place unless named with
 `--yes <name>` (repeatable); the core never prompts. A named candidate takes the
 same archive step and the same refusals as a merged worktree, a dirty tree
 included, so uncommitted work stays until the person commits or discards it.

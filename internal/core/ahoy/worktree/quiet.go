@@ -87,6 +87,9 @@ type Dossier struct {
 	Diff string `json:"diff"`
 	// Records are the record ids the subjects and changed paths cite.
 	Records []string `json:"records"`
+	// Ignored is what git ignores in the worktree outside the local tier: a
+	// removal deletes it, and only the tier is archived.
+	Ignored IgnoredState `json:"ignored"`
 	// LastActivity is when the worktree was last active, in UTC.
 	LastActivity   string `json:"last_activity"`
 	Recommendation string `json:"recommendation"`
@@ -98,6 +101,13 @@ type DirtyState struct {
 	Modified  int      `json:"modified"`
 	Untracked int      `json:"untracked"`
 	Paths     []string `json:"paths"`
+}
+
+// IgnoredState is a candidate's ignored paths outside the local tier: the
+// count, and the first of them (a wholly ignored directory is one path).
+type IgnoredState struct {
+	Count int      `json:"count"`
+	Paths []string `json:"paths"`
 }
 
 // quietness is the quiet rule's answer for one worktree.
@@ -144,6 +154,11 @@ func lastActivity(e entry) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	last := time.Unix(secs, 0)
+	// git writes the worktree's link file when it adds the worktree, so a
+	// checkout added from an old tip is as recent as its creation.
+	if fi, err := os.Lstat(filepath.Join(e.path, ".git")); err == nil && fi.ModTime().After(last) {
+		last = fi.ModTime()
+	}
 	for _, st := range e.status {
 		fi, err := os.Lstat(filepath.Join(e.path, filepath.FromSlash(strings.TrimSuffix(st.Path, "/"))))
 		if err != nil {
@@ -183,6 +198,7 @@ func notQuiet(e entry, q quietness, days int) string {
 func dossierFor(repoRoot string, e entry, q quietness) *Dossier {
 	d := &Dossier{Subjects: []string{}, Records: []string{}, LastActivity: q.last.UTC().Format(time.RFC3339)}
 	d.Dirty.Paths = []string{}
+	d.Ignored.Paths = []string{}
 	cited := map[string]bool{}
 	for _, st := range e.status {
 		if st.XY == "??" {
@@ -195,9 +211,11 @@ func dossierFor(repoRoot string, e entry, q quietness) *Dossier {
 		}
 		cite(cited, st.Path)
 	}
+	historyRead := false
 	if def := gitutil.DefaultRef(repoRoot); def != "" {
-		branchHistory(e.path, def, d, cited)
+		historyRead = branchHistory(e.path, def, d, cited)
 	}
+	ignoredOutsideTier(e.path, d)
 	for id := range cited {
 		d.Records = append(d.Records, id)
 	}
@@ -205,14 +223,38 @@ func dossierFor(repoRoot string, e entry, q quietness) *Dossier {
 	if len(d.Records) > dossierRecords {
 		d.Records = d.Records[:dossierRecords]
 	}
-	d.Recommendation = recommend(e, d)
+	d.Recommendation = recommend(e, d, historyRead)
 	return d
 }
 
+// ignoredOutsideTier fills d.Ignored with what git ignores in the worktree at
+// dir, less the local tier, which the archive keeps. A listing git refuses
+// leaves it empty, as every dossier read that fails does.
+func ignoredOutsideTier(dir string, d *Dossier) {
+	paths, err := gitutil.IgnoredUnder(dir, ".")
+	if err != nil {
+		return
+	}
+	for _, p := range paths {
+		if p == tierRel+"/" || strings.HasPrefix(p, tierRel+"/") || p == ".abcd/" {
+			continue
+		}
+		d.Ignored.Count++
+		if len(d.Ignored.Paths) < dossierPaths {
+			d.Ignored.Paths = append(d.Ignored.Paths, termsafe.Sanitize(p))
+		}
+	}
+}
+
 // branchHistory fills d with the branch's commits not on def, the diff
-// summary from the merge base, and the records they cite.
-func branchHistory(dir, def string, d *Dossier, cited map[string]bool) {
-	if subjects, err := gitutil.RunCappedAsStored(dir, subjectsCap, "log", "--format=%s", def+"..HEAD", "--"); err == nil && subjects != "" {
+// summary from the merge base, and the records they cite, and says whether
+// the commits could be read at all.
+func branchHistory(dir, def string, d *Dossier, cited map[string]bool) bool {
+	subjects, err := gitutil.RunCappedAsStored(dir, subjectsCap, "log", "--format=%s", def+"..HEAD", "--")
+	if err != nil {
+		return false
+	}
+	if subjects != "" {
 		lines := strings.Split(subjects, "\n")
 		d.Commits = len(lines)
 		for i, s := range lines {
@@ -224,7 +266,7 @@ func branchHistory(dir, def string, d *Dossier, cited map[string]bool) {
 	}
 	base, err := gitutil.Run(dir, "merge-base", def, "HEAD")
 	if err != nil || !gitutil.IsFullSHA(base) {
-		return
+		return true
 	}
 	if stat, err := asStored(dir, "", shortstatCap, "diff", "--shortstat", "--no-ext-diff", "--no-textconv", base, "HEAD", "--"); err == nil {
 		d.Diff = termsafe.Sanitize(strings.TrimSpace(stat))
@@ -234,6 +276,7 @@ func branchHistory(dir, def string, d *Dossier, cited map[string]bool) {
 			cite(cited, p)
 		}
 	}
+	return true
 }
 
 // cite adds each record id text carries to cited, in its lower-case
@@ -255,16 +298,26 @@ func cite(cited map[string]bool, text string) {
 }
 
 // recommend is the dossier's next step: uncommitted work first, since a
-// named candidate holding it is kept; then a branch with work of its own,
-// which a removal leaves standing as a branch; then a worktree with nothing
-// to lose.
-func recommend(e entry, d *Dossier) string {
+// named candidate holding it is kept; then a branch whose history could not
+// be read, which may hold work; then a branch with work of its own, which a
+// removal leaves standing as a branch; then a worktree with nothing to lose.
+// Ignored files outside the tier are named last, since a removal deletes
+// them unarchived whichever step applies.
+func recommend(e entry, d *Dossier, historyRead bool) string {
 	yes := "`abcd ahoy worktree prune --yes " + termsafe.Sanitize(e.name) + "`"
+	var next string
 	switch {
 	case !e.clean:
-		return "commit or discard the changes, then name it with " + yes
+		next = "commit or discard the changes, then name it with " + yes
+	case !historyRead:
+		next = "its branch's history could not be read, so check its branch for work first; then name it with " + yes + " (its branch stays)"
 	case d.Commits > 0:
-		return "open a pull request if the work is wanted; otherwise reclaim with " + yes + " (its branch stays)"
+		next = "open a pull request if the work is wanted; otherwise reclaim with " + yes + " (its branch stays)"
+	default:
+		next = "reclaim with " + yes
 	}
-	return "reclaim with " + yes
+	if d.Ignored.Count > 0 {
+		next += fmt.Sprintf("; %d ignored path(s) go with it, unarchived, so copy any you need first", d.Ignored.Count)
+	}
+	return next
 }
