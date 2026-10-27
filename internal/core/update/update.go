@@ -15,7 +15,6 @@ package update
 import (
 	"bytes"
 	"crypto/sha256"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/xml"
@@ -318,19 +317,16 @@ const (
 	maxAtomBytes      = 1 << 20 // 1 MiB: the releases atom feed
 	maxAssetBytes     = 1 << 28 // 256 MiB: far above any abcd binary
 	fetchTimeout      = 5 * time.Minute
-	maxRedirects      = 8
 )
 
 // Updater fetches and applies releases from one pinned origin.
 type Updater struct {
-	origin       string // e.g. https://github.com/intentdriven/abcd — no trailing slash
-	assetName    string // abcd-<goos>-<arch>
-	allowHTTP    bool   // test seam: the shipping constructor never sets it
-	client       *http.Client
-	latest       vintage.ReleaseFetcher // nil: bare ResolveTag("") refuses
-	redirectHost map[string]bool
-	envIgnored   []string // proxy/CA overrides scrubbed at construction, for the receipt
-	provenanceN  int      // how many recent releases to walk to prove a target file
+	origin      string                 // e.g. https://github.com/intentdriven/abcd — no trailing slash
+	assetName   string                 // abcd-<goos>-<arch>
+	dl          *urlguard.Download     // the one download rule, tools' too
+	latest      vintage.ReleaseFetcher // nil: bare ResolveTag("") refuses
+	envIgnored  []string               // proxy/CA overrides scrubbed at construction, for the receipt
+	provenanceN int                    // how many recent releases to walk to prove a target file
 	// provenance verifies the downloaded asset's build provenance before the
 	// swap. nil refuses every swap: there is no unverified path.
 	provenance provenanceVerifier
@@ -341,13 +337,21 @@ type Updater struct {
 const releaseOrigin = core.ReleaseOrigin
 
 // NewGitHubUpdater builds the updater as it ships: the pinned origin, the
-// full urlguard policy, and GitHub's own asset hosts as the only legal
-// redirect targets.
+// full urlguard policy, and GitHub's own asset hosts as the only other hosts
+// a download may reach.
 func NewGitHubUpdater() *Updater {
 	u := newUpdater(releaseOrigin, urlguard.BlockedIP, "abcd-"+runtime.GOOS+"-"+runtime.GOARCH, false, vintage.NewGitHubReleaseFetcher())
-	u.redirectHost["objects.githubusercontent.com"] = true
-	u.redirectHost["release-assets.githubusercontent.com"] = true
+	u.allowAssetHosts()
 	return u
+}
+
+// assetHosts are the hosts GitHub redirects a release download to.
+var assetHosts = []string{"objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+
+func (u *Updater) allowAssetHosts() {
+	for _, h := range assetHosts {
+		u.dl.AllowHost(h)
+	}
 }
 
 // newUpdater is the test-reachable constructor: explicit origin, address
@@ -383,53 +387,18 @@ func newUpdater(origin string, blocked func(net.IP) bool, assetName string, allo
 // environment. ignored names the overrides that were set, for the receipt.
 func buildUpdater(origin string, blocked func(net.IP) bool, assetName string, allowHTTP bool, latest vintage.ReleaseFetcher,
 	ignored []string, rootCAs *x509.CertPool) *Updater {
-	parsed, _ := url.Parse(origin)
-	hosts := map[string]bool{}
-	if parsed != nil {
-		hosts[parsed.Host] = true
+	var hosts []string
+	if parsed, _ := url.Parse(origin); parsed != nil {
+		hosts = append(hosts, parsed.Host)
 	}
-	u := &Updater{
-		origin:       strings.TrimRight(origin, "/"),
-		assetName:    assetName,
-		allowHTTP:    allowHTTP,
-		latest:       latest,
-		redirectHost: hosts,
-		envIgnored:   ignored,
-		provenanceN:  12,
+	return &Updater{
+		origin:      strings.TrimRight(origin, "/"),
+		assetName:   assetName,
+		dl:          urlguard.NewDownload(blocked, allowHTTP, fetchTimeout, rootCAs, hosts...),
+		latest:      latest,
+		envIgnored:  ignored,
+		provenanceN: 12,
 	}
-	dialer := &net.Dialer{Timeout: fetchTimeout}
-	if blocked != nil {
-		dialer.Control = urlguard.DialControl(blocked)
-	}
-	u.client = &http.Client{
-		Timeout: fetchTimeout,
-		Transport: &http.Transport{
-			// Proxy is nil BY CONSTRUCTION: the environment never chooses
-			// where this client connects.
-			Proxy:               nil,
-			DialContext:         dialer.DialContext,
-			TLSHandshakeTimeout: 30 * time.Second,
-			TLSClientConfig:     &tls.Config{RootCAs: rootCAs},
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= maxRedirects {
-				return errors.New("too many redirects")
-			}
-			if req.URL.Scheme != "https" && !u.allowHTTP {
-				return errors.New("redirect left https: " + req.URL.Redacted())
-			}
-			if !u.redirectHost[req.URL.Host] {
-				return errors.New("redirect to a host outside the release origin: " + req.URL.Host)
-			}
-			if blocked != nil {
-				if err := urlguard.CheckHostWith(req.URL.Hostname(), blocked); err != nil {
-					return fmt.Errorf("redirect refused: %w", err)
-				}
-			}
-			return nil
-		},
-	}
-	return u
 }
 
 // ResolveTag validates an explicit tag, or resolves `releases/latest` when
@@ -827,36 +796,6 @@ func setOverrides() []string {
 	return set
 }
 
-// caOverrides are the scrubbed variables crypto/x509 reads when it loads the
-// system root pool.
-var caOverrides = []string{"SSL_CERT_FILE", "SSL_CERT_DIR"}
-
-// overrideFreeRoots loads the system root pool with the CA overrides out of
-// the environment for the load alone, then puts back exactly what it took out,
-// so a caller that is not the updater leaves its process environment as it
-// found it. crypto/x509 loads that pool once per process: when this is the
-// first load, the process's default pool ignores the overrides from then on
-// too, while the variables stay set for anything the process starts. A nil
-// pool (SystemCertPool error) falls back to the platform default.
-func overrideFreeRoots() *x509.CertPool {
-	taken := map[string]string{}
-	for _, name := range caOverrides {
-		if v, ok := os.LookupEnv(name); ok {
-			taken[name] = v
-			os.Unsetenv(name)
-		}
-	}
-	defer func() {
-		for name, v := range taken {
-			os.Setenv(name, v)
-		}
-	}()
-	if pool, err := x509.SystemCertPool(); err == nil {
-		return pool
-	}
-	return nil
-}
-
 func (u *Updater) assetURL(tag, name string) string {
 	return u.origin + "/releases/download/" + url.PathEscape(tag) + "/" + url.PathEscape(name)
 }
@@ -891,17 +830,18 @@ func (e *notFoundError) Error() string { return "not found: " + e.url }
 
 // get performs one bounded GET under the pinned transport.
 func (u *Updater) get(rawURL string, limit int64) (io.ReadCloser, int64, error) {
-	return u.getWith(rawURL, limit, nil)
+	return getVia(u.dl, rawURL, limit, nil)
 }
 
-// getWith is get with extra request headers (the attestations API's Accept).
-func (u *Updater) getWith(rawURL string, limit int64, headers map[string]string) (io.ReadCloser, int64, error) {
+// getVia performs one bounded GET through dl, with extra request headers (the
+// attestations API's Accept).
+func getVia(dl *urlguard.Download, rawURL string, limit int64, headers map[string]string) (io.ReadCloser, int64, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, 0, err
 	}
-	if parsed.Scheme != "https" && !u.allowHTTP {
-		return nil, 0, errors.New("the release origin must be https")
+	if err := dl.Admit(parsed); err != nil {
+		return nil, 0, err
 	}
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -911,7 +851,7 @@ func (u *Updater) getWith(rawURL string, limit int64, headers map[string]string)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := u.client.Do(req)
+	resp, err := dl.Client.Do(req)
 	if err != nil {
 		return nil, 0, err
 	}
