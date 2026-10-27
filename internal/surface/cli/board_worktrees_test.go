@@ -13,7 +13,7 @@ import (
 )
 
 // boardWorktreesRow is the line criterion 17 names, at its label's width.
-const boardWorktreesRow = "  worktrees:  2 in the store, 1 reclaimable (`abcd ahoy worktree prune`)"
+const boardWorktreesRow = "  worktrees:  2 in the store, 1 can be cleared (`abcd ahoy worktree prune`)"
 
 // TestTheBoardCountsTheWorktreesTheLaneHolds is spc-2609301811532881 step 6
 // (criterion 17): the board carries one worktrees line, held and reclaimable,
@@ -71,7 +71,7 @@ func TestTheBoardCountsTheWorktreesTheLaneHolds(t *testing.T) {
 		*wt.Held != 2 || *wt.Reclaimable != 1 {
 		t.Fatalf("the board's worktrees member = %s, want held 2, reclaimable 1", board["worktrees"])
 	}
-	if st := string(board["status"]); st == "" || strings.Contains(st, "worktree") || strings.Contains(st, "reclaimable") {
+	if st := string(board["status"]); st == "" || strings.Contains(st, "worktree") || strings.Contains(st, "reclaimable") || strings.Contains(st, "can be cleared") {
 		t.Fatalf("the status block the site renders must not carry the worktrees member: %s", st)
 	}
 

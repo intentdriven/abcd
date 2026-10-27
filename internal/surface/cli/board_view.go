@@ -85,7 +85,7 @@ func boardRows(st core.StatusInfo, b boardOutput) []board.Row {
 			countOf(b.Peers.IDs, "record"), countOf(b.Peers.Live, "live peer"))})
 	}
 	if b.Worktrees != nil {
-		rows = append(rows, board.Row{Label: "worktrees", Text: fmt.Sprintf("%d in the store, %d reclaimable (`abcd ahoy worktree prune`)",
+		rows = append(rows, board.Row{Label: "worktrees", Text: fmt.Sprintf("%d in the store, %d can be cleared (`abcd ahoy worktree prune`)",
 			b.Worktrees.Held, b.Worktrees.Reclaimable)})
 	}
 	if b.Inbox != nil {

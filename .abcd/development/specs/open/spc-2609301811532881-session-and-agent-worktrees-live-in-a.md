@@ -335,7 +335,7 @@ name; an active one is not quiet).
 The `/abcd` board's `boardPeers` already runs `peers.Scan` for the checkout.
 The scan is run once and feeds two members: `peers`, unchanged, and a new
 `worktrees` member, `{"held": N, "reclaimable": M}`, rendered as one text line
-("worktrees: N in the store, M reclaimable (`abcd ahoy worktree prune`)") and
+("worktrees: N in the store, M can be cleared (`abcd ahoy worktree prune`)") and
 omitted when N is 0. `peers.Report` gains an accessor listing each linked
 worktree its scan saw, with its path and whether the scan judged it spent
 (merged by ancestry, record folders clean); the board counts those whose real
@@ -444,7 +444,7 @@ worktree rather than loses one; none changes a criterion.
 
 ## Open point
 
-_None open._ The board's "reclaimable" is the peers scan's judgement, not prune's: it can miss a squash-merged branch and can count a locked or freshly cut worktree. The product thinker ruled on 2026-09-30 that the line keeps the words "can be cleared" as an estimate, and that prune's own report is the authority on what was cleared.
+_None open._ The board's "can be cleared" count is the peers scan's judgement, not prune's: it can miss a squash-merged branch and can count a locked or freshly cut worktree. The product thinker ruled on 2026-09-30 that the line keeps the words "can be cleared" as an estimate, and that prune's own report is the authority on what was cleared. The `--json` member keeps the field name `reclaimable`.
 
 ## Footprint
 
