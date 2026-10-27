@@ -30,3 +30,11 @@ func SwapOwnerForTest(fn func(path string) (uint32, error)) (restore func()) {
 	ownerOf = fn
 	return func() { ownerOf = prev }
 }
+
+// SwapIgnoredForTest replaces the ignored-path listing for one test, so a test
+// can stand in for a git that refuses it.
+func SwapIgnoredForTest(fn func(root, rel string) ([]string, error)) (restore func()) {
+	prev := ignoredUnder
+	ignoredUnder = fn
+	return func() { ignoredUnder = prev }
+}

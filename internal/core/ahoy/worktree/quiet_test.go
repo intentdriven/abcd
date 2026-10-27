@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // Quiet candidates (spc-2609301811532881, step 5; criterion 11): an unmerged
@@ -394,6 +395,59 @@ func TestTheDossierNamesIgnoredFilesARemovalDrops(t *testing.T) {
 	}
 	if !strings.Contains(r.Dossier.Recommendation, "ignored") {
 		t.Errorf("the recommendation does not say the ignored files go with it: %q", r.Dossier.Recommendation)
+	}
+}
+
+// TestTheDossierCountsRecordsInAWhollyIgnoredAbcd: where .abcd/ is ignored as
+// a whole, git lists it as one path; the records beside the local tier still
+// go with a removal, so the dossier counts them.
+func TestTheDossierCountsRecordsInAWhollyIgnoredAbcd(t *testing.T) {
+	repo, _ := pruneFixture(t)
+	idle := addToLane(t, repo, "idle")
+	exclude := filepath.Join(repo.Root(), ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exclude, []byte(".abcd/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now()
+	for _, dir := range []string{".abcd/.work.local", ".abcd/work/decisions"} {
+		if err := os.MkdirAll(filepath.Join(idle, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	touchAt(t, idle, ".abcd/.work.local/NEXT.md", old)
+	touchAt(t, idle, ".abcd/work/decisions/dcn-1.md", old)
+
+	r := pruneRow(t, quietPrune(t, repo, worktree.PruneOptions{}), "idle")
+	if r.Outcome != worktree.OutcomeQuiet || r.Dossier == nil {
+		t.Fatalf("the idle worktree is a quiet candidate: %+v", r)
+	}
+	if got := r.Dossier.Ignored; got.Count != 1 || len(got.Paths) != 1 || got.Paths[0] != ".abcd/work/" {
+		t.Errorf("ignored = %+v, want .abcd/work/ alone (the tier is archived, not dropped)", got)
+	}
+}
+
+// TestTheDossierSaysWhenTheIgnoredFilesCouldNotBeListed: a git that refuses
+// the listing leaves the count saying nothing, so the recommendation says so
+// rather than read as nothing ignored.
+func TestTheDossierSaysWhenTheIgnoredFilesCouldNotBeListed(t *testing.T) {
+	repo, _ := pruneFixture(t)
+	addToLane(t, repo, "idle")
+	defer worktree.SwapIgnoredForTest(func(string, string) ([]string, error) {
+		return nil, gitutil.ErrLazyFetchFloor
+	})()
+
+	r := pruneRow(t, quietPrune(t, repo, worktree.PruneOptions{}), "idle")
+	if r.Outcome != worktree.OutcomeQuiet || r.Dossier == nil {
+		t.Fatalf("the idle worktree is a quiet candidate: %+v", r)
+	}
+	if !r.Dossier.Ignored.Unread {
+		t.Errorf("ignored = %+v, want it marked unread", r.Dossier.Ignored)
+	}
+	if !strings.Contains(r.Dossier.Recommendation, "could not be listed") {
+		t.Errorf("the recommendation reads as nothing ignored: %q", r.Dossier.Recommendation)
 	}
 }
 

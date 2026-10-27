@@ -656,3 +656,13 @@ func TestAhoyWorktreePruneDossierShowsIgnoredFiles(t *testing.T) {
 		t.Fatalf("the dossier does not name the ignored file a removal deletes:\n%s", out)
 	}
 }
+
+// TestRenderDossierSaysWhenTheIgnoredFilesCouldNotBeListed: an unread listing
+// prints as such, never as a dossier with no ignored line.
+func TestRenderDossierSaysWhenTheIgnoredFilesCouldNotBeListed(t *testing.T) {
+	var b strings.Builder
+	renderDossier(&b, worktree.Dossier{Ignored: worktree.IgnoredState{Unread: true}})
+	if !strings.Contains(b.String(), "ignored: could not be listed") {
+		t.Fatalf("the dossier does not say its ignored files could not be listed:\n%s", b.String())
+	}
+}

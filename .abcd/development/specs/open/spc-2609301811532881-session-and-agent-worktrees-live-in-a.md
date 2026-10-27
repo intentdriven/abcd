@@ -328,7 +328,8 @@ paths cite, its last activity, and a recommendation ("commit or discard the
 changes, then name it", "reclaim with `prune --yes <name>`", "open a pull
 request if the work is wanted", or, when the branch's commits could not be
 read, "check its branch for work first"), which names any ignored paths that go
-with it. A candidate is left in place unless named with
+with it (a wholly ignored `.abcd/` counted by its entries beside the local tier),
+or says they could not be listed when git refuses the listing. A candidate is left in place unless named with
 `--yes <name>` (repeatable); the core never prompts. A named candidate takes the
 same archive step and the same refusals as a merged worktree, a dirty tree
 included, so uncommitted work stays until the person commits or discards it.

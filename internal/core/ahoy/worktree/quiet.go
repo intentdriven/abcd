@@ -105,9 +105,11 @@ type DirtyState struct {
 
 // IgnoredState is a candidate's ignored paths outside the local tier: the
 // count, and the first of them (a wholly ignored directory is one path).
+// Unread says git refused the listing, so the count says nothing.
 type IgnoredState struct {
-	Count int      `json:"count"`
-	Paths []string `json:"paths"`
+	Count  int      `json:"count"`
+	Paths  []string `json:"paths"`
+	Unread bool     `json:"unread"`
 }
 
 // quietness is the quiet rule's answer for one worktree.
@@ -228,21 +230,47 @@ func dossierFor(repoRoot string, e entry, q quietness) *Dossier {
 }
 
 // ignoredOutsideTier fills d.Ignored with what git ignores in the worktree at
-// dir, less the local tier, which the archive keeps. A listing git refuses
-// leaves it empty, as every dossier read that fails does.
+// dir, less the local tier, which the archive keeps. A wholly ignored .abcd/
+// is listed by its entries, so the records beside the tier are counted. A
+// listing git refuses is marked unread rather than read as nothing ignored.
 func ignoredOutsideTier(dir string, d *Dossier) {
-	paths, err := gitutil.IgnoredUnder(dir, ".")
+	paths, err := ignoredUnder(dir, ".")
 	if err != nil {
+		d.Ignored.Unread = true
 		return
 	}
 	for _, p := range paths {
-		if p == tierRel+"/" || strings.HasPrefix(p, tierRel+"/") || p == ".abcd/" {
+		if p == ".abcd/" {
+			entries, err := os.ReadDir(filepath.Join(dir, ".abcd"))
+			if err != nil {
+				d.Ignored.Unread = true
+				continue
+			}
+			for _, en := range entries {
+				rel := ".abcd/" + en.Name()
+				if en.IsDir() {
+					rel += "/"
+				}
+				addIgnored(d, rel)
+			}
 			continue
 		}
-		d.Ignored.Count++
-		if len(d.Ignored.Paths) < dossierPaths {
-			d.Ignored.Paths = append(d.Ignored.Paths, termsafe.Sanitize(p))
-		}
+		addIgnored(d, p)
+	}
+}
+
+// ignoredUnder lists what git ignores; a test stands in for a git that
+// refuses the listing.
+var ignoredUnder = gitutil.IgnoredUnder
+
+// addIgnored counts p in d.Ignored unless it is the local tier or under it.
+func addIgnored(d *Dossier, p string) {
+	if p == tierRel+"/" || strings.HasPrefix(p, tierRel+"/") {
+		return
+	}
+	d.Ignored.Count++
+	if len(d.Ignored.Paths) < dossierPaths {
+		d.Ignored.Paths = append(d.Ignored.Paths, termsafe.Sanitize(p))
 	}
 }
 
@@ -316,7 +344,10 @@ func recommend(e entry, d *Dossier, historyRead bool) string {
 	default:
 		next = "reclaim with " + yes
 	}
-	if d.Ignored.Count > 0 {
+	switch {
+	case d.Ignored.Unread:
+		next += "; its ignored files could not be listed, and any go with it unarchived, so copy any you need first"
+	case d.Ignored.Count > 0:
 		next += fmt.Sprintf("; %d ignored path(s) go with it, unarchived, so copy any you need first", d.Ignored.Count)
 	}
 	return next

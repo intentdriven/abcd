@@ -286,7 +286,9 @@ func renderDossier(w io.Writer, d worktree.Dossier) {
 		}
 	}
 	fmt.Fprintf(w, "      dirty: %s\n", dirty)
-	if n := d.Ignored.Count; n > 0 {
+	if d.Ignored.Unread {
+		fmt.Fprintf(w, "      ignored: could not be listed; any go with it, unarchived\n")
+	} else if n := d.Ignored.Count; n > 0 {
 		line := fmt.Sprintf("%d removed with it, unarchived: %s", n, strings.Join(d.Ignored.Paths, ", "))
 		if more := n - len(d.Ignored.Paths); more > 0 {
 			line += fmt.Sprintf(" and %d more", more)
