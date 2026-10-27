@@ -172,12 +172,24 @@ func TestTheOtherReadsLeaveTheObjectStoreUntouched(t *testing.T) {
 			if _, err := Fetch(q.dir, q.opts()); err != nil {
 				t.Fatal(err)
 			}
+			// An announcement q has fetched and not yet read, so the status
+			// read's intake takes in a fresh commit and names the tree to
+			// read it against. A plain git fetch brings it: FetchStatus would
+			// take it in itself, leaving the read nothing fresh.
+			if _, err := p.announce("merging", "#1012"); err != nil {
+				t.Fatal(err)
+			}
+			runGit(t, q.dir, "fetch", "-q", Remote, "+"+StatusRefPrefix+"*:"+StatusTrackingPrefix+"*")
 			objects := filepath.Join(q.dir, ".git", "objects")
 			for name, read := range map[string]func(){
 				"keepFirstFetched": func() { keepFirstFetched(q.dir, w.clock(), nil) },
 				"ReadStatus": func() {
-					if _, err := ReadStatus(context.Background(), q.dir, w.clock(), q.opts()); err != nil {
+					v, err := ReadStatus(context.Background(), q.dir, w.clock(), q.opts())
+					if err != nil {
 						t.Fatal(err)
+					}
+					if len(v.Announcements) != 1 {
+						t.Fatalf("the status read took in %d announcements; want the one fetched", len(v.Announcements))
 					}
 				},
 			} {
