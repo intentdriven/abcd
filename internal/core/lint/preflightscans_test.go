@@ -179,20 +179,20 @@ func TestVulncheckRunsCIsVersionAndPassesAClearModule(t *testing.T) {
 	}
 }
 
-// TestVulncheckSaysAFindingStandsOnTheDefaultBranch: a branch that changes
+// TestVulncheckWarnsOfAFindingTheForkPointCarries: a branch that changes
 // neither go.mod nor go.sum, whose fork point's tree reports the same
 // vulnerability, did not bring the finding in, and govulncheck is not a
-// required check, so the scan warns that the finding stands on the default
-// branch, names each fix, and does not stop a preflight no branch cut from
-// there could pass.
-func TestVulncheckSaysAFindingStandsOnTheDefaultBranch(t *testing.T) {
+// required check, so the scan warns, says to rebase first if the default
+// branch has moved (it may hold the fix), names each fix, and does not stop a
+// preflight no branch cut from there could pass.
+func TestVulncheckWarnsOfAFindingTheForkPointCarries(t *testing.T) {
 	r := newScanRepo(t, false)
 	r.stub("go", govulncheckFinding)
 	code, out := r.run("vulncheck")
 	if code != 0 {
 		t.Fatalf("a finding the branch did not bring in: exit %d, want 0\n%s", code, out)
 	}
-	for _, want := range []string{"WARNING", "origin/main", "neither go.mod nor go.sum", "fork point", "net/http@go1.26.10"} {
+	for _, want := range []string{"WARNING", "origin/main", "neither go.mod nor go.sum", "fork point", "rebase first", "net/http@go1.26.10"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the refusal does not say %q:\n%s", want, out)
 		}
