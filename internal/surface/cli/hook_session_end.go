@@ -111,7 +111,7 @@ func placePendingNotices() []string {
 			termsafe.Sanitize(fsutil.RedactHome(err.Error()))))
 	}
 	for _, d := range res.Dropped {
-		notices = append(notices, fmt.Sprintf("abcd history: session %s ended in %s, which is in no repository, so its transcript was not captured and its raw copy was deleted.",
+		notices = append(notices, fmt.Sprintf("abcd history: session %s ended in %s, which is in no repository with a commit, so its transcript was not captured and its raw copy was deleted.",
 			termsafe.Sanitize(d.SessionID), termsafe.Sanitize(fsutil.RedactHome(d.Cwd))))
 	}
 	for _, u := range res.Unplaced {

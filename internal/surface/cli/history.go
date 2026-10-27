@@ -284,7 +284,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			pending, _ := history.ListPending()
 			notes := func(w io.Writer) {
 				if len(pending) > 0 {
-					fmt.Fprintf(w, "\nNOTE: %d ended session transcript(s) on this machine are not yet filed in any repository's store; `abcd history drain` or the next session start files them.\n", len(pending))
+					fmt.Fprintf(w, "\nNOTE: %d ended session transcript(s) on this machine are not yet filed in any repository's store; `abcd history drain` or the next session start files each one it can, and names any it cannot, which `abcd history discard --pending <file> --yes` removes.\n", len(pending))
 				}
 				if hasGap {
 					fmt.Fprintf(w, "\nNOTE: this harness fired %s %d time(s) without an agent_transcript_path (first %s). No sub-agent transcript can be captured on it, so an empty sub-agent corpus here is the harness, not the sessions.\n",
