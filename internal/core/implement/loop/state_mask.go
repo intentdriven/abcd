@@ -40,6 +40,7 @@ func (st State) masked() State {
 	st.RunID, st.Key, st.Intent, st.Spec = line(st.RunID), line(st.Key), line(st.Intent), line(st.Spec)
 	st.Driver = Driver(line(string(st.Driver)))
 	st.Pace = maskPtr(st.Pace, Pace.masked)
+	st.Review = maskPtr(st.Review, ReviewSet.masked)
 	st.Pick = maskPtr(st.Pick, RunPick.masked)
 	st.Lanes = maskEach(st.Lanes, Lane.masked)
 	st.Waiting = maskEach(st.Waiting, func(w Waiting) Waiting {
@@ -140,6 +141,25 @@ func (p Pace) masked() Pace {
 		v.Layer, v.Origin = line(v.Layer), line(v.Origin)
 	}
 	return p
+}
+
+// masked is State.masked for the review set a run started on.
+func (rs ReviewSet) masked() ReviewSet {
+	rs.MaxReviewers.Layer, rs.MaxReviewers.Origin = line(rs.MaxReviewers.Layer), line(rs.MaxReviewers.Origin)
+	rs.Roles = maskEach(rs.Roles, func(r RoleReviewers) RoleReviewers {
+		r.Role, r.Layer, r.Origin = line(r.Role), line(r.Layer), line(r.Origin)
+		r.Reviewers = maskEach(r.Reviewers, func(c ReviewClass) ReviewClass {
+			c.Class, c.Model, c.MapLayer, c.MapOrigin = line(c.Class), line(c.Model), line(c.MapLayer), line(c.MapOrigin)
+			return c
+		})
+		return r
+	})
+	rs.Judge = maskPtr(rs.Judge, func(j ReviewJudge) ReviewJudge {
+		j.Class, j.Model, j.MapLayer, j.MapOrigin = line(j.Class), line(j.Model), line(j.MapLayer), line(j.MapOrigin)
+		j.Layer, j.Origin = line(j.Layer), line(j.Origin)
+		return j
+	})
+	return rs
 }
 
 // masked is State.masked for the pick a run was started from. Its entry is

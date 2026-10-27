@@ -274,7 +274,7 @@ func TestAManagedReleaseIsPublishedByIdOnceItsAssetsAreDist(t *testing.T) {
 func TestAbcdsDraftIsHandedOnByItsId(t *testing.T) {
 	requireJQ(t)
 	script := stepScript(t, AbcdSubstitutions(), "Create the draft GitHub Release with the binaries")
-	bin := map[string]string{"bin/abcd-linux-amd64": "linux", "bin/abcd-plugin-v1.2.3.zip": "zip", "bin/checksums.txt": "sums"}
+	bin := map[string]string{"bin/abcd-linux-amd64": "linux", "bin/abcd-plugin-v1.2.3.zip": "zip", "bin/install.sh": "installer", "bin/checksums.txt": "sums"}
 
 	r := runDraftStep(t, script, "v1.2.3", bin, []map[string]any{published(100, "v1.2.2")}, nil)
 	if r.err != nil {
@@ -328,9 +328,9 @@ func TestAbcdsDraftAssetsAreCheckedOnEveryRepository(t *testing.T) {
 	}
 
 	bin := map[string]string{
-		"bin/abcd-linux-amd64": "linux", "bin/abcd-plugin-v1.2.3.zip": "zip", "bin/checksums.txt": "sums", "extra/notes.txt": "notes",
+		"bin/abcd-linux-amd64": "linux", "bin/abcd-plugin-v1.2.3.zip": "zip", "bin/install.sh": "installer", "bin/checksums.txt": "sums", "extra/notes.txt": "notes",
 	}
-	const create = `gh release create "$TAG" bin/abcd-* bin/checksums.txt --draft
+	const create = `gh release create "$TAG" bin/abcd-* bin/install.sh bin/checksums.txt --draft
 RELEASE_ID=4242 RUNNER_TEMP="$PWD/.runner-temp"
 `
 	cases := []struct {
@@ -342,7 +342,7 @@ RELEASE_ID=4242 RUNNER_TEMP="$PWD/.runner-temp"
 		{name: "an asset whose bytes differ from bin/", prefix: create + "printf x >> bin/abcd-linux-amd64\n", mention: "abcd-linux-amd64"},
 		{
 			name:    "an asset the job did not build",
-			prefix:  `gh release create "$TAG" bin/abcd-* bin/checksums.txt extra/notes.txt --draft` + "\n" + create[strings.Index(create, "\n")+1:],
+			prefix:  `gh release create "$TAG" bin/abcd-* bin/install.sh bin/checksums.txt extra/notes.txt --draft` + "\n" + create[strings.Index(create, "\n")+1:],
 			mention: "notes.txt",
 		},
 	}

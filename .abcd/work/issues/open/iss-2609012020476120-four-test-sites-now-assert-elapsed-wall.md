@@ -21,3 +21,14 @@ Four test sites now assert elapsed wall-clock time where they mean to assert beh
 - SOTA check: the testing/synctest documentation (https://pkg.go.dev/testing/synctest, read 2026-09-29) runs a test in a bubble whose time package uses a fake clock that advances only when every goroutine is durably blocked, generally available since Go 1.25; go.mod declares 1.26.7, so it costs no dependency (its Sleep helper is 1.27, outside the pin).
 - The branch draft cites a ruling not recorded on main, so landing it still waits on CA1.
 - Rejected: raising the ceilings, which keeps measuring the machine rather than the code.
+
+## Evidence: 2026-10-25
+
+Two records-only branches failed `make preflight` on wall-clock assertions alone after waiting their turn at the load gate. Load average was 12.7 on 10 cores, with four preflights and seven test processes running. The same tests failed on both branches:
+- `TestReadOwedHonoursDeadline` (autonomy): a read cut short by its 10s forge deadline was not marked incomplete;
+- `TestKeepingManyDoubtsFitsThePrompt`: 3.10s against an under-3s ceiling;
+- `TestEachForgeLookupEndsAtTheBudget`: the deadline it saw was not the budget's;
+- `TestHookSessionEndRetriesATransientRootFailure`: no time was left to retry;
+- `TestTheForgeIsAskedAboutEveryBranchInTurn` and `TestPeersListsALanesStageAndItsHoldersRecentHandBacks`: running when their packages (claim, implement/loop, surface/cli) hit the 20-minute timeout.
+
+The load gate admits one preflight's test stage at a time, but tests run outside a preflight (a session's own `go test -run …`) are not gated, so an admitted stage still runs on a saturated machine.

@@ -2647,3 +2647,18 @@ threshold). The draft was then scoped to the repositories without a queue,
 plus the local half for every repository, and the sibling keeps the hosted
 shape. A lexical near-miss at 0.3 was the only thing that found a draft with
 the same title idea, which is worth a look by the automated rung.
+
+## 2026-10-26: abcd sizes its own test admission from what it measures (product thinker, routing confirmed)
+
+The proposal: "is there a way to autonomously adjust the number of preflights depending on load?", with the earlier ask that `load.preflights` be adjusted up or down as more evidence comes in.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| admission sized from measured runs, every heavy stage metered, a short-run lane | capability | itd-2610262127138979 |
+| the person's setting is the ceiling and a repository never raises it | trust rule | already standing in the LOAD rules domain; restated in the intent, no new ADR |
+| the per-machine measurement log under `~/.abcd.noindex/` | plumbing | the brief, at planning |
+| self-optimisation of the whole setup (CPU, tokens, everything measurable) | capability | stays iss-2610241215547722; this intent is its narrowest case |
+
+Verdict at filing: FILE-AS-IS, confirmed by the product thinker ("yes, file it"). Verdict at planning: SPLIT, confirmed by the product thinker the same evening, after both pre-interview reviewers (design and feasibility; record discipline) returned SPLIT independently: itd-2610262127138979 became the first piece (a preflight waits for its turn as one whole run, a fix), with itd-2610262140595217 (the run record) and itd-2610262141001890 (the automatic count) after it; idle-slot release went to iss-2610262155232329 and the short-run lane stayed iss-2610260845422800. Typed links: the first piece builds on itd-2609231434459890 and itd-2609201925079472, and each later piece builds on and is blocked by the one before. Advisory reversal flag, confirmed by the product thinker: the count is adjusted automatically and never by hand, reversing the rule that the person writes it (the LOAD rules, dcn-2610161814279204), carried to itd-2610262141001890.
+
+Grade: the first routing did not survive. It was right that the capability is an intent, and wrong that it was one: it held two major fixes, a measurement primitive and a trust decision, the same miss as the 2026-10-24 setup entry, caught again by both reviewers. It moved once before filing, from "an intent already exists" (the person's recollection) to a new one: the nearest draft, itd-2610100704270254, budgets sub-agents by model class and does not touch preflights or load.

@@ -546,17 +546,28 @@ jobs:
         # the step below uploads, before anything is published.
         run: go run ./cmd/abcd launch archive --out bin --tag "${TAG}" --verify --repository "${GITHUB_REPOSITORY}"
 
-      - name: Generate checksums.txt over the four binaries and the plugin archive
-        # Hash the exact binaries and the archive above into a sha256sum-format
-        # manifest, uploaded as a release asset. No rebuild — the bytes hashed here
-        # are the bytes uploaded below.
+      - name: Stage the installer script beside the binaries
+        # install.sh is site-src/install.sh.tmpl from the released commit, copied
+        # byte for byte, so `curl -fsSL …/releases/latest/download/install.sh | sh`
+        # runs the installer reviewed in that commit (iss-2610240827243654). It
+        # lands in bin/ AFTER the VCS-stamp check (it is not a binary) and BEFORE
+        # the manifest, so it is checksummed, attested, uploaded and verified
+        # with the binaries: the release page cannot carry an installer this
+        # workflow did not sign. It is named explicitly in each step below, not
+        # caught by the abcd-* globs.
+        run: cp site-src/install.sh.tmpl bin/install.sh
+
+      - name: Generate checksums.txt over the four binaries, the plugin archive and install.sh
+        # Hash the exact binaries, the archive and the installer above into a
+        # sha256sum-format manifest, uploaded as a release asset. No rebuild — the
+        # bytes hashed here are the bytes uploaded below.
         run: |
           set -euo pipefail
           cd bin
-          sha256sum abcd-* > checksums.txt
+          sha256sum abcd-* install.sh > checksums.txt
           cat checksums.txt
 
-      - name: Attest build provenance for the binaries, the plugin archive and checksums.txt
+      - name: Attest build provenance for the binaries, the plugin archive, install.sh and checksums.txt
         # Signed SLSA build-provenance over the exact files uploaded below. Runs
         # BEFORE the Release so a failed attestation aborts before publishing.
         # Skipped on a user-owned private repo (GitHub gates the feature by repo
@@ -574,9 +585,10 @@ jobs:
         with:
           subject-path: |
             bin/abcd-*
+            bin/install.sh
             bin/checksums.txt
 
-      - name: Create the draft GitHub Release with the binaries, the plugin archive and checksums.txt
+      - name: Create the draft GitHub Release with the binaries, the plugin archive, install.sh and checksums.txt
         # --draft: the Release is created unpublished, with every asset this job
         # built attached. site.yml (the `site` job below) attaches site.tar.gz
         # and then publishes it, so the Release becomes visible only once all of
@@ -606,7 +618,7 @@ jobs:
         id: draft
         run: |
           set -euo pipefail
-          gh release create "${TAG}" bin/abcd-* bin/checksums.txt --draft --verify-tag --title "${TAG}" --notes "${RELEASE_NOTES}" --generate-notes
+          gh release create "${TAG}" bin/abcd-* bin/install.sh bin/checksums.txt --draft --verify-tag --title "${TAG}" --notes "${RELEASE_NOTES}" --generate-notes
           id_re='^[0-9]+$'
           rows="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
             --jq '.[] | [.id, .draft, .tag_name] | @tsv')"
@@ -636,7 +648,7 @@ jobs:
           assets="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" --paginate \
             --jq '.[] | [.id, .name] | @tsv')"
           built=0
-          for f in bin/abcd-* bin/checksums.txt; do
+          for f in bin/abcd-* bin/install.sh bin/checksums.txt; do
             name="${f##*/}"
             aid="$(awk -F '\t' -v n="$name" '$2 == n {print $1}' <<<"$assets")"
             if [[ ! $aid =~ $id_re ]]; then
@@ -725,10 +737,10 @@ jobs:
   # the site workflow reads: `gh release create` has already returned.
   #
   # PUBLICATION happens here. The `release` job leaves the Release a DRAFT holding
-  # the binaries, the plugin archive and checksums.txt and hands on its numeric id;
-  # site.yml's render attaches site.tar.gz to that draft, and its `publish` job
-  # checks every asset again and then publishes the Release, both by that id,
-  # before its `deploy` job moves abcdev.app. So the Release becomes visible only
+  # the binaries, the plugin archive, install.sh and checksums.txt and hands on its
+  # numeric id; site.yml's render attaches site.tar.gz to that draft, and its
+  # `publish` job checks every asset again and then publishes the Release, both by
+  # that id, before its `deploy` job moves abcdev.app. So the Release becomes visible only
   # once every asset is attached, and no asset is added after publication — the
   # flow immutable releases require. A failed render therefore leaves the Release
   # an unpublished draft: re-run the failed jobs of this run, which renders,

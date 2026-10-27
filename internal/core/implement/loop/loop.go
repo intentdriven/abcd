@@ -91,6 +91,10 @@ type Options struct {
 	// configuration resolve: the drain's, so every lane it opens runs on the
 	// pace the drain does (spc-2610161044461448 step 16). Nil resolves it.
 	pace *Pace
+	// judgeCalibrated stands in for itd-81's calibration gate on a review
+	// set's judge (reviewset.go): a test hands a calibrated fixture. Nil is
+	// production, where no judge agent has cleared the gate yet.
+	judgeCalibrated func() (bool, string)
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -242,6 +246,14 @@ type StartResult struct {
 	// Pace is the run's pace, each number with the layer that supplied it.
 	// Null for a run started before the loop paced a run.
 	Pace *Pace `json:"pace"`
+	// Review is the run's review set (reviewset.go), each value with the
+	// layer that supplied it. Null for a run started before review sets.
+	Review *ReviewSet `json:"review"`
+	// Diagnostics are the review set's non-fatal reports when the call
+	// created the run (a list clamped to the machine's ceiling, a
+	// repository's class map skipped), one line each, for the front door to
+	// print on stderr; never in the payload.
+	Diagnostics []string `json:"-"`
 	// HandBack is set when the run's lane stands handed back to the person.
 	HandBack *HandBack `json:"hand_back,omitempty"`
 	// Reservation is what the start did with the run's reservation on the
@@ -377,6 +389,10 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	} else if pace, err = resolvePace(o.roots(repoRoot), flags); err != nil {
 		return StartResult{}, err
 	}
+	review, reviewNotes, err := resolveReviewSet(o.roots(repoRoot), o)
+	if err != nil {
+		return StartResult{}, err
+	}
 	var shared *implement.Run
 	if o.Session != "" {
 		run, err := sharedRunFor(repoRoot, o.Session)
@@ -475,6 +491,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 			// The run's first window opens at its start.
 			WindowStartedAt: &now,
 			Pace:            &pace,
+			Review:          &review,
 			ReservedAt:      rsv.at,
 		}
 		openNextLane(&st)
@@ -482,6 +499,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 			Note: "checks passed; " + st.Lanes[0].ID + " opened for " + laneWork(st, st.Lanes[0])})
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
+		st.Record = append(st.Record, Entry{At: now, Stage: StageReview, Note: "review set " + review.String()})
 		st.Record = append(st.Record, Entry{At: now, Stage: CheckBudget, Note: budget.Detail})
 		if rsv.note != "" {
 			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: rsv.note})
@@ -504,6 +522,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 			return err
 		}
 		res = startResult(st, chk.Checks, false)
+		res.Diagnostics = reviewNotes
 		res.Claim = claim
 		res.Reservation, res.ForkUnchecked, res.ForkAllowed = rsv.note, rsv.forkUnchecked, rsv.forkAllowed
 		keep = true
@@ -649,7 +668,7 @@ func startResult(st State, checks []CheckRow, resumed bool) StartResult {
 		checks = []CheckRow{}
 	}
 	res := StartResult{RunID: st.RunID, State: StateRelPath(st.RunID), Resumed: resumed,
-		Pending: st.Pending, Checks: checks, Pace: st.Pace}
+		Pending: st.Pending, Checks: checks, Pace: st.Pace, Review: st.Review}
 	if i := st.current(); i >= 0 {
 		res.Lane = st.Lanes[i]
 		res.Next = nextMove(st, st.Lanes[i])
@@ -1056,6 +1075,9 @@ func readRuns(root *os.Root) ([]State, error) {
 		}
 		out = append(out, st)
 	}
+	// Oldest first is by creation: two runs minted in one second carry ids
+	// that sort by their random digits, so the id only breaks a tie.
+	slices.SortStableFunc(out, func(a, b State) int { return a.CreatedAt.Compare(b.CreatedAt) })
 	return out, nil
 }
 
