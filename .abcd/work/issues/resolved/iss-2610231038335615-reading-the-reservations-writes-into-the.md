@@ -13,7 +13,7 @@ remedy: "Name the empty tree without writing it on the read paths (hash-object w
 resolution: "reading the reservations and sweeping them name the empty tree without writing it (hash-object without -w); the writing form stays for the paths that commit a reservation"
 impact: fix
 resolved_by:
-  commit: "7d38d853f"
+  commit: "74000e0d0"
 ---
 
 Reading the reservations writes into the shared git object store: claim.View names the empty tree through gitutil.EmptyTree, which runs git hash-object -w, so every read of the reservations (abcd peers, the status line, the sweep's dry run) writes or refreshes the empty-tree object under .git/objects. A read only compares tips against the empty tree's name and never needs the object to exist, and the sweep spec's criterion 11 allows writes only under the abcd home and the local tier.
