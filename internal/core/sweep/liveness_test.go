@@ -873,12 +873,22 @@ func TestAWorktreeAnotherAccountOwnsIsKept(t *testing.T) {
 	frees(t, probe(ProbeOptions{Owner: mine, Processes: cwds(), Now: stale()}).Judge(Worktree{Path: wt, Changed: none}))
 	holdsBy(t, probe(ProbeOptions{Owner: mine, Processes: cwds(wt), Now: stale()}).Judge(Worktree{Path: wt, Changed: none}), KindProcess, Proven)
 
-	// An owner that cannot be read keeps it.
+	// An owner that cannot be read keeps it, and the worktree's own view of
+	// the reservations, which runs git in it, is not read.
 	unread := func(string) (int, bool, error) { return 0, false, errors.New("stat failed") }
-	l = probe(ProbeOptions{Owner: unread, Processes: cwds(), Now: stale()}).Judge(Worktree{Path: wt, Changed: none})
+	viewed := 0
+	view := func(string, time.Time) (claim.Snapshot, error) { viewed++; return claim.Snapshot{}, nil }
+	l = probe(ProbeOptions{Owner: unread, CopyView: view, Processes: cwds(), Now: stale()}).Judge(Worktree{Path: wt, Changed: none})
 	holdsBy(t, l, KindOwner, Hint)
 	if !strings.Contains(l.Reason, "stat failed") {
 		t.Fatalf("reason = %q; want the failure named", l.Reason)
+	}
+	if viewed != 0 {
+		t.Fatalf("the worktree's own reservation view ran %d time(s) with its owner unread", viewed)
+	}
+	probe(ProbeOptions{Owner: mine, CopyView: view, Processes: cwds(), Now: stale()}).Judge(Worktree{Path: wt, Changed: none})
+	if viewed != 1 {
+		t.Fatalf("the worktree's own reservation view ran %d time(s) with its owner read; want 1", viewed)
 	}
 }
 

@@ -36,6 +36,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 
@@ -274,7 +275,7 @@ func (p *Probe) Judge(w Worktree) Liveness {
 	if p.unread != "" {
 		ev = append(ev, Evidence{Kind: KindReservationCheck, Strength: Hint, Detail: "reservations unread: " + p.unread})
 	}
-	ev = append(ev, p.reservationsHolding(wt, w.Changed)...)
+	ev = append(ev, p.reservationsHolding(wt, w.Changed, err == nil)...)
 	if w.Changed == nil {
 		ev = append(ev, Evidence{Kind: KindChanges, Strength: Hint, Detail: "changes unknown"})
 	} else if e, ok := unreadableChange(w.Changed); ok {
@@ -317,13 +318,19 @@ func held(ev []Evidence) Liveness {
 // or when its footprint overlaps a path the worktree changes; one found both
 // ways is named once. A reservation carries no branch, so none is matched to
 // the worktree's branch. An unreadable reservation still within its hold has
-// a footprint no one can read, so it keeps every worktree, as a hint.
-func (p *Probe) reservationsHolding(wt string, changed []string) []Evidence {
+// a footprint no one can read, so it keeps every worktree, as a hint. The
+// worktree's own view runs git in it, so it is read only when ownerRead says
+// the worktree's owner was read as this account; otherwise the owner already
+// holds it.
+func (p *Probe) reservationsHolding(wt string, changed []string, ownerRead bool) []Evidence {
 	var out []Evidence
 	named := map[string]bool{}
-	mine, err := p.copyView(wt, p.now)
-	if err != nil {
-		out = append(out, Evidence{Kind: KindReservationCheck, Strength: Hint, Detail: "this worktree's reservations unread: " + err.Error()})
+	var mine claim.Snapshot
+	if ownerRead {
+		var err error
+		if mine, err = p.copyView(wt, p.now); err != nil {
+			out = append(out, Evidence{Kind: KindReservationCheck, Strength: Hint, Detail: "this worktree's reservations unread: " + err.Error()})
+		}
 	}
 	for _, r := range mine.Reservations {
 		if r.State == claim.StateLive && r.Copy == claim.CopyThis && !named[r.Record] {
@@ -785,7 +792,8 @@ func parseLsof(out []byte) ([]Process, error) {
 }
 
 // procCwds reads every process's working directory from a /proc tree. A
-// process that exited mid-listing, or one another account owns, is passed
+// process that exited mid-listing (its link gone, or the kernel answering that
+// no such process is left), or one another account owns, is passed
 // over: neither is a session working in this account's worktrees, and
 // refusing on them would fail every check on a shared host. A link refused
 // for permission is passed over only when the process's status names another
@@ -831,7 +839,7 @@ func procCwds(root string) ([]Process, error) {
 		}
 		cwd, err := procReadlink(filepath.Join(root, e.Name(), "cwd"))
 		switch {
-		case errors.Is(err, fs.ErrNotExist):
+		case errors.Is(err, fs.ErrNotExist), errors.Is(err, syscall.ESRCH):
 			continue
 		case errors.Is(err, fs.ErrPermission):
 			uid, serr := procRealUID(filepath.Join(root, e.Name(), "status"))

@@ -600,6 +600,32 @@ func TestAForeignOwnedWorktreeHasNoGitRunInIt(t *testing.T) {
 	}
 }
 
+// TestAnUnreadableOwnerHasNoGitRunInIt: a worktree whose owner cannot be read
+// is kept on the owner as a hint, and this account runs no git in it.
+func TestAnUnreadableOwnerHasNoGitRunInIt(t *testing.T) {
+	repo, _ := sweepRepo(t)
+	unknown := fsutil.RealExistingPath(mergedAdd(t, repo, "unknown"))
+	o := sweepOpts()
+	o.Probe.Owner = func(p string) (int, bool, error) {
+		if p == unknown {
+			return 0, false, errors.New("stat failed")
+		}
+		return os.Getuid(), false, nil
+	}
+	var ran []string
+	o.changes = func(abs, def string) []string {
+		ran = append(ran, fsutil.RealExistingPath(abs))
+		return changedPaths(abs, def)
+	}
+	r := rowFor(t, dryRun(t, repo, o), "unknown")
+	if r.Action != ActionKeep || !hasEvidence(r, KindOwner, Hint) || !strings.Contains(r.Reason, "stat failed") {
+		t.Fatalf("the unreadable owner keeps it, named: %+v", r)
+	}
+	if slices.Contains(ran, unknown) {
+		t.Fatalf("git ran in the worktree whose owner could not be read: %q", ran)
+	}
+}
+
 // TestADirtyWorktreeThatIsHeldIsKept: a hold outranks the salvage, so a dirty
 // worktree a process works in is kept with the hold as its reason, and its
 // changes are not saved.
