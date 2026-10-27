@@ -50,10 +50,7 @@ type Reservation struct {
 	// machine, whose copy made the tip (iss-2610231004140527): its directory's
 	// name, never its key; "" for this copy, for a copy elsewhere, and until
 	// NameSiblings fills it. It is display only: no judgement reads it.
-	Sibling string
-	// copyKey is the copy key the tip names, kept to tell a sibling worktree
-	// apart and never shown.
-	copyKey   string
+	Sibling   string
 	Footprint []string
 	ClaimedAt time.Time
 	// EffectiveExpiry is when it stops holding: the lease clamped to a day,
@@ -240,9 +237,6 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 			by = ReleasedByDefaultBranch
 		}
 		r := listed(t, id, by, own, now)
-		if r.Copy != CopyThis && t.Unreadable == "" && validCopyKey(t.Copy) {
-			r.copyKey = t.Copy
-		}
 		if r.HandedBack != "" {
 			r.RecordChanged = changedSince(t.RecordBlob, blobOf(records[id]))
 		}
@@ -350,13 +344,13 @@ func (s *Snapshot) NameSiblings(root, holder string) {
 	var names map[string]string
 	for i := range s.Reservations {
 		r := &s.Reservations[i]
-		if r.copyKey == "" || holder == "" || !sameHolder(r.Holder, holder) {
+		if r.Copy == CopyThis || !validCopyKey(r.key) || holder == "" || !sameHolder(r.Holder, holder) {
 			continue
 		}
 		if names == nil {
 			names, s.SiblingsUnread = siblingCopies(root, ownCopyKey(root))
 		}
-		r.Sibling = names[r.copyKey]
+		r.Sibling = names[r.key]
 	}
 }
 
@@ -398,8 +392,9 @@ func siblingCopies(root, own string) (names map[string]string, unread string) {
 	return names, ""
 }
 
-// ownCopyKey is this checkout's copy key when one is kept, read without
-// minting one; "" otherwise.
+// ownCopyKey is the copy key the checkout at root keeps, read without minting
+// one; "" when it keeps none that is valid. It is the one reader of a kept key,
+// this checkout's or a sibling worktree's (siblingCopy, siblingCopies).
 func ownCopyKey(root string) string {
 	r, err := os.OpenRoot(root)
 	if err != nil {

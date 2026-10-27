@@ -193,10 +193,10 @@ func TestNameSiblingsNamesOnlyTheHoldersOwnAndTellsClashingNamesApart(t *testing
 		t.Fatal(err)
 	}
 	snap := Snapshot{Reservations: []Reservation{
-		{Record: "iss-1", Holder: "octo", State: StateLive, copyKey: keys["a"]},
-		{Record: "iss-2", Holder: "octo", State: StateLive, copyKey: keys["b"]},
-		{Record: "iss-3", Holder: "octo", State: StateLive, copyKey: keys["c"]},
-		{Record: "iss-4", Holder: "mallory", State: StateLive, copyKey: keys["a"]},
+		{Record: "iss-1", Holder: "octo", State: StateLive, key: keys["a"]},
+		{Record: "iss-2", Holder: "octo", State: StateLive, key: keys["b"]},
+		{Record: "iss-3", Holder: "octo", State: StateLive, key: keys["c"]},
+		{Record: "iss-4", Holder: "mallory", State: StateLive, key: keys["a"]},
 	}}
 	snap.NameSiblings(p.dir, "octo")
 	want := map[string]string{"iss-1": "a/lane-b", "iss-2": "b/lane-b", "iss-4": ""}
@@ -215,7 +215,7 @@ func TestNameSiblingsNamesOnlyTheHoldersOwnAndTellsClashingNamesApart(t *testing
 		t.Errorf("SiblingsUnread = %q on a listing that worked", snap.SiblingsUnread)
 	}
 
-	gone := Snapshot{Reservations: []Reservation{{Record: "iss-1", Holder: "octo", State: StateLive, copyKey: keys["a"]}}}
+	gone := Snapshot{Reservations: []Reservation{{Record: "iss-1", Holder: "octo", State: StateLive, key: keys["a"]}}}
 	gone.NameSiblings(t.TempDir(), "octo")
 	if gone.Reservations[0].Sibling != "" || !strings.Contains(gone.SiblingsUnread, "could not be listed") {
 		t.Fatalf("outside a repository: sibling %q, unread %q; want none and the reason", gone.Reservations[0].Sibling, gone.SiblingsUnread)

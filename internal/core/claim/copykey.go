@@ -125,8 +125,7 @@ func siblingCopy(root, key string) string {
 		if p, err := filepath.EvalSymlinks(w.Path); err != nil || p == self {
 			return
 		}
-		data, err := fsutil.ReadGuarded(filepath.Join(w.Path, filepath.FromSlash(copyKeyRel)), 256)
-		if err == nil && strings.TrimSpace(string(data)) == key {
+		if ownCopyKey(w.Path) == key {
 			found = fsutil.RedactHome(w.Path)
 		}
 	})
