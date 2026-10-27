@@ -345,6 +345,104 @@ func DefaultPatterns() []Pattern {
 			Re: regexp.MustCompile(`\bsk_test_[A-Za-z0-9]{20,}`), Severity: SeverityHardFail,
 			Suggestion: "Review — test keys are lower risk but still shouldn't be committed",
 		},
+		// The prefix-anchored vendor tokens below follow the shapes gitleaks'
+		// rules give them (cmd/generate/config/rules/), each with the same two
+		// departures every token rule here makes: no trailing boundary, so a
+		// token followed by '_' or a letter is still caught
+		// (trailing_boundary_test.go), and an open-ended final run where the
+		// shape allows one, so a longer run is masked to its end rather than
+		// left raw past a fixed width.
+		{
+			// npm access token: npm_ and 36 alphanumerics (30 random and a
+			// six-character checksum).
+			Name: "npm_token", Kind: "token:npm", Label: "npm access token (npm_)",
+			Re: regexp.MustCompile(`\bnpm_[A-Za-z0-9]{36,}`), Severity: SeverityHardFail,
+			Suggestion: "DELETE AND ROTATE",
+		},
+		{
+			// GitLab personal access token: glpat- and 20 of [\w-], or the
+			// routable form, a longer run closed by '.', a two-character
+			// version and a seven-character checksum, which the optional group
+			// takes so the whole token is masked.
+			Name: "gitlab_pat", Kind: "token:gitlab_pat", Label: "GitLab personal access token (glpat-)",
+			Re:       regexp.MustCompile(`\bglpat-[A-Za-z0-9_-]{20,}(?:\.[0-9a-z]{9})?`),
+			Severity: SeverityHardFail, Suggestion: "DELETE AND ROTATE",
+		},
+		{
+			// GitLab's other prefix-anchored tokens, by gitleaks' gitlab rules:
+			// deploy (gldt-), runner authentication (glrt-, with the routable
+			// suffix glpat- carries), feed (glft-), SCIM (glsoat-) and feature
+			// flag client (glffct-) tokens, 20 of [\w-]; incoming mail (glimt-,
+			// 25); Kubernetes agent (glagent-, 50); OAuth application secret
+			// (gloas-, 64); pipeline trigger (glptt-, 40 hex); CI/CD job (glcbt-,
+			// up to five alphanumerics, '_' and 20 of [\w-]); and the runner
+			// registration token (GR1348941 and 20 of [\w-]).
+			Name: "gitlab_token", Kind: "token:gitlab", Label: "GitLab token (gldt-, glrt-, glft-, glptt-, gloas-, …)",
+			Re: regexp.MustCompile(`\b(?:glrt-[A-Za-z0-9_-]{20,}(?:\.[0-9a-z]{9})?` +
+				`|gl(?:dt|ft|soat|ffct)-[A-Za-z0-9_-]{20,}` +
+				`|glimt-[A-Za-z0-9_-]{25,}|glagent-[A-Za-z0-9_-]{50,}|gloas-[A-Za-z0-9_-]{64,}` +
+				`|glptt-[0-9a-f]{40,}|glcbt-[A-Za-z0-9]{1,5}_[A-Za-z0-9_-]{20,}` +
+				`|GR1348941[A-Za-z0-9_-]{20,})`),
+			Severity: SeverityHardFail, Suggestion: "DELETE AND ROTATE",
+		},
+		{
+			// Hugging Face access token: hf_ and 34 letters.
+			Name: "huggingface_token", Kind: "token:huggingface", Label: "Hugging Face token (hf_)",
+			Re: regexp.MustCompile(`\bhf_[A-Za-z]{34,}`), Severity: SeverityHardFail,
+			Suggestion: "DELETE AND ROTATE",
+		},
+		{
+			// DigitalOcean personal access (dop_v1_), OAuth access (doo_v1_)
+			// and refresh (dor_v1_) tokens: the prefix and 64 lower-case hex.
+			Name: "digitalocean_token", Kind: "token:digitalocean", Label: "DigitalOcean token (dop_v1_, doo_v1_, dor_v1_)",
+			Re: regexp.MustCompile(`\bdo[opr]_v1_[a-f0-9]{64,}`), Severity: SeverityHardFail,
+			Suggestion: "DELETE AND ROTATE",
+		},
+		{
+			// HashiCorp Vault service token (hvs., 90 or more of [\w-]) and
+			// batch token (hvb., 138 or more).
+			Name: "vault_token", Kind: "token:vault", Label: "HashiCorp Vault token (hvs., hvb.)",
+			Re:       regexp.MustCompile(`\b(?:hvs\.[A-Za-z0-9_-]{90,}|hvb\.[A-Za-z0-9_-]{138,})`),
+			Severity: SeverityHardFail, Suggestion: "DELETE AND ROTATE — revoke it in Vault",
+		},
+		{
+			// Shopify admin API access (shpat_), custom app access (shpca_),
+			// private app (shppa_) tokens and the shared secret (shpss_): the
+			// prefix and 32 hex.
+			Name: "shopify_token", Kind: "token:shopify", Label: "Shopify token (shpat_, shpca_, shppa_, shpss_)",
+			Re: regexp.MustCompile(`\bshp(?:at|ca|pa|ss)_[a-fA-F0-9]{32,}`), Severity: SeverityHardFail,
+			Suggestion: "DELETE AND ROTATE",
+		},
+		{
+			// PyPI API token: pypi- and a base64url macaroon whose opening
+			// bytes encode its location, so every upload token opens on the
+			// same characters: AgEIcHlwaS5vcmc for pypi.org, and
+			// AgENdGVzdC5weXBpLm9yZw for test.pypi.org.
+			Name: "pypi_token", Kind: "token:pypi", Label: "PyPI API token (pypi-)",
+			Re:         regexp.MustCompile(`\bpypi-(?:AgEIcHlwaS5vcmc|AgENdGVzdC5weXBpLm9yZw)[A-Za-z0-9_-]{50,}`),
+			Severity:   SeverityHardFail,
+			Suggestion: "DELETE AND ROTATE — revoke it on PyPI",
+		},
+		{
+			// SendGrid API key: SG., a 22-character key id, '.', and a
+			// 43-character secret, both base64url.
+			Name: "sendgrid_key", Kind: "token:sendgrid", Label: "SendGrid API key (SG.)",
+			Re: regexp.MustCompile(`\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43,}`), Severity: SeverityHardFail,
+			Suggestion: "DELETE AND ROTATE",
+		},
+		{
+			// Slack incoming webhook: the URL is the credential. The workspace
+			// (T…) and channel (B…) ids are upper-case alphanumerics and the
+			// secret is 24 alphanumerics; a workflow webhook carries the
+			// workspace and app (A…) ids and a numeric id before its 24. The
+			// host is matched case-insensitively, as every resolver reads it;
+			// the path keeps the case Slack issues it in.
+			Name: "slack_webhook", Kind: "token:slack_webhook", Label: "Slack webhook URL",
+			Re: regexp.MustCompile(`\b(?i:hooks\.slack\.com)/` +
+				`(?:services/T[A-Z0-9]{8,}/B[A-Z0-9]{8,}|workflows/T[A-Z0-9]{8,}/A[A-Z0-9]{8,}/[0-9]{8,})` +
+				`/[A-Za-z0-9]{24,}`),
+			Severity: SeverityHardFail, Suggestion: "DELETE AND ROTATE — regenerate the webhook in Slack",
+		},
 		{
 			Name: "jwt_shaped", Kind: "token:jwt_shaped", Label: "JWT-shaped token",
 			Re:         regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}`),

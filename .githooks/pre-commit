@@ -75,7 +75,7 @@ case $- in *x*) set +x ;; esac
 # .githooks/commit-msg, where a no-op `continue` once cut the judged message to nothing).
 # `go`, `cd`, `pwd` and `trap` are on it for the sources refresh below, which builds
 # this checkout's abcd (parity with .githooks/commit-msg).
-unset -f git grep awk mktemp tr cat mkdir rm chmod printf sed head command read echo exit test [ \
+unset -f git grep awk mktemp tr cat mkdir rm chmod printf sed head find wc command read echo exit test [ \
   declare continue break return local export set true go cd pwd trap 2>/dev/null || true
 # A field separator the caller cannot choose: an inherited IFS changes how every
 # unquoted expansion below splits — including the sweep loop's, so it is pinned
@@ -149,7 +149,7 @@ fi
 export PATH
 # Every external tool this hook runs after the pin. A missing one must BLOCK loudly:
 # left to `set -e` it would surface as a mute exit 127 that reads like a broken repo.
-for tool in git grep awk mktemp tr cat mkdir rm chmod printf sed head; do
+for tool in git grep awk mktemp tr cat mkdir rm chmod printf sed head find wc; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "pre-commit: BLOCKED — $tool is not on the guard's pinned PATH ($PATH)." >&2
     echo "            the guard pins PATH so a repo-scoped override cannot substitute a fake tool," >&2
@@ -172,64 +172,219 @@ if [ -z "$toplevel" ]; then
 fi
 cd "$toplevel"
 
-# --- iss-62 identity gate ---------------------------------------------------
-# Refuse a commit whose author or committer identity diverges from the committed pin
-# (.abcd/config/identity.json). Self-contained (no binary dependency) so the
-# guard holds even before abcd is built or on PATH, and can't be broken by a
-# stale abcd. Runs FIRST — the name-guard below early-exits when no banlist is
-# present, which must not skip this check. No-op ONLY when the repo has no pin.
+# --- identity gate (itd-2610240918547728; iss-62 and itd-131 before it) ----
+# Refuse a commit made under a machine's identity, in either role, wherever this
+# hook runs; and refuse one whose author or committer is not the identity the
+# PERSON recorded on their own machine, when they have recorded one. Nothing in
+# the repository names who may commit to it: each person's record lives under
+# their own home, so no contributor is ever told to commit as someone else.
 #
-# FAIL CLOSED: a pin that is present but that this shell cannot read (empty
-# value, or non-lowercase / non-canonical JSON keys the sed does not match)
-# BLOCKS the commit rather than falling through. The Go check
-# (`abcd ahoy --identity`) enforces such pins directly; this shell guard is
-# deliberately stricter — it never permits an unverified identity. Keep the two
-# in the same fail-closed direction (see identity_test.go / the shell hook test).
-identity_pin=".abcd/config/identity.json"
-if [ -f "$identity_pin" ]; then
-  want_name=$(sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$identity_pin" | head -n1)
-  want_email=$(sed -n 's/.*"email"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$identity_pin" | head -n1)
+# The record is read from two places, the more specific first, exactly as the Go
+# check (internal/core/identity, `abcd ahoy --identity`) reads it:
+#   ~/.abcd.noindex/identity/<root-sha>.json  this person, in THIS repository
+#                                             (keyed on its root commit)
+#   ~/.abcd.noindex/identity.json             this person, everywhere else
+# With neither, a human identity — whatever launched the run supplied — commits,
+# and a machine identity is still refused.
+#
+# Self-contained (no binary dependency) so the guard holds even before abcd is
+# built or on PATH, and can't be broken by a stale abcd. Runs FIRST — the
+# name-guard below early-exits when no banlist is present, which must not skip
+# this check.
+#
+# FAIL CLOSED: a record that is there and that this shell cannot trust or read —
+# behind a symlinked folder, a symlink itself, not a regular file, not owned by
+# this account, writable by another, over 4096 bytes, or with a name/email the
+# sed cannot read — BLOCKS the commit rather than reading as no record. This
+# shell is deliberately at least as strict as the Go check. Keep the two in the
+# same fail-closed direction (identity_test.go and hook_test.go).
+#
+# Each field is read the way git resolves the one it stamps, first source that
+# sets it wins: the GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL environment, then the role's
+# own author.name/author.email (iss-2609261454332615), then user.*. The
+# environment comes first because git ranks it above every config key, and an
+# exported machine identity is the harness and CI shape (iss-2609261614268567).
+# git also exports the author it resolved, from --author and -c author.*
+# included, into this hook's environment, so reading it first holds those too.
+# The committer is read in the same order: GIT_COMMITTER_*, committer.*, user.*.
+# git does not export the committer into this hook, so the environment holds only
+# what the caller set; a -c committer.* reaches the git config reads below
+# through the GIT_CONFIG_PARAMETERS git passes down.
+have_name=${GIT_AUTHOR_NAME:-}
+[ -n "$have_name" ] || have_name=$(git config author.name || git config user.name || true)
+have_email=${GIT_AUTHOR_EMAIL:-}
+[ -n "$have_email" ] || have_email=$(git config author.email || git config user.email || true)
+have_cname=${GIT_COMMITTER_NAME:-}
+[ -n "$have_cname" ] || have_cname=$(git config committer.name || git config user.name || true)
+have_cemail=${GIT_COMMITTER_EMAIL:-}
+[ -n "$have_cemail" ] || have_cemail=$(git config committer.email || git config user.email || true)
+if [ -z "$have_name" ] || [ -z "$have_email" ]; then
+  echo "pre-commit: BLOCKED — git has no author identity here (user.name/user.email)." >&2
+  echo "            fix: set git config user.name and user.email to your own; an unattended run's" >&2
+  echo "            launcher supplies the human identity (GIT_AUTHOR_*/GIT_COMMITTER_*) before it commits." >&2
+  exit 1
+fi
+
+# The machine identities, from the ONE list the CI attribution gate and the Go
+# check read (internal/core/identity/tool-identities.txt). It is found beside
+# this hook's own checkout first (the hook is committed at .githooks/, one level
+# below it), then in the working tree being committed; in abcd's own checkout it
+# is always there. A list that is there but cannot be read, or lacks a key,
+# BLOCKS: an empty pattern would match nothing. A copy of this hook with no list
+# anywhere near it (a hook copied out of the checkout) says so in one line and
+# checks the record alone; the CI attribution gate still refuses the identity.
+tool_list="internal/core/identity/tool-identities.txt"
+if [ -e "$hook_dir/../$tool_list" ]; then
+  tool_list="$hook_dir/../$tool_list"
+fi
+tool_pattern() {
+  if [ ! -f "$tool_list" ] || [ ! -r "$tool_list" ]; then
+    echo "pre-commit: BLOCKED — cannot read the machine-identity list $tool_list (fail closed)." >&2
+    exit 1
+  fi
+  _pat=$(sed -n "s/^$1=//p" "$tool_list" | head -n1)
+  if [ -z "$_pat" ]; then
+    echo "pre-commit: BLOCKED — the machine-identity list $tool_list has no $1 pattern (fail closed)." >&2
+    exit 1
+  fi
+  printf '%s' "$_pat"
+}
+# is_machine ROLE NAME EMAIL — the IsToolIdentity reading, role asymmetry included:
+# a noreply@ mailbox is a machine's as the AUTHOR only, because the forge stamps
+# `GitHub <noreply@github.com>` as the committer of every web-UI merge on a
+# human's click.
+is_machine() {
+  # Here-strings, not a pipe: under pipefail, a printf killed by grep -q's early
+  # exit would turn a match into a miss.
+  if grep -Eiq -e "$re_ai_name" -e "$re_machine_name" -e "$re_name_word" <<<"$2"; then
+    return 0
+  fi
+  if grep -Eiq -e "$re_ai_mail" -e "$re_machine_mail" -e "$re_local_word" <<<"$3"; then
+    return 0
+  fi
+  if [ "$1" = author ] && grep -Eiq -e "$re_author_mail" <<<"$3"; then
+    return 0
+  fi
+  return 1
+}
+if [ ! -e "$tool_list" ] && [ ! -L "$tool_list" ]; then
+  echo "pre-commit: warning — no machine-identity list ($tool_list) beside this hook or in this working tree, so only your own identity record is checked here; CI's attribution gate still refuses a machine identity." >&2
+else
+  re_ai_name=$(tool_pattern ai_name)
+  re_ai_mail=$(tool_pattern ai_mail)
+  re_machine_name=$(tool_pattern machine_name)
+  re_machine_mail=$(tool_pattern machine_mail)
+  re_name_word=$(tool_pattern machine_name_word)
+  re_local_word=$(tool_pattern machine_local_word)
+  re_author_mail=$(tool_pattern author_only_mail)
+  for _role in author committer; do
+    if [ "$_role" = author ]; then _n=$have_name _e=$have_email; else _n=$have_cname _e=$have_cemail; fi
+    if is_machine "$_role" "$_n" "$_e"; then
+      echo "pre-commit: BLOCKED — the $_role \"$_n <$_e>\" is a machine identity; the person responsible is the author of record." >&2
+      echo "            fix: commit as yourself — set user.name/user.email to your own, and drop any GIT_AUTHOR_*/GIT_COMMITTER_*," >&2
+      echo "            author.*/committer.*, --author or -c that names the tool. An unattended run's launcher supplies the" >&2
+      echo "            human identity before it commits." >&2
+      exit 1
+    fi
+  done
+fi
+
+# The person's own record. HOME must be an absolute path to be read at all; an
+# unset or relative HOME is no record (the machine refusal above still holds).
+abcd_home=""
+case "${HOME:-}" in /*) abcd_home="$HOME/.abcd.noindex" ;; esac
+record=""
+record_shown=""
+# record_usable FILE SHOWN — 1 when FILE is absent; 0 when it is there and passes
+# every guard; and BLOCKS when it is there and fails one. A symlinked
+# ~/.abcd.noindex holding no record reads as absent, as the rules loader reads it.
+record_refuse() {
+  echo "pre-commit: BLOCKED — your identity record $1 $2, so it cannot be trusted (fail closed)." >&2
+  echo "            fix: make it a regular file you own that no other account can write (chmod 600), with no" >&2
+  echo "            symlinked folder above it — or remove it and run abcd ahoy install at a terminal to be asked again." >&2
+  exit 1
+}
+record_usable() {
+  _f=$1
+  _shown=$2
+  if [ ! -e "$_f" ] && [ ! -L "$_f" ]; then
+    return 1
+  fi
+  _parent=${_f%/*}
+  for _d in "$abcd_home" "$_parent"; do
+    if [ -L "$_d" ]; then
+      record_refuse "$_shown" "sits behind a symlinked folder"
+    fi
+    if [ ! -O "$_d" ]; then
+      record_refuse "$_shown" "sits in a folder another account owns"
+    fi
+  done
+  if [ -L "$_f" ]; then
+    record_refuse "$_shown" "is a symlink"
+  fi
+  if [ ! -f "$_f" ]; then
+    record_refuse "$_shown" "is not a regular file"
+  fi
+  if [ ! -O "$_f" ]; then
+    record_refuse "$_shown" "is owned by another account"
+  fi
+  _open=$(find "$_f" "$abcd_home" "$_parent" -prune \( -perm -0020 -o -perm -0002 \) -print 2>/dev/null) ||
+    record_refuse "$_shown" "could not have its permissions read"
+  if [ -n "$_open" ]; then
+    record_refuse "$_shown" "(or its folder) can be written by another account"
+  fi
+  if [ ! -r "$_f" ]; then
+    record_refuse "$_shown" "cannot be read"
+  fi
+  _size=$(wc -c <"$_f" | tr -d '[:space:]')
+  case "$_size" in '' | *[!0-9]*) record_refuse "$_shown" "could not be measured" ;; esac
+  if [ "$_size" -gt 4096 ]; then
+    record_refuse "$_shown" "is larger than 4096 bytes"
+  fi
+  return 0
+}
+if [ -n "$abcd_home" ]; then
+  root_sha=$(git rev-list -n 1 --max-parents=0 HEAD 2>/dev/null || true)
+  case "$root_sha" in
+    '' | *[!0-9a-f]*) ;;
+    *)
+      if record_usable "$abcd_home/identity/$root_sha.json" "~/.abcd.noindex/identity/$root_sha.json"; then
+        record="$abcd_home/identity/$root_sha.json"
+        record_shown="~/.abcd.noindex/identity/$root_sha.json"
+      fi
+      ;;
+  esac
+  if [ -z "$record" ] && record_usable "$abcd_home/identity.json" "~/.abcd.noindex/identity.json"; then
+    record="$abcd_home/identity.json"
+    record_shown="~/.abcd.noindex/identity.json"
+  fi
+fi
+if [ -n "$record" ]; then
+  want_name=$(sed -n 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$record" | head -n1)
+  want_email=$(sed -n 's/.*"email"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$record" | head -n1)
   if [ -z "$want_name" ] || [ -z "$want_email" ]; then
-    echo "pre-commit: BLOCKED — $identity_pin is present but its name/email could not be read (fail closed)." >&2
-    echo "            check the pin's JSON (lowercase \"name\"/\"email\", both non-empty), or run: abcd ahoy --identity" >&2
+    echo "pre-commit: BLOCKED — your identity record $record_shown is present but its name/email could not be read (fail closed)." >&2
+    echo "            fix: check its JSON (lowercase \"name\"/\"email\", both non-empty), or remove it and run" >&2
+    echo "            abcd ahoy install at a terminal to be asked again." >&2
     exit 1
   fi
-  # Each field is read the way git resolves the one it stamps, first source that
-  # sets it wins: the GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL environment, then the
-  # role's own author.name/author.email (iss-2609261454332615), then user.*.
-  # The environment comes first because git ranks it above every config key, and
-  # an exported machine identity is the harness and CI shape
-  # (iss-2609261614268567). git also exports the author it resolved, from
-  # --author and -c author.* included, into this hook's environment, so reading
-  # it first holds those too. An empty variable is not a source; git refuses an
-  # empty ident itself.
-  have_name=${GIT_AUTHOR_NAME:-}
-  [ -n "$have_name" ] || have_name=$(git config author.name || git config user.name || true)
-  have_email=${GIT_AUTHOR_EMAIL:-}
-  [ -n "$have_email" ] || have_email=$(git config author.email || git config user.email || true)
+  change_hint="if your record is wrong, edit $record_shown, or remove it and run abcd ahoy install at a terminal to be asked again"
   if [ "$have_name" != "$want_name" ] || [ "$have_email" != "$want_email" ]; then
-    echo "pre-commit: BLOCKED — git identity \"$have_name <$have_email>\" does not match the pinned \"$want_name <$want_email>\" ($identity_pin)." >&2
+    echo "pre-commit: BLOCKED — git identity \"$have_name <$have_email>\" is not the one you recorded, \"$want_name <$want_email>\" ($record_shown)." >&2
     echo "            fix: git config user.name \"$want_name\" && git config user.email \"$want_email\"," >&2
-    echo "            and drop any GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL, author.name/author.email, --author or -c author.* that outranks them" >&2
+    echo "            and drop any GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL, author.name/author.email, --author or -c author.* that outranks them;" >&2
+    echo "            $change_hint." >&2
     exit 1
   fi
-  # The committer is held to the pin in the same order (itd-131):
-  # GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL, then committer.name/committer.email,
-  # then user.*. git does not export the committer into this hook, so the
-  # environment holds only what the caller set; a -c committer.* reaches the
-  # git config reads below through the GIT_CONFIG_PARAMETERS git passes down.
-  have_cname=${GIT_COMMITTER_NAME:-}
-  [ -n "$have_cname" ] || have_cname=$(git config committer.name || git config user.name || true)
-  have_cemail=${GIT_COMMITTER_EMAIL:-}
-  [ -n "$have_cemail" ] || have_cemail=$(git config committer.email || git config user.email || true)
   if [ "$have_cname" != "$want_name" ] || [ "$have_cemail" != "$want_email" ]; then
-    echo "pre-commit: BLOCKED — git committer \"$have_cname <$have_cemail>\" does not match the pinned \"$want_name <$want_email>\" ($identity_pin)." >&2
+    echo "pre-commit: BLOCKED — git committer \"$have_cname <$have_cemail>\" is not the one you recorded, \"$want_name <$want_email>\" ($record_shown)." >&2
     echo "            fix: unset GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL and drop any -c committer.*;" >&2
-    echo "            git config --unset committer.name; git config --unset committer.email (or set them to the pinned identity)" >&2
+    echo "            git config --unset committer.name; git config --unset committer.email;" >&2
+    echo "            $change_hint." >&2
     exit 1
   fi
 fi
-# --- end iss-62 identity gate -----------------------------------------------
+# --- end identity gate ----------------------------------------------------------
 
 # --- itd-74 private name guard ----------------------------------------------
 

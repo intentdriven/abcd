@@ -79,11 +79,11 @@ func TestProductionModeVocabularyIsClosed(t *testing.T) {
 	}
 	// The empty value defaults ONLY through the defaulting door, so a writer
 	// cannot absorb an unset mode by accident.
-	if got, err := ModeOrDefault(""); err != nil || got != DefaultMode {
-		t.Errorf("ModeOrDefault(\"\") = %q, %v; want %q, nil", got, err, DefaultMode)
+	if got, err := modeOrDefault(""); err != nil || got != DefaultMode {
+		t.Errorf("modeOrDefault(\"\") = %q, %v; want %q, nil", got, err, DefaultMode)
 	}
-	if _, err := ModeOrDefault("typed"); err == nil {
-		t.Error("ModeOrDefault(\"typed\"): want an error")
+	if _, err := modeOrDefault("typed"); err == nil {
+		t.Error("modeOrDefault(\"typed\"): want an error")
 	}
 }
 

@@ -217,7 +217,8 @@ it did not until `iss-2608311632382737`, and a defect in the eval that certifies
 the read-block passed every local gate and surfaced only in CI. It names both
 even though `smoke` compiles a superset of `evals-cold-reading`'s files: the tag
 sets differ, so a cold-reading file that reaches for a smoke-only helper compiles
-under one and not the other. Each lane costs about five seconds on a warm cache.
+under one and not the other. Each lane takes under a minute in CI and several on a
+loaded machine, so each runs under `-timeout $(EVAL_TIMEOUT)`, 20m by default.
 
 CI runs the smoke harness as the dedicated `smoke` job, and the release workflow
 smokes the binary built from the tagged commit before publishing. The

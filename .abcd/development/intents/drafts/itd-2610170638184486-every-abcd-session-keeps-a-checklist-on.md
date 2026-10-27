@@ -263,6 +263,14 @@ session's interview on 2026-10-17:
   2026-10-22):** the private shared option, the public option and the phone
   app, with the decisions about them below, which now bind that draft
   (dcn-2610222025212338).
+- **Moved out to itd-2610240850336695 (the person's grant, 2026-10-24).** The
+  parked person-only work above (the guard refusing a session's own `abcd mode
+  autonomous` by every route, the shell and file-tool refusals on the away
+  store, the wider PreToolUse matcher, the recorded attempts and the two live
+  checks) is that intent's Decision 5, because it gives the away mode the rights
+  worth guarding. That intent `builds_on` this one: when this draft's pre-run
+  blocker sweep ships, it runs before an away grant takes effect, so the person
+  is asked every undecided design decision first (its Decision 16).
 
 ## Decisions
 
@@ -301,6 +309,11 @@ five bullets now bind itd-2610222029228127, where they are carried.
 - **The release:** this intent and the coordination intent form the
   autonomous-agents bundle, built as the next big release once current work
   settles; dashboard work joins later (product thinker).
+- **The bundle gains a third member (product thinker, 2026-10-24).** The
+  person's grant, itd-2610240850336695, joins the autonomous-agents bundle, so
+  the grant, the checklist and the coordination intent are planned together.
+  Its Decision 14 narrows "they say so" above: the person sets the away mode
+  and the grant by the explicit command, never by a sentence in chat.
 - **Credentials:** autonomous sessions never use the product thinker's own
   forge login; each runs under its own weaker credential, owned by the
   coordination intent. The checklist records the credential's kind, scope and

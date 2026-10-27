@@ -1,52 +1,47 @@
 package ahoy
 
 import (
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/identity"
 )
 
-// TestIdentityPinActionNamesWhatCorrectsAWrongPin is iss-2609260057117878's
-// first sentence: the summary told a person whose recorded name or email is
-// wrong to run abcd ahoy install again, but the pin step writes only while no
-// pin exists, so a re-run leaves a wrong pin exactly as it is. The behaviour is
-// proved here first, and then the item is held to naming the file that does
-// correct it.
-func TestIdentityPinActionNamesWhatCorrectsAWrongPin(t *testing.T) {
+// TestIdentityRecordActionSaysHowToCorrectIt is iss-2609260057117878's
+// first sentence, carried to the person's own record: a re-run never rewrites
+// a record that exists, so the summary item must say how a wrong one is
+// corrected (edit it, or remove it and be asked again).
+func TestIdentityRecordActionSaysHowToCorrectIt(t *testing.T) {
 	dir := idGitRepo(t, "Right Person", "right@example.com")
 	idWritePin(t, dir, `{"name":"Wrong Person","email":"wrong@example.com"}`)
 	gapPresent := map[string]bool{}
 	for _, g := range detectGitIdentity(dir) {
 		gapPresent[g.ID] = true
 	}
-	a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{ConfigChange: true}, gapPresent: gapPresent}
-	a.stepIdentityPin()
-	pin, ok, err := identity.LoadPin(dir)
-	if err != nil || !ok || pin.Name != "Wrong Person" {
-		t.Fatalf("precondition: a re-run leaves a recorded pin as it is; got %+v ok=%v err=%v", pin, ok, err)
+	p := &identityPrompter{terminal: true, answer: true}
+	a := &applyCtx{cwd: dir, gapPresent: gapPresent, prompter: p}
+	a.stepIdentityRecord()
+	rec, _, ok, err := identity.LoadRecordForTest(os.Getenv("HOME"), "")
+	if err != nil || !ok || rec.Name != "Wrong Person" || len(p.asked) != 0 {
+		t.Fatalf("precondition: a re-run leaves a record as it is; got %+v ok=%v err=%v asked=%q", rec, ok, err, p.asked)
 	}
-
-	action := writeKindHelp[writeIdentityPin].Action
-	if !strings.Contains(action, identity.PinRelPath) {
-		t.Errorf("the identity-pin item must name the file that corrects a wrong pin (%s), since a re-run does not: %q", identity.PinRelPath, action)
+	action := writeKindHelp[writeIdentityRecord].Action
+	for _, want := range []string{"edit", "remove"} {
+		if !strings.Contains(action, want) {
+			t.Errorf("the identity-record item does not say %q: %q", want, action)
+		}
 	}
 }
 
-// TestSkippedPinActionNamesWhatThePersonChecks is the second sentence: the
-// item told the person to answer y "if the name and email shown are yours",
-// but the install shows no name or email; the pin rides on the question about
-// the category it belongs to. The item must say where the values come from and
-// name the question that is actually asked.
-func TestSkippedPinActionNamesWhatThePersonChecks(t *testing.T) {
-	action := optionalSkippedHelp[OptionalPinGapID].Action
-	for _, want := range []string{"user.name", "user.email", string(ConfigChange)} {
+// TestSkippedRecordActionNamesTheQuestion is the second sentence: the item
+// must name the question that is actually asked, and where.
+func TestSkippedRecordActionNamesTheQuestion(t *testing.T) {
+	action := optionalSkippedHelp[UnrecordedGapID].Action
+	for _, want := range []string{"terminal", "identity question", "without --yes"} {
 		if !strings.Contains(action, want) {
-			t.Errorf("the skipped-pin item does not name %q: %q", want, action)
+			t.Errorf("the skipped-record item does not name %q: %q", want, action)
 		}
-	}
-	if strings.Contains(action, "shown") {
-		t.Errorf("the skipped-pin item promises values the install never shows: %q", action)
 	}
 }
 

@@ -21,6 +21,10 @@ const (
 	Interrupted
 	// Suspended: Ctrl-Z. The loop stops the process and redraws on return.
 	Suspended
+	// Explain: ? typed as the first key, on a list that offers the full
+	// explanation (AllowExplain). Nothing is recorded; the front door shows
+	// the explanation and asks again.
+	Explain
 )
 
 func (o Outcome) String() string {
@@ -33,6 +37,8 @@ func (o Outcome) String() string {
 		return "Interrupted"
 	case Suspended:
 		return "Suspended"
+	case Explain:
+		return "Explain"
 	}
 	return fmt.Sprintf("Outcome(%d)", int(o))
 }
@@ -79,7 +85,13 @@ type Picker struct {
 	parts  []*part
 	tab    int
 	window int
+	// explain is AllowExplain: ? as the first key asks for the explanation.
+	explain bool
 }
+
+// AllowExplain makes ? typed as the first key of a part ask for the full
+// explanation (Explain), rather than narrow the list by it.
+func (p *Picker) AllowExplain() { p.explain = true }
 
 // part is one question's list state.
 type part struct {
@@ -194,6 +206,9 @@ func (p *Picker) Apply(k Key) Outcome {
 	case KeyEnd:
 		pt.cur = len(pt.shown)
 	case KeyRune:
+		if p.explain && k.Rune == '?' && pt.typed == "" {
+			return Explain
+		}
 		pt.typed += string(k.Rune)
 		pt.refilter(!isNumber(pt.typed))
 	case KeyBackspace:

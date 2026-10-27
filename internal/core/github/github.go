@@ -178,7 +178,10 @@ func Run(cwd string, stdin []byte, args ...string) ([]byte, error) {
 // whichever ends first, so a caller with its own deadline is never held past
 // it, and the error then says gh did not answer before that deadline.
 func runContext(parent context.Context, cwd string, stdin []byte, args ...string) ([]byte, error) {
-	if _, err := exec.LookPath("gh"); err != nil {
+	// abcd's own recorded copy runs whatever comes first on PATH
+	// (itd-2610240918594138); otherwise PATH finds gh, as before.
+	bin, err := tools.Resolve("gh")
+	if err != nil {
 		return nil, tools.Missing(errors.New("the GitHub CLI (gh) is not on PATH; abcd speaks to GitHub through it so that a "+
 			"remote write is made by your own authenticated identity, never by a token abcd holds"), "gh", tools.GitHubSettings)
 	}
@@ -187,7 +190,7 @@ func runContext(parent context.Context, cwd string, stdin []byte, args ...string
 	}
 	ctx, cancel := context.WithTimeout(parent, Timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd := exec.CommandContext(ctx, bin, args...)
 	// Once gh is killed, a process it started that still holds its output
 	// open is waited for at most this long, so the deadline holds.
 	cmd.WaitDelay = time.Second

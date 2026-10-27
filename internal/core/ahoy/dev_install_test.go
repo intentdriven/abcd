@@ -151,7 +151,7 @@ func TestInstallPinnedToDevTransition(t *testing.T) {
 		t.Fatal(err)
 	}
 	if res.Status != "clean" {
-		t.Fatalf("transition status = %q, want clean", res.Status)
+		t.Fatalf("transition status = %q (remaining %v, notes %q), want clean", res.Status, res.Remaining, res.Notes)
 	}
 	if !containsChange(res.Changes, "install_mode: pinned -> dev") {
 		t.Errorf("changes = %v, want an install_mode pinned -> dev echo", res.Changes)

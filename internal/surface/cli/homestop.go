@@ -99,6 +99,11 @@ func renderHomeStop(root *cobra.Command, args []string, stop *abcdhome.Stop, std
 		// question already ran and the prompt hook resets the mode later.
 		fmt.Fprintln(stderr, "abcd:", stop.Line)
 		return 0
+	case "hook permission-request":
+		// No decision: the host's own approval prompt shows, as it does
+		// whenever the hook says nothing. The line goes to stderr.
+		fmt.Fprintln(stderr, "abcd:", stop.Line)
+		return 0
 	case "guard hook":
 		if admitsRename(stop, stdin) {
 			return 0

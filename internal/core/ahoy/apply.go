@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/shellpath"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"slices"
 	"sort"
@@ -17,7 +18,6 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/history"
-	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
@@ -32,6 +32,7 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	}
 	res.readmeAwaitsConfig = slices.Contains(res.OptionalSkipped, ReadmeOfferGapID) && !readmeStorable(cwd)
 	res.explain()
+	res.composeReport()
 	return res, nil
 }
 
@@ -46,7 +47,13 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		p = RefusingPrompter{}
 	}
 
-	det, err := Detect(abs)
+	// No git, no repository or no agent harness: there is nothing to set up,
+	// so setup stops before its first question with one message naming what
+	// is missing (setup_basics.go).
+	if !gitInstalled() {
+		return InstallResult{Status: "refused", Notes: []string{missingGitStop()}}, nil
+	}
+	det, err := detectJudged(abs)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -61,11 +68,19 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		if err == nil && res.Warnings == nil {
 			res.Warnings = installWarnings(det.Gaps, hostReach)
 		}
+		if err == nil && res.needs == nil && res.Status != "refused" && res.Status != "aborted" {
+			res.needs = remainingSteps(abs, det.Gaps)
+		}
+		// An early return judged nothing it did not change: committed hooks
+		// git does not run keep it from being reported up to date.
+		if err == nil && res.Status == "already_up_to_date" && hooksUnrun(det.Gaps) {
+			res.heldByHooks, res.Status = res.Status, "partial"
+		}
 	}()
 
-	// Unmanaged folder: nothing to act on.
-	if det.FolderKind == UnmanagedFolder {
-		return InstallResult{Status: "aborted"}, nil
+	// Not a repository, or no harness: nothing to act on, said in one message.
+	if reason := setupBasicsStop(det); reason != "" {
+		return InstallResult{Status: "refused", Notes: []string{reason}}, nil
 	}
 
 	// A committed `.abcd` that exists but is NOT a real directory — a symlink
@@ -132,6 +147,24 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		return InstallResult{}, fmt.Errorf("git gave no root commit for this repository, so abcd cannot tell whether it already manages it; run the install again once git answers, or pass --adopt to adopt it anyway: %w", gitUnanswered)
 	}
 
+	// The plan screen (setup_plan.go): for a repository abcd does not manage
+	// yet it is asked before the adoption, which proceeding or customising
+	// approves, so the plan is the one question that adopts.
+	planAsked := false
+	var planChoice PlanChoice
+	if det.FolderKind == UnmanagedRepo && opts.Adopt == nil {
+		var np Prompter
+		np, planChoice, planAsked = askSetupPlan(det, opts, personOnlyAsks(abs, det, opts, plannedBinTarget(opts, det)), p)
+		if planAsked {
+			if planChoice == PlanCancel {
+				return InstallResult{Status: "aborted"}, nil
+			}
+			p = np
+			yes := true
+			opts.Adopt = &yes
+		}
+	}
+
 	// Adoption gate for an unmanaged repo.
 	adopted := false
 	if det.FolderKind == UnmanagedRepo {
@@ -169,9 +202,10 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	}
 
 	// Idempotency: zero required+resolvable gaps => exact no-op. Three exceptions
-	// fall through: the advisory git-identity pin and the status-line offer, the
-	// optional gaps install closes against a confirmed answer (never under
-	// --yes), as their fix hints advertise; and an explicit value override that
+	// fall through: the person's own identity record (and the move of a pin
+	// the repository still stores) and the status-line offer, the optional
+	// gaps install closes against a confirmed answer (never under --yes), as
+	// their fix hints advertise; and an explicit value override that
 	// differs from the persisted config, which forces an apply-as-update on an
 	// otherwise-clean repo (iss-107).
 	// An explicit --dev (or a plain install over an existing dev shim) forces an
@@ -228,10 +262,25 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		}, nil
 	}
 
+	// A repository abcd already manages is shown the plan once the run knows
+	// there is something to do.
+	if !planAsked {
+		var np Prompter
+		np, planChoice, planAsked = askSetupPlan(det, opts, personOnlyAsks(abs, det, opts, binTargetPath), p)
+		if planAsked {
+			if planChoice == PlanCancel {
+				return InstallResult{Status: "aborted"}, nil
+			}
+			p = np
+		}
+	}
+
 	// A value flag that would change a saved setting is held to the settings
 	// approval like any other settings change, so it puts the config-change
 	// question even where no config-change gap would (iss-2610071538032843).
-	approved, declined := resolveApproval(det.Gaps, opts, overrideChanges(abs, opts.ValueOverrides), p)
+	// The status line is never asked about where it cannot be wired
+	// (iss-2610240823574047).
+	approved, declined := resolveApproval(approvalGaps(abs, det, opts, binTargetPath), opts, overrideChanges(abs, opts.ValueOverrides), p)
 
 	ac := &applyCtx{
 		cwd:         abs,
@@ -250,10 +299,10 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		provenance:  opts.VerifyProvenance,
 		readmeFlag:  opts.ReadmeParts,
 		waiting:     waiting,
+		opts:        opts,
 	}
 
 	// Ordered apply steps.
-	ac.stepDependencies()
 	ac.stepSkeleton()
 	cfg := ac.stepConfigValues()
 	ac.stepVisibility(cfg)
@@ -275,10 +324,20 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// After stepMarker, before stepSymlink: the README pair's place in
 	// setup's fixed order (decision 7).
 	ac.stepReadme()
+	// Before stepSymlink: where abcd is not on the PATH and no verified copy
+	// is to hand, the download question puts it there (abcd_download.go).
+	ac.stepDownload()
 	ac.stepSymlink()
 	// After stepSymlink, never before: the record names the entry that step
 	// leaves on PATH, and the hooks read it before they will run that entry.
 	ac.stepPathEntry()
+	// After stepPathEntry: the shell-settings offer judges the entry this run
+	// left on disk, and is the first of the consent questions.
+	ac.stepShellPath()
+	// After stepBanlist, which commits the guard, and before the outbound
+	// shim, which plans against the hooks path this leaves: the commit checks'
+	// own question (iss-2610241134315056).
+	ac.stepArmHooks()
 	// After the PATH-entry steps: abcd.binary names the verified copy they left.
 	ac.stepOutboundBinary()
 	// After stepOutboundBinary: the shim finds abcd through the abcd.binary it
@@ -297,9 +356,17 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	ac.stepConventionsFiles()
 	ac.stepRules()
 	ac.stepVersionStamp()
-	// Before the pin: an identity mended here is the one the pin then records.
+	// The person's own identity record first (itd-2610240918547728): a pin the
+	// repository still stores moves to its owner's machine, else a person with
+	// no record is offered one; each is its own question, asked only at a
+	// terminal. Then the repository's git identity is mended against it.
+	ac.stepIdentityMigrate()
+	ac.stepIdentityRecord()
 	ac.stepGitIdentity()
-	ac.stepIdentityPin()
+	// The tools last of the questions only a person answers, in the order the
+	// plan lists them (personOnlyAsks): nothing above runs a tool, and the
+	// final detection below judges the copy this step leaves.
+	ac.stepDependencies()
 	// After every step that asks its questions first: the kind is the last
 	// answer a piped install gives (itd-2609150819432059).
 	ac.stepArtefact()
@@ -307,7 +374,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	ac.noteReachability()
 
 	// Re-detect to compute what remains.
-	final, err := Detect(abs)
+	final, err := detectJudged(abs)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -324,11 +391,18 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	if len(remaining) > 0 {
 		status = "partial"
 	}
+	heldByHooks := ""
+	if hooksUnrun(final.Gaps) && status != "partial" {
+		// Committed hooks git does not run are not a finished setup, whether
+		// the question was declined, not asked, or the value is the person's
+		// (iss-2610241134315056).
+		heldByHooks, status = status, "partial"
+	}
 	if ac.configMalformed {
 		// The config could not be parsed, so nothing that depends on it ran.
 		// config.malformed is a diagnostic (non-resolvable) gap and so never
 		// counts in Remaining, but a run that refused its own config is not clean.
-		status = "partial"
+		status, heldByHooks = "partial", ""
 	}
 	return InstallResult{
 		Status:             status,
@@ -342,6 +416,8 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		writeKinds:         ac.writeKinds,
 		unverifiedCheck:    ac.unverifiedCheck,
 		unverifiedWhy:      ac.unverifiedWhy,
+		needs:              append(ac.needs, remainingSteps(abs, final.Gaps)...),
+		heldByHooks:        heldByHooks,
 	}, nil
 }
 
@@ -479,6 +555,15 @@ type applyCtx struct {
 	docsTargetForced bool     // a --docs-target override overwrote a valid value, or this run chose the first one
 	markerRetract    []string // marker files a narrowed docs-target override de-selected
 	configMalformed  bool     // config.json could not be parsed; the refusal note was given once
+
+	shellPlan  *shellpath.Plan // what stepShellPath found for the entry's folder; nil when it did not look
+	shellAdded bool            // stepShellPath added the PATH line this run
+	opts       InstallOptions  // the run's options, as the plan left them
+	downloaded bool            // stepDownload wrote the verified release to the PATH target
+	// needs is what a step the person approved left for them when it failed:
+	// the step to take by hand and why, reported in the default report ahead
+	// of the gaps the run left (itd-2610240918594138, criterion 2).
+	needs []ReportStep
 }
 
 // note is the receipt seam; it lives in receipt.go with the path scrub it
@@ -495,6 +580,13 @@ func (a *applyCtx) refuse(reason string) { a.notes = append(a.notes, reason) }
 // notes as a refusal, because the person reads both in one place, but it is a
 // separate call so a reader of the code never mistakes a success for a refusal.
 func (a *applyCtx) inform(line string) { a.notes = append(a.notes, line) }
+
+// needYou records what a change the person said yes to, and that then failed,
+// leaves them to do: the exact step, and why. A failure of an approved change
+// is never only a note behind --details.
+func (a *applyCtx) needYou(step, why string) {
+	a.needs = append(a.needs, ReportStep{Step: step, Why: why})
+}
 
 // refuseMalformedConfig records, once per run, that .abcd/config.json could not
 // be parsed and that no step will touch it. Three steps read the file
@@ -546,68 +638,43 @@ func droppedOverrides(overrides map[string]string) string {
 	return strings.Join(pairs, ", ")
 }
 
-// stepIdentityPin adopts the iss-62 identity gate for an un-pinned repo: it
-// writes .abcd/config/identity.json from the current git author identity (the
-// proposal), gated on ConfigChange approval (the confirmation). A mismatch is
-// never auto-resolved — abcd must not silently change the pin or the user's git
-// identity — so it stays a guided manual fix.
-//
-// It does NOT auto-adopt under --yes: pinning captures whatever git identity is
-// currently set, so a blanket approval could pin a wrong/sandbox identity as
-// canonical (the very value the gate exists to reject). Under --yes the
-// un-pinned gap simply remains, to be adopted against a confirmed answer — typed
-// at a terminal, or piped to a non-interactive run (iss-167). The exclusion is
-// reported in InstallResult.OptionalSkipped, never left silent (iss-166).
-func (a *applyCtx) stepIdentityPin() {
-	if a.autoYes || !a.approved[ConfigChange] || !a.has(OptionalPinGapID) {
-		return
-	}
-	// Each way of recording nothing is said, not dropped (iss-2609260057127611).
-	eff, err := identity.EffectiveIdentity(a.cwd)
-	if err != nil {
-		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": git's user.name and user.email could not be read: " + errText(err))
-		return
-	}
-	if eff.Name == "" || eff.Email == "" {
-		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": git has no user.name and user.email set here; set them and run abcd ahoy install again")
-		return
-	}
-	// The pin names the repo's human; a machine identity is the one value it
-	// must never canonicalise (itd-131).
-	if identity.IsToolIdentity(identity.RoleAuthor, eff.Name, eff.Email) {
-		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": the current git identity " + eff.Name + " <" + eff.Email + "> is a machine's, not a person's; set your own user.name and user.email and run abcd ahoy install again")
-		return
-	}
-	if err := identity.WritePin(a.cwd, identity.Pin{Name: eff.Name, Email: eff.Email}); err != nil {
-		a.refuse("could not record who commits to this repository in " + identity.PinRelPath + ": " + errText(err))
-		return
-	}
-	a.note(writeIdentityPin, identity.PinRelPath)
-}
-
 func (a *applyCtx) has(id string) bool { return a.gapPresent[id] }
 
 // stepDependencies is the explain-then-install mode at ahoy (itd-63). For each
-// dependency gap whose tool is still missing it hands the tool registry's
-// explanation to the front door's confirmation, and runs the registry's step
-// only on a yes. What ran, and whether it verified, is a change; a no, a failure
-// or a caller that asked nothing is a note carrying the explanation and the
-// capability's standing ("continuing on the native secret scanner"), never a
-// silent skip. The category approval gates reaching this step at all; it never
+// dependency gap it hands the tool registry's explanation to the front door's
+// confirmation and, only on a yes, installs the pinned, checked download into
+// the person's own bin folder (itd-2610240918594138). What was installed, and
+// how far it was checked, is a change; a no, a failure or a caller that asked
+// nothing is a note carrying the explanation and the capability's standing
+// ("continuing on the native secret scanner"), never a silent skip. A copy that
+// became usable since detection (installed meanwhile) is used, and nothing is
+// asked. The category approval gates reaching this step at all; it never
 // stands in for the per-tool answer.
 func (a *applyCtx) stepDependencies() {
-	if !a.approved[Dependency] {
+	if !a.approved[Dependency] && !a.asksToolsItself() {
 		return
 	}
 	for _, g := range a.det.Gaps {
 		if g.Category != Dependency || g.Tool == nil {
 			continue
 		}
-		if onPath(a.cwd, g.Tool.Tool) {
+		// Whether the person said yes, so a download that then fails is a
+		// step left for them rather than a note.
+		said := false
+		confirm := a.confirmTool
+		if confirm != nil {
+			inner := confirm
+			confirm = func(e tools.Explanation) tools.Answer {
+				ans := inner(e)
+				said = ans.Yes
+				return ans
+			}
+		}
+		res := newToolInstaller(a.cwd).Install(g.Tool.Tool, g.Tool.Capability, confirm)
+		if res.Ready && !res.Ran {
 			continue
 		}
-		res := newToolInstaller(a.cwd).Install(g.Tool.Tool, g.Tool.Capability, a.confirmTool)
-		if res.Ran && res.Installed && res.Verified {
+		if res.Ready {
 			a.changes = append(a.changes, receiptPath(a.cwd, "dependency: "+res.Summary()))
 			continue
 		}
@@ -617,8 +684,18 @@ func (a *applyCtx) stepDependencies() {
 			}
 		}
 		a.refuse(receiptPath(a.cwd, "dependency: "+res.Summary()))
+		if said {
+			a.needYou("Install "+g.Tool.Tool+" yourself: "+g.Tool.StepText(),
+				receiptPath(a.cwd, "abcd's download of "+g.Tool.Tool+" after your yes did not install: "+strings.TrimSuffix(res.Why, ".")+"."))
+		}
 	}
 }
+
+// asksToolsItself reports whether each tool's question reaches a person at a
+// terminal, which makes it its own consent: the kind-of-change approval is
+// then not asked for the tools (resolveApproval), and no answer to another
+// approval drops a tool's question (itd-2610240823055889, criterion 3).
+func (a *applyCtx) asksToolsItself() bool { return !a.autoYes && atTerminal(a.prompter) }
 
 // newToolInstaller is the tool installer seam, guarded on the repository the
 // install runs in; a test swaps it for one that records instead of executing.
@@ -912,7 +989,7 @@ func WalkConfigValueQuestions(cwd string, opts InstallOptions, approves func(id 
 	}
 	// install's gates before its first question, in its order: each ends the
 	// run before a value is asked.
-	if det.FolderKind == UnmanagedFolder || abcdDirHazard(abs) != "" {
+	if !gitInstalled() || setupBasicsStop(det) != "" || abcdDirHazard(abs) != "" {
 		return nil
 	}
 	if !opts.AllowStaleBinary && staleBinaryRefusal(currentVintage(), abs) != "" {
@@ -1477,7 +1554,7 @@ func (a *applyCtx) stepSymlink() {
 		// Nothing is written, but an owned copy is still the entry this run
 		// reports as abcd's, so it is verified first, read-only
 		// (iss-2610120955431790).
-		if !a.devMode {
+		if !a.devMode && !a.downloaded {
 			a.adoptOwnedCopy(a.binTarget)
 		}
 		return
@@ -1932,7 +2009,12 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 // already produced, whose otherwise-clean install is why symlink.unrecorded is
 // a gap in its own right.
 func (a *applyCtx) stepPathEntry() {
-	if a.det.pluginRoot == "" || a.binTarget == "" || !a.approved[ConfigChange] {
+	// A forced mode switch (--dev, or a plain install over the shim) is the
+	// person's own word, and stepSymlink writes the entry on it alone; the
+	// entry it writes is recorded on the same word, or every hook ignores it
+	// (symlink.unrecorded). The settings approval used to arrive with it only
+	// because the identity gaps were approved with the settings.
+	if a.det.pluginRoot == "" || a.binTarget == "" || (!a.approved[ConfigChange] && !a.modeForced) {
 		return
 	}
 	target := a.binTarget
@@ -2036,7 +2118,9 @@ func (a *applyCtx) noteReachability() {
 		return // nothing was installed here; a refusal already said why
 	}
 	if dir := filepath.Dir(a.binTarget); !dirOnPath(dir) {
-		a.refuse(pathReachMessage(dir))
+		if n := a.shellPathNote(dir); n != "" {
+			a.refuse(n)
+		}
 	}
 	if e, ok := shadowingEntry(a.det.pluginRoot, a.binTarget); ok {
 		a.refuse(shadowMessage(e, a.binTarget))
@@ -2200,6 +2284,9 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 	// independent of whether the entry below is still there to be removed.
 	receipt.StatusLine = uninstallStatusLine()
 
+	// Tools: the copies abcd installed, by its record, and nothing else.
+	receipt.Tools, receipt.ToolsNote = uninstallTools()
+
 	// Symlink: remove only if it points at this plugin's binary. The entry is
 	// found the same way detection finds it — an owned entry anywhere on PATH,
 	// else the default location — so uninstall reaches the install that exists
@@ -2211,6 +2298,13 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 			target = filepath.Join(abs, binName)
 		}
 	}
+	// Shell settings: the PATH line abcd added, found by its record or, with
+	// none, by its exact text for the entry's folder (shellpath.Remove).
+	shellDir := ""
+	if target != "" {
+		shellDir = filepath.Dir(target)
+	}
+	receipt.ShellPath = uninstallShellPath(shellDir)
 	if target == "" {
 		receipt.Symlink.Note = "no user-scope install location; left untouched"
 		return receipt, nil
@@ -2284,10 +2378,28 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 	return receipt, nil
 }
 
+// uninstallTools removes the tool copies the installed-tools record names,
+// each only while it is still the bytes abcd wrote (tools.Uninstall). A home
+// abcd cannot judge removes nothing and says why.
+func uninstallTools() ([]tools.Removal, string) {
+	home, refused := homeScope()
+	if refused != "" {
+		return []tools.Removal{}, "tool copies left untouched: " + refused
+	}
+	out, err := tools.Uninstall(home)
+	if out == nil {
+		out = []tools.Removal{}
+	}
+	if err != nil {
+		return out, "tool copies: " + errText(err)
+	}
+	return out, ""
+}
+
 // Doctor runs the detection pass plus a read-only cross-machine audit. Zero
 // writes.
 func Doctor(cwd string) (DoctorReport, error) {
-	det, err := Detect(cwd)
+	det, err := detectJudged(cwd)
 	if err != nil {
 		return DoctorReport{}, err
 	}
@@ -2334,10 +2446,6 @@ func auditGaps(cwd string, det DetectionResult) []Gap {
 // approval + gap helpers
 // ---------------------------------------------------------------------------
 
-// OptionalPinGapID is the one optional gap --yes does not cover. Named here so
-// the front doors can point at it without re-deriving the string.
-const OptionalPinGapID = "git_identity.unpinned"
-
 // malformedConfigGapID is the one gap that means "abcd will not touch this
 // repo's config until a human repairs it". It is required and non-resolvable, so
 // it never appears in an actionable count, and both the detector that raises it
@@ -2350,26 +2458,27 @@ const malformedConfigGapID = "config.malformed"
 const credentialAtRestGapID = "history.credential_at_rest"
 
 // optionalGapIDs are the advisory gaps install closes only against an answered
-// prompt, never under --yes: the identity pin (see stepIdentityPin), the
+// prompt, never under --yes: the identity pin's move and the person's own
+// identity record (see stepIdentityMigrate, stepIdentityRecord), the
 // status-line offer (see stepStatusLine), the two model-tier routing offers
 // (see stepOracleRouting), the drain eligibility record (see stepDrainRule),
 // the retirement of a tool's own conventions file (see
 // stepConventionsFiles) and the README question (see stepReadme). In the
 // order they are reported.
-var optionalGapIDs = []string{OptionalPinGapID, ReadmeOfferGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+var optionalGapIDs = []string{LegacyPinGapID, UnrecordedGapID, ReadmeOfferGapID, ShellPathOfferGapID, HooksArmGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 // terminalOnlyGapIDs are the optional offers put only to a person at a
 // terminal, and their categories: off one, neither the category nor the offer
 // is asked, so a piped answer stream keeps the order it had before they
 // existed. The README question has no category to ask (resolveApproval leaves
 // it out everywhere: the question is the consent).
-var terminalOnlyGapIDs = []string{ReadmeOfferGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
+var terminalOnlyGapIDs = []string{LegacyPinGapID, UnrecordedGapID, ReadmeOfferGapID, ShellPathOfferGapID, HooksArmGapID, DrainRuleOfferGapID, ConventionsRetireGapID}
 
 var terminalOnlyCategories = []GapCategory{DrainRule, ConventionsFile}
 
 // optionalSkipped lists the optional gaps a run left un-applied without asking.
-// --yes approves every resolvable category but never adopts the identity pin
-// or wires the status line, so the skip is deliberate — and therefore has to
+// --yes approves every resolvable category but never records who a person
+// commits as or wires the status line, so the skip is deliberate — and therefore has to
 // be reported rather than left ambient (iss-166). Outside --yes each is offered
 // as a confirmation, except the terminal-only offers off a terminal (see
 // stepDrainRule and stepConventionsFiles) and the README question in a
@@ -2410,7 +2519,14 @@ func optionalAsked(cwd, id string, p Prompter) bool {
 // under --yes), so their presence must not be short-circuited by the
 // "already_up_to_date" early return.
 func optionalPending(gaps []Gap) []string {
-	present := gapIDSet(gaps)
+	// Only a gap install can close is pending: the identity pin a repository
+	// stores for someone else is reported, never offered (detectLegacyPin).
+	present := map[string]bool{}
+	for _, g := range gaps {
+		if g.Resolvable {
+			present[g.ID] = true
+		}
+	}
 	var out []string
 	for _, id := range optionalGapIDs {
 		if present[id] {
@@ -2509,7 +2625,7 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Pr
 	present := map[GapCategory]bool{}
 	lines := map[GapCategory][]string{}
 	for _, g := range gaps {
-		if g.Resolvable {
+		if g.Resolvable && !personOnlyGap(g.ID) {
 			present[g.Category] = true
 			lines[g.Category] = append(lines[g.Category], g.Title)
 		}
@@ -2519,8 +2635,16 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Pr
 		lines[ConfigChange] = append(lines[ConfigChange], flagChanges...)
 	}
 	// The README question is its own consent (open question 5): its category
-	// is never asked, approved or declined.
+	// is never asked, approved or declined. So are the person's own identity
+	// questions (itd-2610240918547728): each is asked as its own question at
+	// a terminal, never behind a group approval.
 	delete(present, Readme)
+	delete(present, MachineIdentity)
+	// The shell-settings offer is its own consent too, asked only at a
+	// terminal (stepShellPath).
+	delete(present, ShellPath)
+	// So is pointing git at the committed hooks (stepArmHooks).
+	delete(present, HooksPathCategory)
 	approved := map[GapCategory]bool{}
 	switch {
 	case opts.ApprovedCategories != nil:
@@ -2543,6 +2667,13 @@ func resolveApproval(gaps []Gap, opts InstallOptions, flagChanges []string, p Pr
 			for _, c := range terminalOnlyCategories {
 				delete(present, c)
 			}
+		} else {
+			// At a terminal each tool is its own question (stepDependencies,
+			// asksToolsItself), so the tools are never put behind an approval
+			// whose no would drop their questions (itd-2610240823055889,
+			// criterion 3). A piped stream still meets the approval, in its
+			// fixed place, where no tool question can reach a person anyway.
+			delete(present, Dependency)
 		}
 		for _, c := range presentInPromptOrder(present) {
 			if c == Dependency && opts.ApproveDependency {

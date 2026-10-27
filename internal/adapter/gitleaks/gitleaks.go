@@ -46,13 +46,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -135,10 +135,12 @@ type Adapter struct {
 	Runner Runner
 }
 
-// NewDefault returns the production adapter: exec.LookPath for discovery and a
-// real gitleaks shell-out for execution.
+// NewDefault returns the production adapter: tools.Resolve for discovery (abcd's
+// own recorded copy, whatever comes first on PATH, else the PATH lookup:
+// itd-2610240918594138) and a real gitleaks shell-out for execution. What it
+// finds is still held to admitBinary.
 func NewDefault() *Adapter {
-	return &Adapter{LookPath: exec.LookPath, Runner: execRunner{}}
+	return &Adapter{LookPath: tools.Resolve, Runner: execRunner{}}
 }
 
 // LoadConfig reads the per-repo opt-in config with the same trust-boundary

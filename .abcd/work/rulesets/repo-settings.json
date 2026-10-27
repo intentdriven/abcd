@@ -13,7 +13,8 @@
     "delete_branch_on_merge": true,
     "allow_merge_commit": true,
     "allow_squash_merge": true,
-    "allow_rebase_merge": true
+    "allow_rebase_merge": true,
+    "fork_pr_contributor_approval": "all_external_contributors"
   },
   "repo": "intentdriven/abcd"
 }
