@@ -134,13 +134,18 @@ func TestUnskipTakesAnIssueOffTheList(t *testing.T) {
 func TestASkipWithoutAReasonOrWithABadTargetIsRefusedWritingNothing(t *testing.T) {
 	repo := drainRepo(t)
 	for name, d := range map[string]DrainOptions{
-		"no reason":      {Skip: []string{secondIssue}},
-		"blank reason":   {Skip: []string{secondIssue}, SkipReason: "  "},
-		"reason alone":   {SkipReason: "why"},
-		"escaping path":  {Skip: []string{"../outside"}, SkipReason: "why"},
-		"absolute path":  {Skip: []string{"/etc"}, SkipReason: "why"},
-		"bad unskip":     {Unskip: []string{"a/../b"}},
-		"too long a why": {Skip: []string{secondIssue}, SkipReason: strings.Repeat("x", maxSkipReasonBytes+1)},
+		"no reason":         {Skip: []string{secondIssue}},
+		"blank reason":      {Skip: []string{secondIssue}, SkipReason: "  "},
+		"reason alone":      {SkipReason: "why"},
+		"escaping path":     {Skip: []string{"../outside"}, SkipReason: "why"},
+		"absolute path":     {Skip: []string{"/etc"}, SkipReason: "why"},
+		"bad unskip":        {Unskip: []string{"a/../b"}},
+		"zero-width path":   {Skip: []string{"internal/core\u200b"}, SkipReason: "why"},
+		"bidi path":         {Skip: []string{"internal/\u202ecore"}, SkipReason: "why"},
+		"C1 path":           {Skip: []string{"internal/\u0085core"}, SkipReason: "why"},
+		"invalid UTF-8":     {Skip: []string{"internal/\xffcore"}, SkipReason: "why"},
+		"zero-width unskip": {Unskip: []string{"internal/core\u200b"}},
+		"too long a why":    {Skip: []string{secondIssue}, SkipReason: strings.Repeat("x", maxSkipReasonBytes+1)},
 	} {
 		if _, err := Drain(repo.Root(), Options{}, d); err == nil {
 			t.Fatalf("%s: the move is refused", name)

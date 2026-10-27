@@ -40,9 +40,14 @@ type DrainSkip struct {
 
 // skipTarget normalises a --skip or --unskip target: an issue id as given, or
 // a clean repository-relative path (a trailing slash dropped). False for
-// anything else.
+// anything else, and for a target that is not valid UTF-8 or carries a rune
+// termsafe masks (a C1, bidi or zero-width control): the drain's reader
+// refuses such text in its state, so storing one would wedge every later move.
 func skipTarget(t string) (string, bool) {
 	t = strings.TrimSpace(t)
+	if !utf8.ValidString(t) || termsafe.Sanitize(t) != t {
+		return "", false
+	}
 	if validIssueKey(t) {
 		return t, true
 	}
