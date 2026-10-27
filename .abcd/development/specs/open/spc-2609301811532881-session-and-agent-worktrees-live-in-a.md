@@ -452,7 +452,7 @@ worktree rather than loses one; none changes a criterion.
 
 ## Open point
 
-_None open._ The board's "can be cleared" count is the peers scan's judgement, not prune's: it can miss a squash-merged branch and can count a locked or freshly cut worktree. The product thinker ruled on 2026-09-30 that the line keeps the words "can be cleared" as an estimate, and that prune's own report is the authority on what was cleared. The `--json` member keeps the field name `reclaimable`.
+_None open._ The board's "can be cleared" count is the peers scan's judgement, not prune's: it can miss a squash-merged branch and can count a locked or freshly cut worktree, or a detached one whose HEAD is on the default branch, which prune keeps. The product thinker ruled on 2026-09-30 that the line keeps the words "can be cleared" as an estimate, and that prune's own report is the authority on what was cleared. The `--json` member keeps the field name `reclaimable`.
 
 ## Footprint
 
