@@ -374,6 +374,40 @@ stage with exit 2, naming the value and the accepted form, and nothing is
 written. Starting again keeps the run's pace: a flag naming another pace is
 refused, and one naming the same pace resumes.
 
+## The review set
+
+A new run also reads its review set once, when it starts: how many reviewers
+each of the two code-review roles (`ruthless-reviewer`, `security-reviewer`)
+runs, and at which model class. The `intent-auditor` keeps its single run.
+
+- `review.reviewers`: a list of one or two classes for both roles, or an object
+  naming a list per role (`{"security-reviewer": ["middle"]}`); each role takes
+  the highest layer that sets it (the repository's `.abcd/config.json`, then
+  `~/.abcd.noindex/config.json`), else the bundled pair, `middle` and `below`.
+- `review.judge`: one class, or absent. A judge runs only once its agent has
+  cleared itd-81's calibration gate, and none has yet, so a set naming one is
+  refused at the `review` stage; without one the stricter verdict decides.
+- `review.max_reviewers`: the machine's ceiling on reviewers per role, 1 or 2
+  (2 when unset), read from `~/.abcd.noindex/config.json` alone. A repository
+  list longer than the ceiling is clamped, with one line on stderr naming both
+  files; a repository's own `max_reviewers` is skipped with a warning.
+- `models.classes`: the class map, `top`, `middle`, `below` and `smallest`, each
+  a `<provider>/<model>` route. It is read from `~/.abcd.noindex/config.json`
+  over the bundled map alone, which spends the person's key and so is theirs to
+  say: a repository's map is skipped with a warning. The bundled map is one
+  vendor's models, a default and not part of the rule.
+
+The payload's `review`, beside `pace`, carries each role's `reviewers` (each
+`class` with the `model` the map resolves it to and the map's `map_layer` and
+`map_origin`), the list's `layer` and `origin`, `clamped` when the ceiling cut
+it, the `judge` (null for none) and `max_reviewers`; the run record's `review`
+line and the text output's `review:` line name each class with its model. A
+class the map does not carry, a list of none or more than two, a misspelt key
+under `review` or `models.classes`, and a route that is not
+`<provider>/<model>` are refused at the `review` stage with exit 2 before
+anything is written. Starting again keeps the run's review set, whatever the
+files say by then. A run started before review sets carries `review: null`.
+
 Last, once every other check passes, the budget check asks each runner a role
 of the run is routed to (below) for its remaining quota, in agent runs, and
 compares the run's estimate on it: per step to build, one implementer and one

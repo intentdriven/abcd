@@ -52,8 +52,8 @@ func sidedRun(t *testing.T) (string, string, string) {
 // route record carrying both sides is read back whole at the current
 // version, 14, which is the version that added them.
 func TestASidedRouteRoundTripsAtVersion14(t *testing.T) {
-	if SchemaVersion != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
-		t.Fatalf("both sides are version 14's, after a lane's refusal's 13: %d %d %d", SchemaVersion, schemaVersionUnmetered, schemaVersionUnrefused)
+	if schemaVersionUnreviewed != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
+		t.Fatalf("both sides are version 14's, after a lane's refusal's 13: %d %d %d", schemaVersionUnreviewed, schemaVersionUnmetered, schemaVersionUnrefused)
 	}
 	root, id, _ := sidedRun(t)
 	st, err := ReadState(root, id)

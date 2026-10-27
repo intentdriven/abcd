@@ -73,6 +73,7 @@ func withHandBack(t *testing.T, state []byte, hb map[string]any, field, bad stri
 	lane := doc["lanes"].([]any)[0].(map[string]any)
 	lane["hand_back"], lane["stage"] = cp, string(StageHandedBack)
 	doc["schema_version"] = version
+	unreviewOlder(doc)
 	data, err := json.Marshal(doc)
 	if err != nil {
 		t.Fatal(err)

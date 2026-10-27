@@ -133,8 +133,7 @@ func TestARunStateRefusesAPaceItNeverWrites(t *testing.T) {
 	}
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(start.RunID)))
 	good := stateBytes(t, repo.Root(), start.RunID)
-	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
-	v9 := []byte(strings.Replace(string(good), cur, fmt.Sprintf(`"schema_version": %d,`, schemaVersionUnkept), 1))
+	v9 := olderState(t, good, schemaVersionUnkept)
 	if string(v9) == string(good) {
 		t.Fatal("the state names its version")
 	}
