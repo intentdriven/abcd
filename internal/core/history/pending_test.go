@@ -2,6 +2,7 @@ package history
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -146,5 +147,96 @@ func TestTakePendingMissReportsOnce(t *testing.T) {
 	}
 	if _, ok, err := TakePendingMiss(); err != nil || ok {
 		t.Fatalf("a taken marker must be gone, got ok=%v err=%v", ok, err)
+	}
+}
+
+// TestPlacePendingDropsASessionOutsideAnyRepository: no store noted the
+// session and the resolver says definitely that its directory is in no
+// repository, so no start will ever place it; the raw copy is deleted rather
+// than kept unredacted forever, and the drop is reported.
+func TestPlacePendingDropsASessionOutsideAnyRepository(t *testing.T) {
+	setupStore(t)
+	if _, err := StagePending(PendingMeta{SessionID: "sess-nowhere", Cwd: "/downloads"}, []byte("x\n")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := PlacePending(func(string) (string, string, error) {
+		return "", "", fmt.Errorf("its working directory is %w", ErrNoRepository)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Dropped) != 1 || res.Dropped[0].SessionID != "sess-nowhere" || len(res.Unplaced) != 0 {
+		t.Fatalf("dropped = %+v, unplaced = %+v", res.Dropped, res.Unplaced)
+	}
+	if pending, _ := ListPending(); len(pending) != 0 {
+		t.Fatalf("a session outside any repository is still pending: %+v", pending)
+	}
+}
+
+// TestPlacePendingKeepsWhatAnUncertainAnswerCannotSettle: a git that did not
+// answer is not a definite "no repository", so the copy stays pending.
+func TestPlacePendingKeepsWhatAnUncertainAnswerCannotSettle(t *testing.T) {
+	setupStore(t)
+	if _, err := StagePending(PendingMeta{SessionID: "sess-unsure", Cwd: "/busy"}, []byte("x\n")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := PlacePending(func(string) (string, string, error) {
+		return "", "", errors.New("git gave no root commit (signal: killed)")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Dropped) != 0 || len(res.Unplaced) != 1 {
+		t.Fatalf("dropped = %+v, unplaced = %+v", res.Dropped, res.Unplaced)
+	}
+}
+
+// TestPlacePendingDoesNotDropACopyRestagedSinceTheListing: a SessionEnd that
+// re-fires between the listing and the lock wrote a newer copy, and the drop
+// judged on the older one must leave it alone.
+func TestPlacePendingDoesNotDropACopyRestagedSinceTheListing(t *testing.T) {
+	setupStore(t)
+	meta := PendingMeta{SessionID: "sess-resumed", Cwd: "/downloads"}
+	if _, err := StagePending(meta, []byte("old\n")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := PlacePending(func(string) (string, string, error) {
+		// The resolver runs after the listing and before the lock: the
+		// session resumes and ends again here.
+		if _, err := StagePending(meta, []byte("old\nnewer\n")); err != nil {
+			t.Fatal(err)
+		}
+		return "", "", fmt.Errorf("its working directory is %w", ErrNoRepository)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Dropped) != 0 {
+		t.Fatalf("a re-staged copy was dropped on the older copy's judgement: %+v", res.Dropped)
+	}
+	pending, _ := ListPending()
+	if len(pending) != 1 || pending[0].Bytes != int64(len("old\nnewer\n")) {
+		t.Fatalf("the newer copy is gone: %+v", pending)
+	}
+}
+
+// TestDiscardPendingRemovesOneCopy: the operator's way to remove a pending
+// transcript no start can place; a name that is not one is refused.
+func TestDiscardPendingRemovesOneCopy(t *testing.T) {
+	setupStore(t)
+	if _, err := StagePending(PendingMeta{SessionID: "sess-d", Cwd: "/gone"}, []byte("bytes\n")); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"", "../sess-d.raw", "sess-d", "absent.raw"} {
+		if _, err := DiscardPending(bad); err == nil {
+			t.Errorf("DiscardPending(%q) was accepted", bad)
+		}
+	}
+	res, err := DiscardPending("sess-d.raw")
+	if err != nil || res.Bytes != 6 || len(res.Removed) != 2 {
+		t.Fatalf("discard = %+v, %v", res, err)
+	}
+	if pending, _ := ListPending(); len(pending) != 0 {
+		t.Fatalf("still pending: %+v", pending)
 	}
 }

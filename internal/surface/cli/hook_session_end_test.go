@@ -746,3 +746,51 @@ func TestHookSessionStartNamesAnUnplaceableTranscript(t *testing.T) {
 		t.Fatalf("an unplaced transcript must stay pending, got %+v (err %v)", pending, err)
 	}
 }
+
+// TestHistoryDrainFilesPendingTranscripts: the verb the notices point at does
+// not wait for a session start; it files what session-end left pending and
+// stores this repository's share.
+func TestHistoryDrainFilesPendingTranscripts(t *testing.T) {
+	repo, rootSHA := sessionEndRepo(t)
+	tp := filepath.Join(t.TempDir(), "sess.jsonl")
+	if err := os.WriteFile(tp, []byte(`{"role":"user","text":"drained"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, endPayload(t, "sess-drain", repo, tp), "hook", "session-end")
+	t.Chdir(repo)
+
+	runCLI(t, "history", "drain")
+
+	if _, _, err := history.Read(repo, rootSHA, "sess-drain"); err != nil {
+		t.Fatalf("history drain did not store the pending transcript: %v", err)
+	}
+	if pending, _ := history.ListPending(); len(pending) != 0 {
+		t.Fatalf("still pending after a drain: %+v", pending)
+	}
+}
+
+// TestHookSessionStartDropsASessionOutsideAnyRepository: a session that ran in
+// a directory git says is in no repository can never be filed, so the start
+// deletes its raw copy and says so once, instead of keeping unredacted text
+// and repeating a notice at every start.
+func TestHookSessionStartDropsASessionOutsideAnyRepository(t *testing.T) {
+	sessionEndRepo(t)
+	tp := filepath.Join(t.TempDir(), "sess.jsonl")
+	if err := os.WriteFile(tp, []byte(`{"role":"user","text":"nowhere"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, endPayload(t, "sess-nowhere", t.TempDir(), tp), "hook", "session-end")
+
+	_, stderr, _ := runSessionStart(startPayload("sess-next", t.TempDir()), "hook", "session-start")
+
+	if !strings.Contains(stderr, "session sess-nowhere") || !strings.Contains(stderr, "raw copy was deleted") {
+		t.Errorf("the start does not report the dropped transcript: %q", stderr)
+	}
+	if pending, _ := history.ListPending(); len(pending) != 0 {
+		t.Fatalf("a session outside any repository is still pending: %+v", pending)
+	}
+	_, again, _ := runSessionStart(startPayload("sess-later", t.TempDir()), "hook", "session-start")
+	if strings.Contains(again, "sess-nowhere") {
+		t.Errorf("the drop is reported again at a later start: %q", again)
+	}
+}

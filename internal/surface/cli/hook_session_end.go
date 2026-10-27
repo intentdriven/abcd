@@ -110,8 +110,12 @@ func placePendingNotices() []string {
 		return append(notices, fmt.Sprintf("abcd history: transcripts staged at session end could not be listed (%s); they wait for the next start.",
 			termsafe.Sanitize(fsutil.RedactHome(err.Error()))))
 	}
+	for _, d := range res.Dropped {
+		notices = append(notices, fmt.Sprintf("abcd history: session %s ended in %s, which is in no repository, so its transcript was not captured and its raw copy was deleted.",
+			termsafe.Sanitize(d.SessionID), termsafe.Sanitize(fsutil.RedactHome(d.Cwd))))
+	}
 	for _, u := range res.Unplaced {
-		notices = append(notices, fmt.Sprintf("abcd history: the transcript of session %s, which ended in %s, was not filed in any store: %s. It stays UNREDACTED at %s until a session start can place it.",
+		notices = append(notices, fmt.Sprintf("abcd history: the transcript of session %s, which ended in %s, was not filed in any store: %s. It stays UNREDACTED at %s until a session start can place it, or `abcd history discard --pending <file> --yes` deletes it.",
 			termsafe.Sanitize(u.SessionID), termsafe.Sanitize(fsutil.RedactHome(u.Cwd)),
 			termsafe.Sanitize(fsutil.RedactHome(u.Reason)), termsafe.Sanitize(fsutil.RedactHome(u.Path))))
 	}
@@ -132,7 +136,8 @@ func resolveCwdRepo(cwd string) (string, string, error) {
 		if rerr := det.RepoIdentity.RootErr(); rerr != nil {
 			return "", "", fmt.Errorf("git gave no root commit for its working directory (%v)", rerr)
 		}
-		return "", "", fmt.Errorf("its working directory is in no repository")
+		// git answered: no repository here, or one with no commit yet.
+		return "", "", fmt.Errorf("its working directory is %w", history.ErrNoRepository)
 	}
 	return captureRoot(cwd), det.RootSHA, nil
 }

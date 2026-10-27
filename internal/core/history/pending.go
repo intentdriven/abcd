@@ -225,8 +225,19 @@ func listPending(dir string) ([]Pending, error) {
 
 // RepoResolver finds the repository a working directory belongs to: its root
 // and its root-commit SHA. The caller supplies it, because finding a
-// repository is git and the front door owns that.
+// repository is git and the front door owns that. It wraps ErrNoRepository
+// when git answered that the directory is in no repository, or in one with no
+// commit yet: a definite answer, unlike a directory that is gone or a git
+// that did not answer.
 type RepoResolver func(cwd string) (repoRoot, rootSHA string, err error)
+
+// errPendingChanged says a pending copy was re-staged between the listing
+// and the lock, so the judgement made on the listing no longer applies.
+var errPendingChanged = errors.New("the pending copy changed since it was listed")
+
+// ErrNoRepository is a RepoResolver's definite answer that a directory
+// belongs to no repository with a root commit.
+var ErrNoRepository = errors.New("not in a repository with a root commit")
 
 // Placed is one pending transcript filed in a store's staging lane.
 type Placed struct {
@@ -249,6 +260,12 @@ type Unplaced struct {
 type PlaceResult struct {
 	Placed   []Placed   `json:"placed"`
 	Unplaced []Unplaced `json:"unplaced"`
+	// Dropped are the sessions that ended outside any repository: no store
+	// noted them and git says their directory is in none. No store will ever
+	// take them, so their raw copies are deleted rather than kept unredacted
+	// forever, which is what the session-end hook did before it staged by
+	// session id: it captured nothing for such a session.
+	Dropped []Unplaced `json:"dropped"`
 }
 
 // PlacePending files every pending transcript in its store's staging lane,
@@ -262,7 +279,7 @@ type PlaceResult struct {
 // they are still the bytes that were staged: a SessionEnd re-firing during the
 // placement wins. A transcript no store is found for stays, and is reported.
 func PlacePending(resolve RepoResolver) (PlaceResult, error) {
-	res := PlaceResult{Placed: []Placed{}, Unplaced: []Unplaced{}}
+	res := PlaceResult{Placed: []Placed{}, Unplaced: []Unplaced{}, Dropped: []Unplaced{}}
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return res, fmt.Errorf("history: cannot resolve the caller's home directory: %v", err)
@@ -280,13 +297,50 @@ func PlacePending(resolve RepoResolver) (PlaceResult, error) {
 			unplaced(p.Err)
 			continue
 		}
-		repoRoot, rootSHA, via, why := placeTarget(p, resolve)
+		repoRoot, rootSHA, via, why, never := placeTarget(p, resolve)
+		if never {
+			err := withStagingLock(dir, p.SessionID, func() error {
+				// Only the copy that was judged: a SessionEnd that re-fired
+				// since the listing (a resumed session, perhaps now in a
+				// repository) wrote a newer sidecar, and that copy is left for
+				// the next placement to judge.
+				_, side := pendingPaths(dir, p.SessionID)
+				data, err := fsutil.ReadGuarded(side, maxStageSidecarBytes)
+				var sc pendingSidecar
+				if err != nil || json.Unmarshal(data, &sc) != nil || !sc.StagedAt.Equal(p.StagedAt) {
+					return errPendingChanged
+				}
+				if err := os.Remove(p.Path); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return err
+				}
+				_ = os.Remove(side)
+				retireStagingLock(dir, p.SessionID)
+				return nil
+			})
+			if errors.Is(err, errPendingChanged) {
+				continue
+			}
+			if err != nil {
+				unplaced(fmt.Sprintf("%s, and its raw copy could not be deleted (%v)", why, err))
+				continue
+			}
+			res.Dropped = append(res.Dropped, Unplaced{SessionID: p.SessionID, Cwd: p.Cwd, Path: p.Path, Reason: why})
+			continue
+		}
 		if rootSHA == "" {
 			unplaced(why)
 			continue
 		}
+		gone := false
 		err := withStagingLock(dir, p.SessionID, func() error {
 			raw, err := fsutil.ReadGuarded(p.Path, maxTranscriptBytes)
+			if errors.Is(err, os.ErrNotExist) {
+				// Another session start placed it between the listing and
+				// this lock: it is in a lane, and saying otherwise would
+				// warn of unredacted bytes that are not there.
+				gone = true
+				return nil
+			}
 			if err != nil {
 				return err
 			}
@@ -310,6 +364,9 @@ func PlacePending(resolve RepoResolver) (PlaceResult, error) {
 			unplaced(fmt.Sprintf("it could not be staged in its store (%v)", err))
 			continue
 		}
+		if gone {
+			continue
+		}
 		res.Placed = append(res.Placed, Placed{SessionID: p.SessionID, RootSHA: rootSHA, Via: via})
 	}
 	return res, nil
@@ -318,8 +375,10 @@ func PlacePending(resolve RepoResolver) (PlaceResult, error) {
 // placeTarget finds the store for one pending transcript. With the session's
 // note, the cwd is still asked for its root so a store kept in the checkout
 // is honoured, but only when it names the same repository; otherwise the
-// note's store is the user-level one, which needs no root.
-func placeTarget(p Pending, resolve RepoResolver) (repoRoot, rootSHA, via, why string) {
+// note's store is the user-level one, which needs no root. never is true only
+// when no store noted the session and the resolver answered definitely that
+// its directory is in no repository.
+func placeTarget(p Pending, resolve RepoResolver) (repoRoot, rootSHA, via, why string, never bool) {
 	noted, noteErr := SessionRepo(p.SessionID)
 	var cwdRoot, cwdSHA string
 	var cwdErr error
@@ -331,17 +390,58 @@ func placeTarget(p Pending, resolve RepoResolver) (repoRoot, rootSHA, via, why s
 	default:
 		cwdRoot, cwdSHA, cwdErr = resolve(p.Cwd)
 		if cwdErr == nil && !rootSHARe.MatchString(cwdSHA) {
-			cwdErr = errors.New("its working directory is in no repository with a root commit")
+			cwdErr = fmt.Errorf("its working directory is %w", ErrNoRepository)
 		}
 	}
 	if noteErr == nil {
 		if cwdErr == nil && cwdSHA == noted {
-			return cwdRoot, noted, "session-note", ""
+			return cwdRoot, noted, "session-note", "", false
 		}
-		return "", noted, "session-note", ""
+		return "", noted, "session-note", "", false
 	}
 	if cwdErr == nil {
-		return cwdRoot, cwdSHA, "cwd", ""
+		return cwdRoot, cwdSHA, "cwd", "", false
 	}
-	return "", "", "", fmt.Sprintf("no store noted the session, and %v", cwdErr)
+	why = fmt.Sprintf("no store noted the session, and %v", cwdErr)
+	return "", "", "", why, errors.Is(noteErr, errNoStoreNoted) && errors.Is(cwdErr, ErrNoRepository)
+}
+
+// DiscardPending deletes one pending transcript by its filename, with its
+// sidecar, under the session's lock. It is the only way a pending copy no
+// start can place leaves the disk other than placement itself, and it is as
+// irreversible as Discard: the caller confirms first.
+func DiscardPending(name string) (DiscardResult, error) {
+	if name == "" || name != filepath.Base(name) || !strings.HasSuffix(name, stagedSuffix) {
+		return DiscardResult{}, fmt.Errorf("history: %q is not a pending transcript filename (<session-id>%s)", name, stagedSuffix)
+	}
+	sessionID := strings.TrimSuffix(name, stagedSuffix)
+	if !safeIDSegment(sessionID) {
+		return DiscardResult{}, fmt.Errorf("history: %q is not a pending transcript filename", name)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return DiscardResult{}, fmt.Errorf("history: cannot resolve the caller's home directory: %v", err)
+	}
+	dir := filepath.Join(home, filepath.FromSlash(userStoreRelPath), pendingDirName)
+	path, side := pendingPaths(dir, sessionID)
+	fi, err := os.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() {
+		return DiscardResult{}, fmt.Errorf("history: no pending transcript is named %q", name)
+	}
+	res := DiscardResult{Path: path, Bytes: fi.Size()}
+	err = withStagingLock(dir, sessionID, func() error {
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		res.Removed = append(res.Removed, path)
+		if err := os.Remove(side); err == nil {
+			res.Removed = append(res.Removed, side)
+		}
+		retireStagingLock(dir, sessionID)
+		return nil
+	})
+	if err != nil {
+		return DiscardResult{}, err
+	}
+	return res, nil
 }

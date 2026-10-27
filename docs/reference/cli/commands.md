@@ -1971,6 +1971,7 @@ Delete one staged or quarantined raw transcript for good: Writes the deletion; r
 **Flags:**
 
 ```
+      --pending           discard a transcript session-end left pending that no session start could file in a store
       --root-sha string   discard from the repository with this root-commit SHA, with no checkout to stand in (one whose checkout is gone)
       --yes               confirm the irreversible deletion of an unredacted transcript
 ```

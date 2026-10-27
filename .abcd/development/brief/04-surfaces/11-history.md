@@ -192,7 +192,7 @@ old path.
 
 ## Why capture is split across two hooks
 
-The session-end hook entrypoint only **stages** the raw transcript beside the records.
+The session-end hook entrypoint only **stages** the raw transcript, into a machine-level pending directory rather than beside the records.
 Redaction is not free, and the host cancels a shutdown hook rather than wait for
 it, so redacting at exit silently dropped every transcript past a couple of
 megabytes: the long, dense sessions most worth keeping
@@ -206,7 +206,10 @@ directory and transcript path beside it. The session-start entrypoint files
 each pending transcript in its store's staging lane before it drains, finding
 the store from the note the session wrote when it started, or else from the
 recorded working directory, and names any transcript it cannot place, which
-stays pending and unredacted until a later start can. The subagent-stop entrypoint stages on the same terms when a
+stays pending and unredacted until a later start can or `abcd history discard
+--pending` removes it. A session no store noted, whose directory git says is in
+no repository, can never be placed: its raw copy is deleted and the start says
+so once, as the hook once captured nothing for it. The subagent-stop entrypoint stages on the same terms when a
 sub-agent finishes, writing that agent's own transcript with the lineage that
 says which session and which agent produced it — and its exit code matters in a
 way `session-end`'s does not, because `SubagentStop` is a BLOCKING event, so
@@ -442,6 +445,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--pending` | bool |
 | `--root-sha` | string |
 | `--yes` | bool |
 
