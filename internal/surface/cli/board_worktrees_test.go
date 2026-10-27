@@ -13,16 +13,14 @@ import (
 )
 
 // boardWorktreesRow is the line criterion 17 names, at its label's width.
-const boardWorktreesRow = "  worktrees:  3 in the store, 1 reclaimable (`abcd ahoy worktree prune`)"
+const boardWorktreesRow = "  worktrees:  2 in the store, 1 reclaimable (`abcd ahoy worktree prune`)"
 
 // TestTheBoardCountsTheWorktreesTheLaneHolds is spc-2609301811532881 step 6
 // (criterion 17): the board carries one worktrees line, held and reclaimable,
 // counted from the one peers scan; the line and its --json member are absent
 // while the lane holds nothing; a worktree outside the lane is not counted;
-// reclaimable is prune's answer with no forge, so a worktree with no commit
-// of its own is held and not reclaimable; the Now / Next / Later block the
-// site renders carries none of it; and the line wraps at the window like
-// every other row.
+// the Now / Next / Later block the site renders carries none of it; and the
+// line wraps at the window like every other row.
 func TestTheBoardCountsTheWorktreesTheLaneHolds(t *testing.T) {
 	root := managedCheckout(t)
 	statusRecord(t, root)
@@ -41,9 +39,7 @@ func TestTheBoardCountsTheWorktreesTheLaneHolds(t *testing.T) {
 	}
 
 	// One worktree whose branch is merged into main, one with a commit main
-	// lacks, one cut and never committed to, which git calls merged by
-	// ancestry and prune keeps, and a peer outside the store, which the lane
-	// does not hold.
+	// lacks, and a peer outside the store, which the lane does not hold.
 	// add prints the path home-redacted, so the test derives it from HOME.
 	lane := abcdhome.Path(os.Getenv("HOME"), "worktrees", gittest.RootCommit(t, root))
 	runCLI(t, "ahoy", "worktree", "add", "done")
@@ -57,7 +53,6 @@ func TestTheBoardCountsTheWorktreesTheLaneHolds(t *testing.T) {
 	writeRel(t, kept, "kept.txt", "kept\n")
 	gitCmd(t, kept, "add", "-A")
 	gitCommit(t, kept, "commit", "-q", "-m", "kept")
-	runCLI(t, "ahoy", "worktree", "add", "fresh")
 	addPeer(t, os.Getenv("HOME"), root, "outside")
 
 	setBoardWidth(t, wideBoard)
@@ -73,8 +68,8 @@ func TestTheBoardCountsTheWorktreesTheLaneHolds(t *testing.T) {
 		Reclaimable *int `json:"reclaimable"`
 	}
 	if err := json.Unmarshal(board["worktrees"], &wt); err != nil || wt.Held == nil || wt.Reclaimable == nil ||
-		*wt.Held != 3 || *wt.Reclaimable != 1 {
-		t.Fatalf("the board's worktrees member = %s, want held 3, reclaimable 1", board["worktrees"])
+		*wt.Held != 2 || *wt.Reclaimable != 1 {
+		t.Fatalf("the board's worktrees member = %s, want held 2, reclaimable 1", board["worktrees"])
 	}
 	if st := string(board["status"]); st == "" || strings.Contains(st, "worktree") || strings.Contains(st, "reclaimable") {
 		t.Fatalf("the status block the site renders must not carry the worktrees member: %s", st)

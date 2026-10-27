@@ -352,7 +352,7 @@ func boardScan(cwd string, stderr io.Writer) (*boardPeersLine, *boardWorktreesLi
 		fmt.Fprintf(stderr, "abcd: the peers line is omitted — %s\n", termsafe.Sanitize(fsutil.DisplayPathsIn(err.Error(), root)))
 		return nil, nil
 	}
-	wt := boardWorktrees(root, cwd, rep, stderr)
+	wt := boardWorktrees(root, rep, stderr)
 	if rep.IDCount() == 0 {
 		return nil, wt
 	}

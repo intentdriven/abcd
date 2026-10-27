@@ -5,7 +5,6 @@ import (
 	"io"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy/worktree"
-	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -13,29 +12,29 @@ import (
 
 // boardWorktreesLine is the board's worktrees member (spc-2609301811532881,
 // criterion 17): how many worktrees this repository's lane in the store
-// holds, and how many of them prune would reclaim with no forge answer.
+// holds, and how many of them the scan judged spent.
 type boardWorktreesLine struct {
 	Held        int `json:"held"`
 	Reclaimable int `json:"reclaimable"`
 }
 
-// boardWorktrees counts the lane's worktrees from git's listing the board's
-// one scan already read, or nil when the lane holds none. Reclaimable is the
-// store's own judgement, never the scan's merged-by-ancestry: a branch cut
-// and never committed to is merged by ancestry, and prune keeps it. The
-// forge is not asked, since the board never asks it; a count that cannot be
-// made omits the line, said on stderr.
-func boardWorktrees(root, cwd string, rep peers.Report, stderr io.Writer) *boardWorktreesLine {
+// boardWorktrees counts, from the scan the board already ran, the linked
+// worktrees inside the repository's lane, or nil when the lane holds none.
+// It reads nothing of its own but the root commit that keys the lane, and
+// only when the scan saw a worktree at all; a lane that cannot be derived
+// omits the line, said on stderr.
+func boardWorktrees(root string, rep peers.Report, stderr io.Writer) *boardWorktreesLine {
 	if len(rep.Worktrees()) == 0 {
 		return nil
 	}
-	got, err := worktree.Count(root, rep.Listing(), worktree.CountOptions{Held: loop.HeldWorktrees, Cwd: cwd})
+	lane, err := worktree.LaneFor(root)
 	if err != nil {
 		fmt.Fprintf(stderr, "abcd: the worktrees line is omitted — %s\n", termsafe.Sanitize(fsutil.DisplayPathsIn(err.Error(), root)))
 		return nil
 	}
-	if got.Held == 0 {
+	held, spent := rep.HeldUnder(lane.Dir)
+	if held == 0 {
 		return nil
 	}
-	return &boardWorktreesLine{Held: got.Held, Reclaimable: got.Reclaimable}
+	return &boardWorktreesLine{Held: held, Reclaimable: spent}
 }
