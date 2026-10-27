@@ -196,7 +196,17 @@ The session-end hook entrypoint only **stages** the raw transcript beside the re
 Redaction is not free, and the host cancels a shutdown hook rather than wait for
 it, so redacting at exit silently dropped every transcript past a couple of
 megabytes: the long, dense sessions most worth keeping
-(iss-2608230817034768). The subagent-stop entrypoint stages on the same terms when a
+(iss-2608230817034768). It runs no git either (iss-2610241519088123): the host
+gives a session-end hook 1.5 seconds in all, a timeout a plugin sets does not
+raise it, and on a loaded machine the binary's start and the git calls that
+found the repository outlasted that, so the hook was cancelled before it staged
+anything. It writes the raw transcript into one machine-level pending directory
+under the user-level store, keyed by session id, with the payload's working
+directory and transcript path beside it. The session-start entrypoint files
+each pending transcript in its store's staging lane before it drains, finding
+the store from the note the session wrote when it started, or else from the
+recorded working directory, and names any transcript it cannot place, which
+stays pending and unredacted until a later start can. The subagent-stop entrypoint stages on the same terms when a
 sub-agent finishes, writing that agent's own transcript with the lineage that
 says which session and which agent produced it — and its exit code matters in a
 way `session-end`'s does not, because `SubagentStop` is a BLOCKING event, so
@@ -297,17 +307,15 @@ any repository and staged nothing. When the payload's working directory
 carries a `.git` entry but git gave no root commit, the entrypoint asks again
 for a few seconds, re-reading the session note between tries. A stage refused
 because its lock was held past the lock's timeout is tried again, up to three
-more times. The session-end entrypoint asks again too, within the 1.5 seconds
-the host gives a session-end hook: up to two short pauses for the repository,
-each begun only if it and another detection, costed at what the first took,
-end within 1.2 seconds of the hook's start, and no further try of the stage. Each retry is said on stderr. A transcript read and still not
+more times. The session-end entrypoint does not ask git at all (above), so it
+has nothing to retry. A sub-agent transcript read and still not
 staged, with the store known, is counted in a marker beside the staging
 directory, and the staged listing reports it: the entrypoint must exit 0, and
 its stderr reaches only the host's debug log, so the marker is where the person
 sees the loss. A working directory with no `.git` entry, whose repository no
-store has seen, is not retried and has no store to mark; no queue holds such a
-transcript elsewhere, since that would keep unredacted text outside every
-store.
+store has seen, is not retried and has no store to mark. A session transcript
+the session-end entrypoint could not write into the pending directory is
+counted in a marker in that directory, and the next session start reports it.
 
 Staging is also **the outcome record the store never had.** Before it, an absent
 record spanned "never ended", "ended before the store existed" and "ended and
