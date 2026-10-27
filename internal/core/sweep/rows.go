@@ -135,7 +135,9 @@ func (r Result) Notes() []string {
 // ExitCode is the code the front door exits with: ExitRefused on a refusal or
 // fault, whatever rows came before it; otherwise, for an applied run,
 // ExitActed when any row's outcome is other than kept, and for a dry run when
-// any row carries an action other than keep; ExitNothing when none does.
+// any row carries an action apply would take; ExitNothing when none does. A
+// save-patch row is not one yet: apply keeps it, since the sweep does not yet
+// save uncommitted changes, so a dry run never promises what apply skips.
 func (r Result) ExitCode() int {
 	if strings.TrimSpace(r.Refusal) != "" {
 		return ExitRefused
@@ -144,7 +146,7 @@ func (r Result) ExitCode() int {
 		switch {
 		case r.Applied && row.Outcome != OutcomeKept && row.Outcome != "":
 			return ExitActed
-		case !r.Applied && row.Action != ActionKeep && row.Action != "":
+		case !r.Applied && row.Action != ActionKeep && row.Action != ActionSavePatch && row.Action != "":
 			return ExitActed
 		}
 	}

@@ -3,6 +3,8 @@ package sweep
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -502,6 +504,55 @@ func TestProcCwdsReadsAProcTree(t *testing.T) {
 
 	if _, err := procCwds(filepath.Join(proc, "absent")); err == nil || !strings.Contains(err.Error(), "cannot read") {
 		t.Fatalf("procCwds over an unreadable /proc = %v; want a refusal saying it cannot read it", err)
+	}
+}
+
+// TestAProcLinkRefusedForThisAccountFailsClosed: a kernel refuses the cwd
+// link of a process that is not dumpable, this account's own included, so a
+// refused link is passed over only when the status names another account.
+func TestAProcLinkRefusedForThisAccountFailsClosed(t *testing.T) {
+	proc := t.TempDir()
+	self := strconv.Itoa(os.Getpid())
+	for _, d := range []string{self, "700", "701"} {
+		if err := os.Mkdir(filepath.Join(proc, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(proc, self, "cwd")); err != nil {
+		t.Skipf("cannot make a symlink here: %v", err)
+	}
+	status := func(pid string, uid int) {
+		t.Helper()
+		body := fmt.Sprintf("Name:\tx\nUid:\t%d\t%d\t%d\t%d\n", uid, uid, uid, uid)
+		if err := os.WriteFile(filepath.Join(proc, pid, "status"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	status("700", os.Getuid()+1)
+	prev := procReadlink
+	t.Cleanup(func() { procReadlink = prev })
+	procReadlink = func(path string) (string, error) {
+		if strings.HasSuffix(path, "/700/cwd") || strings.HasSuffix(path, "/701/cwd") {
+			return "", &fs.PathError{Op: "readlink", Path: path, Err: fs.ErrPermission}
+		}
+		return os.Readlink(path)
+	}
+
+	// 700 is another account's and 701 has exited: both are passed over.
+	if got, err := procCwds(proc); err != nil || len(got) != 1 {
+		t.Fatalf("procCwds = %v, %v; want this process alone", got, err)
+	}
+	// 701 is this account's and refuses its link: the check fails closed.
+	status("701", os.Getuid())
+	if _, err := procCwds(proc); err == nil || !strings.Contains(err.Error(), "process 701") {
+		t.Fatalf("procCwds over this account's refused link = %v; want a refusal naming it", err)
+	}
+	// A status that names no owner fails closed too.
+	if err := os.WriteFile(filepath.Join(proc, "701", "status"), []byte("Name:\tx\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := procCwds(proc); err == nil {
+		t.Fatal("procCwds over a refused link with no readable owner did not refuse")
 	}
 }
 

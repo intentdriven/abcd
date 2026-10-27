@@ -787,10 +787,33 @@ func parseLsof(out []byte) ([]Process, error) {
 // procCwds reads every process's working directory from a /proc tree. A
 // process that exited mid-listing, or one another account owns, is passed
 // over: neither is a session working in this account's worktrees, and
-// refusing on them would fail every check on a shared host. A /proc that
-// cannot be listed, or a link that fails any other way, is an error. So is a
-// /proc that does not list this process: one that is empty or another's, as
-// in a chroot or a container, cannot show that nothing else is running.
+// refusing on them would fail every check on a shared host. A link refused
+// for permission is passed over only when the process's status names another
+// account as its real owner: one of this account's own processes that is not
+// dumpable refuses the link too, and may be working in a worktree. A /proc
+// that cannot be listed, or a link that fails any other way, is an error. So
+// is a /proc that does not list this process: one that is empty or another's,
+// as in a chroot or a container, cannot show that nothing else is running.
+// procReadlink reads a process's cwd link; a test stands in for a kernel that
+// refuses it.
+var procReadlink = os.Readlink
+
+// procRealUID is the real uid on the Uid: line of a /proc status file.
+func procRealUID(path string) (int, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if rest, ok := strings.CutPrefix(line, "Uid:"); ok {
+			if f := strings.Fields(rest); len(f) > 0 {
+				return strconv.Atoi(f[0])
+			}
+		}
+	}
+	return 0, fmt.Errorf("%s names no Uid", path)
+}
+
 func procCwds(root string) ([]Process, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -806,10 +829,16 @@ func procCwds(root string) ([]Process, error) {
 		if err != nil || pid <= 0 {
 			continue
 		}
-		cwd, err := os.Readlink(filepath.Join(root, e.Name(), "cwd"))
+		cwd, err := procReadlink(filepath.Join(root, e.Name(), "cwd"))
 		switch {
-		case errors.Is(err, fs.ErrNotExist), errors.Is(err, fs.ErrPermission):
+		case errors.Is(err, fs.ErrNotExist):
 			continue
+		case errors.Is(err, fs.ErrPermission):
+			uid, serr := procRealUID(filepath.Join(root, e.Name(), "status"))
+			if errors.Is(serr, fs.ErrNotExist) || (serr == nil && uid != os.Getuid()) {
+				continue
+			}
+			return nil, fmt.Errorf("cannot read the working directory of process %d, which this account may own: %v", pid, err)
 		case err != nil:
 			return nil, fmt.Errorf("cannot read the working directory of process %d: %v", pid, err)
 		}

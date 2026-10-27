@@ -21,7 +21,8 @@ func TestExitCodes(t *testing.T) {
 		{"only keeps", Result{Rows: []Row{keep, {Kind: RowStray, Action: ActionKeep}, {Kind: RowEmbargoStore, Action: ActionKeep}}}, ExitNothing},
 		{"a row with no action is no act", Result{Rows: []Row{keep, {Kind: RowWorktree}}}, ExitNothing},
 		{"a removal", Result{Rows: []Row{keep, remove}}, ExitActed},
-		{"a salvage", Result{Rows: []Row{salvage, keep}}, ExitActed},
+		{"a salvage apply does not yet take is no act", Result{Rows: []Row{salvage, keep}}, ExitNothing},
+		{"a salvage beside a removal", Result{Rows: []Row{salvage, remove}}, ExitActed},
 		{"a refusal", Result{Refusal: "the worktree store is a symlink"}, ExitRefused},
 		{"a refusal outranks an act", Result{Rows: []Row{remove}, Refusal: "fault"}, ExitRefused},
 	} {
