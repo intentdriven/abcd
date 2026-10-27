@@ -28,7 +28,6 @@ internal/core/guard.Load
 internal/core/guard.Merge
 internal/core/guard.Validate
 internal/core/history.DefaultConfig
-internal/core/identity.LoadPin
 internal/core/implement.LoadResultFromEvent
 internal/core/implement.ReadingCorpus
 internal/core/implement.Roles

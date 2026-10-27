@@ -365,10 +365,10 @@ func TestStrandedOwnershipScope(t *testing.T) {
 	}
 }
 
-// TestDetectBinDirNotOnPathIsALoudGap pins the script-first remedy: an install
-// directory that is not on PATH is its own loud gap carrying the one-line export
-// fix, and abcd never offers to patch a shell profile (the gap is not resolvable
-// by an apply step).
+// TestDetectBinDirNotOnPathIsALoudGap pins the diagnosis: an install directory
+// that is not on PATH is its own loud gap carrying the one-line export fix. The
+// gap itself is not resolvable by an apply step; the edit of the shell settings
+// is a separate optional offer asked at a terminal (shell_path_test.go).
 func TestDetectBinDirNotOnPathIsALoudGap(t *testing.T) {
 	home, pluginRoot := setupUserScope(t, filepath.Join(t.TempDir(), "elsewhere"))
 	linkOwned(t, filepath.Join(home, ".local", "bin", "abcd"), pluginRoot)
@@ -385,7 +385,7 @@ func TestDetectBinDirNotOnPathIsALoudGap(t *testing.T) {
 		t.Errorf("the PATH gap must be required (loud): %+v", g)
 	}
 	if g.Resolvable {
-		t.Errorf("the PATH gap must NOT be resolvable — abcd prints the fix, it never patches a shell profile: %+v", g)
+		t.Errorf("the PATH gap must NOT be resolvable — it is the diagnosis; the shell-settings edit is its own offer: %+v", g)
 	}
 	if want := `export PATH="$HOME/.local/bin:$PATH"`; !strings.Contains(g.FixHint, want) {
 		t.Errorf("fix hint = %q, want it to carry %q", g.FixHint, want)

@@ -12,6 +12,12 @@ Every `AskUserQuestion` (or equivalent harness call) shows:
 
 No silent defaults. No surprises.
 
+Setup meets the three in two steps
+([adr-2610241101463288](../../decisions/adrs/2610241101463288-setup-asks-short-questions-and-lists-its.md)):
+its plan screen lists every change and every default before anything is
+written, each default with where to change it, and each of its questions is
+one line whose answer `?` shows all three before asking again.
+
 Every question also has one layout (itd-2610030810350727, itd-201;
 spc-2610030944505997), and abcd's question check in `abcd guard hook` refuses
 an abcd question that breaks it, naming the part, the value, and the limit. The

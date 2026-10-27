@@ -77,9 +77,9 @@ func TestReleaseWorkflowPublishesThePinnedArchive(t *testing.T) {
 	// elsewhere, and a pin at another repository's release passes --verify yet
 	// 404s for every install.
 	render := indexOf(t, rel, `go run ./cmd/abcd launch archive --out bin --tag "${TAG}" --verify`+repositoryBinding, "release")
-	sums := indexOf(t, rel, "sha256sum abcd-* > checksums.txt", "release")
+	sums := indexOf(t, rel, "sha256sum abcd-* install.sh > checksums.txt", "release")
 	attest := indexOf(t, rel, "- name: Attest build provenance for the binaries", "release")
-	create := indexOf(t, rel, `gh release create "${TAG}" bin/abcd-* bin/checksums.txt`, "release")
+	create := indexOf(t, rel, `gh release create "${TAG}" bin/abcd-* bin/install.sh bin/checksums.txt`, "release")
 	if !(stamp < render && render < sums && sums < attest && attest < create) {
 		t.Errorf("release job order: vcs-stamp %d < archive %d < checksums %d < attest %d < create %d must hold",
 			stamp, render, sums, attest, create)
@@ -95,7 +95,7 @@ func TestReleaseWorkflowPublishesThePinnedArchive(t *testing.T) {
 	// built, and the archive is attested.
 	for _, needle := range []string{
 		`releases/${RELEASE_ID}/assets?per_page=100`,
-		`for f in bin/abcd-* bin/checksums.txt; do`,
+		`for f in bin/abcd-* bin/install.sh bin/checksums.txt; do`,
 		`cmp "$DL/$name" "$f"`,
 		`gh attestation verify "$DL/abcd-plugin-${TAG}.zip"`,
 	} {
@@ -163,5 +163,33 @@ func TestAbcdDeclaresTheArchiveItsWorkflowsPublish(t *testing.T) {
 	if !declared || !publishes {
 		t.Errorf("abcd's version-location contract declares publishes_plugin_archive=%v and its release.yml uploads the archive=%v; both must hold",
 			declared, publishes)
+	}
+}
+
+// TestReleaseWorkflowPublishesTheInstaller: the release job publishes
+// site-src/install.sh.tmpl as the install.sh release asset, so the documented
+// `curl -fsSL …/releases/latest/download/install.sh | sh` runs the installer
+// reviewed in the released commit (iss-2610240827243654). It is staged into
+// bin/ from that commit after the VCS-stamp check and before the manifest, and
+// named in every step that hashes, attests, uploads and re-downloads the
+// assets, so the release page cannot carry an installer this workflow did not
+// checksum and sign. The abcd-* globs do not catch it, so each step must name
+// it. Read from the committed workflow; TestSelfScaffoldParity binds the
+// template to it.
+func TestReleaseWorkflowPublishesTheInstaller(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), filepath.FromSlash(ReleaseYMLPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel := jobSection(t, string(data), "release")
+	stamp := indexOf(t, rel, "./scripts/check-vcs-stamp.sh", "release")
+	stage := indexOf(t, rel, "run: cp site-src/install.sh.tmpl bin/install.sh\n", "release")
+	sums := indexOf(t, rel, "sha256sum abcd-* install.sh > checksums.txt", "release")
+	attest := indexOf(t, rel, "            bin/abcd-*\n            bin/install.sh\n            bin/checksums.txt\n", "release")
+	create := indexOf(t, rel, `gh release create "${TAG}" bin/abcd-* bin/install.sh bin/checksums.txt --draft`, "release")
+	check := indexOf(t, rel, `for f in bin/abcd-* bin/install.sh bin/checksums.txt; do`, "release")
+	if !(stamp < stage && stage < sums && sums < attest && attest < create && create < check) {
+		t.Errorf("release job order: vcs-stamp %d < stage install.sh %d < checksums %d < attest %d < create %d < re-download check %d must hold",
+			stamp, stage, sums, attest, create, check)
 	}
 }

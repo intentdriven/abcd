@@ -53,7 +53,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 ```
       --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
-      --identity    check git's commit author and committer against .abcd/config/identity.json, exiting non-zero when either diverges (for a pre-commit hook or CI)
+      --identity    check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)
       --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
       --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
 ```
@@ -122,6 +122,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --answers string          answer the setup questions from this answers file (JSON: schema_version, interview "setup", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key
       --attribution             opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
+      --details                 print the full record after the report: core's summary of every write and every note, each path written, the declined kinds of change and the gaps left
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
@@ -132,7 +133,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
       --visibility string       repo visibility: private | public
-      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
+      --yes                     approve every resolvable change category without prompting; excludes recording who you commit as on this machine (asked only at a terminal), the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
 ```
 
 #### `abcd ahoy remote`
@@ -315,7 +316,7 @@ In a checkout with a remote named origin, the run reserves its key there, as
 resumed one, with the files the spec's `## Footprint` packages line names (an issue's
 found_at path for an issue id), so every other participant sees it is taken. A spec with
 no footprint, or an issue with no found_at path, is refused at the reservation and nothing
-is started. Another person's reservation, or your own from another computer, refuses
+is started. Another person's reservation, or your own from another copy, refuses
 the start as contention; --take-over moves your own live reservation from another copy
 to this one, never another person's. `abcd implement step` renews the reservation, fences
 the landing's push and its arming with it and releases it once the run lands; a run
@@ -353,6 +354,16 @@ bind through `abcd implement step`, which hands out work only while a slot under
 ceiling is free. A lane whose validators still do not pass after its fix rounds is
 handed back: it stops as unachievable with the last round's findings, the run starts nothing
 further for it, and `abcd implement step` refuses naming the hand-back.
+
+A new run reads its review set once, too: review.reviewers (one or two model classes per
+code-review role, for both roles or per role; bundled: middle and below), review.judge (a
+class; refused until a judge agent clears itd-81's calibration gate) and, from
+~/.abcd.noindex/config.json alone, review.max_reviewers (1 or 2, bundled 2) and the class map
+models.classes (top, middle, below, smallest, each a <provider>/<model> route over the
+bundled map). A repository list above the machine's ceiling is clamped with one line on
+stderr naming both files; a repository's ceiling or class map is skipped with a warning.
+An unknown class or a malformed set is refused at the review stage and writes nothing.
+The result's review and the run record name each class with its model and each layer.
 
 The run then moves one step per `abcd implement step`, driven by the host session.
 
@@ -2873,7 +2884,9 @@ alone. It is refused, changing nothing, while the run has an outage (open or giv
 for a blank --yielded, for a lane with neither an implementer out nor an await a rate
 limit kept, or for a worktree that is not the one the loop derives.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
-at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
+at the judged head; on an intent lane it marks the lane's step landed on the open spec with a `- landed:`
+line naming the judged head (unless the spec lists no steps or already marks it); on
+the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
 declared fixed it runs `capture resolve` with the lane's commit, committing them on the
 lane's branch with Delivers: and Resolves: trailers and an Assisted-by: naming the model

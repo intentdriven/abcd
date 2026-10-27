@@ -38,6 +38,9 @@ type Replaced struct {
 	Holder string
 	// Copy is CopyAnother when it was this person's other copy, else "".
 	Copy string
+	// YourCopy names that other copy, when Copy is CopyAnother: "your
+	// worktree <path> on this machine" or "your copy on another computer".
+	YourCopy string
 	// Commit is the tip replaced.
 	Commit string
 	// EffectiveExpiry is when it stopped holding (an unreadable tip's hold).
@@ -400,11 +403,16 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 	lapsed := !now.Before(exp.Add(TakeoverMargin))
 	if j.mine {
 		if !p.req.TakeOver && !lapsed {
+			if wt := siblingCopy(p.root, j.Copy); wt != "" {
+				return Result{}, message{}, "", backOff("you are already building %s from your worktree %s on this machine, until %s; "+
+					"renew it from there, or pass --take-over to continue here", p.id, wt, stamp(exp))
+			}
 			return Result{}, message{}, "", backOff("you are already building %s on another computer, until %s; pass --take-over to continue here",
 				p.id, stamp(exp))
 		}
 		res.Act = ActTakenOver
-		res.Replaced = &Replaced{Holder: j.Holder, Copy: CopyAnother, Commit: j.Commit, EffectiveExpiry: exp}
+		res.Replaced = &Replaced{Holder: j.Holder, Copy: CopyAnother, YourCopy: yourCopyAt(siblingCopy(p.root, j.Copy)),
+			Commit: j.Commit, EffectiveExpiry: exp}
 		return res, m, j.Commit, nil
 	}
 	switch {
@@ -435,8 +443,11 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherPerson, ErrRefused,
 			fmt.Sprintf("%s is reserved by %s, not by you; %s", p.id, j.Holder, nothingPushed))
 	case !j.thisCopy:
-		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherCopy, ErrRefused,
-			fmt.Sprintf("%s is held by your copy on another computer; release it there, or take it over here first; %s", p.id, nothingPushed))
+		yours := yourCopyAt(siblingCopy(p.root, j.Copy))
+		nh := j.notHeld(p.id, NotHeldAnotherCopy, ErrRefused,
+			fmt.Sprintf("%s is held by %s; release it there, or take it over here first; %s", p.id, yours, nothingPushed))
+		nh.YourCopy = yours
+		return Result{}, message{}, "", nh
 	case p.req.Tip != "" && j.Commit != p.req.Tip:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldMoved, ErrRefused,
 			fmt.Sprintf("the reservation on %s is no longer commit %s: it was renewed or reserved again since, so it is left as it stands; %s",
@@ -541,8 +552,10 @@ func decideRenew(p *prepared, j judged) (Result, message, string, error) {
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherPerson, ErrBackOff,
 			fmt.Sprintf("%s is reserved by %s until %s, not by you; %s", p.id, j.Holder, stamp(exp), nothingPushed))
 	case !j.thisCopy:
-		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherCopy, ErrBackOff,
-			fmt.Sprintf("%s is held by your copy on another computer, until %s; %s", p.id, stamp(exp), nothingPushed))
+		yours := yourCopyAt(siblingCopy(p.root, j.Copy))
+		nh := j.notHeld(p.id, NotHeldAnotherCopy, ErrBackOff, fmt.Sprintf("%s is held by %s, until %s; %s", p.id, yours, stamp(exp), nothingPushed))
+		nh.YourCopy = yours
+		return Result{}, message{}, "", nh
 	case p.req.Live && !j.verdict.Live:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldLapsed, ErrBackOff,
 			fmt.Sprintf("your reservation on %s lapsed at %s; %s", p.id, stamp(exp), nothingPushed))

@@ -90,6 +90,14 @@ payload adds:
   live shows none, so the field is then absent; the text form shows the
   stage beside a live one alone.
 - `live_by_holder`: each person's count of live reservations.
+- `lapsed_releases`: each release whose cut stopped renewing its reservation
+  with no tag on origin (an expired `rel-vX.Y.Z` reservation), which holds no
+  merge, with its `release`, `subject`, `holder`, `copy: "this"` when it was
+  made from this checkout, `renewed_at` (its last claim), `lapsed_at` and
+  `text`, the line the text form shows it by: the cut lapsed, no merge is
+  held, and from five minutes after the lapse any copy reserves the release
+  again, to resume the cut or, followed by `--release`, to withdraw it. Tell
+  the user no merge waits on it (iss-2610241104098581).
 - `release_holds`: each release being cut (a live `rel-vX.Y.Z` reservation,
   or an unreadable one within its hold, which holds every other session's
   merge until its tag is on origin; see `/abcd:reserve`), with its `release`,

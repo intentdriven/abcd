@@ -125,8 +125,145 @@ Flagged for the product thinker to confirm (record-discipline review, 2026-10-03
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-7f60ee417b11 -->
-Fidelity review OWED (receipt rcp-7f60ee417b11).
+<!-- abcd-review: INGESTED receipt=rcp-7f60ee417b11 -->
+Fidelity review — receipt rcp-7f60ee417b11 (verifier abcd:intent-auditor claude-opus-5-5).
+
+Provenance: abcd:intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:3b6ae0e6aa2e2bb15b5cf0839a7a20bfcfd698b45d4db62020da2d1968b37c19
+Input attestations: diff:git diff 1b22bae3169447f0c773d703713c7f3b6a9261e3 4b9345575123ba47c2ee6fc1cd6dc7d27804812d (PR #784: spec steps 1 and 2)@sha256:74de7e73c13db25c490cff764c4e7d4b22db849d5060b879ca83ab88752ddc63; diff:git diff cc5121f6880b750dfda60f355d1beb6c37babddd 9392a45148241c28c7140b50660637184183ec40 (PR #788: spec steps 3 to 5 and the close 3fdb8a4ce04f0c3bd2877d8a24e3e301eef3f5b7)@sha256:b3e33525369dc8b2e9de804c8d5e66e47de3d7ccb1fb1f476a187a8ae0816f21; commit:2f81e44cca5b1723a76878e5d28b7577d49290a1 (after delivery, 2026-10-07: the guard hook blocks with the host's JSON deny)@-; commit:66e8d7ed04c1648deb8ba7ff5b3fb8841cee83a1 (after delivery, 2026-10-07: a question over the rows limit alone is shown with a note)@-; repo:40320db01e6277d61e58fbc8cc2988346c444e52 (origin/main 2e03c61e454bf09ecda8cee0ae2f377157b522f7 plus audit-note commits): the tree every unprefixed ref cites; a ref prefixed 9392a4514: cites the delivery merge@-;
+
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 6 · NOT_MET 0 · INCONCLUSIVE 1
+
+Audit owed (receipt rcp-7f60ee417b11): ac-6 INCONCLUSIVE. Remedy: re-run the audit. Carried by iss-2610241604049754.
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: TestRoutingQuestionOf20261003IsRefused runs the routing fixture through abcd guard hook with the mode at product-thinker, and at delivery (9392a4514) asserted exit 2, nothing on stdout, and exactly the parts its findings file lists. Concerns: the fixture is a rebuild of the routing question, not its raw input (decision 13); the refusal names ten of the eleven failing parts and only counts the eleventh (option 3's preview), because one refusal names at most ten; and since 2f81e44cc (2026-10-07) main refuses through the host's JSON deny with exit 0, so 'exit 2' no longer holds there.
+  evidence: 9392a4514:internal/surface/cli/guard_question_limits_test.go:192 — "if code != 2 {"
+  evidence: internal/surface/cli/testdata/questions/routing-2026-10-03.findings.json:2 — "Eleven parts break the rules; the refusal names the first ten and counts the eleventh (option 3 preview) as one more."
+  evidence: internal/surface/cli/guard_question.go:380 — "const maxRefusalParts = 10"
+  evidence: .abcd/development/intents/shipped/itd-2610030810350727-every-question-abcd-puts-to-a-person.md:106 — "the fixture for A1 is rebuilt from this session's own early routing questions (the screenshots were not kept), stored as test data"
+  evidence: internal/surface/cli/guard_hook_output.go:13 — "A block is the host's PreToolUse deny: exit 0 and one JSON object whose"
+  evidence: internal/surface/cli/guard_question_limits_test.go:226 — "reason := mustDeny(t, stdout, stderr, code)"
+- ac-2 — MET_WITH_CONCERNS: TestWellBuiltQuestionIsAdmitted, at the core and at the hook, admits a 'Product Q2' question with three options of short labels and two-sentence descriptions, 'Decide later' last, no bold and no '(Recommended)': exit 0 with nothing on either stream, managed and unmanaged. Concern: admission is narrower than A2's givens, because the check also requires a 'Now:' and a 'Change later:' line with values (decision 4), material before a last line ending in a question (rule 11), the decide-later option last (rule 6) and a non-empty description, so a question meeting only the givens A2 lists is refused.
+  evidence: internal/surface/cli/guard_question_limits_test.go:248 — "if code != 0 || stdout != "" || stderr != "" {"
+  evidence: internal/core/question/limits_test.go:79 — "func TestWellBuiltQuestionIsAdmitted(t *testing.T) {"
+  evidence: internal/core/question/limits_test.go:30 — ""Now: not applicable","
+  evidence: internal/core/question/limits_test.go:144 — "{"no Now: line", RuleNowAndChangeLater, facilitator(), func(f *Fields) {"
+  evidence: internal/core/question/check.go:239 — "laterLimit := fmt.Sprintf("exactly one option labelled %s, the last", quoteList(l.LaterLabels))"
+- ac-3 — MET: TestRecommendedStarredOrLongHeaderIsRefused, at the core and at the hook, refuses a 'Keep it (Recommended)' label, a '★ Keep it' label and a 'Product thinker Q2' header, each on a finding line that carries the rule, the quoted value and the limit ('no (Recommended) label and no star mark', '12 columns'); the refusal exited 2 at delivery and is the host's deny on main, and A3 names neither.
+  evidence: internal/core/question/limits_test.go:188 — "func TestRecommendedStarredOrLongHeaderIsRefused(t *testing.T) {"
+  evidence: internal/surface/cli/guard_question_limits_test.go:295 — "no line names the rule %q, the value %q and the limit %q"
+  evidence: internal/core/question/check.go:268 — "add(optionPart(i, "label"), RuleNeverRecommended, o.Label, "no (Recommended) label and no star mark", RecommendedRemedy)"
+  evidence: internal/core/question/check.go:186 — "if w := textwidth.Columns(t.Header); w > l.HeaderColumns {"
+  evidence: internal/core/question/check.go:57 — "return fmt.Sprintf("%s, %s (%s): %q; limit: %s. %s", where, f.Part, f.Rule, f.Value, f.Limit, f.Remedy)"
+  evidence: 9392a4514:internal/surface/cli/guard_question_limits_test.go:257 — "if code != 2 || stdout != "" {"
+- ac-4 — MET_WITH_CONCERNS: At delivery every finding refused, the rows estimate's included: TestQuestionFitsTwentyFourRowsAt80 refuses five criteria in one question with the split remedy and admits them as four tabs and then one, and TestRowEstimateMatchesTheHostAt80By24 matches the 24 rows the host drew, from figures measured on Claude Code 2.1.288 at 80 by 24 and recorded in a dated note naming that version. Concerns: the screenshot exists only as that note's description (the spec's open question 6, decided (c)), and its images are in neither the record nor the main checkout's local tier; no screenshot shows a tabbed call; and since 66e8d7ed0 (2026-10-07) the hook admits a question whose only fault is its height, with a note to the agent, so on main a question the check lets through can exceed 24 rows and is not split.
+  evidence: internal/core/question/limits_test.go:418 — "onlyRule(t, fs, RuleRows)"
+  evidence: internal/core/question/limits_test.go:471 — "if got := estimateRows(tab, Default); got != 24 {"
+  evidence: internal/core/question/limits.go:53 — "spc-2610030944505997 read them on 2026-10-03 from Claude Code 2.1.288's"
+  evidence: 9392a4514:internal/surface/cli/guard_question.go:130 — "return &exitError{Code: 2}"
+  evidence: .abcd/development/research/notes/2026-10-03-host-question-layout-calibration.md:8 — "are kept in the local tier, under `.abcd/.work.local/receipts/`, and are not"
+  evidence: internal/surface/cli/guard_question.go:203 — "if len(findings) > 0 && !rowsOnly(findings) {"
+  evidence: internal/surface/cli/guard_question_rows_test.go:13 — "The rows limit is the one layout rule the hook does not refuse on"
+- ac-5 — MET: Rule 14 refuses every preview on an abcd question, naming 'no side preview' and the decision-20 remedy; TestQuestionCarriesNoSidePreview asserts one finding per preview and the same question admitted without them; abcd's own question type maps no preview into the host's fields; and the dated calibration note records that the host hides every description while a preview shows and shows each one without.
+  evidence: internal/core/question/check.go:346 — "add(optionPart(i, "preview"), RuleNoPreview, o.Preview, "no side preview", previewRemedy)"
+  evidence: internal/core/question/limits_test.go:366 — "onlyRule(t, fs, RuleNoPreview)"
+  evidence: internal/core/question/ask.go:238 — "choices = append(choices, Choice{Label: o.Label, Description: o.Meaning})"
+  evidence: .abcd/development/research/notes/2026-10-03-host-question-layout-calibration.md:17 — "With previews present, the host shows the option labels only: every"
+  evidence: .abcd/development/research/notes/2026-10-03-host-question-layout-calibration.md:39 — "options. The 24 rows: the chip (1), a blank (1), the question text (9), a blank"
+- ac-6 — INCONCLUSIVE: A6 is struck by decision 11, because decision 8 puts phones and the web console outside the promise, and the spec lists them as out; the delivery neither tests nor claims how the web console or the Claude app render a question, so no delivered artefact decides the struck outcome, and it is recorded INCONCLUSIVE (the bullet's own fallback is 'marked untested') rather than MET.
+  evidence: .abcd/development/intents/shipped/itd-2610030810350727-every-question-abcd-puts-to-a-person.md:77 — "~~A6~~ (STRUCK, decision 11)"
+  evidence: .abcd/development/intents/shipped/itd-2610030810350727-every-question-abcd-puts-to-a-person.md:104 — "proposed criterion A6 (the web console and the Claude app) is struck, because decision 8 puts phones and the web console outside the promise"
+  evidence: .abcd/development/specs/closed/spc-2610030944505997-asking-and-layout.md:100 — "- Phones and the web console (decision 8, scope condition 4)."
+- ac-7 — MET: question.Default in internal/core/question/limits.go is the one value: CheckLimits reads it, the GRILL domain is generated from AskingRules(question.Default), and cmd/asking-sync renders the asking-rules block of commands/intent.md from it; TestOneEditMovesEveryStatementOfALimit raises LabelWords to 6 on a copy and sees the check admit a six-word label and both the rule text and the page block move from 'five words' to 'six words', and TestIntentPageAskingBlockIsGenerated fails while the committed block lags the rendering.
+  evidence: internal/core/question/limits.go:41 — "// Default is the one statement of every limit."
+  evidence: internal/core/rules/grill.go:29 — "Rules: question.AskingRules(question.Default),"
+  evidence: cmd/asking-sync/main_test.go:88 — "after.LabelWords = 6"
+  evidence: cmd/asking-sync/main_test.go:111 — "if !strings.Contains(pageBefore, "at most five words") || !strings.Contains(pageAfter, "at most six words") ||"
+  evidence: cmd/asking-sync/main_test.go:49 — "if got, want := committedBlock(t, page), render(question.Default); got != want {"
+  evidence: commands/intent.md:333 — "each label is at most five words, and each description at most two sentences"
+- ac-8 — MET_WITH_CONCERNS: TestCriterionQuestionQuotesTheCriterionFirst admits a criterion's full text, the Now: and Change later: lines and 'Does it stand?', and refuses 'Does criterion A4 stand?' alone under rule 11; the generated rule text and step 8 of commands/intent.md tell the agent to quote the criterion in the question. Concern: the check proves only that some line of material precedes the question, not that it is the criterion's full text or its first paragraph, so a criterion referred to after any other text is admitted; the full-text half rests on the rule text.
+  evidence: internal/core/question/limits_test.go:314 — "Does criterion A4 stand?"
+  evidence: internal/core/question/check.go:321 — "at least one paragraph of material before the question"
+  evidence: internal/core/question/check.go:315 — "if tl := strings.TrimSpace(ln); tl != "" && !hasPrefixFold(tl, l.NowPrefix) && !hasPrefixFold(tl, l.ChangeLaterPrefix) {"
+  evidence: commands/intent.md:332 — "The criterion before "does it stand?""
+  evidence: commands/intent.md:427 — "per criterion with the criterion quoted in the question; the human"
+- ac-9 — MET_WITH_CONCERNS: TestPressReleaseQuestionQuotesTheParagraph refuses 'Confirm or change paragraph 2?' alone under rule 11 and admits it with the paragraph quoted first, and the rule text puts the paragraph before 'confirm or change?'. Concern: the check cannot tell a quoted paragraph from other material, so a paragraph referred to by its number after any other text is admitted; that the quote is the record's own paragraph is held by the rule text alone, as the spec says.
+  evidence: internal/core/question/limits_test.go:322 — "Confirm or change paragraph 2?"
+  evidence: .abcd/development/specs/closed/spc-2610030944505997-asking-and-layout.md:409 — "the record's own paragraph is judgement, held by the rule text."
+  evidence: commands/intent.md:332 — "the paragraph before "confirm or change?""
+- ac-10 — MET_WITH_CONCERNS: Rule 6 puts exactly one decide-later option, last, on every abcd question, and TestOpenQuestionQuotesAndOffersDecideLater refuses an open question asked with no material first and no 'Decide later', naming both; the rule text puts the open question before 'resolve or defer?'. Concern: as for S1 and S2, the check proves that some material precedes the question, not that it is the open question's own text; that half rests on the rule text.
+  evidence: internal/core/question/limits_test.go:342 — "if !slices.Contains(got, RuleThingFirst) || !slices.Contains(got, RuleDecideLater) || len(got) != 2 {"
+  evidence: internal/core/question/check.go:239 — "laterLimit := fmt.Sprintf("exactly one option labelled %s, the last", quoteList(l.LaterLabels))"
+  evidence: commands/intent.md:332 — "the open question before "resolve or defer?""
+- ac-11 — MET: commands/reflect.md and commands/embark.md bind their questions to the generated asking rules (the thing first, quoted in full, the question last) and at delivery set the mode to product-thinker before the first question, so the hook holds the interviews' questions to rule 11; TestInterviewPagesBindTheOrder checks both pages and admits the retrospective's 'Is this answer complete?' with the earlier answer quoted first, refusing it bare.
+  evidence: cmd/asking-sync/main_test.go:214 — "bare.Tabs[0].Text = "Is this answer complete?""
+  evidence: commands/reflect.md:61 — "section's earlier answer before "is this answer complete?"), with one concrete"
+  evidence: commands/embark.md:86 — "marked `generated: asking-rules`): the lessons themselves first, quoted in"
+  evidence: 9392a4514:commands/reflect.md:54 — "With `abcd mode product-thinker` set, dispatch the `reflection-composer` agent with the seed."
+  evidence: internal/core/question/check.go:309 — "if !strings.HasSuffix(lastLine, "?") {"
+
+Gap audit:
+- honoured:
+  - A short label saying whom the question is for and which it is, with a total only when the interview's length is known: the header must be the chip '< role> Q< n>' with an optional '/< total>', within twelve columns.
+    evidence: internal/core/question/check.go:113 — "Q[1-9] [0-9]*(?:/[1-9] [0-9]*)?$"
+    evidence: internal/core/question/limits_test.go:85 — "// A chip with a total, admitted though never required (review finding 5)."
+  - Options of a few words, each with one or two sentences on what choosing it means: a label over five words, and a description that is empty or over two sentences, are refused.
+    evidence: internal/core/question/check.go:219 — "add(optionPart(i, "label"), RuleLabelWords, o.Label, fmt.Sprintf("%d words", l.LabelWords),"
+    evidence: internal/core/question/check.go:227 — "add(optionPart(i, "description"), RuleMeaningSentences, o.Description, fmt.Sprintf("%d sentences", l.MeaningSentences),"
+  - Always one option that is the way to decide later: exactly one 'Decide later' or 'None of these' option, the last, on every abcd question.
+    evidence: internal/core/question/check.go:239 — "laterLimit := fmt.Sprintf("exactly one option labelled %s, the last", quoteList(l.LaterLabels))"
+  - Nothing you need lives only in a side preview: every preview on an abcd question is refused, and the generated rule text says why.
+    evidence: internal/core/question/check.go:346 — "add(optionPart(i, "preview"), RuleNoPreview, o.Preview, "no side preview", previewRemedy)"
+    evidence: internal/core/question/asking.go:69 — "An abcd question carries no side preview: While a preview shows, the host hides every option's description and cuts the preview to the rows it has"
+  - A question that breaks a layout rule other than the rows limit is refused before it reaches the person, each finding naming the part, the value and the limit, and the question is never rewritten.
+    evidence: internal/core/question/check.go:57 — "return fmt.Sprintf("%s, %s (%s): %q; limit: %s. %s", where, f.Part, f.Rule, f.Value, f.Limit, f.Remedy)"
+    evidence: internal/surface/cli/guard_question.go:57 — "It never rewrites the question: it admits it or refuses it"
+  - No option is marked, starred or labelled as recommended, so the options widen rather than recommend.
+    evidence: internal/core/question/check.go:268 — "add(optionPart(i, "label"), RuleNeverRecommended, o.Label, "no (Recommended) label and no star mark", RecommendedRemedy)"
+  - Every question is built from the same parts: abcd's question type fills the host's fields and abcd's own Terminal drawing alike.
+    evidence: internal/core/question/ask.go:209 — "func (a Ask) Fields() Fields {"
+    evidence: internal/surface/cli/ask/testdata/key-home-80.golden:15 — "3. Decide later"
+- diverged:
+  - 'Refused before it reaches you' and 'reads at 80 columns without scrolling': since 66e8d7ed0 (2026-10-07) a question whose only fault is its height is shown with a note to the agent instead of refused, so on main an admitted question can run past 24 rows; the intent's A4 was not amended.
+    evidence: internal/surface/cli/guard_question.go:203 — "if len(findings) > 0 && !rowsOnly(findings) {"
+    evidence: internal/core/question/asking.go:56 — "The rows limit is the one the check does not refuse on: a question over it is shown, and the agent is told afterwards to keep the next question within it."
+  - 'Naming the part and the limit': one refusal names at most ten parts and counts the rest, so a question breaking more than ten rules learns the rest only on a retry (the A1 fixture's eleventh part among them).
+    evidence: internal/surface/cli/guard_question.go:380 — "const maxRefusalParts = 10"
+    evidence: internal/surface/cli/guard_question.go:427 — "... and %d more part(s); fix these and ask again to see the rest."
+  - 'The thing being decided, quoted in full, broken into paragraphs and lists rather than one block of text, then one plain question': the check holds only the order (some line of material, then a last line ending in '?'); quoting in full, breaking into paragraphs and lists, and asking one plain question are rule text, so a single block, or a reference after unrelated text, is admitted.
+    evidence: internal/core/question/check.go:315 — "if tl := strings.TrimSpace(ln); tl != "" && !hasPrefixFold(tl, l.NowPrefix) && !hasPrefixFold(tl, l.ChangeLaterPrefix) {"
+    evidence: commands/intent.md:332 — "The thing being decided is quoted in full in the question itself, in paragraphs and lists, never referred to"
+  - 'Whenever abcd asks you something': the check runs only on a question whose header is in abcd's chip grammar or that is asked while the mode names somebody; an abcd question with neither runs unchecked.
+    evidence: internal/surface/cli/guard_question.go:175 — "if !chip && st == mode.Managed {"
+    evidence: .abcd/development/specs/closed/spc-2610030944505997-asking-and-layout.md:484 — "required; but an abcd question that forgets both the chip and the mode runs"
+- missing:
+  - The dated screenshots that were to prove the 80-column reading (A4, and A5's host half): the record keeps a note describing them, and the images, said to be under .abcd/.work.local/receipts/, are not committed, while the main checkout's local tier has no such directory.
+    evidence: .abcd/development/research/notes/2026-10-03-host-question-layout-calibration.md:8 — "are kept in the local tier, under `.abcd/.work.local/receipts/`, and are not"
+  - Host evidence that a longer question split into tabs reads within 24 rows per tab: every screenshot the note describes is a single-question call.
+    evidence: .abcd/development/research/notes/2026-10-03-host-question-layout-calibration.md:12 — "## What each screenshot shows"
+  - 'On a narrow window and a wide one': nothing records a question without previews in the host's view wider than 80 columns; both 160-column screenshots, and the 200-column observation, carry previews, which abcd's questions now never do.
+    evidence: .abcd/development/research/notes/2026-10-03-host-question-layout-calibration.md:48 — "### 3. 160 by 24, with previews (`host-question-160x24-previews`)"
+    evidence: .abcd/development/research/notes/2026-10-03-host-question-layout-calibration.md:54 — "### 4. 160 by 24, the orchestrator's own question (`host-question-160x24-preview-cut-own-question`)"
+
+Scope-condition dispositions:
+- cond-2610030944505175 — narrowed: The rows estimate's host figures were measured once, on Claude Code 2.1.288 in macOS Terminal at 80 by 24, and the limits hold one question or tab to 24 rows at 80 columns, so reading without scrolling depends on the window's height and the host's frame as well as its width; the only wider observations (160 and about 200 columns) carried previews, which abcd's questions no longer carry.
+  narrowing: holds for Claude Code's terminal view at least 80 columns wide and at least 24 rows tall, drawing the frame Claude Code 2.1.288 drew in macOS Terminal; a window of 80 or more columns but fewer than 24 rows, or a host version whose frame differs, is outside what the delivery verified
+  evidence: internal/core/question/limits.go:28 — "24: one question, or one tab, at Columns"
+  evidence: internal/core/question/limits.go:53 — "spc-2610030944505997 read them on 2026-10-03 from Claude Code 2.1.288's"
+  evidence: .abcd/development/research/notes/2026-10-03-host-question-layout-calibration.md:7 — "screenshots on 2026-10-03 in Claude Code 2.1.288, in macOS Terminal. The images"
+- cond-2610030944502636 — narrowed: The hook judges the AskUserQuestion tool alone and takes a question to be abcd's by a header in the chip grammar or a mode naming somebody (the spec's open question 1, decided (a)): an unchipped question asked while the mode reads managed returns unchecked, and a question asked while the mode names somebody is held to abcd's rules whoever wrote it.
+  narrowing: holds for the questions abcd's agents put through the AskUserQuestion tool that carry abcd's chip (Product, Tech or Setup, then Q< n>) or are asked while the mode names the product thinker or the facilitator; an abcd question with neither runs unchecked
+  evidence: internal/surface/cli/guard_question.go:43 — "var questionTools = []string{"AskUserQuestion"}"
+  evidence: internal/surface/cli/guard_question.go:175 — "if !chip && st == mode.Managed {"
+  evidence: .abcd/development/specs/closed/spc-2610030944505997-asking-and-layout.md:484 — "required; but an abcd question that forgets both the chip and the mode runs"
+- cond-2610030944508679 — survived: The plain-Terminal drawing merged in PR #788 lays out the same parts as the host's fields (the chip, the material in paragraphs and lists, the one question, each option with its meaning, Decide later, and the Now: and Change later: lines, which it places after the options as the spec allows), and every fixture question passes CheckLimits through Ask.Fields().
+  evidence: internal/surface/cli/ask/testdata/key-home-80.golden:1 — "› Setup Q1"
+  evidence: internal/surface/cli/ask/testdata/key-home-80.golden:18 — "Now: no key is stored"
+  evidence: internal/surface/cli/ask/layout_test.go:97 — "for _, f := range question.CheckLimits(a.Fields(), question.Default, question.Addressee{}) {"
+- cond-2610030944500042 — survived: The delivery keeps phones and the web console out of the promise: the spec lists them under 'Out of both', A6 is struck by decision 11, the limits and their calibration name only Claude Code's terminal view, and no delivered page or doc claims how a question renders on a phone or in the web console.
+  evidence: .abcd/development/specs/closed/spc-2610030944505997-asking-and-layout.md:100 — "- Phones and the web console (decision 8, scope condition 4)."
+  evidence: .abcd/development/intents/shipped/itd-2610030810350727-every-question-abcd-puts-to-a-person.md:104 — "proposed criterion A6 (the web console and the Claude app) is struck, because decision 8 puts phones and the web console outside the promise"
+  evidence: internal/core/question/limits.go:27 — "80: the narrow window promised"
 <!-- abcd-review-end receipt=rcp-7f60ee417b11 -->
 
 ## Grounds

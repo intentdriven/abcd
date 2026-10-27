@@ -85,10 +85,13 @@ the attempt made before a command or a compaction has the host's own ten-minute
 limit. While any bootstrap runs, the one at session start included, the host
 shows a one-line abcd status message in place of its usual spinner text, so a
 slow first download reads as a wait rather than a hang.
-Session end is the deliberate exception: it resolves the plugin root then
+Session end is one deliberate exception: it resolves the plugin root then
 `PATH` but never downloads, because a fetch there would race the host's
 shutdown and lose the very transcript it exists to capture — so it says in one
 line if the transcript was not captured rather than blocking on a bootstrap.
+The hooks that run when a turn ends, when a turn ends on an error and when a
+sub-agent finishes download nothing either: each resolves the plugin root then
+`PATH` and says in one line what did not happen.
 Session start is the other exception, in the other direction: it resolves the
 plugin root alone, and when that is empty it fails closed rather than reaching
 for `PATH` at all. A session where provisioning cannot succeed degrades loudly
@@ -481,6 +484,14 @@ Add this line to your shell profile:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+Or let setup add it: abcd's setup, run at a terminal, asks whether to add that
+line to the file your shell reads (`~/.zshrc` for zsh; for bash,
+`~/.bash_profile` on macOS and `~/.bashrc` on Linux), names the file, and adds
+the line only if you say yes. It keeps a copy of the file in
+`~/.abcd.noindex/backups/` first, never edits a file that is a link to one kept
+elsewhere, and abcd's uninstall takes the line out again. Open a new terminal
+afterwards.
+
 The one-liners above take no options — they always install to `~/.local/bin`
 and print no `PATH` warning — and they record that install as this machine's
 `abcd` in `~/.abcd.noindex/path-entry`, replacing whatever the record named before, so
@@ -531,8 +542,9 @@ The script abcdev.app serves at `/install.sh` does what the one-liners do,
 the same `gh attestation verify` step and its warning included, and one thing
 more: after the install it records the release in
 `~/.abcd.noindex/release-mark`, the newest-release mark the plugin's bootstrap
-and `abcd update` keep, and only ever raises it. It does not write
-`~/.abcd.noindex/path-entry`.
+and `abcd update` keep, and only ever raises it. Like the one-liners, it
+refuses a `~/.abcd.noindex` that is a symlink before it downloads anything, and
+records the installed path and its SHA-256 in `~/.abcd.noindex/path-entry`.
 
 ## What adopting a repository commits
 
@@ -607,7 +619,8 @@ Outside `.abcd/`, a default adoption names abcd in exactly three committed
 files, and nowhere else:
 
 - `.githooks/pre-commit` and `.githooks/pre-merge-commit`, the name-guard hooks,
-  which run the `abcd` binary on each commit and merge.
+  which check each commit and merge for the names this machine bans, and run
+  the `abcd` binary only where a clone opts in.
 - The fenced block in `.gitignore`, between `# BEGIN ABCD` and `# END ABCD`,
   whose header asks you not to edit it by hand.
 

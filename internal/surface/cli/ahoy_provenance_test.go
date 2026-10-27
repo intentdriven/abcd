@@ -100,7 +100,7 @@ func TestAhoyInstallRefusesACacheTheReleaseWorkflowDidNotBuild(t *testing.T) {
 			recordedProvenanceWithRef(t, tc.body, ref) // reads its fixture before the chdir
 			t.Chdir(repo)
 
-			out, _ := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",
+			out, _ := runCLIErr(t, "ahoy", "install", "--details", "--yes", "--adopt",
 				"--visibility", "private", "--docs-target", "agents_md",
 				"--oracle-backend", "host-delegated", "--scan-deep", "false")
 			if _, err := os.Lstat(filepath.Join(binDir, "abcd")); !os.IsNotExist(err) {
@@ -123,7 +123,7 @@ func TestAhoyInstallRefusesACacheTheReleaseWorkflowDidNotBuild(t *testing.T) {
 func TestAhoyInstallPromotesACacheWhoseProvenanceVerifies(t *testing.T) {
 	binDir, repo := provenanceInstallEnv(t)
 	t.Chdir(repo)
-	out := runCLI(t, "ahoy", "install", "--yes", "--adopt",
+	out := runCLI(t, "ahoy", "install", "--details", "--yes", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false")
 	if fi, err := os.Lstat(filepath.Join(binDir, "abcd")); err != nil || !fi.Mode().IsRegular() {

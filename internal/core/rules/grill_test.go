@@ -129,6 +129,7 @@ func TestGrillTextCarriesTheAmendments(t *testing.T) {
 		{"examples", []string{"one example of the thing being decided", "in the question text", "description says what choosing", "carries no side preview", "hides every option's description"}},
 		{"gain and cost", []string{"description names its gain and its cost", "never one option's alone", "trade-offs"}},
 		{"recommendation only on request", []string{"never marked, styled, or ordered as recommended", "only when the person asks for one", "in prose beside the question"}},
+		{"verdict confirmation", []string{"naming the person (an embargo triage verdict)", "even where the record settles it", "question text itself quotes each item's evidence", "the verdict the record supports", "why each other verdict does not fit", "only on their yes", "asked neutrally among them"}},
 		{"only real choices (kept)", []string{"two or more answers are each defensible", "never alternatives made up to fill a set", "not asked"}},
 	} {
 		if ruleWith(rules, c.phrases...) == "" {

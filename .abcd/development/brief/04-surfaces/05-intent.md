@@ -367,7 +367,9 @@ origin: researcher-authored   # arrival path (itd-178), DERIVED from which comma
                               #   Stamped at mint and never rewritten.
 production_mode: hand-written # how the text was produced: hand-written | dictated-and-formatted |
                               #   scribe-transcribed. Closed choice carried by a production-mode flag; an absent
-                              #   flag takes the repo's declared default from .abcd/config/identity.json.
+                              #   flag takes the repo's declared default from .abcd/config/provenance.json
+                              #   (in a repo not yet migrated, the production_mode of .abcd/config/identity.json),
+                              #   falling back to hand-written.
 # Written at mint too, but only by the path that has a value for it:
 #   related_issues: [iss-N | rdi-N, ...] — the intent half of the promote join (itd-4 AC3),
 #                                   written by the capture/reading promote path and appended to

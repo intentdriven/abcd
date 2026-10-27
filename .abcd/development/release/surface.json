@@ -260,6 +260,13 @@
           "hidden": false
         },
         {
+          "name": "details",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "dev",
           "shorthand": "",
           "type": "bool",
@@ -1759,6 +1766,11 @@
     {
       "path": "abcd hook",
       "hidden": true,
+      "flags": []
+    },
+    {
+      "path": "abcd hook permission-request",
+      "hidden": false,
       "flags": []
     },
     {

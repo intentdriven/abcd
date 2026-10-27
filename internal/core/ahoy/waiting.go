@@ -169,11 +169,19 @@ func armedQuestions(cwd string, det DetectionResult) []WaitingItem {
 	if _, ok := gaps["banlist.public_family_missing"]; ok && publicPathIsWritable(cwd) {
 		add(emDashPromptKey, "the house-style question: an em dash in a list item")
 	}
+	// The person's own identity questions, in the order setup asks them; a
+	// pin stored for someone else is reported, never asked.
+	if g, ok := gaps[LegacyPinGapID]; ok && g.Resolvable {
+		add(LegacyPinGapID, g.Title)
+	}
+	byGap(UnrecordedGapID, UnrecordedGapID)
 	if slices.ContainsFunc(establishGapIDs, func(id string) bool { _, ok := gaps[id]; return ok }) {
 		add("git_identity.establish", "who commits to this repository")
 	}
 	byGap("identity.refounding_candidate", "history.lineage")
 	byGap(ReadmeOfferGapID, ReadmePromptKey)
+	// The commit checks' own question, where git runs no committed hook here.
+	byGap(HooksArmGapID, HooksArmGapID)
 	for _, id := range []string{StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID} {
 		byGap(id, id)
 	}

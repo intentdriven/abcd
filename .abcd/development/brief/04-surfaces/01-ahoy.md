@@ -82,16 +82,21 @@ flags.
 - **The remote report** reports, read-only, the GitHub-native secret-scanning toggles on
   the repository this checkout's own origin names, and the changes an apply
   would make. A toggle it could not read reports `unknown`, never `disabled`.
-  The same request also reads the repository's merge hygiene, which abcd mirrors
-  and never sets: those settings encode the technical facilitator's workflow rather than a
-  security posture, and each is reported only when the API answered for it,
-  because `false` and "the API did not say" are different facts
-  (iss-2608270512210664).
+  The same request also reads the repository's merge hygiene, and a second
+  reads its fork pull-request approval policy (whose pull-request workflows
+  wait for the technical facilitator's approval before they run, one of the
+  controls that bear on which workflows report a required check's name). abcd
+  mirrors these and never sets them: they encode the technical facilitator's
+  workflow rather than a posture abcd holds the repository to, and each is
+  reported only when the API answered for it, because `false` and "the API did not say" are
+  different facts (iss-2608270512210664). A policy read that fails otherwise
+  than GitHub's 404 is said in a note, and an apply keeps the policy the
+  mirror already records.
 - **The remote apply** is **the one abcd verb that mutates state outside this
   machine.** See below.
 - **The identity check** exits non-zero when the author or the committer a
-  commit would carry does not match the repo's identity pin, and names a machine
-  identity in either role whether or not it fails. Read-only, CLI-only, for an
+  commit would carry does not match the identity the person recorded on their
+  own machine, or is a machine identity in either role, recorded or not. Read-only, CLI-only, for an
   operator or CI.
 - **The provider board** explains the optional OpenAI-compatible
   provider adapter (itd-2609081951381895): what an aggregator is, that abcd
@@ -114,7 +119,8 @@ It enables GitHub's native secret scanning and then push protection, in that
 order, because GitHub refuses push protection on a repository whose secret
 scanning is off. It then mirrors the desired state into the repo's committed
 settings mirror: a managed block holding the two toggles abcd drives, and an
-observed block holding the merge-hygiene settings it only reads.
+observed block holding the merge-hygiene settings and the fork pull-request
+approval policy it only reads.
 
 It answers to adr-44 and invariant 10 — no uninvited remote mutation, through a
 verb the user invokes **and** confirms — with four gates that refuse rather than
@@ -135,10 +141,10 @@ authenticated identity: abcd never holds a token.
 That identity is the GitHub CLI's, so a missing `gh` is met with the
 explain-then-install mode (itd-63): after the first three gates and before the
 read, the verb explains `gh` from the tool registry and offers to install it,
-running the registry's step only on a yes typed at a terminal. The pre-given
+making the registry's checked download only on a yes typed at a terminal. The pre-given
 yes answers the settings change and never the install of a program, and a
 piped answer is not a person's answer, so both decline the offer; the verb then
-refuses, its notes carrying the explanation and the command. A failed or
+refuses, its notes carrying the explanation and the by-hand download. A failed or
 unverified install refuses the same way, before any request leaves the
 machine. The read never offers the install, because looking is never acting;
 it names the apply as the verb that does.
@@ -329,8 +335,8 @@ when there is none (iss-2609250834251447); the explicit flag writes that key,
 clone-local, to the `PATH` copy whose build provenance the same run verified,
 and writes nothing, saying why, when there is no such copy, when the entry is
 the dev shim or when it lies inside the working tree (iss-2610152024267547).
-It never sets `core.hooksPath`, which chooses every hook git runs in the
-clone. So that the check runs with no manual step, the explicit flag alone also
+The flag never sets `core.hooksPath`, which chooses every hook git runs in the
+clone; setup's own commit-checks question is the one place that does. So that the check runs with no manual step, the explicit flag alone also
 writes the same embedded template, marked as abcd's, as the clone's own
 `commit-msg` in the common git directory's `hooks/` (shared by every worktree),
 where no hooks path is set at any scope and nothing occupies that path; it
@@ -595,7 +601,9 @@ would find available); the repo skeleton; the repo's identity, both its
 root-commit SHA against the registry and the git author and committer a commit
 would carry, each resolved as git resolves it (the environment override, then
 the role's own `author.*` or `committer.*` key, then `user.*`), against the
-committed identity pin and the list of machine identities; the registry's own wiring; the ignore
+person's own identity record on their machine and the list of machine
+identities, and whether the repository still stores the identity pin it once
+committed; the registry's own wiring; the ignore
 block against the visibility policy; marker-block drift against the current
 template; the `PATH` entry; the hook manifest; the recorded setup version; and
 the two-layer name-guard scaffolding.
@@ -616,8 +624,9 @@ home-scoped `path-entry` record names it, read exactly as the hook shims read
 it; any other dangling link asserts no provenance (iss-2609100506263330).
 Three states are named
 rather than lumped together: an owned entry whose target has gone is dangling; an
-install directory absent from `PATH` is required but not resolvable, for which
-abcd prints a one-line export fix and never edits a shell profile; and any
+install directory absent from `PATH` is required but not resolvable, carrying
+the one-line export fix, beside which a person at a terminal is offered the
+line added to their shell settings (below); and any
 `abcd` that comes *before* abcd's own entry is shadowed, because an entry that is
 correct and never reached is not an install (iss-171). A link whose target has
 gone is the exception to "never reached" in wording, not in the gap: it runs
@@ -635,6 +644,34 @@ rather than only named: its size, when it was last modified, and whether its
 embedded Go build metadata identifies it as an abcd build and of which version,
 read without running it, so the person deciding whether to clear it need not
 inspect it by hand (iss-2609120447482255).
+
+**Setup asks before it puts abcd's folder on the `PATH`.** When the folder the
+entry is in is not on `PATH`, install asks a person at a terminal, once, whether
+to add one line to the startup file their login shell reads, its one line
+naming the line and the file (``Add `export PATH="$HOME/.local/bin:$PATH"` to
+~/.zshrc?``), and `?` saying the rest, that the folder goes ahead of the rest
+of the `PATH` among it (`path.shell_settings_offered`, adr-2610241022330872,
+itd-2610240919030303). zsh gets `${ZDOTDIR:-$HOME}/.zshrc`; bash gets the login
+file on macOS (the first of `.bash_profile`, `.bash_login` and `.profile`, else
+a new `.bash_profile`) and `~/.bashrc` on Linux. On a yes abcd keeps a copy of
+the file in `~/.abcd.noindex/backups/`, adds
+`export PATH="$HOME/.local/bin:$PATH"` at the end with abcd's marker comment
+after it, reads the file back, records the line in `~/.abcd.noindex/shell-path.json`, and
+says to open a new terminal. It edits only a regular file it can read whole,
+owned by the person and writable by no one else. Settings that already add the
+folder are left alone, and a file that is a link kept elsewhere (shared
+dotfiles) is never offered: its line goes on the checklist, as it does on a no,
+under the approve-everything flag, and off a terminal. Uninstall removes the
+line abcd added and nothing else in the file. The `path.bin_dir_not_on_path`
+step says what is true of those settings, as the plan reads them: where a file
+the shell reads already adds the folder (the person's line, or the one a yes
+just added) it is to open a new terminal, because the shell reads the file
+when it starts; where abcd will not edit the file it is the `export` line with
+the reason; only where setup will ask does it name the question. Only abcd's
+own marked line for this folder, compared whole, counts as abcd's: the marker
+on a line that adds another folder adds nothing. An edit after a yes that
+fails is a step on the report's checklist, the copy to put back by hand where
+abcd could not restore the file.
 
 **The name-guard scaffolding is reported at the granularity the technical
 facilitator can act on.** Each absent artefact is a gap abcd will create; every other state is a
@@ -659,15 +696,16 @@ carries the prompt-router entries it expects. Neither install nor uninstall ever
 mutates it: the manifest is plugin-static. A missing or malformed manifest
 surfaces as a non-resolvable diagnostic.
 
-The shipped manifest wires nine event types, and every event command is a
-resolving shim rather than a plain binary call. Five of them self-provision.
-`UserPromptSubmit`, `PreToolUse`, `PostToolUse` and `PreCompact` each attempt
+The shipped manifest wires ten event types, and every event command is a
+resolving shim rather than a plain binary call. Six of them self-provision.
+`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest` and
+`PreCompact` each attempt
 `hooks/bootstrap.sh` only when the plugin-root binary is missing, recording the
 try in a `.bootstrap.attempt` marker that throttles the next one to a ten-minute
 window. `UserPromptSubmit`, the hook that runs on every message, declares a
 120-second `timeout`, the time a salvage on a slow link has before the host
-cancels it; `PreToolUse`, `PostToolUse` and `PreCompact` declare none and take
-the host's ten-minute default, so a slow first download finishes there. `SessionStart`
+cancels it; `PreToolUse`, `PostToolUse`, `PermissionRequest` and `PreCompact`
+declare none and take the host's ten-minute default, so a slow first download finishes there. `SessionStart`
 declares 240 seconds, the script's worst case with room to spare,
 `SessionEnd`, `SubagentStop` and `StopFailure` declare none, and `Stop` declares
 30 seconds, room for the away mode's stop check to make its one forge listing
@@ -682,7 +720,7 @@ the binary in place the script's own fast path costs a file test and does the
 provisioning housekeeping that keeps the next plugin update served from the
 local cache rather than the network, and it is the one place a binary that no
 longer matches its provenance record is called out. It stamps the same marker,
-so the four throttled events see a recent try, and reads no throttle of its
+so the five throttled events see a recent try, and reads no throttle of its
 own. `SessionEnd` and `SubagentStop` are the deliberate exceptions and download
 nothing: both fire where the host cancels a slow hook rather than wait — one as
 the session is going away, the other inside a live session as a sub-agent
@@ -735,11 +773,76 @@ reason, and the shim degrades. For the pre-tool-use guard that degradation is an
 unguarded line and exit 1, never the exit 0 the host reads as approval. Session
 start carries no `PATH` rung at all and fails closed.
 
+## The setup flow: basics, one plan, the person's own questions, three-part report
+
+Setup is short, plain, and finishes (itd-2610240823055889,
+[adr-2610241101463288](../../decisions/adrs/2610241101463288-setup-asks-short-questions-and-lists-its.md),
+which amends brief invariant 1 for setup). It checks everything before it asks
+anything, in this order:
+
+1. **The basics.** No `git` command, a folder that is not the top of a git
+   repository, or an account with no agent harness stops the run before its
+   first question, with one message naming what is missing, writing nothing
+   and exiting 2 (`setup_basics.go`). Every other missing basic, a folder not
+   on `PATH`, a required tool, is a step on the report's checklist.
+2. **The plan screen** (`setup_plan.go`). At a terminal, and through an answers
+   file (`approve.plan`), setup shows one plan: every change grouped by where
+   it lands, every default it takes with where to change it (visibility,
+   docs target, deep scanning, the house-style rule, the artefact kind, the
+   model routing tables, the drain rule, the README parts, the status line's
+   parts, all on), and the person-only questions that follow. It asks once:
+   proceed, customise or cancel. Proceed answers every approval of a kind of
+   change and takes every listed default without asking; customise asks the
+   approvals and the values in turn, as before the plan; cancel writes
+   nothing. For a repository abcd does not manage, the plan is asked before the
+   adoption and proceeding adopts it. A piped answer stream, the
+   approve-everything flag, an explicit category set and the after-update
+   run are not shown the plan.
+3. **The person-only questions** (`person_only.go`): the abcd download, the
+   shell settings, the commit checks (`commit_checks.go`), the status line,
+   the commit identity and each tool abcd offers to install, each its own
+   question naming the value and where it is written, whatever the answer to
+   the plan, asked in that order and listed by the plan only where the run
+   will put it: the shell settings only where the run leaves an entry, a tool
+   only where abcd offers its own copy. The identity is never listed under,
+   or declined by, the settings approval (iss-2610240824005655), and at a
+   terminal no `dependency` approval is asked, so customising never drops a
+   tool's question. At the stdin door's plan screen a bare Enter is no answer
+   and asks again.
+4. **The abcd download** (`abcd_download.go`). Where nothing is at the `PATH`
+   target and the plugin's verified cache cannot supply a copy, setup asks to
+   download the release this abcd was stamped as (in a source checkout of
+   abcd, the newest release tag the checkout holds, read from disk), before
+   the status line; on a yes it fetches the release binary through `abcd
+   update`'s checked fetch (`update.FetchVerified`: `checksums.txt`, then the
+   signed build provenance), writes it to the target and records it in
+   `~/.abcd.noindex/path-entry`, so the status line is wired in the same run.
+   The status-line offer is left out of the approvals, and never asked, when
+   it cannot be wired (iss-2610240823574047), and its entry is a release copy,
+   never the track-latest dev shim.
+5. **One line each** (`setup_brief.go`). Every question is drawn on its one
+   line with its answers' labels; `?` draws the whole question and asks again
+   (`ask.ErrExplain`). The answers record keeps the whole question.
+6. **The report** (`setup_report.go`): done, one line per change with where;
+   needs you, a numbered checklist of exact steps, each with why; next, one
+   step. A change the person approved that then failed (a tool or abcd
+   download that did not verify, a shell-settings edit, the commit checks) is
+   a needs-you step with its reason and the step by hand, not only a note. A
+   repository already fully set up is one line, and a details flag adds the
+   full record.
+
+Run from a source checkout of abcd through `go run ./cmd/abcd`, setup is a
+build of that checkout as it stands, so the stale-binary refusal treats it as
+current (`gorun_vintage.go`, iss-2610240824047504). With no plugin root, the
+copy `~/.abcd.noindex/path-entry` records still reports its install mode
+(iss-2610240916382802).
+
 ## Gaps, and how the apply pass asks about them
 
 Each detected discrepancy becomes a **gap** with a stable id, a category, a
-scope, a title, detail and a fix hint. The category is what the apply pass asks
-about, one question per category present, never one per item. The question
+scope, a title, detail and a fix hint. Under customise, and off a terminal,
+the category is what the apply pass asks about, one question per category
+present, never one per item. The question
 shows what approving it would do (iss-2610071528375981): one line per change,
 the gap's title, which names the file or the setting, with a value flag that
 would change a saved setting listed under the settings approval; then the
@@ -748,7 +851,7 @@ the settings listed above?"), never the category's internal name. Yes says how
 many listed changes it writes, or, for a category whose changes are each asked
 again (a tool, an offer, a conventions file), which questions it goes on to;
 the settings approval's says it writes the changes that need no answer (the
-identity pin, the `PATH` entry) and asks for each value not yet chosen, saving
+`PATH` entry) and asks for each value not yet chosen, saving
 none if one is left unanswered. Every change is listed on every route, never cut to
 fit, so every door records the same question; a list taller than the host's
 rows is shown with the question check's note rather than refused. The question check refuses an answer
@@ -758,13 +861,15 @@ approvals had before they listed anything.
 | `category` | Examples | Apply behaviour |
 |---|---|---|
 | `safe-autocreate` | the repo skeleton, history-store directories, the name-guard artefacts | applied once the category is approved, no per-item prompt; create-if-absent, never overwriting |
-| `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin, the repository's own git identity, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
+| `config-change` | visibility, oracle adapter, the `PATH` entry, the artefact kind (the repository's own git identity carries this category but is its own question, never listed under or declined by the settings approval) | transparent confirm; skip-if-set with a "current value" notice |
+| `machine-identity` | the person's own commit identity record on their machine; moving the identity pin a repository still stores to its owner's machine (itd-2610240918547728) | never a category approval: each is its own question, asked only at a terminal, written only on that yes; never under the approve-everything flag or a piped answer, and reported as optional work it skipped |
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`), for one that exists but cannot be read whole, a folder, a pipe, a file past the size cap or one without read permission (`marker.unreadable`), and for one whose block is missing or out of date in a folder that does not let abcd create a file there, which the write needs for its lock and temporary file (`marker.unwritable`) |
-| `dependency` | a tool a capability uses and cannot find: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json` | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the exact install step, what the install does) and its install step runs only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a no is reported as what the capability continues on |
+| `dependency` | a tool a capability uses with no copy abcd can run: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json`; missing, or installed some other way at a version outside the range abcd works with | at a terminal each tool is its own question, asked last of the person-only questions, and no category approval is asked (so customising never drops it); off one the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the download abcd's release pins and how far it is checked, any copy already installed and which copy will run, what the install does) and its download is made only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a compatible copy already installed is used and nothing installed; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd.noindex/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal said in counts (how many agents, how many at each tier, their fan-out bounds), naming no agent so the question fits, and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `drain-rule` | the offer of the repository's drain eligibility record (ruling BX2, itd-82): abcd's strict baseline as an accepted decision record carrying the four `drain_` fields, minted through the decision store's seam | the rule stated in one question and the record written only on a consent answered at a terminal; never under the approve-everything flag and never off a terminal, where neither its category nor the offer is asked (so a piped answer stream keeps its order), and reported as optional work it skipped; a decline records nothing, so the next install offers again; raised only while no accepted record states the rule, so a record stating it badly is never offered a second; only ever the baseline, never a loosened rule |
 | `conventions-file` | an agent tool's own conventions file at the repository root, read in place of `AGENTS.md` (itd-2610030814013772): `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI at its default settings, `.rules`, `.cursorrules` and `.github/copilot-instructions.md` for Zed, each classified with one guarded read inside the project and never through a link, and named as it is spelt on disk | a file holding the owner's words (or one that cannot be read whole) is never edited, moved, merged or removed and raises the warning `conventions.owner_file`, which install reports in `warnings`, printed first; a file that only repeats `AGENTS.md` (a link the system resolves to the root `AGENTS.md`, or, before there is one, a link whose target names it; that link's target saved as text, an exact copy, a lone `@AGENTS.md` line, or one blank once abcd's block is stripped; a dangling link's target, a saved target or an import counts only in its plain spelling, `AGENTS.md` or `../AGENTS.md`, never one stepping into a folder and back) raises the optional `conventions.retire_offered`, asked after the drain rule as one question per file (`retire`, `keep`, `later`, the default) and only at a terminal, as the drain rule is; on `retire` the file is classified again and removed from the working tree only if it still repeats, else left and named, and the removal takes the entry it checked, in its folder held open, so a folder swapped for a link cannot carry it elsewhere; keep and later record nothing, so the next install asks again |
+| `hooks-path` | pointing git at the committed hooks in this clone (`banlist.hooks_unarmed`, iss-2610241134315056): abcd's guard is committed and no hooks path is set at any scope | its own question at a terminal, never an approval: a yes sets `core.hooksPath` to `.githooks` in the clone's `.git/config` and reads it back; off a terminal, under the approve-everything flag or on a no, the report lists the command, and the install is never reported clean while the hooks it committed do not run; a hooks path set outside the clone, or a local one naming another directory, is never replaced |
 | `readme` | the README question (itd-2610031348087517), raised as the optional `readme.offered` while `readme.parts` is absent from `.abcd/config.json` | never asked as a category: the question pair is the consent, asked after `stepMarker` and before the status-line offer, only of a person at a terminal, in a run without the approve-everything flag, and only once `.abcd/config.json` exists; every other run reports the gap under optional work it skipped and names the install flag that answers the pair, which it does in any run; the chosen parts are written into `README.md` on every setup run (below) |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
 
@@ -840,7 +945,7 @@ form: it never runs out.
 **Answers arrive from stdin whether or not stdin is a terminal**
 (iss-167). The prompts are the same prompts; only the reader differs. At a
 terminal a human types them; off one, a caller pipes them, which is how a host
-agent drives the git-identity pin, the one approval no flag covers. Off a
+agent drives the approvals no flag covers. Off a
 terminal each answer is echoed to the diagnostic stream, so a piped run leaves a
 transcript rather than a column of questions with no visible reply.
 
@@ -970,24 +1075,35 @@ prompt wait rather than decline, which is the contract every prompting CLI has.
 A run that must neither block nor prompt closes stdin and pre-answers with
 flags.
 
-**Installing a tool is the one question a piped answer never answers.** It runs
+**A piped answer never installs a tool**, just as it never answers the identity,
+shell-settings or commit-checks questions. Installing a tool runs
 a program on the machine, so it is asked only of a person at a terminal, after
 the tool registry's explanation is shown, and its default is no. Off a terminal
 the answer is a flag naming the tool, which is how a host relays the answer its
 own question tool got; the approve-everything flag never installs a tool, and a
 CI runner never installs one and is not asked: the canonical CI detector
 (`internal/cienv`, `GITHUB_ACTIONS=true` or a truthy `CI`) refuses, and so does
-`CI` set to any value, `false` and `0` included. What runs is the
-registry's fixed argv for the platform, never a shell string and never a command
-composed from input, and only when the package manager resolves on `PATH`
-outside the repository (`internal/core/tools`). The step runs in a process group
-of its own, bounded at 15 minutes (its verify at 30 seconds), and a timeout kills
-that group through the handle abcd holds. The kill has one limit: a process the
-step moves into another group or session (`setsid`, `setpgid`) is out of its
-reach and can outlive the run. abcd stops reading output 10 seconds after the
-step exits or is killed, so such a process holding the output open cannot hold
-the run past its bound, and a step that exits cleanly while leaving one behind
-is reported as failed, saying so.
+`CI` set to any value, `false` and `0` included. What is fetched is fixed in
+abcd's own release (`internal/core/tools/release.go`, [adr-2610241057124151](../../decisions/adrs/2610241057124151-abcd-installs-the-tools-it-needs-from.md)):
+one GitHub release download per tool and platform, named by its full URL with
+its sha256 pinned beside it, so no version is ever looked up (invariant 7) and a
+tool updates only when abcd does. The download is bounded in size and time,
+https only, and reaches GitHub's release hosts alone; its sha256 must equal the
+pin, and for a tool whose makers sign their builds (gh) its signed build record
+must verify in process against the pinned signing workflow, both before
+anything is written. A tool that publishes no signed build record (gitleaks) is
+checked by checksum only, and the question and the result say so. Only then is
+the program read out of the archive by its exact name and written atomically
+into the person's own bin folder (`$XDG_BIN_HOME`, else `$XDG_DATA_HOME/../bin`,
+else `~/.local/bin`), never one inside the repository and never with admin
+rights; no step abcd shows or runs needs them. Its verify must report the pinned
+version, or the copy is removed again. The copy is recorded, path and digest, in
+`~/.abcd.noindex/tools.json`: abcd runs that copy whatever comes first on
+`PATH` while it is still the bytes abcd wrote, and uninstall removes it on the
+same condition. A copy installed some other way is used when its version lies in
+the tool's compatible range, and is never changed: when the bin folder already
+holds a program of that name abcd did not install, it installs nothing and says
+why.
 
 The non-interactive flags pre-answer the prompts: approve every resolvable
 category, decide the adoption question either way, set the marker target, the
@@ -1031,35 +1147,57 @@ seeds the warning and the result says what was heard. The question is asked
 only when the seed is written: a repository that already carries a docs-lint
 config keeps its own severity and is not asked.
 
-Blanket approval does **not** adopt an unmanaged repo or pin an unset git
-identity: those still need their own answer. The identity-pin exclusion is
+Blanket approval does **not** adopt an unmanaged repo or record who a person
+commits as: those still need their own answer. The identity-record exclusion is
 stated rather than assumed — the flag's own help names it, the install envelope
 carries it as skipped-and-optional, and the completion output prints it with the
 way to apply it (iss-166).
 
+**Each person commits as themselves** (itd-2610240918547728, which reverses
+the committed pin of itd-131; adr-2610241022541063). Nothing in a repository
+names who may commit to it. Each person's identity is their own record, on
+their own machine: `~/.abcd.noindex/identity/<root-sha>.json` for one
+repository, keyed on its root commit, else `~/.abcd.noindex/identity.json` for
+every other repository on the machine, read under the guards the rules loader
+applies (a regular file this account owns that no other account can write,
+size-capped, refused behind a symlinked `~/.abcd.noindex`); a record that is
+there and fails a guard fails the check closed. The committed shell guard in
+abcd's own `.githooks/pre-commit` reads the same two files in the same order,
+with no binary. With no record (`git_identity.unrecorded`, advisory) the
+install proposes the person's usual git identity at a terminal, as its own
+question, and records it only on a yes. A repository that still stores the
+pin (`git_identity.repo_pin`) has it moved on its owner's machine (the person
+whose git identity is the stored one), on a yes at a terminal: recorded as
+that person's record for the repository, its `production_mode` kept in
+`.abcd/config/provenance.json`, and `identity.json` removed from the working
+tree. On anyone else's machine it is not copied, not removed, and not named.
+
 **Who commits is proposed, never assumed** (itd-131). Detection raises
-`git_identity.mismatch` or `git_identity.unset` for the author,
+`git_identity.mismatch` for an author that is not the person's own record and
+`git_identity.unset` for an author with none (required once a record applies),
 `git_identity.committer` for a committer that diverges on its own (required
-where the repo pins an identity, advisory where it does not), and
+where a record applies, advisory where none does), and
 `git_identity.tool` wherever the author or the committer is a machine identity
 (the harness's own default, a `[bot]` account, a vendor's address, a configured
-automation's name such as `semantic-release-bot`), pinned or not, because the
+automation's name such as `semantic-release-bot`), recorded or not, because the
 human is the author of record either way. The machine
 identities are one list, `internal/core/identity/tool-identities.txt`, which the
 CI attribution gate reads too, role asymmetry included: a `noreply@` mailbox is
-a machine as the author, and the forge's own committer stamp passes. Once the
-config-change category is approved, the install proposes the human identity
-(the pin, else the global git identity, read from disk and never looked up over
-the network, per adr-38, and never a machine's) and sets `user.name` and
-`user.email` in the repository's own `.git/config` only when the person confirms
-at a terminal. Otherwise it writes nothing and its notes say why: under the
+a machine as the author, and the forge's own committer stamp passes. The
+install proposes the human identity (the person's own record, else their global
+git identity, read from disk, never from the repository, and never looked up
+over the network, per adr-38, and never a machine's) as its own question, behind
+no category approval, and sets `user.name` and `user.email` in the repository's
+own `.git/config` only when the person confirms at a terminal. Otherwise it writes nothing and its notes say why: under the
 approve-everything flag; with no terminal, where it asks nothing at all, so a
 piped or routine run can neither write unasked nor wait on an answer no one can
 give; when an environment override or an `author.*` or `committer.*` key
 outranks `user.*`, so the write would change nothing; and when there is no human
 identity to propose. An autonomous routine is therefore detected here and
 established by whatever launches it, before its first commit
-(iss-2608210932052003). The pin is never recorded from a machine identity.
+(iss-2608210932052003); on a fresh machine with no record, the commit check lets
+the human identity the launcher supplied through and refuses a machine's. A
+record is never written from a machine identity.
 
 ### What the apply pass writes
 
@@ -1086,7 +1224,11 @@ write is create-if-absent **and** contained: paths resolve through an `os.Root` 
 at the repo, so a symlink committed at the hooks directory or at the local tier
 cannot land an artefact outside it. The private stub is written only where git
 reports the path as ignored. A clone arms the hooks once by pointing git at the
-hooks directory; abcd never sets that config, and no surface reports a committed
+hooks directory. Setup asks that as its own question at a terminal and sets
+`core.hooksPath` to `.githooks` in the clone's `.git/config` only on a yes,
+reading the value back; it never sets it under the approve-everything flag or
+off a terminal, and never over a hooks path set elsewhere. Until the hooks run,
+the install is reported partial, never clean, and no surface reports a committed
 hook as a running one.
 
 **The README parts** (spc-2610031704338417) are a named sibling of the
@@ -1219,8 +1361,8 @@ byte-identical to a fresh install save for the setup date.
   bare invocation never adopts. **Given** a folder that is not a git repository,
   it reports `unmanaged-folder` and that there is nothing to act on.
 - **Given** a fresh repo with no `.abcd/` directory, **when** the install runs to
-  completion, **then** the repo carve-out is written, the identity pin is
-  recorded where the git-identity gate is adopted, the visibility-driven ignore
+  completion, **then** the repo carve-out is written, nothing in the repository
+  names who commits to it, the visibility-driven ignore
   entries are present, the registry entry exists, the marker block from the
   canonical template is installed in the files a chosen docs target names and in
   none at the default, and the hook-manifest check runs verify-only
@@ -1235,12 +1377,15 @@ byte-identical to a fresh install save for the setup date.
 - **Given** a repo with the install run at an older setup version, **when**
   the install runs, **then** the version is updated, the marker block refreshed,
   and existing config keys preserved.
-- **Given** a tool a capability uses is not on `PATH`, **when** the dependency
-  category is approved, **then** the person is shown the tool registry's
-  explanation and asked per tool; the registry's fixed install step runs only
-  on a yes typed at a terminal or relayed by a host naming the tool, the result
-  reports what ran and whether its verify passed, and a no reports what the
-  capability continues on (itd-63).
+- **Given** a tool a capability uses has no copy abcd can run, **when** the
+  tool's own question is reached (at a terminal, whatever the approvals; off
+  one, once the dependency category is approved), **then** the person is shown the tool
+  registry's explanation and asked per tool; the pinned, checked download is
+  made only on a yes typed at a terminal or relayed by a host naming the tool,
+  nothing is written unless it passes its check, the result reports what was
+  installed and how far it was checked (checksum only for a tool that signs
+  nothing), and a no reports what the capability continues on (itd-63,
+  itd-2610240918594138).
 - **Given** no oracle adapter is wired, **when** detection resolves the oracle,
   **then** it stays host-delegated: abcd needs no API keys or model config,
   because it emits prompts the host runs (adr-25), and an adapter can be
@@ -1267,11 +1412,20 @@ byte-identical to a fresh install save for the setup date.
   the doctor runs, **then** detection notices the stale registered path and
   the install refreshes it: the root SHA is unchanged, so the entry is updated
   rather than duplicated.
-- **Given** a pinned repo whose repo-local `user.name` and `user.email` differ
-  from the pin, **when** the install runs at a terminal, **then** it proposes
-  the pinned identity and writes repo-local config only after the person
-  confirms; declined, git config is unchanged.
-- **Given** a committer that differs from the author or the pin, or an author or
+- **Given** a person whose repo-local `user.name` and `user.email` differ from
+  their own record, **when** the install runs at a terminal, **then** it
+  proposes the recorded identity and writes repo-local config only after the
+  person confirms; declined, git config is unchanged.
+- **Given** a person with no record on this machine, **when** the install runs
+  at a terminal, **then** it proposes their usual git identity as its own
+  question and records it on their machine on a yes; off a terminal it records
+  nothing and says so.
+- **Given** a contributor in a repository that still stores another person's
+  identity, **when** they set up and commit, **then** nothing names that
+  person and their commits are checked against their own record; on the
+  stored identity's owner's machine the install moves it to their record, removes it from the repository, keeps its `production_mode`,
+  and says so.
+- **Given** a committer that differs from the author or the record, or an author or
   committer that is a machine identity, **when** detection runs, **then** the
   divergence is reported as its own gap, and with no terminal the install asks
   nothing, writes nothing and says so.
@@ -1361,6 +1515,7 @@ Sub-verbs: none.
 | `--answers` | string |
 | `--attribution` | bool |
 | `--bin-dir` | string |
+| `--details` | bool |
 | `--dev` | bool |
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |

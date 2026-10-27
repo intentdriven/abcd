@@ -527,6 +527,7 @@ func downgraded(t *testing.T, data []byte, v int) []byte {
 		t.Fatal(err)
 	}
 	m["schema_version"] = v
+	unreviewOlder(m)
 	if p, ok := m["pace"].(map[string]any); ok && v <= schemaVersionUncapped {
 		delete(p, "fix_rounds")
 	}

@@ -160,7 +160,11 @@ disclosure, and never an authorship assertion for a tool. The rules:
   web-UI merge passes too, which is why the sixth signal is author-only. Set
   `user.name` and `user.email` to a human before you commit; the assistant
   belongs in the trailer, never in the identity fields the contributor graph
-  reads. An automated dependency bump is therefore never merged as the bot
+  reads. Locally, the committed pre-commit hook refuses the same machine
+  identities before the commit is made, and holds each commit to the identity
+  you recorded on your own machine, if you have recorded one (`abcd ahoy
+  install` offers it at a terminal, in `~/.abcd.noindex/identity.json`); nothing
+  in the repository names who may commit to it. An automated dependency bump is therefore never merged as the bot
   authored it: one that only modifies a declared ecosystem's manifest and lock
   files, at the directory the bot's configuration declares, is re-authored as
   the repository owner by the `dependency-reauthor` workflow, and any other is

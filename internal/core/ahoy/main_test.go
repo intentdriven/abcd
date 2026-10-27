@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/shellpath"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 )
 
@@ -21,9 +22,21 @@ func TestMain(m *testing.M) {
 	// No test runs the machine's own agent tool to read its version; the
 	// version test puts the real reading back over a fake command.
 	NoHostVersionForTest()
+	// The fixture homes hold no harness folder, many tests narrow PATH past
+	// git, and the machine running the tests may have no assistant on PATH;
+	// the basics test swaps each check per case (setup_basics_test.go).
+	AssumeSetupBasicsForTest()
 	// The fixtures standing for a release binary are shell scripts with no Go
 	// build metadata; the copy's claimed release is stood in, and the reader's
 	// own tests call it directly (cold_cache_adopt_provenance_test.go).
 	copyRelease = func([]byte) (string, error) { return stubCopyRelease, nil }
+	// No test plans against, or edits, the machine's own shell settings: the
+	// shell-settings offer sees no shell it edits unless a test names one
+	// (shell_path_test.go).
+	shellEnv = func() shellpath.Env {
+		e := shellpath.CurrentEnv()
+		e.Shell, e.ZDotDir = "", ""
+		return e
+	}
 	os.Exit(m.Run())
 }
