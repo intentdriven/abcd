@@ -330,3 +330,24 @@ func TestChecklistUpdatedByFallsBackWithoutAHostSessionID(t *testing.T) {
 		t.Errorf("updated_by took a malformed session id")
 	}
 }
+
+// TestChecklistAddRefusesATrackedChecklist: once git tracks the checklist, a
+// change would rewrite the committed file and the next read would refuse it,
+// losing the item, so add refuses with exit 2, names how to untrack it, and
+// leaves the file as it was.
+func TestChecklistAddRefusesATrackedChecklist(t *testing.T) {
+	root := checklistCheckout(t)
+	mustChecklist(t, "add", "Build the verbs")
+	p := filepath.Join(root, filepath.FromSlash(checklist.FileRelPath))
+	gitCmd(t, root, "add", "-f", checklist.FileRelPath)
+	before, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, errOut, code := runChecklist(t, "add", "Lose this"); code != 2 || !strings.Contains(out+errOut, "git rm --cached") {
+		t.Errorf("add over a tracked checklist: exit %d, want 2 naming git rm --cached\n%s%s", code, out, errOut)
+	}
+	if after, err := os.ReadFile(p); err != nil || !bytes.Equal(after, before) {
+		t.Errorf("the refused add changed the tracked file: %v", err)
+	}
+}

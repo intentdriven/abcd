@@ -586,3 +586,109 @@ func TestReadRefusesAChecklistTheCheckoutDidNotWrite(t *testing.T) {
 		}
 	})
 }
+
+// gitCheckout is a git repository whose checkout root is sub, a directory
+// below git's top level when sub is not "", holding the local tier.
+func gitCheckout(t *testing.T, sub string) (*gittest.Repo, string) {
+	t.Helper()
+	repo := gittest.NewRepo(t)
+	root := filepath.Join(repo.Root(), filepath.FromSlash(sub))
+	if err := os.MkdirAll(abs(root, checklist.TierRelPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return repo, root
+}
+
+// TestReadRefusesATrackedChecklistBelowGitsTopLevel: a checkout root below
+// git's top level, as in a repository holding several projects, is judged
+// against its own paths, and a file only staged is as much the commit's as
+// a committed one.
+func TestReadRefusesATrackedChecklistBelowGitsTopLevel(t *testing.T) {
+	repo, root := gitCheckout(t, "projects/one")
+	plant(t, abs(root, checklist.FileRelPath), marshal(t, sample()))
+	repo.Git("add", "-f", "projects/one/"+checklist.FileRelPath)
+	if got := checklist.Read(root); got.Source != checklist.FromNothing || !strings.Contains(got.Reason, "tracked by git") {
+		t.Fatalf("a staged checklist below git's top level was read: %+v", got)
+	}
+}
+
+// TestReadRefusesATierThatIsNotAPlainDirectory: a tier reached through a
+// symlink is not the tier Write writes, and the file under it is not judged.
+func TestReadRefusesATierThatIsNotAPlainDirectory(t *testing.T) {
+	root := t.TempDir()
+	elsewhere := filepath.Join(root, "elsewhere")
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, abs(root, checklist.TierRelPath)); err != nil {
+		t.Fatal(err)
+	}
+	plant(t, filepath.Join(elsewhere, "checklist.json"), marshal(t, sample()))
+	if got := checklist.Read(root); got.Source != checklist.FromNothing || !strings.Contains(got.Reason, "not a plain directory") {
+		t.Fatalf("a checklist under a symlinked tier was read: %+v", got)
+	}
+}
+
+// TestReadRefusesAChecklistAnotherAccountOwns: Write makes the file as the
+// caller, so one another account owns was not made by this working copy's
+// write.
+func TestReadRefusesAChecklistAnotherAccountOwns(t *testing.T) {
+	root := newRepo(t)
+	plant(t, abs(root, checklist.FileRelPath), marshal(t, sample()))
+	defer checklist.SwapOwnerForTest(func(string) (uint32, error) { return uint32(os.Getuid()) + 1, nil })()
+	if got := checklist.Read(root); got.Source != checklist.FromNothing || !strings.Contains(got.Reason, "another account") {
+		t.Fatalf("a checklist another account owns was read: %+v", got)
+	}
+}
+
+// TestReadFailsClosedWhenGitCannotAnswerInACheckout: inside a git checkout a
+// git that fails (absent, or refusing a checkout another account owns) cannot
+// vouch that the files are untracked, so nothing is shown; a directory with
+// no .git anywhere above it has no index and is read.
+func TestReadFailsClosedWhenGitCannotAnswerInACheckout(t *testing.T) {
+	failing := func(string, ...string) (string, error) { return "", errors.New("git: not available") }
+
+	_, inGit := gitCheckout(t, "")
+	plant(t, abs(inGit, checklist.FileRelPath), marshal(t, sample()))
+	restore := checklist.SwapGitForTest(failing)
+	got := checklist.Read(inGit)
+	restore()
+	if got.Source != checklist.FromNothing || !strings.Contains(got.Reason, "git could not say") {
+		t.Fatalf("a checkout git could not answer for was read: %+v", got)
+	}
+
+	plain := newRepo(t)
+	plant(t, abs(plain, checklist.FileRelPath), marshal(t, sample()))
+	defer checklist.SwapGitForTest(failing)()
+	if got := checklist.Read(plain); got.Source != checklist.FromFile {
+		t.Fatalf("a directory outside any git checkout is not read: %+v", got)
+	}
+}
+
+// TestUpdateRefusesATrackedChecklist: a change to a tracked checklist would
+// write over the committed file and, being refused by the next read, lose
+// every item; so the read-change-write refuses before anything is written.
+func TestUpdateRefusesATrackedChecklist(t *testing.T) {
+	repo, root := gitCheckout(t, "")
+	p := abs(root, checklist.FileRelPath)
+	plant(t, p, marshal(t, sample()))
+	repo.Git("add", "-f", checklist.FileRelPath)
+	before := readFile(t, p)
+	called := false
+	err := checklist.Update(root, func(checklist.Result) (checklist.Checklist, error) {
+		called = true
+		return sample(), nil
+	})
+	if !errors.Is(err, checklist.ErrTracked) {
+		t.Fatalf("Update over a tracked checklist = %v, want ErrTracked", err)
+	}
+	if called || !bytes.Equal(readFile(t, p), before) {
+		t.Fatal("the change ran, or the tracked file was rewritten")
+	}
+	if err := checklist.Write(root, sample()); !errors.Is(err, checklist.ErrTracked) {
+		t.Fatalf("Write over a tracked checklist = %v, want ErrTracked", err)
+	}
+}

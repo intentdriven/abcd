@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -52,6 +53,19 @@ const tornAfter = time.Minute
 
 // ErrNoLocalTier is the write's refusal when the checkout has no local tier.
 var ErrNoLocalTier = errors.New("checklist: no local-ephemeral tier")
+
+// ErrTracked is the write's refusal when git tracks a checklist file: a write
+// would change the committed file, and the reader refuses a tracked file, so
+// every item written would be lost to the next read.
+var ErrTracked = errors.New("checklist: git tracks the checklist in this checkout; untrack it with `git rm --cached` first")
+
+// ownerOf and gitRun are the owner lookup and the git runner Read and the
+// writes use, held as vars so a test can provoke another account's file and
+// a git that fails inside a checkout.
+var (
+	ownerOf = fsutil.OwnerUID
+	gitRun  = gitutil.Run
+)
 
 // ErrScannerUnavailable is the refusal when the native secret scanner cannot be
 // built or runs degraded. Both the write and the read fail closed on it: a file
@@ -101,6 +115,11 @@ func Write(repoRoot string, c Checklist) error {
 	if fi, err := root.Lstat(TierRelPath); err != nil || !fi.IsDir() {
 		return fmt.Errorf("%w: %s/ is not a directory in this checkout, and it is never created on the way to a write",
 			ErrNoLocalTier, TierRelPath)
+	}
+	if tracked, err := trackedFiles(repoRoot); err != nil {
+		return fmt.Errorf("checklist: asking git whether the checklist is tracked: %w", err)
+	} else if len(tracked) > 0 {
+		return ErrTracked
 	}
 	sc, err := newScanner(repoRoot)
 	if err != nil {
@@ -167,11 +186,17 @@ func Read(repoRoot string) Result {
 		return Result{Source: FromNothing, Reason: "No checklist to show: the checkout could not be opened."}
 	}
 	defer root.Close()
-	sc, scanErr := newScanner(repoRoot)
+	switch tierState(root) {
+	case tierAbsent:
+		return Result{Source: FromNothing, Reason: "No checklist has been written in this working copy yet."}
+	case tierNotDir:
+		return Result{Source: FromNothing, Reason: "No checklist to show: .abcd/.work.local is not a plain directory in this checkout."}
+	}
 	tracked, trackedErr := trackedFiles(repoRoot)
 	if trackedErr != nil {
 		return Result{Source: FromNothing, Reason: "No checklist to show: git could not say whether the checklist files are tracked."}
 	}
+	sc, scanErr := newScanner(repoRoot)
 	judge := func(rel string) (Checklist, string) {
 		if tracked[rel] {
 			return Checklist{}, "is tracked by git, so it came with the checkout rather than from a checked write in it"
@@ -199,15 +224,40 @@ func Read(repoRoot string) Result {
 // say "nothing written yet" rather than list two absences.
 const absent = "is absent"
 
-// trackedFiles is which of the two files git's index holds. A file git
-// tracks came with the clone, written by whoever committed it, and Read
-// injects nothing a repository supplies. A directory that is no git checkout
-// has no index, so it tracks nothing; any other failure of git is the
-// caller's to refuse on, since the files cannot then be vouched for.
+// The tier's states, as tierState reads them.
+const (
+	tierPlain = iota
+	tierAbsent
+	tierNotDir
+)
+
+// tierState is whether each level of the local tier is a plain directory:
+// Lstat on .abcd and then on the tier, so a symlink at either level is not
+// followed to a file Write never wrote.
+func tierState(root *os.Root) int {
+	for _, rel := range []string{path.Dir(TierRelPath), TierRelPath} {
+		fi, err := root.Lstat(rel)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return tierAbsent
+		case err != nil || !fi.IsDir():
+			return tierNotDir
+		}
+	}
+	return tierPlain
+}
+
+// trackedFiles is which of the two files git's index holds, staged or
+// committed, as paths relative to repoRoot. A file git tracks came with the
+// clone, written by whoever committed it, and Read injects nothing a
+// repository supplies. A directory with no .git at or above it has no index,
+// so it tracks nothing; inside a checkout, any failure of git (absent, or
+// refusing a checkout another account owns) is an error, since the files
+// cannot then be vouched for.
 func trackedFiles(repoRoot string) (map[string]bool, error) {
-	out, err := gitutil.Run(repoRoot, "ls-files", "-z", "--cached", "--full-name", "--", FileRelPath, LastGoodRelPath)
+	out, err := gitRun(repoRoot, "ls-files", "-z", "--cached", "--", FileRelPath, LastGoodRelPath)
 	if err != nil {
-		if _, revErr := gitutil.Run(repoRoot, "rev-parse", "--git-dir"); revErr != nil {
+		if !underGit(repoRoot) {
 			return nil, nil
 		}
 		return nil, err
@@ -221,14 +271,35 @@ func trackedFiles(repoRoot string) (map[string]bool, error) {
 	return tracked, nil
 }
 
+// underGit is whether repoRoot or a directory above it holds a .git entry,
+// a directory or a gitfile alike.
+func underGit(repoRoot string) bool {
+	dir := filepath.Clean(repoRoot)
+	for {
+		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+			return true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false
+		}
+		dir = parent
+	}
+}
+
 // load reads one of the two files and answers the checklist, or why it cannot
 // be used as a clause that follows the file's name.
 func load(repoRoot string, root *os.Root, sc *scanner.Scanner, scanErr error, rel string) (Checklist, string) {
 	// Write makes both files storePerm; a file group or others can read was
 	// made some other way, most often checked out of a commit at the umask's
 	// 0644, and is refused before its bytes are read.
-	if fi, err := root.Lstat(rel); err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&^storePerm != 0 {
-		return Checklist{}, "is readable by others than its owner, so a checked write did not make it"
+	if fi, err := root.Lstat(rel); err == nil && fi.Mode().IsRegular() {
+		if fi.Mode().Perm()&^storePerm != 0 {
+			return Checklist{}, "is readable by others than its owner, so a checked write did not make it"
+		}
+		if uid, err := ownerOf(filepath.Join(repoRoot, filepath.FromSlash(rel))); err != nil || uid != uint32(os.Getuid()) {
+			return Checklist{}, "is owned by another account, or its owner could not be read"
+		}
 	}
 	data, err := fsutil.ReadGuardedInRoot(root, rel, maxReadBytes)
 	switch {
@@ -421,6 +492,11 @@ func Update(repoRoot string, change func(Result) (Checklist, error)) error {
 	if fi, err := root.Lstat(TierRelPath); err != nil || !fi.IsDir() {
 		return fmt.Errorf("%w: %s/ is not a directory in this checkout, and it is never created on the way to a write",
 			ErrNoLocalTier, TierRelPath)
+	}
+	if tracked, err := trackedFiles(repoRoot); err != nil {
+		return fmt.Errorf("checklist: asking git whether the checklist is tracked: %w", err)
+	} else if len(tracked) > 0 {
+		return ErrTracked
 	}
 	ran := false
 	err = fsutil.WithFileLockIn(root, LockRelPath, lockTimeout, func() error {

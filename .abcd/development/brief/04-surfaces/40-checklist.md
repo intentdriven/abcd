@@ -49,9 +49,17 @@ file is written atomically, and the same checked bytes are kept beside it as
 the last good copy, so a file changed by anything other than the verb never
 becomes the last good copy.
 
-The reader validates and scans the file. When it fails, the reader validates
-and scans the last good copy and says why it fell back; when both fail, it
-reads nothing and says so. A reason never quotes the file.
+The reader takes only a file this working copy's own write could have made:
+it refuses a file git tracks, staged or committed, since that came with the
+checkout; a file group or others can read, or another account owns, since the
+write makes it 0600 as the person; a file under a local tier that is not a
+plain directory; and, inside a git checkout, every file when git cannot say
+whether they are tracked. Otherwise it validates and scans the file. When the
+file fails, the reader judges the last good copy the same way and says why it
+fell back; when both fail, it reads nothing and says so. A reason never
+quotes the file. While git tracks the list, a change refuses with exit 2 and
+says to untrack it with `git rm --cached`, so no item is written that the
+next read would drop.
 
 ## At every session start
 
