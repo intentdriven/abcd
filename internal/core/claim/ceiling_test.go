@@ -221,3 +221,31 @@ func TestNameSiblingsNamesOnlyTheHoldersOwnAndTellsClashingNamesApart(t *testing
 		t.Fatalf("outside a repository: sibling %q, unread %q; want none and the reason", gone.Reservations[0].Sibling, gone.SiblingsUnread)
 	}
 }
+
+// TestARefusedCapStillNamesTheSiblings (iss-2610231004140527 review round 2):
+// a reservation.max_live an act would refuse gives no ceiling, but the
+// reader's holds from a sibling worktree are still named.
+func TestARefusedCapStillNamesTheSiblings(t *testing.T) {
+	w := newWorld(t)
+	home := t.TempDir()
+	p := w.clone("1234+octo@users.noreply.github.com", home)
+	sib := p.worktree("lane-b")
+	if _, err := sib.reserve("iss-1", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Fetch(p.dir, p.opts()); err != nil {
+		t.Fatal(err)
+	}
+	// The setting goes bad after the hold is made, which it would refuse.
+	writeConfig(t, home, `{"reservation": {"max_live": 150}}`)
+	snap, err := View(p.dir, w.clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := CeilingFor(p.dir, &snap, p.opts()); ok {
+		t.Fatal("a refused max_live gave a ceiling")
+	}
+	if len(snap.Reservations) != 1 || snap.Reservations[0].Sibling != "lane-b" {
+		t.Fatalf("reservations = %+v; want iss-1 named from lane-b", snap.Reservations)
+	}
+}

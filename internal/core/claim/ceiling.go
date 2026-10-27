@@ -41,20 +41,23 @@ type Ceiling struct {
 	Note string `json:"note,omitempty"`
 }
 
-// CeilingFor is the reader's ceiling in the view s, naming its siblings
-// (NameSiblings) first: false when the reader's GitHub login cannot be named
-// without the network, or this machine's reservation.max_live is one an act
-// would refuse.
+// CeilingFor is the reader's ceiling in the view s, naming the reader's
+// siblings in s (NameSiblings) once its login is known, even when the cap is
+// then refused: false when the reader's GitHub login cannot be named without
+// the network, or this machine's reservation.max_live is one an act would
+// refuse.
 func CeilingFor(root string, s *Snapshot, o Options) (Ceiling, bool) {
 	holder := readerHolder(root, o)
 	if holder == "" {
 		return Ceiling{}, false
 	}
+	// The siblings are named whether or not the cap can be read: the rows
+	// that show them do not depend on it.
+	s.NameSiblings(root, holder)
 	limit, note, err := maxLive(o.home())
 	if err != nil {
 		return Ceiling{}, false
 	}
-	s.NameSiblings(root, holder)
 	note = joinNote(note, s.SiblingsUnread)
 	c := Ceiling{Holder: holder, Limit: limit, Siblings: []SiblingLive{}, Note: note}
 	bySibling := map[string]int{}
