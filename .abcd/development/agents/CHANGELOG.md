@@ -22,7 +22,7 @@ asks the author for the test evidence (the gated preflight's output, or a
 named test watched fail then pass), and reports a finding that needs a run to
 confirm as unconfirmed, naming the command to run through the load gate. Its
 Preconditions now read the build-and-checks precondition from the author's
-gated output in the brief, and the verdict line says when none was supplied.
+gated output in the brief, and the Analysis says when none was supplied.
 On a machine several sessions share, each review had run a test no load gate
 admitted, beside the preflight the gate did admit. Output contract unchanged.
 Unmeasured, in the `0.x` band.
