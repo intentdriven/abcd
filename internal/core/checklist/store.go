@@ -59,6 +59,12 @@ var ErrNoLocalTier = errors.New("checklist: no local-ephemeral tier")
 // every item written would be lost to the next read.
 var ErrTracked = errors.New("checklist: git tracks the checklist in this checkout; untrack it with `git rm --cached` first")
 
+// ErrNotKept is the write's refusal when the checklist the reader would see
+// is one it refuses for its mode or owner: a filesystem that does not keep
+// the 0600 mode or the owner, or a file changed by something other than the
+// verb. A write the next read refuses loses every item, so none is made.
+var ErrNotKept = errors.New("checklist: the checklist file here does not keep the owner-only mode or the owner the reader requires, so the list cannot be kept in this working copy")
+
 // ownerOf and gitRun are the owner lookup and the git runner Read and the
 // writes use, held as vars so a test can provoke another account's file and
 // a git that fails inside a checkout.
@@ -111,9 +117,10 @@ func Write(repoRoot string, c Checklist) error {
 		return fmt.Errorf("checklist: opening the checkout to write: %w", err)
 	}
 	defer root.Close()
-	// Lstat, not Stat: a symlink standing in for the tier is not the tier.
-	if fi, err := root.Lstat(TierRelPath); err != nil || !fi.IsDir() {
-		return fmt.Errorf("%w: %s/ is not a directory in this checkout, and it is never created on the way to a write",
+	// The reader's own tier judgement: a symlink standing in for either level,
+	// even one inside the checkout, or a submodule's top, is not the tier.
+	if tierState(root) != tierPlain {
+		return fmt.Errorf("%w: %s/ is not a plain directory in this checkout, and it is never created on the way to a write",
 			ErrNoLocalTier, TierRelPath)
 	}
 	if tracked, err := trackedFiles(repoRoot); err != nil {
@@ -140,6 +147,13 @@ func Write(repoRoot string, c Checklist) error {
 	}
 	if err := fsutil.WriteFileAtomicInRoot(root, LastGoodRelPath, data, storePerm); err != nil {
 		return fmt.Errorf("checklist: %s was written, but %s was not updated: %w", FileRelPath, LastGoodRelPath, err)
+	}
+	// A filesystem that does not keep the mode or the owner (a mount with
+	// fixed modes, a volume ignoring ownership) shows it only now; the reader
+	// would refuse what was written, so the caller is told rather than every
+	// later change silently starting a new list.
+	if fileGate(root, repoRoot, FileRelPath) != "" {
+		return ErrNotKept
 	}
 	return nil
 }
@@ -233,7 +247,9 @@ const (
 
 // tierState is whether each level of the local tier is a plain directory:
 // Lstat on .abcd and then on the tier, so a symlink at either level is not
-// followed to a file Write never wrote.
+// followed to a file Write never wrote, and a level holding a .git entry is
+// a submodule's (or another repository's) top, whose files the outer git
+// does not list, so the tracked check could not vouch for them.
 func tierState(root *os.Root) int {
 	for _, rel := range []string{path.Dir(TierRelPath), TierRelPath} {
 		fi, err := root.Lstat(rel)
@@ -243,8 +259,28 @@ func tierState(root *os.Root) int {
 		case err != nil || !fi.IsDir():
 			return tierNotDir
 		}
+		if _, err := root.Lstat(rel + "/.git"); !errors.Is(err, fs.ErrNotExist) {
+			return tierNotDir
+		}
 	}
 	return tierPlain
+}
+
+// fileGate is why the file at rel is not one this working copy's own write
+// could have made, or "": Write makes it as the caller, with no bit for group
+// or others. An absent or irregular file is load's to judge.
+func fileGate(root *os.Root, repoRoot, rel string) string {
+	fi, err := root.Lstat(rel)
+	if err != nil || !fi.Mode().IsRegular() {
+		return ""
+	}
+	if fi.Mode().Perm()&0o077 != 0 {
+		return "is readable by others than its owner, so a checked write did not make it"
+	}
+	if uid, err := ownerOf(filepath.Join(repoRoot, filepath.FromSlash(rel))); err != nil || uid != uint32(os.Getuid()) {
+		return "is owned by another account, or its owner could not be read"
+	}
+	return ""
 }
 
 // trackedFiles is which of the two files git's index holds, staged or
@@ -293,13 +329,8 @@ func load(repoRoot string, root *os.Root, sc *scanner.Scanner, scanErr error, re
 	// Write makes both files storePerm; a file group or others can read was
 	// made some other way, most often checked out of a commit at the umask's
 	// 0644, and is refused before its bytes are read.
-	if fi, err := root.Lstat(rel); err == nil && fi.Mode().IsRegular() {
-		if fi.Mode().Perm()&^storePerm != 0 {
-			return Checklist{}, "is readable by others than its owner, so a checked write did not make it"
-		}
-		if uid, err := ownerOf(filepath.Join(repoRoot, filepath.FromSlash(rel))); err != nil || uid != uint32(os.Getuid()) {
-			return Checklist{}, "is owned by another account, or its owner could not be read"
-		}
+	if why := fileGate(root, repoRoot, rel); why != "" {
+		return Checklist{}, why
 	}
 	data, err := fsutil.ReadGuardedInRoot(root, rel, maxReadBytes)
 	switch {
@@ -489,8 +520,8 @@ func Update(repoRoot string, change func(Result) (Checklist, error)) error {
 	// carry the tier check or the lock file out of the checkout; Lstat, not
 	// Stat, as Write judges the tier, and the lock file is never created in a
 	// tier that is not there.
-	if fi, err := root.Lstat(TierRelPath); err != nil || !fi.IsDir() {
-		return fmt.Errorf("%w: %s/ is not a directory in this checkout, and it is never created on the way to a write",
+	if tierState(root) != tierPlain {
+		return fmt.Errorf("%w: %s/ is not a plain directory in this checkout, and it is never created on the way to a write",
 			ErrNoLocalTier, TierRelPath)
 	}
 	if tracked, err := trackedFiles(repoRoot); err != nil {
@@ -501,6 +532,13 @@ func Update(repoRoot string, change func(Result) (Checklist, error)) error {
 	ran := false
 	err = fsutil.WithFileLockIn(root, LockRelPath, lockTimeout, func() error {
 		ran = true
+		// A checklist the reader refuses for its mode or owner is not
+		// changed: a new list written over it would hide what it holds, and
+		// on a filesystem that does not keep the mode the next read would
+		// refuse the new one too.
+		if fileGate(root, repoRoot, FileRelPath) != "" {
+			return ErrNotKept
+		}
 		c, err := change(Read(repoRoot))
 		if err != nil {
 			return err

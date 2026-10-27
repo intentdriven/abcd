@@ -314,7 +314,7 @@ func checklistRefusal(verb string, err error) error {
 	case errors.As(err, &fe), errors.As(err, &se),
 		errors.Is(err, checklist.ErrNoLocalTier), errors.Is(err, checklist.ErrScannerUnavailable),
 		errors.Is(err, gitutil.ErrNoCheckoutRoot), errors.Is(err, errChecklistNoItem),
-		errors.Is(err, checklist.ErrLockHeld), errors.Is(err, checklist.ErrTracked):
+		errors.Is(err, checklist.ErrLockHeld), errors.Is(err, checklist.ErrTracked), errors.Is(err, checklist.ErrNotKept):
 		msg := strings.TrimPrefix(err.Error(), "checklist: ")
 		if !strings.Contains(msg, "nothing was written") {
 			msg += " (nothing written)"

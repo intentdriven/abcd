@@ -53,13 +53,17 @@ The reader takes only a file this working copy's own write could have made:
 it refuses a file git tracks, staged or committed, since that came with the
 checkout; a file group or others can read, or another account owns, since the
 write makes it 0600 as the person; a file under a local tier that is not a
-plain directory; and, inside a git checkout, every file when git cannot say
+plain directory (a symlink, or a submodule's top, whose files the outer git
+does not list); and, inside a git checkout, every file when git cannot say
 whether they are tracked. Otherwise it validates and scans the file. When the
 file fails, the reader judges the last good copy the same way and says why it
 fell back; when both fail, it reads nothing and says so. A reason never
-quotes the file. While git tracks the list, a change refuses with exit 2 and
-says to untrack it with `git rm --cached`, so no item is written that the
-next read would drop.
+quotes the file. A change is held to the same gate, so no item is written
+that the next read would drop: while git tracks the list it refuses with exit
+2 and says to untrack it with `git rm --cached`; it refuses a tier the reader
+refuses; and it refuses with exit 2 a list the reader refuses for its mode or
+owner, and a working copy whose filesystem does not keep the owner-only mode
+or the owner, which a write shows.
 
 ## At every session start
 

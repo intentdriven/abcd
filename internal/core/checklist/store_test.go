@@ -692,3 +692,77 @@ func TestUpdateRefusesATrackedChecklist(t *testing.T) {
 		t.Fatalf("Write over a tracked checklist = %v, want ErrTracked", err)
 	}
 }
+
+// TestReadRefusesATierThatIsASubmodule: git in the outer repository lists
+// nothing inside a submodule, so a tier that is one (or sits inside one)
+// would let a committed checklist through the tracked check; a .git entry at
+// either level of the tier makes it no plain directory.
+func TestReadRefusesATierThatIsASubmodule(t *testing.T) {
+	for _, level := range []string{".abcd", checklist.TierRelPath} {
+		t.Run(level, func(t *testing.T) {
+			root := newRepo(t)
+			plant(t, abs(root, checklist.FileRelPath), marshal(t, sample()))
+			plant(t, filepath.Join(abs(root, level), ".git"), []byte("gitdir: ../.git/modules/x\n"))
+			if got := checklist.Read(root); got.Source != checklist.FromNothing || !strings.Contains(got.Reason, "not a plain directory") {
+				t.Fatalf("a checklist inside a submodule tier was read: %+v", got)
+			}
+		})
+	}
+}
+
+// TestWriteRefusesWhereTheReaderWouldRefuse: a write the next read would
+// refuse loses every item, so the write holds itself to the reader's gate.
+// A tier reached through a symlink, even one inside the checkout, is refused
+// before anything is written; a filesystem that does not keep the file's
+// owner (or its 0600 mode) is refused once the write shows it; and a change
+// over a checklist the reader refuses keeps that file rather than starting a
+// new list over it.
+func TestWriteRefusesWhereTheReaderWouldRefuse(t *testing.T) {
+	t.Run("a symlinked tier inside the checkout", func(t *testing.T) {
+		root := t.TempDir()
+		real := filepath.Join(root, "real-abcd")
+		if err := os.MkdirAll(filepath.Join(real, ".work.local"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(real, filepath.Join(root, ".abcd")); err != nil {
+			t.Fatal(err)
+		}
+		if err := checklist.Write(root, sample()); !errors.Is(err, checklist.ErrNoLocalTier) {
+			t.Fatalf("Write through a symlinked .abcd = %v, want ErrNoLocalTier", err)
+		}
+		if _, err := os.Lstat(filepath.Join(real, ".work.local", "checklist.json")); !os.IsNotExist(err) {
+			t.Fatalf("the refused write wrote the file: %v", err)
+		}
+	})
+	t.Run("a filesystem that does not keep the owner", func(t *testing.T) {
+		root := newRepo(t)
+		defer checklist.SwapOwnerForTest(func(string) (uint32, error) { return uint32(os.Getuid()) + 1, nil })()
+		if err := checklist.Write(root, sample()); !errors.Is(err, checklist.ErrNotKept) {
+			t.Fatalf("Write where the owner is not kept = %v, want ErrNotKept", err)
+		}
+	})
+	t.Run("a change over a refused checklist", func(t *testing.T) {
+		root := newRepo(t)
+		p := abs(root, checklist.FileRelPath)
+		plant(t, p, marshal(t, sample()))
+		if err := os.Chmod(p, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		before := readFile(t, p)
+		err := checklist.Update(root, func(checklist.Result) (checklist.Checklist, error) { return sample(), nil })
+		if !errors.Is(err, checklist.ErrNotKept) || !bytes.Equal(readFile(t, p), before) {
+			t.Fatalf("Update over a refused checklist = %v, and the file must stand", err)
+		}
+	})
+	t.Run("an owner-only mode the write never makes", func(t *testing.T) {
+		root := newRepo(t)
+		p := abs(root, checklist.FileRelPath)
+		plant(t, p, marshal(t, sample()))
+		if err := os.Chmod(p, 0o400); err != nil {
+			t.Fatal(err)
+		}
+		if got := checklist.Read(root); got.Source != checklist.FromFile {
+			t.Fatalf("an owner-only file is refused: %+v", got)
+		}
+	})
+}
