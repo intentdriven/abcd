@@ -2,7 +2,7 @@
 name: docs-currency-reviewer
 description: Semantic docs-currency review — verifies every user-facing claim against the code that implements it. Use PROACTIVELY before tagging any release, and after merging behaviour changes that docs describe.
 tools: Read, Grep, Glob, Bash
-prompt_version: 0.2.1
+prompt_version: 0.3.0
 reads_untrusted_input: true
 capability_scope:
   task_classes: [cross_document_audit]
@@ -43,8 +43,12 @@ Method — evidence, not vibes:
   INCOMPLETE (doc omits something user-facing — judgement call, flag it),
   CURRENT (verified). Never edit for style; smallest diff that fixes a
   falsehood.
-- Where the project has tests/evals that pin doc-described behaviour, run
-  them rather than re-deriving.
+- Where the project has tests/evals that pin doc-described behaviour, read
+  them as evidence rather than re-deriving, and never run them: the test run
+  is the author's gated preflight, and on a machine other sessions share, a
+  run no load gate admits slows every run it did admit. A claim only a run
+  could settle is reported as UNVERIFIED, naming the test the author should
+  run through the project's load gate.
 
 Rules for any fix you propose: docs are present tense only; user-facing
 prose in British English, code-side strings in US English; one Diátaxis
