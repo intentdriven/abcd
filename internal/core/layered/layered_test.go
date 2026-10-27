@@ -451,12 +451,15 @@ func TestClaimRefusesAMiscasedNamespace(t *testing.T) {
 // nested key a reader looks up, so it would be ignored and the layer below
 // would decide. It is refused in any case, beside the nested spelling too.
 func TestClaimRefusesADottedSpellingOfANamespace(t *testing.T) {
+	long := strings.Repeat("x", 200)
 	for _, c := range []struct {
 		name, repo, machine, ns, file, layer, found string
 	}{
 		{"top level, machine file", `{"pace":{"work_minutes":90}}`, `{"pace.work_minutes":30}`, "pace", "abcd.noindex/config.json", "machine", `"pace.work_minutes"`},
 		{"miscased, beside the nested spelling", `{"pace":{"work_minutes":90},"Pace.Work_minutes":30}`, "", "pace", ".abcd/config.json", "repo", `"Pace.Work_minutes"`},
 		{"inner segment", `{"oracle":{"backend":"host","rp.url":"x"}}`, "", "oracle.rp", ".abcd/config.json", "repo", `"oracle.rp.url"`},
+		{"control bytes are escaped", "", `{"pace.work\u001b_minutes":30}`, "pace", "abcd.noindex/config.json", "machine", `\x1b`},
+		{"a long key is bounded", "", `{"pace.` + long + `":30}`, "pace", "abcd.noindex/config.json", "machine", "..."},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f := newFixture(t)
@@ -478,6 +481,9 @@ func TestClaimRefusesADottedSpellingOfANamespace(t *testing.T) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("err = %v, want it to name %s", err, want)
 				}
+			}
+			if strings.Contains(err.Error(), "\x1b") || strings.Contains(err.Error(), long) {
+				t.Errorf("err = %q carries a raw control byte or an unbounded key", err)
 			}
 		})
 	}

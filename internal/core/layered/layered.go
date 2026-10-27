@@ -36,7 +36,8 @@
 // symlink or sits behind one, is writable by others (machine layer), is not
 // valid JSON, holds a key twice, carries trailing content, or declares the
 // wrong schema_version; an unknown key under a claimed namespace, or the
-// namespace itself spelt in another case; a value in
+// namespace itself spelt in another case or written with a key below it as one
+// dotted member; a value in
 // the winning layer that does not decode to the caller's type or fails its
 // check. None of these falls through to a lower layer or to the default,
 // because a configuration that silently does less than it says is the failure
@@ -602,8 +603,9 @@ func objectAt(d *doc, key string) (map[string]json.RawMessage, bool, error) {
 // default apply unannounced. namespace "" claims the file's top level (a file
 // one reader owns outright); a "*" segment claims every member at that level
 // (roles.* claims each role's keys, whatever the role is called). A named
-// segment spelt in another case in any layer ("Facilitator" for facilitator)
-// is refused too, since Lookup would ignore it and a lower layer would decide.
+// segment spelt in another case in any layer ("Facilitator" for facilitator),
+// or written with a key below it as one dotted member ("facilitator.mode"), is
+// refused too, since Lookup would ignore it and a lower layer would decide.
 // A namespace no layer holds is not an error.
 func (s *Stack) Claim(namespace string, keys ...string) error {
 	allowed := map[string]bool{}
