@@ -96,6 +96,7 @@ ADR is minted in the first delivery and reviewed with the diff.
 4. One issue or package held back for now (iss-2610090642385898)
    - packages: internal/core/implement, internal/surface/cli
    - tests: an issue on the skip list is passed over with its reason in the plan's passed entries, and the list clears when the drain ends
+   - landed: 6594725b5953
 5. A pull request that leaves the merge queue is put back (iss-2610090642376032)
    - packages: internal/core/implement/loop
    - tests: a landed pull request left unqueued at CLEAN is enqueued, and one dropped after a failed merge-group check is reported with the failed check
