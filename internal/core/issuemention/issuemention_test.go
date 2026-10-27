@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // prCorpus is every shape RS004 decides a pull request on: a mention declared
@@ -54,7 +56,10 @@ func TestUndeclaredMatchesTheGate(t *testing.T) {
 	// The gate refuses to run outside a full git repository; the pull-request
 	// arm reads only the two files, so an empty one is enough.
 	repo := t.TempDir()
-	if out, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
+	env := gittest.Env(t)
+	initRepo := exec.Command("git", "init", "-q", repo)
+	initRepo.Env = env
+	if out, err := initRepo.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 	for name, pr := range prCorpus {
@@ -68,6 +73,7 @@ func TestUndeclaredMatchesTheGate(t *testing.T) {
 			}
 			cmd := exec.Command("bash", gate, "pr", title, body)
 			cmd.Dir = repo
+			cmd.Env = env
 			out, err := cmd.CombinedOutput()
 			gateAccepts := err == nil
 			if ee, ok := err.(*exec.ExitError); err != nil && (!ok || ee.ExitCode() != 1) {

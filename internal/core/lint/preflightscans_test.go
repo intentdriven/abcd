@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The two hosted scans preflight runs before the push (iss-2610261151381604,
@@ -89,7 +91,7 @@ func newScanRepo(t *testing.T, changeGoMod bool) *scanRepo {
 func (r *scanRepo) git(args ...string) string {
 	r.t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", r.dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	cmd.Env = gittest.Env(r.t)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		r.t.Fatalf("git %v: %v\n%s", args, err, out)
