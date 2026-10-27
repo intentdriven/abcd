@@ -388,6 +388,16 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   repository's root, `abcd ahoy` can write abcd's conventions section into it
   (`internal/core/ahoy/marker.go`), and a host-named instructions file is kept
   only as a bridge to it.
+- **Safe-fix tiers in linters (Ruff, <https://docs.astral.sh/ruff/linter/>;
+  ESLint, <https://eslint.org/docs/latest/extend/custom-rules>) and the
+  static-analysis lessons of Google (Sadowski et al., "Lessons from Building
+  Static Analysis Tools at Google", *Communications of the ACM* 61, 4 (2018))
+  and Facebook (Distefano et al., "Scaling Static Analyses at Facebook",
+  *Communications of the ACM* 62, 8 (2019))** — the evidence that a finding
+  fixed where it is found gets fixed while a filed one mostly does not, and the
+  test for which fixes need no decision: one that keeps the meaning. The
+  fix-in-place discipline (itd-2610271130017437) follows them; the evidence is
+  `.abcd/development/research/notes/2026-10-27-fix-in-place-or-file-sota.md`.
 
 ## References & sources
 
