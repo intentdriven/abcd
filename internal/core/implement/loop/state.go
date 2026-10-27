@@ -191,7 +191,19 @@ const lockFileName = ".lock"
 // lower carrying either side is not one its version wrote, and is refused.
 // Releases that write version 13 (v0.15.1) refuse a version-14 file as a
 // newer abcd's before any strict decode.
-const SchemaVersion = 14
+//
+// Version 15 added the run's review set (itd-2610240922461281,
+// spc-2610240951109420 step 1): the run's `review`, each role's reviewers at
+// their model classes, the judge and the ceiling, with the layer of each.
+// Version 14 is its strict subset, read as a run started before review sets,
+// which carries none, and written back at version 15; a file of version 14 or
+// lower carrying `review` is not one its version wrote, and is refused.
+// Releases that write version 14 refuse a version-15 file as a newer abcd's.
+const SchemaVersion = 15
+
+// schemaVersionUnreviewed is the version before the run's review set: read,
+// never written.
+const schemaVersionUnreviewed = 14
 
 // schemaVersionUnmetered is the version before a route's both sides: read,
 // never written.
@@ -334,6 +346,10 @@ type State struct {
 	// supplied it (itd-2609201925079472). Nil in a run a version-1 state file
 	// holds: it started before the loop paced a run, and runs unpaced.
 	Pace *Pace `json:"pace,omitempty"`
+	// Review is the review set the run started on (reviewset.go), each value
+	// with the layer that supplied it. Nil in a run a state file before
+	// version 15 holds: it started before review sets.
+	Review *ReviewSet `json:"review,omitempty"`
 	// Pick is the pick `abcd build next` made to start the run: the
 	// candidates, their scores and the grounds entry its first lane commits.
 	// Nil for a run `abcd build <itd-N>` started.
@@ -928,7 +944,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnmetered && st.metered() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries both sides of %s, which version %d never wrote", rel, st.SchemaVersion, st.metered(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnmetered:
+	case st.SchemaVersion <= schemaVersionUnreviewed && st.Review != nil:
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a review set, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnreviewed:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
@@ -947,6 +966,14 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	if st.Pace != nil && !st.Pace.written() {
 		return State{}, refuse("state", "", "", rel+" carries a pace the loop never writes: a setting whose layer is not "+
 			strings.Join(paceLayers, ", ")+", or whose origin carries a control, bidi or zero-width rune",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	// The stored review set is one the resolver writes, as the pace is: its
+	// classes are ones the map carries and its layers the resolver's, so a
+	// hand edit never reaches a reviewer's model or a --json stream.
+	if st.Review != nil && !st.Review.written() {
+		return State{}, refuse("state", "", "", rel+" carries a review set the loop never writes: a role, class or layer it does not name, "+
+			"a list past its ceiling, or a model or origin carrying a control, bidi or zero-width rune",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	// A lane's stored hand-back carries only text the loop writes, so none

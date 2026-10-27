@@ -766,6 +766,9 @@ func forgeRouteAnswer(t *testing.T, root, runID string, aw Await) {
 }
 
 // editState rewrites the run's state file through edit, as a JSON document.
+//
+// A state edited back to a version before 15 drops the review set a new run
+// writes (unreviewOlder), since no file of those versions carries one.
 func editState(t *testing.T, root, runID string, edit func(doc map[string]any)) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(StateRelPath(runID)))
@@ -778,6 +781,7 @@ func editState(t *testing.T, root, runID string, edit func(doc map[string]any)) 
 		t.Fatal(err)
 	}
 	edit(doc)
+	unreviewOlder(doc)
 	out, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		t.Fatal(err)
