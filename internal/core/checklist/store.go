@@ -63,7 +63,7 @@ var ErrTracked = errors.New("checklist: git tracks the checklist in this checkou
 // is one it refuses for its mode or owner: a filesystem that does not keep
 // the 0600 mode or the owner, or a file changed by something other than the
 // verb. A write the next read refuses loses every item, so none is made.
-var ErrNotKept = errors.New("checklist: the checklist file here does not keep the owner-only mode or the owner the reader requires, so the list cannot be kept in this working copy")
+var ErrNotKept = errors.New("checklist: the checklist file here does not keep the owner-only mode or the owner the reader requires, so the list cannot be kept in this working copy; remove checklist.json (or chmod it 600 as its owner) and add again, on a filesystem that keeps both")
 
 // ownerOf and gitRun are the owner lookup and the git runner Read and the
 // writes use, held as vars so a test can provoke another account's file and
