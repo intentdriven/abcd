@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 783 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md:409"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-configuration.md (Owed-review draining paragraph): say `abcd intent audit --owed` drains owed audits on demand today (itd-53); keep only run-seam receipt gating as staged."
 finding_ref: cfk-f85df95d7a683e50
 ---
 

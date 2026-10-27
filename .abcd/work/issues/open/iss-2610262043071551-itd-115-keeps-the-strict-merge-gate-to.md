@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1116 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-115-abcd-managed-repos-merge-prs-without-the.md:24"
-remedy: "none (filed automatically)"
+remedy: "In itd-115 (press release line 24, Why This Matters, SOTA, acceptance criterion 4) remove the premise that strict up-to-date is what catches a duplicate record id: itd-114 shipped, so the queue's case rests on churn and merged-result testing, and the relax-strict deferral the draft already ties to itd-114 can be reconsidered"
 related_intents: [itd-115, itd-114]
 finding_ref: cfk-f85b029a07199952
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 815 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-5-prompt-quality-additions.md:25"
-remedy: "none (filed automatically)"
+remedy: "Replace 'abcd ships all 14 (now 15) agents' in itd-5 line 25 with 'every agent prompt in agents/', with no count"
 related_intents: [itd-5]
 finding_ref: cfk-af6ef4926a7aab85
 ---

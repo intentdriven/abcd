@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 991 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/08-skills.md:8"
-remedy: "none (filed automatically)"
+remedy: "Edit itd-44 (CLI classifier bullet): drop the wrapper-only `abcd-intent-new` skill and route the new `decision` verdict through the `/abcd:intent` command page and its binary verb."
 related_intents: [itd-44]
 finding_ref: cfk-80d19ba9caaf647f
 ---

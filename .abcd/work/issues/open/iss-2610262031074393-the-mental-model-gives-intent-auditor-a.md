@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 89 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:85"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md: remove the discipline role from the intent-auditor sentence and mark the third (reclassification) role as a design target, as 05-internals/01-agents.md does."
 finding_ref: cfk-c6b5f1fa00b592de
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 861 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609291923559186-the-consistency-pass-runs-where-records.md:151"
-remedy: "none (filed automatically)"
+remedy: "In decision 5 of the consistency-pass intent keep the whole-corpus rule checks but let only a finding on a staged record or its links refuse a commit under 'stop'; report the rest as warnings, as the lint chapter's staged-tier design target requires."
 related_intents: [itd-2609291923559186]
 finding_ref: cfk-2dd1ded1fda1c5f5
 ---

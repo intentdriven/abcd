@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 258 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/03-embark.md:131"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): When the embark target has saved no docs.target, does embark plant the marker block in AGENTS.md (today; itd-2610030814013772 ac-2 tests it) or write no file, as setup's skip default does? Recommend writing no file: skip is the repository default under the 2026-09-11 ruling that abcd is not named in an adopted repository without the person's choice (iss-2609110944498549), so one meaning of 'unset' serves every consumer, and embark's report can name ahoy install --docs-target agents_md as the way to add it."
 finding_ref: cfk-219e1bfdb5d40c98
 ---
 

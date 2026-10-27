@@ -9,9 +9,11 @@ found_during: "abcd intent consistency, finding 1120 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-2610040817105016-a-product-thinker-reads-their-brief-as.md:19"
-remedy: "none (filed automatically)"
+remedy: "Per dcn-2610271112330235: the brief shows the target design with a status tag where built. Write the superseding ADR for itd-147's currency rule, add the status overlay, and rebuild the brief's checks around it."
 related_intents: [itd-2610040817105016, itd-147]
 finding_ref: cfk-a321c6e560e493e7
+deferred_after: v0.15.1
+deferral_reason: "Deferred by the product thinker on 2026-10-27 (dcn-2610271112330536): the brief's single-home rewrite (dcn-2610271112339516, dcn-2610271112330235) rewrites or removes most of the passages this record quotes."
 ---
 
 The brief-realisation draft treats the brief as the target design in the present tense; itd-147 sequences the brief as the shipped state.
@@ -24,3 +26,7 @@ A premise contradiction (severity major) found by the cross-document consistency
 itd-2610040817105016 records the product thinker's ruling that a product thinker reads the brief 'as the target design, in the present tense', with intents shown as realising each section. itd-147 is a delivery rung of the phase whose rule is that 'the brief is the shipped state', generating each chapter's surface block from the shipped command tree and marking an unbuilt surface as unbuilt. A brief written as target design in the present tense is exactly the drift itd-147's generated blocks and currency rule exist to stop, so a builder cannot satisfy both definitions of what the brief is.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 1120.
+
+## Deferral 2026-10-27
+
+Deferred past v0.15.1: Deferred by the product thinker on 2026-10-27 (dcn-2610271112330536): the brief's single-home rewrite (dcn-2610271112339516, dcn-2610271112330235) rewrites or removes most of the passages this record quotes.

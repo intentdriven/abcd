@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 399 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:93"
-remedy: "none (filed automatically)"
+remedy: "Change 05-intent.md line 93 so new ADR files are named by the timestamp id then slug (adr-45 mint, as 24-decide.md says), with the 0001-0058 ordinals keeping their names."
 finding_ref: cfk-534472ddc8b0a364
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 263 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/07-library.md:427"
-remedy: "none (filed automatically)"
+remedy: "In 07-library.md, 'Composition with adjacent surfaces' (line 427), replace 'carrying the store forward is designed behaviour' with a statement that embark does not carry the memory store (it is not an embark family, 03-embark.md:126); keep the source-class note only if a carry is ever designed."
 finding_ref: cfk-28499d3e8ddd6238
 ---
 

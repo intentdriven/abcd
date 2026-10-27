@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1000 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-135-iris-opens-abcdev-app-and-understands.md:22"
-remedy: "none (filed automatically)"
+remedy: "In 10-site.md, remove the opening design-target mark (lines 3-11) or rewrite it to say abcdev.app serves the rendered site at its root and the MkDocs rendering at /docs/, since the release chain deploys on every full release."
 related_intents: [itd-135]
 finding_ref: cfk-44f9b97a8d0b589e
 ---

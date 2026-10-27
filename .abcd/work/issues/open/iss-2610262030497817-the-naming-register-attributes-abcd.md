@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 50 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:116"
-remedy: "none (filed automatically)"
+remedy: "In the staged sub-verb list of 04-naming.md (line 116-117) cite itd-35 for `/abcd:audit lifeboat` and keep itd-16 for `/abcd:audit chain`."
 finding_ref: cfk-95a54f7b5c112bd8
 ---
 

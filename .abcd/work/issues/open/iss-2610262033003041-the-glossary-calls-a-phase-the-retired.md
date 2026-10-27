@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 346 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/position.md:25"
-remedy: "none (filed automatically)"
+remedy: "In 04-launch.md section 3 (line 489) replace 'the repo organises work by phase (adr-9)' with sequencing by dependencies and the lifecycle shelves (adr-2609212115255771); the release number still falls out of published work."
 finding_ref: cfk-fad23e81814901a1
 ---
 

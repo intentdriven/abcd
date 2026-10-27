@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 928 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/08-skills.md:10"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Is 'corpus' retired as a name for the library's collection (then rename it across 08-skills, 07-library, 03-configuration, commands/library.md and the CLI text) or is it the on-disk store's technical name (then narrow the glossary entry's forbidden_synonyms)? Recommend keeping 'sources corpus' as the store's technical name and narrowing the forbidden list to user-facing prose about the person's collection, because the term is used about 70 times in the command page, chapter and CLI tests and the glossary entry is a draft the lint does not enforce."
 finding_ref: cfk-6e8d2091963365fb
 ---
 

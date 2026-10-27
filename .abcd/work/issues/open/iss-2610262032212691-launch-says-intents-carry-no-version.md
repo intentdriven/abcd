@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 257 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/04-launch.md:491"
-remedy: "none (filed automatically)"
+remedy: "Reword 04-launch.md line 491 to say the brief and the intents carry no version label except a planned intent's optional target_release (adr-2609212115255771 decision 3), which the preview and the cut report and never refuse on; drop 'roadmap'. Same sentence block as the retired-phase-vocabulary edit, so make both in one change."
 finding_ref: cfk-749716a32adc8c98
 ---
 

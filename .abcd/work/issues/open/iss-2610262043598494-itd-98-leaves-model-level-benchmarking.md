@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1176 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-98-solo-vs-duo-is-measured-not-debated.md:68"
-remedy: "none (filed automatically)"
+remedy: "In itd-98 drop itd-17 from the owners of model-level benchmarking (itd-17 is superseded by itd-2609221009495079, which rules a learned router out) and name itd-64 alone, plus itd-2609221009495079 where typed-judgement shadow runs are meant; fix the context line and References too."
 related_intents: [itd-98, itd-2609221009495079]
 finding_ref: cfk-1c1e37ff017db428
 ---

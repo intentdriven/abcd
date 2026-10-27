@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 507 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:532"
-remedy: "none (filed automatically)"
+remedy: "In itd-50 replace intent-fidelity-reviewer with intent-auditor (press release line 25 and Related line 115); the intent is still planned, so it is editable."
 related_intents: [itd-50]
 finding_ref: cfk-44eef02066b644d2
 ---

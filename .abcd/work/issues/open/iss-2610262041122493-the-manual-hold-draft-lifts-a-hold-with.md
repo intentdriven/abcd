@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 984 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/02-verification-matrix.md:33"
-remedy: "none (filed automatically)"
+remedy: "Supersede or re-scope itd-57 together with iss-2610262041112989: abcd intent hold already parks a record, and there is no spec dependency, depends_on field or spec rm-dep verb."
 related_intents: [itd-57]
 finding_ref: cfk-dd660ddf46e26bcd
 ---

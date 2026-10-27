@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 407 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:518"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Who supplies the impact an intent needs in order to ship when the build lands it? (a) the build's start check or the readiness gate refuses an intent with no recorded impact, so the judgement is made at planning; (b) the landing supplies one, for example from the audit, and ships regardless. Recommend (a): impact is the product thinker's judgement (adr-31), a lane has no basis to invent it, and refusing at the start costs less than refusing at the last landing after the lane's work."
 finding_ref: cfk-cc6323a3060cef58
 ---
 

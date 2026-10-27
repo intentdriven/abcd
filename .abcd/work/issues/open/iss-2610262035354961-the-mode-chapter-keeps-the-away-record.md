@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 582 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/26-mode.md:36"
-remedy: "none (filed automatically)"
+remedy: "Add the away store (away/ROOT-SHA/, one record per repository keyed on the root commit) to the user-scope inventory in 03-configuration.md and to the matching tree in 01-ahoy.md, which the chapter says must stay one list."
 finding_ref: cfk-0f2c193c44710bdc
 ---
 

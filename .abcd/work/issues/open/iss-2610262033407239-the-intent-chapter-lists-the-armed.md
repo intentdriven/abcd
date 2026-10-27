@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 428 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:502"
-remedy: "none (filed automatically)"
+remedy: "Replace the hand-typed armed-rule enumeration at 05-intent.md line 502 with a pointer to .abcd/record-lint.json (the armed set, per 06-lint.md), or move it into a generated gated region; keep per-rule prose only where it states a rule's own meaning."
 finding_ref: cfk-6231d5016eb62a52
 ---
 

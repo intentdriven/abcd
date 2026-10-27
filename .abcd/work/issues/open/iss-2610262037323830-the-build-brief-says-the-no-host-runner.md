@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 730 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/34-build.md:539"
-remedy: "none (filed automatically)"
+remedy: "In 34-build.md (and the matching comment in loop/drive.go) name adr-2610222222326104 (proposed) as the record the no-host path waits on, and correct the decision number: decision 5 of itd-2609201916151817 flags the driver reversal, decision 6 is the auto-plan record; amend those two decisions to point at the new ADR."
 related_intents: [itd-2610222215485265]
 finding_ref: cfk-f8f437dafca4cea6
 ---

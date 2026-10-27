@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1075 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/position.md:25"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Is itd-41 (the phase negotiator) withdrawn because phases are retired, or reframed to negotiate release scope over dependencies, the shelves and target_release? Recommended: reframe at plan time and leave it a draft, because adr-10 still stands and only its unit is retired."
 related_intents: [itd-41]
 finding_ref: cfk-7fb3edf14d0b0a6c
 ---

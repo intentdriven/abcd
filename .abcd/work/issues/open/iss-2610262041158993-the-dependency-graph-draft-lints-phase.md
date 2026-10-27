@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 987 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/record-families.md:30"
-remedy: "none (filed automatically)"
+remedy: "In itd-78 drop the phase-scoping lint ('an intent phase-scoped earlier than its blocker's phase') and the line that phase docs remain the sequencing authority; replace with shelf-based checks such as a planned intent whose blocker is still a draft."
 related_intents: [itd-78]
 finding_ref: cfk-a19761344d0e34b2
 ---

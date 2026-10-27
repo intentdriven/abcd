@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 102 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:15"
-remedy: "none (filed automatically)"
+remedy: "Same edit as iss-2610262030576576: scope invariant 4 to data the core validates and name as exceptions the prose-verdict reviewers (ruthless-reviewer and security-reviewer, whose verdict heading the implement loop reads), the docs reviewer's table and the sota-researcher's list, as 05-internals/01-agents.md already records."
 finding_ref: cfk-5cc8ac0b507d7ffe
 ---
 

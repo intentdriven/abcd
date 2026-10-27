@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 550 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-46-abcd-intent-quoted-text-create-symmetric.md:18"
-remedy: "none (filed automatically)"
+remedy: "In itd-46 line 18 reword 'what the universal abcd convention says it must' to 'what the abcd convention says for these two commands', since the chapters say the bare status render is common and not universal."
 related_intents: [itd-46]
 finding_ref: cfk-65b28dcb4a852949
 ---

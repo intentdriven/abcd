@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 981 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/README.md:29"
-remedy: "none (filed automatically)"
+remedy: "In the itd-30 draft rename intent-fidelity-reviewer to intent-auditor (the rename is recorded in the agents changelog), when the draft is next edited or planned."
 related_intents: [itd-30]
 finding_ref: cfk-16510a9e3988ade6
 ---

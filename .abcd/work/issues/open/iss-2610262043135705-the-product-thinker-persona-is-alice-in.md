@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1123 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-106-abcd-sets-up-the-ci-a-repo-requires-and.md:30"
-remedy: "none (filed automatically)"
+remedy: "itd-106 line 30: change 'said Alice, a product thinker' to 'said Iris, a product thinker'"
 related_intents: [itd-106, itd-135]
 finding_ref: cfk-be2154f2456add56
 ---

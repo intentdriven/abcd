@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 64 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:227"
-remedy: "none (filed automatically)"
+remedy: "Relabel the `index.json` row in 04-naming.md (line 227) from 'History-store registry' to 'ahoy's registry' under `~/.abcd.noindex/history/`, and keep 'history store' for the transcripts store."
 finding_ref: cfk-8cc23fd3a42b01e6
 ---
 
