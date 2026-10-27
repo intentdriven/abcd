@@ -3,17 +3,17 @@ package cli
 // usage_errors.go — the one formatter for the usage errors the command
 // framework raises. cobra and pflag word an unknown sub-command, an unreadable
 // flag value, an unknown shorthand cluster and a malformed flag by repeating
-// the caller's text. A value a script passed through a variable, which its own
-// log shows unexpanded, would then be printed expanded on stderr and in the
-// --json error object, where CI logs and session transcripts keep it. abcd's
-// own refusals name what was refused by its position or its flag and list what
-// is accepted; these do the same. Only the text changes: exit codes, the --json
+// the caller's text. abcd's own refusals name what was refused by its position
+// or its flag and list what is accepted, without repeating it; these do the
+// same. Only the text changes: exit codes, the --json
 // object's shape and help output are untouched.
 
 import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -25,6 +25,8 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // applyUsageFlagErrors wraps the flag-error function of every command in the
@@ -153,65 +155,199 @@ func pathErrorCause(err error) error {
 
 // minWithheldLen is the shortest argument the boundary pass withholds. A
 // shorter one is a count, a letter or a short word whose every occurrence in a
-// refusal would otherwise be rewritten, and a credential is longer than this.
+// refusal would otherwise be rewritten.
 const minWithheldLen = 8
+
+// minWithheldPrefix is the shortest leading part of a longer argument the
+// pass withholds where a refusal cut the argument short before repeating it.
+// The sites that cut keep forty bytes or more.
+const minWithheldPrefix = 24
+
+// maxPrefixScan bounds how much of an argument the prefix search walks back
+// over, so a long argument costs a bounded number of searches.
+const maxPrefixScan = 512
+
+// plainWordRe is a lower-case word or hyphenated words: the shape of a verb,
+// a closed-set value or a word of the refusal's own text. A part derived from
+// an argument (a prefix, a base name, the value after an `=`) is not withheld
+// on its own when it has this shape, since it would rewrite the refusal's own
+// words; the whole argument still is.
+var plainWordRe = regexp.MustCompile(`^[a-z]+(?:-[a-z]+)*$`)
+
+// typedArgument is one argument the caller typed whose text the pass
+// withholds, and its 1-based position among the arguments.
+type typedArgument struct {
+	text string
+	pos  int
+}
 
 // withholdArguments is the one redaction pass at the error boundary: Run calls
 // it on the finished refusal, before the line goes to stderr or into the --json
 // error object, so a refusal some verb words by repeating what it was passed
-// still does not carry it. Each argument the caller typed — a positional, a
-// flag's value written with `=`, anything after `--` — that stands whole in msg
-// is replaced by its position. Three kinds are left as they are: an argument
-// shorter than minWithheldLen, the name of a command in the tree, and a
-// well-formed record id (recordid.CitedIDRe), which a refusal names so the
-// caller can find the record. The per-site wording above names what was
-// refused; this pass is the backstop for a site that still repeats it.
+// still does not carry it. Each argument the caller typed (a positional, a
+// flag's value, whether after an `=`, attached to a shorthand or standing as
+// the next argument, and anything after `--`) is replaced by its position
+// wherever it stands in msg: as typed; as a refusal renders it (quoted with %q
+// or %+q, or masked for the terminal); as a path a refusal shortened to its
+// working-directory or home form, to a relative path or to its base name; as
+// the value after its last `=`; and as its leading part, where a refusal cut it
+// short. Three kinds are left as they are: an argument shorter than
+// minWithheldLen, the name of a command in the tree, and a well-formed record
+// id (recordid.CitedIDRe), which a refusal names so the caller can find the
+// record. The per-site wording names what was refused; this pass is the
+// backstop for a site that still repeats it.
 func withholdArguments(root *cobra.Command, args []string, msg string) string {
-	type operand struct {
-		text string
-		pos  int
-	}
-	commands := commandNames(root)
-	var ops []operand
-	afterTerminator := false
-	for i, a := range args {
-		v := a
-		switch {
-		case afterTerminator:
-		case a == "--":
-			afterTerminator = true
-			continue
-		case strings.HasPrefix(a, "-"):
-			// A flag's name is not withheld; its value is, whether it follows
-			// an `=` here or stands as the next argument.
-			_, val, ok := strings.Cut(a, "=")
-			if !ok {
-				continue
-			}
-			v = val
-		}
-		if len(v) < minWithheldLen || commands[v] || recordid.CitedIDRe.MatchString(v) {
-			continue
-		}
-		ops = append(ops, operand{text: v, pos: i + 1})
-	}
+	ops := typedArguments(root, args)
 	// Longest first, so an argument that holds a shorter one is withheld whole.
-	slices.SortStableFunc(ops, func(a, b operand) int { return len(b.text) - len(a.text) })
+	slices.SortStableFunc(ops, func(a, b typedArgument) int { return len(b.text) - len(a.text) })
 	for _, op := range ops {
 		stand := fmt.Sprintf("(argument %d, not repeated here)", op.pos)
-		msg = replaceWhole(msg, op.text, stand)
-		// A refusal that quoted the argument with %q carries its escaped form.
-		if q := strconv.Quote(op.text); q[1:len(q)-1] != op.text {
-			msg = replaceWhole(msg, q[1:len(q)-1], stand)
+		for _, form := range renderedForms(op.text) {
+			msg = replaceWhole(msg, form, stand)
+		}
+		msg = withholdPrefix(msg, op.text, stand)
+	}
+	return msg
+}
+
+// typedArguments collects the arguments withholdArguments withholds. A flag's
+// name is never collected; whether the argument after a flag is its value is
+// read from the flag itself, so a value that begins with a dash is still
+// collected. An unknown flag's argument is left to the parser, which refuses
+// it naming the flag alone.
+func typedArguments(root *cobra.Command, args []string) []typedArgument {
+	cmd := root
+	if found, _, err := root.Find(args); err == nil && found != nil {
+		cmd = found
+	}
+	lookup := func(name string) *pflag.Flag {
+		if f := cmd.Flags().Lookup(name); f != nil {
+			return f
+		}
+		return cmd.InheritedFlags().Lookup(name)
+	}
+	shorthand := func(c byte) *pflag.Flag {
+		if f := cmd.Flags().ShorthandLookup(string(c)); f != nil {
+			return f
+		}
+		return cmd.InheritedFlags().ShorthandLookup(string(c))
+	}
+	takesValue := func(f *pflag.Flag) bool { return f != nil && f.NoOptDefVal == "" }
+	commands := commandNames(root)
+	var ops []typedArgument
+	add := func(v string, i int) {
+		if len(v) < minWithheldLen || commands[v] || recordid.CitedIDRe.MatchString(v) {
+			return
+		}
+		ops = append(ops, typedArgument{text: v, pos: i + 1})
+	}
+	afterTerminator := false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case afterTerminator:
+			add(a, i)
+		case a == "--":
+			afterTerminator = true
+		case strings.HasPrefix(a, "--"):
+			name, val, hasValue := strings.Cut(a[2:], "=")
+			if hasValue {
+				add(val, i)
+			} else if takesValue(lookup(name)) && i+1 < len(args) {
+				i++
+				add(args[i], i)
+			}
+		case len(a) > 1 && a[0] == '-':
+			// A shorthand cluster: letters until the first that takes a
+			// value, whose value is the rest of the argument or the next one.
+			for k := 1; k < len(a); k++ {
+				f := shorthand(a[k])
+				if f == nil {
+					break
+				}
+				if takesValue(f) {
+					if rest := strings.TrimPrefix(a[k+1:], "="); rest != "" {
+						add(rest, i)
+					} else if i+1 < len(args) {
+						i++
+						add(args[i], i)
+					}
+					break
+				}
+			}
+		default:
+			add(a, i)
+		}
+	}
+	return ops
+}
+
+// renderedForms is v and each form a refusal may carry it in, longest first:
+// quoted by %q or %+q, masked for the terminal, shortened as a path, and the
+// parts a refusal names on their own (the base name, the value after the last
+// `=`). A derived part shorter than minWithheldLen, or shaped like a plain
+// word, is left out.
+func renderedForms(v string) []string {
+	forms := []string{v}
+	seen := map[string]bool{v: true}
+	keep := func(f string, derived bool) {
+		if seen[f] || len(f) < minWithheldLen || (derived && plainWordRe.MatchString(f)) {
+			return
+		}
+		seen[f] = true
+		forms = append(forms, f)
+	}
+	if q := strconv.Quote(v); len(q) >= 2 {
+		keep(q[1:len(q)-1], false)
+	}
+	if q := strconv.QuoteToASCII(v); len(q) >= 2 {
+		keep(q[1:len(q)-1], false)
+	}
+	keep(termsafe.Sanitize(v), false)
+	if abs, err := filepath.Abs(v); err == nil {
+		keep(fsutil.RedactHome(abs), false)
+		if cwd, err := os.Getwd(); err == nil {
+			keep(fsutil.RedactRoot(abs, cwd, "."), false)
+			if rel, err := filepath.Rel(cwd, abs); err == nil {
+				keep(rel, true)
+			}
+		}
+	}
+	if k := strings.LastIndexAny(v, `/\`); k >= 0 {
+		keep(v[k+1:], true)
+	}
+	if k := strings.LastIndex(v, "="); k >= 0 {
+		keep(v[k+1:], true)
+	}
+	slices.SortStableFunc(forms, func(a, b string) int { return len(b) - len(a) })
+	return forms
+}
+
+// withholdPrefix replaces the longest leading part of v, at least
+// minWithheldPrefix bytes and shorter than v, that still stands in msg: what
+// a refusal that cut v short before repeating it carries.
+func withholdPrefix(msg, v, stand string) string {
+	longest := min(len(v)-1, maxPrefixScan)
+	for n := longest; n >= minWithheldPrefix; n-- {
+		p := v[:n]
+		if !utf8.ValidString(p) || plainWordRe.MatchString(p) {
+			continue
+		}
+		if strings.Contains(msg, p) {
+			return strings.ReplaceAll(msg, p, stand)
 		}
 	}
 	return msg
 }
 
-// replaceWhole replaces each occurrence of old in s that is not part of a
-// longer word: the characters on either side of it, where there are any, are
-// neither letters, digits nor underscores.
+// replaceWhole replaces each occurrence of old in s. A short old made of word
+// characters alone (under twelve bytes of letters, digits and underscores) is
+// replaced only where it is not part of a longer word, so it cannot rewrite
+// the inside of one; any other old is replaced wherever it stands.
 func replaceWhole(s, old, repl string) string {
+	if len(old) >= 12 || strings.IndexFunc(old, func(r rune) bool { return !isWordRune(r) }) >= 0 {
+		return strings.ReplaceAll(s, old, repl)
+	}
 	var b strings.Builder
 	for {
 		i := strings.Index(s, old)

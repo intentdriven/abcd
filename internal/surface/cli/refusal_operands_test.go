@@ -465,8 +465,8 @@ func TestRefusalHelpersNeverRepeatWhatWasPassed(t *testing.T) {
 	}()
 }
 
-// tokenMarker is a run-time argument shaped like an access token: mixed case,
-// digits and an underscore, the shape a variable a script expanded carries.
+// tokenMarker is a run-time argument of mixed case, digits and an underscore,
+// the shape no closed-set value, verb or record id takes.
 func tokenMarker() string {
 	return "Tk_" + strings.ToUpper(usageMarker()[2:8]) + usageMarker()[8:] + "9x"
 }
@@ -550,5 +550,85 @@ func TestWithholdArgumentsKeepsWhatARefusalMustName(t *testing.T) {
 		if got := withholdArguments(root, c.args, c.msg); got != c.want {
 			t.Errorf("%s:\n got %q\nwant %q", c.name, got, c.want)
 		}
+	}
+}
+
+// TestWithholdArgumentsCatchesEveryFormARefusalCarries holds the boundary
+// pass to each form a refusal may carry an argument in: a flag's value that
+// begins with a dash, the value after an `=`, a path shortened to its
+// working-directory form or its base name, a %+q rendering, an argument glued
+// to the refusal's own words, and an argument a refusal cut short.
+func TestWithholdArgumentsCatchesEveryFormARefusalCarries(t *testing.T) {
+	root := NewRootCommand()
+	dir := scratchCwd(t)
+	tok := tokenMarker()
+	long := tok + strings.Repeat("Q7", 40)
+	cases := []struct {
+		name string
+		args []string
+		msg  string
+	}{
+		{"a dash-led value after its flag", []string{"build", "itd-1", "--pace", "-" + tok}, `--pace "-` + tok + `" is not a pace`},
+		{"the value after an =", []string{"capture", "KEY=" + tok}, "the value " + tok + " is refused"},
+		{"a path under the working directory", []string{"lint", "outbound", filepath.Join(dir, "sub", tok+".md")}, "cannot read ./sub/" + tok + ".md"},
+		{"a base name", []string{"lint", "outbound", "/nowhere/" + tok + ".md"}, "cannot read " + tok + ".md"},
+		{"%+q of non-ASCII", []string{"build", tok + "é"}, fmt.Sprintf("refused %+q", tok+"é")},
+		{"glued to a word", []string{"build", tok}, "v" + tok + "s is refused"},
+		{"cut short", []string{"mode", long}, fmt.Sprintf("%q is not one of", long[:64]+"...")},
+	}
+	for _, c := range cases {
+		got := withholdArguments(root, c.args, c.msg)
+		if strings.Contains(got, tok[:12]) || !strings.Contains(got, "not repeated here") {
+			t.Errorf("%s: the refusal still carries the argument:\n got %q", c.name, got)
+		}
+	}
+	// A plain word an argument ends in is the refusal's own vocabulary: the
+	// whole argument is withheld, the word alone is not.
+	got := withholdArguments(root, []string{"lint", "--into=./docs/reference"}, "--into ./docs/reference is not a reference directory")
+	if !strings.Contains(got, "a reference directory") || strings.Contains(got, "./docs/reference") {
+		t.Errorf("a plain-word part was withheld on its own, or the whole argument was not:\n got %q", got)
+	}
+}
+
+// TestBoundaryWithholdsWhatBuildAndModeCutOrDocument runs two verbs end to
+// end: build under --json writes its own refusal document for a --pace value
+// that begins with a dash, and mode cuts a long argument short before it
+// repeats it. Neither stream carries any of the argument.
+func TestBoundaryWithholdsWhatBuildAndModeCutOrDocument(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := scratchRepoWithCommit(t)
+	if err := os.MkdirAll(filepath.Join(dir, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tok := tokenMarker()
+	long := tok + strings.Repeat("Q7", 40)
+	for _, args := range [][]string{
+		{"--json", "build", "itd-1", "--pace", "-" + tok},
+		{"build", "itd-1", "--pace", "-" + tok},
+		{"--json", "mode", long},
+		{"mode", long},
+	} {
+		code, out, errOut := runRefusal(t, "", args...)
+		if code == 0 {
+			t.Errorf("%v: exit 0, want a refusal\nstdout: %s\nstderr: %s", args[:2], out, errOut)
+		}
+		if repeats(out, tok[:12]) || repeats(errOut, tok[:12]) {
+			t.Errorf("%v: a refusal repeated what was passed\nstdout: %s\nstderr: %s", args[:2], out, errOut)
+		}
+	}
+}
+
+// TestStopBlockCapNamesAnUnreadableSettingWithoutItsValue: the stop hook's
+// note on an unreadable continuation cap names the setting and the value's
+// length, never the value.
+func TestStopBlockCapNamesAnUnreadableSettingWithoutItsValue(t *testing.T) {
+	tok := tokenMarker()
+	t.Setenv(stopBlockCapEnv, tok)
+	var errOut strings.Builder
+	if n := stopBlockCap(&errOut); n != 0 {
+		t.Fatalf("an unreadable cap reads as %d, want 0", n)
+	}
+	if repeats(errOut.String(), tok) || !strings.Contains(errOut.String(), stopBlockCapEnv) {
+		t.Fatalf("the note repeats the value, or does not name the setting:\n%s", errOut.String())
 	}
 }
