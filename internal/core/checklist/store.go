@@ -14,6 +14,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // TierRelPath is the local tier the checklist lives in, repo-relative and
@@ -167,12 +168,22 @@ func Read(repoRoot string) Result {
 	}
 	defer root.Close()
 	sc, scanErr := newScanner(repoRoot)
+	tracked, trackedErr := trackedFiles(repoRoot)
+	if trackedErr != nil {
+		return Result{Source: FromNothing, Reason: "No checklist to show: git could not say whether the checklist files are tracked."}
+	}
+	judge := func(rel string) (Checklist, string) {
+		if tracked[rel] {
+			return Checklist{}, "is tracked by git, so it came with the checkout rather than from a checked write in it"
+		}
+		return load(repoRoot, root, sc, scanErr, rel)
+	}
 
-	c, why := load(repoRoot, root, sc, scanErr, FileRelPath)
+	c, why := judge(FileRelPath)
 	if why == "" {
 		return Result{Checklist: c, Source: FromFile, Reason: "Read checklist.json, which validated and scanned clean."}
 	}
-	lg, lgWhy := load(repoRoot, root, sc, scanErr, LastGoodRelPath)
+	lg, lgWhy := judge(LastGoodRelPath)
 	switch {
 	case lgWhy == "":
 		return Result{Checklist: lg, Source: FromLastGood, Reason: "Showing the last good copy, because checklist.json " + why +
@@ -188,9 +199,37 @@ func Read(repoRoot string) Result {
 // say "nothing written yet" rather than list two absences.
 const absent = "is absent"
 
+// trackedFiles is which of the two files git's index holds. A file git
+// tracks came with the clone, written by whoever committed it, and Read
+// injects nothing a repository supplies. A directory that is no git checkout
+// has no index, so it tracks nothing; any other failure of git is the
+// caller's to refuse on, since the files cannot then be vouched for.
+func trackedFiles(repoRoot string) (map[string]bool, error) {
+	out, err := gitutil.Run(repoRoot, "ls-files", "-z", "--cached", "--full-name", "--", FileRelPath, LastGoodRelPath)
+	if err != nil {
+		if _, revErr := gitutil.Run(repoRoot, "rev-parse", "--git-dir"); revErr != nil {
+			return nil, nil
+		}
+		return nil, err
+	}
+	tracked := map[string]bool{}
+	for _, rel := range strings.Split(out, "\x00") {
+		if rel != "" {
+			tracked[rel] = true
+		}
+	}
+	return tracked, nil
+}
+
 // load reads one of the two files and answers the checklist, or why it cannot
 // be used as a clause that follows the file's name.
 func load(repoRoot string, root *os.Root, sc *scanner.Scanner, scanErr error, rel string) (Checklist, string) {
+	// Write makes both files storePerm; a file group or others can read was
+	// made some other way, most often checked out of a commit at the umask's
+	// 0644, and is refused before its bytes are read.
+	if fi, err := root.Lstat(rel); err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&^storePerm != 0 {
+		return Checklist{}, "is readable by others than its owner, so a checked write did not make it"
+	}
 	data, err := fsutil.ReadGuardedInRoot(root, rel, maxReadBytes)
 	switch {
 	case err == nil:

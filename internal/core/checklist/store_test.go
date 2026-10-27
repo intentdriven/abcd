@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/checklist"
+	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
@@ -528,4 +529,60 @@ func TestReadReasonCarriesNoRepositoryTextOrCheckoutPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestReadRefusesAChecklistTheCheckoutDidNotWrite: the session start injects
+// what Read answers, so Read takes only a file a checked write in this
+// working copy made. A file git tracks came with the clone, whoever wrote
+// it, and is refused whatever its mode; one readable by group or others was
+// not made by Write, which writes 0600. Each is refused by name and the
+// fallback is judged the same way, so a clone carrying both files shows
+// nothing.
+func TestReadRefusesAChecklistTheCheckoutDidNotWrite(t *testing.T) {
+	t.Run("tracked by git", func(t *testing.T) {
+		repo := gittest.NewRepo(t)
+		root := repo.Root()
+		if err := os.MkdirAll(abs(root, checklist.TierRelPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		plant(t, abs(root, checklist.FileRelPath), marshal(t, sample()))
+		plant(t, abs(root, checklist.LastGoodRelPath), marshal(t, sample()))
+		repo.Git("add", "-f", checklist.FileRelPath, checklist.LastGoodRelPath)
+		repo.Commit("ship a checklist")
+		got := checklist.Read(root)
+		if got.Source != checklist.FromNothing || len(got.Checklist.Items) != 0 {
+			t.Fatalf("a tracked checklist was read: %+v", got)
+		}
+		if !strings.Contains(got.Reason, "tracked by git") {
+			t.Errorf("the reason does not say the file is tracked: %s", got.Reason)
+		}
+	})
+	t.Run("readable by others", func(t *testing.T) {
+		root := newRepo(t)
+		p := abs(root, checklist.FileRelPath)
+		plant(t, p, marshal(t, sample()))
+		if err := os.Chmod(p, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got := checklist.Read(root)
+		if got.Source == checklist.FromFile {
+			t.Fatalf("a group- and world-readable checklist was read: %+v", got)
+		}
+		if !strings.Contains(got.Reason, "readable by others") {
+			t.Errorf("the reason does not say why: %s", got.Reason)
+		}
+	})
+	t.Run("written by the verb", func(t *testing.T) {
+		repo := gittest.NewRepo(t)
+		root := repo.Root()
+		if err := os.MkdirAll(abs(root, checklist.TierRelPath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := checklist.Write(root, sample()); err != nil {
+			t.Fatal(err)
+		}
+		if got := checklist.Read(root); got.Source != checklist.FromFile {
+			t.Fatalf("the verb's own write in a git checkout is not read: %+v", got)
+		}
+	})
 }
