@@ -1,8 +1,8 @@
 ---
 id: itd-2610170638184486
 slug: every-abcd-session-keeps-a-checklist-on
-spec_id: null
-kind: null
+spec_id: spc-2610230805429429
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: []
@@ -11,13 +11,14 @@ related_intents: [itd-2610170634394993, itd-2610180912189125, itd-26102220292281
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
+impact: additive
 ---
 
 # Every session keeps a checklist on disk, so no run stalls and no stall spreads
 
 ## Press Release
 
-> Every abcd session keeps a checklist on disk that says what it may decide, what it is waiting on and what it can do next, so an autonomous run never stalls and one stalled session never holds up the rest. Alice, a solo founder who is also the product thinker, leaves for the evening and tells their sessions to work on until 09:00. abcd records that as a mode with an owner and an end time, and each session's checklist carries it: Alice's design decisions that are signed off, the technical facilitator set to auto, the kinds of choice still raised with a person (security, performance, compatibility), the items waiting and on whom, the session's own promises ('when that pull request merges, do this'), and the work it owns, read from its claims, its pull requests and its branches. The checklist is repeated to the session at every start and after every compaction, so nothing that matters lives only in its context. A session that tries to stop while it has work it can do is handed the next item instead; when everything waits on something outside, it sets its next wake rather than going quiet. Before the run starts, while Alice is still there, each session writes into its checklist what could interrupt its part of the night (a design decision not yet made, a step only Alice's hands can do, work it depends on from another session, a credential it lacks), so the orchestrating session can put them to Alice together and tell them whether the run is likely to stay autonomous. In the morning Alice reads two short lists: the steps only their own hands can do, and the decisions taken while they were away, each with its grounds and how to reverse it.
+> Every abcd session keeps a checklist on disk that says what it may decide, what it is waiting on and what it can do next, so an autonomous run never stalls and one stalled session never holds up the rest. Alice, a solo founder who is also the product thinker, leaves for the evening and tells their sessions to work on until 09:00. abcd records that as a mode with an owner and an end time, and each session's checklist carries it: Alice's design decisions that are signed off, the technical facilitator set to auto, the kinds of choice decided overnight and listed for the morning (security, performance, compatibility), the items waiting and on whom, the session's own promises ('when that pull request merges, do this'), and the work it owns, read from its claims, its pull requests and its branches. The checklist is repeated to the session at every start and after every compaction, so nothing that matters lives only in its context. A session that tries to stop while it has work it can do is handed the next item instead; when everything waits on something outside, it sets its next wake rather than going quiet. Before the run starts, while Alice is still there, each session writes into its checklist what could interrupt its part of the night (a design decision not yet made, a step only Alice's hands can do, work it depends on from another session, a credential it lacks), so the orchestrating session can put them to Alice together and tell them whether the run is likely to stay autonomous. In the morning Alice reads two short lists: the steps only their own hands can do, and the decisions taken while they were away, each with its grounds and how to reverse it.
 
 ## Why This Matters
 
@@ -75,7 +76,7 @@ unowned pull request.
 
 ## Mechanism
 
-_Facilitator-proposed on 2026-10-22, for the product thinker's sign-off._
+_Facilitator-proposed on 2026-10-22; signed off by the product thinker on 2026-10-23 (dcn-2610230805325396)._
 
 We expect autonomous sessions to stop stalling and to come back from a
 compaction with their work intact, because everything a session now keeps
@@ -90,18 +91,18 @@ the same run with only the stall fix (itd-2610180912189125).
 
 ## Scope Conditions
 
-_Facilitator-proposed on 2026-10-22, for the product thinker's sign-off._
+_Facilitator-proposed on 2026-10-22; signed off by the product thinker on 2026-10-23 (dcn-2610230805325396)._
 
-- Holds for sessions on a host whose hooks fire at session start (with the
+- Holds for sessions on a host whose hooks fire at session start (with the <!-- cond: cond-2610230805423626 -->
   compact source), at prompt submission and at stop, and can add text to the
   model's context; Claude Code is the first such host. On a host without
   them, the checklist is kept but nothing re-injects it.
-- Holds for a checklist that fits the host's limit on injected text (10,000
+- Holds for a checklist that fits the host's limit on injected text (10,000 <!-- cond: cond-2610230805426039 -->
   characters on Claude Code, 2026-10-22); a longer checklist is cut to its
   open items, newest first, and says what it left out.
-- Holds for one working copy per checklist on one computer; the copies
+- Holds for one working copy per checklist on one computer; the copies <!-- cond: cond-2610230805429755 -->
   beyond it are itd-2610222029228127.
-- Holds while the session itself writes the checklist as it works: no hook
+- Holds while the session itself writes the checklist as it works: no hook <!-- cond: cond-2610230805429053 -->
   can make a session act before an automatic compaction, so an item the
   session never wrote down is not recovered.
 
@@ -110,7 +111,7 @@ _Facilitator-proposed on 2026-10-22, for the product thinker's sign-off._
 _Draft for the product thinker to walk in the planning interview: derived by
 the agent on 2026-10-18 from the press release and the decisions below, and
 revised on 2026-10-22 for the product thinker's answers of that night and
-iss-2610222026223032; none of it yet confirmed. The away mode, the stop check
+iss-2610222026223032; walked and kept in full by the product thinker on 2026-10-23 (dcn-2610230805325396). The away mode, the stop check
 and the question reroute are criteria of itd-2610180912189125, the slice that
 builds on this draft, and are not repeated here. The three criteria for the
 shared copies and the phone moved to itd-2610222029228127 on 2026-10-22
@@ -378,20 +379,20 @@ The facilitator's decisions of 2026-10-22, on state-of-the-art grounds:
   the stop check tells a session at each turn's end when its checklist is
   behind, and the session-start hook's compact source re-injects it.
 
+The product thinker's walk and sign-off of 2026-10-23 (dcn-2610230805325396):
+
+- **Signed off as written, with one wording fix.** The eleven stories stand, the technical list is accepted, and the press release, grounds, scope conditions and build order are signed off. The press release's second part now names the kinds of choice decided overnight and listed for the morning, not those still raised with a person, matching the product thinker's ruling of 2026-10-22 that such trade-offs are decided and listed; the product thinker signed off the corrected text.
+
 ## Open Questions
 
-For the product thinker's sign-off, not yet answered:
+_All resolved at the product thinker's walk and sign-off of 2026-10-23 (dcn-2610230805325396)._
 
-- **Delivery in two specs (proposed).** This intent owns two specs, built
-  in order: first the checklist on disk, its crash-safe write and its
-  re-injection at start and after compaction, which is
-  iss-2610222026223032's remedy and resolves it; then the waits, trigger
-  promises, timed wakes, the blocker sweep, the return lists, the
-  facilitator's mode and the design-done answer. The issue's remedy asks
-  for the first as this intent's first slice; the stall fix
-  (itd-2610180912189125) was carved out as its own intent, so this one is
-  a spec of the intent, not another intent.
+- **Delivery in two specs: settled.** The checklist on disk, its crash-safe write and its re-injection come first, resolving iss-2610222026223032; the waits, trigger promises, timed wakes, the blocker sweep, the return lists, the facilitator's mode and the design-done answer follow. abcd mints one spec per plan, so the second half is carried as the first spec's remainder and split off with `spec close --remainder` when the first lands.
 
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: autonomous sessions stop stalling and come back from a compaction with their work intact once what they own, what each item waits on, their promises and their next look live in a file re-injected at every start and compaction; shown wrong if, over a measured run across at least one night and three automatic compactions, the idle hours while holding doable work and the items lost or repeated after a compaction are no lower than with only the stall fix. Occasioned by the night of 2026-10-16, about ten hours idle in one session with promises lost to compaction, and by iss-2610222026223032.
