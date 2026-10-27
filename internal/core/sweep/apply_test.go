@@ -20,7 +20,7 @@ import (
 
 func apply(t *testing.T, repo *gittest.Repo, o Options) Result {
 	t.Helper()
-	got, err := Apply(context.Background(), repo.Root(), o)
+	got, err := runApply(context.Background(), repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestAWorktreeThatGainsALiveProcessBeforeRemovalIsKept(t *testing.T) {
 		o := sweepOpts()
 		o.Probe.Processes = func(ctx context.Context) ([]Process, error) {
 			calls++
-			procs, err := HostProcesses(ctx)
+			procs, err := hostProcesses(ctx)
 			if err != nil {
 				t.Skipf("the host probe is unavailable here: %v", err)
 			}
@@ -229,9 +229,9 @@ func TestApplyExitCodes(t *testing.T) {
 			}
 			return store.Held{}, nil
 		}
-		res, err := Apply(context.Background(), repo.Root(), o)
+		res, err := runApply(context.Background(), repo.Root(), o)
 		if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, "the run state is unreadable") {
-			t.Fatalf("Apply with a prune that faults = %+v, %v; want a fault naming why, exiting %d", res, err, ExitRefused)
+			t.Fatalf("runApply with a prune that faults = %+v, %v; want a fault naming why, exiting %d", res, err, ExitRefused)
 		}
 		r := rowFor(t, res, "done")
 		if r.Outcome != OutcomeKept || !strings.Contains(r.Reason, "the run state is unreadable") || !exists(p) {
@@ -243,9 +243,9 @@ func TestApplyExitCodes(t *testing.T) {
 		repo, _ := sweepRepo(t)
 		o := sweepOpts()
 		o.Held = nil
-		res, err := Apply(context.Background(), repo.Root(), o)
+		res, err := runApply(context.Background(), repo.Root(), o)
 		if err == nil || res.ExitCode() != ExitRefused {
-			t.Fatalf("Apply with no reader = %+v, %v; want a refusal exiting %d", res, err, ExitRefused)
+			t.Fatalf("runApply with no reader = %+v, %v; want a refusal exiting %d", res, err, ExitRefused)
 		}
 	})
 }
@@ -315,14 +315,14 @@ func TestADirtyWorktreeIsKeptAndSaidToBeUnsaved(t *testing.T) {
 	}
 }
 
-// failedApply is Apply on a run whose reclaim of the worktree name fails:
+// failedApply is runApply on a run whose reclaim of the worktree name fails:
 // the run faults, naming want, exits ExitRefused, and the worktree at p is
 // kept and stands.
 func failedApply(t *testing.T, repo *gittest.Repo, o Options, name, p, want string) {
 	t.Helper()
-	res, err := Apply(context.Background(), repo.Root(), o)
+	res, err := runApply(context.Background(), repo.Root(), o)
 	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, want) {
-		t.Fatalf("Apply over a failed reclaim = %+v, %v; want a fault naming %q, exiting %d", res, err, want, ExitRefused)
+		t.Fatalf("runApply over a failed reclaim = %+v, %v; want a fault naming %q, exiting %d", res, err, want, ExitRefused)
 	}
 	r := rowFor(t, res, name)
 	if r.Action != ActionRemove || r.Outcome != OutcomeKept || !strings.Contains(r.Reason, want) {

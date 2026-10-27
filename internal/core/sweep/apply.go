@@ -17,7 +17,7 @@ import (
 	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 )
 
-// Apply judges the repository at repoRoot as DryRun does, then acts on each
+// runApply judges the repository at repoRoot as runDry does, then acts on each
 // row, which carries its Outcome:
 //
 //   - a remove row is reclaimed through the store's PruneOne, whose PreRemove
@@ -28,14 +28,14 @@ import (
 //     not built yet, so its changes are not saved;
 //   - every other row is kept, with the dry run's reason.
 //
-// A dry run that refuses is returned as DryRun returns it. A prune that
+// A dry run that refuses is returned as runDry returns it. A prune that
 // refuses or faults, or whose reclaim fails (the store keeps such a worktree
 // with no error, as it keeps one it chose to; see failedReclaim), keeps that
 // worktree, naming why, and the run carries the first such fault as its
 // Refusal, which is also returned as the error, so ExitCode reads
 // ExitRefused; the other rows are still acted on, each prune being its own
 // judgement.
-func Apply(ctx context.Context, repoRoot string, o Options) (Result, error) {
+func runApply(ctx context.Context, repoRoot string, o Options) (Result, error) {
 	res, srcs, j, err := judgeRepo(ctx, repoRoot, o)
 	if err != nil {
 		return res, err
@@ -82,7 +82,7 @@ func (j judge) remove(ctx context.Context, repoRoot string, src store.Row, o Opt
 		PreRemove: func(abs string) (bool, string) {
 			asked = true
 			fresh := j
-			fresh.probe = NewProbe(ctx, o.Probe)
+			fresh.probe = newProbe(ctx, o.Probe)
 			last = fresh.liveness(abs)
 			return last.Held, last.Reason
 		},

@@ -9,6 +9,10 @@ package sweep
 // merged judgement, and its Held is the build loop's hold as prune reads it:
 // the sweep composes those judgements with the liveness probe and never
 // re-makes them.
+//
+// runDry, runApply, newProbe and hostProcesses are the package's entry points
+// and stay unexported until the surfaces (step 5) call them: an exported core
+// function no front door reaches is scaffolding the reach audit refuses.
 
 import (
 	"context"
@@ -63,18 +67,18 @@ type Options struct {
 	pruneOne func(repoRoot, name string, opts store.PruneOptions) (store.Pruned, error)
 }
 
-// DryRun judges every worktree of the repository at repoRoot and every entry
+// runDry judges every worktree of the repository at repoRoot and every entry
 // in its lane, and writes nothing. A store refusal, a failure to list the
 // worktrees, or a failure to read what the build loop holds is returned as
 // the error, and the result carries it as its Refusal, so ExitCode reads
 // ExitRefused. A run without Held or Cwd is refused the same way.
-func DryRun(ctx context.Context, repoRoot string, o Options) (Result, error) {
+func runDry(ctx context.Context, repoRoot string, o Options) (Result, error) {
 	res, _, _, err := judgeRepo(ctx, repoRoot, o)
 	return res, err
 }
 
-// judgeRepo is DryRun, also answering with the store's row behind each of the
-// result's rows, in order, and the judge that made them, for Apply to act on.
+// judgeRepo is runDry, also answering with the store's row behind each of the
+// result's rows, in order, and the judge that made them, for runApply to act on.
 func judgeRepo(ctx context.Context, repoRoot string, o Options) (Result, []store.Row, judge, error) {
 	fail := func(err error) (Result, []store.Row, judge, error) {
 		res, err := refused(err)
@@ -95,7 +99,7 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options) (Result, []store
 		return fail(fmt.Errorf("reading what the build loop holds: %w", err))
 	}
 	home, _ := os.UserHomeDir()
-	p := NewProbe(ctx, o.Probe)
+	p := newProbe(ctx, o.Probe)
 	j := judge{
 		home:    home,
 		def:     gitutil.DefaultRef(repoRoot),

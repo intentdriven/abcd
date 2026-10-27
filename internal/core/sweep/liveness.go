@@ -145,7 +145,7 @@ type ProbeOptions struct {
 	Owner OwnerCheck
 	// Runs is the build loop's run state (loop.Runs).
 	Runs []loop.State
-	// Processes lists the processes; nil is HostProcesses.
+	// Processes lists the processes; nil is hostProcesses.
 	Processes ProcessLister
 	// Now is the clock, read once; nil is time.Now.
 	Now func() time.Time
@@ -185,15 +185,15 @@ type Probe struct {
 	unread       string
 }
 
-// NewProbe reads the process table once and returns the probe that judges
+// newProbe reads the process table once and returns the probe that judges
 // each worktree against it (spc-2610230730269295, Liveness).
-func NewProbe(ctx context.Context, o ProbeOptions) *Probe {
+func newProbe(ctx context.Context, o ProbeOptions) *Probe {
 	now, list, window := time.Now, o.Processes, o.RecentWindow
 	if o.Now != nil {
 		now = o.Now
 	}
 	if list == nil {
-		list = HostProcesses
+		list = hostProcesses
 	}
 	if window <= 0 {
 		window = DefaultRecentWindow
@@ -635,10 +635,10 @@ func durationWords(d time.Duration) string {
 // wedged or runaway lsof from stalling the sweep or filling memory.
 var hostLsof = lsofCommand{path: "/usr/sbin/lsof", timeout: 5 * time.Second, limit: 4 << 20}
 
-// HostProcesses lists this host's processes with no cgo, since the released
+// hostProcesses lists this host's processes with no cgo, since the released
 // binaries are cross-compiled: /proc on Linux, lsof on macOS. Any other host
 // has no process check, which fails closed.
-func HostProcesses(ctx context.Context) ([]Process, error) {
+func hostProcesses(ctx context.Context) ([]Process, error) {
 	switch runtime.GOOS {
 	case "linux":
 		return procCwds("/proc")

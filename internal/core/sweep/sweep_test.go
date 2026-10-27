@@ -95,7 +95,7 @@ func sweepOpts() Options {
 
 func dryRun(t *testing.T, repo *gittest.Repo, o Options) Result {
 	t.Helper()
-	got, err := DryRun(context.Background(), repo.Root(), o)
+	got, err := runDry(context.Background(), repo.Root(), o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -518,15 +518,15 @@ func TestTheDryRunRefusesWithoutAReaderOfTheLoopsHold(t *testing.T) {
 	repo, _ := sweepRepo(t)
 	o := sweepOpts()
 	o.Held = nil
-	res, err := DryRun(context.Background(), repo.Root(), o)
+	res, err := runDry(context.Background(), repo.Root(), o)
 	if err == nil || res.ExitCode() != ExitRefused || res.Refusal == "" {
-		t.Fatalf("DryRun with no reader = %+v, %v; want a refusal exiting %d", res, err, ExitRefused)
+		t.Fatalf("runDry with no reader = %+v, %v; want a refusal exiting %d", res, err, ExitRefused)
 	}
 	o = sweepOpts()
 	o.Held = func(string) (store.Held, error) { return store.Held{}, errors.New("the run state is unreadable") }
-	res, err = DryRun(context.Background(), repo.Root(), o)
+	res, err = runDry(context.Background(), repo.Root(), o)
 	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, "the run state is unreadable") {
-		t.Fatalf("DryRun with a failing reader = %+v, %v; want a refusal naming why", res, err)
+		t.Fatalf("runDry with a failing reader = %+v, %v; want a refusal naming why", res, err)
 	}
 }
 
@@ -538,9 +538,9 @@ func TestTheDryRunRefusesWithoutItsWorkingDirectory(t *testing.T) {
 	mergedAdd(t, repo, "here")
 	o := sweepOpts()
 	o.Cwd = ""
-	res, err := DryRun(context.Background(), repo.Root(), o)
+	res, err := runDry(context.Background(), repo.Root(), o)
 	if err == nil || res.ExitCode() != ExitRefused || !strings.Contains(res.Refusal, "working directory") || len(res.Rows) != 0 {
-		t.Fatalf("DryRun with no working directory = %+v, %v; want a refusal naming it, exiting %d", res, err, ExitRefused)
+		t.Fatalf("runDry with no working directory = %+v, %v; want a refusal naming it, exiting %d", res, err, ExitRefused)
 	}
 }
 
@@ -552,9 +552,9 @@ func TestTheRefusalErrorIsRedacted(t *testing.T) {
 	cause := fmt.Errorf("cannot open %s", filepath.Join(home, "private", "state.json"))
 	o := sweepOpts()
 	o.Held = func(string) (store.Held, error) { return store.Held{}, cause }
-	res, err := DryRun(context.Background(), repo.Root(), o)
+	res, err := runDry(context.Background(), repo.Root(), o)
 	if err == nil || res.ExitCode() != ExitRefused {
-		t.Fatalf("DryRun with a failing reader = %+v, %v; want a refusal", res, err)
+		t.Fatalf("runDry with a failing reader = %+v, %v; want a refusal", res, err)
 	}
 	if strings.Contains(err.Error(), home) || !strings.Contains(err.Error(), "~/private/state.json") {
 		t.Fatalf("the refusal error is home-redacted: %q", err)
@@ -650,7 +650,7 @@ func TestAWorktreeTheStoreGaveAnUnknownStateOrMergeIsKept(t *testing.T) {
 	o := sweepOpts()
 	o.Probe.CopyView = func(string, time.Time) (claim.Snapshot, error) { return claim.Snapshot{}, nil }
 	o.Probe.Owner = func(string) (int, bool, error) { return os.Getuid(), false, nil }
-	j := judge{probe: NewProbe(context.Background(), o.Probe), changes: func(string, string) []string { return []string{} }}
+	j := judge{probe: newProbe(context.Background(), o.Probe), changes: func(string, string) []string { return []string{} }}
 	for _, sr := range []store.Row{
 		{Name: "odd-state", Branch: "odd-state", Path: "odd-state", Abs: dir, Where: store.WhereStore, State: "half", Merged: "merged", JudgedBy: "ancestry"},
 		{Name: "odd-merge", Branch: "odd-merge", Path: "odd-merge", Abs: dir, Where: store.WhereStore, State: "clean", Merged: "maybe"},

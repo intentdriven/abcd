@@ -33,13 +33,13 @@ func at(t time.Time) func() time.Time { return func() time.Time { return t } }
 // the caller could not compute.
 var none = []string{}
 
-// probe is NewProbe over reservations stamped as fetched, so a test about
+// probe is newProbe over reservations stamped as fetched, so a test about
 // another proof is not held by the unread-reservations rule.
 func probe(o ProbeOptions) *Probe {
 	if o.Reservations.FetchedAt.IsZero() {
 		o.Reservations.FetchedAt = time.Unix(1, 0)
 	}
-	return NewProbe(context.Background(), o)
+	return newProbe(context.Background(), o)
 }
 
 func cwds(paths ...string) ProcessLister {
@@ -808,7 +808,7 @@ func TestAChangedPathThatCannotBeReadKeepsTheWorktree(t *testing.T) {
 
 func TestReservationsNoFetchStampedKeepEveryWorktree(t *testing.T) {
 	wt, _ := worktree(t)
-	p := NewProbe(context.Background(), ProbeOptions{Processes: cwds(), Now: stale()})
+	p := newProbe(context.Background(), ProbeOptions{Processes: cwds(), Now: stale()})
 	why := p.ReservationsUnread()
 	if why == "" {
 		t.Fatal("ReservationsUnread() = \"\"; want why, with no fetch stamped")
