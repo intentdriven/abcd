@@ -82,7 +82,7 @@ func assertNoEcho(t *testing.T, what, text, tok string) {
 func TestWriteThenReadRoundTrips(t *testing.T) {
 	root := newRepo(t)
 	want := sample()
-	if err := checklist.Write(root, want); err != nil {
+	if err := checklist.WriteForTest(root, want); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	got := checklist.Read(root)
@@ -103,7 +103,7 @@ func TestWriteThenReadRoundTrips(t *testing.T) {
 
 func TestWriteRefusesWithoutTheLocalTier(t *testing.T) {
 	root := t.TempDir()
-	err := checklist.Write(root, sample())
+	err := checklist.WriteForTest(root, sample())
 	if !errors.Is(err, checklist.ErrNoLocalTier) {
 		t.Fatalf("want ErrNoLocalTier, got %v", err)
 	}
@@ -123,7 +123,7 @@ func TestTornTempFileIsIgnoredAndRemovedOnTheNextWrite(t *testing.T) {
 		t.Fatalf("a torn temp file was read as %s: %s", got.Source, got.Reason)
 	}
 
-	if err := checklist.Write(root, sample()); err != nil {
+	if err := checklist.WriteForTest(root, sample()); err != nil {
 		t.Fatal(err)
 	}
 	plant(t, torn, []byte(`{"schema":"abcd/checklist/v1","items":[`))
@@ -140,7 +140,7 @@ func TestTornTempFileIsIgnoredAndRemovedOnTheNextWrite(t *testing.T) {
 	fresh := filepath.Join(tier, ".abcd-tmp-7654321")
 	plant(t, fresh, []byte(`{"sch`))
 
-	if err := checklist.Write(root, sample()); err != nil {
+	if err := checklist.WriteForTest(root, sample()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(torn); !os.IsNotExist(err) {
@@ -155,7 +155,7 @@ func TestWriteRefusesASchemaViolationNamingTheField(t *testing.T) {
 	root := newRepo(t)
 	c := sample()
 	c.Items[2].State = "paused"
-	err := checklist.Write(root, c)
+	err := checklist.WriteForTest(root, c)
 	var fe *checklist.FieldError
 	if !errors.As(err, &fe) || fe.Field != "items[2].state" {
 		t.Fatalf("want a refusal naming items[2].state, got %v", err)
@@ -198,14 +198,14 @@ func TestWriteRefusesASecretInEveryStringFieldKind(t *testing.T) {
 	}
 	for _, tc := range cases {
 		root := newRepo(t)
-		if err := checklist.Write(root, sample()); err != nil {
+		if err := checklist.WriteForTest(root, sample()); err != nil {
 			t.Fatal(err)
 		}
 		before := readFile(t, abs(root, checklist.FileRelPath))
 
 		c := sample()
 		tc.mutate(&c)
-		err := checklist.Write(root, c)
+		err := checklist.WriteForTest(root, c)
 		if err == nil {
 			t.Errorf("%s: a secret was written", tc.field)
 			continue
@@ -233,7 +233,7 @@ func TestWriteRefusesASecretInEveryStringFieldKind(t *testing.T) {
 func TestLastGoodComesOnlyFromACheckedWrite(t *testing.T) {
 	root := newRepo(t)
 	a := sample()
-	if err := checklist.Write(root, a); err != nil {
+	if err := checklist.WriteForTest(root, a); err != nil {
 		t.Fatal(err)
 	}
 	aBytes := readFile(t, abs(root, checklist.LastGoodRelPath))
@@ -249,7 +249,7 @@ func TestLastGoodComesOnlyFromACheckedWrite(t *testing.T) {
 
 	d := sample()
 	d.Items[0].Title = "written by the verb"
-	if err := checklist.Write(root, d); err != nil {
+	if err := checklist.WriteForTest(root, d); err != nil {
 		t.Fatal(err)
 	}
 	lg := readFile(t, abs(root, checklist.LastGoodRelPath))
@@ -264,7 +264,7 @@ func TestLastGoodComesOnlyFromACheckedWrite(t *testing.T) {
 func TestHandEditedSecretNeverBecomesLastGoodAndTheReaderFallsBack(t *testing.T) {
 	tok := token()
 	root := newRepo(t)
-	if err := checklist.Write(root, sample()); err != nil {
+	if err := checklist.WriteForTest(root, sample()); err != nil {
 		t.Fatal(err)
 	}
 	good := readFile(t, abs(root, checklist.LastGoodRelPath))
@@ -301,7 +301,7 @@ func TestUnreadableFileFallsBackWithoutEchoing(t *testing.T) {
 	}
 	for name, doc := range docs {
 		root := newRepo(t)
-		if err := checklist.Write(root, sample()); err != nil {
+		if err := checklist.WriteForTest(root, sample()); err != nil {
 			t.Fatal(err)
 		}
 		plant(t, abs(root, checklist.FileRelPath), []byte(doc))
@@ -578,7 +578,7 @@ func TestReadRefusesAChecklistTheCheckoutDidNotWrite(t *testing.T) {
 		if err := os.MkdirAll(abs(root, checklist.TierRelPath), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := checklist.Write(root, sample()); err != nil {
+		if err := checklist.WriteForTest(root, sample()); err != nil {
 			t.Fatal(err)
 		}
 		if got := checklist.Read(root); got.Source != checklist.FromFile {
@@ -688,7 +688,7 @@ func TestUpdateRefusesATrackedChecklist(t *testing.T) {
 	if called || !bytes.Equal(readFile(t, p), before) {
 		t.Fatal("the change ran, or the tracked file was rewritten")
 	}
-	if err := checklist.Write(root, sample()); !errors.Is(err, checklist.ErrTracked) {
+	if err := checklist.WriteForTest(root, sample()); !errors.Is(err, checklist.ErrTracked) {
 		t.Fatalf("Write over a tracked checklist = %v, want ErrTracked", err)
 	}
 }
@@ -727,7 +727,7 @@ func TestWriteRefusesWhereTheReaderWouldRefuse(t *testing.T) {
 		if err := os.Symlink(real, filepath.Join(root, ".abcd")); err != nil {
 			t.Fatal(err)
 		}
-		if err := checklist.Write(root, sample()); !errors.Is(err, checklist.ErrNoLocalTier) {
+		if err := checklist.WriteForTest(root, sample()); !errors.Is(err, checklist.ErrNoLocalTier) {
 			t.Fatalf("Write through a symlinked .abcd = %v, want ErrNoLocalTier", err)
 		}
 		if _, err := os.Lstat(filepath.Join(real, ".work.local", "checklist.json")); !os.IsNotExist(err) {
@@ -737,7 +737,7 @@ func TestWriteRefusesWhereTheReaderWouldRefuse(t *testing.T) {
 	t.Run("a filesystem that does not keep the owner", func(t *testing.T) {
 		root := newRepo(t)
 		defer checklist.SwapOwnerForTest(func(string) (uint32, error) { return uint32(os.Getuid()) + 1, nil })()
-		if err := checklist.Write(root, sample()); !errors.Is(err, checklist.ErrNotKept) {
+		if err := checklist.WriteForTest(root, sample()); !errors.Is(err, checklist.ErrNotKept) {
 			t.Fatalf("Write where the owner is not kept = %v, want ErrNotKept", err)
 		}
 	})

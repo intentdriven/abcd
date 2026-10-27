@@ -63,7 +63,7 @@ func writeItems(t *testing.T, root string, n int) {
 			ID: fmt.Sprintf("item-%d", i), Title: fmt.Sprintf("Item %d ", i) + strings.Repeat("x", 150), State: checklist.Working,
 		})
 	}
-	if err := checklist.Write(root, c); err != nil {
+	if err := checklist.WriteForTest(root, c); err != nil {
 		t.Fatal(err)
 	}
 }

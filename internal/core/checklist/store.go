@@ -90,7 +90,7 @@ func (e *SecretError) Error() string {
 	return fmt.Sprintf("checklist: %s matches the secret pattern %s; nothing was written, and the match is not repeated here", e.Field, e.Kind)
 }
 
-// Write validates c, scans every string field with the native secret scanner,
+// write validates c, scans every string field with the native secret scanner,
 // and writes it atomically to FileRelPath under an already-resolved checkout
 // root; then it writes the same bytes as LastGoodRelPath (spc-2610230805429429
 // step 1, "The write").
@@ -100,15 +100,15 @@ func (e *SecretError) Error() string {
 // for the text (ErrScannerUnavailable), and a secret (a *SecretError). A
 // refused write leaves both files as they were.
 //
-// Write takes no lock: a read-change-write goes through Update, which holds the
+// write takes no lock: a read-change-write goes through Update, which holds the
 // checklist's lock across the read, the change and this write. A caller that
-// reads, changes and calls Write itself loses a concurrent writer's item.
+// reads, changes and calls write itself loses a concurrent writer's item.
 //
 // Last-good is written from this call's own validated and scanned bytes, never
 // copied from the file already on disk: that file may have been changed by
 // anything other than this verb, and promoting it would let an unchecked edit
 // become the copy the reader falls back to.
-func Write(repoRoot string, c Checklist) error {
+func write(repoRoot string, c Checklist) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
@@ -157,6 +157,10 @@ func Write(repoRoot string, c Checklist) error {
 	}
 	return nil
 }
+
+// WriteForTest writes c as write does, for a test outside this package that
+// needs a checklist on disk; production writes go through Update.
+func WriteForTest(repoRoot string, c Checklist) error { return write(repoRoot, c) }
 
 // Source says which file a Read used.
 type Source string
@@ -247,7 +251,7 @@ const (
 
 // tierState is whether each level of the local tier is a plain directory:
 // Lstat on .abcd and then on the tier, so a symlink at either level is not
-// followed to a file Write never wrote, and a level holding a .git entry is
+// followed to a file write never wrote, and a level holding a .git entry is
 // a submodule's (or another repository's) top, whose files the outer git
 // does not list, so the tracked check could not vouch for them.
 func tierState(root *os.Root) int {
@@ -267,7 +271,7 @@ func tierState(root *os.Root) int {
 }
 
 // fileGate is why the file at rel is not one this working copy's own write
-// could have made, or "": Write makes it as the caller, with no bit for group
+// could have made, or "": write makes it as the caller, with no bit for group
 // or others. An absent or irregular file is load's to judge.
 func fileGate(root *os.Root, repoRoot, rel string) string {
 	fi, err := root.Lstat(rel)
@@ -326,7 +330,7 @@ func underGit(repoRoot string) bool {
 // load reads one of the two files and answers the checklist, or why it cannot
 // be used as a clause that follows the file's name.
 func load(repoRoot string, root *os.Root, sc *scanner.Scanner, scanErr error, rel string) (Checklist, string) {
-	// Write makes both files storePerm; a file group or others can read was
+	// write makes both files storePerm; a file group or others can read was
 	// made some other way, most often checked out of a commit at the umask's
 	// 0644, and is refused before its bytes are read.
 	if why := fileGate(root, repoRoot, rel); why != "" {
@@ -344,7 +348,7 @@ func load(repoRoot string, root *os.Root, sc *scanner.Scanner, scanErr error, re
 	default:
 		return Checklist{}, "could not be read"
 	}
-	c, err := Decode(data)
+	c, err := decode(data)
 	if err != nil {
 		// WHY a fixed sentence: the decoder names an unknown or repeated key by
 		// the file's own spelling, a key is as able to hold a token as a value
@@ -501,7 +505,7 @@ var ErrLockHeld = errors.New("checklist: another writer holds the checklist's lo
 
 // Update is the one read-change-write cycle: it reads the checklist as Read
 // does, hands the result to change, and writes what change returns through
-// Write, holding the checklist's lock across all three. Every writer that
+// write, holding the checklist's lock across all three. Every writer that
 // builds on what is there goes through it.
 //
 // WHY a lock: a session's verb, its stop hook and sub-agents sharing the
@@ -518,7 +522,7 @@ func Update(repoRoot string, change func(Result) (Checklist, error)) error {
 	defer root.Close()
 	// Through the checkout's os.Root, so a .abcd swapped for a symlink cannot
 	// carry the tier check or the lock file out of the checkout; Lstat, not
-	// Stat, as Write judges the tier, and the lock file is never created in a
+	// Stat, as write judges the tier, and the lock file is never created in a
 	// tier that is not there.
 	if tierState(root) != tierPlain {
 		return fmt.Errorf("%w: %s/ is not a plain directory in this checkout, and it is never created on the way to a write",
@@ -543,7 +547,7 @@ func Update(repoRoot string, change func(Result) (Checklist, error)) error {
 		if err != nil {
 			return err
 		}
-		return Write(repoRoot, c)
+		return write(repoRoot, c)
 	})
 	// fn's own error comes back unwrapped, so only an error before fn ran is
 	// the lock's own.

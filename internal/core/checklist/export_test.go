@@ -25,3 +25,6 @@ func SwapGitForTest(fn func(string, ...string) (string, error)) (restore func())
 	gitRun = fn
 	return func() { gitRun = was }
 }
+
+// Decode is decode, for the schema tests.
+var Decode = decode

@@ -72,8 +72,8 @@ const (
 	SigningKey           CredentialKind = "signing-key"
 )
 
-// CredentialKinds returns the closed list of credential kinds.
-func CredentialKinds() []CredentialKind {
+// credentialKinds returns the closed list of credential kinds.
+func credentialKinds() []CredentialKind {
 	return []CredentialKind{AppInstallationToken, ModelServiceKey, SigningKey}
 }
 
@@ -96,8 +96,8 @@ const (
 	ScopeSigning       CredentialScope = "signing"
 )
 
-// CredentialScopes returns the closed list of credential scopes.
-func CredentialScopes() []CredentialScope {
+// credentialScopes returns the closed list of credential scopes.
+func credentialScopes() []CredentialScope {
 	return []CredentialScope{
 		ScopeContentsRead, ScopeContentsWrite, ScopePullRequests, ScopeIssues,
 		ScopeReleases, ScopeWorkflows, ScopeModelService, ScopeSigning,
@@ -163,12 +163,12 @@ type FieldError struct {
 
 func (e *FieldError) Error() string { return "checklist: " + e.Field + " " + e.Problem }
 
-// Decode is the strict decode: exactly one JSON document, no repeated key, no
+// decode is the strict decode: exactly one JSON document, no repeated key, no
 // field the schema does not name (jsonstrict.Decode, as every trust-boundary
 // reader decodes). It checks the shape only; Validate checks the values. The
 // error may name an unknown key by the file's own spelling, so a caller never
 // shows it: a redaction keeps a fingerprint, which is still a part of a secret.
-func Decode(data []byte) (Checklist, error) {
+func decode(data []byte) (Checklist, error) {
 	var c Checklist
 	if err := jsonstrict.Decode(data, &c); err != nil {
 		return Checklist{}, err
@@ -250,16 +250,16 @@ func (it Item) validate(at string) error {
 
 func (cr Credential) validate(at string) error {
 	if !validKind(cr.Kind) {
-		return refuse(at+".kind", "must be one of "+join(CredentialKinds()))
+		return refuse(at+".kind", "must be one of "+join(credentialKinds()))
 	}
 	if len(cr.Scope) == 0 {
-		return refuse(at+".scope", "must name at least one of "+join(CredentialScopes()))
+		return refuse(at+".scope", "must name at least one of "+join(credentialScopes()))
 	}
 	seen := map[CredentialScope]bool{}
 	for i, s := range cr.Scope {
 		field := fmt.Sprintf("%s.scope[%d]", at, i)
 		if !validScope(s) {
-			return refuse(field, "must be one of "+join(CredentialScopes()))
+			return refuse(field, "must be one of "+join(credentialScopes()))
 		}
 		if seen[s] {
 			return refuse(field, "repeats a scope already listed")
@@ -325,7 +325,7 @@ func validState(s State) bool {
 }
 
 func validKind(k CredentialKind) bool {
-	for _, v := range CredentialKinds() {
+	for _, v := range credentialKinds() {
 		if k == v {
 			return true
 		}
@@ -334,7 +334,7 @@ func validKind(k CredentialKind) bool {
 }
 
 func validScope(s CredentialScope) bool {
-	for _, v := range CredentialScopes() {
+	for _, v := range credentialScopes() {
 		if s == v {
 			return true
 		}
