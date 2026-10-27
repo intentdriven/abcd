@@ -42,6 +42,20 @@ func TestExecuteStringFamilyInspected(t *testing.T) {
 		// option: the operand is still resolved and matched normally.
 		{"sh -c -x a harmless push", "sh -c -x 'git push origin main'", VerdictAllow, ""},
 
+		// Each shell reads the -c cluster's option letters its own way: an o
+		// (in bash an O too) takes the next word before the command string
+		// does, unless zsh or ksh read its name from the rest of the word, and
+		// bash reads its long options after one dash.
+		{"bash -cO takes a shopt first", "bash -cO extglob 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -Oc takes a shopt first", "bash -Oc extglob 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -co takes an option first", "bash -co errexit 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"zsh -co takes an option first", "zsh -co errexit 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -cOo takes two words first", "bash -cOo extglob errexit 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -rcfile and its value come first", "bash -rcfile /dev/null -c 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -restricted is no -c", "bash -restricted -c 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"zsh -o with a name holding c is no -c", "zsh -ocshnullglob -c 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -co a harmless echo", "bash -co errexit 'echo hi'", VerdictAllow, ""},
+
 		{"env -S a harmless command", "env -S ls", VerdictAllow, ""},
 		{"env -S a harmless build", "env -S 'make build'", VerdictAllow, ""},
 		{"env -S a non-delete gh subcommand", "env -S 'gh repo view owner/repo'", VerdictAllow, ""},

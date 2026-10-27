@@ -2000,6 +2000,13 @@ func guessedEvalPayload(args []string) (string, bool) {
 // and `bash -c$(x) '<payload>'` are read as the `-c` they can be. unresolved
 // reports a `-c` whose operand could not be located, which the caller warns
 // on instead of guessing.
+//
+// Each shell reads the cluster its own way (shellDialects): an o in it (in
+// bash an O too) whose option name is not the rest of the word takes the next
+// word before the command string does (`bash -co errexit '<payload>'`), and
+// bash reads its long options after one dash, so `-rcfile` and its value come
+// before its `-c` (`bash -rcfile f -c '<payload>'`). Every reading the shell's
+// name allows is walked.
 func shellCPayloads(tokens []string, sites []int) (values []string, unresolved bool) {
 	var starts []int
 	scanned := -1 // the words up to here were read from an earlier site
@@ -2008,13 +2015,27 @@ func shellCPayloads(tokens []string, sites []int) (values []string, unresolved b
 			continue // an earlier site's scan covers every word this one reads
 		}
 		scanned = len(tokens)
+		dialects := cStringDialects(tokens[site])
+		bash := slices.Contains(dialects, dialectBash)
 		for i := site + 1; i < len(tokens); i++ {
 			a := tokens[i]
+			if bash && !isUnknown(a) && len(a) > 2 && a[0] == '-' && a[1] != '-' && bashLongOptions[a[1:]] {
+				// bash's long option; a shell that reads it as letters is
+				// read as before.
+				if len(dialects) > 1 && clusterCouldCarry(a, 'c') {
+					starts = appendStarts(starts, cStringStarts(a, i, dialects))
+				}
+				if a[1:] == "rcfile" || a[1:] == "init-file" {
+					i++
+				}
+				continue
+			}
 			if !clusterCouldCarry(a, 'c') {
 				continue
 			}
-			starts = append(starts, i+1)
-			if !isUnknown(a) {
+			at := cStringStarts(a, i, dialects)
+			starts = appendStarts(starts, at)
+			if !isUnknown(a) && len(at) > 0 {
 				scanned = i // the shell's own `-c`: what follows it is its operand walk
 				break
 			}
@@ -2024,6 +2045,60 @@ func shellCPayloads(tokens []string, sites []int) (values []string, unresolved b
 		return nil, false
 	}
 	return shellOperands(tokens, starts)
+}
+
+// cStringDialects is every way the shell named by word may read its options:
+// its own name's dialects, or all of them for a name the line does not fix.
+func cStringDialects(word string) []shellDialect {
+	if isUnknown(word) || strings.ContainsRune(word, varMark) {
+		return shellDialects("")
+	}
+	return shellDialects(strings.ToLower(path.Base(word)))
+}
+
+// cStringStarts is where the operand walk after the `-c` cluster tok, at
+// index i, starts in each dialect that reads a c in it: past the words its
+// option letters take. A c inside an option name zsh or ksh reads from the
+// rest of the word (`-onoexec`) is no -c. An unknown cluster starts at the
+// next word, and readWord reads it there.
+func cStringStarts(tok string, i int, dialects []shellDialect) []int {
+	if isUnknown(tok) {
+		return []int{i + 1}
+	}
+	var out []int
+	for _, d := range dialects {
+		if letters, takes := shellClusterReads(d, tok); strings.ContainsRune(letters, 'c') {
+			out = appendStarts(out, []int{i + 1 + takes})
+		}
+	}
+	return out
+}
+
+// shellClusterReads is how a shell of dialect d reads the option cluster tok:
+// the letters it reads as options, up to an o whose name zsh and ksh read from
+// the rest of the word, and how many of the words after tok those letters
+// take as values (each o, and in bash each O).
+func shellClusterReads(d shellDialect, tok string) (letters string, takes int) {
+	for k := 1; k < len(tok); k++ {
+		if b := tok[k]; b != 'o' && (b != 'O' || d != dialectBash) {
+			continue
+		}
+		if (d == dialectZsh || d == dialectKsh) && k+1 < len(tok) {
+			return tok[1 : k+1], takes
+		}
+		takes++
+	}
+	return tok[1:], takes
+}
+
+// appendStarts appends each start not already in starts.
+func appendStarts(starts, more []int) []int {
+	for _, s := range more {
+		if !slices.Contains(starts, s) {
+			starts = append(starts, s)
+		}
+	}
+	return starts
 }
 
 // shellValueOptions are the shell options that take the next word as their
@@ -2192,7 +2267,7 @@ func readsScriptStream(s segment) bool {
 		tok := s.tokens[a.idx]
 		args := s.tokens[a.idx+1:]
 		carried := func(i int) bool { return variableCarried(s, a.idx+1+i) }
-		if nameCouldBeAny(tok, shellFamily) && shellReadsStream(args, s.stdinStream, carried, noFile) {
+		if nameCouldBeAny(tok, shellFamily) && shellReadsStream(cStringDialects(tok), args, s.stdinStream, carried, noFile) {
 			return true
 		}
 		if nameCouldBeAny(tok, sourceBuiltins) && sourceReadsStream(args, s.stdinStream, carried, noFile) {
@@ -2229,15 +2304,26 @@ func scriptIsStream(op string, stdin bool) bool {
 	return false
 }
 
-// shellReadsStream walks a shell's arguments the way its own parser reads them:
-// `-o` and `-O` take a value, as do `--rcfile` and `--init-file`, and
-// `--version` or `--help` prints and exits without reading anything. Each
-// unknown word is read every way readWord reads it, and a stream any reading
-// runs is enough.
+// shellReadsStream walks a shell's arguments the way each shell its name may
+// be reads them (shellDialects): its option letters take the words
+// shellClusterReads says, `--rcfile` and `--init-file` take a value, `-` ends
+// the options as `--` does, and `--version` or `--help` prints and exits
+// without reading anything. Each unknown word is read every way readWord reads
+// it, and a stream any reading runs is enough.
 //
 // fetched reports a word naming a file the line wrote from a network fetch,
 // which as the script is the same stream (runsFetchedFile).
-func shellReadsStream(args []string, stdin bool, carried func(int) bool, fetched func(string) bool) bool {
+func shellReadsStream(dialects []shellDialect, args []string, stdin bool, carried func(int) bool, fetched func(string) bool) bool {
+	for _, d := range dialects {
+		if shellReadsStreamAs(d, args, stdin, carried, fetched) {
+			return true
+		}
+	}
+	return false
+}
+
+// shellReadsStreamAs is shellReadsStream for a shell of dialect d.
+func shellReadsStreamAs(d shellDialect, args []string, stdin bool, carried func(int) bool, fetched func(string) bool) bool {
 	seen := map[int]bool{}
 	stack := []int{0}
 	for len(stack) > 0 {
@@ -2255,17 +2341,16 @@ func shellReadsStream(args []string, stdin bool, carried func(int) bool, fetched
 			continue
 		}
 		a := args[i]
+		if d == dialectBash && !isUnknown(a) && len(a) > 2 && a[0] == '-' && a[1] != '-' && bashLongOptions[a[1:]] {
+			a = "-" + a // bash reads its long options after one dash as after two
+		}
 		switch {
-		case a == "--":
+		case a == "--" || a == "-":
 			if i+1 >= len(args) {
 				if stdin {
 					return true
 				}
 			} else if !carried(i+1) && scriptIsStream(args[i+1], stdin) || fetched(args[i+1]) {
-				return true
-			}
-		case a == "-":
-			if stdin {
 				return true
 			}
 		case a == "--version" || a == "--help":
@@ -2296,21 +2381,25 @@ func shellReadsStream(args []string, stdin bool, carried func(int) bool, fetched
 				return true
 			}
 			stack = append(stack, i+2)
-		case strings.HasPrefix(a, "--"):
-			// --norc, --noprofile, --posix, --login: no value.
+		case d == dialectKsh && strings.HasPrefix(a, "---"):
+			// ksh93 runs a word of three dashes or more as its script.
+			if fetched(a) {
+				return true
+			}
+		case strings.HasPrefix(a, "--") || (d == dialectZsh && strings.HasPrefix(a, "+-")):
+			// --norc, --noprofile, --posix, --login, and a zsh option unset
+			// by `+-`: no value.
 			stack = append(stack, i+1)
 		case len(a) >= 2 && (a[0] == '-' || a[0] == '+'):
-			switch cluster := a[1:]; {
-			case strings.ContainsRune(cluster, 'c'):
+			switch letters, takes := shellClusterReads(d, a); {
+			case a[0] == '-' && strings.ContainsRune(letters, 'c'):
 				// a -c string: the payload reading takes it
-			case strings.ContainsRune(cluster, 's'):
-				if stdin {
-					return true
-				}
-			case strings.ContainsAny(cluster, "oO"):
-				stack = append(stack, i+2)
+			case strings.ContainsRune(letters, 's') && stdin:
+				return true
+			case a[0] == '-' && strings.ContainsRune(letters, 's'):
+				// the script is standard input, which is no stream here
 			default:
-				stack = append(stack, i+1)
+				stack = append(stack, i+1+takes)
 			}
 		default:
 			if scriptIsStream(a, stdin) || fetched(a) {

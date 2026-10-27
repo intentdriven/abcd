@@ -669,15 +669,22 @@ shell's script or standard input, a `source` or `.` operand, or a path
 sh i.sh`, `curl -O …/i.sh && ./i.sh`): the file is one curl's `-o` or `-O`,
 wget's `-O` or saved name, a `tee` a fetch feeds or a redirection of what a
 fetch printed writes, matched by the name the line writes it under, and a
-name the line does not fix can be any file. Download it in one command, read
-it, and run it in the next. A command
+name the line does not fix can be any file. The shell's options before the
+script are read as the script reading below reads them, so `bash -login
+<(curl …)` and `zsh -oerrexit <(curl …)` block too. Download it in one
+command, read it, and run it in the next. A command
 line longer than 64 KiB is a **block** (`command-too-long`), because the guard
 does not read it.
 
 A script file a shell runs is **read and judged** before the command is: a
 shell's script operand (`bash build.sh`; not under `-n` or `-o noexec`, a
 syntax check that runs none of it, unless `-i` makes the shell interactive,
-which ignores the option), a `source` or `.` operand (searched on
+which ignores the option; each shell's options are read as that shell reads
+them, so bash's `-login` is `--login`, zsh's and ksh's `-oerrexit` is one
+option, and a lone `-` ends the options as `--` does, while a name that is
+more than one shell, `sh` among them, is read every way it can be and any
+script one of the ways runs is judged; the same reading finds a `-c` string
+behind options that take a value, `bash -co errexit '…'`), a `source` or `.` operand (searched on
 `PATH` and then in the working directory when it has no slash, as bash does,
 while zsh's `source` looks in the working directory first and its `.` only on
 `PATH`; a `PATH=` prefix

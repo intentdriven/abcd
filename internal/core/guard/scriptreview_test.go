@@ -75,6 +75,44 @@ func TestAPlusDashLongOptionLeavesTheScriptRead(t *testing.T) {
 	})
 }
 
+// Each shell reads its options its own way, and the script it runs is the one
+// judged: a lone `-` ends the options as `--` does; bash reads its long
+// options after one dash; zsh and ksh take an -o value from the rest of its
+// word, zsh's -O takes none, and only zsh reads `+-` as a long option; ksh93
+// runs a word of three dashes as its script. sh is read every way it can be.
+func TestEachShellReadsItsOwnOptions(t *testing.T) {
+	dir := scriptTree(t, map[string]string{"s.sh": hazardLine, "rc": "echo hi", "---noexec": hazardLine})
+	runScriptCases(t, dir, []scriptCase{
+		{`bash - {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`sh - {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`dash - {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`zsh - {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`ksh - {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`bash -login {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`bash -noprofile {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`bash -posix {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`bash -verbose {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`sh -login {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`bash -init-file {d}/rc {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`bash -rcfile {d}/s.sh -i -c true`, VerdictBlock, scriptHazardEntryID},
+		{`zsh -O {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`zsh -oerrexit {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`ksh -oerrexit {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`sh -oerrexit {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`zsh -n -oexec {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`ksh +-o errexit {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`ksh -n +-o noexec {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`ksh ---noexec`, VerdictBlock, scriptHazardEntryID},
+		// The options end at the script: a -n after it is its argument.
+		{`ksh ---noexec -n`, VerdictBlock, scriptHazardEntryID},
+		// What still reads as a syntax check, every way the name allows.
+		{`bash -login -n {d}/s.sh`, VerdictAllow, ""},
+		{`zsh -onoexec {d}/s.sh`, VerdictAllow, ""},
+		{`sh -n {d}/s.sh`, VerdictAllow, ""},
+		{`bash -o errexit {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+	})
+}
+
 // The site bound holds before any lookup: a line naming thousands of bare
 // names makes at most a bounded number of filesystem lookups.
 func TestScriptSiteBoundHoldsBeforeLookups(t *testing.T) {
