@@ -119,27 +119,12 @@ func (r Report) Worktrees() []SeenWorktree {
 	return out
 }
 
-// HeldUnder counts the linked worktrees the scan saw whose real path lies
-// beneath dir, and the spent ones among them: the board's worktrees line,
-// with dir the repository's lane in the worktree store. A gone worktree is
-// not counted, because it no longer occupies dir. Paths compare resolved, so
-// a lane reached through a symlinked home still holds what git reports.
-func (r Report) HeldUnder(dir string) (held, spent int) {
-	base := realPath(dir)
-	for _, w := range r.Worktrees() {
-		if w.Gone {
-			continue
-		}
-		rel, err := filepath.Rel(base, realPath(w.Path))
-		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			continue
-		}
-		held++
-		if w.Spent {
-			spent++
-		}
-	}
-	return held, spent
+// Listing is git's listing of this repository's worktrees as the scan read
+// it, main working tree first, with every attribute git gave: a caller that
+// judges the worktrees itself (the board's store line) takes them from the
+// scan it already ran rather than listing again.
+func (r Report) Listing() []gitutil.Worktree {
+	return append([]gitutil.Worktree(nil), r.listing...)
 }
 
 // Read returns the peer picture for the checkout at root, which is a checkout
@@ -171,7 +156,8 @@ func read(root string, titles bool) (Report, error) {
 	rep.DefaultRef = gitutil.ShortRef(defaultRef)
 	merged := mergedBranches(root, defaultRef)
 
-	wts, err := listWorktrees(root)
+	wts, listing, err := listWorktrees(root)
+	rep.listing = listing
 	if err != nil {
 		return rep, fmt.Errorf("peers: listing this repository's worktrees: %w", err)
 	}
@@ -811,16 +797,16 @@ func recordsClean(dir string) bool {
 // listWorktrees is this repository's working trees, git's canonical listing
 // (gitutil.ListWorktrees, which falls back to the newline form on a git older
 // than 2.36) with each branch in its short name.
-func listWorktrees(root string) ([]worktree, error) {
+func listWorktrees(root string) ([]worktree, []gitutil.Worktree, error) {
 	listed, err := gitutil.ListWorktrees(root, maxListing)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	wts := make([]worktree, 0, len(listed))
 	for _, w := range listed {
 		wts = append(wts, worktree{path: w.Path, head: w.Head, branch: strings.TrimPrefix(w.Branch, "refs/heads/"), bare: w.Bare})
 	}
-	return wts, nil
+	return wts, listed, nil
 }
 
 // listBranches is every local branch's short name.

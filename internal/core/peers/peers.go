@@ -32,7 +32,11 @@
 // This package is a library: it returns values and errors, and never prints.
 package peers
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
+)
 
 // Source names where a peer was read from.
 type Source string
@@ -153,6 +157,8 @@ type Report struct {
 	// bases memoises Holders' merge-bases per peer, made by the read; nil in
 	// a zero Report, which then computes them each time.
 	bases *baseCache
+	// listing is git's worktree listing the scan read (Listing).
+	listing []gitutil.Worktree
 }
 
 // Live is the number of live peers: those read, and those named but not read.

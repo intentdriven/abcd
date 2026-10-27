@@ -230,22 +230,8 @@ func scan(repoRoot string, lane Lane, forge GH, pick func(entry) bool) ([]entry,
 		if i == 0 || wt.Bare {
 			continue
 		}
-		real := fsutil.RealExistingPath(wt.Path)
-		seen[real] = true
-		e := entry{wt: wt, path: wt.Path, name: filepath.Base(filepath.Clean(wt.Path)), where: WhereOutside}
-		switch {
-		case storepath.HasStoreShape(wt.Path):
-			e.where, e.reason = WhereSibling, reasonEmbargo
-		case filepath.Dir(real) == realLane:
-			e.where = WhereStore
-		}
-		if e.reason == "" {
-			e.reason = ownedElsewhere(wt.Path)
-		}
-		if e.reason == "" {
-			e.reason = belongs(wt, own)
-		}
-		es = append(es, e)
+		seen[fsutil.RealExistingPath(wt.Path)] = true
+		es = append(es, listedEntry(wt, own, realLane))
 	}
 	if inLane {
 		names, err := dirNames(lane.Dir)
@@ -280,6 +266,28 @@ func scan(repoRoot string, lane Lane, forge GH, pick func(entry) bool) ([]entry,
 	}
 	note := judgeAll(repoRoot, lane, unjudged(es), forge)
 	return es, note, nil
+}
+
+// listedEntry is the entry for a worktree git lists, placed against the
+// lane's real path and given the reason, if any, it is not judged: the
+// embargo store's shape, another account's worktree, or a failed proof of
+// belonging against the checkout's real common directory own.
+func listedEntry(wt gitutil.Worktree, own, realLane string) entry {
+	real := fsutil.RealExistingPath(wt.Path)
+	e := entry{wt: wt, path: wt.Path, name: filepath.Base(filepath.Clean(wt.Path)), where: WhereOutside}
+	switch {
+	case storepath.HasStoreShape(wt.Path):
+		e.where, e.reason = WhereSibling, reasonEmbargo
+	case filepath.Dir(real) == realLane:
+		e.where = WhereStore
+	}
+	if e.reason == "" {
+		e.reason = ownedElsewhere(wt.Path)
+	}
+	if e.reason == "" {
+		e.reason = belongs(wt, own)
+	}
+	return e
 }
 
 // ownedElsewhere is why no git may run in the worktree at p, read before any
