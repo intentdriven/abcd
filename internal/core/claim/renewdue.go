@@ -2,6 +2,7 @@ package claim
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -27,10 +28,15 @@ const pushedRelDir = stateRelDir + "/pushed"
 // reported every loss as a fault (iss-2610270659564789).
 const renewLockRel = stateRelDir + "/renew.lock"
 
-// renewLockWait bounds how long a pass waits for a sibling's to end: a pass is
-// a few pushes, and one still running past this is renewing the same
-// reservations, so this pass renews nothing and says nothing.
-const renewLockWait = 2 * time.Minute
+// renewLockWait bounds how long a pass waits for a sibling's to end. A pass is
+// a few pushes, each bounded by the network timeout, so a sibling still holding
+// the lock past this is stuck (a stopped process, say): this pass renews
+// nothing and answers ErrRenewalBusy, so a due reservation never lapses unsaid.
+var renewLockWait = 2 * time.Minute
+
+// ErrRenewalBusy is RenewDue's answer when another pass in the same copy held
+// the renewal lock for all of renewLockWait, and this pass renewed nothing.
+var ErrRenewalBusy = errors.New("another renewal pass in this copy has held its lock")
 
 // Renewal is one reservation RenewDue renewed, or failed to: Until is the
 // renewed lease's end, and Err why it could not be renewed.
@@ -54,8 +60,8 @@ type Renewal struct {
 // answered with errNotPushedHere.
 // Each pass holds the copy's renewal lock (renewLockRel); a copy whose lock
 // cannot be laid renews unlocked rather than not at all.
-// The error is a view that could not be read; each renewal's own failure is
-// in its Renewal.
+// The error is a view that could not be read, or ErrRenewalBusy; each
+// renewal's own failure is in its Renewal.
 func RenewDue(root string, o Options) ([]Renewal, error) {
 	r, err := os.OpenRoot(root)
 	if err == nil {
@@ -77,7 +83,7 @@ func RenewDue(root string, o Options) ([]Renewal, error) {
 	case ran:
 		return out, err
 	case errors.Is(err, fsutil.ErrLockContention):
-		return nil, nil
+		return nil, fmt.Errorf("%w for over %s", ErrRenewalBusy, renewLockWait)
 	}
 	return renewDue(root, o)
 }

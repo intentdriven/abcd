@@ -2,10 +2,13 @@ package claim
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // TestRenewDueRenewsOnlyThisCopysOwnLiveHoldsPastHalf is the waiter's renewal
@@ -210,5 +213,43 @@ func TestTwoWaitersInOneCopyTakeTurnsToRenew(t *testing.T) {
 	}
 	if len(second.got) != 0 {
 		t.Errorf("the second pass renewed %+v; the first had just renewed it, so nothing was due", second.got)
+	}
+}
+
+// TestARenewalBehindAStuckPassSaysSo: a sibling pass that holds the copy's
+// renewal lock past renewLockWait (a stopped process, say) is stuck, so the
+// waiting pass renews nothing and answers ErrRenewalBusy rather than nothing,
+// which would let a due reservation lapse unsaid.
+func TestARenewalBehindAStuckPassSaysSo(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	prev := renewLockWait
+	renewLockWait = 50 * time.Millisecond
+	t.Cleanup(func() { renewLockWait = prev })
+
+	r, err := os.OpenRoot(p.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	if err := mkStateDir(r, stateRelDir); err != nil {
+		t.Fatal(err)
+	}
+	held, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		done <- fsutil.WithFileLockIn(r, renewLockRel, time.Second, func() error {
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	<-held
+	got, err := RenewDue(p.dir, p.opts())
+	close(release)
+	if lerr := <-done; lerr != nil {
+		t.Fatalf("the stuck pass's lock: %v", lerr)
+	}
+	if !errors.Is(err, ErrRenewalBusy) || len(got) != 0 {
+		t.Fatalf("RenewDue = %+v, %v; want nothing renewed and ErrRenewalBusy", got, err)
 	}
 }
