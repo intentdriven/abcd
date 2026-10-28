@@ -241,7 +241,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			if !res.Resumed {
 				noticeUnattended(cmd, prefix)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				verb := "started"
 				if res.Resumed {
 					verb = "resumed"
@@ -264,7 +264,18 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  reservation: %s\n", termsafe.Sanitize(res.Reservation))
 				}
 				fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
-			})
+			}); err != nil {
+				return err
+			}
+			// A footprint path naming a directory is reserved all the same,
+			// and warned of on stderr; --json carries it as
+			// reservation_warnings (iss-2610230016544142).
+			if !*asJSON {
+				for _, line := range res.ReservationWarnings {
+					fmt.Fprintf(cmd.ErrOrStderr(), "%s: warning: %s\n", prefix, termsafe.Sanitize(line))
+				}
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; a new run claims the intent for it")
@@ -404,7 +415,18 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			for i := range res.Excluded {
 				res.Excluded[i].Reason = fsutil.RedactHome(res.Excluded[i].Reason)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderNext(w, res) })
+			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderNext(w, res) }); err != nil {
+				return err
+			}
+			// The start it made warns on stderr of a directory its
+			// reservation names, as `build <itd-N>` does; --json carries it
+			// under start (iss-2610230016544142).
+			if !*asJSON && res.Start != nil {
+				for _, line := range res.Start.ReservationWarnings {
+					fmt.Fprintf(cmd.ErrOrStderr(), "%s: warning: %s\n", prefix, termsafe.Sanitize(line))
+				}
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; the new run claims the picked intent for it")

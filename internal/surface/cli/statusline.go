@@ -77,6 +77,15 @@ var (
 	previousCommandBudget = 5 * time.Second
 )
 
+// statuslineGitContext derives the context every git question of one refresh
+// runs under from abcd's own: it ends at the git budget. It is a variable only
+// so a test can end git's share when the git it is about has started, rather
+// than on a clock that the test's other gits race on a loaded machine
+// (iss-2610230814127624); the verb reads it once, with the budgets.
+var statuslineGitContext = func(parent context.Context, gitBudget time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(parent, gitBudget)
+}
+
 // previousCommandWaitDelay is how long the verb waits, after killing the
 // previous command's group, for the pipes it shared to close.
 const previousCommandWaitDelay = 100 * time.Millisecond
@@ -143,10 +152,10 @@ func newStatuslineCommand(asJSON *bool) *cobra.Command {
 
 			// The budgets are read once, here: a decision abandoned at the
 			// ceiling runs on, and it must not read them again later.
-			budget, gitBudget := statuslineBudget, statuslineGitBudget
+			budget, gitBudget, gitContext := statuslineBudget, statuslineGitBudget, statuslineGitContext
 			ctx, cancel := context.WithTimeout(context.Background(), budget)
 			defer cancel()
-			gitCtx, cancelGit := context.WithTimeout(ctx, gitBudget)
+			gitCtx, cancelGit := gitContext(ctx, gitBudget)
 			defer cancelGit()
 
 			// The watchdog. The decision is made in a goroutine that returns a

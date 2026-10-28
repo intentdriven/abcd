@@ -19,7 +19,7 @@ Typed links: `builds_on`
 [itd-2610180912189125](../shipped/itd-2610180912189125-a-session-told-to-work-on-while-its.md)
 (the shipped away mode, whose record and hooks this grant sits beside, and
 whose "or asking a session to" route Decision 14 **reverses**) and
-[itd-2610170638184486](itd-2610170638184486-every-abcd-session-keeps-a-checklist-on.md)
+[itd-2610170638184486](../planned/itd-2610170638184486-every-abcd-session-keeps-a-checklist-on.md)
 (the checklist, whose pre-run blocker sweep asks the person for every undecided
 design decision before they leave, and whose parked person-only guard work this
 intent takes over, Decision 5); `related_adrs`

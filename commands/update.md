@@ -141,6 +141,13 @@ refusal is a named shape with a remedy in `refusal`:
   <release.yml on main> --source-ref refs/heads/main
   --deny-self-hosted-runners --source-digest <the tag's commit>`, then copy it
   over the PATH copy.
+- `not-this-release` — the binary matched `checksums.txt` and its build
+  provenance verifies, but its own build metadata (the main-module version Go
+  stamps from the tag the release workflow built at) does not claim the
+  requested tag: it names another release, or no release at all, as a source
+  or modified build does. Nothing was swapped, and no release is recorded. Relay the
+  detail and the remedy, which keeps the binary in place; there is nothing to
+  retry.
 - `older-than-mark` — a bare `abcd update` resolved a latest release older
   than `~/.abcd.noindex/release-mark`, the newest release this machine has
   installed or verified: the publisher may have withdrawn the newer one.

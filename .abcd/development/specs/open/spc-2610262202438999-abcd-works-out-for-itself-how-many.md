@@ -30,7 +30,7 @@ Out of scope, recorded elsewhere: releasing a slot whose holder is idle (iss-261
 
 ## Footprint
 
-- packages: internal/core/implement/load.go, internal/core/implement/load_wait.go, internal/core/implement/load_slots.go, Makefile, internal/core/machineload, cmd/test-parallelism, internal/core/rules, internal/core/ahoy
+- packages: internal/core/implement/load.go, internal/core/implement/load_wait.go, internal/core/implement/load_slots.go, Makefile, AGENTS.md, internal/core/machineload, cmd/test-parallelism, internal/core/rules, internal/core/ahoy
 - tests: internal/core/implement/load_wait_test.go, internal/core/implement/load_slots_test.go, internal/core/machineload, cmd/test-parallelism/main_test.go
 
 ## Steps

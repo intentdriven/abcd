@@ -34,6 +34,10 @@ var examples = map[string]string{
 	"abcd capture surprise":    `abcd capture surprise --occasioned-by rdi-2609010000000001 "the proposal nobody expected ranked first"`,
 	"abcd capture wontfix":     `abcd capture wontfix iss-2609010000000001 "the behaviour is the documented one"`,
 
+	"abcd checklist add":  `abcd checklist add "Regenerate the CLI reference"`,
+	"abcd checklist set":  "abcd checklist set regenerate-the-cli-reference --state done",
+	"abcd checklist show": "abcd checklist show regenerate-the-cli-reference",
+
 	"abcd decide": `abcd decide "Decisions are one flat file each"`,
 
 	"abcd guard approve": "abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567",
