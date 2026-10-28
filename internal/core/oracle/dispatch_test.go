@@ -4,8 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -281,6 +285,103 @@ func TestAnUnreachableProviderFallsBackToTheHarness(t *testing.T) {
 	}
 	if strings.Contains(h.Fallback, dispatchKey) {
 		t.Fatal("the fallback carries the key")
+	}
+}
+
+// goneAfter is a provider that serves its model list with the served size
+// served (vLLM's max_model_len, none when served is 0), counts every brief at
+// /tokenize as 10 tokens, and stops taking connections while it answers the
+// request whose path ends in lastPath, so the chat call that follows cannot
+// connect. chats counts the requests that reached the chat endpoint.
+func goneAfter(t *testing.T, served int, lastPath string) (base string, chats *atomic.Int32) {
+	t.Helper()
+	chats = &atomic.Int32{}
+	entry := map[string]any{"id": "typesafe/jev-1.13"}
+	if served > 0 {
+		entry["max_model_len"] = served
+	}
+	list, err := json.Marshal(map[string]any{"object": "list", "data": []any{entry}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, lastPath) {
+			// The service goes away: no new connection is taken, and this
+			// one closes with the answer.
+			_ = srv.Listener.Close()
+			w.Header().Set("Connection", "close")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/models"):
+			_, _ = w.Write(list)
+		case r.URL.Path == "/tokenize":
+			_, _ = io.WriteString(w, `{"count":10,"max_model_len":1000,"tokens":[]}`)
+		default:
+			chats.Add(1)
+			_, _ = io.WriteString(w, chat("typesafe/jev-1.13", `{"verdict":"keep"}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/v1", chats
+}
+
+// TestNoAnswerAfterTheSizeCountFallsBackToTheHarness is iss-2610090701491123,
+// the product thinker's ruling of 2026-10-09: once the size count has sent the
+// brief to the person's own model server, a chat call that then cannot
+// connect has received no answer, and no answer received is what moves the
+// step to the harness, not nothing sent. The failure is still never
+// ErrUnreachable (iss-2610030956156354: the brief left this machine), and the
+// fallback line says the brief had already reached the server for counting.
+// A check that reached only the model list falls back the same way, its line
+// naming the list and no count.
+func TestNoAnswerAfterTheSizeCountFallsBackToTheHarness(t *testing.T) {
+	for _, tc := range []struct {
+		name, lastPath string
+		served         int
+		want, not      []string
+	}{
+		{"after the size count", "/tokenize", 1000,
+			[]string{"brief had already reached", "size count", "no answer was received"}, []string{"model list"}},
+		{"after the model list alone", "/models", 0,
+			[]string{"model list", "no answer was received"}, []string{"size count", "brief had already reached"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base, chats := goneAfter(t, tc.served, tc.lastPath)
+			f, c := pointed(t, base)
+			r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _, err = c.Dispatch(context.Background(), credential.Machine(f.roots.Home), r, dispatchBrief, verdictContract)
+			if err == nil || chats.Load() != 0 {
+				t.Fatalf("err = %v, chat calls = %d: want the chat call to fail to connect", err, chats.Load())
+			}
+			if errors.Is(err, openaiapi.ErrUnreachable) {
+				t.Fatalf("a check reached the server, yet the failure says nothing left this machine: %v", err)
+			}
+			h, ok := r.FellBack(err)
+			if !ok {
+				t.Fatalf("FellBack refused a step that received no answer: %v", err)
+			}
+			if h.ConnectionUsed != Harness || h.ConnectionTried != "openrouter" || h.OnProvider() || h.SettingsSent != nil {
+				t.Fatalf("fallback route = %+v", h)
+			}
+			for _, want := range append([]string{"openrouter", "cold-reading-detection", "harness"}, tc.want...) {
+				if !strings.Contains(h.Fallback, want) {
+					t.Fatalf("fallback %q does not name %q", h.Fallback, want)
+				}
+			}
+			for _, not := range tc.not {
+				if strings.Contains(h.Fallback, not) {
+					t.Fatalf("fallback %q says %q", h.Fallback, not)
+				}
+			}
+			if strings.Contains(h.Fallback, dispatchKey) {
+				t.Fatal("the fallback carries the key")
+			}
+		})
 	}
 }
 

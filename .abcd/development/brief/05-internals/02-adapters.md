@@ -134,10 +134,12 @@ provider leg through the adapter with the host's brief and the settings as sent,
 and takes the model and the key's reach from the machine's configuration again,
 never from the route alone: a provider that holds a key is reached only through a
 route set on this machine. Every refusal comes before the provider is contacted and
-names the setting to change. A provider that could not be reached at all, so that
-nothing was sent, leaves the step to the harness, and the route records the
-connection tried and the reason (`Route.FellBack`); a provider that answered, or
-took the brief and did not answer, is a failure, never a fallback. A provider
+names the setting to change. A step whose chat call never connected, so that no
+answer was received, leaves the step to the harness, even when a model listing or
+a size count before it had reached the server; the route records the connection
+tried and the reason, and says what had already been sent (`Route.FellBack`). A
+provider that answered, or took the chat request and did not answer, is a
+failure, never a fallback. A provider
 that holds a key takes only a **self-contained** agent (the product thinker's
 ruling DR5 of 2026-09-29): a provider call carries no tools, so an agent that
 reads files cannot read them there, and only an agent whose request carries all
