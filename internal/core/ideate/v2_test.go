@@ -53,6 +53,9 @@ func TestV2RefusesAnUnresolvedIDInAnyLeg(t *testing.T) {
 		"kill attempt": {func(p map[string]any) {
 			reviewer(p, 1)["kill_attempts"].([]any)[0].(map[string]any)["attempt"] = "itd-9998 already killed this"
 		}, "adversarial-review", "itd-9998"},
+		"id glued to an address": {func(p map[string]any) {
+			reviewer(p, 1)["kill_attempts"].([]any)[0].(map[string]any)["attempt"] = "already settled (https://example.invalid/thread;itd-9997)"
+		}, "adversarial-review", "itd-9997"},
 		"reviewer source": {func(p map[string]any) { reviewer(p, 0)["sources"] = []any{"spc-9998"} }, "adversarial-review", "spc-9998"},
 		"rejected alternative": {func(p map[string]any) {
 			p["rejected_alternatives"] = []any{map[string]any{"alternative": "fold it into iss-9998", "why_rejected": "a reason"}}
@@ -388,7 +391,8 @@ func TestV2RefusesAVerifiedSelfQuotation(t *testing.T) {
 	// it, and a record id in it may be padded.
 	for i, c := range []struct{ origin, src string }{
 		{"https://example.invalid/origin-post the post the idea came from", "https://example.invalid/origin-post"},
-		{"the discussion on ADR-0035", "adr-35"},
+		{"https://example.invalid/wiki/Mercury_(planet) the article", "https://example.invalid/wiki/Mercury_(planet)"},
+		{"ADR-0035", "adr-35"},
 	} {
 		p = validPayload()
 		p["origin_sources"] = []any{c.origin}
@@ -423,6 +427,14 @@ func TestV2RefusesAVerifiedSelfQuotation(t *testing.T) {
 		}
 	}
 
+	// A record mentioned in passing in an origin is not where the idea came
+	// from: checking the record itself is a primary check.
+	p = validPayload()
+	p["origin_sources"] = []any{"a hallway chat questioning adr-35"}
+	claim(p, 0)["primary_source"] = "adr-35"
+	if _, err := Record(root, "a-record-checked-idea", publicStore, encode(t, p), at); err != nil {
+		t.Errorf("a verified claim checked against a record an origin only mentions was refused: %v", err)
+	}
 	// An idea with no source behind it says so with an empty list.
 	p = validPayload()
 	p["origin_sources"] = []any{}

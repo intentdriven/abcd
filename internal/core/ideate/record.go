@@ -637,18 +637,20 @@ func sourceKey(s string) string {
 
 // originKeys is every source the idea's origins name, by sourceKey. An origin
 // is free text, so besides the whole entry each word of it that is an address
-// or a source key counts, and so does each record id written outside an
-// address: "https://… the post the idea came from" names the post.
+// or a source key counts, as written and with surrounding punctuation trimmed
+// ("https://… the post the idea came from" names the post, and so does
+// "(https://…)"). A record id counts only as a whole entry: one mentioned in
+// passing is not where the idea came from, and checking it is a primary check.
 func originKeys(origins []string) map[string]bool {
 	keys := make(map[string]bool, len(origins))
 	for _, o := range origins {
 		keys[sourceKey(o)] = true
 		for _, w := range strings.Fields(o) {
-			keys[sourceKey(strings.Trim(w, "()<>[]{},.;\"'"))] = true
-		}
-		for _, id := range idsIn(withoutAddresses(o)) {
-			if c := recordid.CanonCitedID(id); c != "" {
-				keys[c] = true
+			for _, s := range []string{w, strings.Trim(w, "()<>[]{},.;\"'")} {
+				if lower := strings.ToLower(s); strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://") ||
+					strings.HasPrefix(s, sourceKeyPrefix) {
+					keys[sourceKey(s)] = true
+				}
 			}
 		}
 	}
@@ -656,8 +658,9 @@ func originKeys(origins []string) map[string]bool {
 }
 
 // addressRe matches a web address written in running text, up to the next
-// space.
-var addressRe = regexp.MustCompile(`(?i)\bhttps?://\S+`)
+// space, quote, bracket, comma or semicolon, so an id written straight after
+// one (`…/thread;itd-9`) is still read as a citation.
+var addressRe = regexp.MustCompile(`(?i)\bhttps?://[^\s,;<>"'()\[\]]+`)
 
 // withoutAddresses blanks every web address in text, so an id-shaped segment
 // of a path (`…/adr-0007-use-markdown.md`) is read as part of the address it
