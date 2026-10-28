@@ -284,8 +284,21 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 14. Version 14
-added both sides of a run (itd-166): a runner's `route` on a verified receipt or
+under a run id it does not name. The state is schema version 16. Version 16
+added a route's pins: a pinned opencode run's `route` carries its pin and the
+SHA-256 of the sealed configuration that held it (`provider_pin`,
+`pin_config_sha256`, iss-2610161734413178), and a route to a model on this
+machine its local pin, what its server reported and that it is local
+(`local_pin`, `local_served`, `local`, iss-2610161734428291). Version 15 is
+its strict subset, read as a run whose routes were pointed at no pin; a file
+of version 15 or lower carrying any of them is refused, and an abcd that
+writes version 15 refuses a version-16 file as a newer abcd's. Version 15
+added the run's review set (itd-2610240922461281): the run's `review`, each
+role's reviewers at their model classes, the judge and the ceiling, with the
+layer of each. Version 14 is its strict subset, read as a run started before
+review sets; a file of version 14 or lower carrying `review` is refused, and
+an abcd that writes version 14 refuses a version-15 file as a newer abcd's.
+Version 14 added both sides of a run (itd-166): a runner's `route` on a verified receipt or
 a validator's return carries, beside the route asked, the route that ran and the
 served model, the model the runner asked for (`model_asked`), the SHA-256 of
 the prompt it handed the harness, the served models, provider, finish reason
@@ -353,7 +366,7 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap, a
 version-7 run is one the host ran every agent of) and
-written back at version 14 by its next mutation; an earlier version carrying what
+written back at version 16 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
