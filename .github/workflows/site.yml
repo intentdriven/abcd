@@ -18,9 +18,9 @@ name: site
 #   workflow_dispatch the EMERGENCY redeploy. The SITE always comes from a tag: an
 #                     empty `tag` input resolves the latest PUBLISHED release, so the
 #                     released-bytes invariant survives the emergency (adr-48 4).
-#                     Dispatch it from `main` or from the tag — both are admitted, and
-#                     an arbitrary branch is not. See THE ENVIRONMENT CONTRACT below
-#                     for what that restriction is actually protecting.
+#                     Dispatch it from `main`: it is the one ref admitted, and any
+#                     other branch or tag is refused. See THE ENVIRONMENT CONTRACT
+#                     below for what that restriction is actually protecting.
 #   push: [main]      the PREVIEW. main is ahead of every release, so the
 #                     released-bytes rule cannot apply: the preview is built from
 #                     SOURCE, stamped `unreleased · <sha>` by `site build
@@ -62,8 +62,8 @@ name: site
 # only durable record of it). THREE environments:
 #
 #   `site-render`   the render and publish jobs. NO SECRETS AT ALL. Deployment
-#                   policy: branch `main` AND tags `v*`.
-#   `site`          the deploy job. Same policy: branch `main` AND tags `v*`. NO
+#                   policy: branch `main` only.
+#   `site`          the deploy job. Same policy: branch `main` only. NO
 #                   required reviewer, deliberately — the emergency redeploy is the
 #                   3am path and must not wait on a human.
 #                   Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID.
@@ -71,16 +71,14 @@ name: site
 #                   Secrets: CLOUDFLARE_PREVIEW_API_TOKEN,
 #                   CLOUDFLARE_PREVIEW_ACCOUNT_ID.
 #
-# WHY {main, v*} AND NOT `v*` ALONE. What the restriction refuses is UNREVIEWED
-# WORKFLOW CONTENT. A workflow_dispatch runs this file as it exists on the ref it was
-# dispatched from, so a dispatch from an arbitrary branch runs that branch's edited
-# copy — and is refused, because that branch matches neither pattern. `main`'s copy is
-# the reviewed state (the merge queue and the required checks gate every change that
-# reaches it) and a `v*` tag is immutable, so admitting both keeps the control intact.
-# A tags-only policy would not merely be stricter, it would be wrong: the PRIMARY
-# release path is auto-release -> release.yml -> here, and its run ref is
-# refs/heads/main, so `v*` alone refuses every ordinary release and leaves only the
-# emergency path working.
+# WHY `main` ONLY. What the restriction refuses is UNREVIEWED WORKFLOW CONTENT. A run
+# executes this file as it exists on the ref it runs from, so a run from any other
+# branch or from a tag runs a copy that is not `main`'s, and is refused. `main`'s copy
+# is the reviewed state (the merge queue and the required checks gate every change
+# that reaches it). Both legitimate paths run from it: the PRIMARY release path is
+# auto-release -> release.yml -> here, whose run ref is refs/heads/main, and the
+# emergency redeploy is dispatched from `main`. The site's bytes still come from the
+# release tag, which the `tag` input names; only the workflow is `main`'s.
 #
 # The residual, stated plainly: an actor who can merge to main can change this file
 # and then have it run with these secrets. That is the repository's ordinary review
@@ -90,7 +88,7 @@ name: site
 # id-token and attestations: write — it signs artefacts and replaces a release asset.
 # Ungated, a run dispatched from an arbitrary branch would reach it and could attest
 # and attach arbitrary bytes to a real release; `site`'s gate on the job after it
-# refuses too late, because the asset has already been clobbered. The same {main, v*}
+# refuses too late, because the asset has already been clobbered. The same `main`-only
 # policy refuses that run before it writes anything. render needs no credential and is
 # given none, so gating it costs nothing and compromising it yields nothing.
 #
@@ -380,8 +378,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # NO SECRETS live here, and none are referenced. The environment is a GATE, not a
-    # credential store: it holds this job to the same {main, v*} deployment policy as
-    # `deploy`, so a run dispatched from an arbitrary branch cannot reach a job that
+    # credential store: it holds this job to the same `main`-only deployment policy as
+    # `deploy`, so a run from any other ref cannot reach a job that
     # attests artefacts and clobbers a release asset. See THE ENVIRONMENT CONTRACT.
     environment: site-render
     permissions:
@@ -951,8 +949,8 @@ jobs:
       group: site-production
       cancel-in-progress: false
     # The protected environment holds the Cloudflare credentials for the PRODUCTION
-    # Worker and is the server-side gate on this deploy — deployment policy {branch
-    # main, tags v*}, no required reviewer. See THE ENVIRONMENT CONTRACT in the header
+    # Worker and is the server-side gate on this deploy — deployment policy branch
+    # `main` only, no required reviewer. See THE ENVIRONMENT CONTRACT in the header
     # for what that buys and what it does not.
     environment: site
     permissions:
