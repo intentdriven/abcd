@@ -190,6 +190,7 @@ var mergeGroupContext = map[string]any{
 	// PR field on this event is understood, not merely unresolvable.
 	"github.event.pull_request.number":   nil,
 	"github.event.pull_request.head.ref": nil,
+	"github.event.pull_request.head.sha": nil,
 	"github.event.pull_request.base.sha": nil,
 	"github.event.before":                nil,
 	"github.event.number":                nil,

@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/gitignore.go"
 remedy: "Before writing the fenced block, omit any entry the file already carries outside the fence with the same meaning (a git check-ignore probe of the entry, or a normalised line match), and keep the fence present even when empty so detection still finds it; test: a .gitignore already listing .abcd/.work.local/ outside the fence gets no second copy, and detection reports no gitignore drift."
+resolution: "the .gitignore fence now leaves out an entry the file's own lines already list in force, read as git reads them, and is written even when that leaves it empty, so detection still finds it"
+impact: fix
+resolved_by:
+  commit: "bb2e9db9cfe92c9f8d0be6c13b48dff2380ad024"
 ---
 
 ahoy install's .gitignore block repeats .abcd/.work.local/ when the file already lists it outside the block. In a scratch repository whose .gitignore held 'node_modules/' and '.abcd/.work.local/', a private-visibility install at tip appended a fenced block carrying '.abcd/.work.local/' again, so the file holds the same entry twice and the repository's own line is left as the redundant one. The fence writer does not consult the lines outside it.

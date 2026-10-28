@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -576,12 +577,68 @@ func sharedRunFor(repoRoot, session string) (*implement.Run, error) {
 	}
 	if err != nil {
 		if errors.Is(err, implement.ErrRefused) {
-			return nil, refuse(StageClaim, "", "", err.Error(),
+			return nil, refuse(StageClaim, "", "", withoutSession(err.Error(), session),
 				"join the shared run first: `abcd implement join --session <id> --role first|second`")
 		}
 		return nil, err
 	}
 	return run, nil
+}
+
+// withoutSession is msg, a shared-run refusal, with the session it was given
+// named by its flag instead. The loop's refusals reach the --json refusal
+// document build writes, which the error boundary's pass does not read, and
+// the shared run's refusals name the session as "session <id>" (typed, or as
+// %q quotes a value that is not a name), "session record for <id>" and the
+// record's path, sessions/<id>.json. Only those phrases are replaced, never
+// the id wherever it occurs: an id may be one letter, or a word the refusal
+// itself uses. The session is never compiled into a pattern, so no value it
+// carries can fail the replacement.
+func withoutSession(msg, session string) string {
+	if session == "" {
+		return msg
+	}
+	return replacePhrases(msg, [][2]string{
+		{"session record for " + session, "session record for the --session given"},
+		{"session " + strconv.Quote(session), "the --session given"},
+		{"session " + session, "the --session given"},
+		{"sessions/" + session + ".json", "sessions/<the --session given>.json"},
+	})
+}
+
+// replacePhrases replaces, in one pass over msg, each phrase that stands on
+// its own: not preceded by a letter or digit, and not followed by a byte a
+// session id can carry, so the phrase for one id never matches inside a
+// longer one. The first phrase listed that matches at a position wins, and
+// replaced text is never read again.
+func replacePhrases(msg string, phrases [][2]string) string {
+	var b strings.Builder
+	for i := 0; i < len(msg); {
+		matched := false
+		if i == 0 || !isAlnum(msg[i-1]) {
+			for _, p := range phrases {
+				end := i + len(p[0])
+				if strings.HasPrefix(msg[i:], p[0]) && (end == len(msg) || !isNameByte(msg[end])) {
+					b.WriteString(p[1])
+					i, matched = end, true
+					break
+				}
+			}
+		}
+		if !matched {
+			b.WriteByte(msg[i])
+			i++
+		}
+	}
+	return b.String()
+}
+
+// isNameByte reports whether c can stand in a session id.
+func isNameByte(c byte) bool { return isAlnum(c) || c == '.' || c == '_' || c == '-' }
+
+// isAlnum reports whether c is an ASCII letter or digit.
+func isAlnum(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
 // claimRefusal maps a refused shared-run claim onto the loop's refusal: a
@@ -590,10 +647,10 @@ func sharedRunFor(repoRoot, session string) (*implement.Run, error) {
 func claimRefusal(session, record string, err error) error {
 	switch {
 	case errors.Is(err, implement.ErrContention):
-		return contend("check", CheckPeers, "", err.Error(),
+		return contend("check", CheckPeers, "", withoutSession(err.Error(), session),
 			"take other work, or coordinate with the peer; `abcd implement` shows what each session holds")
 	case errors.Is(err, implement.ErrRefused):
-		return refuse(StageClaim, "", "", fmt.Sprintf("session %s cannot claim %s: %v", session, record, err),
+		return refuse(StageClaim, "", "", fmt.Sprintf("the --session given cannot claim %s: %s", record, withoutSession(err.Error(), session)),
 			"start the build without --session, or from a session whose bounds allow the lane")
 	}
 	return err
