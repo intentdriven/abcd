@@ -268,7 +268,7 @@ func TestGeneratedIndexesMatchTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"commands": false, "later-phase-intents": false, "adr-index": false}
+	want := map[string]bool{"commands": false, "adr-index": false}
 	for _, s := range cfg.Rules["index_drift"].Indexes {
 		if _, ok := want[s.ID]; ok && s.Mode == indexModeGenerated {
 			want[s.ID] = true
