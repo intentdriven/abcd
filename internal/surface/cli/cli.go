@@ -5786,6 +5786,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// made; the core refuses an empty state rather than inventing one. It stays
 	// unmarked as cobra-required to keep the tree's no-required-flags invariant.
 	dispositionCmd.Flags().StringVar(&dispState, "state", "", "the answer: accepted | rejected | declined | held (availability varies by the item's position)")
+	declareClosedSet(dispositionCmd.Flags(), "state", issueschema.DispositionStates...)
 	dispositionCmd.Flags().StringVar(&dispGrounds, "grounds", "", "disposition_grounds: why this answer (free text; required on every state except held)")
 	dispositionCmd.Flags().StringVar(&dispExit, "exit-condition", "", "what would end a held disposition (required on held; a hold exits only through a superseding disposition that cites it)")
 	dispositionCmd.Flags().StringVar(&dispSupersedes, "supersedes", "", "the standing dsp-N this answer replaces; required once an item already carries one")

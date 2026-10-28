@@ -192,13 +192,15 @@ type typedArgument struct {
 // or %+q, or masked for the terminal); as a path a refusal shortened to its
 // working-directory or home form, to a relative path or to its base name; as
 // the value after its last `=`; and as its leading part, where a refusal cut it
-// short. Five kinds are left as they are: an argument shorter than
+// short. Six kinds are left as they are: an argument shorter than
 // minWithheldLen, the name of a command in the tree, a well-formed record id
-// (recordid.CitedIDRe), a well-formed run id (loop.ValidRunID) and a relative
-// path to something that exists in the working directory (checkoutPath),
-// which a refusal names so the caller can find the record or the run, or see
-// the overlap. The per-site wording names what was refused; this pass is the
-// backstop for a site that still repeats it.
+// (recordid.CitedIDRe), a well-formed run id (loop.ValidRunID), a flag value
+// that is a word of the flag's declared vocabulary (declareClosedSet) and a
+// relative path to something that exists in the working directory
+// (checkoutPath), which a refusal names so the caller can find the record or
+// the run, see the word it gave, or see the overlap. The per-site wording
+// names what was refused; this pass is the backstop for a site that still
+// repeats it.
 func withholdArguments(root *cobra.Command, args []string, msg string) string {
 	ops := typedArguments(root, args)
 	// Longest first, so an argument that holds a shorter one is withheld whole.
@@ -244,6 +246,12 @@ func typedArguments(root *cobra.Command, args []string) []typedArgument {
 		}
 		ops = append(ops, typedArgument{text: v, pos: i + 1})
 	}
+	addValue := func(f *pflag.Flag, v string, i int) {
+		if f != nil && slices.Contains(f.Annotations[closedSetKey], v) {
+			return
+		}
+		add(v, i)
+	}
 	afterTerminator := false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -254,11 +262,11 @@ func typedArguments(root *cobra.Command, args []string) []typedArgument {
 			afterTerminator = true
 		case strings.HasPrefix(a, "--"):
 			name, val, hasValue := strings.Cut(a[2:], "=")
-			if hasValue {
-				add(val, i)
-			} else if takesValue(lookup(name)) && i+1 < len(args) {
+			if f := lookup(name); hasValue {
+				addValue(f, val, i)
+			} else if takesValue(f) && i+1 < len(args) {
 				i++
-				add(args[i], i)
+				addValue(f, args[i], i)
 			}
 		case len(a) > 1 && a[0] == '-':
 			// A shorthand cluster: letters until the first that takes a
@@ -270,10 +278,10 @@ func typedArguments(root *cobra.Command, args []string) []typedArgument {
 				}
 				if takesValue(f) {
 					if rest := strings.TrimPrefix(a[k+1:], "="); rest != "" {
-						add(rest, i)
+						addValue(f, rest, i)
 					} else if i+1 < len(args) {
 						i++
-						add(args[i], i)
+						addValue(f, args[i], i)
 					}
 					break
 				}
@@ -283,6 +291,20 @@ func typedArguments(root *cobra.Command, args []string) []typedArgument {
 		}
 	}
 	return ops
+}
+
+// closedSetKey annotates a flag whose value is one word of a vocabulary abcd
+// defines (declareClosedSet). A typed value that is a word of its flag's
+// vocabulary is abcd's own text, not the caller's, so a refusal may name it.
+const closedSetKey = "abcd/closed-set"
+
+// declareClosedSet records on flag name of fs the words its value is drawn
+// from, so the error boundary leaves a refused word of that vocabulary named.
+// A flag that does not exist is a wiring fault, caught when the tree is built.
+func declareClosedSet(fs *pflag.FlagSet, name string, words ...string) {
+	if err := fs.SetAnnotation(name, closedSetKey, slices.Clone(words)); err != nil {
+		panic(err)
+	}
 }
 
 // checkoutPath reports whether v is a relative path, inside the working

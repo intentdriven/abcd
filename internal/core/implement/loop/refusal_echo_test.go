@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/implement"
 )
 
 // TestARefusalOfATypedIDDoesNotRepeatIt: a run id given to --run and a lane id
@@ -48,5 +50,19 @@ func TestWithoutSessionNamesTheFlagWhereTheRefusalNamesTheSession(t *testing.T) 
 		if got := withoutSession(c.msg, c.session); got != c.want {
 			t.Errorf("withoutSession(%q):\n got %q\nwant %q", c.session, got, c.want)
 		}
+	}
+}
+
+// TestAContendedClaimNamesTheSessionByItsFlag: a claim that waited on the run
+// lock is refused as contention, and the reason, which can carry the
+// session's own unreadable record, names the flag in the session's place.
+func TestAContendedClaimNamesTheSessionByItsFlag(t *testing.T) {
+	err := claimRefusal("record", "itd-1", fmt.Errorf("%w: the run state is locked by another session's change; back off and retry "+
+		"(and the backoff could not be logged: the session record for record is unreadable; remove sessions/record.json by hand to rejoin)",
+		implement.ErrContention))
+	r := mustRefusal(t, err)
+	if !r.Contention || strings.Contains(r.Reason, "for record ") || strings.Contains(r.Reason, "sessions/record.json") ||
+		!strings.Contains(r.Reason, "the session record for the --session given is unreadable") {
+		t.Fatalf("a contended claim = %+v; want the contention, the flag in the session's place", r)
 	}
 }

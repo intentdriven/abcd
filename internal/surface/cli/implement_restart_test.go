@@ -45,8 +45,11 @@ func TestImplementStepRestartIsWired(t *testing.T) {
 		t.Errorf("a lane the run does not have is refused without repeating it: %v", ref)
 	}
 	ref = refusalDocs(t, 2, "implement", "step", "--restart", tok, "--yielded", " ", "--json")
-	if l, _ := ref["lane"].(string); strings.Contains(l, tok) || !strings.Contains(ref["reason"].(string), "--yielded is blank") {
+	if l, _ := ref["lane"].(string); strings.Contains(l, tok) {
 		t.Fatalf("a blank --yielded refusal carries the --restart value as its lane: %v", ref)
+	}
+	if r, _ := ref["reason"].(string); !strings.Contains(r, "--yielded is blank") {
+		t.Fatalf("a blank --yielded beside a lane the run does not have is refused as blank: %v", ref)
 	}
 	ref = refusalDocs(t, 2, "implement", "step", "--yielded", "NETWORK: git push", "--json")
 	if !strings.Contains(ref["reason"].(string), "--yielded") {
