@@ -217,14 +217,23 @@ func (s Snapshot) Lapsed(now time.Time) []Lapsed {
 // by the same rule (Hold.Line), as `abcd status` and the prompt hook do. It
 // reads the release reservations' tips alone.
 func releaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
+	holds, _, err := releaseHoldsAndLapsed(root, now, o)
+	return holds, err
+}
+
+// releaseHoldsAndLapsed is releaseHolds, and every release cut lapsed at now
+// (Snapshot.Lapsed), from the one read of the view, so the two can never
+// disagree about one reservation.
+func releaseHoldsAndLapsed(root string, now time.Time, o Options) ([]Hold, []Lapsed, error) {
 	now = now.UTC().Truncate(time.Second)
 	snap, err := viewOf(root, now, true, isRelease)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	lapsed := snap.Lapsed(now)
 	holds := snap.Holds(now)
 	if len(holds) == 0 {
-		return nil, nil
+		return nil, lapsed, nil
 	}
 	reader := readerHolder(root, o)
 	for i, h := range holds {
@@ -234,20 +243,7 @@ func releaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 			holds[i].Sibling = siblingCopy(root, h.key)
 		}
 	}
-	return holds, nil
-}
-
-// lapsedCuts is every release cut lapsed at now as this checkout last fetched
-// the reservations (Snapshot.Lapsed), for the prompt hook's notes, which name
-// each once so a session that was shown the hold knows it holds no more. It
-// fetches nothing and pushes nothing.
-func lapsedCuts(root string, now time.Time) ([]Lapsed, error) {
-	now = now.UTC().Truncate(time.Second)
-	snap, err := viewOf(root, now, true, isRelease)
-	if err != nil {
-		return nil, err
-	}
-	return snap.Lapsed(now), nil
+	return holds, lapsed, nil
 }
 
 // ReleaseHoldsForTest is releaseHolds, for the implement loop's tests of the

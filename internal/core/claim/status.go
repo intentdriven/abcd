@@ -395,7 +395,8 @@ func statusName(name string) bool { return validUsername(name) && name == string
 // disk alone: no fetch and no push (invariant 7). It reads the release holds
 // as the merge hold judges them, then takes in whatever a fetch brought since
 // the last read, under ctx, then reads what is kept. It is the one read of the
-// holds `abcd status` and the prompt hook make: neither reads them again. A
+// holds, and of the lapsed release cuts with them, that `abcd status` and the
+// prompt hook make: neither reads them again. A
 // read of the holds that fails does not stop the rest: the announcements are
 // still read, and the error, naming the holds' read, is answered with them.
 // An intake that fails, or a ctx that ends first, answers its error with what
@@ -414,9 +415,7 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	v.Unread = unreadOf(root, statusBranches)
 	v.ReservationsUnread = unreadOf(root, reservations)
 	var holdsErr error
-	if v.Holds, err = readHolds(root, now, o); err != nil {
-		holdsErr = &holdsUnreadError{err}
-	} else if v.Lapsed, err = readLapsed(root, now); err != nil {
+	if v.Holds, v.Lapsed, err = readHolds(root, now, o); err != nil {
 		holdsErr = &holdsUnreadError{err}
 	}
 	in, err := takeIn(ctx, root, now)
@@ -453,12 +452,9 @@ type holdsUnreadError struct{ err error }
 func (e *holdsUnreadError) Error() string { return "reading the release holds: " + e.err.Error() }
 func (e *holdsUnreadError) Unwrap() error { return e.err }
 
-// readHolds is ReadStatus's read of the release holds: JudgedHolds, which a
-// test replaces with one that fails.
-var readHolds = JudgedHolds
-
-// readLapsed is ReadStatus's read of the lapsed release cuts: lapsedCuts.
-var readLapsed = lapsedCuts
+// readHolds is ReadStatus's read of the release holds and the lapsed cuts:
+// judgedHoldsAndLapsed, which a test replaces with one that fails.
+var readHolds = judgedHoldsAndLapsed
 
 // intake is what one intake found.
 type intake struct {

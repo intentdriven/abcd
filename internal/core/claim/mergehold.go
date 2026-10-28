@@ -176,9 +176,19 @@ func MergeHolds(root string, now time.Time, o Options) (MergeHold, error) {
 // it; `abcd peers` shows it, each hold by its Line. It fetches nothing and
 // pushes nothing.
 func JudgedHolds(root string, now time.Time, o Options) ([]Hold, error) {
+	holds, _, err := judgedHoldsAndLapsed(root, now, o)
+	return holds, err
+}
+
+// judgedHoldsAndLapsed is JudgedHolds, and every release cut lapsed at now,
+// from the same read of the view (releaseHoldsAndLapsed): ReadStatus's one
+// read of the release reservations, for the holds and for the prompt hook's
+// notes, which name each lapsed cut so a session shown its hold knows it
+// holds no more (iss-2610241107191205).
+func judgedHoldsAndLapsed(root string, now time.Time, o Options) ([]Hold, []Lapsed, error) {
 	now = now.UTC().Truncate(time.Second)
 	keepFirstFetched(root, now, isRelease)
-	return releaseHolds(root, now, o)
+	return releaseHoldsAndLapsed(root, now, o)
 }
 
 // FetchMergeHold fetches the reservations and origin's release tags, then

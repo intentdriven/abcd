@@ -255,7 +255,13 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 	}
 	for _, l := range v.Lapsed {
 		// Shown once per lapse: a hold the block named earlier is followed
-		// by its end, so no session keeps relaying it as live.
+		// by its end, so no session keeps relaying it as live. A lapse older
+		// than shownKeep is no news, and its shown marker is pruned at that
+		// age, so it is not shown again every shownKeep while the spent
+		// branch waits for the sweep.
+		if now.Sub(l.LapsedAt) >= shownKeep {
+			continue
+		}
 		first = append(first, noteLine{key: hashedKey("lapsed\x00" + l.Subject + "\x00" + l.Holder + "\x00" + stamp(l.LapsedAt)),
 			text: termsafe.Sanitize(l.Text())})
 	}

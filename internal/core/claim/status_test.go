@@ -604,6 +604,13 @@ func TestAHoldTheBlockShowedIsFollowedByItsLapse(t *testing.T) {
 	if again := pat.notes(); strings.Contains(again, "lapsed") {
 		t.Fatalf("the next prompt shows %q; want the lapse shown once", again)
 	}
+	// Past the shown markers' life the lapse is not shown again: it is no
+	// news, though the spent branch is still on origin.
+	w.set(t0.Add(lease.Max + time.Hour + shownKeep + 24*time.Hour))
+	pat.status(nil)
+	if later := pat.notes(); strings.Contains(later, "lapsed") {
+		t.Fatalf("a prompt a week on shows %q; want an old lapse not shown again", later)
+	}
 }
 
 // TestASenderIsCheckedAgainstTheForgesRecord is C17: the forge's record of who
