@@ -425,20 +425,27 @@ func TestCheckoutBuildInTheLocalTierIsNotToldToRebuild(t *testing.T) {
 	// A copy left in the tier and run directly carries no mark: it is the tree
 	// as it stood when the script last ran, so a page naming what it lacks may
 	// well be proof it is old, and the way to a current one is the script.
-	t.Run("left there and run directly", func(t *testing.T) {
-		setCheckoutMark(t, "")
-		_, _, stderr := runMain(t, "frobnicate")
-		for _, want := range []string{"`frobnicate` command", "run directly", "`scripts/abcd`"} {
-			if !strings.Contains(stderr, want) {
-				t.Errorf("stderr lacks %q:\n%s", want, stderr)
+	// Judged by its own checkout's pages, so a plain terminal, where no plugin
+	// root resolves, says the same.
+	for _, env := range []string{"plugin root named", "plain terminal"} {
+		t.Run("left there and run directly, "+env, func(t *testing.T) {
+			setCheckoutMark(t, "")
+			if env == "plain terminal" {
+				t.Setenv("ABCD_PLUGIN_ROOT", "")
 			}
-		}
-		for _, not := range []string{"no evidence that it is stale", "make build", "abcd update", pluginUpdateRemedy} {
-			if strings.Contains(stderr, not) {
-				t.Errorf("a left copy must not be told %q:\n%s", not, stderr)
+			_, _, stderr := runMain(t, "frobnicate")
+			for _, want := range []string{"`frobnicate` command", "run directly", "`scripts/abcd`"} {
+				if !strings.Contains(stderr, want) {
+					t.Errorf("stderr lacks %q:\n%s", want, stderr)
+				}
 			}
-		}
-	})
+			for _, not := range []string{"no evidence that it is stale", "make build", "abcd update", pluginUpdateRemedy} {
+				if strings.Contains(stderr, not) {
+					t.Errorf("a left copy must not be told %q:\n%s", not, stderr)
+				}
+			}
+		})
+	}
 }
 
 // setCheckoutMark says which executable scripts/abcd started, as the binary

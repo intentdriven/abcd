@@ -145,13 +145,20 @@ func staleUsageNote(root *cobra.Command, args []string, msg string) string {
 			return hint
 		}
 	}
+	// A build scripts/abcd left in a checkout's local tier and ran directly is
+	// judged by that checkout's own pages, whichever plugin root resolves (in
+	// a plain terminal none may): it is the tree as it stood at the script's
+	// last run, so a page the tree has since gained is proof it is behind.
+	if checkout, left := leftCheckoutBuild(); left {
+		if what, documented := surfaceDocuments(checkout, skew); documented {
+			return fmt.Sprintf("this checkout's command surface documents %s, which is not in this build — a build scripts/abcd left in the checkout's local tier, run directly, so it is the tree as it stood when the script last ran; run it through the checkout's `scripts/abcd`, which rebuilds it first", what)
+		}
+	}
 	pluginRoot, rootOK := ahoy.ResolvePluginRoot()
 	inRoot := rootOK && executableUnder(pluginRoot) && !executableIsCheckoutBuild(pluginRoot)
 	if rootOK {
 		if what, documented := surfaceDocuments(pluginRoot, skew); documented {
 			switch {
-			case executableIsLeftCheckoutBuild():
-				return fmt.Sprintf("the plugin surface documents %s, which is not in this build — a build scripts/abcd left in a checkout's local tier, run directly, so it is that checkout's tree as it stood when the script last ran; run it through the checkout's `scripts/abcd`, which rebuilds it first", what)
 			case inRoot && isSourceCheckout(pluginRoot):
 				return fmt.Sprintf("this binary predates %s its command surface documents — the plugin root is a source checkout, so rebuild it with `make build`", what)
 			case inRoot:
@@ -450,21 +457,22 @@ func executableIsCheckoutBuild(root string) bool {
 	return filepath.Join(canonicalPath(dir), base) == filepath.Join(canonicalPath(root), filepath.FromSlash(abcdrepo.CheckoutBuildRel))
 }
 
-// executableIsLeftCheckoutBuild reports whether the running binary sits at a
-// checkout's abcdrepo.CheckoutBuildRel but is not the build scripts/abcd has
+// leftCheckoutBuild reports the checkout whose local tier the running binary
+// sits in (abcdrepo.CheckoutBuildRel) when it is not the build scripts/abcd has
 // just made and started: a copy left there and run directly, which is as old
 // as the script's last run, whatever the tree has become since.
-func executableIsLeftCheckoutBuild() bool {
+func leftCheckoutBuild() (checkout string, ok bool) {
 	exe, err := osExecutable()
 	if err != nil {
-		return false
+		return "", false
 	}
 	dir, base := filepath.Split(exe)
 	exe = filepath.Join(canonicalPath(dir), base)
-	if !strings.HasSuffix(filepath.ToSlash(exe), "/"+abcdrepo.CheckoutBuildRel) {
-		return false
+	checkout, ok = strings.CutSuffix(filepath.ToSlash(exe), "/"+abcdrepo.CheckoutBuildRel)
+	if !ok || fsutil.SameFile(exe, checkoutMark()) {
+		return "", false
 	}
-	return !fsutil.SameFile(exe, checkoutMark())
+	return filepath.FromSlash(checkout), true
 }
 
 func canonicalPath(p string) string {
