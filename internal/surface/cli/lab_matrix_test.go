@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -115,5 +116,22 @@ func TestLabMatrixWithTheShownDigestWritesTheRunRecord(t *testing.T) {
 	runs, _ := filepath.Glob(filepath.Join(abcdhome.Path(home, "lab"), "*", id, "state", "matrix", started.RunID, "run.json"))
 	if len(runs) != 1 {
 		t.Fatalf("the consented run's record is not in the lab")
+	}
+}
+
+// A matrix refusal reaches the terminal with a control or direction character
+// escaped: the core returns raw text, and a declaration's ids, models and a
+// scanner's kinds carry what the person or the repository wrote.
+func TestAMatrixRefusalIsPrintedEscaped(t *testing.T) {
+	err := matrixFailure(errors.New("cell or\u202echeap: the model vendor/\x1b[2Jmodel is refused"))
+	var ee *exitError
+	if !errors.As(err, &ee) || ee.Code != 2 {
+		t.Fatalf("matrixFailure = %v; want exit 2", err)
+	}
+	if strings.ContainsAny(ee.Msg, "\u202e\x1b") {
+		t.Errorf("the refusal carries a control or direction character raw: %q", ee.Msg)
+	}
+	if !strings.Contains(ee.Msg, "cell or") || !strings.Contains(ee.Msg, "model is refused") {
+		t.Errorf("the refusal lost its text: %q", ee.Msg)
 	}
 }

@@ -1,6 +1,7 @@
 package matrix
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -728,6 +729,8 @@ func TestAFourPartVersionIsNotAnAddress(t *testing.T) {
 type fakeAugmenter struct {
 	err  error
 	flag string
+	// kind is the finding's kind; "" is gitleaks' generic one.
+	kind string
 }
 
 func (a fakeAugmenter) Available() error { return a.err }
@@ -743,7 +746,7 @@ func (a fakeAugmenter) Scan(text, _ string) []scanner.Finding {
 			if at < 0 {
 				break
 			}
-			out = append(out, scanner.Finding{Line: i + 1, Column: from + at + 1, Kind: "gitleaks:generic-api-key", Matched: a.flag})
+			out = append(out, scanner.Finding{Line: i + 1, Column: from + at + 1, Kind: cmp.Or(a.kind, "gitleaks:generic-api-key"), Matched: a.flag})
 			from += at + len(a.flag)
 		}
 	}
@@ -766,6 +769,39 @@ func TestARunTheAugmenterFlagsIsRefusedUnwritten(t *testing.T) {
 	}
 	if _, err := os.Stat(runDir(home, m, rec.RunID)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a refused run left %s behind: %v", runDir(home, m, rec.RunID), err)
+	}
+}
+
+// An augmenter's kind is the repository's own rule id, so the refusal names
+// it with a control or direction character masked, never raw.
+func TestARefusalNamesAnAugmentersKindMasked(t *testing.T) {
+	const flagged = "zq7flaggedvalue9"
+	root, _, _, in := matrixLab(t)
+	t.Cleanup(scanner.SetDefaultAugmenter(func(string) scanner.Augmenter {
+		return fakeAugmenter{flag: flagged, kind: "repo:rule\x1b]0;x\a\u202e"}
+	}))
+	remodel(&in, 1, "vendor/"+flagged)
+	rec, err := newRunRecord(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = writeRun(root, rec, in.Declaration)
+	if err == nil || !strings.Contains(err.Error(), "repo:rule") {
+		t.Fatalf("writeRun = %v; want a refusal naming the augmenter's kind", err)
+	}
+	if strings.ContainsAny(err.Error(), "\x1b\a\u202e") {
+		t.Errorf("the refusal carries the kind's control or direction character raw: %q", err)
+	}
+}
+
+// The role a pin names is echoed quoted, so a control character in it is
+// shown escaped.
+func TestAPinsRoleIsEchoedQuoted(t *testing.T) {
+	in := inputs(t)
+	in.Cells[2].Role = "reviewer\x1b[2J"
+	_, err := newRunRecord(in)
+	if err == nil || !strings.Contains(err.Error(), `"reviewer\x1b[2J"`) || strings.ContainsRune(err.Error(), 0x1b) {
+		t.Fatalf("newRunRecord = %v; want the role echoed quoted and escaped", err)
 	}
 }
 

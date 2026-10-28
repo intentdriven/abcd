@@ -815,6 +815,8 @@ func refuses(fd scanner.Finding) bool {
 
 // refused is screen's refusal of a finding: its file, line and kind.
 func refused(name string, fd scanner.Finding) error {
+	// An opted-in augmenter's kind carries the repository's own rule id, so it
+	// is masked like any text the run did not compose.
 	return fmt.Errorf("the run is not written: %s line %d carries a %s; a run record names routes and models, never a credential, a home path or who or where the machine is",
-		name, fd.Line, fd.Kind)
+		name, fd.Line, termsafe.Sanitize(fd.Kind))
 }
