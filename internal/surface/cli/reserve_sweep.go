@@ -159,7 +159,7 @@ func renderReserveSweep(w io.Writer, out sweepOutput) {
 	if out.Mode == "apply" {
 		mode = "applied"
 	}
-	fmt.Fprintf(w, "abcd reserve --sweep (%s) as of %s: spent = released, or untouched %d day(s) past its lease\n", mode, out.AsOf, out.OlderThanDays)
+	fmt.Fprintf(w, "abcd reserve --sweep (%s) as of %s: spent = released (a hand-back too once the record is finished), or untouched %d day(s) past its lease\n", mode, out.AsOf, out.OlderThanDays)
 	if out.DefaultUnread != "" {
 		fmt.Fprintf(w, "  not checked: which records are finished on origin's default branch (%s)\n", out.DefaultUnread)
 	}

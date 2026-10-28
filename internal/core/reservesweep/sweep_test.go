@@ -307,7 +307,8 @@ func TestTheDefaultBranchDecidesTerminal(t *testing.T) {
 
 // TestTheClaimPackagesOwnReleaseReadsAsPlain: a reservation and release made
 // through internal/core/claim classify as a reservation and a plain
-// tombstone, and the branch is spent a week after the release, not before.
+// tombstone, and the branch is spent once the take-over margin past the
+// release has gone, not before, without waiting the age.
 func TestTheClaimPackagesOwnReleaseReadsAsPlain(t *testing.T) {
 	w := newWorld(t)
 	dir := w.clone()

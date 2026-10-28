@@ -57,11 +57,13 @@ type verdict struct {
 	Reason string
 	// SettledAt is when the tip last held or was written: the latest of its
 	// commit date, its own times and its effective expiry past the take-over
-	// margin. The branch is spent no earlier than SettledAt plus the age.
+	// margin. The branch is spent no earlier than SettledAt plus the wait its
+	// tip takes (judge): none for a release, the age for anything else.
 	SettledAt time.Time
 }
 
-// judge decides whether a branch is spent at now, untouched for olderThan.
+// judge decides whether a branch is spent at now, olderThan being the age a
+// tip other than a release must have been untouched.
 // It fails closed: anything it cannot classify keeps the branch.
 //
 // A branch is spent only when its tip has settled, every time it carries,

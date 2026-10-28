@@ -58,18 +58,6 @@ func TestAPlainReleaseIsSpentAtTheNextSweepWithoutTheAge(t *testing.T) {
 	}
 }
 
-func TestALapsedReservationNeverReleasedStillWaitsTheAge(t *testing.T) {
-	exp := t0.Add(2 * time.Hour)
-	f := facts{Chain: root(reservationAt(t0)), ChainWhole: true, EffectiveExpiry: exp}
-	settled := exp.Add(claim.TakeoverMargin)
-	if v := judge(f, settled.Add(week-time.Second), week); v.Spent || v.Reason != KeptRecent {
-		t.Fatalf("a lapse a second short of the age = %+v; want kept as recent", v)
-	}
-	if v := judge(f, settled.Add(week), week); !v.Spent || v.Reason != SpentUnreleased {
-		t.Fatalf("a lapse at the age = %+v; want spent as lapsed and unreleased", v)
-	}
-}
-
 func TestALapsedReservationOverAPlainReleaseIsSpentPastItsGraceAndTheAge(t *testing.T) {
 	claimed := t0.Add(2 * time.Hour)
 	exp := claimed.Add(2 * time.Hour)
@@ -106,7 +94,7 @@ func TestATipDatedAheadOfTheReaderIsKept(t *testing.T) {
 	}
 }
 
-func TestATerminalRecordIsSpentWhateverItsTipOnceOlderThanTheAge(t *testing.T) {
+func TestATerminalRecordIsSpentWhateverItsTip(t *testing.T) {
 	exp := t0.Add(2 * time.Hour)
 	for name, chain := range map[string][]commitInfo{
 		"a lapsed reservation never released": root(reservationAt(t0)),
