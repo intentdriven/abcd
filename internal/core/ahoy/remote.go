@@ -263,9 +263,9 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 			continue
 		}
 		if err := ghEnable(abs, res.Repo, step.key); err != nil {
-			return refuseRemote(res, "could not enable "+step.key+" on "+res.Repo+
+			return refuseRemote(res, "could not enable "+step.key+" on "+res.Repo+": "+errText(err)+
 				"; the remaining steps were not attempted and no desired state was recorded"+
-				landedBeforeRefusal(res.Changes)+": "+errText(err)), nil
+				landedBeforeRefusal(res.Changes)), nil
 		}
 		res.Changes = append(res.Changes, step.key+": "+displayStatus(step.have)+" -> "+statusEnabled)
 	}
@@ -279,7 +279,7 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 	if err != nil {
 		res.Status = "refused"
 		res.Notes = append(res.Notes, "the remote state is correct but the desired-state mirror could not be written ("+
-			RepoSettingsMirrorRelPath+"), so nothing in the tree records it"+landedBeforeRefusal(res.Changes)+": "+errText(err))
+			RepoSettingsMirrorRelPath+"): "+errText(err)+"; nothing in the tree records it"+landedBeforeRefusal(res.Changes))
 		return res, nil
 	}
 	if wrote {
