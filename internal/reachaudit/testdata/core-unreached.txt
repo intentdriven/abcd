@@ -89,7 +89,6 @@ internal/core/memory.SourceHashes
 internal/core/memory.SourcesIndexPath
 internal/core/memory.WithStoreLock
 internal/core/memory.WritePages
-internal/core/oracle.Ceiling
 internal/core/oracle.Denied
 internal/core/oracle.ParseTier
 internal/core/positioning.DefaultConfig
