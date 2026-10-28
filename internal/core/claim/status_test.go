@@ -605,7 +605,19 @@ func TestAHoldTheBlockShowedIsFollowedByItsLapse(t *testing.T) {
 		t.Fatalf("the next prompt shows %q; want the lapse shown once", again)
 	}
 	// Past the shown markers' life the lapse is not shown again: it is no
-	// news, though the spent branch is still on origin.
+	// news, though the spent branch is still on origin. The markers carry
+	// the real clock's mtime, so they are aged to the lapse for the prune to
+	// drop them; only the lapse's own age then keeps the line back.
+	shown := filepath.Join(pat.dir, filepath.FromSlash(statusBranches.stateDir), shownDir)
+	marks, err := os.ReadDir(shown)
+	if err != nil || len(marks) == 0 {
+		t.Fatalf("the shown markers: %v, %d", err, len(marks))
+	}
+	for _, m := range marks {
+		if err := os.Chtimes(filepath.Join(shown, m.Name()), t0.Add(lease.Max+time.Hour), t0.Add(lease.Max+time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	w.set(t0.Add(lease.Max + time.Hour + shownKeep + 24*time.Hour))
 	pat.status(nil)
 	if later := pat.notes(); strings.Contains(later, "lapsed") {
