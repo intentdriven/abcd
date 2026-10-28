@@ -102,3 +102,55 @@ func TestBuildTakeOverIsPassedThrough(t *testing.T) {
 		t.Fatalf("the take-over is the laptop's reservation's child: %s, want %s", parent, held)
 	}
 }
+
+// TestBuildWarnsOfADirectoryInItsFootprint (iss-2610230016544142): a build
+// whose spec's footprint names a directory git tracks reserves it as it
+// stands, and warns on stderr, naming the directory and the tracked files it
+// covers; --json carries the warning as reservation_warnings.
+func TestBuildWarnsOfADirectoryInItsFootprint(t *testing.T) {
+	w := newReserveWorld(t)
+	reservedRecords(t, w)
+	p := w.clone(t, "p", octoMail)
+	writeRel(t, p, ".abcd/development/specs/open/spc-8-ready.md",
+		strings.Replace(readyReservedSpec, "- packages: d.go", "- packages: d.go, .abcd/work/issues", 1))
+	gitCmd(t, p, "add", "-A")
+	gitCommit(t, p, "commit", "-q", "-m", "the spec names a directory")
+
+	code, out, errOut := reserveRun(t, p, "build", "itd-8")
+	const warning = `abcd build: warning: footprint ".abcd/work/issues" is a directory covering 2 tracked files on origin/main`
+	if code != 0 || !strings.Contains(out, "reservation: reserved itd-8") || !strings.Contains(errOut, warning) ||
+		!strings.Contains(errOut, "name the files the work changes instead") || strings.Contains(out, "warning") {
+		t.Fatalf("abcd build over a directory footprint: exit %d\nstdout %q\nstderr %q", code, out, errOut)
+	}
+	code, raw, errOut := reserveRun(t, p, "build", "itd-8", "--release")
+	if code != 0 {
+		t.Fatalf("release: exit %d\n%s%s", code, raw, errOut)
+	}
+	code, raw, errOut = reserveRun(t, p, "build", "itd-8", "--json")
+	var got struct {
+		ReservationWarnings []string `json:"reservation_warnings"`
+	}
+	if err := json.Unmarshal([]byte(raw), &got); code != 0 || err != nil || len(got.ReservationWarnings) != 1 ||
+		!strings.Contains(got.ReservationWarnings[0], `".abcd/work/issues" is a directory covering 2 tracked files`) || strings.Contains(errOut, "warning") {
+		t.Fatalf("abcd build --json: exit %d, %+v (%v)\n%s%s", code, got, err, raw, errOut)
+	}
+}
+
+// TestBuildNextWarnsOfADirectoryInItsFootprint: `build next` starts the run
+// it picks as `build <itd-N>` does, so its text form warns on stderr of a
+// directory the picked spec's footprint names, as the start's does.
+func TestBuildNextWarnsOfADirectoryInItsFootprint(t *testing.T) {
+	w := newReserveWorld(t)
+	reservedRecords(t, w)
+	p := w.clone(t, "p", octoMail)
+	writeRel(t, p, ".abcd/development/specs/open/spc-8-ready.md",
+		strings.Replace(readyReservedSpec, "- packages: d.go", "- packages: d.go, .abcd/work/issues", 1))
+	gitCmd(t, p, "add", "-A")
+	gitCommit(t, p, "commit", "-q", "-m", "the spec names a directory")
+
+	code, out, errOut := reserveRun(t, p, "build", "next")
+	const warning = `abcd build next: warning: footprint ".abcd/work/issues" is a directory covering 2 tracked files on origin/main`
+	if code != 0 || !strings.Contains(out, "picked itd-8") || !strings.Contains(errOut, warning) || strings.Contains(out, "warning") {
+		t.Fatalf("abcd build next over a directory footprint: exit %d\nstdout %q\nstderr %q", code, out, errOut)
+	}
+}

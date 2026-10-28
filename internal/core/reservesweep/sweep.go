@@ -164,7 +164,10 @@ func Sweep(root string, o Options) (Report, error) {
 			rep.DefaultUnread = "this checkout knows no default branch of " + claim.Remote
 		}
 	}
-	tree, err := gitutil.EmptyTree(root)
+	// The name alone: the sweep compares each chain's trees with it and never
+	// commits on it, so a dry run leaves the object store as it found it
+	// (iss-2610231038335615).
+	tree, err := gitutil.EmptyTreeName(root)
 	if err != nil {
 		return rep, fmt.Errorf("%s; nothing was deleted", fsutil.RedactHome(err.Error()))
 	}

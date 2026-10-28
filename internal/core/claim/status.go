@@ -615,7 +615,7 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 		}
 		if len(fresh) > 0 {
 			if tree == "" {
-				if tree, err = emptyTree(root); err != nil {
+				if tree, err = emptyTreeName(root); err != nil {
 					return in, err
 				}
 			}
