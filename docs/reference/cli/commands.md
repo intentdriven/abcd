@@ -4320,7 +4320,8 @@ abcd-reserved/ branch, with pruning, and of the default branch, then every
 reservation with its record, holder, footprint, effective expiry and state
 (live, expired, released, or unreadable with its reason and the end of its
 hold), a live drain lane's stage when its renewal names one, the worktree of
-this repository on this machine that made one (by its directory's name),
+this repository on this machine that made one (by its folder's name, with
+parent folders added only where two would otherwise read alike),
 each person's count of live reservations, the reader's own counted by copy
 (this copy, each such worktree, elsewhere) against this machine's
 reservation.max_live with a warning from four fifths of it, since every

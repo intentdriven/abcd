@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The states a listing shows a reservation in.
@@ -357,8 +358,9 @@ func (s *Snapshot) NameSiblings(root, holder string) {
 
 // siblingAt is one sibling worktree as abcd names it: Name, the shortest
 // tail of its path that tells it apart (siblingTail), where a listing shows
-// it, and Path, home-redacted, where a hold's words name it. A copied
-// worktree, two holding one key, joins both of each with " or ".
+// it, and Path, home-redacted, where a hold's words name it; both
+// terminal-safe. A copied worktree, two holding one key, joins both of each
+// with " or ".
 type siblingAt struct{ Name, Path string }
 
 // siblingCopies maps the copy key kept in each other worktree of the
@@ -386,7 +388,7 @@ func siblingCopies(root, own string) (sibs map[string]siblingAt, unread string) 
 		if key == "" || key == own {
 			continue
 		}
-		at := siblingAt{Name: siblingTail(wt.Path, paths), Path: fsutil.RedactHome(wt.Path)}
+		at := siblingAt{Name: termsafe.Sanitize(siblingTail(wt.Path, paths)), Path: termsafe.Sanitize(fsutil.RedactHome(wt.Path))}
 		if prev, ok := sibs[key]; ok {
 			at = siblingAt{Name: prev.Name + " or " + at.Name, Path: prev.Path + " or " + at.Path}
 		}
@@ -398,14 +400,15 @@ func siblingCopies(root, own string) (sibs map[string]siblingAt, unread string) 
 // siblingTail is the fewest trailing folders of p that no other of paths ends
 // in: its directory's name alone unless another worktree shares it
 // (iss-2610272352168723), and the whole of p, home-redacted, when every tail
-// is shared.
+// is shared. Tails are cut from the home-redacted paths, so the folders of
+// the home directory itself never show.
 func siblingTail(p string, paths []string) string {
-	segs := strings.Split(filepath.ToSlash(filepath.Clean(p)), "/")
+	segs := tailSegments(p)
 	for k := 1; k < len(segs); k++ {
 		tail := strings.Join(segs[len(segs)-k:], "/")
 		shared := false
 		for _, q := range paths {
-			qs := strings.Split(filepath.ToSlash(filepath.Clean(q)), "/")
+			qs := tailSegments(q)
 			if q != p && len(qs) >= k && strings.Join(qs[len(qs)-k:], "/") == tail {
 				shared = true
 				break
@@ -416,6 +419,11 @@ func siblingTail(p string, paths []string) string {
 		}
 	}
 	return fsutil.RedactHome(p)
+}
+
+// tailSegments is p cleaned and home-redacted, split into its folders.
+func tailSegments(p string) []string {
+	return strings.Split(filepath.ToSlash(fsutil.RedactHome(filepath.Clean(p))), "/")
 }
 
 // ownCopyKey is the copy key the checkout at root keeps, read without minting

@@ -181,7 +181,8 @@ type CapError struct {
 	// (maxlive.go); zero means MaxLive.
 	Limit int
 	// Note says why the machine's configuration was read past for the cap,
-	// "" when it was not.
+	// and why the worktrees could not be listed to name the copies; "" when
+	// neither.
 	Note string
 }
 
@@ -268,8 +269,8 @@ func capRefusalIn(s *Snapshot, root, holder string, mine []string, limit int, no
 }
 
 // capRefusal names the cap and the holder's live reservations, as the view
-// lists them, the cap they reached, and note, when the machine's
-// configuration was read past for it.
+// lists them, the cap they reached, and note: why the machine's
+// configuration was read past for it, or the worktrees could not be listed.
 func capRefusal(mine []string, where map[string]string, limit int, note string) error {
 	return &CapError{Held: slices.Clone(mine), Where: where, Limit: limit, Note: note}
 }

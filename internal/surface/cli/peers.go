@@ -69,7 +69,8 @@ type reservationRow struct {
 	Holder string `json:"holder,omitempty"`
 	Copy   string `json:"copy,omitempty"`
 	// Sibling is the other worktree of this repository, on this machine,
-	// whose copy made the reservation: its directory's name, never its key.
+	// whose copy made the reservation: its folder's name, with parent folders
+	// added only where two would otherwise read alike, never its key.
 	Sibling         string   `json:"sibling,omitempty"`
 	Footprint       []string `json:"footprint"`
 	ClaimedAt       string   `json:"claimed_at,omitempty"`
@@ -169,7 +170,8 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"reservation with its record, holder, footprint, effective expiry and state\n" +
 			"(live, expired, released, or unreadable with its reason and the end of its\n" +
 			"hold), a live drain lane's stage when its renewal names one, the worktree of\n" +
-			"this repository on this machine that made one (by its directory's name),\n" +
+			"this repository on this machine that made one (by its folder's name, with\n" +
+			"parent folders added only where two would otherwise read alike),\n" +
 			"each person's count of live reservations, the reader's own counted by copy\n" +
 			"(this copy, each such worktree, elsewhere) against this machine's\n" +
 			"reservation.max_live with a warning from four fifths of it, since every\n" +

@@ -76,8 +76,9 @@ payload adds:
 - `reservations`: each with its `record`, `holder`, `footprint`,
   `effective_expiry`, `state` and `commit`; `claimed_at` for a readable one;
   `copy: "this"` when it was made from this checkout; `sibling`, for the
-  reader's own, the directory name of the other worktree of this repository
-  on this computer that made it (never its key); `released_by`
+  reader's own, the other worktree of this repository on this computer that
+  made it, by its folder's name with parent folders added only where two
+  would otherwise read alike (never its key); `released_by`
   (`tombstone`, `default-branch` when the record is already resolved,
   won't-fixed, shipped or superseded on origin's default branch, or `tag`
   when a release's tag is on origin) for a released one; and for an `unreadable` one its fixed `unreadable` reason, no

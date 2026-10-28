@@ -327,3 +327,39 @@ func TestTheCapRefusalNamesOnlyTheHoldersOwnCopiesAndWhyNoSiblingIs(t *testing.T
 		}
 	}
 }
+
+// TestASiblingsNameNeverShowsTheHomeFolders (iss-2610272352168723 review):
+// tails are cut from home-redacted paths, so telling two siblings apart never
+// reaches up into the home directory's own folders, the login name among them.
+func TestASiblingsNameNeverShowsTheHomeFolders(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "octo")
+	t.Setenv("HOME", home)
+	paths := []string{filepath.Join(home, "a", "lane-b"), filepath.Join(home, "w", "a", "lane-b")}
+	if got := siblingTail(paths[0], paths); got != "~/a/lane-b" {
+		t.Errorf("siblingTail(%s) = %q; want ~/a/lane-b", paths[0], got)
+	}
+	if got := siblingTail(paths[1], paths); got != "w/a/lane-b" {
+		t.Errorf("siblingTail(%s) = %q; want w/a/lane-b", paths[1], got)
+	}
+}
+
+// TestASiblingsNameAndPathAreTerminalSafe (iss-2610272352153282 review): the
+// one reading of the worktrees masks control characters in a sibling's name
+// and path, so neither reaches a terminal raw from any surface.
+func TestASiblingsNameAndPathAreTerminalSafe(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	sib := p.worktree("lane\x1b[31mb")
+	key, err := CopyKey(sib.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sibs, unread := siblingCopies(p.dir, ownCopyKey(p.dir))
+	at, ok := sibs[key]
+	if unread != "" || !ok {
+		t.Fatalf("siblings = %+v, unread %q; want the worktree listed", sibs, unread)
+	}
+	if strings.ContainsRune(at.Name, 0x1b) || strings.ContainsRune(at.Path, 0x1b) {
+		t.Fatalf("sibling = %+v; want no escape character", at)
+	}
+}
