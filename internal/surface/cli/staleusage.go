@@ -55,6 +55,10 @@ import (
 // binary inside or outside a plugin root without re-execing itself.
 var osExecutable = os.Executable
 
+// checkoutMark is vintage.CheckoutMark, overridable so a test can say whether
+// scripts/abcd started the running binary.
+var checkoutMark = vintage.CheckoutMark
+
 // unknownCommandRe matches cobra's unknown-command line: the token and the
 // command path, both rendered with %q.
 var unknownCommandRe = regexp.MustCompile(`^unknown command ("(?:[^"\\]|\\.)*") for ("(?:[^"\\]|\\.)*")`)
@@ -146,6 +150,8 @@ func staleUsageNote(root *cobra.Command, args []string, msg string) string {
 	if rootOK {
 		if what, documented := surfaceDocuments(pluginRoot, skew); documented {
 			switch {
+			case executableIsLeftCheckoutBuild():
+				return fmt.Sprintf("the plugin surface documents %s, which is not in this build — a build scripts/abcd left in a checkout's local tier, run directly, so it is that checkout's tree as it stood when the script last ran; run it through the checkout's `scripts/abcd`, which rebuilds it first", what)
 			case inRoot && isSourceCheckout(pluginRoot):
 				return fmt.Sprintf("this binary predates %s its command surface documents — the plugin root is a source checkout, so rebuild it with `make build`", what)
 			case inRoot:
@@ -442,6 +448,23 @@ func executableIsCheckoutBuild(root string) bool {
 	}
 	dir, base := filepath.Split(exe)
 	return filepath.Join(canonicalPath(dir), base) == filepath.Join(canonicalPath(root), filepath.FromSlash(abcdrepo.CheckoutBuildRel))
+}
+
+// executableIsLeftCheckoutBuild reports whether the running binary sits at a
+// checkout's abcdrepo.CheckoutBuildRel but is not the build scripts/abcd has
+// just made and started: a copy left there and run directly, which is as old
+// as the script's last run, whatever the tree has become since.
+func executableIsLeftCheckoutBuild() bool {
+	exe, err := osExecutable()
+	if err != nil {
+		return false
+	}
+	dir, base := filepath.Split(exe)
+	exe = filepath.Join(canonicalPath(dir), base)
+	if !strings.HasSuffix(filepath.ToSlash(exe), "/"+abcdrepo.CheckoutBuildRel) {
+		return false
+	}
+	return !fsutil.SameFile(exe, checkoutMark())
 }
 
 func canonicalPath(p string) string {

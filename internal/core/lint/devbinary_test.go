@@ -346,7 +346,8 @@ func TestTheCheckoutsAbcdBuildsElsewhereWhenTheTierIsReadOnly(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(local, 0o755) })
 
-	got := runDevBinary(t, root, []string{"FAKE_EXIT=3"}, "reserve", "iss-1")
+	// A mark an earlier run left in the environment must not reach this build.
+	got := runDevBinary(t, root, []string{"FAKE_EXIT=3", abcdrepo.CheckoutBuildEnv + "=/inherited/" + abcdrepo.CheckoutBuildRel}, "reserve", "iss-1")
 	if got.code != 3 {
 		t.Errorf("with a read-only tier scripts/abcd exited %d, want the binary's 3\nstderr:\n%s", got.code, got.stderr)
 	}

@@ -27,6 +27,9 @@
 # directory. A tree that does not build exits 2 and runs nothing, so a broken
 # build never reads as a guard's block.
 set -euo pipefail
+# The mark below vouches for the build this run makes and starts, and for
+# nothing an earlier run left in the environment.
+unset ABCD_CHECKOUT_BUILD
 
 src="${BASH_SOURCE[0]}"
 while [ -L "$src" ]; do

@@ -3,6 +3,7 @@ package vintage
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strings"
 
@@ -39,6 +40,8 @@ func GoRunModule() (module string, ok bool) {
 // tree as it stood a moment ago, but it stays on disk: a copy left there and run
 // directly, after the tree has moved on, carries no mark and reports ok false.
 // Which checkout it is the build of is the caller's to check, against exe.
+// The mark is read as the process started (checkoutMark), so a process this
+// binary starts, which never sees it, cannot pass for the script's run.
 func CheckoutBuild() (module, exe string, ok bool) {
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
@@ -48,24 +51,45 @@ func CheckoutBuild() (module, exe string, ok bool) {
 	if err != nil {
 		return "", "", false
 	}
-	module, ok = checkoutBuildOf(bi.Path, bi.Main.Path, bi.Main.Version, bi.Settings, exe, os.Getenv(abcdrepo.CheckoutBuildEnv))
+	module, ok = checkoutBuildOf(bi.Path, bi.Main.Path, bi.Main.Version, bi.Settings, exe, checkoutMark)
 	return module, exe, ok
 }
+
+// checkoutMark is abcdrepo.CheckoutBuildEnv as this process started with it.
+// The mark vouches only for the binary scripts/abcd has just built and run, so
+// it is taken out of the environment as the package initialises: a process
+// abcd starts (a session a load waiter or a build runs, a hook) and anything
+// that runs the local-tier binary by path from there never inherits it.
+var checkoutMark = takeEnv(abcdrepo.CheckoutBuildEnv)
+
+// CheckoutMark is the executable scripts/abcd named when it started this
+// process (abcdrepo.CheckoutBuildEnv), or "" when nothing did.
+func CheckoutMark() string { return checkoutMark }
+
+// takeEnv returns key's value and removes it from the process environment.
+func takeEnv(key string) string {
+	v := os.Getenv(key)
+	os.Unsetenv(key)
+	return v
+}
+
+// goRunExe is the place go run links its executable: <name> in the exe
+// directory of an action directory (b001, b002, ...) of the build's work
+// directory, which os.MkdirTemp names go-build<digits> under GOTMPDIR or the
+// system temporary directory.
+var goRunExe = regexp.MustCompile(`/go-build[0-9]+/b[0-9]{3,}/exe/[^/]+$`)
 
 // goRunModuleOf is GoRunModule's pure core: the command's package path, the
 // main module's path and version, the build settings, and the executable's
 // path. A go run build is a development build ("(devel)") of the module's
-// cmd/abcd, with no vcs.revision, run from a go-build work directory.
+// cmd/abcd, with no vcs.revision, linked where go run links it (goRunExe). Any
+// directory merely named go-build... on the way, such as a checkout whose
+// local tier holds a binary left there, is not that place.
 func goRunModuleOf(pkgPath, mainPath, mainVersion string, settings []debug.BuildSetting, exe string) (string, bool) {
-	if !unstampedCommand(pkgPath, mainPath, mainVersion, settings) {
+	if !unstampedCommand(pkgPath, mainPath, mainVersion, settings) || !goRunExe.MatchString(filepath.ToSlash(exe)) {
 		return "", false
 	}
-	for _, part := range strings.Split(filepath.ToSlash(filepath.Dir(exe)), "/") {
-		if strings.HasPrefix(part, "go-build") {
-			return mainPath, true
-		}
-	}
-	return "", false
+	return mainPath, true
 }
 
 // checkoutBuildOf is CheckoutBuild's core: the build facts goRunModuleOf reads,

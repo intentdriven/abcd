@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/vintage"
@@ -396,25 +397,57 @@ func TestCheckoutBuildInTheLocalTierIsNotToldToRebuild(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "cmd", "abcd", "main.go"), []byte("package main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	bin := filepath.Join(root, ".abcd", ".work.local", "bin")
-	if err := os.MkdirAll(bin, 0o755); err != nil {
+	exe := filepath.Join(root, filepath.FromSlash(abcdrepo.CheckoutBuildRel))
+	if err := os.MkdirAll(filepath.Dir(exe), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	setExecutable(t, filepath.Join(bin, "abcd"))
+	if err := os.WriteFile(exe, []byte("binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	setExecutable(t, exe)
 	prev := core.Version
 	core.Version = "dev"
 	t.Cleanup(func() { core.Version = prev })
 
-	_, _, stderr := runMain(t, "frobnicate")
-	want := "abcd: the plugin surface documents the `frobnicate` command, which is not in this build — an unstamped `dev` build, not a release binary, so the surface is no evidence that it is stale\n"
-	if !strings.HasSuffix(stderr, want) {
-		t.Fatalf("stderr =\n%q\nwant suffix\n%q", stderr, want)
-	}
-	for _, not := range []string{"make build", "abcd update", pluginUpdateRemedy} {
-		if strings.Contains(stderr, not) {
-			t.Errorf("scripts/abcd's build must not be advised %q:\n%s", not, stderr)
+	t.Run("started by the script", func(t *testing.T) {
+		setCheckoutMark(t, exe)
+		_, _, stderr := runMain(t, "frobnicate")
+		want := "abcd: the plugin surface documents the `frobnicate` command, which is not in this build — an unstamped `dev` build, not a release binary, so the surface is no evidence that it is stale\n"
+		if !strings.HasSuffix(stderr, want) {
+			t.Fatalf("stderr =\n%q\nwant suffix\n%q", stderr, want)
 		}
-	}
+		for _, not := range []string{"make build", "abcd update", pluginUpdateRemedy} {
+			if strings.Contains(stderr, not) {
+				t.Errorf("scripts/abcd's build must not be advised %q:\n%s", not, stderr)
+			}
+		}
+	})
+	// A copy left in the tier and run directly carries no mark: it is the tree
+	// as it stood when the script last ran, so a page naming what it lacks may
+	// well be proof it is old, and the way to a current one is the script.
+	t.Run("left there and run directly", func(t *testing.T) {
+		setCheckoutMark(t, "")
+		_, _, stderr := runMain(t, "frobnicate")
+		for _, want := range []string{"`frobnicate` command", "run directly", "`scripts/abcd`"} {
+			if !strings.Contains(stderr, want) {
+				t.Errorf("stderr lacks %q:\n%s", want, stderr)
+			}
+		}
+		for _, not := range []string{"no evidence that it is stale", "make build", "abcd update", pluginUpdateRemedy} {
+			if strings.Contains(stderr, not) {
+				t.Errorf("a left copy must not be told %q:\n%s", not, stderr)
+			}
+		}
+	})
+}
+
+// setCheckoutMark says which executable scripts/abcd started, as the binary
+// read it from its environment: "" for a run the script did not start.
+func setCheckoutMark(t *testing.T, path string) {
+	t.Helper()
+	prev := checkoutMark
+	checkoutMark = func() string { return path }
+	t.Cleanup(func() { checkoutMark = prev })
 }
 
 // A flag is documented for the sub-verb typed only when that sub-verb's own

@@ -165,7 +165,7 @@ func staleBinaryRefusal(cur vintage.Current, cwd string) string {
 	}
 	if !cur.Known {
 		if top, err := gitutil.Toplevel(cwd); err == nil && top != "" && abcdrepo.LooksLikeSourceTree(top) {
-			return "the running abcd binary's vintage cannot be determined (an unstamped or modified/dirty build), so it may be applying stale install logic. In this source checkout, run it as `scripts/abcd ahoy install`, which builds the tree as it stands, or re-run with --allow-stale-binary to proceed anyway."
+			return "the running abcd binary's vintage cannot be determined (an unstamped or modified/dirty build), so it may be applying stale install logic. In this source checkout, run it as `scripts/abcd ahoy install`, which builds the tree as it stands into the checkout's local tier; where that tier cannot be written, or to proceed anyway, re-run with --allow-stale-binary."
 		}
 		return "the running abcd binary's vintage cannot be determined (an unstamped or modified/dirty build), so it may be applying stale install logic. Rebuild it with `make build`, or re-run with --allow-stale-binary to proceed anyway."
 	}

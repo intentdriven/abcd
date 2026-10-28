@@ -28,6 +28,10 @@ func TestGoRunModuleOf(t *testing.T) {
 		{"a released module version", mod + "/cmd/abcd", mod, "v0.14.0", goRunExe, nil, false},
 		{"a go test binary", mod + "/internal/core/ahoy.test", mod, "(devel)", goRunExe, nil, false},
 		{"another module's command", "example.com/other/cmd/abcd", "example.com/other", "(devel)", goRunExe, nil, true},
+		{"go run under GOTMPDIR", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/gotmp/go-build98/b042/exe/abcd", nil, true},
+		{"a local-tier binary in a checkout named go-build...", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/wt/go-build-cache/" + abcdrepo.CheckoutBuildRel, nil, false},
+		{"a binary in a go-build directory but not where go run links", mod + "/cmd/abcd", mod, "(devel)", "/var/folders/xy/T/go-build1234/abcd", nil, false},
+		{"a binary in a directory only named like a work directory", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/go-build-tools/b001/exe/abcd", nil, false},
 	} {
 		got, ok := goRunModuleOf(tc.pkg, tc.main, tc.version, tc.settings, tc.ex)
 		if ok != tc.want {
@@ -36,6 +40,19 @@ func TestGoRunModuleOf(t *testing.T) {
 		if ok && got != tc.main {
 			t.Errorf("%s: module = %q, want %q", tc.name, got, tc.main)
 		}
+	}
+}
+
+// TestTheMarkIsTakenOutOfTheEnvironment: the mark vouches only for the binary
+// the script ran, so the binary reads it and removes it, and nothing it starts
+// can inherit it (iss-2610241240133009).
+func TestTheMarkIsTakenOutOfTheEnvironment(t *testing.T) {
+	t.Setenv(abcdrepo.CheckoutBuildEnv, "/x/"+abcdrepo.CheckoutBuildRel)
+	if got := takeEnv(abcdrepo.CheckoutBuildEnv); got != "/x/"+abcdrepo.CheckoutBuildRel {
+		t.Errorf("takeEnv = %q, want the mark", got)
+	}
+	if v, set := os.LookupEnv(abcdrepo.CheckoutBuildEnv); set {
+		t.Errorf("the mark is still in the environment a child would inherit: %q", v)
 	}
 }
 

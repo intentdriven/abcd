@@ -503,9 +503,12 @@ and the person-only questions alone: the abcd download, the shell settings,
 the commit checks and the commit identity, plus the status line where it can be
 wired and one question for each tool it offers to install.
 
-In a source checkout of abcd, `go run ./cmd/abcd ahoy install` is treated as
-current: `go run` builds the checkout as it stands, so its unstamped vintage is
-not refused as stale there. Any other unstamped binary is still refused. On
+In a source checkout of abcd, run it as `scripts/abcd ahoy install`: the script
+builds the checkout as it stands and starts that build, so its unstamped
+vintage is not refused as stale there. So is `go run ./cmd/abcd ahoy install`,
+though `go run` reports every nonzero exit as 1. Any other unstamped binary is
+still refused, a copy left in the checkout's local tier and run directly
+included. On
 the `PATH` there means a release copy, as anywhere else: the `--dev` shim
 rebuilds abcd on every call and is never the status line's entry.
 
