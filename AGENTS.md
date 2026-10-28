@@ -198,39 +198,14 @@ in `.abcd/rules.json` injects this rule on a prompt that names `abcd` or any of
 its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`).
 
 **The hooks run the latest reviewed default branch where the person opts in.**
-The `go run` rule reaches an agent; it cannot reach the plugin's hooks, which
-run the installed release, so in a source checkout the shell guard and the rules
-loader lag `main` by up to a release. A checkout listed in
-`~/.abcd.noindex/dogfood-roots` runs, in every hook, a build of its reviewed
-branch's tip as the remote the person declares reports it. A line is the
-checkout's absolute path, a tab, that remote's `https://` or ssh URL
-(`ssh://…` or `user@host:path`), and optionally a tab and the branch (`main`
-when left out); `#` starts a comment, and the file is a regular file you own
-that no one else can write, the `trusted-roots` shape. The remote must be one
-the agent cannot move, such as a protected branch on a forge: a filesystem
-path or `file://` URL names a repository your account, and so the agent, can
-write, and `git://` and `http://` let anyone on the network path choose the
-tip, so a line declaring any of them is refused, and so is one whose host is
-this machine by name (`localhost` or a loopback address). An ssh alias that
-resolves here is one the agent can move too, but abcd cannot tell it from a
-forge, so declaring one is yours to avoid. A line with no remote, or a
-refused one, builds nothing and says so on stderr, and the installed release
-runs. The tip is read with `git ls-remote` by a
-background builder, never by a hook, and recorded in the store; only that record
-chooses the build. The checkout's HEAD, its remote-tracking refs, `origin/HEAD`
-and its remote config choose nothing, so no agent commit, and no ref or remote
-an agent moves, changes the guard that judges the agent's next command: a moved
-`refs/remotes/origin/<branch>` only prompts one more check of the declared
-remote, as does a record older than 30 minutes. The build is made into
-`~/.abcd.noindex/dogfood/<root-sha>/<commit>/` once the checkout holds the tip
-(a `git fetch` brings it); until it is ready, or when the check or build fails,
-the installed release runs and says so on stderr. Listing the main checkout
-covers the worktrees it records. Anything running as your account can still
-edit the declaration or replace a file in the store, and the builder and the
-hooks inherit the account's whole environment, which stays the account's: the
-go toolchain, its module cache and `GOENV`, `PATH`, git's own variables and
-certificate settings, proxies, and `~/.ssh`, among the rest. The opt-in is the
-person's own act, never an agent's; for this repository it is
+The hooks run the installed release, which `go run` cannot reach. A checkout
+listed in `~/.abcd.noindex/dogfood-roots` (its path, a tab, the `https://` or
+ssh URL of a remote no agent can move, optionally a tab and the branch) runs, in
+every hook, a build of that branch's tip as the declared remote reports it;
+nothing in the checkout chooses it, and until it is ready, or when it fails, the
+installed release runs and says so. The opt-in is the person's act, never an
+agent's; the `DOGFOODING` domain in `.abcd/rules.json` carries the whole rule.
+For this repository the line is
 `mkdir -p ~/.abcd.noindex && printf '%s\t%s\t%s\n' '<checkout>' 'https://github.com/intentdriven/abcd.git' main >> ~/.abcd.noindex/dogfood-roots`.
 
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
