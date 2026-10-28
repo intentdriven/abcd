@@ -15,9 +15,11 @@
 package interview
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -214,20 +216,22 @@ const MaxAnswersBytes = 1 << 20
 // a repeated one refuses, so a mistyped key never drops an answer without a
 // word. It refuses another schema, a file for another interview, an answer
 // with no id or no value, an id answered twice, and an answered_in that is
-// neither Terminal nor Claude Code.
+// neither Terminal nor Claude Code. A refusal names the answer by its ordinal,
+// or the line a parse stopped at, and says what is wrong with it; it never
+// repeats an id, a value or a key the file carries.
 func ParseAnswers(data []byte, interview string) (Answers, error) {
 	if len(data) > MaxAnswersBytes {
 		return Answers{}, fmt.Errorf("the answers file exceeds %d bytes", MaxAnswersBytes)
 	}
 	var a Answers
 	if err := jsonstrict.Decode(data, &a); err != nil {
-		return Answers{}, fmt.Errorf("the answers file: %w", err)
+		return Answers{}, fmt.Errorf("the answers file: %s", describeAnswersDecode(data, err))
 	}
 	if a.SchemaVersion != SchemaVersion {
 		return Answers{}, fmt.Errorf("the answers file has schema_version %d; this abcd reads %d", a.SchemaVersion, SchemaVersion)
 	}
 	if a.Interview != interview {
-		return Answers{}, fmt.Errorf("the answers file is for the %q interview, not %q", a.Interview, interview)
+		return Answers{}, fmt.Errorf("the answers file names another interview (%s), not %q", termsafe.DescribeRefused(a.Interview), interview)
 	}
 	seen := map[string]bool{}
 	for i, e := range a.Answers {
@@ -236,15 +240,46 @@ func ParseAnswers(data []byte, interview string) (Answers, error) {
 		case id == "":
 			return Answers{}, fmt.Errorf("answer %d has no id", i+1)
 		case seen[id]:
-			return Answers{}, fmt.Errorf("%q is answered twice", id)
+			return Answers{}, fmt.Errorf("answer %d answers an id an earlier answer already answers (the id is not repeated here)", i+1)
 		case strings.TrimSpace(e.Value) == "":
-			return Answers{}, fmt.Errorf("%q has no value", id)
+			return Answers{}, fmt.Errorf("answer %d has no value", i+1)
 		case e.AnsweredIn != "" && !ValidAnsweredIn(e.AnsweredIn):
-			return Answers{}, fmt.Errorf("%q: answered_in %q is neither %q nor %q", id, e.AnsweredIn, Terminal, ClaudeCode)
+			return Answers{}, fmt.Errorf("answer %d: answered_in is %s, neither %q nor %q", i+1, termsafe.DescribeRefused(e.AnsweredIn), Terminal, ClaudeCode)
 		}
 		seen[id] = true
 	}
 	return a, nil
+}
+
+// describeAnswersDecode says why an answers file did not decode without
+// repeating its text: jsonstrict and encoding/json name a repeated or unknown
+// key, quote the character a syntax error stopped at and repeat a number of
+// the wrong type. It names the line, or the field the shape defines, instead.
+func describeAnswersDecode(data []byte, err error) string {
+	var dup *jsonstrict.DuplicateKeyError
+	var syn *json.SyntaxError
+	var typ *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &dup):
+		return "a key is repeated in one object, and last-wins is silent, so it is refused (the key is not repeated here)"
+	case errors.Is(err, jsonstrict.ErrTrailing):
+		return err.Error()
+	case errors.As(err, &syn):
+		return fmt.Sprintf("it is not valid JSON at line %d", lineAt(data, syn.Offset))
+	case errors.As(err, &typ):
+		return fmt.Sprintf("the %s field at line %d holds a value of the wrong type (it takes %s)", typ.Field, lineAt(data, typ.Offset), typ.Type)
+	case strings.HasPrefix(err.Error(), "json: unknown field "):
+		return "it carries a key an answers file does not define (the key is not repeated here); the keys are schema_version, interview and answers, and each answer's id, value, note and answered_in"
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		return "it ends before its object does"
+	}
+	return "it does not decode as an answers file"
+}
+
+// lineAt is the 1-based line of byte offset off in data.
+func lineAt(data []byte, off int64) int {
+	off = min(max(off, 0), int64(len(data)))
+	return 1 + bytes.Count(data[:off], []byte("\n"))
 }
 
 // Find returns the answer the file gives the question id.

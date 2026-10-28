@@ -74,8 +74,22 @@ type reserveOutput struct {
 	// on stderr. GeneratedUnread is why no generated file was recognised.
 	OwnOverlap      []reserveOwnOverlap `json:"own_overlap,omitempty"`
 	GeneratedUnread string              `json:"generated_unread,omitempty"`
-	note            string
-	warnings        []string
+	// DirectoryFootprint is each footprint path naming a directory git
+	// tracks, with the tracked files beneath it (iss-2610230016544142): the
+	// reservation is made all the same, and the text form warns of each on
+	// stderr.
+	DirectoryFootprint []reserveDirectory `json:"directory_footprint,omitempty"`
+	note               string
+	warnings           []string
+}
+
+// reserveDirectory is a footprint path naming a directory: the tracked files
+// beneath it on the branch it was read from (-1 when git could not count
+// them).
+type reserveDirectory struct {
+	Path         string `json:"path"`
+	TrackedFiles int    `json:"tracked_files"`
+	On           string `json:"on"`
 }
 
 // reserveOwnOverlap is a path shared with one's own reservation from another
@@ -163,7 +177,10 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"directory never is. When that declaration cannot be read nothing is shared, and\n" +
 			"the act says why (generated_unread in --json). Your own reservation sharing a\n" +
 			"path with yours from another copy is made, and warns on stderr (own_overlap in\n" +
-			"--json).\n\n" +
+			"--json). Name files, not directories: a directory holds off every reservation of\n" +
+			"a file inside it. A footprint path naming a directory git tracks is reserved all\n" +
+			"the same, and warns on stderr, naming it and how many tracked files it covers on\n" +
+			"origin's default branch, or HEAD (directory_footprint in --json).\n\n" +
 			"A reservation, a renewal and a take-over consult the embargo store on this\n" +
 			"machine before anything is pushed, as an announcement does: a record the store\n" +
 			"holds, or a footprint naming something under embargo, is refused (exit 2) with\n" +
@@ -352,6 +369,11 @@ func reserveView(res claim.Result) reserveOutput {
 		out.OwnOverlap = append(out.OwnOverlap, reserveOwnOverlap{Path: termsafe.Sanitize(o.Path), Record: termsafe.Sanitize(o.Record),
 			EffectiveExpiry: rfc3339(o.Expiry)})
 		out.warnings = append(out.warnings, o.Warning())
+	}
+	for _, d := range res.Directories {
+		out.DirectoryFootprint = append(out.DirectoryFootprint, reserveDirectory{Path: termsafe.Sanitize(d.Path),
+			TrackedFiles: d.Files, On: termsafe.Sanitize(d.On)})
+		out.warnings = append(out.warnings, d.Warning())
 	}
 	return out
 }

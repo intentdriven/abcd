@@ -35,7 +35,16 @@ Run, naming every repository-relative path the work will change, once per path:
 ```
 
 The record is an issue (`iss-N`) or an intent (`itd-N`). The footprint is
-required. `--lease <duration>` sets how long the reservation holds, from `1m`
+required. Name files, not directories: a directory holds off every other
+reservation of any file inside it, so a lane holding a whole package keeps
+every unrelated lane that touches one file of it waiting. A footprint path
+naming a directory git tracks is still reserved, exit 0, and warns on stderr,
+`abcd reserve: warning: footprint "<path>" is a directory covering <n> tracked
+files on <branch>, and holds off every other reservation of a file inside it;
+reserved anyway: name the files the work changes instead`. The branch is
+`origin`'s default branch as last fetched, or `HEAD` for a directory only it
+holds; a path neither holds as a directory, such as a file the work will add,
+draws no warning. `--lease <duration>` sets how long the reservation holds, from `1m`
 to `24h`; the default is two hours. Running the same command again from the
 same copy renews it.
 
@@ -59,7 +68,10 @@ allows (<owner>/<name>)`. Pass either on to the user.
 another copy, as `path`, `record` and `effective_expiry` (see **When it
 refuses**); the text form warns of each on stderr. `generated_unread` says why
 no generated file was recognised, so every shared path was judged an overlap.
-Pass both on to the user.
+`directory_footprint` lists each footprint path naming a directory, as `path`,
+`tracked_files` (`-1` when git could not count them) and `on`, the branch it
+was read from; the text form warns of each on stderr. Pass them on to the
+user, and reserve again naming the files the work changes.
 
 Tell the user what was reserved and until when.
 

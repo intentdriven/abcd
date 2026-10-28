@@ -1,7 +1,7 @@
 # Coordinating parallel headless agents on one repository: state of the art
 
 Dated 2026-10-17. A state-of-the-art pass behind the draft intent
-[itd-2610170634394993](../../intents/drafts/itd-2610170634394993-several-headless-agents-work-one.md), asked for by the technical facilitator
+[itd-2610170634394993](../../intents/planned/itd-2610170634394993-several-headless-agents-work-one.md), asked for by the technical facilitator
 after the evening of 2026-10-16. The question: how abcd, run from the
 command line, should coordinate several headless agents working in
 parallel on one repository, so they use the machine and the models well
