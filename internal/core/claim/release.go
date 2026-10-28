@@ -110,14 +110,17 @@ type Hold struct {
 	Undated   bool `json:"undated,omitempty"`
 }
 
-// Text is the line every surface shows a hold by (C8): "release v0.16.0 being
-// cut by @maya: merges are held".
+// Text is the line every surface shows a hold by (C8), naming when it lapses,
+// so a reader that relays or acts on it later can tell it no longer holds
+// (iss-2610241107191205): "release v0.16.0 being cut by @maya: merges are
+// held; the hold lapses at <time> unless the cut renews it".
 func (h Hold) Text() string {
 	if h.Unreadable != "" {
 		return fmt.Sprintf("release %s held by an unreadable reservation (%s) until %s: merges are held",
 			h.Release, h.Unreadable, stamp(h.EffectiveExpiry))
 	}
-	return fmt.Sprintf("release %s being cut by @%s: merges are held", h.Release, h.Holder)
+	return fmt.Sprintf("release %s being cut by @%s: merges are held; the hold lapses at %s unless the cut renews it",
+		h.Release, h.Holder, stamp(h.EffectiveExpiry))
 }
 
 // Line is the line a listing shows a judged hold by (JudgedHolds), by the
@@ -232,6 +235,19 @@ func releaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 		}
 	}
 	return holds, nil
+}
+
+// lapsedCuts is every release cut lapsed at now as this checkout last fetched
+// the reservations (Snapshot.Lapsed), for the prompt hook's notes, which name
+// each once so a session that was shown the hold knows it holds no more. It
+// fetches nothing and pushes nothing.
+func lapsedCuts(root string, now time.Time) ([]Lapsed, error) {
+	now = now.UTC().Truncate(time.Second)
+	snap, err := viewOf(root, now, true, isRelease)
+	if err != nil {
+		return nil, err
+	}
+	return snap.Lapsed(now), nil
 }
 
 // ReleaseHoldsForTest is releaseHolds, for the implement loop's tests of the

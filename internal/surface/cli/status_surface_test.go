@@ -83,7 +83,7 @@ func TestStatusListsEveryoneAndSaysWhatItRead(t *testing.T) {
 		"\n  @octo (claimed): merging #1012, for 30 min  sent ",
 		"\nreservations — as of the fetch 0m ago",
 		"\n  rel-v0.16.0  live  quinn  until ",
-		"\n  release v0.16.0 being cut by @quinn: merges are held\n",
+		"\n  release v0.16.0 being cut by @quinn: merges are held; the hold lapses at ",
 		"\n" + claim.GrantsNothing + "\n",
 	} {
 		if !strings.Contains(stdout, want) {
@@ -110,7 +110,8 @@ func TestStatusListsEveryoneAndSaysWhatItRead(t *testing.T) {
 		a.SentAt == "" || a.Until == "" || a.Commit == "" || a.Text != "@octo (claimed): merging #1012, for 30 min" {
 		t.Fatalf("--json announcement %+v", a)
 	}
-	if len(got.ReleaseHolds) != 1 || got.ReleaseHolds[0].Text != "release v0.16.0 being cut by @quinn: merges are held" ||
+	if len(got.ReleaseHolds) != 1 || !strings.HasPrefix(got.ReleaseHolds[0].Text, "release v0.16.0 being cut by @quinn: merges are held; the hold lapses at ") ||
+		!strings.HasSuffix(got.ReleaseHolds[0].Text, " unless the cut renews it") ||
 		len(got.Reservations) != 1 || got.Reservations[0].Record != "rel-v0.16.0" {
 		t.Fatalf("--json holds %+v, reservations %+v", got.ReleaseHolds, got.Reservations)
 	}

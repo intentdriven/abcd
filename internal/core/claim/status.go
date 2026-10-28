@@ -242,6 +242,10 @@ type StatusView struct {
 	// Holds is every release being cut, judged as the merge hold judges them
 	// (JudgedHolds).
 	Holds []Hold
+	// Lapsed is every release cut whose reservation lapsed with no tag
+	// (Snapshot.Lapsed): the prompt block names each once, so a session
+	// shown the hold is told it holds no more (iss-2610241107191205).
+	Lapsed []Lapsed
 	// holdsUnread is true when the holds could not be read, and the rest of
 	// the view was: the prompt block says so in its own line.
 	holdsUnread bool
@@ -412,6 +416,8 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	var holdsErr error
 	if v.Holds, err = readHolds(root, now, o); err != nil {
 		holdsErr = &holdsUnreadError{err}
+	} else if v.Lapsed, err = readLapsed(root, now); err != nil {
+		holdsErr = &holdsUnreadError{err}
 	}
 	in, err := takeIn(ctx, root, now)
 	if err != nil {
@@ -450,6 +456,9 @@ func (e *holdsUnreadError) Unwrap() error { return e.err }
 // readHolds is ReadStatus's read of the release holds: JudgedHolds, which a
 // test replaces with one that fails.
 var readHolds = JudgedHolds
+
+// readLapsed is ReadStatus's read of the lapsed release cuts: lapsedCuts.
+var readLapsed = lapsedCuts
 
 // intake is what one intake found.
 type intake struct {

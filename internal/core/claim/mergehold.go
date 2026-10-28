@@ -87,14 +87,21 @@ func (m MergeHold) Waits() string {
 		case h.Unreadable != "":
 			waits = append(waits, "wait until "+h.Release+" is tagged or the hold ends at "+stamp(h.EffectiveExpiry))
 		case h.Mine && h.Sibling != "":
-			waits = append(waits, "merge it from "+h.Sibling+", the worktree cutting "+h.Release+", or wait until "+h.Release+" is tagged or that copy releases "+h.Subject)
+			waits = append(waits, "merge it from "+h.Sibling+", the worktree cutting "+h.Release+", or wait until "+h.Release+" is tagged, that copy releases "+h.Subject+lapses(h))
 		case h.Mine:
-			waits = append(waits, "merge it from the copy cutting "+h.Release+", or wait until "+h.Release+" is tagged or that copy releases "+h.Subject)
+			waits = append(waits, "merge it from the copy cutting "+h.Release+", or wait until "+h.Release+" is tagged, that copy releases "+h.Subject+lapses(h))
 		default:
-			waits = append(waits, "ask "+h.Holder+" to merge it or to release "+h.Subject+", or wait until "+h.Release+" is tagged")
+			waits = append(waits, "ask "+h.Holder+" to merge it or to release "+h.Subject+", or wait until "+h.Release+" is tagged"+lapses(h))
 		}
 	}
 	return strings.Join(waits, "; ")
+}
+
+// lapses is the last way a readable hold ends, for Waits: its lapse, after
+// which nothing holds the merge and no person need say so
+// (iss-2610241107191205).
+func lapses(h Hold) string {
+	return " or the hold lapses at " + stamp(h.EffectiveExpiry) + " unrenewed, when nothing holds the merge"
 }
 
 // Notice is the one line that names each release dated ahead and not

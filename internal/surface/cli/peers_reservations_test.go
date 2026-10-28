@@ -309,14 +309,14 @@ func TestPeersShowsTheReleaseHold(t *testing.T) {
 	}
 	h := got.ReleaseHolds[0]
 	if h.Release != "v0.16.0" || h.Subject != "rel-v0.16.0" || h.Holder != "octo" || h.EffectiveExpiry == "" ||
-		h.Text != "release v0.16.0 being cut by @octo: merges are held" {
+		h.Text != "release v0.16.0 being cut by @octo: merges are held; the hold lapses at "+h.EffectiveExpiry+" unless the cut renews it" {
 		t.Fatalf("hold = %+v", h)
 	}
 	if got.LiveByHolder["octo"] != 1 {
 		t.Fatalf("live_by_holder = %v; want octo 1, the release outside the count", got.LiveByHolder)
 	}
 	_, text, _ := reserveRun(t, r, "peers")
-	if !strings.Contains(text, "\n  release v0.16.0 being cut by @octo: merges are held\n") || !strings.Contains(text, "rel-v0.16.0  live  octo") {
+	if !strings.Contains(text, "\n  release v0.16.0 being cut by @octo: merges are held; the hold lapses at ") || !strings.Contains(text, "rel-v0.16.0  live  octo") {
 		t.Fatalf("the text listing lacks the hold line:\n%s", text)
 	}
 
