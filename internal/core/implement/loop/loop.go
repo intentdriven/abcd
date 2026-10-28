@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -576,12 +577,24 @@ func sharedRunFor(repoRoot, session string) (*implement.Run, error) {
 	}
 	if err != nil {
 		if errors.Is(err, implement.ErrRefused) {
-			return nil, refuse(StageClaim, "", "", err.Error(),
+			return nil, refuse(StageClaim, "", "", withoutSession(err.Error(), session),
 				"join the shared run first: `abcd implement join --session <id> --role first|second`")
 		}
 		return nil, err
 	}
 	return run, nil
+}
+
+// withoutSession is msg, a shared-run refusal, with the session it was given
+// named by its flag instead, as typed or as %q quotes it. The loop's refusals
+// reach the --json refusal document build writes, which the error boundary's
+// pass does not read, and the shared run's refusals repeat the name.
+func withoutSession(msg, session string) string {
+	if session == "" {
+		return msg
+	}
+	msg = strings.ReplaceAll(msg, strconv.Quote(session), "the --session given")
+	return strings.ReplaceAll(msg, session, "the --session given")
 }
 
 // claimRefusal maps a refused shared-run claim onto the loop's refusal: a
@@ -593,7 +606,7 @@ func claimRefusal(session, record string, err error) error {
 		return contend("check", CheckPeers, "", err.Error(),
 			"take other work, or coordinate with the peer; `abcd implement` shows what each session holds")
 	case errors.Is(err, implement.ErrRefused):
-		return refuse(StageClaim, "", "", fmt.Sprintf("session %s cannot claim %s: %v", session, record, err),
+		return refuse(StageClaim, "", "", fmt.Sprintf("the --session given cannot claim %s: %s", record, withoutSession(err.Error(), session)),
 			"start the build without --session, or from a session whose bounds allow the lane")
 	}
 	return err

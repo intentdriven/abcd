@@ -1,0 +1,6 @@
+---
+id: dcn-2610272345401009
+slug: a-path-that-exists-in-the-checkout-is
+date: 2026-10-27
+---
+2026-10-27 — A path to something that exists in the working directory is not withheld at the error boundary, a leading part of an argument is withheld only where a refusal visibly cut it, and build's claim-stage refusals name the --session flag instead of the session they were given. Grounds: an existing repository path is what a footprint or record refusal must name for the caller to see the overlap, and nothing secret is a path that exists in the checkout; a leading part followed by an ellipsis, a closing quote or the end of the line is a cut, while one followed by more of a path is a longer path that shares the prefix, so withholding only the first keeps overlap refusals readable. The session refusal was first kept on the premise that only a joined session reaches it. That holds for the claim itself, but opening the shared run for the session refuses any value first, one that is not a name or a name that has not joined, and repeats it; the reason goes into the refusal document build writes under --json, which the error boundary does not read, so both refusals name the flag, like build's other refusals there. Decided by abcd-0b (technical, delegated).
