@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // dogfood_routes_test.go — the routes by which an agent in a listed checkout
@@ -90,7 +91,7 @@ func TestLocalRoutesNeverSelectTheAgentsCommit(t *testing.T) {
 		}},
 		{"set-url to another repository", func(t *testing.T, f fixture, _ string) {
 			other := filepath.Join(realDir(t), "other.git")
-			git(t, f.checkout, "init", "-q", "--bare", other)
+			gittest.InitBare(t, other)
 			git(t, f.checkout, "push", "-q", other, "evil:main")
 			git(t, f.checkout, "remote", "set-url", "origin", other)
 			git(t, f.checkout, "fetch", "-q", "origin")

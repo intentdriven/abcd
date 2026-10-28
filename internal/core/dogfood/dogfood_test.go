@@ -132,7 +132,7 @@ func newFixture(t *testing.T, module string) fixture {
 	git(t, up, "add", ".")
 	git(t, up, "commit", "-q", "-m", "first")
 	remote := filepath.Join(realDir(t), "remote.git")
-	git(t, up, "init", "-q", "--bare", remote)
+	gittest.InitBare(t, remote)
 	git(t, up, "push", "-q", remote, "main")
 	parent := realDir(t)
 	git(t, parent, "clone", "-q", remote, "checkout")
@@ -260,7 +260,7 @@ func TestListedCheckoutBuildsTheReviewedTip(t *testing.T) {
 	if got := run(t, bin); got != "reviewed-1" {
 		t.Fatalf("the build printed %q, want the reviewed tip's reviewed-1", got)
 	}
-	rec := abcdhome.Path(f.home, "dogfood", p.Checkout.RootSHA, TipName(f.url, "main"))
+	rec := abcdhome.Path(f.home, "dogfood", p.Checkout.RootSHA, tipName(f.url, "main"))
 	if fi, err := os.Stat(rec); err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("the verified tip is recorded at 0600: %v %v", fi, err)
 	}
