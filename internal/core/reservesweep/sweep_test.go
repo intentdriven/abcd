@@ -212,7 +212,8 @@ func TestApplyDeletesOnlyTheSpentBranches(t *testing.T) {
 	w := newWorld(t)
 	dir := w.clone()
 	put(t, dir, "iss-7", released(t, dir, "iss-7", t0))
-	put(t, dir, "iss-8", released(t, dir, "iss-8", t0.Add(week)))
+	// Released a minute before the sweep: inside the take-over margin, so kept.
+	put(t, dir, "iss-8", released(t, dir, "iss-8", t0.Add(week+2*time.Hour-time.Minute)))
 	w.clock = t0.Add(week + time.Hour)
 	if _, err := claim.Reserve(dir, claim.Request{Record: "iss-9", Footprint: []string{"x.go"}},
 		claim.Options{Now: func() time.Time { return w.clock }, Home: w.home}); err != nil {
@@ -318,15 +319,16 @@ func TestTheClaimPackagesOwnReleaseReadsAsPlain(t *testing.T) {
 	if _, err := claim.Reserve(dir, claim.Request{Record: "itd-9", Release: true}, o); err != nil {
 		t.Fatal(err)
 	}
-	w.clock = t0.Add(time.Hour + week)
+	w.clock = t0.Add(time.Hour + claim.TakeoverMargin - time.Second)
 	rep, err := Sweep(dir, w.opts(false))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if b := find(t, rep, "itd-9"); b.Spent || b.Kind != KindPlainTombstone || b.Reason != KeptRecent {
-		t.Fatalf("a week after the release, inside the grace = %+v; want a plain tombstone kept as recent", b)
+		t.Fatalf("just after the release, inside the grace = %+v; want a plain tombstone kept as recent", b)
 	}
-	w.clock = t0.Add(time.Hour + week + claim.TakeoverMargin)
+	// Past the grace a release is spent at once: it does not wait the age.
+	w.clock = t0.Add(time.Hour + claim.TakeoverMargin)
 	rep, err = Sweep(dir, w.opts(false))
 	if err != nil {
 		t.Fatal(err)

@@ -54,8 +54,8 @@ default-branch folders. It deletes a branch only when it is spent, and only
 with a lease on the exact tip it judged, so a branch re-reserved meanwhile
 survives.
 
-A branch is spent when its tip has been untouched for seven days, its lease
-past the five-minute take-over margin included, and either:
+A branch is spent when its tip has settled, its lease past the five-minute
+take-over margin included, and either:
 
 - (a) its record sits only in terminal folders on origin's default branch; or
 - (b) every commit on its first-parent line is a reservation or a plain
@@ -65,6 +65,23 @@ past the five-minute take-over margin included, and either:
 
 A hand-back on an open record keeps the branch. So does any commit the sweep
 cannot classify.
+
+How long a settled tip waits depends on what it is (amended 2026-10-28, on
+the product thinker's ruling of that day, iss-2610281719275461; the first
+version made every branch wait seven days):
+
+- **A released branch, one whose tip is a plain release, waits for no age.**
+  The next daily run deletes it once the take-over margin has passed. A
+  release is its holder's own act, so nobody is coming back to the branch.
+- **Any other tip waits seven days past settling**, a lapsed reservation never
+  released among them. A lapse is no one's act: the holder's session may have
+  stopped, as when a computer crashes, and the age gives that holder time to
+  return and see the branch before it goes. Nothing found while making the
+  amendment gave a reason to treat a lapse like a release.
+
+The safety rules hold for both: the deletion is made only by the App, only
+with a lease on the exact tip judged, and a branch carrying a commit the sweep
+cannot classify is kept.
 
 ## Alternatives Considered
 

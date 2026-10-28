@@ -4663,9 +4663,10 @@ push leaves no reservation and nothing in the checkout.
 
 --sweep lists the spent reservation branches on origin and, with --apply, deletes
 them, each with a lease on the exact tip it judged, so a branch re-reserved
-meanwhile survives. A branch is spent when its tip has been untouched, its lease
-past the five-minute margin included, for --older-than days (default 7, at
-least 1), and either its record is resolved, won't-fixed, shipped or superseded
+meanwhile survives. A branch is spent when its tip has settled, its lease past
+the five-minute margin included (a plain release at once, at the next sweep; any
+other tip only once untouched for --older-than days, default 7, at least 1),
+and either its record is resolved, won't-fixed, shipped or superseded
 on origin's default branch, or every commit on it is a reservation or a plain
 release, whether or not any is a release, since a lapsed lease already lets any
 session take the record over. A hand-back on a record still open, a commit of
@@ -4684,7 +4685,7 @@ exit 2 when it could not run or origin refused a deletion.
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
       --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
       --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
-      --older-than int          with --sweep, the days a branch must have been untouched past its lease (at least 1) (default 7)
+      --older-than int          with --sweep, the days a tip other than a plain release must have been untouched past its lease (at least 1) (default 7)
       --release                 release your reservation from this copy by pushing a tombstone
       --sweep                   list the spent reservation branches on origin, which --apply deletes; a dry run without it
       --take-over               move your own live reservation from another copy to this one

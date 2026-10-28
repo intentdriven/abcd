@@ -29,7 +29,7 @@ func addSweepFlags(cmd *cobra.Command) *sweepFlags {
 	s := &sweepFlags{}
 	cmd.Flags().BoolVar(&s.on, "sweep", false, "list the spent reservation branches on origin, which --apply deletes; a dry run without it")
 	cmd.Flags().BoolVar(&s.apply, "apply", false, "with --sweep, delete the spent branches, each only while its tip is the one judged")
-	cmd.Flags().IntVar(&s.olderThan, "older-than", int(reservesweep.DefaultAge/(24*time.Hour)), "with --sweep, the days a branch must have been untouched past its lease (at least 1)")
+	cmd.Flags().IntVar(&s.olderThan, "older-than", int(reservesweep.DefaultAge/(24*time.Hour)), "with --sweep, the days a tip other than a plain release must have been untouched past its lease (at least 1)")
 	return s
 }
 
@@ -159,7 +159,7 @@ func renderReserveSweep(w io.Writer, out sweepOutput) {
 	if out.Mode == "apply" {
 		mode = "applied"
 	}
-	fmt.Fprintf(w, "abcd reserve --sweep (%s) as of %s: spent = untouched %d day(s) past its lease\n", mode, out.AsOf, out.OlderThanDays)
+	fmt.Fprintf(w, "abcd reserve --sweep (%s) as of %s: spent = released, or untouched %d day(s) past its lease\n", mode, out.AsOf, out.OlderThanDays)
 	if out.DefaultUnread != "" {
 		fmt.Fprintf(w, "  not checked: which records are finished on origin's default branch (%s)\n", out.DefaultUnread)
 	}
