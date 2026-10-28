@@ -144,8 +144,9 @@ something a later reader depends on:
   back to what produced it. A key the contract does not declare refuses the
   document too; the refusal names it redacted through the canonical scanner, and
   describes it when the scanner cannot be trusted.
-- **The evidence does not hold up**: a record id anywhere in any leg that does
-  not resolve (the refusal names the leg), a cited value that is not a record id
+- **The evidence does not hold up**: a record id written anywhere in any leg,
+  outside a web address, that does not resolve (the refusal names the leg), a
+  cited value that is not a record id
   at all, a claim naming no primary source or one of no known shape, a
   `source:` key the sources corpus does not carry (where a corpus exists), a
   grill with no hits that records no searches, a `verified` claim whose source is

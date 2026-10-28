@@ -98,6 +98,8 @@ func TestV2RefusesAPrimarySourceOfNoKnownShape(t *testing.T) {
 		"file:///tmp/notes.md",
 		"https://",
 		"https://example.invalid/a remark",
+		"https://a remark heard in passing",
+		"https://example.invalid/a remark",
 		"source:",
 		"source:Not A Key",
 		"itd-104 and more",
@@ -117,7 +119,10 @@ func TestV2RefusesAPrimarySourceOfNoKnownShape(t *testing.T) {
 
 	// With no corpus on the machine a well-formed key is accepted: there is
 	// nothing to resolve it against, and its shape is still checked.
-	for i, good := range []string{"https://example.invalid/paper.pdf", "itd-104", "adr-35", "source:survey2026"} {
+	// An address whose path happens to hold an id-shaped segment is an
+	// address, not a citation of a record here.
+	for i, good := range []string{"https://example.invalid/paper.pdf", "itd-104", "adr-35", "source:survey2026",
+		"https://example.invalid/org/adr-tools/doc/adr/adr-0007-use-markdown.md"} {
 		p := validPayload()
 		claim(p, 0)["primary_source"] = good
 		if _, err := Record(root, "a-sourced-idea-"+string(rune('a'+i)), publicStore, encode(t, p), at); err != nil {
@@ -367,6 +372,31 @@ func TestV2RefusesAVerifiedSelfQuotation(t *testing.T) {
 	if !strings.Contains(err.Error(), "claim 1") || !strings.Contains(err.Error(), "quoted") {
 		t.Errorf("the refusal does not name the claim and the quoted status: %v", err)
 	}
+	// The same address written another way is still the idea's own source.
+	for i, same := range []string{
+		"https://example.invalid/origin-post/",
+		"https://EXAMPLE.invalid/origin-post",
+		"https://example.invalid/origin-post#the-claim",
+	} {
+		p = validPayload()
+		claim(p, 0)["primary_source"] = same
+		if _, err := Record(root, "a-self-quoted-idea-"+string(rune('a'+i)), publicStore, encode(t, p), at); err == nil {
+			t.Errorf("a verified claim resting on %q, the idea's own source written another way, was accepted", same)
+		}
+	}
+	// An origin is free text, so the source in it may come with words around
+	// it, and a record id in it may be padded.
+	for i, c := range []struct{ origin, src string }{
+		{"https://example.invalid/origin-post the post the idea came from", "https://example.invalid/origin-post"},
+		{"the discussion on ADR-0035", "adr-35"},
+	} {
+		p = validPayload()
+		p["origin_sources"] = []any{c.origin}
+		claim(p, 0)["primary_source"] = c.src
+		if _, err := Record(root, "a-self-quoted-origin-"+string(rune('a'+i)), publicStore, encode(t, p), at); err == nil {
+			t.Errorf("a verified claim resting on %q, named inside the origin %q, was accepted", c.src, c.origin)
+		}
+	}
 	// The origin sources are stated explicitly, so the check cannot be skipped
 	// by leaving them out.
 	p = validPayload()
@@ -415,6 +445,27 @@ func TestV2RefusesAVersionOnePayload(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "version 2") {
 		t.Errorf("the refusal does not name version 2: %v", err)
+	}
+
+	// A payload an older command page composed is not a version-2 shape with
+	// its number changed: its adversarial leg carries kill_attempts directly
+	// and it has no origin_sources. It gets the same refusal, not a decoder
+	// error about a field this version moved.
+	v1 := `{"schema_version": 1, "prompt_version": "1.0.0",
+	  "idea": "abcd should gate a new idea before it becomes a record entry",
+	  "legs": [
+	    {"kind": "research", "claims": [{"claim": "fresh-context evaluation is the only measured debiasing effect",
+	      "primary_source": "https://example.invalid/paper.pdf", "status": "verified"}]},
+	    {"kind": "record-grill", "hits": [{"record": "itd-104", "relation": "covered"}]},
+	    {"kind": "adversarial-review", "kill_attempts": [{"attempt": "the gate adds friction to capture", "outcome": "survived"}]}],
+	  "verdict": "survives",
+	  "rejected_alternatives": [{"alternative": "make ideate a blocking pre-capture gate", "why_rejected": "capture friction stays at one line"}]}`
+	_, err = Record(root, "an-old-idea", publicStore, []byte(v1), at)
+	if err == nil {
+		t.Fatal("a version-1 document was accepted")
+	}
+	if !strings.Contains(err.Error(), "version 2") || strings.Contains(err.Error(), "unknown field") {
+		t.Errorf("a version-1 document is not refused by the message naming version 2: %v", err)
 	}
 	assertNothingWritten(t, root)
 }

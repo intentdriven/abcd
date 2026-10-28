@@ -33,6 +33,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -367,6 +368,15 @@ func decodePayload(repoRoot string, raw []byte) (Payload, error) {
 	if len(raw) > MaxPayloadBytes {
 		return Payload{}, fmt.Errorf("verdict payload exceeds the %d-byte cap", MaxPayloadBytes)
 	}
+	// An older shape is refused before the strict decode, which would stop at
+	// the first field version 2 moved (a version-1 adversarial leg's
+	// kill_attempts) and never name the version to compose.
+	var peek struct {
+		SchemaVersion int `json:"schema_version"`
+	}
+	if json.Unmarshal(raw, &peek) == nil && peek.SchemaVersion > 0 && peek.SchemaVersion < SchemaVersion {
+		return Payload{}, olderSchemaError(peek.SchemaVersion)
+	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	var p Payload
@@ -385,19 +395,23 @@ func decodePayload(repoRoot string, raw []byte) (Payload, error) {
 	case p.SchemaVersion < 0:
 		return Payload{}, fmt.Errorf("unsupported verdict schema_version %d", p.SchemaVersion)
 	case p.SchemaVersion != SchemaVersion:
-		// An older shape is refused, never upgraded: version 1 had nowhere to
-		// put a search, a second reviewer or a reframing, so reading it as
-		// version 2 would invent what each leg proved. The message names the
-		// version to compose, because the host that sent it is reading an
-		// older command page.
-		return Payload{}, fmt.Errorf("the verdict payload is schema_version %d, which this abcd no longer records — nothing was written; "+
-			"compose it as version %d, which adds origin_sources, the grill's searches, the adversarial leg's reviewers and ruling, "+
-			"and a reframing for a reframed verdict (the ideate command page carries the shape)", p.SchemaVersion, SchemaVersion)
+		return Payload{}, olderSchemaError(p.SchemaVersion)
 	}
 	if !promptVersionRe.MatchString(p.PromptVersion) {
 		return Payload{}, errors.New("verdict payload is missing a semver prompt_version")
 	}
 	return p, nil
+}
+
+// olderSchemaError refuses an older shape, which is never upgraded: version 1
+// had nowhere to put a search, a second reviewer or a reframing, so reading it
+// as version 2 would invent what each leg proved. The message names the
+// version to compose, because the host that sent it is reading an older
+// command page.
+func olderSchemaError(got int) error {
+	return fmt.Errorf("the verdict payload is schema_version %d, which this abcd no longer records — nothing was written; "+
+		"compose it as version %d, which adds origin_sources, the grill's searches, the adversarial leg's reviewers and ruling, "+
+		"and a reframing for a reframed verdict (the ideate command page carries the shape)", got, SchemaVersion)
 }
 
 // verdictDoc is the validated, cleaned document — the only shape the renderer and
@@ -536,10 +550,7 @@ func validateResearch(red *recordRedactor, leg Leg, origins []string) ([]Claim, 
 	if len(leg.Claims) > maxClaims {
 		return nil, 0, fmt.Errorf("the research leg carries %d claims (max %d)", len(leg.Claims), maxClaims)
 	}
-	origin := make(map[string]bool, len(origins))
-	for _, o := range origins {
-		origin[o] = true
-	}
+	origin := originKeys(origins)
 	redactions := 0
 	out := make([]Claim, 0, len(leg.Claims))
 	for i, c := range leg.Claims {
@@ -566,7 +577,7 @@ func validateResearch(red *recordRedactor, leg Leg, origins []string) ([]Claim, 
 			return nil, 0, fmt.Errorf("claim %d has an out-of-enum status (%s); a claim is %s, %s, %s, or %s",
 				at, termsafe.DescribeRefused(string(c.Status)), ClaimVerified, ClaimQuoted, ClaimFalsified, ClaimUnverifiable)
 		}
-		if c.Status == ClaimVerified && origin[src] {
+		if c.Status == ClaimVerified && origin[sourceKey(src)] {
 			return nil, 0, fmt.Errorf("claim %d is marked %s, but its primary source is one of the idea's own origin sources — nothing was written; "+
 				"a claim checked only against the source the idea came from is %s, not %s", at, ClaimVerified, ClaimQuoted, ClaimVerified)
 		}
@@ -589,7 +600,7 @@ var sourceShapes = "a source is an https:// address, source:<key> for a source f
 func sourceShaped(src string) bool {
 	switch {
 	case strings.HasPrefix(src, "https://"):
-		if strings.ContainsAny(src, " \t") {
+		if strings.IndexFunc(src, unicode.IsSpace) >= 0 {
 			return false
 		}
 		u, err := url.Parse(src)
@@ -602,6 +613,58 @@ func sourceShaped(src string) bool {
 
 // sourceKeyPrefix marks a source filed in the sources corpus.
 const sourceKeyPrefix = "source:"
+
+// sourceKey is the spelling the self-quotation check compares sources by, so
+// one source written two ways is still one source: an address loses its
+// fragment and a trailing slash, its host is lower-cased and http and https
+// meet, and a record id is folded as the resolver folds it (`ADR-0035` is
+// adr-35). Anything else is compared as written.
+func sourceKey(s string) string {
+	if lower := strings.ToLower(s); strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://") {
+		if u, err := url.Parse(s); err == nil && u.Host != "" {
+			k := "https://" + strings.ToLower(u.Host) + strings.TrimSuffix(u.EscapedPath(), "/")
+			if u.RawQuery != "" {
+				k += "?" + u.RawQuery
+			}
+			return k
+		}
+	}
+	if c := recordid.CanonCitedID(s); c != "" {
+		return c
+	}
+	return s
+}
+
+// originKeys is every source the idea's origins name, by sourceKey. An origin
+// is free text, so besides the whole entry each word of it that is an address
+// or a source key counts, and so does each record id written outside an
+// address: "https://… the post the idea came from" names the post.
+func originKeys(origins []string) map[string]bool {
+	keys := make(map[string]bool, len(origins))
+	for _, o := range origins {
+		keys[sourceKey(o)] = true
+		for _, w := range strings.Fields(o) {
+			keys[sourceKey(strings.Trim(w, "()<>[]{},.;\"'"))] = true
+		}
+		for _, id := range idsIn(withoutAddresses(o)) {
+			if c := recordid.CanonCitedID(id); c != "" {
+				keys[c] = true
+			}
+		}
+	}
+	return keys
+}
+
+// addressRe matches a web address written in running text, up to the next
+// space.
+var addressRe = regexp.MustCompile(`(?i)\bhttps?://\S+`)
+
+// withoutAddresses blanks every web address in text, so an id-shaped segment
+// of a path (`…/adr-0007-use-markdown.md`) is read as part of the address it
+// sits in, not as a citation of a record in this repository.
+func withoutAddresses(text string) string {
+	return addressRe.ReplaceAllString(text, " ")
+}
 
 // validateGrill checks the second leg. An EMPTY hit list is valid and meaningful:
 // "no entry in the record touches this idea" is a finding, and the commonest one
@@ -1023,7 +1086,7 @@ func resolveCitations(repoRoot string, v verdictDoc) ([]string, error) {
 	type found struct{ where, id string }
 	var prose []found
 	for _, place := range citationPlaces(v) {
-		for _, raw := range idsIn(place.text) {
+		for _, raw := range idsIn(withoutAddresses(place.text)) {
 			prose = append(prose, found{where: place.where, id: raw})
 		}
 	}
