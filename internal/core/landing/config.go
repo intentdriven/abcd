@@ -87,40 +87,137 @@ type stack struct {
 	where string
 }
 
-// homeRefusedOrigin says why a refused home turns both acts off.
-const homeRefusedOrigin = "the home directory was refused (HOME lies inside a git working tree that is not this account's), so a machine-wide off cannot be read; run abcd with your own HOME"
+// homeRefusedOrigin says why a refused home decides a key for its
+// restrictive value: what names the machine-wide setting that cannot be read.
+func homeRefusedOrigin(what string) string {
+	return "the home directory was refused (HOME lies inside a git working tree that is not this account's), so a machine-wide " + what + " cannot be read; run abcd with your own HOME"
+}
 
-// lookupSwitch ANDs key's value across every layer of every stack that holds
-// it, and a refused home's hidden machine layer. Lookup lists the layers
-// highest first, so the first off it meets is the one reported.
-func lookupSwitch(stacks []stack, key string, homeRefused bool) (Switch, error) {
-	out := Switch{Key: key, On: true, Layer: layered.Bundled.String(), Origin: layered.Bundled.String()}
+// layerValue is one layer's decoded value for a key, and where it came from.
+type layerValue[T any] struct {
+	v      T
+	layer  string
+	origin string
+}
+
+// decodeLayers decodes key from every layer of every stack that holds it,
+// highest first within a stack, strictly, and through check when check is
+// non-nil. Every layer is decoded, not only the one that decides, so a bad
+// value is refused wherever it sits, naming its file and layer and what the
+// key takes.
+func decodeLayers[T any](stacks []stack, key string, check func(T) error, takes string) ([]layerValue[T], error) {
+	var out []layerValue[T]
 	for _, st := range stacks {
 		found, err := st.s.Lookup(key)
 		if err != nil {
-			return Switch{}, err
+			return nil, err
 		}
 		for _, f := range found {
 			origin := f.Origin
 			if st.where != "" {
 				origin += " in the branch's checkout " + st.where
 			}
-			on, err := layered.Decode[bool](f.Raw)
+			v, err := layered.Decode[T](f.Raw)
+			if err == nil && check != nil {
+				err = check(v)
+			}
 			if err != nil {
-				return Switch{}, fmt.Errorf("%s (%s layer): %s: %v; it takes true or false", origin, f.Layer, key, err)
+				return nil, fmt.Errorf("%s (%s layer): %s: %v; it takes %s", origin, f.Layer, key, err, takes)
 			}
-			if !on && out.On {
-				out = Switch{Key: key, On: false, Layer: f.Layer.String(), Origin: origin}
-			}
+			out = append(out, layerValue[T]{v: v, layer: f.Layer.String(), origin: origin})
 		}
 	}
-	if homeRefused && out.On {
-		out = Switch{Key: key, On: false, Layer: layered.Machine.String(), Origin: homeRefusedOrigin}
-	}
 	return out, nil
+}
+
+// lookupSwitch ANDs key's value across every layer of every stack that holds
+// it, and a refused home's hidden machine layer. Lookup lists the layers
+// highest first, so the first off it meets is the one reported.
+func lookupSwitch(stacks []stack, key string, homeRefused bool) (Switch, error) {
+	vals, err := decodeLayers[bool](stacks, key, nil, "true or false")
+	if err != nil {
+		return Switch{}, err
+	}
+	for _, v := range vals {
+		if !v.v {
+			return Switch{Key: key, On: false, Layer: v.layer, Origin: v.origin}, nil
+		}
+	}
+	if homeRefused {
+		return Switch{Key: key, On: false, Layer: layered.Machine.String(), Origin: homeRefusedOrigin("off")}, nil
+	}
+	return Switch{Key: key, On: true, Layer: layered.Bundled.String(), Origin: layered.Bundled.String()}, nil
 }
 
 // offText says which layer turned a switch off, as every step names it.
 func (s Switch) offText() string {
 	return fmt.Sprintf("%s is off (%s layer, %s)", s.Key, s.Layer, s.Origin)
+}
+
+// KeyFacilitatorMode declares who merges: the repository's technical
+// facilitator is a person (ModeHuman, the bundled default) or abcd (ModeAuto).
+// It says nothing about abcd mode's facilitator state, which is whose answer
+// the loop is waiting on right now.
+const (
+	KeyFacilitatorMode = "facilitator.mode"
+	ModeHuman          = "human"
+	ModeAuto           = "auto"
+)
+
+// Facilitator is facilitator.mode as resolved: the mode, and the layer and
+// origin that decided it. Layer is "bundled" (Origin "bundled") when no layer
+// declares the key; otherwise Origin names the file that set it
+// (".abcd/config.json", or the machine file in its tilde form), or, for a
+// refused home, why the machine layer could not be read.
+type Facilitator struct {
+	Key    string `json:"key"`
+	Mode   string `json:"mode"`
+	Layer  string `json:"layer"`
+	Origin string `json:"origin"`
+}
+
+// checkMode accepts the two modes, exactly as spelt.
+func checkMode(m string) error {
+	if m != ModeHuman && m != ModeAuto {
+		return fmt.Errorf("%q is not a facilitator mode", layered.BoundKey(m))
+	}
+	return nil
+}
+
+// readMode resolves facilitator.mode through the layered configuration
+// reader, which claims the facilitator namespace with its one key mode, so a
+// misspelt key is refused naming its file.
+//
+// The precedence is land's switches' (readSwitches), not the reader's
+// ordinary one: human from any layer wins, so a person can take the role back
+// for every repository on their machine and no repository's file takes it from
+// them. Every layer that holds the key is decoded and checked, so a value other
+// than human or auto is refused in whichever layer it sits. With no human
+// anywhere, the highest layer that says auto decides; with no layer at all,
+// the bundled default human does. A home RootsFor refused hides the machine
+// layer, and with it any machine-wide human, so the mode reads as human.
+func readMode(r layered.Roots) (Facilitator, error) {
+	s, err := layered.Load(layered.Config, r)
+	if err != nil {
+		return Facilitator{}, err
+	}
+	if err := s.Claim("facilitator", "mode"); err != nil {
+		return Facilitator{}, err
+	}
+	vals, err := decodeLayers([]stack{{s: s}}, KeyFacilitatorMode, checkMode, "human or auto")
+	if err != nil {
+		return Facilitator{}, err
+	}
+	for _, v := range vals {
+		if v.v == ModeHuman {
+			return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: v.layer, Origin: v.origin}, nil
+		}
+	}
+	if r.HomeRefused {
+		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Machine.String(), Origin: homeRefusedOrigin(ModeHuman)}, nil
+	}
+	if len(vals) > 0 {
+		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeAuto, Layer: vals[0].layer, Origin: vals[0].origin}, nil
+	}
+	return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Bundled.String(), Origin: layered.Bundled.String()}, nil
 }
