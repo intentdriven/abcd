@@ -1519,6 +1519,7 @@ Sub-verbs: none.
 | `--dev` | bool |
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |
+| `--live-sessions` | string |
 | `--only-waiting` | bool |
 | `--oracle-backend` | string |
 | `--outbound` | bool |

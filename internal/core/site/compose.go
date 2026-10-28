@@ -82,7 +82,20 @@ type composer struct {
 	// version and releaseDate describe the newest dated CHANGELOG heading.
 	version     string
 	releaseDate string
+	// base is the build's base path (basepath.go).
+	base string
+	// identityLoc is where the identity block lives: the composition's
+	// identity reference, or on the project route the block
+	// `.abcd/positioning.json` points at (project.go).
+	identityLoc BlockRef
+	// project is the project route: the about page, the binary's assets, and
+	// nothing read from a person's own files (project.go).
+	project bool
 }
+
+// at places the root-absolute site path p under the build's base path. Every
+// root-absolute URL a page carries is written through it.
+func (c *composer) at(p string) string { return sitePath(c.base, p) }
 
 // docPage is one loaded source page.
 type docPage struct {
@@ -124,7 +137,9 @@ func (c *composer) renderer(p *docPage) *Renderer {
 		Image: func(src, alt string, at Source) (string, error) {
 			return c.assets.render(p.Dir, src, alt, at)
 		},
-		Link: func(href string, at Source) string { return siteHref(p.Dir, href, c.repo.Repository, c.rendersDocs()) },
+		Link: func(href string, at Source) string {
+			return siteHref(p.Dir, href, c.repo.Repository, c.rendersDocs(), c.base)
+		},
 	}
 }
 
@@ -158,7 +173,7 @@ func (c *composer) rendersDocs() bool { return c.manifest.Docs.Index != "" }
 // moment somebody follows it. When the record explorer ships those targets get
 // real pages and this arm narrows; a broken link in the meantime is not an
 // acceptable placeholder.
-func siteHref(pageDir, href, forge string, docs bool) string {
+func siteHref(pageDir, href, forge string, docs bool, base string) string {
 	switch {
 	case href == "",
 		strings.HasPrefix(href, "http://"),
@@ -190,7 +205,7 @@ func siteHref(pageDir, href, forge string, docs bool) string {
 			route = ""
 		}
 	}
-	out := "/docs/"
+	out := sitePath(base, "/docs/")
 	if route != "" {
 		out += route + "/"
 	}
@@ -279,21 +294,40 @@ func (c *composer) headWith(pageTitle, script string) string {
 	b.WriteString(`<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">` + "\n")
 	// Root-absolute, because the shared assets sit at one served path and the
 	// pages that link them sit at every depth the site has.
-	b.WriteString(`<link rel="stylesheet" href="/site.css">` + "\n")
-	b.WriteString(`<script src="/site.js" defer></script>` + "\n")
+	b.WriteString(`<link rel="stylesheet" href="` + escapeAttr(c.at("/site.css")) + `">` + "\n")
+	b.WriteString(`<script src="` + escapeAttr(c.at("/site.js")) + `" defer></script>` + "\n")
 	if script != "" {
-		b.WriteString(`<script src="` + escapeAttr(script) + `" defer></script>` + "\n")
+		b.WriteString(`<script src="` + escapeAttr(c.at(script)) + `" defer></script>` + "\n")
 	}
 	b.WriteString("</head>\n<body>\n")
+	b.WriteString(c.managedLine())
 	return b.String()
+}
+
+// managedLine is the line every page opens with: the site is the record of an
+// abcd-managed repository, linking to that repository where the build knows its
+// address. The words are the allowlist's, so the line adds nothing the
+// provenance gate cannot account for. They sit in a <small>, whose default
+// rendering is a small line, so a repository whose own stylesheet predates
+// the `.managed` rule (setup keeps a stylesheet the repository already has)
+// still shows a small line at the top rather than a paragraph of body text.
+func (c *composer) managedLine() string {
+	words := escapeText(c.ui.ManagedRecord)
+	if c.repo.Repository != "" {
+		words = `<a href="` + escapeAttr(c.repo.Repository) + `">` + words + `</a>`
+	}
+	return `<p class="managed"><small>` + words + `</small></p>`
 }
 
 // identity reads the canonical Identity block. A repository that records none
 // renders the page without it rather than failing: the hero's headline and lede
 // come from the rationale page, and those are what carry the page.
 func (c *composer) identity() (positioning.Block, bool) {
+	if c.identityLoc.File == "" {
+		return positioning.Block{}, false
+	}
 	blk, err := positioning.ParseBlock(c.repoRoot, positioning.BlockLocation{
-		File: c.manifest.Identity.File, Heading: c.manifest.Identity.Heading,
+		File: c.identityLoc.File, Heading: c.identityLoc.Heading,
 	})
 	if err != nil {
 		return positioning.Block{}, false
@@ -303,7 +337,7 @@ func (c *composer) identity() (positioning.Block, bool) {
 
 // identitySrc is the provenance of every span the Identity block supplies.
 func (c *composer) identitySrc() string {
-	return srcAttr(c.manifest.Identity.File, slug(c.manifest.Identity.Heading))
+	return srcAttr(c.identityLoc.File, slug(c.identityLoc.Heading))
 }
 
 // brandName is the short handle the header shows beside the mark: the first word
@@ -329,10 +363,10 @@ func (c *composer) header() string { return c.headerFor("") }
 func (c *composer) headerFor(active string) string {
 	var b strings.Builder
 	b.WriteString(`<header class="site-head"><div class="wrap">`)
-	b.WriteString(`<a class="brand" href="/">`)
+	b.WriteString(`<a class="brand" href="` + escapeAttr(c.at("/")) + `">`)
 	// The mark is a committed asset like any other picture; the stylesheet sizes
 	// it, so its own dimensions ride along unchanged. A repository without one
-	// gets a wordmark.
+	// gets a wordmark, and so does a project site, which renders no picture.
 	if logo, err := c.assets.render("docs/assets/img", "logo.png", "", Source{Path: ManifestRelPath}); err == nil {
 		b.WriteString(logo)
 	}
@@ -350,13 +384,16 @@ func (c *composer) headerFor(active string) string {
 		}
 		return ` class="on" aria-current="page"`
 	}
-	b.WriteString(`<a href="/#` + escapeAttr(c.firstChapterAnchor()) + `">` + escapeText(c.ui.NavStory) + `</a>`)
-	b.WriteString(`<a href="/#` + escapeAttr(c.installChapterAnchor()) + `">` + escapeText(c.ui.NavInstall) + `</a>`)
+	// A project site's about page has no composed chapters to point into.
+	if !c.project {
+		b.WriteString(`<a href="` + escapeAttr(c.at("/#"+c.firstChapterAnchor())) + `">` + escapeText(c.ui.NavStory) + `</a>`)
+		b.WriteString(`<a href="` + escapeAttr(c.at("/#"+c.installChapterAnchor())) + `">` + escapeText(c.ui.NavInstall) + `</a>`)
+	}
 	if c.rendersDocs() {
-		b.WriteString(`<a href="/docs/">` + escapeText(c.ui.NavDocs) + `</a>`)
+		b.WriteString(`<a href="` + escapeAttr(c.at("/docs/")) + `">` + escapeText(c.ui.NavDocs) + `</a>`)
 	}
 	if c.manifest.Pages.resolve().explorer {
-		b.WriteString(`<a href="/record/"` + on("/record/") + `>` + escapeText(c.ui.NavRecord) + `</a>`)
+		b.WriteString(`<a href="` + escapeAttr(c.at("/record/")) + `"` + on("/record/") + `>` + escapeText(c.ui.NavRecord) + `</a>`)
 	}
 	if c.repo.Repository != "" {
 		b.WriteString(`<a class="gh" href="` + escapeAttr(c.repo.Repository) + `">` + escapeText(c.forgeLabel()) + ` ↗</a>`)
@@ -1097,7 +1134,7 @@ func (c *composer) install(p *docPage, ch Chapter) (string, error) {
 		// a dead link on the one page that is asking for trust.
 		read := ""
 		if t.isOS && hasCode && servesInstallScript {
-			read = `<p class="small muted readscript"><a href="/` + installScriptName + `">` +
+			read = `<p class="small muted readscript"><a href="` + escapeAttr(c.at("/"+installScriptName)) + `">` +
 				escapeText(c.ui.ReadScript) + `</a></p>`
 		}
 		hidden := " hidden"
@@ -1158,6 +1195,11 @@ func (c *composer) featureBlock(f *Feature) (string, error) {
 	if !ok {
 		return "", nil
 	}
+	return c.featureBlockFor(node, f)
+}
+
+// featureBlockFor quotes the parts f names of one shipped intent.
+func (c *composer) featureBlockFor(node lint.RecordNode, f *Feature) (string, error) {
 	data, err := fsutil.ReadGuardedInRoot(c.root, node.Path, maxPageBytes)
 	if err != nil {
 		return "", err
