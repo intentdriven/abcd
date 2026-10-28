@@ -168,10 +168,10 @@ const minWithheldPrefix = 24
 const maxPrefixScan = 512
 
 // plainWordRe is a lower-case word or hyphenated words: the shape of a verb,
-// a closed-set value or a word of the refusal's own text. A part derived from
-// an argument (a prefix, a base name, the value after an `=`) is not withheld
-// on its own when it has this shape, since it would rewrite the refusal's own
-// words; the whole argument still is.
+// a closed-set value or a word of the refusal's own text. A short part derived
+// from an argument (a base name, the value after an `=`) is not withheld on its
+// own when it has this shape, since it would rewrite the refusal's own words;
+// the whole argument still is, and so is a derived part as long as a prefix.
 var plainWordRe = regexp.MustCompile(`^[a-z]+(?:-[a-z]+)*$`)
 
 // typedArgument is one argument the caller typed whose text the pass
@@ -191,10 +191,11 @@ type typedArgument struct {
 // or %+q, or masked for the terminal); as a path a refusal shortened to its
 // working-directory or home form, to a relative path or to its base name; as
 // the value after its last `=`; and as its leading part, where a refusal cut it
-// short. Three kinds are left as they are: an argument shorter than
-// minWithheldLen, the name of a command in the tree, and a well-formed record
-// id (recordid.CitedIDRe), which a refusal names so the caller can find the
-// record. The per-site wording names what was refused; this pass is the
+// short. Four kinds are left as they are: an argument shorter than
+// minWithheldLen, the name of a command in the tree, a well-formed record id
+// (recordid.CitedIDRe) and a relative path to something that exists in the
+// working directory (checkoutPath), which a refusal names so the caller can
+// find the record or see the overlap. The per-site wording names what was refused; this pass is the
 // backstop for a site that still repeats it.
 func withholdArguments(root *cobra.Command, args []string, msg string) string {
 	ops := typedArguments(root, args)
@@ -236,7 +237,7 @@ func typedArguments(root *cobra.Command, args []string) []typedArgument {
 	commands := commandNames(root)
 	var ops []typedArgument
 	add := func(v string, i int) {
-		if len(v) < minWithheldLen || commands[v] || recordid.CitedIDRe.MatchString(v) {
+		if len(v) < minWithheldLen || commands[v] || recordid.CitedIDRe.MatchString(v) || checkoutPath(v) {
 			return
 		}
 		ops = append(ops, typedArgument{text: v, pos: i + 1})
@@ -282,16 +283,29 @@ func typedArguments(root *cobra.Command, args []string) []typedArgument {
 	return ops
 }
 
+// checkoutPath reports whether v is a relative path, inside the working
+// directory, to a file or directory that exists there: a footprint or a
+// record's path, which a refusal names so the caller can see what overlaps.
+// An absolute path, one that climbs out with "..", and one that names
+// nothing on disk are not.
+func checkoutPath(v string) bool {
+	if filepath.IsAbs(v) || strings.HasPrefix(v, "~") || !filepath.IsLocal(filepath.Clean(v)) {
+		return false
+	}
+	_, err := os.Lstat(v)
+	return err == nil
+}
+
 // renderedForms is v and each form a refusal may carry it in, longest first:
 // quoted by %q or %+q, masked for the terminal, shortened as a path, and the
 // parts a refusal names on their own (the base name, the value after the last
-// `=`). A derived part shorter than minWithheldLen, or shaped like a plain
-// word, is left out.
+// `=`). A derived part shorter than minWithheldLen, or a short one shaped
+// like a plain word, is left out.
 func renderedForms(v string) []string {
 	forms := []string{v}
 	seen := map[string]bool{v: true}
 	keep := func(f string, derived bool) {
-		if seen[f] || len(f) < minWithheldLen || (derived && plainWordRe.MatchString(f)) {
+		if seen[f] || len(f) < minWithheldLen || (derived && len(f) < minWithheldPrefix && plainWordRe.MatchString(f)) {
 			return
 		}
 		seen[f] = true
@@ -324,17 +338,39 @@ func renderedForms(v string) []string {
 }
 
 // withholdPrefix replaces the longest leading part of v, at least
-// minWithheldPrefix bytes and shorter than v, that still stands in msg: what
-// a refusal that cut v short before repeating it carries.
+// minWithheldPrefix bytes and shorter than v, that a refusal visibly cut short:
+// the part stands in msg followed by an ellipsis ("..." or "…"), by the
+// closing quote of a %q, or by the end of msg. A leading part followed by
+// anything else is the refusal naming something that shares a prefix with v
+// (a footprint beneath a path, a record beside a slug), and is left as it is.
 func withholdPrefix(msg, v, stand string) string {
 	longest := min(len(v)-1, maxPrefixScan)
 	for n := longest; n >= minWithheldPrefix; n-- {
 		p := v[:n]
-		if !utf8.ValidString(p) || plainWordRe.MatchString(p) {
+		if !utf8.ValidString(p) || !strings.Contains(msg, p) {
 			continue
 		}
-		if strings.Contains(msg, p) {
-			return strings.ReplaceAll(msg, p, stand)
+		var b strings.Builder
+		cut := false
+		rest := msg
+		for {
+			k := strings.Index(rest, p)
+			if k < 0 {
+				b.WriteString(rest)
+				break
+			}
+			after := rest[k+len(p):]
+			if after == "" || strings.HasPrefix(after, "...") || strings.HasPrefix(after, "…") || strings.HasPrefix(after, `"`) {
+				b.WriteString(rest[:k])
+				b.WriteString(stand)
+				cut = true
+			} else {
+				b.WriteString(rest[:k+len(p)])
+			}
+			rest = after
+		}
+		if cut {
+			return b.String()
 		}
 	}
 	return msg

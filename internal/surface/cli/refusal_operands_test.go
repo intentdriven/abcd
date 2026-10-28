@@ -632,3 +632,29 @@ func TestStopBlockCapNamesAnUnreadableSettingWithoutItsValue(t *testing.T) {
 		t.Fatalf("the note repeats the value, or does not name the setting:\n%s", errOut.String())
 	}
 }
+
+// TestWithholdArgumentsTellsACutFromASharedPrefix holds the prefix pass to
+// what a refusal visibly cut: a long lower-case value quoted short is withheld,
+// while a path that exists in the checkout, named beside a longer path it is a
+// prefix of, keeps the refusal readable.
+func TestWithholdArgumentsTellsACutFromASharedPrefix(t *testing.T) {
+	root := NewRootCommand()
+	dir := scratchCwd(t)
+	phrase := "correct-horse-battery-staple-orange-tiger-mango"
+	got := withholdArguments(root, []string{"intent", "prepass", phrase}, fmt.Sprintf("%q is not an intent id", phrase[:40]))
+	if strings.Contains(got, phrase[:24]) {
+		t.Errorf("a lower-case value cut short was repeated:\n got %q", got)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "internal", "core", "implement"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	msg := "internal/core/implement/loop/pace.go is in the footprint of itd-2, reserved by octo"
+	if got := withholdArguments(root, []string{"reserve", "itd-1", "--footprint", "internal/core/implement"}, msg); got != msg {
+		t.Errorf("a footprint that exists in the checkout was withheld from an overlap refusal:\n got %q", got)
+	}
+	tok := tokenMarker()
+	msg = "internal/" + tok + "/x.go is in the footprint of itd-2"
+	if got := withholdArguments(root, []string{"reserve", "itd-1", "--footprint", "internal/" + tok + "-and-more-text"}, msg); got != msg {
+		t.Errorf("a shared prefix the refusal did not cut was withheld:\n got %q", got)
+	}
+}
