@@ -1105,7 +1105,7 @@ func otherLiveRelease(root, id string, now time.Time) error {
 		}
 		lapseEnds := ""
 		if !notEnded {
-			lapseEnds = fmt.Sprintf(", or, from %s, at %s's next act from any copy", stamp(r.EffectiveExpiry.Add(TakeoverMargin)), r.Holder)
+			lapseEnds = fmt.Sprintf(", or, from %s, at %s's next act from any copy while the cut's tip is their own newest push", stamp(r.EffectiveExpiry.Add(TakeoverMargin)), r.Holder)
 		}
 		return backOff("%s is still being cut by %s: its lease lapsed at %s%s, but it still holds merges withdrawn or admitted, and one release is cut at a time; "+
 			"it ends when %s renews it (abcd reserve %s) and finishes the cut, or ends it (abcd reserve %s --release)%s; %s",
@@ -1188,7 +1188,7 @@ func (r ReleaseWithdrawals) Lines() []string {
 			r.Subject, stamp(r.LapsedAt), r.NotEnded, r.NotEnded, r.Subject, Remote))
 	case r.Lapsed:
 		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended: it holds no merge now, and from %s the next act of a copy of %s's "+
-			"ends it and re-arms what it withdrew; %s renews it from the cutting copy first (abcd reserve %s) if the cut goes on",
+			"ends it and re-arms what it withdrew, while the cut's tip is their own newest push (else their --release ends it); %s renews it from the cutting copy first (abcd reserve %s) if the cut goes on",
 			r.Subject, stamp(r.LapsedAt), stamp(r.LapsedAt.Add(TakeoverMargin)), r.Holder, r.Holder, r.Subject))
 	}
 	if len(r.Held) > 0 {

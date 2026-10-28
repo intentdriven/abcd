@@ -97,7 +97,7 @@ func TestALapsedReleaseEndsForItsHolderAndReArmsWhatItWithdrew(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := snap.ReleaseWithdrawals(cutter.dir, "octo", w.clock()); len(got) != 1 || !got[0].Lapsed ||
-		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "the next act of a copy of octo's ends it and re-arms what it withdrew") {
+		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "the next act of a copy of octo's ends it and re-arms what it withdrew, while the cut's tip is their own newest push") {
 		t.Fatalf("listing inside the margin = %+v; want the lapse and when it ends", got)
 	}
 	// The cut renews in time, so its merges stay withdrawn past the old margin.

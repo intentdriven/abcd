@@ -326,7 +326,8 @@ Seven failures are worth recognising, because each looks like something else.
   withdrew them, and nothing re-arms them until the release ends: its tag on
   `origin`, `--release`, or a tombstone on its branch its holder pushed (one
   they did not push ends nothing, and is named), or five minutes after its
-  lease lapsed, at your next act from any copy. To finish the cut, renew it
+  lease lapsed, at your next act from any copy while the cut's tip is your own
+  newest push. To finish the cut, renew it
   from the cutting copy first (`abcd reserve rel-vX.Y.Z`); to abandon it, end
   it with `abcd reserve rel-vX.Y.Z --release`. When the
   cutting copy is gone (a crash, a deleted worktree), end it from another copy

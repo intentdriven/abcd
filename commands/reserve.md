@@ -214,8 +214,11 @@ re-arm the forge keeps refusing writes nothing to `origin` while it is tried
 again. **A lapsed lease ends the cut for its own person.** Five minutes after
 a release lease lapses with no tag on `origin`, the next act of any copy of the
 person who reserved it ends it with a tombstone and re-arms exactly what it
-recorded withdrawn, each with one comment saying the cut lapsed; another
-person's act ends nothing of it (dcn-2610271926369425). Nothing renews a
+recorded withdrawn, each with one comment saying the cut lapsed. It does so
+only while the cut's tip is that person's own newest push, as the forge's
+record of pushes places it; under a commit another login pushed, only their
+`--release` or the tag ends it. Another person's act ends nothing of it
+(dcn-2610271926369425). Nothing renews a
 release lease by itself, so a cut still going on renews it by reserving the
 release again from the cutting copy; until then the lapse is reported
 (`/abcd:peers`, and the launch check refuses the cut).
