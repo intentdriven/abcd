@@ -175,23 +175,28 @@ no receipt. The sequence is: commit everything, `make preflight`, then a plain
 `git push`. A receipt minted in any worktree of the checkout counts, and a commit
 the remote already holds (a tag on a merged commit) needs none.
 
-**In a source checkout of abcd, every abcd invocation is `go run ./cmd/abcd
-<verb>` from the repo root** — never the plugin-root binary and never an `abcd`
-on PATH. Both are whatever version was last published, and in this repository
+**In a source checkout of abcd, every abcd invocation is `scripts/abcd
+<verb>`** — never the plugin-root binary and never an `abcd` on PATH. Both
+are whatever version was last published, and in this repository
 that is the thing being developed, so they are stale by construction and fall
 further behind with every commit: a verb, flag, schema field or refusal added
 since the last release is unknown to them. The failure is not always a
 refusal. `launch ship` refuses on its surface guard, loudly and correctly, but
 `changelog --json` returned an empty cut against a tree holding 181 shipped
 records, and `capture` would have written records through a schema the record
-gates no longer accept — a plausible wrong answer, not an error. The plugin
+gates no longer accept — a plausible wrong answer, not an error.
+`scripts/abcd` builds this tree to `.abcd/.work.local/bin/abcd`, relinking only
+when an input changed, and runs that binary, so its exit code reaches the
+caller: `go run ./cmd/abcd` turns every nonzero exit into 1, and exit 2 (a usage
+error, a guard that could not judge) and exit 3 (`reserve`: back off) arrived as
+the 1 a guard block also exits with (iss-2610241240133009). The plugin
 command pages document a resolution ladder that reaches the plugin-root binary
 first and falls through to `go run` only when nothing earlier resolves; in this
 checkout the first rung exists and answers, so the fallback written for exactly
 this case is never reached by following the ladder literally
 (iss-2608230943088357 holds the surface half). The loader's `DOGFOODING` domain
 in `.abcd/rules.json` injects this rule on a prompt that names `abcd` or any of
-its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`).
+its top-level verbs (the `Available Commands` list of `scripts/abcd --help`).
 
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
@@ -293,14 +298,14 @@ with `*CONCURRENCY` to force it).
   retire it with `git worktree remove`.
 - **Scan before mutating anything a peer reads or runs.** Check the harness's
   session listing and announce the mutation to any peer found; before
-  capturing, resolving or picking a record, also run `go run ./cmd/abcd peers`,
+  capturing, resolving or picking a record, also run `scripts/abcd peers`,
   which also fetches and lists every reservation on `origin`.
 - **Reserve a record before starting it.** Another person, computer or hosted
   session sees only what reaches `origin`: before working an issue or an
-  intent, reserve it with `go run ./cmd/abcd reserve <id> --footprint <path>`
+  intent, reserve it with `scripts/abcd reserve <id> --footprint <path>`
   (once per path the work will change), back off on exit 3, and release it
   with `--release` when done. A build and a drain reserve as they start:
-  `go run ./cmd/abcd build <id>` reserves with the spec's footprint (an
+  `scripts/abcd build <id>` reserves with the spec's footprint (an
   issue's `found_at`), `drain` each issue as its lane opens, and the run
   renews, fences and releases it; reserve by hand only for work neither
   starts. Each worktree is its own copy: two builds in sibling worktrees
@@ -377,7 +382,7 @@ with `*CONCURRENCY` to force it).
   commit itself moved in; a "This reverts commit" line over a commit that moves
   no record, or naming a commit that never moved that record, withdraws nothing.
 - **A change that delivers a planned intent closes its spec in the same
-  change**: `go run ./cmd/abcd spec close <spc-N>` moves the spec to `closed/`
+  change**: `scripts/abcd spec close <spc-N>` moves the spec to `closed/`
   and, as its close-hook, the intent from `planned/` to `shipped/`. Nothing
   runs it for you, and without a declaration the omission is silent: `launch
   ship` composes the changelog from terminal folders only, so an intent whose
@@ -397,7 +402,7 @@ with `*CONCURRENCY` to force it).
   that happens after the merge is the one that gets forgotten. A close that
   ships an intent (one without `--remainder`) also passes the doc-fidelity
   gate, and so does `launch ship` for every intent shipped since the last tag:
-  each refuses until `go run ./cmd/abcd docs fidelity record` has saved a docs
+  each refuses until `scripts/abcd docs fidelity record` has saved a docs
   review for HEAD (`commands/docs.md` says how to run one). The review is
   labelled with the commit it read and kept in the checkout's local tier, so a
   cut made on `main` needs a review recorded there for the merge commit: the

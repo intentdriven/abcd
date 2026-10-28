@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# The source checkout's own abcd (iss-2610241240133009): the tree's binary,
+# built to the checkout's local tier and run there, so its exit code reaches
+# the caller. `go run ./cmd/abcd` turned every nonzero exit into 1, so exit 2
+# (a usage error, a guard that could not judge) and exit 3 (reserve: back off)
+# arrived as the 1 a guard block also exits with.
+#
+# `go build -o` relinks only when an input changed: it compares the build ID it
+# would write with the one the existing binary carries, so an unchanged tree
+# costs a hash of its inputs and no compile. A changed tree is linked under
+# GOTMPDIR, kept beside the binary so the new one is renamed into place on the
+# same filesystem, never copied over one that is running.
+#
+# Usage: scripts/abcd <verb> [args...], from anywhere in the checkout; the verb
+# runs in the caller's working directory.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+bindir="$root/.abcd/.work.local/bin"
+mkdir -p "$bindir/.tmp"
+(cd "$root" && GOTMPDIR="$bindir/.tmp" go build -o "$bindir/abcd" ./cmd/abcd)
+exec "$bindir/abcd" "$@"

@@ -28,12 +28,13 @@ person's, stop and hand back.
 
 - No hook is ever skipped: never pass `--no-verify`, and never unset or
   redirect `core.hooksPath`.
-- Every abcd verb runs as `go run ./cmd/abcd <verb>` from the checkout's
-  root, never through an installed binary.
+- Every abcd verb runs as `scripts/abcd <verb>`, which builds the
+  checkout's own tree and keeps its exit code, never through an installed
+  binary.
 - Every commit carries an `Assisted-by: <Vendor>:<model-version>` trailer and
   no co-author trailer.
 - Reserve the item before you change anything:
-  `go run ./cmd/abcd reserve {{ITEM}} --footprint <path>`, once for each path
+  `scripts/abcd reserve {{ITEM}} --footprint <path>`, once for each path
   the work will change. If someone else holds it, stop and hand back.
 - Work on {{ITEM}} alone. A finding outside it goes in the report, not in the
   branch.
