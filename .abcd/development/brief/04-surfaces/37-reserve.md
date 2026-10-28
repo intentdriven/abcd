@@ -502,7 +502,7 @@ withdrawing nothing, and an admission or a release is refused.
   lapsed or released reservation, for a pull request the reservation did not
   withdraw, for one another person withdrew (a release taken over from them:
   the refusal names the remedy, that person taking the release back with
-  `--take-over` and admitting it; dcn-2610230833367984), and for one whose
+  the take-over flag and admitting it; dcn-2610230833367984), and for one whose
   head moved, or that was closed or merged, since. A release another person
   holds refuses the withdrawer's own admission with the same remedy. Since it
   arms under the cutter's account, it is refused too when the cutter's own
