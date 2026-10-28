@@ -339,7 +339,7 @@ func TestDefaultAdoptionWritesNoNameIntoConventionsFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != "clean" {
+	if settled(res) != "clean" {
 		t.Fatalf("default adoption status = %q (remaining %v, notes %v), want clean", res.Status, res.Remaining, res.Notes)
 	}
 
@@ -396,7 +396,7 @@ func TestFirstInstallPlantsTheBlockWhereTheProjectChoseIt(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.Status != "clean" {
+			if settled(res) != "clean" {
 				t.Fatalf("status = %q (remaining %v, notes %v), want clean", res.Status, res.Remaining, res.Notes)
 			}
 			for _, name := range tc.want {

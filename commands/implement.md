@@ -482,7 +482,11 @@ over each of the run's lanes' own diff.
 
 1. It checks the lane's worktree is clean and its branch is at the head the
    validators judged.
-2. On the lane that closes the spec it runs `spec close` in the lane's worktree
+2. On an intent lane it marks the lane's step landed on the open spec, a
+   `- landed:` line naming the judged head (not when the spec lists no steps or
+   already marks it; a commit doing only that declares
+   `Assisted-by: abcd:<version>`). On
+   the lane that closes the spec it runs `spec close` in the lane's worktree
    and ingests the verdict of the audit that lane took, and for each capture the
    lane's receipts declared fixed it runs `capture resolve` with that commit. It
    commits them on the lane's branch with `Delivers:` (when the close ships the
@@ -574,8 +578,8 @@ renewal only renews this person's own reservation from this copy: it never
 reserves a released record again and never takes one over. At step 5, before
 the merge rule decides, the **land fence** fetches the reservation and arms
 nothing unless it is still this person's, from this copy, and live: it names
-the other person and the expiry, says the reservation moved to your copy on
-another computer, or says it was released (reserve it again with `abcd build
+the other person and the expiry, says the reservation moved to your other copy
+(naming the worktree when it is one of this checkout's), or says it was released (reserve it again with `abcd build
 <id>`), and a fetch origin does not answer is named too, each as contention
 (exit 3 when nothing else moves). When it holds, the fence renews it for a
 day, with a ruleset mirror at the lane's base or without one: every landing
@@ -586,8 +590,9 @@ a day is also past any merge queue's `check_response_timeout_minutes`. The
 fence then reads the **release hold** from the
 reservations it just fetched (a run holding no reservation fetches them for
 it): while a release reservation (`rel-vX.Y.Z`, `/abcd:reserve`) is live and
-not this copy's own, it arms nothing, naming the release, its holder or "your
-copy on another computer", and that a session cutting a release has the final
+not this copy's own, it arms nothing, naming the release, its holder or your
+own other copy ("your worktree … on this machine" for a sibling worktree,
+else "your copy on another computer"), and that a session cutting a release has the final
 say on what merges before its tag, as contention (exit 3); the pull request
 stays open for the cutting session to merge or hold. A release whose tag is on
 `origin`, or whose holder released it, holds nothing. Past the fence the reservation holds only
@@ -745,27 +750,44 @@ carries that string, and never opened. `--wait` blocks until the one-minute
 load average is below the wait limit (`wait-load`, by default twice the online
 core count), no other `go test -race` run is live, no other `make preflight`
 is running, and no other waiter is ahead of it in the queue (one that started
-earlier, or within two seconds of it, and has the lower pid: two whose start
-and pid disagree, as after the machine's process ids wrap, wait on neither) or
+earlier, whatever its pid, or within two seconds of it with the lower pid) or
 running its command, under any account. All of that is read from the process
 table, which shows every account's processes, judged from each process's
 arguments with the waiter's own process and ancestors excluded: no file another
-account can write is read; the gate reads only the process table. A waiter queued ahead of yours still delays yours, under
+account can write is read; the gate reads only the process table. A plain
+`go test` that no waiter and no preflight started never waits at the gate, so
+it adds to the load the gate waits on: while the load holds the gate shut, the
+waiting line names each such run by pid ("with 2 go test runs outside the gate
+adding to it (pids …)", `ungated_tests` in `--json`), and on a shared machine a
+package's tests run through `--wait -- go test …` rather than plain
+(iss-2610241130157455). A waiter queued ahead of yours still delays yours, under
 any account, until it opens or reaches its own `--timeout` (it may be shut by
 its own account's stricter `wait-load`, which you cannot see), and a waiter
 running its command holds every later gate for the command's length, by
-design. A preflight whose own waiter is queued takes that waiter's place in the
+design. The one exception is a waiter ahead with a higher pid, as after the
+machine's process ids wrap: it may run an abcd built before the start order
+(v0.15.0 and earlier), which waits on every lower pid and so on yours, and
+each would wait on the other until its timeout. So once such waiters alone
+have kept yours shut for five minutes on end, longer than a waiter that orders
+by start ever shows queued while the machine is free to you, yours stops
+counting them; anything else that shuts the gate in between, or standing back
+at the last look, starts the count again. The five minutes grow by about a
+minute and a half for each such waiter ahead beyond the first, so of two
+waiters behind the same one the earlier stops counting it first and opens
+before the later stops counting the earlier. A preflight whose own waiter is queued takes that waiter's place in the
 queue, and a waiter beneath a waiter running its command (the preflight's own
 gate under `--wait -- make preflight`) takes that ancestor's place, ahead of
 every queued waiter, since the ancestor has already won its turn. Once all of it is clear the waiter waits a random 15 to 60 seconds and
 checks everything again, and opens only if the re-check is clear too, so two
 starters in one quiet minute do not start together. Across accounts, which
-share no hold, two waiters whose start and pid disagree (as after the process
-ids wrap) wait on neither and can still open in one moment, so the command form
+share no hold, two waiters can still open in one moment, so the command form
 shows itself as running its command from the moment it opens, looks once more
-two seconds later, and the one with the higher pid stands back: it gives up its
-hold, re-draws its jitter and waits again, at most three times, while the lower
-pid runs its command. Twice the cores, because a
+two seconds later, and stands back from the other unless it started earlier
+and has the lower pid too: it gives up its hold, re-draws its jitter and waits
+again, at most three times, while the other runs its command. The later start
+stands back whatever the pids, and the earlier one stands back from a lower pid
+as well, since an older abcd (v0.15.1 and earlier) goes on past a higher pid.
+Twice the cores, because a
 busy machine with several sessions already sits near one core-count of load;
 one waiter at a time is kept by the process table, the hold and that last look
 (the cross-account exception above), not by the load number; and one race run adds about a core-count, so the peak stays near
@@ -796,7 +818,7 @@ or taking a hold, or waiting a jitter, so the race stage follows the tests
 straight away, as it did before the gate existed (it prints `race gate open at
 once`). Above one it stays shut while another `go test -race` run is live, a
 race waiter queued ahead of it (by the same rule: started earlier, or within
-two seconds of it, and with the lower pid) or running its command is, the load
+two seconds of it with the lower pid) or running its command is, the load
 is at the wait limit, or the race gate's own hold is in force (another race
 waiter of the account opened within two minutes), so race stages are kept
 apart whatever the first gate admits: one at a time within an account, and
@@ -806,8 +828,8 @@ preflight starts its race run, and were that to shut the race gate too, an
 earlier preflight's race stage would wait on it while the holder's own race
 waiter queued behind that earlier one, and neither would move. A preflight waiting there has passed its first gate and
 counts as in its test stages. A waiter that has opened stands back only from a
-lower pid that opened in the same moment at its own gate, never from one at
-the other gate.
+waiter that opened in the same moment at its own gate, never from one at the
+other gate.
 
 How many preflights may be in their test stages at once is the person's own
 machine setting, never a repository's, so a checkout cannot raise the
@@ -823,8 +845,8 @@ preflight while fewer than that many other preflights or waiters running their
 command are in their test stages (`--wait -- make preflight` counts once), a
 waiter queued ahead still shuts it, and a live race run does not shut it by
 itself; the load limit still does, and the race gate waits as described
-above. The first gate's last look still applies: an opener that finds a lower
-pid opened in the same moment stands back, and its next look counts that
+above. The first gate's last look still applies: an opener that finds another
+opened in the same moment stands back as above, and its next look counts that
 waiter, from the moment its mark shows it running, as one of the preflights in
 their test stages. Race stages are kept apart only among preflights whose
 checkouts have the race gate: a preflight run from a checkout older than the
@@ -845,8 +867,14 @@ What 2 does not close, across accounts, which share no hold:
   preflight's `go test -race` shows in the process table a few seconds later,
   once `cmd/test-parallelism` has run; a race waiter of another account that
   re-checks in that moment opens too. After the process ids wrap, two race
-  waiters whose start and pid disagree wait on neither, and the plain form
-  takes no last look, so their re-checks can both open.
+  waiters whose start and pid disagree can both open, since the plain form
+  takes no last look: a waiter of v0.15.1, which counts a waiter ahead only
+  with the lower pid as well, and an earlier one of the start order with a
+  higher pid wait on neither; and two of the start order can disagree for a
+  look where whole-second ages put their starts at the tie tolerance's edge,
+  or once the later has stopped counting the earlier past its five-minute cap
+  on crossed waiters (the cap grows by a step for each crossed waiter more
+  ahead, so the earlier normally opens first).
 - **Three in their test stages.** The plain form of the first gate, which
   `make preflight` runs, takes no last look either, so two accounts' openers
   whose re-checks fall in one moment can both open beside a preflight already
@@ -895,11 +923,12 @@ printed; do not loop around it.
 While it waits, in a checkout, the waiter also keeps your own reservations
 from lapsing, so a record you reserved by hand stays yours while your
 preflight waits its turn: at once and then every five minutes it renews each
-of your live reservations from this copy that is half through its lease, for
+of your live reservations that is half through its lease and whose latest
+commit this copy pushed, for
 its own term or two hours, whichever is longer, and says each renewal on
 standard error. It never reserves anything new, takes nothing over and revives
 nothing that has lapsed, so a lease shorter than ten minutes can still lapse
-between two rounds; a renewal that fails is said once, and the wait goes on. The renewal runs beside
+between two rounds; a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on. The renewal runs beside
 the gate, never in it, so the gate's order and its open never wait on one, and
 it stops when the gate opens: a gated command that runs longer than half a
 lease renews nothing itself. Since the renewal runs through git and gh, no

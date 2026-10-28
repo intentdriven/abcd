@@ -38,6 +38,9 @@ type Replaced struct {
 	Holder string
 	// Copy is CopyAnother when it was this person's other copy, else "".
 	Copy string
+	// YourCopy names that other copy, when Copy is CopyAnother: "your
+	// worktree <path> on this machine" or "your copy on another computer".
+	YourCopy string
 	// Commit is the tip replaced.
 	Commit string
 	// EffectiveExpiry is when it stopped holding (an unreadable tip's hold).
@@ -137,6 +140,15 @@ type Result struct {
 	// skipped: its own on a release's --release, and any ended release of
 	// the same person's it found on its fetch.
 	Settles []Settle
+	// Directories is each path of the footprint the request named that is a
+	// directory git tracks (iss-2610230016544142), with the tracked files
+	// beneath it: the act is made all the same, and a surface tells the
+	// person to name the files instead (DirectoryFootprint.Warning). Every
+	// act that names a footprint is judged, a reserve that renews this copy's
+	// own tip (ActRenewed) included; nil for a release, for a Request.Renew
+	// renewal, which names no footprint and keeps the tip's, and for a
+	// footprint of files alone.
+	Directories []DirectoryFootprint
 }
 
 // beforePush, when a test sets it, runs between the judgement and the push:
@@ -159,6 +171,10 @@ type judged struct {
 	// blob at all (this checkout names none of it, or its tree would not
 	// read), "" when it was read, whatever it held.
 	blobUnread string
+	// defaultRef is origin's default branch as the judgement named it, after
+	// the act's fetch, "" when this checkout names none: the footprint's
+	// directories are read from it under that one name.
+	defaultRef string
 	verdict    lease.Verdict
 	// mine and thisCopy compare a readable tip's holder and copy with the
 	// person and copy acting.
@@ -324,6 +340,10 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	}
 	if perr := push(root, pushArgs(sha, p.id)); perr != nil {
 		return Result{}, lostRace(p, tree, j, perr)
+	}
+	notePushed(root, p.id, sha)
+	if !p.req.Release && !p.req.Renew {
+		res.Directories = directoryFootprints(root, j.defaultRef, res.Footprint)
 	}
 	res.Commit = sha
 	res.Copy = CopyThis
@@ -528,11 +548,16 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 	lapsed := !now.Before(exp.Add(TakeoverMargin))
 	if j.mine {
 		if !p.req.TakeOver && !lapsed {
+			if wt := siblingCopy(p.root, j.Copy); wt != "" {
+				return Result{}, message{}, "", backOff("you are already building %s from your worktree %s on this machine, until %s; "+
+					"renew it from there, or pass --take-over to continue here", p.id, wt, stamp(exp))
+			}
 			return Result{}, message{}, "", backOff("you are already building %s on another computer, until %s; pass --take-over to continue here",
 				p.id, stamp(exp))
 		}
 		res.Act = ActTakenOver
-		res.Replaced = &Replaced{Holder: j.Holder, Copy: CopyAnother, Commit: j.Commit, EffectiveExpiry: exp}
+		res.Replaced = &Replaced{Holder: j.Holder, Copy: CopyAnother, YourCopy: yourCopyAt(siblingCopy(p.root, j.Copy)),
+			Commit: j.Commit, EffectiveExpiry: exp}
 		return res, m, j.Commit, nil
 	}
 	switch {
@@ -563,8 +588,11 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherPerson, ErrRefused,
 			fmt.Sprintf("%s is reserved by %s, not by you; %s", p.id, j.Holder, nothingPushed))
 	case !j.thisCopy:
-		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherCopy, ErrRefused,
-			fmt.Sprintf("%s is held by your copy on another computer; release it there, or take it over here first; %s", p.id, nothingPushed))
+		yours := yourCopyAt(siblingCopy(p.root, j.Copy))
+		nh := j.notHeld(p.id, NotHeldAnotherCopy, ErrRefused,
+			fmt.Sprintf("%s is held by %s; release it there, or take it over here first; %s", p.id, yours, nothingPushed))
+		nh.YourCopy = yours
+		return Result{}, message{}, "", nh
 	case p.req.Tip != "" && j.Commit != p.req.Tip:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldMoved, ErrRefused,
 			fmt.Sprintf("the reservation on %s is no longer commit %s: it was renewed or reserved again since, so it is left as it stands; %s",
@@ -731,8 +759,10 @@ func decideRenew(p *prepared, j judged) (Result, message, string, error) {
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherPerson, ErrBackOff,
 			fmt.Sprintf("%s is reserved by %s until %s, not by you; %s", p.id, j.Holder, stamp(exp), nothingPushed))
 	case !j.thisCopy:
-		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherCopy, ErrBackOff,
-			fmt.Sprintf("%s is held by your copy on another computer, until %s; %s", p.id, stamp(exp), nothingPushed))
+		yours := yourCopyAt(siblingCopy(p.root, j.Copy))
+		nh := j.notHeld(p.id, NotHeldAnotherCopy, ErrBackOff, fmt.Sprintf("%s is held by %s, until %s; %s", p.id, yours, stamp(exp), nothingPushed))
+		nh.YourCopy = yours
+		return Result{}, message{}, "", nh
 	case p.req.Live && !j.verdict.Live:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldLapsed, ErrBackOff,
 			fmt.Sprintf("your reservation on %s lapsed at %s; %s", p.id, stamp(exp), nothingPushed))
@@ -798,6 +828,7 @@ func judge(p *prepared, tree string) (judged, error) {
 		// One name for the default branch, resolved after the act's fetch,
 		// which can create or move origin/HEAD (iss-2610180545134593).
 		ref := originDefault(p.root)
+		j.defaultRef = ref
 		recs, err := defaultRecords(p.root, ref)
 		if err != nil && p.derivedGap == "" {
 			return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",

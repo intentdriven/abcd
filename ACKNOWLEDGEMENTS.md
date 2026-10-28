@@ -212,9 +212,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   family the launch scanner's AWS rule deliberately narrows (self-declared
   at `internal/adapter/scanner/patterns.go`), the openai-api-key rule whose
   legacy shape and sk-admin- prefix the scanner adopts beside it
-  (iss-2610040202190813, iss-2610040452174484), and the full-history secret
-  scan CI runs as the authoritative backstop behind abcd's own fast
-  pre-push pass; and the scanner a repository opts into with
+  (iss-2610040202190813, iss-2610040452174484), the prefix-anchored vendor
+  rules (npm, GitLab, Hugging Face, DigitalOcean, Vault, Shopify, PyPI,
+  SendGrid, Slack webhooks) whose shapes its native set follows, and the
+  full-history secret scan CI runs as the authoritative backstop behind
+  abcd's own fast pre-push pass; and the scanner a repository opts into with
   `.abcd/config/gitleaks.json`, which abcd runs beside its native scanner in
   every scan it makes (iss-2608291814575788). <https://github.com/gitleaks/gitleaks>
 - **Homebrew's auto-update-on-use and the `update-notifier` pattern (npm)** — the

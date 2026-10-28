@@ -291,7 +291,7 @@ func TestRaceAheadOrdersRaceWaitersOnly(t *testing.T) {
 	first[0].Age, first[1].Age = 6*time.Minute, 5*time.Minute
 	snap := Snapshot{HasLoad: true, Cores: 16, Procs: append(append(procs, unit...), first...), HasProcs: true}
 	args = merge(merge(args, unitArgs), firstArgs)
-	if got := RaceAhead(snap, waiter, args); len(got) != 0 {
+	if got, _ := RaceAhead(snap, waiter, args); len(got) != 0 {
 		t.Fatalf("race waiters ahead = %v, want none: a first gate's waiter and a unit stage are not", got)
 	}
 
@@ -301,27 +301,27 @@ func TestRaceAheadOrdersRaceWaitersOnly(t *testing.T) {
 	late, lateArgs := raceStagePreflight(42000, 10*time.Second)
 	snap.Procs = append(append(snap.Procs, early...), late...)
 	args = merge(merge(args, earlyArgs), lateArgs)
-	if got := RaceAhead(snap, waiter, args); !reflect.DeepEqual(got, []int{41003}) {
+	if got, _ := RaceAhead(snap, waiter, args); !reflect.DeepEqual(got, []int{41003}) {
 		t.Fatalf("race waiters ahead = %v, want the earlier one, 41003", got)
 	}
 	// From the earlier one's side, nothing is ahead.
-	if got := RaceAhead(snap, Self{PID: 41003, UID: otherUID}, args); len(got) != 0 {
+	if got, _ := RaceAhead(snap, Self{PID: 41003, UID: otherUID}, args); len(got) != 0 {
 		t.Fatalf("the earliest race waiter sees %v ahead, want none", got)
 	}
 	// A race waiter running its command is ahead whenever it started.
 	snap.Procs = append(snap.Procs, Proc{PID: 42009, PPID: 42003, PGID: 42000, UID: otherUID, Name: "go"})
 	args[42009] = []string{"test", "-race", "./..."}
-	if got := RaceAhead(snap, waiter, args); !reflect.DeepEqual(got, []int{41003, 42003}) {
+	if got, _ := RaceAhead(snap, waiter, args); !reflect.DeepEqual(got, []int{41003, 42003}) {
 		t.Fatalf("race waiters ahead = %v, want 41003 and the one running its command, 42003", got)
 	}
 }
 
-// TestRaceAheadKeepsTheLowerPidRule: the race gate's queue keeps the first
-// gate's rule (dcn-2610162239308903): a race waiter is ahead only when it
-// started earlier and has the lower pid too. One that started earlier with a
-// higher pid, as across a pid wrap, and this one wait on neither, so the two
-// can never wait on each other.
-func TestRaceAheadKeepsTheLowerPidRule(t *testing.T) {
+// TestRaceAheadOrdersByStartAlone: the race gate's queue keeps the first
+// gate's rule: a race waiter that started earlier is ahead whatever its pid.
+// One with the higher pid, as across a pid wrap, is crossed, the one wait a
+// waiter built before the start order can close into a cycle, which
+// implement.WaitLoad bounds (WaitCrossedCap).
+func TestRaceAheadOrdersByStartAlone(t *testing.T) {
 	procs, args := waiterChain()
 	args[60000] = []string{"implement", "load", "--race-gate", "--timeout", "2h"}
 	procs[3].Age = time.Minute
@@ -329,10 +329,10 @@ func TestRaceAheadKeepsTheLowerPidRule(t *testing.T) {
 	early, earlyArgs := raceStagePreflight(81000, 3*time.Minute)
 	snap.Procs = append(snap.Procs, early...)
 	args = merge(args, earlyArgs)
-	if got := RaceAhead(snap, waiter, args); len(got) != 0 {
-		t.Fatalf("race waiters ahead = %v, want none: 81003 started earlier but has the higher pid", got)
+	if got, crossed := RaceAhead(snap, waiter, args); !slices.Equal(got, []int{81003}) || !slices.Equal(crossed, []int{81003}) {
+		t.Fatalf("race waiters ahead = %v, crossed %v; want 81003, which started earlier, ahead and crossed", got, crossed)
 	}
-	if got := RaceAhead(snap, Self{PID: 81003, UID: otherUID}, args); len(got) != 0 {
+	if got, _ := RaceAhead(snap, Self{PID: 81003, UID: otherUID}, args); len(got) != 0 {
 		t.Fatalf("from 81003's side the race waiters ahead = %v, want none: 60000 started later", got)
 	}
 }
@@ -341,10 +341,11 @@ func TestRaceAheadKeepsTheLowerPidRule(t *testing.T) {
 // /bin/sleep child, dcn-2610162257477571) shows it running its command, so
 // from that moment it is a unit in its test stages and takes a slot: with two
 // slots, it and one other preflight fill them. Unmarked, the same waiter is
-// queued, and with the higher pid it is not ahead (dcn-2610162239308903), so
-// the gate is open beside the other preflight.
+// queued, and having started after this one it is not ahead, so the gate is
+// open beside the other preflight.
 func TestAMarkedOpenerTakesASlot(t *testing.T) {
 	procs, args := ownPreflightWaiter()
+	procs[3].Age = time.Hour
 	other, otherArgs := otherPreflight(80000)
 	opener, openerArgs := peerWaiter(90001, 1, otherUID)
 	opener[0].Age, opener[1].Age = 6*time.Minute, 5*time.Minute
@@ -352,7 +353,7 @@ func TestAMarkedOpenerTakesASlot(t *testing.T) {
 	args = merge(merge(args, otherArgs), openerArgs)
 	got := QueueAhead(snap, waiter, args)
 	if len(got.Queued) != 0 || !reflect.DeepEqual(got.Busy, []int{80000}) {
-		t.Fatalf("unmarked: ahead = %+v, want 90001 not ahead (higher pid) and only 80000 busy", got)
+		t.Fatalf("unmarked: ahead = %+v, want 90001 not ahead (it started later) and only 80000 busy", got)
 	}
 	if p, w := got.Shut(2); p || w {
 		t.Fatalf("unmarked, two slots: Shut = %v, %v, want open", p, w)

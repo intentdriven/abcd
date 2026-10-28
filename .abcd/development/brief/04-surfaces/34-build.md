@@ -89,7 +89,18 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   re-drafted it), read through the peer listing, and no session other than the
   one the build is started for holds a live claim on it in the shared run
   state. A copy in the same bucket is not a
-  holding: every branch cut from the default branch carries one. The check
+  holding: every branch cut from the default branch carries one. Nor is a copy
+  the peer has not changed since its merge-base with this checkout, the same
+  file with the same contents as in that merge-base's tree (in every one, when
+  a criss-cross history gives several): a branch cut before the intent left
+  drafts/ holds this checkout's older copy, not the intent
+  (iss-2610222008081888). The peer is measured against this checkout's HEAD,
+  not the default branch, so a branch cut after the default branch shipped an
+  intent this checkout, being behind, still holds as planned is a holding. A
+  worktree is compared off its disk, against the merge-bases of its HEAD, so an
+  uncommitted move or edit is a change. A copy that cannot be compared (an
+  unborn HEAD here, no merge-base, an unreadable file) counts as a holding. The
+  check
   fails closed on what it cannot see into, on both sides: a peer the listing
   names and cannot read (git or the filesystem will not answer for it, or its
   ledger holds one id in two folders) and an unreadable claim file each count
@@ -130,7 +141,13 @@ with a remote named `origin`, a run reserves its key there once its checks and
 its budget check pass and before the run is created, through
 `internal/core/claim`, as `abcd reserve` does: with the packages its spec's
 `## Footprint` `- packages:` line names, each cleaned of a trailing slash, for
-an intent, and the path an issue's `found_at` names for an issue. A spec with
+an intent, and the path an issue's `found_at` names for an issue. The
+reservation names exactly those paths, so a file named there is reserved as
+that file, and one reservation holds them for every step of the run; a step's
+own packages line is not read for it. A path naming a directory git tracks is
+reserved as it stands, and the start warns of it as the reserve verb does,
+naming the directory and its tracked files (`reservation_warnings`, a warning
+on stderr in the text form; iss-2610230016544142). A spec with
 no footprint, or an issue with no such path, is refused at the `reservation`
 stage, starting nothing (C35); another's hold, a person's or this person's
 other copy's, is contention at the same stage; a take-over asked for passes
@@ -745,8 +762,17 @@ until the last step.
    record is written. The commit is made with the repository's hooks running,
    so the commit-msg outbound gate judges it; a hook that refuses stops the
    landing with the records staged, and the step resumes once what the hook
-   names is settled. A lane that neither closes the spec nor fixed a capture
-   records nothing.
+   names is settled. On an intent lane whose spec lists its steps, the
+   records first mark the lane's step landed on the open spec, a `- landed:`
+   line naming the judged head, before any close moves the spec, so a later
+   `abcd build` of the spec or a remainder close reads the step as landed
+   (iss-2610110918418459); a step the branch already marks keeps its mark,
+   and an issue lane marks nothing. A branch whose spec is not open, or lists
+   the lane's step under another title, is refused at the landing's first
+   step, before anything is written. A records commit that only marks the step
+   carries abcd's text alone, so it declares `Assisted-by: abcd:<version>`
+   rather than the lane's models. A lane that marks no step, neither closes
+   the spec nor fixed a capture records nothing.
 3. It pushes the lane's branch to `origin` only once the repository's
    preflight receipt (`.abcd/.work.local/preflight-receipts/<head>`, in any
    worktree git lists) names the lane's head, the gate the pre-push hook
@@ -832,6 +858,33 @@ verb's capture of one path does, one capture per path, and records it in the
 state with the session it was stored under; a run in progress is refused, since
 the record's transcripts are the run's, captured at its end. A capture that
 fails stops the call, with the transcripts before it recorded.
+
+## Approval prompts while it runs
+
+A run is unattended: nobody is at the terminal to answer the host's approval
+prompt for a shell command, so a prompt would stall the run until someone came
+back (iss-2610171110154902). The plugin's `PermissionRequest` hook, matched to
+the shell tool, refuses the prompt while a build runs for the session's checkout or the session is one of a
+running build's lanes. A build counts while its run is unfinished and its state
+was written within the reservation lease, two hours: a run idle past it is one
+the reservation already treats as abandoned, so a checkout holding old
+unfinished runs does not count as running one. A run with a lane handed back
+or held does not count either: it waits on the person, who is then at the
+terminal taking the work over. So refusal stops when the run finishes, hands a
+lane back or holds one, or after two hours with no activity; no verb ends a
+run early, so a person who interrupts a build and carries on by hand sees the
+prompts again two hours after the run last moved. The refusal tells the agent to
+rewrite the command so it needs no approval, each step its own plain command
+and a script's steps on the command line rather than in a file, a heredoc or a
+`bash -c` string, or to skip the step and say why in its report. It is the
+same every time the prompt comes back, and the hook never grants a prompt: an
+approval given to a retry would let any command past every check by being sent
+twice. A lane started through the claude runner runs with the host's hooks off
+(`--bare`), so the hook never sees its prompts; the guard answers them as that
+runner's permission prompt answerer. In every other session the hook says nothing and the host's prompt
+shows as usual. A new run, and a pick as it starts one or begins a series,
+says once on stderr that the prompts are refused while it runs; a
+resume says nothing.
 
 ## Exit codes
 

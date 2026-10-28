@@ -392,7 +392,8 @@ func TestAVersion10StateCarryingAReservationIsRefused(t *testing.T) {
 	path := filepath.Join(root, filepath.FromSlash(StateRelPath(id)))
 	current := stateBytes(t, root, id)
 	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
-	old := strings.Replace(string(current), cur, fmt.Sprintf(`"schema_version": %d,`, schemaVersionUnreserved), 1)
+	old := strings.Replace(string(olderState(t, current, schemaVersionUnreviewed)), fmt.Sprintf(`"schema_version": %d,`, schemaVersionUnreviewed),
+		fmt.Sprintf(`"schema_version": %d,`, schemaVersionUnreserved), 1)
 	if old == string(current) || schemaVersionUnreserved != 10 {
 		t.Fatalf("the current version is past 10: %s", cur)
 	}

@@ -1,0 +1,16 @@
+{
+  "attestations": [
+    {
+      "repository_id": 212613049,
+      "bundle_url": "BUNDLE_BASE/gh-v2.103.2-macOS-arm64.0.json.sn",
+      "initiator": "github",
+      "bundle": null
+    },
+    {
+      "repository_id": 212613049,
+      "bundle_url": "BUNDLE_BASE/gh-v2.103.2-macOS-arm64.1.json.sn",
+      "initiator": "user",
+      "bundle": null
+    }
+  ]
+}

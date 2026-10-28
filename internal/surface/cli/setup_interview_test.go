@@ -188,12 +188,15 @@ func newSetupRun(t *testing.T) setupRun {
 	return setupRun{home: home, repo: repo}
 }
 
-// choose is the answer a test gives a setup question: approve every kind of
-// change but installing tools, take the first value, install the status
+// choose is the answer a test gives a setup question: proceed with the plan,
+// which takes its defaults; and, for a question the plan does not answer,
+// approve every kind of change but installing tools, take the first value, install the status
 // line with every element on, accept the machine's routing and not the
 // repository's, and decide anything else later.
 func choose(q question.Question) string {
 	switch {
+	case q.ID == ahoy.PlanQuestionID:
+		return string(ahoy.PlanProceed)
 	case q.ID == "approve.dependency", q.ID == ahoy.OracleRoutingRepoGapID:
 		return "no"
 	case strings.HasPrefix(q.ID, "approve."), q.ID == "adopt", q.ID == ahoy.StatusLineOfferGapID, q.ID == ahoy.OracleRoutingMachineGapID:
@@ -361,11 +364,11 @@ func TestInterviewOffATerminalIsPlainAndMatchesTheTerminalRecord(t *testing.T) {
 	if dRepo == nil || dMachine == nil {
 		t.Fatalf("the drawn run left the records repo=%q machine=%q\n%s", dRepo, dMachine, drawnOut)
 	}
-	// The routing confirmation is drawn too: the proposal in counts, one
-	// paragraph, then the question on its own line.
+	// The plan screen is drawn first: the plan, then its one line
+	// (itd-2610240823055889); the routing table is one of its defaults.
 	plain := regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(drawnOut, "")
-	if !regexp.MustCompile(`(?s)› Setup Q\d+\n\n  abcd proposes a model tier.*\d+ agents: .*\n\n  Accept abcd's proposed routing for this machine\?\n`).MatchString(plain) {
-		t.Fatalf("the routing confirmation was not drawn in counts:\n%s", drawnOut)
+	if !regexp.MustCompile(`(?s)› Setup Q1\n\n.*Defaults it takes:.*model routing for this machine.*Proceed with this plan\? \(\? explains\)\n`).MatchString(plain) {
+		t.Fatalf("the plan screen was not drawn with its defaults and its one line:\n%s", drawnOut)
 	}
 
 	piped := newSetupRun(t)
@@ -376,7 +379,7 @@ func TestInterviewOffATerminalIsPlainAndMatchesTheTerminalRecord(t *testing.T) {
 	if m := machineStream.FindString(pipedOut); m != "" {
 		t.Fatalf("the piped run wrote %q to a machine stream:\n%s", m, pipedOut)
 	}
-	if !strings.Contains(pipedOut, "Setup Q1") || !strings.Contains(pipedOut, "Adopt this unmanaged repo into abcd?") {
+	if !strings.Contains(pipedOut, "Setup Q1") || !strings.Contains(pipedOut, "Proceed with this plan?") {
 		t.Fatalf("the piped run did not write its questions as plain text:\n%s", pipedOut)
 	}
 	pRepo, pMachine := piped.records(t)
@@ -390,7 +393,7 @@ func TestInterviewOffATerminalIsPlainAndMatchesTheTerminalRecord(t *testing.T) {
 		t.Fatalf("the configurations differ:\n--- drawn\n%s\n--- piped\n%s", drawn.config(t), piped.config(t))
 	}
 	var rec interview.Record
-	if err := json.Unmarshal(dRepo, &rec); err != nil || rec.Answers[0].ID != "adopt" || rec.Answers[0].AnsweredIn != interview.Terminal {
+	if err := json.Unmarshal(dRepo, &rec); err != nil || rec.Answers[0].ID != ahoy.PlanQuestionID || rec.Answers[0].AnsweredIn != interview.Terminal {
 		t.Fatalf("drawn record %+v, %v", rec, err)
 	}
 }
@@ -453,7 +456,7 @@ func TestUnansweredSetupQuestionRefusesNamingIt(t *testing.T) {
 	if !errors.As(err, &ee) || ee.Code != 2 {
 		t.Fatalf("an unanswered question: %v, want exit 2\n%s", err, out)
 	}
-	for _, part := range []string{"Setup Q1 (adopt) has no answer", "--adopt or --refuse-adopt", `{"id": "adopt"`} {
+	for _, part := range []string{"Setup Q1 (approve.plan) has no answer", "--yes", `{"id": "approve.plan"`} {
 		if !strings.Contains(ee.Msg, part) {
 			t.Errorf("the refusal %q lacks %q", ee.Msg, part)
 		}
@@ -699,7 +702,12 @@ func TestSetupInterruptKeepsTheAnswersGiven(t *testing.T) {
 	isTerminalStream = func(*os.File) bool { return true }
 	drawnPut = func(tm ask.Terminal, a question.Ask) ([]ask.Answer, error) {
 		q := a.Questions[0]
-		if _, err := fmt.Fprintln(keys, number(q, choose(q))); err != nil {
+		answer := choose(q)
+		if q.ID == ahoy.PlanQuestionID {
+			// Customise, so the artefact kind is asked rather than defaulted.
+			answer = string(ahoy.PlanCustomise)
+		}
+		if _, err := fmt.Fprintln(keys, number(q, answer)); err != nil {
 			return nil, err
 		}
 		return put(tm, a)
@@ -719,7 +727,7 @@ func TestSetupInterruptKeepsTheAnswersGiven(t *testing.T) {
 	}
 	repo, machine := run.records(t)
 	var r, m interview.Record
-	if err := json.Unmarshal(repo, &r); err != nil || len(r.Answers) == 0 || r.Answers[0].ID != "adopt" {
+	if err := json.Unmarshal(repo, &r); err != nil || len(r.Answers) == 0 || r.Answers[0].ID != ahoy.PlanQuestionID {
 		t.Fatalf("the repository's answers were not kept: %v\n%s", err, repo)
 	}
 	if err := json.Unmarshal(machine, &m); err != nil {

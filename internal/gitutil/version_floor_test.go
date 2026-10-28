@@ -2,7 +2,10 @@ package gitutil_test
 
 import (
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -54,5 +57,36 @@ func TestAFailedVersionProbeIsAskedAgain(t *testing.T) {
 	}
 	if ok, _ := gitutil.GitAtLeast(2, 44); !ok || calls != 2 {
 		t.Fatalf("a probe that ran was asked again (%d calls); want it kept", calls)
+	}
+}
+
+// TestConcurrentVersionQuestionsShareOneProbe: callers that ask while a probe
+// is running wait for it rather than each starting their own, and all read
+// its answer (iss-2610181802344551).
+func TestConcurrentVersionQuestionsShareOneProbe(t *testing.T) {
+	var calls atomic.Int32
+	restore := gitutil.SwapGitVersionForTest(func() (string, error) {
+		calls.Add(1)
+		time.Sleep(100 * time.Millisecond)
+		return "git version 2.52.0", nil
+	})
+	defer restore()
+	var wg sync.WaitGroup
+	oks := make([]bool, 10)
+	for i := range oks {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			oks[i], _ = gitutil.GitAtLeast(2, 44)
+		}()
+	}
+	wg.Wait()
+	for i, ok := range oks {
+		if !ok {
+			t.Errorf("caller %d did not read the shared probe's answer", i)
+		}
+	}
+	if n := calls.Load(); n != 1 {
+		t.Errorf("%d probes ran for 10 concurrent questions; want 1", n)
 	}
 }

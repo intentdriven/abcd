@@ -1,6 +1,8 @@
 package claim
 
 import (
+	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -87,5 +89,64 @@ func TestRenewDueWithNothingHeldDoesNothing(t *testing.T) {
 	got, err := RenewDue(p.dir, p.opts())
 	if err != nil || len(got) != 0 {
 		t.Fatalf("renewals %+v, err %v; want none", got, err)
+	}
+}
+
+// TestRenewDueRenewsOnlyWhatThisCopyPushed: the renewal renews the
+// reservations this copy itself pushed, and leaves a tip it did not push as
+// it is, whatever the tip reads as.
+func TestRenewDueRenewsOnlyWhatThisCopyPushed(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.reserve("iss-5", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	own := w.remoteMessage(w.remoteTip("iss-5"))
+	other := w.pushHostile("iss-9", strings.ReplaceAll(own, "iss-5", "iss-9"), t0)
+	if _, err := Fetch(p.dir, p.opts()); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := View(p.dir, w.clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := false
+	for _, r := range snap.Reservations {
+		read = read || r.Record == "iss-9" && r.Copy == CopyThis && r.State == StateLive
+	}
+	if !read {
+		t.Fatalf("iss-9 does not read as this copy's live hold: %+v", snap.Reservations)
+	}
+
+	w.set(t0.Add(61 * time.Minute))
+	got, err := RenewDue(p.dir, p.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	byRecord := map[string]Renewal{}
+	for _, r := range got {
+		byRecord[r.Record] = r
+	}
+	if len(got) != 2 || byRecord["iss-5"].Err != nil || byRecord["iss-5"].Until.IsZero() ||
+		!errors.Is(byRecord["iss-9"].Err, errNotPushedHere) {
+		t.Fatalf("renewals %+v; want iss-5 renewed and iss-9 answered as not pushed here", got)
+	}
+	if w.remoteTip("iss-9") != other {
+		t.Fatalf("iss-9, whose tip this copy did not push, was renewed from it")
+	}
+
+	// The renewal this copy pushed is its own in turn, so it is renewed again
+	// once half its new lease has passed.
+	w.set(t0.Add(61*time.Minute + 61*time.Minute))
+	got, err = RenewDue(p.dir, p.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	renewedAgain := false
+	for _, r := range got {
+		renewedAgain = renewedAgain || r.Record == "iss-5" && r.Err == nil
+	}
+	if !renewedAgain || w.remoteTip("iss-9") != other {
+		t.Fatalf("second renewals %+v; want iss-5 renewed again and iss-9 left as it is", got)
 	}
 }

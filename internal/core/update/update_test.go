@@ -359,7 +359,7 @@ func TestApplyRefusesCrossHostRedirect(t *testing.T) {
 
 	u := newUpdater(redirector.URL, nil, testAssetName, true, nil)
 	_, err := u.Apply(target, "v0.6.2", nil)
-	if err == nil || !strings.Contains(err.Error(), "redirect") {
+	if err == nil || !strings.Contains(err.Error(), "redirect refused") || !strings.Contains(err.Error(), "not a host this download may reach") {
 		t.Fatalf("a cross-host redirect must refuse, got err=%v", err)
 	}
 }

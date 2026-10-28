@@ -223,8 +223,8 @@ func TestImplementLoadWaitMarksUntilTheCommandStarts(t *testing.T) {
 }
 
 // TestImplementLoadWaitSaysWhenItStandsBack: a waiter whose last look finds
-// another waiter opened in the same moment with the lower pid says so, names
-// it, and opens later.
+// another waiter opened in the same moment, ahead of it by start, says so,
+// names it, and opens later.
 func TestImplementLoadWaitSaysWhenItStandsBack(t *testing.T) {
 	opener := []machineload.Proc{
 		{PID: 40001, PPID: 1, PGID: 40001, UID: 502, Age: time.Hour, Name: "abcd"},

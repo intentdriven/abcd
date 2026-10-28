@@ -18,7 +18,7 @@ func TestAhoyInstallReadmePartsFlag(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, "LICENSE"), []byte("MIT License\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	base := []string{"ahoy", "install", "--yes", "--adopt",
+	base := []string{"ahoy", "install", "--details", "--yes", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"}
 
@@ -63,7 +63,7 @@ func TestAhoyInstallReadmePartsFlag(t *testing.T) {
 // (spc-2610031704338417 step 4), at a terminal or off one.
 func TestAhoyInstallReadmeOfferLabelIsTrue(t *testing.T) {
 	hermeticRepo(t)
-	out, err := runCLIPipedStdin(t, strings.Repeat("y\n", 40), "ahoy", "install", "--adopt",
+	out, err := runCLIPipedStdin(t, strings.Repeat("y\n", 40), "ahoy", "install", "--details", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false")
 	if err != nil {
@@ -88,7 +88,7 @@ func TestAhoyInstallReadmeOfferLabelIsTrue(t *testing.T) {
 // (iss-2610120505551170).
 func TestAhoyInstallReadmeHintWithoutAConfig(t *testing.T) {
 	repo := hermeticRepo(t)
-	out, err := runCLIPipedStdin(t, strings.Repeat("n\n", 40), "ahoy", "install", "--adopt",
+	out, err := runCLIPipedStdin(t, strings.Repeat("n\n", 40), "ahoy", "install", "--details", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false")
 	if err != nil {

@@ -41,6 +41,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/testshard"
 )
 
 const (
@@ -51,6 +52,11 @@ const (
 func TestMain(m *testing.M) {
 	if mode := os.Getenv(loopFakeEnv); mode != "" {
 		os.Exit(loopFakeHarness(mode))
+	}
+	// The package is too long for one test process under the preflight's
+	// package budget (iss-2610251004378066).
+	if code, ok := testshard.Shard(); ok {
+		os.Exit(code)
 	}
 	os.Exit(m.Run())
 }
@@ -557,8 +563,7 @@ func TestAVersion7StateCarryingARunnersRecordIsRefused(t *testing.T) {
 	root, id, _, _ := startToImplement(t)
 	path := filepath.Join(root, filepath.FromSlash(StateRelPath(id)))
 	current := stateBytes(t, root, id)
-	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
-	old := strings.Replace(string(current), cur, `"schema_version": 7,`, 1)
+	old := strings.Replace(string(olderState(t, current, schemaVersionUnreviewed)), fmt.Sprintf(`"schema_version": %d,`, schemaVersionUnreviewed), `"schema_version": 7,`, 1)
 	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}

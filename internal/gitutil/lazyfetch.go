@@ -2,6 +2,7 @@ package gitutil
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // The lazy-fetch floor (iss-2610090821527948). In a partial clone git answers
@@ -36,10 +38,28 @@ var ErrLazyFetchFloor = fmt.Errorf("the repository declares a promisor remote (a
 // on either side of a floor whatever git is installed.
 type versionCache struct {
 	mu   sync.Mutex
-	src  func() (string, error)
+	src  func(context.Context) (string, error)
 	done bool
 	ok   bool // the probe ran and returned
 	raw  string
+	// inflight is the probe running now; nil when none is. The lock is never
+	// held while git runs, so a caller on a deadline waits for the probe or
+	// its own deadline, whichever comes first (iss-2610181802344551).
+	inflight *versionProbe
+	// gen counts set calls: a probe started before a set keeps no answer.
+	gen int
+}
+
+// versionProbe is one running `git version` probe and the callers waiting on
+// it. The last waiter to leave at its own deadline cancels it, so the git it
+// started ends then too and is never left running after the process that
+// asked has gone; a caller with no deadline never leaves, and keeps the probe
+// to its own timeout (iss-2610181802344551).
+type versionProbe struct {
+	done    chan struct{} // closed when the probe has ended
+	cancel  context.CancelFunc
+	waiters int
+	raw     string // the line it read, set before done is closed
 }
 
 var gitVersion = &versionCache{src: probeGitVersion}
@@ -49,7 +69,7 @@ var gitVersion = &versionCache{src: probeGitVersion}
 // swap moves the lazy-fetch floor and the merge driver's options together. It returns the restore, which puts the real probe
 // back; the cached answer is cleared both ways.
 func SwapGitVersionForTest(src func() (string, error)) (restore func()) {
-	gitVersion.set(src)
+	gitVersion.set(func(context.Context) (string, error) { return src() })
 	return func() { gitVersion.set(probeGitVersion) }
 }
 
@@ -66,10 +86,12 @@ func (v *versionCache) known() bool {
 var ErrGitVersionUnread = errors.New("git's version could not be read")
 
 // set replaces the source and clears the cached answer.
-func (v *versionCache) set(src func() (string, error)) {
+func (v *versionCache) set(src func(context.Context) (string, error)) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.src, v.done, v.ok, v.raw = src, false, false, ""
+	v.inflight = nil
+	v.gen++
 }
 
 // honoursNoLazyFetch reports whether the git on PATH honours GIT_NO_LAZY_FETCH,
@@ -90,18 +112,72 @@ func (v *versionCache) honoursNoLazyFetch() (bool, string) {
 // (iss-2610051434156079). A line that does not parse is git's own answer, and
 // is kept.
 func (v *versionCache) atLeast(major, minor int) (bool, string) {
+	ok, raw, _ := v.atLeastContext(context.Background(), major, minor)
+	return ok, raw
+}
+
+// atLeastContext is atLeast for a caller on a deadline: it waits for the
+// probe (started now, or already running for another caller) or for ctx,
+// whichever ends first, and returns ctx's error if ctx ended first, keeping
+// nothing. A probe other callers still wait on runs on for them; one left
+// with no waiter is cancelled, and the caller that leaves last waits for its
+// git to end (killed, within the probe's WaitDelay) before returning.
+func (v *versionCache) atLeastContext(ctx context.Context, major, minor int) (bool, string, error) {
+	v.mu.Lock()
+	if v.done {
+		ok, raw := v.ok && versionAtLeast(v.raw, major, minor), v.raw
+		v.mu.Unlock()
+		return ok, raw, nil
+	}
+	p := v.inflight
+	if p == nil {
+		pctx, cancel := context.WithCancel(context.Background())
+		p = &versionProbe{done: make(chan struct{}), cancel: cancel}
+		v.inflight = p
+		src, gen := v.src, v.gen
+		go func() {
+			defer cancel()
+			r, err := src(pctx)
+			v.mu.Lock()
+			p.raw = strings.TrimSpace(r)
+			if gen == v.gen && err == nil {
+				v.raw, v.ok, v.done = p.raw, true, true
+			}
+			if v.inflight == p {
+				v.inflight = nil
+			}
+			v.mu.Unlock()
+			close(p.done)
+		}()
+	}
+	p.waiters++
+	v.mu.Unlock()
+	select {
+	case <-p.done:
+	case <-ctx.Done():
+		v.mu.Lock()
+		p.waiters--
+		last := p.waiters == 0
+		if last {
+			p.cancel()
+			if v.inflight == p {
+				v.inflight = nil
+			}
+		}
+		v.mu.Unlock()
+		if last {
+			<-p.done
+		}
+		return false, "", ctx.Err()
+	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	if !v.done {
-		raw, err := v.src()
-		if err != nil {
-			return false, strings.TrimSpace(raw)
-		}
-		v.raw = strings.TrimSpace(raw)
-		v.ok = true
-		v.done = true
+	if v.done {
+		return v.ok && versionAtLeast(v.raw, major, minor), v.raw, nil
 	}
-	return v.ok && versionAtLeast(v.raw, major, minor), v.raw
+	// The probe ended without an answer kept: it failed (read as below
+	// every floor, and asked again next time), or a set replaced it.
+	return false, p.raw, nil
 }
 
 // GitAtLeast reports whether the git on PATH is at least major.minor, probed
@@ -133,10 +209,18 @@ func versionAtLeast(line string, major, minor int) bool {
 	return ma > major || (ma == major && mi >= minor)
 }
 
+// versionProbeTimeout bounds one `git version` probe, so a git that hangs
+// never leaves the probe running on: past it the probe fails, and the next
+// caller asks again.
+const versionProbeTimeout = 30 * time.Second
+
 // probeGitVersion asks the git on PATH for its version under the isolated
-// environment.
-func probeGitVersion() (string, error) {
-	cmd := exec.Command("git", "version")
+// environment, ending at ctx or at versionProbeTimeout, whichever is first.
+func probeGitVersion(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, versionProbeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "version")
+	cmd.WaitDelay = time.Second
 	cmd.Env = gitEnv()
 	w := &capWriter{remaining: 4096}
 	cmd.Stdout = w
@@ -157,8 +241,12 @@ func probeGitVersion() (string, error) {
 // extension, whatever the config says, so in a partial clone below the floor
 // EVERY ls-files is refused (coordinator ruling on iss-2610091935324732,
 // tightened after review: the config cannot vouch for the index on disk).
-func lazyFetchGuard(root string, args []string) error {
-	if ok, _ := gitVersion.honoursNoLazyFetch(); ok {
+func lazyFetchGuard(ctx context.Context, root string, args []string) error {
+	ok, _, err := gitVersion.atLeastContext(ctx, lazyFetchFloorMajor, lazyFetchFloorMinor)
+	if err != nil {
+		return fmt.Errorf("asking git's version before an object read: %w", err)
+	}
+	if ok {
 		return nil
 	}
 	reads := readsObjects(args)
@@ -166,7 +254,7 @@ func lazyFetchGuard(root string, args []string) error {
 	if !reads && !listing {
 		return nil
 	}
-	cfg, err := readFloorConfig(root)
+	cfg, err := readFloorConfig(ctx, root)
 	if err != nil {
 		return err
 	}
@@ -336,14 +424,20 @@ type floorConfig struct {
 // it), so a key git would act on is a key it sees. A config read git cannot
 // answer (exit other than 1, which is "no such key") is returned as an error,
 // and a listing past the cap counts as both: the guard fails closed.
-func readFloorConfig(root string) (floorConfig, error) {
-	cmd := exec.Command("git", isolatedArgs(root, []string{"config", "-z", "--get-regexp",
+func readFloorConfig(ctx context.Context, root string) (floorConfig, error) {
+	cmd := exec.CommandContext(ctx, "git", isolatedArgs(root, []string{"config", "-z", "--get-regexp",
 		`^(extensions\.partialclone|remote\..*\.promisor|core\.sparsecheckout|index\.sparse)$`})...)
 	cmd.Env = gitEnv()
+	if ctx.Done() != nil {
+		cmd.WaitDelay = contextWaitDelay
+	}
 	w := &capWriter{remaining: 64 << 10}
 	e := &capWriter{remaining: 4096}
 	cmd.Stdout, cmd.Stderr = w, e
 	if err := cmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return floorConfig{}, fmt.Errorf("reading the repository's promisor config before an object read: %w", ctxErr)
+		}
 		var ee *exec.ExitError
 		if errors.As(err, &ee) && ee.ExitCode() == 1 {
 			return floorConfig{}, nil

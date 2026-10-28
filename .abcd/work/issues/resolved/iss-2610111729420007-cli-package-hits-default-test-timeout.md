@@ -24,6 +24,8 @@ make preflight's unit pass runs `go test` with the default ten-minute package ti
 
 The same failure reached a second package. On 2026-10-17 a preflight's unit stage killed `internal/core/implement/loop` at go test's 10-minute default (600.3s), with no test hung: the test running at the alarm was one second old. The same package had taken 346s in a preflight the evening before, and the machine was busier that morning, now that two preflights can run their test stages at once. The class is any slow package in the unit stage under load, not the cli package alone, so the fix gives the whole stage the race stage's 20-minute budget.
 
+2026-10-23, a measurement against the 20-minute budget: a hand run of `go test ./internal/surface/cli` on go's ten-minute default (not preflight) stopped at 597s under concurrent load. The package grew to sit at about ten minutes under load, which is half the 20-minute preflight and race budgets, so the budget still holds with the margin it was sized for. Nothing to change. A hand run of this package under load takes `-timeout 20m` as preflight does.
+
 ## Grounds
 
 - pursued: a 20-minute budget covers the slowest package under the load two concurrent preflights put on the machine; shown wrong if a unit-stage package is killed at 20 minutes with no test hung

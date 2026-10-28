@@ -117,8 +117,22 @@ type reserveOutput struct {
 	Admitted       *claim.Withdrawal    `json:"admitted,omitempty"`
 	Stranded       []claim.Withdrawal   `json:"stranded,omitempty"`
 	Settles        []claim.Settle       `json:"settles,omitempty"`
-	note           string
-	warnings       []string
+	// DirectoryFootprint is each footprint path naming a directory git
+	// tracks, with the tracked files beneath it (iss-2610230016544142): the
+	// reservation is made all the same, and the text form warns of each on
+	// stderr.
+	DirectoryFootprint []reserveDirectory `json:"directory_footprint,omitempty"`
+	note               string
+	warnings           []string
+}
+
+// reserveDirectory is a footprint path naming a directory: the tracked files
+// beneath it on the branch it was read from (-1 when git could not count
+// them).
+type reserveDirectory struct {
+	Path         string `json:"path"`
+	TrackedFiles int    `json:"tracked_files"`
+	On           string `json:"on"`
 }
 
 // reserveOwnOverlap is a path shared with one's own reservation from another
@@ -140,6 +154,7 @@ type reserveHandedBack struct {
 type reserveReplaced struct {
 	Holder          string `json:"holder,omitempty"`
 	Copy            string `json:"copy,omitempty"`
+	YourCopy        string `json:"your_copy,omitempty"`
 	Commit          string `json:"commit"`
 	EffectiveExpiry string `json:"effective_expiry"`
 	Unreadable      string `json:"unreadable,omitempty"`
@@ -162,13 +177,15 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 		leaseFor  time.Duration
 		holder    bool
 		admit     int
+		sweep     *sweepFlags
 	)
 	cmd := &cobra.Command{
 		Use: "reserve <record-id>",
 		Long: "abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]\n" +
 			"abcd reserve rel-vX.Y.Z --admit <pr>\n" +
 			"abcd reserve <record-id> --release\n" +
-			"abcd reserve --holder\n\n" +
+			"abcd reserve --holder\n" +
+			"abcd reserve --sweep [--apply] [--older-than <days>]\n\n" +
 			"Reserve an issue or an intent on the shared remote before starting work on it, so\n" +
 			"every other participant sees it is taken. The reservation is the branch\n" +
 			"abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits\n" +
@@ -228,7 +245,10 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"directory never is. When that declaration cannot be read nothing is shared, and\n" +
 			"the act says why (generated_unread in --json). Your own reservation sharing a\n" +
 			"path with yours from another copy is made, and warns on stderr (own_overlap in\n" +
-			"--json).\n\n" +
+			"--json). Name files, not directories: a directory holds off every reservation of\n" +
+			"a file inside it. A footprint path naming a directory git tracks is reserved all\n" +
+			"the same, and warns on stderr, naming it and how many tracked files it covers on\n" +
+			"origin's default branch, or HEAD (directory_footprint in --json).\n\n" +
 			"The holder is your GitHub username, from the first of these that names it:\n" +
 			"user.email, when it is a GitHub no-reply address; reservation.github_username\n" +
 			"in the machine configuration (the repository's own configuration is never read\n" +
@@ -248,8 +268,26 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"Exit 0 when the act reached origin (or a release was already made); exit 3 when\n" +
 			"the record is held by someone else or by your other copy, so back off; exit 2\n" +
 			"on every other refusal and failure. Nothing is pushed on a refusal, and a failed\n" +
-			"push leaves no reservation and nothing in the checkout.",
+			"push leaves no reservation and nothing in the checkout.\n\n" +
+			"--sweep lists the spent reservation branches on origin and, with --apply, deletes\n" +
+			"them, each with a lease on the exact tip it judged, so a branch re-reserved\n" +
+			"meanwhile survives. A branch is spent when its tip has been untouched, its lease\n" +
+			"past the five-minute margin included, for --older-than days (default 7, at\n" +
+			"least 1), and either its record is resolved, won't-fixed, shipped or superseded\n" +
+			"on origin's default branch, or every commit on it is a reservation or a plain\n" +
+			"release, whether or not any is a release, since a lapsed lease already lets any\n" +
+			"session take the record over. A hand-back on a record still open, a commit of\n" +
+			"a kind the sweep cannot classify, a history it cannot read to its root, and an\n" +
+			"unreadable tip keep the branch.\n" +
+			"The reservations ruleset lets only its bypass actor delete these branches, so\n" +
+			"the scheduled reservation-sweep workflow is what applies it; anyone else's\n" +
+			"--apply is refused by origin. It takes no record id and no other flag; exit 0\n" +
+			"when it ran (a branch that moved since it was judged is kept, not a failure),\n" +
+			"exit 2 when it could not run or origin refused a deletion.",
 		Args: func(cmd *cobra.Command, args []string) error {
+			if err := sweep.args(cmd, args); err != nil || sweep.on {
+				return err
+			}
 			if holder {
 				var with []string
 				if len(args) > 0 {
@@ -274,6 +312,9 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			return &exitError{Code: 2, Msg: "abcd reserve: takes one record id, not " + fmt.Sprint(len(args)) + "; nothing was pushed"}
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if sweep.on {
+				return runReserveSweep(cmd.OutOrStdout(), *asJSON, sweep)
+			}
 			if holder {
 				return runReserveHolder(cmd.OutOrStdout(), cmd.ErrOrStderr(), *asJSON)
 			}
@@ -329,6 +370,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&release, "release", false, "release your reservation from this copy by pushing a tombstone")
 	cmd.Flags().IntVar(&admit, "admit", 0, "on a release reservation, from the copy cutting it: re-arm this withdrawn pull request and record it admitted")
 	cmd.Flags().BoolVar(&holder, "holder", false, "say which GitHub account an act would reserve as, and from where; reserves nothing")
+	sweep = addSweepFlags(cmd)
 	return cmd
 }
 
@@ -382,7 +424,7 @@ func reserveView(res claim.Result) reserveOutput {
 		out.Footprint = append(out.Footprint, termsafe.Sanitize(f))
 	}
 	if r := res.Replaced; r != nil {
-		out.Replaced = &reserveReplaced{Holder: r.Holder, Copy: r.Copy, Commit: r.Commit,
+		out.Replaced = &reserveReplaced{Holder: r.Holder, Copy: r.Copy, YourCopy: termsafe.Sanitize(r.YourCopy), Commit: r.Commit,
 			EffectiveExpiry: rfc3339(r.EffectiveExpiry), Unreadable: r.Unreadable}
 	}
 	if h := res.HandedBack; h != nil {
@@ -421,6 +463,11 @@ func reserveView(res claim.Result) reserveOutput {
 			out.warnings = append(out.warnings, st.Failed)
 		}
 		out.Settles[i] = st
+	}
+	for _, d := range res.Directories {
+		out.DirectoryFootprint = append(out.DirectoryFootprint, reserveDirectory{Path: termsafe.Sanitize(d.Path),
+			TrackedFiles: d.Files, On: termsafe.Sanitize(d.On)})
+		out.warnings = append(out.warnings, d.Warning())
 	}
 	return out
 }
@@ -477,7 +524,7 @@ func renderReserve(w io.Writer, out reserveOutput) {
 		case r.Unreadable != "":
 			fmt.Fprintf(w, "  replaced: the unreadable reservation %s (%s), held until %s\n", shortCommit(r.Commit), r.Unreadable, r.EffectiveExpiry)
 		case r.Copy == claim.CopyAnother:
-			fmt.Fprintf(w, "  replaced: your copy on another computer, which held it until %s\n", r.EffectiveExpiry)
+			fmt.Fprintf(w, "  replaced: %s, which held it until %s\n", r.YourCopy, r.EffectiveExpiry)
 		default:
 			fmt.Fprintf(w, "  replaced: %s's reservation, which lapsed at %s\n", r.Holder, r.EffectiveExpiry)
 		}

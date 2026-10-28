@@ -38,8 +38,18 @@ test:
 # cold-reading evals below. Behind the `smoke` build tag so they stay out of the
 # unit-test lane; run explicitly here, under `make preflight`, in CI's smoke job,
 # and in the release verify gate.
+# The eval lanes' budget (iss-2610241228178135): with no -timeout, go test kills
+# the evals package at ten minutes, which a loaded development machine reached
+# with no test hung. Each workflow step that runs an eval lane sets its own,
+# below its job's timeout-minutes, so a hang there still dumps goroutines
+# (internal/core/lint/evallanebudget_test.go holds both).
+EVAL_TIMEOUT ?= 20m
+ifeq ($(strip $(EVAL_TIMEOUT)),)
+override EVAL_TIMEOUT := 20m
+endif
+
 smoke:
-	go test -tags smoke ./evals/...
+	go test -tags smoke -timeout $(EVAL_TIMEOUT) ./evals/...
 
 # The cold-reading evals alone (evals/coldreading_*_test.go): the read-block eval
 # that falsifies the assembler's blindfold by planting sentinel warm content in a
@@ -65,7 +75,7 @@ smoke:
 # second cold-reading eval joins the lane by carrying that constraint, with no
 # edit to this target or to the workflow.
 evals-cold-reading:
-	go test -tags coldreading ./evals/...
+	go test -tags coldreading -timeout $(EVAL_TIMEOUT) ./evals/...
 
 # Format gate, resolved through the toolchain go.mod declares
 # (iss-2609081953452204). Not `gofmt` off PATH: gofmt's rules move between
@@ -278,8 +288,8 @@ asking-sync-check:
 # Both lanes are named even though `smoke` compiles a superset of
 # `evals-cold-reading`'s files: they are separate tag sets, so a cold-reading
 # file reaching for a smoke-only helper compiles under one and not the other,
-# which is the split CI's two jobs cover. About five seconds each on a warm
-# cache, against roughly a minute for the gates already here.
+# which is the split CI's two jobs cover. Under a minute each in CI, and
+# several on a loaded machine, hence EVAL_TIMEOUT above.
 #
 # The test stages wait their turn on the machine (iss-2610102020442624,
 # iss-2610140638074587). Before them the load gate (`abcd implement load
@@ -305,22 +315,27 @@ asking-sync-check:
 # -race run or race waiter ahead is live, the load is at the limit or the race
 # gate's own hold is in force. That keeps race stages apart among checkouts
 # that have this gate: one at a time within an account, and across accounts
-# all but a narrow window (a race waiter gone before its race run shows, or two
-# waiters whose start and pid disagree after a pid wrap). An older checkout's
+# all but a narrow window (a race waiter gone before its race run shows, or,
+# after a pid wrap, two waiters whose start and pid disagree: one running abcd
+# v0.15.1, or two of the start order whose whole-second ages read a tie
+# differently or the later of which stopped counting the earlier past its
+# five-minute cap). An older checkout's
 # race stage is ungated, so set 2 only once none runs a preflight. Each test
 # stage then takes a go test -p derived from the online cores and the load as
 # the stage starts, at most the cores divided by the setting
 # (cmd/test-parallelism), so one run cannot saturate the machine.
-# The unit stage takes the race stage's 20-minute package budget, not go
+# The unit stage takes the race stage's 40-minute package budget, not go
 # test's 10m default: internal/core/implement/loop ran about ten minutes alone
 # on a loaded development machine (2026-10-17) and timed out at 10m with no
-# test hung.
+# test hung, and on 2026-10-25 claim, implement/loop and surface/cli each
+# outran 20 minutes on a 10-core Mac at a load of 5 to 7, with no test hung
+# (iss-2610250007404944).
 preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go run ./cmd/abcd implement load --wait --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
-	go test -p "$$p" -timeout 20m ./...
+	go test -p "$$p" -timeout 40m ./...
 	go run ./cmd/abcd implement load --race-gate --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	go test -race -p "$$p" -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
@@ -349,6 +364,21 @@ endif
 # exported variable reaches the target's prerequisites and recipe, and not a
 # prerequisite run on its own.
 preflight: export ABCD_LOAD_CHECKED := preflight
+
+# The three longest packages (internal/core/implement/loop, internal/core/claim
+# and internal/surface/cli) run their tests as three processes each in both
+# test stages, each process under the stage's package budget: as one process
+# implement/loop took 60 minutes alone at a load of about 13 on a 10-core Mac
+# (2026-10-25) and was killed at 40 with no test hung, and its tests cannot run
+# in parallel, since nearly every one sets HOME through t.Setenv. Each opts in
+# from its TestMain through internal/testshard, which shards only a whole-package
+# run, so a -run, a profile or -json runs as before, and go test's cache still
+# reads every shard's inputs. CI sets no shards (iss-2610251004378066). A
+# sharded package counts as one of the stage's -p packages and runs three
+# processes, so the stage can run up to six more test processes than its -p
+# while all three are running at once; none of the three uses t.Parallel, so
+# each process keeps to about one core.
+preflight: export ABCD_TEST_SHARDS := 3
 
 # Every Go step preflight makes — its own recipe lines and every go run and go
 # test its prerequisites make — runs on the toolchain go.mod declares, the one

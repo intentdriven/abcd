@@ -81,6 +81,7 @@ func TestAReceiptsStoredTextIsHeldToWhatTheLoopStores(t *testing.T) {
 				entry := doc["lanes"].([]any)[0].(map[string]any)[f.list].([]any)[0].(map[string]any)
 				entry[f.field] = entry[f.field].(string) + bad
 				doc["schema_version"] = version
+				unreviewOlder(doc)
 				data, err := json.Marshal(doc)
 				if err != nil {
 					t.Fatal(err)

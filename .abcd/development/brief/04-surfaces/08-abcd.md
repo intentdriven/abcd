@@ -256,7 +256,8 @@ first, at most ten per holder and the rest counted; one dated more than
 the same view, so they add no network act (spc-2610161044461448 step 18,
 dcn-2610161040394970). The JSON form adds `reservations` (each live one with
 `stage` when it carries one), `live_by_holder`, `release_holds` (one per
-release being cut), `hand_backs_by_holder` (`holder`,
+release being cut), `lapsed_releases` (one per release whose cut lapsed with
+no tag on origin, holding no merge), `hand_backs_by_holder` (`holder`,
 `hand_backs` of `record`, `kind` and `released_at`, and `more`),
 `release_withdrawals` (each release's withdrawn pull requests by state: held,
 admitted, due (read from the reader's own newest push to the branch, as the

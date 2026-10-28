@@ -90,7 +90,10 @@ expect() {
 		fi
 		;;
 	esac
-	if [ -n "$needle" ] && ! printf '%s' "$out" | grep -qF "$needle"; then
+	# A here-string, not a pipe: under pipefail a pipe's status is the writer's
+	# too, so a writer that fails after grep -q has matched and gone reported a
+	# needle the printed output plainly holds as missing.
+	if [ -n "$needle" ] && ! grep -qF -- "$needle" <<<"$out"; then
 		printf 'cases: FAIL %s — output does not say %q:\n%s\n' "$label" "$needle" "$out" >&2
 		failures=$((failures + 1))
 		return
