@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
@@ -233,6 +234,41 @@ func (s Step) Requires() []int {
 	return out
 }
 
+// SerialByDefault reports whether a spec's steps run fully serial only because
+// none of them says otherwise: two or more steps still to build, and none of
+// them after the first carrying a `- needs:` line, so each waits for every step
+// before it (ruling DR6b). It is the one judgement the readiness gate's steps
+// row and record-lint's spec_steps_serial rule share (dcn-2610230857411093), so
+// the two never disagree.
+//
+// WHY only the unlanded steps: with one step or none left to build nothing can
+// run beside anything, and asking for needs lines on steps that already landed
+// asks for edits that change nothing. WHY the first of them is skipped: it has
+// no unlanded step before it to wait for, so its line, `none` included, frees
+// nothing, and counting it would let one line on step 1 silence the warning
+// while the rest still run serial.
+func SerialByDefault(steps []Step) bool {
+	rest := Unlanded(steps)
+	if len(rest) < 2 {
+		return false
+	}
+	for _, s := range rest[1:] {
+		if s.NeedsDeclared {
+			return false
+		}
+	}
+	return true
+}
+
+// SerialByDefaultWarning is the one sentence both readers of SerialByDefault
+// report, and SerialByDefaultRemedy the fix they name for the spec at path.
+const SerialByDefaultWarning = "no step still to build after the first declares `needs:`, so the steps run fully serial, each waiting for every earlier step"
+
+// SerialByDefaultRemedy names the fix for a serial-by-default spec at path.
+func SerialByDefaultRemedy(path string) string {
+	return "declare each step's needs in " + path + ": `- needs: <earlier step numbers>` under a step that waits on earlier ones (`- needs: 1, 3`), or `- needs: none` under an independent step, so the build runs independent steps in parallel"
+}
+
 // NeedsRewrite is one `- needs:` line a remainder copy rewrote: the step as the
 // remainder numbers it, and the line before and after.
 type NeedsRewrite struct {
@@ -328,6 +364,87 @@ func Unlanded(steps []Step) []Step {
 		}
 	}
 	return out
+}
+
+// landedLineRe is a step's `- landed:` line, its indentation and marker kept,
+// and bulletRe the indentation and marker of any bullet under a step.
+var (
+	landedLineRe = regexp.MustCompile(`^([ \t]+[-*+][ \t]+)(?i:landed)[ \t]*:`)
+	bulletRe     = regexp.MustCompile(`^([ \t]+[-*+][ \t]+)`)
+)
+
+// markStepLanded returns content with step n marked landed by value (a pull
+// request or a commit): a `- landed:` line is added after the step's own
+// lines, or replaces a null one, and every other line is kept as written; a
+// file holding any CRLF ending is written back with CRLF endings throughout
+// (iss-2610110918418459). It reports whether the
+// content changed: a step already marked with value is left as it is. A step
+// marked with another value is refused rather than overwritten, as are a step
+// the spec does not list, a spec that lists none, and a value that is empty,
+// null or more than one line of plain text. It refuses what ParseSteps refuses.
+func markStepLanded(content string, n int, value string) (string, bool, error) {
+	if value == "" || value != strings.TrimSpace(value) || frontmatter.IsNull(value) ||
+		strings.IndexFunc(value, unicode.IsControl) >= 0 {
+		return "", false, fmt.Errorf("spec: a step's landed value is one line naming a pull request or a commit, not %s", termsafe.DescribeRefused(value))
+	}
+	steps, err := ParseSteps(content)
+	if err != nil {
+		return "", false, err
+	}
+	if n < 1 || n > len(steps) {
+		return "", false, fmt.Errorf("spec: %s lists %d step(s), none numbered %d", StepsHeading, len(steps), n)
+	}
+	if got := steps[n-1].Landed; got == value {
+		return content, false, nil
+	} else if got != "" {
+		return "", false, fmt.Errorf("spec: %s step %d is already marked landed by %s, not %s", StepsHeading, n, termsafe.Sanitize(got), value)
+	}
+	crlf := strings.Contains(content, "\r\n")
+	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
+	start, end, err := stepsSection(lines, mdrecord.Mask(lines))
+	if err != nil {
+		return "", false, err
+	}
+	// ParseSteps admitted the section, so every non-blank line of step n after
+	// its item line, up to the next item, is indented under it.
+	item, last, null, prefix := -1, -1, -1, "   - "
+	for i, seen := start, 0; i < end; i++ {
+		line := lines[i]
+		if stepItemRe.MatchString(line) {
+			if seen++; seen == n {
+				item, last = i, i
+			} else if seen > n {
+				break
+			}
+			continue
+		}
+		if seen != n || strings.TrimSpace(line) == "" {
+			continue
+		}
+		if last == item {
+			if m := bulletRe.FindStringSubmatch(line); m != nil {
+				prefix = m[1]
+			}
+		}
+		last = i
+		if m := landedLineRe.FindStringSubmatch(line); m != nil {
+			null, prefix = i, m[1]
+		}
+	}
+	if item < 0 {
+		return "", false, fmt.Errorf("spec: %s step %d was parsed but not found", StepsHeading, n)
+	}
+	mark := prefix + "landed: " + value
+	if null >= 0 {
+		lines[null] = mark
+	} else {
+		lines = slices.Insert(lines, last+1, mark)
+	}
+	out := strings.Join(lines, "\n")
+	if crlf {
+		out = strings.ReplaceAll(out, "\n", "\r\n")
+	}
+	return out, true, nil
 }
 
 // renderSteps renders steps as the body of a `## Steps` section, renumbered

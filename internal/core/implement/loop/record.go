@@ -41,7 +41,10 @@ type RunRecord struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	// Pace is the pace the run ran on, nil for a run started before the loop
 	// paced a run.
-	Pace        *Pace         `json:"pace"`
+	Pace *Pace `json:"pace"`
+	// Review is the review set the run ran on, nil for a run started before
+	// review sets.
+	Review      *ReviewSet    `json:"review"`
 	Lanes       []RecordLane  `json:"lanes"`
 	Pending     []PendingStep `json:"pending"`
 	Transcripts []Transcript  `json:"transcripts"`
@@ -150,7 +153,7 @@ type RecordVerdict struct {
 // recordOf renders a run's state as its record.
 func recordOf(st State) RunRecord {
 	rec := RunRecord{RunID: st.RunID, Key: st.Key, Intent: st.Intent, Spec: st.Spec, Driver: st.Driver,
-		Complete: st.Complete(), CreatedAt: st.CreatedAt, UpdatedAt: st.UpdatedAt, Pace: st.Pace,
+		Complete: st.Complete(), CreatedAt: st.CreatedAt, UpdatedAt: st.UpdatedAt, Pace: st.Pace, Review: st.Review,
 		Lanes: []RecordLane{}, Pending: st.Pending, Transcripts: st.Transcripts, Record: st.Record,
 		Fallbacks: st.Fallbacks, FallbackCounts: runner.Tally(st.Fallbacks), Outages: []implement.OutageSpan{},
 		Pick: recordPick(st)}

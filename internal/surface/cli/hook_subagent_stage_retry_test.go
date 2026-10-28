@@ -232,6 +232,11 @@ func TestHookSessionEndRetriesATransientRootFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	failRootCommitGit(t, 1)
+	// The retry, not the budget, is under test: on a machine where one
+	// detection through the shim costs most of the 1.2 seconds, the real
+	// budget leaves no room to ask again and the test would judge the clock.
+	// TestHookSessionEndSkipsTheRetryPastItsBudget pins the skip itself.
+	widenSessionEndRetryBudget(t, 30*time.Second)
 
 	_, stderr, failed := runHookAllowingFailure(endPayload(t, "sess-end-retry", repo, tp), "hook", "session-end")
 	if failed {
@@ -246,5 +251,42 @@ func TestHookSessionEndRetriesATransientRootFailure(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "resolved on try") {
 		t.Errorf("stderr does not say the repository resolved on a retry: %q", stderr)
+	}
+}
+
+// widenSessionEndRetryBudget sets sessionEndRetryBudget to d for one test. The
+// tests that call it set the environment, so none of them runs in parallel.
+func widenSessionEndRetryBudget(t *testing.T, d time.Duration) {
+	t.Helper()
+	prev := sessionEndRetryBudget
+	sessionEndRetryBudget = d
+	t.Cleanup(func() { sessionEndRetryBudget = prev })
+}
+
+// TestHookSessionEndSkipsTheRetryPastItsBudget: when no retry can end inside
+// the budget, the hook says so and leaves the host's time to the stage
+// instead of asking git again; it still exits zero.
+func TestHookSessionEndSkipsTheRetryPastItsBudget(t *testing.T) {
+	widenSessionEndRetryBudget(t, 0)
+	repo, rootSHA := sessionEndRepo(t)
+	tp := filepath.Join(t.TempDir(), "session.jsonl")
+	if err := os.WriteFile(tp, []byte(`{"role":"user","text":"hello"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	failRootCommitGit(t, 1)
+
+	_, stderr, failed := runHookAllowingFailure(endPayload(t, "sess-end-skip", repo, tp), "hook", "session-end")
+	if failed {
+		t.Fatalf("the hook exited non-zero: %s", stderr)
+	}
+	if !strings.Contains(stderr, "no time is left to ask again") {
+		t.Errorf("stderr does not say the retry was skipped for want of time: %q", stderr)
+	}
+	staged, err := history.ListStaged(repo, rootSHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(staged) != 0 {
+		t.Errorf("a skipped retry still staged %d transcript(s)", len(staged))
 	}
 }

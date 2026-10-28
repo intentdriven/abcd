@@ -260,6 +260,13 @@
           "hidden": false
         },
         {
+          "name": "details",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "dev",
           "shorthand": "",
           "type": "bool",
@@ -1006,6 +1013,68 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd checklist",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "List this working copy's checklist, every item and field: Writes nothing; refuses outside a git checkout.",
+      "flags": []
+    },
+    {
+      "path": "abcd checklist add",
+      "hidden": false,
+      "sentence": "Add one item to the checklist under a new stable id: Writes checklist.json and its last-good copy; refuses a schema violation or a secret, naming the field.",
+      "flags": [
+        {
+          "name": "next-look",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "promise",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "waits-on",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd checklist render",
+      "hidden": false,
+      "sentence": "Print the checklist as one block of text, open items first: Writes nothing; refuses outside a git checkout.",
+      "flags": []
+    },
+    {
+      "path": "abcd checklist set",
+      "hidden": false,
+      "sentence": "Set one checklist item's state by its id: Writes checklist.json and its last-good copy; refuses an unknown id or state.",
+      "flags": [
+        {
+          "name": "state",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd checklist show",
+      "hidden": false,
+      "sentence": "Show one checklist item, every field, by its id: Writes nothing; refuses an id the checklist does not hold.",
+      "flags": []
     },
     {
       "path": "abcd dashboard",
@@ -1769,6 +1838,11 @@
       "flags": []
     },
     {
+      "path": "abcd hook permission-request",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd hook prompt-router",
       "hidden": false,
       "flags": []
@@ -2323,6 +2397,13 @@
           "name": "restart",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         },
@@ -3626,6 +3707,13 @@
       "sentence": "Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3.",
       "flags": [
         {
+          "name": "apply",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "footprint",
           "shorthand": "",
           "type": "stringArray",
@@ -3647,7 +3735,21 @@
           "hidden": false
         },
         {
+          "name": "older-than",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "release",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "sweep",
           "shorthand": "",
           "type": "bool",
           "required": false,

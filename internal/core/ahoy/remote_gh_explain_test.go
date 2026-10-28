@@ -12,6 +12,10 @@ import (
 func emptyPath(t *testing.T) {
 	t.Helper()
 	t.Setenv("PATH", t.TempDir())
+	// The bin folder a tool would be installed into is one of the test's own,
+	// so a program the machine running the test keeps in ~/.local/bin is
+	// never mistaken for the copy in the way.
+	t.Setenv("XDG_BIN_HOME", t.TempDir())
 }
 
 // TestMissingGhIsExplained is itd-63 criterion 1 at the remote verbs: a missing

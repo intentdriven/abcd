@@ -169,8 +169,10 @@ func TestUnmanagedFolderInstallAborts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != "aborted" {
-		t.Errorf("status = %q, want aborted", res.Status)
+	// Not a repository: setup stops with the one message naming it
+	// (setup_basics.go, itd-2610240823055889 criterion 1).
+	if res.Status != "refused" || len(res.Notes) != 1 {
+		t.Errorf("status = %q, notes %q: want refused with one note", res.Status, res.Notes)
 	}
 }
 

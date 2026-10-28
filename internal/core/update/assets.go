@@ -30,8 +30,7 @@ func NewReleaseAssets(origin string) (*ReleaseAssets, error) {
 		return nil, fmt.Errorf("the release origin %q is not an https://github.com/<owner>/<repo> address", origin)
 	}
 	a := newReleaseAssets(origin, urlguard.BlockedIP, false)
-	a.u.redirectHost["objects.githubusercontent.com"] = true
-	a.u.redirectHost["release-assets.githubusercontent.com"] = true
+	a.u.allowAssetHosts()
 	return a, nil
 }
 
@@ -42,11 +41,11 @@ func NewReleaseAssets(origin string) (*ReleaseAssets, error) {
 // launch preview that builds it is a read-only verb, and its client needs no
 // process-wide scrub to ignore them. The proxy is nil by construction, and the
 // root pool is loaded with the CA overrides held out for the load alone
-// (overrideFreeRoots). The names that were set are kept for EnvIgnored, so
+// (urlguard.OverrideFreeRoots). The names that were set are kept for EnvIgnored, so
 // the caller can say what the fetch did not honour (iss-2609251902444497).
 func newReleaseAssets(origin string, blocked func(net.IP) bool, allowHTTP bool) *ReleaseAssets {
 	ignored := setOverrides()
-	return &ReleaseAssets{u: buildUpdater(origin, blocked, "", allowHTTP, nil, ignored, overrideFreeRoots())}
+	return &ReleaseAssets{u: buildUpdater(origin, blocked, "", allowHTTP, nil, ignored, urlguard.OverrideFreeRoots())}
 }
 
 // FetchReleaseAsset downloads one asset of tag. found is false, with no error,

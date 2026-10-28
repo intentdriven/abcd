@@ -138,6 +138,7 @@ var helpPlacements = map[string]helpPlacement{
 	// decision 2).
 	"announce":            {group: groupAgents, page: "commands/announce.md"},
 	"banlist":             {group: groupAgents, page: "commands/banlist.md"},
+	"checklist":           {group: groupAgents, page: "commands/checklist.md"},
 	"docs":                {group: groupAgents, page: "commands/docs.md"},
 	"guard":               {group: groupAgents, page: "commands/guard.md"},
 	"guard hook":          {page: "commands/guard.md"},

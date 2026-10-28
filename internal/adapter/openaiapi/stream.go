@@ -46,10 +46,11 @@ type limits struct {
 	timer  *time.Timer
 	idle   time.Duration
 	begun  atomic.Bool
-	// reached records that a check made before the call (size.go) connected
-	// to the provider, so the key, and the brief a count carries, may have
-	// left this machine: the call is then never reported unreachable.
-	reached bool
+	// reached records how far the checks made before the call (size.go)
+	// got with the provider: one that connected means the key, and the
+	// brief a count carries, may have left this machine, so the call is
+	// then never reported unreachable.
+	reached reach
 	// quiet bounds the time between two events of a stream, and progress
 	// records that one arrived. Both are nil and false outside a stream.
 	quiet    *time.Timer

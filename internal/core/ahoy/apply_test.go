@@ -193,12 +193,13 @@ func TestStepConfigValuesNoOverrideLeavesValidValue(t *testing.T) {
 	}
 }
 
-// TestInstallAdoptsIdentityPinInteractively guards that the advisory identity
-// pin can be adopted through a later interactive `ahoy install`, as the gap's
-// fix hint advertises — the "already_up_to_date" early return must not short
-// -circuit it (iss-62).
-func TestInstallAdoptsIdentityPinInteractively(t *testing.T) {
-	setupHermetic(t)
+// TestInstallRecordsTheIdentityAtATerminal guards that the advisory identity
+// record can be made through a later `ahoy install` at a terminal, as the
+// gap's fix hint advertises — the "already_up_to_date" early return must not
+// short-circuit it — and that --yes never makes it (itd-2610240918547728,
+// criterion 1).
+func TestInstallRecordsTheIdentityAtATerminal(t *testing.T) {
+	home, _ := setupHermetic(t)
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	repo := t.TempDir()
@@ -206,36 +207,35 @@ func TestInstallAdoptsIdentityPinInteractively(t *testing.T) {
 	idMustGit(t, repo, "config", "user.name", "Alex Reppel")
 	idMustGit(t, repo, "config", "user.email", "alex@example.com")
 
-	// First install (--yes) resolves the actionable gaps but deliberately leaves
-	// the advisory identity pin un-adopted.
 	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, _ := identity.LoadPin(repo); ok {
-		t.Fatal("precondition: --yes must not pin the current identity")
+	if _, _, ok, _ := identity.LoadRecordForTest(home, ""); ok {
+		t.Fatal("precondition: --yes must not record the current identity")
 	}
 	det, err := Detect(repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasGap(det.Gaps, "git_identity.unpinned") {
-		t.Fatalf("expected advisory git_identity.unpinned gap after --yes install: %+v", det.Gaps)
+	if !hasGap(det.Gaps, UnrecordedGapID) {
+		t.Fatalf("expected advisory %s gap after --yes install: %+v", UnrecordedGapID, det.Gaps)
 	}
 	if len(actionable(det.Gaps)) != 0 {
 		t.Fatalf("precondition: repo should be otherwise clean, got %+v", actionable(det.Gaps))
 	}
 
-	// Interactive re-install with a confirming prompter must fall through the
-	// early return and adopt the pin rather than reporting already_up_to_date.
-	if _, err := Install(repo, InstallOptions{}, stubPrompter{confirm: true}); err != nil {
+	if _, err := Install(repo, InstallOptions{}, &recordingPrompter{confirm: true, terminal: true}); err != nil {
 		t.Fatal(err)
 	}
-	got, ok, err := identity.LoadPin(repo)
+	got, _, ok, err := identity.LoadRecordForTest(home, "")
 	if err != nil || !ok {
-		t.Fatalf("interactive install did not adopt the identity pin: ok=%v err=%v", ok, err)
+		t.Fatalf("an install at a terminal did not record the identity: ok=%v err=%v", ok, err)
 	}
 	if got.Name != "Alex Reppel" || got.Email != "alex@example.com" {
-		t.Fatalf("wrong pin written: %+v", got)
+		t.Fatalf("wrong record written: %+v", got)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".abcd", "config", "identity.json")); !os.IsNotExist(err) {
+		t.Fatalf("an identity was written into the repository: %v", err)
 	}
 }
 

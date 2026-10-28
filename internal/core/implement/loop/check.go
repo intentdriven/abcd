@@ -119,7 +119,8 @@ const maxIntentBytes = 256 * 1024
 //     2026-09-29).
 //   - steps: the spec's `## Steps` reads, and leaves a step to build.
 //   - peers: no peer holds the record — no sibling worktree or local branch
-//     holds it in another bucket, no session holds a live claim on it, and,
+//     holds it in another bucket having changed it since its merge-base with
+//     this checkout, no session holds a live claim on it, and,
 //     for an intent, no other copy holds a reservation on it on origin as
 //     this checkout last fetched them (read from disk alone).
 func Check(repoRoot, key string) (CheckResult, error) { return check(repoRoot, key, "", nil) }
@@ -197,7 +198,8 @@ func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, erro
 func validIssueKey(key string) bool { return issueIDRe.MatchString(key) }
 
 // keyCheck admits an intent id or an issue id and refuses everything else by
-// name, quoting the refused key escaped.
+// the form it takes, never repeating the refused key: the row reaches the
+// --json refusal document, which the error boundary's pass does not read.
 func keyCheck(key string) (CheckRow, bool) {
 	row := CheckRow{Name: CheckKey}
 	switch {
@@ -210,7 +212,7 @@ func keyCheck(key string) (CheckRow, bool) {
 		row.Detail = key + " is an issue"
 		return row, true
 	default:
-		row.Detail = fmt.Sprintf("%q is not a record id this verb builds (itd-N or iss-N)", key)
+		row.Detail = "the record id given is not one this verb builds (itd-N or iss-N); it is not repeated here"
 		row.Remedy = "name a planned intent (`abcd build <itd-N>`) or an open issue the drain rule takes (`abcd build <iss-N>`)"
 	}
 	return row, false
@@ -458,8 +460,8 @@ func (snap *peerSnapshot) reservationHolder(id string) (holder string, yours boo
 		if snap.takeOver {
 			return "", false
 		}
-		return fmt.Sprintf("your copy on another computer reserved it until %s, %s; to continue here, run `abcd build %s --take-over`",
-			stamp(r.EffectiveExpiry), snap.reserved.AsOf(snap.now), id), true
+		return fmt.Sprintf("%s reserved it until %s, %s; to continue here, run `abcd build %s --take-over`",
+			r.YourCopy(snap.root), stamp(r.EffectiveExpiry), snap.reserved.AsOf(snap.now), id), true
 	}
 	return snap.reserved.HeldBy(id, snap.now), false
 }
@@ -469,17 +471,17 @@ func (snap *peerSnapshot) reservationHolder(id string) (holder string, yours boo
 // branch holding the intent in another bucket than this checkout's — a lane
 // that shipped or re-drafted it), the run's claim store (a session holding
 // a live claim on it), and, when reservations is true, the reservations on
-// origin as last fetched (another copy's reservation on it). A peer holding the record in the same bucket holds a
-// copy, not the record: every branch cut from the default branch does. A live
-// claim held by session — the one the build is started for — is its own, and
-// so is this copy's reservation.
+// origin as last fetched (another copy's reservation on it). A peer holding
+// the record in the same bucket holds a copy, not the record: every branch
+// cut from the default branch does; so does one holding it unchanged since its
+// merge-base with this checkout, a branch cut before the record moved here
+// (peers.Report.Holders, iss-2610222008081888). A live claim held by
+// session — the one the build is started for — is its own, and so is this
+// copy's reservation.
 func peersCheck(id, bucket, session string, snap *peerSnapshot, reservations bool) CheckRow {
 	row := CheckRow{Name: CheckPeers}
 	var holders []string
-	for _, l := range snap.rep.Locate(id) {
-		if l.Folder == bucket {
-			continue
-		}
+	for _, l := range snap.rep.Holders(id, bucket) {
 		holders = append(holders, peerName(l.Source, l.Branch, l.Path)+" holds it in "+l.Folder+"/")
 	}
 	// A peer the listing names and cannot read may hold the record; the check

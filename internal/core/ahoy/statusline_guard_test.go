@@ -22,7 +22,7 @@ import (
 // asked, or "" when it was never asked.
 func offerQuestionAsked(p *scriptedPrompter) string {
 	for _, q := range p.asked {
-		if strings.Contains(q, "Install abcd's status line?") {
+		if strings.Contains(q, "Install abcd's status line in ") {
 			return q
 		}
 	}
@@ -110,7 +110,7 @@ func TestStatusLineOfferShowsTheOneChange(t *testing.T) {
 				t.Errorf("setupConfirmID = %q, want %q", id, StatusLineOfferGapID)
 			}
 			sq := SetupConfirmQuestion(1, q)
-			if sq.Ask != "Install abcd's status line?" {
+			if !strings.HasPrefix(sq.Ask, "Install abcd's status line in ") {
 				t.Errorf("ask = %q", sq.Ask)
 			}
 			if fs := question.Check(question.Ask{Questions: []question.Question{sq}}); len(fs) > 0 {

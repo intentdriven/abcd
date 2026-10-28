@@ -283,6 +283,9 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 		return loopFail(cmd.OutOrStdout(), asJSON, prefix, err)
 	}
 	warnLoosened(cmd, res.Rule, res.Loosened)
+	if res.Started {
+		noticeUnattended(cmd, prefix)
+	}
 	for i := range res.Passed {
 		res.Passed[i].Reason = fsutil.RedactHome(res.Passed[i].Reason)
 	}

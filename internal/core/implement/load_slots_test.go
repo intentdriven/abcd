@@ -441,8 +441,9 @@ func TestPreflightParallelismSharesTheMachine(t *testing.T) {
 
 // TestWaitStandsBackAtTheFirstGateWithTwoSlots: with two slots the first
 // gate's last look still applies (dcn-2610162257477571). Two waiters whose
-// start and pid disagree, across accounts, open in one moment; the higher pid
-// finds the lower opened beside it and stands back, once. Its next look counts
+// start and pid disagree, across accounts, open in one moment; the earlier
+// start, with the higher pid, finds the lower pid opened beside it and stands
+// back, once, as an older abcd there goes on past it. Its next look counts
 // the lower pid, running its command, as one unit in its test stages, and with
 // a slot still free it opens beside it, long before that command exits; with
 // one slot the same waiter waits for the command to exit, as on main.

@@ -79,7 +79,8 @@ import (
 // spare; deeper is a refusal, not a stack.
 //
 // maxDecodeEntries bounds the number of DECODE OPERATIONS one payload file may
-// cost: archive entries and PNG compressed chunks alike. The output budget
+// cost: archive entries, PNG compressed chunks and gzip members past the first
+// alike. The output budget
 // bounds their bytes and nothing else, so on its own it bounds nothing here —
 // an archive of empty entries, or a 4 MiB PNG of empty zTXt chunks, draws zero
 // budget while paying one inflate and one rule pass apiece, which measured 41 s
@@ -300,25 +301,7 @@ func (s *Scanner) decodeInto(data []byte, secrets []Pattern, label string, b *de
 	case formatPNG:
 		return s.decodePNG(data, secrets, label, b, depth, out)
 	case formatGzip:
-		src := bytes.NewReader(data)
-		zr, err := gzip.NewReader(src)
-		if err != nil {
-			return false, formatGzip + ": stream would not decode"
-		}
-		defer zr.Close()
-		// A gzip header carries three fields of the writer's choosing before
-		// any compressed byte: FEXTRA, which is length-prefixed rather than
-		// NUL-terminated and holds up to 64 KiB, plus the stored filename and
-		// comment. They are structural fields like a zip's.
-		for _, f := range []struct {
-			name  string
-			bytes []byte
-		}{{"extra", zr.Extra}, {"name", []byte(zr.Name)}, {"comment", []byte(zr.Comment)}} {
-			if ok, why := s.coverStructuralField(f.bytes, label+"!"+f.name); !ok {
-				return false, why
-			}
-		}
-		return s.decodeStream(data, src, zr, secrets, label, formatGzip, b, depth, out)
+		return s.decodeGzip(data, secrets, label, b, depth, out)
 	case formatBzip2:
 		src := bytes.NewReader(data)
 		return s.decodeStream(data, src, bzip2.NewReader(src), secrets, label, formatBzip2, b, depth, out)
@@ -336,16 +319,73 @@ func (s *Scanner) decodeInto(data []byte, secrets []Pattern, label string, b *de
 	return false, "no decoder for " + format
 }
 
+// decodeGzip reads a gzip file one member at a time. A gzip file is any number
+// of concatenated members, and every member opens on its own header carrying
+// three fields of the writer's choosing before any compressed byte: FEXTRA,
+// which is length-prefixed rather than NUL-terminated and holds up to 64 KiB,
+// plus the stored filename and comment. They are structural fields like a
+// zip's, and the multistream reader parses and discards them for every member
+// after the first, so the reader is held to one member (Multistream(false))
+// and Reset onto the next, judging each header before its member is read.
+//
+// The members' output is joined and covered once, as the multistream reader
+// would have returned it: a tar split across two members is still one tar.
+// Each member after the first is a decode operation and claims an entry, so a
+// file of empty members cannot cost a header pass apiece without bound. The
+// loop ends when Reset finds no further header (io.EOF); anything else after a
+// member — trailing garbage, a truncated header — fails Reset and leaves the
+// file unverified, as the multistream reader's own refusal did.
+func (s *Scanner) decodeGzip(data []byte, secrets []Pattern, label string, b *decodeBudget, depth int, out *[]Finding) (bool, string) {
+	src := bytes.NewReader(data)
+	zr, err := gzip.NewReader(src)
+	if err != nil {
+		return false, formatGzip + ": stream would not decode"
+	}
+	defer zr.Close()
+	var inner []byte
+	for member := 1; ; member++ {
+		if member > 1 && !b.entry() {
+			return false, formatGzip + ": more than " + strconv.Itoa(maxDecodeEntries) + " members"
+		}
+		field := label + "!"
+		if member > 1 {
+			field = label + "!member" + strconv.Itoa(member) + "!"
+		}
+		for _, f := range []struct {
+			name  string
+			bytes []byte
+		}{{"extra", zr.Extra}, {"name", []byte(zr.Name)}, {"comment", []byte(zr.Comment)}} {
+			if ok, why := s.coverStructuralField(f.bytes, field+f.name); !ok {
+				return false, why
+			}
+		}
+		zr.Multistream(false)
+		body, err := b.read(zr)
+		if err != nil {
+			return false, streamWhy(formatGzip, err)
+		}
+		inner = append(inner, body...)
+		if err := zr.Reset(src); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return false, streamWhy(formatGzip, err)
+		}
+	}
+	return s.cover(inner, secrets, label, b, depth+1, out)
+}
+
 // decodeStream reads one compressed stream under the budget and covers both
-// what comes out AND what the decompressor left behind. The trailer matters:
-// gzip refuses trailing bytes, but zlib stops at its Adler-32 and bzip2 at its
-// footer without complaining, so a valid stream with a second, unrelated member
-// appended would otherwise be waved through on the strength of the first.
+// what comes out AND what the decompressor left behind (gzip reads its members
+// through decodeGzip instead). The trailer matters: zlib stops at its Adler-32
+// and bzip2 at its footer without complaining, so a valid stream with a
+// second, unrelated member appended would otherwise be waved through on the
+// strength of the first.
 //
 // src is the bytes.Reader the decompressor drank from. What is left in it is
-// exactly the trailer for ZLIB, which stops on its checksum; gzip and bzip2
-// over-read by a few bytes looking for a further member, but both then FAIL —
-// "invalid header", "bad magic value in continuation file" — so b.read returns
+// exactly the trailer for ZLIB, which stops on its checksum; bzip2 over-reads
+// by a few bytes looking for a further stream, but then FAILS — "bad magic
+// value in continuation file" — so b.read returns
 // an error and the file is unverified before this branch is reached. The
 // branch is what makes zlib safe and what would catch a future format that
 // leaves a trailer without complaining; a format that over-reads and does not

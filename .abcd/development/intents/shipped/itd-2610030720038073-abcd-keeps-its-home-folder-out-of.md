@@ -111,8 +111,92 @@ The four questions filed with the draft are answered: the method and the whole h
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-d5bf5bbbdcef -->
-Fidelity review OWED (receipt rcp-d5bf5bbbdcef).
+<!-- abcd-review: INGESTED receipt=rcp-d5bf5bbbdcef -->
+Fidelity review — receipt rcp-d5bf5bbbdcef (verifier abcd:intent-auditor claude-opus-5-5).
+
+Provenance: abcd:intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:f2447648681cd37d141d6545cc40a33d85d1112b8956b2c154462c98a2de8ab2
+Input attestations: diff:b3f68597f0239a89443ab8cba84ec454606b5367..a6178234f9260505df1666ab9a06986bc35f18fa (PR #795, spec step 1: the two superseding records proposed; the request named no range, so each was read from its merge commit's parents; digest over git diff --no-color --no-ext-diff)@sha256:3e99536b814e956d0f7464ef784fae71702746ce144ab7ca1073d788a9bc7ecd; diff:5e40bec752bd16e10946862d5e197134dfe7f43e..e218cff1351e54aec19e751bbb7f89562528b8fa (PR #799, spec step 2: internal/abcdhome and the D3 and D5 boundary tests)@sha256:6d5a90d49241ec1876692182a584aedfa1fb334109531756ef83b8b676086af1; diff:a17dadf0dfc0de664dfeb0c5f4746758a8983fc1..d23a1abc30a4c414c751432e4b5f95e928ad658b (PR #815, spec steps 3 and 4: the rename, the stop and the texts)@sha256:b8b2edef0ff587b478d74cffe235500d86a004379300435c2d4691d5938b5ae9; diff:22c8bf0d53ecc776f7f48b07797f34e98b559b31..1117708bcd5f74d8c2d953da018a1a5004a5d129 (PR #825, spec step 5: the D6 receipt 6538ab4a6 and the spec close 44a73e6f1)@sha256:efa275c5b31f9d2dc5ee0ed0a91c18ea7611ccb3f02e999fbb0eb5d30f3cb6a8; repository:40320db01e6277d61e58fbc8cc2988346c444e52 (origin/main 2e03c61e4 plus committed audit notes, where every cited file:line was read; D3 and D5 greps repeated at the close commit 44a73e6f1)@-;
+
+Acceptance rollup: MET 3 · MET_WITH_CONCERNS 2 · NOT_MET 1 · INCONCLUSIVE 0
+
+Audit owed (receipt rcp-d5bf5bbbdcef): ac-6 NOT_MET. Remedy: fix, then re-run the audit. Carried by iss-2610241551259104.
+
+Per-criterion verdicts:
+- ac-1 — MET: TestFirstRunCreatesOnlyTheNoindexHome sets HOME to an empty temporary folder, runs ahoy install --yes then implement join and implement log through the front door, finds the run log under abcdhome.Path(home, "runs", sha) and fails on a ~/.abcd or any other .abcd* entry in the home; the resolver's one name constant is .abcd.noindex, and hooks/bootstrap.sh, the other door that can create the home first, makes only ~/.abcd.noindex
+  evidence: internal/surface/cli/firstrun_home_test.go:65 — "logs, err := filepath.Glob(abcdhome.Path(home, "runs", sha, "*.jsonl"))"
+  evidence: internal/surface/cli/firstrun_home_test.go:72 — "if _, err := os.Lstat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {"
+  evidence: internal/abcdhome/abcdhome.go:38 — "const name = ".abcd.noindex""
+  evidence: hooks/bootstrap.sh:607 — "_rm_dir="$home_dir/.abcd.noindex""
+- ac-2 — MET_WITH_CONCERNS: cli.run checks abcdhome.Check before root.Execute and answers in each command's form; TestOldHomeStopsEveryVerb, TestOldHomeStopsEveryHook and TestBothHomesStopAndNameBoth assert the line naming ~/.abcd and the rename command (or both folders), the exit status, an unchanged home tree and no ~/.abcd.noindex for ordinary verbs plain and --json, every hook verb, guard hook and statusline, and TestHookWrapperStopsBeforeProvisioning and TestBootstrapWritesNothingBesideTheOldHome hold the two shell doors to the same. Concern, a signed-off divergence (spec open question 6, 2026-10-04): the line also prints a worktree-repair command, because after the rename every store worktree is listed prunable until git worktree repair runs in it, so the person's path is rename, repair, run again rather than the one command the criterion and its example describe
+  evidence: internal/surface/cli/cli.go:6816 — "if stop := homeStop(); stop != nil {"
+  evidence: internal/surface/cli/homestop_test.go:156 — "if _, err := os.Lstat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {"
+  evidence: internal/surface/cli/homestop_test.go:287 — "func TestBothHomesStopAndNameBoth(t *testing.T) {"
+  evidence: internal/surface/cli/hooks_homestop_test.go:73 — "func TestHookWrapperStopsBeforeProvisioning(t *testing.T) {"
+  evidence: internal/surface/cli/hooks_homestop_test.go:133 — "func TestBootstrapWritesNothingBesideTheOldHome(t *testing.T) {"
+  evidence: internal/abcdhome/abcdhome.go:89 — "reconnect the working copies kept there with \`" + RepairCommand"
+- ac-3 — MET: TestOnlyTheHomeResolverNamesTheHome parses every non-test Go file under internal/ and cmd/ (testdata skipped, failing below 100 files) and reports file, line and literal for any .abcd.noindex or ~/.abcd literal and any .abcd-led string beside a home value outside internal/abcdhome; TestHomeNameScannerIsArmed proves the criterion's example, filepath.Join(home, ".abcd"), is reported; a grep of the non-test tree at the close (44a73e6f1) and at HEAD finds no such spelling outside the resolver, every remaining .abcd literal being the repository tier's
+  evidence: internal/abcdhome/boundary_test.go:589 — "func TestOnlyTheHomeResolverNamesTheHome(t *testing.T) {"
+  evidence: internal/abcdhome/boundary_test.go:604 — "lines = append(lines, fmt.Sprintf("%s:%d: %q", rel, h.line, h.text))"
+  evidence: internal/abcdhome/boundary_test.go:715 — "`func f(home string) string { return filepath.Join(home, ".abcd") }`"
+  evidence: internal/abcdhome/boundary_test.go:580 — "if walked < 100 {"
+- ac-4 — MET: TestSetupRefreshesTheBlocksHomePaths writes the block as planted before the rename (a testdata fixture naming ~/.abcd/rules.json and ~/.abcd/trusted-roots) between the owner's own text, asserts Detect reports marker.outdated and leaves AGENTS.md byte-identical, then after Install asserts the block names ~/.abcd.noindex/rules.json and ~/.abcd.noindex/trusted-roots, holds no ~/.abcd/, and every byte outside the block is identical; only install and embark call installMarkerFile, so nothing else rewrites the block before setup runs
+  evidence: internal/core/ahoy/noindex_block_test.go:46 — "if !hasGap(det.Gaps, "marker.outdated") {"
+  evidence: internal/core/ahoy/noindex_block_test.go:49 — "if got, _ := os.ReadFile(agents); !bytes.Equal(got, planted) {"
+  evidence: internal/core/ahoy/noindex_block_test.go:65 — "for _, want := range []string{"~/.abcd.noindex/rules.json", "~/.abcd.noindex/trusted-roots"} {"
+  evidence: internal/core/ahoy/noindex_block_test.go:75 — "if !bytes.Equal(got[:gotLoc[0]], planted[:plantedLoc[0]]) || !bytes.Equal(got[gotLoc[1]:], planted[plantedLoc[1]:]) {"
+  evidence: internal/core/ahoy/apply.go:1421 — "wrote, err := installMarkerFile(path)"
+- ac-5 — MET_WITH_CONCERNS: TestNoCodeNamesTheSearchSettings walks every non-test Go file under internal/ and cmd/ and fails naming file, line and literal on mdutil, .Spotlight-V100 or VolumeConfiguration.plist, and TestSearchSettingsScannerIsArmed proves each needle is caught in a literal and ignored in a comment; no shipped literal names them. Concern, a narrower scope than promised: the criterion is given every abcd code path, but the walk reads .go files only, so abcd's shell code paths (the hooks/*.sh wrappers run on every hook event, hooks/bootstrap.sh, the git hooks ahoy plants from internal/core/ahoy/defaults) are outside the test; a grep finds none of them naming the settings today, and nothing would fail if one began to
+  evidence: internal/abcdhome/boundary_test.go:849 — "func TestNoCodeNamesTheSearchSettings(t *testing.T) {"
+  evidence: internal/abcdhome/boundary_test.go:822 — "var searchSettingsNeedles = []string{"mdutil", ".Spotlight-V100", "VolumeConfiguration.plist"}"
+  evidence: internal/abcdhome/boundary_test.go:534 — "for _, tree := range []string{"internal", "cmd"} {"
+  evidence: internal/abcdhome/boundary_test.go:547 — "if !strings.HasSuffix(d.Name(), ".go") || (isTest && !tests) {"
+- ac-6 — NOT_MET: Promised: a dated receipt naming the macOS version that records, for eight working copies created under abcd's home in the 2026-10-02 shape, indexer CPU sampled every five seconds for a minute under 20% combined, with samples from the same shape before and after the rename, and no run log carrying a stop naming indexing. Exists: one receipt (2026-10-04, macOS 27.0 build 26A428) that measured eight copies in a probe folder ~/.d6-probe.noindex outside the home, before the rename, at 2.8% mean (peak 6.1%) against a proxy old shape ~/.d6-index-probe that did not burst, so by its own words inconclusive on the suffix's effect, and that records no run-log check at all, deferring it to this audit; run logs are never in the repository and this machine's home holds no runs/ folder, so the run-log half stays unrecorded and the threshold pass rests on a proxy rather than on the home
+  evidence: .abcd/development/research/notes/2026-10-04-noindex-scan-receipt.md:5 — "eight working copies in a `.noindex`-suffixed probe folder shaped as the renamed store, `~/.d6-probe.noindex/worktrees/<root-sha>/`, cost the desktop search indexer **2.8%** CPU combined on average over the minute after (peak 6.1%)"
+  evidence: .abcd/development/research/notes/2026-10-04-noindex-scan-receipt.md:6 — "So the receipt passes D6's threshold, and the comparison is inconclusive about the suffix's effect, because the old shape did not burst."
+  evidence: .abcd/development/research/notes/2026-10-04-noindex-scan-receipt.md:28 — "The run-log half of D6 cannot be read before the rename: no run has opened its lanes in the renamed store. The audit reads the next run's log against this criterion."
+  evidence: .abcd/development/intents/shipped/itd-2610030720038073-abcd-keeps-its-home-folder-out-of.md:102 — "Taken 2026-10-04 before the rename on a .noindex probe folder, PASS by the threshold: 2.8% combined against 4.4% for the old shape, which did not burst, so inconclusive on the suffix's effect"
+
+Gap audit:
+- honoured:
+  - A new install starts with the name ~/.abcd.noindex, and no ~/.abcd is created
+    evidence: internal/abcdhome/abcdhome.go:38 — "const name = ".abcd.noindex""
+    evidence: internal/surface/cli/firstrun_home_test.go:72 — "if _, err := os.Lstat(filepath.Join(home, ".abcd")); !errors.Is(err, os.ErrNotExist) {"
+  - An existing install stops at its next run, before writing anything, and asks the person to rename ~/.abcd to ~/.abcd.noindex, naming the rename command
+    evidence: internal/surface/cli/cli.go:6816 — "if stop := homeStop(); stop != nil {"
+    evidence: internal/abcdhome/abcdhome.go:48 — "const RenameCommand = "mv ~/" + oldName + " ~/" + name"
+    evidence: hooks/bootstrap.sh:144 — "if [ -e "$HOME/.abcd" ] || [ -L "$HOME/.abcd" ]; then"
+  - A project abcd manages keeps pointing at the old folder until abcd's setup runs in that project again, which brings it up to date
+    evidence: internal/core/ahoy/noindex_block_test.go:49 — "if got, _ := os.ReadFile(agents); !bytes.Equal(got, planted) {"
+    evidence: internal/core/ahoy/noindex_block_test.go:65 — "for _, want := range []string{"~/.abcd.noindex/rules.json", "~/.abcd.noindex/trusted-roots"} {"
+  - abcd never touches the computer's own search settings
+    evidence: internal/abcdhome/boundary_test.go:822 — "var searchSettingsNeedles = []string{"mdutil", ".Spotlight-V100", "VolumeConfiguration.plist"}"
+    evidence: .abcd/development/decisions/adrs/2610030720195401-abcd-keeps-its-own-folders-out-of.md:4 — "status: accepted"
+- diverged:
+  - Naming the one command; after that, abcd runs as before. Delivered as two commands: the stop line also prints a worktree repair, because after the rename every store worktree is listed prunable by its repository until git worktree repair runs in it, a step the person owes before the store's worktrees are linked again (spec open question 6, signed off 2026-10-04)
+    evidence: internal/abcdhome/abcdhome.go:67 — "const RepairCommand = `find ~/` + name + \`/worktrees -type d"
+    evidence: internal/abcdhome/abcdhome.go:89 — "reconnect the working copies kept there with \`" + RepairCommand"
+    evidence: .abcd/development/specs/closed/spc-2610031309233367-abcd-keeps-its-home-folder-out-of.md:435 — "Decided: the technical facilitator, 2026-10-04, asked who repairs them (the person, one printed command; abcd, on its first run; decide later): the person, one printed command."
+  - abcd's own folder no longer gives the desktop search indexer work to do, its name being one the indexer passes over. On macOS 27.0.1 the name keeps file contents out of the index but every file under ~/.abcd.noindex is still catalogued by name (589,828 entries on 2026-10-16), each new file costing the catalogue a little work and a lab or worktree copy creating tens of thousands at once
+    evidence: .abcd/work/issues/open/iss-2610161806164689-on-macos-27-0-1-spotlight-indexes-abcd-s.md:15 — "On macOS 27.0.1 Spotlight still catalogues every file under abcd's home by name, although the .noindex name keeps it from reading their contents"
+  - Opening a working copy there sets off no indexing burst. Shown only for eight copies in a .noindex probe folder outside abcd's home, taken before the rename, against an old-shape control that itself did not burst, so the receipt calls the suffix's effect inconclusive
+    evidence: .abcd/development/research/notes/2026-10-04-noindex-scan-receipt.md:5 — "eight working copies in a `.noindex`-suffixed probe folder shaped as the renamed store, `~/.d6-probe.noindex/worktrees/<root-sha>/`"
+    evidence: .abcd/development/research/notes/2026-10-04-noindex-scan-receipt.md:6 — "So the receipt passes D6's threshold, and the comparison is inconclusive about the suffix's effect, because the old shape did not burst."
+- missing:
+  - The computer stays responsive while abcd works: D6's check that no run log carries a stop naming indexing was never taken; the receipt defers it to the next run's log, and no later receipt in the repository records it
+    evidence: .abcd/development/research/notes/2026-10-04-noindex-scan-receipt.md:28 — "The run-log half of D6 cannot be read before the rename: no run has opened its lanes in the renamed store. The audit reads the next run's log against this criterion."
+
+Scope-condition dispositions:
+- cond-2610031309233205 — narrowed: The only dated receipt is macOS 27.0, and it shows the indexer-CPU bar met by a .noindex probe folder outside the home but calls the suffix's effect inconclusive because its control did not burst, having measured CPU rather than what the index holds; the later finding on macOS 27.0.1, which has no receipt, shows the name keeping file contents out of the index while every file under ~/.abcd.noindex is still catalogued by name
+  narrowing: Holds for macOS 27.0 alone, and there only as indexer CPU under 20% for eight copies in a .noindex probe folder outside the home measured before the rename, not as the name shown honoured at scan time against a control that burst; where the name has since been observed (macOS 27.0.1, no receipt dated) it is honoured for file contents only, every file's name and dates still being catalogued
+  evidence: .abcd/development/research/notes/2026-10-04-noindex-scan-receipt.md:6 — "So the receipt passes D6's threshold, and the comparison is inconclusive about the suffix's effect, because the old shape did not burst."
+  evidence: .abcd/development/research/notes/2026-10-04-noindex-scan-receipt.md:7 — "Taken on macOS 27.0 (build 26A428), 2026-10-04, with the product thinker's consent"
+  evidence: .abcd/work/issues/open/iss-2610161806164689-on-macos-27-0-1-spotlight-indexes-abcd-s.md:15 — "the receipt that exists measured indexer CPU, not what the index holds"
+- cond-2610031309237054 — survived: The receipt sums, per sample, the CPU of exactly the three processes the condition names, corespotlightd, mds_stores and every mdworker, and nothing in the delivered code, receipt or press release claims anything of any other program that scans the home
+  evidence: .abcd/development/research/notes/2026-10-04-noindex-scan-receipt.md:14 — "summing the CPU of corespotlightd, mds_stores and every mdworker per sample"
+- cond-2610031309234392 — survived: No Windows change ships: the home is one name on every platform with no platform branch in the resolver, no Go file sets a file attribute, and FILE_ATTRIBUTE_NOT_CONTENT_INDEXED is named only in the shipped intent and the closed spec's Out list as the later change, which is the deferral the condition assumed
+  evidence: internal/abcdhome/abcdhome.go:38 — "const name = ".abcd.noindex""
+  evidence: .abcd/development/specs/closed/spc-2610031309233367-abcd-keeps-its-home-folder-out-of.md:107 — "- Windows, a later change with `FILE_ATTRIBUTE_NOT_CONTENT_INDEXED` named for"
+- cond-2610031309236184 — untested: Nothing in the delivery runs on, measures or receipts a Linux indexer: abcd makes no Linux change and no code names a Baloo or Tracker setting, but the condition's premise, that Tracker's default skip of a directory holding .git leaves abcd's home alone, was never exercised, and nothing measured the home's stores that hold no .git (transcripts, run logs, sources)
 <!-- abcd-review-end receipt=rcp-d5bf5bbbdcef -->
 
 ## Grounds

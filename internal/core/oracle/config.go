@@ -45,9 +45,12 @@ package oracle
 // network and never prints.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,6 +69,9 @@ const (
 	judgementsKey = "oracle.judgements"
 	// streamUsageKey is a provider block's opt-out of usage in the stream.
 	streamUsageKey = "stream_usage"
+	// readGenerationKey is a provider block's opt-in to the generation
+	// readback (pin.go).
+	readGenerationKey = "read_generation"
 )
 
 // Bounds on what the configuration may carry.
@@ -104,6 +110,17 @@ type Provider struct {
 	// usage in the stream (openaiapi.StreamUsageField), for a server that
 	// refuses the field. nil, the default, asks (itd-166 decision 4).
 	StreamUsage *bool `json:"stream_usage,omitempty"`
+	// Pins is the block's pins, by the listed model each holds to one
+	// OpenRouter provider (pin.go); nil when it pins none.
+	Pins map[string]Pin `json:"pins,omitempty"`
+	// LocalPins is a block on this machine's pins, by the listed model each
+	// names down to its weights (localpin.go); nil when it pins none.
+	LocalPins map[string]LocalPin `json:"local_pins,omitempty"`
+	// ReadGeneration is the block's read_generation: true makes every call
+	// through it read OpenRouter's generation record back once it is
+	// answered (pin.go), a request of its own. false, the default, makes
+	// none; true is read only on a block whose base URL is OpenRouter's.
+	ReadGeneration bool `json:"read_generation,omitempty"`
 }
 
 // AsksStreamUsage reports whether a call through p asks for usage in the
@@ -152,6 +169,11 @@ type providerFile struct {
 	Key         *string  `json:"key"`
 	Models      []string `json:"models"`
 	StreamUsage *bool    `json:"stream_usage"`
+	// Pins is pins, each decoded by the block it sits in: an OpenRouter
+	// block's as a routing pin, a block on this machine's as a local pin.
+	Pins map[string]json.RawMessage `json:"pins"`
+	// ReadGeneration is read_generation, nil when the block omits it.
+	ReadGeneration *bool `json:"read_generation"`
 }
 
 // LoadAPI reads the provider configuration through the layered resolver and
@@ -245,7 +267,7 @@ func (c *APIConfig) readProviders(s *layered.Stack) error {
 				origin, apiKey, name, Harness)
 		}
 	}
-	if err := s.Claim(apiKey+".*", "base_url", "key", "models", streamUsageKey); err != nil {
+	if err := s.Claim(apiKey+".*", "base_url", "key", "models", streamUsageKey, pinsKey, readGenerationKey); err != nil {
 		return fmt.Errorf("oracle adapter: %w", err)
 	}
 	for _, name := range names {
@@ -304,7 +326,49 @@ func (c *APIConfig) provider(name string, fd layered.Found) (Provider, error) {
 		}
 	}
 	p.Models = append([]string(nil), pf.Models...)
+	if err := p.readAnyPins(pf.Pins); err != nil {
+		return Provider{}, err
+	}
+	if p.ReadGeneration, err = readGenerationSetting(p.BaseURL, pf.ReadGeneration); err != nil {
+		return Provider{}, err
+	}
 	return p, nil
+}
+
+// readAnyPins reads a block's pins as the block's base URL decides: an
+// OpenRouter block's pin a model to one provider, a block on this machine's
+// name a model down to its weights, and any other block's are refused.
+func (p *Provider) readAnyPins(raw map[string]json.RawMessage) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	if !isOpenRouter(p.BaseURL) && openaiapi.IsLocal(p.BaseURL) {
+		local := make(map[string]localPinFile, len(raw))
+		for _, m := range slices.Sorted(maps.Keys(raw)) {
+			pf, err := layered.Decode[localPinFile](raw[m])
+			if err != nil {
+				return fmt.Errorf("%s.%s, a local pin: %w", pinsKey, layered.BoundKey(m), err)
+			}
+			local[m] = pf
+		}
+		var err error
+		p.LocalPins, err = readLocalPins(p.Models, local)
+		return err
+	}
+	if !isOpenRouter(p.BaseURL) {
+		return errNotPinnable()
+	}
+	routing := make(map[string]pinFile, len(raw))
+	for _, m := range slices.Sorted(maps.Keys(raw)) {
+		pf, err := layered.Decode[pinFile](raw[m])
+		if err != nil {
+			return fmt.Errorf("%s.%s, an OpenRouter pin: %w", pinsKey, layered.BoundKey(m), err)
+		}
+		routing[m] = pf
+	}
+	var err error
+	p.Pins, err = readPins(p.BaseURL, p.Models, routing)
+	return err
 }
 
 func deniedError(model string, e DenyEntry) error {

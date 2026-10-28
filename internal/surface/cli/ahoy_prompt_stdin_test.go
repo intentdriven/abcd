@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -65,7 +66,7 @@ func TestAhoyInstallAcceptsPipedAnswersFromNonTTYStdin(t *testing.T) {
 	// One `y` per question: the adoption gate, then one per gap category. This
 	// is what `yes | abcd ahoy install` — the documented form — supplies.
 	answers := strings.Repeat("y\n", 12)
-	out, errOut, err := runCLIPipedStdinSplit(t, answers, "ahoy", "install",
+	out, errOut, err := runCLIPipedStdinSplit(t, answers, "ahoy", "install", "--details",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 	if err != nil {
@@ -132,7 +133,7 @@ var categoryPromptOrder = []string{
 // Fewer than two questions is a no-op, not a failure. Which categories a repo
 // has gaps in depends on the HOST: the dependency approval exists only while
 // the opt-in scanners are off PATH, and PATH is the one thing the hermetic repo
-// does not redirect. A maintainer who follows abcd's own `brew install gitleaks`
+// does not redirect. A maintainer who follows abcd's own gitleaks install
 // hint must not thereby turn preflight red — so a caller that needs a minimum
 // number of questions asserts that itself, over a repo state it controls.
 func assertCategoryQuestionOrder(t *testing.T, transcript string) {
@@ -174,7 +175,7 @@ func categoryQuestionsAsked(transcript string) []string {
 func TestAhoyInstallEmptyStdinStillDeclines(t *testing.T) {
 	hermeticRepo(t)
 
-	out, err := runCLIPipedStdin(t, "", "ahoy", "install", "--json")
+	out, err := runCLIPipedStdin(t, "", "ahoy", "install", "--details", "--json")
 	if err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s", err, out)
 	}
@@ -208,15 +209,20 @@ func gitRepoWithIdentity(t *testing.T, repo, name, email string) {
 }
 
 // TestAhoyInstallYesDisclosesOptionalIdentityPin is the iss-166 ruling in the
-// output: --yes does NOT cover the optional git-identity pin (it would capture
+// output: --yes does NOT record who the person commits as (it would capture
 // whatever identity happens to be configured), so a --yes run that reports
-// "already up to date" must say the optional pin was excluded and how to apply
-// it. Silence there is what made the skip ambiguous.
+// "already up to date" must say the record was excluded and how to make it.
+// Silence there is what made the skip ambiguous.
 func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	repo := hermeticRepo(t)
 	gitRepoWithIdentity(t, repo, "Alex Reppel", "alex@example.com")
+	armClone(t, repo)
+	// A zsh login shell, so the shell-settings offer is raised whatever shell
+	// the machine running the test uses (itd-2610240919030303).
+	t.Setenv("SHELL", "/bin/zsh")
+	t.Setenv("ZDOTDIR", "")
 
-	base := []string{"ahoy", "install", "--yes", "--adopt",
+	base := []string{"ahoy", "install", "--details", "--yes", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"}
 
@@ -224,8 +230,8 @@ func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	if out, err := runCLIErr(t, base...); err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s", err, out)
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".abcd", "config", "identity.json")); err == nil {
-		t.Fatal("precondition: --yes must not pin the current git identity")
+	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), filepath.FromSlash(identity.MachineRecordRef().Rel))); err == nil {
+		t.Fatal("precondition: --yes must not record the current git identity")
 	}
 
 	// Second --yes run: "already up to date", and it must name the exclusion.
@@ -237,8 +243,8 @@ func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	if !strings.Contains(text, "already_up_to_date") {
 		t.Fatalf("precondition: second --yes run should report already_up_to_date:\n%s", text)
 	}
-	if !strings.Contains(text, "git_identity.unpinned") {
-		t.Fatalf("--yes silently skipped the optional identity pin; output names no exclusion:\n%s", text)
+	if !strings.Contains(text, "git_identity.unrecorded") {
+		t.Fatalf("--yes silently skipped the optional identity record; output names no exclusion:\n%s", text)
 	}
 	if !strings.Contains(text, "abcd ahoy install") {
 		t.Fatalf("the exclusion notice must say how to apply the optional pin:\n%s", text)
@@ -260,9 +266,11 @@ func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	// table is accepted only on an answer, so --yes names them as well; and so
 	// is the drain eligibility record (ruling BX2), which decides what an
 	// unattended agent may change; and so is the README question
-	// (spc-2610031704338417), which only the owner answers, and the live
-	// brief session question (spc-2610141709430146 step 6).
-	want := "git_identity.unpinned readme.offered sessions.offered oracle_routing.machine_offered oracle_routing.repo_offered drain_rule.offered"
+	// (spc-2610031704338417), which only the owner answers; so is the
+	// shell-settings offer (itd-2610240919030303), which edits a file of the
+	// person's only on their own yes; and so is the live brief session
+	// question (spc-2610141709430146 step 6).
+	want := "git_identity.unrecorded readme.offered sessions.offered path.shell_settings_offered oracle_routing.machine_offered oracle_routing.repo_offered drain_rule.offered"
 	if strings.Join(res.OptionalSkipped, " ") != want {
 		t.Fatalf("optional_skipped = %v, want [%s]\n%s", res.OptionalSkipped, want, jsonOut)
 	}
@@ -295,40 +303,32 @@ func TestAhoyInstallYesHelpStatesTheExclusion(t *testing.T) {
 	}
 }
 
-// TestAhoyInstallPipedAnswerAdoptsOptionalIdentityPin closes the loop between
-// the two issues: the way to apply the optional pin without a terminal is the
-// piped answer iss-167 makes work.
-func TestAhoyInstallPipedAnswerAdoptsOptionalIdentityPin(t *testing.T) {
+// TestAhoyInstallPipedAnswersNeverRecordTheIdentity: who a person commits as
+// is recorded only on their own answer at a terminal (itd-2610240918547728,
+// criterion 1), so a piped `yes` records nothing, writes nothing into the
+// repository, and the run names the record it left for the person.
+func TestAhoyInstallPipedAnswersNeverRecordTheIdentity(t *testing.T) {
 	repo := hermeticRepo(t)
 	gitRepoWithIdentity(t, repo, "Alex Reppel", "alex@example.com")
 
-	if out, err := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",
+	if out, err := runCLIErr(t, "ahoy", "install", "--details", "--yes", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"); err != nil {
 		t.Fatalf("install exited non-zero: %v\n%s", err, out)
 	}
-
-	// Drive it exactly as the completion notice says to: `yes | abcd ahoy
-	// install`, an answer for every question asked. More than one category is
-	// still open after a --yes run (the dependency scanners as well as the pin),
-	// which is why the documented remedy is `yes` and not a single `y`.
-	_, errOut, err := runCLIPipedStdinSplit(t, strings.Repeat("y\n", 8), "ahoy", "install")
+	out, errOut, err := runCLIPipedStdinSplit(t, strings.Repeat("y\n", 8), "ahoy", "install", "--details")
 	if err != nil {
 		t.Fatalf("piped re-install exited non-zero: %v\n%s", err, errOut)
 	}
-	// The pin lives behind the config-change approval, so that question must
-	// have been asked and answered y — not merely "some question was".
-	if !strings.Contains(string(errOut), "  no git identity pin\n") ||
-		!strings.Contains(string(errOut), "Change the settings listed above? [y/N] y") {
-		t.Fatalf("the config-change approval carrying the pin was not answered:\n%s", errOut)
-	}
 	assertCategoryQuestionOrder(t, string(errOut))
-	body, err := os.ReadFile(filepath.Join(repo, ".abcd", "config", "identity.json"))
-	if err != nil {
-		t.Fatalf("piped `y` did not adopt the optional identity pin: %v", err)
+	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), filepath.FromSlash(identity.MachineRecordRef().Rel))); err == nil {
+		t.Fatal("a piped yes recorded who the person commits as")
 	}
-	if !strings.Contains(string(body), "alex@example.com") {
-		t.Fatalf("pin written from the wrong identity:\n%s", body)
+	if _, err := os.Stat(filepath.Join(repo, ".abcd", "config", "identity.json")); err == nil {
+		t.Fatal("an identity was written into the repository")
+	}
+	if all := string(out) + string(errOut); !strings.Contains(all, "git_identity.unrecorded") {
+		t.Fatalf("the run does not name the record it left for the person:\n%s", all)
 	}
 }
 

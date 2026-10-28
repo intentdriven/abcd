@@ -371,7 +371,7 @@ func renewAtFence(c Context, lane Lane, term time.Duration, act fenceAct) (time.
 			return time.Time{}, r
 		case claim.NotHeldAnotherCopy:
 			return time.Time{}, contend(stage, "", lane.ID,
-				"the reservation on "+id+" moved to your copy on another computer"+not+" here",
+				"the reservation on "+id+" moved to "+nh.YourCopy+not+" here",
 				"carry the lane on from that copy, or take the reservation back here (`abcd reserve "+id+" --take-over --footprint <path>`), then "+again)
 		case claim.NotHeldReleased:
 			if nh.Derived {
@@ -515,7 +515,7 @@ func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) (out release
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherPerson:
 		out = released{clause: "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherCopy:
-		out = released{clause: "left the reservation on " + id + " as it stands: your copy on another computer holds it"}
+		out = released{clause: "left the reservation on " + id + " as it stands: " + nh.YourCopy + " holds it"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldMoved:
 		out = released{clause: "left the reservation on " + id + " as it stands: it was renewed or reserved again since the drain took it"}
 	case errors.Is(err, claim.ErrRefused) && !isPushFailure(err):
@@ -544,13 +544,16 @@ func isPushFailure(err error) bool {
 // run record's line for it, whether it was fresh (a reserve or a take-over)
 // rather than a renewal of one this copy already held, so only a fresh one is
 // released when the run is not created, and why it could not ask the forge
-// whether origin is a fork ("" when it asked, or asked nothing).
+// whether origin is a fork ("" when it asked, or asked nothing). warnings
+// are the act's warnings of a footprint path naming a directory
+// (claim.DirectoryFootprint.Warning), which the start passes on.
 type reserved struct {
 	at            *time.Time
 	note          string
 	fresh         bool
 	forkUnchecked string
 	forkAllowed   string
+	warnings      []string
 }
 
 // reserveKey reserves a run's key on origin for this copy with req's
@@ -633,8 +636,12 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 		note += "; " + claim.ForkAllowedLine(res.ForkAllowed)
 	}
 	t := now
-	return reserved{at: &t, note: note, fresh: res.Act != claim.ActRenewed,
-		forkUnchecked: res.ForkUnchecked, forkAllowed: res.ForkAllowed}, nil
+	r := reserved{at: &t, note: note, fresh: res.Act != claim.ActRenewed,
+		forkUnchecked: res.ForkUnchecked, forkAllowed: res.ForkAllowed}
+	for _, d := range res.Directories {
+		r.warnings = append(r.warnings, d.Warning())
+	}
+	return r, nil
 }
 
 // reserveStart is a new run's reservation, once its checks pass and before
@@ -729,6 +736,7 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 		return err
 	}
 	res.Reservation, res.ForkUnchecked, res.ForkAllowed = r.note, r.forkUnchecked, r.forkAllowed
+	res.ReservationWarnings = r.warnings
 	return nil
 }
 

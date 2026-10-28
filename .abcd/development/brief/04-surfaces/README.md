@@ -51,6 +51,7 @@ are wiring rather than user-facing surface are listed separately under
 | 38 | `/abcd:announce` | shipped | Post a short fixed-form announcement on the shared remote, so every other session, under any account, on any machine or in the cloud, sees what this one is doing | [`38-announce.md`](38-announce.md) |
 | 38 | `/abcd:land` | shipped | Push a branch once its preflight passed and queue its pull request where the merge gate allows, resumable by running it again | [`38-land.md`](38-land.md) |
 | 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
+| 40 | `/abcd:checklist` | shipped | Keep this working copy's checklist on disk, so what a session is doing survives a compaction or a crash | [`40-checklist.md`](40-checklist.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -275,7 +276,7 @@ verb the binary registers apart from the framework's own `help`.
 |---|---|---|
 | `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), and the verb in [The rules verb](#the-rules-verb) below |
 | `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation, carrying the closing spec's steps not marked landed. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); its lifecycle is documented in [`05-intent.md`](05-intent.md), and the verb in [The spec verb](#the-spec-verb) below |
-| `hook` | Hidden from `--help`: six host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches, and on the prompt that owes it sets the session's persona name as its title (itd-2610111707085098), and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away, says how many reports wait in the inbox ([`29-report.md`](29-report.md)) and reserves the session's persona name in the machine register ([`08-abcd.md`](08-abcd.md)); `question-answered`, on the question tool's `PostToolUse`, resets the presence badge once a question's answer comes back ([`08-abcd.md`](08-abcd.md)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives, with `prompt-router`'s two outputs — the injected block and the `--json` envelope that names the active-domain set for a client that snapshots rules — in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-prompt-routers-output); the generated CLI reference omits both router entrypoints by design |
+| `hook` | Hidden from `--help`: seven host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches, and on the prompt that owes it sets the session's persona name as its title (itd-2610111707085098), and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away, says how many reports wait in the inbox ([`29-report.md`](29-report.md)) and reserves the session's persona name in the machine register ([`08-abcd.md`](08-abcd.md)); `question-answered`, on the question tool's `PostToolUse`, resets the presence badge once a question's answer comes back ([`08-abcd.md`](08-abcd.md)); `permission-request`, on the shell tool's `PermissionRequest`, refuses the host's approval prompt while a build or drain runs with nobody at the terminal ([`34-build.md`](34-build.md#approval-prompts-while-it-runs)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives, with `prompt-router`'s two outputs — the injected block and the `--json` envelope that names the active-domain set for a client that snapshots rules — in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-prompt-routers-output); the generated CLI reference omits both router entrypoints by design |
 | `completion` | The CLI framework's generated per-shell autocompletion scripts. | No record: generated by the CLI framework, not designed here |
 | `statusline` | The harness-invoked status-line render: the harness runs it on every refresh with its payload on stdin, and it prints abcd's row in a managed repository or runs the user's recorded previous status command everywhere else. `ahoy install` wires it; no user invokes it. | itd-200 / spc-70 (the presence badge); the row and the state behind it are documented in [`08-abcd.md`](08-abcd.md) |
 
@@ -357,11 +358,11 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `commands/`:
 
 <!-- index: commands -->
-`abcd`, `ahoy`, `announce`, `banlist`, `build`, `capture`, `dashboard`,
-`decide`, `disembark`, `docs`, `drain`, `embargo`, `embark`, `guard`, `history`,
-`ideate`, `identity`, `implement`, `inbox`, `intent`, `lab`, `land`, `launch`,
-`library`, `lint`, `memory`, `mode`, `peers`, `reading`, `reflect`, `report`,
-`reserve`, `scribe`, `session`, `site`, `status`, `update`.
+`abcd`, `ahoy`, `announce`, `banlist`, `build`, `capture`, `checklist`,
+`dashboard`, `decide`, `disembark`, `docs`, `drain`, `embargo`, `embark`,
+`guard`, `history`, `ideate`, `identity`, `implement`, `inbox`, `intent`, `lab`,
+`land`, `launch`, `library`, `lint`, `memory`, `mode`, `peers`, `reading`,
+`reflect`, `report`, `reserve`, `scribe`, `session`, `site`, `status`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

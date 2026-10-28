@@ -598,7 +598,10 @@ func TestInstallSurfacesRecordInTheNoindexHome(t *testing.T) {
 		}
 		seen++
 		t.Run(s.name, func(t *testing.T) {
-			if !strings.Contains(s.script, "> "+pathEntryRecord) {
+			// A one-liner redirects into the record; the installer writes a
+			// private temporary file beside it and moves it into place.
+			if !strings.Contains(s.script, "> "+pathEntryRecord) &&
+				!strings.Contains(s.script, `mv -f "$entry_tmp" `+pathEntryRecord) {
 				t.Errorf("%s does not write its record to %s", s.source, pathEntryRecord)
 			}
 			if strings.Contains(s.script, oldHome) || strings.Contains(s.script, `"$HOME/.abcd/`) {

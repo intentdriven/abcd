@@ -58,6 +58,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // TierRelDir is the local-ephemeral tier the run state lives in, the tier the
@@ -187,11 +188,46 @@ const lockFileName = ".lock"
 // and harness version the harness reported, the token counts and cost, and
 // the fields it could not pin (runner.Sides). Version 13 is its strict
 // subset, read as a run whose routes recorded neither side, its lanes'
-// `refused` kept, and written back at version 14; a file of version 13 or
-// lower carrying either side is not one its version wrote, and is refused.
-// Releases that write version 13 (v0.15.1) refuse a version-14 file as a
-// newer abcd's before any strict decode.
-const SchemaVersion = 14
+// `refused` kept, and written back at the current version; a file of version
+// 13 or lower carrying either side is not one its version wrote, and is
+// refused. Releases that write version 13 (v0.15.1) refuse a version-14 file
+// as a newer abcd's before any strict decode.
+//
+// Version 15 added the run's review set (itd-2610240922461281,
+// spc-2610240951109420 step 1): the run's `review`, each role's reviewers at
+// their model classes, the judge and the ceiling, with the layer of each.
+// Version 14 is its strict subset, read as a run started before review sets,
+// which carries none, and written back at the current version; a file of
+// version 14 or lower carrying `review` is not one its version wrote, and is
+// refused. Releases that write version 14 refuse a version-15 file as a newer
+// abcd's.
+//
+// Version 16 added a route's pins: a pinned opencode run's route carries its
+// pin and the SHA-256 of the sealed configuration that held it
+// (`provider_pin`, `pin_config_sha256`, iss-2610161734413178), and a route
+// to a model on this machine its local pin, what its server reported and
+// that it is local (`local_pin`, `local_served`, `local`,
+// iss-2610161734428291). Version 15 is its strict subset, read as a run
+// whose routes were pointed at no pin, its review set kept, and written back
+// at version 16; a file of version 14 or 15 carrying any of them is not one
+// its version wrote, and is refused naming the key, and one of version 13 or
+// lower carrying any of them is refused with the sides it carries. Releases
+// that write version 15 refuse a version-16 file as a newer abcd's before any
+// strict decode. A route record's `override` (iss-2610161801358637), the
+// `implement step --route` text verbatim on the verified receipt or the
+// validator's return a runner ran under it, is version 16's too: it joined
+// version 16 before any release wrote that version, so a file of version 15
+// or lower carrying it is not one its version wrote, and is refused naming
+// the key.
+const SchemaVersion = 16
+
+// schemaVersionUnpinned is the version before a route's pins: read, never
+// written.
+const schemaVersionUnpinned = 15
+
+// schemaVersionUnreviewed is the version before the run's review set: read,
+// never written.
+const schemaVersionUnreviewed = 14
 
 // schemaVersionUnmetered is the version before a route's both sides: read,
 // never written.
@@ -334,6 +370,10 @@ type State struct {
 	// supplied it (itd-2609201925079472). Nil in a run a version-1 state file
 	// holds: it started before the loop paced a run, and runs unpaced.
 	Pace *Pace `json:"pace,omitempty"`
+	// Review is the review set the run started on (reviewset.go), each value
+	// with the layer that supplied it. Nil in a run a state file before
+	// version 15 holds: it started before review sets.
+	Review *ReviewSet `json:"review,omitempty"`
 	// Pick is the pick `abcd build next` made to start the run: the
 	// candidates, their scores and the grounds entry its first lane commits.
 	// Nil for a run `abcd build <itd-N>` started.
@@ -747,7 +787,7 @@ func (s State) answered() string {
 }
 
 // metered reports the first route, in a state, that carries either side of
-// its run, which only version 14 writes, or "".
+// its run, which only version 14 and later write, or "".
 func (s State) metered() string {
 	sided := func(r *runner.RouteRecord) bool {
 		return r != nil && !reflect.DeepEqual(r.Sides, runner.Sides{})
@@ -762,6 +802,67 @@ func (s State) metered() string {
 			for i, vr := range v.Validators {
 				if sided(vr.Route) {
 					return fmt.Sprintf("%s's round %d validator %d's route", l.ID, v.Round, i+1)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// pinKey names the first of a route's pin fields, or its `local`, that the
+// route carries, or "": the fields the run state's version 16 and the drain
+// state's version 2 added.
+func pinKey(r *runner.RouteRecord) string {
+	switch {
+	case r == nil:
+		return ""
+	case r.ProviderPin != nil:
+		return "provider_pin"
+	case r.PinConfigSHA256 != "":
+		return "pin_config_sha256"
+	case r.LocalPin != nil:
+		return "local_pin"
+	case r.LocalServed != nil:
+		return "local_served"
+	case r.Local:
+		return "local"
+	}
+	return ""
+}
+
+// pinned reports the first route, in a state, that carries a pin or names
+// its model as local, which only version 16 and later write, or "".
+func (s State) pinned() string {
+	for _, l := range s.Lanes {
+		for i, r := range l.Receipts {
+			if k := pinKey(r.Route); k != "" {
+				return fmt.Sprintf("`%s` on %s's receipt %d's route", k, l.ID, i+1)
+			}
+		}
+		for _, v := range l.Validation {
+			for i, vr := range v.Validators {
+				if k := pinKey(vr.Route); k != "" {
+					return fmt.Sprintf("`%s` on %s's round %d validator %d's route", k, l.ID, v.Round, i+1)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// overridden reports the first route record, in a state, that carries
+// `override`, which only version 16 and later write, or "".
+func (s State) overridden() string {
+	for _, l := range s.Lanes {
+		for _, r := range l.Receipts {
+			if r.Route != nil && r.Route.Override != "" {
+				return "`override` on " + l.ID + "'s " + r.Role + " receipt"
+			}
+		}
+		for _, v := range l.Validation {
+			for _, vr := range v.Validators {
+				if vr.Route != nil && vr.Route.Override != "" {
+					return "`override` on " + l.ID + "'s " + vr.Role + " return"
 				}
 			}
 		}
@@ -851,7 +952,7 @@ func StateRelPath(runID string) string { return runRel(runID) + "/" + StateFileN
 // the file to the version and the id it is stored under.
 func ReadState(repoRoot, runID string) (State, error) {
 	if !ValidRunID(runID) {
-		return State{}, refuse("state", "", "", fmt.Sprintf("%q is not a run id (run-<16 digits>)", runID),
+		return State{}, refuse("state", "", "", fmt.Sprintf("the run given (%s) is not a run id (run-<16 digits>)", termsafe.DescribeRefused(runID)),
 			"name a run `abcd implement status` lists")
 	}
 	root, err := os.OpenRoot(repoRoot)
@@ -928,7 +1029,16 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnmetered && st.metered() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries both sides of %s, which version %d never wrote", rel, st.SchemaVersion, st.metered(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnmetered:
+	case st.SchemaVersion <= schemaVersionUnreviewed && st.Review != nil:
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a review set, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUnpinned && st.overridden() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.overridden(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUnpinned && st.pinned() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pinned(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnpinned:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
@@ -947,6 +1057,14 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	if st.Pace != nil && !st.Pace.written() {
 		return State{}, refuse("state", "", "", rel+" carries a pace the loop never writes: a setting whose layer is not "+
 			strings.Join(paceLayers, ", ")+", or whose origin carries a control, bidi or zero-width rune",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	// The stored review set is one the resolver writes, as the pace is: its
+	// classes are ones the map carries and its layers the resolver's, so a
+	// hand edit never reaches a reviewer's model or a --json stream.
+	if st.Review != nil && !st.Review.written() {
+		return State{}, refuse("state", "", "", rel+" carries a review set the loop never writes: a role, class or layer it does not name, "+
+			"a list past its ceiling, or a model or origin carrying a control, bidi or zero-width rune",
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
 	// A lane's stored hand-back carries only text the loop writes, so none
@@ -1129,8 +1247,9 @@ func writeState(root *os.Root, st State) error {
 	return nil
 }
 
-// runIDs lists the run directories under the run tier, in name order (which is
-// mint order). An absent tier holds none.
+// runIDs lists the run directories under the run tier, in name order: mint
+// order to the second, but two runs minted in one second sort by their random
+// digits, so readRuns orders by creation instead. An absent tier holds none.
 func runIDs(root *os.Root) ([]string, error) {
 	f, err := root.Open(RunRelDir)
 	if errors.Is(err, fs.ErrNotExist) {

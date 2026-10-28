@@ -14,7 +14,7 @@ func TestAhoyInstallOnlyWaitingWithYesLeavesTheValueQuestions(t *testing.T) {
 	repo, _, _ := afterUpdateRepo(t)
 	t.Setenv("ABCD_BIN_TARGET", filepath.Join(t.TempDir(), "bin", "abcd"))
 	t.Setenv("PATH", "/usr/bin:/bin")
-	stdout, stderr, code := runSessionStart("", "ahoy", "install", "--only-waiting", "--yes", "--adopt", "--allow-stale-binary")
+	stdout, stderr, code := runSessionStart("", "ahoy", "install", "--details", "--only-waiting", "--yes", "--adopt", "--allow-stale-binary")
 	if code != 0 && code != 2 {
 		t.Fatalf("exit %d, stdout %q, stderr %q", code, stdout, stderr)
 	}

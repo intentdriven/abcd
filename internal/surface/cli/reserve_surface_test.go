@@ -116,7 +116,7 @@ func TestReserveWithoutAFootprintIsRefused(t *testing.T) {
 	w := newReserveWorld(t)
 	p := w.clone(t, "p", octoMail)
 	code, stdout, stderr := reserveRun(t, p, "reserve", "iss-5")
-	want := "abcd reserve: a reservation names the files the work will change: pass --footprint <path> once per path; nothing was pushed"
+	want := "abcd reserve: a reservation names the files the work will change: pass --footprint <path> once per path, a renewal of one you hold included; nothing was pushed"
 	if code != 2 || !strings.Contains(stderr, want) {
 		t.Fatalf("exit %d, stderr %q, stdout %q; want exit 2 and %q", code, stderr, stdout, want)
 	}

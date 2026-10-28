@@ -10,6 +10,7 @@ blocked_by: [itd-2609091014076309]
 related_adrs: [adr-2609091248200336]
 severity: major
 impact: additive
+related_issues: [iss-213, iss-2608230847432285]
 ---
 
 # Every change starts in its own worktree in abcd's store: the primary checkout is a read-only surface, and abcd blocks mutations there for every session but a declared coordinator

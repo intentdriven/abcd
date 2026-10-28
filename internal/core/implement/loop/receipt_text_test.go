@@ -72,7 +72,7 @@ func TestAReceiptsStoredTextIsHeldToWhatTheLoopStores(t *testing.T) {
 		{"receipts", "model"},
 		{"resolves", "note"}, {"resolves", "grounds"}, {"resolves", "issue"}, {"resolves", "commit"}, {"resolves", "impact"},
 	} {
-		for _, version := range []int{SchemaVersion, schemaVersionUnkept} {
+		for _, version := range []int{SchemaVersion, schemaVersionPrevious} {
 			for _, bad := range []string{"‮", "\u009b"} {
 				var doc map[string]any
 				if err := json.Unmarshal(stored, &doc); err != nil {
@@ -81,6 +81,7 @@ func TestAReceiptsStoredTextIsHeldToWhatTheLoopStores(t *testing.T) {
 				entry := doc["lanes"].([]any)[0].(map[string]any)[f.list].([]any)[0].(map[string]any)
 				entry[f.field] = entry[f.field].(string) + bad
 				doc["schema_version"] = version
+				unreviewOlder(doc)
 				data, err := json.Marshal(doc)
 				if err != nil {
 					t.Fatal(err)

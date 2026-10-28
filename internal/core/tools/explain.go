@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"os"
 	"runtime"
 	"strings"
 )
@@ -23,10 +24,15 @@ type Explanation struct {
 	WithoutIt      string      `json:"without_it,omitempty"`
 	NativeDefault  string      `json:"native_default,omitempty"`
 	OnDecline      string      `json:"on_decline,omitempty"`
-	StepManager    string      `json:"step_manager,omitempty"`
-	// Step is the exact argv Install would run on this platform; empty when
-	// the registry names none (an unknown tool, or a platform without a step).
-	Step    []string `json:"step,omitempty"`
+	// Download is the checked download Install would make on this platform:
+	// the pinned version, its full URL and sha256, where the program goes and
+	// how far it is checked. nil when the registry names none (an unknown
+	// tool, or a platform abcd's release holds no download for).
+	Download *Download `json:"download,omitempty"`
+	// Plan is what Install found on this machine before it asked: the copy
+	// already installed and whether it is compatible, and which copy will
+	// run. Set only on the explanation Install hands its Confirm.
+	Plan    *Plan    `json:"plan,omitempty"`
 	Effects string   `json:"effects,omitempty"`
 	Verify  []string `json:"verify,omitempty"`
 	// RegistryGap is set for a tool the registry does not know: the gap is
@@ -35,14 +41,20 @@ type Explanation struct {
 }
 
 // Explain renders the explanation for name as capability uses it, on the
-// running platform.
+// running platform, into the running account's bin folder.
 func Explain(name string, capability Capability) Explanation {
-	return explainFor(name, capability, runtime.GOOS)
+	home, _ := os.UserHomeDir()
+	return explainFor(name, capability, runtime.GOOS, runtime.GOARCH, userBinDir(os.Getenv, home), home)
 }
 
-// explainFor is Explain with the platform named, so a test can reach every
-// platform's step from any host.
-func explainFor(name string, capability Capability, goos string) Explanation {
+// explanation is Explain for this installer's platform, environment and home.
+func (in *Installer) explanation(name string, capability Capability) Explanation {
+	return explainFor(name, capability, in.GOOS, in.GOARCH, userBinDir(in.getenv, in.Home), in.Home)
+}
+
+// explainFor is Explain with the platform, the bin folder and the home named,
+// so a test can reach every platform's download from any host.
+func explainFor(name string, capability Capability, goos, goarch, binDir, home string) Explanation {
 	tool, ok := registry[name]
 	if !ok {
 		return unknown(name, capability)
@@ -74,16 +86,20 @@ func explainFor(name string, capability Capability, goos string) Explanation {
 		e.OnDecline = "nothing was installed"
 		e.RegistryGap = gapCapture(name, capability)
 	}
-	if step, ok := tool.Install[goos]; ok {
-		e.StepManager = step.Manager
-		e.Step = append([]string(nil), step.Argv...)
+	if asset, ok := tool.Release.assetFor(goos, goarch); ok && binDir != "" {
+		dest := binDir + string(os.PathSeparator) + name
+		e.Download = &Download{
+			Version: tool.Release.Version, URL: asset.URL, SHA256: asset.SHA256, Member: asset.Member,
+			Dest: displayIn(home, dest), Checks: tool.Release.Checks(), ChecksumOnly: tool.Release.Signer == nil, dest: dest,
+		}
 	}
 	return e
 }
 
 // unknown is the generic explanation for a tool the registry does not know
-// (criterion 3). It carries no step: abcd installs only what it can explain,
-// and a step it does not hold is never composed from the tool's name.
+// (criterion 3). It carries no download: abcd installs only what it can
+// explain, and a download it does not hold is never composed from the tool's
+// name.
 func unknown(name string, capability Capability) Explanation {
 	return Explanation{
 		Tool:           name,
@@ -107,16 +123,28 @@ func gapCapture(name string, capability Capability) string {
 		name + ` (` + string(capability) + `)" --category future-work-seed`
 }
 
-// StepText is the install step as a person would type it, or the reason there
-// is none.
+// StepText is the install as a person reads it in the install question, or
+// the reason there is none. It never names a step that needs admin rights.
 func (e Explanation) StepText() string {
-	if len(e.Step) == 0 {
+	if e.Download == nil {
 		if !e.Known {
 			return "none known to abcd (look the tool up before installing it)"
 		}
 		return "none known to abcd for this platform (see " + e.Homepage + ")"
 	}
-	return strings.Join(e.Step, " ")
+	d := e.Download
+	return "download " + e.Tool + " " + d.Version + " into " + d.Dest + ", " + d.Checks
+}
+
+// ManualText is the same install for a person to make by hand: the exact
+// URL, the sha256 to check it against, and where the program goes.
+func (e Explanation) ManualText() string {
+	if e.Download == nil {
+		return e.StepText()
+	}
+	d := e.Download
+	return "download " + d.URL + ", check its sha256 is " + d.SHA256 + ", and put " + d.Member +
+		" from it at " + d.Dest + " (no admin rights needed)"
 }
 
 // Lines is the plain-text explanation, one line per part, the first naming the
@@ -125,7 +153,7 @@ func (e Explanation) Lines() []string {
 	if !e.Known {
 		return []string{
 			e.Tool + " — " + e.What,
-			"  install step: " + e.StepText(),
+			"  install: " + e.StepText(),
 			"  registry gap: " + e.RegistryGap,
 		}
 	}
@@ -135,10 +163,18 @@ func (e Explanation) Lines() []string {
 		"  what abcd uses it for: " + e.Does,
 		"  without it: " + e.WithoutIt,
 	}
-	if len(e.Step) > 0 {
-		lines = append(lines, "  install step ("+e.StepManager+"): "+e.StepText())
+	if e.Download != nil {
+		lines = append(lines,
+			"  install: "+e.StepText(),
+			"  from: "+e.Download.URL+" (no admin rights; nothing is written until the download passes its check)")
 	} else {
-		lines = append(lines, "  install step: "+e.StepText())
+		lines = append(lines, "  install: "+e.StepText())
+	}
+	if e.Plan != nil && e.Plan.Existing != nil {
+		lines = append(lines, "  already installed: "+e.Plan.Existing.Path+" — "+e.Plan.Existing.Why+"; abcd leaves that copy as it is")
+	}
+	if e.Plan != nil && e.Plan.Runs != "" {
+		lines = append(lines, "  which copy runs: "+e.Plan.Runs)
 	}
 	lines = append(lines, "  what the install does: "+e.Effects)
 	if e.RegistryGap != "" {

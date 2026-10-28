@@ -91,8 +91,8 @@ func TestStartRefusesEachFailedCheckAndWritesNoState(t *testing.T) {
 		reason    string
 	}{
 		{"an issue key without the drain rule", "iss-2609010000001234", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckEligible, "drain eligibility record"},
-		{"a key shaped like no issue", "iss-12/x", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckKey, "iss-12/x"},
-		{"not an id", "itd-x", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckKey, "itd-x"},
+		{"a key shaped like no issue", "iss-12/x", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckKey, "itd-N or iss-N"},
+		{"not an id", "itd-x", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckKey, "itd-N or iss-N"},
 		{"unknown intent", "itd-99", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckReady, "itd-99"},
 		{"a draft", "itd-10", ".abcd/development/intents/drafts/itd-10-alpha.md", readyIntent("", settledQuestions), specWithSteps(""), CheckReady, "draft"},
 		{"an open question", "itd-10", plannedRel, readyIntent("", "## Open Questions\n\n- Which runner?\n\n"), specWithSteps(""), CheckOpenQuestions, "Which runner?"},
@@ -395,8 +395,9 @@ func TestStartCreatesOneLaneAndAStartAgainResumesIt(t *testing.T) {
 	if len(st.Pending) != 1 || st.Pending[0].Number != 3 {
 		t.Fatalf("the unlanded steps after the first wait as pending: %+v", st.Pending)
 	}
-	if len(st.Record) != 3 || st.Record[0].Stage != "start" || st.Record[1].Stage != StagePace || st.Record[2].Stage != CheckBudget {
-		t.Fatalf("the record opens with the start, then names the pace and the budget check: %+v", st.Record)
+	if len(st.Record) != 4 || st.Record[0].Stage != "start" || st.Record[1].Stage != StagePace || st.Record[2].Stage != StageReview ||
+		st.Record[3].Stage != CheckBudget {
+		t.Fatalf("the record opens with the start, then names the pace, the review set and the budget check: %+v", st.Record)
 	}
 	fi, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(res.State)))
 	if err != nil || fi.Mode().Perm() != filePerm {

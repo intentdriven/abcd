@@ -89,7 +89,18 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   re-drafted it), read through the peer listing, and no session other than the
   one the build is started for holds a live claim on it in the shared run
   state. A copy in the same bucket is not a
-  holding: every branch cut from the default branch carries one. The check
+  holding: every branch cut from the default branch carries one. Nor is a copy
+  the peer has not changed since its merge-base with this checkout, the same
+  file with the same contents as in that merge-base's tree (in every one, when
+  a criss-cross history gives several): a branch cut before the intent left
+  drafts/ holds this checkout's older copy, not the intent
+  (iss-2610222008081888). The peer is measured against this checkout's HEAD,
+  not the default branch, so a branch cut after the default branch shipped an
+  intent this checkout, being behind, still holds as planned is a holding. A
+  worktree is compared off its disk, against the merge-bases of its HEAD, so an
+  uncommitted move or edit is a change. A copy that cannot be compared (an
+  unborn HEAD here, no merge-base, an unreadable file) counts as a holding. The
+  check
   fails closed on what it cannot see into, on both sides: a peer the listing
   names and cannot read (git or the filesystem will not answer for it, or its
   ledger holds one id in two folders) and an unreadable claim file each count
@@ -130,7 +141,13 @@ with a remote named `origin`, a run reserves its key there once its checks and
 its budget check pass and before the run is created, through
 `internal/core/claim`, as `abcd reserve` does: with the packages its spec's
 `## Footprint` `- packages:` line names, each cleaned of a trailing slash, for
-an intent, and the path an issue's `found_at` names for an issue. A spec with
+an intent, and the path an issue's `found_at` names for an issue. The
+reservation names exactly those paths, so a file named there is reserved as
+that file, and one reservation holds them for every step of the run; a step's
+own packages line is not read for it. A path naming a directory git tracks is
+reserved as it stands, and the start warns of it as the reserve verb does,
+naming the directory and its tracked files (`reservation_warnings`, a warning
+on stderr in the text form; iss-2610230016544142). A spec with
 no footprint, or an issue with no such path, is refused at the `reservation`
 stage, starting nothing (C35); another's hold, a person's or this person's
 other copy's, is contention at the same stage; a take-over asked for passes
@@ -267,8 +284,25 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 14. Version 14
-added both sides of a run (itd-166): a runner's `route` on a verified receipt or
+under a run id it does not name. The state is schema version 16. Version 16
+added a route's pins: a pinned opencode run's `route` carries its pin and the
+SHA-256 of the sealed configuration that held it (`provider_pin`,
+`pin_config_sha256`, iss-2610161734413178), and a route to a model on this
+machine its local pin, what its server reported and that it is local
+(`local_pin`, `local_served`, `local`, iss-2610161734428291). Version 15 is
+its strict subset, read as a run whose routes were pointed at no pin; a file
+of version 15 or lower carrying any of them is refused, and an abcd that
+writes version 15 refuses a version-16 file as a newer abcd's. A route
+record's `override` (iss-2610161801358637), the step verb's per-invocation
+route override verbatim on the verified receipt or validator return a runner
+ran under it, is version 16's too: a file of version 15 or lower carrying it
+is refused. Version 15
+added the run's review set (itd-2610240922461281): the run's `review`, each
+role's reviewers at their model classes, the judge and the ceiling, with the
+layer of each. Version 14 is its strict subset, read as a run started before
+review sets; a file of version 14 or lower carrying `review` is refused, and
+an abcd that writes version 14 refuses a version-15 file as a newer abcd's.
+Version 14 added both sides of a run (itd-166): a runner's `route` on a verified receipt or
 a validator's return carries, beside the route asked, the route that ran and the
 served model, the model the runner asked for (`model_asked`), the SHA-256 of
 the prompt it handed the harness, the served models, provider, finish reason
@@ -336,7 +370,7 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap, a
 version-7 run is one the host ran every agent of) and
-written back at version 14 by its next mutation; an earlier version carrying what
+written back at version 16 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
@@ -468,7 +502,41 @@ file, the key and the machine's file, so the next layer's route, or the host,
 runs the role. A repository route to the host stands over the machine's route to
 a runner, since it spends nothing of the person's, and is reported with a
 diagnostic naming the repository's file, the role and the machine route it
-displaced, so a checkout never cancels the person's choice without a word. The claude runner stays bare, on an API key alone, and a person
+displaced, so a checkout never cancels the person's choice without a word. The
+person's own invocation is the step verb's per-invocation route override, whose
+runner rung, `<role>=runner:<name>[@<provider>/<model>]`
+(iss-2610161801358637), hands the role it names to the runner it names for that
+step alone, over every configured route, asking for the model after `@` in place
+of the runner's own `runner.<name>.model`, which every other role keeps. The
+runner must be one the machine enables and the model one its provider's
+allowlist admits (adr-2609221009491186), or the step is refused at exit 2 before
+anything is written, naming the fix; a tier route there is refused too, as a
+runner route is on a verb that sends its agent to the harness or a provider. The
+model is held to the pins the machine sets for it, as the machine's own model
+is: opencode is held to its provider pin or, after a probe, its local pin. The
+claude runner holds neither, so the route override naming it for a model the machine
+pins (its own model included) is refused at exit 2 before anything is written,
+naming `runner.opencode.model`, as every other route the configuration shows
+cannot run is; a machine route to claude for a pinned model, which nobody asked
+for on this step, is refused by claude before launch and the role falls back. A value missing the `runner:` rung is refused naming
+the runner grammar, never read as a tier. So is a route beside a release, a
+discard or a restart, which hand no role out, and beside an acceptance of a
+configuration change, which is written before the step is judged and would
+otherwise be left behind by a route the step then refused. A step hands at most
+one role out, so
+a route for a role the step will not hand out (it performs a stage the binary
+runs, hands out another role, or re-tells an agent already out) is refused
+before anything is written, naming the role the step hands out or that it hands
+none; the step's move is read from the state. The one move the state cannot
+settle is a lane's landing ahead of the role, which moves unless the forge or
+the network holds it: the route is then judged after the move, and one the move
+did not use is warned of on stderr, named in the result's `route_unused` and
+recorded in the run record. The setup diagnostic about a role's configured
+route is not said for a role the override replaces, since it would contradict
+what then runs. The role's receipt carries the override verbatim
+(`route.override`, state schema version 16), in the state and in the record's
+line. A route that falls back to the host leaves no route on the receipt: the
+fallback receipt names the runner it asked, not the override. The claude runner stays bare, on an API key alone, and a person
 whose account is a subscription runs the role in their own session. The
 opencode runner is sealed against the repository it runs in (ruling OC1): no
 external plugins, and its project configuration, its compatibility reading of
@@ -745,8 +813,17 @@ until the last step.
    record is written. The commit is made with the repository's hooks running,
    so the commit-msg outbound gate judges it; a hook that refuses stops the
    landing with the records staged, and the step resumes once what the hook
-   names is settled. A lane that neither closes the spec nor fixed a capture
-   records nothing.
+   names is settled. On an intent lane whose spec lists its steps, the
+   records first mark the lane's step landed on the open spec, a `- landed:`
+   line naming the judged head, before any close moves the spec, so a later
+   `abcd build` of the spec or a remainder close reads the step as landed
+   (iss-2610110918418459); a step the branch already marks keeps its mark,
+   and an issue lane marks nothing. A branch whose spec is not open, or lists
+   the lane's step under another title, is refused at the landing's first
+   step, before anything is written. A records commit that only marks the step
+   carries abcd's text alone, so it declares `Assisted-by: abcd:<version>`
+   rather than the lane's models. A lane that marks no step, neither closes
+   the spec nor fixed a capture records nothing.
 3. It pushes the lane's branch to `origin` only once the repository's
    preflight receipt (`.abcd/.work.local/preflight-receipts/<head>`, in any
    worktree git lists) names the lane's head, the gate the pre-push hook
@@ -832,6 +909,33 @@ verb's capture of one path does, one capture per path, and records it in the
 state with the session it was stored under; a run in progress is refused, since
 the record's transcripts are the run's, captured at its end. A capture that
 fails stops the call, with the transcripts before it recorded.
+
+## Approval prompts while it runs
+
+A run is unattended: nobody is at the terminal to answer the host's approval
+prompt for a shell command, so a prompt would stall the run until someone came
+back (iss-2610171110154902). The plugin's `PermissionRequest` hook, matched to
+the shell tool, refuses the prompt while a build runs for the session's checkout or the session is one of a
+running build's lanes. A build counts while its run is unfinished and its state
+was written within the reservation lease, two hours: a run idle past it is one
+the reservation already treats as abandoned, so a checkout holding old
+unfinished runs does not count as running one. A run with a lane handed back
+or held does not count either: it waits on the person, who is then at the
+terminal taking the work over. So refusal stops when the run finishes, hands a
+lane back or holds one, or after two hours with no activity; no verb ends a
+run early, so a person who interrupts a build and carries on by hand sees the
+prompts again two hours after the run last moved. The refusal tells the agent to
+rewrite the command so it needs no approval, each step its own plain command
+and a script's steps on the command line rather than in a file, a heredoc or a
+`bash -c` string, or to skip the step and say why in its report. It is the
+same every time the prompt comes back, and the hook never grants a prompt: an
+approval given to a retry would let any command past every check by being sent
+twice. A lane started through the claude runner runs with the host's hooks off
+(`--bare`), so the hook never sees its prompts; the guard answers them as that
+runner's permission prompt answerer. In every other session the hook says nothing and the host's prompt
+shows as usual. A new run, and a pick as it starts one or begins a series,
+says once on stderr that the prompts are refused while it runs; a
+resume says nothing.
 
 ## Exit codes
 
