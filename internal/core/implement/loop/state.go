@@ -58,6 +58,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // TierRelDir is the local-ephemeral tier the run state lives in, the tier the
@@ -926,7 +927,7 @@ func StateRelPath(runID string) string { return runRel(runID) + "/" + StateFileN
 // the file to the version and the id it is stored under.
 func ReadState(repoRoot, runID string) (State, error) {
 	if !ValidRunID(runID) {
-		return State{}, refuse("state", "", "", fmt.Sprintf("%q is not a run id (run-<16 digits>)", runID),
+		return State{}, refuse("state", "", "", fmt.Sprintf("the run given (%s) is not a run id (run-<16 digits>)", termsafe.DescribeRefused(runID)),
 			"name a run `abcd implement status` lists")
 	}
 	root, err := os.OpenRoot(repoRoot)

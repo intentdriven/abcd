@@ -1088,7 +1088,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
 					Reason: "--restart, --release and --discard name one decision each; give one", Remedy: "run `abcd implement step` with one of them, one lane per invocation"})
 			case yieldedSet && yielded == "":
-				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart", Lane: restart,
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
 					Reason: "--yielded is blank, so it names no line the agent yielded with", Remedy: "pass the agent's own `NETWORK: <cmd>` line, or leave --yielded out for an agent that died; nothing was changed"})
 			case release != "" && discard != "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: string(loop.StageHeld),

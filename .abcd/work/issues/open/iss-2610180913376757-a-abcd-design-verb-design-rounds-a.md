@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "new verb (design); neighbours abcd lab, abcd ideate"
 remedy: "Earn it in stages: finish the open design lab, run a second lab on a non-UI kind such as wording variants that also tests the cull-first protocol, then propose a design verb with assessment as its judging step, and decide by ADR whether the assessment page is served locally."
+related_intents: [itd-2610171228577260]
 ---
 
 A /abcd:design verb: design rounds, a person-only assessment, and a committed design history

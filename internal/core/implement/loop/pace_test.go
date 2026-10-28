@@ -151,7 +151,9 @@ func TestThePaceFlagsWinOverEveryLayer(t *testing.T) {
 
 // TestAMalformedPaceIsRefusedAndWritesNoState is criterion 9: a malformed pace
 // or ceiling, typed as a flag or written in a configuration layer, is refused
-// naming the value and the accepted form, and no state is written.
+// naming the accepted form, and no state is written. A layer's value or a flag's
+// out-of-range number is named; a flag's value that does not parse is named by
+// its flag and its length.
 func TestAMalformedPaceIsRefusedAndWritesNoState(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -159,18 +161,21 @@ func TestAMalformedPaceIsRefusedAndWritesNoState(t *testing.T) {
 		repo       string
 		machine    string
 		value      string
+		// withheld marks a flag value that does not parse: the reason
+		// names the flag and the value's length, never the value.
+		withheld bool
 	}{
-		{name: "one number", pace: strp("90"), value: `"90"`},
-		{name: "no pause", pace: strp("90/"), value: `"90/"`},
-		{name: "words", pace: strp("ninety/240"), value: `"ninety/240"`},
-		{name: "three parts", pace: strp("90/240/3"), value: `"90/240/3"`},
-		{name: "a sign", pace: strp("+90/240"), value: `"+90/240"`},
+		{name: "one number", withheld: true, pace: strp("90"), value: `"90"`},
+		{name: "no pause", withheld: true, pace: strp("90/"), value: `"90/"`},
+		{name: "words", withheld: true, pace: strp("ninety/240"), value: `"ninety/240"`},
+		{name: "three parts", withheld: true, pace: strp("90/240/3"), value: `"90/240/3"`},
+		{name: "a sign", withheld: true, pace: strp("+90/240"), value: `"+90/240"`},
 		{name: "no work", pace: strp("0/240"), value: "0"},
 		{name: "past a week", pace: strp("90/99999"), value: "99999"},
-		{name: "an overflow", pace: strp("99999999999999999999/1"), value: "99999999999999999999/1"},
+		{name: "an overflow", withheld: true, pace: strp("99999999999999999999/1"), value: "99999999999999999999/1"},
 		{name: "no lane", subs: strp("0"), value: "0"},
-		{name: "a word ceiling", subs: strp("two"), value: `"two"`},
-		{name: "a fractional ceiling", subs: strp("2.5"), value: `"2.5"`},
+		{name: "a word ceiling", withheld: true, subs: strp("two"), value: `"two"`},
+		{name: "a fractional ceiling", withheld: true, subs: strp("2.5"), value: `"2.5"`},
 		{name: "too many lanes", subs: strp("65"), value: "65"},
 		{name: "a repo string", repo: `{"pace": {"work_minutes": "two hours"}}`, value: `"two hours"`},
 		{name: "a repo fraction", repo: `{"pace": {"pause_minutes": 1.5}}`, value: "1.5"},
@@ -191,7 +196,12 @@ func TestAMalformedPaceIsRefusedAndWritesNoState(t *testing.T) {
 			if r.Stage != "pace" || r.Contention {
 				t.Fatalf("want the pace step's refusal: %+v", r)
 			}
-			if !strings.Contains(r.Reason, strings.Trim(tc.value, `"`)) {
+			switch {
+			case tc.withheld:
+				if strings.Contains(r.Reason, strings.Trim(tc.value, `"`)) || !strings.Contains(r.Reason, "-byte value, not quoted") {
+					t.Fatalf("the reason names the flag and the value's length, never the value %s: %q", tc.value, r.Reason)
+				}
+			case !strings.Contains(r.Reason, strings.Trim(tc.value, `"`)):
 				t.Fatalf("the reason names the value %s: %q", tc.value, r.Reason)
 			}
 			for _, form := range []string{"<work-minutes>/<pause-minutes>", "sub-agents"} {

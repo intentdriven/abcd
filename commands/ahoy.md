@@ -65,7 +65,11 @@ Then summarise the JSON for the user:
   checkout) or pinned version, and whether it is up to date, stale, or of an
   undeterminable vintage relative to the on-disk reference. Report them so a
   binary running behind its own source is never silent. The comparison is
-  disk-only — no network.
+  disk-only — no network. The `staleness` line names the reference it was
+  compared against (the checkout tip or the plugin manifest pin), and a fresh
+  pinned install's line names `abcd update --check` as the way to compare with
+  the newest release. Relay it whole: "up to date" on its own reads as current
+  to someone several releases behind their pin.
 - `superseded_root` — present only when the binary that answered is served from a
   plugin root other than the one this session resolves. A plugin root is named
   for the commit it was installed from, so a binary path pinned into a page
