@@ -243,7 +243,7 @@ func renderIdeateResult(res ideate.Result) string {
 		out += "  next:      the idea may graduate to a draft intent — `abcd intent \"<text>\"`\n"
 	case res.Verdict == ideate.VerdictReframed:
 		out += "  next:      the idea as posed does not graduate, but its reframing may — " +
-			"`abcd intent \"<text>\"` with the reframing the record carries, not the original wording\n"
+			"`abcd intent \"<text>\"` with the record's \"The reframing\" section, not the original wording\n"
 	default:
 		out += "  next:      the idea does not graduate; the record is why\n"
 	}

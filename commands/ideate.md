@@ -121,7 +121,7 @@ refuses a run with neither or both, writing nothing.
 ```json
 {
   "schema_version": 1,
-  "prompt_version": "1.0.0",
+  "prompt_version": "1.1.0",
   "idea": "the idea in the words it entered with",
   "legs": [
     {"kind": "research", "claims": [
@@ -135,6 +135,7 @@ refuses a run with neither or both, writing nothing.
     ]}
   ],
   "verdict": "survives|killed|reframed",
+  "reframing": "a reframed verdict only: the shape in which the idea survives",
   "rejected_alternatives": [
     {"alternative": "…", "why_rejected": "…"}
   ]
@@ -145,6 +146,11 @@ refuses a run with neither or both, writing nothing.
 record as a surviving one — that record is what stops the idea being talked back
 into six months from now.
 
+**A reframed verdict says what survives.** Put the shape the idea lives on in,
+in the words a graduation should carry, in `"reframing"`; the binary refuses a
+reframed verdict without one, and a reframing on any other verdict, because a
+reframing left inside a kill attempt is one no later reader can find by its role.
+
 **Rejected alternatives are not optional.** If genuinely none were considered,
 say so explicitly with `"no_rejected_alternatives": true` and an empty list; the
 binary refuses an empty list that arrives by omission, because silence and "we
@@ -153,8 +159,8 @@ weighed nothing" are indistinguishable to a later reader.
 ## What the binary does with it
 
 It writes one record, `<date>-ideate-<slug>.md` — the idea, the three legs, the
-verdict, and the rejected alternatives, rendered for a human — to the store the
-answer names:
+reframing when the verdict is reframed, the verdict, and the rejected
+alternatives, rendered for a human — to the store the answer names:
 
 | Answer | Record | Decision |
 |---|---|---|
@@ -214,8 +220,8 @@ Exit codes:
   path, `abcd intent "<text>"`. Ideate mints no intent itself; graduation stays a
   deliberate act you take with the user.
 - **killed** — stop. Do not file an intent, and do not soften the record.
-- **reframed** — any graduation carries the reframing recorded in leg 3, not the
-  original wording.
+- **reframed** — any graduation carries the record's reframing, under "The
+  reframing", not the original wording.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

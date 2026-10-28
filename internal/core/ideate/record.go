@@ -367,6 +367,7 @@ type verdictDoc struct {
 	claims       []Claim
 	hits         []GrillHit
 	kills        []KillAttempt
+	reframing    string
 	rejected     []RejectedAlternative
 	noneRejected bool
 	cited        []string
@@ -391,6 +392,7 @@ type verdictDoc struct {
 // keyed on rather than protect anything.
 func validate(repoRoot string, red *recordRedactor, p Payload) (verdictDoc, error) {
 	var v verdictDoc
+	var err error
 
 	idea, n := red.field(p.Idea)
 	v.redactions += n
@@ -403,6 +405,10 @@ func validate(repoRoot string, red *recordRedactor, p Payload) (verdictDoc, erro
 			termsafe.DescribeRefused(string(p.Verdict)), VerdictSurvives, VerdictKilled, VerdictReframed)
 	}
 	v.verdict = p.Verdict
+	if v.reframing, n, err = validateReframing(red, p); err != nil {
+		return v, err
+	}
+	v.redactions += n
 
 	if len(p.Legs) != len(legOrder) {
 		return v, fmt.Errorf("the verdict carries %d legs; the gauntlet is exactly %d, in order (%s)",
@@ -414,7 +420,6 @@ func validate(repoRoot string, red *recordRedactor, p Payload) (verdictDoc, erro
 				i+1, legOrder[i], termsafe.DescribeRefused(string(leg.Kind)), legList())
 		}
 	}
-	var err error
 	var n1, n2, n3, n4 int
 	if v.claims, n1, err = validateResearch(red, p.Legs[0]); err != nil {
 		return v, err
@@ -548,6 +553,26 @@ func validateAdversarial(red *recordRedactor, leg Leg) ([]KillAttempt, int, erro
 	return out, redactions, nil
 }
 
+// validateReframing holds the reframing to its verdict: a reframed verdict
+// carries the shape the idea survives in, since that, not the idea's own
+// wording, is what a graduation takes, and any other verdict carries none,
+// since a survivor graduates as it was posed and a killed idea does not.
+func validateReframing(red *recordRedactor, p Payload) (string, int, error) {
+	if p.Verdict != VerdictReframed {
+		if strings.TrimSpace(p.Reframing) != "" {
+			return "", 0, fmt.Errorf("the verdict is %s but carries a reframing; only a %s verdict has one", p.Verdict, VerdictReframed)
+		}
+		return "", 0, nil
+	}
+	text, n := red.field(p.Reframing)
+	reframing := termsafe.CleanProse(text, maxIdeaBytes)
+	if reframing == "" {
+		return "", 0, errors.New("the verdict is reframed but carries no reframing — nothing was written; " +
+			"set \"reframing\" to the shape in which the idea survives, which is what a graduation carries in place of the original wording")
+	}
+	return reframing, n, nil
+}
+
 // validateRejected enforces the explicit-empty-marker rule. Omission is refused
 // because the whole point of the record is that a later session can see WHAT was
 // turned down; a silently empty list is indistinguishable from a composer that
@@ -632,6 +657,7 @@ func (v verdictDoc) result(slug, rel string) Result {
 		Idea:                 v.idea,
 		Verdict:              v.verdict,
 		Graduates:            v.verdict == VerdictSurvives,
+		Reframing:            v.reframing,
 		Path:                 rel,
 		GrillHits:            len(v.hits),
 		CitedRecords:         v.cited,

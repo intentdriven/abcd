@@ -143,7 +143,10 @@ something a later reader depends on:
   pasted there into the terminal and the transcript.
 - **The record would mislead a later reader**: an empty `rejected_alternatives`
   list with no explicit marker saying nothing was weighed, because silence and
-  "nothing was weighed" read identically; or a verdict record that already exists
+  "nothing was weighed" read identically; a reframed verdict with no
+  `reframing`, or a `reframing` on any other verdict, because a graduation
+  carries the reframing and must find it by its role, never inside a kill
+  attempt (iss-2610262154123870); or a verdict record that already exists
   for this slug and date, because overwriting erases a recorded reason.
 - **The store is not answered**: neither answer, or both. The product
   thinker's answer decides who can ever read the verdict, so the verb never

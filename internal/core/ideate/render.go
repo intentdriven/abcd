@@ -41,6 +41,7 @@ func render(v verdictDoc, at time.Time) string {
 	renderResearch(&b, v)
 	renderGrill(&b, v)
 	renderAdversarial(&b, v)
+	renderReframing(&b, v)
 	renderRejected(&b, v)
 	renderOutcome(&b, v)
 
@@ -96,6 +97,19 @@ func renderAdversarial(b *strings.Builder, v verdictDoc) {
 	b.WriteString("\n")
 }
 
+// renderReframing writes a reframed verdict's reframing under a heading of its
+// own, so a graduation finds what it carries by its role rather than by reading
+// it out of a kill attempt. Every other verdict has none, and no section.
+func renderReframing(b *strings.Builder, v verdictDoc) {
+	if v.verdict != VerdictReframed {
+		return
+	}
+	b.WriteString("## The reframing\n\n")
+	b.WriteString("The shape in which the idea survives. A graduation carries this, not the\n")
+	b.WriteString("idea's original wording.\n\n")
+	fmt.Fprintf(b, "%s\n\n", termsafe.BlockText(v.reframing))
+}
+
 // renderRejected writes the alternatives turned down. A deliberate absence is
 // stated in the same words the payload's explicit marker declares, so a reader
 // can tell "none were considered" from "nobody wrote them down".
@@ -128,8 +142,8 @@ func renderOutcome(b *strings.Builder, v verdictDoc) {
 		b.WriteString("findings above are why it did not survive, and re-proposing it costs\n")
 		b.WriteString("nothing only if something above has changed.\n")
 	case VerdictReframed:
-		b.WriteString("The idea as posed does not survive, but the reframing recorded above\n")
-		b.WriteString("does. Any graduation to a draft intent carries the reframing, not the\n")
-		b.WriteString("original wording.\n")
+		b.WriteString("The idea as posed does not survive, but the reframing above does. Any\n")
+		b.WriteString("graduation to a draft intent carries the reframing, not the original\n")
+		b.WriteString("wording.\n")
 	}
 }

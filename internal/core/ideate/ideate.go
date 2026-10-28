@@ -272,6 +272,12 @@ type Payload struct {
 	Legs []Leg `json:"legs"`
 	// Verdict is the admission outcome.
 	Verdict Verdict `json:"verdict"`
+	// Reframing is the shape in which a reframed idea survives, in the words a
+	// graduation carries instead of the idea's own. A reframed verdict must
+	// carry one, and any other verdict must not: without it the reframing could
+	// only be smuggled in as a kill attempt, where neither a later reader nor a
+	// graduating intent can find it by its role (iss-2610262154123870).
+	Reframing string `json:"reframing,omitempty"`
 	// RejectedAlternatives are the options turned down on the way to the verdict.
 	RejectedAlternatives []RejectedAlternative `json:"rejected_alternatives"`
 	// NoRejectedAlternatives is the EXPLICIT empty marker. An empty list is
@@ -301,6 +307,9 @@ type Result struct {
 	// Graduates reports whether this verdict admits the idea to a draft intent.
 	// Ideate mints nothing itself; this is the signal the surface relays.
 	Graduates bool `json:"graduates"`
+	// Reframing is a reframed verdict's reframing, as recorded: what a
+	// graduation carries in place of the idea. Empty for any other verdict.
+	Reframing string `json:"reframing,omitempty"`
 	// Visibility is the store the verdict was written to.
 	Visibility Visibility `json:"visibility"`
 	// Path is the verdict record: repo-relative for a public verdict, and

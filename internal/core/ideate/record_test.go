@@ -473,6 +473,100 @@ func TestRecordRecordsAKilledIdea(t *testing.T) {
 	}
 }
 
+// TestRecordCarriesAReframedVerdictsReframing is iss-2610262154123870: a
+// reframed idea graduates as its reframing, so the record gives the reframing a
+// section of its own after the three legs, the result reports it, and a verdict
+// that is not reframed gets no such section.
+func TestRecordCarriesAReframedVerdictsReframing(t *testing.T) {
+	root := seedRepo(t)
+	const reframing = "gate only the ideas a person marks as expensive to be wrong about"
+	p := validPayload()
+	p["verdict"] = "reframed"
+	p["reframing"] = reframing
+	res, err := Record(root, "a-reframed-idea", publicStore, encode(t, p), at)
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if res.Graduates {
+		t.Error("a reframed idea must not be reported as graduating as posed")
+	}
+	if res.Reframing != reframing {
+		t.Errorf("Reframing = %q, want %q", res.Reframing, reframing)
+	}
+	body := readFile(t, root, res.Path)
+	leg3 := strings.Index(body, "## Leg 3")
+	section := strings.Index(body, "## The reframing")
+	rejected := strings.Index(body, "## Rejected alternatives")
+	if section < 0 || !(leg3 < section && section < rejected) {
+		t.Fatalf("the reframing has no section between leg 3 and the rejected alternatives:\n%s", body)
+	}
+	if !strings.Contains(body[section:rejected], reframing) {
+		t.Errorf("the reframing section does not carry the reframing:\n%s", body[section:rejected])
+	}
+
+	survives, err := Record(root, "a-surviving-idea", publicStore, encode(t, validPayload()), at)
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if strings.Contains(readFile(t, root, survives.Path), "## The reframing") || survives.Reframing != "" {
+		t.Error("a surviving verdict carries a reframing section")
+	}
+}
+
+// TestRecordRefusesAReframingThatDoesNotFitItsVerdict holds the reframing to
+// its verdict, the way the rejected-alternatives marker is held to its list: a
+// reframed verdict without one is refused, since the graduation would have
+// nothing to carry, and a reframing beside any other verdict is a contradiction.
+func TestRecordRefusesAReframingThatDoesNotFitItsVerdict(t *testing.T) {
+	root := seedRepo(t)
+	for name, c := range map[string]struct{ verdict, reframing string }{
+		"reframed-without": {"reframed", ""},
+		"reframed-blank":   {"reframed", " \n\t "},
+		"survives-with":    {"survives", "a narrower idea"},
+		"killed-with":      {"killed", "a narrower idea"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := validPayload()
+			p["verdict"] = c.verdict
+			if c.reframing != "" {
+				p["reframing"] = c.reframing
+			}
+			_, err := Record(root, "s", publicStore, encode(t, p), at)
+			if err == nil {
+				t.Fatal("the verdict was accepted")
+			}
+			if !strings.Contains(err.Error(), "reframing") {
+				t.Errorf("the refusal does not name the reframing: %v", err)
+			}
+		})
+	}
+	assertNothingWritten(t, root)
+}
+
+// TestRecordRedactsTheReframing proves the reframing is scanned like every
+// other free-text field: it is written into the record, so a secret pasted
+// there must not reach it, and the redaction is counted.
+func TestRecordRedactsTheReframing(t *testing.T) {
+	root := seedRepo(t)
+	p := validPayload()
+	p["verdict"] = "reframed"
+	p["reframing"] = "keep the gate, but read " + fakeIdeateToken + " from nowhere"
+	res, err := Record(root, "a-leaky-reframing", publicStore, encode(t, p), at)
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	body := readFile(t, root, res.Path)
+	if strings.Contains(body, fakeIdeateToken) || strings.Contains(res.Reframing, fakeIdeateToken) {
+		t.Errorf("the reframing carries the raw secret span:\n%s", body)
+	}
+	if !strings.Contains(body, "keep the gate, but read ") {
+		t.Errorf("the reframing did not survive redaction:\n%s", body)
+	}
+	if res.Redactions < 1 {
+		t.Errorf("Redactions = %d, want at least 1", res.Redactions)
+	}
+}
+
 // TestRecordRefusesOutOfEnumVerdict proves the verdict is a closed set: an
 // unregistered verdict refuses the whole document rather than being coerced.
 func TestRecordRefusesOutOfEnumVerdict(t *testing.T) {
