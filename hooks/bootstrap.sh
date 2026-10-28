@@ -331,6 +331,17 @@ meta_field() {
 	sed -n "s/^$2=//p" "$1" 2>/dev/null | head -n 1 | tr -d '\000-\037\177' | cut -c1-120
 }
 
+# release_claims prints each distinct release an abcd binary's Go build
+# metadata names, one per line: the main-module version Go stamps into a build
+# from the tag the release workflow built at, read from the bytes and never by
+# running them (internal/core/ahoy.CheckReleaseClaim reads the same field
+# through debug/buildinfo). Control characters other than the newline between
+# values are stripped and each value capped, as meta_field does.
+release_claims() {
+	LC_ALL=C grep -a -o -e "$(printf 'mod\tgithub.com/intentdriven/abcd\t[^\t]*\t')" "$1" 2>/dev/null |
+		cut -f3 | tr -d '\000-\011\013-\037\177' | cut -c1-120 | LC_ALL=C sort -u
+}
+
 # tilde renders a path under the home directory in its ~ form, the way every
 # abcd surface prints a user-scope path (internal/fsutil.RedactHome): a notice
 # that names the reader's PATH copy should not carry their username with it.
@@ -972,6 +983,17 @@ else
 	fi
 	if [ -n "$gh_cannot" ]; then
 		prov_note=" WARNING: this download was checked only against the checksums.txt published beside it on the release page, and was not checked against the signed build record (the build provenance the release workflow signs), because $gh_cannot. To check it by hand: $gh_hand_check"
+	fi
+
+	# 7b. The bytes must also claim $release_tag. Every Go build carries the
+	#     field, and a release build carries the tag it was cut at, so bytes
+	#     that name any other release, or several, are refused; bytes naming
+	#     none are no Go build, which the provenance check refuses where it
+	#     runs, and which the checksum alone cannot vouch for where it does not.
+	claims=$(release_claims "$tmp/$asset")
+	if [ -n "$claims" ] && [ "$claims" != "$release_tag" ]; then
+		named=$(printf '%s' "$claims" | tr '\n' ' ' | sed 's/ $//')
+		refuse "the downloaded $asset matches the release checksums.txt, but its build metadata names release $named, not $release_tag, so it is not this release's build; nothing was installed, and any abcd this machine already has is left as it was. Nothing on this machine needs changing until the release is corrected"
 	fi
 
 	# 8. Publish into the cache (cache mode): artefact then meta, each by rename

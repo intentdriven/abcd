@@ -35,7 +35,16 @@ Run, naming every repository-relative path the work will change, once per path:
 ```
 
 The record is an issue (`iss-N`) or an intent (`itd-N`). The footprint is
-required. `--lease <duration>` sets how long the reservation holds, from `1m`
+required. Name files, not directories: a directory holds off every other
+reservation of any file inside it, so a lane holding a whole package keeps
+every unrelated lane that touches one file of it waiting. A footprint path
+naming a directory git tracks is still reserved, exit 0, and warns on stderr,
+`abcd reserve: warning: footprint "<path>" is a directory covering <n> tracked
+files on <branch>, and holds off every other reservation of a file inside it;
+reserved anyway: name the files the work changes instead`. The branch is
+`origin`'s default branch as last fetched, or `HEAD` for a directory only it
+holds; a path neither holds as a directory, such as a file the work will add,
+draws no warning. `--lease <duration>` sets how long the reservation holds, from `1m`
 to `24h`; the default is two hours. Running the same command again from the
 same copy renews it.
 
@@ -43,6 +52,8 @@ The payload carries `act` (`reserved`, `renewed`, `taken_over`, `released` or
 `already_released`), `record`, `holder`, `copy` (`this` or `another`, never a
 copy's key), `footprint`, `claimed_at`, `effective_expiry`, `commit`, and
 `replaced` when a take-over replaced a reservation: its `holder`, `copy`,
+`your_copy` (for your own other copy, the worktree of this checkout that held
+it, "your worktree … on this machine", or "your copy on another computer"),
 `commit`, `effective_expiry`, and `unreadable` when it could not be read. When
 origin's default branch could not be read, `derived_unchecked` says why: the
 act went on, but whether the record is already finished there was not checked.
@@ -57,7 +68,10 @@ allows (<owner>/<name>)`. Pass either on to the user.
 another copy, as `path`, `record` and `effective_expiry` (see **When it
 refuses**); the text form warns of each on stderr. `generated_unread` says why
 no generated file was recognised, so every shared path was judged an overlap.
-Pass both on to the user.
+`directory_footprint` lists each footprint path naming a directory, as `path`,
+`tracked_files` (`-1` when git could not count them) and `on`, the branch it
+was read from; the text form warns of each on stderr. Pass them on to the
+user, and reserve again naming the files the work changes.
 
 Tell the user what was reserved and until when.
 
@@ -157,11 +171,15 @@ does so, a reserve with `--take-over` included. A build's and a drain's
 reservations are automated and still back off such a path, and so does a
 drain's pass-over.
 
-**Exit 3 also covers your own other copy.** When the same person holds the
-record from another computer or another checkout, the refusal says "you are
-already building … on another computer". Pass `--take-over` only when the user
-confirms the work moves here; it moves only the user's own reservation, and the
-output names the copy it replaced. It never moves another person's.
+**Exit 3 also covers your own other copy.** Each worktree is its own copy,
+since it keeps its own key in its local tier. When the same person holds the
+record from another worktree of this checkout, the refusal names that worktree
+("you are already building … from your worktree … on this machine"), and a
+renewal is run from there; from another computer or another clone it says "you
+are already building … on another computer". Pass `--take-over` only when the
+user confirms the work moves here; it moves only the user's own reservation,
+and the output names the copy it replaced (`replaced.your_copy` in `--json`).
+It never moves another person's.
 
 **Exit 2 when the user is at the cap.** One person may hold at most ten live
 reservations by default, counted across every record by username, whichever of

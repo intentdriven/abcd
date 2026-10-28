@@ -112,11 +112,11 @@ func TestASeriesRefusesAPaceItNeverWrites(t *testing.T) {
 }
 
 // TestARunStateRefusesAPaceItNeverWrites: a run whose pace comes from all four
-// layers reads back unchanged, at the current version and as version 9; one
-// whose stored pace names a layer the loop never writes or an origin with a
-// control or bidi rune is refused as the run's state, with the remedy every
-// state refusal names, by the direct read, the record and a resume typed with
-// another pace.
+// layers reads back unchanged, at the current version and at the version just
+// before it; one whose stored pace names a layer the loop never writes or an
+// origin with a control or bidi rune is refused as the run's state, with the
+// remedy every state refusal names, by the direct read, the record and a
+// resume typed with another pace.
 func TestARunStateRefusesAPaceItNeverWrites(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	machineConfig(t, `{"pace": {"pause_minutes": 30}}`)
@@ -133,15 +133,14 @@ func TestARunStateRefusesAPaceItNeverWrites(t *testing.T) {
 	}
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(start.RunID)))
 	good := stateBytes(t, repo.Root(), start.RunID)
-	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
-	v9 := []byte(strings.Replace(string(good), cur, fmt.Sprintf(`"schema_version": %d,`, schemaVersionUnkept), 1))
-	if string(v9) == string(good) {
+	previous := olderState(t, good, schemaVersionPrevious)
+	if string(previous) == string(good) {
 		t.Fatal("the state names its version")
 	}
 	for _, version := range []struct {
 		name string
 		good []byte
-	}{{"current", good}, {"version 9", v9}} {
+	}{{"current", good}, {fmt.Sprintf("version %d", schemaVersionPrevious), previous}} {
 		if err := os.WriteFile(path, version.good, 0o600); err != nil {
 			t.Fatal(err)
 		}

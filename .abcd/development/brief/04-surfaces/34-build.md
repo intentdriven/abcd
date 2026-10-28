@@ -141,7 +141,13 @@ with a remote named `origin`, a run reserves its key there once its checks and
 its budget check pass and before the run is created, through
 `internal/core/claim`, as `abcd reserve` does: with the packages its spec's
 `## Footprint` `- packages:` line names, each cleaned of a trailing slash, for
-an intent, and the path an issue's `found_at` names for an issue. A spec with
+an intent, and the path an issue's `found_at` names for an issue. The
+reservation names exactly those paths, so a file named there is reserved as
+that file, and one reservation holds them for every step of the run; a step's
+own packages line is not read for it. A path naming a directory git tracks is
+reserved as it stands, and the start warns of it as the reserve verb does,
+naming the directory and its tracked files (`reservation_warnings`, a warning
+on stderr in the text form; iss-2610230016544142). A spec with
 no footprint, or an issue with no such path, is refused at the `reservation`
 stage, starting nothing (C35); another's hold, a person's or this person's
 other copy's, is contention at the same stage; a take-over asked for passes
@@ -278,8 +284,21 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 14. Version 14
-added both sides of a run (itd-166): a runner's `route` on a verified receipt or
+under a run id it does not name. The state is schema version 16. Version 16
+added a route's pins: a pinned opencode run's `route` carries its pin and the
+SHA-256 of the sealed configuration that held it (`provider_pin`,
+`pin_config_sha256`, iss-2610161734413178), and a route to a model on this
+machine its local pin, what its server reported and that it is local
+(`local_pin`, `local_served`, `local`, iss-2610161734428291). Version 15 is
+its strict subset, read as a run whose routes were pointed at no pin; a file
+of version 15 or lower carrying any of them is refused, and an abcd that
+writes version 15 refuses a version-16 file as a newer abcd's. Version 15
+added the run's review set (itd-2610240922461281): the run's `review`, each
+role's reviewers at their model classes, the judge and the ceiling, with the
+layer of each. Version 14 is its strict subset, read as a run started before
+review sets; a file of version 14 or lower carrying `review` is refused, and
+an abcd that writes version 14 refuses a version-15 file as a newer abcd's.
+Version 14 added both sides of a run (itd-166): a runner's `route` on a verified receipt or
 a validator's return carries, beside the route asked, the route that ran and the
 served model, the model the runner asked for (`model_asked`), the SHA-256 of
 the prompt it handed the harness, the served models, provider, finish reason
@@ -347,7 +366,7 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap, a
 version-7 run is one the host ran every agent of) and
-written back at version 14 by its next mutation; an earlier version carrying what
+written back at version 16 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
@@ -852,6 +871,33 @@ verb's capture of one path does, one capture per path, and records it in the
 state with the session it was stored under; a run in progress is refused, since
 the record's transcripts are the run's, captured at its end. A capture that
 fails stops the call, with the transcripts before it recorded.
+
+## Approval prompts while it runs
+
+A run is unattended: nobody is at the terminal to answer the host's approval
+prompt for a shell command, so a prompt would stall the run until someone came
+back (iss-2610171110154902). The plugin's `PermissionRequest` hook, matched to
+the shell tool, refuses the prompt while a build runs for the session's checkout or the session is one of a
+running build's lanes. A build counts while its run is unfinished and its state
+was written within the reservation lease, two hours: a run idle past it is one
+the reservation already treats as abandoned, so a checkout holding old
+unfinished runs does not count as running one. A run with a lane handed back
+or held does not count either: it waits on the person, who is then at the
+terminal taking the work over. So refusal stops when the run finishes, hands a
+lane back or holds one, or after two hours with no activity; no verb ends a
+run early, so a person who interrupts a build and carries on by hand sees the
+prompts again two hours after the run last moved. The refusal tells the agent to
+rewrite the command so it needs no approval, each step its own plain command
+and a script's steps on the command line rather than in a file, a heredoc or a
+`bash -c` string, or to skip the step and say why in its report. It is the
+same every time the prompt comes back, and the hook never grants a prompt: an
+approval given to a retry would let any command past every check by being sent
+twice. A lane started through the claude runner runs with the host's hooks off
+(`--bare`), so the hook never sees its prompts; the guard answers them as that
+runner's permission prompt answerer. In every other session the hook says nothing and the host's prompt
+shows as usual. A new run, and a pick as it starts one or begins a series,
+says once on stderr that the prompts are refused while it runs; a
+resume says nothing.
 
 ## Exit codes
 

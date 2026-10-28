@@ -150,7 +150,14 @@ func dogfoodStalenessFrom(cur vintage.Current, cwd string) DogfoodReport {
 // or modified/dirty build), and a dogfood binary behind its own source tip.
 // Everything else — a determinable vintage that is not a dogfood-stale binary —
 // proceeds. The check is disk-only; it never touches the network.
+//
+// A go run build of the checkout being installed is current by construction
+// and proceeds: go run never stamps a revision, so its vintage reads unknown,
+// yet it is built from this tree as it stands (iss-2610240824047504).
 func staleBinaryRefusal(cur vintage.Current, cwd string) string {
+	if !cur.Known && goRunOfCheckout(cwd) {
+		return ""
+	}
 	if !cur.Known {
 		return "the running abcd binary's vintage cannot be determined (an unstamped or modified/dirty build), so it may be applying stale install logic. Rebuild it with `make build`, or re-run with --allow-stale-binary to proceed anyway."
 	}
@@ -178,20 +185,28 @@ func (v VintageStatus) DisplayVintage() string {
 }
 
 // Staleness renders the comparator verdict in the words a surface prints.
+//
+// Every verdict names the reference it was reached against, because the
+// comparison is disk-only by design (itd-111): a bare "up to date" read as
+// "current" to a user several releases behind, whose binary merely matched its
+// own install's pin (iss-2610040758303107). A fresh pinned install also names
+// `abcd update --check`, the one verb that asks for the newest release. The
+// checkout-tip line does not: a source build is unversioned, and the check
+// answers it only with "nothing to compare".
 func (v VintageStatus) Staleness() string {
 	switch v.Report.Outcome {
 	case vintage.Fresh:
-		return "up to date"
-	case vintage.Stale:
-		ref := v.Report.Expected
-		if isHexSHA(ref) {
-			ref = shortRev(ref)
-		} else {
-			// A version/tag reference comes from the plugin-cache manifest, which
-			// is not shape-checked upstream; sanitise it like every other
-			// untrusted string this repo renders to a terminal (as skew.go does).
-			ref = termsafe.Sanitize(ref)
+		ref := v.renderRef()
+		if v.Source == VintageSourceCheckoutTip {
+			return "up to date with the checkout tip (" + ref + ")"
 		}
+		src := v.Source
+		if src == "" {
+			src = "reference"
+		}
+		return "up to date with the " + src + " (" + ref + "); run `abcd update --check` to compare with the newest release"
+	case vintage.Stale:
+		ref := v.renderRef()
 		// Only the checkout-tip comparison is ancestry-guarded, so only it may
 		// claim a direction. A version/pin comparison is string equality — a
 		// binary newer than its pin is the same inequality read the other way —
@@ -208,6 +223,19 @@ func (v VintageStatus) Staleness() string {
 	default:
 		return "unknown"
 	}
+}
+
+// renderRef renders the reference a verdict was reached against: a short
+// revision for a checkout tip, the tag otherwise. A version/tag reference comes
+// from the plugin-cache manifest, which is not shape-checked upstream, so it is
+// sanitised like every other untrusted string this repo renders to a terminal
+// (as skew.go does).
+func (v VintageStatus) renderRef() string {
+	ref := v.Report.Expected
+	if isHexSHA(ref) {
+		return shortRev(ref)
+	}
+	return termsafe.Sanitize(ref)
 }
 
 // isDevOrUnknown reports a version that cannot take part in a comparison: none

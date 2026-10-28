@@ -102,7 +102,8 @@ func gitignoreEOL(raw []byte) string {
 }
 
 // gitignoreBlockDrifts reports whether the abcd-managed block in cwd/.gitignore
-// differs from the canonical entry set for visibility. Read-only; fail-closed
+// differs from the canonical entry set for visibility, less the entries the
+// lines outside the block already list (fencedGitignoreEntries). Read-only; fail-closed
 // (drift) on any unsafe/unreadable shape so apply is offered.
 func gitignoreBlockDrifts(cwd, visibility string) bool {
 	if _, ok := visibilityEntries[visibility]; !ok {
@@ -125,8 +126,14 @@ func gitignoreBlockDrifts(cwd, visibility string) bool {
 		return true // duplicate blocks — collapse on apply
 	}
 	current := parseGitignoreEntries(inner)
-	expected := make(map[string]bool, len(entries))
-	for _, e := range entries {
+	// The fence is expected to carry only what the lines outside it do not
+	// already list (iss-2610020704152047), so a fence an earlier install filled
+	// with a copy of the repository's own line reads as drift and apply drops
+	// the copy.
+	outside := removeGitignoreBlocks(string(raw), gitignoreEOL(raw))
+	fenced := fencedGitignoreEntries(entries, outside)
+	expected := make(map[string]bool, len(fenced))
+	for _, e := range fenced {
 		expected[e] = true
 	}
 	if len(current) != len(expected) {
@@ -184,7 +191,9 @@ func parseGitignoreEntries(block []byte) map[string]bool {
 // applyVisibilityBlock ensures cwd/.gitignore carries exactly one canonical
 // abcd block for visibility. It strips every existing block (including
 // unbalanced fragments and stray END lines) then appends one canonical block,
-// preserving non-block content. Returns (wrote, err). Fail-closed on unsafe
+// preserving non-block content. The block omits every entry the non-block
+// content already lists (fencedGitignoreEntries), and is written even when
+// that leaves it empty. Returns (wrote, err). Fail-closed on unsafe
 // files: an error is returned and the user's file is preserved.
 func applyVisibilityBlock(cwd, visibility string) (bool, error) {
 	if _, ok := visibilityEntries[visibility]; !ok {
@@ -236,7 +245,10 @@ func rewriteVisibilityBlock(path string, entries []string) (bool, error) {
 	eol := gitignoreEOL(raw)
 	withoutBlocks := removeGitignoreBlocks(string(raw), eol)
 	trimmedLeft := strings.TrimRight(withoutBlocks, "\r\n")
-	canonical := strings.Join(canonicalGitignoreBlock(entries), eol) + eol
+	// An entry the file already lists outside the fence is not written again
+	// inside it (iss-2610020704152047); the fence itself is always written, even
+	// empty, so detection still finds abcd's block.
+	canonical := strings.Join(canonicalGitignoreBlock(fencedGitignoreEntries(entries, withoutBlocks)), eol) + eol
 
 	var newText string
 	if trimmedLeft != "" {
@@ -252,6 +264,62 @@ func rewriteVisibilityBlock(path string, entries []string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// fencedGitignoreEntries returns the entries, in order, that the fence must
+// carry: every one of entries except those the lines outside the fence
+// (outside, the file with abcd's blocks removed) already list in force
+// (iss-2610020704152047). Writing such an entry again would leave the file
+// holding it twice, with the repository's own line made the redundant one.
+//
+// "Already list" is a line match on the normalised pattern, not a git
+// check-ignore probe: a probe also answers from the global excludes file and
+// .git/info/exclude, which other clones do not share, so an entry dropped on
+// their word would leave every other clone without it. Only a rule with the
+// same meaning counts — a broader rule (.abcd/ for .abcd/.work.local/) does
+// not, nor does a commented-out line. A line is read as git reads it
+// (gitignoreLinePattern), so a line git would not match the entry with never
+// counts. Any !-negation after the line, of whatever spelling, keeps the entry
+// in the fence: the fence used to sit last and so always won, and a
+// re-inclusion such as !.abcd/* must not leave the entry unignored.
+func fencedGitignoreEntries(entries []string, outside string) []string {
+	inForce := make(map[string]bool, len(entries))
+	for _, line := range strings.Split(outside, "\n") {
+		s := gitignoreLinePattern(line)
+		if s == "" || strings.HasPrefix(s, "#") {
+			continue
+		}
+		if strings.HasPrefix(s, "!") {
+			clear(inForce)
+			continue
+		}
+		pattern := normaliseGitignorePattern(s)
+		for _, e := range entries {
+			if normaliseGitignorePattern(e) == pattern {
+				inForce[e] = true
+			}
+		}
+	}
+	fenced := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !inForce[e] {
+			fenced = append(fenced, e)
+		}
+	}
+	return fenced
+}
+
+// normaliseGitignorePattern folds two spellings of one gitignore rule into one:
+// a leading slash is dropped when the rest of the pattern holds a slash before
+// its last character, because that slash already anchors the pattern to the
+// .gitignore's directory (.abcd/.work.local/ and /.abcd/.work.local/ match the
+// same paths). A pattern whose only other slash is trailing keeps its leading
+// slash: /memory/ matches the root directory alone, memory/ one at any depth.
+func normaliseGitignorePattern(p string) string {
+	if rest, ok := strings.CutPrefix(p, "/"); ok && strings.Contains(strings.TrimSuffix(rest, "/"), "/") {
+		return rest
+	}
+	return p
 }
 
 // removeGitignoreBlocks strips every BEGIN..END block (inclusive) plus any
@@ -314,3 +382,15 @@ func splitKeepEOL(text string) []string {
 type ahoyError struct{ msg string }
 
 func (e *ahoyError) Error() string { return e.msg }
+
+// gitignoreLinePattern is a .gitignore line as git reads its pattern: a
+// trailing carriage return dropped, then trailing spaces unless the last is
+// escaped with a backslash. Leading whitespace and trailing tabs stay part of
+// the pattern, as they do for git, so "\t.abcd/.work.local/" is not the entry.
+func gitignoreLinePattern(line string) string {
+	line = strings.TrimSuffix(line, "\r")
+	for strings.HasSuffix(line, " ") && !strings.HasSuffix(line, "\\ ") {
+		line = line[:len(line)-1]
+	}
+	return line
+}

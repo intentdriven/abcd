@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/core/identity"
 )
 
 // TestInstallRefusesAbcdDirSymlinkEscape is the GHSA-xrf8-4432-gw2f regression:
@@ -72,8 +70,8 @@ func TestInstallRefusesAbcdDirSymlinkEscape(t *testing.T) {
 		t.Errorf("Install status = %q, want %q (a non-real .abcd must gate writes)", res.Status, "refused")
 	}
 
-	// And no identity pin may have been written through the symlink either.
-	if _, ok, _ := identity.LoadPin(repo); ok {
+	// And no identity may have been written through the symlink either.
+	if _, err := os.Lstat(filepath.Join(repo, ".abcd", "config", "identity.json")); err == nil {
 		t.Errorf("an identity pin was written despite the .abcd symlink hazard")
 	}
 }

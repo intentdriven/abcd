@@ -40,6 +40,7 @@ func (st State) masked() State {
 	st.RunID, st.Key, st.Intent, st.Spec = line(st.RunID), line(st.Key), line(st.Intent), line(st.Spec)
 	st.Driver = Driver(line(string(st.Driver)))
 	st.Pace = maskPtr(st.Pace, Pace.masked)
+	st.Review = maskPtr(st.Review, ReviewSet.masked)
 	st.Pick = maskPtr(st.Pick, RunPick.masked)
 	st.Lanes = maskEach(st.Lanes, Lane.masked)
 	st.Waiting = maskEach(st.Waiting, func(w Waiting) Waiting {
@@ -142,6 +143,25 @@ func (p Pace) masked() Pace {
 	return p
 }
 
+// masked is State.masked for the review set a run started on.
+func (rs ReviewSet) masked() ReviewSet {
+	rs.MaxReviewers.Layer, rs.MaxReviewers.Origin = line(rs.MaxReviewers.Layer), line(rs.MaxReviewers.Origin)
+	rs.Roles = maskEach(rs.Roles, func(r RoleReviewers) RoleReviewers {
+		r.Role, r.Layer, r.Origin = line(r.Role), line(r.Layer), line(r.Origin)
+		r.Reviewers = maskEach(r.Reviewers, func(c ReviewClass) ReviewClass {
+			c.Class, c.Model, c.MapLayer, c.MapOrigin = line(c.Class), line(c.Model), line(c.MapLayer), line(c.MapOrigin)
+			return c
+		})
+		return r
+	})
+	rs.Judge = maskPtr(rs.Judge, func(j ReviewJudge) ReviewJudge {
+		j.Class, j.Model, j.MapLayer, j.MapOrigin = line(j.Class), line(j.Model), line(j.MapLayer), line(j.MapOrigin)
+		j.Layer, j.Origin = line(j.Layer), line(j.Origin)
+		return j
+	})
+	return rs
+}
+
 // masked is State.masked for the pick a run was started from. Its entry is
 // masked and never rewritten otherwise: the pick commit carries it, and the
 // check that the lane's record holds it compares the two.
@@ -177,13 +197,31 @@ func (t Transcript) masked() Transcript {
 }
 
 // maskRoute masks the route a runner reported, its model above all, and both
-// sides of its run (itd-166), each string the harness supplied included.
+// sides of its run (itd-166), each string the harness supplied included, and
+// the pin a pinned opencode run was pointed at (iss-2610161734413178), or
+// the local pin and what its server reported (iss-2610161734428291).
 func maskRoute(r runner.RouteRecord) runner.RouteRecord {
 	r.Asked, r.Ran, r.Model = line(r.Asked), line(r.Ran), line(r.Model)
 	s := &r.Sides
 	s.ModelAsked, s.ServedProvider, s.FinishReason = line(s.ModelAsked), line(s.ServedProvider), line(s.FinishReason)
 	s.HarnessVersion, s.PromptSHA256 = line(s.HarnessVersion), line(s.PromptSHA256)
 	s.ServedModels = maskEach(s.ServedModels, line)
+	s.PinConfigSHA256 = line(s.PinConfigSHA256)
+	s.ProviderPin = maskPtr(s.ProviderPin, func(p oracle.Pin) oracle.Pin {
+		p.Order, p.Quantizations = maskEach(p.Order, line), maskEach(p.Quantizations, line)
+		p.DataCollection, p.CanonicalSlug = line(p.DataCollection), line(p.CanonicalSlug)
+		return p
+	})
+	s.LocalPin = maskPtr(s.LocalPin, func(p oracle.LocalPin) oracle.LocalPin {
+		p.Runtime, p.RuntimeVersion, p.WeightsSHA256 = line(p.Runtime), line(p.RuntimeVersion), line(p.WeightsSHA256)
+		p.WeightsFile, p.Quantisation, p.KVCacheType = line(p.WeightsFile), line(p.Quantisation), line(p.KVCacheType)
+		return p
+	})
+	s.LocalServed = maskPtr(s.LocalServed, func(v oracle.LocalServed) oracle.LocalServed {
+		v.Model, v.RuntimeVersion, v.WeightsSHA256 = line(v.Model), line(v.RuntimeVersion), line(v.WeightsSHA256)
+		v.Quantisation = line(v.Quantisation)
+		return v
+	})
 	s.Cost = maskPtr(s.Cost, func(c oracle.Cost) oracle.Cost {
 		c.Unit = line(c.Unit)
 		return c

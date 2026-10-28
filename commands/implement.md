@@ -578,8 +578,8 @@ renewal only renews this person's own reservation from this copy: it never
 reserves a released record again and never takes one over. At step 5, before
 the merge rule decides, the **land fence** fetches the reservation and arms
 nothing unless it is still this person's, from this copy, and live: it names
-the other person and the expiry, says the reservation moved to your copy on
-another computer, or says it was released (reserve it again with `abcd build
+the other person and the expiry, says the reservation moved to your other copy
+(naming the worktree when it is one of this checkout's), or says it was released (reserve it again with `abcd build
 <id>`), and a fetch origin does not answer is named too, each as contention
 (exit 3 when nothing else moves). When it holds, the fence renews it for a
 day, with a ruleset mirror at the lane's base or without one: every landing
@@ -590,8 +590,9 @@ a day is also past any merge queue's `check_response_timeout_minutes`. The
 fence then reads the **release hold** from the
 reservations it just fetched (a run holding no reservation fetches them for
 it): while a release reservation (`rel-vX.Y.Z`, `/abcd:reserve`) is live and
-not this copy's own, it arms nothing, naming the release, its holder or "your
-copy on another computer", and that a session cutting a release has the final
+not this copy's own, it arms nothing, naming the release, its holder or your
+own other copy ("your worktree … on this machine" for a sibling worktree,
+else "your copy on another computer"), and that a session cutting a release has the final
 say on what merges before its tag, as contention (exit 3); the pull request
 stays open for the cutting session to merge or hold. A release whose tag is on
 `origin`, or whose holder released it, holds nothing. Past the fence the reservation holds only
@@ -753,7 +754,13 @@ earlier, whatever its pid, or within two seconds of it with the lower pid) or
 running its command, under any account. All of that is read from the process
 table, which shows every account's processes, judged from each process's
 arguments with the waiter's own process and ancestors excluded: no file another
-account can write is read; the gate reads only the process table. A waiter queued ahead of yours still delays yours, under
+account can write is read; the gate reads only the process table. A plain
+`go test` that no waiter and no preflight started never waits at the gate, so
+it adds to the load the gate waits on: while the load holds the gate shut, the
+waiting line names each such run by pid ("with 2 go test runs outside the gate
+adding to it (pids …)", `ungated_tests` in `--json`), and on a shared machine a
+package's tests run through `--wait -- go test …` rather than plain
+(iss-2610241130157455). A waiter queued ahead of yours still delays yours, under
 any account, until it opens or reaches its own `--timeout` (it may be shut by
 its own account's stricter `wait-load`, which you cannot see), and a waiter
 running its command holds every later gate for the command's length, by

@@ -574,7 +574,9 @@ func specBodyCheck(repoRoot string, it Intent, sp spec.Spec, linkOK bool) (Ready
 // which case the spec is built as one step. It is ADVISORY by design: a spec
 // with no steps is a complete spec, so the row informs and never gates, and a
 // section the parser cannot read is named with the list shape it expects. A
-// read failure on the linked spec is a structural fault, as in specBodyCheck.
+// spec of two or more steps where no step declares `needs:` draws a warning
+// (spec.SerialByDefault). A read failure on the linked spec is a structural
+// fault, as in specBodyCheck.
 func stepsCheck(repoRoot string, sp spec.Spec, linkOK bool) (ReadyCheck, error) {
 	c := ReadyCheck{Name: CheckSteps, Advisory: true}
 	if !linkOK {
@@ -602,5 +604,13 @@ func stepsCheck(repoRoot string, sp spec.Spec, linkOK bool) (ReadyCheck, error) 
 		return c, nil
 	}
 	c.Detail = fmt.Sprintf("%s: %d step(s) listed, %d landed", sp.ID, len(steps), len(steps)-len(spec.Unlanded(steps)))
+	// Two or more steps with no `needs:` line anywhere run fully serial (ruling
+	// DR6b). The row warns rather than passes, and being advisory it never
+	// withholds readiness (dcn-2610230857411093).
+	if spec.SerialByDefault(steps) {
+		c.OK = false
+		c.Detail += " — " + spec.SerialByDefaultWarning
+		c.Remedy = spec.SerialByDefaultRemedy(sp.Path)
+	}
 	return c, nil
 }

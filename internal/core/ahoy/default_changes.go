@@ -55,12 +55,18 @@ var configValueSlots = map[string][2]string{
 	"scan_deep":      {"scan", "deep"},
 }
 
-var loadDefaultChanges = sync.OnceValues(func() ([]DefaultChange, error) {
-	return parseDefaultChanges(embeddedDefaultChanges)
-})
+// loadDefaultChanges is the loader the binary reads its table through: it
+// parses table on first use and hands every later call the same result. The
+// binary loads the embedded table with it; a test hands it a table of its own
+// (the embedded one with a fixture entry added) and runs that to the offer.
+func loadDefaultChanges(table []byte) func() ([]DefaultChange, error) {
+	return sync.OnceValues(func() ([]DefaultChange, error) {
+		return parseDefaultChanges(table)
+	})
+}
 
 // defaultChanges is the table this binary carries.
-func defaultChanges() ([]DefaultChange, error) { return loadDefaultChanges() }
+var defaultChanges = loadDefaultChanges(embeddedDefaultChanges)
 
 // parseDefaultChanges reads a table strictly: one JSON document, no unknown
 // field, no repeated key, nothing after it, capped. Each entry must name a

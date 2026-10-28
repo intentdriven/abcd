@@ -10,10 +10,29 @@ import "fmt"
 // compare against this answer rather than a constant that holds for one
 // format only.
 //
+// There are two forms because writing is the writer's need alone. EmptyTree
+// is the writer's: a commit made on the tree needs the object in the store.
+// EmptyTreeName is the reader's: a read only compares a tip's tree with the
+// name, so it must leave the shared object store untouched (hash-object -w
+// writes the object, or refreshes its file's time when it is already there).
+//
 // git hashes standard input, which the isolated command leaves empty, so the
 // answer is the hash of zero bytes typed as a tree on every platform.
 func EmptyTree(root string) (string, error) {
-	out, err := Run(root, "hash-object", "-w", "-t", "tree", "--stdin")
+	return emptyTree(root, "hash-object", "-w", "-t", "tree", "--stdin")
+}
+
+// EmptyTreeName is EmptyTree's name without the write: the same answer, for a
+// reader that compares against it and must leave .git/objects as it found
+// it. A path that commits on the empty tree uses EmptyTree.
+func EmptyTreeName(root string) (string, error) {
+	return emptyTree(root, "hash-object", "-t", "tree", "--stdin")
+}
+
+// emptyTree runs args, a hash-object of empty standard input typed as a tree,
+// and checks that git answered an object name.
+func emptyTree(root string, args ...string) (string, error) {
+	out, err := Run(root, args...)
 	if err != nil {
 		return "", fmt.Errorf("git could not name the empty tree: %w", err)
 	}

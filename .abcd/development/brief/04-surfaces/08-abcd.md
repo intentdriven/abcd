@@ -152,6 +152,25 @@ banlist stub and the gitignore rules. What the markdown owns is the interview
 around them: which file carries the identity, what the tagline should say,
 whether the attribution gate is wanted. The command decides; the binary writes.
 
+**The merges line** (itd-2610150602547271, spc-2610161609350616 step 2): in a
+repository abcd manages, the board says who merges a ready pull request, read
+through the layered configuration: `facilitator.mode` and the layer and origin
+that set it, a person from any layer winning, and a refused home reading as a
+person. The product view draws a
+line of its own above the version (`merges: a person (the bundled default)`);
+the facilitator view draws a `merges:` row after the status block that also names
+the key and the mode as configured (`merges: a person (facilitator.mode human,
+from the bundled default)`). The merge gate does not read the mode until step 4,
+so the line names a person in every repository and draws an `auto` as set but
+not yet read (`merges: a person (facilitator.mode auto, from .abcd/config.json;
+the merge gate does not read it yet)`). The JSON carries a `facilitator` object (`key`, `mode`,
+`layer`, `origin`, and `home_refused` when a refused home decided it). A read
+the layered reader refuses is drawn as unreadable, and carried as `key` and
+`error` alone; every part is masked
+before it is drawn, since the refusal can quote a key a configuration file wrote.
+In an unmanaged repository the line is absent and the field omitted. It is not
+`abcd mode`'s `facilitator` state, which is whose answer the loop is waiting on.
+
 **The presence line** (itd-200, spc-70) adds to the four fields: in a repository abcd manages, the text render carries a
 `presence:` line and the JSON a `statusline` object, both the plain form of the
 same row the host's status line shows — the badge first (`abcd-managed`,
@@ -256,7 +275,8 @@ first, at most ten per holder and the rest counted; one dated more than
 the same view, so they add no network act (spc-2610161044461448 step 18,
 dcn-2610161040394970). The JSON form adds `reservations` (each live one with
 `stage` when it carries one), `live_by_holder`, `release_holds` (one per
-release being cut), `hand_backs_by_holder` (`holder`,
+release being cut), `lapsed_releases` (one per release whose cut lapsed with
+no tag on origin, holding no merge), `hand_backs_by_holder` (`holder`,
 `hand_backs` of `record`, `kind` and `released_at`, and `more`) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and

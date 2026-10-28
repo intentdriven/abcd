@@ -235,8 +235,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd implement load: --timeout is for --wait or --race-gate (nothing checked)"}
 			}
 			if !slices.Contains(implement.LoadSites(), site) {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement load: --site %q is not one of: %s (nothing checked)",
-					site, strings.Join(implement.LoadSites(), ", "))}
+				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement load: --site is not one of: %s (the value given is not repeated here; nothing checked)",
+					strings.Join(implement.LoadSites(), ", "))}
 			}
 			req := implement.LoadRequest{Site: site, Read: loadReader, Self: loadSelf()}
 			if cwd, err := os.Getwd(); err == nil {
@@ -482,7 +482,12 @@ func waitConditions(res implement.WaitResult) string {
 	for _, c := range res.Still {
 		switch c {
 		case implement.WaitOnLoad:
-			parts = append(parts, fmt.Sprintf("load %.1f is not below %s (%s)", res.Load, num(res.WaitLoad), waitLimitText(res)))
+			part := fmt.Sprintf("load %.1f is not below %s (%s)", res.Load, num(res.WaitLoad), waitLimitText(res))
+			if len(res.UngatedTests) > 0 {
+				part += ", with " + pidsText(res.UngatedTests, "a go test run outside the gate adding to it",
+					"go test runs outside the gate adding to it")
+			}
+			parts = append(parts, part)
 		case implement.WaitOnRaceRun:
 			pids := make([]string, len(res.RaceRuns))
 			for i, p := range res.RaceRuns {

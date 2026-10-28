@@ -42,7 +42,7 @@ name: site
 # that cannot help, and the fix is to dispatch a tag that has the verbs.
 #
 # PUBLICATION. On the release chain this workflow publishes the Release: release.yml
-# leaves it a DRAFT holding the binaries, the plugin archive and checksums.txt and
+# leaves it a DRAFT holding the binaries, the plugin archive, install.sh and checksums.txt and
 # hands this workflow the draft's numeric id, `render` attaches site.tar.gz, and
 # `publish` verifies every asset and then publishes it, before `deploy` moves
 # abcdev.app. Both jobs address the Release by that id alone, never by its tag, and

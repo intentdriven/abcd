@@ -32,6 +32,20 @@ var newUpdater = func() updater { return update.NewGitHubUpdater() }
 // in for the network.
 var ahoyReleaseProvenance ahoy.ProvenanceCheck = update.VerifyReleaseProvenance
 
+// ahoyDownloadRelease is the checked fetch `ahoy install` makes on a yes to
+// the question naming the abcd download (itd-2610240823055889): the release
+// client is built only then, so a run that is not asked, or answers no,
+// constructs nothing network-capable, and the bytes are held to the same
+// checksums and build provenance abcd update holds a swap to. A variable so
+// tests stand in for the network.
+var ahoyDownloadRelease ahoy.DownloadRelease = func(tag string) (ahoy.DownloadedRelease, error) {
+	r, err := update.NewGitHubUpdater().FetchVerified(tag, os.Stderr)
+	if err != nil {
+		return ahoy.DownloadedRelease{}, err
+	}
+	return ahoy.DownloadedRelease{Bytes: r.Bytes, SHA256: r.SHA256, Signer: r.Signer}, nil
+}
+
 // updater is what the verb asks of the release client: resolve a tag, then
 // apply it. An interface so a test drives the swap path with no network, the
 // way version.go's newReleaseFetcher hands back a vintage.ReleaseFetcher.

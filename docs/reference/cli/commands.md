@@ -53,7 +53,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 ```
       --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
-      --identity    check git's commit author and committer against .abcd/config/identity.json, exiting non-zero when either diverges (for a pre-commit hook or CI)
+      --identity    check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)
       --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
       --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
 ```
@@ -122,6 +122,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --answers string          answer the setup questions from this answers file (JSON: schema_version, interview "setup", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key
       --attribution             opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
+      --details                 print the full record after the report: core's summary of every write and every note, each path written, the declined kinds of change and the gaps left
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
@@ -132,7 +133,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
       --visibility string       repo visibility: private | public
-      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
+      --yes                     approve every resolvable change category without prompting; excludes recording who you commit as on this machine (asked only at a terminal), the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
 ```
 
 #### `abcd ahoy remote`
@@ -315,7 +316,7 @@ In a checkout with a remote named origin, the run reserves its key there, as
 resumed one, with the files the spec's `## Footprint` packages line names (an issue's
 found_at path for an issue id), so every other participant sees it is taken. A spec with
 no footprint, or an issue with no found_at path, is refused at the reservation and nothing
-is started. Another person's reservation, or your own from another computer, refuses
+is started. Another person's reservation, or your own from another copy, refuses
 the start as contention; --take-over moves your own live reservation from another copy
 to this one, never another person's. `abcd implement step` renews the reservation, fences
 the landing's push and its arming with it and releases it once the run lands; a run
@@ -353,6 +354,16 @@ bind through `abcd implement step`, which hands out work only while a slot under
 ceiling is free. A lane whose validators still do not pass after its fix rounds is
 handed back: it stops as unachievable with the last round's findings, the run starts nothing
 further for it, and `abcd implement step` refuses naming the hand-back.
+
+A new run reads its review set once, too: review.reviewers (one or two model classes per
+code-review role, for both roles or per role; bundled: middle and below), review.judge (a
+class; refused until a judge agent clears itd-81's calibration gate) and, from
+~/.abcd.noindex/config.json alone, review.max_reviewers (1 or 2, bundled 2) and the class map
+models.classes (top, middle, below, smallest, each a <provider>/<model> route over the
+bundled map). A repository list above the machine's ceiling is clamped with one line on
+stderr naming both files; a repository's ceiling or class map is skipped with a warning.
+An unknown class or a malformed set is refused at the review stage and writes nothing.
+The result's review and the run record name each class with its model and each layer.
 
 The run then moves one step per `abcd implement step`, driven by the host session.
 
@@ -727,6 +738,103 @@ Move an open issue to wontfix/ with the reason it is not acted on: Writes the mo
 
 ```
 abcd capture wontfix iss-2609010000000001 "the behaviour is the documented one"
+```
+
+### `abcd checklist`
+
+List this working copy's checklist, every item and field: Writes nothing; refuses outside a git checkout.
+
+**Usage:** `abcd checklist`
+
+The working copy's checklist: what the session is working on, what it waits on
+and what it has promised, kept in .abcd/.work.local/checklist.json so it
+survives compaction and crashes. One file per working copy.
+
+Bare `abcd checklist` lists every item with every field and writes nothing.
+The reader validates and scans the file; one that fails is passed over for the
+last copy a checked write produced, and the first line says why. `add`, `set`
+and the bare list are the session's verbs; edit the file by hand and the reader
+refuses what it cannot vouch for.
+
+Every write validates the whole checklist against its schema and scans every
+field for secrets. A refusal names the field and the rule or the pattern kind,
+never the value, exits 2 and writes nothing. updated_by is the host's session
+id where the host exports one, otherwise the name the away record would give
+the writer. No verb makes a network request.
+
+#### `abcd checklist add`
+
+Add one item to the checklist under a new stable id: Writes checklist.json and its last-good copy; refuses a schema violation or a secret, naming the field.
+
+**Usage:** `abcd checklist add "<title>" [flags]`
+
+Add one item under a new id: a short slug of the title, with -2, -3 and so on
+when the slug is taken. The id never changes after; `set` and `show` take it.
+
+The item is working, or waiting when --waits-on names what it waits on: a record
+id, pr:<number>, person:<role> or slot:<kind>. --next-look is when to look again,
+an RFC 3339 timestamp. --promise is "<trigger> => <act>", split at the first =>.
+The title is one line of at most 200 characters.
+
+**Flags:**
+
+```
+      --next-look string   when to look at the item again, an RFC 3339 timestamp
+      --promise string     a trigger and the act it promises, as "<trigger> => <act>"
+      --waits-on string    what the item waits on: a record id, pr:<number>, person:<role> or slot:<kind>
+```
+
+**Example:**
+
+```
+abcd checklist add "Regenerate the CLI reference"
+```
+
+#### `abcd checklist render`
+
+Print the checklist as one block of text, open items first: Writes nothing; refuses outside a git checkout.
+
+**Usage:** `abcd checklist render`
+
+Print the checklist as the text a session's context is given: the open items
+first, then the done and dropped ones, each on one line. A checklist that fails
+the reader's checks is passed over for the last good copy, with one line saying
+why. Writes nothing.
+
+#### `abcd checklist set`
+
+Set one checklist item's state by its id: Writes checklist.json and its last-good copy; refuses an unknown id or state.
+
+**Usage:** `abcd checklist set <id> --state <state> [flags]`
+
+Set one item's state: working, waiting, done, dropped. The id is the one `add`
+minted, and it stays the same. An unknown id or state is refused (exit 2).
+
+**Flags:**
+
+```
+      --state string   the item's new state: working, waiting, done, dropped
+```
+
+**Example:**
+
+```
+abcd checklist set regenerate-the-cli-reference --state done
+```
+
+#### `abcd checklist show`
+
+Show one checklist item, every field, by its id: Writes nothing; refuses an id the checklist does not hold.
+
+**Usage:** `abcd checklist show <id>`
+
+Show one item, every field, by the id `add` minted. Bare `abcd checklist`
+lists them all. Writes nothing.
+
+**Example:**
+
+```
+abcd checklist show regenerate-the-cli-reference
 ```
 
 ### `abcd completion`
@@ -4211,8 +4319,14 @@ Then the reservations on the shared remote: one fetch from origin of every
 abcd-reserved/ branch, with pruning, and of the default branch, then every
 reservation with its record, holder, footprint, effective expiry and state
 (live, expired, released, or unreadable with its reason and the end of its
-hold), a live drain lane's stage when its renewal names one, each person's
-count of live reservations, and a line for each release being cut (a live
+hold), a live drain lane's stage when its renewal names one, the worktree of
+this repository on this machine that made one (by its folder's name, with
+parent folders added only where two would otherwise read alike),
+each person's count of live reservations, the reader's own counted by copy
+(this copy, each such worktree, elsewhere) against this machine's
+reservation.max_live with a warning from four fifths of it, since every
+session and account on the same login counts toward the same total, and a
+line for each release being cut (a live
 rel-vX.Y.Z reservation, which holds every other session's merge until its
 tag is on origin). Then each holder's hand-backs of the last day, from the
 same view: the record and kind of each released tip marking one, newest
@@ -4499,7 +4613,10 @@ linguist-generated in its root .gitattributes is shared, never an overlap; a
 directory never is. When that declaration cannot be read nothing is shared, and
 the act says why (generated_unread in --json). Your own reservation sharing a
 path with yours from another copy is made, and warns on stderr (own_overlap in
---json).
+--json). Name files, not directories: a directory holds off every reservation of
+a file inside it. A footprint path naming a directory git tracks is reserved all
+the same, and warns on stderr, naming it and how many tracked files it covers on
+origin's default branch, or HEAD (directory_footprint in --json).
 
 The holder is your GitHub username, from the first of these that names it:
 user.email, when it is a GitHub no-reply address; reservation.github_username
