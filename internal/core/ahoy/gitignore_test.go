@@ -394,6 +394,18 @@ func TestGitignoreBlockOmitsEntriesListedOutsideTheFence(t *testing.T) {
 			map[string]bool{".abcd/.work.local/": true}, nil},
 		{"private, commented out", "private", "# .abcd/.work.local/\n",
 			map[string]bool{".abcd/.work.local/": true}, []string{".abcd/.work.local/"}},
+		{"private, CRLF line", "private", "node_modules/\r\n.abcd/.work.local/\r\n",
+			map[string]bool{}, nil},
+		{"private, leading tab is another pattern", "private", "\t.abcd/.work.local/\n",
+			map[string]bool{".abcd/.work.local/": true}, nil},
+		{"private, trailing tab is part of the pattern", "private", ".abcd/.work.local/\t\n",
+			map[string]bool{".abcd/.work.local/": true}, nil},
+		{"private, escaped trailing space", "private", ".abcd/.work.local/\\ \n",
+			map[string]bool{".abcd/.work.local/": true}, nil},
+		{"private, re-included in another spelling", "private", ".abcd/.work.local/\n!.abcd/.work.local\n",
+			map[string]bool{".abcd/.work.local/": true}, nil},
+		{"private, re-included by a wider pattern", "private", ".abcd/.work.local/\n!.abcd/*\n",
+			map[string]bool{".abcd/.work.local/": true}, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

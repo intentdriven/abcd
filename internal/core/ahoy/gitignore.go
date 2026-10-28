@@ -277,21 +277,26 @@ func rewriteVisibilityBlock(path string, entries []string) (bool, error) {
 // .git/info/exclude, which other clones do not share, so an entry dropped on
 // their word would leave every other clone without it. Only a rule with the
 // same meaning counts — a broader rule (.abcd/ for .abcd/.work.local/) does
-// not, nor does a commented-out line. The last line naming the entry decides,
-// as in git: a later !-negation of it means the outside lines do not ignore
-// it, and the fence keeps it.
+// not, nor does a commented-out line. A line is read as git reads it
+// (gitignoreLinePattern), so a line git would not match the entry with never
+// counts. Any !-negation after the line, of whatever spelling, keeps the entry
+// in the fence: the fence used to sit last and so always won, and a
+// re-inclusion such as !.abcd/* must not leave the entry unignored.
 func fencedGitignoreEntries(entries []string, outside string) []string {
 	inForce := make(map[string]bool, len(entries))
 	for _, line := range strings.Split(outside, "\n") {
-		s := strings.TrimSpace(line)
+		s := gitignoreLinePattern(line)
 		if s == "" || strings.HasPrefix(s, "#") {
 			continue
 		}
-		negated := strings.HasPrefix(s, "!")
-		pattern := normaliseGitignorePattern(strings.TrimPrefix(s, "!"))
+		if strings.HasPrefix(s, "!") {
+			clear(inForce)
+			continue
+		}
+		pattern := normaliseGitignorePattern(s)
 		for _, e := range entries {
 			if normaliseGitignorePattern(e) == pattern {
-				inForce[e] = !negated
+				inForce[e] = true
 			}
 		}
 	}
@@ -311,7 +316,6 @@ func fencedGitignoreEntries(entries []string, outside string) []string {
 // same paths). A pattern whose only other slash is trailing keeps its leading
 // slash: /memory/ matches the root directory alone, memory/ one at any depth.
 func normaliseGitignorePattern(p string) string {
-	p = strings.TrimSpace(p)
 	if rest, ok := strings.CutPrefix(p, "/"); ok && strings.Contains(strings.TrimSuffix(rest, "/"), "/") {
 		return rest
 	}
@@ -378,3 +382,15 @@ func splitKeepEOL(text string) []string {
 type ahoyError struct{ msg string }
 
 func (e *ahoyError) Error() string { return e.msg }
+
+// gitignoreLinePattern is a .gitignore line as git reads its pattern: a
+// trailing carriage return dropped, then trailing spaces unless the last is
+// escaped with a backslash. Leading whitespace and trailing tabs stay part of
+// the pattern, as they do for git, so "\t.abcd/.work.local/" is not the entry.
+func gitignoreLinePattern(line string) string {
+	line = strings.TrimSuffix(line, "\r")
+	for strings.HasSuffix(line, " ") && !strings.HasSuffix(line, "\\ ") {
+		line = line[:len(line)-1]
+	}
+	return line
+}
