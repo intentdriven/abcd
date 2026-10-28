@@ -53,6 +53,19 @@ correction is a new decision that says what it corrects.
 It needs the shared tier `.abcd/work/`. A repository without one is refused,
 naming `ahoy install`, which lays it.
 
+
+## A shared main checkout is refused
+
+A write through this verb backs off with exit 3, writing nothing, when the
+checkout it would write into is a main working tree that two or more live
+sessions started in: a record written there lands under every one of them.
+Work in a worktree of your own in the machine-scoped store
+(`~/.abcd.noindex/worktrees/<root-sha>/<name>/`, made with `git worktree add`)
+and run the verb from there; the refusal names the command. A linked worktree is never
+refused, nor is a checkout one session or none works in, so a person working
+alone is not held up. The session-start hook records which checkout each
+session starts in, and a session stops counting when its host process ends.
+Reads are never refused.
 ## List the decisions
 
 ```bash

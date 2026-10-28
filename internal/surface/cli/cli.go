@@ -1996,6 +1996,9 @@ envelope carries it as system_message.`,
 				return warn("unreadable Stop payload (%v); capturing nothing", err)
 			}
 			in = parsed
+			// The session no longer works in its checkout: one file remove, so it
+			// fits the hook's short budget (hook_occupancy.go).
+			forgetOccupancy(in)
 			if in.TranscriptPath == "" {
 				return warn("Stop payload carries no transcript_path; capturing nothing")
 			}
@@ -2108,6 +2111,9 @@ envelope carries it as system_message.`,
 			// name the first prompt sets, and writes nothing to stdout
 			// (hook_session_name.go).
 			startSessionName(cmd, in, cwd)
+			// Which checkout this session works in, for the record verbs' count
+			// of sessions sharing a main checkout (hook_occupancy.go).
+			noteOccupancy(cmd, in, cwd)
 			// The away block, on every source, compaction included, and the
 			// session's start copy noted (spc-2610180914469489 step 2). The
 			// block is the home store's own words, never a tracked file's.
@@ -2739,6 +2745,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if len(args) > 0 {
+				if err := refuseSharedMainCheckout(cmd, "abcd intent", repoRoot); err != nil {
+					return err
+				}
+			}
 			// Quoted text (no sub-verb) files a new draft — the symmetric create path
 			// (itd-46). Bare invocation stays read-only status + help (never mutates).
 			if len(args) > 0 {
@@ -2845,6 +2856,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent plan", repoRoot); err != nil {
+				return err
+			}
 			// The mode belongs to the SPEC this mints; the intent's own stamp was
 			// written when its draft was created and is never rewritten.
 			mode, err := resolveProductionMode(repoRoot, planProductionMode)
@@ -2922,6 +2936,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
+			}
+			if strings.TrimSpace(readyGrounds) != "" {
+				if err := refuseSharedMainCheckout(cmd, "abcd intent ready", repoRoot); err != nil {
+					return err
+				}
 			}
 			var recorded *intent.GroundsResult
 			if strings.TrimSpace(readyGrounds) != "" {
@@ -3013,6 +3032,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent link", repoRoot); err != nil {
+				return err
+			}
 			res, err := intent.Link(repoRoot, args[0], args[1])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent link: " + err.Error()}
@@ -3033,6 +3055,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent edge", repoRoot); err != nil {
 				return err
 			}
 			res, err := intent.Edge(repoRoot, intent.EdgeRequest{
@@ -3069,6 +3094,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent hold", repoRoot); err != nil {
+				return err
+			}
 			if strings.TrimSpace(holdReason) == "" {
 				return &exitError{Code: 2, Msg: "abcd intent hold: --reason is required — a hold with no reason is a state nobody can lift on its merits (nothing written)"}
 			}
@@ -3096,6 +3124,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent unhold", repoRoot); err != nil {
+				return err
+			}
 			res, err := intent.Unhold(repoRoot, args[0])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent unhold: " + err.Error()}
@@ -3116,6 +3147,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent target", repoRoot); err != nil {
 				return err
 			}
 			res, err := intent.Target(repoRoot, args[0], args[1])
@@ -3198,6 +3232,9 @@ func newIntentReclassifyCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent reclassify", repoRoot); err != nil {
+				return err
+			}
 			res, err := intent.Reclassify(repoRoot, args[0], intent.ReclassifyRequest{Kind: kind, Bundle: bundle, By: by, Reason: reason})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent reclassify: " + err.Error()}
@@ -3246,6 +3283,11 @@ func newIntentConditionCommand(asJSON *bool) *cobra.Command {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
+			}
+			if len(args) > 1 {
+				if err := refuseSharedMainCheckout(cmd, "abcd intent condition", repoRoot); err != nil {
+					return err
+				}
 			}
 			if len(args) == 1 {
 				for _, f := range []string{"disposition", "occasioned-by", "grounds", "narrowing"} {
@@ -3440,6 +3482,9 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent audit", repoRoot); err != nil {
+				return err
+			}
 			route, err := auditRoute.resolve(cmd, "abcd intent audit", auditAgent)
 			if err != nil {
 				return err
@@ -3494,6 +3539,9 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent audit ingest", repoRoot); err != nil {
 				return err
 			}
 			if verdictJSON == "" {
@@ -3811,6 +3859,9 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := specStoreRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd spec close", repoRoot); err != nil {
 				return err
 			}
 			// A production mode stamps the MINTED remainder and nothing else, so
@@ -5185,6 +5236,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if len(args) > 0 {
+				if err := refuseSharedMainCheckout(cmd, "abcd capture", repoRoot); err != nil {
+					return err
+				}
+			}
 			// Bare invocation: read-only status render (never mutates).
 			if len(args) == 0 {
 				st, err := capture.Status(capture.StatusRequest{RepoRoot: repoRoot})
@@ -5530,6 +5586,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture resolve", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Resolve(capture.ResolveRequest{
 				RepoRoot: repoRoot, ID: args[0], Resolution: args[1], Impact: resolveImpact,
 				ByIntent: resolveByIntent, BySpec: resolveBySpec, ByCommit: resolveByCommit,
@@ -5590,6 +5649,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture link", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Link(capture.LinkRequest{
 				RepoRoot: repoRoot, ID: args[0],
 				BlockedBy: splitIDList(linkBlockedBy), Unblock: splitIDList(linkUnblock),
@@ -5624,6 +5686,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture promote", repoRoot); err != nil {
 				return err
 			}
 			// The grounds argument belongs to the ISSUE route, which has no
@@ -5699,6 +5764,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if migrateApply {
+				if err := refuseSharedMainCheckout(cmd, "abcd capture migrate --apply", repoRoot); err != nil {
+					return err
+				}
+			}
 			res, err := capture.Migrate(capture.MigrateRequest{RepoRoot: repoRoot, Apply: migrateApply})
 			// Migrate takes no input it could refuse, so what fails here is a
 			// fault and exits 1, as every ledger verb's fault does.
@@ -5745,6 +5815,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture disposition", repoRoot); err != nil {
 				return err
 			}
 			recurs, err := parseRecurs(dispRecurs)
@@ -5802,6 +5875,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture admit", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Admit(capture.AdmitRequest{RepoRoot: repoRoot, Item: args[0], Grounds: admitGrounds})
 			if err != nil {
 				return captureRefusal("admit", err)
@@ -5845,6 +5921,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture surprise", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Surprise(capture.SurpriseRequest{RepoRoot: repoRoot, OccasionedBy: surpriseOccasion, Text: args[0]})
 			if err != nil {
 				return captureRefusal("surprise", err)
@@ -5883,6 +5962,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture reframe", repoRoot); err != nil {
 				return err
 			}
 			res, err := capture.Reframe(capture.ReframeRequest{
@@ -5929,6 +6011,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture wontfix", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Wontfix(capture.WontfixRequest{
 				RepoRoot: repoRoot, ID: args[0], Reason: args[1], Grounds: wontfixGrounds,
 				ProductionMode: wontfixProductionMode, Duplicates: splitIDList(wontfixDuplicates),
@@ -5968,6 +6053,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture defer", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Defer(capture.DeferRequest{
 				RepoRoot: repoRoot, ID: args[0], After: deferAfter, Reason: deferReason,
 			})
@@ -5996,6 +6084,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture remedy", repoRoot); err != nil {
 				return err
 			}
 			res, err := capture.SetRemedy(capture.RemedyRequest{

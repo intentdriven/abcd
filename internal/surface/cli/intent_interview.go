@@ -109,6 +109,9 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent interview", repoRoot); err != nil {
+				return err
+			}
 			id := args[0]
 			corpus, err := intent.Load(repoRoot)
 			if err != nil {

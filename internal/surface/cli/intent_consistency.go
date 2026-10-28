@@ -157,6 +157,9 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent consistency ingest", repoRoot); err != nil {
+				return err
+			}
 			if len(findingsJSON) == 0 {
 				return &exitError{Code: 2, Msg: "abcd intent consistency ingest: --findings-json <path> is required"}
 			}
@@ -411,6 +414,9 @@ func warnUnreviewed(w io.Writer, verb, reviews string, ov *intent.ConsistencyOve
 // person ran, which heads every refusal and warning. payloads is one
 // findings payload, or one per chunk of an overflowing emit.
 func ingestConsistency(cmd *cobra.Command, verb, repoRoot string, payloads [][]byte, receipt func(any) any, receiptLine func(io.Writer), asJSON bool) error {
+	if err := refuseSharedMainCheckout(cmd, verb, repoRoot); err != nil {
+		return err
+	}
 	// The filing-time match (itd-2609212137116617) on every record the
 	// pass files, configured as the capture verb's is and never a
 	// refusal: a refused configuration files unmatched and says why.
