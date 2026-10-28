@@ -81,8 +81,10 @@ rules and no rule beyond the default branch's gains that rule if it lacks it,
 and one that admits more, through its protection mode or a rule of its own such
 as branch `*` or a tag rule, is reported `unrestricted`, with restricting it
 named as a step ahead of any secret step. Every run of the workflow starts from
-the default branch: a release published by hand runs only a relay job, which
-starts the workflow there with the release's tag.
+the default branch. A release published by hand runs only a relay job, which
+starts the workflow there with the release's tag. The render renders a release
+only when the default branch holds its commit, and the deploy takes the host
+configuration from the default branch, never from the release's tag.
 
 **The host.** With a hosting credential on this machine, the provider adapter
 creates the host, routes the custom domain to it and reports the live address.

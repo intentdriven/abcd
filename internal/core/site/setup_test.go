@@ -433,7 +433,7 @@ func TestADeclinedRunWritesNothingRemote(t *testing.T) {
 // TestAnExistingEnvironmentIsNeverRewritten: the forge's environment write
 // replaces the environment's whole protection set, so an environment that
 // already exists is never written through it. One that admits more than the
-// default branch and release tags is left as it is and named as a remaining
+// default branch is left as it is and named as a remaining
 // step, ahead of any secret step — whether it admits more through its
 // protection mode or through a custom rule of its own; one already on custom
 // policies and nothing broader only gains the policies it lacks. An absent
@@ -503,16 +503,21 @@ func TestAnExistingEnvironmentIsNeverRewritten(t *testing.T) {
 	t.Run("already on custom policies", func(t *testing.T) {
 		h := newHarness(t)
 		h.forge.envs[EnvDeploy] = EnvironmentState{CustomBranchPolicies: true}
-		h.forge.policies[EnvDeploy] = []BranchPolicy{{Name: "main", Type: "branch"}}
+		h.forge.policies[EnvDeploy] = nil
 		h.forge.protection[EnvDeploy] = []string{"required reviewers: example-reviewer"}
 		h.run(t)
+		added := false
 		for _, w := range h.forge.writes {
 			if w == "put "+EnvDeploy {
 				t.Errorf("the existing environment %s was rewritten (writes %v)", EnvDeploy, h.forge.writes)
 			}
+			added = added || w == "policy "+EnvDeploy+" branch main"
+		}
+		if !added {
+			t.Errorf("the missing branch rule was not added to %s (writes %v)", EnvDeploy, h.forge.writes)
 		}
 		if !reflect.DeepEqual(h.forge.policies[EnvDeploy], []BranchPolicy{{Name: "main", Type: "branch"}}) {
-			t.Errorf("%s policies = %v, want its one branch rule left as it is", EnvDeploy, h.forge.policies[EnvDeploy])
+			t.Errorf("%s policies = %v, want its one branch rule", EnvDeploy, h.forge.policies[EnvDeploy])
 		}
 		if len(h.forge.protection[EnvDeploy]) != 1 {
 			t.Errorf("the existing environment's reviewers were lost: %v", h.forge.protection[EnvDeploy])
@@ -1055,7 +1060,7 @@ func TestAPublishedReleaseIsRelayedToTheDefaultBranch(t *testing.T) {
 		"actions: write",
 		`gh workflow run "$WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f tag="$TAG"`,
 		"TAG: ${{ github.event.release.tag_name }}",
-		"DEFAULT_BRANCH: trunk",
+		"DEFAULT_BRANCH: 'trunk'",
 	} {
 		if !strings.Contains(code, want) {
 			t.Errorf("the relay job lacks %q:\n%s", want, relay)

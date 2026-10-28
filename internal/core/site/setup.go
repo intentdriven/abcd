@@ -16,7 +16,7 @@ package site
 //     is kept, and machinery that drifted refuses the whole stage — with
 //     nothing written and no remote change attempted — unless it is confirmed.
 //  2. THE FORGE. The two deployment environments the workflow runs in,
-//     restricted to the default branch and release tags, created or corrected
+//     restricted to the default branch, created or corrected
 //     through the forge's API as the person who invoked the verb (adr-44: a
 //     remote write only through a dedicated verb, invoked AND confirmed).
 //  3. THE HOST. With a hosting credential on this machine, the provider
@@ -97,10 +97,9 @@ const (
 	RemoteUnreachable = "unreachable"
 	RemoteNotReached  = "not_reached"
 	// RemoteUnrestricted: the environment exists and admits more than the
-	// default branch and release tags. The forge's environment write replaces
-	// an environment's whole protection set (its required reviewers and wait
-	// timer with it), so setup never rewrites one that exists: restricting it
-	// is a remaining step.
+	// default branch. The forge's environment write replaces an environment's
+	// whole protection set (its required reviewers and wait timer with it), so
+	// setup never rewrites one that exists: restricting it is a remaining step.
 	RemoteUnrestricted = "unrestricted"
 )
 

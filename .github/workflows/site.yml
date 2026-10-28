@@ -301,6 +301,18 @@ jobs:
             echo "refusing '$tag': did not resolve to a commit sha (got '$sha')" >&2
             exit 1
           fi
+          # Only a commit main holds is rendered or deployed: a tag can name any
+          # commit, and main is what was reviewed. The compare reads main as the
+          # forge holds it now; `ahead` or `identical` means main contains the
+          # commit, and any other status is refused before a job below sees it.
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${sha}...main" --jq '.status')"
+          case "$status" in
+            ahead | identical) ;;
+            *)
+              echo "refusing '$tag': main does not hold its commit $sha (compare status '$status')" >&2
+              exit 1
+              ;;
+          esac
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
           # Pre-releases never deploy production (adr-48 2). Both readings of
@@ -906,7 +918,7 @@ jobs:
           echo "published ${TAG} (Release ${RELEASE_ID}, latest: ${latest}) with every asset verified."
 
   # Deploy production. The ONLY job that holds a Cloudflare credential, and it runs no
-  # build code: it checks out the tagged commit for wrangler.jsonc alone, unpacks the
+  # build code: it checks out main for wrangler.jsonc alone, unpacks the
   # artefact `render` handed it (attested too, once the repo is public), and calls
   # wrangler. Nothing here resolves a package, executes a plugin, or reads the
   # rendered content.
@@ -958,15 +970,16 @@ jobs:
     permissions:
       contents: read        # check out wrangler.jsonc; publishes nothing
     steps:
-      - name: Check out the tagged commit
+      - name: Check out the default branch for wrangler.jsonc
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The same resolved sha `render` used, so wrangler.jsonc — the file that
-          # declares the production routes — comes from the tag being deployed. A fresh
+          # main, never the release's commit: wrangler.jsonc, the file that
+          # declares the production routes, is read by the one job holding the
+          # Cloudflare credential, so it comes from the reviewed branch. A fresh
           # checkout, not a carried-over workspace: this tree has never had `pip
           # install` or mkdocs run in it, so nothing a build step could have written
           # can reach the credentialed step below.
-          ref: ${{ needs.resolve.outputs.sha }}
+          ref: refs/heads/main
           # Shallow: this job needs the committed config and nothing from history.
           persist-credentials: false
 

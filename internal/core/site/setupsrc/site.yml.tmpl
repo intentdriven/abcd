@@ -7,8 +7,10 @@ name: site
 # Renders this repository's site from each published release with abcd's own
 # released binary — checksum- and attestation-verified before it runs — and
 # deploys the rendered artefact to <% .Provider %>. The render job holds no
-# credential; the deploy job holds the provider's and runs nothing from the
-# repository but the host configuration file (<% .HostConfig %>).
+# credential, and renders a release only when the default branch holds its
+# commit. The deploy job holds the provider's, and takes nothing from the
+# repository but the default branch's host configuration file
+# (<% .HostConfig %>), never the release's.
 #
 # Three entry points, one path:
 #
@@ -88,7 +90,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           WORKFLOW: site.yml
-          DEFAULT_BRANCH: <% .DefaultBranch %>
+          DEFAULT_BRANCH: '<% .DefaultBranch %>'
           TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
@@ -147,6 +149,20 @@ jobs:
           ref: refs/tags/${{ steps.release.outputs.tag }}
           fetch-depth: 0
           persist-credentials: false
+
+      # A tag can name any commit; the default branch is what was reviewed. The
+      # checkout above fetched the branch as the forge holds it now, and a
+      # release whose commit it does not hold is refused before anything is
+      # downloaded or rendered.
+      - name: Refuse a release the default branch does not hold
+        env:
+          DEFAULT_BRANCH: '<% .DefaultBranch %>'
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"; then
+            echo "::error::the release's commit is not on $DEFAULT_BRANCH; refusing to render it"
+            exit 1
+          fi
 
       - name: Download abcd and its checksums
         env:
@@ -213,10 +229,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Check out the released commit for the host configuration
+      # The host configuration is the default branch's copy, never the
+      # release's: this job holds the provider's credential, and the file is
+      # what the deploy reads.
+      - name: Check out the default branch for the host configuration
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ needs.render.outputs.tag }}
+          ref: refs/heads/<% .DefaultBranch %>
           persist-credentials: false
 
       - name: Collect the rendered site
