@@ -109,6 +109,13 @@ type Request struct {
 	// record at another blob publishes no hand-back, and says so
 	// (Result.HandBackUnpublished). Empty names the blob as last fetched.
 	HandBackBlob string
+	// OverAbsent, with HandBack, HandBackBlob and no Tip, publishes the hand-back over a
+	// branch origin no longer holds (the sweep deletes a released branch at
+	// its next run) as the branch's first commit. The push is plain, so origin
+	// takes it only while the branch is still absent: a branch created
+	// meanwhile, or found when the release fetches, holding a reservation is
+	// left as it stands with a *NotHeld, NotHeldMoved.
+	OverAbsent bool
 	// Drain marks a reservation a drain makes: it backs off a hand-back
 	// tombstone whose record is unchanged on origin's default branch, where a
 	// person's own reservation goes ahead and is told (Result.HandedBack).
@@ -199,6 +206,14 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	}
 	if req.HandBack != "" && !req.Release {
 		return nil, refuse("only a release publishes a hand-back; %s", nothingPushed)
+	}
+	if req.OverAbsent && (req.HandBack == "" || req.Tip != "") {
+		return nil, refuse("only a release that publishes a hand-back, naming no reservation commit, publishes it over an absent branch; %s", nothingPushed)
+	}
+	if req.OverAbsent && !gitutil.IsFullSHA(req.HandBackBlob) {
+		// With no branch left to fence on, the judged blob is all that ties
+		// the hand-back to the record a person was asked about.
+		return nil, refuse("a hand-back published over an absent branch names the blob it was judged over; %s", nothingPushed)
 	}
 	if req.HandBack != "" && isRelease(id) {
 		// A release subject has no record on origin's default branch, so a

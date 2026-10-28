@@ -72,7 +72,20 @@ version made every branch wait seven days):
 
 - **A released branch, one whose tip is a plain release, waits for no age.**
   The next daily run deletes it once the take-over margin has passed. A
-  release is its holder's own act, so nobody is coming back to the branch.
+  release is its holder's own act, so no holder is coming back to the branch.
+  One writer may still have something to put on it: a drain whose hand-back
+  was left pending because a person held the issue
+  ([dcn-2610161826443524](../../../work/decisions/dcn-2610161826443524-a-yes-whose-hand-back-a-move-cannot.md))
+  publishes that hand-back over the person's release, and the sweep may have
+  deleted the release first. So a drain that finds the branch gone publishes
+  the hand-back as the branch's first commit instead, with the same plain push
+  every reservation act makes, which origin takes only while the branch is
+  still absent: a session that reserves the issue meanwhile wins, and the
+  drain keeps the hand-back pending for that session's release. A record
+  finished on the default branch, or changed since the hand-back was judged,
+  gets nothing published, as over a release, and so does a hand-back judged
+  while the default branch could not be read, which names no record to
+  fence on once the branch is gone.
 - **So does a branch whose tip is a hand-back on a record that is now
   terminal** on origin's default branch: the task is finished, so the
   hand-back has nobody left to hand the record to. A hand-back on an open
@@ -86,7 +99,11 @@ version made every branch wait seven days):
 The last two choices, the hand-back on a terminal record and the lapse keeping
 its age, were made by the technical facilitator on delegation (abcd-f5,
 2026-10-28), reading the product thinker's question of why a branch is not
-removed once its task has finished.
+removed once its task has finished. So was the drain publishing a pending
+hand-back over a branch the sweep deleted, chosen over keeping released
+branches whose issue a drain still holds a hand-back for, which no sweep can
+see from origin, and over dropping the hand-back, which would leave the issue
+open to every other drain.
 
 The safety rules hold for both: the deletion is made only by the App, only
 with a lease on the exact tip judged, and a branch carrying a commit the sweep

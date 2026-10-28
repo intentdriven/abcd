@@ -114,10 +114,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"moved on (renewed, reserved again or taken over since, or released by a person),\n" +
 			"or that took none because you held the issue live, publishes nothing yet: the\n" +
 			"drain keeps the hand-back pending (pending_hand_backs in --json) and publishes it\n" +
-			"over the issue's next release on origin. A record changed or finished on origin's\n" +
-			"default branch since, one origin holds in no one file, or a tombstone the hand-back\n" +
-			"would take past its cap drops it, and the move says it was dropped and why; a\n" +
-			"default branch that could not be read keeps it pending. A promotion\n" +
+			"over the issue's next release on origin, or, once the sweep has deleted that\n" +
+			"release, as the first commit of a branch no one has made again since. A record\n" +
+			"changed or finished on origin's default branch since, one origin holds in no one\n" +
+			"file, or a tombstone the hand-back would take past its cap drops it, and the move\n" +
+			"says it was dropped and why; a default branch that could not be read keeps it\n" +
+			"pending. A promotion\n" +
 			"this checkout cannot make, not holding the record as origin does, is left to a\n" +
 			"checkout that can. The reservation is taken once per request: one unanswered when it lapses is\n" +
 			"dropped and the issue asked again only after the drain's other eligible work. The\n" +
