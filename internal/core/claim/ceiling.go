@@ -60,7 +60,9 @@ func CeilingFor(root string, s *Snapshot, o Options) (Ceiling, bool) {
 	}
 	note = joinNote(note, s.SiblingsUnread)
 	c := Ceiling{Holder: holder, Limit: limit, Siblings: []SiblingLive{}, Note: note}
-	bySibling := map[string]int{}
+	// Siblings are counted by copy key and shown by name, so two worktrees
+	// are never merged by what they are called (iss-2610272352168723).
+	bySibling := map[string]*SiblingLive{}
 	for _, r := range s.Reservations {
 		if r.State != StateLive || isRelease(r.Record) || !sameHolder(r.Holder, holder) {
 			continue
@@ -70,13 +72,17 @@ func CeilingFor(root string, s *Snapshot, o Options) (Ceiling, bool) {
 		case r.Copy == CopyThis:
 			c.ThisCopy++
 		case r.Sibling != "":
-			bySibling[r.Sibling]++
+			if sib := bySibling[r.key]; sib != nil {
+				sib.Live++
+			} else {
+				bySibling[r.key] = &SiblingLive{Name: r.Sibling, Live: 1}
+			}
 		default:
 			c.Elsewhere++
 		}
 	}
-	for name, n := range bySibling {
-		c.Siblings = append(c.Siblings, SiblingLive{Name: name, Live: n})
+	for _, sib := range bySibling {
+		c.Siblings = append(c.Siblings, *sib)
 	}
 	sort.Slice(c.Siblings, func(i, j int) bool { return c.Siblings[i].Name < c.Siblings[j].Name })
 	c.Warn = c.Live*5 >= c.Limit*4

@@ -175,7 +175,7 @@ func newImplementOutageProbeCommand(asJSON *bool) *cobra.Command {
 			case "fail":
 				verdict = func() (bool, string) { return false, "the canary agent failed" }
 			default:
-				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement outage probe: --model %q is not ok or fail (nothing probed)", model)}
+				return &exitError{Code: 2, Msg: "abcd implement outage probe: --model takes ok or fail (the value given is not repeated here; nothing probed)"}
 			}
 			// The exit a rendered outcome carries is returned after withRun, which
 			// would otherwise prefix it with a message the rendered output already

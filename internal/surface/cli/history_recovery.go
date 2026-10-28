@@ -14,6 +14,7 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -219,12 +220,11 @@ func resolveDestination(into string) (history.Destination, error) {
 		return history.Destination{}, err
 	}
 	if rerr := det.RepoIdentity.RootErr(); rerr != nil {
-		return history.Destination{}, fmt.Errorf("history ingest: the root commit of %s could not be read, so it has no store key this run: %w",
-			termsafe.Sanitize(fsutil.DisplayPath(abs)), rerr)
+		return history.Destination{}, fmt.Errorf("history ingest: the root commit of the --into repository (its path is not repeated here) could not be read, so it has no store key this run: %w",
+			pathErrorCause(rerr))
 	}
 	if det.RootSHA == "" {
-		return history.Destination{}, fmt.Errorf("history ingest: %s is not a git repository with commits, so it has no store key",
-			termsafe.Sanitize(fsutil.DisplayPath(abs)))
+		return history.Destination{}, errors.New("history ingest: the --into directory is not a git repository with commits (its path is not repeated here), so it has no store key")
 	}
 	return history.Destination{RepoRoot: abs, RootSHA: det.RootSHA}, nil
 }

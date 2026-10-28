@@ -356,7 +356,7 @@ func NewRootCommand() *cobra.Command {
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			ver := core.NewVersion()
-			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
+			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd)}
 			// One renderer draws both views in both forms; the surface reads
 			// the window, the colour rung and the locale and hands them in
 			// (spc-2610031844142274). In a pipe the board is drawn at Mono and
@@ -371,7 +371,7 @@ func NewRootCommand() *cobra.Command {
 				ASCII: !term.UTF8Locale(os.Getenv),
 			}
 			return render(cmd.OutOrStdout(), asJSON, bo, func(w io.Writer) {
-				for _, l := range board.Render(board.Input{Dir: st.Dir, Status: bo.Status, Rows: boardRows(st, bo), Version: ver}, frame) {
+				for _, l := range board.Render(board.Input{Dir: st.Dir, Status: bo.Status, Rows: boardRows(st, bo), Version: ver, Merges: bo.Facilitator.merges()}, frame) {
 					fmt.Fprintln(w, l)
 				}
 			})
@@ -660,6 +660,10 @@ func NewRootCommand() *cobra.Command {
 	// host's instruction to BLOCK, so every usage error a hook can provoke refuses
 	// at exit 1 instead (iss-269).
 	applyHookPlaneFailOpen(root)
+	// After every pass that sets a flag-error function: each receives the
+	// parser's error reworded to name the flag, never the text passed with it
+	// (usage_errors.go).
+	applyUsageFlagErrors(root)
 	// Truly last: every flag-error function above is wrapped so Run can tell a
 	// flag-parse refusal from any other, and answer it in JSON when the caller
 	// typed --json (iss-2609292352131344).
@@ -862,11 +866,11 @@ func newLintDocsCommand(asJSON *bool) *cobra.Command {
 				// Surface config-load failures as clean, repo-relative
 				// diagnostics — never a raw os.Open/os.ReadFile error, whose
 				// *PathError embeds the absolute path (iss-29: no absolute path
-				// in machine output). Reference what the user typed when they
-				// passed --config, else the relative default.
+				// in machine output). Name a --config path by its flag, never
+				// by what was typed, else the relative default.
 				ref := filepath.Join(".abcd", "docs-lint.json")
 				if configPath != "" {
-					ref = configPath
+					ref = "the --config path (not repeated here)"
 				}
 				if os.IsNotExist(err) {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
@@ -879,7 +883,7 @@ func newLintDocsCommand(asJSON *bool) *cobra.Command {
 				if errors.As(err, &pe) {
 					detail = pe.Err.Error()
 				}
-				return &exitError{Code: 2, Msg: fmt.Sprintf("lint docs: cannot read config %s: %s", ref, detail)}
+				return &exitError{Code: 2, Msg: fmt.Sprintf("lint docs: cannot read config at %s: %s", ref, detail)}
 			}
 			// --release-gate promotes the citation staleness finding from the
 			// commit gate's warn to a blocker (spc-17: commits are never
@@ -1019,7 +1023,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if info, err := os.Stat(abs); err != nil || !info.IsDir() {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark probe: %s is not a directory", target)}
+				return &exitError{Code: 2, Msg: "disembark probe: the repository named is not a directory (it is not repeated here)"}
 			}
 			cov, err := lifeboat.Probe(abs, ignoredScope(probeIgnored)...)
 			if err != nil {
@@ -1036,14 +1040,16 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			covs := make([]lifeboat.Coverage, 0, len(args))
-			for _, path := range args {
+			for i, path := range args {
+				// Each report is named by its position, never by the path typed.
+				which := fmt.Sprintf("report %d (argument %d, not repeated here)", i+1, i+1)
 				// A probe report is a cross-repo artifact (produced by `probe` on
 				// other repos), so its content is untrusted: read it behind the same
 				// guards as every other operand (O_NOFOLLOW, regular-file, size cap),
 				// never a raw os.ReadFile that follows a symlink or reads unbounded.
 				data, err := fsutil.ReadGuarded(path, maxOperandJSONBytes)
 				if err != nil {
-					// Reference the path the user typed, not an absolute PathError.
+					// Name the report by its position, not by a PathError's path.
 					detail := err.Error()
 					switch {
 					case errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP):
@@ -1056,11 +1062,11 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 							detail = pe.Err.Error()
 						}
 					}
-					return &exitError{Code: 2, Msg: fmt.Sprintf("disembark coverage: cannot read %s: %s", path, detail)}
+					return &exitError{Code: 2, Msg: fmt.Sprintf("disembark coverage: cannot read %s: %s", which, detail)}
 				}
 				var cov lifeboat.Coverage
 				if err := json.Unmarshal(data, &cov); err != nil {
-					return &exitError{Code: 2, Msg: fmt.Sprintf("disembark coverage: %s is not a coverage report: %s", path, err)}
+					return &exitError{Code: 2, Msg: fmt.Sprintf("disembark coverage: %s is not a coverage report: %s", which, err)}
 				}
 				// A probe report always stamps schema_version >= 1; json.Unmarshal
 				// of any other JSON object succeeds with the zero value (schema
@@ -1069,11 +1075,11 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 				// mirroring the type-mismatch message above.
 				if cov.SchemaVersion < 1 {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"disembark coverage: %s is not a coverage report: missing schema_version", path)}
+						"disembark coverage: %s is not a coverage report: missing schema_version", which)}
 				}
 				if cov.SchemaVersion > lifeboat.SchemaVersion {
 					return &exitError{Code: 2, Msg: "disembark coverage: " +
-						update.TooNew(path, cov.SchemaVersion, lifeboat.SchemaVersion).Error()}
+						update.TooNew(which, cov.SchemaVersion, lifeboat.SchemaVersion).Error()}
 				}
 				covs = append(covs, cov)
 			}
@@ -1097,7 +1103,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if info, err := os.Stat(abs); err != nil || !info.IsDir() {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark plan: %s is not a directory", target)}
+				return &exitError{Code: 2, Msg: "disembark plan: the repository named is not a directory (it is not repeated here)"}
 			}
 			lb, err := lifeboat.Plan(abs, ignoredScope(planIgnored)...)
 			if err != nil {
@@ -1118,7 +1124,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if info, err := os.Stat(repoAbs); err != nil || !info.IsDir() {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: %s is not a directory", args[0])}
+				return &exitError{Code: 2, Msg: "disembark pack: the <repo> argument is not a directory (it is not repeated here)"}
 			}
 			// Build the source repo's secret scanner and fail closed if its config
 			// is degraded — a pack must not ship secrets under a weakened ruleset.
@@ -1544,11 +1550,11 @@ func readGuardedOperand(spec string, cap int64) ([]byte, error) {
 	if err != nil {
 		switch {
 		case errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP):
-			return nil, fmt.Errorf("%s is not a readable regular file (a symlink or non-regular operand is refused)", spec)
+			return nil, errors.New("the operand file is not a readable regular file (a symlink or non-regular operand is refused; its path is not repeated here)")
 		case errors.Is(err, fsutil.ErrTooBig):
-			return nil, fmt.Errorf("%s exceeds the %d-byte cap", spec, cap)
+			return nil, fmt.Errorf("the operand file exceeds the %d-byte cap (its path is not repeated here)", cap)
 		default:
-			return nil, err
+			return nil, fmt.Errorf("cannot read the operand file (its path is not repeated here): %w", pathErrorCause(err))
 		}
 	}
 	return data, nil
@@ -2553,15 +2559,15 @@ func readTranscript(path string) ([]byte, error) {
 	if err != nil {
 		switch {
 		case errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP):
-			return nil, fmt.Errorf("transcript %q is not a readable regular file (a symlink or non-regular transcript is refused)", path)
+			return nil, errors.New("the file the transcript path names is not a readable regular file (a symlink or non-regular transcript is refused; the path is not repeated here)")
 		case errors.Is(err, fsutil.ErrTooBig):
-			return nil, fmt.Errorf("transcript %q is over the %d-byte cap", path, maxTranscriptBytes)
+			return nil, fmt.Errorf("the file the transcript path names is over the %d-byte cap (the path is not repeated here)", maxTranscriptBytes)
 		default:
-			return nil, fmt.Errorf("cannot read transcript %q (%v)", path, err)
+			return nil, fmt.Errorf("cannot read the file the transcript path names (%v; the path is not repeated here)", pathErrorCause(err))
 		}
 	}
 	if len(raw) == 0 {
-		return nil, fmt.Errorf("transcript %q is empty", path)
+		return nil, errors.New("the file the transcript path names is empty (the path is not repeated here)")
 	}
 	return raw, nil
 }
@@ -2659,7 +2665,8 @@ Read-only.`,
 				name := strings.ToUpper(args[0])
 				d, ok := rs.Lookup(name)
 				if !ok {
-					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd rules: unknown domain %q", name)}
+					known := slices.Sorted(maps.Keys(rs.Domains))
+					return &exitError{Code: 2, Msg: "abcd rules: no domain of that name (the name is not repeated here); the domains are " + strings.Join(known, ", ")}
 				}
 				return render(cmd.OutOrStdout(), *asJSON, d, func(w io.Writer) {
 					fmt.Fprint(w, rules.Render([]rules.ResolvedDomain{d}))
@@ -2755,21 +2762,21 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				// than filing the words as a draft title (iss-2609091647589392).
 				if instead, ok := removedSubverbs["intent"][args[0]]; ok {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown intent subcommand %q; %s (nothing created)", args[0], instead)}
+						"unknown intent subcommand (the first argument, not repeated here); %s (nothing created)", instead)}
 				}
 				if hint := recordReadHint("intent", args); hint != "" {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown intent subcommand %q; %s (nothing created)", args[0], hint)}
+						"unknown intent subcommand (the first argument, not repeated here); %s (nothing created)", hint)}
 				}
 				if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
 					if sug == "" {
 						return &exitError{Code: 2, Msg: fmt.Sprintf(
-							"unknown intent subcommand %q; the sub-verbs are: %s (nothing created — reword the text if you meant to file a draft)",
-							args[0], strings.Join(subverbNames(cmd), ", "))}
+							"unknown intent subcommand (the first argument, not repeated here); the sub-verbs are: %s (nothing created — reword the text if you meant to file a draft)",
+							strings.Join(subverbNames(cmd), ", "))}
 					}
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown intent subcommand %q; did you mean %q? (nothing created — reword the text if you meant to file a draft)",
-						args[0], sug)}
+						"unknown intent subcommand (the first argument, not repeated here); did you mean %q? (nothing created — reword the text if you meant to file a draft)",
+						sug)}
 				}
 				// Guard: a lone bare word near NO sub-verb fell through the
 				// did-you-mean above and was filed as a draft title
@@ -2779,9 +2786,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 					if args[0] == "" {
 						return &exitError{Code: 2, Msg: "abcd intent: the draft title is empty (nothing created)"}
 					}
-					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown intent subcommand %q (nothing created — a lone word is read as a sub-verb, never as a draft title; a draft title must contain a space, so write the whole sentence)",
-						args[0])}
+					return &exitError{Code: 2, Msg: "unknown intent subcommand (the first argument, not repeated here; nothing created — a lone word is read as a sub-verb, never as a draft title; a draft title must contain a space, so write the whole sentence)"}
 				}
 				// Changed, not the value: `--title ""` is a title the user gave and
 				// the core refuses it, where an unset flag leaves the H1 derived.
@@ -4703,8 +4708,8 @@ func installToolNames(names []string) (map[string]bool, error) {
 	for _, n := range names {
 		n = strings.TrimSpace(n)
 		if !accepted[n] {
-			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: --install-tool %q is not a tool ahoy install checks for; it checks for %s (nothing read, nothing written)",
-				termsafe.Sanitize(n), strings.Join(ahoy.DependencyTools, ", "))}
+			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: an --install-tool name is not a tool ahoy install checks for (the name is not repeated here); it checks for %s (nothing read, nothing written)",
+				strings.Join(ahoy.DependencyTools, ", "))}
 		}
 		named[n] = true
 	}
@@ -5313,17 +5318,17 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			// subcommand call too (iss-2609091647589392). Genuine prose still files.
 			if hint := recordReadHint("capture", args); hint != "" {
 				return &exitError{Code: 2, Msg: fmt.Sprintf(
-					"unknown capture subcommand %q; %s (nothing captured)", args[0], hint)}
+					"unknown capture subcommand (the first argument, not repeated here); %s (nothing captured)", hint)}
 			}
 			if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
 				if sug == "" {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown capture subcommand %q; the sub-verbs are: %s (nothing captured — reword the text if you meant to file it)",
-						args[0], strings.Join(subverbNames(cmd), ", "))}
+						"unknown capture subcommand (the first argument, not repeated here); the sub-verbs are: %s (nothing captured — reword the text if you meant to file it)",
+						strings.Join(subverbNames(cmd), ", "))}
 				}
 				return &exitError{Code: 2, Msg: fmt.Sprintf(
-					"unknown capture subcommand %q; did you mean %q? (nothing captured — reword the text if you meant to file it)",
-					args[0], sug)}
+					"unknown capture subcommand (the first argument, not repeated here); did you mean %q? (nothing captured — reword the text if you meant to file it)",
+					sug)}
 			}
 			// Guard: a lone bare word near NO sub-verb fell through the
 			// did-you-mean above and was filed as an issue
@@ -5333,9 +5338,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				if args[0] == "" {
 					return &exitError{Code: 2, Msg: "abcd capture: the issue text is empty (nothing captured)"}
 				}
-				return &exitError{Code: 2, Msg: fmt.Sprintf(
-					"unknown capture subcommand %q (nothing captured — a lone word is read as a sub-verb, never as issue text; issue text must contain a space, so write the whole sentence)",
-					args[0])}
+				return &exitError{Code: 2, Msg: "unknown capture subcommand (the first argument, not repeated here; nothing captured — a lone word is read as a sub-verb, never as issue text; issue text must contain a space, so write the whole sentence)"}
 			}
 			// Every new issue carries a remedy (ruling BX3 of 2026-09-29): the
 			// fix it proposes, one line. The machine value is refused from a
@@ -5391,8 +5394,8 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				// the flag and the set it accepts (iss-2608290810037524).
 				var fv *capture.FieldValueError
 				if errors.As(err, &fv) {
-					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture: --%s %q is not accepted; accepted values: %s (nothing captured)",
-						fv.Field, fv.Value, enumHelp(fv.Accepted))}
+					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture: the --%s value is not accepted (it is not repeated here); accepted values: %s (nothing captured)",
+						fv.Field, enumHelp(fv.Accepted))}
 				}
 				return captureRefusal("", err)
 			}
@@ -5792,6 +5795,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// made; the core refuses an empty state rather than inventing one. It stays
 	// unmarked as cobra-required to keep the tree's no-required-flags invariant.
 	dispositionCmd.Flags().StringVar(&dispState, "state", "", "the answer: accepted | rejected | declined | held (availability varies by the item's position)")
+	declareClosedSet(dispositionCmd.Flags(), "state", issueschema.DispositionStates...)
 	dispositionCmd.Flags().StringVar(&dispGrounds, "grounds", "", "disposition_grounds: why this answer (free text; required on every state except held)")
 	dispositionCmd.Flags().StringVar(&dispExit, "exit-condition", "", "what would end a held disposition (required on held; a hold exits only through a superseding disposition that cites it)")
 	dispositionCmd.Flags().StringVar(&dispSupersedes, "supersedes", "", "the standing dsp-N this answer replaces; required once an item already carries one")
@@ -6420,7 +6424,7 @@ func parseRecurs(raw string) ([]string, error) {
 			continue
 		}
 		if !readingItemIDRe.MatchString(tok) {
-			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture disposition: --recurs token %q must match rdi-N (nothing written)", tok)}
+			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture disposition: --recurs token %d must match rdi-N (it is not repeated here; nothing written)", len(ids)+1)}
 		}
 		ids = append(ids, tok)
 	}
@@ -6970,9 +6974,18 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if msg := scrubPaths(err); msg != "" {
 		// An unknown command or flag on a binary that can prove it is stale
 		// names the staleness and the way out, on a second line, from disk
-		// alone; otherwise cobra's line stands byte-for-byte
-		// (iss-2608230943088357, staleusage.go).
-		if note := staleUsageNote(root, args, msg); note != "" {
+		// alone; otherwise the refusal line stands alone (iss-2608230943088357,
+		// staleusage.go). The note reads the operand from cobra's own wording;
+		// the line itself then names the refused argument by its position
+		// (usage_errors.go).
+		note := staleUsageNote(root, args, msg)
+		msg = withholdOperands(root, msg)
+		// The backstop: whatever a verb's own wording still repeats of the
+		// arguments is withheld here, for stderr and the --json object alike
+		// (usage_errors.go). The note is added after it: it names a verb only
+		// when the plugin surface on disk documents that verb.
+		msg = withholdArguments(root, args, msg)
+		if note != "" {
 			msg += "\nabcd: " + note
 		}
 		// Masked once, here, for every verb: a refusal that echoes an operand or

@@ -40,7 +40,8 @@ func TestJSONErrorEnvelopeNoAbsolutePathLeak(t *testing.T) {
 		{
 			name: "memory ask --page-json missing file",
 			args: []string{"library", "ask", "q", "--file-back", "--page-json", absMissing, "--json"},
-			base: "page.json",
+			// The operand file is named by the flag that carried it.
+			base: "--page-json",
 		},
 	}
 
@@ -289,8 +290,10 @@ func TestMemoryIngestErrorNoAbsolutePathLeakOutsideRoots(t *testing.T) {
 	if strings.Contains(env.Error, outside) {
 		t.Fatalf("ingest envelope leaked the absolute source path %q:\n%s", outside, env.Error)
 	}
-	if !strings.Contains(env.Error, "secret-notes.txt") {
-		t.Fatalf("ingest envelope dropped the file basename for context:\n%s", env.Error)
+	// The path the caller typed is withheld whole, its base name with it, and
+	// named by its position instead.
+	if strings.Contains(env.Error, "secret-notes.txt") || !strings.Contains(env.Error, "not repeated here") {
+		t.Fatalf("ingest envelope repeated the source path, or did not name it by position:\n%s", env.Error)
 	}
 }
 

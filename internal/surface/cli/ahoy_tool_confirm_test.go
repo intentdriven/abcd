@@ -78,7 +78,8 @@ func TestToolConfirmNamedAndYes(t *testing.T) {
 }
 
 // TestInstallToolRefusesAnUnknownName: an --install-tool name ahoy install
-// does not check for is refused before anything runs, naming the ones it does.
+// does not check for is refused before anything runs, naming the ones it does
+// and never repeating the one passed.
 // gh is in the registry but no install gap names it, so it is refused too: a
 // flag that would be accepted and then do nothing is a silent no.
 func TestInstallToolRefusesAnUnknownName(t *testing.T) {
@@ -88,10 +89,13 @@ func TestInstallToolRefusesAnUnknownName(t *testing.T) {
 		if err == nil {
 			t.Fatalf("--install-tool %s was accepted", name)
 		}
-		for _, want := range append([]string{name}, ahoy.DependencyTools...) {
+		for _, want := range append([]string{"--install-tool name"}, ahoy.DependencyTools...) {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("refusal lacks %q: %v", want, err)
 			}
+		}
+		if strings.Contains(err.Error(), "frobnicate") || strings.Contains(err.Error(), `"gh"`) {
+			t.Errorf("refusal repeats the name passed: %v", err)
 		}
 	}
 }

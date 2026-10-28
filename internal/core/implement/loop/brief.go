@@ -28,6 +28,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The files of a lane's directory, .abcd/.work.local/run/<run-id>/<lane-id>/.
@@ -70,7 +71,7 @@ var adrCiteRe = regexp.MustCompile(`\badr-[0-9]+\b`)
 // The lane id is held to the loop's shape before a path is built from it.
 func laneRel(runID, laneID string, stage Stage) (string, error) {
 	if !ValidRunID(runID) || !ValidLaneID(laneID) {
-		return "", refuse(string(stage), "", "", fmt.Sprintf("%q of %q is not a lane the loop opened, so no lane path is built from it", laneID, runID),
+		return "", refuse(string(stage), "", "", fmt.Sprintf("the lane named (%s) of the run named (%s) is not a lane the loop opened, so no lane path is built from it", termsafe.DescribeRefused(laneID), termsafe.DescribeRefused(runID)),
 			"the loop names its runs and lanes; restore the run's state file")
 	}
 	return runRel(runID) + "/" + laneID, nil

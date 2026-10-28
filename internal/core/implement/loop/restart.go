@@ -36,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The aside a restart saves, under the lane's directory of the run:
@@ -233,7 +234,7 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		i := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID })
 		if i < 0 {
-			return false, refuse(stageRestart, "", "", fmt.Sprintf("%s has no lane %q", st.RunID, laneID),
+			return false, refuse(stageRestart, "", "", fmt.Sprintf("%s has no lane of the name given (%s)", st.RunID, termsafe.DescribeRefused(laneID)),
 				"name a lane `abcd implement status` lists; nothing was changed")
 		}
 		lane := st.Lanes[i]
