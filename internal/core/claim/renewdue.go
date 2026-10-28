@@ -29,9 +29,9 @@ const pushedRelDir = stateRelDir + "/pushed"
 const renewLockRel = stateRelDir + "/renew.lock"
 
 // renewLockWait bounds how long a pass waits for a sibling's to end. A pass is
-// a few pushes, each bounded by the network timeout, so a sibling still holding
-// the lock past this is stuck (a stopped process, say): this pass renews
-// nothing and answers ErrRenewalBusy, so a due reservation never lapses unsaid.
+// usually a few seconds of pushes; a sibling holding the lock past this is slow
+// (a stalled network) or stopped, and either way this pass renews nothing and
+// answers ErrRenewalBusy, so a due reservation never lapses unsaid.
 var renewLockWait = 2 * time.Minute
 
 // ErrRenewalBusy is RenewDue's answer when another pass in the same copy held

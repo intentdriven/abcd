@@ -12,9 +12,9 @@ import (
 )
 
 // GoRunModule reports the module path of the running binary when it is a
-// `go run` build of that module's abcd command: go compiles it from the
-// working tree into a temporary go-build directory and runs it once, so it is
-// built from the tree as it stands and is never older than its source. Such a
+// `go run` build of that module's abcd command: go builds it from the working
+// tree as it stands, reusing its build cache's copy when nothing changed, and
+// runs it, so it is never older than its source. Such a
 // build carries no vcs.revision (go run never stamps one), which is why it
 // reads Unknown to Compare; GoRunModule is what lets a caller tell it apart
 // from a real unstamped binary (iss-2610240824047504). ok is false for any

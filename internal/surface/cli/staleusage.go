@@ -34,8 +34,12 @@ import (
 //
 // staleUsageNote adds one sentence to that error, derived only from what the
 // binary can prove on disk (adr-38: no network on any path the user did not
-// ask to reach the network). Three sources, in order of strength:
+// ask to reach the network). Its sources, in order of strength:
 //
+//  0. A build scripts/abcd left in a checkout's local tier and ran directly is
+//     judged first by that checkout's own command pages: one documenting what
+//     the binary refused proves it is behind the tree, and it is sent to the
+//     script.
 //  1. The command surface beside the plugin root documents the very verb (or
 //     flag) the binary refused. That is direct evidence the surface is newer
 //     than the binary, and the remedy follows where the binary sits: a source

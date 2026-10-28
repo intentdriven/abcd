@@ -11,7 +11,8 @@ import (
 )
 
 // TestGoRunModuleOf: only a development build of the module's cmd/abcd, with
-// no revision stamped, run from a go-build work directory, is a go run build.
+// no revision stamped, run from where go run runs it (its work directory's
+// link, or the build cache's copy), is a go run build.
 func TestGoRunModuleOf(t *testing.T) {
 	const mod = "github.com/intentdriven/abcd"
 	goRunExe := "/var/folders/xy/T/go-build1234/b001/exe/abcd"
