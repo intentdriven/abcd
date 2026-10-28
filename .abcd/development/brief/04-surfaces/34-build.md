@@ -535,7 +535,8 @@ recorded in the run record. The setup diagnostic about a role's configured
 route is not said for a role the override replaces, since it would contradict
 what then runs. The role's receipt carries the override verbatim
 (`route.override`, state schema version 16), in the state and in the record's
-line. The claude runner stays bare, on an API key alone, and a person
+line. A route that falls back to the host leaves no route on the receipt: the
+fallback receipt names the runner it asked, not the override. The claude runner stays bare, on an API key alone, and a person
 whose account is a subscription runs the role in their own session. The
 opencode runner is sealed against the repository it runs in (ruling OC1): no
 external plugins, and its project configuration, its compatibility reading of

@@ -58,15 +58,15 @@ const drainLockRel = RunRelDir + "/drain.lock"
 // route: a judgement's route carries the pin and sealed configuration's
 // SHA-256 of a pinned opencode run (`provider_pin`, `pin_config_sha256`), a
 // route to a model on this machine its local pin, what its server reported
-// and that it is local (`local_pin`, `local_served`, `local`), and a route
-// the person's --route flag chose that flag's text (`override`), as the run
-// state's version 16 does. Version 1 is its strict subset, read as a drain
-// whose judge was pointed at no pin and routed by no flag, and written back
-// at version 2; a file of version 1 carrying any of them is not one its
-// version wrote, and is refused naming the key. v0.15.1 reads no version
-// first, so it refuses a version-2 file as one that does not parse; releases
-// after it that write version 1 refuse it as a newer abcd's before any
-// strict decode.
+// and that it is local (`local_pin`, `local_served`, `local`), and the
+// route record's `override`, as the run state's version 16 does. The field
+// comes with the route record the two share; no drain flag sets it. Version
+// 1 is its strict subset, read as a drain whose judge was pointed at no pin
+// and carries no override, and written back at version 2; a file of version
+// 1 carrying any of them is not one its version wrote, and is refused naming
+// the key. v0.15.1 reads no version first, so it refuses a version-2 file as
+// one that does not parse; releases after it that write version 1 refuse it
+// as a newer abcd's before any strict decode.
 const DrainSchemaVersion = 2
 
 // drainSchemaVersionUnpinned is the drain state's version before a judge

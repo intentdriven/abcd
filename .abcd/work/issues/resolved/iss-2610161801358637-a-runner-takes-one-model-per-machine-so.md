@@ -14,7 +14,7 @@ related_intents: [itd-2610161733316518]
 resolution: "abcd implement step takes --route <role>=runner:<name>[@<provider>/<model>], the route override's runner rung: for that step it runs the role on the named runner and allowlisted model, refusing an unknown or disabled runner and an unlisted model before anything is written, and records the --route in the role's receipt"
 impact: additive
 resolved_by:
-  commit: "cad52f01d"
+  commit: "ff77a8730"
 ---
 
 A runner takes one model per machine, so a model matrix cannot be configured: internal/core/runner/config.go keeps a single Model per enabled runner, readable only from the machine layer, and roles name runners rather than models. Building one intent with several opencode-served models, or reviewing it with several runner-served reviewers, would mean rewriting the person's machine file between copies, and two copies could never run at once. itd-2610161733316518 needs it.

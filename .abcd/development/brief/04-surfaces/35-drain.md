@@ -441,7 +441,8 @@ its own lock, so two drains never open two lanes. A drain state of a later
 schema version is a newer abcd's: it is refused as that before it is strictly parsed,
 and the person is told to run the newer abcd and not to remove the file, which
 holds that drain. The state is at its second schema version, which added the
-pins, the local flag and the person's override a routed judge's route records;
+pins, the local flag and the override field a routed judge's route record
+shares with the run state's (no drain flag sets an override);
 a first-version state is read as the second's strict subset and written back at
 the second, and one that carries any of those fields is refused naming the
 field, which the first version never wrote. A drain that has ended is

@@ -300,6 +300,8 @@ whether the role is handed out is known only after the landing moves: a
 configured route (the repository keeping it on the host) is not printed for a
 role the `--route` replaces. The role's receipt in the run's state carries the
 `--route` verbatim as `route.override`, which is state schema version 16's.
+When the runner falls back to the host, the fallback receipt names the runner
+asked and the `--route` text is not recorded.
 The runner's receipt is verified by the stage's own verifier: a verified one
 completes the stage in the same call, and the result's `route` names the runner
 that ran it. A runner that is absent, refuses, fails, runs past its time or
