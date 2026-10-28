@@ -63,8 +63,10 @@ type Sides struct {
 	// LocalPin is the local pin of a run routed to a model on this machine
 	// (oracle.LocalPin, iss-2610161734428291), and LocalServed what the
 	// server reported when it was probed before the run; both absent on any
-	// other route. PinConfigSHA256 is then the sealed configuration that
-	// pointed opencode at the probed server.
+	// other route. LocalServed describes the probe, not the run: opencode
+	// can still be pointed at another server (askedUnpinned), so the local
+	// fields stay not verified. PinConfigSHA256 is then the sealed
+	// configuration that pointed opencode at the probed server.
 	LocalPin    *oracle.LocalPin    `json:"local_pin,omitempty"`
 	LocalServed *oracle.LocalServed `json:"local_served,omitempty"`
 	// Local says the route's provider is a block on this machine, so the

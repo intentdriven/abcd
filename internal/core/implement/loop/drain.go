@@ -61,8 +61,9 @@ const drainLockRel = RunRelDir + "/drain.lock"
 // version 16 does. Version 1 is its strict subset, read as a drain whose
 // judge was pointed at no pin and written back at version 2; a file of
 // version 1 carrying any of them is not one its version wrote, and is
-// refused naming the key. Releases that write version 1 (v0.15.1) refuse a
-// version-2 file as a newer abcd's before any strict decode.
+// refused naming the key. v0.15.1 reads no version first, so it refuses a
+// version-2 file as one that does not parse; releases after it that write
+// version 1 refuse it as a newer abcd's before any strict decode.
 const DrainSchemaVersion = 2
 
 // drainSchemaVersionUnpinned is the drain state's version before a judge
