@@ -184,6 +184,12 @@ Add a worktree in this repository's lane of the worktree store: Writes the workt
       --branch string   check out this existing local branch instead of making a new one
 ```
 
+**Example:**
+
+```
+abcd ahoy worktree add example-lane
+```
+
 ##### `abcd ahoy worktree list`
 
 List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.

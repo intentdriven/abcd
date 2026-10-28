@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	store "github.com/intentdriven/abcd/internal/core/ahoy/worktree"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -382,7 +383,7 @@ func TestAFailedReclaimIsAFaultNotAKeep(t *testing.T) {
 			}
 			// The last check before removal: the entry is written, and its
 			// parent is made read-only so taking it back fails.
-			dirs, _ := filepath.Glob(filepath.Join(home, ".abcd.noindex", "notes", "*"))
+			dirs, _ := filepath.Glob(abcdhome.Path(home, "notes", "*"))
 			for _, d := range dirs {
 				if err := os.Chmod(d, 0o500); err != nil {
 					t.Fatal(err)
