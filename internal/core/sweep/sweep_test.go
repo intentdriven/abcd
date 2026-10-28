@@ -499,6 +499,16 @@ func TestAFailedProcessCheckKeepsEveryWorktreeAndSaysSoOnce(t *testing.T) {
 		}
 		kept(t, rowFor(t, res, "one"), "reservations unread")
 	})
+
+	t.Run("build runs unread", func(t *testing.T) {
+		o := sweepOpts()
+		o.Probe.RunsUnread = "permission denied"
+		res := dryRun(t, repo, o)
+		if res.RunsUnread != "permission denied" || countContaining(res.Notes(), "build runs unread") != 1 {
+			t.Fatalf("result %+v; want the unread build runs named once at the top", res)
+		}
+		kept(t, rowFor(t, res, "one"), "build runs unread: permission denied")
+	})
 }
 
 func countContaining(lines []string, sub string) int {

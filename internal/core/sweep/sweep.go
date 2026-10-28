@@ -116,6 +116,7 @@ func judgeRepo(ctx context.Context, repoRoot string, o Options) (Result, []store
 		Rows:                    make([]Row, 0, len(listing.Worktrees)),
 		ProcessCheckUnavailable: clean(p.ProcessCheckUnavailable()),
 		ReservationsUnread:      clean(p.ReservationsUnread()),
+		RunsUnread:              clean(p.runsUnread),
 		ForgeNote:               listing.ForgeNote,
 	}
 	for _, r := range listing.Worktrees {

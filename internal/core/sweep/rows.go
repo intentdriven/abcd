@@ -95,9 +95,9 @@ const (
 	ExitRefused = 2
 )
 
-// Result is one sweep's answer. The process check and the reservation read
-// each fail closed, holding every worktree; when either could not be made, the
-// result says so once, here, as well as on every row it holds.
+// Result is one sweep's answer. The process check, the reservation read and
+// the build-run read each fail closed, holding every worktree; when one could
+// not be made, the result says so once, here, as well as on every row it holds.
 type Result struct {
 	// Lane is the repository's lane in the worktree store, home-redacted.
 	Lane string `json:"lane,omitempty"`
@@ -107,6 +107,8 @@ type Result struct {
 	// ReservationsUnread is why the reservations cannot show that nothing is
 	// reserved.
 	ReservationsUnread string `json:"reservations_unread,omitempty"`
+	// RunsUnread is why the build runs could not be read.
+	RunsUnread string `json:"runs_unread,omitempty"`
 	// ForgeNote is the store's note that no forge answered.
 	ForgeNote string `json:"forge_note,omitempty"`
 	// Refusal is why the run refused or faulted; "" when it completed.
@@ -125,6 +127,9 @@ func (r Result) Notes() []string {
 	}
 	if r.ReservationsUnread != "" {
 		out = append(out, "reservations unread: "+r.ReservationsUnread)
+	}
+	if r.RunsUnread != "" {
+		out = append(out, "build runs unread: "+r.RunsUnread)
 	}
 	if r.ForgeNote != "" {
 		out = append(out, r.ForgeNote)

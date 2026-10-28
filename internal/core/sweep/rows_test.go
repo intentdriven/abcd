@@ -42,9 +42,11 @@ func TestNotesSayEachFailedCheckOnce(t *testing.T) {
 	if n := (Result{}).Notes(); len(n) != 0 {
 		t.Fatalf("Notes() = %q; want none when every check was made", n)
 	}
-	r := Result{ProcessCheckUnavailable: "lsof timed out after 5s", ReservationsUnread: "no fetch is stamped", ForgeNote: "no forge answered"}
+	r := Result{ProcessCheckUnavailable: "lsof timed out after 5s", ReservationsUnread: "no fetch is stamped",
+		RunsUnread: "permission denied", ForgeNote: "no forge answered"}
 	got := r.Notes()
-	want := []string{"process check unavailable: lsof timed out after 5s", "reservations unread: no fetch is stamped", "no forge answered"}
+	want := []string{"process check unavailable: lsof timed out after 5s", "reservations unread: no fetch is stamped",
+		"build runs unread: permission denied", "no forge answered"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("Notes() = %q; want %q", got, want)
 	}
