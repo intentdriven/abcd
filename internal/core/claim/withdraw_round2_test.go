@@ -136,7 +136,7 @@ func TestALapsedReleaseEndsForItsHolderAndReArmsWhatItWithdrew(t *testing.T) {
 	}
 	var lapsed []string
 	for _, c := range f.posted() {
-		if strings.Contains(c, "re-armed") {
+		if strings.Contains(c, "is re-armed;") {
 			lapsed = append(lapsed, c)
 		}
 	}
