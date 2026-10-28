@@ -278,7 +278,7 @@ func Resolve(home, cwd string) Plan {
 		return Plan{Checkout: c, Notes: []string{"abcd dogfood: IGNORED " + abcdhome.Display("dogfood", root) +
 			" — it is not this account's alone (a directory in it is not a real directory this account owns, or others can write it); the installed release runs"}}
 	}
-	rec, recNote := readTip(home, root, TipName(c.URL, c.Branch))
+	rec, recNote := readTip(home, root, tipName(c.URL, c.Branch))
 	current := rec != nil && rec.URL == c.URL && rec.Branch == c.Branch
 	due := !current || rec.Tracking != c.Tracking || now().Sub(rec.Checked) >= recheckAfter || rec.Checked.After(now())
 	running := building(storeAbs)
@@ -625,7 +625,7 @@ func readTip(home, rootSHA, name string) (*tipRecord, string) {
 // writeTip replaces the store's record through fsutil.WriteFileAtomic, so a
 // reader sees the old record or the new one, never part of either.
 func writeTip(storeAbs string, rec tipRecord) error {
-	name := TipName(rec.URL, rec.Branch)
+	name := tipName(rec.URL, rec.Branch)
 	body, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {
 		return err
@@ -1299,18 +1299,22 @@ func short(sha string) string {
 	return sha
 }
 
-// TipName is the store's record of the last check of the remote url and
+// tipName is the store's record of the last check of the remote url and
 // branch a line declares, beside the builds it chooses between. The store is
 // keyed on the repository's root commit, which two clones of one repository
 // share, so each declaration keeps its own record: one record for both had
 // two clones declared with different branches overwrite each other's, and
 // neither ever settled.
-func TipName(url, branch string) string {
+func tipName(url, branch string) string {
 	sum := sha256.Sum256([]byte(url + "\t" + branch))
 	return tipFilePrefix + hex.EncodeToString(sum[:8]) + ".json"
 }
 
-// tipFilePrefix starts every verified-tip record's file name (TipName).
+// TipNameForTest names the verified-tip record of url and branch, for a test
+// outside the package that plants one.
+func TipNameForTest(url, branch string) string { return tipName(url, branch) }
+
+// tipFilePrefix starts every verified-tip record's file name (tipName).
 const tipFilePrefix = "verified-tip-"
 
 // storeRefused reports whether a level of the repository's store that exists

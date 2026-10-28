@@ -332,7 +332,7 @@ func TestDogfoodBinaryVerb(t *testing.T) {
 		}
 		rec := fmt.Sprintf(`{"commit":%q,"url":%q,"branch":"main","tracking":%q,"checked":%q}`,
 			tip, dogfoodForgeURL, tip, time.Now().UTC().Format(time.RFC3339Nano))
-		if err := os.WriteFile(filepath.Join(store, dogfood.TipName(dogfoodForgeURL, "main")), []byte(rec), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(store, dogfood.TipNameForTest(dogfoodForgeURL, "main")), []byte(rec), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		out.Reset()
