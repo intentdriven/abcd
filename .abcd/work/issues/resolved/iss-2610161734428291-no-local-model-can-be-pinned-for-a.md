@@ -14,7 +14,7 @@ related_intents: [itd-2610161733316518]
 resolution: "A block on this machine takes a local pin per model (runtime, version, weights digest, quantisation, context length, KV-cache type, and on llama.cpp the GGUF file's name, since llama-server reports no digest); the server is probed before a pinned route is used (before every runner run; a self-contained call reuses a report the pin held for a minute at most, never a refused one) and a mismatch, or a tool-using route the server cannot hold, is refused naming the fix; the record carries the pin and the server's report (the KV-cache type, which no runtime reports, listed not verified), and opencode runs against a sealed config naming the probed server. Tested against httptest fakes of Ollama, llama-server and mlx_lm.server only; a live probe against a real local server is owed."
 impact: additive
 resolved_by:
-  commit: "46c81d7c4"
+  commit: "541b9c3c9"
 ---
 
 No local model can be pinned for a tool-using build role. Nothing records the weight file's sha256 or Hugging Face revision, the quantisation, the runtime and its version, or the served context length, and the known traps go unchecked:
