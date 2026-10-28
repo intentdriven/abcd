@@ -200,8 +200,8 @@ func stopBlockCap(stderr io.Writer) int {
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n <= 0 {
-		diagnosticLine(stderr, "abcd stop: %s=%q is not a positive number; counting to the host's default of %d",
-			stopBlockCapEnv, termsafe.CleanProseLine(raw, 32), autonomy.DefaultBlockCap)
+		diagnosticLine(stderr, "abcd stop: %s is set to %s, which is not a positive number; counting to the host's default of %d",
+			stopBlockCapEnv, termsafe.DescribeRefused(raw), autonomy.DefaultBlockCap)
 		return 0
 	}
 	return n

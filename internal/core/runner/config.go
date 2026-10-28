@@ -73,8 +73,17 @@ type RunnerConfig struct {
 	Name string
 	// Model is the admitted <provider>/<model> route, "" for the harness's own
 	// default.
-	Model  string
-	Origin string
+	Model string
+	// Pin is the machine's pin for that model on that provider
+	// (oracle.Pin), nil when it sets none; the opencode runner holds a run
+	// to it.
+	Pin *oracle.Pin
+	// Local says the model's provider is a block on this machine, and
+	// LocalPin is the machine's local pin for the model, nil when it sets
+	// none (oracle.LocalPin): opencode is held to it after a probe.
+	Local    bool
+	LocalPin *oracle.LocalPin
+	Origin   string
 }
 
 // Config is the runner configuration one invocation read.
@@ -159,6 +168,14 @@ func (c *Config) readRunners(s *layered.Stack) error {
 				return fmt.Errorf("runner: %s is %q, %w", where, layered.BoundKey(text), err)
 			}
 			rc.Model = text
+			provider, model, _ := strings.Cut(text, "/")
+			if pin, ok := c.api.PinFor(provider, model); ok {
+				rc.Pin = &pin
+			}
+			rc.Local = c.api.IsLocal(provider)
+			if pin, ok := c.api.LocalPinFor(provider, model); ok {
+				rc.LocalPin = &pin
+			}
 		}
 		c.runners[n] = rc
 	}
@@ -342,7 +359,23 @@ func (c *Config) Quota(ctx context.Context, name string) (Quota, bool, error) {
 // adapter builds the enabled runner's adapter.
 func (c *Config) adapter(rc RunnerConfig) Runner {
 	if rc.Name == OpenCode {
-		return newOpenCode(rc.Model)
+		o := newOpenCode(rc.Model)
+		o.pin, o.local, o.localPin = rc.Pin, rc.Local, rc.LocalPin
+		if rc.LocalPin != nil {
+			provider, model, _ := strings.Cut(rc.Model, "/")
+			if p, ok := c.api.Provider(provider); ok {
+				o.localBase = p.BaseURL
+			}
+			// Every role a runner runs is a tool-using one, so the probe holds
+			// the server to tool calls and a context it can say it serves.
+			o.probe = func(ctx context.Context) (*oracle.LocalServed, error) {
+				_, served, err := c.api.ProbeLocal(ctx, nil, provider, model, true)
+				return served, err
+			}
+		}
+		return o
 	}
-	return newClaude(rc.Model)
+	cl := newClaude(rc.Model)
+	cl.local, cl.pinned = rc.Local, rc.Pin != nil || rc.LocalPin != nil
+	return cl
 }
