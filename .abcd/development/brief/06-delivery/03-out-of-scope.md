@@ -144,6 +144,13 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610100704270254` — An abcd run sets how many sub-agents it keeps alive by the models they run on
 - `itd-2610110940216682` — Every change is checked in full once, on exactly what lands
 - `itd-2610111655362931` — On the dashboard, the product thinker and facilitator review memory notes and promote the ones worth keeping
+- `itd-2610141646126492` — A librarian turns sources into a quoted reading pack
+- `itd-2610141646452213` — Ideate starts from a source through the librarian
+- `itd-2610141646456128` — A private ideate verdict stays private
+- `itd-2610141646463379` — A reviewer's extra check must name what it protects
+- `itd-2610141646467500` — Ingested pages stay private until a person promotes them
+- `itd-2610141646469491` — A cheap watcher wakes an agent only when something needs action
+- `itd-2610142116477426` — A research question becomes a shared, citable note
 - `itd-2610161647248332` — abcd finds out what the forge can do before choosing a route
 - `itd-2610161710315026` — Unattended runs reach only a declared list of hosts
 - `itd-2610161710316538` — Drains and builds a person's session drives report how isolated they were
