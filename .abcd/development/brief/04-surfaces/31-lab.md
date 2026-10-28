@@ -105,7 +105,12 @@ The **retraction sweep** reads every correction the lab recorded and searches
 the lab's own documents for its literal — the pattern, not the instance —
 listing every file and line where it still stands. The snapshot, the lab's
 HOME and binaries, transcripts and each probe's five capture files are not
-swept: they are the world and the instruments, not claims. A probe's
+swept: they are the world and the instruments, not claims. Nor are the
+records a procedure writes under `state/matrix/` (a matrix run's declaration,
+run and trial records): they are what a run was given and measured, never
+rewritten, so a retraction swept into one could never be applied. Only a
+regular file a procedure could have written there, within the size it writes,
+is passed over; anything else there is swept like any document. A probe's
 `record.md` is prose the harvest cites, and is swept. The sweep is fail-closed:
 a document it cannot read — larger than it reads, binary (a NUL byte in its
 head), or not a regular file — is listed by path, and while any correction is

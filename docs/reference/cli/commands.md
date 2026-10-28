@@ -3632,7 +3632,10 @@ names a literal that must be absent from the lab's own documents; the sweep
 searches them all for it — the pattern, not the instance — and lists every
 place it still stands. The snapshot, the lab's HOME and binaries, transcripts
 and each probe's five capture files are not swept: they are the world and the
-instruments, not claims; a probe's record.md is prose, and is swept. The
+instruments, not claims. Nor are the records a procedure writes under
+state/matrix/ (a matrix run's declaration, run and trial records), which are
+what a run was given and measured; any other file there is swept. A probe's
+record.md is prose, and is swept. The
 result is written to state/sweep.md. An unapplied correction, one too short
 to mean anything, or — while any correction is recorded — a document the
 sweep could not read (too large, binary, or not a regular file; each listed

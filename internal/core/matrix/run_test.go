@@ -48,6 +48,48 @@ var (
 	hex64 = func(c string) string { return strings.Repeat(c, 64) }
 )
 
+// fixtureRoutes are goodDeclaration's runner routes, by their cell's index in
+// inputs.
+var fixtureRoutes = map[int]string{1: "builder=runner:opencode@openrouter/vendor/model", 2: "reviewer=runner:opencode@local/qwen"}
+
+// remodel points cell i's declared route and its pin at model together, on the
+// route's provider, so the pin still agrees with its route.
+func remodel(in *runInputs, i int, model string) {
+	route := fixtureRoutes[i]
+	head, provider, _ := strings.Cut(route, "@")
+	provider, _, _ = strings.Cut(provider, "/")
+	in.Declaration = []byte(strings.Replace(string(in.Declaration), route, head+"@"+provider+"/"+model, 1))
+	in.Cells[i].Model = provider + "/" + model
+}
+
+// A pin is held to what its cell's declared route fixes: a route naming a
+// model is never pinned host, the host leg is never pinned anything else, and
+// a runner route is pinned on its own runner and model (dcn-2610280629294458).
+func TestACellPinThatDisagreesWithItsRouteIsRefused(t *testing.T) {
+	for name, tc := range map[string]struct {
+		mutate func(*runInputs)
+		want   string
+	}{
+		"a provider route pinned host": {func(in *runInputs) {
+			in.Cells[1].Source, in.Cells[1].ProviderPin = SourceHost, nil
+		}, "names the host as its source"},
+		"the host leg pinned openrouter": {func(in *runInputs) {
+			in.Cells[0].Source, in.Cells[0].Model = SourceOpenRouter, "openrouter/vendor/model"
+			in.Cells[0].ProviderPin = &ProviderPin{Order: []string{"provider-a"}}
+		}, "the route is the host's"},
+		"another runner": {func(in *runInputs) { in.Cells[2].Runner = "claude" }, "names runner opencode"},
+		"another model":  {func(in *runInputs) { in.Cells[1].Model = "openrouter/vendor/other" }, "names the model openrouter/vendor/model"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			in := inputs(t)
+			tc.mutate(&in)
+			if _, err := newRunRecord(in); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("newRunRecord = %v; want a refusal saying %q", err, tc.want)
+			}
+		})
+	}
+}
+
 // inputs is a complete run's inputs: every hash given, every cell pinned.
 func inputs(t *testing.T) runInputs {
 	t.Helper()
@@ -66,10 +108,10 @@ func inputs(t *testing.T) runInputs {
 		Machine:               Machine{OS: "darwin", Arch: "arm64", Cores: 12},
 		Cells: []CellPin{
 			{Cell: "host-big", Role: RoleBuilder, Source: SourceHost, Runner: "host"},
-			{Cell: "or-cheap", Role: RoleBuilder, Source: SourceOpenRouter, Runner: "opencode", Model: "vendor/model",
+			{Cell: "or-cheap", Role: RoleBuilder, Source: SourceOpenRouter, Runner: "opencode", Model: "openrouter/vendor/model",
 				HarnessVersion: "1.2.3", HarnessDefault: []string{"top_p"},
 				ProviderPin: &ProviderPin{Order: []string{"provider-a"}, AllowFallbacks: false}},
-			{Cell: "local-rev", Role: RoleReviewer, Source: SourceLocal, Runner: "opencode", Model: "qwen", HarnessVersion: "1.2.3",
+			{Cell: "local-rev", Role: RoleReviewer, Source: SourceLocal, Runner: "opencode", Model: "local/qwen", HarnessVersion: "1.2.3",
 				LocalPin: &LocalPin{Runtime: "llama-server", RuntimeVersion: "b6000", WeightsSHA256: hex64("7"), Quantisation: "Q4_K_M"}},
 		},
 	}
@@ -230,7 +272,7 @@ func TestTheRunRecordIsRefusedWhatItCannotStandOn(t *testing.T) {
 				in.HiddenTests = append(in.HiddenTests, in.HiddenTests[0])
 			}
 		},
-		"escape in a model":  func(in *runInputs) { in.Cells[1].Model = "vendor/\u200bmodel" },
+		"escape in a model":  func(in *runInputs) { remodel(in, 1, "vendor/\u200bmodel") },
 		"local cell, no cap": func(in *runInputs) { in.Declaration = noLoadCap() },
 	}
 	for name, mutate := range cases {
@@ -567,8 +609,8 @@ func TestARunIsRefusedAnotherBinaryOrAnotherDeclaration(t *testing.T) {
 // is refused whole, with nothing written.
 func TestARunCarryingACredentialOrAHomePathIsRefusedUnwritten(t *testing.T) {
 	for name, mutate := range map[string]func(*runInputs){
-		"a token as a model":     func(in *runInputs) { in.Cells[1].Model = "ghp_" + testsecret.Synthetic(7, 36) },
-		"a home path in a model": func(in *runInputs) { in.Cells[2].Model = "file:/Users/alice/models/qwen.gguf" },
+		"a token as a model":     func(in *runInputs) { remodel(in, 1, "ghp_"+testsecret.Synthetic(7, 36)) },
+		"a home path in a model": func(in *runInputs) { remodel(in, 2, "file:/Users/alice/models/qwen.gguf") },
 		"the home in a route": func(in *runInputs) {
 			in.Declaration = []byte(strings.Replace(goodDeclaration, "reviewer=runner:opencode@local/qwen",
 				"reviewer=runner:opencode@local"+os.Getenv("HOME")+"/models/qwen", 1))
@@ -714,7 +756,7 @@ func TestARunTheAugmenterFlagsIsRefusedUnwritten(t *testing.T) {
 	const flagged = "zq7flaggedvalue9"
 	root, home, m, in := matrixLab(t)
 	t.Cleanup(scanner.SetDefaultAugmenter(func(string) scanner.Augmenter { return fakeAugmenter{flag: flagged} }))
-	in.Cells[1].Model = "vendor/" + flagged
+	remodel(&in, 1, "vendor/"+flagged)
 	rec, err := newRunRecord(in)
 	if err != nil {
 		t.Fatal(err)
