@@ -54,9 +54,9 @@
   // the workflow file as it exists on the ref it runs from, so any other branch
   // or a tag is refused, while `main` is the reviewed state. Both legitimate
   // paths run from it: the release path's ref is refs/heads/main, and the
-  // emergency redeploy is dispatched from `main`. Residual, plainly: whoever can merge to main can change
-  // the workflow and have it run with these secrets — the repository's ordinary
-  // review boundary, not a new surface.
+  // emergency redeploy is dispatched from `main`. Residual, plainly: whoever
+  // can merge to main can change the workflow and have it run with these
+  // secrets — the repository's ordinary review boundary, not a new surface.
   //
   // `site-render` holds no secret but is still gated, because the render job
   // signs artefacts and replaces a release asset; gating it after the fact, at

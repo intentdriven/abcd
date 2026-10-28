@@ -109,10 +109,10 @@ decision amends adr-19 and adr-20 accordingly.
   release, and nothing else can install because the digest refuses other bytes.
   It cannot be closed from the release side (the pin must be in the tagged tree),
   so it is documented in `release.yml` and the release-day guide and kept short:
-  the release follows the merge with no approval step
+  The release follows the merge with no approval step
   ([ADR-2610281718537125](2610281718537125-a-release-publishes-with-no-approval.md)),
-  and where an environment carries a reviewer, by approving the release
-  deployment promptly.
+  and where the environment carries a reviewer, that reviewer approves the
+  release deployment promptly.
 - **A pin the release cannot reproduce is refused before the tag** on the
   auto-release path: `auto-release.yml`'s `detect` job renders the archive from
   the pushed commit and verifies the pin, and that the pinned address is the

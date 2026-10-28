@@ -99,8 +99,9 @@ name: site
 # production token, silently. Distinct names make that misconfiguration fail loudly
 # instead. Be honest about the limit of this: Cloudflare API tokens scope to a Worker,
 # not to a verb, so the preview token could technically run `deploy` against the same
-# Worker. The real controls are the named-secret split above and the tag-restricted
-# production environment — not any property of the token itself.
+# Worker. The real controls are the named-secret split above and the `main`-only
+# deployment policy on the production environment — not any property of the token
+# itself.
 on:
   workflow_call:
     inputs:
@@ -710,7 +711,7 @@ jobs:
     if: ${{ needs.render.outputs.draft == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # The same {main, v*} gate as `render`: this job writes to a Release.
+    # The same `main`-only gate as `render`: this job writes to a Release.
     environment: site-render
     permissions:
       contents: write       # publish the draft Release (no branch push)

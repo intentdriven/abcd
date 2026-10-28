@@ -179,7 +179,8 @@ deployment environment the release job runs in (`release`, in abcd's own
 workflow) pauses the run here. The reviewer requirement lives in
 the repository's environment settings rather than in a workflow file, and the
 scaffold-parity test fails any edit that drops the `environment:` binding from
-the job.
+abcd's own job. A managed repository's release workflow binds no environment
+until it adds one, so a reviewer alone pauses nothing there.
 
 **With no reviewer**, the run goes straight on from `verify` to publishing.
 There is nothing to approve, and the next thing to do is step 7.
