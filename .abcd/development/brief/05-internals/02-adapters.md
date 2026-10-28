@@ -258,7 +258,9 @@ review is skipped.
 - **The command-line runner** (`internal/core/runner`, itd-2609201916056194)
   starts a model CLI, `claude` or `opencode`, as a subprocess for a role that
   `roles.<role>.runner` routes to it. The opt-in is that key in
-  `~/.abcd.noindex/config.json`; the route, the sealing and the fallback are in
+  `~/.abcd.noindex/config.json`, or for one step the person's own
+  `abcd implement step --route <role>=runner:<name>[@<provider>/<model>]`,
+  which also picks the model; the route, the sealing and the fallback are in
   [`34-build.md`](../04-surfaces/34-build.md). A claude launch whose role's
   contract grants the shell carries the guard as the harness's permission
   prompt tool, `abcd guard approve` over MCP on stdio, set on that launch's

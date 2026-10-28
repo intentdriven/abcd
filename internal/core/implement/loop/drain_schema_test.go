@@ -213,3 +213,28 @@ func TestAJudgeRouteCarryingTextTheDrainNeverWritesIsRefused(t *testing.T) {
 		})
 	}
 }
+
+// TestADrainJudgeRouteOverrideIsVersionTwos: a judge route's `override` (the
+// --route text that routed it) is version 2's as the pins are, so a version-1
+// drain state carrying it is refused naming it, and a version-2 one reads.
+func TestADrainJudgeRouteOverrideIsVersionTwos(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	root := repo.Root()
+	st := judgedDrain(runner.Sides{})
+	st.Judgements[0].Route.Override = "opencode:qwen3-coder"
+	writeDrainAt(t, root, st, 1)
+	_, _, err := readDrain(root)
+	rf := mustRefusal(t, err)
+	if !strings.Contains(rf.Reason, "schema version 1") || !strings.Contains(rf.Reason, "`override`") ||
+		!strings.Contains(rf.Reason, st.Judgements[0].Issue) {
+		t.Errorf("a version-1 drain state carrying override is refused naming it: %q", rf.Reason)
+	}
+	writeDrainAt(t, root, st, 2)
+	got, _, err := readDrain(root)
+	if err != nil {
+		t.Fatalf("a version-2 drain state carrying override reads: %v", err)
+	}
+	if r := got.Judgements[0].Route; r == nil || r.Override != "opencode:qwen3-coder" {
+		t.Errorf("the judge route's override is kept: %+v", r)
+	}
+}
