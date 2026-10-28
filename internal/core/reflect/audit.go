@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 )
 
@@ -27,7 +28,15 @@ var (
 // A section with other prose — a hand-written audit from before the reviewer
 // existed — counts as audited with no counts. The placeholder the intent
 // template carries and an owed review's marker are not audit notes.
+//
+// An owed review is not audit notes whatever else the section holds: the
+// marker is the record's review state (intent.ReviewStateOf, the one reader
+// of it), and a ruling's amendment note written above it is not an audit
+// (itd-24 criterion 2, iss-2610241431221889).
 func readAuditNotes(text string, it *SeedIntent) {
+	if state, _ := intent.ReviewStateOf(text); state == intent.ReviewOwed {
+		return
+	}
 	_, body := frontmatter.Split(text)
 	lines := strings.Split(body, "\n")
 	mask := mdrecord.Mask(lines)

@@ -112,6 +112,18 @@ func reviewsOf(repoRoot string, corpus Corpus) (ReviewListing, error) {
 	return l, nil
 }
 
+// ReviewStateOf reads the review state and receipt from an intent record's
+// content, by the marker ReviewOf reads: ReviewNone and no receipt when the
+// record carries none. It is for a reader that holds the record's text and
+// not its path in the store, as the retrospective seed does for a record it
+// read from a tag's tree.
+func ReviewStateOf(content string) (state, receipt string) {
+	if rcp, st, ok := existingMarker(content); ok {
+		return st, rcp
+	}
+	return ReviewNone, ""
+}
+
 // ReviewOf reads one intent's review state from its record. The caller decides
 // whether the intent's bucket owes a review; this reads the marker whatever the
 // bucket.
@@ -121,10 +133,8 @@ func ReviewOf(repoRoot string, it Intent) (ReviewEntry, error) {
 		return ReviewEntry{}, err
 	}
 	content := string(data)
-	e := ReviewEntry{IntentID: it.ID, State: ReviewNone}
-	if rcp, state, ok := existingMarker(content); ok {
-		e.State, e.ReceiptID = state, rcp
-	}
+	e := ReviewEntry{IntentID: it.ID}
+	e.State, e.ReceiptID = ReviewStateOf(content)
 	switch e.State {
 	case ReviewOwed, ReviewNone:
 		e.ReEmit = ReEmitCommand(it.ID)
