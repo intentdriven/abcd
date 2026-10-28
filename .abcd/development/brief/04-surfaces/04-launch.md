@@ -815,8 +815,8 @@ it.
 Its release-day runbook walks the two semantic passes, the local gate proof, the
 release pull request and its merge, the automatic tag, the
 build-checksum-attest-publish step, which pauses for an approval only when the
-repository's `release` environment carries a reviewer (abcd's own carries none,
-adr-2610281718537125), the site deploy that follows it in the same run, and the
+repository's `release` environment carries a reviewer (abcd's own is set to
+carry none, adr-2610281718537125), the site deploy that follows it in the same run, and the
 post-release check. What stays a design
 target is abcd's own publishing **automation** (itd-72): the shipped cut
 neither commits, tags, nor publishes, so every step past the changelog heading is

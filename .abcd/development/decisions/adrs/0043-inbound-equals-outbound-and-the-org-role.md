@@ -7,7 +7,7 @@ supersedes: null
 superseded_by: null
 related_intents: [itd-92]
 related_rfcs: [rfc-2]
-related_adrs: [adr-41]
+related_adrs: [adr-41, adr-2610281718537125]
 ---
 
 # ADR-43: Contributions are inbound = outbound MIT, and the trust boundary is the organisation's role ladder
@@ -48,7 +48,7 @@ cites rather than restates (the adr-41 property).
    rulesets are mirrored in-tree under `.abcd/work/rulesets/` (the live-vs-tree
    drift check is itd-92's remit). The required-reviewer clause alone is
    superseded by [ADR-2610281718537125](2610281718537125-a-release-publishes-with-no-approval.md)
-   (2026-10-28): the `release` environment carries no required reviewer, and
+   (2026-10-28): The `release` environment carries no required reviewer, and
    the rest of this point stands.
 
 ## Alternatives Considered

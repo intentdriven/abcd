@@ -19,72 +19,73 @@ publish surface server-side with four things: required checks and the merge
 queue without bypass, code-owner review over the paths that ship behaviour, and
 a required-reviewer environment between merge and release. The last of these
 is the `release` environment's reviewer list: once a merge carrying a dated
-`CHANGELOG.md` version has been tagged and verified
+`CHANGELOG.md` version has been verified and tagged
 ([ADR-37](0037-changelog-driven-releases.md)), the job that builds, attests and
 publishes the release pauses as a pending deployment until a person on that
 list approves it.
 
 In practice the approval has been given by the same person who merged the
-release pull request, or by an autonomous run under a standing ruling, and the
-pause has cost more than it fenced: a cut waits for nobody, a plugin install or
-update fails closed while the catalog on `main` names an archive the
-unpublished release does not yet serve, and an autonomous cut cannot finish
-without a person at the click. The `site` job that deploys the website already
-follows the release on its own, and the `site` environment carries no
-reviewer. On 2026-10-28 the product thinker ruled that publishing a release and
-deploying the site run with no approval step by anyone
-(iss-2610281718353935).
+release pull request, or by an autonomous run under a standing ruling, so it
+has not been an independent check, and the pause has cost more than it fenced:
+A cut waits until someone approves it, and a plugin install or update fails
+closed while the catalog on `main` names an archive the unpublished release does
+not yet serve. The `site` job that deploys the website already follows the
+release on its own, and the `site` environment carries no reviewer. On
+2026-10-28 the product thinker ruled that publishing a release and deploying the
+site run with no approval step by anyone (iss-2610281718353935).
 
 ## Decision
 
 We will run the `release` environment with no required reviewer. A merge that
-carries a dated `CHANGELOG.md` version is tagged, verified, built, attested,
+carries a dated `CHANGELOG.md` version is verified, tagged, built, attested,
 published and deployed with no human step after the merge.
 
-This partly supersedes ADR-43 point 2: the required-reviewer clause only. The
-rest of point 2 stands, and it is now the whole fence on what publishes:
+This partly supersedes ADR-43 point 2: The required-reviewer clause only. The
+rest of point 2 stands, and what is published is decided at the merge to `main`:
 
 - the merge queue and the required checks on `main`, with no bypass;
-- code-owner review over the paths that ship behaviour (`.github/CODEOWNERS`);
-- the `release` environment's deployment policy, which admits only the default
-  branch and `v*` tags. The workflow keeps its `environment: release` binding,
-  so the policy still applies and a repository can still add a reviewer.
+- code-owner review over the paths `.github/CODEOWNERS` names.
 
-The scaffolded release workflow describes the pause as conditional on the
-environment carrying a reviewer, because a managed repository chooses its own
-environment protection; abcd's choice for itself is not imposed on it.
+The workflow keeps its `environment: release` binding, so a reviewer can be put
+back by a setting alone.
+
+The binding and the comment that describes the pause as conditional on a
+reviewer are in abcd's own render of the scaffolded release workflow. A managed
+repository's render binds no environment, so a managed repository that wants a
+pause before publishing adds the binding and a reviewer itself; abcd's choice
+for itself is not imposed on it.
 
 ## Alternatives Considered
 
-- **Keep the required reviewer (the status quo).** Rejected: every cut needs a
+- **Keep the required reviewer (the status quo).** Rejected: Every cut needs a
   person present at the click, the approval has not been an independent check
   in practice, and the install window between merge and publish stays open for
   as long as nobody looks.
-- **A wait timer in place of a reviewer.** Rejected: it delays every release by
+- **A wait timer in place of a reviewer.** Rejected: It delays every release by
   a fixed time without anyone deciding anything in that time, and lengthens the
   window in which an install fails closed.
-- **A machine that approves the deployment.** Rejected: it adds a credential
+- **A machine that approves the deployment.** Rejected: It adds a credential
   that can approve a deployment, which is a new thing to protect, and it is no
   human step either.
-- **Drop the `environment:` binding as well.** Rejected: the binding carries the
-  branch and tag deployment policy, and keeping it lets a repository put a
-  reviewer back by a setting alone.
-- **No reviewer, binding kept (chosen).** Publishing follows the merge; the
-  fence is the merge itself.
+- **Drop the `environment:` binding as well.** Rejected: Keeping it lets a
+  reviewer be put back by a setting alone, with no workflow change.
+- **No reviewer, binding kept (chosen).** Publishing follows the merge.
 
 ## Consequences
 
 - **What is lost.** A merge that carries a dated `CHANGELOG.md` version now
-  publishes without a human step: the tag, the build, the attestation, the
-  published Release and the deployed website all follow from the merge. Anyone
-  who can get a pull request through the merge queue, the required checks and
-  code-owner review can publish a release. The fence is entirely at the merge.
+  publishes without a human step: The tag, the build, the attestation, the
+  published Release and the deployed website all follow from the merge. The
+  review a change receives before it merges is the only review a release
+  receives.
 - The semantic receipt gate of [ADR-52](0052-the-semantic-gate-sits-on-the-wrong-side.md)
-  still runs in the `release` job and can still refuse a release; it now runs
-  straight after `verify`, with no pause before it.
-- The release-day runbook (`commands/launch.md`) has no approval step, and the
-  window in which an install or update fails closed is the length of the
-  pipeline rather than the length of the wait for a person.
+  is unchanged: It runs in `verify`, before the tag, and still refuses a
+  release whose receipts do not pass. The `release` job still signs those
+  receipts as provenance.
+- The release-day runbook (`commands/launch.md`) has no approval step for a
+  repository with no reviewer, and the window in which an install or update
+  fails closed is the length of the run rather than the length of the wait for
+  a person.
 - The live setting is changed on the forge after this record lands; until then
   the environment still carries its reviewer. The forge-settings catalogue
   records no reviewer as the expected value, so a reviewer added back without a

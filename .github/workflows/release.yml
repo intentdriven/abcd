@@ -322,9 +322,8 @@ jobs:
     if: github.event_name != 'workflow_dispatch' && !cancelled() && needs.verify.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
     timeout-minutes: 20
     runs-on: ubuntu-latest
-    # The environment binds this job to its deployment policy, so only the
-    # default branch and v* tags can run it. When the environment carries a
-    # required reviewer, nothing ships until someone approves the pending
+    # The job runs in the `release` environment. When the environment carries
+    # a required reviewer, nothing ships until someone approves the pending
     # deployment; with none, the job runs as soon as verify and the tag are in
     # place. The reviewer is a setting of the repository's environment, not of
     # this file.

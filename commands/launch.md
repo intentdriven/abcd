@@ -84,11 +84,10 @@ what you click, what runs on its own, and where it stops and waits for you. Read
 it if you are cutting a release and are not the person who built the machinery.
 
 Nothing here publishes by accident. The release is decided at the merge, which
-stops for the technical facilitator and is fenced by the required checks, the
-merge queue and code-owner review. Publishing cannot be undone, so a repository
-can add a second stop after the merge: a required reviewer on its `release`
-environment, a deployment gate no merge can bypass. Without one, the run
-publishes as soon as it reaches that step.
+stops for the technical facilitator and passes the required checks and the merge
+queue. Publishing cannot be undone, so a repository can add a second stop after
+the merge: A required reviewer on the deployment environment its release job
+runs in. Without one, the run publishes as soon as it reaches that step.
 
 ### The shape of it
 
@@ -168,12 +167,25 @@ Tell anyone else working in the repository by hand to hold too.
 
 ### Step 5 — the approval gate, when there is one
 
-Step 5 pauses only when the repository's `release` environment carries a
-required reviewer. With none, the run goes straight on from `verify` to
-publishing, there is nothing to approve, and the next thing to do is step 7.
+Step 5 builds four platform binaries stamped with the tag, renders the plugin
+archive (`abcd-plugin-vX.Y.Z.zip`) and proves it is the one the catalog pins,
+checksums exactly those bytes, signs a provenance attestation, creates the
+GitHub Release as a draft with the binaries and the archive attached, and
+verifies the draft's downloads against that attestation. Step 6 then attaches
+the website's archive, checks every asset of the draft again, publishes the
+Release and deploys the website from the tag. It is the step that puts bytes in
+front of the public, so a repository can gate it: A required reviewer on the
+deployment environment the release job runs in (`release`, in abcd's own
+workflow) pauses the run here. The reviewer requirement lives in
+the repository's environment settings rather than in a workflow file, and the
+scaffold-parity test fails any edit that drops the `environment:` binding from
+the job.
 
-With a reviewer, the release pauses a minute or two after the merge. **It will
-not continue until you approve it**, and nothing tells you unless you look.
+**With no reviewer**, the run goes straight on from `verify` to publishing.
+There is nothing to approve, and the next thing to do is step 7.
+
+**With a reviewer**, the release pauses a minute or two after the merge. **It
+will not continue until you approve it**, and nothing tells you unless you look.
 
 Where to look, easiest first:
 
@@ -186,30 +198,22 @@ Where to look, easiest first:
 
 On the run page a banner appears at the top: **"Review pending deployments"**.
 Click it, tick the **release** environment, optionally leave a comment, and click
-**Approve and deploy**.
-
-What you are approving: building four platform binaries stamped with the tag,
-rendering the plugin archive (`abcd-plugin-vX.Y.Z.zip`) and proving it is the one
-the catalog pins, checksumming exactly those bytes, signing a provenance
-attestation, creating the GitHub Release as a draft with the binaries and the
-archive attached, verifying the draft's downloads against that attestation,
-then attaching the website's archive, checking every asset of the draft again,
-publishing the Release and deploying the website from the tag. That is why it is gated — it is the step that puts bytes in front of the
-public. The reviewer requirement itself lives in the repository's environment
-settings rather than in a workflow file, and the scaffold-parity test fails any
-edit that drops the `environment:` binding from the job.
+**Approve and deploy**. What you are approving is everything step 5 and step 6
+do, described above.
 
 **If the banner does not appear**, the run has not reached that job yet. The
 checks before it (`verify`) take a few minutes: they build, test and lint the
 tagged commit. Wait for `verify` to go green.
 
-**Approve promptly.** From the moment the release PR merges, the catalog on `main`
-names this release's archive, and the archive is downloadable only once the
-Release is published, a few minutes after you approve. A plugin install or update in between fails closed — the download is not
-there yet, so the harness refuses and an installed plugin stays on its previous
-release — and nothing else can be installed in its place, because the pinned
-digest refuses any other bytes. The window cannot be closed (the pin has to be in
-the tagged tree, so it lands before the tag), so it is kept short.
+**The install window.** From the moment the release PR merges, the catalog on
+`main` names this release's archive, and the archive is downloadable only once
+the Release is published: with no reviewer, at the end of the run; with one, a
+few minutes after you approve, so approve promptly. A plugin install or update
+in between fails closed — the download is not there yet, so the harness refuses
+and an installed plugin stays on its previous release — and nothing else can be
+installed in its place, because the pinned digest refuses any other bytes. The
+window cannot be closed (the pin has to be in the tagged tree, so it lands
+before the tag), so it is kept short.
 
 ### Step 7 — afterwards, check what you actually got
 
