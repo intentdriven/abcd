@@ -334,13 +334,15 @@ type boardPeersLine struct {
 	IDs  int `json:"ids"`
 }
 
-// boardPeers composes the board's peers member for the checkout containing
-// cwd, or nil: outside a checkout, when the reader fails (said on stderr), and
-// when no peer holds anything that differs here.
-func boardPeers(cwd string, stderr io.Writer) *boardPeersLine {
+// boardScan runs the board's one peers scan for the checkout containing cwd
+// and composes the two members it feeds: the peers member and the worktrees
+// member (spc-2609301811532881), so the store's line costs no second scan.
+// Each is nil outside a checkout and when the reader fails (said on stderr);
+// the peers member is nil when no peer holds anything that differs here.
+func boardScan(cwd string, stderr io.Writer) (*boardPeersLine, *boardWorktreesLine) {
 	root, err := gitutil.CheckoutRoot(cwd, peersStore)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	rep, err := peers.Scan(root)
 	if err != nil {
@@ -348,12 +350,13 @@ func boardPeers(cwd string, stderr io.Writer) *boardPeersLine {
 		// so the checkout is named by the board's display rule here too
 		// (iss-2609281613094952).
 		fmt.Fprintf(stderr, "abcd: the peers line is omitted — %s\n", termsafe.Sanitize(fsutil.DisplayPathsIn(err.Error(), root)))
-		return nil
+		return nil, nil
 	}
+	wt := boardWorktrees(root, rep, stderr)
 	if rep.IDCount() == 0 {
-		return nil
+		return nil, wt
 	}
-	return &boardPeersLine{Live: rep.Live(), IDs: rep.IDCount()}
+	return &boardPeersLine{Live: rep.Live(), IDs: rep.IDCount()}, wt
 }
 
 // peerHeldError is the not-found refusal a peer answers: the record is not in

@@ -1,6 +1,6 @@
 //go:build !unix
 
-package loop
+package gitutil
 
 import (
 	"os/exec"

@@ -2,14 +2,19 @@
 id: itd-118
 slug: merged-work-leaves-no-residue-abcd
 spec_id: null
-kind: null
+kind: standalone
 suggested_kind: null
-reclassification_history: []
+reclassification_history:
+  - { date: 2026-10-23, from: standalone, to: superseded, reason: "the one-command cleanup covers everything this seed asked for: the merged branch on the server, the local branch, its tracking ref and its worktree (product thinker, 2026-10-23)" }
 builds_on: []
 severity: minor
+kind_at_supersession: standalone
+superseded_by: itd-2610222214476887
 ---
 
 # Merged work leaves no residue: abcd-managed repos delete a PR branch on merge, and abcd tidies the stale local branch, tracking ref, and worktree
+
+> **Superseded by itd-2610222214476887** on 2026-10-23: the one-command cleanup covers everything this seed asked for: the merged branch on the server, the local branch, its tracking ref and its worktree (product thinker, 2026-10-23)
 
 ## Press Release
 

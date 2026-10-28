@@ -1,6 +1,6 @@
 //go:build unix
 
-package loop
+package gitutil
 
 import (
 	"bytes"
@@ -21,7 +21,7 @@ import (
 // table and collects git's descendants (a hook, the programs that hook
 // started, a signing program git ran), then sends SIGTERM to git (on which it
 // removes its lock files) and to each of them. The sweep it returns, run once
-// Wait has returned, waits until commitStopGrace has passed since the stop
+// Wait has returned, waits until stopGrace has passed since the stop
 // and then sends SIGKILL to each that is still running, with any process one
 // of them started since; it returns at once when none is left, and does
 // nothing when the deadline was not reached: a program a hook leaves running
@@ -59,7 +59,7 @@ func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 		if at.IsZero() || len(set) == 0 {
 			return
 		}
-		deadline := at.Add(commitStopGrace)
+		deadline := at.Add(stopGrace)
 		for {
 			alive := stillRunning(readProcTable(), set)
 			if len(alive) == 0 {
