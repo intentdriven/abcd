@@ -48,6 +48,35 @@ func fakeHarness(mode string) int {
 		name = "opencode"
 	}
 	logDir := os.Getenv(fakeLogEnv)
+	// opencode's version, which a pinned run asks for before it runs; the
+	// badversion mode answers with something that is not one.
+	if len(os.Args) == 2 && os.Args[1] == "--version" {
+		if logDir != "" {
+			_ = os.WriteFile(filepath.Join(logDir, "version.env"), []byte(strings.Join(os.Environ(), "\n")), 0o600)
+		}
+		if mode == "badversion" {
+			fmt.Println("\x1b[2Jnot a version")
+			return 0
+		}
+		fmt.Println("1.18.31")
+		return 0
+	}
+	if mode == "badversion" {
+		mode = "ok"
+	}
+	// The configuration a pinned run points opencode at, copied as the run
+	// saw it, with its own mode and its directory's: the run deletes it.
+	if cfg := os.Getenv("OPENCODE_CONFIG"); cfg != "" && name == "opencode" && logDir != "" {
+		if raw, err := os.ReadFile(cfg); err == nil {
+			_ = os.WriteFile(filepath.Join(logDir, "opencode.config.json"), raw, 0o600)
+		}
+		fi, ferr := os.Stat(cfg)
+		di, derr := os.Stat(filepath.Dir(cfg))
+		if ferr == nil && derr == nil {
+			_ = os.WriteFile(filepath.Join(logDir, "opencode.config.mode"),
+				[]byte(fmt.Sprintf("%o %o", fi.Mode().Perm(), di.Mode().Perm())), 0o600)
+		}
+	}
 	if logDir != "" && mode != "sleeper" {
 		argv, _ := json.Marshal(os.Args[1:])
 		_ = os.WriteFile(filepath.Join(logDir, name+".argv.json"), argv, 0o600)
@@ -317,6 +346,11 @@ func newFake(t *testing.T, mode string, harnesses ...string) fakeEnv {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", f.bin)
+	// The person's own opencode configuration, if the machine running the
+	// tests names one, is not the test's: a test that wants one sets it.
+	t.Setenv("OPENCODE_CONFIG", "")
+	t.Setenv("OPENCODE_CONFIG_CONTENT", "")
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
 	t.Setenv(fakeModeEnv, mode)
 	t.Setenv(fakeLogEnv, f.log)
 	return f

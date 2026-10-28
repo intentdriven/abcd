@@ -104,7 +104,7 @@ func runWrittenInterview(cmd *cobra.Command, w *interview.Written, f writtenFlag
 	case f.answers != "":
 		data, err := fsutil.ReadGuarded(f.answers, interview.MaxAnswersBytes)
 		if err != nil {
-			return interview.WrittenResult{}, &exitError{Code: 2, Msg: w.Verb + ": reading the answers file: " + scrubPaths(err) + " (nothing was run)"}
+			return interview.WrittenResult{}, &exitError{Code: 2, Msg: w.Verb + ": reading the answers file (its path is not repeated here): " + pathErrorCause(err).Error() + " (nothing was run)"}
 		}
 		file, err := interview.ParseAnswers(data, w.Name)
 		if err != nil {
@@ -192,8 +192,8 @@ func fileAnswerer(w io.Writer, verb string, file interview.Answers, stamp string
 			}
 			v := strings.TrimSpace(e.Value)
 			if !slices.Contains(values, v) {
-				return nil, errors.Join(fmt.Errorf("the answers file answers %s (%s) with %q, which it does not offer (%s); no answers record was written",
-					q.ID, termsafe.Sanitize(q.Chip), termsafe.Sanitize(v), termsafe.Sanitize(strings.Join(values, "|"))), interview.ErrNothingRecorded)
+				return nil, errors.Join(fmt.Errorf("the answers file answers %s (%s) with a value it does not offer (the value is not repeated here); it offers %s; no answers record was written",
+					q.ID, termsafe.Sanitize(q.Chip), termsafe.Sanitize(strings.Join(values, "|"))), interview.ErrNothingRecorded)
 			}
 			fmt.Fprintf(w, "%s %s: %s\n\n", glyph, termsafe.Sanitize(q.Chip), termsafe.Sanitize(labelOf(q, v)))
 			place := e.AnsweredIn

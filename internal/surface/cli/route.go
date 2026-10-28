@@ -13,6 +13,12 @@ package cli
 // and TestEveryDelegatingVerbCarriesRoute holds the command tree to that list,
 // so a verb cannot gain delegation without gaining the flag.
 //
+// The build loop's step launches runners for the roles it hands to an agent,
+// and registers the same flag through addRunnerRouteFlag, taking the
+// grammar's runner rung: <role>=runner:<name>[@<provider>/<model>] runs that
+// role on that runner and model for the one step (iss-2610161801358637). Each
+// kind of verb refuses the other's rung, since its dispatch cannot honour it.
+//
 // The route is resolved before anything else the verb does, so every refusal
 // (a malformed routing table, a --route naming an agent this invocation does
 // not dispatch, a tier outside the vocabulary, a connection this machine has
@@ -31,9 +37,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -89,6 +97,35 @@ func addRouteFlag(cmd *cobra.Command, agents ...string) *routeFlag {
 		"route one agent for this run: "+oracle.RouteSyntax+", tier one of "+tierHelp()+
 			" (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)")
 	return rf
+}
+
+// addRunnerRouteFlag registers --route on a verb that launches a runner for
+// the roles it hands to an agent (the build loop's step), naming those roles.
+// It is addRouteFlag's flag, taking the grammar's runner rung
+// (oracle.RunnerRouteSyntax) where a delegating verb takes the tier rung, so
+// one invocation can run a role on a runner and a model of the person's
+// choosing (iss-2610161801358637).
+func addRunnerRouteFlag(cmd *cobra.Command, roles ...string) *routeFlag {
+	rf := &routeFlag{agents: roles}
+	cmd.Flags().StringArrayVar(&rf.texts, routeFlagName, nil,
+		"route one role this step hands to an agent to a runner, for this invocation alone: "+oracle.RunnerRouteSyntax+
+			", the runner one this machine enables and the model one its provider lists (else the runner's own model);"+
+			" one per role ("+strings.Join(roles, ", ")+"); wins over every configured route for this step alone, and the role's receipt records it verbatim")
+	return rf
+}
+
+// applyRunners places this invocation's runner routes on cfg
+// (runner.Config.Override), or refuses before anything runs or is written.
+func (rf *routeFlag) applyRunners(cfg *runner.Config) error {
+	routes, err := oracle.ParseRunnerRoutes(rf.texts, rf.agents)
+	if err == nil {
+		err = cfg.Override(routes)
+	}
+	if err != nil {
+		return &loop.Refusal{Stage: routeFlagName, Reason: err.Error(),
+			Remedy: "correct the --route, or leave it out to run each role on its configured route"}
+	}
+	return nil
 }
 
 func tierHelp() string {

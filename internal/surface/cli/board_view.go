@@ -29,7 +29,7 @@ func boardView(v string) (board.View, error) {
 	case viewFacilitator:
 		return board.Facilitator, nil
 	}
-	return 0, &exitError{Code: 2, Msg: fmt.Sprintf("--view takes %s or %s, not %q", viewProduct, viewFacilitator, termsafe.Sanitize(v))}
+	return 0, &exitError{Code: 2, Msg: fmt.Sprintf("--view takes %s or %s (the value given is not repeated here)", viewProduct, viewFacilitator)}
 }
 
 // boardForm reads --format, text when it is omitted.
@@ -40,7 +40,7 @@ func boardForm(f string) (board.Form, error) {
 	case formMarkdown:
 		return board.Markdown, nil
 	}
-	return 0, &exitError{Code: 2, Msg: fmt.Sprintf("--format takes %s or %s, not %q", formText, formMarkdown, termsafe.Sanitize(f))}
+	return 0, &exitError{Code: 2, Msg: fmt.Sprintf("--format takes %s or %s (the value given is not repeated here)", formText, formMarkdown)}
 }
 
 // viewName is the view as --json names it: the role whose view it is.

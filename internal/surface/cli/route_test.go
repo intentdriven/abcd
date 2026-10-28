@@ -59,14 +59,16 @@ func member(t *testing.T, out []byte, key string, into any) {
 }
 
 // TestEveryDelegatingVerbCarriesRoute holds the command tree to the delegating
-// verbs (spc-2609180535002478 step 3): the flag is on each of them and on
-// nothing else.
+// verbs (spc-2609180535002478 step 3) and the build loop's step, which takes
+// the flag's runner rung (iss-2610161801358637): the flag is on each of them
+// and on nothing else.
 func TestEveryDelegatingVerbCarriesRoute(t *testing.T) {
 	want := []string{
 		"abcd disembark graveyard",
 		"abcd disembark press-release",
 		"abcd disembark principles",
 		"abcd disembark review",
+		"abcd implement step",
 		"abcd intent audit",
 		"abcd intent audit ingest",
 		"abcd intent consistency",
@@ -112,6 +114,7 @@ func TestRouteRefusalsExitTwoBeforeAnyStep(t *testing.T) {
 		{"agent not dispatched", []string{"--route", "scribe=economy"}, `this invocation dispatches principle-distiller, not "scribe"`, ""},
 		{"tier outside the vocabulary", []string{"--route", "principle-distiller=cheap"}, `tier "cheap" is not one of`, ""},
 		{"connection not configured", []string{"--route", "principle-distiller=local@lab"}, `connection "lab" is not configured`, ""},
+		{"runner route on a verb that launches no runner", []string{"--route", "principle-distiller=runner:opencode"}, "names a runner", ""},
 		{"malformed routing table", nil, "schema_version", `{"schema_version":2,"agents":{}}`},
 	}
 	for _, tc := range cases {

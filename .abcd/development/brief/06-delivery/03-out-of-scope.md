@@ -147,8 +147,10 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610161647248332` — abcd finds out what the forge can do before choosing a route
 - `itd-2610161710315026` — Unattended runs reach only a declared list of hosts
 - `itd-2610161710316538` — Drains and builds a person's session drives report how isolated they were
+- `itd-2610171228577260` — A product thinker settles a visual design in rounds that abcd runs end to end
 - `itd-2610222029228127` — Every session's checklist reaches a shared copy and the phone
 - `itd-2610230756259215` — A question is checked by abcd before it is asked
+- `itd-2610230856403803` — A build run's dependent lane cannot start until its predecessor has merged into the default branch: readiness reads a predecessor as landed only when its lane is done, its pull request an ancestor of the default branch, so a step that needs another waits a whole preflight and merge-queue cycle (about one to two and a half hours each on 2026-10-22) before it opens. Stacked changes are standard practice for dependent work (Graphite, Sapling and ghstack stacks, and merge queues taking a stack in order), and on 2026-10-22/23 that shape was rolled by hand twice: merge-gate steps 2 and 3, and model-matrix step 2 stacked on the route branch. Building it is more than a fix: the dependent lane's pull request is based on the predecessor's branch, the stack merges in order, and a lane rebases (and re-stamps what it resolved) when the predecessor changes.
 - `itd-2610240850336695` — The person grants their sessions what they may do alone, until a time
 - `itd-2610240913343804` — No surprises: abcd says up front what it will do on its own and what it will ask
 - `itd-2610240933025076` — abcd plans unattended and asks only what a person owns

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -601,5 +602,121 @@ func TestTheStoreOfAnOrdinaryCloneStaysWhereItWas(t *testing.T) {
 	}
 	if want := filepath.Join(abcdhome.Path(f.home, "worktrees", root, StoreName)); loc.Path != want {
 		t.Fatalf("store path %s; want %s", loc.Path, want)
+	}
+}
+
+// TestAddEmbargoedTakesANamedMode: the set addEmbargoed builds is stated by a
+// named mode, never a bare bool, so a caller cannot pass true or false and
+// silently build the other set (a closed advisory's title leaked into a
+// publication text, or every range refused on a closed report's title).
+func TestAddEmbargoedTakesANamedMode(t *testing.T) {
+	fn := reflect.TypeOf((*denySet).addEmbargoed)
+	if fn.NumIn() != 4 {
+		t.Fatalf("addEmbargoed takes %d arguments with its receiver, want 4", fn.NumIn())
+	}
+	mode := fn.In(3)
+	if mode.Kind() == reflect.Bool || mode.Name() == "" || mode.Name() == "bool" {
+		t.Fatalf("addEmbargoed's mode is %s, want a named mode type the compiler holds apart from bool", mode)
+	}
+	if mode != reflect.TypeOf(denyForRange) {
+		t.Fatalf("addEmbargoed's mode is %s, want denyMode", mode)
+	}
+}
+
+// TestAddEmbargoedModes: each mode builds its own set, and they differ only
+// in a closed advisory's title. A mode neither constant names (the zero
+// denyMode) keeps the title: it holds more, never less.
+func TestAddEmbargoedModes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		mode       denyMode
+		closedHeld bool
+	}{
+		{"range", denyForRange, false},
+		{"publication", denyForPublication, true},
+		{"unnamed", denyMode(0), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ds := denySet{}
+			ds.addEmbargoed(closedAdvisoryState(), "", tc.mode)
+			if got := hasNeedle(ds, KindAdvisoryTitle, titleClosed); got != tc.closedHeld {
+				t.Fatalf("closed advisory's title held = %v, want %v: %+v", got, tc.closedHeld, ds.needles)
+			}
+			for _, want := range []struct{ kind, text string }{
+				{KindAdvisoryTitle, titleOpen}, {KindAdvisoryID, ghsaOpen}, {KindAdvisoryID, ghsaClosed}, {KindReservedCVE, cveOpen},
+			} {
+				if !hasNeedle(ds, want.kind, want.text) {
+					t.Fatalf("the %s set lacks %s %q: %+v", tc.name, want.kind, want.text, ds.needles)
+				}
+			}
+			if ds.embargo != 2 {
+				t.Fatalf("embargo count %d, want 2", ds.embargo)
+			}
+		})
+	}
+}
+
+// closedAdvisoryState holds one closed, unpublished advisory with a reserved
+// CVE id, and one still open, both titled long enough to be held.
+func closedAdvisoryState() State {
+	at := fixedNow
+	st := emptyState()
+	st.Advisories = []Advisory{
+		{GHSAID: ghsaOpen, IssueID: "iss-2610120000000001", Title: titleOpen, Severity: "major", ForgeState: "draft",
+			Verdict: strp(VerdictVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at},
+		{GHSAID: ghsaClosed, IssueID: "iss-2610120000000002", Title: titleClosed, CVEID: strp(cveOpen), Severity: "minor",
+			ForgeState: "closed", Verdict: strp(VerdictNotAVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at,
+			Reason: strp("documented"), ClosedAt: &at},
+	}
+	return st
+}
+
+// hasNeedle reports whether ds holds text as a needle of kind.
+func hasNeedle(ds denySet, kind, text string) bool {
+	n, _ := normalise(text)
+	n = strings.TrimSpace(n)
+	for _, have := range ds.needles {
+		if have.kind == kind && have.text == n {
+			return true
+		}
+	}
+	return false
+}
+
+// TestRangeDenySetDropsClosedTitles: the range and file check's set
+// (buildDenySet) drops a closed advisory's title and keeps its id and CVE id;
+// an open advisory keeps its title.
+func TestRangeDenySetDropsClosedTitles(t *testing.T) {
+	ds, err := buildDenySet([]heldStore{{root: t.TempDir(), st: closedAdvisoryState()}}, map[string]bool{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasNeedle(ds, KindAdvisoryTitle, titleClosed) {
+		t.Fatalf("the range set holds a closed advisory's title: %+v", ds.needles)
+	}
+	for _, want := range []struct{ kind, text string }{
+		{KindAdvisoryTitle, titleOpen}, {KindAdvisoryID, ghsaClosed}, {KindReservedCVE, cveOpen},
+	} {
+		if !hasNeedle(ds, want.kind, want.text) {
+			t.Fatalf("the range set lacks %s %q: %+v", want.kind, want.text, ds.needles)
+		}
+	}
+}
+
+// TestPublicationDenySetKeepsClosedTitles: the set a publication or closing
+// text is held to (othersDenySet) keeps a closed advisory's title with its id
+// and CVE id, since the advisory stays private on GitHub, and leaves out the
+// advisory being published.
+func TestPublicationDenySetKeepsClosedTitles(t *testing.T) {
+	ds := othersDenySet(closedAdvisoryState(), ghsaOpen)
+	for _, want := range []struct{ kind, text string }{
+		{KindAdvisoryTitle, titleClosed}, {KindAdvisoryID, ghsaClosed}, {KindReservedCVE, cveOpen},
+	} {
+		if !hasNeedle(ds, want.kind, want.text) {
+			t.Fatalf("the publication set lacks %s %q: %+v", want.kind, want.text, ds.needles)
+		}
+	}
+	if hasNeedle(ds, KindAdvisoryTitle, titleOpen) || hasNeedle(ds, KindAdvisoryID, ghsaOpen) {
+		t.Fatalf("the publication set holds the advisory being published: %+v", ds.needles)
 	}
 }
