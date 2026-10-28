@@ -74,6 +74,18 @@ const (
 	maxCandidates = 3
 )
 
+// reach is how far the checks made before the chat call (checkSize) got with
+// the provider, which a chat call that then never connects reports: nothing,
+// the model list alone (the key, where there is one, may have left), or the
+// size count (the brief had reached the provider to be counted).
+type reach int
+
+const (
+	reachedNothing reach = iota
+	reachedList
+	reachedCount
+)
+
 // served is one listed model's served size and the field it came from.
 type served struct {
 	id     string
@@ -206,12 +218,26 @@ func (c *Client) count(ctx context.Context, wait time.Duration, model string, b 
 // The listing and each count are waited for no longer than the call itself
 // would wait for its first byte (or its total cap, or ListTimeout, whichever
 // is shortest), and ctx is the call's own, so they are spent inside its total
-// cap. reached reports whether any of them connected to the provider.
-func (c *Client) checkSize(ctx context.Context, req Request) (reached bool, err error) {
-	var conn atomic.Bool
+// cap. reached reports how far they got with the provider.
+func (c *Client) checkSize(ctx context.Context, req Request) (reached reach, err error) {
+	var listed, sent atomic.Bool
 	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
-		GotConn: func(httptrace.GotConnInfo) { conn.Store(true) },
+		GotConn: func(httptrace.GotConnInfo) { listed.Store(true) },
 	})
+	// The count's own trace composes with the one above: a connection made
+	// for a count means the brief went to the provider to be counted.
+	cctx := httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		GotConn: func(httptrace.GotConnInfo) { sent.Store(true) },
+	})
+	conn := func() reach {
+		switch {
+		case sent.Load():
+			return reachedCount
+		case listed.Load():
+			return reachedList
+		}
+		return reachedNothing
+	}
 	wait := min(c.listWait, c.firstByte, c.timeout)
 	sizes := c.servedSizes(ctx, wait)
 	var asked *served
@@ -222,16 +248,16 @@ func (c *Client) checkSize(ctx context.Context, req Request) (reached bool, err 
 		}
 	}
 	if asked == nil {
-		return conn.Load(), nil
+		return conn(), nil
 	}
-	counted, ok := c.count(ctx, wait, req.Model, req.Brief)
+	counted, ok := c.count(cctx, wait, req.Model, req.Brief)
 	if !ok {
-		return conn.Load(), nil
+		return conn(), nil
 	}
 	answer := reserved(req)
 	need := counted + answer
 	if need <= asked.tokens {
-		return conn.Load(), nil
+		return conn(), nil
 	}
 	// A listed model is named only on the server's own count for it: its
 	// tokenizer may count the same brief differently.
@@ -244,7 +270,7 @@ func (c *Client) checkSize(ctx context.Context, req Request) (reached bool, err 
 			break
 		}
 		tried++
-		if n, ok := c.count(ctx, wait, s.id, req.Brief); ok && n+answer <= s.tokens {
+		if n, ok := c.count(cctx, wait, s.id, req.Brief); ok && n+answer <= s.tokens {
 			fits = fmt.Sprintf("%s lists %s at %d tokens (%s) and counts the request at %d tokens for it, which fits",
 				c.host, s.id, s.tokens, s.source, n+answer)
 			break
@@ -257,7 +283,7 @@ func (c *Client) checkSize(ctx context.Context, req Request) (reached bool, err 
 	default:
 		fits = fmt.Sprintf("no model %s lists is served at that size", c.host)
 	}
-	return conn.Load(), c.fail(fmt.Sprintf("the request is refused before the chat call: it comes to %d tokens "+
+	return conn(), c.fail(fmt.Sprintf("the request is refused before the chat call: it comes to %d tokens "+
 		"(%s counts the brief at %d tokens at its /tokenize, plus the %d max_tokens reserves for the answer), "+
 		"over the %d tokens %s serves %s at (%s in its model list); %s",
 		need, c.host, counted, answer, asked.tokens, c.host,
