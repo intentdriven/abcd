@@ -41,11 +41,11 @@ func dogfoodRig(t *testing.T, named string, code string) (root, build string) {
 	release := "#!/bin/sh\n" +
 		"printf '%s %s\\n' \"$1\" \"$2\" >> \"$ABCD_CALLS\"\n" +
 		"if [ \"$1 $2\" = 'hook dogfood-binary' ]; then printf '%s\\n' '" + named + "'; exit 0; fi\n" +
-		"cat >/dev/null\nexit 0\n"
+		"printf 'release-stdin %s\\n' \"$(cat)\" >> \"$ABCD_CALLS\"\nexit 0\n"
 	if err := os.WriteFile(filepath.Join(root, "abcd"), []byte(release), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	dog := "#!/bin/sh\ncat >/dev/null\nprintf 'dogfood %s %s\\n' \"$1\" \"$2\" >> \"$ABCD_CALLS\"\nexit " + code + "\n"
+	dog := "#!/bin/sh\ncat >/dev/null\nprintf 'dogfood %s %s\\n' \"$1\" \"$2\" >> \"$ABCD_CALLS\"\nprintf 'dogfood-out\\n'\nexit " + code + "\n"
 	if err := os.WriteFile(build, []byte(dog), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -140,38 +140,49 @@ func TestHooksRunTheReleaseWhenNoBuildIsNamed(t *testing.T) {
 	}
 }
 
-// TestHooksFallBackWhenTheDogfoodBuildFailsToRun: a dogfood build that dies
-// on an event other than the guard's (any exit but 0 and 2, which are its
-// answers) never leaves the event unhandled: the shim says so on stderr and
-// the installed release runs every verb the event runs. A build that answers
-// 2 is taken at its word, with no second run.
+// TestHooksFallBackWhenTheDogfoodBuildFailsToRun: a dogfood build that does
+// not answer exit 0 on an event other than the guard's never leaves the event
+// unhandled: the shim says so on stderr, drops what the build printed, and the
+// installed release runs every verb the event runs, once, on the same input.
+// No such verb exits 2 on purpose (hook stop recovers its own panic to avoid
+// it), so a 2 is a Go crash, which the host would read as a block.
 func TestHooksFallBackWhenTheDogfoodBuildFailsToRun(t *testing.T) {
+	const replayed = `release-stdin {"session_id":"s1"}`
 	for _, e := range dogfoodEvents {
 		if e.event == "PreToolUse" {
 			continue // the guard's own fall-back is the test below
 		}
-		for _, died := range []string{"1", "137"} {
+		for _, died := range []string{"1", "2", "137"} {
 			t.Run(e.event+"/exit-"+died, func(t *testing.T) {
 				root, _ := dogfoodRig(t, "BUILD", died)
-				_, stderr, code := hookRunHome(t, e.event, root, "", t.TempDir(), dogfoodListHome(t))
+				stdout, stderr, code := hookRunHome(t, e.event, root, "", t.TempDir(), dogfoodListHome(t))
 				calls := callLog(t, filepath.Join(root, "calls.log"))
 				if code != 0 || !strings.Contains(stderr, "FAILED TO RUN") {
 					t.Fatalf("exit %d, stderr %q; want 0 and the failure said out loud", code, stderr)
+				}
+				if strings.Contains(stdout, "dogfood-out") {
+					t.Errorf("the failed build's output reached the host: %q", stdout)
 				}
 				for _, v := range e.verbs {
 					if !strings.Contains(calls, "dogfood "+v) || strings.Count("\n"+calls+"\n", "\n"+v+"\n") != 1 {
 						t.Errorf("%q did not fall back to the installed release exactly once; calls %q", v, calls)
 					}
 				}
+				if n := strings.Count(calls, replayed); n != len(e.verbs) {
+					t.Errorf("the release read the event's input %d time(s), want %d; calls %q", n, len(e.verbs), calls)
+				}
 			})
 		}
-		t.Run(e.event+"/answers-2", func(t *testing.T) {
-			root, _ := dogfoodRig(t, "BUILD", "2")
-			_, stderr, _ := hookRunHome(t, e.event, root, "", t.TempDir(), dogfoodListHome(t))
+		t.Run(e.event+"/answers-0", func(t *testing.T) {
+			root, _ := dogfoodRig(t, "BUILD", "0")
+			stdout, stderr, code := hookRunHome(t, e.event, root, "", t.TempDir(), dogfoodListHome(t))
 			calls := callLog(t, filepath.Join(root, "calls.log"))
+			if code != 0 || strings.Contains(stderr, "FAILED TO RUN") || strings.Count(stdout, "dogfood-out") != len(e.verbs) {
+				t.Errorf("exit %d, stdout %q, stderr %q; want the build's answer passed through as it is", code, stdout, stderr)
+			}
 			for _, v := range e.verbs {
-				if releaseRan(calls, v) || strings.Contains(stderr, "FAILED TO RUN") {
-					t.Errorf("an exit 2 from the build was run again on the release; calls %q, stderr %q", calls, stderr)
+				if releaseRan(calls, v) {
+					t.Errorf("the build answered %q, and the release ran it again; calls %q", v, calls)
 				}
 			}
 		})
