@@ -1831,6 +1831,16 @@
       "flags": []
     },
     {
+      "path": "abcd hook dogfood-binary",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd hook dogfood-build",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd hook permission-request",
       "hidden": false,
       "flags": []
