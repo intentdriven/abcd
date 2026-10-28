@@ -223,7 +223,7 @@ func TestPredictHandAgreesWithTheMove(t *testing.T) {
 				t.Fatalf("the prediction says %q, not %q: %+v", h.none, tc.says, h)
 			}
 			moving := cloneState(tc.st)
-			res, _, err := move("", &moving, paritySteps(tc.lands), now, g)
+			res, _, err := move("", &moving, paritySteps(tc.lands), now, g, nil)
 			if err != nil {
 				if r, ok := AsRefusal(err); !ok || !r.Contention || !tc.wait {
 					t.Fatalf("the move refused: %v", err)
@@ -351,7 +351,7 @@ func TestOnlyALandingMayWait(t *testing.T) {
 				}
 			}
 			moving := cloneState(st)
-			_, _, err := move("", &moving, steps, now, &outageGate{now: now})
+			_, _, err := move("", &moving, steps, now, &outageGate{now: now}, nil)
 			r := mustRefusal(t, err)
 			if !r.Contention || r.Lane != "lane-1" || r.Stage != string(stage) {
 				t.Fatalf("lane 1's contended %s is the call's answer: %+v", stage, r)

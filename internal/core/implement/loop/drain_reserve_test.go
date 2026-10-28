@@ -274,3 +274,64 @@ func TestADrainRetriesAReleaseTheHandBackCouldNotPush(t *testing.T) {
 		t.Fatalf("the route says the reservation was released, not the earlier failure: %q", r.Wrote)
 	}
 }
+
+// TestADrainRetryThatReleasesIsLoggedOnTheRun (iss-2610150616434848): the
+// drain's retry of a hand-back release origin refused is written back to the
+// run record as reservation_released, so the run's last reservation entry no
+// longer says the reservation lapses with its lease, and a later routing of
+// the same hand-back reuses that entry rather than pushing the release again.
+func TestADrainRetryThatReleasesIsLoggedOnTheRun(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
+	}
+	runID := first.Start.RunID
+	hook := filepath.Join(bare, "hooks", "pre-receive")
+	refuseReservations := "#!/bin/sh\nwhile read old new ref; do case \"$ref\" in refs/heads/abcd-reserved/*) echo 'origin is closed' >&2; exit 1;; esac; done\nexit 0\n"
+	if err := os.WriteFile(hook, []byte(refuseReservations), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	handBackLaneOf(t, repo, runID, Options{}, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the page needs a decision", Home: "the brief"})
+	if note := recordNote(t, repo, runID, StageReservationReleaseFailed); note == "" {
+		t.Fatal("the hand-back's release was refused by origin, yet the run logs no failure")
+	}
+	if err := os.Remove(hook); err != nil {
+		t.Fatal(err)
+	}
+	drainToLane(t, repo, Options{}, DrainOptions{})
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released {
+		t.Fatalf("the drain pushes the tombstone the hand-back could not: %+v", tomb)
+	}
+
+	run, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := ""
+	for _, e := range run.Record {
+		if e.Stage == StageReservationReleased || e.Stage == StageReservationReleaseFailed {
+			last = e.Stage
+		}
+	}
+	if last != StageReservationReleased {
+		t.Fatalf("the run's last reservation entry is %q after the drain released it; want %q", last, StageReservationReleased)
+	}
+	if note := recordNote(t, repo, runID, StageReservationReleased); !strings.Contains(note, "released the reservation on "+secondIssue) {
+		t.Fatalf("the run logs the drain's release with its clause: %q", note)
+	}
+
+	was := claimReserve
+	t.Cleanup(func() { claimReserve = was })
+	calls := 0
+	claimReserve = func(string, claim.Request, claim.Options) (claim.Result, error) {
+		calls++
+		return claim.Result{}, nil
+	}
+	if rel := releaseHandedBack(repo.Root(), run, HandBack{Kind: HandBackDesignFinding}, time.Now()); !strings.Contains(rel, "released the reservation on "+secondIssue) {
+		t.Fatalf("a later routing returns the logged release: %q", rel)
+	}
+	if calls != 0 {
+		t.Fatalf("a later routing pushed the release %d more time(s); want none", calls)
+	}
+}
