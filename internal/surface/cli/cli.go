@@ -154,6 +154,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"hook", "subagent-stop"}, {"hook", "question-answered"},
 		{"hook", "permission-request"},
 		{"hook", "stop"}, {"hook", "stop-failure"},
+		{"hook", "dogfood-binary"},
 	} {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
@@ -2336,6 +2337,9 @@ envelope carries it as system_message.`,
 	// stop and stop-failure — Stop and StopFailure: the away mode's stop
 	// check (spc-2610180914469489 step 5). Their bodies live in hook_stop.go.
 	hookCmd.AddCommand(newHookStopCommand(), newHookStopFailureCommand())
+	// dogfood-binary and dogfood-build — the hook shims' dogfood rung
+	// (hook_dogfood.go): which build a listed checkout runs, and making it.
+	hookCmd.AddCommand(newDogfoodBinaryCommand(), newDogfoodBuildCommand())
 
 	return hookCmd
 }
