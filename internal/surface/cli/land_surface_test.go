@@ -206,6 +206,9 @@ func TestLandRecordsAReviewReceiptAndLandsNothing(t *testing.T) {
 	if got.Commit != head || !strings.HasSuffix(got.Receipt, landing.ReviewReceiptsRelDir+"/"+head) {
 		t.Fatalf("--json = %+v; want the receipt for %s", got, head)
 	}
+	if fi, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(landing.ReviewReceiptsRelDir), head)); err != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("no receipt file for %s: %v", head, err)
+	}
 	if strings.Contains(gitCmd(t, origin, "branch", "--list", "feat/x"), "feat/x") {
 		t.Fatal("recording a review pushed the branch")
 	}
@@ -223,8 +226,10 @@ func TestLandRefusesAReviewThatDoesNotPass(t *testing.T) {
 	writeReturn(t, a, head, "SHIP")
 	writeReturn(t, b, head, "BLOCK")
 	code, _, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b)
-	if code != 2 || !strings.Contains(stderr, "security.md") || !strings.Contains(stderr, "BLOCK") {
-		t.Fatalf("exit %d, stderr %q: want 2 naming security.md and its BLOCK", code, stderr)
+	// The refusal names the return by its place on the command line: the
+	// error boundary withholds the path's own words (#1173).
+	if code != 2 || !strings.Contains(stderr, "argument 5") || !strings.Contains(stderr, "BLOCK") || strings.Contains(stderr, "security.md") {
+		t.Fatalf("exit %d, stderr %q: want 2 naming argument 5 and its BLOCK", code, stderr)
 	}
 	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(landing.ReviewReceiptsRelDir), head)); err == nil {
 		t.Fatal("a refused review left a receipt")

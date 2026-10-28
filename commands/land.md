@@ -1,7 +1,7 @@
 ---
 name: land
 description: "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree."
-argument-hint: "[<branch>] [--no-push] [--no-enqueue]"
+argument-hint: "[<branch>] [--no-push] [--no-enqueue] [--record-review <return>...]"
 block: people
 ---
 
@@ -141,16 +141,17 @@ Tell the user what was pushed and where the pull request stands.
 `--record-review` records that the review pair passed the branch's head and
 lands nothing: it pushes, gates and arms nothing. Give it once per reviewer's
 return, at least two. Each return must name the head's first nine characters
-(as the build loop's briefs abbreviate it) and end in a `### Verdict` section.
-When every verdict passes the stop rule, `SHIP` or `APPROVE` (no critical or
-major finding), the head's review receipt is written to
+(as the build loop's briefs abbreviate it) and carry one `### Verdict` heading
+whose first line begins with the verdict, as the build loop reads a return
+(`**SHIP** — nothing survived.` states `SHIP`). When every verdict passes the
+stop rule, `SHIP` or `APPROVE` (no critical or major finding), the head's review receipt is written to
 `.abcd/.work.local/review-receipts/<full sha>`, beside the preflight receipts
 and found from any worktree the same way, and `--json` carries the `commit` and
-the `receipt` path. A return that names another commit, has no verdict, or says
-`FIX FIRST`, `BLOCK` or `NEEDS-INPUT` is refused with exit 2, naming the return,
-and nothing is written. `--record-review` takes no `--no-push` or
-`--no-enqueue`. In `auto` mode the merge gate arms only a head a review receipt
-names.
+the `receipt` path. A return that names another commit, has no verdict or more
+than one Verdict heading, says `FIX FIRST`, `BLOCK` or `NEEDS-INPUT`, or is the
+same text as another return is refused with exit 2, naming the return, and
+nothing is written. The receipt is written only inside the checkout.
+`--record-review` takes no `--no-push` or `--no-enqueue`.
 
 ## Turning an act off
 

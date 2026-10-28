@@ -3718,12 +3718,13 @@ one, made before anything is pushed. Exit 3 when a release being cut holds the
 landing: it names the release, its holder and until when.
 
 --record-review records the review pair's verdicts for the branch's head and
-lands nothing: given once per reviewer's return (at least two), each naming the
-head's first nine characters and ending in a ### Verdict section, it writes the
-head's review receipt in .abcd/.work.local/review-receipts/ when every verdict
-passes the stop rule (SHIP or APPROVE: no critical or major finding). A return
-that does not pass is refused naming it, exit 2, and nothing is written. It
-takes no --no-push or --no-enqueue.
+lands nothing: given once per reviewer's return (at least two, no two the
+same), each naming the head's first nine characters under one ### Verdict
+heading, it writes the head's review receipt in
+.abcd/.work.local/review-receipts/ when every verdict passes the stop rule
+(SHIP or APPROVE: no critical or major finding). A return that does not pass is
+refused naming it, exit 2, and nothing is written. It takes no --no-push or
+--no-enqueue.
 
 **Flags:**
 

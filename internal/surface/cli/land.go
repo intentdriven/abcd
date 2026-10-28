@@ -85,12 +85,13 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"one, made before anything is pushed. Exit 3 when a release being cut holds the\n" +
 			"landing: it names the release, its holder and until when.\n\n" +
 			"--record-review records the review pair's verdicts for the branch's head and\n" +
-			"lands nothing: given once per reviewer's return (at least two), each naming the\n" +
-			"head's first nine characters and ending in a ### Verdict section, it writes the\n" +
-			"head's review receipt in .abcd/.work.local/review-receipts/ when every verdict\n" +
-			"passes the stop rule (SHIP or APPROVE: no critical or major finding). A return\n" +
-			"that does not pass is refused naming it, exit 2, and nothing is written. It\n" +
-			"takes no --no-push or --no-enqueue.",
+			"lands nothing: given once per reviewer's return (at least two, no two the\n" +
+			"same), each naming the head's first nine characters under one ### Verdict\n" +
+			"heading, it writes the head's review receipt in\n" +
+			".abcd/.work.local/review-receipts/ when every verdict passes the stop rule\n" +
+			"(SHIP or APPROVE: no critical or major finding). A return that does not pass is\n" +
+			"refused naming it, exit 2, and nothing is written. It takes no --no-push or\n" +
+			"--no-enqueue.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return &exitError{Code: 2, Msg: "abcd land: takes at most one branch, not " + fmt.Sprint(len(args)) + "; nothing was pushed"}
