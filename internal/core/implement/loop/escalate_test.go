@@ -285,11 +285,14 @@ func (servesFrontier) Serves(t oracle.Tier) (oracle.Connection, bool) {
 func (servesFrontier) Named(string) (oracle.Connection, bool)   { return oracle.Connection{}, false }
 func (servesFrontier) Pointed(string) (oracle.Connection, bool) { return oracle.Connection{}, false }
 
-// TestARoundsRouteIsStateVersion14s: a round's route joined version 14 before
-// any release wrote that version, so a file of version 13 or lower carrying
+// TestARoundsRouteIsStateVersion16s: a round's route joined version 16 before
+// any release wrote that version, so a file of version 15 or lower carrying
 // one is not one its version wrote and is refused, naming the version and the
-// key; one carrying none reads as the current version.
-func TestARoundsRouteIsStateVersion14s(t *testing.T) {
+// key; one of version 15, 14 or 13 carrying none reads as the current version.
+func TestARoundsRouteIsStateVersion16s(t *testing.T) {
+	if SchemaVersion != 16 {
+		t.Fatalf("a round's route is state version 16's, got %d", SchemaVersion)
+	}
 	repo := briefRepo(t, agentsMarked)
 	start, err := Start(repo.Root(), "itd-10", Options{})
 	if err != nil {
@@ -307,9 +310,9 @@ func TestARoundsRouteIsStateVersion14s(t *testing.T) {
 		t.Fatalf("the round records its route: %v\n%s", err, current)
 	}
 	if _, err := ReadState(repo.Root(), id); err != nil {
-		t.Fatalf("version 14 reads a round's route: %v", err)
+		t.Fatalf("version 16 reads a round's route: %v", err)
 	}
-	for _, version := range []int{13, 12, 9} {
+	for _, version := range []int{15, 14, 13, 12, 9} {
 		if err := os.WriteFile(path, current, 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -320,17 +323,19 @@ func TestARoundsRouteIsStateVersion14s(t *testing.T) {
 			t.Errorf("version %d carrying a round's route is refused naming the version and the key: %+v", version, r)
 		}
 	}
-	if err := os.WriteFile(path, current, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	editState(t, repo.Root(), id, func(doc map[string]any) {
-		doc["schema_version"] = 13
-		for _, v := range doc["lanes"].([]any)[0].(map[string]any)["validation"].([]any) {
-			delete(v.(map[string]any), "routes")
+	for _, version := range []int{15, 14, 13} {
+		if err := os.WriteFile(path, current, 0o600); err != nil {
+			t.Fatal(err)
 		}
-	})
-	if st, err := ReadState(repo.Root(), id); err != nil || st.SchemaVersion != SchemaVersion {
-		t.Fatalf("a version-13 file with no round's route reads as the current version: %v %v", st.SchemaVersion, err)
+		editState(t, repo.Root(), id, func(doc map[string]any) {
+			doc["schema_version"] = version
+			for _, v := range doc["lanes"].([]any)[0].(map[string]any)["validation"].([]any) {
+				delete(v.(map[string]any), "routes")
+			}
+		})
+		if st, err := ReadState(repo.Root(), id); err != nil || st.SchemaVersion != SchemaVersion {
+			t.Fatalf("a version-%d file with no round's route reads as the current version: %v %v", version, st.SchemaVersion, err)
+		}
 	}
 }
 

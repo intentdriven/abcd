@@ -449,7 +449,7 @@ its allowlist; no connection serves a tier today, so an escalated tier goes to
 the host. A routing table or provider configuration `step` cannot read is
 refused at `routing`, and its non-fatal reports are said on stderr; nothing is
 written by a refusal. A round's `routes` is state schema
-version 14's. A lane that has taken
+version 16's. A lane that has taken
 the run's fix rounds (`build --fix-rounds`, bundled 3) and still does not pass
 is handed back: the result's `hand_back` names the verdict `unachievable` and
 the last findings, and the loop starts nothing further for it. Its sibling

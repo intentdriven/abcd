@@ -296,7 +296,9 @@ writes version 15 refuses a version-16 file as a newer abcd's. A route
 record's `override` (iss-2610161801358637), the step verb's per-invocation
 route override verbatim on the verified receipt or validator return a runner
 ran under it, is version 16's too: a file of version 15 or lower carrying it
-is refused. Version 15
+is refused. So is a validation round's `routes` (spc-2609251028149555): the
+tier each role of the round ran at, the tier a failed round moved it up from,
+and the failing gate output behind the switch. Version 15
 added the run's review set (itd-2610240922461281): the run's `review`, each
 role's reviewers at their model classes, the judge and the ceiling, with the
 layer of each. Version 14 is its strict subset, read as a run started before
@@ -820,7 +822,7 @@ pointed at it), so an escalated tier goes to the host, named in the brief.
 A routing table or provider configuration `step` cannot read is refused at the
 `routing` stage before anything moves, and their non-fatal reports are said on
 stderr, as a delegating verb says them. A round's `routes` is state schema
-version 14's, so a file of version 13 or lower carrying it is refused.
+version 16's, so a file of version 15 or lower carrying it is refused.
 
 **The landing** (piece 9; criterion 6). The land stage takes the lane to the
 default branch one step per invocation, each recorded in the lane's `landing`
