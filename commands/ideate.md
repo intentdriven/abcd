@@ -190,8 +190,9 @@ alone; relay that line.
 A public verdict is committed, and a private one is a file on disk, so in both
 stores every free-text field of the verdict is scanned and redacted before
 anything is written: a token, an email, or an absolute home path in
-the idea, a claim, a note, a kill attempt, or a rejected alternative is rewritten
-to a placeholder, and the count comes back as `redactions`. A repository whose
+the idea, a claim, a note, a kill attempt, the reframing, or a rejected
+alternative is rewritten to a placeholder, and the count comes back as
+`redactions`. A repository whose
 scanner config cannot be read refuses the run outright rather than record under a
 detector it cannot trust — nothing is written, and the same payload records once
 the config is repaired.
