@@ -8,13 +8,15 @@ import (
 	"testing"
 )
 
-// The three generated-index shapes the shipped config declares, built over a
-// temp repository: the drafts bench as id-and-title bullets, the ADR store as a
-// table read from each record's frontmatter, and the command pages as a
-// backticked name list.
+// The three generated-index shapes the lint renders, built over a temp
+// repository: a drafts bench as id-and-title bullets, the ADR store as a table
+// read from each record's frontmatter, and the command pages as a backticked
+// name list. The shipped config declares the last two; the titles shape has no
+// shipped region since the drafts bench stopped being committed as a list
+// (iss-2610280107422462).
 func draftsGenSpec() IndexSpec {
 	return IndexSpec{
-		ID: "later-phase-intents", Doc: "scope.md", Dir: "drafts",
+		ID: "drafts-titles", Doc: "scope.md", Dir: "drafts",
 		Suffix: ".md", DirEntry: `^(itd-[0-9]+)`, Mode: indexModeGenerated, Render: indexRenderTitles,
 	}
 }

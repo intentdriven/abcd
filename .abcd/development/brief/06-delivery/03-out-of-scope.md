@@ -25,7 +25,8 @@ Each id with the record's own title, its H1, comes from the records the same
 way:
 
 ```sh
-grep -m1 '^# ' .abcd/development/intents/drafts/itd-*.md
+grep -m1 '^# ' .abcd/development/intents/drafts/itd-*.md \
+  | sed -E 's#^.*/(itd-[0-9]+)[^:]*:\# #\1  #' | sort -V
 ```
 
 The list is not copied into this chapter. A committed copy, generated from
