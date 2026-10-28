@@ -123,12 +123,21 @@ func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(ho
 	if err := os.WriteFile(filepath.Join(release, "checksums.txt"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The release also publishes the installer, which the documented command
+	// fetches and pipes into sh (iss-2610240827243654).
+	// The release publishes the template byte for byte (release.yml copies it),
+	// so the sandbox serves exactly that, not the site's stamped copy.
+	installer := []byte(readFile(t, filepath.Join(repoRoot(), "site-src", "install.sh.tmpl")))
+	if err := os.WriteFile(filepath.Join(release, installScriptName), installer, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	stubs := t.TempDir()
 	// The stub curl answers the latest-release redirect with installedTag's
 	// page, the API's commit lookup for installedTag with releaseCommit (or a
 	// failure, when the case says the API does not answer), and any other URL
-	// from the release fixture by its last segment.
+	// from the release fixture by its last segment, except the installer, which
+	// it writes to stdout as `curl -fsSL <url> | sh` reads it.
 	commitAnswer := "printf '%s' '" + releaseCommit + "'"
 	if gh == ghVerifiesCommitUnresolved {
 		commitAnswer = "exit 22"
@@ -138,6 +147,7 @@ func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(ho
 		"https://github.com/intentdriven/abcd/releases/latest) printf '%s' 'https://github.com/intentdriven/abcd/releases/tag/" + installedTag + "'; exit 0 ;;\n" +
 		"https://api.github.com/repos/intentdriven/abcd/commits/" + installedTag + ") " + commitAnswer + "; exit 0 ;;\n" +
 		"https://api.github.com/*) exit 22 ;;\n" +
+		"*/" + installScriptName + ") cat '" + release + "'/" + installScriptName + "; exit 0 ;;\n" +
 		"esac\n" +
 		"cp '" + release + "'/\"${url##*/}\" \"${url##*/}\"\n"
 	if err := os.WriteFile(filepath.Join(stubs, "curl"), []byte(curl), 0o755); err != nil {

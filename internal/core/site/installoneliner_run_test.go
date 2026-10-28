@@ -11,14 +11,15 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
-// The copy-paste one-liners, run. The product thinker's ruling of 2026-10-12
-// (iss-2610120617521209) holds every install path to one rule: verify the
-// download with `gh attestation verify` when gh is present, and refuse when
+// The documented install command, run. The product thinker's ruling of
+// 2026-10-12 (iss-2610120617521209) holds every install path to one rule: verify
+// the download with `gh attestation verify` when gh is present, and refuse when
 // it fails; without gh, install on the checksum with a warning that the
-// download was not checked against the signed build record. The served
-// installer is proven by installsh_run_test.go; these run the README's
-// universal one-liner and the install guide's per-OS ones in the same sandbox,
-// so the forms a reader pastes are held to what they do, not what they say.
+// download was not checked against the signed build record. The installer is
+// proven by installsh_run_test.go; these run the command the README and the
+// install guide document, which pipes the release's installer into sh
+// (iss-2610240827243654), in the same sandbox, so the form a reader pastes is
+// held to what it does, not what it says.
 
 // oneLinerForm is one copy-paste form and the command block it is.
 type oneLinerForm struct {
@@ -27,11 +28,10 @@ type oneLinerForm struct {
 
 func oneLinerForms(t *testing.T) []oneLinerForm {
 	t.Helper()
-	guide := readFile(t, filepath.Join(repoRoot(), "docs", "how-to", "install.md"))
+	guide := filepath.Join("docs", "how-to", "install.md")
 	return []oneLinerForm{
 		{"readme", onlyInstallBlock(t, "README.md", fencedBlocks(readFile(t, filepath.Join(repoRoot(), "README.md"))))},
-		{"how-to-macos", onlyInstallBlock(t, "docs/how-to/install.md (### macOS)", blocksUnder(fencedBlocks(guide), "macOS"))},
-		{"how-to-linux", onlyInstallBlock(t, "docs/how-to/install.md (### Linux)", blocksUnder(fencedBlocks(guide), "Linux"))},
+		{"how-to", onlyInstallBlock(t, guide, fencedBlocks(readFile(t, filepath.Join(repoRoot(), guide))))},
 	}
 }
 

@@ -11,18 +11,18 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
-// The install command exists in four committed forms: the universal one-liner in
-// README.md, the script in site-src/install.sh.tmpl, and the per-OS one-liners
-// under docs/how-to/install.md's macOS and Linux headings. adr-47 makes all four
-// surfaces of one repository, so they are one command written four times — and a
-// reader who follows any of them must end up with the same bytes in the same
-// place.
+// The installer exists in two committed forms: the script in
+// site-src/install.sh.tmpl, which the release publishes as install.sh and
+// abcdev.app serves, and that script as the site build renders it. The README
+// and docs/how-to/install.md document one short command that pipes the
+// release's install.sh into sh (iss-2610240827243654), so the logic lives in
+// one script and the documented command is held to fetching it
+// (TestDocumentedInstallCommandFetchesTheReleasedInstaller).
 //
-// The per-OS forms are the universal one with OS detection resolved: same release
-// URLs, same checksum step, same install destination, `uname -s` replaced by the
-// OS it would have printed. This test holds them to exactly that, so a change to
-// one of them fails the build rather than shipping a page that quietly disagrees
-// with the script beside it.
+// The forms below must end up with the same bytes in the same place: same
+// release URLs, same checksum step, same install destination. This test holds
+// them to exactly that, so a change to one fails the build rather than shipping
+// a page that quietly disagrees with the script beside it.
 const (
 	checksumsAsset = "checksums.txt"
 	installDir     = "$HOME/.local/bin"
@@ -296,22 +296,10 @@ func assertArchMapping(t *testing.T, s installSurface) {
 func loadInstallSurfaces(t *testing.T) []installSurface {
 	t.Helper()
 
-	readmePath := filepath.Join(repoRoot(), "README.md")
 	templatePath := filepath.Join(repoRoot(), "site-src", "install.sh.tmpl")
-	guidePath := filepath.Join(repoRoot(), "docs", "how-to", "install.md")
-
-	guide := readFile(t, guidePath)
 	bothArches := []archMapping{amd64FromX8664, arm64FromAarch64}
 
 	surfaces := []installSurface{
-		{
-			name:      "readme-one-liner",
-			source:    "README.md",
-			script:    onlyInstallBlock(t, "README.md", fencedBlocks(readFile(t, readmePath))),
-			osToken:   "$os",
-			verifiers: []string{verifierGNU, verifierBSD},
-			archMap:   bothArches,
-		},
 		{
 			name:      "install-sh-template",
 			source:    "site-src/install.sh.tmpl",
@@ -320,25 +308,9 @@ func loadInstallSurfaces(t *testing.T) []installSurface {
 			verifiers: []string{verifierGNU, verifierBSD},
 			archMap:   bothArches,
 		},
-		{
-			name:      "how-to-macos",
-			source:    "docs/how-to/install.md (### macOS)",
-			script:    onlyInstallBlock(t, "docs/how-to/install.md (### macOS)", blocksUnder(fencedBlocks(guide), "macOS")),
-			osToken:   "darwin",
-			verifiers: []string{verifierBSD},
-			archMap:   []archMapping{amd64FromX8664},
-		},
-		{
-			name:      "how-to-linux",
-			source:    "docs/how-to/install.md (### Linux)",
-			script:    onlyInstallBlock(t, "docs/how-to/install.md (### Linux)", blocksUnder(fencedBlocks(guide), "Linux")),
-			osToken:   "linux",
-			verifiers: []string{verifierGNU},
-			archMap:   bothArches,
-		},
 	}
 
-	// The FIFTH form: the script this repository SERVES at /install.sh. It is the
+	// The SECOND form: the script this repository SERVES at /install.sh. It is the
 	// only form a reader of abcdev.app ever executes — the template is what was
 	// reviewed, this is what is downloaded — so holding it to the same rules is
 	// what makes the render's "copy plus a comment" claim checkable rather than
@@ -425,17 +397,6 @@ func fencedBlocks(md string) []fencedBlock {
 	return out
 }
 
-// blocksUnder keeps the blocks sitting under one H3.
-func blocksUnder(blocks []fencedBlock, heading string) []fencedBlock {
-	var out []fencedBlock
-	for _, b := range blocks {
-		if b.heading == heading {
-			out = append(out, b)
-		}
-	}
-	return out
-}
-
 // onlyInstallBlock returns the single block that downloads from the release, and
 // fails when a surface grew a second one — two install commands on one page is
 // the drift this test exists to catch.
@@ -492,45 +453,34 @@ func sortedKeys(m map[string]bool) []string {
 // TestLinkedAssetsMatchTheReleaseMatrix earns the manifest's `release.assets`
 // claim.
 //
+// releasedPlatformCase reads the platform list off the installer's
+// require_released_platform: the case pattern right after `case "$1-$2" in`.
+var releasedPlatformCase = regexp.MustCompile(`case "\$1-\$2" in\s*\n\s*([a-z0-9| -]+)\)`)
+
 // The hero links four binaries and a checksums manifest by NAME. The manifest
 // says those names come from the release workflow, and the build deliberately
 // does not read that workflow — a page that parses CI configuration to decide
 // what to link is a worse dependency than a constant. So the claim is held here
 // instead: the linked names must be exactly the `abcd-<os>-<arch>` matrix the
-// four committed install surfaces themselves derive.
+// installer itself admits (require_released_platform in site-src/install.sh.tmpl).
 //
 // A platform added to the release matrix with no link on the page, or a link to
 // a platform nothing publishes, fails this test — which is the whole content of
 // the claim.
 func TestLinkedAssetsMatchTheReleaseMatrix(t *testing.T) {
-	surfaces := loadInstallSurfaces(t)
-
-	// The OSes the per-OS surfaces resolve to, and the architectures their
-	// mappings produce. Both are read off the surfaces rather than restated.
-	oses := map[string]bool{}
-	arches := map[string]bool{}
-	for _, s := range surfaces {
-		if s.osToken != "$os" {
-			oses[s.osToken] = true
-		}
-		for _, m := range s.archMap {
-			arches[m.to] = true
-		}
+	// The platforms the installer admits are the release matrix as the one
+	// script every documented install runs states it.
+	template := readFile(t, filepath.Join(repoRoot(), "site-src", "install.sh.tmpl"))
+	admitted := releasedPlatformCase.FindStringSubmatch(template)
+	if admitted == nil {
+		t.Fatal("site-src/install.sh.tmpl has no require_released_platform case naming the released platforms")
 	}
-	// Apple silicon reports arm64 already, so no surface maps to it; it is the
-	// passthrough the aarch64 mapping proves is a published architecture.
-	if !arches["arm64"] || !arches["amd64"] {
-		t.Fatalf("the install surfaces resolve architectures %v; expected at least amd64 and arm64", keysOf(arches))
-	}
-	if len(oses) == 0 {
-		t.Fatal("no per-OS install surface names an operating system")
-	}
-
 	want := map[string]bool{}
-	for os := range oses {
-		for arch := range arches {
-			want["abcd-"+os+"-"+arch] = true
-		}
+	for _, p := range strings.Split(admitted[1], "|") {
+		want["abcd-"+strings.TrimSpace(p)] = true
+	}
+	if !want["abcd-darwin-arm64"] || !want["abcd-linux-amd64"] {
+		t.Fatalf("the installer admits %v; expected macOS and Linux on amd64 and arm64", keysOf(want))
 	}
 
 	got := map[string]bool{}
@@ -610,7 +560,7 @@ func TestInstallSurfacesRecordInTheNoindexHome(t *testing.T) {
 		})
 	}
 	if seen == 0 {
-		t.Fatal("no install form records the owned PATH copy; the README and the install guide's one-liners each do")
+		t.Fatal("no install form records the owned PATH copy; the installer does")
 	}
 }
 
@@ -632,5 +582,61 @@ func TestInstallSurfacesRefuseASymlinkedAbcdHome(t *testing.T) {
 				t.Errorf("%s writes ~/.abcd.noindex/path-entry but does not test %s before its first fetch", s.source, symlinkedHomeGuard)
 			}
 		})
+	}
+}
+
+// documentedInstallCommand is the one install command the README and the
+// install guide document (iss-2610240827243654): the release's own installer,
+// piped into sh. The installer is attested with the release, so the command
+// a reader pastes is one line they can read. The fetch that brings the script
+// is hardened as the installer's own are (TestInstallSurfacesHardenCurl): no
+// curlrc, HTTPS only on every hop, and no proxy the environment names, since
+// that one fetch decides what runs.
+const documentedInstallCommand = "curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 --noproxy '*' -fsSL " +
+	"https://github.com/intentdriven/abcd/releases/latest/download/" + installScriptName + " | sh"
+
+// TestDocumentedInstallCommandFetchesTheReleasedInstaller holds the README and
+// the install guide to that one command, each in exactly one block, fetched from
+// the same release-download prefix the installer itself downloads from.
+func TestDocumentedInstallCommandFetchesTheReleasedInstaller(t *testing.T) {
+	if !strings.Contains(documentedInstallCommand, " "+releaseDownloadPrefix(t)+installScriptName+" ") {
+		t.Fatalf("the documented command %q does not fetch from the installer's release-download prefix %q",
+			documentedInstallCommand, releaseDownloadPrefix(t))
+	}
+	for _, doc := range []string{"README.md", filepath.Join("docs", "how-to", "install.md")} {
+		t.Run(doc, func(t *testing.T) {
+			block := onlyInstallBlock(t, doc, fencedBlocks(readFile(t, filepath.Join(repoRoot(), doc))))
+			if got := strings.TrimSpace(block); got != documentedInstallCommand {
+				t.Errorf("%s documents\n\t%s\nwant\n\t%s", doc, got, documentedInstallCommand)
+			}
+		})
+	}
+}
+
+// TestTheHomePageShowsTheDocumentedInstallCommand renders this repository's
+// own site and holds its install chapter to the documented command: the page
+// builds its install tabs from the guide's headings under `## CLI`, and only a
+// tab whose section holds the command shows it, with the read-the-script link
+// beside it. A heading change in the guide that left no such tab would ship a
+// home page with no install command on it.
+func TestTheHomePageShowsTheDocumentedInstallCommand(t *testing.T) {
+	out := t.TempDir()
+	if _, err := Build(Request{RepoRoot: repoRoot(), OutDir: out, Stamp: fixtureStamp, LeaveUI: true}); err != nil {
+		t.Fatalf("build this repository's site: %v", err)
+	}
+	html := readFile(t, filepath.Join(out, "index.html"))
+	start := strings.Index(html, `<div role="tabpanel" id="panel-macos-and-linux"`)
+	if start < 0 {
+		t.Fatal("the home page has no macOS and Linux install panel")
+	}
+	panel := html[start:]
+	if end := strings.Index(panel[1:], `<div role="tabpanel"`); end >= 0 {
+		panel = panel[:end+1]
+	}
+	if !strings.Contains(panel, "releases/latest/download/"+installScriptName+" | sh") {
+		t.Error("the macOS and Linux panel does not show the documented install command")
+	}
+	if !strings.Contains(panel, `<a href="/`+installScriptName+`">`) {
+		t.Error("the macOS and Linux panel has no read-the-script link beside the command")
 	}
 }
