@@ -249,3 +249,117 @@ func TestARefusedCapStillNamesTheSiblings(t *testing.T) {
 		t.Fatalf("reservations = %+v; want iss-1 named from lane-b", snap.Reservations)
 	}
 }
+
+// TestASiblingIsNamedFromOneReadingOfTheWorktrees (iss-2610272352153282): a
+// hold's path names a copied worktree as both its folders, as abcd peers'
+// listing names it, not whichever one a walk of the worktrees found first.
+func TestASiblingIsNamedFromOneReadingOfTheWorktrees(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	c := p.worktree("lane-c")
+	d := p.worktree("lane-d")
+	key, err := CopyKey(c.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// d is a copy of c: the same kept key.
+	if err := os.MkdirAll(filepath.Join(d.dir, ".abcd", ".work.local", "reservation"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(d.dir, ".abcd", ".work.local", "reservation", "copy-key"), []byte(key+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := siblingCopy(p.dir, key)
+	if !strings.Contains(got, "lane-c") || !strings.Contains(got, "lane-d") || !strings.Contains(got, " or ") {
+		t.Fatalf("siblingCopy = %q; want both paths of the copied worktree", got)
+	}
+}
+
+// TestSiblingsSharingAFolderAndItsParentAreToldApart (iss-2610272352168723):
+// two worktrees whose folders and their parents share names read by the
+// shortest path tail that tells them apart, and the ceiling counts each.
+func TestSiblingsSharingAFolderAndItsParentAreToldApart(t *testing.T) {
+	w := newWorld(t)
+	home := t.TempDir()
+	writeConfig(t, home, `{"reservation": {"max_live": 10}}`)
+	p := w.clone("1234+octo@users.noreply.github.com", home)
+	base := t.TempDir()
+	x := p.worktreeAt(filepath.Join(base, "x", "a", "lane-b"))
+	y := p.worktreeAt(filepath.Join(base, "y", "a", "lane-b"))
+	if _, err := x.reserve("iss-1", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := y.reserve("iss-2", "b.go"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Fetch(p.dir, p.opts()); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := View(p.dir, w.clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, ok := CeilingFor(p.dir, &snap, p.opts())
+	if !ok {
+		t.Fatal("no ceiling for the reader")
+	}
+	want := []SiblingLive{{Name: "x/a/lane-b", Live: 1}, {Name: "y/a/lane-b", Live: 1}}
+	if len(c.Siblings) != len(want) || c.Siblings[0] != want[0] || c.Siblings[1] != want[1] {
+		t.Fatalf("siblings = %+v; want %+v", c.Siblings, want)
+	}
+}
+
+// TestTheCapRefusalNamesOnlyTheHoldersOwnCopiesAndWhyNoSiblingIs
+// (iss-2610272352179242): the refusal's places come from the holder's own
+// live tips, never another holder's tip on the same record, and say why the
+// worktrees could not be listed when they could not.
+func TestTheCapRefusalNamesOnlyTheHoldersOwnCopiesAndWhyNoSiblingIs(t *testing.T) {
+	key := strings.Repeat("ab", copyKeyLen/2)
+	snap := Snapshot{Reservations: []Reservation{
+		{Record: "iss-1", Holder: "octo", State: StateLive, key: key},
+		{Record: "iss-1", Holder: "mallory", State: StateLive, Copy: CopyThis},
+		{Record: "iss-1", Holder: "octo", State: StateExpired, Copy: CopyThis},
+	}}
+	err := capRefusalIn(&snap, t.TempDir(), "octo", []string{"iss-1"}, 1, "")
+	for _, want := range []string{"elsewhere: iss-1", "could not be listed"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q lacks %q", err, want)
+		}
+	}
+}
+
+// TestASiblingsNameNeverShowsTheHomeFolders (iss-2610272352168723 review):
+// tails are cut from home-redacted paths, so telling two siblings apart never
+// reaches up into the home directory's own folders, the login name among them.
+func TestASiblingsNameNeverShowsTheHomeFolders(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "octo")
+	t.Setenv("HOME", home)
+	paths := []string{filepath.Join(home, "a", "lane-b"), filepath.Join(home, "w", "a", "lane-b")}
+	if got := siblingTail(paths[0], paths); got != "~/a/lane-b" {
+		t.Errorf("siblingTail(%s) = %q; want ~/a/lane-b", paths[0], got)
+	}
+	if got := siblingTail(paths[1], paths); got != "w/a/lane-b" {
+		t.Errorf("siblingTail(%s) = %q; want w/a/lane-b", paths[1], got)
+	}
+}
+
+// TestASiblingsNameAndPathAreTerminalSafe (iss-2610272352153282 review): the
+// one reading of the worktrees masks control characters in a sibling's name
+// and path, so neither reaches a terminal raw from any surface.
+func TestASiblingsNameAndPathAreTerminalSafe(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	sib := p.worktree("lane\x1b[31mb")
+	key, err := CopyKey(sib.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sibs, unread := siblingCopies(p.dir, ownCopyKey(p.dir))
+	at, ok := sibs[key]
+	if unread != "" || !ok {
+		t.Fatalf("siblings = %+v, unread %q; want the worktree listed", sibs, unread)
+	}
+	if strings.ContainsRune(at.Name, 0x1b) || strings.ContainsRune(at.Path, 0x1b) {
+		t.Fatalf("sibling = %+v; want no escape character", at)
+	}
+}

@@ -76,8 +76,9 @@ payload adds:
 - `reservations`: each with its `record`, `holder`, `footprint`,
   `effective_expiry`, `state` and `commit`; `claimed_at` for a readable one;
   `copy: "this"` when it was made from this checkout; `sibling`, for the
-  reader's own, the directory name of the other worktree of this repository
-  on this computer that made it (never its key); `released_by`
+  reader's own, the other worktree of this repository on this computer that
+  made it, by its folder's name with parent folders added only where two
+  would otherwise read alike (never its key); `released_by`
   (`tombstone`, `default-branch` when the record is already resolved,
   won't-fixed, shipped or superseded on origin's default branch, or `tag`
   when a release's tag is on origin) for a released one; and for an `unreadable` one its fixed `unreadable` reason, no
@@ -103,7 +104,8 @@ payload adds:
 - `ceiling`: the reader's own live reservations against this computer's
   `reservation.max_live`: `holder`, `live`, `limit`, and where they were made
   from: `this_copy`, `siblings` (each worktree of this repository here by
-  `name`, its parent folder added where two share a name, with its `live`)
+  `name`, with as many parent folders as tell it apart where two share a
+  name, and its `live`)
   and `elsewhere` (every copy not found among those worktrees: another clone
   on this computer or another, a removed worktree, or another account pushing
   as the same login). From four fifths of the limit `warn` is true and
