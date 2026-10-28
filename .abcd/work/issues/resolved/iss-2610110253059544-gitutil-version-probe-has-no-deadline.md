@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/gitutil"
 remedy: "Run the git version probe under the caller's context (or a short fixed deadline) with the same kill-on-cancel handling every other gitutil call gets, release the lock on timeout without caching a result, and add a test with a fake git that hangs on 'version', proving the first call returns by its deadline and leaves no child behind."
-resolution: "fixed on main by the iss-2610181802344551 work: the version probe now ends at the caller's deadline, its git is killed there and nothing is cached; dcn-2610280036019459"
+resolution: "fixed on main by the iss-2610181802344551 work: the version probe now ends at the caller's deadline where it has one and within 30 seconds where it has none, its git is killed then and nothing is cached; dcn-2610280036019459"
 impact: fix
 resolved_by:
   commit: "43fe855b82df7a7bc0276a8efd1690a56e654ac5"
