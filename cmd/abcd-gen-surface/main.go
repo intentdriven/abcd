@@ -18,8 +18,8 @@
 //
 // It also writes the record's generated index regions (iss-2608220150157511):
 // every index the index_drift rule in .abcd/record-lint.json declares in
-// generated mode — the command list in the surfaces register, the drafts bench
-// in the out-of-scope chapter, the ADR index — rendered by lint.RegenerateIndexes,
+// generated mode — the command list in the surfaces register and the ADR
+// index — rendered by lint.RegenerateIndexes,
 // the same function the rule compares against, so a conflicted region is
 // resolved by rerunning this generator over the merged tree.
 package main

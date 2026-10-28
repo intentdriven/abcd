@@ -134,6 +134,20 @@ plugin surface, and a future MCP server share one engine.
   unescaping and case-insensitively under Unicode simple folding, so a case twin
   counts; the refusal names both spellings and where they sit, and each caller
   phrases its own message from those fields.
+- **`core/matrix/`** — a model-matrix run (itd-2610161733316518): one task done
+  many times across a declared matrix of models from one frozen commit, merged
+  nowhere. It holds the run's records — the declaration, decoded strictly
+  through `core/jsonstrict`; the run record, which pins the frozen commit, the
+  binary, the prompt and tool-definition hashes, the render template, the
+  machine and the caps, and lists every field it could not pin with
+  `core/oracle`'s reasons; and the trial record, which carries the runners' and
+  routes' receipts unchanged — plus the export that maps a trial onto a Harbor
+  trial result and an Inspect eval sample and back. A run is a lab procedure:
+  it writes only under its lab's `state/matrix/`, through `lab.Procedure`, so
+  it obeys the lab's halts and pins its binary through the lab's one hashing
+  path (`lab.BinaryIdentity`). The run record and its declaration pass the
+  repository's secret scanner (`adapter/scanner`) before they are written, and
+  are written together or not at all (`lab.Procedure.WriteStates`).
 - **`core/surface/`** — the compatibility surface as DATA: the snapshot of every
   command, flag, and manifest entry a consumer binds to, and the diff that names
   what a release narrowed. It shares a word with the `surface/` front-door tier
@@ -251,6 +265,22 @@ plugin surface, and a future MCP server share one engine.
   front door compensates by making a disabled registry loud rather than silent.
   Fail-open-loud on a broken guard belongs to the hook shim (`hooks/hooks.json`)
   and the `abcd guard hook` adapter, not here.
+- **`core/dogfood/`** — which abcd binary a hook runs in a checkout the person
+  opted in to dogfooding through `~/.abcd.noindex/dogfood-roots`
+  (iss-2610070547057816), and the build it runs. The list is read through
+  `fsutil.HomeDeclarationEntry`, each line naming a checkout, the https or ssh
+  remote its reviewed branch lives on (a path, `file://`, `git://` or `http://`
+  remote is refused, as one an agent or the network path can move), and that
+  branch; a listed main checkout covers the
+  worktrees it records. `Build`, run in the background, is the only caller of
+  the network: it reads the branch's tip with `git ls-remote` against the
+  declared remote, records it in the store under a lock, and builds that commit,
+  its commit and trees re-hashed and its `git archive` export checked against
+  them, into `~/.abcd.noindex/dogfood/<root-sha>/<commit>/`. `Resolve`, the
+  hook's half, names a build only for the recorded tip; the checkout's refs and
+  remote config never choose one. Every failure leaves the installed release
+  running, said on stderr. The hook shims reach it through
+  `hook dogfood-binary`.
 - **`core/board/`** — the status board's one renderer (spc-2610031844142274):
   the product thinker's view and the facilitator's, each as text fitted or
   wrapped to the window or as a markdown list a host session pastes unchanged.

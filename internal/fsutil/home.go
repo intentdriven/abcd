@@ -441,6 +441,18 @@ func OpenHomeScope(home, dir string) (*os.Root, error) {
 	return openHomeScope(home, dir, false, 0, nil)
 }
 
+// OpenHomeDeclarationScope is OpenHomeScope for a reader that takes every
+// file below dir as the caller's word, as ReadHomeDeclaration takes one:
+// each directory level below home is also judged on its own descriptor, and
+// one every account can write, or one owned by an account that is neither
+// this uid nor root, is refused with a *HomeScopeExposedError naming it
+// (ErrHomeScopeExposed), because whoever can change the directory can put a
+// file of the caller's own shape in it. The files read through the root
+// still need their own guards (ReadHomeDeclarationDenyingIn).
+func OpenHomeDeclarationScope(home, dir string) (*os.Root, error) {
+	return openHomeScope(home, dir, false, 0, vetDeclarationDir)
+}
+
 // EnsureHomeScope is OpenHomeScope for a writer: each missing level is created
 // at perm (a single mkdir relative to the level above, which never follows a
 // link at the name it creates) before it is judged and opened, so the walk
@@ -705,9 +717,10 @@ func readDeclarationInOnce(root *os.Root, leaf, p string, limit int64, deny os.F
 // home through ReadHomeDeclaration and reports whether one of its entries names
 // target. It is the one reader behind every "declare this checkout" opt-in —
 // ~/.abcd.noindex/trusted-roots for the rules resolver, ~/.abcd.noindex/local-transcript-roots
-// for the transcript store — so a hardening of what a declaration must be, or
-// of how an entry is matched, lands once and reaches every caller
-// (iss-2609090951283654).
+// for the transcript store, and through HomeDeclarationEntry
+// ~/.abcd.noindex/dogfood-roots, whose lines carry fields after the path — so a
+// hardening of what a declaration must be, or of how an entry is matched,
+// lands once and reaches every caller (iss-2609090951283654).
 //
 // An entry is a trimmed line that is neither blank nor a "#" comment and is
 // absolute: a relative entry names a different directory per caller and names
@@ -724,36 +737,67 @@ func readDeclarationInOnce(root *os.Root, leaf, p string, limit int64, deny os.F
 // saying why a present declaration was not honoured, for the caller to render
 // in its own voice. A declaration that was not honoured names nothing.
 func HomeDeclarationNames(home, rel string, limit int64, target string, fold bool) (declared bool, ignored string) {
+	_, declared, ignored = homeDeclarationLookup(home, rel, limit, target, fold, false)
+	return declared, ignored
+}
+
+// HomeDeclarationEntry is HomeDeclarationNames for a declaration whose entries
+// carry fields after the path: a line is the path, then tab-separated fields,
+// and fields are the trimmed fields of the first entry whose path names target
+// (empty for a path-only line). The path field is matched, and the declaration
+// vetted, exactly as HomeDeclarationNames does both; only the split differs,
+// and it is the caller's choice, so a declaration of checkouts alone keeps
+// reading a whole line as one path. A field left empty between two tabs stays
+// in its place as "".
+func HomeDeclarationEntry(home, rel string, limit int64, target string, fold bool) (fields []string, declared bool, ignored string) {
+	return homeDeclarationLookup(home, rel, limit, target, fold, true)
+}
+
+// homeDeclarationLookup is HomeDeclarationNames and HomeDeclarationEntry: tabbed
+// says whether a line is a path followed by tab-separated fields or a path
+// alone.
+func homeDeclarationLookup(home, rel string, limit int64, target string, fold, tabbed bool) (fields []string, declared bool, ignored string) {
 	raw, refusal, err := ReadHomeDeclaration(home, rel, limit)
 	switch refusal {
 	case DeclarationOK:
 	case DeclarationAbsent:
-		return false, ""
+		return nil, false, ""
 	case DeclarationBehindSymlink, DeclarationDirectoryExposed:
-		return false, termsafe.Sanitize(err.Error())
+		return nil, false, termsafe.Sanitize(err.Error())
 	case DeclarationNotRegular:
-		return false, "it is not a regular file"
+		return nil, false, "it is not a regular file"
 	case DeclarationWritableByOthers:
-		return false, "it is writable by others, so its contents are not necessarily yours"
+		return nil, false, "it is writable by others, so its contents are not necessarily yours"
 	case DeclarationForeignOwner:
-		return false, "it is not owned by this session's uid"
+		return nil, false, "it is not owned by this session's uid"
 	default:
-		return false, "it could not be read (" + termsafe.Sanitize(err.Error()) + ")"
+		return nil, false, "it could not be read (" + termsafe.Sanitize(err.Error()) + ")"
 	}
 	want := []string{FoldPath(filepath.Clean(target), fold), FoldPath(resolveOrClean(target), fold)}
 	for _, line := range strings.Split(string(raw), "\n") {
 		entry := strings.TrimSpace(line)
+		var rest []string
+		if tabbed {
+			parts := strings.Split(entry, "\t")
+			entry = strings.TrimSpace(parts[0])
+			for _, f := range parts[1:] {
+				rest = append(rest, strings.TrimSpace(f))
+			}
+		}
 		if entry == "" || strings.HasPrefix(entry, "#") || !filepath.IsAbs(entry) {
 			continue
 		}
 		for _, cand := range []string{filepath.Clean(entry), resolveOrClean(entry)} {
 			key := FoldPath(cand, fold)
 			if key == want[0] || key == want[1] {
-				return true, ""
+				if rest == nil {
+					rest = []string{}
+				}
+				return rest, true, ""
 			}
 		}
 	}
-	return false, ""
+	return nil, false, ""
 }
 
 // resolveOrClean is EvalSymlinks with a lexical fallback, so a declared path

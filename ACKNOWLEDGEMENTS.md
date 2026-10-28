@@ -27,6 +27,15 @@ failed-provisioning fallback whose guidance framed Go as a requirement it is not
 
 Ideas and methodologies that shaped the design — not code abcd depends on.
 
+- **"Redesigning source control at Anthropic" (Anthropic engineering, 2026-10-13,
+  <https://www.anthropic.com/engineering/redesigning-source-control>)** — two
+  observations from its account of agent-scale development, each reframed by an
+  ideate run of 2026-10-14 before adoption: that an adversarial review can turn
+  "overly defensive" and add validation and complexity no constraint requires,
+  which became the rule that a reviewer's extra check names what it protects
+  (itd-2610141646463379); and its "superfan" agents that each watch one
+  component, which became a cheap event watcher that wakes an agent only when
+  something needs action (itd-2610141646469491).
 - **The International Code of Signals (International Maritime Organization)** —
   the maritime flag alphabet whose Alfa, Bravo, Charlie and Delta are encoded
   pixel-for-pixel as abcd's logo (itd-133, `internal/livery`): the halved
@@ -388,6 +397,17 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   repository's root, `abcd ahoy` can write abcd's conventions section into it
   (`internal/core/ahoy/marker.go`), and a host-named instructions file is kept
   only as a bridge to it.
+- **Inspect AI (UK AI Security Institute, <https://inspect.aisi.org.uk>) and
+  Harbor (the Terminal-Bench harness, <https://github.com/harbor-framework/harbor>)**
+  — two evaluation harnesses whose per-trial records a model-matrix run's trial
+  record maps onto field by field, and back (itd-2610161733316518,
+  `internal/core/matrix/export.go`), so a later move to either replaces only the
+  scheduler. The mapping is pinned to the sources read on 2026-10-23: Inspect's
+  `EvalSample` (log version 2) at
+  [`UKGovernmentBEIS/inspect_ai@157980923b29`](https://github.com/UKGovernmentBEIS/inspect_ai/blob/157980923b2993d2496a8d150c81f32465f15991/src/inspect_ai/log/_log.py)
+  and Harbor's `TrialResult` (0.24.0) at
+  [`harbor-framework/harbor@d0fe0b24703f`](https://github.com/harbor-framework/harbor/blob/d0fe0b24703f4e53806be5cb3b5e07d622aebbfa/src/harbor/models/trial/result.py).
+  abcd runs neither and depends on neither.
 
 ## References & sources
 

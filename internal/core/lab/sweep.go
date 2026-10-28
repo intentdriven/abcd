@@ -105,6 +105,26 @@ func isCaptureFile(p string) bool {
 	return ok && probeNameRe.MatchString(name) && slices.Contains(probeFiles, file)
 }
 
+// isProcedureRecord reports whether p, an entry the sweep walks, is a record a
+// procedure wrote: a regular file under state/matrix/ whose path a procedure
+// can write and within the bound a record is written in. A matrix
+// declaration is a run's input and its run and trial records are what it ran
+// and measured, never rewritten, so a retraction swept into one could never be
+// applied (dcn-2610280629295069). The exemption is fail-closed: anything else
+// there, a link, a name no procedure writes or a file past the bound, is read
+// as any document is, or listed as not swept.
+func isProcedureRecord(p string, d fs.DirEntry) bool {
+	rel, ok := strings.CutPrefix(p, procedureDir+"/")
+	if !ok || !d.Type().IsRegular() {
+		return false
+	}
+	if full, err := stateRel(rel); err != nil || full != p {
+		return false
+	}
+	info, err := d.Info()
+	return err == nil && info.Size() <= MaxStateBytes
+}
+
 // unswept is the check a sweep fails when a document it could not read might
 // still carry a retracted claim.
 const unswept = "unswept"
@@ -148,7 +168,7 @@ func Sweep(repoRoot, id string) (Swept, error) {
 			}
 			return nil
 		}
-		if sweepSkipFiles[p] || strings.HasPrefix(p, "state/halt-") || isCaptureFile(p) {
+		if sweepSkipFiles[p] || strings.HasPrefix(p, "state/halt-") || isCaptureFile(p) || isProcedureRecord(p, d) {
 			return nil
 		}
 		if !d.Type().IsRegular() {

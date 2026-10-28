@@ -2895,7 +2895,7 @@ and creates nothing. Exit 2 when --run names no run.
 
 Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.
 
-**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [flags]`
+**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... [flags]`
 
 Perform the run's next move, write the state, and exit. At a stage that hands work to
 an agent, the result names the agent to start, the brief it is handed and the path its
@@ -3020,6 +3020,25 @@ skills and plugins do not reach it. A route the repository's .abcd/config.json s
 runner is skipped with a warning on stderr, and the role is the host's as if unrouted;
 one it sets to host keeps the role on the host over the machine's runner route, with a
 warning naming both routes.
+--route <role>=runner:<name>[@<provider>/<model>] routes one role this step hands out
+(implementer, ruthless-reviewer, security-reviewer or intent-auditor) to a runner for this
+step alone, over every configured route, asking for the model named after @ in place of
+the runner's own runner.<name>.model, which every other role keeps; one per role. The
+runner must be one the machine enables and the model one its provider lists, or the step
+is refused before anything is written, naming the fix; a tier route, and a --route with
+--release, --discard, --restart or --accept-config-change (which writes its acceptance
+before the step is judged), are refused too. The model is held to the pins the machine
+sets for it, as the runner's own model is: opencode holds them, and a --route naming
+claude, which holds none, for a pinned model is refused before anything is written,
+naming runner.opencode.model. A step hands at most one role out, so
+a --route for a role it will not hand out (it performs a stage abcd runs itself, hands out
+another role, or re-tells an agent already out) is refused before anything is written,
+naming the role it hands out or that it hands none. When a lane's landing comes first and
+may wait on the forge, whether the role is handed out is known only after the landing
+moves: a --route it then did not use is warned of on stderr, named in route_unused, and
+recorded in the run record. A setup warning about a role's configured route is not said
+for a role the --route replaces. The role's receipt in the run's state, and the run
+record, carry the --route verbatim.
 A runner that is absent, refuses, fails, runs past its time,
 or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed
 the role as with no runner, and the call records one fallback naming the role, the runner
@@ -3097,6 +3116,7 @@ refusal, exit 3 on a pause or a locked run state.
       --discard string         discard a held lane (lane-<n>), or one a drain handed back as stuck: remove its worktree and branch, then close its pull request
       --release string         land a held lane as it is (lane-<n>), once no lane has work left
       --restart string         restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
+      --route stringArray      route one role this step hands to an agent to a runner, for this invocation alone: <role>=runner:<name>[@<provider>/<model>], the runner one this machine enables and the model one its provider lists (else the runner's own model); one per role (implementer, ruthless-reviewer, security-reviewer, intent-auditor); wins over every configured route for this step alone, and the role's receipt records it verbatim
       --run string             the run to step (run-<16 digits>); the one run in progress when omitted
       --yielded string         with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
@@ -3486,6 +3506,46 @@ is still harvested, its gate findings first.
 abcd lab harvest lab-260901000000-0123abc
 ```
 
+#### `abcd lab matrix`
+
+Show a model matrix run's plan, or record the run its digest consents to: Writes the run record only with --approve; refuses a metered run with no cap.
+
+**Usage:** `abcd lab matrix <lab-id> <declaration.json> [flags]`
+
+abcd lab matrix <lab-id> <declaration.json> [--approve <digest>]
+
+Show the plan for a model matrix run of the declaration in the lab: how many
+copies each cell makes, the expected cost by source against the spending cap,
+the load cap below this machine's cores, the time, and the judges each task
+needs. Building it reads the declaration and this machine's configuration and
+nothing else: no network call, no price fetched, nothing written. Its digest
+names exactly that plan.
+
+--approve <digest> records the run, once the person has seen the plan and said
+yes to it: the plan is built again and must carry that digest. A host passes
+--approve only after the person, in that session, has seen the plan and said
+yes to it. Starting the run's copies is not built yet, so a consented run is
+recorded in the lab and nothing is launched; the output says so.
+
+Refused, exit 2, with nothing written: a declaration that does not parse, a
+cell route the runner rung or this machine's runner configuration refuses, a
+cell on a runner that names no model, a model its provider does not list, an
+OpenRouter or local cell with no pin, a metered cell with no spending cap, a
+local cell with no load cap or one at or above the cores, and an approval that
+is not the plan's digest. A halted lab exits 1.
+
+**Flags:**
+
+```
+      --approve string   the digest of the plan the person saw and said yes to; records the run
+```
+
+**Example:**
+
+```
+abcd lab matrix lab-260901000000-0123abc matrix.json
+```
+
 #### `abcd lab mint`
 
 Mint a lab for one question, with a standalone snapshot at the pin: Writes only under the lab store; refuses a multi-line question or a pin naming no commit.
@@ -3574,7 +3634,10 @@ names a literal that must be absent from the lab's own documents; the sweep
 searches them all for it — the pattern, not the instance — and lists every
 place it still stands. The snapshot, the lab's HOME and binaries, transcripts
 and each probe's five capture files are not swept: they are the world and the
-instruments, not claims; a probe's record.md is prose, and is swept. The
+instruments, not claims. Nor are the records a procedure writes under
+state/matrix/ (a matrix run's declaration, run and trial records), which are
+what a run was given and measured; any other file there is swept. A probe's
+record.md is prose, and is swept. The
 result is written to state/sweep.md. An unapplied correction, one too short
 to mean anything, or — while any correction is recorded — a document the
 sweep could not read (too large, binary, or not a regular file; each listed
@@ -4724,15 +4787,21 @@ its .abcd/rules.json.
 --prompt "<text>" shows what that one prompt would bring back to a fresh
 session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ~/.abcd.noindex/memory.json and .abcd/memory.json,
-with its layer and the recall words that hit, each in full or as not fitting
-the per-turn budget. It reads against an empty ledger and writes nothing.
+and each memory page from .abcd/memory/ and ~/.abcd.noindex/memory/, with its
+layer and the recall words that hit, each in full or as not fitting the
+per-turn budget, or as larger than the whole budget, which no turn can
+carry in full. Notes and pages share one ranked order, a BM25F relevance
+score that decides which of them fit the budget: each shows its rank and
+score and, under it, every matched term with the fields it was found in
+(recall words, title, body) and what it added to the score. It reads
+against an empty ledger and writes nothing.
 --prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.
 
 **Flags:**
 
 ```
-      --prompt string   show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes it recalls
+      --prompt string   show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes and pages it recalls
 ```
 
 ### `abcd scribe`

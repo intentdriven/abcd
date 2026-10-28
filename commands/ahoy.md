@@ -1439,7 +1439,33 @@ without it, and when that succeeds the block is written with
 `stream_usage: false` (its calls then go without the field) and the result
 says so in `stream_usage_note`: relay that line. `--stream-usage=false`
 writes that setting outright, for a server known to refuse the field, and
-the verification is then asked once, as given. A `~/.abcd.noindex` that is a
+the verification is then asked once, as given. The block it writes pins no
+model and reads nothing back: a pin to one OpenRouter provider (`pins`,
+iss-2610161734413178) and `read_generation: true` (OpenRouter's record of
+what served each call, one extra request per call, made only because the
+person turned it on) are added to the block by hand afterwards, on an
+OpenRouter block alone, as the configuration chapter of the brief describes,
+and a configured provider's verification sends the first listed model's pin
+when it has one. A block on this machine takes a local pin there instead
+(the runtime, its version, the weights' digest, quantisation, context length
+and KV-cache type, and on llama.cpp the GGUF file's name, since llama-server
+reports no digest, iss-2610161734428291), which probes the server before the
+route is used. No runtime reports the KV-cache type, so the refusal of a q4
+cache on llama-server rests on the pin's declaration, and the record lists
+the served cache type as not verified. The verification never reads the generation record back,
+even when the block says `read_generation: true`: that would be one more
+request for an answer the verification discards. A role
+routed through opencode to a pinned model is refused while the person's
+environment sets `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` or
+`OPENCODE_CONFIG_CONTENT`, since the run's own sealed configuration would
+replace theirs or be overridden by it: unset it for pinned runs, or route
+the role without a pin. `~/.opencode/opencode.json` is not refused, so a
+routing entry for that model there can override the pin, which is one reason
+the pin is recorded as not verified on that path, and so are a local pin's
+weights, quantisation, runtime version and context, though the probe checked
+them. The claude runner holds no pin, so a role routed through it to a pinned
+model is refused before it starts: route the role through opencode, or remove
+the pin. A `~/.abcd.noindex` that is a
 symlink (into a dotfiles checkout, say) is refused with nothing written, in
 any home, naming the link: the key would otherwise land wherever it points.
 A `--file` pointer is refused, naming the link, when any directory between the
@@ -1527,12 +1553,23 @@ prompt in a fresh session, and writes nothing. `domains` lists each rule
 domain the prompt matches, with the recall words that hit (`hits`, or
 `*NAME` for a star activation); `notes` lists each memory note it recalls
 from `~/.abcd.noindex/memory.json` or the project's `.abcd/memory.json`, with
-its `layer` (`machine` or `project`) and the recall words that hit. Each
-carries a `form`: `full`, or `over-budget` when it would not fit the
-per-turn budget and would come back on a later prompt instead. `disabled`
-is true under the kill switch, and then nothing comes back; `unreadable`
-names a `memory.json` that could not be read, and why. Use it when someone
-asks why a rule or a note did, or did not, come back on a prompt. A
+its `layer` (`machine` or `project`) and the recall words that hit; `pages`
+lists each memory page it recalls from the project's `.abcd/memory/` or
+`~/.abcd.noindex/memory/`, by its `key` (`page:<filename>`, the name the
+hook's envelope gives it), with its `filename`, `title`, `layer` and the
+recall words that hit. A page comes back only when its frontmatter declares
+a `recall:` list, and a page in the project's store suppresses the machine's
+page of the same name. Notes and pages share one ranked order: each carries
+its `rank` (1 first), its BM25F relevance `score`, and `terms`, each matched
+term with how often it was found in the item's `recall` words, `title` and
+`body` and its `contribution` to the score; the ranking decides which items
+fit the budget. Each carries a `form`: `full`, `over-budget` when
+it would not fit the per-turn budget and would come back on a later prompt
+instead, or `too-large` when it is larger than the whole per-turn budget and
+no prompt brings it back in full. `disabled` is true under the kill switch, and then nothing comes
+back; `unreadable` names a `memory.json`, page store or page that could not
+be read, why, and its `kind` (`note` or `page`). Use it when someone asks why
+a rule, a note or a page did, or did not, come back on a prompt. A
 positional DOMAIN with `--prompt` is refused, exit 2: `rules <DOMAIN>`
 renders one domain's rules instead.
 
@@ -1552,6 +1589,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

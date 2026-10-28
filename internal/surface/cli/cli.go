@@ -154,6 +154,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"hook", "subagent-stop"}, {"hook", "question-answered"},
 		{"hook", "permission-request"},
 		{"hook", "stop"}, {"hook", "stop-failure"},
+		{"hook", "dogfood-binary"},
 	} {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
@@ -1712,20 +1713,21 @@ func newHookCommand(asJSON *bool) *cobra.Command {
 	// prompt-router — UserPromptSubmit: recall-match, dedup, inject.
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router",
-		Short: "UserPromptSubmit: inject the rules and memory notes matching the prompt",
+		Short: "UserPromptSubmit: inject the rules, memory notes and pages matching the prompt",
 		Long: `Plain, stdout is the rendered rule block the host injects, followed by a
-"## MEMORY" block of the memory notes the prompt recalls, and nothing on a
-turn with nothing new. With --json, stdout is one envelope in place of the
+"## MEMORY" block of the memory notes and pages the prompt recalls, and nothing
+on a turn with nothing new. With --json, stdout is one envelope in place of the
 generic machine-reader shape:
 
   {"text": ..., "injected": [...], "recalled": [...], "active": [...], "error": ...}
 
 text is byte for byte what the plain form writes; injected names the domains
-text carries, and recalled the notes; active is the full set of domains in
+text carries, and recalled the notes and pages (a note by its id, a page as
+page:<filename>); active is the full set of domains in
 force this turn, so a name missing from it has stopped. error is present only
 when the prompt could not be evaluated, and then active is absent: the set is
-unknown. A memory.json that cannot be read is named on stderr and recalls
-nothing, and the rules still inject. Every outcome, an error included,
+unknown. A memory.json, page store or page that cannot be read is named on
+stderr and recalls nothing, and the rules still inject. Every outcome, an error included,
 exits 0, so the hook can never wedge a session.
 
 After them comes a "## STATUS" block when the last fetch of the status
@@ -1859,16 +1861,20 @@ envelope carries it as system_message.`,
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
-			// Each note id carries its layer ("mem-… (project)"), as the
-			// rules line's names carry theirs, so the log says whether the
-			// words came from this repository's committed file or from the
-			// person's own notes.
-			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d note(s) [%s], %d bytes", len(mem.Recalled),
+			// Each item carries its layer ("mem-… (project)", "page:… (machine)"),
+			// as the rules line's names carry theirs, so the log says whether
+			// the words came from this repository's committed files or from
+			// the person's own.
+			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 || len(mem.TooLarge) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d item(s) [%s], %d bytes", len(mem.Recalled),
 					strings.Join(mem.Labels(mem.Recalled), ", "), len(mem.Text))
 				if len(mem.Omitted) > 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched note(s) [%s] did not fit this turn's budget and are tried again on the next",
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) [%s] did not fit this turn's budget and are tried again on the next",
 						len(mem.Omitted), strings.Join(mem.Labels(mem.Omitted), ", "))
+				}
+				if len(mem.TooLarge) > 0 {
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) [%s] are larger than the whole per-turn budget and do not come back in full",
+						len(mem.TooLarge), strings.Join(mem.Labels(mem.TooLarge), ", "))
 				}
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
@@ -2342,6 +2348,9 @@ envelope carries it as system_message.`,
 	// stop and stop-failure — Stop and StopFailure: the away mode's stop
 	// check (spc-2610180914469489 step 5). Their bodies live in hook_stop.go.
 	hookCmd.AddCommand(newHookStopCommand(), newHookStopFailureCommand())
+	// dogfood-binary and dogfood-build — the hook shims' dogfood rung
+	// (hook_dogfood.go): which build a listed checkout runs, and making it.
+	hookCmd.AddCommand(newDogfoodBinaryCommand(), newDogfoodBuildCommand())
 
 	return hookCmd
 }
@@ -2636,8 +2645,14 @@ its .abcd/rules.json.
 --prompt "<text>" shows what that one prompt would bring back to a fresh
 session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ` + abcdhome.Display("memory.json") + ` and .abcd/memory.json,
-with its layer and the recall words that hit, each in full or as not fitting
-the per-turn budget. It reads against an empty ledger and writes nothing.
+and each memory page from .abcd/memory/ and ` + abcdhome.Display("memory") + `/, with its
+layer and the recall words that hit, each in full or as not fitting the
+per-turn budget, or as larger than the whole budget, which no turn can
+carry in full. Notes and pages share one ranked order, a BM25F relevance
+score that decides which of them fit the budget: each shows its rank and
+score and, under it, every matched term with the fields it was found in
+(recall words, title, body) and what it added to the score. It reads
+against an empty ledger and writes nothing.
 --prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.`,
 		Args: cobra.MaximumNArgs(1),
@@ -2695,7 +2710,7 @@ Read-only.`,
 			})
 		},
 	}
-	cmd.Flags().StringVar(&prompt, "prompt", "", "show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes it recalls")
+	cmd.Flags().StringVar(&prompt, "prompt", "", "show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes and pages it recalls")
 	return cmd
 }
 

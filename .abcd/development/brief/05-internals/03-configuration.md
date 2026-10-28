@@ -180,8 +180,32 @@ rather than skipped:
         "key": "openrouter",             // a credential NAME, resolved through the credential
                                          //   source; omitted for a server that takes no key
         "models": ["typesafe/jev-1.13"], // the allowlist: the only models it may serve
-        "stream_usage": false            // optional, default true: false stops asking for
+        "stream_usage": false,           // optional, default true: false stops asking for
                                          //   usage in the stream, for a server that refuses it
+        "pins": {                        // optional, OpenRouter's base URL only: one per listed model
+          "typesafe/jev-1.13": {
+            "order": ["deepinfra"],      // exactly one provider
+            "quantizations": ["fp8"],    // exactly one quantization
+            "canonical_slug": "typesafe/jev-1.13-20260915" // the model's permanent slug
+          }
+        },
+        "read_generation": true          // optional, OpenRouter's base URL only, default false:
+                                         //   one extra request per call, to read what served it
+      },
+      "ollama": {
+        "base_url": "http://127.0.0.1:11434/v1",
+        "models": ["qwen3-coder:30b"],
+        "pins": {                        // on a base URL on this machine: a local pin
+          "qwen3-coder:30b": {
+            "runtime": "ollama",         // ollama, llama.cpp or mlx
+            "runtime_version": "0.14.2",
+            "weights_sha256": "06c1…0bca", // the weight file's SHA-256, or Ollama's digest
+            "quantisation": "Q4_K_M",
+            "context_length": 32768,     // the context the server serves the model at
+            "kv_cache_type": "f16"       // declared: no runtime reports it
+          }                              // a llama.cpp pin also names "weights_file",
+                                         //   the GGUF file's base name
+        }
       }
     },
     "denylist": ["openai/*"],            // optional, none bundled; repo or machine
@@ -210,6 +234,78 @@ rather than skipped:
   into the block it creates and says so (`stream_usage_note` in its JSON).
   `--stream-usage=false` (or `=true`) sets the block's value outright, and
   the verification is then asked once, as given.
+- **A pin holds a listed model to one OpenRouter provider**
+  (iss-2610161734413178, itd-2610161733316518 decisions 5 and 6).
+  `oracle.api.<provider>.pins.<model>` names exactly one provider in `order`,
+  exactly one quantisation in `quantizations` (OpenRouter's values: int4,
+  int8, fp4, fp6, fp8, fp16, bf16, fp32, unknown) and the model's permanent
+  `canonical_slug`; the model must be on the block's list and not a `~`
+  alias. A call to that model sends OpenRouter's provider routing object with
+  `allow_fallbacks: false`, `require_parameters: true` and
+  `data_collection: "deny"` beside them, which are the pin's own and not
+  settable, so an outage is never served by another provider. One provider
+  and one quantisation, because with fallbacks off OpenRouter still tries each
+  provider `order` names, and one provider can serve a model at two
+  quantisations. A pin is read only on a block whose `base_url` is
+  OpenRouter's (`openrouter.ai`), since a server that ignored the object would
+  leave the record claiming a pin nothing held; elsewhere it is refused. A pin
+  sits in the provider block, so like the block it is the machine's alone.
+  A role routed through opencode to a pinned model is refused while the
+  person's environment sets `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` or
+  `OPENCODE_CONFIG_CONTENT`, which the run's sealed configuration would
+  otherwise replace ([`02-adapters.md`](02-adapters.md)).
+- **A local pin names a model on this machine down to its weights**
+  (iss-2610161734428291, itd-2610161733316518's local cells). On a block whose
+  `base_url` is on this machine, `oracle.api.<provider>.pins.<model>` declares
+  every one of the runtime (`ollama`, `llama.cpp` or `mlx`), its
+  `runtime_version`, `weights_sha256` (the weight file's SHA-256, or Ollama's
+  model digest, all 64 hex digits with or without `sha256:`; `ollama list`
+  shows only the start, the digest Ollama's `/api/tags` lists is whole),
+  `quantisation`, `context_length`
+  and `kv_cache_type`; a pin that leaves one out, or names a model off the
+  block's list, is refused when the configuration is read. A `llama.cpp` pin
+  also names `weights_file`, the base name of the GGUF file llama-server loads
+  (`Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf`, printable characters and at
+  most 200 bytes, the most of a served name the probe keeps), and is refused
+  without it:
+  llama-server reports no digest, so the file it has loaded is the one thing
+  the probe can hold its weights to. abcd never hashes a weight file of its
+  own accord: the person declares the digest. Before the route is used the
+  server is probed, on this machine alone, bounded at five seconds, asking no
+  model anything: Ollama's `/api/version`, `/api/show`, `/api/tags` and
+  `/api/ps`, llama-server's `/props`, mlx_lm.server's `/v1/models`. A value the
+  server reports otherwise than the pin refuses the route, naming the field,
+  before the brief is sent; on llama-server that includes a model file other
+  than `weights_file`, named as the server has it. A context llama-server
+  serves otherwise is each slot's: `--ctx-size` is the total its `--parallel`
+  slots share, so the fix is the pinned context times the slots, or
+  `--parallel 1`. A route that runs a tool-using role (every role a runner
+  runs) is also refused when the server says the model takes no tool calls,
+  when Ollama cannot say what context it serves (it defaults to 4096 and
+  truncates a longer prompt silently: set `num_ctx` in a Modelfile, or
+  `OLLAMA_CONTEXT_LENGTH` and load the model), or when a llama-server pin
+  declares a q4 KV cache. No runtime reports its KV cache's type, so that
+  refusal rests on the pin's declaration alone, and the record lists the
+  served cache type as not verified. A runner's route is probed before every
+  run, and records its asked local fields as not verified, since opencode's
+  own `~/.opencode/opencode.json` can point the provider elsewhere after the
+  probe; the claude runner holds no pin, so a pinned route through it is
+  refused before launch; a self-contained call reuses a report the pin held for a minute at
+  most, and a report the pin refused, or a probe that read nothing, is never
+  reused, so a server put right holds the route at its next use. Like every
+  member of a provider block, a local pin is the machine's alone.
+- **Reading back what served a call is the person's choice, per provider.**
+  `oracle.api.<provider>.read_generation: true` makes every call through that
+  block read OpenRouter's generation record once it is answered (the
+  provider that served, every provider tried, the native token counts and
+  the cost; itd-2610161733316518 decision 12). That is one extra request per
+  call, with the same key, made only because the person turned it on: unset
+  or `false`, the default, no call makes it. It is read only on a block whose
+  `base_url` is OpenRouter's, the one server that keeps such a record, and
+  refused elsewhere when the configuration is read, as a pin is; like every
+  member of a provider block it is the machine's alone, so a repository can
+  never make the person's calls send it. The opencode runner never makes it,
+  since opencode holds the key there.
 - **The allowlist alone decides; the denylist is optional and a union.** abcd
   bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
   is served whichever vendor made it. `oracle.denylist` is the configuration's
@@ -609,6 +705,162 @@ removal is forced. It is the reclaim half of
 [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md):
 a tool that must not create in the user's space must not delete there either.
 
+## The dogfood store
+
+In abcd's own source checkout the installed release guards the session, so a
+hazard rule that has landed on the default branch since the last release is not
+enforced there until the next release ships. A checkout the person opts in to
+**dogfooding** runs a build of the latest reviewed default branch in its hooks
+instead (iss-2610070547057816). The opt-in is one line per checkout in
+`~/.abcd.noindex/dogfood-roots`: the checkout's absolute path, a tab, the
+`https://` or ssh URL (`ssh://…` or scp-like `user@host:path`) of the remote its
+reviewed branch lives on, and optionally a tab and that branch (`main` when left
+out); `#` starts a comment. For abcd's own checkout the line is:
+
+```
+mkdir -p ~/.abcd.noindex && printf '%s\t%s\t%s\n' '/path/to/abcd' 'https://github.com/intentdriven/abcd.git' main >> ~/.abcd.noindex/dogfood-roots
+```
+
+The list is read through `fsutil.HomeDeclarationEntry`, the form of the reader
+`trusted-roots`, `local-transcript-roots` and `filter-roots` share
+(`fsutil.HomeDeclarationNames`) that returns the fields after the path, and
+holds the same shape: honoured only as a regular file this uid owns that no one
+else can write, within 64 KiB, reached through no symlinked folder. A list
+failing any of that is IGNORED in every checkout, with one stderr line naming
+the check it failed. A line that names a checkout but no remote builds nothing,
+and its stderr line gives the shape a line takes.
+
+**Which remotes can vouch for the tip.** The builder records whatever the
+declared remote answers, so the remote must be one the agent cannot move, such
+as a protected branch on a forge. A filesystem path (absolute, relative or
+`~`) and a `file://` URL name a repository this account can write, and an agent
+running as the account moves its branch to the agent's own commit with one
+`git -C <mirror> fetch <checkout> +HEAD:refs/heads/main`; `git://` and
+`http://` are plaintext, so anyone on the network path can answer with the tip
+they choose. An ssh or https remote whose host is this machine by name
+(`localhost` or a name under it, the machine's own host name, a loopback or
+unspecified address, or an IPv4 shorthand such as `127.1` or `0` that the
+resolver reads as one) is one the agent can move as well, over the filesystem or
+over ssh. An ssh alias that resolves here is the same, but abcd cannot tell it
+from a forge, so it accepts it, and declaring one is the person's residual. A
+bracketed scp-like host (`[host]:path`) is not a shape the builder reads, and a
+host or user name holding characters a host or user name never holds is not
+passed to ssh, whose own config may expand it into a command. A line declaring
+any of these but the alias, or another transport (a remote
+helper's `<transport>::<address>` included), is REFUSED: nothing is built, the
+installed release runs, and one stderr line names the line's checkout and
+remote and why. git's own rule tells a path from an ssh remote: a remote with
+no `:`, or with a `/` before its first `:`, is a local path. Nothing recognises abcd's
+source by itself: a repository carrying abcd's module path and `cmd/abcd` is
+built and run only when the person listed it, because recognising it would hand
+a repository posing as abcd a way to have its own code run by the hooks.
+
+**What a listed path covers.** The session's working tree is covered when it is
+listed itself, or when the main working tree of its repository is listed and
+that main working tree records the session's tree among its own worktrees
+(`git worktree list`, read in the listed checkout and compared by file
+identity). So listing the main checkout covers the worktrees under
+`~/.abcd.noindex/worktrees/<root-sha>/` that concurrent sessions work in, each
+built from the remote the main checkout's line declares. The record is read
+from the listed checkout, never from the session's tree: a directory whose
+`.git` file merely points into a listed repository's worktree records is
+refused out loud, and an unlisted repository is never covered by a listed one.
+
+**What is built.** The tip of the declared branch as the declared remote
+reports it, never the checkout's HEAD, a local branch, its working tree, or
+anything the checkout's own refs or config say about the remote. Those are what
+an agent in the checkout can rewrite with ordinary git commands
+(`git fetch . +evil:refs/remotes/origin/main`, `git remote set-head`,
+`remote.origin.fetch`, `git update-ref`, `git remote set-url`), so none of them
+chooses the build. The background builder, `hook dogfood-build`, asks the
+remote with `git ls-remote -- <url> refs/heads/<branch>`: under the isolated
+git environment, in a store directory with discovery stopped above it so no
+repository's config applies, with `GIT_TERMINAL_PROMPT=0` and every askpass
+blanked so it never asks for credentials, with its transports held to `https`
+and `ssh` (`GIT_ALLOW_PROTOCOL`, which no flag widens), within 60 seconds and 64 KiB of output, taking
+only the line that names exactly `refs/heads/<branch>`. It records the answer,
+under the build lock, in `verified-tip-<hash>.json` (the commit, URL, branch,
+the moment of the check, and the remote-tracking ref's commit at that moment),
+one per declared remote and branch since two clones of one repository share a
+store, at 0600 and judged as the binary is. A store another user can write is
+refused out loud and nothing is built into it. It builds that commit only once the checkout
+holds it; a tip the checkout has not fetched is recorded with a note saying to
+run `git fetch`, and nothing is built. A check that fails records no tip.
+
+A hook never touches the network. It names a ready build only for the recorded
+tip, and only when the record was made for the URL and branch the line declares
+now. The checkout's `refs/remotes/origin/<branch>` serves only as a prompt: when
+it is not the commit it was at the last check, or when the record is older than
+30 minutes, the hook keeps running the recorded tip's build (or the installed
+release) and starts one more check in the background. So moving a local ref
+costs at most one `git ls-remote`, which returns the reviewed tip; it cannot
+select the agent's commit, nor an older build the store still keeps. No agent
+commit, and no ref or remote an agent moves, changes the guard that judges that
+agent's next command. One function in `internal/core/dogfood`, `Build`, is the
+only caller of the network, and `Resolve`, the hook's half, reads the record.
+
+```
+~/.abcd.noindex/dogfood/
+  <root-sha>/
+    verified-tip-<hash>.json  the last check of one declared remote and branch
+    <commit>/abcd             the build of that commit
+    <commit>.log              its export and build output
+    <commit>.failed           present after a failed build
+    .build.lock               held for the whole of one check and build
+```
+
+A build is a clean export of the commit (`git archive` into a fresh directory
+under the store, the repository's content filters blanked) built by
+`go build -trimpath ./cmd/abcd` on the toolchain the commit's `go.mod` declares,
+moved into place by one rename. Before it is built, the commit and every tree
+under it are read with replacement objects off (`GIT_NO_REPLACE_OBJECTS`, so a
+`git replace` in the checkout stands nothing in for the reviewed commit) and
+each is re-hashed against its object name, because git checks a subtree's hash
+neither in `git archive` nor in `git ls-tree`, and a loose object written over one would otherwise put
+other files in the build. The export is then checked blob by blob against that
+verified tree, because `git archive` honours repository-local attributes
+(`.git/info/attributes`) that anyone who can commit in the checkout can write:
+an `export-ignore` that drops a file of the reviewed commit, or an attribute
+that rewrites one, fails the build rather than build something else. The store
+keeps the three most recent builds of a repository, and every build a
+verified-tip record still names, so a prune never takes the build a hook runs.
+
+**A hook never waits for a build, and a build that fails never leaves it weaker
+than the release.** Each
+hook shim resolves the installed binary as before; when the list exists it asks
+that binary, through `hook dogfood-binary`, for a finished build of the recorded
+tip, and runs it in the installed binary's place. When a check is due the
+installed binary starts `hook dogfood-build` in the background, under the
+store's lock, so two hooks firing at once start one, and the installed release
+runs until the build is ready. A line with no remote, a remote that cannot be
+read, a tip the checkout does not hold, a build that is running, failed or
+missing, and a list or record that is refused all leave the installed release
+running, each said on stderr; a failed build is retried after 30 minutes or
+when the remote-tracking ref moves, and `hook dogfood-build` checks and retries
+at once. A dogfood guard that answers exit 1, which is a warn or "NOT CHECKED",
+hands the same command to the installed release, whose deny stands; one that
+dies rather than answer does the same, with a line saying so. Every other
+event takes only a build's exit 0 as its answer: none of those verbs exits 2 on
+purpose, and a Go crash does, which the host would read as a block. Any other
+exit, a death by a signal included, is said on stderr and the installed release runs the same
+event from the same input, so a verb the build began before it died runs again
+whole. A build that answers is the reviewed tip's answer, so a defect the
+reviewed branch carries is one these hooks carry too. A machine with no list
+pays one file test per hook.
+
+**What the rung does not defend is the account.** The declaration and the store
+are protected by being this uid's alone, so anything running as this account
+can still edit `~/.abcd.noindex/dogfood-roots` or replace a file in the store.
+The builder and the hooks inherit the account's whole environment, which stays
+the account's: the go toolchain, its module cache and `GOENV`, `PATH`, git's own
+variables (`GIT_EXEC_PATH`, `GIT_SSL_CAINFO`) and the certificate and proxy
+settings it reads, and the `~/.ssh` an ssh remote is reached through, among the
+rest. The declared remote is only
+as good as its branch protection: the rung refuses the remotes this account or
+the network path can move, and the person declares one the agent cannot push
+to. The checkout's refs, remotes, replacement objects and object store no
+longer choose the build.
+
 ## The two `.abcd/` scopes
 
 abcd keeps **one namespace pattern instantiated at two scopes**, under two names:
@@ -679,7 +931,7 @@ with `--everywhere`; [the prompt router](#the-prompt-routers-output) recalls the
 beside the repository's `.abcd/memory.json`, whose notes a person commits in a
 reviewed change and the verb never writes, as one set in which a project note
 shadows a personal note with the same id), curated cross-project memory pages
-under `memory/` (a later phase: nothing resolves it today), and the `sources/` corpus
+under `memory/` (the prompt router's recall reads them, read only), and the `sources/` corpus
 `/abcd:library` reads and writes (abcd never creates that one unasked: only its
 explicit init does, and every other corpus verb and the page say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned
@@ -741,7 +993,7 @@ stays refused inside any git working tree, the account's own included, whatever
 
 **A symlinked `~/.abcd.noindex` hosts nothing abcd trusts.** Every file in the user
 scope whose contents abcd acts on — `rules.json`, `trusted-roots`,
-`local-transcript-roots`, `path-entry`, `cache-attestation`, `release-mark`, `config.json`,
+`local-transcript-roots`, `dogfood-roots`, `path-entry`, `cache-attestation`, `release-mark`, `config.json`,
 `oracle-routing.json`, `statusline.json`, `load-limits`, `credentials.json` and
 `credential-homes.json` — is refused when `~/.abcd.noindex`, or a directory below it on the way to the file, is a
 symlink: the rule the rules loader states for `rules.json`, applied by one check
