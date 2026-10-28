@@ -14,7 +14,6 @@ import (
 // the print site, so every verb's refusal is covered without each verb
 // remembering to.
 
-//
 // An operand of eight bytes or more is withheld from the refusal altogether
 // (withholdArguments), so the operand here is shorter: it is the one an
 // echoing refusal still carries, and the mask is what stands between it and
