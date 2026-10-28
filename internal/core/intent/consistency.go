@@ -1018,6 +1018,9 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 		return ConsistencyIngestResult{}, err
 	}
 	reportRel := ReviewsShelfRelDir + "/" + dirName + "/00-summary.md"
+	if err := checkConsistencySummarySize(rv, date, free); err != nil {
+		return ConsistencyIngestResult{}, err
+	}
 
 	// Every finding is held to the record gate before the first is filed: a
 	// refusal part-way through the filing would leave the findings before it
@@ -1053,7 +1056,7 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 			"which this ingest did not write — ingesting the same findings again links those records rather than filing them twice",
 			err, orNone(res.Filed), orNone(res.Linked), reportRel)
 	}
-	report := renderConsistencyReport(rv, res.Rows, date, free)
+	report, findings := renderConsistencyReport(rv, res.Rows, date, free)
 	if err := degraded(); err != nil {
 		return ConsistencyIngestResult{}, afterFiling(err)
 	}
@@ -1072,8 +1075,51 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 	if err := fh.Close(); err != nil {
 		return ConsistencyIngestResult{}, afterFiling(fmt.Errorf("intent: writing report %s: %w", reportRel, err))
 	}
+	if findings != "" {
+		findingsRel := ReviewsShelfRelDir + "/" + dirName + "/" + consistencyFindingsFile
+		if err := writeNewRepoFile(req.RepoRoot, findingsRel, findings); err != nil {
+			return ConsistencyIngestResult{}, afterFiling(err)
+		}
+	}
 	res.Status, res.ReportPath = "ingested", reportRel
 	return res, nil
+}
+
+// checkConsistencySummarySize refuses, before anything is filed, a review whose
+// summary would pass maxConsistencySummaryBytes in both of its shapes: whole,
+// and with its findings in full moved to consistencyFindingsFile. The rows
+// differ from the ones the filing writes only by their ledger cells, so rows
+// carrying the longest cell bound them.
+func checkConsistencySummarySize(rv consistencyReview, date string, free proseField) error {
+	bound := make([]ConsistencyRow, len(rv.Findings))
+	for i, f := range rv.Findings {
+		bound[i] = newConsistencyRow(f, ConsistencyFiling{IssueID: longestLedgerID, Addressed: true, Folder: "resolved"})
+	}
+	head := len(renderConsistencySummary(rv, bound, date, free))
+	if len(bound) == 0 || head+len(consistencySplitNote) <= maxConsistencySummaryBytes ||
+		head+len(renderConsistencyFindings(bound, free)) <= maxConsistencySummaryBytes {
+		return nil
+	}
+	return fmt.Errorf("intent: the report's summary, its header and the table of %d findings, would run to about %d bytes, "+
+		"past the %d the reviews board reads a summary within, so nothing was filed and no report was written; "+
+		"run the pass over one intent against the corpus instead, which reads fewer pairs", len(rv.Findings), head+len(consistencySplitNote), maxConsistencySummaryBytes)
+}
+
+// writeNewRepoFile writes a new repository file, never one that exists: the
+// reviews shelf is append-only.
+func writeNewRepoFile(repoRoot, rel, text string) error {
+	fh, err := os.OpenFile(filepath.Join(repoRoot, filepath.FromSlash(rel)), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return fmt.Errorf("intent: creating %s: %w", rel, err)
+	}
+	if _, err := fh.WriteString(text); err != nil {
+		fh.Close()
+		return fmt.Errorf("intent: writing %s: %w", rel, err)
+	}
+	if err := fh.Close(); err != nil {
+		return fmt.Errorf("intent: writing %s: %w", rel, err)
+	}
+	return nil
 }
 
 // mergeConsistencyReviews joins the validated payloads of one ingest into the
@@ -1654,10 +1700,50 @@ func findConsistencyReport(repoRoot, rcp, payloadDigest string) (string, error) 
 	return "", nil
 }
 
-// renderConsistencyReport renders 00-summary.md. The reviewer's prose goes
-// through free (redaction, then oneLine); paths are manifest entries and ids
-// are validated shapes.
-func renderConsistencyReport(rv consistencyReview, rows []ConsistencyRow, date string, free proseField) string {
+// maxConsistencySummaryBytes is the most of a summary the reviews board reads
+// (reviews.maxSummaryBytes, which the reviews charter's RD004 holds a
+// summary to). A variable only so a test can lower it.
+var maxConsistencySummaryBytes = 1 << 20
+
+// consistencyFindingsFile holds each finding in full, beside a summary that
+// would otherwise pass maxConsistencySummaryBytes. The summary keeps the
+// header and the findings table, which every record's evidence line points
+// into, so a record names the same file whichever shape the report takes.
+const consistencyFindingsFile = "01-findings.md"
+
+// consistencySplitNote closes a summary whose findings in full went to
+// consistencyFindingsFile.
+const consistencySplitNote = "\nEach finding's two ends, quoted and located, and its explanation are in\n" +
+	"[" + consistencyFindingsFile + "](" + consistencyFindingsFile + "), under the same number: in full they would\n" +
+	"take this summary past the size the reviews board reads.\n"
+
+// consistencyFindingsHeading opens consistencyFindingsFile.
+const consistencyFindingsHeading = "# The findings in full\n\n" +
+	"Each finding of [this review's summary](00-summary.md), under the number its table gives it.\n"
+
+// longestLedgerID is no issue id; it is as long as any, so a row carrying it
+// bounds the length of the row the filing will give that finding.
+const longestLedgerID = "iss-99999999999999999999"
+
+// renderConsistencyReport renders 00-summary.md, and, when the findings in
+// full would take it past maxConsistencySummaryBytes, consistencyFindingsFile
+// beside it; findings is empty otherwise. The reviewer's prose goes through
+// free (redaction, then oneLine); paths are manifest entries and ids are
+// validated shapes.
+func renderConsistencyReport(rv consistencyReview, rows []ConsistencyRow, date string, free proseField) (summary, findings string) {
+	head := renderConsistencySummary(rv, rows, date, free)
+	if len(rows) == 0 {
+		return head, ""
+	}
+	full := renderConsistencyFindings(rows, free)
+	if len(head)+len(full) <= maxConsistencySummaryBytes {
+		return head + full, ""
+	}
+	return head + consistencySplitNote, consistencyFindingsHeading + full
+}
+
+// renderConsistencySummary renders the report's header and its findings table.
+func renderConsistencySummary(rv consistencyReview, rows []ConsistencyRow, date string, free proseField) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "---\nreview_of_commit: %s\n", rv.Commit)
 	if len(rv.DirtyPaths) > 0 {
@@ -1722,6 +1808,12 @@ func renderConsistencyReport(rv consistencyReview, rows []ConsistencyRow, date s
 		fmt.Fprintf(&b, "| %d | %s | %s | `%s` | `%s` | `%s` | %s |\n", r.Number, r.ClassLabel(), r.Severity, r.Key,
 			endLocation(r.Ends[0]), endLocation(r.Ends[1]), r.LedgerCell())
 	}
+	return b.String()
+}
+
+// renderConsistencyFindings renders each finding in full, under its number.
+func renderConsistencyFindings(rows []ConsistencyRow, free proseField) string {
+	var b strings.Builder
 	for _, r := range rows {
 		fmt.Fprintf(&b, "\n### %d. %s\n\n", r.Number, free(r.Summary))
 		fmt.Fprintf(&b, "- class: %s · severity: %s · finding_ref: %s · ledger: %s\n", r.ClassLabel(), r.Severity, r.Key, r.LedgerCell())
