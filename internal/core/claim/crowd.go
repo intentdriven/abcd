@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -74,7 +75,7 @@ func crowding(p *prepared, j judged, res *Result) error {
 			}
 		}
 		if len(mine) >= limit {
-			return capRefusal(mine, limit, note)
+			return capRefusalIn(&snap, p.root, p.holder, mine, limit, note)
 		}
 	}
 	// A renew-only act over a live tip keeps the tip's own footprint, so it
@@ -172,11 +173,16 @@ func addsOne(j judged) bool {
 type CapError struct {
 	// Held are the holder's live reservations, the record ids sorted.
 	Held []string
+	// Where names the copy each held record was made from (copyPlace), so
+	// the person can tell this machine's holds from the rest
+	// (iss-2610231004140527).
+	Where map[string]string
 	// Limit is the cap they reached, the person's reservation.max_live
 	// (maxlive.go); zero means MaxLive.
 	Limit int
 	// Note says why the machine's configuration was read past for the cap,
-	// "" when it was not.
+	// and why the worktrees could not be listed to name the copies; "" when
+	// neither.
 	Note string
 }
 
@@ -188,6 +194,9 @@ func (e *CapError) Error() string {
 		limit = MaxLive
 	}
 	ids := strings.Join(e.Held, ", ")
+	if len(e.Where) > 0 {
+		ids = heldByPlace(e.Held, e.Where)
+	}
 	advice := "wait for one of their pull requests to merge, which ends its reservation, or release one whose work is abandoned (abcd reserve <id> --release)"
 	if limit < MaxLiveCeiling {
 		advice += fmt.Sprintf(", or raise %s in %s (a whole number from 1 to %d, %d when unset)",
@@ -205,11 +214,65 @@ func (e *CapError) Error() string {
 // Is makes the cap an ErrRefused refusal.
 func (e *CapError) Is(target error) bool { return target == ErrRefused }
 
+// heldByPlace is the held ids grouped by the copy each was made from: this
+// copy first, then each sibling worktree by name, then elsewhere, each group's
+// ids in the order held lists them.
+func heldByPlace(held []string, where map[string]string) string {
+	groups := map[string][]string{}
+	for _, id := range held {
+		w := where[id]
+		if w == "" {
+			w = "elsewhere"
+		}
+		groups[w] = append(groups[w], id)
+	}
+	places := make([]string, 0, len(groups))
+	for w := range groups {
+		places = append(places, w)
+	}
+	rank := func(w string) int {
+		switch w {
+		case "this copy":
+			return 0
+		case "elsewhere":
+			return 2
+		}
+		return 1
+	}
+	sort.Slice(places, func(i, j int) bool {
+		if ri, rj := rank(places[i]), rank(places[j]); ri != rj {
+			return ri < rj
+		}
+		return places[i] < places[j]
+	})
+	parts := make([]string, len(places))
+	for i, w := range places {
+		parts[i] = w + ": " + strings.Join(groups[w], ", ")
+	}
+	return strings.Join(parts, "; ")
+}
+
+// capRefusalIn is the cap's refusal for holder in the view s, naming the copy
+// each of mine was made from by holder's own live tip, never another
+// holder's tip on the same record, and why the worktrees could not be listed
+// when they could not (iss-2610272352179242). The worktrees are listed only
+// now, for the refusal's words.
+func capRefusalIn(s *Snapshot, root, holder string, mine []string, limit int, note string) error {
+	s.NameSiblings(root, holder)
+	where := map[string]string{}
+	for _, r := range s.Reservations {
+		if r.State == StateLive && sameHolder(r.Holder, holder) && slices.Contains(mine, r.Record) {
+			where[r.Record] = copyPlace(r)
+		}
+	}
+	return capRefusal(mine, where, limit, joinNote(note, s.SiblingsUnread))
+}
+
 // capRefusal names the cap and the holder's live reservations, as the view
-// lists them, the cap they reached, and note, when the machine's
-// configuration was read past for it.
-func capRefusal(mine []string, limit int, note string) error {
-	return &CapError{Held: slices.Clone(mine), Limit: limit, Note: note}
+// lists them, the cap they reached, and note: why the machine's
+// configuration was read past for it, or the worktrees could not be listed.
+func capRefusal(mine []string, where map[string]string, limit int, note string) error {
+	return &CapError{Held: slices.Clone(mine), Where: where, Limit: limit, Note: note}
 }
 
 // LiveHeldBy is the records holder holds live in the view, from any copy,

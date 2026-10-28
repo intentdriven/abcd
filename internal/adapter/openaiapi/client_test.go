@@ -280,16 +280,17 @@ func TestATimeoutIsRefused(t *testing.T) {
 }
 
 // TestOnlyAConnectionNeverMadeIsUnreachable: a provider that could not be
-// reached before anything was sent is ErrUnreachable, so a caller may leave
-// the step to another leg; one that answered, or took the brief and never
-// answered, is not, because the brief may already have been sent.
+// reached before anything was sent is ErrUnreachable and ErrNoAnswer, so a
+// caller may leave the step to another leg; one that answered, or took the
+// brief and never answered, is neither, because the brief may already have
+// been sent and an answer may still be on its way.
 func TestOnlyAConnectionNeverMadeIsUnreachable(t *testing.T) {
 	closed := newFake(t, ok("m", `{"verdict":"yes"}`))
 	base := closed.base()
 	closed.srv.Close()
 	_, err := mustClient(t, base, testKey).Complete(context.Background(), request(), jsonObject)
-	if !errors.Is(err, ErrUnreachable) {
-		t.Fatalf("a closed server: err = %v, want ErrUnreachable", err)
+	if !errors.Is(err, ErrUnreachable) || !errors.Is(err, ErrNoAnswer) || errors.Is(err, ErrBriefCounted) {
+		t.Fatalf("a closed server: err = %v, want ErrUnreachable and ErrNoAnswer, not ErrBriefCounted", err)
 	}
 	assertNoKey(t, err)
 	if !strings.Contains(err.Error(), "could not reach") {
@@ -297,8 +298,8 @@ func TestOnlyAConnectionNeverMadeIsUnreachable(t *testing.T) {
 	}
 
 	answered := newFake(t, status(500, `{"error":{"message":"down"}}`))
-	if _, err := mustClient(t, answered.base(), testKey).Complete(context.Background(), request(), jsonObject); err == nil || errors.Is(err, ErrUnreachable) {
-		t.Fatalf("a server that answered 500: err = %v, want a failure that is not ErrUnreachable", err)
+	if _, err := mustClient(t, answered.base(), testKey).Complete(context.Background(), request(), jsonObject); err == nil || errors.Is(err, ErrUnreachable) || errors.Is(err, ErrNoAnswer) {
+		t.Fatalf("a server that answered 500: err = %v, want a failure that is neither ErrUnreachable nor ErrNoAnswer", err)
 	}
 
 	release := make(chan struct{})
@@ -309,8 +310,8 @@ func TestOnlyAConnectionNeverMadeIsUnreachable(t *testing.T) {
 		}
 	})
 	defer close(release)
-	if _, err := mustClient(t, stalled.base(), testKey, WithTimeout(200*time.Millisecond)).Complete(context.Background(), request(), jsonObject); err == nil || errors.Is(err, ErrUnreachable) {
-		t.Fatalf("a server that took the brief and stalled: err = %v, want a failure that is not ErrUnreachable", err)
+	if _, err := mustClient(t, stalled.base(), testKey, WithTimeout(200*time.Millisecond)).Complete(context.Background(), request(), jsonObject); err == nil || errors.Is(err, ErrUnreachable) || errors.Is(err, ErrNoAnswer) {
+		t.Fatalf("a server that took the brief and stalled: err = %v, want a failure that is neither ErrUnreachable nor ErrNoAnswer", err)
 	}
 }
 

@@ -20,10 +20,11 @@ type FetchedRelease struct {
 // FetchVerified downloads tag's binary for this platform and checks it the
 // way Apply checks a swap and the README's install line checks a first
 // install: against the release's own checksums.txt, then against the build
-// provenance the release workflow signed. It writes nothing; the caller
-// writes the bytes. It is the fetch `ahoy install` makes on a yes to the
-// question naming the download (itd-2610240823055889), where there is no
-// file at the target for Apply to prove abcd's.
+// provenance the release workflow signed and the release the bytes claim
+// (verifyRelease). It writes nothing; the caller writes the bytes. It is the
+// fetch `ahoy install` makes on a yes to the question naming the download
+// (itd-2610240823055889), where there is no file at the target for Apply to
+// prove abcd's.
 func (u *Updater) FetchVerified(tag string, progress io.Writer) (FetchedRelease, error) {
 	sums, found, err := u.fetchChecksums(tag)
 	if err != nil {
@@ -59,10 +60,14 @@ func (u *Updater) FetchVerified(tag string, progress io.Writer) (FetchedRelease,
 	if got := sha256.Sum256(b); !bytes.Equal(got[:], want) {
 		return FetchedRelease{}, fmt.Errorf("verifying %s against the release manifest: the download's sha256 is %x, the manifest names %x", u.assetName, got, want)
 	}
-	signer, err := u.verifyProvenance(tag, want)
-	if err != nil {
+	signer, rr := u.verifyRelease(tag, b)
+	if rr != nil && rr.shape == shapeNotThisRelease {
+		return FetchedRelease{}, fmt.Errorf("the release's %s matches its checksums.txt and verifies as built by the release workflow, but %w; "+
+			"nothing was written: install a release whose build claims its tag, or wait until this one is corrected", u.assetName, rr.err)
+	}
+	if rr != nil {
 		return FetchedRelease{}, fmt.Errorf("the release's %s matches its checksums.txt, but its build provenance could not be verified: %w; %s",
-			u.assetName, err, u.remedyInstallByHand(tag, "~/.local/bin/abcd"))
+			u.assetName, rr.err, u.remedyInstallByHand(tag, "~/.local/bin/abcd"))
 	}
 	return FetchedRelease{Bytes: b, SHA256: wantHex, Signer: signer}, nil
 }

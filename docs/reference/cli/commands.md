@@ -740,6 +740,103 @@ Move an open issue to wontfix/ with the reason it is not acted on: Writes the mo
 abcd capture wontfix iss-2609010000000001 "the behaviour is the documented one"
 ```
 
+### `abcd checklist`
+
+List this working copy's checklist, every item and field: Writes nothing; refuses outside a git checkout.
+
+**Usage:** `abcd checklist`
+
+The working copy's checklist: what the session is working on, what it waits on
+and what it has promised, kept in .abcd/.work.local/checklist.json so it
+survives compaction and crashes. One file per working copy.
+
+Bare `abcd checklist` lists every item with every field and writes nothing.
+The reader validates and scans the file; one that fails is passed over for the
+last copy a checked write produced, and the first line says why. `add`, `set`
+and the bare list are the session's verbs; edit the file by hand and the reader
+refuses what it cannot vouch for.
+
+Every write validates the whole checklist against its schema and scans every
+field for secrets. A refusal names the field and the rule or the pattern kind,
+never the value, exits 2 and writes nothing. updated_by is the host's session
+id where the host exports one, otherwise the name the away record would give
+the writer. No verb makes a network request.
+
+#### `abcd checklist add`
+
+Add one item to the checklist under a new stable id: Writes checklist.json and its last-good copy; refuses a schema violation or a secret, naming the field.
+
+**Usage:** `abcd checklist add "<title>" [flags]`
+
+Add one item under a new id: a short slug of the title, with -2, -3 and so on
+when the slug is taken. The id never changes after; `set` and `show` take it.
+
+The item is working, or waiting when --waits-on names what it waits on: a record
+id, pr:<number>, person:<role> or slot:<kind>. --next-look is when to look again,
+an RFC 3339 timestamp. --promise is "<trigger> => <act>", split at the first =>.
+The title is one line of at most 200 characters.
+
+**Flags:**
+
+```
+      --next-look string   when to look at the item again, an RFC 3339 timestamp
+      --promise string     a trigger and the act it promises, as "<trigger> => <act>"
+      --waits-on string    what the item waits on: a record id, pr:<number>, person:<role> or slot:<kind>
+```
+
+**Example:**
+
+```
+abcd checklist add "Regenerate the CLI reference"
+```
+
+#### `abcd checklist render`
+
+Print the checklist as one block of text, open items first: Writes nothing; refuses outside a git checkout.
+
+**Usage:** `abcd checklist render`
+
+Print the checklist as the text a session's context is given: the open items
+first, then the done and dropped ones, each on one line. A checklist that fails
+the reader's checks is passed over for the last good copy, with one line saying
+why. Writes nothing.
+
+#### `abcd checklist set`
+
+Set one checklist item's state by its id: Writes checklist.json and its last-good copy; refuses an unknown id or state.
+
+**Usage:** `abcd checklist set <id> --state <state> [flags]`
+
+Set one item's state: working, waiting, done, dropped. The id is the one `add`
+minted, and it stays the same. An unknown id or state is refused (exit 2).
+
+**Flags:**
+
+```
+      --state string   the item's new state: working, waiting, done, dropped
+```
+
+**Example:**
+
+```
+abcd checklist set regenerate-the-cli-reference --state done
+```
+
+#### `abcd checklist show`
+
+Show one checklist item, every field, by its id: Writes nothing; refuses an id the checklist does not hold.
+
+**Usage:** `abcd checklist show <id>`
+
+Show one item, every field, by the id `add` minted. Bare `abcd checklist`
+lists them all. Writes nothing.
+
+**Example:**
+
+```
+abcd checklist show regenerate-the-cli-reference
+```
+
 ### `abcd completion`
 
 Generate the autocompletion script for the specified shell
@@ -2798,7 +2895,7 @@ and creates nothing. Exit 2 when --run names no run.
 
 Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.
 
-**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [flags]`
+**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... [flags]`
 
 Perform the run's next move, write the state, and exit. At a stage that hands work to
 an agent, the result names the agent to start, the brief it is handed and the path its
@@ -2923,6 +3020,25 @@ skills and plugins do not reach it. A route the repository's .abcd/config.json s
 runner is skipped with a warning on stderr, and the role is the host's as if unrouted;
 one it sets to host keeps the role on the host over the machine's runner route, with a
 warning naming both routes.
+--route <role>=runner:<name>[@<provider>/<model>] routes one role this step hands out
+(implementer, ruthless-reviewer, security-reviewer or intent-auditor) to a runner for this
+step alone, over every configured route, asking for the model named after @ in place of
+the runner's own runner.<name>.model, which every other role keeps; one per role. The
+runner must be one the machine enables and the model one its provider lists, or the step
+is refused before anything is written, naming the fix; a tier route, and a --route with
+--release, --discard, --restart or --accept-config-change (which writes its acceptance
+before the step is judged), are refused too. The model is held to the pins the machine
+sets for it, as the runner's own model is: opencode holds them, and a --route naming
+claude, which holds none, for a pinned model is refused before anything is written,
+naming runner.opencode.model. A step hands at most one role out, so
+a --route for a role it will not hand out (it performs a stage abcd runs itself, hands out
+another role, or re-tells an agent already out) is refused before anything is written,
+naming the role it hands out or that it hands none. When a lane's landing comes first and
+may wait on the forge, whether the role is handed out is known only after the landing
+moves: a --route it then did not use is warned of on stderr, named in route_unused, and
+recorded in the run record. A setup warning about a role's configured route is not said
+for a role the --route replaces. The role's receipt in the run's state, and the run
+record, carry the --route verbatim.
 A runner that is absent, refuses, fails, runs past its time,
 or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed
 the role as with no runner, and the call records one fallback naming the role, the runner
@@ -3000,6 +3116,7 @@ refusal, exit 3 on a pause or a locked run state.
       --discard string         discard a held lane (lane-<n>), or one a drain handed back as stuck: remove its worktree and branch, then close its pull request
       --release string         land a held lane as it is (lane-<n>), once no lane has work left
       --restart string         restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
+      --route stringArray      route one role this step hands to an agent to a runner, for this invocation alone: <role>=runner:<name>[@<provider>/<model>], the runner one this machine enables and the model one its provider lists (else the runner's own model); one per role (implementer, ruthless-reviewer, security-reviewer, intent-auditor); wins over every configured route for this step alone, and the role's receipt records it verbatim
       --run string             the run to step (run-<16 digits>); the one run in progress when omitted
       --yielded string         with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
@@ -4222,8 +4339,14 @@ Then the reservations on the shared remote: one fetch from origin of every
 abcd-reserved/ branch, with pruning, and of the default branch, then every
 reservation with its record, holder, footprint, effective expiry and state
 (live, expired, released, or unreadable with its reason and the end of its
-hold), a live drain lane's stage when its renewal names one, each person's
-count of live reservations, and a line for each release being cut (a live
+hold), a live drain lane's stage when its renewal names one, the worktree of
+this repository on this machine that made one (by its folder's name, with
+parent folders added only where two would otherwise read alike),
+each person's count of live reservations, the reader's own counted by copy
+(this copy, each such worktree, elsewhere) against this machine's
+reservation.max_live with a warning from four fifths of it, since every
+session and account on the same login counts toward the same total, and a
+line for each release being cut (a live
 rel-vX.Y.Z reservation, which holds every other session's merge until its
 tag is on origin). Then each holder's hand-backs of the last day, from the
 same view: the record and kind of each released tip marking one, newest
@@ -4510,7 +4633,10 @@ linguist-generated in its root .gitattributes is shared, never an overlap; a
 directory never is. When that declaration cannot be read nothing is shared, and
 the act says why (generated_unread in --json). Your own reservation sharing a
 path with yours from another copy is made, and warns on stderr (own_overlap in
---json).
+--json). Name files, not directories: a directory holds off every reservation of
+a file inside it. A footprint path naming a directory git tracks is reserved all
+the same, and warns on stderr, naming it and how many tracked files it covers on
+origin's default branch, or HEAD (directory_footprint in --json).
 
 The holder is your GitHub username, from the first of these that names it:
 user.email, when it is a GitHub no-reply address; reservation.github_username

@@ -241,7 +241,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			if !res.Resumed {
 				noticeUnattended(cmd, prefix)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				verb := "started"
 				if res.Resumed {
 					verb = "resumed"
@@ -264,7 +264,18 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  reservation: %s\n", termsafe.Sanitize(res.Reservation))
 				}
 				fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
-			})
+			}); err != nil {
+				return err
+			}
+			// A footprint path naming a directory is reserved all the same,
+			// and warned of on stderr; --json carries it as
+			// reservation_warnings (iss-2610230016544142).
+			if !*asJSON {
+				for _, line := range res.ReservationWarnings {
+					fmt.Fprintf(cmd.ErrOrStderr(), "%s: warning: %s\n", prefix, termsafe.Sanitize(line))
+				}
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; a new run claims the intent for it")
@@ -404,7 +415,18 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			for i := range res.Excluded {
 				res.Excluded[i].Reason = fsutil.RedactHome(res.Excluded[i].Reason)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderNext(w, res) })
+			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderNext(w, res) }); err != nil {
+				return err
+			}
+			// The start it made warns on stderr of a directory its
+			// reservation names, as `build <itd-N>` does; --json carries it
+			// under start (iss-2610230016544142).
+			if !*asJSON && res.Start != nil {
+				for _, line := range res.Start.ReservationWarnings {
+					fmt.Fprintf(cmd.ErrOrStderr(), "%s: warning: %s\n", prefix, termsafe.Sanitize(line))
+				}
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; the new run claims the picked intent for it")
@@ -857,8 +879,9 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	var runID, release, discard, restart, yielded string
 	var acceptConfig bool
+	var stepRoute *routeFlag
 	cmd := &cobra.Command{
-		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change]",
+		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]...",
 		Long: "Perform the run's next move, write the state, and exit. At a stage that hands work to\n" +
 			"an agent, the result names the agent to start, the brief it is handed and the path its\n" +
 			"receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one\n" +
@@ -978,6 +1001,25 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"runner is skipped with a warning on stderr, and the role is the host's as if unrouted;\n" +
 			"one it sets to host keeps the role on the host over the machine's runner route, with a\n" +
 			"warning naming both routes.\n" +
+			"--route <role>=runner:<name>[@<provider>/<model>] routes one role this step hands out\n" +
+			"(implementer, ruthless-reviewer, security-reviewer or intent-auditor) to a runner for this\n" +
+			"step alone, over every configured route, asking for the model named after @ in place of\n" +
+			"the runner's own runner.<name>.model, which every other role keeps; one per role. The\n" +
+			"runner must be one the machine enables and the model one its provider lists, or the step\n" +
+			"is refused before anything is written, naming the fix; a tier route, and a --route with\n" +
+			"--release, --discard, --restart or --accept-config-change (which writes its acceptance\n" +
+			"before the step is judged), are refused too. The model is held to the pins the machine\n" +
+			"sets for it, as the runner's own model is: opencode holds them, and a --route naming\n" +
+			"claude, which holds none, for a pinned model is refused before anything is written,\n" +
+			"naming runner.opencode.model. A step hands at most one role out, so\n" +
+			"a --route for a role it will not hand out (it performs a stage abcd runs itself, hands out\n" +
+			"another role, or re-tells an agent already out) is refused before anything is written,\n" +
+			"naming the role it hands out or that it hands none. When a lane's landing comes first and\n" +
+			"may wait on the forge, whether the role is handed out is known only after the landing\n" +
+			"moves: a --route it then did not use is warned of on stderr, named in route_unused, and\n" +
+			"recorded in the run record. A setup warning about a role's configured route is not said\n" +
+			"for a role the --route replaces. The role's receipt in the run's state, and the run\n" +
+			"record, carry the --route verbatim.\n" +
 			"A runner that is absent, refuses, fails, runs past its time,\n" +
 			"or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed\n" +
 			"the role as with no runner, and the call records one fallback naming the role, the runner\n" +
@@ -1058,6 +1100,37 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			// no line, and is never read as an agent that died.
 			yieldedSet := cmd.Flags().Changed("yielded")
 			yielded = strings.TrimSpace(yielded)
+			// A --route is applied to the runner configuration before anything
+			// is decided or written, so its refusal leaves the run as it was.
+			var routed *runner.Config
+			if len(stepRoute.texts) > 0 {
+				for _, d := range []struct{ flag, v string }{{"--release", release}, {"--discard", discard}, {"--restart", restart}} {
+					if d.v != "" {
+						return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: routeFlagName,
+							Reason: "--route routes a role this step hands to an agent, and " + d.flag + " hands none",
+							Remedy: "run `abcd implement step " + d.flag + " <lane-id>` without --route; nothing was changed"})
+					}
+				}
+				// The acceptance is written before the step is judged, so a
+				// --route the step then refused would leave it written.
+				if acceptConfig {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: routeFlagName,
+						Reason: "--route is judged against the step before anything is written, and --accept-config-change writes its acceptance first",
+						Remedy: "run `abcd implement step --accept-config-change` without --route, then step again with it; nothing was changed"})
+				}
+				roots, _ := layered.RootsFor(root)
+				cfg, lerr := loop.LoadRunners(roots)
+				if lerr == nil {
+					lerr = stepRoute.applyRunners(cfg)
+				}
+				if lerr != nil {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
+				}
+				// Said once the --route is in place, so no line reports a
+				// route it replaced as the one that runs.
+				printRunnerDiagnostics(cmd, cfg)
+				routed = cfg
+			}
 			switch {
 			case yieldedSet && restart == "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
@@ -1066,7 +1139,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
 					Reason: "--restart, --release and --discard name one decision each; give one", Remedy: "run `abcd implement step` with one of them, one lane per invocation"})
 			case yieldedSet && yielded == "":
-				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart", Lane: restart,
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
 					Reason: "--yielded is blank, so it names no line the agent yielded with", Remedy: "pass the agent's own `NETWORK: <cmd>` line, or leave --yielded out for an agent that died; nothing was changed"})
 			case release != "" && discard != "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: string(loop.StageHeld),
@@ -1084,9 +1157,12 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				for _, n := range notes {
 					fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
 				}
-				cfg, lerr := loadRunners(cmd, roots)
-				if lerr != nil {
-					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
+				cfg := routed
+				if cfg == nil {
+					var lerr error
+					if cfg, lerr = loadRunners(cmd, roots); lerr != nil {
+						return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
+					}
 				}
 				review, lerr := loop.LoadReviewRoute(roots, agentPrompt)
 				if lerr != nil {
@@ -1110,6 +1186,10 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			}
 			res = redactStep(res)
 			res.AcceptedConfigChange = accepted
+			for _, text := range res.RouteUnused {
+				fmt.Fprintf(cmd.ErrOrStderr(), "%s: warning: --route %s was not used: a landing ahead of its role moved first; the run record says so\n",
+					prefix, termsafe.Sanitize(text))
+			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderStepResult(w, "step", res) })
 		},
 	}
@@ -1119,6 +1199,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&restart, "restart", "", "restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside")
 	cmd.Flags().StringVar(&yielded, "yielded", "", "with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying")
 	cmd.Flags().BoolVar(&acceptConfig, "accept-config-change", false, "accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step")
+	stepRoute = addRunnerRouteFlag(cmd, loop.RoleImplementer, loop.RoleRuthless, loop.RoleSecurity, loop.RoleAuditor)
 	return cmd
 }
 
@@ -1371,8 +1452,10 @@ func routeSuffix(r *runner.RouteRecord) string {
 
 // routeDetail is a runner route's parenthesis: the route asked for and the
 // model that served, then the model the runner asked for and the cost when
-// the record carries them (itd-166). The token counts and the fields the run
-// could not pin stay in the record, for a reader tracing a run back.
+// the record carries them (itd-166), and the --route the person's flag routed
+// the role under when one did (iss-2610161801358637). The token counts and the
+// fields the run could not pin stay in the record, for a reader tracing a run
+// back.
 func routeDetail(r *runner.RouteRecord) string {
 	d := fmt.Sprintf("asked %s; model %s", termsafe.Sanitize(r.Asked), termsafe.Sanitize(modelOrNone(r.Model)))
 	if r.ModelAsked != "" {
@@ -1380,6 +1463,9 @@ func routeDetail(r *runner.RouteRecord) string {
 	}
 	if r.Cost != nil {
 		d += "; cost " + costText(*r.Cost)
+	}
+	if r.Override != "" {
+		d += "; under --route " + termsafe.Sanitize(r.Override)
 	}
 	return d
 }
@@ -1405,10 +1491,16 @@ func loadRunners(cmd *cobra.Command, roots layered.Roots) (*runner.Config, error
 	if err != nil {
 		return nil, err
 	}
+	printRunnerDiagnostics(cmd, cfg)
+	return cfg, nil
+}
+
+// printRunnerDiagnostics says the runner configuration's non-fatal reports on
+// stderr, one line each.
+func printRunnerDiagnostics(cmd *cobra.Command, cfg *runner.Config) {
 	for _, d := range cfg.Diagnostics {
 		fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(fsutil.RedactHome(d)))
 	}
-	return cfg, nil
 }
 
 // lazyHistoryStore is the runner's transcript store: the repository's lane of

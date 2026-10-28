@@ -708,6 +708,7 @@ Sub-verbs: none.
 | `--discard` | string |
 | `--release` | string |
 | `--restart` | string |
+| `--route` | stringArray |
 | `--run` | string |
 | `--yielded` | string |
 

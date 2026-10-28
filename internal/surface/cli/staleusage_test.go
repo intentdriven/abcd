@@ -71,6 +71,29 @@ func setExecutable(t *testing.T, path string) {
 
 // runMain drives the same entry point cmd/abcd does, so the rendered stderr —
 // not just the error value — is what is asserted.
+// unknownCommandLine is the line Run prints for an unknown sub-command of the
+// command at path: the command named, the refused argument named by its
+// position, and the sub-commands listed from the tree Run executes (cobra adds
+// its help and completion verbs inside Execute; help is never listed).
+func unknownCommandLine(t *testing.T, path ...string) string {
+	t.Helper()
+	root := NewRootCommand()
+	root.InitDefaultHelpCmd()
+	root.InitDefaultCompletionCmd()
+	cmd := findByPath(root, path)
+	if cmd == nil {
+		t.Fatalf("no command at %v", path)
+	}
+	var names []string
+	for _, sub := range cmd.Commands() {
+		if sub.IsAvailableCommand() {
+			names = append(names, sub.Name())
+		}
+	}
+	return "unknown command for \"" + strings.Join(append([]string{"abcd"}, path...), " ") +
+		"\" (the first argument, not repeated here; its sub-commands are " + strings.Join(names, ", ") + ")"
+}
+
 func runMain(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errb bytes.Buffer
@@ -91,7 +114,7 @@ func TestUnknownVerbDocumentedByPluginSurfaceNamesStaleBinary(t *testing.T) {
 		if stdout != "" {
 			t.Fatalf("stdout must stay empty, got %q", stdout)
 		}
-		want := "abcd: unknown command \"frobnicate\" for \"abcd\"\n" +
+		want := "abcd: " + unknownCommandLine(t) + "\n" +
 			"abcd: this binary predates the `frobnicate` command its plugin surface documents — " + pluginUpdateRemedy + "\n"
 		if stderr != want {
 			t.Fatalf("stderr =\n%q\nwant\n%q", stderr, want)
@@ -141,7 +164,7 @@ func TestUnknownVerbDocumentedByPluginSurfaceNamesStaleBinary(t *testing.T) {
 		if err := json.Unmarshal([]byte(stdout), &env); err != nil {
 			t.Fatalf("stdout is not the JSON error envelope: %v\n%s", err, stdout)
 		}
-		if !strings.HasPrefix(env.Error, "unknown command \"frobnicate\" for \"abcd\"") ||
+		if !strings.HasPrefix(env.Error, unknownCommandLine(t)) ||
 			!strings.Contains(env.Error, "predates the `frobnicate` command") ||
 			!strings.Contains(env.Error, pluginUpdateRemedy) {
 			t.Fatalf("envelope error = %q", env.Error)
@@ -160,7 +183,7 @@ func TestUnknownSubverbDocumentedByParentPageNamesStaleBinary(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2", code)
 	}
-	want := "abcd: unknown command \"frobnicate\" for \"abcd docs\"\n" +
+	want := "abcd: " + unknownCommandLine(t, "docs") + "\n" +
 		"abcd: this binary predates the `docs frobnicate` command its plugin surface documents — " + pluginUpdateRemedy + "\n"
 	if stderr != want {
 		t.Fatalf("stderr =\n%q\nwant\n%q", stderr, want)
@@ -231,8 +254,8 @@ func TestStaleUsageRemedyFollowsWhereTheBinarySits(t *testing.T) {
 	})
 }
 
-// Without disk evidence the cobra line is all there is: a typo, a verb no page
-// documents, and a flag no page documents all stay byte-for-byte.
+// Without disk evidence the refusal line is all there is: a typo, a verb no
+// page documents, and a flag no page documents each print it alone.
 func TestUnknownVerbWithoutSurfaceEvidenceStaysVerbatim(t *testing.T) {
 	root := stalePluginRoot(t)
 	writeCommandPage(t, root, "lint", "# `/abcd:lint`\n\nRun `\"${CLAUDE_PLUGIN_ROOT}/abcd\" lint`.\n")
@@ -242,10 +265,10 @@ func TestUnknownVerbWithoutSurfaceEvidenceStaysVerbatim(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"frobnicate"}, "abcd: unknown command \"frobnicate\" for \"abcd\"\n"},
-		{[]string{"lnit"}, "abcd: unknown command \"lnit\" for \"abcd\"\n"},
+		{[]string{"frobnicate"}, "abcd: " + unknownCommandLine(t) + "\n"},
+		{[]string{"lnit"}, "abcd: " + unknownCommandLine(t) + "\n"},
 		{[]string{"lint", "--frob"}, "abcd: unknown flag: --frob\n"},
-		{[]string{"docs", "frobnicate"}, "abcd: unknown command \"frobnicate\" for \"abcd docs\"\n"},
+		{[]string{"docs", "frobnicate"}, "abcd: " + unknownCommandLine(t, "docs") + "\n"},
 	} {
 		code, _, stderr := runMain(t, tc.args...)
 		if code != 2 {
@@ -306,7 +329,7 @@ func TestUnknownVerbOnStaleBinaryWithoutPageNamesVintage(t *testing.T) {
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
-		want := "abcd: unknown command \"frobnicate\" for \"abcd\"\n" +
+		want := "abcd: " + unknownCommandLine(t) + "\n" +
 			"abcd: this binary was built from commit " + built[:12] + " but this checkout is at " + tip[:12] +
 			" — it is behind its own source, so rebuild it with `make build`\n"
 		if stderr != want {
@@ -343,7 +366,7 @@ func TestUnknownVerbOnStaleBinaryWithoutPageNamesVintage(t *testing.T) {
 		stalePluginRoot(t)
 		setExecutable(t, filepath.Join(t.TempDir(), "abcd"))
 		_, _, stderr := runMain(t, "frobnicate")
-		if want := "abcd: unknown command \"frobnicate\" for \"abcd\"\n"; stderr != want {
+		if want := "abcd: " + unknownCommandLine(t) + "\n"; stderr != want {
 			t.Fatalf("stderr =\n%q\nwant\n%q", stderr, want)
 		}
 	})

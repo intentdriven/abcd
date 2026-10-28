@@ -65,7 +65,11 @@ Then summarise the JSON for the user:
   checkout) or pinned version, and whether it is up to date, stale, or of an
   undeterminable vintage relative to the on-disk reference. Report them so a
   binary running behind its own source is never silent. The comparison is
-  disk-only — no network.
+  disk-only — no network. The `staleness` line names the reference it was
+  compared against (the checkout tip or the plugin manifest pin), and a fresh
+  pinned install's line names `abcd update --check` as the way to compare with
+  the newest release. Relay it whole: "up to date" on its own reads as current
+  to someone several releases behind their pin.
 - `superseded_root` — present only when the binary that answered is served from a
   plugin root other than the one this session resolves. A plugin root is named
   for the commit it was installed from, so a binary path pinned into a page
@@ -658,8 +662,14 @@ never offer an answer the question does not list. The config values asked
 also name the flag that answers them without the question (`--visibility`,
 `--docs-target`, `--scan-deep`), and the matching gap's fix
 hint names it too: in a scripted run, pass the user's answer through the flag
-rather than lining a piped answer up with the question. A question no flag
-answers, such as the artefact kind, ends its explanation instead on a
+rather than lining a piped answer up with the question. A piped answer that
+is not one of a config value's answers is never saved: that setting stays
+missing, while the other questions are still asked and the values they and
+the flags give are saved. The deep-scan question is where `yes |` meets
+this, since its `y` is neither `true` nor `false`: a note names the answer,
+the two it accepts and `--scan-deep`, and `config.scan_deep_missing` is the
+gap left. Relay the note and pass the user's answer as `--scan-deep`. A
+question no flag answers, such as the artefact kind, ends its explanation instead on a
 `(Change later: <where>)` line saying where the answer is changed afterwards.
 `--yes` chooses no value, so a `--yes` run that still has a value to ask says so
 once, above the first such question.
@@ -1432,7 +1442,33 @@ without it, and when that succeeds the block is written with
 `stream_usage: false` (its calls then go without the field) and the result
 says so in `stream_usage_note`: relay that line. `--stream-usage=false`
 writes that setting outright, for a server known to refuse the field, and
-the verification is then asked once, as given. A `~/.abcd.noindex` that is a
+the verification is then asked once, as given. The block it writes pins no
+model and reads nothing back: a pin to one OpenRouter provider (`pins`,
+iss-2610161734413178) and `read_generation: true` (OpenRouter's record of
+what served each call, one extra request per call, made only because the
+person turned it on) are added to the block by hand afterwards, on an
+OpenRouter block alone, as the configuration chapter of the brief describes,
+and a configured provider's verification sends the first listed model's pin
+when it has one. A block on this machine takes a local pin there instead
+(the runtime, its version, the weights' digest, quantisation, context length
+and KV-cache type, and on llama.cpp the GGUF file's name, since llama-server
+reports no digest, iss-2610161734428291), which probes the server before the
+route is used. No runtime reports the KV-cache type, so the refusal of a q4
+cache on llama-server rests on the pin's declaration, and the record lists
+the served cache type as not verified. The verification never reads the generation record back,
+even when the block says `read_generation: true`: that would be one more
+request for an answer the verification discards. A role
+routed through opencode to a pinned model is refused while the person's
+environment sets `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` or
+`OPENCODE_CONFIG_CONTENT`, since the run's own sealed configuration would
+replace theirs or be overridden by it: unset it for pinned runs, or route
+the role without a pin. `~/.opencode/opencode.json` is not refused, so a
+routing entry for that model there can override the pin, which is one reason
+the pin is recorded as not verified on that path, and so are a local pin's
+weights, quantisation, runtime version and context, though the probe checked
+them. The claude runner holds no pin, so a role routed through it to a pinned
+model is refused before it starts: route the role through opencode, or remove
+the pin. A `~/.abcd.noindex` that is a
 symlink (into a dotfiles checkout, say) is refused with nothing written, in
 any home, naming the link: the key would otherwise land wherever it points.
 A `--file` pointer is refused, naming the link, when any directory between the

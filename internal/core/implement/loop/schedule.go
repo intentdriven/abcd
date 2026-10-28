@@ -467,11 +467,8 @@ func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate
 		res.Next = withBlocked(res.Next, blocked)
 		return res
 	}
-	for _, i := range st.laneOrder() {
-		w := laneWant(*st, i)
-		if w.kind != wantBinary {
-			continue
-		}
+	for _, w := range binaryMoves(*st) {
+		i := w.lane
 		var res StepResult
 		var err error
 		if g.holdsMove(*st, w) {
@@ -481,7 +478,7 @@ func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate
 		}
 		if err != nil {
 			r, ok := AsRefusal(err)
-			if !ok || !r.Contention {
+			if !ok || !r.Contention || !mayWait(*st, w) {
 				return StepResult{}, began, err
 			}
 			g.take(r)
@@ -518,6 +515,80 @@ func move(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate
 	return res, false, nil
 }
 
+// binaryMoves lists, in lane order, the moves the binary performs itself that
+// the run's lanes want. move tries them in turn, and checkRoutes reads the
+// same list (route_use.go), so the step's move is one decision. A lane's move
+// can change only its own lane, and only when it succeeds, which ends the
+// call's scan: the list read once is the list the scan would read lane by
+// lane.
+func binaryMoves(st State) []want {
+	var out []want
+	for _, i := range st.laneOrder() {
+		if w := laneWant(st, i); w.kind == wantBinary {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// mayWait reports whether binary move w may end waiting on someone else's
+// hold, the forge or the network, so that the call moves the next lane: only
+// a landing (or the hold a hand-back makes at it) does. move treats a wait from
+// any other move as the call's answer, so checkRoutes, which reads a move
+// mayWait denies as one that runs, cannot be wrong about it.
+func mayWait(st State, w want) bool {
+	return st.Lanes[w.lane].Stage == StageLand
+}
+
+// agentPick is the kind of move agentChoice makes.
+type agentPick int
+
+const (
+	// pickNone: no lane has work for an agent.
+	pickNone agentPick = iota
+	// pickCeiling: the run's ceiling of agents is reached.
+	pickCeiling
+	// pickOutage: the run's outage holds every agent it has work for.
+	pickOutage
+	// pickNoHelper: no helper is free for a new lane, and nothing else waits.
+	pickNoHelper
+	// pickWant: want is handed an agent, or opens its lane.
+	pickWant
+)
+
+// agentChoice is the agent move a step makes, chosen from the state alone:
+// its kind, the work it holds or names (every want for pickCeiling and
+// pickOutage, the free ones for pickNoHelper), and the want it moves.
+type agentChoice struct {
+	pick  agentPick
+	wants []want
+	want  want
+}
+
+// chooseAgent is moveAgent's choice, with no side effect, so that moveAgent
+// and checkRoutes (route_use.go) make it once, the same way.
+func chooseAgent(st State, g *outageGate) agentChoice {
+	wants := agentWants(st)
+	if len(wants) == 0 {
+		return agentChoice{pick: pickNone}
+	}
+	if st.slotsInUse() >= st.ceiling() {
+		return agentChoice{pick: pickCeiling, wants: wants}
+	}
+	// The run's outage holds the agents it reaches: every one while the
+	// model service is down, those a runner starts while the network is.
+	free := slices.DeleteFunc(slices.Clone(wants), func(w want) bool { return g.holdsAgent(w.role) })
+	if len(free) == 0 {
+		return agentChoice{pick: pickOutage, wants: wants}
+	}
+	// A new lane opens only while a helper is free for it (ruling DR6d-1).
+	k := slices.IndexFunc(free, func(w want) bool { return w.open < 0 || st.helperFree() })
+	if k < 0 {
+		return agentChoice{pick: pickNoHelper, wants: free}
+	}
+	return agentChoice{pick: pickWant, wants: free, want: free[k]}
+}
+
 // withBlocked names, after a call's next move, each lane whose landing waits
 // on the forge while the call moved another.
 func withBlocked(next string, blocked []Refusal) string {
@@ -531,35 +602,27 @@ func withBlocked(next string, blocked []Refusal) string {
 // records the work the ceiling, or the want of a free helper, holds back; it
 // reports whether it moved or wrote.
 func moveAgent(repoRoot string, st *State, steps Stages, now time.Time, g *outageGate) (StepResult, bool, error) {
-	wants := agentWants(*st)
-	if len(wants) == 0 {
+	c := chooseAgent(*st, g)
+	switch c.pick {
+	case pickNone:
 		return idleResult(*st), false, nil
-	}
-	if st.slotsInUse() >= st.ceiling() {
-		changed := holdWaiting(st, wants, now)
+	case pickCeiling:
+		changed := holdWaiting(st, c.wants, now)
 		res := idleResult(*st)
 		res.CeilingReached = true
 		res.Next = ceilingMove(*st)
 		return res, changed, nil
-	}
-	// The run's outage holds the agents it reaches: every one while the
-	// model service is down, those a runner starts while the network is.
-	free := slices.DeleteFunc(slices.Clone(wants), func(w want) bool { return g.holdsAgent(w.role) })
-	if len(free) == 0 {
-		return idleResult(*st), false, g.agentWait(*st, wants[0])
-	}
-	wants = free
-	// A new lane opens only while a helper is free for it (ruling DR6d-1). When
-	// every piece of waiting work is a step no helper is free for (the slots
-	// left are promised to lanes opened, or the step worktrees on disk are at
-	// the ceiling), each waits under `waiting` as `step <n>`, as work the
-	// ceiling holds back does.
-	k := slices.IndexFunc(wants, func(w want) bool { return w.open < 0 || st.helperFree() })
-	if k < 0 {
-		changed := holdWaiting(st, wants, now)
+	case pickOutage:
+		return idleResult(*st), false, g.agentWait(*st, c.wants[0])
+	case pickNoHelper:
+		// When every piece of waiting work is a step no helper is free for
+		// (the slots left are promised to lanes opened, or the step worktrees
+		// on disk are at the ceiling), each waits under `waiting` as `step
+		// <n>`, as work the ceiling holds back does.
+		changed := holdWaiting(st, c.wants, now)
 		return idleResult(*st), changed, nil
 	}
-	w := wants[k]
+	w := c.want
 	opened := w.open >= 0
 	if opened {
 		// A new lane opens, state-only, and its first stage (the worktree,

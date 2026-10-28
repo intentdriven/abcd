@@ -316,9 +316,12 @@ func TestThePreCallChecksSitInsideTheCallsTotalCap(t *testing.T) {
 }
 
 // TestACountThatReachedTheServerIsNeverUnreachable: once the count has
-// carried the brief to the server, a chat call that then cannot connect is a
-// plain failure, never ErrUnreachable, which tells a caller nothing of the
-// brief left this machine.
+// carried the brief to the server, a chat call that then cannot connect is
+// never ErrUnreachable, which tells a caller nothing of the brief left this
+// machine. It is ErrNoAnswer, since no answer was received, and
+// ErrBriefCounted, so a caller that leaves the step to another leg can say
+// the brief had already reached the server for counting
+// (iss-2610090701491123).
 func TestACountThatReachedTheServerIsNeverUnreachable(t *testing.T) {
 	s := newSizedService(t, []map[string]any{{"id": "local/small", "max_model_len": 1000}},
 		ok("local/small", "{}"))
@@ -335,6 +338,38 @@ func TestACountThatReachedTheServerIsNeverUnreachable(t *testing.T) {
 	}
 	if errors.Is(err, ErrUnreachable) {
 		t.Fatalf("the brief reached /tokenize, yet the failure says nothing left this machine: %v", err)
+	}
+	if !errors.Is(err, ErrNoAnswer) || !errors.Is(err, ErrBriefCounted) {
+		t.Fatalf("err = %v, want ErrNoAnswer and ErrBriefCounted", err)
+	}
+}
+
+// TestAListingThatReachedTheServerIsNoAnswerButNotCounted: a check that
+// reached only the model list (the model has no served figure, so nothing is
+// counted) is followed by a chat call that cannot connect: ErrNoAnswer, never
+// ErrUnreachable (the key may have left with the listing), and never
+// ErrBriefCounted, since the brief was not sent to be counted.
+func TestAListingThatReachedTheServerIsNoAnswerButNotCounted(t *testing.T) {
+	var f *fake
+	var other atomic.Int32
+	f = newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+		if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/models") {
+			other.Add(1)
+			return
+		}
+		// The service goes away after listing: no new connection is taken,
+		// and this one closes with the answer.
+		_ = f.srv.Listener.Close()
+		w.Header().Set("Connection", "close")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"object":"list","data":[{"id":"local/small"}]}`)
+	})
+	_, err := mustClient(t, f.base(), "").Complete(context.Background(), sizedRequest("local/small", 600), nil)
+	if err == nil || other.Load() != 0 {
+		t.Fatalf("err = %v, other requests = %d: want the chat call to fail to connect, nothing counted", err, other.Load())
+	}
+	if errors.Is(err, ErrUnreachable) || errors.Is(err, ErrBriefCounted) || !errors.Is(err, ErrNoAnswer) {
+		t.Fatalf("err = %v, want ErrNoAnswer alone", err)
 	}
 }
 

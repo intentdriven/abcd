@@ -662,7 +662,8 @@ func TestInterruptWhileARunnerWritesExits130(t *testing.T) {
 
 // TestAnswersFileValueNotOfferedRefusesRecordingNothing: an answers-file
 // entry whose value the question does not offer refuses at the front door,
-// exit 2, naming the values it offers, and writes no answers record.
+// exit 2, naming the values it offers without repeating the one given, and
+// writes no answers record.
 func TestAnswersFileValueNotOfferedRefusesRecordingNothing(t *testing.T) {
 	routeMachine(t, interview.RoleReflectionComposer)
 	interviewStub(t, retroReceipts()...)
@@ -672,7 +673,7 @@ func TestAnswersFileValueNotOfferedRefusesRecordingNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	stderr, err := interviewRun(t, false, term.Mono, "reflect", "interview", "v0.2.0", "--proceed", "--answers", p)
-	if exitCodeOf(err) != 2 || !strings.Contains(err.Error(), `"nope"`) || !strings.Contains(err.Error(), "kept|more|later") {
+	if exitCodeOf(err) != 2 || strings.Contains(err.Error(), "nope") || !strings.Contains(err.Error(), "a value it does not offer") || !strings.Contains(err.Error(), "kept|more|later") {
 		t.Fatalf("exit %d, err %v\n%s", exitCodeOf(err), err, stderr)
 	}
 	if b := oneRecord(t, filepath.Join(r.Root(), filepath.FromSlash(interview.RecordsRel))); b != nil {

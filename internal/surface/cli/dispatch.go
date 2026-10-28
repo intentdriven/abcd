@@ -10,9 +10,10 @@ package cli
 //
 // Which agents a paid provider may take is ruling DR5 of 2026-09-29, applied
 // by oracle.(*APIConfig).Admitted before anything is written and again by
-// Dispatch before any call. A provider that could not be reached at all
-// leaves the step to the harness with one line on stderr; any other failure
-// exits 2 before anything is written.
+// Dispatch before any call. A provider the chat call could not connect to,
+// so that no answer was received, leaves the step to the harness with one
+// line on stderr (oracle.Route.FellBack); any other failure exits 2 before
+// anything is written.
 
 import (
 	"encoding/json"
@@ -66,9 +67,9 @@ func (rf *routeFlag) admit(verb string, r *oracle.Route) error {
 
 // dispatch sends the step when r is on a provider and returns what it ran.
 // It returns a nil *dispatched when the host runs the step: r is on the
-// harness, or its provider could not be reached (nothing was sent), in which
-// case the fallback line is printed on stderr and the returned route is r
-// moved to the harness.
+// harness, or the chat call could not connect to its provider (no answer
+// was received, whatever a check before it sent), in which case the fallback
+// line is printed on stderr and the returned route is r moved to the harness.
 func (rf *routeFlag) dispatch(cmd *cobra.Command, verb string, r *oracle.Route, brief openaiapi.Brief,
 	contract func([]byte) error) (*dispatched, *oracle.Route, error) {
 	if r == nil || !r.OnProvider() {

@@ -298,8 +298,8 @@ func (p *answersPrompter) answer(q question.Question, flag string) (interview.Fi
 			return e, o
 		}
 	}
-	panic(&setupStop{code: 2, msg: fmt.Sprintf("abcd ahoy install: the answers file answers %s (%s) with %q, which it does not offer (%s); %s",
-		q.Chip, q.ID, termsafe.Sanitize(e.Value), strings.Join(values, "|"), writtenBefore(q.ID))})
+	panic(&setupStop{code: 2, msg: fmt.Sprintf("abcd ahoy install: the answers file answers %s (%s) with a value it does not offer (the value is not repeated here); it offers %s; %s",
+		q.Chip, q.ID, strings.Join(values, "|"), writtenBefore(q.ID))})
 }
 
 // writtenBefore says what a run the answers file stopped at the question id
@@ -331,8 +331,8 @@ func settleSetupAnswers(cwd string, opts ahoy.InstallOptions, file interview.Ans
 		}
 		values, fixed := ahoy.SetupFixedValues(id)
 		if fixed && !slices.Contains(values, strings.TrimSpace(e.Value)) {
-			return &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: the answers file answers %s with %q, which it does not offer (%s); "+
-				"nothing was written, and no answers record was written", termsafe.Sanitize(id), termsafe.Sanitize(e.Value), strings.Join(values, "|"))}
+			return &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: the answers file answers %s with a value it does not offer (the value is not repeated here); it offers %s; "+
+				"nothing was written, and no answers record was written", termsafe.Sanitize(id), strings.Join(values, "|"))}
 		}
 	}
 	var missing string
@@ -438,7 +438,7 @@ func (p *answersPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
 func readSetupAnswers(path string) (interview.Answers, error) {
 	data, err := fsutil.ReadGuarded(path, interview.MaxAnswersBytes)
 	if err != nil {
-		return interview.Answers{}, &exitError{Code: 2, Msg: "abcd ahoy install: reading the answers file: " + scrubPaths(err) + " (nothing written)"}
+		return interview.Answers{}, &exitError{Code: 2, Msg: "abcd ahoy install: reading the answers file (its path is not repeated here): " + pathErrorCause(err).Error() + " (nothing written)"}
 	}
 	a, err := interview.ParseAnswers(data, setupInterviewName)
 	if err != nil {

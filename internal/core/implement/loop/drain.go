@@ -21,6 +21,7 @@ package loop
 // lanes' hand-backs it routed, with the record change each made.
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -52,7 +53,25 @@ const DrainStateRel = RunRelDir + "/drain.json"
 const drainLockRel = RunRelDir + "/drain.lock"
 
 // DrainSchemaVersion is the drain state's shape.
-const DrainSchemaVersion = 1
+//
+// Version 2 added a route's pins and override to a routed judge's stored
+// route: a judgement's route carries the pin and sealed configuration's
+// SHA-256 of a pinned opencode run (`provider_pin`, `pin_config_sha256`), a
+// route to a model on this machine its local pin, what its server reported
+// and that it is local (`local_pin`, `local_served`, `local`), and the
+// route record's `override`, as the run state's version 16 does. The field
+// comes with the route record the two share; no drain flag sets it. Version
+// 1 is its strict subset, read as a drain whose judge was pointed at no pin
+// and carries no override, and written back at version 2; a file of version
+// 1 carrying any of them is not one its version wrote, and is refused naming
+// the key. v0.15.1 reads no version first, so it refuses a version-2 file as
+// one that does not parse; releases after it that write version 1 refuse it
+// as a newer abcd's before any strict decode.
+const DrainSchemaVersion = 2
+
+// drainSchemaVersionUnpinned is the drain state's version before a judge
+// route's pins: read, never written.
+const drainSchemaVersionUnpinned = 1
 
 // maxDrainStateBytes caps the drain state read.
 const maxDrainStateBytes = 4 << 20
@@ -1381,13 +1400,22 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 			"run the newer abcd that wrote it (`abcd update` brings this one up to date); do not remove the drain state, which holds the drain")
 	}
 	var st DrainState
-	if err := jsonstrict.Decode(data, &st); err != nil || st.SchemaVersion != DrainSchemaVersion {
-		why := fmt.Sprintf("schema_version %d (this abcd reads %d)", st.SchemaVersion, DrainSchemaVersion)
+	if err := jsonstrict.Decode(data, &st); err != nil || (st.SchemaVersion != DrainSchemaVersion && st.SchemaVersion != drainSchemaVersionUnpinned) {
+		why := fmt.Sprintf("schema_version %d (this abcd reads %d to %d)", st.SchemaVersion, drainSchemaVersionUnpinned, DrainSchemaVersion)
 		if err != nil {
 			why = err.Error()
 		}
 		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" does not parse as the drain's state: "+why,
 			"the drain is the file's only writer; restore it or remove it")
+	}
+	if st.SchemaVersion == drainSchemaVersionUnpinned {
+		if p := cmp.Or(st.pinned(), st.overridden()); p != "" {
+			return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote",
+				DrainStateRel, st.SchemaVersion, p, st.SchemaVersion),
+				"the drain is the file's only writer; restore it or remove it")
+		}
+		// Read as the current version; the move's write carries it.
+		st.SchemaVersion = DrainSchemaVersion
 	}
 	// The stored pace names the layers and origins the resolver writes, so no
 	// other text reaches the drain's --json payload or the refusal of a move
@@ -1434,6 +1462,29 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 		}
 	}
 	return st, st.Stopped == "", nil
+}
+
+// pinned reports the first judgement, in a drain state, whose route carries a
+// pin or names its model as local, which only version 2 and later write, or
+// "". A judgement's route is the one route record the drain state stores.
+func (s DrainState) pinned() string {
+	for i, j := range s.Judgements {
+		if k := pinKey(j.Route); k != "" {
+			return fmt.Sprintf("`%s` on judgement %d's route (%s)", k, i+1, j.Issue)
+		}
+	}
+	return ""
+}
+
+// overridden reports the first judgement, in a drain state, whose route
+// carries `override`, which only version 2 and later write, or "".
+func (s DrainState) overridden() string {
+	for i, j := range s.Judgements {
+		if j.Route != nil && j.Route.Override != "" {
+			return fmt.Sprintf("`override` on judgement %d's route (%s)", i+1, j.Issue)
+		}
+	}
+	return ""
 }
 
 // writeDrain writes the drain's state atomically.
