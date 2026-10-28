@@ -2,6 +2,7 @@ package memory
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -245,5 +246,61 @@ func TestRecallPageBodyDoesNotRepeatItsTitle(t *testing.T) {
 	}
 	if p := pages[0]; p.Summary != "Auth uses short-lived tokens" || p.Body != "Refresh them hourly.\n# A later heading stays" {
 		t.Fatalf("summary %q body %q", p.Summary, p.Body)
+	}
+}
+
+// TestRecallPagesReadsNoPageLargerThanARecallCanSend: a page larger than the
+// recall's read cap is refused with that reason and its body is never read
+// into the recall, so one oversized page cannot slow every prompt.
+func TestRecallPagesReadsNoPageLargerThanARecallCanSend(t *testing.T) {
+	repo := t.TempDir()
+	mem := filepath.Join(repo, ".abcd", "memory")
+	big := recallPageText("A big page", "auth") + strings.Repeat("word ", maxRecallPageBytes/5+1)
+	writeStoreFile(t, mem, "fact_eng_big.md", big, 0o644)
+	writeStoreFile(t, mem, "fact_eng_small.md", recallPageText("A small page", "auth"), 0o644)
+	pages, refused := ReadRecallPages(repo)
+	if len(pages) != 1 || pages[0].Filename != "fact_eng_small.md" {
+		t.Fatalf("pages = %+v", pages)
+	}
+	if len(refused) != 1 || refused[0].Filename != "fact_eng_big.md" || !strings.Contains(refused[0].Err.Error(), "never recalled") {
+		t.Fatalf("refused = %+v", refused)
+	}
+}
+
+// TestRecallPagesBoundTheScope: a scope holding more pages, or more bytes,
+// than one prompt's recall reads yields the first by name up to the bound,
+// and one refusal naming the bound, so no store makes every
+// prompt read without limit.
+func TestRecallPagesBoundTheScope(t *testing.T) {
+	repo := t.TempDir()
+	mem := filepath.Join(repo, ".abcd", "memory")
+	for i := 0; i < maxRecallPagesPerScope+5; i++ {
+		writeStoreFile(t, mem, fmt.Sprintf("fact_eng_p%04d.md", i), recallPageText("Page", "auth"), 0o644)
+	}
+	pages, refused := ReadRecallPages(repo)
+	if len(pages) != maxRecallPagesPerScope {
+		t.Fatalf("read %d pages, want the bound %d", len(pages), maxRecallPagesPerScope)
+	}
+	if len(refused) != 1 || !strings.Contains(refused[0].Err.Error(), "more pages") {
+		t.Fatalf("refused = %+v", refused)
+	}
+
+	heavy := t.TempDir()
+	hmem := filepath.Join(heavy, ".abcd", "memory")
+	body := strings.Repeat("word ", (maxRecallPageBytes-1024)/5)
+	n := maxRecallBytesPerScope/(maxRecallPageBytes-1024) + 3
+	for i := 0; i < n; i++ {
+		writeStoreFile(t, hmem, fmt.Sprintf("fact_eng_h%02d.md", i), recallPageText("Heavy", "auth")+body, 0o644)
+	}
+	hpages, hrefused := ReadRecallPages(heavy)
+	total := 0
+	for _, p := range hpages {
+		total += len(p.Body) + len(p.Summary)
+	}
+	if total > maxRecallBytesPerScope || len(hpages) >= n {
+		t.Fatalf("read %d of %d heavy pages, %d bytes, past the %d-byte bound", len(hpages), n, total, maxRecallBytesPerScope)
+	}
+	if len(hrefused) != 1 || !strings.Contains(hrefused[0].Err.Error(), "more pages") {
+		t.Fatalf("refused = %+v", hrefused)
 	}
 }

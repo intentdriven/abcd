@@ -106,20 +106,49 @@ func ReadMachineRecallPages(home string) ([]RecallPage, []RecallRefusal) {
 	return recallPagesFrom(store, machineStoreDisplay, read)
 }
 
-// recallPagesFrom reads, through read, every page the store lists whose name
-// is <type>_<domain>_<slug>.md; a page read refuses is named, never followed.
+// The recall runs on every prompt, over a store of any size,
+// so what one prompt reads of a scope is bounded: no page larger than a
+// recall could send (a block over the injection budget is set aside whole),
+// and no more pages, or bytes, than the bounds below. The bounds keep the
+// hook's worst case within its budget; real stores sit far below them.
+const (
+	// maxRecallPageBytes is twice the injection budget (64 KiB): a page past
+	// it can never come back, so its body is never read for ranking.
+	maxRecallPageBytes = 128 << 10
+	// maxRecallPagesPerScope and maxRecallBytesPerScope bound one scope's
+	// pages per prompt, read in name order.
+	maxRecallPagesPerScope = 256
+	maxRecallBytesPerScope = 1 << 20
+)
+
+// recallPagesFrom reads, through read, the pages the store lists whose name
+// is <type>_<domain>_<slug>.md, in name order and within the bounds above; a
+// page read refuses is named, never followed, and pages past a bound are
+// named once.
 func recallPagesFrom(store *storeHandle, shown string, read func(string, int64) ([]byte, error)) ([]RecallPage, []RecallRefusal) {
 	var pages []RecallPage
 	var refused []RecallRefusal
+	var bytesRead int
 	for _, name := range store.pageNames() {
 		if _, _, _, ok := ParsePageFilename(name); !ok {
 			continue
 		}
-		raw, err := read(name, maxMemoryPageBytes)
+		if len(pages) >= maxRecallPagesPerScope || bytesRead >= maxRecallBytesPerScope {
+			refused = append(refused, RecallRefusal{File: shown, Err: fmt.Errorf("it holds more pages than one prompt's recall reads (%d pages or %d bytes); from %s on, its pages are not recalled",
+				maxRecallPagesPerScope, maxRecallBytesPerScope, name)})
+			break
+		}
+		raw, err := read(name, maxRecallPageBytes)
 		if err != nil {
 			refused = append(refused, RecallRefusal{File: shown + name, Filename: name, Err: recallReadError(err)})
 			continue
 		}
+		if bytesRead+len(raw) > maxRecallBytesPerScope {
+			refused = append(refused, RecallRefusal{File: shown, Err: fmt.Errorf("it holds more pages than one prompt's recall reads (%d pages or %d bytes); from %s on, its pages are not recalled",
+				maxRecallPagesPerScope, maxRecallBytesPerScope, name)})
+			break
+		}
+		bytesRead += len(raw)
 		p := parsePage(string(raw))
 		info := pageInfoOf(name, p)
 		pages = append(pages, RecallPage{Filename: name, Summary: info.Summary, Body: bodyAfterSummary(p.body), Recall: recallList(p.fm),
@@ -181,7 +210,7 @@ func latestIngest(source map[string]any) time.Time {
 func recallReadError(err error) error {
 	switch {
 	case errors.Is(err, fsutil.ErrTooBig):
-		return fmt.Errorf("it exceeds the %d-byte page cap", maxMemoryPageBytes)
+		return fmt.Errorf("it is larger than the %d bytes a recall reads, so it is never recalled", maxRecallPageBytes)
 	case errors.Is(err, fsutil.ErrNotRegular):
 		return errors.New("it is not a regular file")
 	case errors.Is(err, fsutil.ErrDeclarationWritable):
