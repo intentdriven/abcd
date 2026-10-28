@@ -21,6 +21,7 @@ package loop
 // lanes' hand-backs it routed, with the record change each made.
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -53,17 +54,19 @@ const drainLockRel = RunRelDir + "/drain.lock"
 
 // DrainSchemaVersion is the drain state's shape.
 //
-// Version 2 added a route's pins to a routed judge's stored route: a
-// judgement's route carries the pin and sealed configuration's SHA-256 of a
-// pinned opencode run (`provider_pin`, `pin_config_sha256`), and a route to
-// a model on this machine its local pin, what its server reported and that
-// it is local (`local_pin`, `local_served`, `local`), as the run state's
-// version 16 does. Version 1 is its strict subset, read as a drain whose
-// judge was pointed at no pin and written back at version 2; a file of
-// version 1 carrying any of them is not one its version wrote, and is
-// refused naming the key. v0.15.1 reads no version first, so it refuses a
-// version-2 file as one that does not parse; releases after it that write
-// version 1 refuse it as a newer abcd's before any strict decode.
+// Version 2 added a route's pins and override to a routed judge's stored
+// route: a judgement's route carries the pin and sealed configuration's
+// SHA-256 of a pinned opencode run (`provider_pin`, `pin_config_sha256`), a
+// route to a model on this machine its local pin, what its server reported
+// and that it is local (`local_pin`, `local_served`, `local`), and the
+// route record's `override`, as the run state's version 16 does. The field
+// comes with the route record the two share; no drain flag sets it. Version
+// 1 is its strict subset, read as a drain whose judge was pointed at no pin
+// and carries no override, and written back at version 2; a file of version
+// 1 carrying any of them is not one its version wrote, and is refused naming
+// the key. v0.15.1 reads no version first, so it refuses a version-2 file as
+// one that does not parse; releases after it that write version 1 refuse it
+// as a newer abcd's before any strict decode.
 const DrainSchemaVersion = 2
 
 // drainSchemaVersionUnpinned is the drain state's version before a judge
@@ -1406,7 +1409,7 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 			"the drain is the file's only writer; restore it or remove it")
 	}
 	if st.SchemaVersion == drainSchemaVersionUnpinned {
-		if p := st.pinned(); p != "" {
+		if p := cmp.Or(st.pinned(), st.overridden()); p != "" {
 			return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote",
 				DrainStateRel, st.SchemaVersion, p, st.SchemaVersion),
 				"the drain is the file's only writer; restore it or remove it")
@@ -1468,6 +1471,17 @@ func (s DrainState) pinned() string {
 	for i, j := range s.Judgements {
 		if k := pinKey(j.Route); k != "" {
 			return fmt.Sprintf("`%s` on judgement %d's route (%s)", k, i+1, j.Issue)
+		}
+	}
+	return ""
+}
+
+// overridden reports the first judgement, in a drain state, whose route
+// carries `override`, which only version 2 and later write, or "".
+func (s DrainState) overridden() string {
+	for i, j := range s.Judgements {
+		if j.Route != nil && j.Route.Override != "" {
+			return fmt.Sprintf("`override` on judgement %d's route (%s)", i+1, j.Issue)
 		}
 	}
 	return ""

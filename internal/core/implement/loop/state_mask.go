@@ -201,7 +201,7 @@ func (t Transcript) masked() Transcript {
 // the pin a pinned opencode run was pointed at (iss-2610161734413178), or
 // the local pin and what its server reported (iss-2610161734428291).
 func maskRoute(r runner.RouteRecord) runner.RouteRecord {
-	r.Asked, r.Ran, r.Model = line(r.Asked), line(r.Ran), line(r.Model)
+	r.Asked, r.Ran, r.Model, r.Override = line(r.Asked), line(r.Ran), line(r.Model), line(r.Override)
 	s := &r.Sides
 	s.ModelAsked, s.ServedProvider, s.FinishReason = line(s.ModelAsked), line(s.ServedProvider), line(s.FinishReason)
 	s.HarnessVersion, s.PromptSHA256 = line(s.HarnessVersion), line(s.PromptSHA256)

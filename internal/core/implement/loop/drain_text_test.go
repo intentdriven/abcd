@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -47,7 +49,13 @@ func writtenDrain() DrainState {
 			Request: DrainJudgementRequestRel, Answer: DrainJudgementAnswerRel, RequestedAt: at},
 		Judgements: []DrainJudgement{
 			{Issue: "iss-2610010000000004", RemedySHA256: strings.Repeat("cd", 32), Answer: JudgementYes, Kind: HandBackTrustRule,
-				Reason: "a rule about trust", Applied: true, At: at},
+				Reason: "a rule about trust", Applied: true, At: at,
+				Route: &runner.RouteRecord{Asked: "opencode", Ran: "opencode", Model: "vendor/model-1",
+					Override: "judge=runner:opencode@openrouter/vendor/model-1",
+					Sides: runner.Sides{ModelAsked: "vendor/model-1", ServedModels: []string{"vendor/model-1"}, ServedProvider: "provider-a",
+						FinishReason: "stop", HarnessVersion: "1.2.3", PromptSHA256: strings.Repeat("01", 32),
+						ProviderPin:     &oracle.Pin{Order: []string{"provider-a"}, DataCollection: "deny", CanonicalSlug: "vendor/model-1"},
+						PinConfigSHA256: strings.Repeat("23", 32)}}},
 			{Issue: "iss-2610010000000007", RemedySHA256: strings.Repeat("ef", 32), Answer: JudgementNo, Reason: "an internal fix",
 				Note: "iss-2610010000000007 is no longer eligible, so the judgement decides nothing: unreadable (unreadable): the reader refuses the record at its frontmatter stage: malformed frontmatter: invalid severity \"x\"",
 				At:   at},
@@ -114,9 +122,17 @@ func TestADrainStateRefusesTextItNeverWrites(t *testing.T) {
 		}
 		targets = append(targets, target{"hand_backs", at, keys})
 	}
-	for i := range want.Judgements {
+	for i, j := range want.Judgements {
 		at := elem("judgements", i)
 		targets = append(targets, target{"judgements", at, stringKeys(at, "at")})
+		if j.Route == nil {
+			continue
+		}
+		// The judge's route, its override, sides and pin with it: every
+		// string the route record carries reaches drain --json too.
+		route := func(doc map[string]any) map[string]any { return at(doc)["route"].(map[string]any) }
+		pin := func(doc map[string]any) map[string]any { return route(doc)["provider_pin"].(map[string]any) }
+		targets = append(targets, target{"judgements.route", route, stringKeys(route)}, target{"judgements.route.provider_pin", pin, stringKeys(pin)})
 	}
 	judging := func(doc map[string]any) map[string]any { return doc["judging"].(map[string]any) }
 	targets = append(targets,
@@ -152,7 +168,8 @@ func TestADrainStateRefusesTextItNeverWrites(t *testing.T) {
 			}
 		}
 	}
-	for _, key := range []string{"reason", "home", "question", "rule", "draft", "wrote", "kind", "route", "from", "issue", "note", "answer", "request", "remedy_sha256"} {
+	for _, key := range []string{"reason", "home", "question", "rule", "draft", "wrote", "kind", "route", "from", "issue", "note", "answer", "request", "remedy_sha256",
+		"override", "model_asked", "served_provider", "finish_reason", "harness_version", "canonical_slug", "data_collection"} {
 		found := false
 		for _, tg := range targets {
 			found = found || slices.Contains(tg.keys, key)

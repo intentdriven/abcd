@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/oracle/dispatch.go"
 remedy: "Report a connect failure after a successful size count as unreachable-with-no-answer so Route.FellBack moves the step to the harness, and say in the fallback line that the brief had already reached the server for counting; test the count-succeeds-then-connect-fails case falls back, watched fail first."
+resolution: "a step whose chat call never connected now falls back to the harness, saying whether a size count or model listing had already reached the server"
+impact: fix
+resolved_by:
+  commit: "546f7196e271ae340b0377727d23b700652f2bd1"
 ---
 
 The product thinker ruled on 2026-10-09 that once abcd has sent a brief to the person's own model server for the size count, a later failure before any answer still moves the step to the agent harness: 'no answer received' is the trigger, not 'nothing was sent'. Today the adapter stops with an error instead, because the fix for iss-2610030956156354 stopped reporting such a failure as unreachable, and only an unreachable error falls back (internal/core/oracle/dispatch.go FellBack).
