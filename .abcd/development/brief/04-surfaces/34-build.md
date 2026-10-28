@@ -791,11 +791,12 @@ Moving the intent to `drafts/` with its replan reason (itd-50, criterion 3) is
 not made by this build.
 
 **The tier each round asks for** (itd-2609170822093401, Decision 1 and
-criterion 10; spc-2609251028149555). Each role a round hands out, its
-validators and the fresh implementer its findings go to, is asked for the model
-tier its routing row names (the tables the delegating verbs resolve), and the
-round records it in the state as the round's `routes`, one record per role
-with its `tier`. A round that does not pass moves each role's tier for the next
+criterion 10; spc-2609251028149555). Each validator a round hands out is asked
+for the model tier its routing row names (the tables the delegating verbs
+resolve), and the round records every role it hands out, its validators and the
+fresh implementer its findings go to, in the state as the round's `routes`, one
+record per role, with its `tier` where its route names one; the implementer has
+no routing row, so its record carries none (Decision 6). A round that does not pass moves each role's tier for the next
 round one step up the ladder `local`, `economy`, `frontier`, from the tier the
 role ran at in that round, never two steps at once; `frontier` and
 `host-decides` do not move. The record names the tier the role moved from
