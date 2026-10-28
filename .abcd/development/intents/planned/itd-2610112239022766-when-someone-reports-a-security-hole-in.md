@@ -28,7 +28,7 @@ A private security report is the one piece of work abcd's records cannot hold to
 
 ## Mechanism
 
-> _Prompted (the claim-recording gradient): why the authors expect this to work, as a falsifiable "we expect X because Y" — not the outcome restated. Replace this line with the claim, or with the exact token `None stated.` alone on its line to record the claim as considered and declined._
+We expect a private advisory to stay unnamed in public until its fix ships, and to be published with the right patched version, because the three hand steps that leaked or misled become commands: the advisory's record lives only in the machine's own abcd home and never on a committed path, so no push can carry it; every commit range, pull-request body and record bound for the public passes `abcd embargo check`, which refuses the advisory's id, its reserved CVE id, its title and the store's location; and the patched version is computed from the first release tag that holds the fix instead of being typed. The claim fails if an advisory's id or title reaches a pushed commit, a pull-request body or a public record before publication although the check was run over it, or if a published advisory names a patched version other than the first release tag holding its fix.
 
 ## Scope Conditions
 
@@ -79,6 +79,7 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 - 2026-10-12, product thinker: the first rung is adopted as drafted, with what it leaves out, with one change: after a "not abcd's" or "not a vulnerability" verdict, abcd itself posts the closing explanation on the private advisory on GitHub (the advisory updated to closed with the approved text), on the person's explicit approval of the drafted text. Closing is in this rung; the other later rungs stay out.
 - 2026-10-12, product thinker: the release waits for this rung; it targets the next release.
 - 2026-10-12, product thinker: this intent refines [itd-149](../drafts/itd-149-abcd-handles-inbound-security-advisories.md), the broader draft of the same loop, which stays a draft for the rungs beyond this one; it answers [iss-2610090703514921](../../../work/issues/open/iss-2610090703514921-a-drain-reads-only-the-issue-ledger-so.md).
+- 2026-10-28, technical facilitator, on the product thinker's delegation to decide what blocks an intent so it can be built: the Mechanism, the one prompt left unanswered (readiness failed on it), is worded from the press release, Why This Matters and criteria 1, 6 and 7, and stays open to the product thinker's review.
 
 ## References
 
