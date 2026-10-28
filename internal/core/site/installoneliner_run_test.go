@@ -18,8 +18,9 @@ import (
 // download was not checked against the signed build record. The installer is
 // proven by installsh_run_test.go; these run the command the README and the
 // install guide document, which pipes the release's installer into sh
-// (iss-2610240827243654), in the same sandbox, so the form a reader pastes is
-// held to what it does, not what it says.
+// (iss-2610240827243654), and the guide's hardened form of it, in the same
+// sandbox, so every form a reader pastes is held to what it does, not what it
+// says.
 
 // oneLinerForm is one copy-paste form and the command block it is.
 type oneLinerForm struct {
@@ -28,10 +29,14 @@ type oneLinerForm struct {
 
 func oneLinerForms(t *testing.T) []oneLinerForm {
 	t.Helper()
-	guide := filepath.Join("docs", "how-to", "install.md")
+	guide := installBlocks(fencedBlocks(readFile(t, filepath.Join(repoRoot(), "docs", "how-to", "install.md"))))
+	if len(guide) != 2 {
+		t.Fatalf("docs/how-to/install.md holds %d release-download command blocks, want the command and its hardened form", len(guide))
+	}
 	return []oneLinerForm{
 		{"readme", onlyInstallBlock(t, "README.md", fencedBlocks(readFile(t, filepath.Join(repoRoot(), "README.md"))))},
-		{"how-to", onlyInstallBlock(t, guide, fencedBlocks(readFile(t, filepath.Join(repoRoot(), guide))))},
+		{"how-to", guide[0]},
+		{"how-to-hardened", guide[1]},
 	}
 }
 

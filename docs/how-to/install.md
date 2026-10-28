@@ -448,13 +448,8 @@ the latest release, which checks what it downloads before it installs anything.
 ### macOS and Linux
 
 ```sh
-curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 --noproxy '*' -fsSL https://github.com/intentdriven/abcd/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/intentdriven/abcd/releases/latest/download/install.sh | sh
 ```
-
-The flags keep that first download to GitHub over HTTPS: `-q` stops curl
-reading a `~/.curlrc`, the two `--proto` flags refuse anything but HTTPS,
-including on a redirect, and `--noproxy '*'` goes direct rather than through a
-proxy your environment names, as the installer's own downloads do.
 
 The installer detects your operating system and architecture, downloads the
 binary and the `checksums.txt` manifest from the same release, verifies the
@@ -473,6 +468,32 @@ signed build record, and the installer prints a warning saying so, with the
 
 To install somewhere else, end the command with `sh -s -- --bin-dir <dir>`
 instead of `sh`.
+
+The command trusts curl's defaults and your environment for the one download
+that decides what runs: the installer itself. To hold that download to the
+rules the installer applies to its own, run this form instead:
+
+```sh
+curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 --noproxy '*' -fsSL https://github.com/intentdriven/abcd/releases/latest/download/install.sh | sh
+```
+
+Each added flag closes one way the script could reach you from somewhere other
+than GitHub's release over HTTPS:
+
+- `-q` stops curl reading a `~/.curlrc` first, a configuration file that can
+  add options you did not type, such as a proxy or a different certificate
+  store.
+- `--proto '=https'` refuses every protocol but HTTPS, so the script cannot
+  arrive over plain HTTP.
+- `--proto-redir '=https'` holds every redirect to HTTPS as well. GitHub
+  answers the download with a redirect to the host that stores release files,
+  and curl otherwise follows a redirect to plain HTTP.
+- `--tlsv1.2` refuses a connection that negotiates a TLS version older than
+  1.2.
+- `--noproxy '*'` connects directly, ignoring any proxy the environment names
+  (`HTTPS_PROXY`, `ALL_PROXY` and their kin), so a proxy cannot hand you a
+  different script. The installer ignores those variables for its own
+  downloads in either form.
 
 ### Windows
 

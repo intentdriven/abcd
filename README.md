@@ -103,12 +103,12 @@ Later, `/plugin update abcd` takes the latest cut release: the marketplace names
 Outside a plugin session, `abcd` runs from a terminal in any repository, with no harness involved. One command provisions it, no administrator rights required. It runs the installer published with the latest release, which checks the download against the release's `checksums.txt` and, when the GitHub CLI `gh` is installed and signed in, against the signed build record with `gh attestation verify`, held to this repository's release workflow on `main` and to the commit the latest release's tag names, installing nothing if either check fails:
 
 ```sh
-curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 --noproxy '*' -fsSL https://github.com/intentdriven/abcd/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/intentdriven/abcd/releases/latest/download/install.sh | sh
 ```
 
 Without `gh`, the download is checked only against the `checksums.txt` published beside it on the same release page, not against the signed build record, and the installer prints a warning saying so, with the `gh attestation verify` command that checks the installed binary by hand.
 
-The [install guide](docs/how-to/install.md) covers building from source and what to do when `abcd` isn't found afterwards.
+The [install guide](docs/how-to/install.md) gives a hardened form of the command, which holds its own download to HTTPS with no proxy, and covers building from source and what to do when `abcd` isn't found afterwards.
 
 
 ## First run

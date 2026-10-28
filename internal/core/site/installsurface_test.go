@@ -15,8 +15,9 @@ import (
 // site-src/install.sh.tmpl, which the release publishes as install.sh and
 // abcdev.app serves, and that script as the site build renders it. The README
 // and docs/how-to/install.md document one short command that pipes the
-// release's install.sh into sh (iss-2610240827243654), so the logic lives in
-// one script and the documented command is held to fetching it
+// release's install.sh into sh (iss-2610240827243654), and the guide adds a
+// hardened form of it, so the logic lives in one script and the documented
+// forms are held to fetching it
 // (TestDocumentedInstallCommandFetchesTheReleasedInstaller).
 //
 // The forms below must end up with the same bytes in the same place: same
@@ -588,26 +589,54 @@ func TestInstallSurfacesRefuseASymlinkedAbcdHome(t *testing.T) {
 // documentedInstallCommand is the one install command the README and the
 // install guide document (iss-2610240827243654): the release's own installer,
 // piped into sh. The installer is attested with the release, so the command
-// a reader pastes is one line they can read. The fetch that brings the script
-// is hardened as the installer's own are (TestInstallSurfacesHardenCurl): no
-// curlrc, HTTPS only on every hop, and no proxy the environment names, since
-// that one fetch decides what runs.
-const documentedInstallCommand = "curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 --noproxy '*' -fsSL " +
+// a reader pastes is one line they can read. The person ruled on 2026-10-28
+// that the documented command is curl's plain form.
+const documentedInstallCommand = "curl -fsSL " +
 	"https://github.com/intentdriven/abcd/releases/latest/download/" + installScriptName + " | sh"
 
-// TestDocumentedInstallCommandFetchesTheReleasedInstaller holds the README and
-// the install guide to that one command, each in exactly one block, fetched from
-// the same release-download prefix the installer itself downloads from.
-func TestDocumentedInstallCommandFetchesTheReleasedInstaller(t *testing.T) {
-	if !strings.Contains(documentedInstallCommand, " "+releaseDownloadPrefix(t)+installScriptName+" ") {
-		t.Fatalf("the documented command %q does not fetch from the installer's release-download prefix %q",
-			documentedInstallCommand, releaseDownloadPrefix(t))
+// hardenedInstallCommand is the install guide's second form of the same
+// command, offered as an option beside it: the fetch that brings the script is
+// hardened as the installer's own are (TestInstallSurfacesHardenCurl), with no
+// curlrc, HTTPS only on every hop, TLS 1.2 or later, and no proxy the
+// environment names, since that one fetch decides what runs.
+const hardenedInstallCommand = "curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 --noproxy '*' -fsSL " +
+	"https://github.com/intentdriven/abcd/releases/latest/download/" + installScriptName + " | sh"
+
+// installBlocks returns every block that downloads from the release, in page
+// order.
+func installBlocks(blocks []fencedBlock) []string {
+	var found []string
+	for _, b := range blocks {
+		if downloadURL.MatchString(b.body) {
+			found = append(found, strings.TrimSpace(b.body))
+		}
 	}
-	for _, doc := range []string{"README.md", filepath.Join("docs", "how-to", "install.md")} {
+	return found
+}
+
+// documentedInstallForms are the install commands each page documents, in
+// page order: the README shows the command alone, and the install guide shows
+// it and then its hardened form.
+var documentedInstallForms = map[string][]string{
+	"README.md": {documentedInstallCommand},
+	filepath.Join("docs", "how-to", "install.md"): {documentedInstallCommand, hardenedInstallCommand},
+}
+
+// TestDocumentedInstallCommandFetchesTheReleasedInstaller holds the README and
+// the install guide to exactly the forms they document, and each form to the
+// same release-download prefix the installer itself downloads from.
+func TestDocumentedInstallCommandFetchesTheReleasedInstaller(t *testing.T) {
+	for _, c := range []string{documentedInstallCommand, hardenedInstallCommand} {
+		if !strings.Contains(c, " "+releaseDownloadPrefix(t)+installScriptName+" ") {
+			t.Fatalf("the documented command %q does not fetch from the installer's release-download prefix %q",
+				c, releaseDownloadPrefix(t))
+		}
+	}
+	for doc, want := range documentedInstallForms {
 		t.Run(doc, func(t *testing.T) {
-			block := onlyInstallBlock(t, doc, fencedBlocks(readFile(t, filepath.Join(repoRoot(), doc))))
-			if got := strings.TrimSpace(block); got != documentedInstallCommand {
-				t.Errorf("%s documents\n\t%s\nwant\n\t%s", doc, got, documentedInstallCommand)
+			got := installBlocks(fencedBlocks(readFile(t, filepath.Join(repoRoot(), doc))))
+			if !equalStrings(got, want) {
+				t.Errorf("%s documents\n\t%s\nwant\n\t%s", doc, strings.Join(got, "\n\t"), strings.Join(want, "\n\t"))
 			}
 		})
 	}
