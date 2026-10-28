@@ -193,6 +193,9 @@ func (s Store) loadState() (State, error) {
 	if fsutil.CallersAlone(p, fi) != nil {
 		return State{}, refuseState("it is not this account's alone (another owner, or a group or other write bit)")
 	}
+	if err := untracked(s.Root, StateRel, "the embargo store's state file"); err != nil {
+		return State{}, err
+	}
 	data, err := fsutil.ReadGuarded(p, maxStateBytes)
 	if err != nil {
 		return State{}, refuseState("it could not be read within its size limit")

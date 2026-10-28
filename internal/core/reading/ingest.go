@@ -54,6 +54,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -836,7 +837,7 @@ func resolveParkedManifest(root *os.Root, repoRoot string, out Output) (Manifest
 	// the repository root as well — a manifest served from outside this
 	// repository through a symlinked ancestor is not this repository's run.
 	rel := DefaultRunDir + "/" + out.RunID + "/" + ManifestFileName
-	raw, err := fsutil.ReadGuardedInRoot(root, rel, MaxFileBytes)
+	raw, err := localtier.ReadInRoot(root, rel, MaxFileBytes)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Manifest{}, fmt.Errorf("reading: %s cites run %s, whose manifest is not parked at %s; "+

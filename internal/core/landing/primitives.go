@@ -24,6 +24,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // TierRelDir is the local-ephemeral tier of a checkout, repo-relative and
@@ -51,7 +52,8 @@ const (
 // Receipt finds the preflight receipt for sha in any worktree git lists for
 // the repository at repoRoot, as the pre-push hook's check does, and returns
 // its path, or "" when none names sha. A receipt must be a regular file, never
-// a symlink.
+// a symlink, and this checkout's own: one git tracks came with a commit, and
+// is refused (localtier.Untracked) rather than counted.
 func Receipt(repoRoot, sha string) (string, error) {
 	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
 	if err != nil {
@@ -63,6 +65,9 @@ func Receipt(repoRoot, sha string) (string, error) {
 		}
 		p := filepath.Join(wt.Path, filepath.FromSlash(ReceiptsRelDir), sha)
 		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() {
+			if err := localtier.Untracked(wt.Path, ReceiptsRelDir+"/"+sha); err != nil {
+				return "", err
+			}
 			return p, nil
 		}
 	}

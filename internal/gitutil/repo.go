@@ -587,7 +587,33 @@ func CheckoutRoot(cwd, store string) (string, error) {
 // not read the repository" for "nothing tracked" and report a scanning rule
 // compliant after reading zero files.
 func TrackedFiles(root string) ([]string, error) {
-	if !InRepo(root) {
+	return TrackedFilesContext(context.Background(), root)
+}
+
+// TrackedFilesContext is TrackedFiles with both of its git calls bound to
+// ctx; a context that ends first is git not answering, an error.
+func TrackedFilesContext(ctx context.Context, root string) ([]string, error) {
+	return trackedFiles(ctx, root)
+}
+
+// TrackedInTreeContext is TrackedFilesContext for the working tree whose top
+// is top, judged as that tree whatever core.worktree names: git is told the
+// tree in its own environment, which changes nothing in the repository, so a
+// core.worktree set elsewhere neither hides what the index tracks nor reads
+// as a tree git cannot answer for.
+func TrackedInTreeContext(ctx context.Context, top string) ([]string, error) {
+	return trackedFiles(ctx, top, "GIT_WORK_TREE="+top)
+}
+
+// trackedFiles is TrackedFilesContext with env appended to each git's own.
+func trackedFiles(ctx context.Context, root string, env ...string) ([]string, error) {
+	git := func(args ...string) *exec.Cmd {
+		cmd := isolatedGitContext(ctx, root, args...)
+		cmd.Env = append(cmd.Env, env...)
+		return cmd
+	}
+	in, err := git("rev-parse", "--is-inside-work-tree").Output()
+	if err != nil || strings.TrimSpace(string(in)) != "true" {
 		if RepoShaped(root) {
 			// Repo-shaped, but git could not answer: absent from PATH, an
 			// unreadable or corrupt repository, or an ownership refusal under
@@ -598,7 +624,7 @@ func TrackedFiles(root string) ([]string, error) {
 		// Not a repository → nothing tracked, not an error.
 		return nil, nil
 	}
-	out, err := isolatedGit(root, "ls-files", "-z").Output()
+	out, err := git("ls-files", "-z").Output()
 	if err != nil {
 		return nil, err
 	}
