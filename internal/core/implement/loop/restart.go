@@ -306,7 +306,7 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 		if len(told) > 1 {
 			moves := make([]string, len(told))
 			for n, a := range told {
-				moves[n] = handedMove(a)
+				moves[n] = handedMove(a, roundTier(lane, a))
 			}
 			res.Next = strings.Join(moves, "; and ")
 		}

@@ -590,7 +590,11 @@ A lane's stages run in order:
    a `security-reviewer` and, on the lane whose landing ships the intent, an
    `intent-auditor`. Start each as a fresh agent with its brief and hand its
    return back unedited; the loop records the verdict itself. A round one of
-   them did not pass goes to a fresh `implementer` with the findings. The audit
+   them did not pass goes to a fresh `implementer` with the findings, and the
+   next round asks each role one model tier up (`local`, `economy`,
+   `frontier`) from the tier it ran at; when the result names a `tier`, start
+   the agent on a model of that tier (`/abcd:implement` says which routes
+   move). The audit
    passes only when every criterion is met: an undecided (`INCONCLUSIVE`)
    criterion fails the round as a not-met one does. Once the lane has taken the
    run's fix rounds, a round that still does not pass hands the lane back: the
@@ -760,6 +764,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

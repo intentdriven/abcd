@@ -102,6 +102,7 @@ var examples = map[string]string{
 	"abcd intent unhold":             "abcd intent unhold itd-2609010000000001",
 
 	"abcd lab harvest":   "abcd lab harvest lab-260901000000-0123abc",
+	"abcd lab matrix":    "abcd lab matrix lab-260901000000-0123abc matrix.json",
 	"abcd lab mint":      `abcd lab mint "does the snapshot keep the checkout's hooks from firing?"`,
 	"abcd lab preflight": "abcd lab preflight lab-260901000000-0123abc",
 	"abcd lab record":    "abcd lab record lab-260901000000-0123abc bare-status",

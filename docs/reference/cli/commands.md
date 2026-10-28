@@ -3002,7 +3002,14 @@ finding or rejects it in writing in its report, and the next round judges the ne
 afresh; a round that passes completes the stage, unless a lane report states a verdict,
 which is refused naming the report. The audit passes only when every criterion is met: a
 criterion it could not decide (INCONCLUSIVE) fails the round as a not-met one does, and
-goes to the fresh implementer with the finding. A round that does not pass once the lane
+goes to the fresh implementer with the finding. Each role a round hands out is asked for
+the model tier its routing row names, which the result names as tier and the brief's
+routing section carries, and a round that does not pass asks each role of the next one
+tier up (local, economy, frontier; frontier and host-decides stay), recorded under the
+round's routes with the failing gate output; a role on a runner, a review the reviewer
+route takes, one pointed at a provider, a host-decides row and the implementer name no
+tier and do not move. A round
+that does not pass once the lane
 has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it
 stops as unachievable, the result and the run record name the last round's findings, and
 the run starts nothing further for it. Its sibling lanes finish: no new lane opens, no
@@ -3555,6 +3562,46 @@ is still harvested, its gate findings first.
 abcd lab harvest lab-260901000000-0123abc
 ```
 
+#### `abcd lab matrix`
+
+Show a model matrix run's plan, or record the run its digest consents to: Writes the run record only with --approve; refuses a metered run with no cap.
+
+**Usage:** `abcd lab matrix <lab-id> <declaration.json> [flags]`
+
+abcd lab matrix <lab-id> <declaration.json> [--approve <digest>]
+
+Show the plan for a model matrix run of the declaration in the lab: how many
+copies each cell makes, the expected cost by source against the spending cap,
+the load cap below this machine's cores, the time, and the judges each task
+needs. Building it reads the declaration and this machine's configuration and
+nothing else: no network call, no price fetched, nothing written. Its digest
+names exactly that plan.
+
+--approve <digest> records the run, once the person has seen the plan and said
+yes to it: the plan is built again and must carry that digest. A host passes
+--approve only after the person, in that session, has seen the plan and said
+yes to it. Starting the run's copies is not built yet, so a consented run is
+recorded in the lab and nothing is launched; the output says so.
+
+Refused, exit 2, with nothing written: a declaration that does not parse, a
+cell route the runner rung or this machine's runner configuration refuses, a
+cell on a runner that names no model, a model its provider does not list, an
+OpenRouter or local cell with no pin, a metered cell with no spending cap, a
+local cell with no load cap or one at or above the cores, and an approval that
+is not the plan's digest. A halted lab exits 1.
+
+**Flags:**
+
+```
+      --approve string   the digest of the plan the person saw and said yes to; records the run
+```
+
+**Example:**
+
+```
+abcd lab matrix lab-260901000000-0123abc matrix.json
+```
+
 #### `abcd lab mint`
 
 Mint a lab for one question, with a standalone snapshot at the pin: Writes only under the lab store; refuses a multi-line question or a pin naming no commit.
@@ -3643,7 +3690,10 @@ names a literal that must be absent from the lab's own documents; the sweep
 searches them all for it — the pattern, not the instance — and lists every
 place it still stands. The snapshot, the lab's HOME and binaries, transcripts
 and each probe's five capture files are not swept: they are the world and the
-instruments, not claims; a probe's record.md is prose, and is swept. The
+instruments, not claims. Nor are the records a procedure writes under
+state/matrix/ (a matrix run's declaration, run and trial records), which are
+what a run was given and measured; any other file there is swept. A probe's
+record.md is prose, and is swept. The
 result is written to state/sweep.md. An unapplied correction, one too short
 to mean anything, or — while any correction is recorded — a document the
 sweep could not read (too large, binary, or not a regular file; each listed
@@ -4793,15 +4843,21 @@ its .abcd/rules.json.
 --prompt "<text>" shows what that one prompt would bring back to a fresh
 session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ~/.abcd.noindex/memory.json and .abcd/memory.json,
-with its layer and the recall words that hit, each in full or as not fitting
-the per-turn budget. It reads against an empty ledger and writes nothing.
+and each memory page from .abcd/memory/ and ~/.abcd.noindex/memory/, with its
+layer and the recall words that hit, each in full or as not fitting the
+per-turn budget, or as larger than the whole budget, which no turn can
+carry in full. Notes and pages share one ranked order, a BM25F relevance
+score that decides which of them fit the budget: each shows its rank and
+score and, under it, every matched term with the fields it was found in
+(recall words, title, body) and what it added to the score. It reads
+against an empty ledger and writes nothing.
 --prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.
 
 **Flags:**
 
 ```
-      --prompt string   show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes it recalls
+      --prompt string   show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes and pages it recalls
 ```
 
 ### `abcd scribe`

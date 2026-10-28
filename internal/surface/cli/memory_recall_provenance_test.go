@@ -41,7 +41,8 @@ func TestPromptRouterNamesEachNotesLayer(t *testing.T) {
 	mine := addRaceNote(t, "session-one")
 
 	env, errlog := recallRouterJSON(t, "session-two", repo, "why are the tests failing?")
-	if env.Recalled == nil || !slices.Equal(*env.Recalled, []string{projectNoteID, mine}) {
+	// Both come back, in the ranking's order, which this test does not judge.
+	if env.Recalled == nil || !slices.Equal(slices.Sorted(slices.Values(*env.Recalled)), slices.Sorted(slices.Values([]string{projectNoteID, mine}))) {
 		t.Fatalf("recalled = %v\n%s", env.Recalled, env.Text)
 	}
 	for _, want := range []string{
@@ -52,7 +53,12 @@ func TestPromptRouterNamesEachNotesLayer(t *testing.T) {
 			t.Fatalf("the injected block does not carry %q:\n%s", want, env.Text)
 		}
 	}
-	want := "abcd memory: recalled 2 note(s) [" + projectNoteID + " (project), " + mine + " (machine)]"
+	layer := map[string]string{projectNoteID: " (project)", mine: " (machine)"}
+	var labels []string
+	for _, key := range *env.Recalled {
+		labels = append(labels, key+layer[key])
+	}
+	want := "abcd memory: recalled 2 item(s) [" + strings.Join(labels, ", ") + "]"
 	if !strings.Contains(errlog, want) {
 		t.Fatalf("stderr does not name each note's layer, want %q:\n%s", want, errlog)
 	}

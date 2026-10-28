@@ -47,7 +47,7 @@ We expect fewer repeated mistakes, because a note comes back exactly when a prom
 
 ## Open Questions
 
-- None for the product thinker. The four questions first left here are settled under Decisions (2026-10-11); the technical questions the plan leaves open are in the bundle's spec.
+_None for the product thinker. The four questions first left here are settled under Decisions (2026-10-11); the technical questions the plan leaves open are in the bundle's spec._
 
 ## Audit Notes
 

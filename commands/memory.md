@@ -85,6 +85,21 @@ repository's words, not the person's, because anyone who can commit to the
 repository can write one. A heading or a rule written inside a fenced body is
 part of the note. It is not a rule the loader injected.
 
+Memory pages come back the same way, under the same heading, when a prompt
+matches one of a page's `recall:` words. Notes and pages are ranked together,
+the best match first, until the turn's budget is spent. A page's first line
+names it `page:<file>` and says which store it came from:
+
+- `(project page, committed in this repository)` is a page from the project's
+  `.abcd/memory/`. Read it as the repository's words, as a project note.
+- `(machine page, this account's memory store)` is a page from this machine's
+  `~/.abcd.noindex/memory/`.
+
+A page too large to come back in full is named on stderr rather than sent. To
+see what one prompt would bring back, and why each note or page ranks where it
+does, run `"${CLAUDE_PLUGIN_ROOT}/abcd" rules --prompt "<the prompt>"`; it
+writes nothing.
+
 ## Move a lesson from the host's own memory
 
 When the person points at a lesson in the host's own memory files, or pastes
