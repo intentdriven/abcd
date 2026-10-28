@@ -12,6 +12,7 @@ related_adrs: [adr-2609292116133348]
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
+related_issues: [iss-209]
 ---
 
 # A pinned-action bump syncs its scaffold template and lands re-authored
