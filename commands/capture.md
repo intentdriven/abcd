@@ -215,6 +215,12 @@ twice, and the rule reads it from both ends. A hand edit that types a legal valu
 in a legal combination is byte-identical to a command's write, so the rule
 catches implausible hand edits, not all of them.
 
+Text the site renderer refuses is refused the same way (exit 2, nothing
+written), with the construct named: a placeholder named after an HTML element
+(`<input>`, `<link>`), an unclosed code span, an image or a reference link. The
+record gate refuses the same body at its next run, so put a placeholder, a
+path or code in a code span.
+
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as issue text. A near-miss of a real
 sub-verb is refused the same way, with the correction named, so a two-word input
