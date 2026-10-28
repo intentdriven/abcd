@@ -142,7 +142,7 @@ func staleUsageNote(root *cobra.Command, args []string, msg string) string {
 		}
 	}
 	pluginRoot, rootOK := ahoy.ResolvePluginRoot()
-	inRoot := rootOK && executableUnder(pluginRoot)
+	inRoot := rootOK && executableUnder(pluginRoot) && !executableIsCheckoutBuild(pluginRoot)
 	if rootOK {
 		if what, documented := surfaceDocuments(pluginRoot, skew); documented {
 			switch {
@@ -428,6 +428,20 @@ func executableUnder(root string) bool {
 	dir, base := filepath.Split(exe)
 	exe = filepath.Join(canonicalPath(dir), base)
 	return strings.HasPrefix(exe, canonicalPath(root)+string(filepath.Separator))
+}
+
+// executableIsCheckoutBuild reports whether the running binary is the build
+// scripts/abcd makes in root's local tier (abcdrepo.CheckoutBuildRel). It sits
+// inside the checkout, but it is the tree as it stood when the script ran it,
+// not an artefact `make build` refreshes, so a page documenting what it lacks
+// gets a dev build's note, never the rebuild remedy (iss-2610241240133009).
+func executableIsCheckoutBuild(root string) bool {
+	exe, err := osExecutable()
+	if err != nil {
+		return false
+	}
+	dir, base := filepath.Split(exe)
+	return filepath.Join(canonicalPath(dir), base) == filepath.Join(canonicalPath(root), filepath.FromSlash(abcdrepo.CheckoutBuildRel))
 }
 
 func canonicalPath(p string) string {

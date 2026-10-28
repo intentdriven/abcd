@@ -9,12 +9,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdrepo"
 )
 
 // scripts/abcd, the source checkout's own abcd (iss-2610241240133009), driven
 // against a stub `go` so no compile runs. The stub records how it was called
-// and, for `build -o <path>`, writes a fake binary there that records its own
-// arguments and working directory and exits with FAKE_EXIT.
+// and, for `build -buildvcs=false -o <path>`, writes a fake binary there that
+// records its own arguments and working directory and exits with FAKE_EXIT.
 
 const devBinaryStubGo = `#!/bin/sh
 {
@@ -26,8 +28,8 @@ if [ -n "$STUB_BUILD_FAIL" ]; then
 	echo "stub go: $STUB_BUILD_FAIL" >&2
 	exit 1
 fi
-[ "$1" = build ] && [ "$2" = -o ] || { echo "stub go: unexpected arguments: $*" >&2; exit 9; }
-cat > "$3" <<'BIN'
+[ "$1" = build ] && [ "$2" = -buildvcs=false ] && [ "$3" = -o ] || { echo "stub go: unexpected arguments: $*" >&2; exit 9; }
+cat > "$4" <<'BIN'
 #!/bin/sh
 {
 	printf 'bin-cwd=%s\n' "$(pwd -P)"
@@ -35,7 +37,7 @@ cat > "$3" <<'BIN'
 } >> "$STUB_LOG"
 exit "${FAKE_EXIT:-0}"
 BIN
-chmod +x "$3"
+chmod +x "$4"
 `
 
 type devBinaryRun struct {
@@ -71,6 +73,13 @@ func devBinaryCheckout(t *testing.T) string {
 
 func runDevBinary(t *testing.T, root string, env []string, args ...string) devBinaryRun {
 	t.Helper()
+	return runDevBinaryAs(t, filepath.Join(root, "sub"), filepath.Join(root, "scripts", "abcd"), env, args...)
+}
+
+// runDevBinaryAs runs the script as path from dir; a relative path is
+// resolved from dir, as a shell resolves it.
+func runDevBinaryAs(t *testing.T, dir, path string, env []string, args ...string) devBinaryRun {
+	t.Helper()
 	stubBin := filepath.Join(t.TempDir(), "stub")
 	if err := os.MkdirAll(stubBin, 0o755); err != nil {
 		t.Fatal(err)
@@ -78,8 +87,8 @@ func runDevBinary(t *testing.T, root string, env []string, args ...string) devBi
 	writeExec(t, filepath.Join(stubBin, "go"), devBinaryStubGo)
 	logPath := filepath.Join(t.TempDir(), "calls.log")
 
-	cmd := exec.Command(filepath.Join(root, "scripts", "abcd"), args...)
-	cmd.Dir = filepath.Join(root, "sub")
+	cmd := exec.Command(path, args...)
+	cmd.Dir = dir
 	cmd.Env = append([]string{
 		"PATH=" + stubBin + string(os.PathListSeparator) + "/usr/bin" + string(os.PathListSeparator) + "/bin",
 		"HOME=" + t.TempDir(),
@@ -114,9 +123,10 @@ func TestTheCheckoutsAbcdKeepsTheBinarysExitCode(t *testing.T) {
 	}
 }
 
-// The tree is built at the checkout root to the local tier, under a GOTMPDIR
-// beside the binary so the new one is renamed into place rather than copied
-// over a running one, and the verb then runs where the caller stands, with its
+// The tree is built at the checkout root, unstamped as `go run` built it, to
+// abcdrepo.CheckoutBuildRel, the path vintage.GoRunModule holds current; no
+// GOTMPDIR is set inside the tree, whose transient go-build directories
+// `gofmt -l .` would walk. The verb then runs where the caller stands, with its
 // arguments as given.
 func TestTheCheckoutsAbcdBuildsToTheLocalTierAndRunsInPlace(t *testing.T) {
 	root := devBinaryCheckout(t)
@@ -124,11 +134,10 @@ func TestTheCheckoutsAbcdBuildsToTheLocalTierAndRunsInPlace(t *testing.T) {
 	if got.code != 0 {
 		t.Fatalf("scripts/abcd exited %d\nstderr:\n%s", got.code, got.stderr)
 	}
-	bindir := filepath.Join(root, ".abcd", ".work.local", "bin")
 	for _, want := range []string{
 		"cwd=" + root + "\n",
-		"gotmpdir=" + filepath.Join(bindir, ".tmp") + "\n",
-		"args=build -o " + filepath.Join(bindir, "abcd") + " ./cmd/abcd\n",
+		"gotmpdir=\n",
+		"args=build -buildvcs=false -o " + filepath.Join(root, filepath.FromSlash(abcdrepo.CheckoutBuildRel)) + " ./cmd/abcd\n",
 		"bin-cwd=" + filepath.Join(root, "sub") + "\n",
 		"bin-arg=capture\nbin-arg=two words\nbin-arg=--severity\nbin-arg=minor\n",
 	} {
@@ -136,8 +145,24 @@ func TestTheCheckoutsAbcdBuildsToTheLocalTierAndRunsInPlace(t *testing.T) {
 			t.Errorf("the calls do not show %q:\n%s", want, got.log)
 		}
 	}
-	if fi, err := os.Stat(filepath.Join(bindir, ".tmp")); err != nil || !fi.IsDir() {
-		t.Errorf("GOTMPDIR %s does not exist as a directory (%v); go refuses a GOTMPDIR that does not", filepath.Join(bindir, ".tmp"), err)
+}
+
+// Called by its relative path from the root, the script finds the root the
+// same way under an exported CDPATH: bash's cd consults CDPATH for a relative
+// directory, so a CDPATH entry holding a scripts/ directory would otherwise
+// take the cd there, and its printed name into the root.
+func TestTheCheckoutsAbcdIgnoresCDPATH(t *testing.T) {
+	root := devBinaryCheckout(t)
+	decoy := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(decoy, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := runDevBinaryAs(t, root, filepath.Join("scripts", "abcd"), []string{"CDPATH=" + decoy}, "status")
+	if got.code != 0 {
+		t.Fatalf("scripts/abcd exited %d\nstderr:\n%s", got.code, got.stderr)
+	}
+	if want := "cwd=" + root + "\n"; !strings.Contains(got.log, want) {
+		t.Errorf("with CDPATH=%s the build did not run at the root %s:\n%s", decoy, root, got.log)
 	}
 }
 

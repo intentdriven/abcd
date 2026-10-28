@@ -6,10 +6,12 @@ import (
 )
 
 // TestGoRunModuleOf: only a development build of the module's cmd/abcd, with
-// no revision stamped, run from a go-build work directory, is a go run build.
+// no revision stamped, run from a go-build work directory or from where
+// scripts/abcd builds it, is a go run build.
 func TestGoRunModuleOf(t *testing.T) {
 	const mod = "github.com/intentdriven/abcd"
 	goRunExe := "/var/folders/xy/T/go-build1234/b001/exe/abcd"
+	checkoutExe := "/Users/x/.abcd.noindex/worktrees/sha/lane/.abcd/.work.local/bin/abcd"
 	stamped := []debug.BuildSetting{{Key: "vcs.revision", Value: "0123456789abcdef0123456789abcdef01234567"}}
 	for _, tc := range []struct {
 		name                   string
@@ -18,8 +20,12 @@ func TestGoRunModuleOf(t *testing.T) {
 		want                   bool
 	}{
 		{"go run of the checkout", mod + "/cmd/abcd", mod, "(devel)", goRunExe, nil, true},
+		{"scripts/abcd's build of the checkout", mod + "/cmd/abcd", mod, "(devel)", checkoutExe, nil, true},
 		{"a built binary on disk", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/.local/bin/abcd", nil, false},
+		{"another binary in the local tier", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/src/abcd/.abcd/.work.local/abcd", nil, false},
 		{"a stamped build", mod + "/cmd/abcd", mod, "(devel)", goRunExe, stamped, false},
+		{"a stamped build in the local tier", mod + "/cmd/abcd", mod, "(devel)", checkoutExe, stamped, false},
+		{"a release-versioned build in the local tier", mod + "/cmd/abcd", mod, "v0.15.2-0.20261027120000-0123456789ab", checkoutExe, nil, false},
 		{"a released module version", mod + "/cmd/abcd", mod, "v0.14.0", goRunExe, nil, false},
 		{"a go test binary", mod + "/internal/core/ahoy.test", mod, "(devel)", goRunExe, nil, false},
 		{"another module's command", "example.com/other/cmd/abcd", "example.com/other", "(devel)", goRunExe, nil, true},

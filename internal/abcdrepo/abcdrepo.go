@@ -37,3 +37,11 @@ func LooksLikeSourceTree(dir string) bool {
 	fi, err := os.Stat(filepath.Join(dir, "cmd", "abcd", "main.go"))
 	return err == nil && fi.Mode().IsRegular()
 }
+
+// CheckoutBuildRel is where scripts/abcd builds a source checkout's own abcd,
+// relative to the checkout root, slash-separated: the gitignored local tier,
+// relinked from the tree as it stands each time the script runs it
+// (iss-2610241240133009). The script and this constant name the same path, and
+// TestTheCheckoutsAbcdBuildsToTheLocalTierAndRunsInPlace (internal/core/lint)
+// holds them together.
+const CheckoutBuildRel = ".abcd/.work.local/bin/abcd"

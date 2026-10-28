@@ -7,16 +7,23 @@
 #
 # `go build -o` relinks only when an input changed: it compares the build ID it
 # would write with the one the existing binary carries, so an unchanged tree
-# costs a hash of its inputs and no compile. A changed tree is linked under
-# GOTMPDIR, kept beside the binary so the new one is renamed into place on the
-# same filesystem, never copied over one that is running.
+# costs a hash of its inputs and no compile. A relinked binary is renamed into
+# place, or written as a new file once the old one is removed, so a copy that
+# is running is never written over.
 #
-# Usage: scripts/abcd <verb> [args...], from anywhere in the checkout; the verb
-# runs in the caller's working directory.
+# -buildvcs=false builds what `go run` built: no VCS stamp, so no `git status`
+# on every call, no refusal in a checkout another account owns, and one binary
+# whether the tree is the main checkout or a linked worktree (where go finds no
+# .git directory to stamp from). The path is abcdrepo.CheckoutBuildRel, which
+# is how vintage.GoRunModule knows this build is the tree as it stands.
+#
+# Usage: scripts/abcd <verb> [args...] from the checkout root, or by its path
+# from anywhere; the verb runs in the caller's working directory. A tree that
+# does not build exits with go build's status and runs nothing.
 set -euo pipefail
 
-root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-bindir="$root/.abcd/.work.local/bin"
-mkdir -p "$bindir/.tmp"
-(cd "$root" && GOTMPDIR="$bindir/.tmp" go build -o "$bindir/abcd" ./cmd/abcd)
-exec "$bindir/abcd" "$@"
+root="$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+bin="$root/.abcd/.work.local/bin/abcd"
+mkdir -p "$(dirname -- "$bin")"
+(cd "$root" && go build -buildvcs=false -o "$bin" ./cmd/abcd)
+exec "$bin" "$@"

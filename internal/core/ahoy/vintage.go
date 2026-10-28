@@ -151,9 +151,10 @@ func dogfoodStalenessFrom(cur vintage.Current, cwd string) DogfoodReport {
 // Everything else — a determinable vintage that is not a dogfood-stale binary —
 // proceeds. The check is disk-only; it never touches the network.
 //
-// A go run build of the checkout being installed is current by construction
-// and proceeds: go run never stamps a revision, so its vintage reads unknown,
-// yet it is built from this tree as it stands (iss-2610240824047504).
+// A go run build of the checkout being installed, or the build scripts/abcd
+// makes of it, is current by construction and proceeds: neither stamps a
+// revision, so its vintage reads unknown, yet it is built from this tree as it
+// stands (iss-2610240824047504, iss-2610241240133009).
 func staleBinaryRefusal(cur vintage.Current, cwd string) string {
 	if !cur.Known && goRunOfCheckout(cwd) {
 		return ""

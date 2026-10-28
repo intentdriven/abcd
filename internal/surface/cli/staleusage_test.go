@@ -382,6 +382,41 @@ func TestDevBuildOutsidePluginRootIsNotCalledAStalePATHCopy(t *testing.T) {
 	}
 }
 
+// The binary scripts/abcd builds sits inside the source checkout, under its
+// local tier, but it was relinked from the tree as it stands when the script
+// ran it: a page documenting what it lacks is ahead of the code, not proof the
+// binary is old, so it takes the dev build's note, never `make build`, which
+// does not touch it (iss-2610241240133009).
+func TestCheckoutBuildInTheLocalTierIsNotToldToRebuild(t *testing.T) {
+	root := stalePluginRoot(t)
+	writeCommandPage(t, root, "frobnicate", "# frobnicate\n")
+	if err := os.MkdirAll(filepath.Join(root, "cmd", "abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "cmd", "abcd", "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(root, ".abcd", ".work.local", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	setExecutable(t, filepath.Join(bin, "abcd"))
+	prev := core.Version
+	core.Version = "dev"
+	t.Cleanup(func() { core.Version = prev })
+
+	_, _, stderr := runMain(t, "frobnicate")
+	want := "abcd: the plugin surface documents the `frobnicate` command, which is not in this build — an unstamped `dev` build, not a release binary, so the surface is no evidence that it is stale\n"
+	if !strings.HasSuffix(stderr, want) {
+		t.Fatalf("stderr =\n%q\nwant suffix\n%q", stderr, want)
+	}
+	for _, not := range []string{"make build", "abcd update", pluginUpdateRemedy} {
+		if strings.Contains(stderr, not) {
+			t.Errorf("scripts/abcd's build must not be advised %q:\n%s", not, stderr)
+		}
+	}
+}
+
 // A flag is documented for the sub-verb typed only when that sub-verb's own
 // synopsis line in a fenced block carries it. Prose elsewhere on the page, and
 // another sub-verb's synopsis, are not evidence: `build next --dry-run` was

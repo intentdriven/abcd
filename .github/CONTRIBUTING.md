@@ -125,9 +125,9 @@ inbound = outbound statement is the whole of it.
   directory — in Claude Code, `claude --plugin-dir <path-to-your-checkout>`,
   which takes precedence over an installed copy of the same plugin for that
   session — and run `/reload-plugins` after an edit. Invoke the binary as
-  `scripts/abcd`, as `AGENTS.md` sets out: it builds the checkout's tree and
-  keeps the binary's exit code, which `go run` does not, and a published
-  binary is stale by construction in a source checkout.
+  `scripts/abcd` from the checkout root, as `AGENTS.md` sets out: it builds
+  the checkout's tree and keeps the binary's exit code, which `go run` does
+  not, and a published binary is stale by construction in a source checkout.
 
 ## AI assistance and authorship
 

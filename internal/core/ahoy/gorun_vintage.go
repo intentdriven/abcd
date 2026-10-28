@@ -26,11 +26,12 @@ func swapGoRunModule(f func() (string, bool)) (restore func()) {
 const maxGoModBytes = 1 << 20
 
 // goRunOfCheckout reports whether the running binary is a go run build of the
-// module the checkout holding cwd declares: in a source checkout of abcd that
-// is the one sanctioned way to run abcd, and go run builds the tree as it
-// stands, so the build is that checkout's own and never older than it
-// (iss-2610240824047504). It reads git's top level and the go.mod there, and
-// touches no network.
+// module the checkout holding cwd declares, or the build scripts/abcd makes in
+// its local tier (vintage.GoRunModule). In a source checkout of abcd,
+// scripts/abcd is the sanctioned way to run abcd (iss-2610241240133009), and
+// both builds are the tree as it stands, so the build is that checkout's own
+// and never older than it (iss-2610240824047504). It reads git's top level and
+// the go.mod there, and touches no network.
 func goRunOfCheckout(cwd string) bool {
 	mod, ok := goRunModule()
 	if !ok || mod == "" {
