@@ -92,6 +92,14 @@ func TestALapsedReleaseEndsForItsHolderAndReArmsWhatItWithdrew(t *testing.T) {
 	if s, err := SettleEndedReleases(cutter.dir, cutter.opts()); err != nil || len(s) != 0 {
 		t.Fatalf("settles inside the margin = %+v, %v; want none", s, err)
 	}
+	snap, err := View(cutter.dir, w.clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := snap.ReleaseWithdrawals(cutter.dir, "octo", w.clock()); len(got) != 1 || !got[0].Lapsed ||
+		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "the next act of a copy of octo's ends it and re-arms what it withdrew") {
+		t.Fatalf("listing inside the margin = %+v; want the lapse and when it ends", got)
+	}
 	// The cut renews in time, so its merges stay withdrawn past the old margin.
 	if res, err := cutter.do(Request{Record: "rel-v0.16.0"}); err != nil || res.Act != ActRenewed {
 		t.Fatalf("renewal = %+v, %v", res, err)
@@ -144,6 +152,35 @@ func TestALapsedReleaseEndsForItsHolderAndReArmsWhatItWithdrew(t *testing.T) {
 	}
 	if got := f.mutations(); len(got) != 0 {
 		t.Fatalf("mutations after it was settled = %v; want none", got)
+	}
+}
+
+// TestALapseAnotherLoginForgedEndsNothing (dcn-2610271926369425 review): a
+// commit another login pushes over a live cut, naming its holder with a lease
+// long past, is no lapse of theirs: the tip is not the holder's own newest
+// push, so their next act re-arms nothing and pushes no tombstone.
+func TestALapseAnotherLoginForgedEndsNothing(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	octo := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := octo.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := w.tipWithdrawals("rel-v0.16.0")
+	past := t0.Add(-48 * time.Hour)
+	m.ClaimedAt, m.ExpiresAt = past, past.Add(time.Hour)
+	forged := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), past)
+	f.pusherOf[forged] = "mal"
+	f.reset()
+	w.set(t0.Add(time.Minute))
+	if _, err := octo.reserve("iss-8", "o.go"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.mutations(); len(got) != 0 {
+		t.Fatalf("mutations = %v; want nothing re-armed on a lapse another login wrote", got)
+	}
+	if tip, _ := w.tipWithdrawals("rel-v0.16.0"); tip.released() || w.remoteTip("rel-v0.16.0") != forged {
+		t.Fatal("octo's act pushed a tombstone over the forged lapse")
 	}
 }
 

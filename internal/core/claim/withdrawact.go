@@ -691,8 +691,9 @@ func settleEnded(a actor, tree, id string, own bool) (s Settle, ok bool) {
 // read, once the release has ended (dcn-2610230328220298): its tag on origin,
 // or its holder's own newest push a tombstone of theirs (asker.ended), or the
 // holder's own --release (own), or, for a's holder alone when the tip is their
-// own reservation, its lease lapsed past TakeoverMargin with no tag on origin
-// (cutLapsed, dcn-2610271926369425). A cut still going on renews its lease, so
+// own reservation and their own newest push with nothing above it, its lease
+// lapsed past TakeoverMargin with no tag on origin (cutLapsed,
+// dcn-2610271926369425). A cut still going on renews its lease, so
 // a lapse past the margin is a cut its holder left; another person's lapsed
 // cut ends nothing here. Any other tip that is neither tagged nor a tombstone
 // is a release still held, and is not read further. Otherwise a's holder's withdrawals are read from their own newest
@@ -758,6 +759,14 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 		s.Unplaced = rec.why
 		s.shownOnce(a.root, id, t.Commit)()
 		return s, s.said()
+	}
+	// A tip's holder, times and lease are whatever its pusher wrote, so a
+	// lapse ends the cut only when the tip is the holder's own newest push, as
+	// the forge's record of pushes places it, with no commit above it: a
+	// commit another login pushed naming them, dated past, ends nothing, and
+	// neither does a lapse beneath another login's commit.
+	if lapsed && !(rec.found && rec.at == 0 && rec.commit == t.Commit) {
+		return Settle{}, false
 	}
 	due := slices.ContainsFunc(rec.mine(a.holder), Withdrawal.unsettled)
 	s.NotRead = rec.above
@@ -978,10 +987,11 @@ func (p *prepared) settleOwnRelease(tree, sha string, ws []Withdrawal) (Settle, 
 // stillBeingCut reports whether r, a reservation as the view lists it, is a
 // release still being cut: not ended (no tombstone, no tag), and either live
 // or, lapsed, still holding a withdrawal it has not settled (withdrawn or
-// admitted). A lapse ends nothing (dcn-2610230328220298), so a lapsed release
-// with held merges blocks a second release as a live one does, and is what
-// the launch check names as lapsed; one that lapsed holding nothing is
-// abandoned, and neither blocks nor is named.
+// admitted). A lapse ends the cut only through its own person's next act once
+// the take-over margin has passed (dcn-2610271926369425), so until then a
+// lapsed release with held merges blocks a second release as a live one does,
+// and is what the launch check names as lapsed; one that lapsed holding
+// nothing is abandoned, and neither blocks nor is named.
 func stillBeingCut(r Reservation) bool {
 	if !isRelease(r.Record) {
 		return false
@@ -1093,9 +1103,13 @@ func otherLiveRelease(root, id string, now time.Time) error {
 			return backOff("%s is being cut by %s until %s%s, and one release is cut at a time: a second reservation would withdraw the merges the first admitted; "+
 				"wait for it to end (its tag on %s, or its holder's --release); %s", r.Record, r.Holder, stamp(r.EffectiveExpiry), over, Remote, nothingPushed)
 		}
+		lapseEnds := ""
+		if !notEnded {
+			lapseEnds = fmt.Sprintf(", or, from %s, at %s's next act from any copy", stamp(r.EffectiveExpiry.Add(TakeoverMargin)), r.Holder)
+		}
 		return backOff("%s is still being cut by %s: its lease lapsed at %s%s, but it still holds merges withdrawn or admitted, and one release is cut at a time; "+
-			"it ends when %s renews it (abcd reserve %s) and finishes the cut, or ends it (abcd reserve %s --release); %s",
-			r.Record, r.Holder, stamp(r.EffectiveExpiry), over, r.Holder, r.Record, r.Record, nothingPushed)
+			"it ends when %s renews it (abcd reserve %s) and finishes the cut, or ends it (abcd reserve %s --release)%s; %s",
+			r.Record, r.Holder, stamp(r.EffectiveExpiry), over, r.Holder, r.Record, r.Record, lapseEnds, nothingPushed)
 	}
 	return nil
 }
@@ -1167,7 +1181,12 @@ type ReleaseWithdrawals struct {
 // Lines is each sentence the listing shows for the release's withdrawals.
 func (r ReleaseWithdrawals) Lines() []string {
 	var out []string
-	if r.Lapsed {
+	switch {
+	case r.Lapsed && r.NotEnded != "":
+		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended, beneath a tombstone %s did not push: it holds no merge now, and nothing re-arms "+
+			"what it withdrew until %s ends it (abcd reserve %s --release, after --take-over from another copy of theirs) or its tag is on %s",
+			r.Subject, stamp(r.LapsedAt), r.NotEnded, r.NotEnded, r.Subject, Remote))
+	case r.Lapsed:
 		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended: it holds no merge now, and from %s the next act of a copy of %s's "+
 			"ends it and re-arms what it withdrew; %s renews it from the cutting copy first (abcd reserve %s) if the cut goes on",
 			r.Subject, stamp(r.LapsedAt), stamp(r.LapsedAt.Add(TakeoverMargin)), r.Holder, r.Holder, r.Subject))
