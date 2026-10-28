@@ -27,6 +27,15 @@ failed-provisioning fallback whose guidance framed Go as a requirement it is not
 
 Ideas and methodologies that shaped the design — not code abcd depends on.
 
+- **"Redesigning source control at Anthropic" (Anthropic engineering, 2026-10-13,
+  <https://www.anthropic.com/engineering/redesigning-source-control>)** — two
+  observations from its account of agent-scale development, each reframed by an
+  ideate run of 2026-10-14 before adoption: that an adversarial review can turn
+  "overly defensive" and add validation and complexity no constraint requires,
+  which became the rule that a reviewer's extra check names what it protects
+  (itd-2610141646463379); and its "superfan" agents that each watch one
+  component, which became a cheap event watcher that wakes an agent only when
+  something needs action (itd-2610141646469491).
 - **The International Code of Signals (International Maritime Organization)** —
   the maritime flag alphabet whose Alfa, Bravo, Charlie and Delta are encoded
   pixel-for-pixel as abcd's logo (itd-133, `internal/livery`): the halved
