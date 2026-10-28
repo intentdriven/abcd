@@ -12,6 +12,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/ideate"
+	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -389,3 +390,44 @@ func TestIdeateRecordRefusesAShallowCheckout(t *testing.T) {
 	}
 }
 
+// TestIdeateRecordResolvesAFiledSourceAgainstTheDefaultCorpus is the front
+// door's half of spc-2610142138047122's source check: a `source:<key>` primary
+// source is resolved against the person's default sources corpus when one
+// exists, and accepted on its shape when none does.
+func TestIdeateRecordResolvesAFiledSourceAgainstTheDefaultCorpus(t *testing.T) {
+	repo := ideateRepo(t)
+	t.Chdir(repo)
+
+	// No corpus under this HOME: a well-formed key is accepted.
+	runCLI(t, "ideate", "record", "a-filed-idea", "--public",
+		"--verdict-json", writeVerdict(t, ideateVerdictJSONFrom("itd-104", "source:survey2026")), "--json")
+
+	for k, v := range map[string]string{
+		"GIT_AUTHOR_NAME": "Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
+		"GIT_COMMITTER_NAME": "Fixture", "GIT_COMMITTER_EMAIL": "fixture@example.invalid",
+	} {
+		t.Setenv(k, v)
+	}
+	dir := abcdhome.Path(os.Getenv("HOME"), "sources")
+	if _, err := source.Init(dir); err != nil {
+		t.Fatalf("source.Init: %v", err)
+	}
+	doc := filepath.Join(t.TempDir(), "survey.md")
+	if err := os.WriteFile(doc, []byte("# survey\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.Add(source.AddRequest{Corpus: dir, Key: "survey2026", Title: "A survey", Class: source.ClassPublic, Original: doc}); err != nil {
+		t.Fatalf("source.Add: %v", err)
+	}
+	runCLI(t, "ideate", "record", "a-second-filed-idea", "--public",
+		"--verdict-json", writeVerdict(t, ideateVerdictJSONFrom("itd-104", "source:survey2026")), "--json")
+
+	out, err := runCLIErr(t, "ideate", "record", "an-unfiled-idea", "--public",
+		"--verdict-json", writeVerdict(t, ideateVerdictJSONFrom("itd-104", "source:never-filed")))
+	if err == nil {
+		t.Fatalf("a key the default corpus does not carry was accepted\n%s", out)
+	}
+	if code := exitCodeOf(err); code != 2 || !strings.Contains(err.Error(), "source:never-filed") {
+		t.Errorf("exit %d, diagnostic %q; want 2 naming the key", code, err.Error())
+	}
+}
