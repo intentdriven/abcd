@@ -3,6 +3,7 @@ package claim
 import (
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -148,5 +149,66 @@ func TestRenewDueRenewsOnlyWhatThisCopyPushed(t *testing.T) {
 	}
 	if !renewedAgain || w.remoteTip("iss-9") != other {
 		t.Fatalf("second renewals %+v; want iss-5 renewed again and iss-9 left as it is", got)
+	}
+}
+
+// TestTwoWaitersInOneCopyTakeTurnsToRenew is iss-2610270659564789: two
+// waiters in one copy renewed the same reservations at once, each judging from
+// the tips it had read, and the one whose push lost reported the loss as a
+// fault. Each pass now holds the copy's renewal lock, so the second waits for
+// the first to finish, reads the tip it pushed, and finds nothing due.
+func TestTwoWaitersInOneCopyTakeTurnsToRenew(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.reserve("iss-5", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Fetch(p.dir, p.opts()); err != nil {
+		t.Fatal(err)
+	}
+	w.set(t0.Add(61 * time.Minute))
+
+	// At its push, the first pass starts a sibling pass in the same copy and
+	// gives it time to reach its own push before going on, the window two
+	// unlocked waiters raced in.
+	type pass struct {
+		got []Renewal
+		err error
+	}
+	var pushes atomic.Int32
+	reached := make(chan struct{})
+	sibling := make(chan pass, 1)
+	beforePush = func(string) {
+		switch pushes.Add(1) {
+		case 1:
+			go func() {
+				got, err := RenewDue(p.dir, p.opts())
+				sibling <- pass{got, err}
+			}()
+			select {
+			case <-reached:
+			case <-time.After(3 * time.Second):
+			}
+		case 2:
+			close(reached)
+		}
+	}
+	t.Cleanup(func() { beforePush = nil })
+
+	first, err := RenewDue(p.dir, p.opts())
+	second := <-sibling
+	if err != nil || second.err != nil {
+		t.Fatalf("passes failed: first %v, second %v", err, second.err)
+	}
+	if len(first) != 1 || first[0].Record != "iss-5" || first[0].Err != nil {
+		t.Errorf("the first pass: %+v; want iss-5 renewed", first)
+	}
+	for _, r := range second.got {
+		if r.Err != nil {
+			t.Errorf("the second pass reported %s as a fault: %v", r.Record, r.Err)
+		}
+	}
+	if len(second.got) != 0 {
+		t.Errorf("the second pass renewed %+v; the first had just renewed it, so nothing was due", second.got)
 	}
 }

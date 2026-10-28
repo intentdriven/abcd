@@ -20,6 +20,18 @@ var errNotPushedHere = errors.New("its latest commit is not one this copy pushed
 // pushed for it (notePushed): the commit names RenewDue renews from.
 const pushedRelDir = stateRelDir + "/pushed"
 
+// renewLockRel is the lock RenewDue holds over its whole pass in a copy, from
+// the view it reads to its last push, so two waiters in one copy take turns: the
+// second reads the tips the first has just pushed and finds nothing due, where
+// unlocked it judged from the tips both read, lost each push to the first, and
+// reported every loss as a fault (iss-2610270659564789).
+const renewLockRel = stateRelDir + "/renew.lock"
+
+// renewLockWait bounds how long a pass waits for a sibling's to end: a pass is
+// a few pushes, and one still running past this is renewing the same
+// reservations, so this pass renews nothing and says nothing.
+const renewLockWait = 2 * time.Minute
+
 // Renewal is one reservation RenewDue renewed, or failed to: Until is the
 // renewed lease's end, and Err why it could not be renewed.
 type Renewal struct {
@@ -40,9 +52,38 @@ type Renewal struct {
 // cut. Only a reservation whose tip is the commit this copy itself last
 // pushed for it (pushedHere) is renewed; any other tip is left as it is, and
 // answered with errNotPushedHere.
+// Each pass holds the copy's renewal lock (renewLockRel); a copy whose lock
+// cannot be laid renews unlocked rather than not at all.
 // The error is a view that could not be read; each renewal's own failure is
 // in its Renewal.
 func RenewDue(root string, o Options) ([]Renewal, error) {
+	r, err := os.OpenRoot(root)
+	if err == nil {
+		defer r.Close()
+		err = mkStateDir(r, stateRelDir)
+	}
+	if err != nil {
+		return renewDue(root, o)
+	}
+	var out []Renewal
+	ran := false
+	err = fsutil.WithFileLockIn(r, renewLockRel, renewLockWait, func() error {
+		ran = true
+		var verr error
+		out, verr = renewDue(root, o)
+		return verr
+	})
+	switch {
+	case ran:
+		return out, err
+	case errors.Is(err, fsutil.ErrLockContention):
+		return nil, nil
+	}
+	return renewDue(root, o)
+}
+
+// renewDue is one renewal pass, RenewDue's body under its lock.
+func renewDue(root string, o Options) ([]Renewal, error) {
 	now := o.now()
 	snap, err := View(root, now)
 	if err != nil {
