@@ -103,7 +103,8 @@ payload adds:
 - `ceiling`: the reader's own live reservations against this computer's
   `reservation.max_live`: `holder`, `live`, `limit`, and where they were made
   from: `this_copy`, `siblings` (each worktree of this repository here by
-  `name`, its parent folder added where two share a name, with its `live`)
+  `name`, with as many parent folders as tell it apart where two share a
+  name, and its `live`)
   and `elsewhere` (every copy not found among those worktrees: another clone
   on this computer or another, a removed worktree, or another account pushing
   as the same login). From four fifths of the limit `warn` is true and

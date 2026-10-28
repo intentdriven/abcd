@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The working copy's local state, in the checkout's local tier. The tier is
@@ -107,29 +106,16 @@ func OwnCopyKey(root string) string { return ownCopyKey(root) }
 // tree's copy key, home-redacted: the person's own copy on this machine, in a
 // sibling worktree, which a reservation from it names (iss-2610250013552001).
 // Each worktree's local tier is its own copy, so a key this copy does not
-// hold is not by itself another computer's. "" when no other worktree keeps
-// it, or the worktrees cannot be listed. It reads each key and mints none.
+// hold is not by itself another computer's. It reads the one listing abcd
+// peers names siblings from (siblingCopies), so a copied worktree reads as
+// both its paths here as it reads as both its names there. "" when no other
+// worktree keeps it, or the worktrees cannot be listed.
 func siblingCopy(root, key string) string {
 	if !validCopyKey(key) {
 		return ""
 	}
-	self, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return ""
-	}
-	var found string
-	_ = gitutil.EachWorktree(root, func(w gitutil.Worktree) {
-		if found != "" || w.Bare {
-			return
-		}
-		if p, err := filepath.EvalSymlinks(w.Path); err != nil || p == self {
-			return
-		}
-		if ownCopyKey(w.Path) == key {
-			found = fsutil.RedactHome(w.Path)
-		}
-	})
-	return found
+	sibs, _ := siblingCopies(root, ownCopyKey(root))
+	return sibs[key].Path
 }
 
 // yourCopyAt names a copy of the person's own that is not this one: "your

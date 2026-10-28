@@ -75,15 +75,7 @@ func crowding(p *prepared, j judged, res *Result) error {
 			}
 		}
 		if len(mine) >= limit {
-			// The worktrees are listed only now, for the refusal's words.
-			snap.NameSiblings(p.root, p.holder)
-			where := map[string]string{}
-			for _, r := range snap.Reservations {
-				if slices.Contains(mine, r.Record) {
-					where[r.Record] = copyPlace(r)
-				}
-			}
-			return capRefusal(mine, where, limit, note)
+			return capRefusalIn(&snap, p.root, p.holder, mine, limit, note)
 		}
 	}
 	// A renew-only act over a live tip keeps the tip's own footprint, so it
@@ -257,6 +249,22 @@ func heldByPlace(held []string, where map[string]string) string {
 		parts[i] = w + ": " + strings.Join(groups[w], ", ")
 	}
 	return strings.Join(parts, "; ")
+}
+
+// capRefusalIn is the cap's refusal for holder in the view s, naming the copy
+// each of mine was made from by holder's own live tip, never another
+// holder's tip on the same record, and why the worktrees could not be listed
+// when they could not (iss-2610272352179242). The worktrees are listed only
+// now, for the refusal's words.
+func capRefusalIn(s *Snapshot, root, holder string, mine []string, limit int, note string) error {
+	s.NameSiblings(root, holder)
+	where := map[string]string{}
+	for _, r := range s.Reservations {
+		if r.State == StateLive && sameHolder(r.Holder, holder) && slices.Contains(mine, r.Record) {
+			where[r.Record] = copyPlace(r)
+		}
+	}
+	return capRefusal(mine, where, limit, joinNote(note, s.SiblingsUnread))
 }
 
 // capRefusal names the cap and the holder's live reservations, as the view
