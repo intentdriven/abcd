@@ -308,6 +308,8 @@ type InstallResult struct {
 	// skipped and ends with no .abcd/config.json to keep its answer in, so the
 	// summary names the starter files first (iss-2610120505551170).
 	readmeAwaitsConfig bool
+	// sessionsAwaitsConfig is the same for the live brief session question.
+	sessionsAwaitsConfig bool
 	// heldByHooks is the status the run would have had but for committed
 	// hooks git does not run, which make it partial (iss-2610241134315056);
 	// "" when they did not.
@@ -319,6 +321,11 @@ type InstallResult struct {
 // starter files exist, the question is not asked and --readme-parts is
 // refused, so the way to answer it starts with creating them.
 func (r InstallResult) ReadmeAwaitsConfig() bool { return r.readmeAwaitsConfig }
+
+// SessionsAwaitsConfig is ReadmeAwaitsConfig for the live brief session
+// question, whose answer is kept in the same file and whose --live-sessions is
+// refused there too.
+func (r InstallResult) SessionsAwaitsConfig() bool { return r.sessionsAwaitsConfig }
 
 // ApplyResult is the outcome of one apply step.
 type ApplyResult struct {

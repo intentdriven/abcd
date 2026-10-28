@@ -4290,7 +4290,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					default:
 						fmt.Fprint(w, "    the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
 					}
-					if slices.Contains(res.OptionalSkipped, ahoy.SessionsOfferGapID) {
+					switch {
+					case !slices.Contains(res.OptionalSkipped, ahoy.SessionsOfferGapID):
+					case res.SessionsAwaitsConfig():
+						fmt.Fprint(w, "    the live brief session answer is kept in .abcd/config.json, which does not exist yet: answer y to creating abcd's starter files first, then answer the question at a terminal, or answer it with --live-sessions "+ahoy.LiveSessionsChoices+"\n")
+					default:
 						fmt.Fprint(w, "    the live brief session question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --live-sessions "+ahoy.LiveSessionsChoices+"\n")
 					}
 				}

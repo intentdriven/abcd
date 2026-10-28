@@ -1,6 +1,8 @@
 package ahoy
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -275,5 +277,39 @@ func TestAskSessionsWhere(t *testing.T) {
 	later := &helpedPrompter{answers: map[string]string{SessionsWherePromptKey: SetupLaterValue}}
 	if _, ok := AskSessionsWhere(later); ok {
 		t.Error("deciding later answered")
+	}
+}
+
+// TestSessionsSkippedWithoutAConfigNamesTheStarterFiles: a run that ends with
+// no .abcd/config.json reports the live brief session question skipped, and
+// its summary names the route that works, the starter files first, as the
+// README question's does: without them the question is not asked and
+// --live-sessions is refused.
+func TestSessionsSkippedWithoutAConfigNamesTheStarterFiles(t *testing.T) {
+	setupHermetic(t)
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, repo, "README.md", "# Project\n", 0o644)
+	p := &helpedPrompter{confirm: func(q string) bool {
+		c := askedCategory(q)
+		return c != "" && c != SafeAutocreate && c != ConfigChange
+	}}
+	adopt := true
+	res, err := Install(repo, InstallOptions{Adopt: &adopt}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(res.OptionalSkipped, SessionsOfferGapID) {
+		t.Fatalf("optional_skipped = %v, want it to name %s", res.OptionalSkipped, SessionsOfferGapID)
+	}
+	if !res.SessionsAwaitsConfig() {
+		t.Errorf("the result does not say the live brief session answer has no config to be stored in")
+	}
+	for _, it := range res.Summary {
+		if slices.Contains(it.Refs, SessionsOfferGapID) && !strings.Contains(it.Action, "starter files") {
+			t.Errorf("the action does not name the starter files first: %q", it.Action)
+		}
 	}
 }

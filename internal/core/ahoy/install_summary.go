@@ -380,6 +380,14 @@ var readmeAwaitsConfigHelp = SummaryItem{
 	Action: "The answer is kept in .abcd/config.json, which does not exist yet: run abcd ahoy install again and answer y to creating abcd's starter files, then answer the README question at a terminal, or pass --readme-parts " + ReadmePartsChoices + " to abcd ahoy install; none answers no and is not asked again.",
 }
 
+// sessionsAwaitsConfigHelp is readmeAwaitsConfigHelp for the live brief
+// session question, kept in the same file.
+var sessionsAwaitsConfigHelp = SummaryItem{
+	What:   optionalSkippedHelp[SessionsOfferGapID].What,
+	Why:    optionalSkippedHelp[SessionsOfferGapID].Why,
+	Action: "The answer is kept in .abcd/config.json, which does not exist yet: run abcd ahoy install again and answer y to creating abcd's starter files, then answer the live brief session question at a terminal, or pass --live-sessions " + LiveSessionsChoices + " to abcd ahoy install; none answers no and is not asked again.",
+}
+
 // remainingHelp explains the required work a run left outstanding.
 var remainingHelp = SummaryItem{
 	What:   "Some required set-up steps are still not done.",
@@ -495,6 +503,9 @@ func (r *InstallResult) explain() {
 		}
 		if id == ReadmeOfferGapID && r.readmeAwaitsConfig {
 			it = readmeAwaitsConfigHelp
+		}
+		if id == SessionsOfferGapID && r.sessionsAwaitsConfig {
+			it = sessionsAwaitsConfigHelp
 		}
 		it.Refs = []string{id}
 		r.Summary = append(r.Summary, it)

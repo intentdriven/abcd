@@ -31,6 +31,7 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		return res, err
 	}
 	res.readmeAwaitsConfig = slices.Contains(res.OptionalSkipped, ReadmeOfferGapID) && !readmeStorable(cwd)
+	res.sessionsAwaitsConfig = slices.Contains(res.OptionalSkipped, SessionsOfferGapID) && !readmeStorable(cwd)
 	res.explain()
 	res.composeReport()
 	return res, nil
