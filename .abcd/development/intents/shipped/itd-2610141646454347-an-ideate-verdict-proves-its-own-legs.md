@@ -13,7 +13,6 @@ severity: major
 impact: breaking
 origin: researcher-authored
 production_mode: hand-written
-target_release: next
 ---
 
 # An ideate verdict proves its own legs
@@ -132,7 +131,9 @@ _None._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-dbe525f06247 -->
+Fidelity review OWED (receipt rcp-dbe525f06247).
+<!-- abcd-review-end receipt=rcp-dbe525f06247 -->
 
 ## Grounds
 
