@@ -9,9 +9,7 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work"
-related_intents: [itd-2609150819440345]
-deferred_after: v0.11.1
-deferral_reason: "Promoted to itd-2609150819440345 (draft), and a promoted issue keeps its folder until the intent ships. abcd peers (itd-2609091416295622, shipped) shows what sibling worktrees hold, not which session holds what. The product thinker's ruling M30 of 2026-09-23 plans it next cycle as its own intent. Owed: that interview, which opens on transport: the code host, a per-machine helper, or both?"
+related_intents: [itd-2609150819440345, itd-2610170634394993]
 remedy: "Waits on the M30 planning interview (transport): the per-machine half largely exists as abcd implement's lease-based claims and session records under ~/.abcd.noindex/runs/<root-sha>/ (itd-2609221656373558), so if per-machine, add a session's worktree path and branch to its record and have abcd peers name the session holding each sibling worktree, proven by a peers test with two joined sessions; if the code host, mirror the same lease onto the forge with its lapse time; if both, the machine store stays authoritative and the forge copy is a mirror."
 ---
 
@@ -33,3 +31,7 @@ Deferred past v0.11.1: Promoted to itd-2609150819440345 (draft), and a promoted 
 
 - Leases (Gray and Cheriton, SOSP 1989, https://dl.acm.org/doi/10.1145/74851.74870, consulted 2026-09-29) make a holder's failure cost delay rather than correctness, which answers the record's own falsifier (claims going stale faster than sessions release them); the shipped claim already takes that form, so the remedy extends it rather than adding a second register.
 - Rejected: a claim file inside the working tree, which every tree scan walks and which conflicts on merge.
+
+## Deferral lapsed 2026-10-23
+
+The deferral past v0.11.1 lapsed long ago and is withdrawn, on the old-majors triage of 2026-10-23. It stays open until itd-2610170634394993 ships. The reason it carried stays in the body above.
