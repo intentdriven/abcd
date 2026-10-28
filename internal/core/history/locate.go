@@ -154,6 +154,11 @@ func pruneSessionNotes(dir string) {
 	}
 }
 
+// errNoStoreNoted is SessionRepo's answer when no store noted the session at
+// all, as against one claimed by two stores: placement treats the first as
+// definite and the second as a question it must not answer by guessing.
+var errNoStoreNoted = errors.New("no store has seen the session")
+
 // SessionRepo returns the root-commit SHA of the store that noted sessionID.
 //
 // It reads no transcript: one directory listing of the user-level store and one
@@ -172,7 +177,7 @@ func SessionRepo(sessionID string) (string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("history: no store has seen session %s", sessionID)
+			return "", fmt.Errorf("history: session %s: %w", sessionID, errNoStoreNoted)
 		}
 		return "", err
 	}
@@ -190,7 +195,7 @@ func SessionRepo(sessionID string) (string, error) {
 	}
 	switch len(found) {
 	case 0:
-		return "", fmt.Errorf("history: no store has seen session %s", sessionID)
+		return "", fmt.Errorf("history: session %s: %w", sessionID, errNoStoreNoted)
 	case 1:
 		return found[0], nil
 	default:

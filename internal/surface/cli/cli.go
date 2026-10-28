@@ -1988,107 +1988,7 @@ envelope carries it as system_message.`,
 		Use:   "session-end",
 		Short: "SessionEnd: stage the raw transcript for the next session to redact and store",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			started := time.Now()
-			// Diagnostics go to stderr, out of band; stdout stays empty, since a
-			// Stop hook's stdout is not a place to speak to the model — unless
-			// the caller asked for --json, when it carries one result line on
-			// every path (hook_result.go, iss-2608261550596333).
-			// The result names the session it lost, as subagent-stop's does
-			// (iss-2609260221577624): in is read below, and warn names whatever
-			// of it was parsed — nothing, for a payload that did not parse.
-			var in hookInput
-			warn := func(format string, a ...any) error {
-				msg := diagnosticLine(cmd.ErrOrStderr(), "abcd history: "+format, a...)
-				emitHookResult(cmd, hookStageResult{Hook: "session-end", Outcome: hookOutcomeNotCaptured,
-					SessionID: termsafe.Sanitize(in.SessionID), Reason: strings.TrimPrefix(msg, "abcd history: ")})
-				return nil // never non-zero: a Stop hook must not wedge the session
-			}
-
-			parsed, err := readHookInput(cmd)
-			if err != nil {
-				return warn("unreadable Stop payload (%v); capturing nothing", err)
-			}
-			in = parsed
-			if in.TranscriptPath == "" {
-				return warn("Stop payload carries no transcript_path; capturing nothing")
-			}
-			cwd := in.Cwd
-			if cwd == "" {
-				if wd, err := os.Getwd(); err == nil {
-					cwd = wd
-				}
-			}
-			detectStart := time.Now()
-			det, err := ahoy.Detect(cwd)
-			detectCost := time.Since(detectStart)
-			if err == nil && det.RootSHA == "" && det.RepoIdentity.RootErr() != nil {
-				// git failing once on a loaded machine is not a directory
-				// outside any repository: ask again before giving the session
-				// up, as the sub-agent hook does (iss-2610051434156079).
-				det, err = retryDetect(cmd.ErrOrStderr(), sessionEndResolveWaits, started.Add(sessionEndRetryBudget), detectCost, cwd, det)
-			}
-			if err == nil && det.RootSHA == "" {
-				if rerr := det.RepoIdentity.RootErr(); rerr != nil {
-					return warn("git gave no root commit for %q (%s); capturing nothing", cwd, fsutil.RedactHome(rerr.Error()))
-				}
-			}
-			if err != nil || det.RootSHA == "" {
-				return warn("cannot resolve the repo's root-commit SHA from %q; capturing nothing", cwd)
-			}
-			raw, err := readTranscript(in.TranscriptPath)
-			if err != nil {
-				return warn("%v; capturing nothing", err)
-			}
-			// Stage, do NOT capture. Redaction costs ~0.7s/MB and the host cancels
-			// a shutdown hook rather than wait, so capturing here dropped every
-			// transcript past a couple of MB — silently, and precisely the long,
-			// dense sessions most worth keeping (iss-2608230817034768). Staging is
-			// one write, so this hook's cost no longer scales with the transcript;
-			// the next SessionStart drains it through the same fail-closed Capture.
-			// Resolve first, so the store's own diagnostics — a corpus migrated
-			// off the legacy location, an opt-in declaration that was not
-			// honoured — reach stderr rather than being discarded inside Stage.
-			if st, err := history.Resolve(captureRoot(cwd), det.RootSHA); err == nil {
-				for _, n := range st.Notes {
-					fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
-				}
-			}
-			res, err := stageWithRetry(cmd.ErrOrStderr(), 0, captureRoot(cwd), det.RootSHA, history.StageMeta{
-				Lineage:    history.CaptureMeta{SessionID: in.SessionID, Kind: "native", LineageSource: "hook"},
-				SourcePath: in.TranscriptPath,
-			}, raw)
-			if err != nil {
-				// The marker is where the person sees the loss: this hook exits
-				// 0, and its stderr reaches only the host's debug log.
-				if nerr := history.NoteStageMiss(captureRoot(cwd), det.RootSHA, "session "+in.SessionID, err.Error()); nerr != nil {
-					diagnosticLine(cmd.ErrOrStderr(), "abcd history: the missed stage could not be recorded either (%v)", nerr)
-				}
-				return warn("staging failed (%v); this session was not captured, and `abcd history staged` reports it", err)
-			}
-			staged := hookStageResult{Hook: "session-end", Captured: true, SessionID: res.Staged.SessionID, Bytes: res.Staged.Bytes}
-			if !res.Wrote {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: session %s already staged with identical bytes (no-op)\n", res.Staged.SessionID)
-				staged.Outcome = hookOutcomeAlreadyStaged
-				emitHookResult(cmd, staged)
-				return nil
-			}
-			if res.Replaced {
-				// Different bytes for an already-staged session: the later
-				// snapshot replaced the earlier one, and this says so rather
-				// than reporting a no-op that would hide a replaced transcript.
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: re-staged %s (%d bytes), replacing %d stale bytes; the next session redacts and stores it\n",
-					res.Staged.SessionID, res.Staged.Bytes, res.ReplacedBytes)
-				staged.Outcome, staged.ReplacedBytes = hookOutcomeRestaged, res.ReplacedBytes
-				emitHookResult(cmd, staged)
-				return nil
-			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: staged %s (%d bytes); the next session redacts and stores it\n",
-				res.Staged.SessionID, res.Staged.Bytes)
-			staged.Outcome = hookOutcomeStaged
-			emitHookResult(cmd, staged)
-			return nil
-		},
+		RunE:  runHookSessionEnd, // hook_session_end.go
 	})
 
 	// session-start — SessionStart: warn, visibly, when the transcript store is
@@ -2148,6 +2048,10 @@ envelope carries it as system_message.`,
 			// otherwise redact all of it before the user's first prompt. Whatever
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
+			// The transcripts session-end left pending go to their stores
+			// first, so this repository's drain below stores its own
+			// (iss-2610241519088123).
+			notices = append(notices, placePendingNotices()...)
 			det, detErr := ahoy.Detect(cwd)
 			if rerr := det.RepoIdentity.RootErr(); detErr == nil && rerr != nil {
 				// git did not answer for this repository: nothing is

@@ -279,7 +279,14 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			// carries them after the list, and under --json they go to stderr,
 			// where an agent reading the array still sees a lost transcript
 			// (iss-2610051434156079).
+			// Transcripts session-end left pending belong to no repository
+			// yet, so none of them is in the list; the count says they exist
+			// (iss-2610241519088123).
+			pending, _ := history.ListPending()
 			notes := func(w io.Writer) {
+				if len(pending) > 0 {
+					fmt.Fprintf(w, "\nNOTE: %d ended session transcript(s) on this machine are not yet filed in any repository's store; `abcd history drain` or the next session start files each one it can, and names any it cannot, which `abcd history discard --pending <file> --yes` removes.\n", len(pending))
+				}
 				if hasGap {
 					fmt.Fprintf(w, "\nNOTE: this harness fired %s %d time(s) without an agent_transcript_path (first %s). No sub-agent transcript can be captured on it, so an empty sub-agent corpus here is the harness, not the sessions.\n",
 						termsafe.Sanitize(orDefault(gap.Event, "SubagentStop")), gap.Count,
@@ -301,7 +308,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			return render(cmd.OutOrStdout(), *asJSON, staged, func(w io.Writer) {
 				defer notes(w)
 				if len(staged) == 0 && len(quarantined) == 0 {
-					if hasMiss {
+					if hasMiss || len(pending) > 0 {
 						fmt.Fprintln(w, "abcd history — nothing staged")
 					} else {
 						fmt.Fprintln(w, "abcd history — nothing staged; every ended session is stored")
@@ -378,6 +385,12 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
 				return err
+			}
+			// What session-end left pending is filed first, so a transcript
+			// of this repository's that no start has placed yet is drained
+			// too (iss-2610241519088123).
+			for _, n := range placePendingNotices() {
+				fmt.Fprintln(cmd.ErrOrStderr(), n)
 			}
 			res, err := history.Drain(repoRoot, rootSHA, history.DrainBudget{})
 			if err != nil {
@@ -501,13 +514,21 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	// file is named.
 	var discardYes bool
 	var discardRootSHA string
+	var discardPending bool
 	discardCmd := &cobra.Command{
 		Use:  "discard <staged-filename> --yes",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			repoRoot, rootSHA, err := historyStoreByRootSHA(cmd, "history discard", discardRootSHA)
-			if err != nil {
-				return err
+			if discardPending && discardRootSHA != "" {
+				return fmt.Errorf("history discard: --pending names the machine's pending transcripts, which belong to no repository; --root-sha cannot apply")
+			}
+			var repoRoot, rootSHA string
+			if !discardPending {
+				var err error
+				repoRoot, rootSHA, err = historyStoreByRootSHA(cmd, "history discard", discardRootSHA)
+				if err != nil {
+					return err
+				}
 			}
 			if !discardYes {
 				// Named, not merely refused: the operator is being asked to
@@ -517,7 +538,13 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				// line the operator typed, never by repeating the text.
 				return errors.New("history discard: the staged file the first argument names (not repeated here) holds the only copy of an unredacted transcript and deleting it is irreversible; pass --yes to confirm (`abcd history staged` shows what each file is)")
 			}
-			res, err := history.Discard(repoRoot, rootSHA, args[0])
+			discard := func() (history.DiscardResult, error) { return history.Discard(repoRoot, rootSHA, args[0]) }
+			if discardPending {
+				// A transcript session-end left pending that no start could
+				// file (iss-2610241519088123).
+				discard = func() (history.DiscardResult, error) { return history.DiscardPending(args[0]) }
+			}
+			res, err := discard()
 			if err != nil {
 				return err
 			}
@@ -536,6 +563,8 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	discardCmd.Flags().BoolVar(&discardYes, "yes", false, "confirm the irreversible deletion of an unredacted transcript")
 	discardCmd.Flags().StringVar(&discardRootSHA, "root-sha", "",
 		"discard from the repository with this root-commit SHA, with no checkout to stand in (one whose checkout is gone)")
+	discardCmd.Flags().BoolVar(&discardPending, "pending", false,
+		"discard a transcript session-end left pending that no session start could file in a store")
 	historyCmd.AddCommand(discardCmd)
 
 	historyCmd.AddCommand(newHistoryMigrateCommand(asJSON))
