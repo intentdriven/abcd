@@ -114,3 +114,41 @@ func TestRefusedAnswerKeepsEveryFlaggedValue(t *testing.T) {
 		t.Errorf("the refused docs_target answer was saved as %q", v)
 	}
 }
+
+// laterPipe answers every approval yes and leaves every value question
+// unanswered, as "decide later" or an input that ends does.
+type laterPipe struct{}
+
+func (laterPipe) Confirm(string) bool                    { return true }
+func (laterPipe) Prompt(string, []string, string) string { return "" }
+
+// TestADeferredScanDeepAnswerDrawsNoRefusalNote: an empty answer is "decide
+// later" (SetupLaterValue's doors answer ""), not an answer outside the set,
+// so it leaves scan.deep unsaved without a note claiming an answer was given
+// and refused (iss-2610020700263496).
+func TestADeferredScanDeepAnswerDrawsNoRefusalNote(t *testing.T) {
+	setupHermetic(t)
+	trufflehogResolves(t, true)
+	repo := gitRepo(t)
+	adopt := true
+	opts := InstallOptions{
+		Adopt: &adopt,
+		ValueOverrides: map[string]string{
+			"visibility":     "private",
+			"docs_target":    "agents_md",
+			"oracle_backend": "host-delegated",
+		},
+	}
+	res, err := Install(repo, opts, laterPipe{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range res.Notes {
+		if strings.Contains(n, "scan_deep names none of") {
+			t.Errorf("a deferred scan_deep answer drew the refusal note %q", n)
+		}
+	}
+	if !slices.Contains(res.Remaining, "config.scan_deep_missing") {
+		t.Errorf("remaining = %v, want config.scan_deep_missing for the deferred answer", res.Remaining)
+	}
+}

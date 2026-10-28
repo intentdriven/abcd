@@ -946,7 +946,7 @@ func collectMissingValues(cwd string, ic *InstallConfig, overrides map[string]st
 			v := ans == "true"
 			ic.ScanDeep = &v
 			c.answered = true
-		} else {
+		} else if ans != "" { // "" is decide later, not a refused answer
 			c.refused = refusedScanDeepNote(ans)
 		}
 	}

@@ -661,8 +661,8 @@ missing, while the other questions are still asked and the values they and
 the flags give are saved. The deep-scan question is where `yes |` meets
 this, since its `y` is neither `true` nor `false`: a note names the answer,
 the two it accepts and `--scan-deep`, and `config.scan_deep_missing` is the
-gap left. Relay the note and pass the user's answer as `--scan-deep`. A question no flag
-answers, such as the artefact kind, ends its explanation instead on a
+gap left. Relay the note and pass the user's answer as `--scan-deep`. A
+question no flag answers, such as the artefact kind, ends its explanation instead on a
 `(Change later: <where>)` line saying where the answer is changed afterwards.
 `--yes` chooses no value, so a `--yes` run that still has a value to ask says so
 once, above the first such question.
