@@ -88,6 +88,7 @@ func TestAReviewThatDoesNotPassRecordsNothing(t *testing.T) {
 		{"another commit", []ReviewReturn{{Name: "a.md", Text: reviewReturn("0123456789abcdef0123456789abcdef01234567", "SHIP")}, {Name: "b.md", Text: reviewReturn(sha, "SHIP")}}, "a.md"},
 		{"the same return twice", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP")}, {Name: "b.md", Text: reviewReturn(sha, "SHIP")}}, "same text"},
 		{"a verdict word in prose", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "Not SHIP: the leak is still open")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "not one a validator writes"},
+		{"a sentence that begins with a verdict word", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "Ship it once the fix lands; until then it stands.")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "not one a validator writes"},
 		{"a word that only begins with a verdict", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIPPABLE")}, {Name: "b.md", Text: reviewReturn(sha, "APPROVE")}}, "not one a validator writes"},
 		{"needs input", []ReviewReturn{{Name: "a.md", Text: reviewReturn(sha, "SHIP")}, {Name: "b.md", Text: reviewReturn(sha, "NEEDS-INPUT")}}, "NEEDS-INPUT"},
 		{"an empty verdict section", []ReviewReturn{{Name: "a.md", Text: "Reviewed " + sha[:9] + ".\n\n### Verdict\n\n"}, {Name: "b.md", Text: reviewReturn(sha, "SHIP")}}, "states no verdict"},
@@ -123,7 +124,7 @@ func TestAVerdictLineThatBeginsWithTheWordPasses(t *testing.T) {
 	repo, sha := reviewRepo(t)
 	if _, err := RecordReview(repo.Root(), sha, []ReviewReturn{
 		{Name: "ruthless.md", Text: reviewReturn(sha, "**SHIP** — nothing survived refutation.")},
-		{Name: "security.md", Text: reviewReturn(sha, "- approve_")},
+		{Name: "security.md", Text: reviewReturn(sha, "- `APPROVE`_")},
 	}); err != nil {
 		t.Fatalf("a pair in the reviewers' format was refused: %v", err)
 	}

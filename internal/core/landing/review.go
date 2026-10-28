@@ -30,7 +30,8 @@ const MaxReviewReturnBytes = 1 << 20
 const minReviewers = 2
 
 // ReviewReturn is one reviewer's return: the name it is recorded under and its
-// text, which names the commit it read and ends in a `### Verdict` section.
+// text, which names the commit it read and states its verdict under one
+// `### Verdict` heading.
 type ReviewReturn struct {
 	Name string
 	Text string
@@ -59,8 +60,8 @@ const reviewedCommitPrefix = 9
 // reviewVerdict reads the verdict a return states, by the implement loop's
 // rule: the return has exactly one Verdict heading, and the first non-blank
 // line under it begins with a verdict word (list marker and emphasis
-// stripped, its words joined by a space, a hyphen or an underscore) followed
-// by anything but a letter. A return with no Verdict heading, more than one,
+// stripped, its words joined by a space, a hyphen or an underscore, in
+// capitals) followed by anything but a letter. A return with no Verdict heading, more than one,
 // or a first line beginning with no verdict word is an error.
 func reviewVerdict(text string) (string, error) {
 	heads := verdictHeading.FindAllStringIndex(text, -1)
@@ -81,7 +82,7 @@ func reviewVerdict(text string) (string, error) {
 		return "", errors.New("its ### Verdict section states no verdict")
 	}
 	t := strings.TrimLeft(strings.TrimLeft(line, "-*+ \t"), "*_`")
-	norm := strings.ToUpper(strings.NewReplacer("-", " ", "_", " ").Replace(t))
+	norm := strings.NewReplacer("-", " ", "_", " ").Replace(t)
 	for _, w := range knownVerdicts {
 		ww := strings.NewReplacer("-", " ").Replace(w)
 		if rest, ok := strings.CutPrefix(norm, ww); ok && (rest == "" || !isLetter(rest[0])) {
