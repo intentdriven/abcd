@@ -44,7 +44,7 @@ func ParseRole(s string) (Role, error) {
 			return r, nil
 		}
 	}
-	return "", refusal("unknown role %q (first or second)", s)
+	return "", refusal("unknown role (the word is not repeated here): the role is first or second")
 }
 
 // Mode is a window's division of work between the sessions. `single` is a
@@ -72,7 +72,7 @@ func ParseMode(s string) (Mode, error) {
 			return m, nil
 		}
 	}
-	return "", refusal("unknown mode %q (one of: single, claim, batch, split-roles)", s)
+	return "", refusal("unknown mode (the word is not repeated here): the mode is one of: single, claim, batch, split-roles")
 }
 
 // Session is a joined session's record.
