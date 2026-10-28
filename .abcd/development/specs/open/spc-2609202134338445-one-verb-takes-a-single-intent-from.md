@@ -13,8 +13,19 @@ The design record for itd-2609201916151817, from the seven decisions on the
 intent (2026-09-20). Decision 5 fixes the shape: A loop over a state file,
 driven by a host session step by step by default, or by a process through
 the CLI adapter when opted in. The ADR decision 6 owes (the `--auto-plan`
-substitute for the sign-off act, and the opt-in reversal of the host-delegated
-boundary) is minted before either path ships and is a delivery of this spec.
+substitute for the sign-off act) is minted before that path ships and is a
+delivery of this spec. The opt-in reversal of the host-delegated boundary that
+decision 5 flagged has its own record, adr-2610222222326104, which lets
+`abcd build` adopt a no-host drive later under its four conditions; that
+drive is not this spec's (Out of scope).
+
+## Footprint
+
+The one step left to build is 11. Files are named where a step touches one
+file of a package other builds share.
+
+- packages: internal/core/implement/loop, internal/core/intent, internal/surface/cli/build.go, internal/surface/cli/cli.go, commands/build.md, commands/intent.md, .abcd/development/brief/04-surfaces/34-build.md, .abcd/development/brief/04-surfaces/05-intent.md, .abcd/development/decisions/adrs/README.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
+- tests: internal/core/implement/loop, internal/core/intent, internal/surface/cli/build_surface_test.go
 
 ## Steps
 
@@ -41,8 +52,11 @@ boundary) is minted before either path ships and is a delivery of this spec.
    Decision 5, opt-in by configuration: the same loop calling itself through
    `step` and `receipt`, starting each agent through the CLI adapter
    (`itd-2609201916056194`) and waiting for it; named in the run record
-   (criterion 9).
+   (criterion 9). A host session still drives the steps; a drive with no
+   host session is adr-2610222222326104's, outside this spec.
+   - packages: internal/core/implement/loop
    - needs: 2
+   - landed: 6ce51f237
 4. **The checks**
    Criteria 1 and 2: the readiness gate, the claim sections, the
    open-question count, the hold (prose until `iss-2609200830076665` ships),
@@ -95,7 +109,10 @@ boundary) is minted before either path ships and is a delivery of this spec.
 ## Out of scope
 
 The pace (its spec); the runner's implementation (the adapter's); the
-worktree store's verbs; the peer reader; the claim and the register.
+worktree store's verbs; the peer reader; the claim and the register. A drive
+of the loop with no host session: adr-2610222222326104 records that reversal
+of the host-delegated boundary, `abcd drain` builds it first
+(itd-2610222215485265), and `abcd build` adopts it later under that record.
 
 ## Approach
 
@@ -167,15 +184,16 @@ spec stays open until the last lane closes it.
   every commit on the lane's branch past its base, a passing definition of
   done's output and the report, each inside the lane's directory, or a refusal
   naming every gap.
-- **Landed in part (lane runner2): piece 3**, the process driver. `implement
+- **Landed (lane runner2): piece 3**, the process driver. `implement
   step` drives through `loop.Drive`: when a stage hands the lane to a role
   that `roles.<role>.runner` routes to a command-line runner
   (itd-2609201916056194), the loop starts the agent itself through the runner
   and hands its receipt back through `Receipt`, and the run record names the
   runner that ran it (criterion 9); a role left on the host is handed to the
-  host exactly as before. Not built: the loop driving itself with no host
-  session, which is decision 6's reversal of the host-delegated boundary and
-  waits on the ADR that decision owes.
+  host exactly as before. Not built here: the loop driving itself with no
+  host session, the reversal of the host-delegated boundary decision 5
+  flagged, which adr-2610222222326104 now records and which is out of this
+  spec's scope.
 - **Landed (lane fidelityOnce): piece 8**, the validators with the itd-58
   verdict invariant. The validate stage hands the lane's head to a fresh
   ruthless reviewer and a fresh security reviewer, one at a time, and on the
@@ -223,5 +241,7 @@ spec stays open until the last lane closes it.
   receipt carries `handback: {kind, reason, home}`, which the loop reads at the
   receipt, before the validators, discarding the lane's worktree and branch
   and ending the lane handed back.
-- **Remaining: 11** (`--auto-plan` with its ADR), and piece 3's no-host
-  driving, behind the same ADR. `--auto-plan` is not a flag yet.
+- **Remaining: 11** (`--auto-plan` with its ADR). `--auto-plan` is not a flag
+  yet. Piece 3's no-host driving left this spec on 2026-10-28: its reversal
+  is recorded in adr-2610222222326104, whose drive `abcd drain` builds first
+  (Out of scope).
