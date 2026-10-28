@@ -159,8 +159,11 @@ that set it, a person from any layer winning, and a refused home reading as a
 person. The product view draws a
 line of its own above the version (`merges: a person (the bundled default)`);
 the facilitator view draws a `merges:` row after the status block that also names
-the key and the mode as configured (`merges: abcd (facilitator.mode auto, from
-.abcd/config.json)`). The JSON carries a `facilitator` object (`key`, `mode`,
+the key and the mode as configured (`merges: a person (facilitator.mode human,
+from the bundled default)`). The merge gate does not read the mode until step 4,
+so the line names a person in every repository and draws an `auto` as set but
+not yet read (`merges: a person (facilitator.mode auto, from .abcd/config.json;
+the merge gate does not read it yet)`). The JSON carries a `facilitator` object (`key`, `mode`,
 `layer`, `origin`, and `home_refused` when a refused home decided it). A read
 the layered reader refuses is drawn as unreadable, and carried as `key` and
 `error` alone; every part is masked

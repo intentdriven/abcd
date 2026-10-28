@@ -88,7 +88,7 @@ type Input struct {
 	// views and both forms (spc-2610100613109045, decision 4), and the line is
 	// left out only when no version is handed in.
 	Version core.VersionInfo
-	// Merges is facilitator.mode as the merge gate reads it (spc-2610161609350616
+	// Merges is facilitator.mode as the layered configuration resolves it (spc-2610161609350616
 	// step 2), drawn just above the version line in both views and both forms;
 	// nil draws no line.
 	Merges *Merges
@@ -163,6 +163,10 @@ func Render(in Input, f Frame) []string {
 // version; the facilitator view adds the key and the mode as configured, a
 // labelled row after the status block. A refused read says the mode is
 // unreadable and carries the refusal; a refused home names itself, not a file.
+// Nothing merges by the mode yet: the merge gate reads it only from
+// spc-2610161609350616 step 4, and until then every repository runs in human
+// mode (landing's mergeGate). So a person merges whatever the mode says, and an
+// auto is drawn as declared but not yet read, never as abcd merging.
 // The text is masked: an origin or a refusal can carry what a configuration
 // file wrote.
 func mergesText(m *Merges, v View) string {
@@ -172,10 +176,6 @@ func mergesText(m *Merges, v View) string {
 	if m.Refused != "" {
 		return termsafe.Sanitize("unreadable (" + m.Refused + ")")
 	}
-	who := "a person"
-	if m.Mode == "auto" {
-		who = "abcd"
-	}
 	from, set := m.Origin, "set in "+m.Origin
 	switch {
 	case m.Layer == "bundled":
@@ -183,10 +183,14 @@ func mergesText(m *Merges, v View) string {
 	case m.HomeRefused:
 		from, set = "a refused home", "the home directory was refused, so a machine-wide setting cannot be read"
 	}
-	if v == Facilitator {
-		return termsafe.Sanitize(who + " (facilitator.mode " + m.Mode + ", from " + from + ")")
+	unread := ""
+	if m.Mode == "auto" {
+		set, unread = "auto is "+set+", but the merge gate does not read it yet", "; the merge gate does not read it yet"
 	}
-	return termsafe.Sanitize(who + " (" + set + ")")
+	if v == Facilitator {
+		return termsafe.Sanitize("a person (facilitator.mode " + m.Mode + ", from " + from + unread + ")")
+	}
+	return termsafe.Sanitize("a person (" + set + ")")
 }
 
 // versionLine is the board's last line, the installed version as `abcd

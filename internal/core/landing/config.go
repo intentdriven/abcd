@@ -188,7 +188,7 @@ func checkMode(m string) error {
 }
 
 // ReadFacilitator resolves facilitator.mode for the working directory cwd,
-// as the merge gate reads it, with the notes RootsFor wrote on the way (a
+// as the layered configuration resolves it, with the notes RootsFor wrote on the way (a
 // refused home among them) for the caller to print. The error is the reader's
 // raw text: a front door masks it before printing it, since it can quote a key
 // a configuration file wrote.

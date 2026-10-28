@@ -266,18 +266,19 @@ func facilitatorBlock(b *statusblock.Block) string {
 
 // TestBoardSaysWhoMergesAndWhere is spc-2610161609350616 step 2 at the bare
 // board: in a managed checkout the text names who merges and the layer that
-// said so, and --json carries the resolved facilitator.mode with its layer and
+// said so (compared with its spaces collapsed, since the row wraps at the
+// window), and --json carries the resolved facilitator.mode with its layer and
 // origin.
 func TestBoardSaysWhoMergesAndWhere(t *testing.T) {
 	root := managedCheckout(t)
-	if text := string(runCLI(t, "--view", "facilitator")); !strings.Contains(text, "  merges:     a person (facilitator.mode human, from the bundled default)") {
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: a person (facilitator.mode human, from the bundled default)") {
 		t.Fatalf("with no layer the board does not name the bundled person:\n%s", text)
 	}
 	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte(`{"facilitator":{"mode":"auto"}}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if text := string(runCLI(t, "--view", "facilitator")); !strings.Contains(text, "  merges:     abcd (facilitator.mode auto, from .abcd/config.json)") {
-		t.Fatalf("the repository's auto is not named with its file:\n%s", text)
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: a person (facilitator.mode auto, from .abcd/config.json; the merge gate does not read it yet)") {
+		t.Fatalf("the repository's auto is not named, with its file, as not read yet:\n%s", text)
 	}
 	var got struct {
 		Facilitator *struct {
@@ -292,12 +293,14 @@ func TestBoardSaysWhoMergesAndWhere(t *testing.T) {
 	}
 }
 
-// TestBoardSaysAnUnreadableModeIsUnreadable: a value the reader refuses is
+// TestBoardSaysAnUnreadableModeIsUnreadable: a key the reader refuses is
 // drawn as unreadable, masked, and carried in --json as the error alone: no
-// mode, layer or origin key, so a consumer testing for a mode finds none.
+// mode, layer or origin key, so a consumer testing for a mode finds none. The
+// hostile bytes are in the key, which the refusal names as written, so the
+// mask is what keeps them off the terminal.
 func TestBoardSaysAnUnreadableModeIsUnreadable(t *testing.T) {
 	root := managedCheckout(t)
-	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte("{\"facilitator\":{\"mode\":\"\\u001b[31mauto\"}}\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte("{\"facilitator\":{\"\\u001b[31mmode\":\"auto\"}}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	text := string(runCLI(t, "--view", "facilitator"))
@@ -313,6 +316,41 @@ func TestBoardSaysAnUnreadableModeIsUnreadable(t *testing.T) {
 	keys := slices.Sorted(maps.Keys(got.Facilitator))
 	if !slices.Equal(keys, []string{"error", "key"}) || got.Facilitator["error"] == "" {
 		t.Fatalf("--json facilitator = %v; want only key and error", got.Facilitator)
+	}
+}
+
+// TestBoardNamesARefusedHomeThatDecidedWhoMerges: a home inside the working
+// tree is refused, so the bundled person stands and the board says the refused
+// home decided it, in the text and as home_refused in --json.
+func TestBoardNamesARefusedHomeThatDecidedWhoMerges(t *testing.T) {
+	root := managedCheckout(t)
+	home := filepath.Join(root, "planted-home")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	if text := flattenSpace(string(runCLI(t, "--view", "facilitator"))); !strings.Contains(text, "merges: a person (facilitator.mode human, from a refused home)") {
+		t.Fatalf("a refused home is not named as what decided who merges:\n%s", text)
+	}
+	var got struct {
+		Facilitator *struct {
+			Mode        string
+			HomeRefused bool `json:"home_refused"`
+		} `json:"facilitator"`
+	}
+	// The refusal's note goes to stderr, so stdout stays one JSON document.
+	stdout, stderr, err := runCLISplit(t, "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr, "HOME lies inside the git working tree") {
+		t.Errorf("the refused home's note is not on stderr:\n%s", stderr)
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("%v:\n%s", err, stdout)
+	}
+	if f := got.Facilitator; f == nil || f.Mode != "human" || !f.HomeRefused {
+		t.Fatalf("--json facilitator = %+v; want human with home_refused", got.Facilitator)
 	}
 }
 

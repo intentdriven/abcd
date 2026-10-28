@@ -49,7 +49,7 @@ type boardOutput struct {
 	// is flagged (itd-28); omitted when the tree holds none. The text render
 	// lists the dated reviews and folds the release receipts into one line.
 	Reviews *reviews.Board `json:"reviews,omitempty"`
-	// Facilitator is facilitator.mode as the merge gate reads it, with the
+	// Facilitator is facilitator.mode as the layered configuration resolves it, with the
 	// layer and origin that set it, or the read's refusal as Error
 	// (spc-2610161609350616 step 2); present in a managed checkout only.
 	Facilitator *boardFacilitator `json:"facilitator,omitempty"`

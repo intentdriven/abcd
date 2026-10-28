@@ -350,11 +350,11 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 		want string
 	}{
 		{"bundled, facilitator view", person, Facilitator, Text, "  merges:     a person (facilitator.mode human, from the bundled default)"},
-		{"repo auto, facilitator view", repoAuto, Facilitator, Text, "  merges:     abcd (facilitator.mode auto, from .abcd/config.json)"},
+		{"repo auto, facilitator view", repoAuto, Facilitator, Text, "  merges:     a person (facilitator.mode auto, from .abcd/config.json; the merge gate does not read it yet)"},
 		{"machine human, facilitator view", machine, Facilitator, Text, "  merges:     a person (facilitator.mode human, from " + abcdhome.Display("config.json") + ")"},
 		{"bundled, product view", person, Product, Text, "merges: a person (the bundled default)"},
-		{"repo auto, product view", repoAuto, Product, Text, "merges: abcd (set in .abcd/config.json)"},
-		{"repo auto, markdown", repoAuto, Product, Markdown, "- merges: abcd (set in .abcd/config.json)"},
+		{"repo auto, product view", repoAuto, Product, Text, "merges: a person (auto is set in .abcd/config.json, but the merge gate does not read it yet)"},
+		{"repo auto, markdown", repoAuto, Product, Markdown, "- merges: a person (auto is set in .abcd/config.json, but the merge gate does not read it yet)"},
 		{"refused home, facilitator view", refusedHome, Facilitator, Text, "  merges:     a person (facilitator.mode human, from a refused home)"},
 		{"refused home, product view", refusedHome, Product, Text, "merges: a person (the home directory was refused, so a machine-wide setting cannot be read)"},
 	} {
