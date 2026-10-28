@@ -31,6 +31,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -135,22 +136,23 @@ func newLintOutboundCommand(asJSON *bool) *cobra.Command {
 // equivalence is how a misrouted pipe becomes a green tick.
 func outboundArtefact(cmd *cobra.Command, args []string) (string, error) {
 	if len(args) == 1 && args[0] != "-" {
+		// The FILE is named by its role, never by the path typed.
 		info, err := os.Stat(args[0])
 		if err != nil {
-			return "", fmt.Errorf("cannot read the artefact: %w", err)
+			return "", fmt.Errorf("cannot read the artefact (its path is not repeated here): %w", pathErrorCause(err))
 		}
 		if info.IsDir() {
-			return "", fmt.Errorf("%s is a directory, not an artefact", args[0])
+			return "", errors.New("the FILE named is a directory, not an artefact (its path is not repeated here)")
 		}
 		if info.Size() > maxOutboundBytes {
 			return "", fmt.Errorf("the artefact is larger than %d bytes; it was not checked", maxOutboundBytes)
 		}
 		raw, err := os.ReadFile(args[0])
 		if err != nil {
-			return "", fmt.Errorf("cannot read the artefact: %w", err)
+			return "", fmt.Errorf("cannot read the artefact (its path is not repeated here): %w", pathErrorCause(err))
 		}
 		if strings.TrimSpace(string(raw)) == "" {
-			return "", fmt.Errorf("%s is empty; nothing was checked", args[0])
+			return "", errors.New("the FILE named is empty (its path is not repeated here); nothing was checked")
 		}
 		return string(raw), nil
 	}
@@ -188,8 +190,8 @@ func outboundScanRoot(rootDir string) (string, error) {
 		return "", err
 	}
 	if info, err := os.Stat(abs); err != nil || !info.IsDir() {
-		shown := rootDir
-		if shown == "" {
+		shown := "the --root path (not repeated here)"
+		if rootDir == "" {
 			shown = abs
 		}
 		return "", fmt.Errorf("%s is not a directory", shown)

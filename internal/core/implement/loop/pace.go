@@ -188,7 +188,7 @@ func parsePaceFlags(pace, subs, fix *string) (paceFlags, error) {
 		wn, werr := wholeNumber(w)
 		pn, perr := wholeNumber(p)
 		if !ok || werr != nil || perr != nil {
-			return f, paceRefusal(fmt.Sprintf("--pace %q is not a pace", layered.BoundKey(*pace)))
+			return f, paceRefusal(fmt.Sprintf("--pace is given %s, which is not a pace", termsafe.DescribeRefused(*pace)))
 		}
 		f.work, f.pause = &wn, &pn
 	}
@@ -197,7 +197,7 @@ func parsePaceFlags(pace, subs, fix *string) (paceFlags, error) {
 		f.subsOrigin = "--sub-agents " + layered.BoundKey(*subs)
 		n, err := wholeNumber(*subs)
 		if err != nil {
-			return f, paceRefusal(fmt.Sprintf("--sub-agents %q is not a number of lanes", layered.BoundKey(*subs)))
+			return f, paceRefusal(fmt.Sprintf("--sub-agents is given %s, which is not a number of lanes", termsafe.DescribeRefused(*subs)))
 		}
 		f.subs = &n
 	}
@@ -206,7 +206,7 @@ func parsePaceFlags(pace, subs, fix *string) (paceFlags, error) {
 		f.fixOrigin = "--fix-rounds " + layered.BoundKey(*fix)
 		n, err := wholeNumber(*fix)
 		if err != nil {
-			return f, paceRefusal(fmt.Sprintf("--fix-rounds %q is not a number of fix rounds", layered.BoundKey(*fix)))
+			return f, paceRefusal(fmt.Sprintf("--fix-rounds is given %s, which is not a number of fix rounds", termsafe.DescribeRefused(*fix)))
 		}
 		f.fix = &n
 	}

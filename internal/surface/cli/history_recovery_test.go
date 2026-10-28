@@ -320,7 +320,8 @@ func TestHistoryIngestRefusesWithoutAnExplicitDestination(t *testing.T) {
 // TestHistoryIngestNamesADestinationOutsideHomeByItsDirectoryName: the report's
 // destination line and the not-a-repository refusal named --into through the
 // home redaction alone, so a repository outside HOME was printed as an absolute
-// local path (iss-2609281329007423). Both name it by its directory name.
+// local path (iss-2609281329007423). The report names it by its directory
+// name; the refusal names it by its flag and repeats no part of what was passed.
 func TestHistoryIngestNamesADestinationOutsideHomeByItsDirectoryName(t *testing.T) {
 	sessionEndRepo(t)
 	repo, _ := secondRepo(t)
@@ -346,8 +347,9 @@ func TestHistoryIngestNamesADestinationOutsideHomeByItsDirectoryName(t *testing.
 		t.Fatal(err)
 	}
 	_, _, runErr = runRecovery("", "history", "ingest", "--into", notRepo, t.TempDir())
-	if runErr == nil || !strings.Contains(runErr.Error(), "history ingest: not-a-repo is not a git repository") {
-		t.Errorf("the refusal must name the destination by its directory name, got: %v", runErr)
+	if runErr == nil || !strings.Contains(runErr.Error(), "history ingest: the --into directory is not a git repository") ||
+		strings.Contains(runErr.Error(), "not-a-repo") {
+		t.Errorf("the refusal must name the destination by its flag, never by what was passed, got: %v", runErr)
 	}
 	refusal := ""
 	if runErr != nil {

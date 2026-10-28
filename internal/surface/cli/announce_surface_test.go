@@ -80,7 +80,7 @@ func TestAnnounceUsageErrorsPushNothing(t *testing.T) {
 		{"bare", []string{"announce"}, "abcd announce <kind> <item>"},
 		{"kind only", []string{"announce", "merging"}, "abcd announce <kind> <item>"},
 		{"free text", []string{"announce", "merging", "#1012", "please", "hold"}, "no free text"},
-		{"unknown kind", []string{"announce", "shipping", "#1012"}, "kind \"shipping\" is not one of merging, merged, asking, answered, handed-over"},
+		{"unknown kind", []string{"announce", "shipping", "#1012"}, "kind \"(argument 2, not repeated here)\" is not one of merging, merged, asking, answered, handed-over"},
 		{"malformed item", []string{"announce", "merging", "spc-5"}, "is not an issue or intent id (iss-N, itd-N) or a pull-request number (#N)"},
 		{"expiry too long", []string{"announce", "merging", "#1012", "--expires-in", "25h"}, "expiry 25h0m0s is outside 1m0s to 24h0m0s"},
 		{"record not public", []string{"announce", "merging", "iss-5"}, "iss-5 is not on origin's default branch"},

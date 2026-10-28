@@ -218,9 +218,15 @@ type bootstrapFixture struct {
 // server — so it is not the class of seam that was removed from the script.
 func bootstrapServer(t *testing.T, body []byte, manifest string) *bootstrapFixture {
 	t.Helper()
+	return bootstrapServerAt(t, bootstrapTag, body, manifest)
+}
+
+// bootstrapServerAt is bootstrapServer for a release published as tag.
+func bootstrapServerAt(t *testing.T, tag string, body []byte, manifest string) *bootstrapFixture {
+	t.Helper()
 	var count, artefacts, manifests, failLatest, failCommits int32
 	asset := bootstrapAsset()
-	pinned := "/releases/download/" + bootstrapTag + "/"
+	pinned := "/releases/download/" + tag + "/"
 	mux := http.NewServeMux()
 	// Deliberately outside the counter: the harness's own reachability probe
 	// must not read as a fetch the script made.
@@ -235,7 +241,7 @@ func bootstrapServer(t *testing.T, body []byte, manifest string) *bootstrapFixtu
 				http.Error(w, "unavailable", http.StatusInternalServerError)
 				return
 			}
-			http.Redirect(w, r, "/releases/tag/"+bootstrapTag, http.StatusFound)
+			http.Redirect(w, r, "/releases/tag/"+tag, http.StatusFound)
 		case pinned + asset:
 			atomic.AddInt32(&artefacts, 1)
 			http.Redirect(w, r, "/cdn-blob/1292161760/10d722b0?sig=x", http.StatusFound)
@@ -245,7 +251,7 @@ func bootstrapServer(t *testing.T, body []byte, manifest string) *bootstrapFixtu
 		case pinned + "checksums.txt":
 			atomic.AddInt32(&manifests, 1)
 			_, _ = w.Write([]byte(manifest))
-		case "/commits/" + bootstrapTag:
+		case "/commits/" + tag:
 			if atomic.LoadInt32(&failCommits) != 0 {
 				http.Error(w, "unavailable", http.StatusInternalServerError)
 				return
