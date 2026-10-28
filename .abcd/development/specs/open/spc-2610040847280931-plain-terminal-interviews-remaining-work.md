@@ -28,10 +28,12 @@ This spec carries what [spc-2610030911534855](../closed/spc-2610030911534855-a-p
    - packages: internal/core/ahoy, internal/surface/cli
    - tests: TestSetupAnswersFileSettlesEveryQuestionBeforeAnyWrite (a file stopping at a status-line element, an offer, lineage, house style and the artefact kind each refuses with the tree unchanged); the existing settle and walk-parity tests unchanged
    - waits on a question plan in core ahoy that names every question a run will ask, the ones decided during the run included; resolves iss-2610040025088395
+   - needs: none
 2. Typed answers in the AI-written interviews
    - criteria: B5 (retrospective) in the person's own words
    - packages: internal/core/interview, internal/core/question, internal/surface/cli/ask, internal/surface/cli
    - tests: TestWrittenInterviewTakesATypedAnswer (the drawn loop offers the typed part beside the role's drafts and records the typed text, sanitised); TestAnswersFileCarriesATypedValue (replay by ordinal)
+   - needs: none
 3. The change guard bounds a followed link
    - criteria: B6's guard stays prompt: a followed link's target is bounded by a small file and byte budget, refusing with the link named
    - packages: internal/core/interview
@@ -41,3 +43,4 @@ This spec carries what [spc-2610030911534855](../closed/spc-2610030911534855-a-p
    - criteria: B5 and B6 on a real runner: one AI-written interview (a short planning interview on a draft intent) on the person's own route with the person; the guard does not stop on what the runner itself writes, or the fix lands in this step
    - tests: the dated receipt `.abcd/.work.local/logs/real-interview-<yyyy-mm-dd>.md`; then a docs-fidelity review recorded for HEAD and `abcd spec close spc-2610040847280931` (the intent declares impact additive) with a `Delivers: itd-2610030810370060` trailer
    - lands after steps 1 to 3
+   - needs: 1, 2, 3

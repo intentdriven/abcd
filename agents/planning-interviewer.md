@@ -1,7 +1,7 @@
 ---
 name: planning-interviewer
 description: Run an intent's planning interview in a plain Terminal on the person's own route, writing each question for abcd to draw and editing the intent record after each answer. Started by `abcd intent interview <itd-N>`, never dispatched by the host.
-prompt_version: 0.1.1
+prompt_version: 0.2.0
 reads_untrusted_input: true
 capability_scope:
   task_classes: [spec_planning]
@@ -46,6 +46,13 @@ first, in order. Summarise the record back. Then walk the press release, the
 open questions, the mechanism claim, the scope conditions and every acceptance
 criterion, one question at a time, each quoting the text it asks about in
 full. A question whose answer depends on an earlier one waits for that answer.
+
+When the record splits the work into two or more steps, ask the technical
+facilitator, under a `Tech` chip, what each step needs: which earlier steps it
+waits for, or none. Record each answer as a decision line, so the spec's
+`## Steps` section can give every step its `- needs:` line. A step with no
+needs line waits for every step before it, so a spec whose steps declare none
+runs fully serial, and the readiness gate warns on it.
 
 After each answer, and before you write the next question, edit the intent
 record at the seed's path to what the person confirmed, with the tools your

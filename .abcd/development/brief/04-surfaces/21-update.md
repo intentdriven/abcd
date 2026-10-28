@@ -13,9 +13,10 @@ intact: whoever could replace the binary could replace them with it. The build
 provenance does not trust the page. It must be signed for this repository's
 release workflow as it stands on the main branch, run on a GitHub-hosted
 runner, and it must name both the exact bytes fetched and the commit the release
-tag points at, so an older release's genuine build uploaded under a newer tag
-fails it. A file that already matches the release's checksums is held to the
-same check before it is called current. Where the provenance cannot be verified,
+tag points at. The bytes must also claim the release: the main-module version
+Go stamps into the build from the tag the release workflow built at, read from
+the binary and never by running it, must be the requested tag. A file that already matches the
+release's checksums is held to the same checks before it is called current. Where the provenance cannot be verified,
 offline included, the verb refuses and nothing is swapped.
 
 The verb is the explicit ask. abcd never checks for or applies updates on its own

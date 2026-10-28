@@ -1,7 +1,7 @@
 ---
 id: adr-2610222026262980
 slug: coordination-between-headless-agents-is
-status: proposed
+status: accepted
 date: 2026-10-22
 supersedes: null
 superseded_by: null
@@ -67,16 +67,19 @@ session:
    a version above its own refuses the record with a message naming both
    versions, and never waits on it or guesses its meaning. Readers released
    before that ignore the field, which is why the rule starts there.
-4. **An autonomous session never acts under the person's own forge login.**
-   It pushes, opens pull requests and reads the forge with a short-lived
-   token issued through abcd's GitHub App for that session, limited to the
+4. **A build or drain lane abcd launches on its own never acts under the
+   person's own forge login.** It pushes, opens pull requests and reads the forge with a short-lived
+   token issued through abcd's GitHub App for that lane, limited to the
    repository and the acts its work needs. The token reaches only the git
    and forge commands abcd runs for the session, through a credential channel
    of abcd's own, never the forge CLI's token variables, and the key or
-   refresh token that issues it is never readable by a session. An
-   unattended run starts only where the person's saved login cannot be
-   reached (a cloud session, a container or a separate user account). Before
-   one starts, and before its token is issued, abcd reads the signals that
+   refresh token that issues it is never readable by a session. Such a lane
+   starts only where the person's saved login cannot be reached (a cloud
+   session, a container or a separate user account). The person's own
+   sessions, those working while the person is away included, keep running
+   under their login on their own computer, and a drain the person starts
+   and watches may count as attended (narrowed on 2026-10-23,
+   dcn-2610230710469123). Before such a lane starts, and before its token is issued, abcd reads the signals that
    carry no secret (the forge CLI's login status by exit code, whether the
    token variables are set, whether a stored-credential file names the host)
    and refuses to start, naming where it found a login. It never asks a
@@ -109,8 +112,10 @@ session:
   window.
 - The coordination records gain a version field in the release that ships
   this; the refusal binds from then on.
-- Unattended runs need a setup the person does once: the App registered in
-  the browser (C3), and a place to run without their login. abcd states that
+- abcd's own build and drain lanes need a setup the person does once: the
+  App registered in the browser (C3), and a place to run them without the
+  person's login. abcd states that
   as a step only the person can take.
-- Stated in the brief's invariants once this ADR is accepted, which happens
-  with the product thinker's sign-off of the intent's plan.
+- Accepted with the product thinker's sign-off of the intent's plan on
+  2026-10-23 (dcn-2610230757556283), and stated in the brief as invariant 25,
+  which binds the coordination intent's build until it is enforced.
