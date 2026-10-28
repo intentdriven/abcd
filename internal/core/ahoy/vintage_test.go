@@ -74,6 +74,41 @@ func TestVintageFromPinnedInstall(t *testing.T) {
 	})
 }
 
+// TestFreshStalenessNamesItsReference is iss-2610040758303107: the staleness
+// line bare `abcd ahoy` (and `abcd --version`) prints for a fresh vintage must
+// say what it was compared against, and, for a pinned install, that the newest
+// release is a different question `abcd update --check` answers. A bare "up to
+// date" read as current to a user several releases behind their pin's release.
+func TestFreshStalenessNamesItsReference(t *testing.T) {
+	t.Run("a fresh pinned install names the pin and the update check", func(t *testing.T) {
+		v := vintageFrom(vintage.Current{Revision: "irrelevant", Known: true}, "pinned", t.TempDir(), "v0.9.0", "v0.9.0")
+		got := v.Staleness()
+		for _, want := range []string{"up to date", "plugin manifest pin", "v0.9.0", "abcd update --check", "newest release"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("Staleness = %q, want it to contain %q", got, want)
+			}
+		}
+	})
+	t.Run("a fresh dogfood binary names the checkout tip it matched", func(t *testing.T) {
+		r := gittest.NewRepo(t)
+		r.Commit("only")
+		tip := r.Git("rev-parse", "HEAD")
+		v := vintageFrom(vintage.Current{Revision: tip, Known: true}, "dev (tip build)", r.Root(), "dev", "")
+		got := v.Staleness()
+		for _, want := range []string{"up to date", "checkout tip", tip[:12]} {
+			if !strings.Contains(got, want) {
+				t.Errorf("Staleness = %q, want it to contain %q", got, want)
+			}
+		}
+	})
+	t.Run("a hostile pin tag is sanitised in the fresh line", func(t *testing.T) {
+		v := VintageStatus{Report: vintage.Report{Outcome: vintage.Fresh, Current: "v1\x1b[2J", Expected: "v1\x1b[2J"}, Source: "plugin manifest pin"}
+		if got := v.Staleness(); strings.ContainsRune(got, '\x1b') {
+			t.Errorf("Staleness = %q carries a raw escape", got)
+		}
+	})
+}
+
 func TestVintageDisplayAndStaleness(t *testing.T) {
 	sha := "1111111111111111111111111111111111111111"
 	cases := []struct {
