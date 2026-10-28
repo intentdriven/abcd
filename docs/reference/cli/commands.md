@@ -3508,6 +3508,8 @@ abcd lab harvest lab-260901000000-0123abc
 
 #### `abcd lab matrix`
 
+Show a model matrix run's plan, or record the run its digest consents to: Writes the run record only with --approve; refuses a metered run with no cap.
+
 **Usage:** `abcd lab matrix <lab-id> <declaration.json> [flags]`
 
 abcd lab matrix <lab-id> <declaration.json> [--approve <digest>]

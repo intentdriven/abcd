@@ -298,6 +298,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses outside a git checkout.",
 	"abcd lab harvest": "Assemble a lab's harvest with its capture candidates: " +
 		"Writes harvest/harvest.md; refuses a finding its probe records cannot back, or a hand-written harvest.",
+	"abcd lab matrix": "Show a model matrix run's plan, or record the run its digest consents to: " +
+		"Writes the run record only with --approve; refuses a metered run with no cap.",
 	"abcd lab mint": "Mint a lab for one question, with a standalone snapshot at the pin: " +
 		"Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",
 	"abcd lab preflight": "Run a lab's harness-isolation and dual-binary checks: " +
