@@ -210,9 +210,9 @@ that no one else can write, the `trusted-roots` shape. The remote must be one
 the agent cannot move, such as a protected branch on a forge: a filesystem
 path or `file://` URL names a repository your account, and so the agent, can
 write, and `git://` and `http://` let anyone on the network path choose the
-tip, so a line declaring any of them is refused. An ssh or https remote on
-this machine (`localhost`, a loopback address, or an ssh alias that resolves
-here) is one the agent can move too: abcd cannot tell such an alias from a
+tip, so a line declaring any of them is refused, and so is one whose host is
+this machine by name (`localhost` or a loopback address). An ssh alias that
+resolves here is one the agent can move too, but abcd cannot tell it from a
 forge, so declaring one is yours to avoid. A line with no remote, or a
 refused one, builds nothing and says so on stderr, and the installed release
 runs. The tip is read with `git ls-remote` by a
@@ -226,9 +226,10 @@ remote, as does a record older than 30 minutes. The build is made into
 (a `git fetch` brings it); until it is ready, or when the check or build fails,
 the installed release runs and says so on stderr. Listing the main checkout
 covers the worktrees it records. Anything running as your account can still
-edit the declaration or replace a file in the store, and the build runs under
-the account's own toolchain environment (the go toolchain, the module cache,
-`GOENV`, `PATH`, `~/.ssh/config`), which stays the account's. The opt-in is the
+edit the declaration or replace a file in the store, and the builder and the
+hooks inherit the account's whole environment, which stays the account's: the
+go toolchain, its module cache and `GOENV`, `PATH`, git's own variables and
+certificate settings, proxies, and `~/.ssh`, among the rest. The opt-in is the
 person's own act, never an agent's; for this repository it is
 `mkdir -p ~/.abcd.noindex && printf '%s\t%s\t%s\n' '<checkout>' 'https://github.com/intentdriven/abcd.git' main >> ~/.abcd.noindex/dogfood-roots`.
 

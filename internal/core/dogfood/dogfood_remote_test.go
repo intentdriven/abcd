@@ -143,6 +143,14 @@ func TestDeclaredRemoteShapes(t *testing.T) {
 		"ssh://-oProxyCommand=touch/abcd.git":      "host",
 		"-oProxyCommand=touch:abcd.git":            "safely",
 		"git@:abcd.git":                            "host",
+		"ssh://git@localhost/abcd.git":             "this machine",
+		"https://127.0.0.1/abcd.git":               "this machine",
+		"ssh://[::1]/abcd.git":                     "this machine",
+		"git@localhost:abcd.git":                   "this machine",
+		"LOCALHOST:abcd.git":                       "this machine",
+		"git@127.0.0.2:abcd.git":                   "this machine",
+		"[::1]:abcd.git":                           "bracketed",
+		"git@[2001:db8::1]:abcd.git":               "bracketed",
 	}
 	for url, why := range refused {
 		_, _, problem := parseRemote([]string{url, "main"})

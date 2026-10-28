@@ -68,9 +68,11 @@
 // What this does not defend is the account itself. The declaration and the
 // store are protected by being this uid's alone, so anything running as this
 // account can still edit the declaration or replace a file in the store, and
-// the build runs under the account's own toolchain environment (the go
-// toolchain and module cache, GOENV, PATH, ~/.ssh/config), which stays the
-// account's; what no longer chooses the build is anything in the checkout.
+// the builder and the hooks inherit the account's whole environment (the go
+// toolchain, its module cache and GOENV, PATH, git's own variables and the
+// certificate and proxy settings it reads, ~/.ssh, among the rest), which
+// stays the account's; what no longer chooses the build is anything in the
+// checkout.
 package dogfood
 
 import (
@@ -85,6 +87,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"net"
 	"net/url"
 	"os"
 	"os/exec"
@@ -142,8 +145,9 @@ const (
 	// worktreeListCap bounds `git worktree list`.
 	worktreeListCap = 1 << 20
 
-	// keepBuilds is how many commit builds a repository keeps; older ones are
-	// removed after each successful build.
+	// keepBuilds is how many commit builds a repository keeps beyond those a
+	// verified-tip record names; older ones are removed after each successful
+	// build.
 	keepBuilds = 3
 
 	// recheckAfter is how old the record of the last check may grow before a
@@ -401,7 +405,13 @@ var scpHostRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$`)
 //   - git:// and http:// are plaintext, so anyone on the network path can
 //     answer with the tip they choose;
 //   - any other transport, a remote helper ("<transport>::<address>")
-//     included, is not one the builder uses.
+//     included, is not one the builder uses;
+//   - a host that is this machine by name (localhost, a loopback address)
+//     serves a repository this account can write, so it is refused too; an
+//     ssh alias that resolves here cannot be told from a forge, and stays
+//     the person's to avoid;
+//   - a bracketed scp-like host ("[host]:path") is not a shape the builder
+//     reads; the ssh:// form names such a host.
 //
 // What is left is https:// and ssh, as ssh://… or scp-like [user@]host:path,
 // and git's own rule decides which is which: a remote with no ":", or with a
@@ -423,8 +433,15 @@ func remoteRefusal(remote string) string {
 		}
 		if h := u.Hostname(); h == "" || strings.HasPrefix(h, "-") || (u.User != nil && strings.HasPrefix(u.User.Username(), "-")) {
 			return "it names no host to read from"
+		} else if loopbackHost(h) {
+			return thisMachine
 		}
 		return ""
+	}
+	// git reads "[host]:path" (an IPv6 address, say) as scp-like ssh, not
+	// as the remote helper its "::" would otherwise suggest.
+	if _, host, _ := strings.Cut(remote, "@"); strings.HasPrefix(remote, "[") || strings.HasPrefix(host, "[") {
+		return "a bracketed scp-like host ([host]:path) is not a shape the builder reads; name the host with ssh:// instead"
 	}
 	if strings.Contains(remote, "::") {
 		return "it names a remote-helper transport (\"<transport>::<address>\"), which the builder does not use"
@@ -440,10 +457,26 @@ func remoteRefusal(remote string) string {
 	if !scpHostRe.MatchString(host) {
 		return "it names no host to read from"
 	}
+	if loopbackHost(host) {
+		return thisMachine
+	}
 	if remote[colon+1:] == "" {
 		return "it names no repository on its host"
 	}
 	return ""
+}
+
+// thisMachine is the refusal of a remote whose host is this machine by name.
+const thisMachine = "its host is this machine, which serves a repository anything running as this account can write"
+
+// loopbackHost reports whether h names this machine: localhost (any case,
+// with or without a trailing dot) or a loopback address.
+func loopbackHost(h string) bool {
+	if strings.EqualFold(strings.TrimSuffix(h, "."), "localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
 }
 
 // shownRemote is a declared remote as a note shows it: a path with the home
@@ -1177,10 +1210,13 @@ func goBuild(ctx context.Context, src, dst string, log io.Writer) error {
 	return nil
 }
 
-// prune keeps the keepBuilds most recent commit builds in the store and
-// removes the rest with their logs and markers, the log and marker of any
-// commit that never built, and any export left behind by a build that was
-// killed. keep is never removed.
+// prune keeps every commit build a verified-tip record in the store names,
+// and the keepBuilds most recent of the rest, and removes the others with their
+// logs and markers, the log and marker of any commit that never built, and any
+// export left behind by a build that was killed. keep is never removed. Each
+// declaration keeps its own tip, so a cap over named builds too would evict a
+// build another declaration still runs, whose next check rebuilds it and
+// evicts another, without end.
 func prune(storeAbs, keep string) {
 	entries, err := os.ReadDir(storeAbs)
 	if err != nil {
@@ -1205,10 +1241,11 @@ func prune(storeAbs, keep string) {
 		}
 	}
 	sort.Slice(builds, func(i, j int) bool { return builds[i].mod.After(builds[j].mod) })
+	named := namedTips(storeAbs, entries)
 	kept, held := 0, map[string]bool{keep: true}
 	for _, b := range builds {
-		if b.name == keep || kept < keepBuilds-1 {
-			if b.name != keep {
+		if b.name == keep || named[b.name] || kept < keepBuilds-1 {
+			if b.name != keep && !named[b.name] {
 				kept++
 			}
 			held[b.name] = true
@@ -1230,6 +1267,31 @@ func prune(storeAbs, keep string) {
 	}
 }
 
+// namedTips is the commits the store's verified-tip records name. A record
+// that is not a regular file, or does not read as one Build wrote, names
+// nothing.
+func namedTips(storeAbs string, entries []os.DirEntry) map[string]bool {
+	named := map[string]bool{}
+	for _, e := range entries {
+		name := e.Name()
+		if !e.Type().IsRegular() || !strings.HasPrefix(name, tipFilePrefix) || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		f, err := os.OpenFile(filepath.Join(storeAbs, name), os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+		if err != nil {
+			continue
+		}
+		raw, err := io.ReadAll(io.LimitReader(f, maxTipBytes+1))
+		_ = f.Close()
+		var rec tipRecord
+		if err != nil || len(raw) > maxTipBytes || json.Unmarshal(raw, &rec) != nil || !gitutil.IsFullSHA(rec.Commit) {
+			continue
+		}
+		named[rec.Commit] = true
+	}
+	return named
+}
+
 func short(sha string) string {
 	if len(sha) > 12 {
 		return sha[:12]
@@ -1245,8 +1307,11 @@ func short(sha string) string {
 // neither ever settled.
 func TipName(url, branch string) string {
 	sum := sha256.Sum256([]byte(url + "\t" + branch))
-	return "verified-tip-" + hex.EncodeToString(sum[:8]) + ".json"
+	return tipFilePrefix + hex.EncodeToString(sum[:8]) + ".json"
 }
+
+// tipFilePrefix starts every verified-tip record's file name (TipName).
+const tipFilePrefix = "verified-tip-"
 
 // storeRefused reports whether a level of the repository's store that exists
 // is not a real directory this account alone can write. A missing level is

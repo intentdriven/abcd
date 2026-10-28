@@ -641,10 +641,12 @@ as a protected branch on a forge. A filesystem path (absolute, relative or
 running as the account moves its branch to the agent's own commit with one
 `git -C <mirror> fetch <checkout> +HEAD:refs/heads/main`; `git://` and
 `http://` are plaintext, so anyone on the network path can answer with the tip
-they choose. An ssh or https remote on this machine (`localhost`, a
-loopback address, or an ssh alias that resolves here) is one the agent can move
-as well, over the filesystem or over ssh; abcd cannot tell such an alias from a
-forge, so it accepts it, and declaring one is the person's residual. A line declaring any of these, or another transport (a remote
+they choose. An ssh or https remote whose host is this machine by name
+(`localhost` or a loopback address) is one the agent can move as well, over the
+filesystem or over ssh. An ssh alias that resolves here is the same, but abcd
+cannot tell it from a forge, so it accepts it, and declaring one is the person's
+residual. A bracketed scp-like host (`[host]:path`) is not a shape the builder
+reads. A line declaring any of these but the alias, or another transport (a remote
 helper's `<transport>::<address>` included), is REFUSED: nothing is built, the
 installed release runs, and one stderr line names the line's checkout and
 remote and why. git's own rule tells a path from an ssh remote: a remote with
@@ -720,7 +722,8 @@ verified tree, because `git archive` honours repository-local attributes
 (`.git/info/attributes`) that anyone who can commit in the checkout can write:
 an `export-ignore` that drops a file of the reviewed commit, or an attribute
 that rewrites one, fails the build rather than build something else. The store
-keeps the three most recent builds of a repository.
+keeps the three most recent builds of a repository, and every build a
+verified-tip record still names, so a prune never takes the build a hook runs.
 
 **A hook never waits for a build, and never runs weaker than the release.** Each
 hook shim resolves the installed binary as before; when the list exists it asks
@@ -735,15 +738,20 @@ running, each said on stderr; a failed build is retried after 30 minutes or
 when the remote-tracking ref moves, and `hook dogfood-build` checks and retries
 at once. A dogfood guard that answers exit 1, which is a warn or "NOT CHECKED",
 hands the same command to the installed release, whose deny stands; one that
-dies rather than answer does the same, with a line saying so. A machine with no
-list pays one file test per hook.
+dies rather than answer does the same, with a line saying so. Every other
+event takes a build's exit 0 or 2 as its answer; any other exit, a death by a
+signal included, is said on stderr and the installed release runs the same
+event from the same input, so a verb the build began before it died runs again
+whole. A machine with no list pays one file test per hook.
 
 **What the rung does not defend is the account.** The declaration and the store
 are protected by being this uid's alone, so anything running as this account
 can still edit `~/.abcd.noindex/dogfood-roots` or replace a file in the store.
-The build runs under the account's own toolchain environment, which stays the
-account's: the go toolchain and module cache, `GOENV`, `PATH`, and the
-`~/.ssh/config` an ssh remote is reached through. The declared remote is only
+The builder and the hooks inherit the account's whole environment, which stays
+the account's: the go toolchain, its module cache and `GOENV`, `PATH`, git's own
+variables (`GIT_EXEC_PATH`, `GIT_SSL_CAINFO`) and the certificate and proxy
+settings it reads, and the `~/.ssh` an ssh remote is reached through, among the
+rest. The declared remote is only
 as good as its branch protection: the rung refuses the remotes this account or
 the network path can move, and the person declares one the agent cannot push
 to. The checkout's refs, remotes, replacement objects and object store no

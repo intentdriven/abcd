@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 )
@@ -72,5 +73,44 @@ func TestASecondRepositoryGetsItsFirstBuild(t *testing.T) {
 	p := Resolve(f.home, f.checkout)
 	if !p.StartBuild || strings.Contains(notes(p), "not this account's alone") {
 		t.Fatalf("Resolve with only the store's top level present = %+v, want its first build asked for", p)
+	}
+}
+
+// TestPruneKeepsEveryBuildAVerifiedTipNames: each declaration keeps its own
+// verified tip, so four declarations of one repository at four tips named
+// four builds, and pruning to the three newest evicted one another clone
+// still ran, whose next check rebuilt it and evicted another, for good. A
+// build a record names is never pruned; keepBuilds caps only the builds no
+// record names.
+func TestPruneKeepsEveryBuildAVerifiedTipNames(t *testing.T) {
+	store := t.TempDir()
+	sha := func(c byte) string { return strings.Repeat(string(c), 40) }
+	base := time.Now().Add(-time.Hour)
+	// Oldest first: four named builds, then three no record names, then the
+	// build just made.
+	order := []string{sha('a'), sha('b'), sha('c'), sha('d'), sha('5'), sha('6'), sha('7'), sha('f')}
+	for i, b := range order {
+		dir := filepath.Join(store, b)
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		at := base.Add(time.Duration(i) * time.Minute)
+		if err := os.Chtimes(dir, at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, b := range order[:4] {
+		if err := writeTip(store, tipRecord{Commit: b, URL: "https://forge.example.invalid/clone" + string(rune('0'+i)) + ".git", Branch: "main"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prune(store, sha('f'))
+	for _, b := range append(order[:4], sha('f'), sha('7'), sha('6')) {
+		if _, err := os.Lstat(filepath.Join(store, b)); err != nil {
+			t.Errorf("build %s is pruned: %v", b[:7], err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(store, sha('5'))); !os.IsNotExist(err) {
+		t.Errorf("the oldest build no record names stays: %v", err)
 	}
 }
