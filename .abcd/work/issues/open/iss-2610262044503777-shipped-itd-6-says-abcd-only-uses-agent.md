@@ -19,7 +19,7 @@ Shipped itd-6 says abcd only uses agent sessions and never starts Claude Code on
 A premise contradiction (severity minor) found by the cross-document consistency pass.
 
 - End A: `.abcd/development/intents/shipped/itd-6-rp-mcp-only-integration.md:53` — "explicitly NOT how abcd works; abcd is the consumer, not the spawner"
-- End B: `.abcd/development/intents/drafts/itd-2610222215485265-abcd-drain-run-from-a-plain-terminal.md:21` — "start Claude sessions on his API key, about forty agent runs at most"
+- End B: `.abcd/development/intents/planned/itd-2610222215485265-abcd-drain-run-from-a-plain-terminal.md:21` — "start Claude sessions on his API key, about forty agent runs at most"
 
 itd-6 says that spawning Claude Code subprocesses is explicitly not how abcd works: abcd is the consumer, not the spawner. In itd-2610222215485265, the driver tells the person it will start Claude sessions on their API key, up to about forty agent runs, from a plain terminal. The drive record notes that it reverses the host-delegated boundary in a proposed ADR. itd-6 still states the opposite rule.
 
