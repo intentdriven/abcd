@@ -105,10 +105,11 @@ func (c *ClaudeCLI) approverConfig(dir, base string, runDirs []string) string {
 // Name is the route's name.
 func (*ClaudeCLI) Name() string { return Claude }
 
-// askedModel is the model the runner passes the harness: the route's model
-// after its provider, "" for the harness's own default.
-func (c *ClaudeCLI) askedModel() string {
-	_, m, _ := strings.Cut(c.model, "/")
+// askedModel is the model the runner passes the harness for req: the
+// request's model route, else the runner's, after its provider; "" for the
+// harness's own default.
+func (c *ClaudeCLI) askedModel(req Request) string {
+	_, m, _ := strings.Cut(req.modelOr(c.model), "/")
 	return m
 }
 
@@ -150,7 +151,7 @@ func (c *ClaudeCLI) args(req Request) []string {
 	for _, d := range dirs {
 		a = append(a, "--add-dir="+d)
 	}
-	if m := c.askedModel(); m != "" {
+	if m := c.askedModel(req); m != "" {
 		a = append(a, "--model="+m)
 	}
 	return append(a, "--", prompt(req))
@@ -191,7 +192,7 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 	if err != nil {
 		return ans, transcript, err
 	}
-	ans.ModelAsked, ans.PromptSHA256 = c.askedModel(), promptSHA256(req)
+	ans.ModelAsked, ans.PromptSHA256 = c.askedModel(req), promptSHA256(req)
 	ans.Unpinned = claudeUnpinned(ans)
 	return ans, transcript, nil
 }

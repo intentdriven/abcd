@@ -69,8 +69,8 @@ func (*OpenCodeCLI) Name() string { return OpenCode }
 
 func (o *OpenCodeCLI) args(req Request) []string {
 	a := []string{"run", "--format=json", "--pure", "--dir=" + req.Dir, "--file=" + req.Brief}
-	if o.model != "" {
-		a = append(a, "--model="+o.model)
+	if m := req.modelOr(o.model); m != "" {
+		a = append(a, "--model="+m)
 	}
 	return append(a, "--", prompt(req))
 }
@@ -93,7 +93,7 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 	if err != nil {
 		return Answer{}, transcript, err
 	}
-	ans.ModelAsked, ans.PromptSHA256 = o.model, promptSHA256(req)
+	ans.ModelAsked, ans.PromptSHA256 = req.modelOr(o.model), promptSHA256(req)
 	var un oracle.Unpin
 	askedUnpinned(&un, ans.Sides)
 	servedUnpinned(&un, ans.Model, ans.Sides, ans.counted)
