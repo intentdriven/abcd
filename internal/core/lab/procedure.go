@@ -79,17 +79,19 @@ func (p *Procedure) Entry() Entry { return p.l.entry }
 
 // WorkBinary is the work binary's identity as the lab's first passing
 // preflight pinned it; ok is false where none was pinned (a lab of a
-// repository that is not abcd's own has none).
-func (p *Procedure) WorkBinary() (sha string, revision string, ok bool) {
+// repository that is not abcd's own has none). A pin that is there but cannot
+// be read is an error, never no pin: the preflight's own check fails on it
+// too, so a procedure cannot record a run against an unchecked binary.
+func (p *Procedure) WorkBinary() (sha string, revision string, ok bool, err error) {
 	data, err := fsutil.ReadGuardedInRoot(p.l.root, workBinPinName, 64<<10)
-	if err != nil {
-		return "", "", false
+	if errors.Is(err, os.ErrNotExist) {
+		return "", "", false, nil
 	}
 	var pin workBinPin
-	if json.Unmarshal(data, &pin) != nil || pin.SHA256 == "" {
-		return "", "", false
+	if err != nil || json.Unmarshal(data, &pin) != nil || pin.SHA256 == "" {
+		return "", "", false, fmt.Errorf("%w: %s cannot be read, so the lab's work binary is not known", ErrRefused, workBinPinName)
 	}
-	return pin.SHA256, pin.Revision, true
+	return pin.SHA256, pin.Revision, true, nil
 }
 
 // stateRel holds rel to a procedure record's shape and returns its path in the
@@ -107,11 +109,15 @@ func stateRel(rel string) (string, error) {
 }
 
 // WriteState writes one procedure record under the lab's state/matrix/,
-// creating its directories, and never replaces one already written.
+// creating its directories, and never replaces one already written; it refuses
+// a record larger than MaxStateBytes, which ReadState could not read back.
 func (p *Procedure) WriteState(rel string, data []byte) error {
 	full, err := stateRel(rel)
 	if err != nil {
 		return err
+	}
+	if len(data) > MaxStateBytes {
+		return fmt.Errorf("%w: %s would be %d bytes, past the %d a procedure record is read back within", ErrRefused, p.l.display(full), len(data), MaxStateBytes)
 	}
 	if err := p.admit(); err != nil {
 		return err
@@ -143,6 +149,9 @@ func (p *Procedure) WriteStates(files ...StateFile) error {
 	for _, f := range files {
 		if _, err := stateRel(f.Rel); err != nil {
 			return err
+		}
+		if len(f.Data) > MaxStateBytes {
+			return fmt.Errorf("%w: %s would be %d bytes, past the %d a procedure record is read back within", ErrRefused, clip(f.Rel), len(f.Data), MaxStateBytes)
 		}
 	}
 	var written []string

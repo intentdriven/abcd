@@ -24,7 +24,9 @@
 // lab's halts and never writes outside its own directory.
 //
 // The package never writes to stdout: it returns results, and the front doors
-// under internal/surface render them. Its functions are unexported until the
-// front door that calls them lands (spec step 2): a core function arrives with
-// its caller (internal/reachaudit).
+// under internal/surface render them. Its entry points (parseDeclaration,
+// newRunRecord, writeRun) are unexported until the front door that calls them
+// lands (spec step 2): a core function arrives with its caller
+// (internal/reachaudit). The exported types and their methods are the records
+// those entry points take and return.
 package matrix

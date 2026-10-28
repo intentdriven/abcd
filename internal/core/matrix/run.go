@@ -629,7 +629,11 @@ func writeRun(repoRoot string, rec RunRecord, declaration []byte) error {
 	if e.RootSHA != rec.RootSHA || e.Pin != rec.FrozenCommit {
 		return fmt.Errorf("the run's frozen commit %s is not the lab %s's pin %s", rec.FrozenCommit, e.ID, e.Pin)
 	}
-	if sha, _, ok := p.WorkBinary(); ok && sha != rec.Binary.SHA256 {
+	sha, _, ok, err := p.WorkBinary()
+	if err != nil {
+		return err
+	}
+	if ok && sha != rec.Binary.SHA256 {
 		return fmt.Errorf("the run's binary %s is not the lab's pinned work binary %s", rec.Binary.SHA256, sha)
 	}
 	if contentOf("declaration.json", declaration) != rec.Declaration {

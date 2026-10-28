@@ -119,9 +119,9 @@ func TestBinaryIdentityIsThePreflightsHash(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer p.Close()
-	sha, rev, ok := p.WorkBinary()
-	if !ok || rev != m.Pin {
-		t.Fatalf("WorkBinary = %q %q %v; want the pinned binary at %s", sha, rev, ok, m.Pin)
+	sha, rev, ok, err := p.WorkBinary()
+	if err != nil || !ok || rev != m.Pin {
+		t.Fatalf("WorkBinary = %q %q %v %v; want the pinned binary at %s", sha, rev, ok, err, m.Pin)
 	}
 	f, err := os.Open(filepath.Join(labDir(home, m), "bin", "abcd"))
 	if err != nil {
@@ -141,8 +141,54 @@ func TestWorkBinaryIsAbsentOutsideAbcd(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer p.Close()
-	if sha, rev, ok := p.WorkBinary(); ok || sha != "" || rev != "" {
-		t.Fatalf("WorkBinary = %q %q %v; want none where no work binary applies", sha, rev, ok)
+	if sha, rev, ok, err := p.WorkBinary(); err != nil || ok || sha != "" || rev != "" {
+		t.Fatalf("WorkBinary = %q %q %v %v; want none where no work binary applies", sha, rev, ok, err)
+	}
+}
+
+// A pin that is there but cannot be read is refused, never read as no pin:
+// the preflight's own check fails on it, so a procedure must not record a run
+// against a binary nothing checked.
+func TestAnUnreadableWorkBinaryPinIsRefused(t *testing.T) {
+	m, home, root := passedLab(t)
+	p, err := OpenProcedure(root, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	write(t, filepath.Join(labDir(home, m), "state", "work-binary.json"), "not json\n")
+	if sha, _, ok, err := p.WorkBinary(); !errors.Is(err, ErrRefused) || ok || sha != "" {
+		t.Fatalf("WorkBinary over an unreadable pin = %q %v %v; want ErrRefused", sha, ok, err)
+	}
+}
+
+// A record ReadState could not read back is never written, alone or in a set.
+func TestAProcedureRefusesARecordTooLargeToReadBack(t *testing.T) {
+	m, home, root := passedLab(t)
+	p, err := OpenProcedure(root, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	big := bytes.Repeat([]byte("x"), MaxStateBytes+1)
+	if err := p.WriteState("mx-261023012949-ab12/big.json", big); !errors.Is(err, ErrRefused) {
+		t.Fatalf("WriteState of %d bytes = %v; want ErrRefused", len(big), err)
+	}
+	err = p.WriteStates(StateFile{Rel: "mx-261023012949-ab12/a.json", Data: []byte("a\n")}, StateFile{Rel: "mx-261023012949-ab12/big.json", Data: big})
+	if !errors.Is(err, ErrRefused) {
+		t.Fatalf("WriteStates with an oversize record = %v; want ErrRefused", err)
+	}
+	dir := filepath.Join(labDir(home, m), "state", "matrix", "mx-261023012949-ab12")
+	for _, name := range []string{"a.json", "big.json"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("a refused write left %s behind: %v", name, err)
+		}
+	}
+	if err := p.WriteState("mx-261023012949-ab12/edge.json", big[:MaxStateBytes]); err != nil {
+		t.Fatalf("WriteState of exactly %d bytes: %v", MaxStateBytes, err)
+	}
+	if _, err := p.ReadState("mx-261023012949-ab12/edge.json"); err != nil {
+		t.Fatalf("ReadState of a record at the bound: %v", err)
 	}
 }
 
