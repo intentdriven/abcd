@@ -262,7 +262,15 @@ func TestTheCheckoutsAbcdIgnoresCDPATH(t *testing.T) {
 // builds the checkout it belongs to, not the link's.
 func TestTheCheckoutsAbcdFollowsASymlinkToItself(t *testing.T) {
 	root := devBinaryCheckout(t)
-	links := filepath.Join(t.TempDir(), "bin")
+	// Canonical like root: the kernel resolves the relative link from the
+	// link's real directory, and on macOS the temporary directory sits behind
+	// /var -> /private/var, so a link computed from the spelled path lands one
+	// level off.
+	tmp, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := filepath.Join(tmp, "bin")
 	if err := os.MkdirAll(links, 0o755); err != nil {
 		t.Fatal(err)
 	}
