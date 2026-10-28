@@ -24,6 +24,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ideate"
+	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -183,6 +184,12 @@ func ideateStore(repoRoot string, private, public bool) (ideate.Store, error) {
 			"and a verdict is filed under the repository's root commit; commit once, then record (nothing written)"}
 	}
 	store := ideate.Store{Visibility: vis, RootSHA: sha}
+	// The corpus a `source:<key>` is resolved against is the person's default
+	// one. A home that cannot be resolved leaves it empty, which the core reads
+	// as no corpus: a well-formed key is then accepted on its shape alone.
+	if dir, err := source.DefaultDir(); err == nil {
+		store.SourcesDir = dir
+	}
 	if vis == ideate.VisibilityPrivate {
 		// The error is not checked here: an unresolved home reaches the core as
 		// "", and the core's refusal names it in the same words for every caller.
@@ -216,14 +223,15 @@ func renderIdeateResult(res ideate.Result) string {
 	} else {
 		out += fmt.Sprintf("  pointer:   %s\n", res.DecisionPath)
 	}
-	out += fmt.Sprintf("  claims:    %d (verified %d · falsified %d · unverifiable %d)\n",
-		res.Claims.Total(), res.Claims.Verified, res.Claims.Falsified, res.Claims.Unverifiable)
+	out += fmt.Sprintf("  claims:    %d (verified %d · quoted %d · falsified %d · unverifiable %d)\n",
+		res.Claims.Total(), res.Claims.Verified, res.Claims.Quoted, res.Claims.Falsified, res.Claims.Unverifiable)
 	if len(res.CitedRecords) == 0 {
-		out += "  grill:     no entry in the record covers, contradicts, or supersedes this\n"
+		out += fmt.Sprintf("  grill:     no entry in the record covers, contradicts, or supersedes this (%d search(es) recorded)\n", res.Searches)
 	} else {
-		out += fmt.Sprintf("  grill:     %d hit(s), all cited ids resolved: %v\n", res.GrillHits, res.CitedRecords)
+		out += fmt.Sprintf("  grill:     %d hit(s), all cited ids resolved: %v (%d search(es) recorded)\n",
+			res.GrillHits, res.CitedRecords, res.Searches)
 	}
-	out += fmt.Sprintf("  adversary: %d kill attempt(s)\n", res.KillAttempts)
+	out += fmt.Sprintf("  adversary: %d reviewer(s), %d kill attempt(s)\n", res.Reviewers, res.KillAttempts)
 	if res.RejectedAlternatives == 0 {
 		out += "  rejected:  none, recorded explicitly\n"
 	} else {

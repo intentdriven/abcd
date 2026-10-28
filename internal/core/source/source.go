@@ -242,6 +242,31 @@ func (c *Corpus) Lookup(key string) (Entry, bool) {
 	return Entry{}, false
 }
 
+// ValidKey reports whether key has a source key's shape. It is exported for a
+// caller that names a source by key in a document of its own (an ideate
+// verdict's `source:<key>`), so that caller bounds the key by the same grammar
+// `add` mints it in.
+func ValidKey(key string) bool { return keyRe.MatchString(key) }
+
+// Unfiled returns the keys, of those given, that the corpus at dir carries no
+// entry for, in the order given. An absent corpus is ErrNoCorpus, so a caller
+// can tell "nothing to resolve against" from "not filed"; a corpus that exists
+// and cannot be read is the error that says why. The corpus is read once for
+// every key, and nothing is written or printed.
+func Unfiled(dir string, keys []string) ([]string, error) {
+	c, err := loadCorpus(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, k := range keys {
+		if _, ok := c.Lookup(k); !ok {
+			out = append(out, k)
+		}
+	}
+	return out, nil
+}
+
 // Class is the class a key's folder declares, or "" when it has none or two.
 func (c *Corpus) Class(key string) string {
 	if f := c.folders[key]; len(f) == 1 {
