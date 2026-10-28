@@ -73,16 +73,20 @@ func takeEnv(key string) string {
 	return v
 }
 
-// goRunExe is the place go run links its executable: <name> in the exe
-// directory of an action directory (b001, b002, ...) of the build's work
-// directory, which os.MkdirTemp names go-build<digits> under GOTMPDIR or the
-// system temporary directory.
-var goRunExe = regexp.MustCompile(`/go-build[0-9]+/b[0-9]{3,}/exe/[^/]+$`)
+// goRunExe is either place go run runs its executable from. On a build it is
+// the link's output: <name> in the exe directory of an action directory (b001,
+// b002, ...) of the build's work directory, which os.MkdirTemp names
+// go-build<digits> under GOTMPDIR or the system temporary directory. On a
+// build cache hit, the commonest case, it is the copy go run cached
+// (cmd/go/internal/run sets CacheExecutable): <name> in the build cache's
+// "<output id>-d" entry, under the directory named by the id's first byte,
+// wherever GOCACHE puts the cache.
+var goRunExe = regexp.MustCompile(`(/go-build[0-9]+/b[0-9]{3,}/exe|/[0-9a-f]{2}/[0-9a-f]{64}-d)/[^/]+$`)
 
 // goRunModuleOf is GoRunModule's pure core: the command's package path, the
 // main module's path and version, the build settings, and the executable's
 // path. A go run build is a development build ("(devel)") of the module's
-// cmd/abcd, with no vcs.revision, linked where go run links it (goRunExe). Any
+// cmd/abcd, with no vcs.revision, run from where go run runs it (goRunExe). Any
 // directory merely named go-build... on the way, such as a checkout whose
 // local tier holds a binary left there, is not that place.
 func goRunModuleOf(pkgPath, mainPath, mainVersion string, settings []debug.BuildSetting, exe string) (string, bool) {

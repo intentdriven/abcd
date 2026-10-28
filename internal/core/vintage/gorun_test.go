@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdrepo"
@@ -14,6 +15,7 @@ import (
 func TestGoRunModuleOf(t *testing.T) {
 	const mod = "github.com/intentdriven/abcd"
 	goRunExe := "/var/folders/xy/T/go-build1234/b001/exe/abcd"
+	cacheID := "4e99" + strings.Repeat("0123456789abcdef", 3) + "0123456789ab"
 	stamped := []debug.BuildSetting{{Key: "vcs.revision", Value: "0123456789abcdef0123456789abcdef01234567"}}
 	for _, tc := range []struct {
 		name                   string
@@ -29,6 +31,10 @@ func TestGoRunModuleOf(t *testing.T) {
 		{"a go test binary", mod + "/internal/core/ahoy.test", mod, "(devel)", goRunExe, nil, false},
 		{"another module's command", "example.com/other/cmd/abcd", "example.com/other", "(devel)", goRunExe, nil, true},
 		{"go run under GOTMPDIR", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/gotmp/go-build98/b042/exe/abcd", nil, true},
+		{"go run's cached executable, on a cache hit", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/Library/Caches/go-build/4e/" + cacheID + "-d/abcd", nil, true},
+		{"go run's cached executable under a GOCACHE of its own", mod + "/cmd/abcd", mod, "(devel)", "/srv/cache/4e/" + cacheID + "-d/abcd", nil, true},
+		{"a cache-shaped path with a short id", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/Library/Caches/go-build/4e/4e99-d/abcd", nil, false},
+		{"a binary beside the cache entries, not in one", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/Library/Caches/go-build/4e/abcd", nil, false},
 		{"a local-tier binary in a checkout named go-build...", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/wt/go-build-cache/" + abcdrepo.CheckoutBuildRel, nil, false},
 		{"a binary in a go-build directory but not where go run links", mod + "/cmd/abcd", mod, "(devel)", "/var/folders/xy/T/go-build1234/abcd", nil, false},
 		{"a binary in a directory only named like a work directory", mod + "/cmd/abcd", mod, "(devel)", "/Users/x/go-build-tools/b001/exe/abcd", nil, false},
