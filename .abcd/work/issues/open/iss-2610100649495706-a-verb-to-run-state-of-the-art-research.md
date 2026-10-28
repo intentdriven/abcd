@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "abcd ideate, sota-researcher agent, abcd ingest and consult, research notes"
 remedy: "none (filed automatically)"
+related_intents: [itd-2610142116477426]
 ---
 
 A verb to run state-of-the-art research and keep it as a research note in the record

@@ -440,6 +440,39 @@ func newRunRecord(in runInputs) (RunRecord, error) {
 	return rec, nil
 }
 
+// routeAgrees holds a cell's pin to what its declared route itself fixes
+// (dcn-2610280629294458): the host leg is pinned host and nothing else is, and
+// a runner route is pinned on its runner and its <provider>/<model>. A provider route pinned as host
+// would otherwise skip the spending cap and the provider pin's checks. Which
+// of openrouter, local and provider a model's source is, is this machine's
+// provider configuration, which the plan reads (resolveCell) and the person
+// consents to by its digest.
+func routeAgrees(dc roleCell, p CellPin) error {
+	if dc.Route == "host" {
+		if p.Source != SourceHost {
+			return fmt.Errorf("the route is the host's and the pin names the source %s", p.Source)
+		}
+		return nil
+	}
+	routes, err := oracle.ParseRunnerRoutes([]string{dc.Route}, []string{string(dc.role)})
+	if err != nil {
+		return err
+	}
+	fr := routes[0]
+	if p.Runner != fr.Runner {
+		return fmt.Errorf("the route names runner %s and the pin names %q", fr.Runner, clip(p.Runner))
+	}
+	switch {
+	case fr.Model == "":
+		return fmt.Errorf("the route names runner %s and no model; a matrix cell names its model", fr.Runner)
+	case p.Source == SourceHost:
+		return fmt.Errorf("the route names the model %s and the pin names the host as its source", clip(fr.Model))
+	case p.Model != fr.Model:
+		return fmt.Errorf("the route names the model %s and the pin names %q", clip(fr.Model), clip(p.Model))
+	}
+	return nil
+}
+
 // pinCells checks the cells' pins against the declaration: one pin a declared
 // cell, in its role, each with what its source allows.
 func pinCells(d Declaration, pins []CellPin, un *oracle.Unpin) ([]CellPin, error) {
@@ -467,6 +500,9 @@ func pinCells(d Declaration, pins []CellPin, un *oracle.Unpin) ([]CellPin, error
 			return nil, fmt.Errorf("the cell %s names the source %q; a source is host, openrouter, local or provider", dc.ID, clip(string(p.Source)))
 		}
 		if err := text("runner", p.Runner); err != nil {
+			return nil, fmt.Errorf("cell %s: %w", dc.ID, err)
+		}
+		if err := routeAgrees(dc, p); err != nil {
 			return nil, fmt.Errorf("cell %s: %w", dc.ID, err)
 		}
 		p.Route = dc.Route
@@ -666,8 +702,11 @@ func writeRun(repoRoot string, rec RunRecord, declaration []byte) error {
 // withoutVersionsAndDigests is the record with every version and digest
 // emptied and nothing else changed, so it encodes to the record's own lines:
 // the commits, the binary's digest, version and revision, every content
-// reference's and hash map's digest, and each cell's harness version and
-// local runtime version and weights digest. It changes nothing in rec.
+// reference's and hash map's digest, each cell's harness version and local
+// runtime version and weights digest, and each unpinned field's name, which
+// abcd builds from a validated id (cell.<id>.<field>) and which a cell id such
+// as local-rev would otherwise make read as a host name. It changes nothing in
+// rec.
 func (rec RunRecord) withoutVersionsAndDigests() RunRecord {
 	r := rec
 	r.RootSHA, r.FrozenCommit = "", ""
@@ -705,6 +744,10 @@ func (rec RunRecord) withoutVersionsAndDigests() RunRecord {
 			l.RuntimeVersion, l.WeightsSHA256 = "", ""
 			r.Cells[i].LocalPin = &l
 		}
+	}
+	r.Unpinned = slices.Clone(rec.Unpinned)
+	for i := range r.Unpinned {
+		r.Unpinned[i].Field = ""
 	}
 	return r
 }
