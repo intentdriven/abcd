@@ -470,17 +470,21 @@ func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 // carries no free text from the branch, no session URL and no tool footer.
 // The person is named without an at-sign, so a comment mentions no one;
 // every subscriber of the pull request is notified, as by any comment.
-func commentBody(subject string, w Withdrawal, by string) string {
+func commentBody(subject string, w Withdrawal, by string, lapsed bool) string {
 	tag := strings.TrimPrefix(subject, releasePrefix)
+	ended := fmt.Sprintf("the hold for release %s has ended", tag)
+	if lapsed {
+		ended = fmt.Sprintf("the cut of release %s lapsed with no tag on %s, so its hold has ended", tag, Remote)
+	}
 	switch w.State {
 	case WithdrawnPending:
 		return fmt.Sprintf("abcd release hold: the merge of #%d is withdrawn by %s while release %s is cut, and is re-armed after it.", w.Number, by, tag)
 	case WithdrawnAdmitted:
 		return fmt.Sprintf("abcd release hold: the merge of #%d is admitted into release %s by %s.", w.Number, tag, by)
 	case WithdrawnRearmed:
-		return fmt.Sprintf("abcd release hold: the merge of #%d is re-armed; the hold for release %s has ended.", w.Number, tag)
+		return fmt.Sprintf("abcd release hold: the merge of #%d is re-armed; %s.", w.Number, ended)
 	case WithdrawnFoundArmed:
-		return fmt.Sprintf("abcd release hold: the merge of #%d is armed; the hold for release %s has ended.", w.Number, tag)
+		return fmt.Sprintf("abcd release hold: the merge of #%d is armed; %s.", w.Number, ended)
 	}
 	clause, ok := map[string]string{
 		WithdrawnMoved:   "Its head changed while it was held, so its owner needs to re-arm it.",
@@ -492,7 +496,7 @@ func commentBody(subject string, w Withdrawal, by string) string {
 	if !ok {
 		return ""
 	}
-	return fmt.Sprintf("abcd release hold: the merge of #%d is not re-armed; the hold for release %s has ended. %s", w.Number, tag, clause)
+	return fmt.Sprintf("abcd release hold: the merge of #%d is not re-armed; %s. %s", w.Number, ended, clause)
 }
 
 // countWord is n as a comment spells it.
@@ -508,9 +512,10 @@ func countWord(n int) string {
 // on its pull request (postComment); by is the person whose withdrawal or
 // admission it reports. Each caller posts only once the push recording that
 // change of state has landed: a copy whose push lost posts nothing. A state
-// commentBody has no sentence for posts nothing.
-func (f mergeForge) comment(root, subject string, w Withdrawal, by string) *ForgeFailure {
-	body := commentBody(subject, w, by)
+// commentBody has no sentence for posts nothing. lapsed says a settled one's
+// hold ended because the cut lapsed (dcn-2610271926369425).
+func (f mergeForge) comment(root, subject string, w Withdrawal, by string, lapsed bool) *ForgeFailure {
+	body := commentBody(subject, w, by, lapsed)
 	if body == "" {
 		return nil
 	}
@@ -626,9 +631,10 @@ func (c ghCommenter) Comment(root, subject, body string) (posted bool, read stri
 // exempt. The cut is refused while any armed one is
 // not admitted at its current head. Lapsed names this copy's own release
 // reservation still being cut (stillBeingCut) whose lease lapsed before the
-// release ended (dcn-2610230328220298): it holds no merge then, and nothing
-// re-arms what it withdrew, so the check names it; one that lapsed holding
-// nothing is abandoned, and is not named. Lost is each recent release's
+// release ended (dcn-2610230328220298): it holds no merge then, and once the
+// take-over margin has passed the next act of a copy of its holder's ends it
+// and re-arms what it withdrew (dcn-2610271926369425), so the check names it;
+// one that lapsed holding nothing is abandoned, and is not named. Lost is each recent release's
 // withdrawals a later commit dropped. Kept is each withdrawal of the live
 // release reservation the forge refused (kept), which a renewal withdraws
 // again, never --admit.

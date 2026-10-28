@@ -82,7 +82,7 @@ func TestEachEventPostsItsOneFixedSentence(t *testing.T) {
 		}
 	}
 	for _, state := range WithdrawalStates {
-		if b := commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo", State: state}, "octo"); b != "" && !strings.Contains(b, "release v0.16.0") {
+		if b := commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo", State: state}, "octo", false); b != "" && !strings.Contains(b, "release v0.16.0") {
 			t.Fatalf("the comment for %s is %q; want it to name the release's tag", state, b)
 		}
 	}
@@ -116,7 +116,7 @@ func TestEachCommentSentenceIsTheOneApproved(t *testing.T) {
 		if state == WithdrawnAdmitted {
 			by = "bob" // the admitter is passed, never read from the withdrawal
 		}
-		if got := commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo", State: state}, by); got != want[state] {
+		if got := commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo", State: state}, by, false); got != want[state] {
 			t.Errorf("the comment for %s is\n%q\nwant\n%q", state, got, want[state])
 		}
 	}
@@ -293,7 +293,7 @@ func TestTheOutboundPolicyRefusesACommentBodyItWouldReject(t *testing.T) {
 	if len(f.posted()) != 0 {
 		t.Fatalf("comments = %q; want none posted", f.posted())
 	}
-	if x := releaseForge.postComment(p.dir, Withdrawal{Number: 11, ID: "PR_eleven", State: WithdrawnPending}, commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo"}, "octo")); x != nil {
+	if x := releaseForge.postComment(p.dir, Withdrawal{Number: 11, ID: "PR_eleven", State: WithdrawnPending}, commentBody("rel-v0.16.0", Withdrawal{Number: 11, By: "octo"}, "octo", false)); x != nil {
 		t.Fatalf("the fixed body was refused: %+v", x)
 	}
 }

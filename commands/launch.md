@@ -161,11 +161,13 @@ this copy, on a tombstone that is its holder's own newest push to its branch
 (as the forge's record of pushes says), or with its tag on `origin`; after a tag or a
 tombstone another copy pushed, the next abcd act of any copy of
 yours that fetches the reservations (a reserve, a build or drain start,
-`abcd peers`) re-arms them. **A lapsed lease ends nothing.** The reservation holds
-for 24 hours and nothing renews it by itself: past that, while it still holds
-pull requests withdrawn or admitted, the launch check refuses the cut,
-`abcd peers` reports the lapse, and nothing is re-armed; renew it by
-reserving the release again from this copy. A lapsed release that holds
+`abcd peers`) re-arms them. **A lapsed lease ends the cut five minutes later.**
+The reservation holds for 24 hours and nothing renews it by itself: past that,
+while it still holds pull requests withdrawn or admitted, the launch check
+refuses the cut and `abcd peers` reports the lapse; five minutes after it
+lapsed, the next act of any copy of yours ends it and re-arms what it withdrew
+(dcn-2610271926369425). To go on with the cut, renew it first by reserving the
+release again from this copy. A lapsed release that holds
 nothing is abandoned: it is neither reported nor a reason to refuse, and the
 check judges the merges armed as for a copy holding no release. One whose head moved,
 that was closed or merged meanwhile, or that can merge now with no merge
@@ -323,9 +325,10 @@ Seven failures are worth recognising, because each looks like something else.
   `merge-hold` row refuses on a lapsed reservation.** The release reservation
   withdrew them, and nothing re-arms them until the release ends: its tag on
   `origin`, `--release`, or a tombstone on its branch its holder pushed (one
-  they did not push ends nothing, and is named). A lapsed lease ends
-  nothing, so renew it from the cutting copy (`abcd reserve rel-vX.Y.Z`) and
-  finish the cut, or end it with `abcd reserve rel-vX.Y.Z --release`. When the
+  they did not push ends nothing, and is named), or five minutes after its
+  lease lapsed, at your next act from any copy. To finish the cut, renew it
+  from the cutting copy first (`abcd reserve rel-vX.Y.Z`); to abandon it, end
+  it with `abcd reserve rel-vX.Y.Z --release`. When the
   cutting copy is gone (a crash, a deleted worktree), end it from another copy
   of yours: `abcd reserve rel-vX.Y.Z --take-over`, then `--release`. An
   `--admit` cut off before it armed its pull request is finished by running

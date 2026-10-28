@@ -125,8 +125,8 @@ func mergeHoldGate(root string) (GateSummary, []GateFinding, *GateSummary) {
 	var findings []GateFinding
 	if a.Lapsed != "" {
 		findings = append(findings, GateFinding{Detail: "your release reservation " + a.Lapsed + " lapsed at " + a.LapsedAt +
-			" before the release ended: it holds no other session's merge now, and nothing re-arms what it withdrew; renew it from this copy (abcd reserve " +
-			a.Lapsed + ") before the cut goes on, or end it (abcd reserve " + a.Lapsed + " --release), which re-arms what it withdrew"})
+			" before the release ended: it holds no other session's merge now, and five minutes after the lapse your next act ends it and re-arms what it withdrew; " +
+			"renew it from this copy (abcd reserve " + a.Lapsed + ") before the cut goes on, or end it now (abcd reserve " + a.Lapsed + " --release)"})
 	}
 	for _, pr := range a.Armed {
 		if !pr.CrossRepository && branch != "" && pr.HeadRef == branch {

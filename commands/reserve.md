@@ -27,8 +27,8 @@ through `gh`, to learn whose account the forge token `gh` resolves from this ses
 environment belongs to. A release reservation also reads and writes the
 pull requests' merge state on GitHub, through `gh` under the session's own
 identity (below): it withdraws the merges armed on the default branch, and
-re-arms them when the release ends (its `--release`, or its tag on `origin`;
-a lapsed lease ends nothing).
+re-arms them when the release ends (its `--release`, its tag on `origin`, or
+its lease lapsed for five minutes, which ends it for its own person alone).
 
 ## Reserve before starting
 
@@ -211,10 +211,14 @@ both re-arm; that is harmless, because a re-arm reads the forge first, is
 pinned to the withdrawn head, and finds the pull request already armed. A
 tombstone recording the new states is pushed only when a state changed, so a
 re-arm the forge keeps refusing writes nothing to `origin` while it is tried
-again. **A lapsed lease ends nothing.** Nothing renews a release lease by itself, so a slow cut's lease
-lapses while it is still being cut: the lapse is reported (`/abcd:peers`, and
-the launch check refuses the cut until it is renewed), and no copy re-arms
-anything. Renew it by reserving the release again from the cutting copy.
+again. **A lapsed lease ends the cut for its own person.** Five minutes after
+a release lease lapses with no tag on `origin`, the next act of any copy of the
+person who reserved it ends it with a tombstone and re-arms exactly what it
+recorded withdrawn, each with one comment saying the cut lapsed; another
+person's act ends nothing of it (dcn-2610271926369425). Nothing renews a
+release lease by itself, so a cut still going on renews it by reserving the
+release again from the cutting copy; until then the lapse is reported
+(`/abcd:peers`, and the launch check refuses the cut).
 
 **After a crash.** When the copy cutting the release is gone (its worktree
 deleted, its machine down), end the release from another copy of the same

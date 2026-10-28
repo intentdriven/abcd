@@ -4332,8 +4332,9 @@ same view: the record and kind of each released tip marking one, newest
 first, the newest ten shown and the rest counted; one dated more than five
 minutes ahead of this computer's clock is not shown. Then each release's
 withdrawn pull requests (release_withdrawals): those a live release holds or
-admitted, a lease that lapsed before the release ended (reported, never acted
-on), those an ended one has still to re-arm (yours, or another person's, named
+admitted, a lease that lapsed before the release ended (ended by its own
+person's next act five minutes after), those an ended one has still to re-arm
+(yours, or another person's, named
 with whose), and those its tombstone skipped for their owners; and those a
 later commit on a recent release's branch dropped (lost_withdrawals). The fetch
 reads origin's release tags with the reservations; it updates the
@@ -4612,9 +4613,9 @@ backs this one off. --admit <pr>, from the copy cutting the release, records one
 withdrawn pull request admitted, then re-arms it in its recorded form, pinned to
 its withdrawn head. --release from that copy pushes the tombstone, then re-arms
 every other one the same way; once the tag is on origin, any act of a copy of
-the same person that fetches the reservations does so. A lapsed lease ends
-nothing: it is reported, and the cut renews it by reserving again. After a crash,
-the same person ends it from another copy with --take-over, then --release. One
+the same person that fetches the reservations does so, and so does one five
+minutes after the lease lapsed with no tag, for the cut's own person alone; a cut
+still going on renews it by reserving again. One
 whose head moved, that was closed or merged, or that can only be merged by hand
 (no merge queue), is skipped and named for its owner; every state is recorded on
 the tombstone (settles in --json), so no copy acts twice, a copy of another

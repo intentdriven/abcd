@@ -56,54 +56,94 @@ func (w *world) pushChild(id, parent, msg string, at time.Time) string {
 	return sha
 }
 
-// TestALapsedReleaseIsNotEndedAndNothingReArms: the cutting copy's lease
-// lapses mid-cut (nothing renews a release lease); its own next listing and
-// its own next act, well past the take-over margin, re-arm nothing and push
-// no tombstone, and the listing reports the lapse with what it still holds.
-func TestALapsedReleaseIsNotEndedAndNothingReArms(t *testing.T) {
+// TestALapsedReleaseEndsForItsHolderAndReArmsWhatItWithdrew
+// (dcn-2610271926369425): a release cut whose lease lapses with no tag on
+// origin ends its hold once the take-over margin has passed. Before then
+// nothing is re-armed, a cut renewed in time keeps every merge withdrawn, and
+// another person's copy re-arms nothing of it; past the margin, the next act
+// of any copy of the cut's own person ends it with a tombstone and re-arms
+// exactly what it recorded withdrawn, each with one comment saying the cut
+// lapsed.
+func TestALapsedReleaseEndsForItsHolderAndReArmsWhatItWithdrew(t *testing.T) {
 	w := newWorld(t)
-	f := armedForge(t)
+	f := commentedForge(t)
 	cutter := w.clone("1234+octo@users.noreply.github.com", "")
 	if _, err := cutter.do(Request{Record: "rel-v0.16.0"}); err != nil {
 		t.Fatal(err)
 	}
+	expiry := func() time.Time {
+		t.Helper()
+		snap, err := View(cutter.dir, w.clock())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, r := range snap.Reservations {
+			if r.Record == "rel-v0.16.0" {
+				return r.EffectiveExpiry
+			}
+		}
+		t.Fatal("no rel-v0.16.0 in the view")
+		return time.Time{}
+	}
 	f.reset()
-	w.set(t0.Add(lease.Max + TakeoverMargin + time.Hour))
+
+	// Lapsed, but inside the take-over margin: nothing is re-armed yet.
+	w.set(expiry().Add(time.Minute))
 	if s, err := SettleEndedReleases(cutter.dir, cutter.opts()); err != nil || len(s) != 0 {
-		t.Fatalf("settles = %+v, %v; want none", s, err)
+		t.Fatalf("settles inside the margin = %+v, %v; want none", s, err)
 	}
-	if _, err := cutter.reserve("iss-8", "o.go"); err != nil {
-		t.Fatal(err)
+	// The cut renews in time, so its merges stay withdrawn past the old margin.
+	if res, err := cutter.do(Request{Record: "rel-v0.16.0"}); err != nil || res.Act != ActRenewed {
+		t.Fatalf("renewal = %+v, %v", res, err)
 	}
+	renewed := expiry()
 	laptop := w.clone("1234+octo@users.noreply.github.com", "")
 	if _, err := laptop.reserve("iss-9", "l.go"); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.mutations(); len(got) != 0 {
-		t.Fatalf("mutations = %v; want nothing re-armed on a lapse", got)
+		t.Fatalf("mutations while the cut is live = %v; want none", got)
+	}
+
+	// Past the renewed lease and its margin, another person's act ends nothing.
+	w.set(renewed.Add(TakeoverMargin + time.Hour))
+	other := w.clone("99+quinn@users.noreply.github.com", "")
+	if _, err := other.reserve("iss-6", "q.go"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.mutations(); len(got) != 0 {
+		t.Fatalf("mutations by another person = %v; want none", got)
+	}
+	if m, _ := w.tipWithdrawals("rel-v0.16.0"); m.released() {
+		t.Fatal("another person's act ended octo's lapsed cut")
+	}
+
+	// The cut's own person's other copy ends it and re-arms what it withdrew.
+	if _, err := laptop.reserve("iss-8", "k.go"); err != nil {
+		t.Fatal(err)
 	}
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	if m.released() || len(ws) != 3 || !ws[0].Pending() {
-		t.Fatalf("tip = %+v %+v; want the lapsed reservation untouched", m, ws)
+	if !m.released() || stateOf(ws, 11) != WithdrawnRearmed || stateOf(ws, 12) != WithdrawnRearmed || stateOf(ws, 13) != WithdrawnRearmed {
+		t.Fatalf("tip = %+v %+v; want a tombstone with #11-#13 re-armed", m, ws)
 	}
-	snap, err := View(cutter.dir, w.clock())
-	if err != nil {
+	var lapsed []string
+	for _, c := range f.posted() {
+		if strings.Contains(c, "re-armed") {
+			lapsed = append(lapsed, c)
+		}
+	}
+	want := "#11 abcd release hold: the merge of #11 is re-armed; the cut of release v0.16.0 lapsed with no tag on origin, so its hold has ended."
+	if len(lapsed) != 3 || lapsed[0] != want {
+		t.Fatalf("re-arm comments = %q; want three, the first %q", lapsed, want)
+	}
+
+	// The cutting copy's next act finds nothing more to do.
+	f.reset()
+	if _, err := cutter.reserve("iss-7", "c.go"); err != nil {
 		t.Fatal(err)
 	}
-	got := snap.ReleaseWithdrawals(cutter.dir, "octo", w.clock())
-	if len(got) != 1 || got[0].Ended || !got[0].Lapsed || len(got[0].Held) != 3 ||
-		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "rel-v0.16.0's lease lapsed at 2026-10-04T14:00:00Z before the release ended") {
-		t.Fatalf("listing = %+v %q; want the lapse reported with the three held", got, got[0].Lines())
-	}
-	// The cutting copy renews and goes on, then ends it: only now is it re-armed.
-	if res, err := cutter.do(Request{Record: "rel-v0.16.0"}); err != nil || res.Act != ActRenewed {
-		t.Fatalf("renewal = %+v, %v", res, err)
-	}
-	if _, err := cutter.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
-		t.Fatal(err)
-	}
-	if got := f.mutations(); len(got) != 3 {
-		t.Fatalf("mutations after --release = %v; want the three re-armed", got)
+	if got := f.mutations(); len(got) != 0 {
+		t.Fatalf("mutations after it was settled = %v; want none", got)
 	}
 }
 

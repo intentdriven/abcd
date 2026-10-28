@@ -356,7 +356,7 @@ func TestACommentIsPostedOnlyAsSentAndJudged(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	wd := Withdrawal{Number: 11, ID: "PR_eleven", State: WithdrawnRearmed}
-	body := commentBody("rel-v0.16.0", wd, "")
+	body := commentBody("rel-v0.16.0", wd, "", false)
 	post := func(c *commentStub, root string) *ForgeFailure {
 		return mergeForge{comments: c}.postComment(root, wd, body)
 	}

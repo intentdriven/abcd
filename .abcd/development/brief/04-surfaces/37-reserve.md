@@ -402,9 +402,10 @@ withdrawing nothing, and an admission or a release is refused.
 - **One release at a time.** A release reserved anew while another release is
   still being cut backs off, naming it: a second cut would withdraw the merges
   the first admitted. A release is still being cut while its reservation is
-  live, and, since a lapse ends nothing, while its lease has lapsed with pull
-  requests still withdrawn or admitted; the back-off then says how it ends
-  (its holder renews it, or releases it). One that lapsed holding
+  live, and, while its lease has lapsed with pull requests still withdrawn or
+  admitted, until its own person's next act ends it five minutes after the
+  lapse; the back-off then says how it ends (its holder renews it, or
+  releases it). One that lapsed holding
   nothing is abandoned, and blocks nothing. The launch check names the same
   lapsed release, and only that one. A tombstone over it that its holder did
   not push ends nothing (see "When a release ends"), so a second release
@@ -520,11 +521,16 @@ withdrawing nothing, and an admission or a release is refused.
   person's after a take-over and a release of theirs included). A tombstone its holder did not
   push ends nothing (dcn-2610230833367984): it is named once for its tip
   (`not_ended`), nothing is acted on, and `abcd peers` lists none of its
-  withdrawals as due. A lapsed lease ends nothing: nothing renews a release
-  lease by itself, so a slow cut's lease lapses while it is still being cut,
-  and the lapse is reported (`abcd peers`, and the launch check refuses the
-  cut), never acted on. After a crash, the same person ends it from another
-  copy by taking it over and then releasing it.
+  withdrawals as due. A lapsed lease ends the cut for its own person alone
+  (dcn-2610271926369425, superseding Q1 of dcn-2610230328220298): once
+  TakeoverMargin (five minutes) has passed since it lapsed with no tag on
+  origin, the next act of any copy of the person whose reservation it is
+  claims the end with a tombstone pushed over that lapsed tip, so a renewal
+  that lands first wins and the cut keeps its hold, and re-arms only what the
+  cut recorded withdrawn, each with one comment saying the cut lapsed. Another
+  person's act ends nothing of it. Nothing renews a release lease by itself,
+  so a cut still going on renews it; until the margin passes the lapse is
+  reported (`abcd peers`, and the launch check refuses the cut).
 - **Re-arm.** A settle over a tip that is not yet a tombstone (a tag ended it)
   pushes a tombstone first, with every withdrawal as it stands, as the
   compare-and-swap that claims the end; over a tip that already is one it

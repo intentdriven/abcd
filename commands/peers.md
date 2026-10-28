@@ -26,8 +26,10 @@ recorded node id is not the forge's, or it can merge now with no merge queue
 to put it in, and a second tombstone records each outcome (see
 `/abcd:reserve`). Each pull request re-armed, found armed or skipped for its
 owner then gets one fixed comment, and a comment that fails is named in
-`settled`'s `failures`. A lease that lapsed ends nothing: the listing reports it,
-and nothing is re-armed. A release another person withdrew pull requests for
+`settled`'s `failures`. A release lease of yours that lapsed with no tag on
+`origin` ends five minutes later: the listing then ends it and re-arms what it
+withdrew of yours, and says so; until then it reports the lapse. Another
+person's lapsed cut ends nothing from here. A release another person withdrew pull requests for
 is never re-armed from here: its withdrawals are listed for that person, and
 one recorded as yours that no reservation of yours recorded first is named
 and left alone. Nothing else is written or posted. The release-tag

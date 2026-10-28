@@ -193,8 +193,9 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"first, the newest ten shown and the rest counted; one dated more than five\n" +
 			"minutes ahead of this computer's clock is not shown. Then each release's\n" +
 			"withdrawn pull requests (release_withdrawals): those a live release holds or\n" +
-			"admitted, a lease that lapsed before the release ended (reported, never acted\n" +
-			"on), those an ended one has still to re-arm (yours, or another person's, named\n" +
+			"admitted, a lease that lapsed before the release ended (ended by its own\n" +
+			"person's next act five minutes after), those an ended one has still to re-arm\n" +
+			"(yours, or another person's, named\n" +
 			"with whose), and those its tombstone skipped for their owners; and those a\n" +
 			"later commit on a recent release's branch dropped (lost_withdrawals). The fetch\n" +
 			"reads origin's release tags with the reservations; it updates the\n" +

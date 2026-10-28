@@ -378,7 +378,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// An admission recorded already, admitted again, changes no state,
 		// so only the first is commented on.
 		if admitting.State != WithdrawnAdmitted {
-			if f := releaseForge.comment(root, p.id, w, p.holder); f != nil {
+			if f := releaseForge.comment(root, p.id, w, p.holder, false); f != nil {
 				res.ForgeFailures = append(res.ForgeFailures, *f)
 			}
 		}

@@ -266,8 +266,8 @@ nothing re-arms is never due), stranded for another person, skipped, with
 `reader`, `not_read` (the commits other accounts pushed above the reader's
 newest push, counted by pusher, never read) and `unplaced` (why that push
 cannot be found or placed, when none of the reader's is listed), `lapsed`
-when its lease lapsed before it ended still holding some, which ends
-nothing, and `not_ended` naming the holder whose tombstone the forge's record
+when its lease lapsed before it ended still holding some, which its own
+person's next act ends five minutes later, and `not_ended` naming the holder whose tombstone the forge's record
 does not show they pushed, which ends nothing either), `lost_withdrawals` (each recent release's withdrawals a later
 commit dropped), `settled` (each ended release of the reader's whose
 withdrawals the listing re-armed or skipped, with `not_read`, `unplaced` and

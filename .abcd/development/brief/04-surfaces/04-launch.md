@@ -325,8 +325,9 @@ The **hard-fail** gates refuse the release:
   release pull request opened from the checked-out branch is the cut and is not
   judged. A release reservation of this copy's whose lease lapsed before the
   release ended, still holding pull requests withdrawn or admitted, refuses
-  the cut too: it holds no merge, and a lapse ends nothing
-  (dcn-2610230328220298). One that lapsed holding nothing is abandoned, and is
+  the cut too: it holds no merge, and five minutes after the lapse its
+  holder's next act ends it and re-arms what it withdrew
+  (dcn-2610271926369425, superseding Q1 of dcn-2610230328220298). One that lapsed holding nothing is abandoned, and is
   not named. Withdrawals a later commit on a recent
   release branch dropped are a warning row, `merge-hold-lost`
   (dcn-2610230328242929). A listing
@@ -789,7 +790,8 @@ The hold stops a merge from being armed, and the reservation withdraws every
 merge armed or queued before it, recording each, so the cut starts from a
 frozen branch; the cutting copy admits one through the reserve verb, and the rest are re-armed in their own form, pinned to their
 withdrawn heads, once the release ends: on its holder's release, or its tag on
-origin, never on a lapsed lease (`37-reserve.md`, "Withdrawn merges"). The
+origin, or five minutes after its lease lapsed, by its own person's next act
+(`37-reserve.md`, "Withdrawn merges"). The
 hold comments on each pull request it withdraws, admits and re-arms, or leaves
 for its owner, one fixed sentence naming the release (dcn-2610230833367984).
 The merge-hold gate (§ 1) refuses the cut while any merge the reservation does not

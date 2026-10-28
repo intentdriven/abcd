@@ -209,9 +209,9 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"withdrawn pull request admitted, then re-arms it in its recorded form, pinned to\n" +
 			"its withdrawn head. --release from that copy pushes the tombstone, then re-arms\n" +
 			"every other one the same way; once the tag is on origin, any act of a copy of\n" +
-			"the same person that fetches the reservations does so. A lapsed lease ends\n" +
-			"nothing: it is reported, and the cut renews it by reserving again. After a crash,\n" +
-			"the same person ends it from another copy with --take-over, then --release. One\n" +
+			"the same person that fetches the reservations does so, and so does one five\n" +
+			"minutes after the lease lapsed with no tag, for the cut's own person alone; a cut\n" +
+			"still going on renews it by reserving again. One\n" +
 			"whose head moved, that was closed or merged, or that can only be merged by hand\n" +
 			"(no merge queue), is skipped and named for its owner; every state is recorded on\n" +
 			"the tombstone (settles in --json), so no copy acts twice, a copy of another\n" +

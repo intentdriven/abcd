@@ -20,8 +20,11 @@ package claim
 //     Each is acted on only when the commit that first recorded it was
 //     pushed, as the forge's record of pushes says, by its withdrawer
 //     (withdrawpush.go).
-//     A lapsed lease is not an end: it is reported, and nothing acts on it
-//     (dcn-2610230328220298);
+//     A release lease that lapsed with no tag on origin ends the hold once
+//     the take-over margin has passed, for its own holder alone: the next
+//     act of a copy of that person ends it with a tombstone and re-arms what
+//     the cut recorded withdrawn, while a cut still going on renews its lease
+//     (dcn-2610271926369425, superseding Q1 of dcn-2610230328220298);
 //   - every re-arm is in the form the pull request was taken from, pinned to
 //     the head it had, and one whose head moved, or that was closed or
 //     merged, is skipped and named (dcn-2610222219297487).
@@ -95,12 +98,16 @@ type Settle struct {
 	NotRead  []PushCount `json:"not_read,omitempty"`
 	Unplaced string      `json:"unplaced,omitempty"`
 	NotEnded string      `json:"not_ended,omitempty"`
+	// LapsedAt, when set, is when the release's lease lapsed: the settle
+	// ended a cut that lapsed with no tag on origin (dcn-2610271926369425).
+	LapsedAt *time.Time `json:"lapsed_at,omitempty"`
 }
 
-// Notes is each sentence naming what the settle did not act on.
+// Notes is each sentence naming what the settle did not act on, and the
+// lapse it ended a cut on.
 func (s Settle) Notes() []string {
 	var out []string
-	for _, l := range []string{notEndedLine(s.Subject, s.NotEnded), unplacedLine(s.Subject, s.Person, s.Unplaced), notReadLine(s.Subject, s.Person, s.NotRead)} {
+	for _, l := range []string{lapsedEndLine(s.Subject, s.LapsedAt), notEndedLine(s.Subject, s.NotEnded), unplacedLine(s.Subject, s.Person, s.Unplaced), notReadLine(s.Subject, s.Person, s.NotRead)} {
 		if l != "" {
 			out = append(out, l)
 		}
@@ -111,6 +118,16 @@ func (s Settle) Notes() []string {
 // said reports whether s says anything.
 func (s Settle) said() bool {
 	return s.Commit != "" || len(s.Settled)+len(s.Failures)+len(s.NotRead) > 0 || s.Failed != "" || s.Unplaced != "" || s.NotEnded != ""
+}
+
+// lapsedEndLine is the sentence naming a cut a settle ended because its lease
+// lapsed with no tag on origin; "" when at is nil.
+func lapsedEndLine(subject string, at *time.Time) string {
+	if at == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s's lease lapsed at %s with no tag on %s, so its hold has ended and what it withdrew of yours is re-armed",
+		subject, stamp(*at), Remote)
 }
 
 // notEndedLine is the sentence naming a release whose tip is a tombstone its
@@ -400,7 +417,7 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again bool) (commi
 		// (auto-merge off, still queued), posts nothing: the failure line
 		// names it to the cutter.
 		if done && err == nil {
-			if f := releaseForge.comment(p.root, p.id, got, p.holder); f != nil {
+			if f := releaseForge.comment(p.root, p.id, got, p.holder, false); f != nil {
 				fails = append(fails, *f)
 			}
 		}
@@ -673,11 +690,12 @@ func settleEnded(a actor, tree, id string, own bool) (s Settle, ok bool) {
 // settleTip settles id's withdrawals of a's holder over its tip t, already
 // read, once the release has ended (dcn-2610230328220298): its tag on origin,
 // or its holder's own newest push a tombstone of theirs (asker.ended), or the
-// holder's own --release (own). A lease that lapsed is not an end: nothing
-// renews a release lease on its own, so a slow cut's lease lapses while it is
-// still being cut, and a lapse is reported, never acted on. A tip that is
-// neither tagged nor a tombstone is a release still held, and is not read
-// further. Otherwise a's holder's withdrawals are read from their own newest
+// holder's own --release (own), or, for a's holder alone when the tip is their
+// own reservation, its lease lapsed past TakeoverMargin with no tag on origin
+// (cutLapsed, dcn-2610271926369425). A cut still going on renews its lease, so
+// a lapse past the margin is a cut its holder left; another person's lapsed
+// cut ends nothing here. Any other tip that is neither tagged nor a tombstone
+// is a release still held, and is not read further. Otherwise a's holder's withdrawals are read from their own newest
 // push to the branch, as the forge's record of pushes shows it, asked afresh
 // (dcn-2610231033516293): the commits above it other logins pushed are
 // counted and not read, and when that push cannot be found or placed nothing
@@ -702,7 +720,14 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	// A tip that does not read ends nothing by itself, but its tag still
 	// ends the release, and the holder's record is read beneath it.
 	tagged, err := taggedOnOrigin(a.root, id)
-	if err != nil || !tagged && (t.Unreadable != "" || !t.message.released()) {
+	if err != nil {
+		return Settle{}, false
+	}
+	lapsedAt, lapsed := time.Time{}, false
+	if !tagged {
+		lapsedAt, lapsed = cutLapsed(t, a.holder, a.now)
+	}
+	if !tagged && !lapsed && (t.Unreadable != "" || !t.message.released()) {
 		return Settle{}, false
 	}
 	if c := readTipCache(a.root, id, t.Commit); !own && (c.isDone(a.holder) || c.gaveUp(a.holder, a.now)) {
@@ -710,6 +735,9 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	}
 	a.subject = id
 	s = Settle{Subject: id, Settled: []Withdrawal{}, Person: a.holder}
+	if lapsed {
+		s.LapsedAt = &lapsedAt
+	}
 	links, complete, err := releaseChain(a.root, id, t.Commit, tree)
 	if err != nil {
 		s.Failed = "could not read the history of " + id + "'s branch to tell which withdrawals are yours (" + redacted(err) + "), so none was re-armed"
@@ -738,7 +766,7 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 		s.shownOnce(a.root, id, t.Commit)()
 		return s, s.said()
 	}
-	if !tagged && !own {
+	if !tagged && !own && !lapsed {
 		ended, holder, _, why := k.ended()
 		switch {
 		case why != "":
@@ -779,17 +807,33 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 		return s, true
 	}
 	s.Commit = final
-	s.Failures = append(s.Failures, commentSettled(a, settled)...)
+	s.Failures = append(s.Failures, commentSettled(a, settled, lapsed)...)
 	return s, true
+}
+
+// cutLapsed reports whether t is holder's own readable release reservation,
+// not a tombstone, whose lease lapsed at least TakeoverMargin before now, and
+// when it lapsed: a cut its holder left, which ends its hold
+// (dcn-2610271926369425). The margin is the one a take-over waits out, so a
+// clock running behind the cutter's never ends a cut still renewing.
+func cutLapsed(t tip, holder string, now time.Time) (time.Time, bool) {
+	if t.Unreadable != "" || t.message.released() || holder == "" || !sameHolder(t.Holder, holder) {
+		return time.Time{}, false
+	}
+	v := lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, now)
+	if v.Live || now.Before(v.EffectiveExpiry.Add(TakeoverMargin)) {
+		return time.Time{}, false
+	}
+	return v.EffectiveExpiry, true
 }
 
 // commentSettled posts the comment for each of settled, once the tombstone
 // recording their new states has landed (mergeForge.comment), and returns the
-// comments that failed.
-func commentSettled(a actor, settled []Withdrawal) []ForgeFailure {
+// comments that failed; lapsed says the hold ended because the cut lapsed.
+func commentSettled(a actor, settled []Withdrawal, lapsed bool) []ForgeFailure {
 	var fails []ForgeFailure
 	for _, w := range settled {
-		if f := releaseForge.comment(a.root, a.subject, w, ""); f != nil {
+		if f := releaseForge.comment(a.root, a.subject, w, "", lapsed); f != nil {
 			fails = append(fails, *f)
 		}
 	}
@@ -927,7 +971,7 @@ func (p *prepared) settleOwnRelease(tree, sha string, ws []Withdrawal) (Settle, 
 		return s, sha, ws
 	}
 	s.Commit = final
-	s.Failures = append(s.Failures, commentSettled(a, settled)...)
+	s.Failures = append(s.Failures, commentSettled(a, settled, false)...)
 	return s, final, out
 }
 
@@ -1088,8 +1132,8 @@ func validPRNumber(n int) bool { return n > 0 && n <= 999999999 }
 // ReleaseWithdrawals is one release's withdrawals as a listing names them to
 // a reader: on a release still held, those it holds withdrawn and those it
 // admitted, with Lapsed set when it is still being cut (stillBeingCut) and
-// its lease lapsed before it ended, which ends nothing
-// (dcn-2610230328220298); on one ended (its tag on origin, or its holder's
+// its lease lapsed before it ended, which ends it for its holder once the
+// take-over margin has passed (dcn-2610271926369425); on one ended (its tag on origin, or its holder's
 // own tombstone), the reader's own still to re-arm (Due, which the reader's
 // next act re-arms) and another person's (Stranded, which only that person
 // re-arms); and those its last tombstone skipped for their owners (moved,
@@ -1124,9 +1168,9 @@ type ReleaseWithdrawals struct {
 func (r ReleaseWithdrawals) Lines() []string {
 	var out []string
 	if r.Lapsed {
-		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended: it holds no merge now, and nothing re-arms what it withdrew; "+
-			"%s renews it from the cutting copy (abcd reserve %s), or ends it with --release, after --take-over from another copy of theirs",
-			r.Subject, stamp(r.LapsedAt), r.Holder, r.Subject))
+		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended: it holds no merge now, and from %s the next act of a copy of %s's "+
+			"ends it and re-arms what it withdrew; %s renews it from the cutting copy first (abcd reserve %s) if the cut goes on",
+			r.Subject, stamp(r.LapsedAt), stamp(r.LapsedAt.Add(TakeoverMargin)), r.Holder, r.Holder, r.Subject))
 	}
 	if len(r.Held) > 0 {
 		out = append(out, fmt.Sprintf("%s holds %s withdrawn until it ends: the cutting copy admits one with --admit <pr>",
