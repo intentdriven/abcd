@@ -28,10 +28,13 @@ type PromoteRequest struct {
 	// that has been dispositioned.
 	ID         string
 	LinkIntent string // itd-N; "" mints
-	// Grounds is the REQUIRED conjecture behind the promotion, in the shared
-	// `<token>: <text>` grammar (core/grounds). A capture routed to an intent
-	// draft is a conjecture being pursued, and there is nothing to stage here:
-	// promote mints the value in the same call, so it has no corpus to fix.
+	// Grounds is the OPTIONAL conjecture behind the promotion, in the shared
+	// `<token>: <text>` grammar (core/grounds). Promote reads it through
+	// optionalGrounds: empty records none (the drain's hand-back promotes with
+	// none), and a value given is judged in full before anything is minted. A
+	// capture routed to an intent draft is a conjecture being pursued, and there
+	// is nothing to stage here: promote mints the value in the same call, so it
+	// has no corpus to fix.
 	Grounds string
 	// ProductionMode is how the MINTED DRAFT's seed text was produced (itd-178),
 	// or empty for the vocabulary's default. It has no effect in stamp-only mode,
@@ -139,7 +142,7 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 	}
 	// BEFORE anything is minted or stamped. Promote's residue contract is
 	// mint-first-stamp-second, so a refusal raised any later than here would leave
-	// an orphan draft behind for a missing argument — the exact residue the rest
+	// an orphan draft behind for a malformed argument — the exact residue the rest
 	// of this path works to avoid.
 	g, gRedacted, gDegraded, err := optionalGrounds(repoRoot, "promote", req.Grounds)
 	if err != nil {
@@ -179,13 +182,14 @@ func Promote(req PromoteRequest) (PromoteResult, error) {
 		return PromoteResult{}, fmt.Errorf("%s is %w to %s; refusing to promote twice", req.ID, ErrAlreadyPromoted, into)
 	}
 	// Establish that the RECORD can accept the append, before anything is minted.
-	// requireGrounds above already gated the grounds TEXT; what it cannot answer
-	// is whether the bytes it will be appended to can hold it. A record whose body
-	// leaves a fence or a comment open masks everything appended below it, so the
-	// stamp's read-back refuses — permanently, and identically on every retry,
-	// including the retry through the repair verb the failure message names. With
-	// the mint first, that left one orphan draft per attempt and a draft counter
-	// climbing behind an operator who had no way to succeed (iss-2608301803423101).
+	// optionalGrounds above already gated the grounds TEXT, when any was given;
+	// what it cannot answer is whether the bytes it will be appended to can hold
+	// it. A record whose body leaves a fence or a comment open masks everything
+	// appended below it, so the stamp's read-back refuses — permanently, and
+	// identically on every retry, including the retry through the repair verb
+	// the failure message names. With the mint first, that left one orphan draft
+	// per attempt and a draft counter climbing behind an operator who had no way
+	// to succeed (iss-2608301803423101).
 	//
 	// The dry run is the real append against the pre-flight bytes, discarded. It
 	// is not a substitute for the guard under the lock — the file may change

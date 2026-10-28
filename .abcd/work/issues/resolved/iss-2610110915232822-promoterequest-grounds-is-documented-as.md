@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/capture/promote.go"
 remedy: "rewrite the PromoteRequest.Grounds comment and the requireGrounds mention to say grounds are optional, as optionalGrounds reads them"
+resolution: "The PromoteRequest.Grounds comment and the later gate comment now say grounds are optional and name optionalGrounds, which is how Promote reads them."
+impact: fix
+resolved_by:
+  commit: "97f9eebfb0cabbf502e781e3aba767688d1509c7"
 ---
 
 PromoteRequest.Grounds is documented as REQUIRED and a later comment names requireGrounds, but Promote reads it through optionalGrounds, and the drain's hand-back calls Promote with none. The code is right and the comments are stale, so a reader is told a call the drain makes would be refused.

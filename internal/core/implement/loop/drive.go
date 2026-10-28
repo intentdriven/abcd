@@ -98,10 +98,12 @@ func toolsFor(role string) []string {
 // returns it; the latter also names the fallback it recorded.
 func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners) (StepResult, error) {
 	var routed func(string) bool
+	var overrides map[string]string
 	if rs.Config != nil {
 		routed = func(role string) bool { return rs.Config.RouteFor(role).Runner != runner.Host }
+		overrides = rs.Config.FlagRoutes()
 	}
-	res, err := advanceWith(repoRoot, runID, steps, o, routed)
+	res, err := advanceWith(repoRoot, runID, steps, o, routed, overrides)
 	if err != nil || res.Awaiting == nil || !res.handed || rs.Config == nil {
 		// Nothing awaits, or the await is one an earlier call began: the
 		// host, or the runner that call started, is already on it.
@@ -142,6 +144,7 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		Transcripts: rs.Transcripts,
 		Validate: func(ran string, _ runner.Request, ans runner.Answer) error {
 			rec := runner.RecordOf(route.Runner, ran, ans)
+			rec.Override = route.Override()
 			r, err := receipt(repoRoot, runID, aw.Receipt, steps, o, &rec)
 			if err != nil {
 				return err
@@ -251,8 +254,12 @@ func routeNote(role string, r runner.RouteRecord) string {
 	if model == "" {
 		model = "none reported"
 	}
-	if r.Asked == r.Ran {
-		return fmt.Sprintf("the %s ran on the %s runner (model %s)", role, r.Ran, model)
+	under := ""
+	if r.Override != "" {
+		under = ", under --route " + r.Override
 	}
-	return fmt.Sprintf("the %s, routed to %s, ran on the %s runner (model %s)", role, r.Asked, r.Ran, model)
+	if r.Asked == r.Ran {
+		return fmt.Sprintf("the %s ran on the %s runner (model %s%s)", role, r.Ran, model, under)
+	}
+	return fmt.Sprintf("the %s, routed to %s, ran on the %s runner (model %s%s)", role, r.Asked, r.Ran, model, under)
 }

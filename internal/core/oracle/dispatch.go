@@ -40,8 +40,10 @@ func (r Route) OnProvider() bool { return r.ConnectionUsed != "" && r.Connection
 // (ruling DR5 of 2026-09-29, admitAgent). Call then admits the target
 // against the allowlist and oracle.denylist again and resolves the key by
 // name. Every refusal is made before the provider is contacted and names the
-// setting to change. An error that is openaiapi.ErrUnreachable means nothing
-// was sent, and FellBack gives the route that leaves the step to the harness.
+// setting to change. An error that is openaiapi.ErrNoAnswer means the chat
+// call never connected, so no answer was received (ErrUnreachable beside it:
+// nothing was sent at all), and FellBack gives the route that leaves the step
+// to the harness.
 func (c *APIConfig) Dispatch(ctx context.Context, creds credential.Source, r Route, brief openaiapi.Brief,
 	contract func([]byte) error, opts ...openaiapi.Option) ([]byte, ReceiptRoute, error) {
 	t, err := c.Admitted(r)
@@ -90,19 +92,34 @@ func (c *APIConfig) Admitted(r Route) (Target, error) {
 	return t, nil
 }
 
-// FellBack returns r moved to the harness when err says its provider could
-// not be reached (openaiapi.ErrUnreachable: nothing was sent), and false for
-// any other error, which refuses the step instead. The step then runs through
-// the harness with its tier named in the request, the receipt records the
-// connection tried and the harness used, and Fallback is the one line the
-// front door prints on stderr before the step runs (itd-2609170822093401, the
-// fourth criterion, at dispatch).
+// FellBack returns r moved to the harness when err says no answer was
+// received because the chat call never connected to its provider
+// (openaiapi.ErrNoAnswer), and false for any other error, which refuses the
+// step instead. No answer received is the trigger, not nothing sent (the
+// product thinker's ruling of 2026-10-09, iss-2610090701491123): a step whose
+// size count had already carried the brief to the provider still moves, and
+// the line says so; one whose check reached only the model list says that.
+// The step then runs through the harness with its tier named in the request,
+// the receipt records the connection tried and the harness used, and Fallback
+// is the one line the front door prints on stderr before the step runs
+// (itd-2609170822093401, the fourth criterion, at dispatch).
 func (r Route) FellBack(err error) (Route, bool) {
-	if !r.OnProvider() || !errors.Is(err, openaiapi.ErrUnreachable) {
+	if !r.OnProvider() || !errors.Is(err, openaiapi.ErrNoAnswer) {
 		return r, false
 	}
-	r.Fallback = fmt.Sprintf("connection %s could not be reached, so %s runs through the %s with tier %s named in its request (%s)",
-		r.ConnectionUsed, r.Agent, Harness, r.Row.Tier, termsafe.Sanitize(err.Error()))
+	var reached string
+	switch {
+	case errors.Is(err, openaiapi.ErrUnreachable):
+		reached = "could not be reached, so"
+	case errors.Is(err, openaiapi.ErrBriefCounted):
+		reached = "could not be reached for the chat call after the brief had already reached it for the size count, " +
+			"so no answer was received and"
+	default:
+		reached = "could not be reached for the chat call after it had been asked for its model list, " +
+			"so no answer was received and"
+	}
+	r.Fallback = fmt.Sprintf("connection %s %s %s runs through the %s with tier %s named in its request (%s)",
+		r.ConnectionUsed, reached, r.Agent, Harness, r.Row.Tier, termsafe.Sanitize(err.Error()))
 	r.ConnectionTried, r.ConnectionUsed = r.ConnectionUsed, Harness
 	r.SettingsSent = nil
 	return r, true

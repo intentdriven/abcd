@@ -18,6 +18,10 @@ type RouteRecord struct {
 	// served model; "" on the host, whose own receipt reports it, and when
 	// the runner reported none.
 	Model string `json:"model"`
+	// Override is the --route text verbatim when the person's flag routed the
+	// role for this invocation, so a run on a chosen model is never mistaken
+	// for the configured route; "" otherwise.
+	Override string `json:"override,omitempty"`
 	// Sides is both sides of the run, present when a runner ran it; its
 	// fields are omitted when empty, so a host's or an older record reads as
 	// it always has.
