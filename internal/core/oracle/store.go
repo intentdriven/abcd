@@ -163,6 +163,11 @@ func decodeRow(agent string, raw json.RawMessage) (Row, int, error) {
 	return row, clamped, nil
 }
 
+// CheckSettings is checkSettings for a settings map read outside a routing
+// row or a --route (a model-matrix cell's pinned settings), so every reader
+// holds settings to the one check.
+func CheckSettings(in map[string]json.RawMessage) (Settings, error) { return checkSettings(in) }
+
 // checkSettings refuses a setting whose name is not parameter-shaped or whose
 // value is not a JSON scalar (a string, a number or a boolean).
 func checkSettings(in map[string]json.RawMessage) (Settings, error) {

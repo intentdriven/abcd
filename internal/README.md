@@ -134,6 +134,20 @@ plugin surface, and a future MCP server share one engine.
   unescaping and case-insensitively under Unicode simple folding, so a case twin
   counts; the refusal names both spellings and where they sit, and each caller
   phrases its own message from those fields.
+- **`core/matrix/`** — a model-matrix run (itd-2610161733316518): one task done
+  many times across a declared matrix of models from one frozen commit, merged
+  nowhere. It holds the run's records — the declaration, decoded strictly
+  through `core/jsonstrict`; the run record, which pins the frozen commit, the
+  binary, the prompt and tool-definition hashes, the render template, the
+  machine and the caps, and lists every field it could not pin with
+  `core/oracle`'s reasons; and the trial record, which carries the runners' and
+  routes' receipts unchanged — plus the export that maps a trial onto a Harbor
+  trial result and an Inspect eval sample and back. A run is a lab procedure:
+  it writes only under its lab's `state/matrix/`, through `lab.Procedure`, so
+  it obeys the lab's halts and pins its binary through the lab's one hashing
+  path (`lab.BinaryIdentity`). The run record and its declaration pass the
+  repository's secret scanner (`adapter/scanner`) before they are written, and
+  are written together or not at all (`lab.Procedure.WriteStates`).
 - **`core/surface/`** — the compatibility surface as DATA: the snapshot of every
   command, flag, and manifest entry a consumer binds to, and the diff that names
   what a release narrowed. It shares a word with the `surface/` front-door tier

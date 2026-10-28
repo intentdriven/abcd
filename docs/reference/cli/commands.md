@@ -2895,7 +2895,7 @@ and creates nothing. Exit 2 when --run names no run.
 
 Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.
 
-**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [flags]`
+**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... [flags]`
 
 Perform the run's next move, write the state, and exit. At a stage that hands work to
 an agent, the result names the agent to start, the brief it is handed and the path its
@@ -3020,6 +3020,25 @@ skills and plugins do not reach it. A route the repository's .abcd/config.json s
 runner is skipped with a warning on stderr, and the role is the host's as if unrouted;
 one it sets to host keeps the role on the host over the machine's runner route, with a
 warning naming both routes.
+--route <role>=runner:<name>[@<provider>/<model>] routes one role this step hands out
+(implementer, ruthless-reviewer, security-reviewer or intent-auditor) to a runner for this
+step alone, over every configured route, asking for the model named after @ in place of
+the runner's own runner.<name>.model, which every other role keeps; one per role. The
+runner must be one the machine enables and the model one its provider lists, or the step
+is refused before anything is written, naming the fix; a tier route, and a --route with
+--release, --discard, --restart or --accept-config-change (which writes its acceptance
+before the step is judged), are refused too. The model is held to the pins the machine
+sets for it, as the runner's own model is: opencode holds them, and a --route naming
+claude, which holds none, for a pinned model is refused before anything is written,
+naming runner.opencode.model. A step hands at most one role out, so
+a --route for a role it will not hand out (it performs a stage abcd runs itself, hands out
+another role, or re-tells an agent already out) is refused before anything is written,
+naming the role it hands out or that it hands none. When a lane's landing comes first and
+may wait on the forge, whether the role is handed out is known only after the landing
+moves: a --route it then did not use is warned of on stderr, named in route_unused, and
+recorded in the run record. A setup warning about a role's configured route is not said
+for a role the --route replaces. The role's receipt in the run's state, and the run
+record, carry the --route verbatim.
 A runner that is absent, refuses, fails, runs past its time,
 or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed
 the role as with no runner, and the call records one fallback naming the role, the runner
@@ -3097,6 +3116,7 @@ refusal, exit 3 on a pause or a locked run state.
       --discard string         discard a held lane (lane-<n>), or one a drain handed back as stuck: remove its worktree and branch, then close its pull request
       --release string         land a held lane as it is (lane-<n>), once no lane has work left
       --restart string         restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside
+      --route stringArray      route one role this step hands to an agent to a runner, for this invocation alone: <role>=runner:<name>[@<provider>/<model>], the runner one this machine enables and the model one its provider lists (else the runner's own model); one per role (implementer, ruthless-reviewer, security-reviewer, intent-auditor); wins over every configured route for this step alone, and the role's receipt records it verbatim
       --run string             the run to step (run-<16 digits>); the one run in progress when omitted
       --yielded string         with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying
 ```
