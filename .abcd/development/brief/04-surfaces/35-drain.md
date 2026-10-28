@@ -441,10 +441,11 @@ its own lock, so two drains never open two lanes. A drain state of a later
 schema version is a newer abcd's: it is refused as that before it is strictly parsed,
 and the person is told to run the newer abcd and not to remove the file, which
 holds that drain. The state is at its second schema version, which added the
-pins and the local flag a routed judge's route records; a first-version state
-is read as the second's strict subset and written back at the second, and one
-that carries any of those fields is refused naming the field, which the first
-version never wrote. A drain that has ended is
+pins, the local flag and the override field a routed judge's route record
+shares with the run state's (no drain flag sets an override);
+a first-version state is read as the second's strict subset and written back at
+the second, and one that carries any of those fields is refused naming the
+field, which the first version never wrote. A drain that has ended is
 kept for reading, and the next invocation begins a new one. The cap is set when
 a drain begins, and a different cap named while it runs is refused rather than
 ignored. The pace is the implement loop's, resolved through the same layers when

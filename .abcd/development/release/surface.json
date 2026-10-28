@@ -2394,6 +2394,13 @@
           "hidden": false
         },
         {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "run",
           "shorthand": "",
           "type": "string",
