@@ -98,3 +98,31 @@ func TestPeersNamesEachHoldsCopyAndWarnsNearTheCeiling(t *testing.T) {
 		t.Fatalf("the sibling's copy key is shown, or it has none (%v)", err)
 	}
 }
+
+// TestPeersTextSaysWhyTheCeilingIsTheDefault: a machine configuration that
+// does not read leaves the cap at its default, and the text form says so
+// beside the holds, as --json does in the ceiling's note, so a reader never
+// takes the default for a limit someone set.
+func TestPeersTextSaysWhyTheCeilingIsTheDefault(t *testing.T) {
+	w := newReserveWorld(t)
+	cfg := abcdhome.Path(w.home, "config.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte(`{"reservation": `), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := w.clone(t, "p", octoMail)
+	if code, out, errOut := reserveRun(t, p, "reserve", "iss-1", "--footprint", "iss-1.go"); code != 0 {
+		t.Fatalf("reserve: exit %d\n%s%s", code, out, errOut)
+	}
+	code, text, _ := reserveRun(t, p, "peers")
+	if code != 0 {
+		t.Fatalf("peers: exit %d\n%s", code, text)
+	}
+	for _, want := range []string{"your holds: octo 1 of 10", "note: the machine configuration could not be read"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the listing lacks %q:\n%s", want, text)
+		}
+	}
+}

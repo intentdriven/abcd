@@ -609,6 +609,12 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 		if c.Warning != "" {
 			fmt.Fprintf(w, "  warning: %s\n", c.Warning)
 		}
+		// Why the ceiling is the default, or why siblings count as
+		// elsewhere: --json carries it as the ceiling's note, and the text
+		// says it too, so a default is never read as a limit someone set.
+		if c.Note != "" {
+			fmt.Fprintf(w, "  note: %s\n", c.Note)
+		}
 	}
 	for _, h := range out.HandBacksByHolder {
 		fmt.Fprintf(w, "  handed back by %s in the last day:\n", h.Holder)
