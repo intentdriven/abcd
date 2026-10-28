@@ -430,7 +430,26 @@ not deleted: `receipt` refuses, naming that checkout and removing nothing.
 ceiling, and writes a fix brief only once every validator of the round has
 returned; it records each verdict from the validator's own return; the fidelity audit passes only
 when every criterion is met, so an undecided (`INCONCLUSIVE`) criterion sends
-the lane to a fresh implementer as a not-met one does. A lane that has taken
+the lane to a fresh implementer as a not-met one does. Each role a round hands
+out is asked for the model tier its routing row names, and a round that does
+not pass moves each role one step up for the next round (`local`, `economy`,
+`frontier`; `frontier` and `host-decides` stay), from the tier it ran at, never
+two steps at once; a round that passes moves nothing, up or down. When the
+result names a `tier` (and `next` says "at model tier"), start the agent on a
+model of that tier; the brief's routing section names it too. The round
+records each role's route under its `routes` in the state: the `tier`, the
+`escalated_from` tier and the failed round's `gate_output` (bounded and
+masked). A route that names no tier does not move and the result names none: a
+role on a runner (a machine route or a `--route`), a review the reviewer route
+takes, a role `oracle.roles.<role>` points at a provider, a `host-decides` row,
+and the implementer, which has no routing row; its record carries the gate
+output and a `note` saying why. An escalated tier refuses the step at
+`validate`, naming the provider, only where a connection serves that tier off
+its allowlist; no connection serves a tier today, so an escalated tier goes to
+the host. A routing table or provider configuration `step` cannot read is
+refused at `routing`, and its non-fatal reports are said on stderr; nothing is
+written by a refusal. A round's `routes` is state schema
+version 16's. A lane that has taken
 the run's fix rounds (`build --fix-rounds`, bundled 3) and still does not pass
 is handed back: the result's `hand_back` names the verdict `unachievable` and
 the last findings, and the loop starts nothing further for it. Its sibling
@@ -1030,6 +1049,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

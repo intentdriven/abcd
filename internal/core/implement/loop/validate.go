@@ -161,6 +161,9 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 			lane.Syncs = syncs
 		}
 	}
+	// The round's record gains each role's route as it is handed out, so the
+	// lane's rounds are copied before any is written.
+	lane.Validation = slices.Clone(lane.Validation)
 	cur := &lane.Validation[n-1]
 	if cur.HeadSHA != lane.HeadSHA {
 		return Outcome{}, refuse(string(StageValidate), "", lane.ID,
@@ -172,11 +175,15 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 		if v.Verdict != "" || lane.awaited(v.Return) {
 			continue
 		}
-		if err := writeValidatorBrief(c, *lane, *cur, v); err != nil {
+		route, moved, err := routeRound(c, *lane, cur, v.Role, failedBefore(*lane, cur.Round))
+		if err != nil {
+			return Outcome{}, err
+		}
+		if err := writeValidatorBrief(c, *lane, *cur, v, route); err != nil {
 			return Outcome{}, err
 		}
 		return Outcome{Await: &Await{Role: v.Role, Brief: v.Brief, Receipt: v.Return},
-			Note: fmt.Sprintf("round %d: %s's head %s handed to a fresh %s; awaiting its return at %s", cur.Round, lane.ID, shortSHA(cur.HeadSHA), v.Role, v.Return)}, nil
+			Note: fmt.Sprintf("round %d: %s's head %s handed to a fresh %s; awaiting its return at %s%s", cur.Round, lane.ID, shortSHA(cur.HeadSHA), v.Role, v.Return, moved)}, nil
 	}
 	for _, v := range cur.Validators {
 		if v.Verdict == "" {
@@ -202,12 +209,16 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 			}
 			return Outcome{HandBack: &hb}, nil
 		}
-		brief, receipt, err := writeFixBrief(c, *lane, *cur, failing)
+		route, moved, err := routeRound(c, *lane, cur, RoleImplementer, cur)
+		if err != nil {
+			return Outcome{}, err
+		}
+		brief, receipt, err := writeFixBrief(c, *lane, *cur, failing, route)
 		if err != nil {
 			return Outcome{}, err
 		}
 		return Outcome{Await: &Await{Role: RoleImplementer, Brief: brief, Receipt: receipt},
-			Note: fmt.Sprintf("round %d did not pass (%s); its findings go to a fresh implementer, who applies each or rejects it in writing", cur.Round, verdictsLine(*cur))}, nil
+			Note: fmt.Sprintf("round %d did not pass (%s); its findings go to a fresh implementer, who applies each or rejects it in writing%s", cur.Round, verdictsLine(*cur), moved)}, nil
 	}
 	if err := reportsCarryNoVerdict(c, *lane); err != nil {
 		return Outcome{}, err
@@ -304,7 +315,7 @@ func abs(repoRoot, rel string) string { return filepath.Join(repoRoot, filepath.
 
 // writeValidatorBrief renders the brief of one validator of a round and, for
 // the intent-auditor, the fidelity request it reads.
-func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRun) error {
+func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRun, route *oracle.Route) error {
 	var b bytes.Buffer
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	st := c.State
@@ -328,6 +339,7 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		}
 	}
 	p("\nRead only; change nothing in the worktree or on the branch.\n\n")
+	p("%s", routingSection(route))
 	if v.Role == RoleAuditor {
 		a, delivered, err := composeAudit(c, lane)
 		if err != nil {
@@ -460,7 +472,7 @@ func ranInRun(st State, n int) bool {
 
 // writeFixBrief renders the brief of the fresh implementer a round's findings
 // go to, and returns it and the receipt it awaits.
-func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorRun) (string, string, error) {
+func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorRun, route *oracle.Route) (string, string, error) {
 	dir, err := roundDir(c.State.RunID, lane.ID, r.Round, FixDirName)
 	if err != nil {
 		return "", "", err
@@ -494,6 +506,7 @@ func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorR
 	p("`%s`, or reject it in writing in your report, naming the finding and the reason. The next\n", lane.Worktree)
 	p("round hands the lane's head to every validator again, fresh; they read your report.\n\n")
 	p("Your brief as the lane's implementer, with the record it was rendered from: `%s`\n\n", abs(c.RepoRoot, lane.Brief))
+	p("%s", routingSection(route))
 	p("## What you hand back\n\n")
 	p("- your report, at `%s` (in the receipt: `%s/%s`)\n", abs(c.RepoRoot, dir+"/"+ReportFileName), inLane, ReportFileName)
 	p("- the definition of done's whole output, at `%s` (in the receipt: `%s/%s`)\n", abs(c.RepoRoot, dir+"/"+DoDFileName), inLane, DoDFileName)

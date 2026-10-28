@@ -1,8 +1,8 @@
 package lint
 
 import (
+	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -280,39 +280,32 @@ func TestIndexDriftDirEntryComparesByRecordID(t *testing.T) {
 	}
 }
 
-// TestLaterPhaseIndexCoversEveryLegalIntentFilename is the wiring test between
-// the shipped config and the canonical filename rule. The later-phase index
-// enumerates the drafts bench by id, so its dir_entry pattern must reduce every
-// filename intentFileRe accepts; one it does not match is silently dropped from
-// the comparison, and the gate that claims "the filesystem is the list" goes
-// quiet on exactly the record it was meant to catch.
-func TestLaterPhaseIndexCoversEveryLegalIntentFilename(t *testing.T) {
+// TestTheDraftsBenchIsNotACommittedIndex: a committed list of drafts/ made
+// every records pull request that added, planned or moved a draft rewrite
+// neighbouring lines of one sorted region, so two such pull requests open at
+// once conflicted as soon as the first merged, and the forge's merge runs no
+// generator to settle it (iss-2610280107422462). The bench is read from
+// drafts/ itself, so the shipped config declares no index over it and the
+// out-of-scope chapter carries no region for one.
+func TestTheDraftsBenchIsNotACommittedIndex(t *testing.T) {
 	repoRoot := filepath.Join("..", "..", "..")
 	cfg, err := LoadConfig(filepath.Join(repoRoot, ".abcd", "record-lint.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var spec *IndexSpec
-	for i := range cfg.Rules["index_drift"].Indexes {
-		if s := cfg.Rules["index_drift"].Indexes[i]; s.ID == "later-phase-intents" {
-			spec = &s
-			break
+	drafts := filepath.Join(".abcd", "development", "intents", "drafts")
+	for _, s := range cfg.Rules["index_drift"].Indexes {
+		if filepath.Clean(s.Dir) == drafts {
+			t.Errorf("record-lint.json declares index %q over %s; the bench is read from the directory, never committed as a list", s.ID, drafts)
 		}
 	}
-	if spec == nil {
-		t.Fatal("record-lint.json must declare the later-phase-intents index (iss-41)")
-	}
-	re, err := regexp.Compile(spec.DirEntry)
+	doc := filepath.Join(repoRoot, ".abcd", "development", "brief", "06-delivery", "03-out-of-scope.md")
+	b, err := os.ReadFile(doc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"itd-8-with-code-bundling", "itd-108", "itd-1000-a-long-slug-here"} {
-		if !intentFileRe.MatchString(name + ".md") {
-			t.Fatalf("fixture %s.md is not a legal intent filename; fix the fixture", name)
-		}
-		if got := indexDirName(name, re); got != intentIDRe.FindString(name) {
-			t.Errorf("dir_entry reduces %q to %q; want the canonical id %q", name, got, intentIDRe.FindString(name))
-		}
+	if strings.Contains(string(b), "<!-- index: later-phase-intents -->") {
+		t.Errorf("%s carries the later-phase-intents region; the bench is read from drafts/, never committed as a list", doc)
 	}
 }
 
