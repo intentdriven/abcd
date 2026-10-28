@@ -358,18 +358,18 @@ func TestTheLargestRunRecordFitsTheLabsReadBound(t *testing.T) {
 		list = append(list, long(q))
 		defaults = append(defaults, fmt.Sprintf("d%02d%s", i, long(q)[3:]))
 	}
-	// A route is kept as the declaration writes it, so its escapes are paid
-	// in the declaration's own bound too: each route carries as many '"' as
-	// that bound leaves room for, and the rest of it is plain.
-	declare := func(quotes int) (string, []CellPin) {
-		body := oracle.MaxRouteBytes - len("builder=runner:")
-		route := "builder=runner:" + strings.Repeat(q, quotes) + strings.Repeat("&", body-quotes)
+	// A pin agrees with its route (routeAgrees), so the widest route is its
+	// pin's runner and <provider>/<model>, each at its own bound and all '"'.
+	runner := long(q)
+	model := strings.Repeat(q, oracle.MaxModelBytes/2-1) + "/" + strings.Repeat(q, oracle.MaxModelBytes/2)
+	route := "builder=runner:" + runner + "@" + model
+	declare := func() (string, []CellPin) {
 		var cells []string
 		var pins []CellPin
 		for i := range maxCells {
 			id := fmt.Sprintf("c-%02d-%s", i, strings.Repeat("x", maxIDBytes-5))
 			cells = append(cells, fmt.Sprintf(`{"id": %q, "route": %q, "settings": {%s}}`, id, route, strings.Join(sjs, ", ")))
-			pins = append(pins, CellPin{Cell: id, Role: RoleBuilder, Source: SourceOpenRouter, Runner: long(q), Model: long(q),
+			pins = append(pins, CellPin{Cell: id, Role: RoleBuilder, Source: SourceOpenRouter, Runner: runner, Model: model,
 				HarnessVersion: long(q), HarnessDefault: defaults,
 				ProviderPin: &ProviderPin{Order: list, Quantizations: list, DataCollection: long(q), CanonicalSlug: long(q)}})
 		}
@@ -381,11 +381,9 @@ func TestTheLargestRunRecordFitsTheLabsReadBound(t *testing.T) {
   ]`, "", 1)
 		return doc, pins
 	}
-	base, _ := declare(0)
-	quotes := min(oracle.MaxRouteBytes-len("builder=runner:"), (MaxDeclarationBytes-len(base))/maxCells)
-	doc, pins := declare(quotes)
-	if len(doc) > MaxDeclarationBytes || quotes < 1 {
-		t.Fatalf("the test's declaration is %d bytes with %d quotes a route, past the declaration's own bound", len(doc), quotes)
+	doc, pins := declare()
+	if len(doc) > MaxDeclarationBytes || len(route) > oracle.MaxRouteBytes {
+		t.Fatalf("the test's declaration is %d bytes and a route %d, past their own bounds", len(doc), len(route))
 	}
 	in := inputs(t)
 	in.Declaration, in.Cells = []byte(doc), pins
@@ -412,7 +410,7 @@ func TestTheLargestRunRecordFitsTheLabsReadBound(t *testing.T) {
 	if len(js) > lab.MaxStateBytes {
 		t.Fatalf("the largest run record is %d bytes, past the %d its lab reads back", len(js), lab.MaxStateBytes)
 	}
-	t.Logf("the largest run record is %d bytes of %d (declaration %d bytes, %d quotes a route)", len(js), lab.MaxStateBytes, len(doc), quotes)
+	t.Logf("the largest run record is %d bytes of %d (declaration %d bytes, a route %d)", len(js), lab.MaxStateBytes, len(doc), len(route))
 }
 
 // noCap is the good declaration without its spending cap.
@@ -616,10 +614,7 @@ func TestARunCarryingACredentialOrAHomePathIsRefusedUnwritten(t *testing.T) {
 	for name, mutate := range map[string]func(*runInputs){
 		"a token as a model":     func(in *runInputs) { remodel(in, 1, "ghp_"+testsecret.Synthetic(7, 36)) },
 		"a home path in a model": func(in *runInputs) { remodel(in, 2, "file:/Users/alice/models/qwen.gguf") },
-		"the home in a route": func(in *runInputs) {
-			in.Declaration = []byte(strings.Replace(goodDeclaration, "reviewer=runner:opencode@local/qwen",
-				"reviewer=runner:opencode@local"+os.Getenv("HOME")+"/models/qwen", 1))
-		},
+		"the home in a route":    func(in *runInputs) { remodel(in, 2, strings.TrimPrefix(os.Getenv("HOME"), "/")+"/models/qwen") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			root, home, m, in := matrixLab(t)
@@ -706,10 +701,7 @@ func TestAFourPartVersionIsNotAnAddress(t *testing.T) {
 	for name, mutate := range map[string]func(*runInputs){
 		"a token as a version":        func(in *runInputs) { in.Cells[2].LocalPin.RuntimeVersion = "ghp_" + testsecret.Synthetic(8, 36) },
 		"a token as a binary version": func(in *runInputs) { in.Binary.Version = "ghp_" + testsecret.Synthetic(9, 36) },
-		"an address in a route": func(in *runInputs) {
-			in.Declaration = []byte(strings.Replace(goodDeclaration, "reviewer=runner:opencode@local/qwen",
-				"reviewer=runner:opencode@local/qwen@81.2.69.142", 1))
-		},
+		"an address in a route":       func(in *runInputs) { remodel(in, 2, "qwen@81.2.69.142") },
 	} {
 		t.Run(name, func(t *testing.T) {
 			root, home, m, in := matrixLab(t)
@@ -777,7 +769,8 @@ func TestARunTheAugmenterFlagsIsRefusedUnwritten(t *testing.T) {
 }
 
 // An augmenter's kind is the repository's own rule id, so the refusal names
-// it with a control or direction character masked, never raw.
+// it with a control or direction character masked, never raw: the scanner
+// holds every augmented kind to a narrow shape before the run sees it.
 func TestARefusalNamesAnAugmentersKindMasked(t *testing.T) {
 	const flagged = "zq7flaggedvalue9"
 	root, _, _, in := matrixLab(t)
