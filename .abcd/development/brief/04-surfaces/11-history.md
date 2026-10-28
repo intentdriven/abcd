@@ -206,8 +206,8 @@ directory and transcript path beside it. The session-start entrypoint files
 each pending transcript in its store's staging lane before it drains, finding
 the store from the note the session wrote when it started, or else from the
 recorded working directory, and names any transcript it cannot place, which
-stays pending and unredacted until a later start can or `abcd history discard
---pending` removes it. A session no store noted, whose directory git says is in
+stays pending and unredacted until a later start can place it or an operator
+discards it. A session no store noted, whose directory git says is in
 no repository, can never be placed: its raw copy is deleted and the start says
 so once, as the hook once captured nothing for it. The subagent-stop entrypoint stages on the same terms when a
 sub-agent finishes, writing that agent's own transcript with the lineage that
