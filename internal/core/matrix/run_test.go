@@ -392,21 +392,49 @@ func TestTheRunRecordCarriesNoHostnameOrHomePath(t *testing.T) {
 	if realHome == "" || realHome == os.Getenv("HOME") {
 		t.Fatalf("the machine's own home %q was not read before HOME was repointed", realHome)
 	}
-	if leaks := leaked(js); len(leaks) > 0 {
+	if leaks := leaked(js, ownWords(t)); len(leaks) > 0 {
 		t.Errorf("the run record carries %q:\n%s", leaks, js)
 	}
 	// The check can fire: a record that did carry the home is caught.
-	if leaks := leaked([]byte(`{"model":"` + realHome + `/models/x.gguf"}`)); len(leaks) == 0 {
+	if leaks := leaked([]byte(`{"model":"`+realHome+`/models/x.gguf"}`), nil); len(leaks) == 0 {
 		t.Fatal("the leak check misses the machine's own home path")
 	}
 }
 
+// A machine whose user or host is named after a word every run record
+// carries, as CI's user runner is, is not a leak: the word is the record's own.
+// A name the record has no word for is still caught.
+func TestTheLeakCheckTellsTheRecordsOwnWordsFromTheMachines(t *testing.T) {
+	user, host := realUser, realHost
+	t.Cleanup(func() { realUser, realHost = user, host })
+	realUser, realHost = "runner", "studio-of-alice"
+	own := ownWords(t)
+	if leaks := leaked(own, own); len(leaks) > 0 {
+		t.Errorf("a record built on the fixture machine leaks %q, a word every record carries", leaks)
+	}
+	if leaks := leaked([]byte(`{"machine":"studio-of-alice"}`), own); len(leaks) != 1 || leaks[0] != "studio-of-alice" {
+		t.Errorf("leaks = %q; want the host name the record has no word for", leaks)
+	}
+}
+
+// ownWords is a run record built on the fixture machine: every word in it is
+// the record's own, whatever machine writes one.
+func ownWords(t *testing.T) []byte {
+	t.Helper()
+	rec, err := newRunRecord(inputs(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	js, _ := json.Marshal(rec)
+	return js
+}
+
 // leaked is every one of the machine's own home, user and host name that js
-// carries.
-func leaked(js []byte) []string {
+// carries and own, a record no machine wrote into, does not.
+func leaked(js, own []byte) []string {
 	var out []string
 	for _, leak := range []string{realHost, realHome, realUser} {
-		if len(leak) > 2 && strings.Contains(string(js), leak) {
+		if len(leak) > 2 && strings.Contains(string(js), leak) && !strings.Contains(string(own), leak) {
 			out = append(out, leak)
 		}
 	}
