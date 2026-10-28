@@ -358,3 +358,132 @@ func TestGitignoreBlockIsASCII(t *testing.T) {
 		})
 	}
 }
+
+// countGitignoreLine counts the lines of raw that read exactly want once
+// trailing whitespace and CR are trimmed.
+func countGitignoreLine(raw []byte, want string) int {
+	n := 0
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.TrimRight(line, " \t\r") == want {
+			n++
+		}
+	}
+	return n
+}
+
+// TestGitignoreBlockOmitsEntriesListedOutsideTheFence is iss-2610020704152047:
+// a .gitignore that already lists an abcd entry outside the fence gets no
+// second copy inside it. The fence is still written, empty when every entry is
+// already listed, so detection finds it and reports no drift; the entry the
+// repository wrote stays the one in force, so git still ignores the local tier.
+func TestGitignoreBlockOmitsEntriesListedOutsideTheFence(t *testing.T) {
+	cases := []struct {
+		name       string
+		visibility string
+		outside    string
+		wantInside map[string]bool
+		wantOnce   []string
+	}{
+		{"private, same line", "private", "node_modules/\n.abcd/.work.local/\n",
+			map[string]bool{}, []string{".abcd/.work.local/"}},
+		{"private, anchored spelling", "private", "node_modules/\n/.abcd/.work.local/  \n",
+			map[string]bool{}, nil},
+		{"public, one of two listed", "public", "/memory/\n",
+			map[string]bool{"/.abcd/": true}, []string{"/memory/"}},
+		{"private, re-included later", "private", ".abcd/.work.local/\n!.abcd/.work.local/\n",
+			map[string]bool{".abcd/.work.local/": true}, nil},
+		{"private, commented out", "private", "# .abcd/.work.local/\n",
+			map[string]bool{".abcd/.work.local/": true}, []string{".abcd/.work.local/"}},
+		{"private, CRLF line", "private", "node_modules/\r\n.abcd/.work.local/\r\n",
+			map[string]bool{}, nil},
+		{"private, leading tab is another pattern", "private", "\t.abcd/.work.local/\n",
+			map[string]bool{".abcd/.work.local/": true}, nil},
+		{"private, trailing tab is part of the pattern", "private", ".abcd/.work.local/\t\n",
+			map[string]bool{".abcd/.work.local/": true}, nil},
+		{"private, escaped trailing space", "private", ".abcd/.work.local/\\ \n",
+			map[string]bool{".abcd/.work.local/": true}, nil},
+		{"private, re-included in another spelling", "private", ".abcd/.work.local/\n!.abcd/.work.local\n",
+			map[string]bool{".abcd/.work.local/": true}, nil},
+		{"private, re-included by a wider pattern", "private", ".abcd/.work.local/\n!.abcd/*\n",
+			map[string]bool{".abcd/.work.local/": true}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := gittest.NewRepo(t)
+			path := filepath.Join(repo.Root(), ".gitignore")
+			if err := os.WriteFile(path, []byte(tc.outside), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := applyVisibilityBlock(repo.Root(), tc.visibility); err != nil {
+				t.Fatalf("applyVisibilityBlock: %v", err)
+			}
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			inner, count := extractGitignoreBlock(raw)
+			if count != 1 {
+				t.Fatalf("%d abcd blocks after apply; want exactly 1 (the fence stays even when empty); file:\n%s", count, raw)
+			}
+			got := parseGitignoreEntries(inner)
+			if len(got) != len(tc.wantInside) {
+				t.Errorf("fenced entries = %v; want %v; file:\n%s", got, tc.wantInside, raw)
+			}
+			for e := range tc.wantInside {
+				if !got[e] {
+					t.Errorf("fence is missing %q; got %v; file:\n%s", e, got, raw)
+				}
+			}
+			for _, e := range tc.wantOnce {
+				if n := countGitignoreLine(raw, e); n != 1 {
+					t.Errorf("%q appears %d times in .gitignore; want once; file:\n%s", e, n, raw)
+				}
+			}
+			if !strings.Contains(string(raw), tc.outside) {
+				t.Errorf("apply changed the repository's own lines; file:\n%s", raw)
+			}
+			if gitignoreBlockDrifts(repo.Root(), tc.visibility) {
+				t.Errorf("detection reports gitignore drift right after apply; file:\n%s", raw)
+			}
+			if wrote, err := applyVisibilityBlock(repo.Root(), tc.visibility); err != nil || wrote {
+				t.Errorf("second apply wrote = %v, err = %v; want a no-op", wrote, err)
+			}
+			if !gitCheckIgnored(t, repo, ".abcd/.work.local/mode") {
+				t.Errorf("git does not ignore .abcd/.work.local/mode; file:\n%s", raw)
+			}
+		})
+	}
+}
+
+// TestGitignoreBlockDuplicatingAnOutsideEntryIsDrift is the repair half of
+// iss-2610020704152047: a file an earlier install left with the entry both
+// outside and inside the fence reads as drift, and one apply drops the fenced
+// copy while keeping the repository's own line.
+func TestGitignoreBlockDuplicatingAnOutsideEntryIsDrift(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".gitignore")
+	before := "node_modules/\n.abcd/.work.local/\n\n" + gitignoreBegin + "\n" + gitignoreHeader + "\n" +
+		".abcd/.work.local/\n" + gitignoreEnd + "\n"
+	if err := os.WriteFile(path, []byte(before), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !gitignoreBlockDrifts(dir, "private") {
+		t.Error("a fence repeating an entry listed outside it reads as no drift; want drift")
+	}
+	if _, err := applyVisibilityBlock(dir, "private"); err != nil {
+		t.Fatalf("applyVisibilityBlock: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countGitignoreLine(raw, ".abcd/.work.local/"); n != 1 {
+		t.Errorf(".abcd/.work.local/ appears %d times after apply; want once; file:\n%s", n, raw)
+	}
+	if _, count := extractGitignoreBlock(raw); count != 1 {
+		t.Errorf("%d abcd blocks after apply; want exactly 1; file:\n%s", count, raw)
+	}
+	if gitignoreBlockDrifts(dir, "private") {
+		t.Errorf("drift still reported after apply; file:\n%s", raw)
+	}
+}

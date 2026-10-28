@@ -72,7 +72,7 @@ func newDashboardStartCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd dashboard start: "
 			if port < 1 || port > 65535 {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("%s--port %d is not a port (1 to 65535)", prefix, port)}
+				return &exitError{Code: 2, Msg: prefix + "--port is not a port (1 to 65535; the value given is not repeated here)"}
 			}
 			home, err := dashboardHome(prefix)
 			if err != nil {

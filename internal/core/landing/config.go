@@ -174,6 +174,9 @@ type Facilitator struct {
 	Mode   string `json:"mode"`
 	Layer  string `json:"layer"`
 	Origin string `json:"origin"`
+	// HomeRefused says a refused home decided the mode (human), so Origin is
+	// the reason, not a file.
+	HomeRefused bool `json:"home_refused,omitempty"`
 }
 
 // checkMode accepts the two modes, exactly as spelt.
@@ -182,6 +185,17 @@ func checkMode(m string) error {
 		return fmt.Errorf("%q is not a facilitator mode", layered.BoundKey(m))
 	}
 	return nil
+}
+
+// ReadFacilitator resolves facilitator.mode for the working directory cwd,
+// as the layered configuration resolves it, with the notes RootsFor wrote on the way (a
+// refused home among them) for the caller to print. The error is the reader's
+// raw text: a front door masks it before printing it, since it can quote a key
+// a configuration file wrote.
+func ReadFacilitator(cwd string) (Facilitator, []string, error) {
+	r, notes := layered.RootsFor(cwd)
+	f, err := readMode(r)
+	return f, notes, err
 }
 
 // readMode resolves facilitator.mode through the layered configuration
@@ -214,7 +228,7 @@ func readMode(r layered.Roots) (Facilitator, error) {
 		}
 	}
 	if r.HomeRefused {
-		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Machine.String(), Origin: homeRefusedOrigin(ModeHuman)}, nil
+		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Machine.String(), Origin: homeRefusedOrigin(ModeHuman), HomeRefused: true}, nil
 	}
 	if len(vals) > 0 {
 		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeAuto, Layer: vals[0].layer, Origin: vals[0].origin}, nil

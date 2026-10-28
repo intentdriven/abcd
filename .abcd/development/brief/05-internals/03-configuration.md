@@ -1148,6 +1148,17 @@ while the committed tiers stay published regardless. Narrowing needs positive
 evidence of tracked files, so a repo whose git cannot be asked keeps the declared
 fence, and the install receipt states the narrowing out loud.
 
+An entry the repo's `.gitignore` already lists outside abcd's fence, with the same
+meaning, is not written again inside it (iss-2610020704152047): the repo's own line
+stays the one in force, and the fence is written even when that leaves it empty, so
+detection still finds it and reports no drift. A fence an earlier install filled
+with such a copy reads as drift, and the next apply drops the copy. The match is on
+the normalised line (a leading slash is ignored where an inner slash already
+anchors the pattern), not a `git check-ignore` probe, because a probe also answers
+from the machine's global excludes and `.git/info/exclude`, which other clones do
+not share. A broader rule (`.abcd/` for `.abcd/.work.local/`), a commented-out line
+or a later `!` negation of the entry does not count as listing it.
+
 **No exceptions to the visibility rule.** Locked decision: visibility is one
 switch, with no always-gitignored carve-out for any namespace on sensitivity
 grounds. If sensitivity is a concern, set visibility to public, which gitignores
