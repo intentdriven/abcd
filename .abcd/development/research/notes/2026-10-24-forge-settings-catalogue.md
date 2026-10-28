@@ -481,16 +481,16 @@ Settings are named forge-neutrally, and each name has its GitHub object in brack
 
 ## 12. Release deploy environment (GitHub: environment `release`)
 
-- **What it is for:** A person approves before a release publishes, and only `main` or a `v*` tag may run the job (`.github/workflows/release.yml` line 326, iss-2610150812471577 resolution: "the release environment accepts main and v* tags only").
-- **Expected value:** Required reviewer present, branch policy `main` (branch) and `v*` (tag), no secrets.
-- **Current state: MATCHES.**
-  - Required reviewer User `REPPL`, `prevent_self_review: false`.
+- **What it is for:** Only `main` or a `v*` tag may run the job (the `release` job's `environment:` binding in `.github/workflows/release.yml`; iss-2610150812471577 resolution: "the release environment accepts main and v* tags only"). No person approves before a release publishes: adr-2610281718537125 partly supersedes adr-43 point 2.
+- **Expected value:** No required reviewer, branch policy `main` (branch) and `v*` (tag), no secrets.
+- **Current state: DIFFERS** until the reviewer is removed after adr-2610281718537125 lands.
+  - Required reviewer User `REPPL`, `prevent_self_review: false`, as read on 2026-10-24.
   - Policies: `main` (branch) and `v*` (tag).
   - `can_admins_bypass: true`, which the repository does not discuss.
   - No environment secrets.
 - **Direct URL:** https://github.com/intentdriven/abcd/settings/environments (unconfirmed)
 - **Docs:** https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments
-- **Verified steps:** "Creating an environment" step 6:
+- **Verified steps:** "Creating an environment" step 6, the step left out here, so no reviewer is set:
   > 6. Optionally, specify people or teams that must approve workflow jobs that use this environment. …
   >    1. Select **Required reviewers**.
   >    2. Enter up to 6 people or teams. Only one of the required reviewers needs to approve the job for it to proceed.
@@ -505,7 +505,7 @@ Settings are named forge-neutrally, and each name has its GitHub object in brack
   ```
 - **Set:**
   ```sh
-  gh api -X PUT repos/intentdriven/abcd/environments/release --input - <<<'{"reviewers":[{"type":"User","id":<REPPL user id>}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+  gh api -X PUT repos/intentdriven/abcd/environments/release --input - <<<'{"reviewers":[],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
   ```
   Then `POST …/deployment-branch-policies` with `name=main type=branch` and `name=v* type=tag`.
 - **GitLab pointer (unverified):** A protected environment with deployment approvals.

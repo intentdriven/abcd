@@ -225,4 +225,5 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610241022541063](2610241022541063-each-person-s-commit-identity-lives-on.md) | Each person's commit identity lives on their own machine, not in the repository | accepted | 2026-10-24 |
 | [adr-2610241057124151](2610241057124151-abcd-installs-the-tools-it-needs-from.md) | abcd installs the tools it needs from downloads pinned in its own release | accepted | 2026-10-24 |
 | [adr-2610241101463288](2610241101463288-setup-asks-short-questions-and-lists-its.md) | Setup asks short questions and lists its defaults on one plan | accepted | 2026-10-24 |
+| [adr-2610281718537125](2610281718537125-a-release-publishes-with-no-approval.md) | A release publishes with no approval step | accepted | 2026-10-28 |
 <!-- /index -->
