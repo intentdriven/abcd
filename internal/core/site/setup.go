@@ -54,6 +54,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/launch/scaffold"
 	"github.com/intentdriven/abcd/internal/core/positioning"
 	"github.com/intentdriven/abcd/internal/core/tools"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -1186,7 +1187,13 @@ func setupSwitchedOff(root, branch string, adapter hosting.Adapter, s hosting.Si
 			Detail: "not a regular file, so setup leaves it"})
 		return res, nil
 	}
-	have, err := os.ReadFile(path)
+	// Read on the descriptor that was checked, so a link or a pipe swapped in
+	// after the Lstat is refused rather than followed; a file longer than the
+	// workflow setup writes already differs from it.
+	have, err := fsutil.ReadGuarded(path, int64(len(want))+1)
+	if errors.Is(err, fsutil.ErrTooBig) {
+		have, err = nil, nil
+	}
 	if err != nil {
 		return SetupResult{}, fmt.Errorf("site setup: %s could not be read", SiteWorkflowRelPath)
 	}
