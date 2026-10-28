@@ -102,6 +102,13 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 	if rs.Config != nil {
 		routed = func(role string) bool { return rs.Config.RouteFor(role).Runner != runner.Host }
 		overrides = rs.Config.FlagRoutes()
+		o.runnerRoute = func(role string) (string, string) {
+			r := rs.Config.RouteFor(role)
+			if r.Runner == runner.Host {
+				return "", ""
+			}
+			return r.Runner, r.Override()
+		}
 	}
 	res, err := advanceWith(repoRoot, runID, steps, o, routed, overrides)
 	if err != nil || res.Awaiting == nil || !res.handed || rs.Config == nil {
