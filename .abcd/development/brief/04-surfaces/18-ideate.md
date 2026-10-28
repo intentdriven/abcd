@@ -144,9 +144,12 @@ something a later reader depends on:
   back to what produced it. A key the contract does not declare refuses the
   document too; the refusal names it redacted through the canonical scanner, and
   describes it when the scanner cannot be trusted.
-- **The evidence does not hold up**: a record id written anywhere in any leg,
-  outside a web address, that does not resolve (the refusal names the leg), a
-  cited value that is not a record id
+- **The evidence does not hold up**: a record id that does not resolve, written
+  outside a web address in a claim or its primary source, a grill note, a kill
+  attempt, a reviewer's sources, the ruling's reason, a rejected alternative, an
+  origin source or the reframing (the refusal names where it was written; the
+  grill's search terms and places are not checked, because a searched-for id
+  that names nothing is the finding), a cited value that is not a record id
   at all, a claim naming no primary source or one of no known shape, a
   `source:` key the sources corpus does not carry (where a corpus exists), a
   grill with no hits that records no searches, a `verified` claim whose source is
@@ -192,8 +195,9 @@ the three host legs have already been paid for. The create is exclusive, which i
 the no-overwrite guarantee. The pointer is a new file of its own, so there is
 no shared file to read, modify and write, and no lock beyond the decision
 writer's own mint lock. If the decision cannot be recorded after the verdict
-landed, the verdict is removed again, so a run never leaves a verdict nothing
-points at.
+landed, the verdict is removed again, so a run does not leave a verdict nothing
+points at; if that removal fails too, the refusal says so and names the file to
+remove by hand.
 
 ## References
 

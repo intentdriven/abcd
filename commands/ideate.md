@@ -17,8 +17,8 @@ mistake to warn about. Reach for it when an idea is big and unproven enough that
 being wrong about it would be expensive.
 
 **The binary does no judging.** The three legs below are yours to run. `abcd
-ideate record` validates what they produced, proves every record id in every leg
-names a real record, and writes the durable verdict. It never fetches a source and
+ideate record` validates what they produced, proves every record id the legs
+cite names a real record, and writes the durable verdict. It never fetches a source and
 never forms an opinion.
 
 ## First, ask: private or public?
@@ -92,10 +92,11 @@ verdict. Answer one question: does an entry already
 
 Every hit is **cited by record id** (`itd-N`, `spc-N`, `iss-N`, `adr-N`,
 `dcn-N`), and `abcd ideate record` refuses the whole verdict if an id does not
-resolve in this repository — in a hit, and anywhere else in the verdict a record
-id is written: a claim or its primary source, a note, a kill attempt, a
-reviewer's sources, the ruling, a rejected alternative. Check the id before you
-write it down. The brief, the principles,
+resolve in this repository — in a hit, and in a claim or its primary source, a
+note, a kill attempt, a reviewer's sources, the ruling's reason, a rejected
+alternative, an origin source or the reframing (an id inside a web address is
+part of the address). A search term naming an id is not checked, because
+searching for one is the finding. Check the id before you write it down. The brief, the principles,
 the research notes, and a frozen log's lines carry no per-entry id, so a hit
 that rests on one goes in the `note` field of the nearest citable record. A
 standing verdict on the submitted idea — recorded in a research note or a
@@ -243,8 +244,8 @@ the config is repaired.
 Exit codes:
 
 - **0** — recorded. Report the `visibility`, the `verdict`, the `path`, and the `cited_records`
-  (the ids the grill cited, every one proved to resolve, as is every other id the
-  verdict carries). Show the user the
+  (the ids the grill cited, every one proved to resolve, as is every id cited
+  elsewhere in the verdict, apart from the idea text and the grill's searches). Show the user the
   written record. If `redactions` is non-zero, say so — the record no longer
   matches what was composed, and whoever composed it needs to know a credential
   or an identity was in the text.
