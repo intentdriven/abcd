@@ -302,7 +302,7 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	// Without this step ahead of the secret steps, a person following them
 	// sets the token first, and the workflow's first run creates the deploy
 	// environment with no policy at all: deployable from any branch.
-	createStep := fmt.Sprintf("create the forge environments %s and %s, each admitting only branch %s and tags v*, "+
+	createStep := fmt.Sprintf("create the forge environments %s and %s, each admitting only branch %s, "+
 		"as the workflow's header describes, before setting any deploy secret", EnvRender, EnvDeploy, branch)
 	if forge == nil {
 		envOK = false
@@ -612,9 +612,12 @@ func renderSiteWorkflow(branch string, adapter hosting.Adapter) ([]byte, error) 
 	return buf.Bytes(), err
 }
 
-// desiredPolicies are the refs each environment admits.
+// desiredPolicies are the refs each environment admits: the default branch
+// alone. Every run of the written workflow starts from it, a published
+// release's included (its relay job dispatches the workflow there), so a tag
+// is never a ref an environment needs to admit.
 func desiredPolicies(branch string) []BranchPolicy {
-	return []BranchPolicy{{Name: branch, Type: "branch"}, {Name: "v*", Type: "tag"}}
+	return []BranchPolicy{{Name: branch, Type: "branch"}}
 }
 
 // setupEnvironments reads both environments, asks once for every change, and
@@ -628,7 +631,7 @@ func desiredPolicies(branch string) []BranchPolicy {
 // put there. An existing environment on custom policies only gains the
 // policies it lacks (their own endpoint, which touches nothing else); one that
 // admits more refs than that, through its protection mode or through a custom
-// rule beyond the two it needs, is left as it is, and restricting it is a step.
+// rule beyond the one it needs, is left as it is, and restricting it is a step.
 func setupEnvironments(ctx context.Context, forge Forge, branch string, asker Asker) ([]EnvironmentOutcome, string, string, []string) {
 	names := []string{EnvRender, EnvDeploy}
 	outcomes := make([]EnvironmentOutcome, len(names))
@@ -656,8 +659,8 @@ func setupEnvironments(ctx context.Context, forge Forge, branch string, asker As
 		st, exists := envs[env]
 		if exists && (!st.CustomBranchPolicies || st.ProtectedBranches) {
 			outcomes[i].Status = RemoteUnrestricted
-			steps = append(steps, fmt.Sprintf("restrict the existing environment %s to branch %s and tags v*: in the forge's settings "+
-				"for %s, admit selected branches and tags only, then re-run `abcd site setup` to add the two rules. "+
+			steps = append(steps, fmt.Sprintf("restrict the existing environment %s to admit only branch %s: in the forge's settings "+
+				"for %s, set its deployment branches to selected branches and tags, then re-run `abcd site setup` to add the branch rule. "+
 				"abcd does not rewrite an environment that exists, because the forge's environment write replaces its "+
 				"protection rules, required reviewers included", env, branch, env))
 			continue
@@ -667,9 +670,9 @@ func setupEnvironments(ctx context.Context, forge Forge, branch string, asker As
 			if have, err = forge.Policies(ctx, env); err != nil {
 				return fail("the deployment policy read for "+env, err)
 			}
-			// A rule of the environment's own beyond the two it needs admits
-			// more refs than they do (a branch `*`, for one), so the
-			// environment is as open as one on no custom rules at all.
+			// A rule of the environment's own beyond the one it needs admits
+			// more refs than it does (a branch `*`, or a tag rule, for two),
+			// so the environment is as open as one on no custom rules at all.
 			var extra []string
 			for _, h := range have {
 				if !containsPolicy(desiredPolicies(branch), h) {
@@ -678,7 +681,7 @@ func setupEnvironments(ctx context.Context, forge Forge, branch string, asker As
 			}
 			if len(extra) > 0 {
 				outcomes[i].Status = RemoteUnrestricted
-				steps = append(steps, fmt.Sprintf("restrict the existing environment %s to branch %s and tags v*: in the forge's settings "+
+				steps = append(steps, fmt.Sprintf("restrict the existing environment %s to admit only branch %s: in the forge's settings "+
 					"for %s, remove its deployment rules for %s, then re-run `abcd site setup` to add any rule it lacks. "+
 					"abcd does not remove a rule a person put on an environment that exists", env, branch, env, strings.Join(extra, ", ")))
 				continue
@@ -692,7 +695,7 @@ func setupEnvironments(ctx context.Context, forge Forge, branch string, asker As
 		}
 		plans[i] = p
 		if !exists {
-			outcomes[i].Changes = append(outcomes[i].Changes, "create "+env+" admitting named branches and tags only")
+			outcomes[i].Changes = append(outcomes[i].Changes, "create "+env+" admitting only branch "+branch)
 		}
 		for _, m := range p.missing {
 			outcomes[i].Changes = append(outcomes[i].Changes, "admit "+m.Type+" "+m.Name+" to "+env)

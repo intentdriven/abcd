@@ -246,7 +246,7 @@ func TestSetupWithoutACredentialWritesTheRepositoryHalfAndSaysWhatRemains(t *tes
 	}
 	for _, env := range []string{EnvRender, EnvDeploy} {
 		pol := h.forge.policies[env]
-		want := []BranchPolicy{{Name: "main", Type: "branch"}, {Name: "v*", Type: "tag"}}
+		want := []BranchPolicy{{Name: "main", Type: "branch"}}
 		if !reflect.DeepEqual(pol, want) {
 			t.Errorf("environment %s policies = %v, want %v", env, pol, want)
 		}
@@ -449,6 +449,8 @@ func TestAnExistingEnvironmentIsNeverRewritten(t *testing.T) {
 		{"admits protected branches", EnvironmentState{ProtectedBranches: true}, nil, ""},
 		{"admits every branch through a custom rule", EnvironmentState{CustomBranchPolicies: true},
 			[]BranchPolicy{{Name: "main", Type: "branch"}, {Name: "*", Type: "branch"}}, "branch *"},
+		{"admits release tags through a custom rule", EnvironmentState{CustomBranchPolicies: true},
+			[]BranchPolicy{{Name: "main", Type: "branch"}, {Name: "v*", Type: "tag"}}, "tag v*"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -467,7 +469,7 @@ func TestAnExistingEnvironmentIsNeverRewritten(t *testing.T) {
 				t.Errorf("the existing environment's reviewers were lost: %v", got)
 			}
 			if !reflect.DeepEqual(h.forge.writes, []string{
-				"put " + EnvRender, "policy " + EnvRender + " branch main", "policy " + EnvRender + " tag v*",
+				"put " + EnvRender, "policy " + EnvRender + " branch main",
 			}) {
 				t.Errorf("forge writes = %v, want only the absent %s created", h.forge.writes, EnvRender)
 			}
@@ -483,7 +485,7 @@ func TestAnExistingEnvironmentIsNeverRewritten(t *testing.T) {
 			restrict, secret := -1, -1
 			for i, r := range res.Remaining {
 				if restrict < 0 && strings.Contains(r, "restrict the existing environment "+EnvDeploy) &&
-					strings.Contains(r, "branch main and tags v*") {
+					strings.Contains(r, "to admit only branch main:") {
 					restrict = i
 				}
 				if secret < 0 && strings.Contains(r, "gh secret set") {
@@ -509,8 +511,8 @@ func TestAnExistingEnvironmentIsNeverRewritten(t *testing.T) {
 				t.Errorf("the existing environment %s was rewritten (writes %v)", EnvDeploy, h.forge.writes)
 			}
 		}
-		if !reflect.DeepEqual(h.forge.policies[EnvDeploy], []BranchPolicy{{Name: "main", Type: "branch"}, {Name: "v*", Type: "tag"}}) {
-			t.Errorf("%s policies = %v, want the missing tag policy added", EnvDeploy, h.forge.policies[EnvDeploy])
+		if !reflect.DeepEqual(h.forge.policies[EnvDeploy], []BranchPolicy{{Name: "main", Type: "branch"}}) {
+			t.Errorf("%s policies = %v, want its one branch rule left as it is", EnvDeploy, h.forge.policies[EnvDeploy])
 		}
 		if len(h.forge.protection[EnvDeploy]) != 1 {
 			t.Errorf("the existing environment's reviewers were lost: %v", h.forge.protection[EnvDeploy])
@@ -859,7 +861,7 @@ func TestTheDefaultBranchIsTheForgesNotTheCheckouts(t *testing.T) {
 	h.forge.defaultBranch = "trunk"
 	res := h.run(t)
 	for _, env := range []string{EnvRender, EnvDeploy} {
-		want := []BranchPolicy{{Name: "trunk", Type: "branch"}, {Name: "v*", Type: "tag"}}
+		want := []BranchPolicy{{Name: "trunk", Type: "branch"}}
 		if !reflect.DeepEqual(h.forge.policies[env], want) {
 			t.Errorf("%s admits %v, want %v", env, h.forge.policies[env], want)
 		}
@@ -881,7 +883,7 @@ func TestTheDefaultBranchIsTheForgesNotTheCheckouts(t *testing.T) {
 	h2.forge.defaultBranch = "trunk"
 	for _, env := range []string{EnvRender, EnvDeploy} {
 		h2.forge.envs[env] = EnvironmentState{CustomBranchPolicies: true}
-		h2.forge.policies[env] = []BranchPolicy{{Name: "trunk", Type: "branch"}, {Name: "v*", Type: "tag"}}
+		h2.forge.policies[env] = []BranchPolicy{{Name: "trunk", Type: "branch"}}
 	}
 	res = h2.run(t)
 	for _, e := range res.Environments {
@@ -902,7 +904,7 @@ func TestADefaultBranchTheForgeCannotNameFallsBackLoudly(t *testing.T) {
 			h := newHarness(t)
 			mutate(h.forge)
 			res := h.run(t)
-			if !reflect.DeepEqual(h.forge.policies[EnvDeploy], []BranchPolicy{{Name: "main", Type: "branch"}, {Name: "v*", Type: "tag"}}) {
+			if !reflect.DeepEqual(h.forge.policies[EnvDeploy], []BranchPolicy{{Name: "main", Type: "branch"}}) {
 				t.Errorf("the fallback did not use the checkout's branch main: %v", h.forge.policies[EnvDeploy])
 			}
 			notes := strings.Join(res.Notes, "\n")
@@ -1028,5 +1030,57 @@ func TestSetupOffersAMissingGh(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestAPublishedReleaseIsRelayedToTheDefaultBranch: both environments admit
+// only the default branch, and a `release: published` run's ref is the tag, so
+// the event reaches neither environment's job. A relay job with no environment
+// and no permission but actions: write starts this workflow on the default
+// branch with the release's tag as its input, so a release published by hand
+// deploys like every other, from the default branch's copy of the workflow.
+func TestAPublishedReleaseIsRelayedToTheDefaultBranch(t *testing.T) {
+	wf, err := renderSiteWorkflow("trunk", cloudflare.Adapter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(wf)
+	if !strings.Contains(text, "\n  release:\n    types: [published]\n") {
+		t.Errorf("the workflow no longer runs on a published release")
+	}
+	relay := topJob(t, text, "relay")
+	code := codeOf(relay)
+	for _, want := range []string{
+		"if: github.event_name == 'release'",
+		"actions: write",
+		`gh workflow run "$WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f tag="$TAG"`,
+		"TAG: ${{ github.event.release.tag_name }}",
+		"DEFAULT_BRANCH: trunk",
+	} {
+		if !strings.Contains(code, want) {
+			t.Errorf("the relay job lacks %q:\n%s", want, relay)
+		}
+	}
+	if strings.Contains(code, "environment:") || strings.Contains(code, "contents:") {
+		t.Errorf("the relay job names an environment or a permission beyond actions: write:\n%s", relay)
+	}
+	if strings.Count(code, "    permissions:") != 1 || strings.Count(code, ": write") != 1 || strings.Count(code, ": read") != 0 {
+		t.Errorf("the relay job's permissions are not actions: write alone:\n%s", relay)
+	}
+	for _, job := range []string{"render", "deploy"} {
+		if strings.Contains(codeOf(topJob(t, text, job)), "github.event.release") {
+			t.Errorf("the %s job reads the release event, which never reaches it", job)
+		}
+	}
+	gate := codeOf(topJob(t, text, "render"))
+	if !strings.Contains(gate, "github.event_name != 'release'") {
+		t.Errorf("the render job does not stand aside on the release event:\n%s", gate)
+	}
+	header, _, _ := strings.Cut(text, "\non:")
+	if strings.Contains(header, "v*") {
+		t.Errorf("the environment contract still names a tag rule:\n%s", header)
+	}
+	if !strings.Contains(header, "admits only the default branch") {
+		t.Errorf("the environment contract does not say each environment admits only the default branch:\n%s", header)
 	}
 }

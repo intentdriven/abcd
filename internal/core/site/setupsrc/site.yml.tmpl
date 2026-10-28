@@ -13,6 +13,10 @@ name: site
 # Three entry points, one path:
 #
 #   release: published    a release published by a person or a personal token.
+#                         Its run's ref is the tag, which neither environment
+#                         admits, so its one job, `relay`, starts this workflow
+#                         on <% .DefaultBranch %> with the release's tag as the
+#                         dispatch input, and the render and deploy run there.
 #   workflow_run          the `release` or `auto-release` workflow finishing on
 #                         <% .DefaultBranch %> or on a v-tag. A release created with
 #                         the workflow's own GITHUB_TOKEN fires no `release`
@@ -26,19 +30,24 @@ name: site
 #                         unless a dispatch rolled it back to an older tag,
 #                         which the next such completion replaces with the
 #                         latest release again.
-#   workflow_dispatch     a redeploy by hand; an empty tag means the latest
-#                         published release.
+#   workflow_dispatch     a redeploy by hand, from <% .DefaultBranch %>, and the
+#                         relay's run; an empty tag means the latest published
+#                         release.
 #
 # THE ENVIRONMENT CONTRACT (the tree's record of the forge's state; `abcd site
 # setup` creates both through the forge's API when it is asked to):
 #
 #   site-render   the render job. No secrets. Deployment policy: branch
-#                 `<% .DefaultBranch %>` and tags `v*`.
+#                 `<% .DefaultBranch %>` only.
 #   site          the deploy job. Same policy. Secrets:<% range .Secrets %> <% . %><% end %>.
 #
-# The policy refuses unreviewed workflow content: a dispatch runs this file as
-# it exists on the ref it was dispatched from, so a branch that is neither the
-# default branch nor a release tag is refused before either job starts.
+# Each environment admits only the default branch. The policy refuses
+# unreviewed workflow content: a run executes this file as it exists on its
+# ref, so a run from any other branch, or from a tag, is refused before either
+# job starts. The relay's dispatch is made with the workflow's own token, and
+# still starts a run: GitHub's "Triggering a workflow from a workflow"
+# (https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow)
+# says workflow_dispatch events always create workflow runs.
 on:
   release:
     types: [published]
@@ -63,6 +72,28 @@ permissions:
   contents: read
 
 jobs:
+  # A published release's run has the tag as its ref, which neither environment
+  # admits. This job holds no environment and no permission but starting a
+  # workflow, and starts this one on the default branch with the release's tag,
+  # so a hand-published release renders and deploys like every other. The tag
+  # passes through an environment variable, never into the command line itself.
+  relay:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Start this workflow on the default branch for the release's tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW: site.yml
+          DEFAULT_BRANCH: <% .DefaultBranch %>
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          gh workflow run "$WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f tag="$TAG"
+
   render:
     # A workflow_run fires for the release workflows' runs whatever triggered
     # them, and a head branch is a name a fork can choose. Only a successful
@@ -72,13 +103,13 @@ jobs:
     # from the triggering run is used either way: the tag is resolved from the
     # repository's published releases.
     if: >-
-      ${{ github.event_name != 'workflow_run' || (
+      ${{ github.event_name != 'release' && (github.event_name != 'workflow_run' || (
           github.event.workflow_run.conclusion == 'success' &&
           github.event.workflow_run.event != 'pull_request' &&
           github.event.workflow_run.event != 'pull_request_target' &&
           github.event.workflow_run.head_repository.full_name == github.repository &&
           (github.event.workflow_run.head_branch == '<% .DefaultBranch %>' ||
-           startsWith(github.event.workflow_run.head_branch, 'v'))) }}
+           startsWith(github.event.workflow_run.head_branch, 'v')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: site-render
@@ -91,11 +122,10 @@ jobs:
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          EVENT_TAG: ${{ github.event.release.tag_name }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          tag="${EVENT_TAG:-${INPUT_TAG:-}}"
+          tag="${INPUT_TAG:-}"
           if [ -z "$tag" ]; then
             tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
           fi
