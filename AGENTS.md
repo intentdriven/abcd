@@ -155,6 +155,10 @@ make preflight      # the pre-push gate: the load check first (load-check,
                     # smoke + evals-cold-reading,
                     # then build + vet +
                     # test + race (internal), all on the go.mod toolchain
+make precheck       # minutes, no queue: preflight's gates, build, vet, the
+                    # record, page and agent audit packages, and the command
+                    # and site audit tests chosen by name; no unit or race
+                    # stage. Run it before queuing a preflight
 make build          # cross-compiles bin/abcd-<goos>-<arch> (there is no plain bin/abcd)
 make fmt-check      # format gate, run through the go.mod toolchain's gofmt
 make fmt            # rewrite what fmt-check names, with that same gofmt
@@ -265,7 +269,11 @@ new session, so it holds only throwaway files for the turn at hand (the
 - **Wired or it isn't done.** Every verb is reachable from both the CLI and the
   plugin markdown surface and demonstrably executes there — no dead scaffolding.
 - **Host-delegated by default.** LLM review/agent work is delegated to the host;
-  native/CLI/API/MCP oracles are opt-in adapters.
+  native/CLI/API/MCP oracles are opt-in adapters. The one written exception is
+  a drain the person drives from a plain terminal, which starts agents itself
+  on their own invocation
+  ([adr-2610222222326104](.abcd/development/decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md));
+  it is not built until itd-2610222215485265 ships.
 - **Single repo, curated release.** `.abcd/**` stays in-tree and is present in
   every repository checkout — marketplace installs and release source archives
   included — never in the released binaries; the launch bundler denies the

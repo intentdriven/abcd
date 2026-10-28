@@ -252,8 +252,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd implement load: --timeout is for --wait or --race-gate (nothing checked)"}
 			}
 			if !slices.Contains(implement.LoadSites(), site) {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement load: --site %q is not one of: %s (nothing checked)",
-					site, strings.Join(implement.LoadSites(), ", "))}
+				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement load: --site is not one of: %s (the value given is not repeated here; nothing checked)",
+					strings.Join(implement.LoadSites(), ", "))}
 			}
 			req := implement.LoadRequest{Site: site, Read: loadReader, Self: loadSelf()}
 			if cwd, err := os.Getwd(); err == nil {

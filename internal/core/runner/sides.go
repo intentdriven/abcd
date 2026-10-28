@@ -3,7 +3,7 @@ package runner
 // sides.go is what a runner records of both sides of a run (itd-166): the
 // model it passed the harness and the prompt it handed it, beside what the
 // harness's events say answered, with the token counts and the cost they
-// carry. The vocabulary (the fixed field lists, the four reasons, the usage
+// carry. The vocabulary (the fixed field lists, the reasons, the usage
 // and the cost) is internal/core/oracle's, shared with the provider adapter's
 // record, so two runs compare field by field whatever routes they took.
 //
@@ -54,6 +54,25 @@ type Sides struct {
 	Cost  *oracle.Cost  `json:"cost,omitempty"`
 	// Unpinned lists every field of the fixed lists the run could not pin.
 	Unpinned []oracle.Unpinned `json:"unpinned,omitempty"`
+	// ProviderPin is the pin the run's opencode was pointed at, and
+	// PinConfigSHA256 the SHA-256 of the sealed configuration that carried it
+	// (pin.go); empty when the run was not pinned. It is what was configured,
+	// not what reached OpenRouter, so Unpinned lists it as not verified.
+	ProviderPin     *oracle.Pin `json:"provider_pin,omitempty"`
+	PinConfigSHA256 string      `json:"pin_config_sha256,omitempty"`
+	// LocalPin is the local pin of a run routed to a model on this machine
+	// (oracle.LocalPin, iss-2610161734428291), and LocalServed what the
+	// server reported when it was probed before the run; both absent on any
+	// other route. LocalServed describes the probe, not the run: opencode
+	// can still be pointed at another server (askedUnpinned), so the local
+	// fields stay not verified. PinConfigSHA256 is then the sealed
+	// configuration that pointed opencode at the probed server.
+	LocalPin    *oracle.LocalPin    `json:"local_pin,omitempty"`
+	LocalServed *oracle.LocalServed `json:"local_served,omitempty"`
+	// Local says the route's provider is a block on this machine, so the
+	// record lists the local fields (iss-2610171545099084). A harness's
+	// output cannot say so; the configuration does.
+	Local bool `json:"local,omitempty"`
 }
 
 // RecordOf is the route record of a role ran ran, routed to asked, whose
@@ -85,17 +104,48 @@ func cleanHarness(s string) string {
 }
 
 // askedUnpinned lists the asked side's fields neither command-line runner
-// can pin: no provider pin, sampling setting, seed, effort or context variant
-// is passed to a harness (each is the harness's or the owner's configuration),
-// nor, when the runner passed none, a model.
+// can pin: no sampling setting, seed, effort or context variant is passed to
+// a harness (each is the harness's or the owner's configuration), nor, when
+// the runner passed none, a model, nor a provider pin unless the run was
+// pointed at one (an opencode run to a pinned model, pin.go). A pin a run was
+// pointed at is listed as not verified beside the pin the record carries:
+// the harness was handed it, and nothing it returns shows it reached the
+// provider. A route to a model on this machine lists the local fields too:
+// not configured without a local pin, and with one, each the server did not
+// confirm not verified; the pin's context is then the context asked for.
 func askedUnpinned(un *oracle.Unpin, s Sides) {
 	un.Unless(s.ModelAsked != "", oracle.AskedModel, oracle.NotConfigured)
-	for _, f := range []oracle.Field{oracle.AskedProviderPin, oracle.AskedTemperature, oracle.AskedTopP,
-		oracle.AskedSeed, oracle.AskedEffort, oracle.AskedContext} {
+	if s.ProviderPin != nil {
+		un.Add(oracle.AskedProviderPin, oracle.NotVerified)
+	} else {
+		un.Add(oracle.AskedProviderPin, oracle.NotConfigured)
+	}
+	for _, f := range []oracle.Field{oracle.AskedTemperature, oracle.AskedTopP,
+		oracle.AskedSeed, oracle.AskedEffort} {
 		un.Add(f, oracle.NotConfigured)
+	}
+	if s.Local && s.LocalPin != nil {
+		// opencode merges ~/.opencode/opencode.json after the sealed
+		// configuration (pin.go), and an entry there can point the provider
+		// at another server than the one probed: what the probe confirmed is
+		// not shown to be what served the run, as a provider pin on this
+		// path is not.
+		un.Add(oracle.AskedContext, oracle.NotVerified)
+	} else if s.Local {
+		oracle.LocalContext(un, s.LocalPin, s.LocalServed)
+	} else {
+		un.Add(oracle.AskedContext, oracle.NotConfigured)
 	}
 	un.Unless(s.PromptSHA256 != "", oracle.AskedPromptSHA256, oracle.NotReported)
 	un.Unless(s.HarnessVersion != "", oracle.AskedHarnessVersion, oracle.NotReported)
+	switch {
+	case s.Local && s.LocalPin != nil:
+		for _, f := range oracle.LocalFields {
+			un.Add(f, oracle.NotVerified)
+		}
+	case s.Local:
+		oracle.LocalAsked(un, s.LocalPin, s.LocalServed)
+	}
 }
 
 // counted is which of a usage's counts the harness reported.
@@ -121,5 +171,8 @@ func servedUnpinned(un *oracle.Unpin, model string, s Sides, c counted) {
 		un.Add(oracle.ServedCost, oracle.HarnessComputed)
 	} else {
 		un.Add(oracle.ServedCost, oracle.NotReported)
+	}
+	if s.Local {
+		oracle.LocalServedList(un, s.LocalServed)
 	}
 }

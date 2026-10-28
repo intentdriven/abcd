@@ -100,7 +100,7 @@ func newIntentInterviewCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd intent interview: one intent is expected — abcd intent interview <itd-N>"}
 			}
 			if !recordid.ValidIntentID(args[0]) {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd intent interview: %q is not an intent id (itd-N) (nothing was run)", termsafe.Sanitize(args[0]))}
+				return &exitError{Code: 2, Msg: "abcd intent interview: the argument is not an intent id (itd-N) (it is not repeated here; nothing was run)"}
 			}
 			return nil
 		},

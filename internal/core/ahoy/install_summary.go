@@ -84,7 +84,7 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		Action: "Nothing. Commit the file with the rest.",
 	},
 	writeGitignore: {
-		What:   "Told git which abcd files stay on this machine, in a fenced block in .gitignore.",
+		What:   "Made sure .gitignore tells git which abcd files stay on this machine, putting in abcd's fenced block only what the file did not already list.",
 		Why:    "Your private notes and scratch files, and for a public repository abcd's records, are never committed by accident.",
 		Action: "Nothing. Leave the fenced block as it is; abcd keeps it up to date.",
 	},
@@ -379,7 +379,7 @@ var readmeAwaitsConfigHelp = SummaryItem{
 var remainingHelp = SummaryItem{
 	What:   "Some required set-up steps are still not done.",
 	Why:    "abcd does not work fully in this repository until they are.",
-	Action: "Run abcd ahoy install again and answer y to each question; abcd ahoy doctor lists the steps one by one.",
+	Action: "Run abcd ahoy install again and answer each question it asks, or pass a value's answer as its flag (--visibility, --docs-target, --oracle-backend, --scan-deep); abcd ahoy doctor lists the steps one by one.",
 }
 
 // unverifiedCopyHelp explains an owned PATH copy whose build provenance did not

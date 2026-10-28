@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"reflect"
 	"slices"
 
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -34,8 +35,10 @@ func (st DrainState) textWritten() bool {
 	}
 	for _, j := range st.Judgements {
 		texts = append(texts, j.Issue, j.RemedySHA256, j.Answer, j.Kind, j.Reason, j.Note)
-		if r := j.Route; r != nil {
-			texts = append(texts, r.Asked, r.Ran, r.Model)
+		// A judge route's every string, both sides and its pins included,
+		// is held to the mask the run state's routes are read through.
+		if r := j.Route; r != nil && !reflect.DeepEqual(maskRoute(*r), *r) {
+			return false
 		}
 	}
 	for _, f := range st.JudgeFallbacks {

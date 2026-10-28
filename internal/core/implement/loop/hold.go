@@ -21,6 +21,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // judgedHead is the head the lane's last round judged, or its head.
@@ -124,7 +125,7 @@ func decidable(st State, laneID, flag string) (int, error) {
 		}
 	}
 	if i < 0 {
-		return -1, refuse(string(StageHeld), "", "", fmt.Sprintf("%s has no lane %q", st.RunID, laneID),
+		return -1, refuse(string(StageHeld), "", "", fmt.Sprintf("%s has no lane of the name given (%s)", st.RunID, termsafe.DescribeRefused(laneID)),
 			"name a held lane `abcd implement status` lists")
 	}
 	if l := st.Lanes[i]; flag == "--discard" && stuckLane(l) {

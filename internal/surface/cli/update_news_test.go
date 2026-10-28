@@ -280,7 +280,7 @@ func TestUpdateRefusesAWordThatIsNeitherATagNorASubverb(t *testing.T) {
 	for _, word := range []string{"zzz-not-a-subverb", "new", "newz"} {
 		var out, errOut strings.Builder
 		if code := Run([]string{"update", word}, &out, &errOut); code != 2 ||
-			!strings.Contains(errOut.String(), `unknown command "`+word+`" for "abcd update"`) {
+			!strings.Contains(errOut.String(), unknownCommandLine(t, "update")) {
 			t.Errorf("abcd update %s: exit %d, stderr %q; want an unknown-command refusal at exit 2", word, code, errOut.String())
 		}
 	}
