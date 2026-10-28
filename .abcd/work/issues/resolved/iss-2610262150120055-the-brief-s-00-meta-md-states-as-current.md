@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/00-meta.md"
 remedy: "Rewrite the 00-meta.md embark bullet to say what embark does today (brief/** is report-only), naming the reverse walk as unbuilt and pointing at the intent that would build it if one exists, or capturing that gap."
-resolution: "00-meta.md now says embark only reports a lifeboat's brief sections, and names writing the brief from them as a staged design target no intent builds yet"
+resolution: "00-meta.md now says embark only reports a lifeboat's brief sections, and registers whether embark should ever write a new repository's brief as an open question in 03-evidence/03-open-questions.md, since no planned intent decides it"
 impact: internal
 ---
 

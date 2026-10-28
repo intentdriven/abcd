@@ -11,6 +11,8 @@ production_mode: hand-written
 found_at: ".abcd/development/brief/00-meta.md:42"
 remedy: "none (filed automatically)"
 finding_ref: cfk-893a6122bdfde0cb
+resolution: "The same defect as iss-2610262150120055, found by the consistency pass: 00-meta.md no longer says embark writes a new repository's brief, and the question of whether it should is registered in 03-evidence/03-open-questions.md."
+impact: internal
 ---
 
 Meta says embark writes the new repo's brief by reversing the mapping; the embark chapter says only the record families land and everything else is never written
