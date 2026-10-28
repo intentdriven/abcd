@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".github/workflows/release.yml"
 remedy: "Record in an ADR that the release environment carries no required reviewer, partly superseding adr-43 point 2, and make every description of the gate say so; the live setting is changed after the merge."
+resolution: "adr-2610281718537125 records that the release environment carries no required reviewer, and every description of the gate says the pause applies only when one is set"
+impact: internal
+resolved_by:
+  commit: "a07837d5a"
 ---
 
 Publishing a release waits for a person to approve the release environment's pending deployment. The product thinker ruled on 2026-10-28 that publishing a release and deploying the site run with no approval step by anyone, so the reviewer on the release environment, and every description of it, no longer matches what the project wants.
