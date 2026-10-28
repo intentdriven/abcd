@@ -140,6 +140,44 @@ func TestHooksRunTheReleaseWhenNoBuildIsNamed(t *testing.T) {
 	}
 }
 
+// TestHooksFallBackWhenTheDogfoodBuildFailsToRun: a dogfood build that dies
+// on an event other than the guard's (any exit but 0 and 2, which are its
+// answers) never leaves the event unhandled: the shim says so on stderr and
+// the installed release runs every verb the event runs. A build that answers
+// 2 is taken at its word, with no second run.
+func TestHooksFallBackWhenTheDogfoodBuildFailsToRun(t *testing.T) {
+	for _, e := range dogfoodEvents {
+		if e.event == "PreToolUse" {
+			continue // the guard's own fall-back is the test below
+		}
+		for _, died := range []string{"1", "137"} {
+			t.Run(e.event+"/exit-"+died, func(t *testing.T) {
+				root, _ := dogfoodRig(t, "BUILD", died)
+				_, stderr, code := hookRunHome(t, e.event, root, "", t.TempDir(), dogfoodListHome(t))
+				calls := callLog(t, filepath.Join(root, "calls.log"))
+				if code != 0 || !strings.Contains(stderr, "FAILED TO RUN") {
+					t.Fatalf("exit %d, stderr %q; want 0 and the failure said out loud", code, stderr)
+				}
+				for _, v := range e.verbs {
+					if !strings.Contains(calls, "dogfood "+v) || strings.Count("\n"+calls+"\n", "\n"+v+"\n") != 1 {
+						t.Errorf("%q did not fall back to the installed release exactly once; calls %q", v, calls)
+					}
+				}
+			})
+		}
+		t.Run(e.event+"/answers-2", func(t *testing.T) {
+			root, _ := dogfoodRig(t, "BUILD", "2")
+			_, stderr, _ := hookRunHome(t, e.event, root, "", t.TempDir(), dogfoodListHome(t))
+			calls := callLog(t, filepath.Join(root, "calls.log"))
+			for _, v := range e.verbs {
+				if releaseRan(calls, v) || strings.Contains(stderr, "FAILED TO RUN") {
+					t.Errorf("an exit 2 from the build was run again on the release; calls %q, stderr %q", calls, stderr)
+				}
+			}
+		})
+	}
+}
+
 // TestGuardFallsBackWhenTheDogfoodBuildFailsToRun: a dogfood guard that dies
 // (any exit but the guard's own 0, 1 and 2) never leaves the command
 // unguarded: the shim says so on stderr and the installed release judges the
