@@ -1439,7 +1439,33 @@ without it, and when that succeeds the block is written with
 `stream_usage: false` (its calls then go without the field) and the result
 says so in `stream_usage_note`: relay that line. `--stream-usage=false`
 writes that setting outright, for a server known to refuse the field, and
-the verification is then asked once, as given. A `~/.abcd.noindex` that is a
+the verification is then asked once, as given. The block it writes pins no
+model and reads nothing back: a pin to one OpenRouter provider (`pins`,
+iss-2610161734413178) and `read_generation: true` (OpenRouter's record of
+what served each call, one extra request per call, made only because the
+person turned it on) are added to the block by hand afterwards, on an
+OpenRouter block alone, as the configuration chapter of the brief describes,
+and a configured provider's verification sends the first listed model's pin
+when it has one. A block on this machine takes a local pin there instead
+(the runtime, its version, the weights' digest, quantisation, context length
+and KV-cache type, and on llama.cpp the GGUF file's name, since llama-server
+reports no digest, iss-2610161734428291), which probes the server before the
+route is used. No runtime reports the KV-cache type, so the refusal of a q4
+cache on llama-server rests on the pin's declaration, and the record lists
+the served cache type as not verified. The verification never reads the generation record back,
+even when the block says `read_generation: true`: that would be one more
+request for an answer the verification discards. A role
+routed through opencode to a pinned model is refused while the person's
+environment sets `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` or
+`OPENCODE_CONFIG_CONTENT`, since the run's own sealed configuration would
+replace theirs or be overridden by it: unset it for pinned runs, or route
+the role without a pin. `~/.opencode/opencode.json` is not refused, so a
+routing entry for that model there can override the pin, which is one reason
+the pin is recorded as not verified on that path, and so are a local pin's
+weights, quantisation, runtime version and context, though the probe checked
+them. The claude runner holds no pin, so a role routed through it to a pinned
+model is refused before it starts: route the role through opencode, or remove
+the pin. A `~/.abcd.noindex` that is a
 symlink (into a dotfiles checkout, say) is refused with nothing written, in
 any home, naming the link: the key would otherwise land wherever it points.
 A `--file` pointer is refused, naming the link, when any directory between the

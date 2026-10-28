@@ -27,8 +27,8 @@ const schemaVersionPrevious = SchemaVersion - 1
 // migrates from name that earlier version as schemaVersionPrevious, never a
 // fixed older version a later bump leaves behind (iss-2610142134346602).
 func TestTheStoredTextTestsReadTheVersionJustBeforeTheCurrent(t *testing.T) {
-	if schemaVersionPrevious != schemaVersionUnreviewed {
-		t.Fatalf("the version before %d is the newest version read but never written: %d, %d", SchemaVersion, schemaVersionPrevious, schemaVersionUnreviewed)
+	if schemaVersionPrevious != schemaVersionUnpinned {
+		t.Fatalf("the version before %d is the newest version read but never written: %d, %d", SchemaVersion, schemaVersionPrevious, schemaVersionUnpinned)
 	}
 	// The needles are joined at run time so this file's own source matches
 	// only where a test passes the version, not where this test names it.
