@@ -1,12 +1,9 @@
 package lab
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -450,12 +447,7 @@ func (l *lab) binaryIdentity(rel string) (vintage.Current, string, error) {
 		return vintage.Current{}, "", err
 	}
 	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return vintage.Current{}, "", err
-	}
-	cur, err := vintageOf(f)
-	return cur, hex.EncodeToString(h.Sum(nil)), err
+	return BinaryIdentity(f)
 }
 
 // preflightDoc renders the preflight artefact.
