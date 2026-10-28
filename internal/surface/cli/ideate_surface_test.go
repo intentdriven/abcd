@@ -50,20 +50,31 @@ func ideateRepo(t *testing.T) string {
 // ideateVerdictJSON is a valid verdict document; cited is the record id the grill
 // hit cites, so a test can swap in an id that does not resolve.
 func ideateVerdictJSON(cited string) string {
+	return ideateVerdictJSONFrom(cited, "https://example.invalid/paper")
+}
+
+// ideateVerdictJSONFrom is ideateVerdictJSON with the research claim's primary
+// source given too, so a test can cite a filed source key.
+func ideateVerdictJSONFrom(cited, primary string) string {
 	return `{
-  "schema_version": 1,
+  "schema_version": 2,
   "prompt_version": "1.0.0",
   "idea": "abcd should gate a new idea before it becomes a record entry",
+  "origin_sources": [],
   "legs": [
     {"kind": "research", "claims": [
       {"claim": "fresh-context evaluation is the measured debiasing effect",
-       "primary_source": "https://example.invalid/paper", "status": "verified"}
+       "primary_source": "` + primary + `", "status": "verified"}
     ]},
     {"kind": "record-grill", "hits": [
       {"record": "` + cited + `", "relation": "covered", "note": "already filed"}
+    ], "searches": [
+      {"terms": ["admission gate"], "places": [".abcd/development/intents/"], "count": 1}
     ]},
-    {"kind": "adversarial-review", "kill_attempts": [
-      {"attempt": "the gauntlet adds friction", "outcome": "survived"}
+    {"kind": "adversarial-review", "reviewers": [
+      {"label": "reviewer-a", "verdict": "survives", "sources": [], "kill_attempts": [
+        {"attempt": "the gauntlet adds friction", "outcome": "survived"}
+      ]}
     ]}
   ],
   "verdict": "survives",
@@ -139,6 +150,14 @@ func TestIdeateRecordRefusalsExitTwo(t *testing.T) {
 			"traversal-slug",
 			[]string{"ideate", "record", "../../../etc/passwd", "--public", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104"))},
 			"slug",
+		},
+		{
+			// A host reading an older command page composes version 1; the
+			// refusal names the version to compose instead.
+			"version-1-payload",
+			[]string{"ideate", "record", "the-ideate-gate", "--public", "--verdict-json",
+				writeVerdict(t, strings.Replace(ideateVerdictJSON("itd-104"), `"schema_version": 2`, `"schema_version": 1`, 1))},
+			"version 2",
 		},
 		{
 			"verdict-json-required",
@@ -369,3 +388,4 @@ func TestIdeateRecordRefusesAShallowCheckout(t *testing.T) {
 		t.Errorf("a refused run laid the private store: %v", err)
 	}
 }
+
