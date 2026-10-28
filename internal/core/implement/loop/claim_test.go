@@ -119,4 +119,14 @@ func TestAStartForASessionThatHasNotJoinedWritesNothing(t *testing.T) {
 		t.Fatalf("a start for a session that is not a name = %+v; want it named by the flag, not repeated", r)
 	}
 	runTierAbsent(t, repo.Root())
+	// A session whose name is a letter or a word of the refusal itself is
+	// named by the flag where the refusal names the session, and nowhere else.
+	for _, short := range []string{"a", "join"} {
+		_, err = Start(repo.Root(), "itd-10", Options{Session: short})
+		r := mustRefusal(t, err)
+		if !strings.Contains(r.Reason, "the --session given has not joined this run (run `abcd implement join` first)") {
+			t.Fatalf("a start for unjoined session %q = %q; want the refusal intact, the flag in the session's place", short, r.Reason)
+		}
+	}
+	runTierAbsent(t, repo.Root())
 }

@@ -541,6 +541,7 @@ func TestWithholdArgumentsKeepsWhatARefusalMustName(t *testing.T) {
 		{"after the terminator", []string{"capture", "--", "-" + tok}, "refused -" + tok, "refused (argument 3, not repeated here)"},
 		{"escaped by %q", []string{"build", "a\tb" + tok}, fmt.Sprintf("refused %q", "a\tb"+tok), `refused "(argument 2, not repeated here)"`},
 		{"a record id stays", []string{"spec", "show", "spc-2610231038335615"}, "no spec spc-2610231038335615", "no spec spc-2610231038335615"},
+		{"a run id stays", []string{"implement", "step", "--run", "run-2610252354599453"}, "no run run-2610252354599453 in this checkout", "no run run-2610252354599453 in this checkout"},
 		{"a command name stays", []string{"implement", "load"}, "abcd implement load: refused", "abcd implement load: refused"},
 		{"a short argument stays", []string{"capture", "--limit=7"}, "limit 7 of 70", "limit 7 of 70"},
 		{"inside a longer word stays", []string{"x", "drainage"}, "the drainagescheme", "the drainagescheme"},
@@ -607,6 +608,9 @@ func TestBoundaryWithholdsWhatBuildAndModeCutOrDocument(t *testing.T) {
 		{"build", "itd-1", "--pace", "-" + tok},
 		{"--json", "mode", long},
 		{"mode", long},
+		{"--json", "implement", "step", "--run", tok},
+		{"--json", "implement", "status", "--run", tok},
+		{"--json", "implement", "receipt", "receipt.json", "--run", tok},
 	} {
 		code, out, errOut := runRefusal(t, "", args...)
 		if code == 0 {

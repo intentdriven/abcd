@@ -24,6 +24,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -191,11 +192,12 @@ type typedArgument struct {
 // or %+q, or masked for the terminal); as a path a refusal shortened to its
 // working-directory or home form, to a relative path or to its base name; as
 // the value after its last `=`; and as its leading part, where a refusal cut it
-// short. Four kinds are left as they are: an argument shorter than
+// short. Five kinds are left as they are: an argument shorter than
 // minWithheldLen, the name of a command in the tree, a well-formed record id
-// (recordid.CitedIDRe) and a relative path to something that exists in the
-// working directory (checkoutPath), which a refusal names so the caller can
-// find the record or see the overlap. The per-site wording names what was refused; this pass is the
+// (recordid.CitedIDRe), a well-formed run id (loop.ValidRunID) and a relative
+// path to something that exists in the working directory (checkoutPath),
+// which a refusal names so the caller can find the record or the run, or see
+// the overlap. The per-site wording names what was refused; this pass is the
 // backstop for a site that still repeats it.
 func withholdArguments(root *cobra.Command, args []string, msg string) string {
 	ops := typedArguments(root, args)
@@ -237,7 +239,7 @@ func typedArguments(root *cobra.Command, args []string) []typedArgument {
 	commands := commandNames(root)
 	var ops []typedArgument
 	add := func(v string, i int) {
-		if len(v) < minWithheldLen || commands[v] || recordid.CitedIDRe.MatchString(v) || checkoutPath(v) {
+		if len(v) < minWithheldLen || commands[v] || recordid.CitedIDRe.MatchString(v) || loop.ValidRunID(v) || checkoutPath(v) {
 			return
 		}
 		ops = append(ops, typedArgument{text: v, pos: i + 1})

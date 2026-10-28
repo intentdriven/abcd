@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -586,15 +587,18 @@ func sharedRunFor(repoRoot, session string) (*implement.Run, error) {
 }
 
 // withoutSession is msg, a shared-run refusal, with the session it was given
-// named by its flag instead, as typed or as %q quotes it. The loop's refusals
-// reach the --json refusal document build writes, which the error boundary's
-// pass does not read, and the shared run's refusals repeat the name.
+// named by its flag instead. The loop's refusals reach the --json refusal
+// document build writes, which the error boundary's pass does not read, and
+// the shared run's refusals name the session as "session <id>", typed or as
+// %q quotes it. Only that phrase is replaced, never the id wherever it occurs:
+// an id may be one letter, or a word the refusal itself uses.
 func withoutSession(msg, session string) string {
 	if session == "" {
 		return msg
 	}
-	msg = strings.ReplaceAll(msg, strconv.Quote(session), "the --session given")
-	return strings.ReplaceAll(msg, session, "the --session given")
+	named := regexp.MustCompile(`\bsession (?:` + regexp.QuoteMeta(strconv.Quote(session)) + `|` +
+		regexp.QuoteMeta(session) + `)([^A-Za-z0-9._-]|$)`)
+	return named.ReplaceAllString(msg, "the --session given$1")
 }
 
 // claimRefusal maps a refused shared-run claim onto the loop's refusal: a
