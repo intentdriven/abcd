@@ -1010,13 +1010,14 @@ func citationPlaces(v verdictDoc) []citedText {
 		add(grill, h.Note)
 	}
 	for _, r := range v.reviewers {
+		add(adversarial, r.Label)
 		for _, k := range r.KillAttempts {
 			add(adversarial, k.Attempt)
 		}
 		add(adversarial, r.Sources...)
 	}
 	if v.ruling != nil {
-		add(adversarial, v.ruling.Reason)
+		add(adversarial, v.ruling.By, v.ruling.Reason)
 	}
 	for _, r := range v.rejected {
 		add("the rejected alternatives", r.Alternative, r.WhyRejected)

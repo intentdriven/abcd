@@ -57,6 +57,10 @@ func TestV2RefusesAnUnresolvedIDInAnyLeg(t *testing.T) {
 			reviewer(p, 1)["kill_attempts"].([]any)[0].(map[string]any)["attempt"] = "already settled (https://example.invalid/thread;itd-9997)"
 		}, "adversarial-review", "itd-9997"},
 		"reviewer source": {func(p map[string]any) { reviewer(p, 0)["sources"] = []any{"spc-9998"} }, "adversarial-review", "spc-9998"},
+		"reviewer label":  {func(p map[string]any) { reviewer(p, 0)["label"] = "the reviewer of itd-9996" }, "adversarial-review", "itd-9996"},
+		"ruling by": {func(p map[string]any) {
+			leg(p, 2)["ruling"] = map[string]any{"by": "the advisor named in dcn-9995", "verdict": "survives", "reason": "both agree"}
+		}, "adversarial-review", "dcn-9995"},
 		"rejected alternative": {func(p map[string]any) {
 			p["rejected_alternatives"] = []any{map[string]any{"alternative": "fold it into iss-9998", "why_rejected": "a reason"}}
 		}, "rejected alternatives", "iss-9998"},

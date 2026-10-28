@@ -146,7 +146,7 @@ something a later reader depends on:
   describes it when the scanner cannot be trusted.
 - **The evidence does not hold up**: a record id that does not resolve, written
   outside a web address in a claim or its primary source, a grill note, a kill
-  attempt, a reviewer's sources, the ruling's reason, a rejected alternative, an
+  attempt, a reviewer's label or sources, the ruling, a rejected alternative, an
   origin source or the reframing (the refusal names where it was written; the
   grill's search terms and places are not checked, because a searched-for id
   that names nothing is the finding), a cited value that is not a record id

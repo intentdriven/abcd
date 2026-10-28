@@ -93,7 +93,7 @@ verdict. Answer one question: does an entry already
 Every hit is **cited by record id** (`itd-N`, `spc-N`, `iss-N`, `adr-N`,
 `dcn-N`), and `abcd ideate record` refuses the whole verdict if an id does not
 resolve in this repository — in a hit, and in a claim or its primary source, a
-note, a kill attempt, a reviewer's sources, the ruling's reason, a rejected
+note, a kill attempt, a reviewer's label or sources, the ruling, a rejected
 alternative, an origin source or the reframing (an id inside a web address is
 part of the address). A search term naming an id is not checked, because
 searching for one is the finding. Check the id before you write it down. The brief, the principles,
