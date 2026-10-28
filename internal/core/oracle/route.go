@@ -11,13 +11,32 @@ import (
 // RouteSyntax is the --route flag's grammar, as every refusal names it.
 const RouteSyntax = "<agent>=<tier>[@<connection>][?k=v,...]"
 
+// RunnerRouteSyntax is the --route flag's runner rung (iss-2610161801358637):
+// the role, the runner that runs it for this invocation, and, after @, the
+// <provider>/<model> route the runner asks for in place of its machine model.
+// It is the one per-invocation override, extended: a verb that launches a
+// runner for its roles takes this rung, a verb that sends its agent to the
+// harness or a provider takes the tier rung, and each refuses the other.
+const RunnerRouteSyntax = "<role>=runner:<name>[@<provider>/<model>]"
+
+// runnerRung marks a --route's runner rung; no tier is spelt with a colon, so
+// every route the tier rung admits reads as it did.
+const runnerRung = "runner:"
+
 // FlagRoute is one parsed --route: a row for one agent for this invocation
-// alone, the connection it names (if any), and the flag text verbatim.
+// alone, the connection it names (if any), and the flag text verbatim. A
+// runner-rung route carries the runner and the model instead of a row.
 type FlagRoute struct {
 	Agent      string
 	Row        Row
 	Connection string
-	Text       string
+	// Runner is the runner a runner-rung route hands the role to; "" on a
+	// tier route.
+	Runner string
+	// Model is the <provider>/<model> route a runner-rung route asks for; ""
+	// keeps the runner's machine model.
+	Model string
+	Text  string
 }
 
 // ParseRoutes parses every --route value and refuses, before any step runs, a
@@ -29,6 +48,52 @@ type FlagRoute struct {
 // second --route naming another agent is refused rather than merged (the
 // 2026-09-25 ruling on AC 7, dcn-2609250000000009).
 func ParseRoutes(texts, dispatched []string, conns Connections) ([]FlagRoute, error) {
+	parse := func(text string) (FlagRoute, error) {
+		if _, rest, ok := strings.Cut(text, "="); ok && strings.HasPrefix(rest, runnerRung) {
+			// Refused whole, malformed or not: the rung is not this verb's,
+			// so its grammar is never the one a refusal teaches here.
+			return FlagRoute{}, fmt.Errorf("names a runner, and this invocation sends %s to the harness or a provider "+
+				"connection, never through a runner; a runner route is for a role abcd launches a runner for, "+
+				"in `abcd implement step`; here, want %s", dispatchList(dispatched), RouteSyntax)
+		}
+		return parseRoute(text)
+	}
+	return parseEach(texts, dispatched, parse, func(fr FlagRoute, shown string) error {
+		if !inRoster(fr.Agent) {
+			return notDispatched(shown, dispatched, fr.Agent)
+		}
+		if fr.Connection != "" {
+			if _, ok := conns.Named(fr.Connection); !ok {
+				return fmt.Errorf("--route %s: connection %q is not configured on this machine", shown, layered.BoundKey(fr.Connection))
+			}
+		}
+		return nil
+	})
+}
+
+// ParseRunnerRoutes parses every --route value of an invocation that runs its
+// roles on the host or a runner (the build loop's step), and refuses, before
+// any step runs, a value that is malformed, names a role this invocation does
+// not dispatch, repeats a role, or is a tier route, which no routing table
+// turns into a runner. Every malformed value is refused naming the runner
+// grammar alone. Which runners the machine enables and which models their
+// providers list are the runner configuration's to check
+// (runner.Config.Override).
+func ParseRunnerRoutes(texts, dispatched []string) ([]FlagRoute, error) {
+	return parseEach(texts, dispatched, parseRunnerRoute, func(FlagRoute, string) error { return nil })
+}
+
+// notDispatched is the refusal of a --route naming an agent the invocation
+// does not dispatch.
+func notDispatched(shown string, dispatched []string, agent string) error {
+	return fmt.Errorf("--route %s: this invocation dispatches %s, not %q; a --route naming any other agent is refused, never merged or ignored",
+		shown, dispatchList(dispatched), layered.BoundKey(agent))
+}
+
+// parseEach parses every --route value, holds each to the bound, the
+// invocation's dispatched set and one route per agent, and hands it to check
+// for what the invocation's own dispatch admits.
+func parseEach(texts, dispatched []string, parse func(string) (FlagRoute, error), check func(fr FlagRoute, shown string) error) ([]FlagRoute, error) {
 	can := map[string]bool{}
 	for _, a := range dispatched {
 		can[a] = true
@@ -41,28 +106,26 @@ func ParseRoutes(texts, dispatched []string, conns Connections) ([]FlagRoute, er
 			return nil, fmt.Errorf("--route %s: it is %d bytes; a --route is at most %d, because a receipt carries it verbatim",
 				shown, len(text), MaxRouteBytes)
 		}
-		fr, err := parseRoute(text)
+		fr, err := parse(text)
 		if err != nil {
 			return nil, fmt.Errorf("--route %s: %w", shown, err)
 		}
-		if !can[fr.Agent] || !inRoster(fr.Agent) {
-			return nil, fmt.Errorf("--route %s: this invocation dispatches %s, not %q; a --route naming any other agent is refused, never merged or ignored",
-				shown, dispatchList(dispatched), layered.BoundKey(fr.Agent))
+		if !can[fr.Agent] {
+			return nil, notDispatched(shown, dispatched, fr.Agent)
 		}
 		if seen[fr.Agent] {
 			return nil, fmt.Errorf("--route %s: %s is routed more than once in this invocation", shown, fr.Agent)
 		}
 		seen[fr.Agent] = true
-		if fr.Connection != "" {
-			if _, ok := conns.Named(fr.Connection); !ok {
-				return nil, fmt.Errorf("--route %s: connection %q is not configured on this machine", shown, layered.BoundKey(fr.Connection))
-			}
+		if err := check(fr, shown); err != nil {
+			return nil, err
 		}
 		out = append(out, fr)
 	}
 	return out, nil
 }
 
+// parseRoute reads one tier route, <agent>=<tier>[@<connection>][?k=v,...].
 func parseRoute(text string) (FlagRoute, error) {
 	head, query, hasQuery := strings.Cut(text, "?")
 	agent, rest, ok := strings.Cut(head, "=")
@@ -97,6 +160,48 @@ func parseRoute(text string) (FlagRoute, error) {
 		fr.Row.Settings = s
 	}
 	return fr, nil
+}
+
+// parseRunnerRoute reads one runner route, <role>=runner:<name>[@<provider>/<model>].
+// A value that is not one is refused naming that grammar: a tier route as a
+// tier, which this invocation does not choose by, and anything else as the
+// runner rung left out, never as a tier it did not ask for.
+func parseRunnerRoute(text string) (FlagRoute, error) {
+	agent, rest, ok := strings.Cut(text, "=")
+	if !ok || agent == "" || rest == "" {
+		return FlagRoute{}, fmt.Errorf("want %s", RunnerRouteSyntax)
+	}
+	rung, isRunner := strings.CutPrefix(rest, runnerRung)
+	if !isRunner {
+		if _, err := parseRoute(text); err == nil {
+			return FlagRoute{}, fmt.Errorf("names a tier, and this invocation runs %s on the host or a runner, which "+
+				"a tier does not choose; want %s", layered.BoundKey(agent), RunnerRouteSyntax)
+		}
+		return FlagRoute{}, fmt.Errorf("names no runner: the runner is named after %s, as in %s=%sopencode; want %s",
+			runnerRung, layered.BoundKey(agent), runnerRung, RunnerRouteSyntax)
+	}
+	if strings.Contains(rung, "?") {
+		return FlagRoute{}, fmt.Errorf("a runner route takes no settings: the runner's harness sets its model's own; want %s", RunnerRouteSyntax)
+	}
+	return parseRunnerRung(agent, rung, text)
+}
+
+// parseRunnerRung reads the runner rung after runner:, <name>[@<provider>/<model>].
+func parseRunnerRung(role, rung, text string) (FlagRoute, error) {
+	name, model, hasModel := strings.Cut(rung, "@")
+	if name == "" {
+		return FlagRoute{}, fmt.Errorf("no runner after %s; want %s", runnerRung, RunnerRouteSyntax)
+	}
+	if hasModel {
+		if model == "" {
+			return FlagRoute{}, fmt.Errorf("an empty model after @; want %s", RunnerRouteSyntax)
+		}
+		provider, id, ok := strings.Cut(model, "/")
+		if !ok || provider == "" || id == "" {
+			return FlagRoute{}, fmt.Errorf("model %q is not <provider>/<model>; want %s", layered.BoundKey(model), RunnerRouteSyntax)
+		}
+	}
+	return FlagRoute{Agent: role, Runner: name, Model: model, Text: text}, nil
 }
 
 // settingValue keeps a number or a boolean as JSON and quotes anything else

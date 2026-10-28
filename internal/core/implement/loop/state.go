@@ -213,7 +213,12 @@ const lockFileName = ".lock"
 // its version wrote, and is refused naming the key, and one of version 13 or
 // lower carrying any of them is refused with the sides it carries. Releases
 // that write version 15 refuse a version-16 file as a newer abcd's before any
-// strict decode.
+// strict decode. A route record's `override` (iss-2610161801358637), the
+// `implement step --route` text verbatim on the verified receipt or the
+// validator's return a runner ran under it, is version 16's too: it joined
+// version 16 before any release wrote that version, so a file of version 15
+// or lower carrying it is not one its version wrote, and is refused naming
+// the key.
 const SchemaVersion = 16
 
 // schemaVersionUnpinned is the version before a route's pins: read, never
@@ -845,6 +850,26 @@ func (s State) pinned() string {
 	return ""
 }
 
+// overridden reports the first route record, in a state, that carries
+// `override`, which only version 16 and later write, or "".
+func (s State) overridden() string {
+	for _, l := range s.Lanes {
+		for _, r := range l.Receipts {
+			if r.Route != nil && r.Route.Override != "" {
+				return "`override` on " + l.ID + "'s " + r.Role + " receipt"
+			}
+		}
+		for _, v := range l.Validation {
+			for _, vr := range v.Validators {
+				if vr.Route != nil && vr.Route.Override != "" {
+					return "`override` on " + l.ID + "'s " + vr.Role + " return"
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // refused reports the first lane, in a state, that carries `refused`, which
 // only version 13 and later write, or "".
 func (s State) refused() string {
@@ -1006,6 +1031,9 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnreviewed && st.Review != nil:
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a review set, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUnpinned && st.overridden() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.overridden(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	case st.SchemaVersion <= schemaVersionUnpinned && st.pinned() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pinned(), st.SchemaVersion),

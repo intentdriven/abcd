@@ -292,7 +292,11 @@ machine its local pin, what its server reported and that it is local
 (`local_pin`, `local_served`, `local`, iss-2610161734428291). Version 15 is
 its strict subset, read as a run whose routes were pointed at no pin; a file
 of version 15 or lower carrying any of them is refused, and an abcd that
-writes version 15 refuses a version-16 file as a newer abcd's. Version 15
+writes version 15 refuses a version-16 file as a newer abcd's. A route
+record's `override` (iss-2610161801358637), the step verb's per-invocation
+route override verbatim on the verified receipt or validator return a runner
+ran under it, is version 16's too: a file of version 15 or lower carrying it
+is refused. Version 15
 added the run's review set (itd-2610240922461281): the run's `review`, each
 role's reviewers at their model classes, the judge and the ceiling, with the
 layer of each. Version 14 is its strict subset, read as a run started before
@@ -498,7 +502,40 @@ file, the key and the machine's file, so the next layer's route, or the host,
 runs the role. A repository route to the host stands over the machine's route to
 a runner, since it spends nothing of the person's, and is reported with a
 diagnostic naming the repository's file, the role and the machine route it
-displaced, so a checkout never cancels the person's choice without a word. The claude runner stays bare, on an API key alone, and a person
+displaced, so a checkout never cancels the person's choice without a word. The
+person's own invocation is the step verb's per-invocation route override, whose
+runner rung, `<role>=runner:<name>[@<provider>/<model>]`
+(iss-2610161801358637), hands the role it names to the runner it names for that
+step alone, over every configured route, asking for the model after `@` in place
+of the runner's own `runner.<name>.model`, which every other role keeps. The
+runner must be one the machine enables and the model one its provider's
+allowlist admits (adr-2609221009491186), or the step is refused at exit 2 before
+anything is written, naming the fix; a tier route there is refused too, as a
+runner route is on a verb that sends its agent to the harness or a provider. The
+model is held to the pins the machine sets for it, as the machine's own model
+is: opencode is held to its provider pin or, after a probe, its local pin. The
+claude runner holds neither, so the route override naming it for a model the machine
+pins (its own model included) is refused at exit 2 before anything is written,
+naming `runner.opencode.model`, as every other route the configuration shows
+cannot run is; a machine route to claude for a pinned model, which nobody asked
+for on this step, is refused by claude before launch and the role falls back. A value missing the `runner:` rung is refused naming
+the runner grammar, never read as a tier. So is a route beside a release, a
+discard or a restart, which hand no role out, and beside an acceptance of a
+configuration change, which is written before the step is judged and would
+otherwise be left behind by a route the step then refused. A step hands at most
+one role out, so
+a route for a role the step will not hand out (it performs a stage the binary
+runs, hands out another role, or re-tells an agent already out) is refused
+before anything is written, naming the role the step hands out or that it hands
+none; the step's move is read from the state. The one move the state cannot
+settle is a lane's landing ahead of the role, which moves unless the forge or
+the network holds it: the route is then judged after the move, and one the move
+did not use is warned of on stderr, named in the result's `route_unused` and
+recorded in the run record. The setup diagnostic about a role's configured
+route is not said for a role the override replaces, since it would contradict
+what then runs. The role's receipt carries the override verbatim
+(`route.override`, state schema version 16), in the state and in the record's
+line. The claude runner stays bare, on an API key alone, and a person
 whose account is a subscription runs the role in their own session. The
 opencode runner is sealed against the repository it runs in (ruling OC1): no
 external plugins, and its project configuration, its compatibility reading of

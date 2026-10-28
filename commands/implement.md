@@ -201,7 +201,7 @@ last, and a fourth reads its record at the end:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement status [--run <run-id>] --json
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> [--run <run-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement record [--run <run-id>] [--transcript <path>]... --json
 ```
@@ -275,6 +275,31 @@ on stderr: the role is the host's, as if unrouted, and no fallback is recorded.
 One it sets to `host` keeps the role on the host over the machine's route to a
 runner, with a warning naming the repository's file, the role and the machine
 route it displaced.
+`step --route <role>=runner:<name>[@<provider>/<model>]` routes one role this
+step hands out (`implementer`, `ruthless-reviewer`, `security-reviewer` or
+`intent-auditor`) to a runner for that step alone, over every configured route,
+and asks it for the model after `@` in place of `runner.<name>.model`, which
+every other role keeps; one `--route` per role. The runner must be one
+`~/.abcd.noindex/config.json` enables and the model one its provider lists, or
+the step is refused before anything is written, naming the fix; a tier route,
+or a `--route` with `--release`, `--discard`, `--restart` or
+`--accept-config-change` (which writes its acceptance before the step is
+judged), is refused too. The
+model is held to the pins the machine sets for it, as the machine's own model
+is, so a `--route` naming claude, which holds no pin, for a model the machine
+pins is refused before anything is written, naming `runner.opencode.model`; a
+machine route to claude for a pinned model is refused by claude at launch, and
+the role falls back. A step hands at
+most one role out, so a `--route` for a role it will not hand out (it performs a
+stage abcd runs itself, hands out another role, or re-tells an agent already
+out) is refused before anything is written, naming the role it hands out or that
+it hands none. When a lane's landing comes first and may wait on the forge,
+whether the role is handed out is known only after the landing moves: a
+`--route` it then did not use is warned of on stderr, named in the result's
+`route_unused`, and recorded in the run record. A warning about a role's
+configured route (the repository keeping it on the host) is not printed for a
+role the `--route` replaces. The role's receipt in the run's state carries the
+`--route` verbatim as `route.override`, which is state schema version 16's.
 The runner's receipt is verified by the stage's own verifier: a verified one
 completes the stage in the same call, and the result's `route` names the runner
 that ran it. A runner that is absent, refuses, fails, runs past its time or
