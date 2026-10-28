@@ -4553,8 +4553,17 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 				if res.Status == "refused" {
 					code = 2
 				}
+				// A refusal can come AFTER a toggle landed (a later step failed, or
+				// the mirror could not be written), and then "nothing was changed"
+				// is false: name what landed instead (iss-2610072347230409). The
+				// change lines quote GitHub's own status words, so they are sanitised.
+				outcome := " — nothing was changed"
+				if len(res.Changes) > 0 {
+					outcome = " — already changed on GitHub before it stopped: " +
+						termsafe.Sanitize(strings.Join(res.Changes, "; "))
+				}
 				return &exitError{Code: code, Msg: "abcd ahoy remote apply: " + res.Status +
-					" — nothing was changed (the reason is in the result's notes above)"}
+					outcome + " (the reason is in the result's notes above)"}
 			}
 			return nil
 		},
