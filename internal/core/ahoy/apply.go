@@ -811,6 +811,9 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		// persisted either way.
 		a.refuse(got.retired)
 	}
+	if got.refused != "" {
+		a.refuse(got.refused)
+	}
 	if !got.answered && !forced {
 		landed = true
 		return ic // every missing value left unanswered: nothing to save
@@ -883,6 +886,9 @@ type collectedValues struct {
 	// retired is the explanation for a retired docs target given as the
 	// answer, which is refused.
 	retired string
+	// refused is the note for a deep-scan answer that is not one setup
+	// writes (iss-2610020700263496).
+	refused string
 }
 
 // collectMissingValues fills each config value ic lacks, in the order setup
@@ -940,6 +946,8 @@ func collectMissingValues(cwd string, ic *InstallConfig, overrides map[string]st
 			v := ans == "true"
 			ic.ScanDeep = &v
 			c.answered = true
+		} else if ans != "" { // "" is decide later, not a refused answer
+			c.refused = refusedScanDeepNote(ans)
 		}
 	}
 	return c

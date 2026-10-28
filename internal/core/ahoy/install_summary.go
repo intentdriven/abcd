@@ -379,7 +379,7 @@ var readmeAwaitsConfigHelp = SummaryItem{
 var remainingHelp = SummaryItem{
 	What:   "Some required set-up steps are still not done.",
 	Why:    "abcd does not work fully in this repository until they are.",
-	Action: "Run abcd ahoy install again and answer y to each question; abcd ahoy doctor lists the steps one by one.",
+	Action: "Run abcd ahoy install again and answer each question it asks, or pass a value's answer as its flag (--visibility, --docs-target, --oracle-backend, --scan-deep); abcd ahoy doctor lists the steps one by one.",
 }
 
 // unverifiedCopyHelp explains an owned PATH copy whose build provenance did not
