@@ -132,7 +132,7 @@ sets up the site of a repository abcd manages, in three stages, and emits
   `*` or a tag rule, is `unrestricted`, with restricting it listed in
   `remaining`. A release published by hand reaches the workflow through a relay
   job that starts it on the default branch with the release's tag, so every
-  run starts on the default branch. The render renders a release only when
+  render and deploy runs on the default branch. The render renders a release only when
   the default branch holds its commit, and the deploy takes the host
   configuration from the default branch, never from the release's tag. A
   `site.yml` written by an earlier abcd differs from the one setup writes now,

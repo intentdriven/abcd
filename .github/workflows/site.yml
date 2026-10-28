@@ -302,10 +302,17 @@ jobs:
             exit 1
           fi
           # Only a commit main holds is rendered or deployed: a tag can name any
-          # commit, and main is what was reviewed. The compare reads main as the
-          # forge holds it now; `ahead` or `identical` means main contains the
-          # commit, and any other status is refused before a job below sees it.
-          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${sha}...main" --jq '.status')"
+          # commit, and main is what was reviewed. main's commit is read by its
+          # full ref, since a bare name can also name a tag, and the compare then
+          # reads it as the forge holds it now: `ahead` or `identical` means main
+          # contains the commit, and any other status is refused before a job
+          # below sees it.
+          main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [[ ! $main_sha =~ $sha_re ]]; then
+            echo "refusing '$tag': main did not resolve to a commit sha (got '$main_sha')" >&2
+            exit 1
+          fi
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${sha}...${main_sha}" --jq '.status')"
           case "$status" in
             ahead | identical) ;;
             *)

@@ -65,7 +65,12 @@ func TestTheSiteDeploysOnlyAReleaseMainHolds(t *testing.T) {
 	text := readWorkflow(t, siteWorkflowRel)
 
 	resolve := codeOf(topJob(t, text, "resolve"))
-	compare := strings.Index(resolve, `gh api "repos/${GITHUB_REPOSITORY}/compare/${sha}...main" --jq '.status'`)
+	// main is read by its full ref, since a bare name can also name a tag.
+	head := strings.Index(resolve, `gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha'`)
+	compare := strings.Index(resolve, `gh api "repos/${GITHUB_REPOSITORY}/compare/${sha}...${main_sha}" --jq '.status'`)
+	if head < 0 || head > compare || strings.Contains(resolve, `...main"`) {
+		t.Errorf("resolve does not read main's commit by its full ref before comparing (head %d, compare %d)", head, compare)
+	}
 	handed := strings.Index(resolve, `echo "sha=$sha" >> "$GITHUB_OUTPUT"`)
 	if compare < 0 || handed < 0 || compare > handed {
 		t.Errorf("resolve does not compare the release's commit with main before handing it on (compare %d, output %d)", compare, handed)
