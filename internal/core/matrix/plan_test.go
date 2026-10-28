@@ -2,6 +2,7 @@ package matrix
 
 import (
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -70,13 +71,43 @@ func TestThePlanCountsPilotAndMaximumCopiesPerCell(t *testing.T) {
 	}
 }
 
+// The claude runner is bare on its API key, not the host's harness: a cell on
+// it names its model like any runner's, and is never planned as the host.
+func TestAClaudeRunnerCellIsNotTheHost(t *testing.T) {
+	_, err := plan(t, planDecl(`{"id":"host-big","route":"host"},{"id":"claude-own","route":"builder=runner:claude"}`, "", ""), ResolvedCap{})
+	if err == nil || !strings.Contains(err.Error(), "claude-own") || !strings.Contains(err.Error(), "no model") {
+		t.Fatalf("buildPlan = %v; want the claude cell refused for naming no model", err)
+	}
+}
+
+// A figure of money past the bound is refused, so a plan's sums stay finite
+// and every plan has a digest of its own.
+func TestAnAmountPastTheBoundIsRefused(t *testing.T) {
+	_, err := plan(t, planDecl(`{"id":"host-big","route":"host"},{"id":"paid-big","route":"builder=runner:opencode@paid/big","cost_per_copy":{"amount":1e308,"unit":"usd"}}`, "", ""), usd25)
+	if err == nil || !strings.Contains(err.Error(), "at most") {
+		t.Fatalf("buildPlan = %v; want the amount refused past the bound", err)
+	}
+}
+
+// A plan that cannot be encoded has no digest, so it cannot be consented to.
+func TestAPlanThatCannotBeEncodedHasNoDigest(t *testing.T) {
+	p, err := plan(t, planDecl(`{"id":"host-big","route":"host"}`, "", ""), ResolvedCap{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Cost = append(p.Cost, SourceCost{Source: SourceProvider, Metered: true, Expected: &Money{Amount: math.Inf(1), Unit: "usd"}})
+	if d, err := p.digest(); err == nil || d != "" {
+		t.Fatalf("digest = %q, %v; want no digest for a plan that does not encode", d, err)
+	}
+}
+
 func TestThePlanNamesEachCellsSource(t *testing.T) {
-	p, err := plan(t, planDecl(`{"id":"host-big","route":"host"},{"id":"claude-own","route":"builder=runner:claude"},{"id":"or-cheap","route":"builder=runner:opencode@openrouter/vendor/model"},{"id":"paid-big","route":"builder=runner:opencode@paid/big"}`,
+	p, err := plan(t, planDecl(`{"id":"host-big","route":"host"},{"id":"or-cheap","route":"builder=runner:opencode@openrouter/vendor/model"},{"id":"paid-big","route":"builder=runner:opencode@paid/big"}`,
 		`{"id":"local-rev","route":"reviewer=runner:opencode@local/qwen"}`, `"load_cap": 4,`), usd25)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]Source{"host-big": SourceHost, "claude-own": SourceHost, "or-cheap": SourceOpenRouter, "paid-big": SourceProvider, "local-rev": SourceLocal}
+	want := map[string]Source{"host-big": SourceHost, "or-cheap": SourceOpenRouter, "paid-big": SourceProvider, "local-rev": SourceLocal}
 	for _, c := range p.Cells {
 		if c.Source != want[c.Cell] {
 			t.Errorf("cell %s source %q, want %q", c.Cell, c.Source, want[c.Cell])

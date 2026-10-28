@@ -171,15 +171,18 @@ func buildPlan(in PlanInputs) (Plan, error) {
 	p.Cost = costOf(d, p.Cells, p.Copies)
 	p.Time = planTime(d, p.Copies)
 	p.Judges = judgesOf(d)
-	p.Digest = p.digest()
+	if p.Digest, err = p.digest(); err != nil {
+		return Plan{}, err
+	}
 	return p, nil
 }
 
 // resolveCell resolves one cell's route to its source (decision 2). host is the
-// host leg; a runner route parses by the runner rung's grammar for the cell's
-// own role, and names its model unless the runner is claude on the host's
-// own model: a runner's machine model can change between the plan and the
-// run, and the plan names each cell's source before consent.
+// host leg, the one model run in the host's own harness; a runner route parses
+// by the runner rung's grammar for the cell's own role and always names its
+// model: a runner's machine model can change between the plan and the run,
+// the plan names each cell's source before consent, and every runner, claude's
+// bare one on its API key among them, is a route that can spend.
 func resolveCell(c roleCell, api *oracle.APIConfig, check func(oracle.FlagRoute) error) (PlannedCell, error) {
 	pc := PlannedCell{Cell: c.ID, Role: c.role, Route: c.Route}
 	if c.Route == "host" {
@@ -196,10 +199,6 @@ func resolveCell(c roleCell, api *oracle.APIConfig, check func(oracle.FlagRoute)
 	}
 	pc.Runner, pc.Model = fr.Runner, fr.Model
 	if fr.Model == "" {
-		if fr.Runner == "claude" {
-			pc.Source, pc.Model = SourceHost, "host"
-			return pc, nil
-		}
 		return PlannedCell{}, fmt.Errorf("the route names runner %s and no model; a matrix cell names its model (@<provider>/<model>), since the runner's own can change before the run", fr.Runner)
 	}
 	provider, model, ok := strings.Cut(fr.Model, "/")
@@ -334,13 +333,18 @@ func judgesOf(d Declaration) []JudgeNeed {
 	return out
 }
 
-// digest is the sha256 of the plan's canonical JSON with Digest blank.
-func (p Plan) digest() string {
+// digest is the sha256 of the plan's canonical JSON with Digest blank. A plan
+// that does not encode has no digest: consent is given to a digest, so one
+// shared by every plan that fails to encode would bind nothing.
+func (p Plan) digest() (string, error) {
 	p.Digest = ""
 	cells := append([]PlannedCell(nil), p.Cells...)
 	sort.SliceStable(cells, func(i, j int) bool { return cells[i].Cell < cells[j].Cell })
 	p.Cells = cells
-	data, _ := json.Marshal(p)
+	data, err := json.Marshal(p)
+	if err != nil {
+		return "", fmt.Errorf("the plan cannot be encoded, so it has no digest to consent to: %w", err)
+	}
 	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:]), nil
 }

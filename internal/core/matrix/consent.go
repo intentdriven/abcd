@@ -56,7 +56,7 @@ func consent(repoRoot string, p Plan, approve string, in ConsentInputs, s Starte
 	if approve != p.Digest {
 		return RunRecord{}, fmt.Errorf("the approval %s is not the plan's digest %s: it names another plan; show the person this one and start it only with its own digest", clip(approve), p.Digest)
 	}
-	if got := p.digest(); got != p.Digest {
+	if got, err := p.digest(); err != nil || got != p.Digest {
 		return RunRecord{}, fmt.Errorf("the plan no longer matches the digest it was shown with; build and show it again")
 	}
 	if contentOf("declaration.json", in.Declaration) != p.Declaration {

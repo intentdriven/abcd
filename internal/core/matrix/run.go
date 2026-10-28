@@ -441,9 +441,8 @@ func newRunRecord(in runInputs) (RunRecord, error) {
 }
 
 // routeAgrees holds a cell's pin to what its declared route itself fixes
-// (dcn-2610280629294458): the host leg, or the claude runner on the host's own
-// model, is pinned host and nothing else is, and a runner route is pinned on
-// its runner and its <provider>/<model>. A provider route pinned as host
+// (dcn-2610280629294458): the host leg is pinned host and nothing else is, and
+// a runner route is pinned on its runner and its <provider>/<model>. A provider route pinned as host
 // would otherwise skip the spending cap and the provider pin's checks. Which
 // of openrouter, local and provider a model's source is, is this machine's
 // provider configuration, which the plan reads (resolveCell) and the person
@@ -463,13 +462,12 @@ func routeAgrees(dc roleCell, p CellPin) error {
 	if p.Runner != fr.Runner {
 		return fmt.Errorf("the route names runner %s and the pin names %q", fr.Runner, clip(p.Runner))
 	}
-	host := fr.Model == "" && fr.Runner == "claude"
 	switch {
-	case host && p.Source != SourceHost:
-		return fmt.Errorf("the route runs claude on the host's own model and the pin names the source %s", p.Source)
-	case !host && p.Source == SourceHost:
+	case fr.Model == "":
+		return fmt.Errorf("the route names runner %s and no model; a matrix cell names its model", fr.Runner)
+	case p.Source == SourceHost:
 		return fmt.Errorf("the route names the model %s and the pin names the host as its source", clip(fr.Model))
-	case !host && p.Model != fr.Model:
+	case p.Model != fr.Model:
 		return fmt.Errorf("the route names the model %s and the pin names %q", clip(fr.Model), clip(p.Model))
 	}
 	return nil

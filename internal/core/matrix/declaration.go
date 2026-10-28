@@ -320,12 +320,16 @@ func (c roleCell) validate() error {
 // maxMinutesPerCopy bounds one copy's declared time: a week.
 const maxMinutesPerCopy = 7 * 24 * 60
 
+// maxAmount bounds one figure of money a run names, so a plan's sums stay
+// finite and the plan always has a digest.
+const maxAmount = 1_000_000
+
 func (m Money) validate() error {
 	if m.Unit != "usd" {
 		return fmt.Errorf("unit is %q; money here is in usd", clip(m.Unit))
 	}
-	if !(m.Amount > 0) || math.IsInf(m.Amount, 0) {
-		return fmt.Errorf("amount is %v; it is a positive figure", m.Amount)
+	if !(m.Amount > 0) || m.Amount > maxAmount {
+		return fmt.Errorf("amount is %v; it is a positive figure of at most %d", m.Amount, maxAmount)
 	}
 	return nil
 }

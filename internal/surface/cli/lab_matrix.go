@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -118,12 +119,30 @@ func matrixFailure(err error) error {
 	return &exitError{Code: 2, Msg: msg + "; nothing was written"}
 }
 
+// onOff names a switch.
+func onOff(on bool) string {
+	if on {
+		return "on"
+	}
+	return "off"
+}
+
 // renderMatrixPlan draws the plan for the person to read before consenting.
 func renderMatrixPlan(w io.Writer, v labMatrixView) {
 	fmt.Fprintf(w, "abcd lab matrix — plan for %s at %s\n", v.Lab, v.FrozenCommit[:12])
 	fmt.Fprintf(w, "  copies:      %d in the pilot, at most %d\n", v.Copies.PilotTotal, v.Copies.MaxTotal)
 	for _, c := range v.Cells {
 		fmt.Fprintf(w, "    %-14s %-9s %s (%s)\n", termsafe.Sanitize(c.Cell), c.Role, termsafe.Sanitize(c.Model), c.Source)
+		// The digest covers each cell's pin, so the person sees it too.
+		if p := c.ProviderPin; p != nil {
+			fmt.Fprintf(w, "      provider pin: order %s; fallbacks %s; quantizations %s; data collection %s\n",
+				termsafe.Sanitize(strings.Join(p.Order, ", ")), onOff(p.AllowFallbacks),
+				termsafe.Sanitize(cmp.Or(strings.Join(p.Quantizations, ", "), "any")), termsafe.Sanitize(cmp.Or(p.DataCollection, "the provider's default")))
+		}
+		if p := c.LocalPin; p != nil {
+			fmt.Fprintf(w, "      local pin: %s %s, weights %s, %s\n", termsafe.Sanitize(p.Runtime), termsafe.Sanitize(p.RuntimeVersion),
+				termsafe.Sanitize(p.WeightsSHA256), termsafe.Sanitize(p.Quantisation))
+		}
 	}
 	cap := "none named"
 	if v.SpendCap != nil {
