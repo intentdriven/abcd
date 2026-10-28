@@ -141,6 +141,13 @@ func TestAWorktreeThatGainsALiveProcessBeforeRemovalIsKept(t *testing.T) {
 			if err != nil {
 				t.Skipf("the host probe is unavailable here: %v", err)
 			}
+			// A host process whose working directory this account cannot
+			// read holds every worktree (TestAnUnreadableProcessHoldsEvery
+			// WorktreeAndTheCheckStands pins that), so on a host running one
+			// the dry run would keep the worktree for that reason and this
+			// case would prove nothing about the child. Only processes the
+			// probe could read are kept; the child is always one of them.
+			procs = slices.DeleteFunc(procs, func(pr Process) bool { return pr.Unreadable != "" })
 			// Started after the dry run's listing, as a session entering the
 			// worktree between the two would be.
 			once.Do(func() {
