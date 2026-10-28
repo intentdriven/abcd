@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/dogfood/dogfood.go"
 remedy: "never prune a build that a verified-tip record in the store still names, and keep keepBuilds as the cap on unnamed builds only"
+resolution: "the prune keeps every build a verified-tip record names"
+impact: fix
+resolved_by:
+  commit: "75ba332ede4b19d37c310ad5e419062e0e936749"
 ---
 
 The dogfood store keeps the three newest builds per repository (keepBuilds, internal/core/dogfood/dogfood.go), and since 4c0555851 each declaration keeps its own verified tip. Four or more declarations of one repository at four distinct tips therefore never settle: each build's prune evicts another clone's build, whose next Resolve finds no ready binary and asks for a rebuild, which evicts the next. Two or three declarations are fine.
