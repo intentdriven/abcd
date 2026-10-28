@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/sweep/liveness.go"
 remedy: "Give the probe the runs' read error (a Runs func returning a list and an error, or a RunsUnread string like ReservationsUnread), so an unread run directory holds every worktree, and wire it that way when the CLI front door lands."
+resolution: "the probe takes the runs' read error as ProbeOptions.RunsUnread, and an unread run state holds every worktree as a hint naming why"
+impact: internal
 ---
 
 The sweep's probe takes the unfinished build runs as ProbeOptions.Runs, a plain list with no error: a front door that reads the runs and swallows a read failure passes an empty list, and the run proof then silently holds nothing, so a worktree a crashed-but-resumable run names could be reclaimed.

@@ -145,6 +145,10 @@ type ProbeOptions struct {
 	Owner OwnerCheck
 	// Runs is the build loop's run state (loop.Runs).
 	Runs []loop.State
+	// RunsUnread is why the run state could not be read, "" when it was. An
+	// empty Runs cannot then show that no unfinished run names a worktree, so
+	// every worktree is held, as unread reservations hold them.
+	RunsUnread string
 	// Processes lists the processes; nil is hostProcesses.
 	Processes ProcessLister
 	// Now is the clock, read once; nil is time.Now.
@@ -183,6 +187,7 @@ type Probe struct {
 	escaped      []escapedCwd
 	unavailable  string
 	unread       string
+	runsUnread   string
 }
 
 // newProbe reads the process table once and returns the probe that judges
@@ -198,7 +203,7 @@ func newProbe(ctx context.Context, o ProbeOptions) *Probe {
 	if window <= 0 {
 		window = DefaultRecentWindow
 	}
-	p := &Probe{now: now(), window: window, reservations: o.Reservations, copyView: o.CopyView, owner: o.Owner, runs: o.Runs}
+	p := &Probe{now: now(), window: window, reservations: o.Reservations, copyView: o.CopyView, owner: o.Owner, runs: o.Runs, runsUnread: o.RunsUnread}
 	if p.copyView == nil {
 		p.copyView = worktreeView
 	}
@@ -280,6 +285,9 @@ func (p *Probe) Judge(w Worktree) Liveness {
 		ev = append(ev, Evidence{Kind: KindChanges, Strength: Hint, Detail: "changes unknown"})
 	} else if e, ok := unreadableChange(w.Changed); ok {
 		ev = append(ev, e)
+	}
+	if p.runsUnread != "" {
+		ev = append(ev, Evidence{Kind: KindRun, Strength: Hint, Detail: "build runs unread: " + p.runsUnread})
 	}
 	ev = append(ev, p.lanesNaming(wt)...)
 	if e, ok := p.processIn(wt); ok {

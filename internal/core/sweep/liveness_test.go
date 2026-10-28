@@ -904,3 +904,19 @@ func TestTheDefaultOwnerCheckReadsThisAccountsTreeAsItsOwn(t *testing.T) {
 		t.Fatal("foreignOwner(absent) = nil error; want the stat failure")
 	}
 }
+
+// TestAnUnreadRunStateHoldsEveryWorktree: a caller that could not read the
+// build runs says so, and the empty run list it passes then proves nothing,
+// so the worktree is held rather than judged free of runs
+// (iss-2610272126405270).
+func TestAnUnreadRunStateHoldsEveryWorktree(t *testing.T) {
+	wt, _ := worktree(t)
+	now := at(stale()())
+	frees(t, probe(ProbeOptions{Processes: cwds(), Now: now}).Judge(Worktree{Path: wt, Changed: none}))
+
+	l := probe(ProbeOptions{RunsUnread: "permission denied", Processes: cwds(), Now: now}).Judge(Worktree{Path: wt, Changed: none})
+	holdsBy(t, l, KindRun, Hint)
+	if !strings.Contains(l.Reason, "build runs unread: permission denied") {
+		t.Fatalf("reason = %q; want it to say the build runs were unread and why", l.Reason)
+	}
+}
