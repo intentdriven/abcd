@@ -26,10 +26,13 @@ const PushKind = "merging"
 // ADR, text) is not an item and is left out, a bare number among them: values
 // are a trailer's words, and the 3 of "Refs: spc-9 step 3" is not pull
 // request #3. `abcd announce` still takes a bare N, since a shell reads "#N"
-// as a comment; that is announcementItem, which this does not change.
+// as a comment; that is announcementItem, which this does not change. The
+// punctuation a trailer's words carry around them ("iss-5.", "(#12),") is
+// not part of the item, so it is trimmed and the item kept.
 func PushItems(values []string) []string {
 	var out []string
 	for _, v := range values {
+		v = strings.TrimRight(strings.TrimLeft(v, "(['\""), ".,;:!?)]'\"")
 		if !strings.HasPrefix(v, "#") && prNumberRe.MatchString(v) {
 			continue
 		}

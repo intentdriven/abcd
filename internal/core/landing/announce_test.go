@@ -131,7 +131,7 @@ func TestLandPushesNothingWhenItsAnnouncementCannotBePublished(t *testing.T) {
 	_, err := f.land(o)
 	wantRefusal(t, err, "the announcement merging iss-5 could not be published: an announcement about iss-5 is refused: "+
 		"the embargo store on this machine could not be checked: the store is unreadable")
-	wantRefusal(t, err, "so feat/x was not pushed: abcd land announces before it pushes; settle what it names, then run abcd land again; nothing was pushed")
+	wantRefusal(t, err, "so feat/x was not pushed: abcd land announces before it pushes; settle what it names, then run abcd land again; the branch was not pushed, and an announcement already sent stands")
 	if len(f.pushes()) != 0 || f.onOrigin("feat/x") != "" || f.statusTip() != "" {
 		t.Fatalf("pushes %v, feat/x %q, status %q: want nothing pushed", f.pushes(), f.onOrigin("feat/x"), f.statusTip())
 	}

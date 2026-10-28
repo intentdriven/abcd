@@ -32,6 +32,12 @@ func TestPushItemsKeepsTheAnnouncementItemsInTheirCanonicalForm(t *testing.T) {
 	if got := PushItems([]string{"spc-9", "step", "3"}); len(got) != 0 {
 		t.Fatalf("PushItems of \"spc-9 step 3\" = %v; want none", got)
 	}
+	// A trailer's words keep the punctuation around them ("Resolves:
+	// iss-5.", "(#12)"): it is not part of the item, so the item is still
+	// announced, never dropped.
+	if got, want := PushItems([]string{"iss-5.", "(#12),", "itd-7;", "\"iss-8\"", "spc-9)"}), []string{"iss-5", "#12", "itd-7", "iss-8"}; !slices.Equal(got, want) {
+		t.Fatalf("PushItems of punctuated words = %v; want %v", got, want)
+	}
 }
 
 // TestAStandingAnnouncementIsNotSentAgainBeforeAPush: the first push announces

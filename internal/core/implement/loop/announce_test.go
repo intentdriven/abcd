@@ -137,7 +137,7 @@ func TestALaneWhoseAnnouncementCannotBePublishedIsNotPushed(t *testing.T) {
 	r := mustRefusal(t, err)
 	if r.Stage != string(StageLand) || !strings.HasPrefix(r.Reason, "the announcement merging itd-10 could not be published: ") ||
 		!strings.HasSuffix(r.Reason, ", so "+l.Branch+" was not pushed: the landing announces before it pushes") ||
-		r.Remedy != "settle what it names, then run `abcd implement step` again; nothing was pushed" {
+		r.Remedy != "settle what it names, then run `abcd implement step` again; the branch was not pushed, and an announcement already sent stands" {
 		t.Fatalf("refusal %+v; want the announcement's failure, and nothing pushed", r)
 	}
 	if got := f.remoteBranch(t, l.Branch); got != "" {

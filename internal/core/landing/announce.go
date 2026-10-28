@@ -86,7 +86,7 @@ func announceStep(res *Result, o Options, root, dir, tracking string) error {
 			res.add("announce", StatusDone, strings.Join(lines, "; "), "")
 		}
 		return refuse(fsutil.RedactHome(err.Error())+", so "+res.Branch+" was not pushed: abcd land announces before it pushes",
-			"settle what it names, then run abcd land again; nothing was pushed")
+			"settle what it names, then run abcd land again; the branch was not pushed, and an announcement already sent stands")
 	}
 	status := StatusSkipped
 	if sent {

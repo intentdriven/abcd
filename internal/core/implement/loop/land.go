@@ -544,7 +544,7 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID,
 			gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error()))+", so "+lane.Branch+" was not pushed: the landing announces before it pushes",
-			"settle what it names, then run `abcd implement step` again; nothing was pushed")
+			"settle what it names, then run `abcd implement step` again; the branch was not pushed, and an announcement already sent stands")
 	}
 	// The head the receipt names is pushed by its commit id, not the branch's
 	// ref, so a branch that moves after the check cannot change what is pushed.

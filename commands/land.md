@@ -186,8 +186,9 @@ reservations that cannot be fetched from `origin` before the push (a hold
 land cannot see may be there, so nothing is pushed), an announcement that
 cannot be published before the push (an embargo store that holds the record
 or cannot be checked, no GitHub username to send as, no local tier, `origin`
-refusing the status branch's push or not answering: nothing is pushed, and
-running land again once it is settled resumes), and the
+refusing the status branch's push or not answering: the branch is not pushed,
+an announcement already sent stands, and running land again once it is
+settled resumes), and the
 forge client missing while an act needs it. Relay the refusal; never retry it with `--no-verify`, a force, or a
 hand-run `gh pr merge` the merge gate did not allow.
 
