@@ -508,8 +508,11 @@ func TestProcCwdsReadsAProcTree(t *testing.T) {
 }
 
 // TestAProcLinkRefusedForThisAccountFailsClosed: a kernel refuses the cwd
-// link of a process that is not dumpable, this account's own included, so a
-// refused link is passed over only when the status names another account.
+// link of a process that is not dumpable, or in another user namespace, this
+// account's own included, so a refused link is passed over only when the
+// status names another account; any other refused process is listed as
+// unreadable, which holds every worktree, and the processes that read still
+// count.
 func TestAProcLinkRefusedForThisAccountFailsClosed(t *testing.T) {
 	proc := t.TempDir()
 	self := strconv.Itoa(os.Getpid())
@@ -542,17 +545,50 @@ func TestAProcLinkRefusedForThisAccountFailsClosed(t *testing.T) {
 	if got, err := procCwds(proc); err != nil || len(got) != 1 {
 		t.Fatalf("procCwds = %v, %v; want this process alone", got, err)
 	}
-	// 701 is this account's and refuses its link: the check fails closed.
+	// 701 is this account's and refuses its link: it is listed unreadable.
 	status("701", os.Getuid())
-	if _, err := procCwds(proc); err == nil || !strings.Contains(err.Error(), "process 701") {
-		t.Fatalf("procCwds over this account's refused link = %v; want a refusal naming it", err)
+	unreadable := func(want string) {
+		t.Helper()
+		got, err := procCwds(proc)
+		i := slices.IndexFunc(got, func(p Process) bool { return p.PID == 701 })
+		if err != nil || len(got) != 2 || i < 0 || got[i].Cwd != "" || got[i].Unreadable != want {
+			t.Fatalf("procCwds over this account's refused link = %v, %v; want this process and 701 unreadable (%s)", got, err, want)
+		}
 	}
-	// A status that names no owner fails closed too.
+	unreadable("permission denied")
+	// A status that names no owner is listed unreadable too, and says so.
 	if err := os.WriteFile(filepath.Join(proc, "701", "status"), []byte("Name:\tx\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := procCwds(proc); err == nil {
-		t.Fatal("procCwds over a refused link with no readable owner did not refuse")
+	unreadable("permission denied, and its owner could not be read")
+}
+
+// TestAnUnreadableProcessHoldsEveryWorktreeAndTheCheckStands: a process this
+// account may own whose working directory cannot be read may work in any
+// worktree, so every worktree is held by it, as a hint naming it; the check
+// is not unavailable, and a process that reads still proves the worktree it
+// works in.
+func TestAnUnreadableProcessHoldsEveryWorktreeAndTheCheckStands(t *testing.T) {
+	busy, idle := t.TempDir(), t.TempDir()
+	list := func(context.Context) ([]Process, error) {
+		return []Process{{PID: 11, Cwd: busy}, {PID: 1293, Unreadable: "permission denied"}}, nil
+	}
+	p := probe(ProbeOptions{Processes: list, Now: stale()})
+	if why := p.ProcessCheckUnavailable(); why != "" {
+		t.Fatalf("ProcessCheckUnavailable() = %q; want the check standing", why)
+	}
+	l := p.Judge(Worktree{Path: busy, Changed: none})
+	if !l.Held || !slices.Contains(kinds(l), KindProcess) || !slices.Contains(kinds(l), KindProcessCheck) {
+		t.Fatalf("liveness of the busy worktree = %+v; want held by its process and the unreadable one", l)
+	}
+	l = p.Judge(Worktree{Path: idle, Changed: none})
+	if !l.Held || slices.Contains(kinds(l), KindProcess) || !strings.Contains(l.Reason, "process 1293 this account may own could not be read (permission denied)") {
+		t.Fatalf("liveness of the idle worktree = %+v; want it held by the unreadable process alone, named", l)
+	}
+	for _, e := range l.Evidence {
+		if e.Kind == KindProcessCheck && e.Strength != Hint {
+			t.Fatalf("the unreadable process is %s evidence; want a hint", e.Strength)
+		}
 	}
 }
 

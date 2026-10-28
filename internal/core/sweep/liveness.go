@@ -70,8 +70,9 @@ const (
 	KindProcess     EvidenceKind = "process"
 	// KindRecentWrite is the recent-write hint.
 	KindRecentWrite EvidenceKind = "recent-write"
-	// KindProcessCheck is the process check failing closed: it proves
-	// nothing, so it is a hint, but the worktree is kept as possibly live.
+	// KindProcessCheck is the process check failing closed, whole or for a
+	// process whose working directory it could not read: it proves nothing,
+	// so it is a hint, but the worktree is kept as possibly live.
 	KindProcessCheck EvidenceKind = "process-check"
 	// KindReservationCheck is the reservations failing closed: no fetch is
 	// stamped, or the worktree's own view of them could not be read.
@@ -113,6 +114,11 @@ type Process struct {
 	// directory's leading bytes, cut wherever the escape fell, perhaps in the
 	// middle of a name.
 	Escaped bool
+	// Unreadable is why a process this account may own would not show its
+	// working directory (on Linux, a link the kernel refuses for permission:
+	// a process that is not dumpable, or one in another user namespace).
+	// Cwd is then empty, and the process may work in any worktree.
+	Unreadable string
 }
 
 // ProcessLister lists the running processes' working directories. An error
@@ -185,6 +191,7 @@ type Probe struct {
 	runs         []loop.State
 	processes    []Process
 	escaped      []escapedCwd
+	unreadable   []Process
 	unavailable  string
 	unread       string
 	runsUnread   string
@@ -226,6 +233,8 @@ func newProbe(ctx context.Context, o ProbeOptions) *Probe {
 	// /var that is really /private/var, still lands inside the worktree.
 	for _, proc := range procs {
 		switch {
+		case proc.Unreadable != "":
+			p.unreadable = append(p.unreadable, proc)
 		case !filepath.IsAbs(proc.Cwd):
 		case proc.Escaped:
 			p.escaped = append(p.escaped, escapedCwd{lit: proc.Cwd, real: realPrefix(proc.Cwd)})
@@ -298,6 +307,9 @@ func (p *Probe) Judge(w Worktree) Liveness {
 	if p.unavailable != "" {
 		ev = append(ev, Evidence{Kind: KindProcessCheck, Strength: Hint, Detail: "process check unavailable: " + p.unavailable})
 	}
+	if e, ok := p.unreadableAnywhere(); ok {
+		ev = append(ev, e)
+	}
 	if len(ev) == 0 {
 		if e, ok := p.recentWrite(wt); ok {
 			ev = append(ev, e)
@@ -308,6 +320,31 @@ func (p *Probe) Judge(w Worktree) Liveness {
 			"no unfinished run names it, no process works in it, and nothing in it was written in the last %s", durationWords(p.window))}
 	}
 	return held(ev)
+}
+
+// unreadableAnywhere is the hint every worktree takes while a process this
+// account may own would not show its working directory: it may work in any of
+// them, so none is shown free of it. The processes read still prove what they
+// hold.
+func (p *Probe) unreadableAnywhere() (Evidence, bool) {
+	if len(p.unreadable) == 0 {
+		return Evidence{}, false
+	}
+	const shown = 3
+	pids := make([]string, 0, shown)
+	for _, proc := range p.unreadable[:min(len(p.unreadable), shown)] {
+		pids = append(pids, strconv.Itoa(proc.PID))
+	}
+	which := "process " + pids[0]
+	if n := len(p.unreadable); n > 1 {
+		which = fmt.Sprintf("%d processes (%s", n, strings.Join(pids, ", "))
+		if n > shown {
+			which += ", …"
+		}
+		which += ")"
+	}
+	return Evidence{Kind: KindProcessCheck, Strength: Hint, Detail: fmt.Sprintf(
+		"the working directory of %s this account may own could not be read (%s), so it may work here", which, p.unreadable[0].Unreadable)}, true
 }
 
 // held is the liveness of a worktree the evidence holds, its reason the
@@ -806,7 +843,10 @@ func parseLsof(out []byte) ([]Process, error) {
 // refusing on them would fail every check on a shared host. A link refused
 // for permission is passed over only when the process's status names another
 // account as its real owner: one of this account's own processes that is not
-// dumpable refuses the link too, and may be working in a worktree. A /proc
+// dumpable, or that runs in another user namespace, refuses the link too, and
+// may be working in a worktree, so it is listed Unreadable, which holds every
+// worktree, rather than failing the check for the processes that do read
+// (a hosted runner has such processes). A /proc
 // that cannot be listed, or a link that fails any other way, is an error. So
 // is a /proc that does not list this process: one that is empty or another's,
 // as in a chroot or a container, cannot show that nothing else is running.
@@ -854,7 +894,12 @@ func procCwds(root string) ([]Process, error) {
 			if errors.Is(serr, fs.ErrNotExist) || (serr == nil && uid != os.Getuid()) {
 				continue
 			}
-			return nil, fmt.Errorf("cannot read the working directory of process %d, which this account may own: %v", pid, err)
+			why := "permission denied"
+			if serr != nil {
+				why += ", and its owner could not be read"
+			}
+			procs = append(procs, Process{PID: pid, Unreadable: why})
+			continue
 		case err != nil:
 			return nil, fmt.Errorf("cannot read the working directory of process %d: %v", pid, err)
 		}
