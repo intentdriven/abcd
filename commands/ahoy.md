@@ -465,8 +465,8 @@ it can, each on one line
    cancel, or deciding later, writes nothing. For a repository abcd does not
    manage yet, proceed and customise also adopt it, so the plan is the one
    question that adopts.
-3. **The questions only a person can answer.** The abcd download, the shell
-   settings, the commit checks (`core.hooksPath` in this clone's
+3. **The questions only a person can answer.** The live brief session
+   question, the abcd download, the shell settings, the commit checks (`core.hooksPath` in this clone's
    `.git/config`), the status line (one entry in the assistant's settings),
    the commit identity and each tool abcd offers to install are each their own
    question, naming the value and where it is written, whatever the answer to
