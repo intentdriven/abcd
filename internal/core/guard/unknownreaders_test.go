@@ -216,8 +216,11 @@ func substitutionsOf(w string) []string {
 			out = append(out, w[:2]+"$(echo "+w[2:]+")")
 		}
 		return out
-	case strings.HasPrefix(w, "+") && len(w) > 1:
-		return []string{"+$(echo " + w[1:] + ")", glued}
+	case (strings.HasPrefix(w, "+") || strings.HasPrefix(w, ":")) && len(w) > 1:
+		// A refspec's leading `+` or `:` is read by its known text, as
+		// argPrefixMatches reads it: a refspec a substitution prints whole is
+		// how an everyday push names its branch.
+		return []string{w[:1] + "$(echo " + w[1:] + ")", glued}
 	default:
 		return []string{"$(echo " + w + ")", "`echo " + w + "`", `"$(echo ` + w + `)"`, glued, "${X:-$(echo " + w + ")}"}
 	}

@@ -396,6 +396,132 @@
         ]
       }
     },
+    "git-push-delete": {
+      "tier": "warn",
+      "pattern": {
+        "command": "git",
+        "subcommand": "push",
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "flags": ["--delete|-d"]
+      },
+      "why": "`git push --delete` removes a branch or tag from the remote, so a commit only that branch held is gone from it for everyone: an open pull request on it closes, and anyone who never fetched it loses the only shared copy.",
+      "successor": "Before deleting a remote branch, show that it is merged (`git merge-base --is-ancestor origin/<branch> origin/main`), that no pull request is open on it (`gh pr list --head <branch> --state open`) and that no reservation holds it (`abcd peers`), and delete only a branch you have shown all three for.",
+      "fixtures": {
+        "known_bad": [
+          "git push origin --delete feat/x",
+          "git push --delete origin feat/x",
+          "git push -d origin feat/x",
+          "git -C /repo push origin --delete feat/x",
+          "sh -c 'git push origin --delete feat/x'"
+        ],
+        "known_good": [
+          "git push origin feat/x",
+          "git push --set-upstream origin feat/x",
+          "git branch -d feat/x",
+          "abcd capture \"an agent ran git push origin --delete feat/x\""
+        ]
+      }
+    },
+    "git-push-delete-refspec": {
+      "tier": "warn",
+      "pattern": {
+        "command": "git",
+        "subcommand": "push",
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "arg_prefixes": [":"]
+      },
+      "why": "A refspec with nothing before its colon (`:feat/x`) pushes nothing onto the remote ref, which deletes it: a remote branch deletion spelled without the flag anyone reviews for.",
+      "successor": "Before deleting a remote branch, show that it is merged (`git merge-base --is-ancestor origin/<branch> origin/main`), that no pull request is open on it (`gh pr list --head <branch> --state open`) and that no reservation holds it (`abcd peers`), and delete only a branch you have shown all three for. Spell the deletion `git push origin --delete <branch>`, so it reads as one.",
+      "fixtures": {
+        "known_bad": [
+          "git push origin :feat/x",
+          "git push origin :refs/heads/feat/x",
+          "git -C /repo push origin :feat/x"
+        ],
+        "known_good": [
+          "git push origin main:main",
+          "git push origin HEAD:refs/heads/feat/x",
+          "git push --porcelain origin 9f2c41d07be35a6c80e1f4b2a7d39c559f2c41d0:refs/heads/abcd-reserved/iss-2609020716570699",
+          "abcd capture \"an agent ran git push origin :feat/x\""
+        ]
+      }
+    },
+    "git-branch-force-delete": {
+      "tier": "warn",
+      "pattern": {
+        "command": "git",
+        "subcommand": "branch",
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "flags": ["-D"]
+      },
+      "why": "`git branch -D` deletes a local branch whether or not it is merged, and a commit only that branch held is then reachable from the reflog alone, which expires.",
+      "successor": "Delete with `git branch -d <branch>`, which refuses a branch that is not merged; where it refuses, see what the branch holds (`git log origin/main..<branch>`) before deleting anything.",
+      "fixtures": {
+        "known_bad": [
+          "git branch -D feat/x",
+          "git -C /repo branch -D feat/x",
+          "sh -c 'git branch -D feat/x'"
+        ],
+        "known_good": [
+          "git branch -d feat/x",
+          "git branch --delete feat/x",
+          "git branch feat/x",
+          "git branch -m old new",
+          "git branch -vv",
+          "abcd capture \"an agent ran git branch -D feat/x\""
+        ]
+      }
+    },
+    "git-branch-delete-force": {
+      "tier": "warn",
+      "pattern": {
+        "command": "git",
+        "subcommand": "branch",
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
+        "flags": ["--delete|-d", "--force|-f"]
+      },
+      "why": "`git branch --delete --force` is `git branch -D` spelled in two flags: it deletes a local branch whether or not it is merged, and a commit only that branch held is then reachable from the reflog alone, which expires.",
+      "successor": "Delete with `git branch -d <branch>`, which refuses a branch that is not merged; where it refuses, see what the branch holds (`git log origin/main..<branch>`) before deleting anything.",
+      "fixtures": {
+        "known_bad": [
+          "git branch --delete --force feat/x",
+          "git branch -d -f feat/x",
+          "git branch -df feat/x",
+          "git branch -d --force feat/x"
+        ],
+        "known_good": [
+          "git branch -d feat/x",
+          "git branch --delete feat/x",
+          "git branch -f feat/x origin/main",
+          "abcd capture \"an agent ran git branch --delete --force feat/x\""
+        ]
+      }
+    },
+    "git-worktree-remove": {
+      "tier": "warn",
+      "pattern": {
+        "command": "git",
+        "subcommand": "worktree",
+        "subcommand2": "remove",
+        "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"]
+      },
+      "why": "`git worktree remove` deletes the worktree's folder together with its ignored files, the local tier (`.abcd/.work.local/`) among them, without asking even when `--force` is absent; `--force` also discards uncommitted and untracked work.",
+      "successor": "Before removing a worktree, check that it holds nothing uncommitted (`git -C <path> status --porcelain --ignored`), that its branch is pushed or merged, and that no session works in it; move anything worth keeping to the main checkout's `.abcd/.work.local/` first, and remove it without `--force`.",
+      "fixtures": {
+        "known_bad": [
+          "git worktree remove ../wt",
+          "git worktree remove --force ../wt",
+          "git -C /repo worktree remove /tmp/wt",
+          "sh -c 'git worktree remove ../wt'"
+        ],
+        "known_good": [
+          "git worktree list",
+          "git worktree add ../wt -b feat/x",
+          "git worktree prune",
+          "abcd capture \"git worktree remove deleted my notes\""
+        ]
+      }
+    },
     "pkill-by-pattern": {
       "tier": "blocker",
       "pattern": {
