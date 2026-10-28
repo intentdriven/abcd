@@ -634,7 +634,8 @@ A lane's stages run in order:
    computer"), and the pull request stays open and unarmed, since a session
    cutting a release has the final say on what merges before its tag. Tell the
    user who is cutting which release, and step again once the release is
-   tagged or its holder released it; never merge around the hold. The copy
+   tagged, its holder released it or the hold lapsed at the time the refusal
+   names, which needs no one's leave; never merge around a live hold. The copy
    cutting the release is not held. A fetch `origin` does not answer arms
    nothing either. Then `step` exits 3 until the
    pushed head is an ancestor of the default branch on `origin`; stop driving
