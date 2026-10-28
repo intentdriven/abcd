@@ -14,7 +14,11 @@ import (
 // the print site, so every verb's refusal is covered without each verb
 // remembering to.
 
-const hostileOperand = "x\x1b[31mRED\u009b\u202e"
+// An operand of eight bytes or more is withheld from the refusal altogether
+// (withholdArguments), so the operand here is shorter: it is the one an
+// echoing refusal still carries, and the mask is what stands between it and
+// the terminal.
+const hostileOperand = "\x1bQ\u009b\u202e"
 
 // assertNoAttackRunes (intent_render_sanitize_test.go) checks ESC, the C1
 // CSI and the RLO override, the three runes hostileOperand carries.
@@ -27,7 +31,7 @@ func TestErrorSurfaceMasksAttackRunesInAnEchoedOperand(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("embark probe on a missing lifeboat must refuse")
 	}
-	if !strings.Contains(stderr, "RED") {
+	if !strings.Contains(stderr, "Q") {
 		t.Fatalf("the refusal no longer echoes the operand, so this test proves nothing:\n%q", stderr)
 	}
 	assertNoAttackRunes(t, "stderr", stderr)

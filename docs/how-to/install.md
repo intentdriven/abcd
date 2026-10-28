@@ -642,7 +642,12 @@ markers they carry, so a hook whose marker is renamed or stripped reads as
 someone else's hook, a fence without its markers reads as drifted, and
 `abcd ahoy` reports either as a gap.
 
-`README.md` is not among them. abcd writes in it only after you answer yes to
+The fence carries only the entries your `.gitignore` does not already list. A
+line you wrote yourself outside the fence, such as `.abcd/.work.local/`, stays
+the one in force and is not repeated inside it; the fence is written even when
+that leaves it empty, so `abcd ahoy` still finds it.
+
+`README.md` is not among those three files. abcd writes in it only after you answer yes to
 the README question below, and only the parts you choose; the marks around
 each part name abcd, as the fence in `.gitignore` does.
 

@@ -61,8 +61,14 @@ func sourceCorpusDir(flag string) (string, error) {
 // would not say where to create or find it.
 func sourceError(verb, dir string, err error) error {
 	if errors.Is(err, source.ErrNoCorpus) {
+		// The default store is abcd's own path and is named; a --corpus
+		// path is named by its flag, never by what was typed.
+		where := fsutil.RedactHome(dir)
+		if def, derr := source.DefaultDir(); derr != nil || def != dir {
+			where = "the --corpus path (not repeated here)"
+		}
 		return &exitError{Code: 3, Msg: fmt.Sprintf("abcd library %s: no sources corpus at %s — nothing read or written (create one with `abcd library init`)",
-			verb, fsutil.RedactHome(dir))}
+			verb, where)}
 	}
 	return &exitError{Code: 2, Msg: "abcd library " + verb + ": " + termsafe.Sanitize(scrubPaths(err))}
 }

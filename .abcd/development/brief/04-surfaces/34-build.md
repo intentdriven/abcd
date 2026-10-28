@@ -141,7 +141,13 @@ with a remote named `origin`, a run reserves its key there once its checks and
 its budget check pass and before the run is created, through
 `internal/core/claim`, as `abcd reserve` does: with the packages its spec's
 `## Footprint` `- packages:` line names, each cleaned of a trailing slash, for
-an intent, and the path an issue's `found_at` names for an issue. A spec with
+an intent, and the path an issue's `found_at` names for an issue. The
+reservation names exactly those paths, so a file named there is reserved as
+that file, and one reservation holds them for every step of the run; a step's
+own packages line is not read for it. A path naming a directory git tracks is
+reserved as it stands, and the start warns of it as the reserve verb does,
+naming the directory and its tracked files (`reservation_warnings`, a warning
+on stderr in the text form; iss-2610230016544142). A spec with
 no footprint, or an issue with no such path, is refused at the `reservation`
 stage, starting nothing (C35); another's hold, a person's or this person's
 other copy's, is contention at the same stage; a take-over asked for passes
