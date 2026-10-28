@@ -65,7 +65,11 @@ Then summarise the JSON for the user:
   checkout) or pinned version, and whether it is up to date, stale, or of an
   undeterminable vintage relative to the on-disk reference. Report them so a
   binary running behind its own source is never silent. The comparison is
-  disk-only — no network.
+  disk-only — no network. The `staleness` line names the reference it was
+  compared against (the checkout tip or the plugin manifest pin), and a fresh
+  pinned install's line names `abcd update --check` as the way to compare with
+  the newest release. Relay it whole: "up to date" on its own reads as current
+  to someone several releases behind their pin.
 - `superseded_root` — present only when the binary that answered is served from a
   plugin root other than the one this session resolves. A plugin root is named
   for the commit it was installed from, so a binary path pinned into a page
@@ -655,8 +659,14 @@ never offer an answer the question does not list. The config values asked
 also name the flag that answers them without the question (`--visibility`,
 `--docs-target`, `--scan-deep`), and the matching gap's fix
 hint names it too: in a scripted run, pass the user's answer through the flag
-rather than lining a piped answer up with the question. A question no flag
-answers, such as the artefact kind, ends its explanation instead on a
+rather than lining a piped answer up with the question. A piped answer that
+is not one of a config value's answers is never saved: that setting stays
+missing, while the other questions are still asked and the values they and
+the flags give are saved. The deep-scan question is where `yes |` meets
+this, since its `y` is neither `true` nor `false`: a note names the answer,
+the two it accepts and `--scan-deep`, and `config.scan_deep_missing` is the
+gap left. Relay the note and pass the user's answer as `--scan-deep`. A
+question no flag answers, such as the artefact kind, ends its explanation instead on a
 `(Change later: <where>)` line saying where the answer is changed afterwards.
 `--yes` chooses no value, so a `--yes` run that still has a value to ask says so
 once, above the first such question.

@@ -49,7 +49,7 @@ func TestBuildTakesTheFixRoundCapBesideThePace(t *testing.T) {
 	}
 	resetRuns(t, repo.Root())
 	ref = refusalDocs(t, 2, "build", "itd-10", "--json", "--fix-rounds", "three")
-	if ref["stage"] != "pace" || !strings.Contains(ref["reason"].(string), "three") || !strings.Contains(ref["remedy"].(string), "--fix-rounds") {
+	if ref["stage"] != "pace" || strings.Contains(ref["reason"].(string), "three") || !strings.Contains(ref["reason"].(string), "--fix-rounds is given a 5-byte value") || !strings.Contains(ref["remedy"].(string), "--fix-rounds") {
 		t.Fatalf("a malformed cap is refused naming the accepted form: %v", ref)
 	}
 	runDirAbsent(t, repo.Root())

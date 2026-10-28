@@ -67,8 +67,11 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
 
 ## Footprint
 
-- packages: internal/core/matrix, internal/core/lab, internal/core/implement/loop, internal/core/runner, internal/core/oracle, internal/core/reading, internal/core/docfidelity, internal/core/record/findingkey, internal/core/launch, internal/surface/cli, commands
+- packages: internal/core/matrix/doc.go, internal/core/matrix/declaration.go, internal/core/matrix/run.go, internal/core/matrix/trial.go, internal/core/matrix/export.go, internal/core/matrix/declaration_test.go, internal/core/matrix/run_test.go, internal/core/matrix/trial_test.go, internal/core/matrix/export_test.go, internal/core/matrix/testdata/inspect-eval-sample.json, internal/core/matrix/testdata/harbor-trial-result.json, internal/core/lab/procedure.go, internal/core/lab/procedure_test.go, internal/core/lab/preflight.go, internal/README.md, ACKNOWLEDGEMENTS.md, internal/core/oracle/store.go, internal/core/matrix/plan.go, internal/core/matrix/plan_test.go, internal/core/matrix/cap.go, internal/core/matrix/cap_test.go, internal/core/matrix/consent.go, internal/core/matrix/consent_test.go, internal/core/matrix/testdata/declaration-plan.json, internal/surface/cli/lab_matrix.go, internal/surface/cli/lab_matrix_test.go, internal/surface/cli/lab.go, internal/surface/cli/lab_surface_test.go, internal/core/surface/examples.go, commands/lab.md, .abcd/development/brief/04-surfaces/31-lab.md
 - tests: the matrix plan refuses to start without consent and a named cap for metered cells; a failing runner cell is scored failed with no host fallback; trial mode takes no reservation and lands nothing; a provider-bound clone with a secret-shaped file is refused; reviewer requests carry no authorship field; a malformed verdict file is refused with nothing recorded; a check run leaves the doc-fidelity receipts untouched; Bradley–Terry and α floors; the trial record round-trips through a Harbor and an Inspect fixture
+- The packages line names step 1's files. Each later step's files join it
+  when that step begins, and `abcd build` then reserves the widened
+  footprint (dcn-2610230129331232). Generated output is reserved by no one.
 
 ## Steps
 
@@ -78,25 +81,41 @@ step 6; gate receipts untouched — step 7; Harbor/Inspect mapping — step 1.
    - waits on: itd-166 (the asked and served sides)
 2. Plan, cost and consent
    - packages: internal/core/matrix, internal/surface/cli, commands
-   - tests: the plan shows copies, cost by source against the cap, load cap, time and judges; nothing starts without consent; a metered run without a named cap is refused; a local- or host-only run needs no cap
+   - tests: the plan shows copies, cost by source against the cap, load cap, time and judges; nothing starts without consent; a metered run without a named cap is refused; a local- or host-only run needs no cap; a matrix refusal printed by the front door carries a control or direction character escaped, never raw; a scanner kind naming a repository's own rule id is printed sanitised; the role echoed in a pin refusal is quoted
+   - The front door passes every matrix error through the terminal sanitiser
+     before printing it, because the core returns raw text. The run record's
+     refusal prints the scanner's finding kind sanitised, since an opted-in
+     augmenter's kind carries the repository's own rule id.
+   - When a trial writer is added, it calls the run record's screen on every
+     trial before writing it, so a trial's reason and score detail are
+     screened for credentials as the run record is.
+   - The plan's cost and time follow decisions 34-36: no copy starts past the
+     cap's remainder, the time waits for the pilot, and the expected cost
+     comes only from prices the person declares.
 3. Trial mode, isolated clones and routing
    - packages: internal/core/implement/loop, internal/core/runner, internal/core/launch, internal/core/matrix
    - tests: trial mode takes no reservation and lands nothing; a runner failure in a cell is the cell's failure with no host fallback; an OpenRouter outage is retried on the same pin and not scored; each copy is a clone outside every working tree with no local tier; a provider-bound clone passes the secret scan or is refused; one local server at a time as an owned process group
+   - needs: 1, 2
    - waits on: iss-2610161801358637, iss-2610161734413178, iss-2610161734428291, iss-2610161709506207
 4. Code tasks: hidden tests and compliance
    - packages: internal/core/matrix
    - tests: hidden tests sit outside the clone; the compliance check excludes a copy that edited tests or read another copy, and marks an unexaminable copy unexamined; host-harness isolation is reported as asserted
+   - needs: 1, 3
 5. Blinded reviewer models
    - packages: internal/core/matrix, internal/core/reading, internal/core/oracle
    - tests: a reviewer request is assembled through the include table with no trailer, author, branch or run metadata; recall and true-negative rate on known-good and seeded-defect copies; the author-guess score; same-family verdicts reported apart
+   - needs: 2, 3
 6. Writing tasks judged in an abcdesign.app session
    - packages: internal/core/matrix, internal/core/oracle
    - tests: a judge's subset holds at most eight copies and every pair of models is compared; copies render as inert text; a verdict file is validated and refused whole when malformed; one ranking per judge identity; guest verdicts and the host's self-blinded verdicts reported apart
+   - needs: 2, 3
    - waits on: itd-2610091016262335 and iss-2610161928115039 (the session and its kinds)
 7. Checks compared in two phases
    - packages: internal/core/matrix, internal/core/docfidelity, internal/core/record/findingkey
    - tests: a check copy's findings are read before its clone is deleted; the doc-fidelity receipts and the issue ledger are unchanged by a run; exact-key matching first, the matcher's agreement on a labelled sample reported; the overlap table appears only after the person's verdicts are locked; recall on seeded falsehoods
+   - needs: 2, 3
    - waits on: itd-2610091016262335 and iss-2610161928115039
 8. Statistics, report and re-run
    - packages: internal/core/matrix, internal/surface/cli
    - tests: pass@1 interval and pass^k; regularised Bradley–Terry with bootstrapped intervals and "not separable"; α with interval or "not estimable"; floors below three judges; a comparison under its power estimate states the smallest detectable difference; the report lists limitations and suggested improvements; a re-run reports drift field by field
+   - needs: 1, 4, 5, 6, 7

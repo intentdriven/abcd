@@ -1,7 +1,12 @@
 package claim
 
 import (
+	"context"
 	"errors"
+	"io/fs"
+	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -74,5 +79,126 @@ func TestTheViewJudgesEveryReservationFromDiskAlone(t *testing.T) {
 	p.git("remote", "rename", "origin", "upstream")
 	if _, err := Fetch(p.dir, p.opts()); !errors.Is(err, ErrNoOrigin) {
 		t.Fatalf("Fetch with no origin = %v; want ErrNoOrigin", err)
+	}
+}
+
+// TestTheViewLeavesTheObjectStoreUntouched holds that a view reads the
+// reservations without writing into the shared object store, under both
+// object formats: a copy that fetched another's reservations, the empty tree
+// among their objects, finds no file under .git/objects added, removed or
+// with its time changed by the view (iss-2610231038335615).
+func TestTheViewLeavesTheObjectStoreUntouched(t *testing.T) {
+	for _, format := range []string{"sha1", "sha256"} {
+		t.Run(format, func(t *testing.T) {
+			w := newWorldFormat(t, format)
+			p := w.clone("1234+octo@users.noreply.github.com", "")
+			q := w.clone("99+quinn@users.noreply.github.com", "")
+			if _, err := p.reserve("iss-5", "a.go"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Fetch(q.dir, q.opts()); err != nil {
+				t.Fatal(err)
+			}
+			objects := filepath.Join(q.dir, ".git", "objects")
+			before := agedObjectStore(t, objects)
+			snap, err := View(q.dir, w.clock())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(snap.Reservations) != 1 || snap.Reservations[0].Record != "iss-5" {
+				t.Fatalf("the view listed %+v; want iss-5 alone", snap.Reservations)
+			}
+			if after := objectStore(t, objects); !maps.Equal(before, after) {
+				for path, at := range after {
+					if was, ok := before[path]; !ok || !was.Equal(at) {
+						t.Errorf("the view wrote %s", path)
+					}
+				}
+				t.Fatal("the view changed the object store")
+			}
+		})
+	}
+}
+
+// agedObjectStore sets every file under the object store at dir an hour into
+// the past and answers objectStore, so a write or a refresh of any of them
+// afterwards shows as a changed time.
+func agedObjectStore(t *testing.T, dir string) map[string]time.Time {
+	t.Helper()
+	past := time.Now().Add(-time.Hour).Truncate(time.Second)
+	for path := range objectStore(t, dir) {
+		if err := os.Chtimes(path, past, past); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return objectStore(t, dir)
+}
+
+// objectStore is every file under the object store at dir with its
+// modification time.
+func objectStore(t *testing.T, dir string) map[string]time.Time {
+	t.Helper()
+	files := map[string]time.Time{}
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		files[path] = info.ModTime()
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+// TestTheOtherReadsLeaveTheObjectStoreUntouched is iss-2610231038335615 on the
+// two other reads that named the empty tree by writing it: the first-fetched
+// keeper behind the merge hold and abcd peers, and the status read's intake.
+// Each compares tips against the name and needs no object.
+func TestTheOtherReadsLeaveTheObjectStoreUntouched(t *testing.T) {
+	for _, format := range []string{"sha1", "sha256"} {
+		t.Run(format, func(t *testing.T) {
+			w := newWorldFormat(t, format)
+			p := w.clone("1234+octo@users.noreply.github.com", "")
+			q := w.clone("99+quinn@users.noreply.github.com", "")
+			if _, err := p.reserve("iss-5", "a.go"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Fetch(q.dir, q.opts()); err != nil {
+				t.Fatal(err)
+			}
+			// An announcement q has fetched and not yet read, so the status
+			// read's intake takes in a fresh commit and names the tree to
+			// read it against. A plain git fetch brings it: FetchStatus would
+			// take it in itself, leaving the read nothing fresh.
+			if _, err := p.announce("merging", "#1012"); err != nil {
+				t.Fatal(err)
+			}
+			runGit(t, q.dir, "fetch", "-q", Remote, "+"+StatusRefPrefix+"*:"+StatusTrackingPrefix+"*")
+			objects := filepath.Join(q.dir, ".git", "objects")
+			for name, read := range map[string]func(){
+				"keepFirstFetched": func() { keepFirstFetched(q.dir, w.clock(), nil) },
+				"ReadStatus": func() {
+					v, err := ReadStatus(context.Background(), q.dir, w.clock(), q.opts())
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(v.Announcements) != 1 {
+						t.Fatalf("the status read took in %d announcements; want the one fetched", len(v.Announcements))
+					}
+				},
+			} {
+				before := agedObjectStore(t, objects)
+				read()
+				if after := objectStore(t, objects); !maps.Equal(before, after) {
+					t.Errorf("%s changed the object store", name)
+				}
+			}
+		})
 	}
 }

@@ -109,13 +109,13 @@ func writeReconstruction(dir string, res history.Reconstruction) ([]string, erro
 	if err := gitutil.ProveOperandDir(abs); err != nil {
 		var oe *gitutil.OperandError
 		if errors.As(err, &oe) {
-			return nil, fmt.Errorf("history reconstruct: --out %s reaches its directory through %s inside the checkout %s, which is a symlink or a file rather than a real directory; refusing to follow it",
-				dir, oe.Level, filepath.Base(oe.Checkout))
+			return nil, fmt.Errorf("history reconstruct: --out reaches its directory through a level inside the checkout %s that is a symlink or a file rather than a real directory (the path is not repeated here); refusing to follow it",
+				filepath.Base(oe.Checkout))
 		}
-		return nil, fmt.Errorf("history reconstruct: --out %s: %w", dir, err)
+		return nil, fmt.Errorf("history reconstruct: --out (its path is not repeated here): %w", pathErrorCause(err))
 	}
 	if !fsutil.IsRealDir(abs) {
-		return nil, fmt.Errorf("history reconstruct: --out %s is not an existing directory", dir)
+		return nil, errors.New("history reconstruct: --out is not an existing directory (its path is not repeated here)")
 	}
 	tel, err := marshalTelemetry(res)
 	if err != nil {
@@ -123,7 +123,7 @@ func writeReconstruction(dir string, res history.Reconstruction) ([]string, erro
 	}
 	root, err := fsutil.OpenRealDir(abs)
 	if err != nil {
-		return nil, fmt.Errorf("history reconstruct: --out %s is not an existing directory", dir)
+		return nil, errors.New("history reconstruct: --out is not an existing directory (its path is not repeated here)")
 	}
 	defer root.Close()
 	if err := fsutil.WriteFileAtomicInRoot(root, res.ArtefactName, res.Artefact, 0o644); err != nil {

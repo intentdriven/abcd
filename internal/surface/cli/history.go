@@ -14,6 +14,7 @@ package cli
 // of them.
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -512,9 +513,9 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				// Named, not merely refused: the operator is being asked to
 				// confirm the destruction of the only copy of something, and a
 				// refusal that did not say WHAT would be confirmed is not a
-				// confirmation.
-				return fmt.Errorf("history discard: %q holds the only copy of an unredacted transcript and deleting it is irreversible; pass --yes to confirm (`abcd history staged` shows what each file is)",
-					termsafe.Sanitize(args[0]))
+				// confirmation. It is named by its position on the command
+				// line the operator typed, never by repeating the text.
+				return errors.New("history discard: the staged file the first argument names (not repeated here) holds the only copy of an unredacted transcript and deleting it is irreversible; pass --yes to confirm (`abcd history staged` shows what each file is)")
 			}
 			res, err := history.Discard(repoRoot, rootSHA, args[0])
 			if err != nil {
@@ -559,10 +560,10 @@ func captureWholeSession(cmd *cobra.Command, asJSON bool, session, kind, tool st
 		return fmt.Errorf("history capture: --all captures one named session; pass --session <id>")
 	}
 	if kind != "" && kind != "native" {
-		return fmt.Errorf("history capture: --all stores native transcripts only; --kind %s cannot apply", termsafe.Sanitize(kind))
+		return errors.New("history capture: --all stores native transcripts only; a --kind other than native cannot apply (the value given is not repeated here)")
 	}
 	if tool != "" {
-		return fmt.Errorf("history capture: --all stores the host's own transcripts; --tool %s cannot apply", termsafe.Sanitize(tool))
+		return errors.New("history capture: --all stores the host's own transcripts; --tool cannot apply (the value given is not repeated here)")
 	}
 	repoRoot, rootSHA, err := historyStore(cmd)
 	if err != nil {
@@ -669,8 +670,8 @@ func historyStoreByRootSHA(cmd *cobra.Command, verb, rootSHA string) (string, st
 			return "", rootSHA, nil
 		}
 	}
-	return "", "", fmt.Errorf("%s: no repository in this machine's store with root SHA %q holds a staged or quarantined transcript; `abcd history staged --all-repos` lists the ones that do",
-		verb, termsafe.Sanitize(rootSHA))
+	return "", "", fmt.Errorf("%s: no repository in this machine's store with the --root-sha given (not repeated here) holds a staged or quarantined transcript; `abcd history staged --all-repos` lists the ones that do",
+		verb)
 }
 
 // orphanedPileNotice names one pile whose checkout is gone: what it is, how

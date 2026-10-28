@@ -349,7 +349,7 @@ func TestIntentNewIsUnknown(t *testing.T) {
 	if err == nil {
 		t.Fatalf("`abcd intent new` must be unknown:\n%s", out)
 	}
-	if !strings.Contains(err.Error(), `unknown intent subcommand "new"`) {
+	if !strings.Contains(err.Error(), "unknown intent subcommand (the first argument") || strings.Contains(err.Error(), `"new"`) {
 		t.Fatalf("`abcd intent new` refusal = %v", err)
 	}
 	if entries, _ := os.ReadDir(filepath.Join(repo, cliDrafts)); len(entries) != 0 {

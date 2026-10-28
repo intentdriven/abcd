@@ -366,3 +366,18 @@ func TestTheSecondSessionsCeilingIsRecordedAndReported(t *testing.T) {
 		}
 	}
 }
+
+// TestARefusedRoleOrModeListsTheVocabularyNotTheWord: a word outside the role
+// or mode vocabulary is refused listing what is accepted, and the refusal never
+// repeats the word that was passed.
+func TestARefusedRoleOrModeListsTheVocabularyNotTheWord(t *testing.T) {
+	word := "zq" + strings.Repeat(string(rune('a'+time.Now().Nanosecond()%26)), 10)
+	if _, err := ParseRole(word); !errors.Is(err, ErrRefused) || strings.Contains(err.Error(), word) ||
+		!strings.Contains(err.Error(), "first") || !strings.Contains(err.Error(), "second") {
+		t.Errorf("ParseRole = %v; want a refusal naming first and second, not the word", err)
+	}
+	if _, err := ParseMode(word); !errors.Is(err, ErrRefused) || strings.Contains(err.Error(), word) ||
+		!strings.Contains(err.Error(), "single, claim, batch, split-roles") {
+		t.Errorf("ParseMode = %v; want a refusal listing the modes, not the word", err)
+	}
+}
