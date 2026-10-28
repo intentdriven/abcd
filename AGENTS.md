@@ -197,6 +197,17 @@ this case is never reached by following the ladder literally
 in `.abcd/rules.json` injects this rule on a prompt that names `abcd` or any of
 its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`).
 
+**The hooks run the latest reviewed default branch where the person opts in.**
+The hooks run the installed release, which `go run` cannot reach. A checkout
+listed in `~/.abcd.noindex/dogfood-roots` (its path, a tab, the `https://` or
+ssh URL of a remote no agent can move, optionally a tab and the branch) runs, in
+every hook, a build of that branch's tip as the declared remote reports it;
+nothing in the checkout chooses it, and until it is ready, or when it fails, the
+installed release runs and says so. The opt-in is the person's act, never an
+agent's; the `DOGFOODING` domain in `.abcd/rules.json` carries the whole rule.
+For this repository the line is
+`mkdir -p ~/.abcd.noindex && printf '%s\t%s\t%s\n' '<checkout>' 'https://github.com/intentdriven/abcd.git' main >> ~/.abcd.noindex/dogfood-roots`.
+
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
 format gate, the record-lint, issue-drift and docs-lint steps and the

@@ -474,7 +474,7 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  a person's reviewed commit, whose note wins an id
                                  both hold
   memory/                        curated cross-project memory pages (a later phase;
-                                 nothing resolves it today)
+                                 the prompt router's recall reads them, read only)
   sources/                       the local sources corpus the library verb maintains
                                  and /abcd:library reads. Created only by its explicit
                                  init: absent means every other corpus verb and the

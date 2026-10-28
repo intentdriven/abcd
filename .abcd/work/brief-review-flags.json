@@ -328,6 +328,30 @@
       "evidence": "internal/core/site/setup.go:512",
       "commit": "fd4f4538ee4ca75cf3c346ab4679ed94571d99c0",
       "applied": "2026-10-23T05:54:23Z"
+    },
+    {
+      "chapter": "01-ahoy.md",
+      "sentence": "nothing resolves it today)",
+      "replacement": "the prompt router's recall reads them, read only)",
+      "evidence": "internal/core/memory/recallpages.go:80",
+      "commit": "332aa6a2dfd2bdd4a4631188b528cd1002a8729f",
+      "applied": "2026-10-23T06:27:37Z"
+    },
+    {
+      "chapter": "07-library.md",
+      "sentence": "reports, user-scope memory outside the repo, and the automatic extraction of a",
+      "replacement": "reports, any verb that writes user-scope memory outside the repo (the prompt recall only reads `~/.abcd.noindex/memory/`), and the automatic extraction of a",
+      "evidence": "internal/core/recall/pages.go:56",
+      "commit": "332aa6a2dfd2bdd4a4631188b528cd1002a8729f",
+      "applied": "2026-10-23T06:27:37Z"
+    },
+    {
+      "chapter": "37-memory.md",
+      "sentence": "spec's later step; this chapter covers the store and the verb.",
+      "replacement": "spec's steps 2 to 4, shipped: a matching note or page comes back under `## MEMORY`, ranked by BM25F, and the rules verb can show why for a given prompt; this chapter covers the store and the verb.",
+      "evidence": "internal/surface/cli/rules_prompt.go:51",
+      "commit": "332aa6a2dfd2bdd4a4631188b528cd1002a8729f",
+      "applied": "2026-10-23T06:27:37Z"
     }
   ]
 }

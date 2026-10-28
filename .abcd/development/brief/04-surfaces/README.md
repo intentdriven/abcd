@@ -297,6 +297,12 @@ the checkout from the root the loader resolves for the working directory.
 - **`abcd rules <DOMAIN>`** renders that one domain, matched case-insensitively,
   whatever its state and whatever the kill switch, so a dormant domain stays
   inspectable. An unknown name exits 2.
+- **`abcd rules --prompt "<text>"`** shows what that one prompt would bring back
+  to a fresh session, running the prompt router's own path: the domains its
+  words match, then the memory notes and pages it would recall, ranked together
+  with each one's rank, score and the terms that scored it, and the form each
+  would take (`full`, `over-budget` or `too-large`), with any layer or page that
+  could not be read. It writes nothing: no session state is loaded or saved.
 - **Diagnostics go to stderr, never stdout**, so the JSON form stays one
   document: a refused root, a domain skipped for carrying no rules, and each
   bundled entry of a guardrail domain an override's list leaves out.
