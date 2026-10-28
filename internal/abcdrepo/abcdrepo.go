@@ -45,3 +45,9 @@ func LooksLikeSourceTree(dir string) bool {
 // TestTheCheckoutsAbcdBuildsToTheLocalTierAndRunsInPlace (internal/core/lint)
 // holds them together.
 const CheckoutBuildRel = ".abcd/.work.local/bin/abcd"
+
+// CheckoutBuildEnv is the variable scripts/abcd sets, to the absolute path of
+// the binary it has just relinked, before it execs that binary. A binary left in
+// the local tier and run directly carries no such mark, so only the script's own
+// run of a fresh build can show it (vintage.CheckoutBuild).
+const CheckoutBuildEnv = "ABCD_CHECKOUT_BUILD"
