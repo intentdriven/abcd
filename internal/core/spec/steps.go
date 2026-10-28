@@ -234,6 +234,41 @@ func (s Step) Requires() []int {
 	return out
 }
 
+// SerialByDefault reports whether a spec's steps run fully serial only because
+// none of them says otherwise: two or more steps still to build, and none of
+// them after the first carrying a `- needs:` line, so each waits for every step
+// before it (ruling DR6b). It is the one judgement the readiness gate's steps
+// row and record-lint's spec_steps_serial rule share (dcn-2610230857411093), so
+// the two never disagree.
+//
+// WHY only the unlanded steps: with one step or none left to build nothing can
+// run beside anything, and asking for needs lines on steps that already landed
+// asks for edits that change nothing. WHY the first of them is skipped: it has
+// no unlanded step before it to wait for, so its line, `none` included, frees
+// nothing, and counting it would let one line on step 1 silence the warning
+// while the rest still run serial.
+func SerialByDefault(steps []Step) bool {
+	rest := Unlanded(steps)
+	if len(rest) < 2 {
+		return false
+	}
+	for _, s := range rest[1:] {
+		if s.NeedsDeclared {
+			return false
+		}
+	}
+	return true
+}
+
+// SerialByDefaultWarning is the one sentence both readers of SerialByDefault
+// report, and SerialByDefaultRemedy the fix they name for the spec at path.
+const SerialByDefaultWarning = "no step still to build after the first declares `needs:`, so the steps run fully serial, each waiting for every earlier step"
+
+// SerialByDefaultRemedy names the fix for a serial-by-default spec at path.
+func SerialByDefaultRemedy(path string) string {
+	return "declare each step's needs in " + path + ": `- needs: <earlier step numbers>` under a step that waits on earlier ones (`- needs: 1, 3`), or `- needs: none` under an independent step, so the build runs independent steps in parallel"
+}
+
 // NeedsRewrite is one `- needs:` line a remainder copy rewrote: the step as the
 // remainder numbers it, and the line before and after.
 type NeedsRewrite struct {

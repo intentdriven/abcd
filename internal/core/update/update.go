@@ -473,13 +473,21 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 		if err != nil {
 			return rep, fmt.Errorf("release %s carries a malformed digest for %s", tag, u.assetName)
 		}
-		signer, perr := u.verifyProvenance(tag, sum)
-		if perr != nil {
+		current, err := readMatching(target, sum)
+		if err != nil {
+			return rep, fmt.Errorf("reading %s: %w", target, err)
+		}
+		signer, rr := u.verifyRelease(tag, current)
+		if rr != nil {
 			rep.Action = ActionRefused
 			rep.Refusal = &Refusal{
-				Shape:  "unverified-provenance",
-				Detail: "the file at " + fsutil.RedactHome(target) + " matches the release's checksums.txt for " + u.assetName + ", but its build provenance could not be verified as " + tag + "'s, so it is not reported current: " + perr.Error(),
+				Shape:  rr.shape,
+				Detail: "the file at " + fsutil.RedactHome(target) + " matches the release's checksums.txt for " + u.assetName + ", but its build provenance could not be verified as " + tag + "'s, so it is not reported current: " + rr.err.Error(),
 				Remedy: u.remedyInstallByHand(tag, target),
+			}
+			if rr.shape == shapeNotThisRelease {
+				rep.Refusal.Detail = "the file at " + fsutil.RedactHome(target) + " matches the release's checksums.txt for " + u.assetName + " and verifies as built by the release workflow, but " + rr.err.Error() + ", so it is not reported current at " + tag
+				rep.Refusal.Remedy = remedyNotThisRelease
 			}
 			return rep, nil
 		}
@@ -554,13 +562,17 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	// build provenance release.yml signed, which a release-page edit cannot
 	// forge (iss-2609231050273096). Any failure refuses before anything is
 	// staged: there is no unverified swap.
-	signer, perr := u.verifyProvenance(tag, sum)
-	if perr != nil {
+	signer, rr := u.verifyRelease(tag, newBytes)
+	if rr != nil {
 		rep.Action = ActionRefused
 		rep.Refusal = &Refusal{
-			Shape:  "unverified-provenance",
-			Detail: "the release's " + u.assetName + " matches its checksums.txt, but its build provenance could not be verified, so nothing was swapped: " + perr.Error(),
+			Shape:  rr.shape,
+			Detail: "the release's " + u.assetName + " matches its checksums.txt, but its build provenance could not be verified, so nothing was swapped: " + rr.err.Error(),
 			Remedy: u.remedyInstallByHand(tag, target),
+		}
+		if rr.shape == shapeNotThisRelease {
+			rep.Refusal.Detail = "the release's " + u.assetName + " matches its checksums.txt and verifies as built by the release workflow, but " + rr.err.Error() + ", so nothing was swapped"
+			rep.Refusal.Remedy = remedyNotThisRelease
 		}
 		return rep, nil
 	}
@@ -591,6 +603,37 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	rep.NewVersion = tag
 	rep.Digest = wantHex
 	return rep, nil
+}
+
+// shapeNotThisRelease is the refusal for bytes that verify as built by the
+// release workflow but do not claim the release requested.
+const shapeNotThisRelease = "not-this-release"
+
+// releaseRefusal is why bytes that match a release's checksums.txt are not
+// that release's build: the Refusal shape of the check that failed, and what
+// it said.
+type releaseRefusal struct {
+	shape string
+	err   error
+}
+
+// verifyRelease holds bytes that match tag's checksums.txt to the two checks
+// that do not read their trust from the release page, and returns the
+// provenance's signer. The build provenance binds the bytes to the commit tag
+// names, and the release the bytes' own build metadata claims binds them to
+// tag itself. Every
+// path that takes a release binary (Apply's swap, Apply's current file and
+// FetchVerified) goes through it, so the binding is made in one place.
+func (u *Updater) verifyRelease(tag string, b []byte) (string, *releaseRefusal) {
+	sum := sha256.Sum256(b)
+	signer, err := u.verifyProvenance(tag, sum[:])
+	if err != nil {
+		return "", &releaseRefusal{shape: "unverified-provenance", err: err}
+	}
+	if err := checkReleaseClaim(b, tag); err != nil {
+		return "", &releaseRefusal{shape: shapeNotThisRelease, err: err}
+	}
+	return signer, nil
 }
 
 // verifyProvenance runs the configured provenance check; an updater without
@@ -897,6 +940,38 @@ func parseChecksums(raw []byte) (map[string]string, error) {
 		return nil, errors.New("the checksums manifest names no assets")
 	}
 	return sums, nil
+}
+
+// checkReleaseClaim is ahoy.CheckReleaseClaim behind a seam: the package's
+// fixtures stand for release binaries with bytes that carry no Go build
+// metadata, so TestMain stands in a check they pass and the binding's own
+// tests put the real one back.
+var checkReleaseClaim = ahoy.CheckReleaseClaim
+
+// remedyNotThisRelease is the way on when a release page carries a build that
+// does not claim the release: nothing local is wrong, and the binary in place
+// is kept.
+const remedyNotThisRelease = "nothing on this machine needs changing: keep the abcd you have, which this command left as it was, until the release is corrected"
+
+// readMatching reads the file at path, up to maxAssetBytes, and returns its
+// bytes only while they still hash to want.
+func readMatching(path string, want []byte) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxAssetBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxAssetBytes {
+		return nil, fmt.Errorf("it is larger than %d bytes", maxAssetBytes)
+	}
+	if got := sha256.Sum256(data); !bytes.Equal(got[:], want) {
+		return nil, errors.New("it changed while it was being checked")
+	}
+	return data, nil
 }
 
 func fileSHA256(path string) (string, error) {

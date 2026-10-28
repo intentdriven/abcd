@@ -20,7 +20,7 @@ The glossary forbids 'release' for a plan of what ships together; the checklist 
 A terminology drift (severity nitpick) found by the cross-document consistency pass.
 
 - End A: `.abcd/development/brief/glossary/distribution/release.md:40` — "Do not use "release" for a stretch of development work or for a plan of what ships"
-- End B: `.abcd/development/intents/drafts/itd-2610170638184486-every-abcd-session-keeps-a-checklist-on.md:302` — "built as the next big release once current work"
+- End B: `.abcd/development/intents/planned/itd-2610170638184486-every-abcd-session-keeps-a-checklist-on.md:302` — "built as the next big release once current work"
 
 release.md says a release is a derived cut, never something work is planned into, and the delivery grouping is a bundle. itd-2610170638184486 says the autonomous-agents bundle is 'built as the next big release', planning work into a release in the sense the glossary forbids.
 
