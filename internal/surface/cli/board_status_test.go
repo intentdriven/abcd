@@ -2,8 +2,10 @@ package cli
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -290,24 +292,45 @@ func TestBoardSaysWhoMergesAndWhere(t *testing.T) {
 	}
 }
 
-// TestBoardSaysAnUnreadableModeArmsNothing: a value the reader refuses is drawn
-// as unreadable, masked, and carried in --json as the error, never as a mode.
-func TestBoardSaysAnUnreadableModeArmsNothing(t *testing.T) {
+// TestBoardSaysAnUnreadableModeIsUnreadable: a value the reader refuses is
+// drawn as unreadable, masked, and carried in --json as the error alone: no
+// mode, layer or origin key, so a consumer testing for a mode finds none.
+func TestBoardSaysAnUnreadableModeIsUnreadable(t *testing.T) {
 	root := managedCheckout(t)
 	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte("{\"facilitator\":{\"mode\":\"\\u001b[31mauto\"}}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	text := string(runCLI(t, "--view", "facilitator"))
-	if !strings.Contains(text, "  merges:     unreadable, so nothing is armed (") || strings.ContainsRune(text, '\x1b') {
+	if !strings.Contains(text, "  merges:     unreadable (") || strings.ContainsRune(text, '\x1b') {
 		t.Fatalf("an unreadable mode is not drawn as unreadable and masked:\n%q", text)
 	}
 	var got struct {
-		Facilitator *struct{ Mode, Error string } `json:"facilitator"`
+		Facilitator map[string]any `json:"facilitator"`
 	}
 	if err := json.Unmarshal(runCLI(t, "--json"), &got); err != nil {
 		t.Fatal(err)
 	}
-	if f := got.Facilitator; f == nil || f.Mode != "" || f.Error == "" {
-		t.Fatalf("--json facilitator = %+v; want an error and no mode", got.Facilitator)
+	keys := slices.Sorted(maps.Keys(got.Facilitator))
+	if !slices.Equal(keys, []string{"error", "key"}) || got.Facilitator["error"] == "" {
+		t.Fatalf("--json facilitator = %v; want only key and error", got.Facilitator)
+	}
+}
+
+// TestBoardOmitsWhoMergesOutsideAManagedCheckout: in a checkout abcd does not
+// manage there is no merges line and no facilitator field.
+func TestBoardOmitsWhoMergesOutsideAManagedCheckout(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := t.TempDir()
+	gitInitAt(t, repo)
+	t.Chdir(repo)
+	if text := string(runCLI(t, "--view", "facilitator")); strings.Contains(text, "merges:") {
+		t.Fatalf("an unmanaged checkout drew a merges line:\n%s", text)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal(runCLI(t, "--json"), &got); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["facilitator"]; ok {
+		t.Fatalf("an unmanaged checkout carried a facilitator field: %s", got["facilitator"])
 	}
 }

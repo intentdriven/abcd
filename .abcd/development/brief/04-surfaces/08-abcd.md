@@ -154,14 +154,16 @@ whether the attribution gate is wanted. The command decides; the binary writes.
 
 **The merges line** (itd-2610150602547271, spc-2610161609350616 step 2): in a
 repository abcd manages, the board says who merges a ready pull request, read
-through the same function the merge gate reads: `facilitator.mode` and the layer
-and origin that set it, a person from any layer winning. The product view draws a
+through the layered configuration: `facilitator.mode` and the layer and origin
+that set it, a person from any layer winning, and a refused home reading as a
+person. The product view draws a
 line of its own above the version (`merges: a person (the bundled default)`);
 the facilitator view draws a `merges:` row after the status block that also names
 the key and the mode as configured (`merges: abcd (facilitator.mode auto, from
 .abcd/config.json)`). The JSON carries a `facilitator` object (`key`, `mode`,
-`layer`, `origin`). A read the layered reader refuses is drawn as unreadable,
-with nothing armed, and carried as `error` with no `mode`; every part is masked
+`layer`, `origin`, and `home_refused` when a refused home decided it). A read
+the layered reader refuses is drawn as unreadable, and carried as `key` and
+`error` alone; every part is masked
 before it is drawn, since the refusal can quote a key a configuration file wrote.
 In an unmanaged repository the line is absent and the field omitted. It is not
 `abcd mode`'s `facilitator` state, which is whose answer the loop is waiting on.

@@ -341,6 +341,7 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 	person := &Merges{Mode: "human", Layer: "bundled", Origin: "bundled"}
 	repoAuto := &Merges{Mode: "auto", Layer: "repo", Origin: ".abcd/config.json"}
 	machine := &Merges{Mode: "human", Layer: "machine", Origin: abcdhome.Display("config.json")}
+	refusedHome := &Merges{Mode: "human", Layer: "machine", Origin: "the home directory was refused (HOME lies inside a git working tree that is not this account's), so a machine-wide human cannot be read; run abcd with your own HOME", HomeRefused: true}
 	for _, c := range []struct {
 		name string
 		m    *Merges
@@ -354,6 +355,8 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 		{"bundled, product view", person, Product, Text, "merges: a person (the bundled default)"},
 		{"repo auto, product view", repoAuto, Product, Text, "merges: abcd (set in .abcd/config.json)"},
 		{"repo auto, markdown", repoAuto, Product, Markdown, "- merges: abcd (set in .abcd/config.json)"},
+		{"refused home, facilitator view", refusedHome, Facilitator, Text, "  merges:     a person (facilitator.mode human, from a refused home)"},
+		{"refused home, product view", refusedHome, Product, Text, "merges: a person (the home directory was refused, so a machine-wide setting cannot be read)"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			lines := Render(Input{Status: fixture(2, 0), Merges: c.m, Version: ver}, Frame{View: c.view, Form: c.form, Width: 120, Rung: Mono})
@@ -371,17 +374,17 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 	})
 }
 
-// TestAnUnreadableModeSaysNothingIsArmedAndIsMasked: a refused read is drawn
-// as such, masked like every other line, since the refusal can quote a key a
+// TestAnUnreadableModeIsSaidAndMasked: a refused read is drawn as such,
+// masked like every other line, since the refusal can quote a key a
 // configuration file wrote (the layered reader returns its raw bytes).
-func TestAnUnreadableModeSaysNothingIsArmedAndIsMasked(t *testing.T) {
+func TestAnUnreadableModeIsSaidAndMasked(t *testing.T) {
 	m := &Merges{Refused: abcdhome.Display("config.json") + " (machine layer): facilitator: \"\x1b[31mmode\" is not a facilitator mode"}
 	lines := Render(Input{Status: fixture(2, 0), Merges: m, Version: ver}, Frame{View: Facilitator, Form: Text, Width: 200, Rung: Mono})
 	got := lines[len(lines)-2]
 	if strings.ContainsRune(got, '\x1b') {
 		t.Fatalf("the refusal reached the board raw: %q", got)
 	}
-	if !strings.HasPrefix(got, "  merges:     unreadable, so nothing is armed (") {
-		t.Fatalf("line = %q; want it to say the mode is unreadable and nothing is armed", got)
+	if !strings.HasPrefix(got, "  merges:     unreadable (") {
+		t.Fatalf("line = %q; want it to say the mode is unreadable", got)
 	}
 }

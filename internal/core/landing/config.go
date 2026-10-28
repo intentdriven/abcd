@@ -174,6 +174,9 @@ type Facilitator struct {
 	Mode   string `json:"mode"`
 	Layer  string `json:"layer"`
 	Origin string `json:"origin"`
+	// HomeRefused says a refused home decided the mode (human), so Origin is
+	// the reason, not a file.
+	HomeRefused bool `json:"home_refused,omitempty"`
 }
 
 // checkMode accepts the two modes, exactly as spelt.
@@ -225,7 +228,7 @@ func readMode(r layered.Roots) (Facilitator, error) {
 		}
 	}
 	if r.HomeRefused {
-		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Machine.String(), Origin: homeRefusedOrigin(ModeHuman)}, nil
+		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Machine.String(), Origin: homeRefusedOrigin(ModeHuman), HomeRefused: true}, nil
 	}
 	if len(vals) > 0 {
 		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeAuto, Layer: vals[0].layer, Origin: vals[0].origin}, nil

@@ -103,6 +103,9 @@ type Merges struct {
 	Layer   string // bundled, machine, repo, …
 	Origin  string // the file that set it, or "bundled"
 	Refused string // the read's refusal; Mode is unset when this is
+	// HomeRefused says a refused home decided the mode, so Origin is the
+	// reason, not a file.
+	HomeRefused bool
 }
 
 // productMeasure caps how wide a title runs in the product thinker's view: the
@@ -158,23 +161,27 @@ func Render(in Input, f Frame) []string {
 // mergesText names who merges and where that was set, without its label:
 // the product view says the outcome and the place, a line of its own above the
 // version; the facilitator view adds the key and the mode as configured, a
-// labelled row after the status block. A refused read says nothing is armed,
-// since the merge gate arms nothing while the mode cannot be read. The text is
-// masked: an origin or a refusal can carry what a configuration file wrote.
+// labelled row after the status block. A refused read says the mode is
+// unreadable and carries the refusal; a refused home names itself, not a file.
+// The text is masked: an origin or a refusal can carry what a configuration
+// file wrote.
 func mergesText(m *Merges, v View) string {
 	if m == nil {
 		return ""
 	}
 	if m.Refused != "" {
-		return termsafe.Sanitize("unreadable, so nothing is armed (" + m.Refused + ")")
+		return termsafe.Sanitize("unreadable (" + m.Refused + ")")
 	}
 	who := "a person"
 	if m.Mode == "auto" {
 		who = "abcd"
 	}
 	from, set := m.Origin, "set in "+m.Origin
-	if m.Layer == "bundled" {
+	switch {
+	case m.Layer == "bundled":
 		from, set = "the bundled default", "the bundled default"
+	case m.HomeRefused:
+		from, set = "a refused home", "the home directory was refused, so a machine-wide setting cannot be read"
 	}
 	if v == Facilitator {
 		return termsafe.Sanitize(who + " (facilitator.mode " + m.Mode + ", from " + from + ")")

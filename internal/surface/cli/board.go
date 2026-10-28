@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/reviews"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/core/statusline"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -66,6 +67,44 @@ type boardStatusline struct {
 	Elements []statusline.Element `json:"elements"`
 }
 
+// boardFacilitator is the board's facilitator.mode in --json: the resolved
+// reading, or the refusal alone (key and error, no mode, layer or origin), so
+// a consumer testing for a mode finds none on a refused read.
+type boardFacilitator struct {
+	Key         string `json:"key"`
+	Mode        string `json:"mode,omitempty"`
+	Layer       string `json:"layer,omitempty"`
+	Origin      string `json:"origin,omitempty"`
+	HomeRefused bool   `json:"home_refused,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+// readBoardFacilitator reads facilitator.mode for a managed checkout, nil
+// elsewhere. The reader's notes are not printed here: they are the notes
+// layered.RootsFor writes for cwd, which the oracle member (boardOracle)
+// already prints on every board run. A refusal is masked with the home
+// redacted, since it can carry an absolute path and a key a configuration
+// file wrote.
+func readBoardFacilitator(cwd string) *boardFacilitator {
+	root, err := gitutil.CheckoutRoot(cwd, statuslineStore)
+	if err != nil || !ahoy.Managed(root) {
+		return nil
+	}
+	f, _, err := landing.ReadFacilitator(cwd)
+	if err != nil {
+		return &boardFacilitator{Key: landing.KeyFacilitatorMode, Error: termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+	}
+	return &boardFacilitator{Key: f.Key, Mode: f.Mode, Layer: f.Layer, Origin: f.Origin, HomeRefused: f.HomeRefused}
+}
+
+// merges is the reading as the board draws it; nil draws no line.
+func (b *boardFacilitator) merges() *board.Merges {
+	if b == nil {
+		return nil
+	}
+	return &board.Merges{Mode: b.Mode, Layer: b.Layer, Origin: b.Origin, Refused: b.Error, HomeRefused: b.HomeRefused}
+}
+
 // boardPresence composes the presence line for the checkout containing cwd,
 // or nil where there is none to compose: no checkout, or one abcd does not
 // manage. It is the board half of ac-7 — the fallback where a host has no
@@ -76,38 +115,6 @@ type boardStatusline struct {
 //
 // The render's notes and any failure go to stderr under the board's own
 // prefix, and the line is omitted rather than invented on a failure.
-// boardFacilitator is the board's facilitator.mode: the resolved reading, or
-// the refusal, masked, as Error with no mode.
-type boardFacilitator struct {
-	landing.Facilitator
-	Error string `json:"error,omitempty"`
-}
-
-// readBoardFacilitator reads facilitator.mode for a managed checkout, nil
-// elsewhere. The reader's notes go to stderr masked, as the presence line's do.
-func readBoardFacilitator(cwd string, stderr io.Writer) *boardFacilitator {
-	root, err := gitutil.CheckoutRoot(cwd, statuslineStore)
-	if err != nil || !ahoy.Managed(root) {
-		return nil
-	}
-	f, notes, err := landing.ReadFacilitator(cwd)
-	for _, n := range notes {
-		fmt.Fprintf(stderr, "abcd: %s\n", termsafe.Sanitize(n))
-	}
-	if err != nil {
-		return &boardFacilitator{Facilitator: landing.Facilitator{Key: landing.KeyFacilitatorMode}, Error: termsafe.Sanitize(err.Error())}
-	}
-	return &boardFacilitator{Facilitator: f}
-}
-
-// merges is the reading as the board draws it; nil draws no line.
-func (b *boardFacilitator) merges() *board.Merges {
-	if b == nil {
-		return nil
-	}
-	return &board.Merges{Mode: b.Mode, Layer: b.Layer, Origin: b.Origin, Refused: b.Error}
-}
-
 func boardPresence(cwd string, stderr io.Writer) *boardStatusline {
 	root, err := gitutil.CheckoutRoot(cwd, statuslineStore)
 	if err != nil || !ahoy.Managed(root) {
