@@ -940,6 +940,23 @@ func TestCaptureProductionModeDefaultsToThePin(t *testing.T) {
 	}
 }
 
+// TestCaptureProductionModeDefaultsToTheDeclaredFile: the repository's own
+// committed declaration, which the mode moved to when the identity left the
+// repository (itd-2610240918547728), is the default.
+func TestCaptureProductionModeDefaultsToTheDeclaredFile(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config", "provenance.json"), []byte(`{"production_mode":"dictated-and-formatted"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rec := captureRecordFields(t, repo, "a finding taking the declared default")
+	if rec["production_mode"] != "dictated-and-formatted" {
+		t.Errorf("production_mode = %q, want the declared dictated-and-formatted", rec["production_mode"])
+	}
+}
+
 // captureRecordFields files an issue through the CLI and returns the written
 // record's frontmatter as key/value pairs, read off the bytes that landed.
 func captureRecordFields(t *testing.T, repo, text string, extra ...string) map[string]string {
@@ -1496,8 +1513,8 @@ func TestCaptureWithoutFoundAtSaysNoLocationWasNamed(t *testing.T) {
 // TestCaptureEnumRefusalNamesTheFlagAndItsSet is iss-2608290810037524: a
 // closed-set flag's refusal named the value and blamed "malformed
 // frontmatter" — a layer the caller never wrote. It names the flag and the
-// accepted set instead, for every closed enumeration on the capture path, and
-// writes nothing.
+// accepted set instead, without repeating the value passed, for every closed
+// enumeration on the capture path, and writes nothing.
 func TestCaptureEnumRefusalNamesTheFlagAndItsSet(t *testing.T) {
 	repo := captureLedgerRepo(t)
 	for _, c := range []struct{ flag, value, member string }{
@@ -1510,8 +1527,11 @@ func TestCaptureEnumRefusalNamesTheFlagAndItsSet(t *testing.T) {
 			t.Fatalf("%s %s was accepted:\n%s", c.flag, c.value, out)
 		}
 		msg := err.Error() + string(out)
-		if !strings.Contains(msg, c.flag+" \""+c.value+"\"") || !strings.Contains(msg, c.member) {
+		if !strings.Contains(msg, "the "+c.flag+" value") || !strings.Contains(msg, c.member) {
 			t.Errorf("%s refusal does not name the flag and its accepted set: %s", c.flag, msg)
+		}
+		if strings.Contains(msg, c.value) {
+			t.Errorf("%s refusal repeats the value passed: %s", c.flag, msg)
 		}
 		if strings.Contains(msg, "malformed frontmatter") {
 			t.Errorf("%s refusal blames frontmatter the caller never wrote: %s", c.flag, msg)

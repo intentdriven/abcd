@@ -488,6 +488,21 @@ still be open, and the drain never opens a second. Without a remote named
 `origin`, a handed-back issue stays passed over, and so does an issue whose
 run in this checkout was handed back.
 
+The move that begins a drain says once, in one line on stderr (stdout's JSON is
+untouched), that approval prompts are refused while it runs: the host's
+approval prompt for a shell command in this checkout or in a lane the host runs is
+refused rather than shown, and the agent is told to rewrite the command into
+plain steps abcd can check, or skip the step and say why in its report, as
+`/abcd:build` describes. The refusal never turns into an approval; a lane
+started through the claude runner runs with the host's hooks off, and the
+guard answers its prompts instead (`abcd guard approve`).
+
+Refusal stops when the drain stops, or after two hours with no activity in the
+drain. A lane handed back does not stop it, since the drain routes the
+hand-back and moves on to the next issue unattended. No verb ends a drain
+early, so a person who interrupts a drain and carries on by
+hand sees the prompts again two hours after it last moved.
+
 ### The hand-back, by kind
 
 A `yes` from the host judgement is routed by its kind as the table below routes

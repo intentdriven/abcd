@@ -88,10 +88,20 @@ func storedGit(root string, maxBytes int, args ...string) (string, error) {
 	return gitutil.RunCappedAsStored(root, maxBytes, args...)
 }
 
-// emptyTree is gitutil.EmptyTree, traced.
+// emptyTree is gitutil.EmptyTree, traced: the writing form, for a path that
+// commits a reservation on the empty tree and so needs the object stored.
 func emptyTree(root string) (string, error) {
 	trace("hash-object", "-w", "-t", "tree", "--stdin")
 	return gitutil.EmptyTree(root)
+}
+
+// emptyTreeName is gitutil.EmptyTreeName, traced: the reading form, for a
+// path that only compares a tip's tree with the name. It writes nothing, so a
+// read of the reservations leaves the shared object store as it found it
+// (iss-2610231038335615); emptyTree would write the object or refresh it.
+func emptyTreeName(root string) (string, error) {
+	trace("hash-object", "-t", "tree", "--stdin")
+	return gitutil.EmptyTreeName(root)
 }
 
 // storedGitCtx is storedGit bound to ctx (gitutil.RunCappedBytesAsStoredContext):

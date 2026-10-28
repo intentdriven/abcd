@@ -105,7 +105,7 @@ func newAhoyCredentialCommand(asJSON *bool) *cobra.Command {
 				return fail(err, "")
 			}
 			if !ok {
-				return fail(fmt.Errorf("no adapter abcd ships reads a credential named %s; `abcd ahoy credential` lists the ones it reads", name), "")
+				return fail(errors.New("no adapter abcd ships reads a credential of that name (the name is not repeated here); `abcd ahoy credential` lists the ones it reads"), "")
 			}
 			if home == "" {
 				return renderCredentialExplanation(cmd, roots, svc, *asJSON)

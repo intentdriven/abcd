@@ -32,6 +32,8 @@
 // This package is a library: it returns values and errors, and never prints.
 package peers
 
+import "sync"
+
 // Source names where a peer was read from.
 type Source string
 
@@ -80,6 +82,17 @@ type Row struct {
 	Title string `json:"title,omitempty"`
 }
 
+// baseCache is this checkout's HEAD and each peer base's merge-bases with it,
+// computed on first use and kept for the Report's life, so a caller judging
+// many records (build next over every READY intent) pays one merge-base per
+// peer, not one per record.
+type baseCache struct {
+	mu       sync.Mutex
+	headRead bool
+	head     string              // this checkout's HEAD commit; "" when unborn or unreadable
+	merged   map[string][]string // peer base → every merge-base with head; nil when unreadable
+}
+
 // Peer is one live peer and what it holds.
 type Peer struct {
 	Source Source `json:"source"`
@@ -100,6 +113,9 @@ type Peer struct {
 	// any record — rather than one that holds none of this repository's
 	// (another repository, or no records at the committed layout).
 	unjudged bool
+	// base is the commit the peer's work is measured from (Report.Holders):
+	// its branch's ref, or a worktree's HEAD as git listed it; "" when none.
+	base string
 }
 
 // Skip reasons: a spent peer contributes no rows and is counted instead.
@@ -134,6 +150,9 @@ type Report struct {
 
 	here holdings
 	root string
+	// bases memoises Holders' merge-bases per peer, made by the read; nil in
+	// a zero Report, which then computes them each time.
+	bases *baseCache
 }
 
 // Live is the number of live peers: those read, and those named but not read.

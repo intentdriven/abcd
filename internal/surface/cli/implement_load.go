@@ -86,14 +86,18 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"one-minute load average is below the wait limit (`wait-load <load>` in the same\n" +
 			"file; by default twice the online core count), no other `go test -race` run is\n" +
 			"live, no other `make preflight` is running and no other waiter is ahead of it in\n" +
-			"the queue (one that started earlier, or within two seconds of it, and has the\n" +
-			"lower pid: two whose start and pid disagree, as after the process ids wrap, wait\n" +
-			"on neither) or running its command, under any account: all of it is\n" +
+			"the queue (one that started earlier, whatever its pid, or within two seconds of\n" +
+			"it with the lower pid) or running its command, under any account: all of it is\n" +
 			"read from the process table, which shows every account's processes: no file\n" +
 			"another account can write is read; the gate reads only the process table (and,\n" +
 			"for the wait limit, your own load-limits). A waiter ahead of yours still delays\n" +
 			"yours until it opens or reaches its own --timeout, whatever account it runs\n" +
-			"under and whatever its own account's wait limit is. A preflight whose own\n" +
+			"under and whatever its own account's wait limit is, with one exception: a\n" +
+			"waiter ahead with a higher pid, as after the process ids wrap, may run an abcd\n" +
+			"built before this order, which waits on every lower pid and so on yours, so once\n" +
+			"such waiters alone have kept yours shut for " + implement.WaitCrossedCap.String() + " on end, and a step more\n" +
+			"for each such waiter ahead beyond the first, yours stops counting them. A\n" +
+			"preflight whose own\n" +
 			"waiter is queued\n" +
 			"takes that waiter's place in the queue, and a waiter beneath a waiter running its\n" +
 			"command (`--wait -- make preflight`) takes that ancestor's place, ahead of every\n" +
@@ -101,10 +105,12 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"a random " + implement.WaitJitterMin.String() + " to " + implement.WaitJitterMax.String() + " and checks everything again, and opens only if the\n" +
 			"re-check is clear too, so two starters in one quiet minute do not start together.\n" +
 			"With a command it then shows itself as running it and looks once more " + implement.WaitOpenPause.String() + "\n" +
-			"later, before starting it: across accounts, which share no hold, two waiters whose\n" +
-			"start and pid disagree can open in one moment, and the one with the higher pid\n" +
-			"stands back, gives up its hold, re-draws its jitter and waits again (at most " + strconv.Itoa(implement.WaitBackoffCap) + "\n" +
-			"times), while the lower pid runs its command.\n" +
+			"later, before starting it: across accounts, which share no hold, two waiters can\n" +
+			"open in one moment, and each stands back from the other unless it started earlier\n" +
+			"and has the lower pid too: it gives up its hold, re-draws its jitter and waits\n" +
+			"again (at most " + strconv.Itoa(implement.WaitBackoffCap) + " times), while the other runs its command. So the later\n" +
+			"start stands back whatever the pids, and the earlier one from a lower pid as well,\n" +
+			"which an older abcd (v0.15.1 and earlier) lets run.\n" +
 			"The load limit is twice the cores because a busy multi-session machine already\n" +
 			"idles near one core-count of load, so a limit of the cores never opens; one\n" +
 			"waiter at a time is kept by the process table, the hold below and that last\n" +
@@ -133,13 +139,16 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"own hold is in force (each gate is shut only by its own gate's hold). That keeps\n" +
 			"race stages apart among the preflights whose checkouts have the race gate: one\n" +
 			"at a time within an account, and across accounts all but a narrow window (a\n" +
-			"race waiter gone before its race run shows, or two waiters whose start and pid\n" +
-			"disagree after a pid wrap). An account at one opens its race gate at once\n" +
+			"race waiter gone before its race run shows, or, after a pid wrap, two waiters\n" +
+			"whose start and pid disagree: one running v0.15.1, which counts a waiter ahead\n" +
+			"only with the lower pid as well, or two of the start order whose whole-second\n" +
+			"ages read a tie differently or the later of which stopped counting the earlier\n" +
+			"past its " + implement.WaitCrossedCap.String() + " cap). An account at one opens its race gate at once\n" +
 			"whatever another account set, and a checkout older than the gate runs its race\n" +
 			"stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's\n" +
 			"waiter never queues\n" +
 			"behind a race waiter, and a preflight whose waiter is at its race gate is in its\n" +
-			"test stages. A waiter that has opened stands back only from a lower pid that\n" +
+			"test stages. A waiter that has opened stands back only from a waiter that\n" +
 			"opened in the same moment at its own gate, never from one at the other gate.\n\n" +
 			"How many preflights may be in their test stages at once is your own machine's\n" +
 			"setting: `" + implement.PreflightSlotsKey + "` in `" + abcdhome.Display("config.json") + "`, or " + implement.PreflightSlotsEnv + " in the\n" +
@@ -178,11 +187,12 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
 			"While it waits, in a checkout, the waiter keeps your own reservations from\n" +
 			"lapsing: at once and then every five minutes it renews each of your live\n" +
-			"reservations from this copy that is half through its lease, for its own term or\n" +
+			"reservations that is half through its lease and whose latest commit this copy\n" +
+			"pushed, for its own term or\n" +
 			"two hours, whichever is longer, and says each renewal on standard error. It\n" +
 			"never reserves anything new, takes nothing over and revives nothing that has\n" +
 			"lapsed, so a lease shorter than ten minutes can still lapse between two rounds;\n" +
-			"a renewal that fails is said once, and the wait goes on. The renewal runs beside the gate, never in it, so\n" +
+			"a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on. The renewal runs beside the gate, never in it, so\n" +
 			"the gate's order and its open never wait on one, and it stops when the gate\n" +
 			"opens. Since it runs through git and gh, no waiter counts another's git or gh\n" +
 			"child as its command: gate make or go, never git or gh itself.",
@@ -225,8 +235,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd implement load: --timeout is for --wait or --race-gate (nothing checked)"}
 			}
 			if !slices.Contains(implement.LoadSites(), site) {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement load: --site %q is not one of: %s (nothing checked)",
-					site, strings.Join(implement.LoadSites(), ", "))}
+				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement load: --site is not one of: %s (the value given is not repeated here; nothing checked)",
+					strings.Join(implement.LoadSites(), ", "))}
 			}
 			req := implement.LoadRequest{Site: site, Read: loadReader, Self: loadSelf()}
 			if cwd, err := os.Getwd(); err == nil {
@@ -261,9 +271,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 			fmt.Fprintf(out, "load gate: the machine looks free; checking everything again in %s before opening, so two starters in one quiet minute do not start together\n",
 				j.Round(time.Second))
 		}
-		req.OnBackoff = func(lower []int, j time.Duration) {
-			fmt.Fprintf(out, "load gate: %s in the same moment with the lower pid; standing back, and checking again in %s\n",
-				pidsText(lower, "another waiter opened", "waiters opened"), j.Round(time.Second))
+		req.OnBackoff = func(first []int, j time.Duration) {
+			fmt.Fprintf(out, "load gate: %s in the same moment, ahead of this one by start or by pid; standing back, and checking again in %s\n",
+				pidsText(first, "another waiter opened", "waiters opened"), j.Round(time.Second))
 		}
 	}
 	flag := "--wait"
@@ -314,9 +324,10 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 // waits, so a reservation made by hand does not lapse while its preflight
 // waits its turn (iss-2610170926295770): from the checkout the waiter runs
 // in, at once and then every loadRenewEvery, it renews each of this person's
-// live reservations from this copy that is half through its lease
-// (claim.RenewDue), and says each renewal on w. A renewal that fails is said
-// once until it succeeds, and the wait goes on. It runs beside the gate,
+// live reservations that is half through its lease and whose latest commit
+// this copy pushed (claim.RenewDue), and says each renewal on w. A renewal
+// that fails, or a reservation left unrenewed, is said once until it
+// succeeds, and the wait goes on. It runs beside the gate,
 // never in it: the gate's looks, its order and its open neither wait on a
 // renewal nor read one, and stop returns at once, a renewal still in flight
 // finishing unsaid. Outside a checkout there is nothing to renew.
@@ -471,7 +482,12 @@ func waitConditions(res implement.WaitResult) string {
 	for _, c := range res.Still {
 		switch c {
 		case implement.WaitOnLoad:
-			parts = append(parts, fmt.Sprintf("load %.1f is not below %s (%s)", res.Load, num(res.WaitLoad), waitLimitText(res)))
+			part := fmt.Sprintf("load %.1f is not below %s (%s)", res.Load, num(res.WaitLoad), waitLimitText(res))
+			if len(res.UngatedTests) > 0 {
+				part += ", with " + pidsText(res.UngatedTests, "a go test run outside the gate adding to it",
+					"go test runs outside the gate adding to it")
+			}
+			parts = append(parts, part)
 		case implement.WaitOnRaceRun:
 			pids := make([]string, len(res.RaceRuns))
 			for i, p := range res.RaceRuns {

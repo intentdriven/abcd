@@ -180,8 +180,32 @@ rather than skipped:
         "key": "openrouter",             // a credential NAME, resolved through the credential
                                          //   source; omitted for a server that takes no key
         "models": ["typesafe/jev-1.13"], // the allowlist: the only models it may serve
-        "stream_usage": false            // optional, default true: false stops asking for
+        "stream_usage": false,           // optional, default true: false stops asking for
                                          //   usage in the stream, for a server that refuses it
+        "pins": {                        // optional, OpenRouter's base URL only: one per listed model
+          "typesafe/jev-1.13": {
+            "order": ["deepinfra"],      // exactly one provider
+            "quantizations": ["fp8"],    // exactly one quantization
+            "canonical_slug": "typesafe/jev-1.13-20260915" // the model's permanent slug
+          }
+        },
+        "read_generation": true          // optional, OpenRouter's base URL only, default false:
+                                         //   one extra request per call, to read what served it
+      },
+      "ollama": {
+        "base_url": "http://127.0.0.1:11434/v1",
+        "models": ["qwen3-coder:30b"],
+        "pins": {                        // on a base URL on this machine: a local pin
+          "qwen3-coder:30b": {
+            "runtime": "ollama",         // ollama, llama.cpp or mlx
+            "runtime_version": "0.14.2",
+            "weights_sha256": "06c1…0bca", // the weight file's SHA-256, or Ollama's digest
+            "quantisation": "Q4_K_M",
+            "context_length": 32768,     // the context the server serves the model at
+            "kv_cache_type": "f16"       // declared: no runtime reports it
+          }                              // a llama.cpp pin also names "weights_file",
+                                         //   the GGUF file's base name
+        }
       }
     },
     "denylist": ["openai/*"],            // optional, none bundled; repo or machine
@@ -210,6 +234,78 @@ rather than skipped:
   into the block it creates and says so (`stream_usage_note` in its JSON).
   `--stream-usage=false` (or `=true`) sets the block's value outright, and
   the verification is then asked once, as given.
+- **A pin holds a listed model to one OpenRouter provider**
+  (iss-2610161734413178, itd-2610161733316518 decisions 5 and 6).
+  `oracle.api.<provider>.pins.<model>` names exactly one provider in `order`,
+  exactly one quantisation in `quantizations` (OpenRouter's values: int4,
+  int8, fp4, fp6, fp8, fp16, bf16, fp32, unknown) and the model's permanent
+  `canonical_slug`; the model must be on the block's list and not a `~`
+  alias. A call to that model sends OpenRouter's provider routing object with
+  `allow_fallbacks: false`, `require_parameters: true` and
+  `data_collection: "deny"` beside them, which are the pin's own and not
+  settable, so an outage is never served by another provider. One provider
+  and one quantisation, because with fallbacks off OpenRouter still tries each
+  provider `order` names, and one provider can serve a model at two
+  quantisations. A pin is read only on a block whose `base_url` is
+  OpenRouter's (`openrouter.ai`), since a server that ignored the object would
+  leave the record claiming a pin nothing held; elsewhere it is refused. A pin
+  sits in the provider block, so like the block it is the machine's alone.
+  A role routed through opencode to a pinned model is refused while the
+  person's environment sets `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` or
+  `OPENCODE_CONFIG_CONTENT`, which the run's sealed configuration would
+  otherwise replace ([`02-adapters.md`](02-adapters.md)).
+- **A local pin names a model on this machine down to its weights**
+  (iss-2610161734428291, itd-2610161733316518's local cells). On a block whose
+  `base_url` is on this machine, `oracle.api.<provider>.pins.<model>` declares
+  every one of the runtime (`ollama`, `llama.cpp` or `mlx`), its
+  `runtime_version`, `weights_sha256` (the weight file's SHA-256, or Ollama's
+  model digest, all 64 hex digits with or without `sha256:`; `ollama list`
+  shows only the start, the digest Ollama's `/api/tags` lists is whole),
+  `quantisation`, `context_length`
+  and `kv_cache_type`; a pin that leaves one out, or names a model off the
+  block's list, is refused when the configuration is read. A `llama.cpp` pin
+  also names `weights_file`, the base name of the GGUF file llama-server loads
+  (`Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf`, printable characters and at
+  most 200 bytes, the most of a served name the probe keeps), and is refused
+  without it:
+  llama-server reports no digest, so the file it has loaded is the one thing
+  the probe can hold its weights to. abcd never hashes a weight file of its
+  own accord: the person declares the digest. Before the route is used the
+  server is probed, on this machine alone, bounded at five seconds, asking no
+  model anything: Ollama's `/api/version`, `/api/show`, `/api/tags` and
+  `/api/ps`, llama-server's `/props`, mlx_lm.server's `/v1/models`. A value the
+  server reports otherwise than the pin refuses the route, naming the field,
+  before the brief is sent; on llama-server that includes a model file other
+  than `weights_file`, named as the server has it. A context llama-server
+  serves otherwise is each slot's: `--ctx-size` is the total its `--parallel`
+  slots share, so the fix is the pinned context times the slots, or
+  `--parallel 1`. A route that runs a tool-using role (every role a runner
+  runs) is also refused when the server says the model takes no tool calls,
+  when Ollama cannot say what context it serves (it defaults to 4096 and
+  truncates a longer prompt silently: set `num_ctx` in a Modelfile, or
+  `OLLAMA_CONTEXT_LENGTH` and load the model), or when a llama-server pin
+  declares a q4 KV cache. No runtime reports its KV cache's type, so that
+  refusal rests on the pin's declaration alone, and the record lists the
+  served cache type as not verified. A runner's route is probed before every
+  run, and records its asked local fields as not verified, since opencode's
+  own `~/.opencode/opencode.json` can point the provider elsewhere after the
+  probe; the claude runner holds no pin, so a pinned route through it is
+  refused before launch; a self-contained call reuses a report the pin held for a minute at
+  most, and a report the pin refused, or a probe that read nothing, is never
+  reused, so a server put right holds the route at its next use. Like every
+  member of a provider block, a local pin is the machine's alone.
+- **Reading back what served a call is the person's choice, per provider.**
+  `oracle.api.<provider>.read_generation: true` makes every call through that
+  block read OpenRouter's generation record once it is answered (the
+  provider that served, every provider tried, the native token counts and
+  the cost; itd-2610161733316518 decision 12). That is one extra request per
+  call, with the same key, made only because the person turned it on: unset
+  or `false`, the default, no call makes it. It is read only on a block whose
+  `base_url` is OpenRouter's, the one server that keeps such a record, and
+  refused elsewhere when the configuration is read, as a pin is; like every
+  member of a provider block it is the machine's alone, so a repository can
+  never make the person's calls send it. The opencode runner never makes it,
+  since opencode holds the key there.
 - **The allowlist alone decides; the denylist is optional and a union.** abcd
   bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
   is served whichever vendor made it. `oracle.denylist` is the configuration's
@@ -1148,6 +1244,17 @@ while the committed tiers stay published regardless. Narrowing needs positive
 evidence of tracked files, so a repo whose git cannot be asked keeps the declared
 fence, and the install receipt states the narrowing out loud.
 
+An entry the repo's `.gitignore` already lists outside abcd's fence, with the same
+meaning, is not written again inside it (iss-2610020704152047): the repo's own line
+stays the one in force, and the fence is written even when that leaves it empty, so
+detection still finds it and reports no drift. A fence an earlier install filled
+with such a copy reads as drift, and the next apply drops the copy. The match is on
+the normalised line (a leading slash is ignored where an inner slash already
+anchors the pattern), not a `git check-ignore` probe, because a probe also answers
+from the machine's global excludes and `.git/info/exclude`, which other clones do
+not share. A broader rule (`.abcd/` for `.abcd/.work.local/`), a commented-out line
+or a later `!` negation of the entry does not count as listing it.
+
 **No exceptions to the visibility rule.** Locked decision: visibility is one
 switch, with no always-gitignored carve-out for any namespace on sensitivity
 grounds. If sensitivity is a concern, set visibility to public, which gitignores
@@ -1311,16 +1418,17 @@ warns so, naming the check to run by hand. Its build strings are printed
 instructions to the operator for the cases it cannot provision. `SessionStart` runs one chained command rather than siblings,
 because siblings would run in parallel and share one stdin.
 
-`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse` and `PreCompact`
-are the events that reach `bootstrap.sh` at all. The last four self-provision
+`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
+`PermissionRequest` and `PreCompact` are the events that reach `bootstrap.sh` at
+all. The last five self-provision
 only when the
 plugin-root binary is missing, throttled by a `.bootstrap.attempt` marker within a
 ten-minute window, and then fall back to a PATH-resolved abcd that must be
 absolute, outside the working directory, in a directory and a file that are not
 world-writable, and recorded as this
 machine's own, before failing loudly. `UserPromptSubmit`, which runs on every
-message, declares a 120-second `timeout`; `PreToolUse`, `PostToolUse` and
-`PreCompact` declare none and take the host's ten-minute default; `SessionStart` declares 240 seconds,
+message, declares a 120-second `timeout`; `PreToolUse`, `PostToolUse`,
+`PermissionRequest` and `PreCompact` declare none and take the host's ten-minute default; `SessionStart` declares 240 seconds,
 and the transcript hooks declare none. Every event that runs `bootstrap.sh`
 names a `statusMessage`, the host's spinner text while the hook runs, because the
 salvage sends the script's output nowhere; the text states no duration, since
@@ -1349,6 +1457,16 @@ supply. `SessionStart` drains both through the fail-closed redaction path.
 question-answered`, which resets the mode to managed when an answer comes back
 to a question the guard marked open (iss-2610100626211810); the prompt hook
 runs the same reset on the next message, for a host that does not run it.
+`PermissionRequest` is matched to the shell tool alone and carries `hook
+permission-request`, which refuses the host's approval prompt while a build or
+drain runs for the session's checkout or the session is one of a running
+build's lanes (iss-2610171110154902): the agent is told to rewrite the command
+into plain steps abcd can check, or skip the step and say why. A build counts
+while its run is unfinished, no lane of it is handed back or held, and its
+state was written within the reservation lease; a drain while it has not
+stopped and was written within the same window.
+It never grants a prompt, and in every other session it says nothing, so the
+host's prompt shows as usual.
 
 **The plugin-internal development namespace** (committed in private repos,
 gitignored in public) holds, at its root, the config file and the per-surface

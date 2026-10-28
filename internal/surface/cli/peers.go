@@ -46,20 +46,32 @@ type reservationsBlock struct {
 	// ReleaseHolds is every release being cut, which holds every other
 	// session's merge (itd-2609151838312703 C7, C8).
 	ReleaseHolds []holdRow `json:"release_holds"`
+	// LapsedReleases is every release whose cut stopped renewing its
+	// reservation with no tag on origin: it holds no merge, and is named so
+	// that no session waits on a holder that is gone (iss-2610241104098581).
+	LapsedReleases []lapsedRow `json:"lapsed_releases"`
 	// HandBacksByHolder is each holder's hand-back tombstones of the last day,
 	// newest first and bounded (spc-2610161044461448 step 18).
 	HandBacksByHolder []handBackHolder `json:"hand_backs_by_holder"`
-	View              reservationView  `json:"view"`
-	FetchError        string           `json:"fetch_error,omitempty"`
-	DerivedUnchecked  string           `json:"derived_unchecked,omitempty"`
+	// Ceiling is the reader's live reservations against this machine's cap,
+	// by copy, with its warning (iss-2610231004140527); absent when the
+	// reader's login cannot be named or the cap cannot be read.
+	Ceiling          *ceilingRow     `json:"ceiling,omitempty"`
+	View             reservationView `json:"view"`
+	FetchError       string          `json:"fetch_error,omitempty"`
+	DerivedUnchecked string          `json:"derived_unchecked,omitempty"`
 }
 
 // reservationRow is one reservation as the listing shows it. Every value a
 // writer chose is terminal-safe here and quoted in the text form.
 type reservationRow struct {
-	Record          string   `json:"record"`
-	Holder          string   `json:"holder,omitempty"`
-	Copy            string   `json:"copy,omitempty"`
+	Record string `json:"record"`
+	Holder string `json:"holder,omitempty"`
+	Copy   string `json:"copy,omitempty"`
+	// Sibling is the other worktree of this repository, on this machine,
+	// whose copy made the reservation: its folder's name, with parent folders
+	// added only where two would otherwise read alike, never its key.
+	Sibling         string   `json:"sibling,omitempty"`
 	Footprint       []string `json:"footprint"`
 	ClaimedAt       string   `json:"claimed_at,omitempty"`
 	EffectiveExpiry string   `json:"effective_expiry"`
@@ -108,6 +120,23 @@ type holdRow struct {
 	Text            string `json:"text"`
 }
 
+// lapsedRow is one lapsed release cut as the listing shows it (claim.Lapsed).
+type lapsedRow struct {
+	Release   string `json:"release"`
+	Subject   string `json:"subject"`
+	Holder    string `json:"holder"`
+	Copy      string `json:"copy,omitempty"`
+	RenewedAt string `json:"renewed_at"`
+	LapsedAt  string `json:"lapsed_at"`
+	Text      string `json:"text"`
+}
+
+// ceilingRow is the reader's ceiling as the listing shows it.
+type ceilingRow struct {
+	claim.Ceiling
+	Warning string `json:"warning,omitempty"`
+}
+
 // reservationView dates the listing: when abcd last fetched the reservations
 // here and how long ago, both absent when nothing here stamped a fetch, and
 // whether the checkout has a remote named origin to fetch them from.
@@ -140,8 +169,14 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"abcd-reserved/ branch, with pruning, and of the default branch, then every\n" +
 			"reservation with its record, holder, footprint, effective expiry and state\n" +
 			"(live, expired, released, or unreadable with its reason and the end of its\n" +
-			"hold), a live drain lane's stage when its renewal names one, each person's\n" +
-			"count of live reservations, and a line for each release being cut (a live\n" +
+			"hold), a live drain lane's stage when its renewal names one, the worktree of\n" +
+			"this repository on this machine that made one (by its folder's name, with\n" +
+			"parent folders added only where two would otherwise read alike),\n" +
+			"each person's count of live reservations, the reader's own counted by copy\n" +
+			"(this copy, each such worktree, elsewhere) against this machine's\n" +
+			"reservation.max_live with a warning from four fifths of it, since every\n" +
+			"session and account on the same login counts toward the same total, and a\n" +
+			"line for each release being cut (a live\n" +
 			"rel-vX.Y.Z reservation, which holds every other session's merge until its\n" +
 			"tag is on origin). Then each holder's hand-backs of the last day, from the\n" +
 			"same view: the record and kind of each released tip marking one, newest\n" +
@@ -345,6 +380,9 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 	if rerr != nil || rep.HeldHere(id) {
 		return err
 	}
+	// Every location, a peer's untouched older copy of the record
+	// included (peers.Report.Holders leaves those out): the question here is
+	// where the record is, not who holds it.
 	locs := rep.Locate(id)
 	if len(locs) == 0 {
 		return err
@@ -403,6 +441,7 @@ func (b *reservationsBlock) fill(root string, now time.Time, gap string, err err
 func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err error) (failed string, ok bool) {
 	out := b
 	out.Reservations, out.LiveByHolder, out.ReleaseHolds = []reservationRow{}, map[string]int{}, []holdRow{}
+	out.LapsedReleases = []lapsedRow{}
 	out.HandBacksByHolder = []handBackHolder{}
 	if errors.Is(err, claim.ErrNoOrigin) {
 		return "", false
@@ -422,10 +461,20 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 		age := int64(now.Sub(snap.FetchedAt).Seconds())
 		out.View.AgeSeconds = &age
 	}
+	// The ceiling names the reader's sibling worktrees in the view, so it is
+	// read before the rows that show them.
+	if c, ok := claim.CeilingFor(root, &snap, claim.Options{Now: func() time.Time { return now }}); ok {
+		c.Holder = termsafe.Sanitize(c.Holder)
+		for i := range c.Siblings {
+			c.Siblings[i].Name = termsafe.Sanitize(c.Siblings[i].Name)
+		}
+		c.Note = termsafe.Sanitize(fsutil.RedactHome(c.Note))
+		out.Ceiling = &ceilingRow{Ceiling: c, Warning: c.Warning()}
+	}
 	for _, r := range snap.Reservations {
 		row := reservationRow{Record: r.Record, Holder: r.Holder, Copy: r.Copy, Footprint: make([]string, 0, len(r.Footprint)),
 			EffectiveExpiry: rfc3339(r.EffectiveExpiry), State: r.State, ReleasedBy: r.ReleasedBy,
-			Unreadable: r.Unreadable, HeldFromFetch: r.HeldFromFetch, Commit: r.Commit}
+			Unreadable: r.Unreadable, HeldFromFetch: r.HeldFromFetch, Commit: r.Commit, Sibling: termsafe.Sanitize(r.Sibling)}
 		if !r.ClaimedAt.IsZero() {
 			row.ClaimedAt = rfc3339(r.ClaimedAt)
 		}
@@ -441,6 +490,11 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 		out.Reservations = append(out.Reservations, row)
 	}
 	out.LiveByHolder = snap.LiveByHolder()
+	for _, l := range snap.Lapsed(now) {
+		out.LapsedReleases = append(out.LapsedReleases, lapsedRow{Release: l.Release, Subject: l.Subject,
+			Holder: termsafe.Sanitize(l.Holder), Copy: l.Copy, RenewedAt: rfc3339(l.RenewedAt), LapsedAt: rfc3339(l.LapsedAt),
+			Text: termsafe.Sanitize(l.Text())})
+	}
 	// The hand-backs are read from the same view, as last fetched: no act of
 	// their own touches the network.
 	for _, h := range snap.RecentHandBacks(now) {
@@ -514,8 +568,11 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 				line += "  stage " + r.Stage
 			}
 		}
-		if r.Copy == claim.CopyThis {
+		switch {
+		case r.Copy == claim.CopyThis:
 			line += "  (this copy)"
+		case r.Sibling != "":
+			line += fmt.Sprintf("  (from the worktree %q on this machine)", r.Sibling)
 		}
 		if len(r.Footprint) > 0 {
 			quoted := make([]string, len(r.Footprint))
@@ -529,6 +586,9 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 	for _, h := range out.ReleaseHolds {
 		fmt.Fprintln(w, "  "+h.Text)
 	}
+	for _, l := range out.LapsedReleases {
+		fmt.Fprintln(w, "  "+l.Text)
+	}
 	if len(out.LiveByHolder) > 0 {
 		names := make([]string, 0, len(out.LiveByHolder))
 		for n := range out.LiveByHolder {
@@ -540,6 +600,23 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 			parts[i] = fmt.Sprintf("%s %d", n, out.LiveByHolder[n])
 		}
 		fmt.Fprintf(w, "  live: %s\n", strings.Join(parts, ", "))
+	}
+	if c := out.Ceiling; c != nil {
+		parts := []string{fmt.Sprintf("this copy %d", c.ThisCopy)}
+		for _, s := range c.Siblings {
+			parts = append(parts, fmt.Sprintf("%q %d", s.Name, s.Live))
+		}
+		parts = append(parts, fmt.Sprintf("elsewhere %d", c.Elsewhere))
+		fmt.Fprintf(w, "  your holds: %s %d of %d (%s)\n", c.Holder, c.Live, c.Limit, strings.Join(parts, ", "))
+		if c.Warning != "" {
+			fmt.Fprintf(w, "  warning: %s\n", c.Warning)
+		}
+		// Why the ceiling is the default, or why siblings count as
+		// elsewhere: --json carries it as the ceiling's note, and the text
+		// says it too, so a default is never read as a limit someone set.
+		if c.Note != "" {
+			fmt.Fprintf(w, "  note: %s\n", c.Note)
+		}
 	}
 	for _, h := range out.HandBacksByHolder {
 		fmt.Fprintf(w, "  handed back by %s in the last day:\n", h.Holder)

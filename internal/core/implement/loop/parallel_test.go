@@ -922,6 +922,7 @@ func TestASerialStateMigratesItsAwaitAndVersion9IsHeldToItsShape(t *testing.T) {
 			t.Fatal(err)
 		}
 		doc["schema_version"] = version
+		unreviewOlder(doc)
 		lane := doc["lanes"].([]any)[0].(map[string]any)
 		edit(doc, lane)
 		out, _ := json.MarshalIndent(doc, "", "  ")

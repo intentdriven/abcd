@@ -106,19 +106,21 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
 			"open question, has no unanswered claim section, is not held, names no unsettled blocker\n" +
 			"in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling\n" +
-			"worktree or local branch holds it in another bucket, no session holds a live claim on\n" +
-			"it, and no other copy holds a reservation on it on origin, as this checkout last fetched\n" +
-			"the reservations; a peer, claim or view that cannot be read counts as holding it). The\n" +
-			"check reads the reservations from disk alone, and names another copy's with its holder,\n" +
-			"its expiry and the view's age; this copy's own is never a holder. A refusal names the\n" +
-			"check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent\n" +
-			"instead of taking one named.\n\n" +
+			"worktree or local branch holds it in another bucket having changed it since its\n" +
+			"merge-base with this checkout, so a branch holding this checkout's older copy\n" +
+			"untouched does not count; no session holds a live claim on it; and no other copy holds\n" +
+			"a reservation on it on origin, as this checkout last fetched the reservations; a peer,\n" +
+			"claim or view that cannot be read, or a copy that cannot be compared, counts as holding\n" +
+			"it). The check reads the reservations from disk alone, and names another copy's with\n" +
+			"its holder, its expiry and the view's age; this copy's own is never a holder. A refusal\n" +
+			"names the check, the reason and the remedy, and writes nothing. `abcd build next` picks\n" +
+			"the intent instead of taking one named.\n\n" +
 			"In a checkout with a remote named origin, the run reserves its key there, as\n" +
 			"`abcd reserve` does, once the checks pass and before the run is created: a new run, and a\n" +
 			"resumed one, with the files the spec's `## Footprint` packages line names (an issue's\n" +
 			"found_at path for an issue id), so every other participant sees it is taken. A spec with\n" +
 			"no footprint, or an issue with no found_at path, is refused at the reservation and nothing\n" +
-			"is started. Another person's reservation, or your own from another computer, refuses\n" +
+			"is started. Another person's reservation, or your own from another copy, refuses\n" +
 			"the start as contention; --take-over moves your own live reservation from another copy\n" +
 			"to this one, never another person's. `abcd implement step` renews the reservation, fences\n" +
 			"the landing's push and its arming with it and releases it once the run lands; a run\n" +
@@ -153,6 +155,15 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"ceiling is free. A lane whose validators still do not pass after its fix rounds is\n" +
 			"handed back: it stops as unachievable with the last round's findings, the run starts nothing\n" +
 			"further for it, and `abcd implement step` refuses naming the hand-back.\n\n" +
+			"A new run reads its review set once, too: review.reviewers (one or two model classes per\n" +
+			"code-review role, for both roles or per role; bundled: middle and below), review.judge (a\n" +
+			"class; refused until a judge agent clears itd-81's calibration gate) and, from\n" +
+			abcdhome.Display("config.json") + " alone, review.max_reviewers (1 or 2, bundled 2) and the class map\n" +
+			"models.classes (top, middle, below, smallest, each a <provider>/<model> route over the\n" +
+			"bundled map). A repository list above the machine's ceiling is clamped with one line on\n" +
+			"stderr naming both files; a repository's ceiling or class map is skipped with a warning.\n" +
+			"An unknown class or a malformed set is refused at the review stage and writes nothing.\n" +
+			"The result's review and the run record name each class with its model and each layer.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
 			"The runner configuration is read before the run is created: roles.<role>.runner (host,\n" +
 			"the default, or a runner) and the runners this machine enables under runner.<name> in\n" +
@@ -226,7 +237,11 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+			printReviewDiagnostics(cmd.ErrOrStderr(), res.Diagnostics)
+			if !res.Resumed {
+				noticeUnattended(cmd, prefix)
+			}
+			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				verb := "started"
 				if res.Resumed {
 					verb = "resumed"
@@ -234,6 +249,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "build %s: %s run %s\n", termsafe.Sanitize(args[0]), verb, res.RunID)
 				fmt.Fprintf(w, "  state:   %s\n", res.State)
 				renderPace(w, res.Pace)
+				renderReview(w, res.Review)
 				renderBudget(w, res.Checks)
 				renderLaneLine(w, res.Lane)
 				renderPending(w, res.Pending)
@@ -248,7 +264,18 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  reservation: %s\n", termsafe.Sanitize(res.Reservation))
 				}
 				fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
-			})
+			}); err != nil {
+				return err
+			}
+			// A footprint path naming a directory is reserved all the same,
+			// and warned of on stderr; --json carries it as
+			// reservation_warnings (iss-2610230016544142).
+			if !*asJSON {
+				for _, line := range res.ReservationWarnings {
+					fmt.Fprintf(cmd.ErrOrStderr(), "%s: warning: %s\n", prefix, termsafe.Sanitize(line))
+				}
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; a new run claims the intent for it")
@@ -377,10 +404,29 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
+			if res.Start != nil {
+				printReviewDiagnostics(cmd.ErrOrStderr(), res.Start.Diagnostics)
+			}
+			// Once per series: its later picks start runs of the series it
+			// already told the person about.
+			if res.Start != nil && !res.Start.Resumed && (res.Series == nil || res.Series.Started) {
+				noticeUnattended(cmd, prefix)
+			}
 			for i := range res.Excluded {
 				res.Excluded[i].Reason = fsutil.RedactHome(res.Excluded[i].Reason)
 			}
-			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderNext(w, res) })
+			if err := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderNext(w, res) }); err != nil {
+				return err
+			}
+			// The start it made warns on stderr of a directory its
+			// reservation names, as `build <itd-N>` does; --json carries it
+			// under start (iss-2610230016544142).
+			if !*asJSON && res.Start != nil {
+				for _, line := range res.Start.ReservationWarnings {
+					fmt.Fprintf(cmd.ErrOrStderr(), "%s: warning: %s\n", prefix, termsafe.Sanitize(line))
+				}
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; the new run claims the picked intent for it")
@@ -430,6 +476,7 @@ func renderNext(w io.Writer, res loop.NextResult) {
 	fmt.Fprintf(w, "           (the lane's worktree stage commits it as %s's first commit)\n", res.Start.Lane.ID)
 	fmt.Fprintf(w, "  state:   %s\n", res.Start.State)
 	renderPace(w, res.Start.Pace)
+	renderReview(w, res.Start.Review)
 	renderBudget(w, res.Start.Checks)
 	renderLaneLine(w, res.Start.Lane)
 	renderPending(w, res.Start.Pending)
@@ -485,6 +532,26 @@ func renderPace(w io.Writer, p *loop.Pace) {
 		return
 	}
 	fmt.Fprintf(w, "  pace:    %s\n", termsafe.Sanitize(p.String()))
+}
+
+// renderReview renders a run's review set: each role's reviewers at their
+// classes, each class with the model it holds, and the layer of each value; a
+// run started before review sets says so.
+func renderReview(w io.Writer, rs *loop.ReviewSet) {
+	if rs == nil {
+		fmt.Fprintln(w, "  review:  none (the run started before review sets; each role runs one reviewer)")
+		return
+	}
+	fmt.Fprintf(w, "  review:  %s\n", termsafe.Sanitize(rs.String()))
+}
+
+// printReviewDiagnostics says the review set's non-fatal reports (a list
+// clamped to the machine's ceiling, a repository's class map or ceiling
+// skipped) on stderr, one line each.
+func printReviewDiagnostics(w io.Writer, diagnostics []string) {
+	for _, d := range diagnostics {
+		fmt.Fprintln(w, termsafe.Sanitize(fsutil.RedactHome(d)))
+	}
 }
 
 // renderLaneLine renders one lane as a line, and its footprint once its stages
@@ -699,6 +766,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", st.RunID, st.Key, st.Spec, state, st.Driver)
 					fmt.Fprintf(w, "  state:   %s\n", loop.StateRelPath(st.RunID))
 					renderPace(w, st.Pace)
+					renderReview(w, st.Review)
 					renderSlots(w, st)
 					if st.NextEligibleAt != nil {
 						fmt.Fprintf(w, "  paused until %s\n", st.NextEligibleAt.UTC().Format("2006-01-02T15:04:05Z07:00"))
@@ -895,7 +963,9 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"for a blank --yielded, for a lane with neither an implementer out nor an await a rate\n" +
 			"limit kept, or for a worktree that is not the one the loop derives.\n" +
 			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
-			"at the judged head; on the lane that closes the spec it runs `spec close` in the lane's\n" +
+			"at the judged head; on an intent lane it marks the lane's step landed on the open spec with a `- landed:`\n" +
+			"line naming the judged head (unless the spec lists no steps or already marks it); on\n" +
+			"the lane that closes the spec it runs `spec close` in the lane's\n" +
 			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
 			"declared fixed it runs `capture resolve` with the lane's commit, committing them on the\n" +
 			"lane's branch with Delivers: and Resolves: trailers and an Assisted-by: naming the model\n" +
@@ -1018,7 +1088,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
 					Reason: "--restart, --release and --discard name one decision each; give one", Remedy: "run `abcd implement step` with one of them, one lane per invocation"})
 			case yieldedSet && yielded == "":
-				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart", Lane: restart,
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart",
 					Reason: "--yielded is blank, so it names no line the agent yielded with", Remedy: "pass the agent's own `NETWORK: <cmd>` line, or leave --yielded out for an agent that died; nothing was changed"})
 			case release != "" && discard != "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: string(loop.StageHeld),
@@ -1218,6 +1288,7 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 	}
 	fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", rec.RunID, termsafe.Sanitize(rec.Key), termsafe.Sanitize(rec.Spec), state, rec.Driver)
 	renderPace(w, rec.Pace)
+	renderReview(w, rec.Review)
 	renderRecordPick(w, rec.Pick)
 	for _, l := range rec.Lanes {
 		fmt.Fprintf(w, "  %s:  spec step %d, %q — %s\n", l.ID, l.SpecStep, termsafe.Sanitize(l.StepTitle), l.Stage)

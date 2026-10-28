@@ -8,8 +8,9 @@ package loop
 //  1. prepare: the lane's worktree is clean and its branch is at the head the
 //     validators judged; the landing decides whether it closes the spec (the
 //     lane that took the fidelity audit) and what it records.
-//  2. records: in the lane's worktree, `spec close` (intent.Reconcile) when the
-//     lane closes the spec, with the verdict of the audit the lane took
+//  2. records: in the lane's worktree, the lane's step marked landed on the
+//     open spec (its `- landed:` line, naming the judged head), `spec close`
+//     (intent.Reconcile) when the lane closes the spec, with the verdict of the audit the lane took
 //     ingested into the parked receipt rather than asked for again, and
 //     `capture resolve` for every capture the lane's receipts declared fixed,
 //     each with the lane's commit that fixed it. The loop commits them on the
@@ -62,6 +63,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -75,6 +77,10 @@ type Landing struct {
 	// Closes is whether this lane's landing closes the spec (and ships the
 	// intent): the lane that took the fidelity audit.
 	Closes bool `json:"closes"`
+	// MarkStep is the spec step whose `- landed:` line the records write on
+	// the open spec (iss-2610110918418459): the lane's step, on an intent lane
+	// of a spec that lists its steps; 0 when there is none to mark.
+	MarkStep int `json:"mark_step,omitempty"`
 	// Records is the loop's records commit on the lane's branch, and
 	// RecordsDone is set once it is made, or once there was nothing to record.
 	Records     string `json:"records,omitempty"`
@@ -222,8 +228,15 @@ func landPrepare(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "this lane closes the spec, and its passing round recorded no fidelity audit to ingest at the close",
 			"restore the run's state file; the validate stage records the audit on the lane that closes the spec")
 	}
-	ld := &Landing{Closes: closes}
+	mark, err := stepToMark(c, *lane)
+	if err != nil {
+		return Outcome{}, err
+	}
+	ld := &Landing{Closes: closes, MarkStep: mark}
 	var does []string
+	if mark > 0 {
+		does = append(does, fmt.Sprintf("marks step %d landed", mark))
+	}
 	if closes {
 		does = append(does, "closes "+c.State.Spec+" and ships "+c.State.Intent)
 	}
@@ -232,10 +245,49 @@ func landPrepare(c Context, lane *Lane) (Outcome, error) {
 	}
 	if len(does) == 0 {
 		ld.RecordsDone = true
-		does = append(does, "records nothing (the lane neither closes the spec nor fixed a capture)")
+		does = append(does, "records nothing (the lane marks no step, neither closes the spec nor fixed a capture)")
 	}
 	lane.Landing = ld
 	return Outcome{Stay: true, Note: "landing prepared at " + shortSHA(lane.HeadSHA) + ": it " + strings.Join(does, ", ")}, nil
+}
+
+// stepToMark is the spec step the landing marks landed: the lane's own, on an
+// intent lane whose spec lists its steps on the lane's branch and does not
+// already mark it; 0 for an issue lane, an unstepped spec (its one implicit
+// step names the spec) or a step marked already. A branch whose spec is not
+// open, or lists the lane's step under another title, is refused, as the
+// brief refuses it (laneSteps).
+func stepToMark(c Context, lane Lane) (int, error) {
+	st := c.State
+	if st.Issue() != "" || lane.SpecStep < 1 {
+		return 0, nil
+	}
+	store, err := spec.Load(lane.Worktree)
+	if err != nil {
+		return 0, fmt.Errorf("reading the spec store in the lane's worktree: %w", err)
+	}
+	sp, ok := store.Lookup(st.Spec)
+	if !ok || sp.Status != spec.StatusOpen {
+		return 0, refuse(string(StageLand), "", lane.ID, "the lane's branch holds no open "+st.Spec+" to mark its step landed on",
+			"restore "+st.Spec+" in the open specs on the lane's branch, then run `abcd implement step` again")
+	}
+	steps, err := spec.ReadSteps(lane.Worktree, sp)
+	if err != nil {
+		return 0, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("%s's steps cannot be read on the lane's branch: %s", st.Spec, fsutil.RedactHome(err.Error())),
+			"rewrite "+spec.StepsHeading+" on the lane's branch as `abcd intent ready "+st.Intent+"` describes, then run `abcd implement step` again")
+	}
+	if len(steps) == 0 {
+		return 0, nil
+	}
+	n := lane.SpecStep
+	if n > len(steps) || steps[n-1].Title != lane.StepTitle {
+		return 0, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("%s on the lane's branch does not list step %d as %q, the step this lane was opened for", st.Spec, n, lane.StepTitle),
+			"restore "+st.Spec+"'s steps on the lane's branch as the run started from them, then run `abcd implement step` again")
+	}
+	if steps[n-1].Landed != "" {
+		return 0, nil
+	}
+	return n, nil
 }
 
 // landRecords makes the landing's records in the lane's worktree and commits
@@ -261,14 +313,30 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	}
 
 	// The disclosure is settled before any record is written, so a lane with
-	// no model to disclose is refused with its worktree untouched.
-	assisted, gap := assistedByTrailers(lane.Receipts)
-	if gap != "" {
-		return Outcome{}, modelGap(*lane, "the landing's records commit carries text the lane's implementer composed", gap)
+	// no model to disclose is refused with its worktree untouched. A records
+	// commit that only marks the step carries no model's prose, only the mark
+	// abcd computed from the run's state, so it declares abcd's label instead
+	// (composed_attribution.go).
+	assisted := []string{composedAssistedBy()}
+	if ld.Closes || len(lane.Resolves) > 0 {
+		var gap string
+		if assisted, gap = assistedByTrailers(lane.Receipts); gap != "" {
+			return Outcome{}, modelGap(*lane, "the landing's records commit carries text the lane's implementer composed", gap)
+		}
 	}
 
 	wt := lane.Worktree
 	var trailers, done []string
+	// The step is marked before the close moves the spec, so a closed spec
+	// carries every step's mark.
+	if ld.MarkStep > 0 {
+		mark := shortSHA(lane.HeadSHA)
+		if _, err := spec.MarkLanded(wt, st.Spec, ld.MarkStep, mark); err != nil {
+			return Outcome{}, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("step %d of %s could not be marked landed in the lane's worktree: %s", ld.MarkStep, st.Spec, fsutil.RedactHome(err.Error())),
+				"settle what the spec store names on the lane's branch, then run `abcd implement step` again")
+		}
+		done = append(done, fmt.Sprintf("marked step %d landed at %s", ld.MarkStep, mark))
+	}
 	if ld.Closes {
 		// The close's audit emit parks its receipt under the worktree's local
 		// tier; the lane's worktree is the loop's own, so the tier is made there.

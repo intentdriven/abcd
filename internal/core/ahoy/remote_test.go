@@ -18,7 +18,9 @@ import (
 // ordering rather than a mock's idea of them.
 //
 // getBody is what the GET returns; every PATCH exits 0 unless GH_FAKE_PATCH_FAIL
-// names a substring of its stdin.
+// names a substring of its stdin. The fork pull-request approval GET answers
+// GH_FAKE_FORK_APPROVAL as its policy when that is set, and 404 when not;
+// GH_FAKE_FORK_APPROVAL_FAIL makes it fail as a server error instead.
 func ghFake(t *testing.T, getBody string) (logPath string) {
 	t.Helper()
 	if _, err := exec.LookPath("bash"); err != nil {
@@ -46,6 +48,20 @@ for arg in "$@"; do
     exit 0
   fi
 done
+case "$*" in
+*fork-pr-contributor-approval*)
+  if [ -n "${GH_FAKE_FORK_APPROVAL_FAIL:-}" ]; then
+    echo "gh: Bad Gateway (HTTP 502)" >&2
+    exit 1
+  fi
+  if [ -z "${GH_FAKE_FORK_APPROVAL:-}" ]; then
+    echo "gh: HTTP 404" >&2
+    exit 1
+  fi
+  printf '{"approval_policy":"%s"}' "$GH_FAKE_FORK_APPROVAL"
+  exit 0
+  ;;
+esac
 if [ -n "${GH_FAKE_GET_FAIL:-}" ]; then
   echo "gh: HTTP 404" >&2
   exit 1
@@ -201,17 +217,19 @@ func TestRemoteApplyEnablesSecretScanningBeforePushProtection(t *testing.T) {
 		t.Fatalf("status = %q (notes=%v), want clean", res.Status, res.Notes)
 	}
 	calls := ghCalls(t, logPath)
-	if len(calls) != 3 {
-		t.Fatalf("want one GET and two PATCHes, got %d calls:\n%s", len(calls), strings.Join(calls, "\n"))
+	if len(calls) != 4 {
+		t.Fatalf("want two GETs and two PATCHes, got %d calls:\n%s", len(calls), strings.Join(calls, "\n"))
 	}
-	if strings.Contains(calls[0], "PATCH") {
-		t.Errorf("the first call writes; the state must be READ before anything is changed:\n%s", calls[0])
+	for _, c := range calls[:2] {
+		if strings.Contains(c, "PATCH") {
+			t.Errorf("a read call writes; the state must be READ before anything is changed:\n%s", c)
+		}
 	}
-	if !strings.Contains(calls[1], `"secret_scanning"`) {
-		t.Errorf("the first write is not secret scanning:\n%s", calls[1])
+	if !strings.Contains(calls[2], `"secret_scanning"`) {
+		t.Errorf("the first write is not secret scanning:\n%s", calls[2])
 	}
-	if !strings.Contains(calls[2], `"secret_scanning_push_protection"`) {
-		t.Errorf("the second write is not push protection:\n%s", calls[2])
+	if !strings.Contains(calls[3], `"secret_scanning_push_protection"`) {
+		t.Errorf("the second write is not push protection:\n%s", calls[3])
 	}
 	// Every call names the repo the verb resolved, and no other.
 	for _, c := range calls {
@@ -271,6 +289,47 @@ func TestRemoteApplyMirrorsTheDesiredState(t *testing.T) {
 	}
 	if _, ok := got["observed"].(map[string]any)["secret_scanning"]; ok {
 		t.Error("the observed section carries a setting abcd drives; the two must stay legibly apart")
+	}
+}
+
+// TestRemoteApplyMirrorsTheForkWorkflowApprovalPolicy: a required check is
+// matched by its name, so which pull-request workflows run before a
+// maintainer approves them is part of what the checks mean. The policy is
+// recorded beside the merge settings when GitHub answers it, and omitted,
+// never guessed, when it does not.
+func TestRemoteApplyMirrorsTheForkWorkflowApprovalPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name, policy string
+	}{
+		{"answered", "all_external_contributors"},
+		{"unanswered", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupHermetic(t)
+			ghFake(t, bothDisabled)
+			t.Setenv("GH_FAKE_FORK_APPROVAL", tc.policy)
+			repo := managedRepoWithOrigin(t, "git@github.com:example-org/example-repo.git")
+
+			res, err := RemoteApply(repo, confirmingPrompter{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Merge.ForkPRContributorApproval != tc.policy {
+				t.Errorf("the result reports policy %q, want %q", res.Merge.ForkPRContributorApproval, tc.policy)
+			}
+			var got map[string]any
+			if err := json.Unmarshal([]byte(mirror(t, repo)), &got); err != nil {
+				t.Fatalf("the mirror is not readable JSON: %v", err)
+			}
+			observed, _ := got["observed"].(map[string]any)
+			v, recorded := observed["fork_pr_contributor_approval"]
+			switch {
+			case tc.policy != "" && v != tc.policy:
+				t.Errorf("mirror observed policy = %v, want %q", v, tc.policy)
+			case tc.policy == "" && recorded:
+				t.Errorf("an unanswered policy must be omitted, not recorded as %v", v)
+			}
+		})
 	}
 }
 
@@ -556,5 +615,40 @@ func TestRemoteReadIsReadOnly(t *testing.T) {
 	}
 	if msg, ok := sameTree(before, treeHash(t, repo)); !ok {
 		t.Errorf("the read changed the tree: %s", msg)
+	}
+}
+
+// TestRemoteKeepsTheForkApprovalPolicyAReadFailedToSee: the policy is a
+// second request, so it can fail where the first answered. A failure that is
+// not GitHub's 404 is said in a note, and an apply keeps the policy the mirror
+// records, so a failed request never reads as a removed policy.
+func TestRemoteKeepsTheForkApprovalPolicyAReadFailedToSee(t *testing.T) {
+	setupHermetic(t)
+	ghFake(t, bothDisabled)
+	repo := managedRepoWithOrigin(t, "git@github.com:example-org/example-repo.git")
+	t.Setenv("GH_FAKE_FORK_APPROVAL", "all_external_contributors")
+	if _, err := RemoteApply(repo, confirmingPrompter{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	before := mirror(t, repo)
+
+	t.Setenv("GH_FAKE_FORK_APPROVAL_FAIL", "1")
+	res, err := RemoteApply(repo, confirmingPrompter{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mirror(t, repo); got != before {
+		t.Errorf("a failed policy read changed the mirror:\nbefore %s\nafter  %s", before, got)
+	}
+	if note := strings.Join(res.Notes, "\n"); !strings.Contains(note, "could not be read") || !strings.Contains(note, "keeps all_external_contributors") || !strings.Contains(note, "HTTP 502") {
+		t.Errorf("the apply must say the policy went unread and what the mirror keeps; notes %v", res.Notes)
+	}
+
+	read, err := RemoteRead(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Merge.ForkPRContributorApproval != "" || !strings.Contains(strings.Join(read.Notes, "\n"), "could not be read, so it is not reported") {
+		t.Errorf("the read must report an unread policy as unread, not as a value; merge %+v notes %v", read.Merge, read.Notes)
 	}
 }

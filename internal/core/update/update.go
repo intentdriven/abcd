@@ -15,7 +15,6 @@ package update
 import (
 	"bytes"
 	"crypto/sha256"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/xml"
@@ -318,19 +317,16 @@ const (
 	maxAtomBytes      = 1 << 20 // 1 MiB: the releases atom feed
 	maxAssetBytes     = 1 << 28 // 256 MiB: far above any abcd binary
 	fetchTimeout      = 5 * time.Minute
-	maxRedirects      = 8
 )
 
 // Updater fetches and applies releases from one pinned origin.
 type Updater struct {
-	origin       string // e.g. https://github.com/intentdriven/abcd — no trailing slash
-	assetName    string // abcd-<goos>-<arch>
-	allowHTTP    bool   // test seam: the shipping constructor never sets it
-	client       *http.Client
-	latest       vintage.ReleaseFetcher // nil: bare ResolveTag("") refuses
-	redirectHost map[string]bool
-	envIgnored   []string // proxy/CA overrides scrubbed at construction, for the receipt
-	provenanceN  int      // how many recent releases to walk to prove a target file
+	origin      string                 // e.g. https://github.com/intentdriven/abcd — no trailing slash
+	assetName   string                 // abcd-<goos>-<arch>
+	dl          *urlguard.Download     // the one download rule, tools' too
+	latest      vintage.ReleaseFetcher // nil: bare ResolveTag("") refuses
+	envIgnored  []string               // proxy/CA overrides scrubbed at construction, for the receipt
+	provenanceN int                    // how many recent releases to walk to prove a target file
 	// provenance verifies the downloaded asset's build provenance before the
 	// swap. nil refuses every swap: there is no unverified path.
 	provenance provenanceVerifier
@@ -341,13 +337,21 @@ type Updater struct {
 const releaseOrigin = core.ReleaseOrigin
 
 // NewGitHubUpdater builds the updater as it ships: the pinned origin, the
-// full urlguard policy, and GitHub's own asset hosts as the only legal
-// redirect targets.
+// full urlguard policy, and GitHub's own asset hosts as the only other hosts
+// a download may reach.
 func NewGitHubUpdater() *Updater {
 	u := newUpdater(releaseOrigin, urlguard.BlockedIP, "abcd-"+runtime.GOOS+"-"+runtime.GOARCH, false, vintage.NewGitHubReleaseFetcher())
-	u.redirectHost["objects.githubusercontent.com"] = true
-	u.redirectHost["release-assets.githubusercontent.com"] = true
+	u.allowAssetHosts()
 	return u
+}
+
+// assetHosts are the hosts GitHub redirects a release download to.
+var assetHosts = []string{"objects.githubusercontent.com", "release-assets.githubusercontent.com"}
+
+func (u *Updater) allowAssetHosts() {
+	for _, h := range assetHosts {
+		u.dl.AllowHost(h)
+	}
 }
 
 // newUpdater is the test-reachable constructor: explicit origin, address
@@ -383,53 +387,18 @@ func newUpdater(origin string, blocked func(net.IP) bool, assetName string, allo
 // environment. ignored names the overrides that were set, for the receipt.
 func buildUpdater(origin string, blocked func(net.IP) bool, assetName string, allowHTTP bool, latest vintage.ReleaseFetcher,
 	ignored []string, rootCAs *x509.CertPool) *Updater {
-	parsed, _ := url.Parse(origin)
-	hosts := map[string]bool{}
-	if parsed != nil {
-		hosts[parsed.Host] = true
+	var hosts []string
+	if parsed, _ := url.Parse(origin); parsed != nil {
+		hosts = append(hosts, parsed.Host)
 	}
-	u := &Updater{
-		origin:       strings.TrimRight(origin, "/"),
-		assetName:    assetName,
-		allowHTTP:    allowHTTP,
-		latest:       latest,
-		redirectHost: hosts,
-		envIgnored:   ignored,
-		provenanceN:  12,
+	return &Updater{
+		origin:      strings.TrimRight(origin, "/"),
+		assetName:   assetName,
+		dl:          urlguard.NewDownload(blocked, allowHTTP, fetchTimeout, rootCAs, hosts...),
+		latest:      latest,
+		envIgnored:  ignored,
+		provenanceN: 12,
 	}
-	dialer := &net.Dialer{Timeout: fetchTimeout}
-	if blocked != nil {
-		dialer.Control = urlguard.DialControl(blocked)
-	}
-	u.client = &http.Client{
-		Timeout: fetchTimeout,
-		Transport: &http.Transport{
-			// Proxy is nil BY CONSTRUCTION: the environment never chooses
-			// where this client connects.
-			Proxy:               nil,
-			DialContext:         dialer.DialContext,
-			TLSHandshakeTimeout: 30 * time.Second,
-			TLSClientConfig:     &tls.Config{RootCAs: rootCAs},
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= maxRedirects {
-				return errors.New("too many redirects")
-			}
-			if req.URL.Scheme != "https" && !u.allowHTTP {
-				return errors.New("redirect left https: " + req.URL.Redacted())
-			}
-			if !u.redirectHost[req.URL.Host] {
-				return errors.New("redirect to a host outside the release origin: " + req.URL.Host)
-			}
-			if blocked != nil {
-				if err := urlguard.CheckHostWith(req.URL.Hostname(), blocked); err != nil {
-					return fmt.Errorf("redirect refused: %w", err)
-				}
-			}
-			return nil
-		},
-	}
-	return u
 }
 
 // ResolveTag validates an explicit tag, or resolves `releases/latest` when
@@ -504,13 +473,21 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 		if err != nil {
 			return rep, fmt.Errorf("release %s carries a malformed digest for %s", tag, u.assetName)
 		}
-		signer, perr := u.verifyProvenance(tag, sum)
-		if perr != nil {
+		current, err := readMatching(target, sum)
+		if err != nil {
+			return rep, fmt.Errorf("reading %s: %w", target, err)
+		}
+		signer, rr := u.verifyRelease(tag, current)
+		if rr != nil {
 			rep.Action = ActionRefused
 			rep.Refusal = &Refusal{
-				Shape:  "unverified-provenance",
-				Detail: "the file at " + fsutil.RedactHome(target) + " matches the release's checksums.txt for " + u.assetName + ", but its build provenance could not be verified as " + tag + "'s, so it is not reported current: " + perr.Error(),
+				Shape:  rr.shape,
+				Detail: "the file at " + fsutil.RedactHome(target) + " matches the release's checksums.txt for " + u.assetName + ", but its build provenance could not be verified as " + tag + "'s, so it is not reported current: " + rr.err.Error(),
 				Remedy: u.remedyInstallByHand(tag, target),
+			}
+			if rr.shape == shapeNotThisRelease {
+				rep.Refusal.Detail = "the file at " + fsutil.RedactHome(target) + " matches the release's checksums.txt for " + u.assetName + " and verifies as built by the release workflow, but " + rr.err.Error() + ", so it is not reported current at " + tag
+				rep.Refusal.Remedy = remedyNotThisRelease
 			}
 			return rep, nil
 		}
@@ -585,13 +562,17 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	// build provenance release.yml signed, which a release-page edit cannot
 	// forge (iss-2609231050273096). Any failure refuses before anything is
 	// staged: there is no unverified swap.
-	signer, perr := u.verifyProvenance(tag, sum)
-	if perr != nil {
+	signer, rr := u.verifyRelease(tag, newBytes)
+	if rr != nil {
 		rep.Action = ActionRefused
 		rep.Refusal = &Refusal{
-			Shape:  "unverified-provenance",
-			Detail: "the release's " + u.assetName + " matches its checksums.txt, but its build provenance could not be verified, so nothing was swapped: " + perr.Error(),
+			Shape:  rr.shape,
+			Detail: "the release's " + u.assetName + " matches its checksums.txt, but its build provenance could not be verified, so nothing was swapped: " + rr.err.Error(),
 			Remedy: u.remedyInstallByHand(tag, target),
+		}
+		if rr.shape == shapeNotThisRelease {
+			rep.Refusal.Detail = "the release's " + u.assetName + " matches its checksums.txt and verifies as built by the release workflow, but " + rr.err.Error() + ", so nothing was swapped"
+			rep.Refusal.Remedy = remedyNotThisRelease
 		}
 		return rep, nil
 	}
@@ -622,6 +603,37 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	rep.NewVersion = tag
 	rep.Digest = wantHex
 	return rep, nil
+}
+
+// shapeNotThisRelease is the refusal for bytes that verify as built by the
+// release workflow but do not claim the release requested.
+const shapeNotThisRelease = "not-this-release"
+
+// releaseRefusal is why bytes that match a release's checksums.txt are not
+// that release's build: the Refusal shape of the check that failed, and what
+// it said.
+type releaseRefusal struct {
+	shape string
+	err   error
+}
+
+// verifyRelease holds bytes that match tag's checksums.txt to the two checks
+// that do not read their trust from the release page, and returns the
+// provenance's signer. The build provenance binds the bytes to the commit tag
+// names, and the release the bytes' own build metadata claims binds them to
+// tag itself. Every
+// path that takes a release binary (Apply's swap, Apply's current file and
+// FetchVerified) goes through it, so the binding is made in one place.
+func (u *Updater) verifyRelease(tag string, b []byte) (string, *releaseRefusal) {
+	sum := sha256.Sum256(b)
+	signer, err := u.verifyProvenance(tag, sum[:])
+	if err != nil {
+		return "", &releaseRefusal{shape: "unverified-provenance", err: err}
+	}
+	if err := checkReleaseClaim(b, tag); err != nil {
+		return "", &releaseRefusal{shape: shapeNotThisRelease, err: err}
+	}
+	return signer, nil
 }
 
 // verifyProvenance runs the configured provenance check; an updater without
@@ -827,36 +839,6 @@ func setOverrides() []string {
 	return set
 }
 
-// caOverrides are the scrubbed variables crypto/x509 reads when it loads the
-// system root pool.
-var caOverrides = []string{"SSL_CERT_FILE", "SSL_CERT_DIR"}
-
-// overrideFreeRoots loads the system root pool with the CA overrides out of
-// the environment for the load alone, then puts back exactly what it took out,
-// so a caller that is not the updater leaves its process environment as it
-// found it. crypto/x509 loads that pool once per process: when this is the
-// first load, the process's default pool ignores the overrides from then on
-// too, while the variables stay set for anything the process starts. A nil
-// pool (SystemCertPool error) falls back to the platform default.
-func overrideFreeRoots() *x509.CertPool {
-	taken := map[string]string{}
-	for _, name := range caOverrides {
-		if v, ok := os.LookupEnv(name); ok {
-			taken[name] = v
-			os.Unsetenv(name)
-		}
-	}
-	defer func() {
-		for name, v := range taken {
-			os.Setenv(name, v)
-		}
-	}()
-	if pool, err := x509.SystemCertPool(); err == nil {
-		return pool
-	}
-	return nil
-}
-
 func (u *Updater) assetURL(tag, name string) string {
 	return u.origin + "/releases/download/" + url.PathEscape(tag) + "/" + url.PathEscape(name)
 }
@@ -891,17 +873,18 @@ func (e *notFoundError) Error() string { return "not found: " + e.url }
 
 // get performs one bounded GET under the pinned transport.
 func (u *Updater) get(rawURL string, limit int64) (io.ReadCloser, int64, error) {
-	return u.getWith(rawURL, limit, nil)
+	return getVia(u.dl, rawURL, limit, nil)
 }
 
-// getWith is get with extra request headers (the attestations API's Accept).
-func (u *Updater) getWith(rawURL string, limit int64, headers map[string]string) (io.ReadCloser, int64, error) {
+// getVia performs one bounded GET through dl, with extra request headers (the
+// attestations API's Accept).
+func getVia(dl *urlguard.Download, rawURL string, limit int64, headers map[string]string) (io.ReadCloser, int64, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, 0, err
 	}
-	if parsed.Scheme != "https" && !u.allowHTTP {
-		return nil, 0, errors.New("the release origin must be https")
+	if err := dl.Admit(parsed); err != nil {
+		return nil, 0, err
 	}
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -911,7 +894,7 @@ func (u *Updater) getWith(rawURL string, limit int64, headers map[string]string)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := u.client.Do(req)
+	resp, err := dl.Client.Do(req)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -957,6 +940,38 @@ func parseChecksums(raw []byte) (map[string]string, error) {
 		return nil, errors.New("the checksums manifest names no assets")
 	}
 	return sums, nil
+}
+
+// checkReleaseClaim is ahoy.CheckReleaseClaim behind a seam: the package's
+// fixtures stand for release binaries with bytes that carry no Go build
+// metadata, so TestMain stands in a check they pass and the binding's own
+// tests put the real one back.
+var checkReleaseClaim = ahoy.CheckReleaseClaim
+
+// remedyNotThisRelease is the way on when a release page carries a build that
+// does not claim the release: nothing local is wrong, and the binary in place
+// is kept.
+const remedyNotThisRelease = "nothing on this machine needs changing: keep the abcd you have, which this command left as it was, until the release is corrected"
+
+// readMatching reads the file at path, up to maxAssetBytes, and returns its
+// bytes only while they still hash to want.
+func readMatching(path string, want []byte) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxAssetBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxAssetBytes {
+		return nil, fmt.Errorf("it is larger than %d bytes", maxAssetBytes)
+	}
+	if got := sha256.Sum256(data); !bytes.Equal(got[:], want) {
+		return nil, errors.New("it changed while it was being checked")
+	}
+	return data, nil
 }
 
 func fileSHA256(path string) (string, error) {

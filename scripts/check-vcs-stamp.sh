@@ -8,6 +8,12 @@
 # --allow-stale-binary. This guard makes that coupling impossible to break
 # silently: every binary about to be checksummed and published must carry a
 # vcs.revision, or the release aborts before anything is hashed or uploaded.
+#
+# With TAG set (release.yml sets it for the whole run), each binary must also
+# claim that release: the main-module version Go stamps from the tag the build
+# was made at. abcd update, ahoy install and the plugin bootstrap refuse a
+# release binary that claims any other release (ahoy.CheckReleaseClaim), so a
+# release whose binaries claimed none would be refused by every client.
 set -euo pipefail
 shopt -s nullglob
 
@@ -25,6 +31,9 @@ for b in "${bins[@]}"; do
     fail=1
   elif printf '%s\n' "$info" | grep -q 'vcs\.modified=true'; then
     echo "check-vcs-stamp: FAIL $b was built from a dirty tree (vcs.modified=true) — its vintage is undeterminable and pinned users' \`ahoy install\` would refuse (iss-232)" >&2
+    fail=1
+  elif [ -n "${TAG:-}" ] && [ "$(printf '%s\n' "$info" | awk '$1 == "mod" && $2 == "github.com/intentdriven/abcd" { print $3 }')" != "$TAG" ]; then
+    echo "check-vcs-stamp: FAIL $b does not claim release $TAG in its build metadata — every client would refuse it as not this release's build" >&2
     fail=1
   else
     echo "check-vcs-stamp: OK   $b"

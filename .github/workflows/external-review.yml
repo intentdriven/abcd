@@ -6,13 +6,18 @@ name: external-review
 # have approved it. A collaborator's own pull request passes trivially — the
 # rule prices outside submissions, not the maintainers' flow.
 #
-# pull_request_target, DELIBERATELY, and with no checkout of any code: this
-# check must run the BASE repository's version of itself, because on a plain
-# pull_request event a fork runs the workflow from its own tree and can neuter
-# the logic while keeping the required check's name green. The job reads only
-# the GitHub API (reviews, collaborator roles) — the PR's code is never
-# checked out, never built, never executed, which is what makes the trigger
-# safe to use here.
+# pull_request_target, DELIBERATELY, and with no checkout of any code: those
+# runs are the BASE repository's version of this workflow. The ruleset
+# requires the check by its name, so which workflows may report that name on a
+# pull request is held by the repository's own controls, not by this file: a
+# change under .github/ from anyone but a repository admin needs a code
+# owner's approval (.github/CODEOWNERS; admins pass it by the ruleset's
+# bypass), and the fork pull-request approval policy, recorded in
+# .abcd/work/rulesets/repo-settings.json by `abcd ahoy remote apply`, decides
+# whose pull-request workflows wait for a maintainer before they run.
+# The job reads only the GitHub API (reviews, collaborator roles) — the PR's
+# code is never checked out, never built, never executed, which is what makes
+# the trigger safe to use here.
 on:
   # No checkout, and no PR-controlled input reaches a shell unquoted; the
   # trigger is the point (see the header comment).

@@ -173,6 +173,10 @@ type NotHeld struct {
 	Derived    bool
 	// Unreadable is why the tip cannot be read.
 	Unreadable string
+	// YourCopy names the person's other copy that holds it, when Why is
+	// NotHeldAnotherCopy: "your worktree <path> on this machine" or "your
+	// copy on another computer" (iss-2610250013552001).
+	YourCopy string
 
 	msg  string
 	kind error
