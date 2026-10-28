@@ -2492,18 +2492,18 @@ only with the lower pid as well, or two of the start order whose whole-second
 ages read a tie differently or the later of which stopped counting the earlier
 past its 5m0s cap). An account at one opens its race gate at once
 whatever another account set, and a checkout older than the gate runs its race
-stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's
-waiter never queues
-behind a race waiter, and a preflight whose waiter is at its race gate is in its
-test stages. A waiter that has opened stands back only from a waiter that
+stage ungated, so set more than 1 only once no such checkout runs a preflight. A
+first gate's waiter never queues behind a race waiter. A preflight whose race
+waiter is queued runs nothing: at 1 it still counts as in its test stages, and
+above 1 it takes no slot until its race run starts, which the race gate keeps
+to one at a time. A waiter that has opened stands back only from a waiter that
 opened in the same moment at its own gate, never from one at the other gate.
 
 How many preflights may be in their test stages at once is your own machine's
 setting: `load.preflights` in `~/.abcd.noindex/config.json`, or ABCD_LOAD_PREFLIGHTS in the
-environment, which wins, for a trial; a whole number from 1 to 2, 1 by default,
+environment, which wins, for a trial; a whole number from 1 to 4, 1 by default,
 and never read from a repository file, so a checkout cannot raise the machine's
-load. The most is 2 for a measured trial, and it rises once a measured trial
-supports more. At 1 both gates read as before the setting existed. Above 1 the
+load. At 1 both gates read as before the setting existed. Above 1 the
 first gate opens while fewer than that many other preflights or waiters running
 their command are in their test stages (a `--wait -- make preflight` counts
 once), a waiter queued ahead still shuts it, and a live race run does not shut
