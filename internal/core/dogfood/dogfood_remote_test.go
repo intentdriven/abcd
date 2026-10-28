@@ -110,7 +110,15 @@ func TestBuilderTransportRefusesLocalRepositories(t *testing.T) {
 // TestDeclaredRemoteShapes: the forge transports are accepted, and every
 // shape this account or the network path can move is refused with a reason.
 func TestDeclaredRemoteShapes(t *testing.T) {
+	prevHost := thisHostname
+	thisHostname = func() (string, error) { return "devbox.example.org", nil }
+	t.Cleanup(func() { thisHostname = prevHost })
 	accepted := []string{
+		"https://140.82.112.3/intentdriven/abcd.git",
+		"https://github.com./intentdriven/abcd.git",
+		"ssh://git@[2001:db8::1]/abcd.git",
+		"git@gitlab.example.com:group/abcd.git",
+		"ssh://deploy.user-1@github.com/intentdriven/abcd.git",
 		"https://github.com/intentdriven/abcd.git",
 		"https://user:token@github.com/intentdriven/abcd.git",
 		"ssh://git@github.com/intentdriven/abcd.git",
@@ -151,6 +159,22 @@ func TestDeclaredRemoteShapes(t *testing.T) {
 		"git@127.0.0.2:abcd.git":                   "this machine",
 		"[::1]:abcd.git":                           "bracketed",
 		"git@[2001:db8::1]:abcd.git":               "bracketed",
+		"ssh://127.1/abcd.git":                     "this machine",
+		"ssh://0.0.0.0/abcd.git":                   "this machine",
+		"ssh://0/abcd.git":                         "this machine",
+		"https://2130706433/abcd.git":              "this machine",
+		"ssh://0x7f.1/abcd.git":                    "this machine",
+		"ssh://0177.0.0.1/abcd.git":                "this machine",
+		"ssh://[::]/abcd.git":                      "this machine",
+		"ssh://[::ffff:127.0.0.1]/abcd.git":        "this machine",
+		"127.1:abcd.git":                           "this machine",
+		"git@repo.localhost:abcd.git":              "this machine",
+		"https://repo.LOCALHOST./abcd.git":         "this machine",
+		"devbox.example.org:abcd.git":              "this machine",
+		"ssh://git@DEVBOX/abcd.git":                "this machine",
+		"ssh://git;touch@github.com/abcd.git":      "user",
+		"git$(touch)@github.com:abcd.git":          "user",
+		"ssh://git@git_hub.com/abcd.git":           "host",
 	}
 	for url, why := range refused {
 		_, _, problem := parseRemote([]string{url, "main"})

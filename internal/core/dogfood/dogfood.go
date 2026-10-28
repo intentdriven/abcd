@@ -431,9 +431,14 @@ func remoteRefusal(remote string) string {
 		if err != nil || u.Opaque != "" || rest == "" {
 			return "it is not a URL git can read"
 		}
-		if h := u.Hostname(); h == "" || strings.HasPrefix(h, "-") || (u.User != nil && strings.HasPrefix(u.User.Username(), "-")) {
+		h := u.Hostname()
+		if h == "" || !(scpHostRe.MatchString(strings.TrimSuffix(h, ".")) || net.ParseIP(h) != nil) {
 			return "it names no host to read from"
-		} else if loopbackHost(h) {
+		}
+		if u.User != nil && !sshUserRe.MatchString(u.User.Username()) {
+			return badUser
+		}
+		if loopbackHost(h) {
 			return thisMachine
 		}
 		return ""
@@ -452,9 +457,12 @@ func remoteRefusal(remote string) string {
 	}
 	host := remote[:colon]
 	if at := strings.LastIndexByte(host, '@'); at >= 0 {
+		if !sshUserRe.MatchString(host[:at]) {
+			return badUser
+		}
 		host = host[at+1:]
 	}
-	if !scpHostRe.MatchString(host) {
+	if !scpHostRe.MatchString(strings.TrimSuffix(host, ".")) {
 		return "it names no host to read from"
 	}
 	if loopbackHost(host) {
@@ -469,14 +477,81 @@ func remoteRefusal(remote string) string {
 // thisMachine is the refusal of a remote whose host is this machine by name.
 const thisMachine = "its host is this machine, which serves a repository anything running as this account can write"
 
-// loopbackHost reports whether h names this machine: localhost (any case,
-// with or without a trailing dot) or a loopback address.
+// badUser is the refusal of a remote whose user name ssh would be handed
+// with characters a user name never holds: ssh's own config may expand it
+// into a command (%r).
+const badUser = "its user name holds characters the builder does not pass to ssh"
+
+// sshUserRe is the user names a declared ssh remote may carry.
+var sshUserRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*$`)
+
+// thisHostname names this machine; a test stubs it.
+var thisHostname = os.Hostname
+
+// loopbackHost reports whether h names this machine: localhost or a name
+// under it (any case, with or without a trailing dot), the machine's own
+// host name, a loopback or unspecified address, or an IPv4 address in any of
+// the shorthand forms the resolver ssh uses accepts (127.1, 0x7f.1, 2130706433,
+// 0) that lands in 127.0.0.0/8 or is 0.0.0.0.
 func loopbackHost(h string) bool {
-	if strings.EqualFold(strings.TrimSuffix(h, "."), "localhost") {
+	name := strings.ToLower(strings.TrimSuffix(h, "."))
+	if name == "localhost" || strings.HasSuffix(name, ".localhost") {
 		return true
 	}
-	ip := net.ParseIP(h)
-	return ip != nil && ip.IsLoopback()
+	if self, err := thisHostname(); err == nil && self != "" {
+		self = strings.ToLower(strings.TrimSuffix(self, "."))
+		short, _, _ := strings.Cut(self, ".")
+		if name == self || (!strings.Contains(name, ".") && name == short) {
+			return true
+		}
+	}
+	if ip := net.ParseIP(name); ip != nil {
+		return ip.IsLoopback() || ip.IsUnspecified()
+	}
+	if v, ok := inetAton(name); ok {
+		return v>>24 == 127 || v == 0
+	}
+	return false
+}
+
+// inetAton reads s as inet_aton(3) does: one to four parts split by dots,
+// each decimal, octal (a leading 0) or hex (0x), the last part filling the
+// bytes the earlier ones leave.
+func inetAton(s string) (uint32, bool) {
+	parts := strings.Split(s, ".")
+	if len(parts) > 4 {
+		return 0, false
+	}
+	vals := make([]uint64, len(parts))
+	for i, p := range parts {
+		base, digits := 10, p
+		switch {
+		case len(p) > 1 && (p[:2] == "0x" || p[:2] == "0X"):
+			base, digits = 16, p[2:]
+		case len(p) > 1 && p[0] == '0':
+			base, digits = 8, p[1:]
+		}
+		if digits == "" && base != 16 {
+			return 0, false
+		}
+		v, err := strconv.ParseUint(digits, base, 32)
+		if digits != "" && err != nil {
+			return 0, false
+		}
+		vals[i] = v
+	}
+	var out uint64
+	for i, v := range vals[:len(vals)-1] {
+		if v > 255 {
+			return 0, false
+		}
+		out |= v << (24 - 8*uint(i))
+	}
+	last := vals[len(vals)-1]
+	if last >= 1<<(32-8*uint(len(vals)-1)) {
+		return 0, false
+	}
+	return uint32(out | last), true
 }
 
 // shownRemote is a declared remote as a note shows it: a path with the home
@@ -751,7 +826,10 @@ func Build(home string, c Checkout) (string, error) {
 		}
 		p, err := build(storeAbs, c)
 		if err != nil {
-			_ = os.WriteFile(filepath.Join(storeAbs, tip+failedSuffix), []byte(err.Error()+"\n"), abcdhome.FileMode)
+			if f, ferr := os.OpenFile(filepath.Join(storeAbs, tip+failedSuffix), os.O_CREATE|os.O_TRUNC|os.O_WRONLY|syscall.O_NOFOLLOW, abcdhome.FileMode); ferr == nil {
+				_, _ = f.WriteString(err.Error() + "\n")
+				_ = f.Close()
+			}
 			return fmt.Errorf("%w (log: %s)", err, c.LogDisplay())
 		}
 		_ = os.Remove(filepath.Join(storeAbs, tip+failedSuffix))
@@ -1256,11 +1334,13 @@ func prune(storeAbs, keep string) {
 		_ = os.Remove(filepath.Join(storeAbs, b.name+failedSuffix))
 	}
 	// A commit whose build failed leaves its log and marker and no directory,
-	// so they are pruned by name: every pair but a kept build's goes.
+	// so they are pruned by name: every pair but a kept build's, or a tip a
+	// record names, goes, so another clone's prune never clears the marker
+	// that holds that tip's failed build off for retryAfter.
 	for _, e := range entries {
 		name := e.Name()
 		for _, suffix := range []string{logSuffix, failedSuffix} {
-			if sha, ok := strings.CutSuffix(name, suffix); ok && gitutil.IsFullSHA(sha) && !held[sha] && e.Type().IsRegular() {
+			if sha, ok := strings.CutSuffix(name, suffix); ok && gitutil.IsFullSHA(sha) && !held[sha] && !named[sha] && e.Type().IsRegular() {
 				_ = os.Remove(filepath.Join(storeAbs, name))
 			}
 		}

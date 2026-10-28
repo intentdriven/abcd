@@ -104,7 +104,23 @@ func TestPruneKeepsEveryBuildAVerifiedTipNames(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A fifth declaration's tip failed to build: its log and marker, and no
+	// directory, stay for its retry window.
+	failed := sha('e')
+	if err := writeTip(store, tipRecord{Commit: failed, URL: "https://forge.example.invalid/clone4.git", Branch: "main"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range []string{logSuffix, failedSuffix} {
+		if err := os.WriteFile(filepath.Join(store, failed+suffix), []byte("x\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	prune(store, sha('f'))
+	for _, suffix := range []string{logSuffix, failedSuffix} {
+		if _, err := os.Lstat(filepath.Join(store, failed+suffix)); err != nil {
+			t.Errorf("the %s of a named tip that failed to build is pruned: %v", suffix, err)
+		}
+	}
 	for _, b := range append(order[:4], sha('f'), sha('7'), sha('6')) {
 		if _, err := os.Lstat(filepath.Join(store, b)); err != nil {
 			t.Errorf("build %s is pruned: %v", b[:7], err)
