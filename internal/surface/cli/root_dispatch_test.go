@@ -61,19 +61,28 @@ func TestRootDispatchUnknownIDFaults(t *testing.T) {
 }
 
 // TestRootNonIDPositionalUnchanged is the golden test: a positional that does
-// not match the record-id shape reproduces the pre-change unknown-command
-// error byte-for-byte, exit code 2. "status" left the list when it became a
-// verb (itd-2609151838312703); "show", the other record-read word, stands in.
+// not match the record-id shape stays on the unknown-command path at exit 2,
+// and the line Run prints is pinned word for word — it names the root and its
+// sub-commands, and the refused argument only by its position. The operand is
+// read back from the classified error, never from the printed line. "status"
+// left the list when it became a verb (itd-2609151838312703); "show", the
+// other record-read word, stands in.
 func TestRootNonIDPositionalUnchanged(t *testing.T) {
 	_ = captureLedgerRepo(t)
+	root := NewRootCommand()
 	for _, arg := range []string{"nonsense", "show", "iss-", "itd-x", "plan-3", "adr-40-slug"} {
 		_, err := runCLIErr(t, arg)
 		if err == nil {
 			t.Fatalf("positional %q must stay on the unknown-command path", arg)
 		}
-		want := "unknown command \"" + arg + "\" for \"abcd\""
-		if err.Error() != want {
-			t.Fatalf("error for %q = %q, want %q (byte-for-byte)", arg, err.Error(), want)
+		skew, ok := classifyUsageError(root, []string{arg}, err.Error())
+		if !ok || skew.verb != arg || len(skew.known) != 0 {
+			t.Fatalf("error for %q classifies as %+v (ok %v), want the root's unknown verb %q", arg, skew, ok, arg)
+		}
+		_, _, stderr := runMain(t, arg)
+		line, _, _ := strings.Cut(stderr, "\n")
+		if want := "abcd: " + unknownCommandLine(t); line != want {
+			t.Fatalf("printed line for %q = %q, want %q (word for word)", arg, line, want)
 		}
 		var exitErr *exitError
 		if !errors.As(err, &exitErr) || exitErr.Code != 2 {

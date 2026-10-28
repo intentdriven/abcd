@@ -15,7 +15,7 @@ import (
 
 // The tests in this file are itd-166's loop half: both sides of a run travel
 // with the route record the run state already stores on a verified receipt
-// and a validator's return, at schema version 14, and the drive passes them
+// and a validator's return, since schema version 14, and the drive passes them
 // through from the runner's answer.
 
 // sidedRoute is a runner's route record carrying both sides.
@@ -48,12 +48,14 @@ func sidedRun(t *testing.T) (string, string, string) {
 	return root, id, filepath.Join(root, filepath.FromSlash(StateRelPath(id)))
 }
 
-// TestASidedRouteRoundTripsAtVersion14 is criterion 7's run-state half: a
-// route record carrying both sides is read back whole at the current
-// version, 14, which is the version that added them.
-func TestASidedRouteRoundTripsAtVersion14(t *testing.T) {
-	if schemaVersionUnreviewed != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
-		t.Fatalf("both sides are version 14's, after a lane's refusal's 13: %d %d %d", schemaVersionUnreviewed, schemaVersionUnmetered, schemaVersionUnrefused)
+// TestASidedRouteRoundTrips is criterion 7's run-state half: a route record
+// carrying both sides is read back whole at the current version, 16; 14 is
+// the version that added them, 15 the run's review set and 16 a route's pins
+// beside them.
+func TestASidedRouteRoundTrips(t *testing.T) {
+	if SchemaVersion != 16 || schemaVersionUnpinned != 15 || schemaVersionUnreviewed != 14 || schemaVersionUnmetered != 13 || schemaVersionUnrefused != 12 {
+		t.Fatalf("both sides are version 14's, after a lane's refusal's 13, the review set 15's and a route's pins 16's: %d %d %d %d %d",
+			SchemaVersion, schemaVersionUnpinned, schemaVersionUnreviewed, schemaVersionUnmetered, schemaVersionUnrefused)
 	}
 	root, id, _ := sidedRun(t)
 	st, err := ReadState(root, id)
@@ -69,10 +71,10 @@ func TestASidedRouteRoundTripsAtVersion14(t *testing.T) {
 }
 
 // TestAVersion13FileReadsAsNotRecorded is the version-13 rule: version 13 is
-// version 14's strict subset, so a version-13 file without either side reads
-// as the current version, its routes not recorded, and one of version 13 or
-// lower carrying a side is not a file its version wrote and is refused,
-// naming the version.
+// version 14's strict subset, and so the current version's, so a version-13
+// file without either side reads as the current version, its routes not
+// recorded, and one of version 13 or lower carrying a side is not a file its
+// version wrote and is refused, naming the version.
 func TestAVersion13FileReadsAsNotRecorded(t *testing.T) {
 	root, id, path := sidedRun(t)
 	sided, err := os.ReadFile(path)

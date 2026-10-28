@@ -2,6 +2,7 @@ package loop
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -302,12 +303,14 @@ func TestAStoredReviewSetTheLoopNeverWritesIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	current := fmt.Sprintf(`"schema_version": %d`, SchemaVersion)
+	unreviewed := fmt.Sprintf(`"schema_version": %d`, schemaVersionUnreviewed)
 	for name, edit := range map[string]func(string) string{
 		"a layer it never writes": func(s string) string {
 			return strings.Replace(s, `"map_layer": "bundled"`, `"map_layer": "elsewhere"`, 1)
 		},
 		"a class it never names": func(s string) string { return strings.Replace(s, `"class": "middle"`, `"class": "huge"`, 1) },
-		"an older version":       func(s string) string { return strings.Replace(s, `"schema_version": 15`, `"schema_version": 14`, 1) },
+		"an older version":       func(s string) string { return strings.Replace(s, current, unreviewed, 1) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			edited := edit(string(orig))
@@ -328,7 +331,7 @@ func TestAStoredReviewSetTheLoopNeverWritesIsRefused(t *testing.T) {
 	}
 
 	// A state written before review sets reads as a run with none.
-	older := strings.Replace(string(orig), `"schema_version": 15`, `"schema_version": 14`, 1)
+	older := strings.Replace(string(orig), current, unreviewed, 1)
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(older), &m); err != nil {
 		t.Fatal(err)

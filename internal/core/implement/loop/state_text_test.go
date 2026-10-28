@@ -16,6 +16,37 @@ import (
 // A state file whose hand-back carries a control, bidi or zero-width rune in
 // any of its text is refused as the run's state, never echoing the value.
 
+// schemaVersionPrevious is the state version just before SchemaVersion: the
+// version a run's state migrates from when the loop next writes it. Named
+// from SchemaVersion so a bump moves it with the current version
+// (iss-2610142134346602).
+const schemaVersionPrevious = SchemaVersion - 1
+
+// TestTheStoredTextTestsReadTheVersionJustBeforeTheCurrent: the tests that
+// read a forged state at the current version and at the earlier one it
+// migrates from name that earlier version as schemaVersionPrevious, never a
+// fixed older version a later bump leaves behind (iss-2610142134346602).
+func TestTheStoredTextTestsReadTheVersionJustBeforeTheCurrent(t *testing.T) {
+	if schemaVersionPrevious != schemaVersionUnpinned {
+		t.Fatalf("the version before %d is the newest version read but never written: %d, %d", SchemaVersion, schemaVersionPrevious, schemaVersionUnpinned)
+	}
+	// The needles are joined at run time so this file's own source matches
+	// only where a test passes the version, not where this test names it.
+	previous, fixed := "schemaVersion"+"Previous", "schemaVersion"+"Unkept"
+	for _, file := range []string{"pace_stored_test.go", "receipt_text_test.go", "state_text_test.go"} {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(src), previous+")") && !strings.Contains(string(src), previous+"}") {
+			t.Errorf("%s reads no state at the version just before the current one", file)
+		}
+		if strings.Contains(string(src), fixed) {
+			t.Errorf("%s reads version 9 as the version before the current %d", file, SchemaVersion)
+		}
+	}
+}
+
 // capHandBack is a hand-back shaped as the fix-round cap writes one.
 var capHandBack = map[string]any{
 	"at": "2026-10-12T09:00:00Z", "verdict": VerdictUnachievable, "round": 2, "fix_rounds": 1,
@@ -83,8 +114,8 @@ func withHandBack(t *testing.T, state []byte, hb map[string]any, field, bad stri
 
 // TestARunStateRefusesHandBackTextItNeverWrites: a hand-back a lane's
 // receipt wrote, and one shaped as the fix-round cap writes it, read back at
-// the current version and as version 9; each with one text forged with U+202E
-// or U+009B is refused as the run's state by the read, the record and the
+// the current version and at the version just before it; each with one text
+// forged with U+202E or U+009B is refused as the run's state by the read, the record and the
 // drain's call that routes the lane's hand-back, none echoing the rune.
 func TestARunStateRefusesHandBackTextItNeverWrites(t *testing.T) {
 	repo := drainRepo(t)
@@ -109,7 +140,7 @@ func TestARunStateRefusesHandBackTextItNeverWrites(t *testing.T) {
 	}()
 	forged := 0
 	for name, hb := range map[string]map[string]any{"the receipt's": receiptHandBack, "the cap's": capHandBack} {
-		for _, version := range []int{SchemaVersion, schemaVersionUnkept} {
+		for _, version := range []int{SchemaVersion, schemaVersionPrevious} {
 			if err := os.WriteFile(path, withHandBack(t, good, hb, "", "", version), 0o600); err != nil {
 				t.Fatal(err)
 			}
