@@ -4703,6 +4703,13 @@ a file inside it. A footprint path naming a directory git tracks is reserved all
 the same, and warns on stderr, naming it and how many tracked files it covers on
 origin's default branch, or HEAD (directory_footprint in --json).
 
+A reservation, a renewal and a take-over consult the embargo store on this
+machine before anything is pushed, as an announcement does: a record the store
+holds, or a footprint naming something under embargo, is refused (exit 2) with
+nothing pushed, and so is the act when a store cannot be read, naming that
+store. A release does not consult it. A build's and a drain's reservations
+consult it too.
+
 The holder is your GitHub username, from the first of these that names it:
 user.email, when it is a GitHub no-reply address; reservation.github_username
 in the machine configuration (the repository's own configuration is never read
