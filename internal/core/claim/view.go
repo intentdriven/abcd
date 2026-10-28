@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -44,7 +45,12 @@ type Reservation struct {
 	Copy string
 	// key is the copy key the tip names, for finding it among this
 	// checkout's other worktrees (siblingCopy); never shown.
-	key       string
+	key string
+	// Sibling is the name of the other worktree of this repository, on this
+	// machine, whose copy made the tip (iss-2610231004140527): its directory's
+	// name, never its key; "" for this copy, for a copy elsewhere, and until
+	// NameSiblings fills it. It is display only: no judgement reads it.
+	Sibling   string
 	Footprint []string
 	ClaimedAt time.Time
 	// EffectiveExpiry is when it stops holding: the lease clamped to a day,
@@ -97,6 +103,10 @@ type Snapshot struct {
 	// the view does not trust origin's default branch as this clone holds
 	// it; "" otherwise.
 	GeneratedUnread string
+	// SiblingsUnread is why NameSiblings could not list this repository's
+	// worktrees, "" otherwise.
+	SiblingsUnread string
+	siblingsNamed  bool
 }
 
 // LiveByHolder counts each person's live reservations of records, as the cap
@@ -319,8 +329,72 @@ func lastFetched(root string, ns namespace) time.Time {
 	return at.UTC()
 }
 
-// ownCopyKey is this checkout's copy key when one is kept, read without
-// minting one; "" otherwise.
+// NameSiblings fills Sibling on holder's tips made from another worktree of
+// the repository at root on this machine, reading each worktree's kept copy
+// key once (iss-2610231004140527). It is the only reader of the worktrees, so
+// a view that never shows a sibling never lists them; a second call does
+// nothing. A tip of anyone else is never named, since a copy key is no secret
+// from whoever pushed a tip. When the worktrees cannot be listed, every tip
+// reads as made elsewhere and SiblingsUnread says why.
+func (s *Snapshot) NameSiblings(root, holder string) {
+	if s.siblingsNamed {
+		return
+	}
+	s.siblingsNamed = true
+	var names map[string]string
+	for i := range s.Reservations {
+		r := &s.Reservations[i]
+		if r.Copy == CopyThis || !validCopyKey(r.key) || holder == "" || !sameHolder(r.Holder, holder) {
+			continue
+		}
+		if names == nil {
+			names, s.SiblingsUnread = siblingCopies(root, ownCopyKey(root))
+		}
+		r.Sibling = names[r.key]
+	}
+}
+
+// siblingCopies maps the copy key kept in each other worktree of the
+// repository at root to that worktree's name, own's excluded, read without
+// minting a key: its directory's name, or parent/name where two worktrees
+// share one, and both names joined where two hold one key (a copied
+// worktree). unread is why the worktrees could not be listed, "" when they
+// were.
+func siblingCopies(root, own string) (names map[string]string, unread string) {
+	names = map[string]string{}
+	wts, err := gitutil.ListWorktrees(root, gitutil.MaxWorktreeListing)
+	if err != nil {
+		return names, "this repository's worktrees could not be listed (" + redacted(err) + "), so holds from them count as made elsewhere"
+	}
+	base := map[string]int{}
+	for _, wt := range wts {
+		if !wt.Bare {
+			base[filepath.Base(wt.Path)]++
+		}
+	}
+	for _, wt := range wts {
+		if wt.Bare {
+			continue
+		}
+		key := ownCopyKey(wt.Path)
+		if key == "" || key == own {
+			continue
+		}
+		name := filepath.Base(wt.Path)
+		if base[name] > 1 {
+			name = filepath.Base(filepath.Dir(wt.Path)) + "/" + name
+		}
+		if prev, ok := names[key]; ok {
+			name = prev + " or " + name
+		}
+		names[key] = name
+	}
+	return names, ""
+}
+
+// ownCopyKey is the copy key the checkout at root keeps, read without minting
+// one; "" when it keeps none that is valid. It is the one reader of a kept key,
+// this checkout's or a sibling worktree's (siblingCopy, siblingCopies).
 func ownCopyKey(root string) string {
 	r, err := os.OpenRoot(root)
 	if err != nil {

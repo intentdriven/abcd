@@ -4319,8 +4319,13 @@ Then the reservations on the shared remote: one fetch from origin of every
 abcd-reserved/ branch, with pruning, and of the default branch, then every
 reservation with its record, holder, footprint, effective expiry and state
 (live, expired, released, or unreadable with its reason and the end of its
-hold), a live drain lane's stage when its renewal names one, each person's
-count of live reservations, and a line for each release being cut (a live
+hold), a live drain lane's stage when its renewal names one, the worktree of
+this repository on this machine that made one (by its directory's name),
+each person's count of live reservations, the reader's own counted by copy
+(this copy, each such worktree, elsewhere) against this machine's
+reservation.max_live with a warning from four fifths of it, since every
+session and account on the same login counts toward the same total, and a
+line for each release being cut (a live
 rel-vX.Y.Z reservation, which holds every other session's merge until its
 tag is on origin). Then each holder's hand-backs of the last day, from the
 same view: the record and kind of each released tip marking one, newest
