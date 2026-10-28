@@ -3665,6 +3665,7 @@ Push a branch whose preflight passed and queue its pull request: Writes a push t
 **Usage:** `abcd land [<branch>] [flags]`
 
 abcd land [<branch>] [--no-push] [--no-enqueue]
+abcd land [<branch>] --record-review <return> --record-review <return> [...]
 
 Land a branch whose work is committed: the checkout's current branch, or the one
 named, from the worktree that has it checked out. Each step can be resumed by
@@ -3723,11 +3724,21 @@ which names what was done before it; reservations that cannot be fetched are
 one, made before anything is pushed. Exit 3 when a release being cut holds the
 landing: it names the release, its holder and until when.
 
+--record-review records the review pair's verdicts for the branch's head and
+lands nothing: given once per reviewer's return (at least two, no two the
+same), each naming the head's first nine characters under one ### Verdict
+heading, it writes the head's review receipt in
+.abcd/.work.local/review-receipts/ when every verdict passes the stop rule
+(SHIP or APPROVE: no critical or major finding). A return that does not pass is
+refused naming it, exit 2, and nothing is written. It takes no --no-push or
+--no-enqueue.
+
 **Flags:**
 
 ```
-      --no-enqueue   do not arm or queue the pull request this run
-      --no-push      do not push the branch this run; print the push command instead
+      --no-enqueue                  do not arm or queue the pull request this run
+      --no-push                     do not push the branch this run; print the push command instead
+      --record-review stringArray   record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
 ```
 
 ### `abcd launch`

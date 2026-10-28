@@ -2885,6 +2885,13 @@
           "type": "bool",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "record-review",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
         }
       ]
     },
