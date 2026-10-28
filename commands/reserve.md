@@ -320,10 +320,11 @@ nothing:
 
 A branch is spent only when its tip has settled, counting from the latest of
 its commit date, its own times and its lease's end plus the five-minute
-margin: a plain release at once, so the next daily sweep deletes it, and any
-other tip only once untouched for `--older-than` days (default 7, at least 1)
-past that. A release is its holder's own act; a lapse is no one's, and the age
-gives a holder whose session stopped time to come back. And either its
+margin: a plain release, or a hand-back on a record now finished on origin's
+default branch, at once, so the next daily sweep deletes it, and any other tip
+only once untouched for `--older-than` days (default 7, at least 1) past that.
+A release is its holder's own act; a lapse is no one's, and the age gives a
+holder whose session stopped time to come back. And either its
 record is resolved, won't-fixed, shipped or superseded on origin's default
 branch, or every commit on it is a reservation or a plain release, whether or
 not any is a release: a lapsed lease already lets any session take the record

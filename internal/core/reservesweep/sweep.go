@@ -28,9 +28,9 @@ import (
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
-// DefaultAge is how long a branch whose tip is not a plain release must have
-// been untouched, past its lease, before the sweep counts it spent; a plain
-// release waits for no age (judge).
+// DefaultAge is how long a branch whose tip is not a release must have been
+// untouched, past its lease, before the sweep counts it spent; a plain
+// release, and a hand-back on a terminal record, wait for no age (judge).
 const DefaultAge = 7 * 24 * time.Hour
 
 // MinAge is the shortest age a sweep takes: a day, the longest a lease holds
@@ -49,7 +49,7 @@ const maxObjectBytes = 8192
 type Options struct {
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
-	// Age is how long a branch whose tip is not a plain release must have
+	// Age is how long a branch whose tip is not a release (judge) must have
 	// been untouched; zero means DefaultAge. Shorter than MinAge is refused.
 	Age time.Duration
 	// Apply deletes the spent branches; without it nothing is deleted.

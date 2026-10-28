@@ -110,7 +110,6 @@ func TestATerminalRecordIsSpentWhateverItsTipOnceOlderThanTheAge(t *testing.T) {
 	exp := t0.Add(2 * time.Hour)
 	for name, chain := range map[string][]commitInfo{
 		"a lapsed reservation never released": root(reservationAt(t0)),
-		"a hand-back":                         root(handBackAt(t0), reservationAt(t0.Add(-time.Hour))),
 	} {
 		f := facts{Chain: chain, ChainWhole: true, EffectiveExpiry: exp, Terminal: true}
 		settled := latest(chain[0].CommittedAt, chain[0].ReleasedAt, exp.Add(claim.TakeoverMargin))
@@ -121,15 +120,21 @@ func TestATerminalRecordIsSpentWhateverItsTipOnceOlderThanTheAge(t *testing.T) {
 			t.Fatalf("%s, terminal, at the age = %+v; want spent as terminal", name, v)
 		}
 	}
-	// A plain release on a terminal record is spent at the next sweep, as
-	// on an open one: the release is the holder's own act.
-	f := facts{Chain: root(plainAt(t0)), ChainWhole: true, EffectiveExpiry: t0, Terminal: true}
-	settled := t0.Add(claim.TakeoverMargin)
-	if v := judge(f, settled.Add(-time.Second), week); v.Spent {
-		t.Fatalf("a plain release, terminal, inside the margin = %+v; want kept", v)
-	}
-	if v := judge(f, settled, week); !v.Spent || v.Reason != SpentTerminal {
-		t.Fatalf("a plain release, terminal, past the margin = %+v; want spent as terminal", v)
+	// A release of either kind on a terminal record is spent at the next
+	// sweep: the release is the holder's own act and the task is finished, so
+	// a hand-back has nobody left to hand the record to.
+	for name, chain := range map[string][]commitInfo{
+		"a plain release": root(plainAt(t0)),
+		"a hand-back":     root(handBackAt(t0), reservationAt(t0.Add(-time.Hour))),
+	} {
+		f := facts{Chain: chain, ChainWhole: true, EffectiveExpiry: t0, Terminal: true}
+		settled := t0.Add(claim.TakeoverMargin)
+		if v := judge(f, settled.Add(-time.Second), week); v.Spent {
+			t.Fatalf("%s, terminal, inside the margin = %+v; want kept", name, v)
+		}
+		if v := judge(f, settled, week); !v.Spent || v.Reason != SpentTerminal {
+			t.Fatalf("%s, terminal, past the margin = %+v; want spent as terminal", name, v)
+		}
 	}
 }
 

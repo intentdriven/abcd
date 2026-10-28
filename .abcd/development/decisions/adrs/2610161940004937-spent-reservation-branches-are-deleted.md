@@ -73,11 +73,20 @@ version made every branch wait seven days):
 - **A released branch, one whose tip is a plain release, waits for no age.**
   The next daily run deletes it once the take-over margin has passed. A
   release is its holder's own act, so nobody is coming back to the branch.
+- **So does a branch whose tip is a hand-back on a record that is now
+  terminal** on origin's default branch: the task is finished, so the
+  hand-back has nobody left to hand the record to. A hand-back on an open
+  record still keeps its branch.
 - **Any other tip waits seven days past settling**, a lapsed reservation never
   released among them. A lapse is no one's act: the holder's session may have
   stopped, as when a computer crashes, and the age gives that holder time to
   return and see the branch before it goes. Nothing found while making the
   amendment gave a reason to treat a lapse like a release.
+
+The last two choices, the hand-back on a terminal record and the lapse keeping
+its age, were made by the technical facilitator on delegation (abcd-f5,
+2026-10-28), reading the product thinker's question of why a branch is not
+removed once its task has finished.
 
 The safety rules hold for both: the deletion is made only by the App, only
 with a lease on the exact tip judged, and a branch carrying a commit the sweep

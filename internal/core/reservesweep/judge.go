@@ -81,7 +81,9 @@ type verdict struct {
 // How long the tip must have settled depends on what it is. A plain
 // tombstone is spent as soon as it has settled, at the next sweep: a release
 // is the holder's own act, so nobody is coming back to it (the product
-// thinker's ruling of 2026-10-28, iss-2610281719275461). Any other tip waits
+// thinker's ruling of 2026-10-28, iss-2610281719275461). So is a hand-back on
+// a terminal record, whose task is finished, so the hand-back has nobody left
+// to hand the record to. Any other tip waits
 // olderThan past settling: a lapse is no one's act, and the age gives a holder
 // whose session stopped time to return and see the branch.
 func judge(f facts, now time.Time, olderThan time.Duration) verdict {
@@ -95,7 +97,7 @@ func judge(f facts, now time.Time, olderThan time.Duration) verdict {
 		return v
 	}
 	wait := olderThan
-	if tip.Kind == KindPlainTombstone {
+	if tip.Kind == KindPlainTombstone || (tip.Kind == KindHandBack && f.Terminal) {
 		wait = 0
 	}
 	if now.Before(v.SettledAt.Add(wait)) {
