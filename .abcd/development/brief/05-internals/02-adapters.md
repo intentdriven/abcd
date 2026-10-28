@@ -170,11 +170,70 @@ reported, never a refused answer: each count it does not carry readably is
 listed as not reported on its own, and a later usage chunk that reads fewer
 fields than an earlier one does not replace it. `unpinned` lists each field of the fixed asked
 and served lists the call could not pin, with its reason: `not_reported` (the
-response does not carry it), `self_reported`, `harness_computed` or
+response does not carry it), `self_reported`, `harness_computed`,
 `not_configured` (no setting or pin names it; a route to this machine lists the
-weight file's fingerprint, its quantisation and the runtime's version so until a
-local route can be pinned). Recording adds no request to the ones the call
-makes. On the harness leg the receipt's own `unpinned` lists the payload's
+weight file's fingerprint, its quantisation and the runtime's version so unless
+a local pin names them) or `not_verified` (abcd configured the value and the
+record carries it, but nothing on the route shows it reached the provider). A
+route to this machine also lists the served local fields
+(`served.weights_sha256`, `served.quantisation`, `served.runtime_version`,
+`served.context_length`, `served.kv_cache_type`, `served.tool_calls`): each is
+`self_reported` when the server's probe read it, since it is the server's own
+word, and `not_reported` otherwise, except `served.kv_cache_type`, which no
+runtime reports: on a pinned route it is always `not_verified`, since the
+pin's cache type is the person's declaration and nothing on the route
+confirms it. A model a block on this machine pins
+(`oracle.api.<provider>.pins`, a local pin, iss-2610161734428291;
+[`03-configuration.md`](03-configuration.md)) is probed before it is used,
+through the runtime's own endpoints: a call reuses a report the pin held for
+a minute at most, a runner's route is probed before every run, and a report
+the pin refused is never reused, so a server put right holds the route at its
+next use. The record carries the pin as `local_pin` and what the server
+reported as `local_served`: a pinned field the server confirmed is no longer
+listed, one it does not report (llama-server and mlx_lm.server report no
+digest) is `not_verified`, and the pin's context is the asked context. A field
+the server reports otherwise refuses the call before the brief is sent; on
+llama-server, which reports no digest, the model file it has loaded is held to
+the pin's `weights_file`. Writing the record adds no request of its own:
+the only requests beyond the call are the probe of a pinned local model,
+above, and the generation readback a block turns on, below. A model its provider block pins to one OpenRouter provider
+(`oracle.api.<provider>.pins`, iss-2610161734413178) is sent with OpenRouter's
+provider routing object (one provider in `order`, `allow_fallbacks: false`,
+`require_parameters: true`, `data_collection: "deny"`, one quantisation), and
+the record carries it as `provider_pin` with the model's `canonical_slug`, so
+the provider pin is no longer listed as not configured. The served side can
+also be read from OpenRouter's generation record (`GET
+/api/v1/generation?id=`), but that is one extra request for every call, so it
+is made only when the person turns it on for the provider in their own
+machine's configuration (`oracle.api.<provider>.read_generation: true`,
+OpenRouter's block alone, never a repository's;
+[`03-configuration.md`](03-configuration.md); itd-2610161733316518 decision
+12) and never otherwise: `generation_readback` says `not_asked`, `read` or
+`failed`. Read, it replaces the served provider and the cost with the
+record's own, and `attempts` lists every provider OpenRouter tried, in order,
+so a fallback shows as an attempt before the one that served. The record's
+native token counts come from the serving model's own tokenizer and the
+response's from another, so they never mix: when the record carries all four
+of its counts (prompt, completion, reasoning, cache-read) they replace the
+response's all together, and the cache-write count, which the record does not
+carry, is then listed as not reported; a record missing any of the four
+leaves the response's counts as they were. A null is a count missing, never
+a count of zero (OpenRouter answers null for a count the model has none of,
+the reasoning count of a model that does not reason, say), and so is a null
+cost. The record says whose counts it holds in `usage_source`: `native` when
+the record's four replaced the response's, `response` when the response's
+were kept; it is absent when no record was read. The cost is taken from the
+record whenever it carries one. The setup's verification call (`ahoy
+connect`, fresh or verifying a configured provider's key again) never makes
+the readback, whatever `read_generation` says: its answer is discarded. It is made with the key the
+call used, resolved once by name, on the same pinned client (no redirect, the
+body bounded), and bounded in time as a whole (twenty seconds, a not-found
+asked again after a short doubling wait, since OpenRouter records a
+generation a moment after its answer ends); a failure, a provider that is not
+OpenRouter or an answer that named no generation id leaves the response's own
+served side, says `failed` with the reason in `generation_readback_error`, and
+never fails the call. Every string the record carries is scrubbed, cleaned and
+bounded as the response's are. On the harness leg the receipt's own `unpinned` lists the payload's
 `model_reported` as self-reported and every other field as not configured or not
 reported, since the host reports none of it. DR5 is checked before a
 verb writes anything (`APIConfig.Admitted`), and again by the dispatch. An
@@ -223,6 +282,60 @@ review is skipped.
   working tree, granted reading that directory and writing its answer file
   there alone and refused the checkout, each rule naming its real absolute
   path.
+  A role routed
+  through opencode to a model the machine pins to one OpenRouter provider
+  (iss-2610161734413178) runs against a sealed configuration abcd writes for
+  that run alone, carrying the pin under the model's options
+  (`provider.<name>.models.<model>.options.provider`), in a directory made for
+  the run under the system's temporary directory (0700, the file 0600, refused
+  when it resolves inside the repository or its checkout, and removed when the
+  run ends). opencode is pointed at it with `OPENCODE_CONFIG`, which opencode
+  1.18.31 merges over the person's own global configuration without writing
+  it. After it, opencode merges the project's configuration and each
+  `.opencode` directory's `opencode.json` (both turned off by the seal), then
+  `~/.opencode/opencode.json`, then the `opencode.json` in
+  `OPENCODE_CONFIG_DIR`, then `OPENCODE_CONFIG_CONTENT`, then an
+  organisation's remote or managed configuration, which is the person's own
+  and still applies. A person who points opencode at a configuration of their
+  own through `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` or
+  `OPENCODE_CONFIG_CONTENT` (their key through `{env:}`, permission denies,
+  MCP servers) would lose it to the sealed file or have it override the pin,
+  and abcd never changes how the person's tools work, so a pinned run is
+  refused before anything is written or launched while any of the three is
+  set and not empty, naming the variable, never its value: unset it for
+  pinned runs, or route the role to a model without a pin. An unpinned run
+  passes all three through as they are. `~/.opencode/opencode.json` is not
+  refused, since refusing it would block every pinned run of anyone who
+  keeps one, so a routing entry for the pinned model there overrides the
+  pin; this is one reason the pin is recorded as `not_verified` on this
+  path. The route records
+  the pin (`provider_pin`), the configuration's SHA-256
+  (`pin_config_sha256`) and opencode's version, asked with `--version` under
+  the same seal. opencode holds the key on this path and abcd never reads it,
+  so the generation readback is not made there, whatever `read_generation`
+  says: the served provider and the provider's own counts stay not reported,
+  and nothing shows the pin reached OpenRouter, so the provider pin is
+  listed as `not_verified` beside the pin the record carries: configured,
+  not verified on the wire. A runner route whose provider is a block on this
+  machine says so (`local: true`) and lists the local fields as the
+  adapter's route does (iss-2610171545099084): not configured without a
+  local pin. A role routed
+  through opencode to a model a local pin names is refused on the same three
+  variables, then the server is probed and held to tool calls and a context
+  it can say it serves (every role a runner runs uses tools), and only then
+  is a sealed configuration written, carrying the provider's `baseURL` alone
+  so opencode reaches the server the probe read. opencode pins no served
+  context on any of the three runtimes (its `limit.context` is its own
+  reckoning and needs `limit.output` beside it, which would replace the
+  person's), so the probe is what confirms the context. The route records
+  `local_pin`, `local_served`, the configuration's SHA-256 and opencode's
+  version. It lists the asked local fields and the context as `not_verified`
+  even where the probe confirmed them: opencode merges the person's
+  `~/.opencode/opencode.json` after the sealed file, and an entry there can
+  point the provider at another server than the one probed, as it can
+  override a provider pin. The claude runner holds neither pin, so a role
+  routed through it to a model the machine pins is refused before launch,
+  naming `runner.opencode.model` as the route that holds it.
 - **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
   review to the RepoPrompt the person runs, which answers with whichever model
   the person configured in it. The opt-in is `oracle.review = rp` in the
