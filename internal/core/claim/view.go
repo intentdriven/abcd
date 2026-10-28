@@ -176,7 +176,7 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	if len(refs) == 0 {
 		return snap, nil
 	}
-	tree, err := emptyTree(root)
+	tree, err := emptyTreeName(root)
 	if err != nil {
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
 	}
