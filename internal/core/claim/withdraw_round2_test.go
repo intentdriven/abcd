@@ -184,6 +184,36 @@ func TestALapseAnotherLoginForgedEndsNothing(t *testing.T) {
 	}
 }
 
+// TestALapseRePushedByAnotherLoginEndsNothingAndSaysSo: another login
+// force-pushes the branch back to the holder's own lapsed reservation, so the
+// forge places two accounts' pushes on it. The holder's next act re-arms
+// nothing, pushes no tombstone, and does not report the hold as ended.
+func TestALapseRePushedByAnotherLoginEndsNothingAndSaysSo(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	octo := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := octo.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	lapsedTip := w.remoteTip("rel-v0.16.0")
+	m, _ := w.tipWithdrawals("rel-v0.16.0")
+	f.edit = func(ps []Push) []Push {
+		return append([]Push{{Before: headC, After: lapsedTip, Pusher: "mal"}}, ps...)
+	}
+	f.reset()
+	w.set(m.ExpiresAt.Add(lease.Max + TakeoverMargin))
+	s := settleAfter(t, octo)
+	if got := f.mutations(); len(got) != 0 {
+		t.Fatalf("mutations = %v; want nothing re-armed on a lapse another login re-pushed", got)
+	}
+	if w.remoteTip("rel-v0.16.0") != lapsedTip {
+		t.Fatal("octo's act pushed a tombstone over a lapse another login re-pushed")
+	}
+	if s.LapsedAt != nil || strings.Contains(strings.Join(s.Notes(), "\n"), "hold has ended") {
+		t.Fatalf("settle = %+v, notes %q; want the hold not reported as ended", s, s.Notes())
+	}
+}
+
 // TestReleasePushesTheTombstoneBeforeItReArms: at the first re-arm the forge
 // sees, origin's tip is already the tombstone, still recording every one
 // withdrawn: the push is the compare-and-swap that decides which copy acts.

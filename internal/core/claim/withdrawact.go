@@ -736,9 +736,6 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	}
 	a.subject = id
 	s = Settle{Subject: id, Settled: []Withdrawal{}, Person: a.holder}
-	if lapsed {
-		s.LapsedAt = &lapsedAt
-	}
 	links, complete, err := releaseChain(a.root, id, t.Commit, tree)
 	if err != nil {
 		s.Failed = "could not read the history of " + id + "'s branch to tell which withdrawals are yours (" + redacted(err) + "), so none was re-armed"
@@ -802,6 +799,11 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 			return Settle{}, false
 		}
 		base, s.Commit = claimed, claimed
+	}
+	// The lapse is reported only once its tombstone ends the hold, so no
+	// earlier return says the hold ended while it still stands.
+	if lapsed {
+		s.LapsedAt = &lapsedAt
 	}
 	shown()
 	ws, settled, changed, fails, why := rearmMine(a, acted)
