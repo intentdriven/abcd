@@ -642,11 +642,15 @@ running as the account moves its branch to the agent's own commit with one
 `git -C <mirror> fetch <checkout> +HEAD:refs/heads/main`; `git://` and
 `http://` are plaintext, so anyone on the network path can answer with the tip
 they choose. An ssh or https remote whose host is this machine by name
-(`localhost` or a loopback address) is one the agent can move as well, over the
-filesystem or over ssh. An ssh alias that resolves here is the same, but abcd
-cannot tell it from a forge, so it accepts it, and declaring one is the person's
-residual. A bracketed scp-like host (`[host]:path`) is not a shape the builder
-reads. A line declaring any of these but the alias, or another transport (a remote
+(`localhost` or a name under it, the machine's own host name, a loopback or
+unspecified address, or an IPv4 shorthand such as `127.1` or `0` that the
+resolver reads as one) is one the agent can move as well, over the filesystem or
+over ssh. An ssh alias that resolves here is the same, but abcd cannot tell it
+from a forge, so it accepts it, and declaring one is the person's residual. A
+bracketed scp-like host (`[host]:path`) is not a shape the builder reads, and a
+host or user name holding characters a host or user name never holds is not
+passed to ssh, whose own config may expand it into a command. A line declaring
+any of these but the alias, or another transport (a remote
 helper's `<transport>::<address>` included), is REFUSED: nothing is built, the
 installed release runs, and one stderr line names the line's checkout and
 remote and why. git's own rule tells a path from an ssh remote: a remote with
@@ -725,7 +729,8 @@ that rewrites one, fails the build rather than build something else. The store
 keeps the three most recent builds of a repository, and every build a
 verified-tip record still names, so a prune never takes the build a hook runs.
 
-**A hook never waits for a build, and never runs weaker than the release.** Each
+**A hook never waits for a build, and a build that fails never leaves it weaker
+than the release.** Each
 hook shim resolves the installed binary as before; when the list exists it asks
 that binary, through `hook dogfood-binary`, for a finished build of the recorded
 tip, and runs it in the installed binary's place. When a check is due the
@@ -739,10 +744,13 @@ when the remote-tracking ref moves, and `hook dogfood-build` checks and retries
 at once. A dogfood guard that answers exit 1, which is a warn or "NOT CHECKED",
 hands the same command to the installed release, whose deny stands; one that
 dies rather than answer does the same, with a line saying so. Every other
-event takes a build's exit 0 or 2 as its answer; any other exit, a death by a
-signal included, is said on stderr and the installed release runs the same
+event takes only a build's exit 0 as its answer: none of those verbs exits 2 on
+purpose, and a Go crash does, which the host would read as a block. Any other
+exit, a death by a signal included, is said on stderr and the installed release runs the same
 event from the same input, so a verb the build began before it died runs again
-whole. A machine with no list pays one file test per hook.
+whole. A build that answers is the reviewed tip's answer, so a defect the
+reviewed branch carries is one these hooks carry too. A machine with no list
+pays one file test per hook.
 
 **What the rung does not defend is the account.** The declaration and the store
 are protected by being this uid's alone, so anything running as this account
