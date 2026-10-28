@@ -60,7 +60,8 @@ func TestLabMatrixShowsThePlanAndItsDigestFromTheCLI(t *testing.T) {
 	}
 	for _, want := range []string{"copies:      6 in the pilot, at most 20", "spend cap:   25.00 usd (machine)", "openrouter   expected 0.50 usd at most",
 		"load cap:    not used (no local cell)", "time:        known after the pilot", "digest:      ", "--approve ",
-		"provider pin: order deepinfra; fallbacks off"} {
+		"(openrouter) on opencode", "provider pin: order deepinfra; fallbacks off; parameters required off",
+		"slug vendor/model-20240723"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the plan lacks %q:\n%s", want, out)
 		}

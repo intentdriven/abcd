@@ -79,7 +79,11 @@ func TestACellPinThatDisagreesWithItsRouteIsRefused(t *testing.T) {
 			in.Cells[0].ProviderPin = &ProviderPin{Order: []string{"provider-a"}}
 		}, "the route is the host's"},
 		"another runner": {func(in *runInputs) { in.Cells[2].Runner = "claude" }, "names runner opencode"},
-		"another model":  {func(in *runInputs) { in.Cells[1].Model = "openrouter/vendor/other" }, "names the model openrouter/vendor/model"},
+		"a route naming no model": {func(in *runInputs) {
+			in.Declaration = []byte(strings.Replace(string(in.Declaration), fixtureRoutes[1], "builder=runner:claude", 1))
+			in.Cells[1].Runner, in.Cells[1].Source, in.Cells[1].Model, in.Cells[1].ProviderPin = "claude", SourceHost, "", nil
+		}, "names runner claude and no model"},
+		"another model": {func(in *runInputs) { in.Cells[1].Model = "openrouter/vendor/other" }, "names the model openrouter/vendor/model"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			in := inputs(t)
