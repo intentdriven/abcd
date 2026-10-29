@@ -237,6 +237,18 @@ plugin surface, and a future MCP server share one engine.
   already resolves. It owns the id, the date, the filename and the four sections,
   and states nothing: the decision is a human's to write, so the record lands
   `proposed` and the skeleton carries questions rather than answers.
+- **`core/decide/judge/`** — the decision adapter's one interface
+  (itd-2609221009495079), apart from the ADR verb in spite of the shared name: a
+  typed judgement, (state, question) → (value, probability), whose question is
+  one of three kinds (choose, score, yes/no) and whose type is one of a closed
+  registry. The host's judgement (`Host`, probability 1) and the decision model
+  reached through `core/oracle`'s API call (`Adapter`) both implement it. A
+  `Router` reads `oracle.judgements.<type>` as `host`, `shadow:<provider>/<model>`
+  or `<provider>/<model>`, which the oracle reader has already held to the
+  provider's allowlist. In shadow the host decides and the pair is recorded in
+  the newest lab home's `pairs.jsonl` (`core/lab`). Turned on, the adapter
+  decides, and an adapter that cannot answer leaves the decision to the host
+  with a receipt.
 - **`core/decisions/`** — the decision records' folder, `.abcd/work/decisions/`:
   one `dcn-<id>-<slug>.md` file per decision (adr-2610110925465593). `Record` is
   its one writer, behind `abcd decide "<text>"`: it mints through
