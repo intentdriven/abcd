@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // consistency_answers.go keeps the answer a provider returned for one chunk of
@@ -78,6 +79,13 @@ func (k *KeptConsistencyAnswers) Get(rcp string) (payload, route []byte, ok bool
 	path := filepath.Join(k.repoRoot, filepath.FromSlash(ConsistencyAnswerPath(rcp)))
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, false, nil
+	}
+	// An answer a commit carries was kept by whoever made the commit, not by
+	// this checkout's reviewer, so it is never reused.
+	for _, rel := range []string{ConsistencyAnswerPath(rcp), consistencyAnswerRoutePath(rcp)} {
+		if err := localtier.Untracked(k.repoRoot, rel); err != nil {
+			return nil, nil, false, err
+		}
 	}
 	payload, err = readVerdictFile(path)
 	if err != nil {

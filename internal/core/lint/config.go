@@ -480,6 +480,7 @@ var knownRules = map[string]bool{
 	ruleIntentSOTA:               true,
 	ruleSpecStepsSerial:          true,
 	ruleChangelogUnreleasedEmpty: true,
+	ruleLocalTierUntracked:       true,
 	ruleBriefFlagLanded:          true,
 	ruleProseCitationResolves:    true,
 	ruleReadingOutstanding:       true,
