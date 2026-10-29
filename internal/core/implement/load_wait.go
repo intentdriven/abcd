@@ -35,19 +35,20 @@ import (
 //
 // That is the first gate with one slot, the default. How many preflights the
 // first gate admits to their test stages at once is the person's own setting
-// (PreflightSlots, load_slots.go); above one, the first gate opens while fewer than that many
-// other units of work are in their test stages (machineload.Ahead.Shut), a
-// waiter queued ahead still shuts it, a live race run does not shut it by
-// itself, and a preflight queued at its race gate, running nothing, takes no
-// slot until its race run starts (machineload.Ahead.TakingSlots,
-// iss-2610282016250805). The race gate (WaitRequest.Race, `--race-gate`), which `make
-// preflight` runs before its race stage, opens at once with one slot, so a
-// preflight's race stage follows its tests exactly as before; above one it is
-// shut only by another race run, a race waiter ahead (machineload.RaceAhead),
-// the load and the race gate's own hold. That keeps race stages apart among
-// the preflights whose checkouts have the race gate (a checkout older than the
-// gate runs its race stage ungated), within one account by the hold, and
-// across accounts only by the process table, the jitter and the re-check.
+// (PreflightSlots, load_slots.go); above one, the first gate opens while
+// fewer than that many other units of work are in their test stages
+// (machineload.Ahead.Shut), a waiter queued ahead still shuts it, a live race
+// run does not shut it by itself, and a preflight queued at its race gate,
+// running nothing, takes no slot until its race run starts
+// (machineload.Ahead.TakingSlots, iss-2610282016250805). The race gate
+// (WaitRequest.Race, `--race-gate`), which `make preflight` runs before its
+// race stage, opens at once with one slot, so a preflight's race stage
+// follows its tests exactly as before; above one it is shut only by another
+// race run, a race waiter ahead (machineload.RaceAhead), the load and the
+// race gate's own hold. That keeps race stages apart among the preflights
+// whose checkouts have the race gate (a checkout older than the gate runs its
+// race stage ungated), within one account by the hold, and across accounts
+// only by the process table, the jitter and the re-check.
 //
 // The process table is the cross-account half (iss-2610140638074587): it
 // shows every account's processes: no file another account can write is read;
