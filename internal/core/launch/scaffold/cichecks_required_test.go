@@ -324,3 +324,26 @@ func TestRequiredChecksSeesTheFiltersInEveryForm(t *testing.T) {
 		t.Errorf("checks = %v, want [build]; notes %v", checks, notes)
 	}
 }
+
+// TestRequiredChecksSeesThroughAnAnchor pins that an anchor (`&name`) in
+// front of a trigger's value hides nothing from the reader: a flow mapping
+// behind one, on the event, on `on:` itself or on the line after the key,
+// is still left out, while an anchor over block filters still has them read.
+// It also pins the merge-key and alias forms flowBody must see past the first
+// line and on the line after the key.
+func TestRequiredChecksSeesThroughAnAnchor(t *testing.T) {
+	repo := writeWorkflows(t, map[string]string{
+		"anchored-event.yml": "on:\n  pull_request: &f {paths: [docs/**]}\n  push: *f\njobs:\n  docs:\n    runs-on: x\n",
+		"anchored-on.yml":    "on: &t {pull_request: {paths: [x]}}\njobs:\n  docs2:\n    runs-on: x\n",
+		"anchored-next.yml":  "on:\n  pull_request:\n    &f {paths: [x]}\njobs:\n  docs3:\n    runs-on: x\n",
+		"anchored-block.yml": "on:\n  pull_request: &f\n    paths: [x]\njobs:\n  docs4:\n    runs-on: x\n",
+		"merge-after.yml":    "on:\n  pull_request:\n    types: [opened, synchronize, reopened]\n    <<: *filters\njobs:\n  merged:\n    runs-on: x\n",
+		"alias-next.yml":     "on:\n  pull_request:\n    *pr\njobs:\n  aliased:\n    runs-on: x\n",
+		"anchored-bare.yml":  "on:\n  pull_request: &f\njobs:\n  plain:\n    runs-on: x\n",
+		"ci.yml":             "on:\n  pull_request:\njobs:\n  build:\n    runs-on: x\n",
+	})
+	checks, notes := RequiredChecks(repo, "main", false)
+	if !reflect.DeepEqual(checks, []string{"build", "plain"}) {
+		t.Errorf("checks = %v, want [build plain]; notes %v", checks, notes)
+	}
+}

@@ -179,11 +179,11 @@ func flowMapping(on []string, event string) bool {
 		if i := strings.Index(t, " #"); i >= 0 {
 			t = t[:i]
 		}
-		if strings.HasPrefix(t, "{") && re.MatchString(t) {
+		if t = stripNodeProps(t); strings.HasPrefix(t, "{") && re.MatchString(t) {
 			return true
 		}
 		if k, v, ok := strings.Cut(t, ":"); ok && strings.Trim(strings.TrimSpace(k), `"'`) == event {
-			if v = strings.TrimSpace(v); strings.HasPrefix(v, "{") || strings.HasPrefix(v, "*") {
+			if v = stripNodeProps(v); strings.HasPrefix(v, "{") || strings.HasPrefix(v, "*") {
 				return true
 			}
 		}
@@ -201,6 +201,12 @@ func flowBody(body []string) bool {
 		if t == "" || strings.HasPrefix(t, "#") {
 			continue
 		}
+		if first {
+			// An anchor or tag alone on its line leaves the node's value to come.
+			if t = stripNodeProps(t); t == "" {
+				continue
+			}
+		}
 		if first && (strings.HasPrefix(t, "{") || strings.HasPrefix(t, "*")) {
 			return true
 		}
@@ -210,6 +216,21 @@ func flowBody(body []string) bool {
 		}
 	}
 	return false
+}
+
+// stripNodeProps drops the anchor (`&name`) and tag (`!tag`) properties a
+// YAML node may carry before its value, so a flow mapping or alias behind
+// them is seen for what it is; an anchor names a value, it never hides one.
+func stripNodeProps(t string) string {
+	t = strings.TrimSpace(t)
+	for strings.HasPrefix(t, "&") || strings.HasPrefix(t, "!") {
+		i := strings.IndexAny(t, " \t")
+		if i < 0 {
+			return ""
+		}
+		t = strings.TrimSpace(t[i:])
+	}
+	return t
 }
 
 // coversPushes reports whether a pull-request `types:` filter keeps the three
