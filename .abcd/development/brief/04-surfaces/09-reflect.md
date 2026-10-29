@@ -53,7 +53,15 @@ hidden from a person's `/abcd:` menu (the product thinker's placement of
 - For each, its `impact` and its **audit notes** as counts: the acceptance
   rollup an ingested review writes, and the honoured / diverged / missing gap
   counts. A placeholder, an owed review and an absent section are not audit
-  notes; a hand-written audit is, with no counts.
+  notes. A section with no reviewer's marker is a hand-written audit, with no
+  counts, only when it names the acceptance criteria and gives a verdict on
+  them: one of its paragraphs or list items names a criterion (`ac-2`,
+  `criterion 2`, or an item of a numbered list) and gives one of the auditor's
+  verdicts in capitals (`MET`, `MET_WITH_CONCERNS`, `NOT_MET`,
+  `INCONCLUSIVE`). Any other note, a ruling's amendment line among them, is
+  not an audit. The list of reviews owed (`abcd intent audit`) reads the
+  section by the same rule, so an intent the seed counts as audited is never
+  one that list says owes a review.
 - The shipped intents with **no audit notes**, each with the command that
   audits it: an offer, never a gate.
 - The planned intents whose `target_release` names the release and which **did

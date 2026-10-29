@@ -12,7 +12,7 @@ found_at: ".abcd/development/intents/shipped/itd-24-reflect-command.md"
 remedy: "fix, then re-run the audit: make ac-2 NOT_MET, ac-7 NOT_MET of itd-24 hold in the delivered code, then re-emit the request with `abcd intent audit itd-24` and ingest the re-run's verdict; a verdict with no criterion NOT_MET or INCONCLUSIVE clears the flag and resolves this record"
 related_intents: [itd-24]
 refines: [iss-2610241427397332, iss-2610241426406882, iss-2608290822140563]
-resolution: "reflect's seed now treats an OWED review marker as not audited and lists the intents the cut moved to next"
+resolution: "reflect's seed now treats an OWED review marker as not audited and lists the intents the cut moved to next; an Audit Notes section with no review marker counts as audited, in the seed and in the list of reviews owed alike, only when it names the acceptance criteria and gives a verdict on them (intent.HandAudited, decision dcn-2610290748190476)"
 impact: fix
 resolved_by:
   commit: "c8ddafcaa"
