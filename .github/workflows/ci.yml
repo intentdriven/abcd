@@ -448,8 +448,9 @@ jobs:
       # -timeout is a declared budget, not go test's 10m per-package default:
       # internal/surface/cli under -race on the macOS runner measured 418-568s
       # passing, and a slow runner crossed 600s with no test hung, ejecting an
-      # unrelated pull request from the merge queue (iss-2609260319483365). 20m
-      # is about twice the slowest passing run, so a real hang still fails with
+      # unrelated pull request from the merge queue (iss-2609260319483365). The
+      # budget was first 20m, about twice the slowest passing run, and is 40m
+      # since 2026-10-17, so a real hang still fails with
       # a goroutine dump where the enclosing ceiling leaves room for it: in
       # release.yml's verify job it does, while this job's own ceiling, held
       # below the merge queue's response cap, is the binding one on macOS (see
