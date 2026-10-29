@@ -27,13 +27,15 @@ func TestAStateFileACommitCarriesIsRefused(t *testing.T) {
 			t.Fatalf("git add -f %s: %v: %s", rel, err, out)
 		}
 	}
-	if _, err := s.Verify(); err == nil || !strings.Contains(err.Error(), "git tracks "+StateRel) {
+	// The store's own rule (its index tracks nothing in its local tier) may
+	// refuse first; either way the state a commit carries is never read.
+	if _, err := s.Verify(); err == nil || !strings.Contains(err.Error(), "tracks") {
 		t.Fatalf("Verify over a tracked state file = %v; want it refused as tracked", err)
 	}
 	if _, err := s.readDraft("GHSA-mmmm-mmmm-mmmm"); err == nil || !strings.Contains(err.Error(), "git tracks") {
 		t.Fatalf("readDraft over a tracked draft = %v; want it refused as tracked", err)
 	}
-	if _, err := readOtherStore(s.Root); err == nil || !strings.Contains(err.Error(), "git tracks it") {
+	if _, err := readOtherStore(s.Root); err == nil || !strings.Contains(err.Error(), "tracks") {
 		t.Fatalf("readOtherStore over a tracked state file = %v; want it refused as tracked", err)
 	}
 }
