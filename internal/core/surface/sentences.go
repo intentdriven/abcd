@@ -393,8 +393,8 @@ var sentences = map[string]string{
 	"abcd mode queue": "Queue one step for the person's return while they are away: " +
 		"Writes the away record; refuses when no away record holds.",
 
-	"abcd peers": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: " +
-		"Writes the fetched reservations; refuses outside a git checkout.",
+	"abcd peers": "List what peers hold that this checkout lacks, and the reservations: " +
+		"Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout.",
 
 	"abcd status": "List everyone's announcements, reservations and releases being cut: " +
 		"Writes the fetched status branches and reservations; refuses outside a git checkout.",

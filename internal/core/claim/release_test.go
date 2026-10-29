@@ -97,6 +97,10 @@ func TestAReleaseSitsOutsideTheLiveCap(t *testing.T) {
 			t.Fatalf("reservation %d beside a release: %v", i+1, err)
 		}
 	}
+	// One release is cut at a time: the first ends before the next is held.
+	if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := p.do(Request{Record: "rel-v0.17.0"}); err != nil {
 		t.Fatalf("a release past ten live reservations: %v", err)
 	}
