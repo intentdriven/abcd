@@ -76,6 +76,9 @@ type DeleteProofOptions struct {
 type deleteProver struct {
 	o        DeleteProofOptions
 	deadline time.Time
+	// proved holds each target's proof, so a line the hook judges against
+	// two registries (the session's and the workdir's) is proved once.
+	proved map[guard.DeleteTarget]guard.DeleteProof
 }
 
 // NewDeleteProver returns the prover the shell guard's front doors attach to
@@ -87,7 +90,7 @@ func NewDeleteProver(o DeleteProofOptions) guard.DeleteProver {
 	if o.Budget <= 0 {
 		o.Budget = proofBudget
 	}
-	return deleteProver{o: o, deadline: time.Now().Add(o.Budget)}
+	return deleteProver{o: o, deadline: time.Now().Add(o.Budget), proved: map[guard.DeleteTarget]guard.DeleteProof{}}
 }
 
 // errOutOfTime is a forge call the prover's budget did not wait for.
@@ -139,6 +142,15 @@ func keptBy(root, def, ref, tip string, prs []byte) bool {
 
 // ProveDelete proves one target safe, or names the check that failed.
 func (p deleteProver) ProveDelete(t guard.DeleteTarget) guard.DeleteProof {
+	if pr, ok := p.proved[t]; ok {
+		return pr
+	}
+	pr := p.prove(t)
+	p.proved[t] = pr
+	return pr
+}
+
+func (p deleteProver) prove(t guard.DeleteTarget) guard.DeleteProof {
 	if !time.Now().Before(p.deadline) {
 		return unproven(errOutOfTime.Error(), "Run the delete again, or one target at a time.")
 	}
@@ -148,6 +160,9 @@ func (p deleteProver) ProveDelete(t guard.DeleteTarget) guard.DeleteProof {
 	}
 	def := gitutil.TrackedDefaultBranch(root, claim.Remote)
 	if def == "" {
+		if _, err := gitutil.Run(root, "remote", "get-url", claim.Remote); err != nil {
+			return unproven("the repository has no remote named origin, so nothing can be shown kept elsewhere", "")
+		}
 		return unproven("origin's default branch has not been fetched here, so nothing can be shown merged into it",
 			"Fetch origin (`git fetch origin`) and run the delete again.")
 	}
@@ -260,6 +275,13 @@ func (p deleteProver) localBranch(root, def string, wts []gitutil.Worktree, t gu
 		}
 	}
 	if tip == "" {
+		// git holds no branch of exactly this name. On a file system that
+		// folds case, it may still resolve a loose ref spelled otherwise and
+		// delete that one, so a name git resolves is not absent.
+		if r, err := gitutil.Run(root, "rev-parse", "--verify", "--quiet", ref); err == nil && r != "" {
+			return unproven("git resolves "+t.Branch+" to a branch spelled otherwise",
+				"Name the branch exactly as `git branch --list` prints it.")
+		}
 		// No such branch: the delete removes nothing.
 		return guard.DeleteProof{Safe: true}
 	}
@@ -285,7 +307,8 @@ func (p deleteProver) worktree(root, def string, wts []gitutil.Worktree, t guard
 	}
 	switch {
 	case wt == nil:
-		return unproven("it is not a worktree git lists for this repository", "")
+		return unproven("no worktree git lists for this repository is at "+t.Path,
+			"Name the worktree by its full path, as `git worktree list` prints it.")
 	case wt == &wts[0]:
 		return unproven("it is the repository's main working tree", "Leave the main working tree in place.")
 	case wt.Locked:

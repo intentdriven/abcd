@@ -203,7 +203,7 @@ func TestDeleteProofJudgesAWorktreeRemoval(t *testing.T) {
 	proofRefused(t, prove(t, idle, wt(untracked)), "git has not committed")
 
 	proofRefused(t, prove(t, idle, wt(repo.Root())), "main working tree")
-	proofRefused(t, prove(t, idle, wt(t.TempDir())), "not a worktree git lists")
+	proofRefused(t, prove(t, idle, wt(t.TempDir())), "no worktree git lists")
 }
 
 // TestDeleteProofKeepsABranchItsDefaultHolds pins ancestry alone as proof: a
@@ -248,5 +248,53 @@ func TestDeleteProofRefusesOnceItsTimeRunsOut(t *testing.T) {
 	p := NewDeleteProver(DeleteProofOptions{Forge: slow, Budget: 50 * time.Millisecond})
 	target := guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "feat"}
 	proofRefused(t, p.ProveDelete(target), "could not be asked")
-	proofRefused(t, p.ProveDelete(target), "ran out")
+	later := target
+	later.Branch = "later"
+	proofRefused(t, p.ProveDelete(later), "ran out")
+}
+
+// TestDeleteProofProvesEachTargetOnce pins the memo: the hook judges a line
+// against the session's registry and the workdir's with one prover, and the
+// second judgement reuses the first's proof rather than asking the forge and
+// spending the budget again.
+func TestDeleteProofProvesEachTargetOnce(t *testing.T) {
+	repo, _ := proofRepo(t)
+	branchWith(repo, "feat", "f.txt")
+	repo.Git("push", "-q", "origin", "feat")
+	asked := 0
+	counting := func(string, ...string) (string, error) { asked++; return `[]`, nil }
+	p := NewDeleteProver(DeleteProofOptions{Forge: counting})
+	target := guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "feat"}
+	first, second := p.ProveDelete(target), p.ProveDelete(target)
+	if asked != 1 || first != second {
+		t.Errorf("the forge was asked %d times, proofs %+v and %+v; want one ask and one proof", asked, first, second)
+	}
+}
+
+// TestDeleteProofNamesWhatIsMissing pins two refusals' words: a repository
+// with no origin says so rather than asking for a fetch that cannot run, and
+// a worktree path git does not list asks for the full path.
+func TestDeleteProofNamesWhatIsMissing(t *testing.T) {
+	repo, _ := sweepRepo(t)
+	proofRefused(t, prove(t, DeleteProofOptions{}, guard.DeleteTarget{Kind: guard.DeleteLocalBranch, Dir: repo.Root(), Branch: "x"}),
+		"no remote named origin")
+	repo2, _ := proofRepo(t)
+	p := prove(t, DeleteProofOptions{Probe: idleProbe()}, guard.DeleteTarget{Kind: guard.DeleteWorktree, Dir: repo2.Root(), Path: filepath.Join(repo2.Root(), "lane-3")})
+	proofRefused(t, p, "no worktree git lists")
+	if !strings.Contains(p.Settle, "full path") {
+		t.Errorf("the unlisted worktree's settle does not ask for the full path: %q", p.Settle)
+	}
+}
+
+// TestDeleteProofRefusesABranchGitFindsByAnotherCase: on a file system that
+// folds case, git resolves a loose branch spelled in another case and deletes
+// it, so a name git resolves is never read as absent.
+func TestDeleteProofRefusesABranchGitFindsByAnotherCase(t *testing.T) {
+	repo, _ := proofRepo(t)
+	branchWith(repo, "feat/x", "x.txt")
+	if _, err := os.Stat(filepath.Join(repo.Root(), ".git", "refs", "heads", "Feat", "X")); err != nil {
+		t.Skip("this file system keeps case apart, so git cannot resolve a branch spelled otherwise")
+	}
+	proofRefused(t, prove(t, DeleteProofOptions{}, guard.DeleteTarget{Kind: guard.DeleteLocalBranch, Dir: repo.Root(), Branch: "Feat/X"}),
+		"spelled otherwise")
 }

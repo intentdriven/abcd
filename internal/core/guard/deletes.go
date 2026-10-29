@@ -251,19 +251,23 @@ func deleteTargets(segs []segment, dir string) (targets []DeleteTarget, read map
 	if dir == "" || !filepath.IsAbs(dir) {
 		return nil, nil, "the directory the command runs in is not known"
 	}
+	// Any directory change and any GIT_ word on the line refuses it, wherever
+	// it stands (`command cd`, `X=1 cd`, an `export GIT_DIR=…` segments
+	// earlier): the proof runs in the repository the line starts in, and
+	// reading only the plain spellings would let git delete in another.
 	for _, s := range segs {
-		if len(s.tokens) > 0 && (s.tokens[0] == "cd" || s.tokens[0] == "pushd" || s.tokens[0] == "popd") {
-			return nil, nil, "the line changes directory, so which repository it deletes in is not fixed"
+		for _, w := range s.tokens {
+			switch {
+			case w == "cd" || w == "pushd" || w == "popd":
+				return nil, nil, "the line changes directory, so which repository it deletes in is not fixed"
+			case strings.Contains(w, "GIT_"):
+				return nil, nil, "git's repository may be set from the environment (" + w + ")"
+			}
 		}
 	}
 	read = map[int]bool{}
 	for si, s := range segs {
 		for _, site := range sitesNamed(s, "git") {
-			for _, w := range s.tokens[:site.idx] {
-				if strings.Contains(w, "GIT_") {
-					return nil, nil, "git's repository is set from the environment (" + w + ")"
-				}
-			}
 			ts, ok, w := deletesIn(s.tokens[site.idx+1:], dir)
 			if w != "" {
 				return nil, nil, w

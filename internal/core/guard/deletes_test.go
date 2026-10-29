@@ -232,3 +232,26 @@ func TestDeleteLessonIsTheRefusal(t *testing.T) {
 		t.Errorf("under a disabled registry the delete lesson does not say the guard is off:\n%s", l)
 	}
 }
+
+// TestGuardRefusesADeleteInARepositoryTheLineMayChange pins the repository a
+// proof runs in: a directory change or a GIT_ word anywhere on the line, in
+// any spelling, refuses the delete, since git may then delete in a repository
+// other than the one proved.
+func TestGuardRefusesADeleteInARepositoryTheLineMayChange(t *testing.T) {
+	for _, line := range []string{
+		`command cd /other && git branch -D feat`,
+		`builtin cd /other; git branch -D feat`,
+		`X=1 cd /other && git branch -D feat`,
+		`export GIT_DIR=/other/.git; git branch -D feat`,
+		`git branch -D feat; pushd /other`,
+	} {
+		p := &recordingProver{proof: DeleteProof{Safe: true}}
+		d, err := deleteRegistry(t, t.TempDir(), p).Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || len(p.asked) != 0 {
+			t.Errorf("%q: verdict %q, prover asked %+v; want a block before any proof", line, d.Verdict, p.asked)
+		}
+	}
+}
