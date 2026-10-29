@@ -256,7 +256,7 @@ func (a Ahead) Uncrossed() Ahead {
 }
 
 // Shut reports which of the queue's conditions hold the first gate shut when
-// slots units of work may be in their test stages at once (the
+// it admits slots units of work to their test stages at once (the
 // load.preflights setting; zero or less reads as one): every unit in Busy
 // takes a slot, and the gate is shut on preflight or on waiter once they are
 // all taken, by the kind of unit that takes them. A waiter queued ahead shuts
@@ -571,18 +571,18 @@ func queueOrder(ws []Proc) []int {
 // run cannot saturate the machine (iss-2610102020442624): the cores the
 // machine can still give, which is twice the online cores (the waiter's
 // default limit, DefaultWaitFactor) less the one-minute load rounded up,
-// never more than the cores divided among the slots preflights may be in
-// their test stages at once (load.preflights; zero or less reads as one, and
-// one is go's own default of the cores) and never fewer than a quarter of the
-// cores, or one, so a run on a loaded machine still makes progress. With n
-// slots, n concurrent stages each take at most the cores divided by n (half
-// at two, a quarter at four, where on most machines the share and the floor
-// meet): the load a later stage starts under lags the earlier stages' real
-// demand by up to a minute, so the load alone would give each the whole
-// machine. A race stage may run beside n unit stages, since a preflight at
-// its race gate takes no slot (Ahead.TakingSlots), so the load limit is what
-// bounds that one extra stage. An unreadable load leaves the cores divided
-// among the slots.
+// never more than the cores divided among the preflights the first gate
+// admits to their test stages at once (load.preflights; zero or less reads as
+// one, and one is go's own default of the cores) and never fewer than a
+// quarter of the cores, or one, so a run on a loaded machine still makes
+// progress. With n slots, n concurrent stages each take at most the cores
+// divided by n (half at two, a quarter at four, where on most machines the
+// share and the floor meet): the load a later stage starts under lags the
+// earlier stages' real demand by up to a minute, so the load alone would give
+// each the whole machine. A race stage may run beside n unit stages, since a
+// preflight at its race gate takes no slot (Ahead.TakingSlots), so the load
+// limit is what bounds that one extra stage. An unreadable load leaves the
+// cores divided among the slots.
 func GoTestParallelism(snap Snapshot, slots int) int {
 	cores := snap.Cores
 	if cores < 1 {

@@ -13,8 +13,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/machineload"
 )
 
-// How many preflights may be in their test stages at once is the person's own
-// machine setting (iss-2610161639025702): load.preflights in
+// How many preflights the first gate admits to their test stages at once is
+// the person's own machine setting (iss-2610161639025702): load.preflights in
 // ~/.abcd.noindex/config.json, or ABCD_LOAD_PREFLIGHTS for a trial, and one
 // by default. No repository file is read for it, so a checkout cannot raise
 // the machine's load.
@@ -118,7 +118,7 @@ func TestPreflightSlotsIsCappedAtFour(t *testing.T) {
 			t.Errorf("load.preflights %s: PreflightSlots = %d, %q, %v; want %d from the machine", c.v, n, src, err, c.want)
 		}
 	}
-	const most = "at most 4 preflights may be in their test stages at once"
+	const most = "the first gate admits at most 4 preflights to their test stages at once"
 	_, _, _, err := PreflightSlots(slotsEnv("5"), t.TempDir())
 	if err == nil || !strings.Contains(err.Error(), PreflightSlotsEnv) || !strings.Contains(err.Error(), most) {
 		t.Errorf("%s=5: err = %v, want a refusal naming the variable and saying %q", PreflightSlotsEnv, err, most)
