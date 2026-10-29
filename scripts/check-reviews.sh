@@ -301,8 +301,7 @@ pure_redaction() {
   fi
   n=$(($(wc -l <"$work/old") + $(wc -l <"$work/new") + 1))
   rc=0
-  git diff --no-color --no-ext-diff --no-textconv -U"$n" --word-diff=porcelain \
-    --word-diff-regex="$WORD_RE" "$sha^1" "$sha" -- "$p" >"$work/wd" 2>"$work/err" || rc=$?
+  git diff --no-color --no-ext-diff --no-textconv -U"$n" --word-diff=porcelain --word-diff-regex="$WORD_RE" "$sha^1..$sha" -- "$p" >"$work/wd" 2>"$work/err" || rc=$?
   if [ "$rc" -ne 0 ]; then
     echo "check-reviews: git diff for $p at $sha failed (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
     cat "$work/err" >&2

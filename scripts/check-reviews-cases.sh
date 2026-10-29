@@ -39,6 +39,7 @@ GATE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-reviews.sh"
 }
 
 failures=0
+last_out=""
 tmproot="$(mktemp -d)"
 trap 'rm -rf "$tmproot"' EXIT
 
@@ -67,6 +68,7 @@ expect() {
 	# cases, so `/bin/bash scripts/check-reviews-cases.sh` proves it on the bash
 	# 3.2 macOS ships and a bare invocation on whatever bash PATH names.
 	out="$(cd "$repo" && "$BASH" "$GATE" 2>&1)" || rc=$?
+	last_out="$out"
 	case "$want" in
 	pass)
 		if [ "$rc" -ne 0 ]; then
@@ -234,17 +236,16 @@ privatelist() {
 	printf '%s' "$2" >"$1/.abcd/.work.local/private-names.txt"
 }
 
-# refute <repo> <label> <text> asserts the gate's output never carries <text>:
-# a refusal about a removed span must not repeat the span it refused.
+# refute <label> <text> asserts that the output of the expect just before it
+# never carries <text>: a refusal about a removed span must not repeat the span
+# it refused.
 refute() {
-	local out
-	out="$(cd "$1" && "$BASH" "$GATE" 2>&1)" || true
-	if grep -qiF -- "$3" <<<"$out"; then
-		printf 'cases: FAIL %s — the output repeats a removed span:\n%s\n' "$2" "$out" >&2
+	if grep -qiF -- "$2" <<<"$last_out"; then
+		printf 'cases: FAIL %s — the output repeats a removed span:\n%s\n' "$1" "$last_out" >&2
 		failures=$((failures + 1))
 		return
 	fi
-	printf 'cases: ok   %s (no removed span in the output)\n' "$2"
+	printf 'cases: ok   %s (no removed span in the output)\n' "$1"
 }
 
 CLEAN=$'# People\n\nOpened by <login> on the forge.\nReviewed by <name>, who signed off.\n'
@@ -322,7 +323,7 @@ d="$(namesrepo redact-private-off)"
 redact "$d" yes "$CLEAN"
 privatelist "$d" $'# abcd-banlist: keyed\npersona-login alice-dev\npersona-other bob-dev\n'
 expect fail "$d" "RD002 a removed span missing from the private list" "not on the private name list"
-refute "$d" "RD002 the private-list refusal withholds the span" "Alice Smith"
+refute "RD002 the private-list refusal withholds the span" "Alice Smith"
 
 # --- RD004: every review names the commit it read (itd-28) --------------------
 
