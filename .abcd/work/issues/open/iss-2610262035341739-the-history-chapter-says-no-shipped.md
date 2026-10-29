@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 581 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/11-history.md:393"
-remedy: "none (filed automatically)"
+remedy: "In 02-adapters.md:350 mark the transcript reader (and the memory reader row below it) as design targets, or remove them: internal/core/lifeboat imports neither internal/core/history nor the memory store, which matches 11-history.md:393."
 finding_ref: cfk-a7b47d0893821ab1
 ---
 

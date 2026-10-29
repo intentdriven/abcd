@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 361 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-30-design-fictions-as-intent-format.md:18"
-remedy: "none (filed automatically)"
+remedy: "In itd-30 add a scope bullet and an open question saying how the release page and the changelog compose a design-fiction intent (which section the headline and the persona quote are read from and checked against); the launch chapter's press-release wording stays as it is."
 related_intents: [itd-30]
 finding_ref: cfk-a4d6cb4f156a42f9
 ---

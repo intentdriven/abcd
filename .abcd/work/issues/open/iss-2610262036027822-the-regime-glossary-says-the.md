@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 618 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/regime.md:17"
-remedy: "none (filed automatically)"
+remedy: "In ledger/regime.md say the supply-regime check holds at three positions and that the generative licence declares no reserved names, so its constraint falls at admission rather than at ingest."
 finding_ref: cfk-2ff5b5aeb903a352
 ---
 

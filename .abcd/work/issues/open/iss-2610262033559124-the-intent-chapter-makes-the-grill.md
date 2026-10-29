@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 452 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:319"
-remedy: "none (filed automatically)"
+remedy: "Replace terminology/ with the glossary home .abcd/development/brief/glossary/ (adr-30) at 05-intent.md line 319 and at 04-universal-patterns.md line 123."
 finding_ref: cfk-c231d8c4e992f9f2
 ---
 

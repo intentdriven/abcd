@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1007 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-50-loop-toward-acceptance.md:25"
-remedy: "none (filed automatically)"
+remedy: "In itd-50's press release, replace 'the voyage moves on' with 'the run moves on'."
 related_intents: [itd-50]
 finding_ref: cfk-8911bd5434821fa9
 ---

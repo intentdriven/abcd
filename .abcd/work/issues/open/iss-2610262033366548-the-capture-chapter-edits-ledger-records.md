@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 423 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/06-capture.md:160"
-remedy: "none (filed automatically)"
+remedy: "Drop 'capture issue-ledger entries (immutable post-create)' from the append-only row at 04-universal-patterns.md line 195; the issue ledger already sits in the compounding-curated row via .abcd/work/issues/, and the capture verbs edit records by design."
 finding_ref: cfk-f8d61c3fc2aff4a3
 ---
 

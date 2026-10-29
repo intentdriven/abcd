@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 169 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:159"
-remedy: "none (filed automatically)"
+remedy: "In itd-44's routing section and operator-deviation block, replace `adr-<next-free>-<slug>.md` and 'next-free numbering' with the id `abcd decide --adr` mints (timestamp-numeric, adr-45), which the draft's own delivery-state note already names."
 related_intents: [itd-44]
 finding_ref: cfk-12496318663d7183
 ---

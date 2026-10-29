@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 597 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/ledger.md:44"
-remedy: "none (filed automatically)"
+remedy: "At 17-guard.md line 656 write 'sources ledger line' and 'the sources ledger' instead of 'source-ledger line' and 'the ledger'."
 finding_ref: cfk-3602d99b571a1cc6
 ---
 

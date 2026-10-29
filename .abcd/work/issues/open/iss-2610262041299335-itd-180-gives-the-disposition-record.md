@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1003 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-180-a-cold-reading-s-findings-land-as.md:57"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does the disposition record have four states (accepted, rejected, declined, held) or five? Answers: (a) four, and itd-180's count is a miscount to correct; (b) five, and the fifth is to be named and built. Recommended (a): the code, glossary and spec all ship four and no fifth has been named since 2026-09."
 related_intents: [itd-180]
 finding_ref: cfk-854f3a6967b8f988
 ---

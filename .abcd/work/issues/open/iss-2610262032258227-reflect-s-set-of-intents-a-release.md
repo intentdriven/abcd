@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 265 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/09-reflect.md:49"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Must the retrospective's set of shipped intents equal the release cut's, or may reflect keep its own both-ways shipped_in reading? Answer 1: reflect takes its set from the cut's reader (changelog.ShippedSince) so the intent table and the changelog section it links cannot disagree. Answer 2: keep reflect's own rule, document its two divergences in 09-reflect.md and drop the 'read the way the release cut reads it' claim from seed.go. Recommend answer 1: the retrospective links the changelog section the cut composed, so the two sets should be one by construction."
 finding_ref: cfk-c831bcb866195ca5
 ---
 

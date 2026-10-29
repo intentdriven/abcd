@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1023 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/02-verification-matrix.md:73"
-remedy: "none (filed automatically)"
+remedy: "In the Rules-loader dedup row say the refresh is event-driven (SessionStart and PreCompact clear the ledger) with a counted backstop, every 15th prompt by default and settable as rules.force_refresh_every_n; delete 'Nothing counts prompts'."
 related_intents: [itd-3]
 finding_ref: cfk-c89b936d0f833a9f
 ---

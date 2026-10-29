@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1237 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-69-plugin-metadata-lockstep-update.md:43"
-remedy: "none (filed automatically)"
+remedy: "reword the provenance line in itd-69 (the same line sits in draft itd-70) to say the intent was drawn out of a brief edit in the predecessor lineage, as the repo marks other predecessor-store ids, or drop the gate attribution"
 related_intents: [itd-69, itd-61]
 finding_ref: cfk-23f455c567048a6c
 ---

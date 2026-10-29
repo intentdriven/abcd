@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 320 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/02-disembark.md:121"
-remedy: "none (filed automatically)"
+remedy: "In glossary/core/lifeboat.md (intro, line 20) list what a pack writes today (grounded brief, coverage report, graveyard, intent and spec spine, release retrospectives, ADRs, issue ledger copy) and drop 'logbook summary, and configuration'; glossary/core/disembark.md's definition says 'configuration' too."
 finding_ref: cfk-f0178017e6ebd8a8
 ---
 

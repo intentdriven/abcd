@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 21 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/02-dependencies.md:95"
-remedy: "none (filed automatically)"
+remedy: "In 02-dependencies.md Out of scope, replace 'abcd stamps `schema_version: 1` everywhere' with what holds: each record family stamps its own `schema_version` at its own current value (the voyage log and lifeboat provenance at 2, the changelog ingest at 2, the reading manifest at 11), some committed records carry none (03-configuration.md counts six of fourteen), and at least one family already migrates a version-1 file; keep the itd-9 pointer for lifeboat migration."
 finding_ref: cfk-5c308a125dd502a9
 ---
 

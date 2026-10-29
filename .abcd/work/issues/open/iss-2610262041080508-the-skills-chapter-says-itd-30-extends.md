@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 979 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/08-skills.md:127"
-remedy: "none (filed automatically)"
+remedy: "Edit itd-30 (scope, interview and acceptance bullets): replace `/abcd:intent new --format=fiction` and the `refine --switch-format` surface with the canonical create `/abcd:intent` plus a format flag, as 08-skills.md describes."
 related_intents: [itd-30]
 finding_ref: cfk-bf3c89fa0f0fc182
 ---

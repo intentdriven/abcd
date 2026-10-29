@@ -1,0 +1,321 @@
+package worktree
+
+// notes.go is the notes archive beside the worktree store
+// (spc-2609301811532881): before prune removes a worktree, its local tier
+// (.abcd/.work.local/, the handover notes, logs and scratch git ignores and
+// `git worktree remove` deletes with the tree) is copied, redacted, to
+// ~/.abcd.noindex/notes/<root-sha>/<YYYYMMDDTHHMMSSZ>-<name>/ beside a manifest.
+//
+// Every file and manifest field goes through history.Redact, the pass the
+// transcript store runs, so there is one redaction path. The tier is read
+// whole and redacted before anything is written: a file the pass cannot vouch
+// for (not text, over the cap, a residual it cannot mask) fails the archive
+// with nothing written, and a failed archive keeps the worktree.
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/history"
+	"github.com/intentdriven/abcd/internal/fsutil"
+)
+
+// NotesRel is the notes archive, relative to the caller's home.
+var NotesRel = abcdhome.Rel("notes")
+
+// tierRel is a checkout's local tier, the part of a worktree the archive keeps.
+const tierRel = ".abcd/.work.local"
+
+// manifestName is the manifest's name at the top of an archive entry.
+const manifestName = "manifest.json"
+
+// The archive's bounds: a tier past them is not notes, and fails the archive
+// rather than being copied in part.
+const (
+	maxNoteBytes  = 4 << 20
+	maxNotesTotal = 64 << 20
+	maxNoteFiles  = 4096
+)
+
+// flush makes a written file or directory durable: fsutil.Flush, the one
+// fsync every durable write in the module goes through. It is a variable only
+// so a test can see what is flushed, and when.
+var flush = fsutil.Flush
+
+// note is one entry of a tier, redacted: a file's text, or a link's target.
+type note struct {
+	rel    string // slash-separated, relative to the tier
+	data   []byte
+	link   string
+	isLink bool
+}
+
+// manifestFile is one entry of the manifest's files.
+type manifestFile struct {
+	Path   string `json:"path"`
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256,omitempty"`
+	// Link is a symlink's target, home-redacted; the link is never followed.
+	Link string `json:"link,omitempty"`
+}
+
+// manifest is an archive entry's manifest.json.
+type manifest struct {
+	SchemaVersion int            `json:"schema_version"`
+	Worktree      string         `json:"worktree"`
+	Branch        string         `json:"branch"`
+	Source        string         `json:"source"`
+	ArchivedAt    string         `json:"archived_at"`
+	RootSHA       string         `json:"root_sha"`
+	Files         []manifestFile `json:"files"`
+}
+
+// collectNotes reads the worktree at wt's local tier without following a
+// symlink, and redacts each file through repoRoot's scanner. An absent tier,
+// or one holding nothing, is no notes. Any file it cannot archive is an error
+// naming the file's path in the tier.
+func collectNotes(repoRoot, wt string) ([]note, error) {
+	tier := wt
+	for _, seg := range strings.Split(tierRel, "/") {
+		tier = filepath.Join(tier, seg)
+		fi, err := os.Lstat(tier)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return nil, nil
+		case err != nil:
+			return nil, err
+		case fi.Mode()&fs.ModeSymlink != 0:
+			return nil, fmt.Errorf("%s is a symlink, which the archive never follows", strings.TrimPrefix(tier, wt+string(filepath.Separator)))
+		case !fi.IsDir():
+			return nil, nil
+		}
+	}
+	var notes []note
+	total := 0
+	err := filepath.WalkDir(tier, func(p string, d fs.DirEntry, err error) error {
+		if p == tier && err == nil {
+			return nil
+		}
+		rel, rerr := filepath.Rel(tier, p)
+		if rerr != nil {
+			return errors.New("a path in the tier cannot be named relative to it")
+		}
+		rel = filepath.ToSlash(rel)
+		if err != nil {
+			return named(repoRoot, rel, causeOf(err))
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if len(notes) == maxNoteFiles {
+			return fmt.Errorf("the tier holds more than %d files", maxNoteFiles)
+		}
+		switch {
+		case d.Type()&fs.ModeSymlink != 0:
+			target, err := os.Readlink(p)
+			if err != nil {
+				return named(repoRoot, rel, causeOf(err))
+			}
+			red, err := history.Redact(repoRoot, fsutil.RedactHome(target), rel)
+			if err != nil {
+				return named(repoRoot, rel, err.Error())
+			}
+			notes = append(notes, note{rel: rel, link: red.Text, isLink: true})
+		case !d.Type().IsRegular():
+			return named(repoRoot, rel, "not a regular file")
+		default:
+			data, err := fsutil.ReadGuarded(p, maxNoteBytes)
+			switch {
+			case errors.Is(err, fsutil.ErrTooBig):
+				return named(repoRoot, rel, fmt.Sprintf("over the archive's per-file cap of %d bytes", maxNoteBytes))
+			case err != nil:
+				return named(repoRoot, rel, causeOf(err))
+			case !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0:
+				return named(repoRoot, rel, "not text, which the redaction pass cannot vouch for")
+			}
+			red, err := history.Redact(repoRoot, string(data), rel)
+			if err != nil {
+				return named(repoRoot, rel, err.Error())
+			}
+			if total += len(red.Text); total > maxNotesTotal {
+				return fmt.Errorf("the tier holds more than the archive's cap of %d bytes", maxNotesTotal)
+			}
+			notes = append(notes, note{rel: rel, data: []byte(red.Text)})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return notes, namesSurvive(repoRoot, notes)
+}
+
+// named is a reason about the tier's file rel. The name is the tier's bytes as
+// much as the file is, so it passes the same redaction pass before any reason
+// carries it, and a name the pass refuses is not named at all.
+func named(repoRoot, rel, why string) error {
+	shown := "a file in the tier"
+	if red, err := history.Redact(repoRoot, rel, "notes file name"); err == nil {
+		shown = red.Text
+	}
+	return errors.New(shown + ": " + why)
+}
+
+// causeOf is err without the path an *fs.PathError names, which is the
+// tier's own and unredacted.
+func causeOf(err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+// namesSurvive refuses a tier whose file names the redaction pass would
+// change: a name is written as a path, and a masked one is not the file's.
+func namesSurvive(repoRoot string, notes []note) error {
+	if len(notes) == 0 {
+		return nil
+	}
+	rels := make([]string, len(notes))
+	for i, n := range notes {
+		rels[i] = n.rel
+	}
+	red, err := history.Redact(repoRoot, strings.Join(rels, "\n"), "notes file names")
+	if err != nil {
+		return fmt.Errorf("the tier's file names: %w", err)
+	}
+	for i, got := range strings.Split(red.Text, "\n") {
+		if i >= len(rels) || got != rels[i] {
+			return errors.New("a file name holds what the redaction pass masks")
+		}
+	}
+	return nil
+}
+
+// writeNotes writes notes into a new entry of the archive for the lane, and
+// the manifest beside them. The entry is made exclusively, so two runs in one
+// second never share one, and each file is written inside an os.Root on it.
+// The entry's path is returned once it is made, a failure after that
+// included.
+func writeNotes(repoRoot string, lane Lane, e entry, notes []note, now time.Time) (string, error) {
+	if !ValidName(e.name) {
+		return "", errors.New("the worktree's name is not one plain path segment to name the entry with")
+	}
+	for _, n := range notes {
+		if n.rel == manifestName {
+			return "", fmt.Errorf("%s: the tier's own file takes the name the archive's manifest needs", n.rel)
+		}
+	}
+	at := now.UTC()
+	m := manifest{SchemaVersion: 1, ArchivedAt: at.Format(time.RFC3339), RootSHA: lane.RootSHA, Files: []manifestFile{}}
+	fields := []string{e.name, shortBranch(e.wt), fsutil.RedactHome(e.path)}
+	for _, f := range fields {
+		if strings.ContainsAny(f, "\r\n") {
+			return "", errors.New("the worktree's branch or path holds a line break")
+		}
+	}
+	red, err := history.Redact(repoRoot, strings.Join(fields, "\n"), "notes manifest")
+	if err != nil {
+		return "", fmt.Errorf("the manifest: %w", err)
+	}
+	got := strings.Split(red.Text, "\n")
+	if len(got) != len(fields) {
+		return "", errors.New("the manifest's fields did not survive redaction intact")
+	}
+	m.Worktree, m.Branch, m.Source = got[0], got[1], got[2]
+
+	rel := NotesRel + "/" + lane.RootSHA
+	if _, err := levels(lane.Home, rel, "notes archive", true); err != nil {
+		return "", err
+	}
+	dir := filepath.Join(lane.Home, filepath.FromSlash(rel), at.Format("20060102T150405Z")+"-"+e.name)
+	if err := os.Mkdir(dir, dirPerm); err != nil {
+		return "", fmt.Errorf("making the archive entry %s: %w", fsutil.RedactHome(dir), err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return dir, fmt.Errorf("opening the archive entry: %w", err)
+	}
+	defer root.Close()
+	// Every directory a file lands in, so each is flushed once its entries
+	// are written.
+	made := map[string]bool{}
+	for _, n := range notes {
+		if n.isLink {
+			m.Files = append(m.Files, manifestFile{Path: n.rel, Link: n.link})
+			continue
+		}
+		if d := path.Dir(n.rel); d != "." {
+			if err := root.MkdirAll(d, dirPerm); err != nil {
+				return dir, fmt.Errorf("%s: %w", n.rel, err)
+			}
+			for ; d != "."; d = path.Dir(d) {
+				made[d] = true
+			}
+		}
+		if err := writeNew(root, n.rel, n.data); err != nil {
+			return dir, fmt.Errorf("%s: %w", n.rel, err)
+		}
+		sum := sha256.Sum256(n.data)
+		m.Files = append(m.Files, manifestFile{Path: n.rel, Size: int64(len(n.data)), SHA256: hex.EncodeToString(sum[:])})
+	}
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return dir, err
+	}
+	if err := writeNew(root, manifestName, append(data, '\n')); err != nil {
+		return dir, fmt.Errorf("%s: %w", manifestName, err)
+	}
+	// The worktree's tier goes with `git worktree remove`, so the archive is
+	// its only copy: its directories are flushed too, deepest first, then the
+	// entry and the directory the entry was made in. A filesystem that refuses
+	// a directory flush is tolerated, as fsutil's own writers tolerate it.
+	dirs := make([]string, 0, len(made))
+	for d := range made {
+		dirs = append(dirs, d)
+	}
+	slices.SortFunc(dirs, func(a, b string) int { return strings.Count(b, "/") - strings.Count(a, "/") })
+	for _, d := range append(dirs, ".") {
+		if f, err := root.Open(d); err == nil {
+			_ = flush(f)
+			f.Close()
+		}
+	}
+	if f, err := os.Open(filepath.Dir(dir)); err == nil {
+		_ = flush(f)
+		f.Close()
+	}
+	return dir, nil
+}
+
+// writeNew writes data to a file rel inside root that must not exist yet,
+// the caller's alone, and flushes it to disk before it is closed.
+func writeNew(root *os.Root, rel string, data []byte) error {
+	f, err := root.OpenFile(rel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, abcdhome.FileMode)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := flush(f); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}

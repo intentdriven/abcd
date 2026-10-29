@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 506 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:598"
-remedy: "none (filed automatically)"
+remedy: "Replace the verification-receipt paragraph at 05-intent.md lines 598-600 with itd-50 decision 4 (hand verification is a grounds entry in the product thinker's words) as part of the iss-2610160855131633 rewrite."
 related_intents: [itd-50]
 finding_ref: cfk-059ab2ef4fb136d3
 ---

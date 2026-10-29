@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 420 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:329"
-remedy: "none (filed automatically)"
+remedy: "Narrow the 'write no report at all' list at 04-universal-patterns.md line 90: intent audit with the issue-drift flag writes a report under the log tier (internal/core/capture/drift.go), and the audit forms stage requests under the reviews tier."
 finding_ref: cfk-b6677e5186d5f034
 ---
 

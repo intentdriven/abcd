@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 69 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/00-meta.md:12"
-remedy: "none (filed automatically)"
+remedy: "Mark the sentence at 23-reading.md:74 ('a reading of the rule rather than the rule itself ... ruling on it is owed') as an explicit 'Open question (adr-35)' note, or register it in 03-evidence/03-open-questions.md, so the owed product-thinker ruling on the comparative run's one-commit reach is recorded as a question."
 finding_ref: cfk-5c08b09ce7807c77
 ---
 

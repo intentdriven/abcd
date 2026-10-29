@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1210 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609151838312703-sessions-announce-what-they-are-doing.md:120"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does the Now / Next / Later family keep the name 'status' alongside the shipped abcd status verb (the people's view of announcements and reservations), or is the family renamed so 'status' belongs to the verb alone? Recommend keeping both and adding a status block versus abcd status disambiguation to the glossary, because renaming the family touches the glossary, the site's Status page, the status-block package and the json key for little gain."
 related_intents: [itd-2609151838312703, itd-2609211913453478]
 finding_ref: cfk-736aec2f98b40512
 ---

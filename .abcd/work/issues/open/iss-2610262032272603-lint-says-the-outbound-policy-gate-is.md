@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 271 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:324"
-remedy: "none (filed automatically)"
+remedy: "In 16-lint.md, outbound-policy section: replace 'the fourth, and the only one that judges text BEFORE it is public' with five surfaces, saying the shell guard's forge-text-outbound entry also runs scanner.CheckOutbound on a gh pr or gh issue command before it posts."
 finding_ref: cfk-da141d4467e0243e
 ---
 

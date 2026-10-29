@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 760 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/27-implement.md:434"
-remedy: "none (filed automatically)"
+remedy: "Edit the land-fence line under What's In Scope in itd-2609091034175565 to say the fence renews for lease.Max (a day), mirror or not, as its own decision 40 says that line was revised to read."
 related_intents: [itd-2609091034175565]
 finding_ref: cfk-baf1496f0f8dc244
 ---

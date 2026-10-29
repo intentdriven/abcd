@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 977 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/01-build-sequence.md:59"
-remedy: "none (filed automatically)"
+remedy: "Point itd-91's setup question at abcd ahoy install and its preparation page instead of /abcd:init or prepare-this-repo."
 related_intents: [itd-91]
 finding_ref: cfk-db9385f498843665
 ---

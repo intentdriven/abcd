@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 176 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:100"
-remedy: "none (filed automatically)"
+remedy: "Drop `abcd ahoy worktree list` from the itd (line 44) so bare `abcd ahoy worktree` is the one render and `--all` widens it, per the register's rule on a plain unfiltered list."
 related_intents: [itd-2609091014076309]
 finding_ref: cfk-6f8a3600f8767dc2
 ---

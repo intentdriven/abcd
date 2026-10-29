@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1142 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-25-dredge-cross-corpus-synthesist.md:18"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): May dredge read a user-maintained list of repositories (`.abcd/corpus.json`), or only the managed-repo registry that itd-40 names as the single one? Answers: (a) read the registry and drop corpus.json from itd-25; (b) admit corpus.json as a deliberate second list and amend itd-40's no-grouping line. Recommended (a): itd-40 and adr-28 keep one registry, and corpus.json is reserved for the disembark validation manifest, a different list."
 related_intents: [itd-25, itd-40]
 finding_ref: cfk-d39451cfc56c4c0e
 ---

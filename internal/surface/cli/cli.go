@@ -357,7 +357,8 @@ func NewRootCommand() *cobra.Command {
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			ver := core.NewVersion()
-			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd)}
+			peersLine, worktreesLine := boardScan(cwd, cmd.ErrOrStderr())
+			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: peersLine, Worktrees: worktreesLine, Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd)}
 			// One renderer draws both views in both forms; the surface reads
 			// the window, the colour rung and the locale and hands them in
 			// (spc-2610031844142274). In a pipe the board is drawn at Mono and
@@ -2138,6 +2139,18 @@ envelope carries it as system_message.`,
 			if n := binarySkewNotice(); n != "" {
 				notices = append(notices, n)
 			}
+			// Committed hooks git does not run in this clone
+			// (iss-2610241133284600): commits and pushes pass unchecked, and
+			// until this notice nothing said so before a gate failed afterwards.
+			hooksOff := false
+			if detErr == nil {
+				if n := ahoy.HooksUnrunNotice(det.Gaps); n != "" {
+					notices = append(notices, n)
+				}
+				// Only the certain case reaches the session's context: a hooks
+				// path set elsewhere may still run the checks.
+				hooksOff = ahoy.HooksUnarmed(det.Gaps)
+			}
 			// The harness's user settings (iss-2610050556323779): a hook there
 			// that runs abcd, or an abcd status line that is gone or fails the
 			// trust checks, runs (or blanks) in every session. Named here, read
@@ -2231,6 +2244,13 @@ envelope carries it as system_message.`,
 				"abcd: %d session-start notice(s) on this hook's stderr; "+
 					"run `abcd history staged` for transcript backlog or `abcd ahoy` for install state.\n",
 				len(notices))
+			// The one notice the session itself must act on before it commits,
+			// so its gist reaches the context too. A constant, like the line
+			// above: the notice's own words stay on stderr.
+			if hooksOff {
+				fmt.Fprintln(cmd.OutOrStdout(),
+					"abcd: git does not run this repository's committed commit checks in this clone, so no commit made here is checked; `abcd ahoy` names the fix.")
+			}
 			return nil
 		},
 	})
@@ -4326,6 +4346,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoyWorktreeCommand(asJSON))
 
 	return ahoyCmd
 }

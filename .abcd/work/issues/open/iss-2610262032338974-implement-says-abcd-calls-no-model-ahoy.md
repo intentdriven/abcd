@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 285 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/27-implement.md:507"
-remedy: "none (filed automatically)"
+remedy: "In 27-implement.md, drop the reason 'since abcd calls no model' from the outage-probe sentence and say how a lane routed through a runner or provider connection has its model service probed, since abcd does make those calls."
 finding_ref: cfk-8464a591409084be
 ---
 

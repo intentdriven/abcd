@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 845 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-41-phase-negotiator.md:40"
-remedy: "none (filed automatically)"
+remedy: "In itd-41 replace 'the grill skill' (out of scope) and the `/abcd:intent grill` Socratic-move references with the planning interview that superseded the grill (itd-94, `abcd intent interview`); moot if the ruling on the phase-negotiator record supersedes itd-41."
 related_intents: [itd-41]
 finding_ref: cfk-4883ecd6caa628c4
 ---

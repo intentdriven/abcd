@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -99,43 +100,81 @@ func LaneFor(repoRoot string) (Lane, error) {
 // it stands, and nothing is made inside a level that fails. A Lane that is not
 // the store's shape for its own root commit makes nothing.
 func (l Lane) Ensure() error {
+	if err := l.shaped(); err != nil {
+		return err
+	}
+	_, err := levels(l.Home, l.Rel, "worktree store", true)
+	return err
+}
+
+// shaped refuses a Lane that is not LaneFor's answer for its own root commit.
+func (l Lane) shaped() error {
 	if !gitutil.IsFullSHA(l.RootSHA) || l.Rel != StoreRel+"/"+l.RootSHA ||
 		l.Dir != filepath.Join(l.Home, filepath.FromSlash(l.Rel)) {
 		return refuse("the lane is not the worktree store's for its root commit",
 			"derive the lane with LaneFor")
 	}
-	if !fsutil.IsRealDir(l.Home) || !fsutil.ValidRelPath(l.Rel) {
-		return refuse("the home directory is not a real directory to make the worktree store under",
+	return nil
+}
+
+// present reports whether the lane's levels all exist, holding each that does
+// to Ensure's two tests, from the top down, and making none: a reader of the
+// store refuses what a maker would refuse, and an absent level is a store that
+// holds nothing yet.
+func (l Lane) present() (bool, error) {
+	if err := l.shaped(); err != nil {
+		return false, err
+	}
+	return levels(l.Home, l.Rel, "worktree store", false)
+}
+
+// levels walks rel's levels under home one at a time, from the top down,
+// making each that is absent when create is set and holding each to the two
+// tests Ensure names before the next is reached. Without create, it answers
+// false at the first absent level and reads nothing beneath it. It is the
+// one maker the worktree store and the notes archive share.
+func levels(home, rel, what string, create bool) (bool, error) {
+	if !fsutil.IsRealDir(home) || !fsutil.ValidRelPath(rel) {
+		return false, refuse("the home directory is not a real directory to make the "+what+" under",
 			"make the home a real directory, or work from an account whose home is one")
 	}
-	dir, shown := l.Home, "~"
-	for _, seg := range strings.Split(l.Rel, "/") {
+	dir, shown := home, "~"
+	for _, seg := range strings.Split(rel, "/") {
 		dir, shown = filepath.Join(dir, seg), shown+"/"+seg
-		if err := fsutil.EnsureRealDir(dir, dirPerm); err != nil {
-			return refuse(fmt.Sprintf("the worktree store ~/%s cannot be made as real directories: %v", l.Rel, err),
-				"remove what stands in for the store (a symlink or a file)")
+		if create {
+			if err := fsutil.EnsureRealDir(dir, dirPerm); err != nil {
+				return false, refuse(fmt.Sprintf("the %s ~/%s cannot be made as real directories: %v", what, rel, err),
+					"remove what stands in for the store (a symlink or a file)")
+			}
 		}
 		fi, err := os.Lstat(dir)
-		if err != nil {
-			return fmt.Errorf("checking the worktree store level %s: %w", shown, err)
+		switch {
+		case !create && errors.Is(err, fs.ErrNotExist):
+			return false, nil
+		case err != nil:
+			return false, fmt.Errorf("checking the %s level %s: %w", what, shown, err)
+		case !fi.IsDir():
+			return false, refuse(fmt.Sprintf("the %s ~/%s is not real directories: %s is a symlink or a file", what, rel, shown),
+				"remove what stands in for the store (a symlink or a file)")
 		}
 		switch err := fsutil.CallersAlone(dir, fi); {
 		case errors.Is(err, fsutil.ErrDeclarationWritable):
-			return refuse(fmt.Sprintf("the worktree store level %s is writable by its group or by every user, so another account could replace a checkout in it", shown),
+			return false, refuse(fmt.Sprintf("the %s level %s is writable by its group or by every user, so another account could replace what it holds", what, shown),
 				"make it yours alone (`chmod go-w` it)")
 		case err != nil:
-			return refuse(fmt.Sprintf("the worktree store level %s is owned by another account, or its owner could not be read, so that account could replace a checkout in it", shown),
+			return false, refuse(fmt.Sprintf("the %s level %s is owned by another account, or its owner could not be read, so that account could replace what it holds", what, shown),
 				"move it aside and let the store make itself")
 		}
 	}
-	return nil
+	return true, nil
 }
 
 // ValidName reports whether name is one plain path segment that cannot escape
 // the lane it is joined onto and cannot be read as an option: letters, digits,
-// '.', '_' and '-', not led by '-' or '.', and holding no "..".
+// '.', '_' and '-', not led by '-' or '.', and holding no "..". A name a
+// sibling store holds in the lane is not a worktree's (reserved).
 func ValidName(name string) bool {
-	if name == "" || name[0] == '-' || name[0] == '.' || strings.Contains(name, "..") {
+	if name == "" || name[0] == '-' || name[0] == '.' || strings.Contains(name, "..") || reserved(name) {
 		return false
 	}
 	for i := 0; i < len(name); i++ {
@@ -149,7 +188,16 @@ func ValidName(name string) bool {
 	return true
 }
 
+// reserved reports whether name is one abcd's sibling stores hold in the lane:
+// the embargo store (iss-2610230014564359), compared without case, since a
+// case-folding filesystem reaches the same directory through either spelling.
+func reserved(name string) bool { return strings.EqualFold(name, storepath.Name) }
+
 func invalidName(name string) *Refusal {
+	if reserved(name) {
+		return refuse(fmt.Sprintf("%q is the name of abcd's embargo store, which lives in the same lane", name),
+			"name the worktree something else")
+	}
 	return refuse(fmt.Sprintf("%q is not one plain path segment (letters, digits, '.', '_' and '-', not led by '-' or '.', and no '..')", name),
 		"name the worktree with one plain path segment")
 }
@@ -214,12 +262,18 @@ type Added struct {
 	Branch string
 }
 
-// Add makes a worktree in the lane of the repository at repoRoot: the lane is
-// derived and its levels made (LaneFor, Ensure), the name and branch are
-// judged, and nothing stands at the path, then git adds the worktree and its
-// directory is narrowed to 0700. Every refusal comes before anything is made
-// beyond the store's own levels, so a refused Add makes no worktree; a git
+// Add makes a worktree in the lane of the repository at repoRoot: the name
+// and branch are judged, the lane is derived and read (LaneFor), and nothing
+// may stand at the path; only then are the lane's levels made (Ensure), git
+// adds the worktree and its directory is narrowed to 0700. Every refusal
+// comes before anything is written, so a refused Add writes nothing; a git
 // that fails is a refusal whose cause is git's error (Refusal.Err).
+//
+// Once git has made the worktree, Add records where its branch starts
+// (start.go) and lays its local tier, so a reservation can keep its key there
+// at once (iss-2610222022157889). Either failing is a refusal returned with
+// the Added it made, since the worktree stands and git's own removal is the
+// way back.
 func Add(repoRoot string, opts AddOptions) (Added, error) {
 	if opts.Git == nil {
 		return Added{}, errors.New("worktree: Add needs a git runner")
@@ -237,18 +291,25 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 	if _, err := gitutil.Run(repoRoot, "check-ref-format", "--branch", branch); err != nil {
 		return Added{}, refuse(fmt.Sprintf("%q is not a valid branch name", branch), "name a branch git accepts")
 	}
-	if !opts.Existing && !gitutil.IsFullSHA(opts.Base) {
-		return Added{}, fmt.Errorf("worktree: a new branch needs a base commit, got %q", opts.Base)
-	}
 	lane, err := LaneFor(repoRoot)
 	if err != nil {
 		return Added{}, err
 	}
-	if err := lane.Ensure(); err != nil {
+	if !opts.Existing && !gitutil.IsFullSHA(opts.Base) {
+		return Added{}, refuse(fmt.Sprintf("there is no base commit to cut the new branch %s from", branch),
+			"check an existing branch out instead, or give the repository a default branch")
+	}
+	// Read the lane as Ensure would judge it, making nothing, so the refusals
+	// below leave the home as it was.
+	if _, err := lane.present(); err != nil {
 		return Added{}, err
 	}
 	path := lane.Path(opts.Name)
 	if _, err := os.Lstat(path); err == nil {
+		if listed(repoRoot, path) {
+			return Added{}, refuse(fmt.Sprintf("%s is occupied: git lists a worktree there already", path),
+				"work in that worktree, or name the new one something else")
+		}
 		return Added{}, refuse(fmt.Sprintf("%s is occupied by something git does not list as this worktree", path),
 			"the store never adopts what it cannot prove it made; move it aside")
 	} else if !errors.Is(err, fs.ErrNotExist) {
@@ -270,16 +331,69 @@ func Add(repoRoot string, opts AddOptions) (Added, error) {
 	default:
 		args = []string{"worktree", "add", "-b", branch, "--", path, opts.Base}
 	}
-	if _, err := opts.Git(repoRoot, args...); err != nil {
-		r := refuse("git could not add the worktree: "+err.Error(), "settle what git reports")
-		r.Err = err
-		return Added{}, r
+	if err := lane.Ensure(); err != nil {
+		return Added{}, err
 	}
+	if _, err := opts.Git(repoRoot, args...); err != nil {
+		// git runs the repository's post-checkout hook after it has made and
+		// registered the worktree and its branch, then exits with the hook's
+		// status, so a failure may leave a worktree standing. One git lists
+		// at the path on the branch is finished like any other, and the
+		// refusal says it stands: claiming nothing was added would leave it
+		// unfinished, and a rerun refused over it.
+		if made, aerr := Adopt(repoRoot, lane, opts.Name, branch); aerr != nil || !made {
+			r := refuse("git could not add the worktree: "+err.Error(), "settle what git reports")
+			r.Err = err
+			return Added{}, r
+		}
+		added, ferr := finish(repoRoot, lane, opts.Name, path, branch)
+		if ferr != nil {
+			return added, ferr
+		}
+		r := refuse(fmt.Sprintf("git made the worktree at %s, which stands, but the repository's checkout hook failed: %v", path, err),
+			"settle the hook, then work in the worktree, or remove it (`git worktree remove`)")
+		r.Err = err
+		return added, r
+	}
+	return finish(repoRoot, lane, opts.Name, path, branch)
+}
+
+// finish completes a worktree git has made at path on branch: narrowed to the
+// caller, its branch's start recorded, its local tier laid. A failure is a
+// refusal returned with the Added, since the worktree stands.
+func finish(repoRoot string, lane Lane, name, path, branch string) (Added, error) {
 	// git makes the worktree at the process umask, 0755 under the usual 022;
 	// a worktree in the store is the caller's alone, like the levels above it.
 	// A filesystem that cannot change modes (exFAT, a network share) keeps it
 	// as git made it: the home above it is narrowed at every command, so other
 	// accounts cannot reach it.
 	_, _ = fsutil.NarrowToOwner(path)
-	return Added{Lane: lane, Path: path, Branch: branch}, nil
+	added := Added{Lane: lane, Path: path, Branch: branch}
+	if err := recordStart(repoRoot, lane, name, "refs/heads/"+branch); err != nil {
+		return added, refuse(fmt.Sprintf("git made the worktree at %s, but where its branch starts could not be recorded: %v", path, err),
+			"settle what stops the write, then remove the worktree (`git worktree remove`) and add it again")
+	}
+	// One level at a time, each proved a real directory, so a link or a file
+	// the branch carries at .abcd or the tier is refused rather than followed.
+	if err := fsutil.EnsureRealDirAll(path, tierRel, dirPerm); err != nil {
+		return added, refuse(fmt.Sprintf("git made the worktree at %s, but its local tier %s cannot be laid: %v", path, tierRel, err),
+			"move aside what the branch carries there (a symlink or a file); nothing was made through it")
+	}
+	return added, nil
+}
+
+// listed reports whether git lists a worktree of the repository at path,
+// read through the isolated listing.
+func listed(repoRoot, path string) bool {
+	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
+	if err != nil {
+		return false
+	}
+	want := fsutil.RealExistingPath(path)
+	for _, wt := range wts {
+		if fsutil.RealExistingPath(wt.Path) == want {
+			return true
+		}
+	}
+	return false
 }
