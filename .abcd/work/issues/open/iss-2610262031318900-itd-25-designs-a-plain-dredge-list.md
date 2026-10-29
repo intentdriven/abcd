@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 140 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-25-dredge-cross-corpus-synthesist.md:37"
-remedy: "none (filed automatically)"
+remedy: "Drop the `dredge list` sub-verb from itd-25: bare `/abcd:dredge` already renders the earlier synthesis reports (its own first acceptance criterion), and 04-tradeoffs.md forbids a plain `<verb> list`."
 related_intents: [itd-25]
 finding_ref: cfk-3a62e80805758987
 ---

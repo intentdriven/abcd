@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 11 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/02-context.md:47"
-remedy: "none (filed automatically)"
+remedy: "At 02-context.md:47 say that .abcd/corpus.json is a reserved name not yet in the tree and that the three repositories are the intended seed, as 04-naming.md and 02-disembark.md already say; carry the same note into the 'Validation corpus' section of 02-constraints/01-platform.md."
 finding_ref: cfk-a3a3697cecc0f7aa
 ---
 

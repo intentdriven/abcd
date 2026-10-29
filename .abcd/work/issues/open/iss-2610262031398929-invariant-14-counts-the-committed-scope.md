@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 159 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/construal.md:25"
-remedy: "none (filed automatically)"
+remedy: "In invariant 14 say 'the framing as it presently stands' (the construal statement, the committed glossary terms, the committed scope) instead of 'the construal as it presently stands', and carry the same wording into the matching sentence of glossary/core/construal.md."
 finding_ref: cfk-f78a16f9e8ee5739
 ---
 

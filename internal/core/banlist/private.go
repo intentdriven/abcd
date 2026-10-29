@@ -10,6 +10,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // privateFormatDecl is the store's self-description, and it must be the file's
@@ -277,6 +278,19 @@ func readPrivate(repoRoot string) ([]byte, error) {
 	}
 	defer root.Close()
 	data, err := fsutil.ReadGuardedInRoot(root, PrivateRelPath, maxStoreBytes)
+	if err == nil {
+		// A store git tracks came with a commit, not from this checkout's
+		// person: it is not their layer, whatever it holds. One git cannot
+		// answer for is read, and the report says its proof is missing
+		// (IgnoreUnanswerable), rather than refused as malformed, which would
+		// take every name as matched. What that accepts is a store a commit
+		// replaced being read while git cannot answer, which nothing in a
+		// commit can bring about.
+		var tracked *localtier.Refused
+		if errors.As(localtier.Untracked(repoRoot, PrivateRelPath), &tracked) && tracked.Cause == nil {
+			return nil, fmt.Errorf("%w: %s; %s", ErrMalformedStore, tracked.Reason(), tracked.Remedy())
+		}
+	}
 	switch {
 	case err == nil:
 		return data, nil

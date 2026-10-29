@@ -758,6 +758,49 @@ func TestSweepReadsAProbeRecordButNotItsCaptureFiles(t *testing.T) {
 	}
 }
 
+// A procedure's records are what a run was given and measured, so the sweep
+// passes over them; a file under state/matrix/ no procedure writes, or a link
+// there, is still read or listed as not swept (dcn-2610280629295069).
+func TestSweepPassesOverAProceduresRecords(t *testing.T) {
+	m, home, root := passedLab(t)
+	dir := labDir(home, m)
+	p, err := OpenProcedure(root, m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.WriteState("mx-261023012949-ab12/declaration.json", []byte(`{"task":"the guard returned 500"}`+"\n")); err != nil {
+		t.Fatal(err)
+	}
+	p.Close()
+	write(t, filepath.Join(dir, "corrections.md"), "- retract: `the guard returned 500`\n")
+	if res, err := Sweep(root, m.ID); err != nil || !res.Passed {
+		t.Fatalf("Sweep = %+v, %v; want a pass over the procedure's record", res, err)
+	}
+
+	stray := filepath.Join(dir, "state", "matrix", "mx-261023012949-ab12", "notes .md")
+	write(t, stray, "the guard returned 500\n")
+	res, err := Sweep(root, m.ID)
+	if !errors.Is(err, ErrHalted) || len(res.Corrections) != 1 {
+		t.Fatalf("Sweep = %+v, %v; want a halt on a file no procedure writes", res, err)
+	}
+	if is := res.Corrections[0].Instances; len(is) != 1 || is[0].File != "state/matrix/mx-261023012949-ab12/notes .md" {
+		t.Errorf("instances = %+v, want the stray file alone", is)
+	}
+	if err := os.Remove(stray); err != nil {
+		t.Fatal(err)
+	}
+
+	elsewhere := filepath.Join(t.TempDir(), "elsewhere.json")
+	write(t, elsewhere, "the guard returned 500\n")
+	if err := os.Symlink(elsewhere, filepath.Join(dir, "state", "matrix", "mx-261023012949-ab12", "linked.json")); err != nil {
+		t.Fatal(err)
+	}
+	res, err = Sweep(root, m.ID)
+	if !errors.Is(err, ErrHalted) || len(res.NotSwept) != 1 || !strings.HasPrefix(res.NotSwept[0], "state/matrix/mx-261023012949-ab12/linked.json (") {
+		t.Errorf("Sweep = %+v, %v; want a link under state/matrix/ listed as not swept", res, err)
+	}
+}
+
 // A document the sweep cannot read fails it while a correction stands to be
 // checked, listed by path: over the read cap, a NUL in its head, or a link.
 // With nothing retracted there is nothing to miss, and the same tree passes.

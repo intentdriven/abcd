@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 42 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:43"
-remedy: "none (filed automatically)"
+remedy: "In 04-naming.md drop the 'staged (itd-27)' claim for `/abcd:intent grill` (line 43 and the staged sub-verb list near line 117); itd-27 is in intents/superseded/ (superseded_by itd-94) and the grilling is the shipped `abcd intent interview`."
 finding_ref: cfk-7c3bb8c4b5c2c617
 ---
 

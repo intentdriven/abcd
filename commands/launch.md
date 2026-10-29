@@ -83,9 +83,11 @@ The rest of this page describes the verbs. This section describes the **day** �
 what you click, what runs on its own, and where it stops and waits for you. Read
 it if you are cutting a release and are not the person who built the machinery.
 
-Nothing here publishes by accident. The release stops for a human twice:
-for the technical facilitator at the merge, and for the product thinker at a
-deployment gate that no merge can bypass, because publishing cannot be undone.
+Nothing here publishes by accident. The release is decided at the merge, which
+stops for the technical facilitator and passes the required checks and the merge
+queue. Publishing cannot be undone, so a repository can add a second stop after
+the merge: A required reviewer on the deployment environment its release job
+runs in. Without one, the run publishes as soon as it reaches that step.
 
 ### The shape of it
 
@@ -95,12 +97,13 @@ deployment gate that no merge can bypass, because publishing cannot be undone.
 | 2 | Prove the release gate locally | you, one command |
 | 3 | Open the release PR, wait for green, merge | you, in GitHub |
 | 4 | Tag the release | automatic |
-| 5 | Build, checksum, attest, create the Release as a draft | **stops and waits for your approval** |
+| 5 | Build, checksum, attest, create the Release as a draft | automatic, or **stops and waits for your approval** when the `release` environment carries a reviewer |
 | 6 | Attach the website, publish the Release, deploy the website | automatic, after step 5 |
 | 7 | Update your plugin and check what you got | you, locally |
 
 Steps 4-6 are one GitHub Actions run. You do not visit Cloudflare: the site
-deploy is invoked by the release workflow, so approving step 5 releases step 6
+deploy is invoked by the release workflow, so step 6 follows step 5 in the
+same run, and an approval of step 5, where one is required, releases step 6
 with it. The Release stays an unpublished draft until step 6 has attached the
 website's archive to it, so it becomes public with every asset already
 attached; there is nothing extra to click.
@@ -164,10 +167,28 @@ for pull requests with auto-merge on and for merge-queue entries (the command
 and the queue page in "Before step 1") right before you merge the release PR.
 Tell anyone else working in the repository by hand to hold too.
 
-### Step 5 — the approval gate, in detail
+### Step 5 — the approval gate, when there is one
 
-A minute or two after the merge, the release pauses. **It will not continue
-until you approve it**, and nothing tells you unless you look.
+Step 5 builds four platform binaries stamped with the tag, renders the plugin
+archive (`abcd-plugin-vX.Y.Z.zip`) and proves it is the one the catalog pins,
+checksums exactly those bytes, signs a provenance attestation, creates the
+GitHub Release as a draft with the binaries and the archive attached, and
+verifies the draft's downloads against that attestation. Step 6 then attaches
+the website's archive, checks every asset of the draft again, publishes the
+Release and deploys the website from the tag. It is the step that puts bytes in
+front of the public, so a repository can gate it: A required reviewer on the
+deployment environment the release job runs in (`release`, in abcd's own
+workflow) pauses the run here. The reviewer requirement lives in
+the repository's environment settings rather than in a workflow file, and the
+scaffold-parity test fails any edit that drops the `environment:` binding from
+abcd's own job. A managed repository's release workflow binds no environment
+until it adds one, so a reviewer alone pauses nothing there.
+
+**With no reviewer**, the run goes straight on from `verify` to publishing.
+There is nothing to approve, and the next thing to do is step 7.
+
+**With a reviewer**, the release pauses a minute or two after the merge. **It
+will not continue until you approve it**, and nothing tells you unless you look.
 
 Where to look, easiest first:
 
@@ -180,30 +201,22 @@ Where to look, easiest first:
 
 On the run page a banner appears at the top: **"Review pending deployments"**.
 Click it, tick the **release** environment, optionally leave a comment, and click
-**Approve and deploy**.
-
-What you are approving: building four platform binaries stamped with the tag,
-rendering the plugin archive (`abcd-plugin-vX.Y.Z.zip`) and proving it is the one
-the catalog pins, checksumming exactly those bytes, signing a provenance
-attestation, creating the GitHub Release as a draft with the binaries and the
-archive attached, verifying the draft's downloads against that attestation,
-then attaching the website's archive, checking every asset of the draft again,
-publishing the Release and deploying the website from the tag. That is why it is gated — it is the step that puts bytes in front of the
-public. The reviewer requirement itself lives in the repository's environment
-settings rather than in a workflow file, and the scaffold-parity test fails any
-edit that drops the `environment:` binding from the job.
+**Approve and deploy**. What you are approving is everything step 5 and step 6
+do, described above.
 
 **If the banner does not appear**, the run has not reached that job yet. The
 checks before it (`verify`) take a few minutes: they build, test and lint the
 tagged commit. Wait for `verify` to go green.
 
-**Approve promptly.** From the moment the release PR merges, the catalog on `main`
-names this release's archive, and the archive is downloadable only once the
-Release is published, a few minutes after you approve. A plugin install or update in between fails closed — the download is not
-there yet, so the harness refuses and an installed plugin stays on its previous
-release — and nothing else can be installed in its place, because the pinned
-digest refuses any other bytes. The window cannot be closed (the pin has to be in
-the tagged tree, so it lands before the tag), so it is kept short.
+**The install window.** From the moment the release PR merges, the catalog on
+`main` names this release's archive, and the archive is downloadable only once
+the Release is published: with no reviewer, at the end of the run; with one, a
+few minutes after you approve, so approve promptly. A plugin install or update
+in between fails closed — the download is not there yet, so the harness refuses
+and an installed plugin stays on its previous release — and nothing else can be
+installed in its place, because the pinned digest refuses any other bytes. The
+window cannot be closed (the pin has to be in the tagged tree, so it lands
+before the tag), so it is kept short.
 
 ### Step 7 — afterwards, check what you actually got
 
@@ -225,8 +238,9 @@ binary is already in place, so it needs the plugin update to fetch a new one.
 
 Six failures are worth recognising, because each looks like something else.
 
-- **The run says `Waiting` for a long time and nothing happens.** That is the
-  approval gate, not a hang. Approve it.
+- **The run says `Waiting` for a long time and nothing happens.** With a
+  reviewer on the `release` environment, that is the approval gate, not a
+  hang. Approve it.
 - **`site / render` or `site / publish` failed.** The Release is still an
   unpublished draft, so nothing new is public and installs stay on the
   previous release. Re-run the failed jobs of the same run (**Re-run failed
@@ -271,7 +285,8 @@ Six failures are worth recognising, because each looks like something else.
   rendered digest the refusal names (or revert the payload change), or correct
   `repository`. Its merge re-runs `auto-release`, which tags once the proof
   passes. Until then the catalog on `main` names an archive that does not
-  exist, so installs and updates fail closed, as in the approval window. A
+  exist, so installs and updates fail closed, as in the window before the
+  Release is published. A
   hand-pushed tag exists before `verify` runs, so there the version is
   consumed. Catch it before the merge instead: in a source checkout of the
   release branch,
@@ -280,7 +295,8 @@ Six failures are worth recognising, because each looks like something else.
   will pass. Without `--repository` a pin whose address names another
   repository passes locally and is refused in `verify`.
 - **A new release never starts, and an older run sits `Waiting` forever.**
-  Release runs are serialised, so one parked run blocks every later one. Cancel
+  Release runs are serialised, so one run parked at an approval that never
+  came blocks every later one. Cancel
   the stale run from its page (**Cancel workflow**), and the queued one starts.
   Cancel it *after* your release PR has merged, never before.
 
@@ -1260,6 +1276,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

@@ -6,11 +6,14 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/board"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/report"
 	"github.com/intentdriven/abcd/internal/core/reviews"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/core/statusline"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -38,6 +41,11 @@ type boardOutput struct {
 	// Peers is present only when a live peer holds a record that differs here
 	// (itd-2609091416295622); omitted, not null, otherwise.
 	Peers *boardPeersLine `json:"peers,omitempty"`
+	// Worktrees counts the worktrees this repository's lane in the worktree
+	// store holds and the ones it could reclaim (spc-2609301811532881),
+	// from the peers scan above; omitted while the lane holds none. It is
+	// the board's alone: the status block the site renders does not carry it.
+	Worktrees *boardWorktreesLine `json:"worktrees,omitempty"`
 	// Oracle is the model-tier routing, one row per agent, present only once a
 	// routing table is accepted (itd-2609170822093401); omitted otherwise.
 	Oracle []oracle.BoardRow `json:"oracle,omitempty"`
@@ -46,6 +54,10 @@ type boardOutput struct {
 	// is flagged (itd-28); omitted when the tree holds none. The text render
 	// lists the dated reviews and folds the release receipts into one line.
 	Reviews *reviews.Board `json:"reviews,omitempty"`
+	// Facilitator is facilitator.mode as the layered configuration resolves it, with the
+	// layer and origin that set it, or the read's refusal as Error
+	// (spc-2610161609350616 step 2); present in a managed checkout only.
+	Facilitator *boardFacilitator `json:"facilitator,omitempty"`
 	// Status is the Now / Next / Later block (itd-2609212103568351), present
 	// in a checkout abcd manages and omitted elsewhere.
 	Status *statusblock.Block `json:"status,omitempty"`
@@ -58,6 +70,44 @@ type boardStatusline struct {
 	State    statusline.State     `json:"state"`
 	Plain    string               `json:"plain"`
 	Elements []statusline.Element `json:"elements"`
+}
+
+// boardFacilitator is the board's facilitator.mode in --json: the resolved
+// reading, or the refusal alone (key and error, no mode, layer or origin), so
+// a consumer testing for a mode finds none on a refused read.
+type boardFacilitator struct {
+	Key         string `json:"key"`
+	Mode        string `json:"mode,omitempty"`
+	Layer       string `json:"layer,omitempty"`
+	Origin      string `json:"origin,omitempty"`
+	HomeRefused bool   `json:"home_refused,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
+// readBoardFacilitator reads facilitator.mode for a managed checkout, nil
+// elsewhere. The reader's notes are not printed here: they are the notes
+// layered.RootsFor writes for cwd, which the oracle member (boardOracle)
+// already prints on every board run. A refusal is masked with the home
+// redacted, since it can carry an absolute path and a key a configuration
+// file wrote.
+func readBoardFacilitator(cwd string) *boardFacilitator {
+	root, err := gitutil.CheckoutRoot(cwd, statuslineStore)
+	if err != nil || !ahoy.Managed(root) {
+		return nil
+	}
+	f, _, err := landing.ReadFacilitator(cwd)
+	if err != nil {
+		return &boardFacilitator{Key: landing.KeyFacilitatorMode, Error: termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+	}
+	return &boardFacilitator{Key: f.Key, Mode: f.Mode, Layer: f.Layer, Origin: f.Origin, HomeRefused: f.HomeRefused}
+}
+
+// merges is the reading as the board draws it; nil draws no line.
+func (b *boardFacilitator) merges() *board.Merges {
+	if b == nil {
+		return nil
+	}
+	return &board.Merges{Mode: b.Mode, Layer: b.Layer, Origin: b.Origin, Refused: b.Error, HomeRefused: b.HomeRefused}
 }
 
 // boardPresence composes the presence line for the checkout containing cwd,

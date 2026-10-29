@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 26 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/02-dependencies.md:34"
-remedy: "none (filed automatically)"
+remedy: "In the Oracle / review bullet of 02-dependencies.md, name only what ships (host-delegated default; the API-provider adapter and RepoPrompt over MCP, reached through oracle routing and configured connections, not through the `oracle.backend` value), mark `native`, `cli` and codex as design targets, and drop 'RepoPrompt and codex are two such adapters'."
 finding_ref: cfk-a63dad9c3cb77366
 ---
 

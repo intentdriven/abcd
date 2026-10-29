@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1069 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/cold-reading.md:25"
-remedy: "none (filed automatically)"
+remedy: "In itd-90 line 40 say the cold reading reads a document instead of reviews it, matching the glossary's ban on review for a cold reading."
 related_intents: [itd-90]
 finding_ref: cfk-fe7a580813a9259b
 ---

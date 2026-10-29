@@ -191,14 +191,14 @@ func loadCiteConfig(verb, rootDir, configPath string) (string, lint.Config, erro
 	if err != nil {
 		ref := filepath.Join(".abcd", "docs-lint.json")
 		if configPath != "" {
-			ref = configPath
+			ref = "the --config path (not repeated here)"
 		}
 		if os.IsNotExist(err) {
 			return "", lint.Config{}, &exitError{Code: 2, Msg: fmt.Sprintf(
 				"%s: config not found at %s — run in a prepared repo or pass --config", verb, ref)}
 		}
 		return "", lint.Config{}, &exitError{Code: 2, Msg: fmt.Sprintf(
-			"%s: cannot read config %s: %s", verb, ref, scrubPaths(err))}
+			"%s: cannot read config at %s: %s", verb, ref, pathErrorCause(err))}
 	}
 	return root, cfg, nil
 }

@@ -21,3 +21,18 @@ The implement loop's landing never writes a spec step's '- landed:' line, so a s
 ## Grounds
 
 - pursued: a spec the loop lands part of reads its landed steps as landed, so a later build opens its first lane on the first unlanded step; shown wrong if a build of a part-landed spec opens a lane for a step already on the default branch
+
+## Further cases, 2026-10-23
+
+While declaring needs lines on the open specs (2026-10-23), these open specs were found with steps whose code is on the default branch but whose `landed:` line is absent, so a fresh build of the spec would open a lane for each again:
+
+- spc-2609212015054359 (drain ledger triage), steps 1 to 3: 80fa3da48, 378348a14, 91765d9c5, which the spec's own Progress names.
+- spc-2610021456200324 (the consistency pass), steps 1 to 3: 5887d3fdb, ec7156cfc, ec768a4d1.
+- spc-2610031844142274 (the board at the terminal's width), steps 1 to 4: 92722ff92, ca821c7fa, 317f6bf70, 7995f892b.
+- spc-2610150728396006 (sessions announce), steps 1 to 4, through pull request 1065.
+- spc-2610040741034208 (the dashboard), step 1: 77ca9b27a.
+- spc-2610111627213138 (memory recall), steps 1 and 2: c8d1ab0df, 59b69f398.
+
+The remedy stands for lanes still to land. These existing cases also need a one-off backfill of their `landed:` lines, each checked against its commit, before any of these specs is built again.
+
+Backfilled the same day for the four specs no lane owns, each line checked against its commit on the default branch (the subject, and the body naming the step where it does): drain ledger triage steps 1 to 3, the consistency pass steps 1 to 3, the board steps 1 to 4 (step 5's page landed only in part, so it stays unlanded), and the dashboard step 1 (the tailnet reader and the verb). Sessions announce is left for its owner, and memory recall waits for the open pull request that edits its spec. The remedy, landing that writes the line itself, is still owed.

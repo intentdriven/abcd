@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 625 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-2609292107351737-every-development-session-records-what.md:21"
-remedy: "none (filed automatically)"
+remedy: "Edit the draft: name `history reconstruct`'s telemetry (11-history; itd-2609091718595846), adopt its once-per-response-id counting rule, and say what the draft adds beyond it (per-spec and per-repository roll-up, size-class comparison, price table, unmeasured versus zero)."
 related_intents: [itd-2609292107351737]
 finding_ref: cfk-9b0b7a135dcf3abc
 ---

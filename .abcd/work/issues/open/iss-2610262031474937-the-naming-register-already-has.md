@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 178 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:57"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does decision 21's planned rename of the bare status board to 'the dashboard' stand now that `dashboard` is a registered verb for the web listener? Answers: (a) drop the rename, the board stays the board and the block keeps the name status; (b) keep it and rename the web verb. Recommend (a): `dashboard` already names a shipped verb and its chapter, and the later status ruling calls the block status."
 related_intents: [itd-2609151838312703]
 finding_ref: cfk-de7a6bbb0df5c0c5
 ---

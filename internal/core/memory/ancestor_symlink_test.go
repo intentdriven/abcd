@@ -77,4 +77,17 @@ func TestMemoryStoreDirSymlinkRefused(t *testing.T) {
 	if _, err := Bare(repoRoot); err == nil {
 		t.Error("Bare followed a symlinked .abcd/memory store; the directory symlink must be refused")
 	}
+
+	// (d) The prompt router's recall read (spc-2610111627213138 step 3) must
+	// refuse it too, and disclose nothing of the target.
+	pages, refused := ReadRecallPages(repoRoot)
+	for _, p := range pages {
+		if strings.Contains(p.Body, secret) {
+			t.Fatalf("ReadRecallPages disclosed an out-of-repo page through the store symlink: %q", p.Filename)
+		}
+	}
+	var unsafe *UnsafeStorePathError
+	if len(refused) != 1 || !errors.As(refused[0].Err, &unsafe) {
+		t.Errorf("ReadRecallPages followed a symlinked .abcd/memory store (refused %+v); the directory symlink must be refused", refused)
+	}
 }

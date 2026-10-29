@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 282 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:427"
-remedy: "none (filed automatically)"
+remedy: "In 27-implement.md (the record verb paragraph near line 420) say 'the transcript store' instead of 'the history store' for where a run's transcripts are captured; part of the same swap as the build chapter."
 finding_ref: cfk-02ad13ba10da62fe
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 36 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:65"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (bundle-member bullet): intent plan with several ids and --bundle mints one spec whose frontmatter carries `intent:` (the first member), `intents:` (every member) and `bundle:`."
 finding_ref: cfk-acae076f8784401c
 ---
 

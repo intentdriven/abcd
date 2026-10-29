@@ -30,6 +30,10 @@ func TestMain(m *testing.M) {
 	// build metadata; the copy's claimed release is stood in, and the reader's
 	// own tests call it directly (cold_cache_adopt_provenance_test.go).
 	copyRelease = func([]byte) (string, error) { return stubCopyRelease, nil }
+	// For the same reason, every fixture is taken as the build of the release
+	// it is promoted as; the binding's own tests put the real check back
+	// (release_claim_test.go).
+	checkReleaseClaim = func([]byte, string) error { return nil }
 	// No test plans against, or edits, the machine's own shell settings: the
 	// shell-settings offer sees no shell it edits unless a test names one
 	// (shell_path_test.go).

@@ -84,24 +84,30 @@ ADR is minted in the first delivery and reviewed with the diff.
 1. The judgement before a lane opens (scope 3)
    - packages: internal/core/implement, internal/core/capture
    - tests: an eligible issue whose remedy changes a user-visible surface or a trust boundary is handed back before any lane opens; one that changes neither opens a lane
+   - needs: none
    - landed: 80fa3da48
 2. The summary's remaining counts (scope 8)
    - packages: internal/core/implement, internal/surface/cli
    - tests: the summary carries every count scope 8 names, in text and --json
+   - needs: 1
    - landed: 378348a14
 3. Merged lanes are finished (iss-2610090936460789)
    - packages: internal/core/implement
    - tests: a lane parked at land whose pushed head is on the default branch is removed and marked done on the next drain move, outside the pacing window
+   - needs: none
    - landed: 91765d9c5
 4. One issue or package held back for now (iss-2610090642385898)
    - packages: internal/core/implement, internal/surface/cli
    - tests: an issue on the skip list is passed over with its reason in the plan's passed entries, and the list clears when the drain ends
+   - needs: none
 5. A pull request that leaves the merge queue is put back (iss-2610090642376032)
    - packages: internal/core/implement/loop
    - tests: a landed pull request left unqueued at CLEAN is enqueued, and one dropped after a failed merge-group check is reported with the failed check
+   - needs: none
 6. The decision-record marker on the issue (decision 10)
    - packages: internal/core/issueschema, internal/core/capture, internal/core/implement
    - tests: a trust-rule hand-back writes a `decision_needed:` field holding its question onto the open issue and changes nothing else in the record; the dry run and the next drain pass a marked issue over with the marker as its reason; invariant 19 and the drain page name the marker
+   - needs: 1
 
 ## How the criteria are satisfied
 

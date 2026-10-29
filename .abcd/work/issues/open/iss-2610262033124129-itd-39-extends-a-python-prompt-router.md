@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 373 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:663"
-remedy: "none (filed automatically)"
+remedy: "In itd-39 (the 'Hook extension' scope bullet) replace the hooks/prompt_router_hook.py reference with the prompt router sub-command of the abcd binary, reached through the hook manifest, as 05-internals/07-memory.md section 9 already says."
 related_intents: [itd-39]
 finding_ref: cfk-f82d3aec4e4eb134
 ---

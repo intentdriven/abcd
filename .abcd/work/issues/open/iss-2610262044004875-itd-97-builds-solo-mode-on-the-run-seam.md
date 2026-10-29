@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1177 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-97-the-facilitator-is-a-mode-not-a-person.md:60"
-remedy: "none (filed automatically)"
+remedy: "In itd-97 replace the run seam (itd-29) with the build loop (abcd implement, itd-2609201916151817, whose decision 7 supersedes itd-29) in the scope bullet, the open question on itd-29's operator verbs and the References list."
 related_intents: [itd-97, itd-2609201916151817]
 finding_ref: cfk-6aa4090c941c9153
 ---

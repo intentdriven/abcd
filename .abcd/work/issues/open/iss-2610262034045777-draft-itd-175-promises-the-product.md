@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 468 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-175-the-product-thinker-writes-down-how-this.md:12"
-remedy: "none (filed automatically)"
+remedy: "Supersede itd-175: the Mechanism section's falsifier and the readiness gate's recorded grounds (what is expected and what would show it wrong, appended to the intent's Grounds section) deliver it, and the 'None stated.' token records an acceptance with no list written, which is the draft's decided open question."
 related_intents: [itd-175]
 finding_ref: cfk-5064ad9e362bb5de
 ---

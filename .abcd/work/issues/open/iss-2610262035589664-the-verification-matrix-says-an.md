@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 613 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/02-verification-matrix.md:35"
-remedy: "none (filed automatically)"
+remedy: "Scope the Oracle adapter degrade row to the steps that hand a written request to the host (intent audit and its kin), and add that the reading ingest's dispatch form exits 2 with nothing ingested when its provider cannot be reached."
 finding_ref: cfk-4995de26632bb120
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 703 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/plan.md:51"
-remedy: "none (filed automatically)"
+remedy: "Add a qualified row to the plan.md senses table for 'the drain plan': the classification and order a drain move derives from its snapshot of the ledger (DrainPlan in code, 'Show the plan first' in commands/drain.md), and say bare 'the plan' in 35-drain.md refers to it."
 finding_ref: cfk-93b36b318e9a3fe9
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 278 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/10-docs.md:140"
-remedy: "none (filed automatically)"
+remedy: "In 10-docs.md:140 say the launch gate refuses the ambiguous pairs the lint only warns about, and in 04-launch.md:304 name the docs lint's advisory tier as the deliberately weaker CI check, so neither chapter reads as the sole authority on change narration."
 finding_ref: cfk-8dbe1c46c7bdf182
 ---
 

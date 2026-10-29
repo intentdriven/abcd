@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 330 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/04-launch.md:491"
-remedy: "none (filed automatically)"
+remedy: "Drop 'roadmap' from the sentence at 04-launch.md line 491 (the rendered Now / Next / Later block replaced the roadmap document); same sentence block as the other launch edits."
 finding_ref: cfk-047107112b5050d3
 refines: [iss-2609251618079479]
 ---

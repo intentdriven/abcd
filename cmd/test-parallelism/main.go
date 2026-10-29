@@ -1,13 +1,13 @@
 // Command test-parallelism prints the -p `make preflight` gives its test and
 // race stages, so one run cannot saturate a machine other sessions share
 // (iss-2610102020442624): twice the online cores less the one-minute load,
-// never more than the cores divided among the preflights that may be in their
-// test stages at once (load.preflights in ~/.abcd.noindex/config.json, or
-// ABCD_LOAD_PREFLIGHTS; one by default) and never fewer than a quarter of them
-// (implement.PreflightParallelism, machineload.GoTestParallelism). Each stage
-// runs it as it starts, so the number reflects the load at that moment. On a
-// CI runner, or where the machine cannot be read, it prints go's own default,
-// GOMAXPROCS.
+// never more than the cores divided among the preflights the first gate
+// admits to their test stages at once (load.preflights in
+// ~/.abcd.noindex/config.json, or ABCD_LOAD_PREFLIGHTS; one by default) and
+// never fewer than a quarter of them (implement.PreflightParallelism,
+// machineload.GoTestParallelism). Each stage runs it as it starts, so the
+// number reflects the load at that moment. On a CI runner, or where the
+// machine cannot be read, it prints go's own default, GOMAXPROCS.
 //
 // Usage: go test -p "$(go run ./cmd/test-parallelism)" ./...
 //

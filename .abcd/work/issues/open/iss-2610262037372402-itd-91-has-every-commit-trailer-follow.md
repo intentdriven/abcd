@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 737 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-91-ai-attribution-preference.md:17"
-remedy: "none (filed automatically)"
+remedy: "In itd-91 limit 'every commit trailer ... uses exactly that convention' to commits and bodies a person or their agent composes, and carve out abcd-composed machine commits (announcements, reservations), which always carry the `Assisted-by: abcd:<version>` label (adr-43; validator in 38-announce.md)."
 related_intents: [itd-91]
 finding_ref: cfk-8d755d4ed7c45e1e
 ---

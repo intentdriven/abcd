@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/runner/claude.go"
 remedy: "Waits on a ruling of the technical facilitator reversing RN2 (dcn-2610020000000016) for a route with no API key, asked only after a live probe shows the isolation flag set seals CLAUDE.md, skills, agents, plugins, hooks and MCP as --bare does (read from the run's system/init event). Then: when the route carries no API key (the variable's presence, never its value, or a machine setting naming the credential), start the person's own claude -p without --bare under that flag set and refuse the run when system/init shows anything loaded outside it; never read, mint (setup-token) or store a token; keep --bare for a route with a key; and say on stderr which credential kind the run used."
+deferred_after: v0.15.1
+deferral_reason: "Waits on the technical facilitator's ruling on reversing RN2 (dcn-2610020000000016) after a live isolation probe; subscription owners keep running roles in their own session, as v0.15.1 documents (ruled 27 October 2026)."
 ---
 
 The claude runner cannot run on a Claude subscription, so a person without an API key has no route to any role abcd runs from a plain terminal: the planning interview, a build's implementer and validators, the drain's judge.
@@ -36,3 +38,7 @@ Claude Code 2.1.310 on macOS, a subscription login with `ANTHROPIC_API_KEY` and 
 | the row above with `--settings '{"autoMemoryEnabled":false}'` | ran | none loaded | not loaded | (empty config) | — | off |
 
 What it shows: a subscription login runs `claude -p` without `--bare`; `--safe-mode` seals the project but also drops abcd's own approver and hook, so it cannot replace `--bare` for a shell role; the second set, with auto-memory turned off in the inline settings, sealed every decoy the probe planted while keeping the approver and abcd's hook. What it does not show: the user layer's own `CLAUDE.md` and skills (the probe planted none there), output styles, and behaviour on another Claude Code version; the runner should still refuse a run whose `system/init` lists anything outside the expected set.
+
+## Deferral 2026-10-27
+
+Deferred past v0.15.1: Waits on the technical facilitator's ruling on reversing RN2 (dcn-2610020000000016) after a live isolation probe; subscription owners keep running roles in their own session, as v0.15.1 documents (ruled 27 October 2026).

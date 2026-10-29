@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 45 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:5"
-remedy: "none (filed automatically)"
+remedy: "Reword 'curates a queryable knowledge substrate from those same sources' (line 5) to say the library keeps two separate stores, the sources corpus and the memory store, and that nothing distils a corpus document into the memory store."
 finding_ref: cfk-eb87c6b5c4810775
 ---
 

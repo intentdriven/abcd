@@ -146,6 +146,9 @@ type Request struct {
 	// The adapter asks for usage in the stream by default (itd-166 decision
 	// 4); a provider connection whose server refuses the field turns it off.
 	NoStreamUsage bool
+	// Provider is OpenRouter's provider routing object, sent as the
+	// request's provider member when set (routing.go); nil sends none.
+	Provider *ProviderRouting
 }
 
 // StreamUsageField is the request field the adapter adds to ask for usage in
@@ -233,8 +236,8 @@ func PromptSHA256(b Brief) string {
 }
 
 // IsLocal reports whether baseURL reaches a server on this machine (localhost
-// or a loopback address): a local route, whose weights and runtime the
-// configuration does not pin yet.
+// or a loopback address): a local route, whose weights and runtime only a
+// local pin names (local.go).
 func IsLocal(baseURL string) bool {
 	u, err := url.Parse(baseURL)
 	return err == nil && u.Host != "" && loopback(u.Hostname())
@@ -262,7 +265,17 @@ type Client struct {
 	// tokenize is the exact count's address (size.go), empty when the base
 	// URL gives none.
 	tokenize string
-	hc       *http.Client
+	// generation is the generation record's address, genWait the bound on
+	// one readback end to end and genBackoff its first wait between asks
+	// (routing.go).
+	generation string
+	genWait    time.Duration
+	genBackoff time.Duration
+	// base is the admitted base URL, parsed, and probeWait the bound on one
+	// probe of a local server (local.go).
+	base      *url.URL
+	probeWait time.Duration
+	hc        *http.Client
 }
 
 // Option configures a Client.
@@ -302,16 +315,44 @@ func WithIdleTimeout(d time.Duration) Option {
 // ErrUnreachable is what a call's error wraps when the provider could not be
 // reached at all: no connection to it (or to the proxy in front of it) was
 // ever made, so nothing of the request, the key or the brief left this
-// machine. A caller may leave such a step to another leg. A provider that
+// machine. Every ErrUnreachable is also ErrNoAnswer. A provider that
 // answered, or that took the request and never answered, is not unreachable:
-// the brief may already have been sent.
+// the brief may already have been sent. Nor is one a check before the call
+// connected to (size.go): the key, and the brief a count carries, may have
+// left.
 var ErrUnreachable = errors.New("openaiapi: the provider could not be reached")
 
-// unreachableError is a scrubbed refusal that is ErrUnreachable.
-type unreachableError struct{ msg string }
+// ErrNoAnswer is what a call's error wraps when the chat call never connected
+// to the provider, so no answer was received, whatever a check before it
+// sent (iss-2610090701491123: no answer received, not nothing sent, is what
+// lets a caller leave the step to another leg). It is ErrUnreachable as well
+// only when nothing at all connected; ErrBriefCounted says the size count
+// had already carried the brief to the provider.
+var ErrNoAnswer = errors.New("openaiapi: the chat call never connected, so no answer was received")
 
-func (e *unreachableError) Error() string { return e.msg }
-func (e *unreachableError) Unwrap() error { return ErrUnreachable }
+// ErrBriefCounted is wrapped beside ErrNoAnswer when the size count (size.go)
+// had connected to the provider before the chat call failed to: the brief had
+// already reached it to be counted.
+var ErrBriefCounted = errors.New("openaiapi: the brief had already reached the provider for the size count")
+
+// noAnswerError is a scrubbed refusal for a chat call that never connected:
+// ErrNoAnswer, with ErrUnreachable or ErrBriefCounted beside it as before
+// says.
+type noAnswerError struct {
+	msg    string
+	before reach
+}
+
+func (e *noAnswerError) Error() string { return e.msg }
+func (e *noAnswerError) Unwrap() []error {
+	switch e.before {
+	case reachedNothing:
+		return []error{ErrNoAnswer, ErrUnreachable}
+	case reachedCount:
+		return []error{ErrNoAnswer, ErrBriefCounted}
+	}
+	return []error{ErrNoAnswer}
+}
 
 // errRedirect is what the client answers a redirect with.
 var errRedirect = errors.New("redirect refused")
@@ -337,18 +378,25 @@ func New(baseURL, key string, opts ...Option) (*Client, error) {
 	// on it, so only the path changes: the scheme, host and port the block
 	// names are the ones each request goes to.
 	c := &Client{
-		endpoint:  under(u, basePath(u)+"/chat/completions"),
-		models:    under(u, basePath(u)+"/models"),
-		tokenize:  tokenizeURL(u),
-		listWait:  ListTimeout,
-		key:       key,
-		forms:     keyForms(key),
-		host:      u.Host,
-		timeout:   DefaultTotalTimeout,
-		firstByte: DefaultFirstByteTimeout,
-		idle:      DefaultIdleTimeout,
-		events:    defaultEventTimeout,
-		errorWait: errorBodyWait,
+		endpoint: under(u, basePath(u)+"/chat/completions"),
+		models:   under(u, basePath(u)+"/models"),
+		tokenize: tokenizeURL(u),
+		listWait: ListTimeout,
+		// The generation record's address (routing.go), asked only by a
+		// caller that opted in.
+		generation: under(u, basePath(u)+"/generation"),
+		genWait:    GenerationTimeout,
+		genBackoff: generationBackoff,
+		base:       parsedBase(u),
+		probeWait:  LocalProbeTimeout,
+		key:        key,
+		forms:      keyForms(key),
+		host:       u.Host,
+		timeout:    DefaultTotalTimeout,
+		firstByte:  DefaultFirstByteTimeout,
+		idle:       DefaultIdleTimeout,
+		events:     defaultEventTimeout,
+		errorWait:  errorBodyWait,
 	}
 	for _, o := range opts {
 		o(c)
@@ -546,6 +594,9 @@ func (c *Client) render(req Request) ([]byte, error) {
 	}
 	if !req.NoStreamUsage {
 		fields["stream_options"] = map[string]bool{"include_usage": true}
+	}
+	if req.Provider != nil {
+		fields[ProviderRoutingField] = req.Provider
 	}
 	keys := make([]string, 0, len(req.Settings))
 	for k := range req.Settings {
@@ -1028,12 +1079,11 @@ func (c *Client) callError(l *limits, err error) error {
 	case errors.Is(l.parent.Err(), context.DeadlineExceeded) && !ours(context.Cause(l.ctx)):
 		// The caller's own deadline, not one of the call's limits.
 		return c.fail("the caller's deadline for the call to " + c.host + " passed, so the call is abandoned")
-	case neverConnected(err) && l.reached:
-		// A check before the call connected, so the key, and the brief a
-		// count carries, may have left this machine: not unreachable.
-		return c.reachFailure(err)
 	case neverConnected(err):
-		return &unreachableError{msg: c.reachFailure(err).Error()}
+		// No answer was received. A check before the call that connected
+		// means the key, and the brief a count carries, may have left this
+		// machine, so the error is then never ErrUnreachable.
+		return &noAnswerError{msg: c.reachFailure(err).Error(), before: l.reached}
 	}
 	switch context.Cause(l.ctx) {
 	case errFirstByte:

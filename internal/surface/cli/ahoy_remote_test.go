@@ -89,3 +89,51 @@ func TestAhoyRemoteApplyExitsNonZeroWhenItChangesNothing(t *testing.T) {
 		t.Errorf("the abort is not rendered:\n%s", out)
 	}
 }
+
+// TestAhoyRemoteApplyRefusalAfterAToggleDoesNotSayNothingChanged
+// (iss-2610072347230409): secret scanning lands, push protection is refused by
+// GitHub. The verb still refuses (exit 2), but its closing line must not claim
+// nothing was changed, and must name the toggle that did land.
+func TestAhoyRemoteApplyRefusalAfterAToggleDoesNotSayNothingChanged(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	hermeticEnv(t)
+	repo := gittest.NewRepo(t)
+	repo.Git("remote", "add", "origin", "https://github.com/example-org/example-repo.git")
+	t.Chdir(repo.Root())
+	if _, err := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",
+		"--visibility", "private", "--docs-target", "agents_md",
+		"--oracle-backend", "host-delegated", "--scan-deep", "false"); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	// A stand-in `gh`: the GET reports both toggles disabled, the secret-scanning
+	// PATCH succeeds, the push-protection PATCH fails as GitHub would.
+	dir := t.TempDir()
+	script := "#!/usr/bin/env bash\nstdin=$(cat)\n" +
+		`case "$*" in *PATCH*)` + "\n" +
+		`  case "$stdin" in *secret_scanning_push_protection*) echo "gh: HTTP 422" >&2; exit 1;; esac` + "\n" +
+		"  exit 0;;\nesac\n" +
+		`printf '%s' '{"security_and_analysis":{"secret_scanning":{"status":"disabled"},` +
+		`"secret_scanning_push_protection":{"status":"disabled"}}}'` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	out, err := runCLIErr(t, "ahoy", "remote", "apply", "--yes")
+	var ee *exitError
+	if !errors.As(err, &ee) || ee.Code != 2 {
+		t.Fatalf("a refusal after a toggle landed: %v, want exit 2\n%s", err, out)
+	}
+	if strings.Contains(ee.Msg, "nothing was changed") {
+		t.Errorf("the closing line says nothing was changed after secret scanning landed: %q", ee.Msg)
+	}
+	if !strings.Contains(ee.Msg, "secret_scanning: disabled -> enabled") {
+		t.Errorf("the closing line does not name the toggle that landed: %q", ee.Msg)
+	}
+	if !strings.Contains(string(out), "change:   secret_scanning: disabled -> enabled") {
+		t.Errorf("the landed change is not rendered:\n%s", out)
+	}
+}

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1089 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-140-the-generic-specific-boundary-of-the.md:57"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Is itd-140 rule 3 (no repo-agnostic claim for the site build until a second sparse managed instance runs in CI) kept, with the fixture instance re-homed from the superseded itd-139 to itd-2610091010348892, or given up as decision 13 of itd-2610032150577708 ruled on 2026-10-04? Recommended: keep it and add the fixture instance as a criterion of itd-2610091010348892, because the 2026-10-14 ruling post-dates the give-up and promises the site for every opted-in project."
 related_intents: [itd-140, itd-2610032150577708]
 finding_ref: cfk-4ff1767f612a3683
 ---

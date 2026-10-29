@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 336 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-81-judge-calibration.md:126"
-remedy: "none (filed automatically)"
+remedy: "In itd-81's non-judging agents bullet (lines 126-127) replace the examples chat-distiller and embark-scaffolder, which do not exist in agents/, with shipped non-judging agents such as press-release-composer or principle-distiller"
 related_intents: [itd-81]
 finding_ref: cfk-482ecd2873a56f29
 ---

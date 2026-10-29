@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 259 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:90"
-remedy: "none (filed automatically)"
+remedy: "In 01-ahoy.md line 90 and commands/ahoy.md line 19, stop calling remote apply 'the one abcd verb that mutates state outside this machine': say it is the one ahoy verb that does, and name reserve, land, announce and the site setup as the other verbs that write to a remote."
 finding_ref: cfk-a2e7414a99a625bb
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 427 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:511"
-remedy: "none (filed automatically)"
+remedy: "In 06-lint.md line 54 replace the promote back-link example for the unbuilt full-corpus tier with one that is still unbuilt, or drop the example; that check ships as related_issues_backlink."
 finding_ref: cfk-212c7a84451f35e8
 ---
 

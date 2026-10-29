@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 690 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/README.md:417"
-remedy: "none (filed automatically)"
+remedy: "In the agent register, list intent-auditor as serving `intent` and `build`, since the build loop composes its request and validates its verdict."
 finding_ref: cfk-6aecefdab4925277
 ---
 

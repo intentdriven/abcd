@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 110 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/02-dependencies.md:39"
-remedy: "none (filed automatically)"
+remedy: "In the Spec / task bullet of 02-dependencies.md, mark the dependency graph over specs and tasks as staged and keep directories-encode-status as the shipped default, as 06-delivery/02-verification-matrix.md states ('the spec core carries no graph')."
 finding_ref: cfk-f764c997e226cc19
 ---
 

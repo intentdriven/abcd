@@ -56,8 +56,8 @@ fork, a rename, a transfer) passes locally and is refused after the tag,
 consuming the version. From the ship's merge
 until the Release is published, the catalog on `main` names a zip that
 is not there yet; an install or update in that window fails closed and leaves an
-installed plugin on its previous release, so approve the release deployment
-promptly.
+installed plugin on its previous release, so where the `release` environment
+carries a reviewer, approve the release deployment promptly.
 
 This list is machine-checked: the `gate_lockstep` `record-lint` rule blocks if it
 diverges from `release.yml`'s `verify` job steps (setup steps excepted). Edit both

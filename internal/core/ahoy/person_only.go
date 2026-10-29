@@ -79,12 +79,18 @@ func approvalGaps(cwd string, det DetectionResult, opts InstallOptions, target s
 }
 
 // personOnlyAsks is the plan's list of the questions that follow whatever the
-// answer to it, in the order the run asks them: the abcd download, the shell
-// settings, the commit checks, the status line, the commit identity, and one
+// answer to it, in the order the run asks them: the live brief session
+// question, the abcd download, the shell settings, the commit checks, the status line, the commit identity, and one
 // question for each tool abcd offers to install. Each is listed only where
 // the run will put it.
 func personOnlyAsks(cwd string, det DetectionResult, opts InstallOptions, target string) []string {
 	var out []string
+	present := gapIDSet(det.Gaps)
+	// The live brief session question runs after the README pair and before
+	// the download (stepSessions); --live-sessions answers it unasked.
+	if present[SessionsOfferGapID] && opts.LiveSessions == "" {
+		out = append(out, "the live brief session question: whether the team edits its brief live, and where sessions may run, kept in .abcd/config.json")
+	}
 	tag, dl := downloadOffer(cwd, det, opts, target)
 	if dl {
 		out = append(out, "the abcd download: abcd "+tag+" to "+displayPath(target))
@@ -97,7 +103,6 @@ func personOnlyAsks(cwd string, det DetectionResult, opts InstallOptions, target
 	if armOffered(cwd, det) {
 		out = append(out, "the commit checks: core.hooksPath set to "+guardHooksDirRelPath+" in this clone's .git/config")
 	}
-	present := gapIDSet(det.Gaps)
 	if present[StatusLineOfferGapID] && statusLineReachable(cwd, det, dl) {
 		out = append(out, "the status line: one entry in your assistant's settings, "+displayPath(harnessSettingsPath()))
 	}
