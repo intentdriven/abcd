@@ -716,8 +716,9 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 			"waits on, the pending spec steps, the fallbacks from a routed runner to the host counted\n" +
 			"per runner and per role, and the run record. Before it renders, it renews the\n" +
 			"reservation of each run it shows that is due, as implement step does (half\n" +
-			"through its lease, or lapsed and still this copy's), logging the renewal or\n" +
-			"its failure in the run record; it writes nothing else and creates nothing.\n" +
+			"through its lease, or lapsed and still this copy's), but not that of an\n" +
+			"issue lane parked at land, which the drain renews, logging the renewal or its\n" +
+			"failure in the run record; it writes nothing else and creates nothing.\n" +
 			"Exit 2 when --run names no run.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

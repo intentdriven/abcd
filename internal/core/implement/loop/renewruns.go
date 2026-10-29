@@ -78,15 +78,21 @@ func RenewRunsIn(repoRoot, runID string, now time.Time) []RunRenewal {
 	return renewRunsAt(repoRoot, runID, nil, now)
 }
 
+// runsView reads the reservation view a round of renewRunsAt picks its due
+// runs by; a test replaces it to revive a run between that read and the
+// run's lock, as another waiter can.
+var runsView = claim.View
+
 // renewRunsAt renews the due reservation of each run in progress in root
 // that runID names ("" for any) and serves admits (nil for any). Whether one
-// is due is read from the view as last fetched, as a step reads it
+// is due is first read from the view as last fetched, as a step reads it
 // (renewalDue): this copy's, unreleased and half through its lease, a lapsed
 // one included, or held by another person or copy, which is logged once as a
-// step logs it. A due one is renewed under the run's lock, the state written
-// only when the record changed; a run whose lock another invocation holds is
-// passed over, since that invocation is a step mid-act, which renews it
-// itself.
+// step logs it. A due one is renewed under the checkout's run lock, the view
+// read again there, so a renewal another waiter made since the first read is
+// seen and one lapse is renewed once; the state is written only when the
+// record changed. While another invocation holds the checkout's run lock the
+// run is skipped, and the next round renews it.
 func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []RunRenewal {
 	runs, err := Runs(root)
 	if err != nil {
@@ -99,7 +105,7 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 			continue
 		}
 		if view == nil {
-			snap, err := claim.View(root, now)
+			snap, err := runsView(root, now)
 			if err != nil {
 				return out
 			}
@@ -114,7 +120,9 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 				return false, nil
 			}
 			logged, updated := len(st.Record), st.UpdatedAt
-			r.Note = renewReservation(root, st, now, view)
+			// nil: the view is read again under the lock, not the one read
+			// before it, which another waiter's renewal may have outdated.
+			r.Note = renewReservation(root, st, now, nil)
 			if n := len(st.Record); n > logged && st.Record[n-1].Stage == StageReservationRenewed {
 				r.Renewed, r.Note = true, st.Record[n-1].Note
 			}
@@ -137,9 +145,11 @@ func renewRunsAt(root, runID string, serves func(State) bool, now time.Time) []R
 // renewsWhereItWaits reports whether a run's reservation is renewed where its
 // agent waits: the run holds one and is in progress, and it is not an issue
 // run whose lane was handed back, whose reservation the hand-back released
-// (or the drain's routing of it releases).
+// (or the drain's routing of it releases), nor one parked at land, which the
+// drain's move renews once it has read the lane's pull request
+// (drain_finish.go), as the drain's own renewal leaves it (renewable).
 func renewsWhereItWaits(st State) bool {
-	if st.ReservedAt == nil || st.Complete() {
+	if st.ReservedAt == nil || st.Complete() || parkedAtLand(st) >= 0 {
 		return false
 	}
 	if st.Issue() != "" {

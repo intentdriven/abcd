@@ -215,8 +215,9 @@ two flags that decide it, the pending spec steps, the run's fallbacks from a
 routed runner to the host (`fallbacks`, and in the text a count per runner and
 per role) and the run record. Before it renders, it renews the reservation of
 each run it shows that is due, as a step does (half through its lease, or
-lapsed and still this copy's), and logs the renewal, or its failure, in the run
-record as a step logs it; it writes nothing else.
+lapsed and still this copy's), but not that of an issue lane parked at land, which the
+drain's move renews, and logs the renewal, or its failure, in the run record as
+a step logs it; it writes nothing else.
 
 A spec's **steps** and a lane's **stages** are two things: each spec step lands
 as one lane, and the loop takes the lane through its stages. `step` performs the
@@ -627,11 +628,15 @@ renewal only renews this person's own reservation from this copy: it never
 reserves a released record again and never takes one over. A renewal of one
 that has lapsed is judged for overlap like a new reservation, since it held
 nothing while it lapsed: another person's live reservation of any path in its
-footprint refuses it, and so does your own from another copy, but only where
-that copy holds a file the run's lanes changed (read as the narrowing reads
-them, at the lane's head or its branch's tip; the whole footprint when they
-cannot be read). It keeps its whole footprint, and the record's line names
-your other copy's reservation it went ahead past. At step 5, before
+footprint refuses it, and so does your own from another copy. Once every lane
+is past its implement stage and no spec step is still to be opened, your other
+copy refuses it only where that copy holds a file the run's lanes changed (read
+as the narrowing reads them, at the lane's head or its branch's tip); while a
+lane is still at or before its implement stage, whose edits the branch does not
+yet show, or a step is still to be opened, or when the files cannot be read,
+the whole footprint is judged, since two automated lanes never edit one file.
+It keeps its whole footprint, and the record's line names your other copy's
+reservation it went ahead past, a file none of the lanes' commits changed. At step 5, before
 the merge rule decides, the **land fence** fetches the reservation and arms
 nothing unless it is still this person's, from this copy, and live: it names
 the other person and the expiry, says the reservation moved to your other copy
@@ -1003,8 +1008,10 @@ whose implementer runs its tests or its preflight under the gate for hours
 keeps its reservation without a step. Each is renewed as a step renews it,
 from the run's own checkout and under the run's lock, when it is half through
 its lease or has lapsed and is still this copy's, and logged in the run
-record; a run whose lock another invocation holds is passed over, since that
-invocation is a step that renews it. Each renewal, and each failure, is said
+record, but not that of an issue lane parked at land, which the drain's move renews
+once it has read the lane's pull request. While another invocation holds the
+checkout's run lock, the round skips that checkout's runs, and the next round
+renews them. Each renewal, and each failure, is said
 on standard error, a failure once until what is said of it changes.
 
 The renewal runs beside the gate, never in it, so the gate's order and its

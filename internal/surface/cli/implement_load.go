@@ -205,8 +205,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"On the same rounds it renews, as implement step does, the due reservation of\n" +
 			"each run in progress that lives in this checkout, or in another worktree of\n" +
 			"the repository with a lane whose worktree is this checkout, reviving one that\n" +
-			"has lapsed and logging each in the run record; a run whose lock another\n" +
-			"invocation holds is passed over, since that invocation renews it. Each is said\n" +
+			"has lapsed and logging each in the run record, but not a run parked at land,\n" +
+			"which the drain renews; while another invocation holds the checkout's run\n" +
+			"lock the round skips that checkout's runs, and the next round renews them. Each is said\n" +
 			"on standard error, a failure once until what is said of it changes. The\n" +
 			"renewal runs beside the gate, never in it, so\n" +
 			"the gate's order and its open never wait on one, and it stops when the gated\n" +
@@ -299,7 +300,8 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	// The renewal goes on until the command exits, not only while the gate is
 	// shut: an agent's preflight or go test runs for hours under the gate, and
 	// nothing else renews a build's reservation meanwhile
-	// (iss-2610261837062463).
+	// (iss-2610261837062463). Every line the waiter itself says on standard
+	// error goes through errOut too, so none is written beside a renewal's.
 	errOut := sharedStderr(cmd.ErrOrStderr())
 	stopRenewal := startHoldRenewal(errOut)
 	defer stopRenewal()
@@ -308,7 +310,7 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 		return &exitError{Code: 1, Msg: "abcd implement load " + flag + ": " + err.Error()}
 	}
 	if res.SlotsNote != "" {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load %s: %s\n", flag, res.SlotsNote)
+		fmt.Fprintf(errOut, "abcd implement load %s: %s\n", flag, res.SlotsNote)
 	}
 	if err := render(out, asJSON, res, func(w io.Writer) { renderLoadWait(w, res) }); err != nil {
 		return err
@@ -328,7 +330,7 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
 		home, _ := os.UserHomeDir()
 		if err := implement.ReleaseWaitHold(home, *res.Hold); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load --wait: the hold %s could not be released (%v); it lapses once this process is gone\n",
+			fmt.Fprintf(errOut, "abcd implement load --wait: the hold %s could not be released (%v); it lapses once this process is gone\n",
 				abcdhome.Display(implement.HoldFileName(res.Hold.Gate)), err)
 		}
 	}

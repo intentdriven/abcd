@@ -2599,8 +2599,9 @@ a renewal that fails, or a reservation whose latest commit this copy did not pus
 On the same rounds it renews, as implement step does, the due reservation of
 each run in progress that lives in this checkout, or in another worktree of
 the repository with a lane whose worktree is this checkout, reviving one that
-has lapsed and logging each in the run record; a run whose lock another
-invocation holds is passed over, since that invocation renews it. Each is said
+has lapsed and logging each in the run record, but not a run parked at land,
+which the drain renews; while another invocation holds the checkout's run
+lock the round skips that checkout's runs, and the next round renews them. Each is said
 on standard error, a failure once until what is said of it changes. The
 renewal runs beside the gate, never in it, so
 the gate's order and its open never wait on one, and it stops when the gated
@@ -2944,8 +2945,9 @@ intent and spec, each lane with its spec step and next stage, what an awaiting l
 waits on, the pending spec steps, the fallbacks from a routed runner to the host counted
 per runner and per role, and the run record. Before it renders, it renews the
 reservation of each run it shows that is due, as implement step does (half
-through its lease, or lapsed and still this copy's), logging the renewal or
-its failure in the run record; it writes nothing else and creates nothing.
+through its lease, or lapsed and still this copy's), but not that of an
+issue lane parked at land, which the drain renews, logging the renewal or its
+failure in the run record; it writes nothing else and creates nothing.
 Exit 2 when --run names no run.
 
 **Flags:**
