@@ -156,6 +156,27 @@ git -C "$d" rm -q "$SCOPE/01-findings.md"
 git -C "$d" commit -qm "delete a review file"
 expect fail "$d" "RD002 deletion of a review file"
 
+# A path git quotes — non-ASCII bytes by default — begins with a `"`, which the
+# review-path pattern never matched, so its edit was skipped as out of scope.
+# The log now runs with core.quotePath=false; a path git still quotes (a `"` in
+# the name) is inside the reviews-scoped log and is refused, never skipped.
+d="$(newrepo quoted-utf8)"
+printf '# Notes\n\nA note.\n' >"$d/$SCOPE/02-résumé.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "add a review file with a non-ASCII name"
+printf 'An amendment made after the fact.\n' >>"$d/$SCOPE/02-résumé.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "edit it"
+expect fail "$d" "RD002 an edit to a review file with a non-ASCII name" "RD002"
+d="$(newrepo quoted-quote)"
+printf '# Notes\n\nA note.\n' >"$d/$SCOPE/02-a\"b.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "add a review file with a quote in its name"
+printf 'An amendment made after the fact.\n' >>"$d/$SCOPE/02-a\"b.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "edit it"
+expect fail "$d" "RD002 an edit to a review file git still quotes" "RD002"
+
 # --- the clean polarity ------------------------------------------------------
 
 # Add-only is what the charter asks for, and it must pass — a gate that refuses
@@ -226,18 +247,18 @@ refute() {
 	printf 'cases: ok   %s (no removed span in the output)\n' "$2"
 }
 
-CLEAN=$'# People\n\nOpened by <login> on the forge.\nReviewed by the product thinker, who signed off.\n'
+CLEAN=$'# People\n\nOpened by <login> on the forge.\nReviewed by <name>, who signed off.\n'
 
 d="$(namesrepo redact-clean)"
 redact "$d" yes "$CLEAN"
 expect pass "$d" "RD002 a trailed pure name redaction is allowed" "RD002 redaction"
 
 d="$(namesrepo redact-reworded)"
-redact "$d" yes $'# People\n\nOpened by <login> on the forge.\nReviewed by the product thinker, who approved.\n'
+redact "$d" yes $'# People\n\nOpened by <login> on the forge.\nReviewed by <name>, who approved.\n'
 expect fail "$d" "RD002 a redaction that also rewords prose" "a removed span is not name-shaped"
 
 d="$(namesrepo redact-respaced)"
-redact "$d" yes $'# People\n\nOpened by <login> on the  forge.\nReviewed by the product thinker, who signed off.\n'
+redact "$d" yes $'# People\n\nOpened by <login> on the  forge.\nReviewed by <name>, who signed off.\n'
 expect fail "$d" "RD002 a redaction that also changes whitespace" "not a pure substitution"
 
 d="$(namesrepo redact-no-trailer)"
@@ -245,8 +266,35 @@ redact "$d" no "$CLEAN"
 expect fail "$d" "RD002 a pure redaction without the trailer" "RD002"
 
 d="$(namesrepo redact-off-set)"
-redact "$d" yes $'# People\n\nOpened by someone on the forge.\nReviewed by the product thinker, who signed off.\n'
+redact "$d" yes $'# People\n\nOpened by someone on the forge.\nReviewed by <name>, who signed off.\n'
 expect fail "$d" "RD002 a replacement outside the placeholder set" "not one of the fixed placeholders"
+
+# A role phrase reads as ordinary prose, not as a redaction, so it is not a
+# marker: a swap to one could invent content where only the public check runs.
+d="$(namesrepo redact-role-phrase)"
+redact "$d" yes $'# People\n\nOpened by <login> on the forge.\nReviewed by the product thinker, who signed off.\n'
+expect fail "$d" "RD002 a role phrase is not a redaction marker" "not one of the fixed placeholders"
+
+# The adjacency guards: a removal with nothing inserted, or an insertion with
+# nothing removed, is not a substitution. Each sits beside a valid swap, and
+# after it, so a guard that let a bare '+' borrow the previous pair's removed
+# span would pass the fixture rather than refuse it.
+# adjrepo <name> <before> <after> commits <before>, then <after> trailered.
+adjrepo() {
+	local d
+	d="$(newrepo "$1")"
+	printf '%s' "$2" >"$d/$SCOPE/02-people.md"
+	git -C "$d" add -A
+	git -C "$d" commit -qm "add a review naming people"
+	redact "$d" yes "$3"
+	echo "$d"
+}
+d="$(adjrepo redact-bare-removal $'Opened by alice-dev on the forge.\nA `do-not-merge` label.\n' \
+	$'Opened by <login> on the forge.\nA `` label.\n')"
+expect fail "$d" "RD002 a trailed removal with nothing inserted" "not a pure substitution"
+d="$(adjrepo redact-bare-insertion $'Opened by alice-dev on the forge.\nFiled by ().\n' \
+	$'Opened by <login> on the forge.\nFiled by (<name>).\n')"
+expect fail "$d" "RD002 a trailed insertion with nothing removed" "not a pure substitution"
 
 d="$(namesrepo redact-delete)"
 git -C "$d" rm -q "$SCOPE/02-people.md"

@@ -166,13 +166,18 @@ done
 # inserted span exactly one member of REDACTION_PLACEHOLDERS. Anything else in
 # the same file — a reworded word, an added or dropped sentence, a re-spaced
 # line — leaves the commit under RD002 like any other edit.
+#
+# What that guarantees, plainly: without the private name list (in CI, in a
+# fresh clone) the gate cannot tell a name from any other word, so ANY single
+# word, or up to three capitalised words, may be replaced by a redaction marker.
+# The marker is what tells a reader the text was redacted, which is why every
+# member of the set reads as one and none reads as ordinary prose. Only where
+# the private list exists is a removed span also proved to be a name.
 REDACTION_TRAILER="Review-Redaction: names"
-# The fixed public placeholder set. A redaction says what was there by role,
-# never by a different name; extend the set in its own reviewed change.
+# The fixed public set of redaction markers. Each visibly reads as a redaction,
+# never as content a reader could take for the original; extend the set only in
+# its own reviewed change.
 REDACTION_PLACEHOLDERS=(
-  "the product thinker"
-  "the technical facilitator"
-  "a contributor"
   "(the product thinker's login)"
   "<personal account>"
   "<login>"
@@ -203,8 +208,10 @@ is_placeholder() {
   return 1
 }
 
-# load_private reads the private list once, in the reading the committed
-# .githooks/pre-commit applies: line 1 exactly `# abcd-banlist: keyed` makes
+# load_private reads the private list once, from THIS checkout's file only —
+# unlike .githooks/pre-commit, it never falls back to the primary checkout's
+# store, so a linked worktree without its own copy gets the public check alone.
+# The entry format is the hook's: line 1 exactly `# abcd-banlist: keyed` makes
 # every entry KEY<space-or-tab>PATTERN, otherwise each line is one whole-line
 # pattern; blank and `#` lines are skipped; patterns are grep -iE. A store that
 # cannot be read for what it is refuses the run — never an entry's content, only
@@ -352,7 +359,7 @@ pure_redaction() {
 }
 
 rc=0
-history="$(git log --format='commit %H' --name-status --diff-filter=DMRT -- "$ROOT" 2>&1)" || rc=$?
+history="$(git -c core.quotePath=false log --format='commit %H' --name-status --diff-filter=DMRT -- "$ROOT" 2>&1)" || rc=$?
 if [ "$rc" -ne 0 ]; then
   echo "check-reviews: git log over $ROOT failed (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
   echo "$history" >&2
@@ -386,6 +393,12 @@ judge_commit() {
         reason="the $REDACTION_TRAILER trailer covers an in-place edit only, not history status ${c_status[$i]}"
         break
       fi
+      case "${c_path[$i]}" in
+      \"*)
+        reason="the $REDACTION_TRAILER trailer cannot cover a path git quotes"
+        break
+        ;;
+      esac
       if ! pure_redaction "$c_sha" "${c_path[$i]}"; then
         reason="the $REDACTION_TRAILER trailer is present, but $why_not"
         break
@@ -420,7 +433,14 @@ while IFS="$(printf '\t')" read -r status old new; do
   esac
   for p in "$old" "$new"; do
     [ -n "$p" ] || continue
-    grep -Eq -- "$review_re" <<<"$p" || continue
+    # core.quotePath=false keeps a non-ASCII name raw, but git still quotes a
+    # path holding a `"`, a backslash or a control byte. The log is scoped to
+    # the reviews root, so a quoted path is taken as in scope and refused —
+    # skipping it as unmatched is the vacuous pass this gate exists to avoid.
+    case "$p" in
+    \"*) ;;
+    *) grep -Eq -- "$review_re" <<<"$p" || continue ;;
+    esac
     c_status+=("$status")
     c_path+=("$p")
   done
