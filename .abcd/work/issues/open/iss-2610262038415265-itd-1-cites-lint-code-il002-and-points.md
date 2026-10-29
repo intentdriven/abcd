@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 811 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-1-acceptance-gates.md:30"
-remedy: "none (filed automatically)"
+remedy: "In itd-1 line 30 delete 'Lint code: IL002 ...' and the pointer to 05-internals/06-lint.md, and name the intent package's own check instead."
 related_intents: [itd-1]
 finding_ref: cfk-1a0d08947b0b51a8
 ---

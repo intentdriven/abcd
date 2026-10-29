@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 149 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-126-a-team-shares-one-bibliography-without.md:17"
-remedy: "none (filed automatically)"
+remedy: "Rewrite itd-126 (press release, acceptance criteria, open questions) so that share and the shared-entry import are `abcd library` verbs, not `abcd source`; name the import verb something other than `ingest`, which `library` keeps for the memory store and which registers nothing."
 related_intents: [itd-126]
 finding_ref: cfk-e437c28cfce85306
 ---

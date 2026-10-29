@@ -595,8 +595,10 @@ configuration sets. An
 interrupt or a termination kills the runner's process group. The status and
 record verbs count the fallbacks per runner and per role. A host session
 always drives this: the no-host path, where a host-routed role goes to the
-machine's `runner.fallback_host`, is the process driver's reversal of the
-host-delegated boundary, and waits on the ADR decision 6 of the intent owes.
+machine's `runner.fallback_host`, is the reversal of the host-delegated
+boundary that adr-2610222222326104 records; `abcd drain` builds it first
+(itd-2610222215485265), and `abcd build` adopts it after that, in step 12 of
+spc-2609202134338445.
 
 **The reviewer route** (itd-6, spc-2609211950427074). A build lane's ruthless
 and security reviews can go to RepoPrompt over MCP instead of the host's own

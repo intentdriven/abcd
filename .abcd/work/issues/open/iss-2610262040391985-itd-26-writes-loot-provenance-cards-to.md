@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 946 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-26-loot-oss-vendor.md:44"
-remedy: "none (filed automatically)"
+remedy: "Edit 09-provenance-substrate line 109: write the loot citation path as `.abcd/work/loot/<source>.md`, as itd-26 does throughout, in place of `.abcd/development/loot/<source>.md`."
 related_intents: [itd-26]
 finding_ref: cfk-2f1c50e7b242d176
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 485 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-91-ai-attribution-preference.md:31"
-remedy: "none (filed automatically)"
+remedy: "In itd-91 replace '/abcd:init / prepare-this-repo' (press-release rationale, scope bullet and acceptance criterion) with abcd ahoy install; the prepare-this-repo page retired into the install section of 01-ahoy.md (itd-2610090831227812) and no init command exists."
 related_intents: [itd-91]
 finding_ref: cfk-e0a335f28315aaaa
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1232 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-6-rp-mcp-only-integration.md:24"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): When oracle.review = rp and an accepted routing table also has a row for ruthless-reviewer or security-reviewer, which one governs the review's route? Answer A: oracle.review = rp keeps governing those two reviews and the table's tier applies only on the host or provider route. Answer B: the table (and --route) governs and RepoPrompt becomes a connection the table can name. Recommend A: it is an explicit transport opt-in, it matches the standing rule that a role routed to a runner keeps its runner, and it changes no shipped behaviour."
 related_intents: [itd-6, itd-2609170822093401]
 finding_ref: cfk-678bc9109e93d181
 ---

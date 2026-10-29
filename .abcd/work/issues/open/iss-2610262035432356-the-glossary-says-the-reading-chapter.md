@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 593 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/reading-position.md:34"
-remedy: "none (filed automatically)"
+remedy: "In the spelling section of reading-position.md say what 23-reading.md actually does: bare 'position' throughout, matching the --position flag, with 'reading position' used outside the reading chapter and the charter."
 finding_ref: cfk-09e1ccaa9f3198ea
 ---
 

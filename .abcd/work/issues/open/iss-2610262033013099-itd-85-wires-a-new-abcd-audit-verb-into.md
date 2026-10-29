@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 350 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-85-audit-verb.md:31"
-remedy: "none (filed automatically)"
+remedy: "Supersede itd-85 by itd-124 (same act as the audit-name record); if it is kept instead, replace 'prepare-this-repo Phase 2' with the install section of commands/ahoy.md, whose conformance step already runs `abcd lint` in its JSON form."
 related_intents: [itd-85]
 finding_ref: cfk-dcd70b7d63c801da
 ---

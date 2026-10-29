@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 49 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:181"
-remedy: "none (filed automatically)"
+remedy: "Widen the audit comparison in the bucket row of 04-naming.md (line 181) to say audit compares reality, or one recorded commitment against another (the consistency pass), against a recorded commitment."
 finding_ref: cfk-74758eabafd246e1
 ---
 

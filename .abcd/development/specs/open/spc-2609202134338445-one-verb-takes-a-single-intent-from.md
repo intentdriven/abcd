@@ -13,8 +13,24 @@ The design record for itd-2609201916151817, from the seven decisions on the
 intent (2026-09-20). Decision 5 fixes the shape: A loop over a state file,
 driven by a host session step by step by default, or by a process through
 the CLI adapter when opted in. The ADR decision 6 owes (the `--auto-plan`
-substitute for the sign-off act, and the opt-in reversal of the host-delegated
-boundary) is minted before either path ships and is a delivery of this spec.
+substitute for the sign-off act) is minted before that path ships and is a
+delivery of this spec. The reversal of the host-delegated boundary that
+decision 5 flagged, the loop driving itself with no host session, is recorded
+in adr-2610222222326104, which `abcd drain` builds first
+(itd-2610222215485265); this spec's step 12 adopts it for `abcd build` under
+that record's four conditions.
+
+## Footprint
+
+The steps left to build are 11 and 12, and 12 cannot start until
+itd-2610222215485265 ships (AGENTS.md, Boundaries), so the footprint names
+step 11's files; step 12's join it when it can start. The intent's summary
+puts the flag on `implement` and the person types `build`, so both verbs'
+pages are named. Files are named where a step touches one file of a package
+other builds share.
+
+- packages: internal/core/implement/loop, internal/core/intent, internal/surface/cli/build.go, internal/surface/cli/cli.go, commands/build.md, commands/implement.md, commands/intent.md, .abcd/development/brief/04-surfaces/34-build.md, .abcd/development/brief/04-surfaces/27-implement.md, .abcd/development/brief/04-surfaces/05-intent.md, .abcd/development/decisions/adrs/README.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
+- tests: internal/core/implement/loop, internal/core/intent, internal/surface/cli/build_surface_test.go
 
 ## Steps
 
@@ -41,8 +57,11 @@ boundary) is minted before either path ships and is a delivery of this spec.
    Decision 5, opt-in by configuration: the same loop calling itself through
    `step` and `receipt`, starting each agent through the CLI adapter
    (`itd-2609201916056194`) and waiting for it; named in the run record
-   (criterion 9).
+   (criterion 9). A host session still drives the steps; the drive with no
+   host session is step 12.
+   - packages: internal/core/implement/loop, internal/surface/cli
    - needs: 2
+   - landed: 45cdd1af7
 4. **The checks**
    Criteria 1 and 2: the readiness gate, the claim sections, the
    open-question count, the hold (prose until `iss-2609200830076665` ships),
@@ -90,7 +109,28 @@ boundary) is minted before either path ships and is a delivery of this spec.
    Decision 6: the planning path run by the loop on a draft whose decisions
    are all recorded, with the two adversarial reviews as validator steps and
    the ADR's substitute checked before `plan`; refused on anything less.
+   That ADR records the substitute for the sign-off alone: the reversal
+   decision 5 also gave it is recorded in adr-2610222222326104, and is not
+   recorded twice.
    - needs: 2, 4, 8
+12. **The no-host drive**
+   Decision 5's reversal, moved here from step 3 so that no step waits on a
+   later one: the loop driving itself with no host session, starting every
+   agent through the runner, under adr-2610222222326104's four conditions (the
+   person's own invocation, their own account behind a wall, a cap, and a
+   hand-back of what it cannot finish), widening AGENTS.md's host-delegated
+   boundary, whose one written exception is the drain, to name it. Built only
+   once itd-2610222215485265 ships; nothing marks that wait yet
+   (iss-2609260932372448). It uses nothing step 11 builds; it needs 11 so
+   that it comes after it. Until that intent ships, a run of this spec ends
+   when step 11 lands: the loop opens a lane on this step in the same move,
+   and an intent lane has no hand-back that releases its reservation, so the
+   person driving the run stops stepping and runs `abcd build
+   itd-2609201916151817 --release`, and the lane opened here is left for
+   `abcd build itd-2609201916151817` to resume once the drain's intent has
+   shipped: that verb reserves the key again, and a bare `implement step`
+   would resume the lane with no reservation on origin.
+   - needs: 3, 11
 
 ## Out of scope
 
@@ -99,9 +139,10 @@ worktree store's verbs; the peer reader; the claim and the register.
 
 ## Approach
 
-Test-first, in the numbered order, three lanes: 1 to 4 (state, steps,
+Test-first, in the numbered order, four lanes: 1 to 4 (state, steps,
 checks), 5 to 8 (brief, lane, receipt, validators), 9 to 11 (landing,
-record, auto-plan with its ADR). The step interface is exercised end to
+record, auto-plan with its ADR), and 12 (the no-host drive), which waits
+until itd-2610222215485265 has shipped. The step interface is exercised end to
 end by a test that plays the host: it reads the brief, writes a receipt,
 and calls `receipt`, so the loop is proven without any model.
 
@@ -167,15 +208,15 @@ spec stays open until the last lane closes it.
   every commit on the lane's branch past its base, a passing definition of
   done's output and the report, each inside the lane's directory, or a refusal
   naming every gap.
-- **Landed in part (lane runner2): piece 3**, the process driver. `implement
+- **Landed (lane runner2): piece 3**, the process driver. `implement
   step` drives through `loop.Drive`: when a stage hands the lane to a role
   that `roles.<role>.runner` routes to a command-line runner
   (itd-2609201916056194), the loop starts the agent itself through the runner
   and hands its receipt back through `Receipt`, and the run record names the
   runner that ran it (criterion 9); a role left on the host is handed to the
   host exactly as before. Not built: the loop driving itself with no host
-  session, which is decision 6's reversal of the host-delegated boundary and
-  waits on the ADR that decision owes.
+  session, the reversal of the host-delegated boundary decision 5 flagged,
+  which adr-2610222222326104 now records; it is step 12.
 - **Landed (lane fidelityOnce): piece 8**, the validators with the itd-58
   verdict invariant. The validate stage hands the lane's head to a fresh
   ruthless reviewer and a fresh security reviewer, one at a time, and on the
@@ -212,8 +253,9 @@ spec stays open until the last lane closes it.
   record` renders the run record in text and JSON (lanes, verified receipts
   with each runner's reported model, every verdict, fixes, landings,
   transcripts) and, on a complete run, captures each transcript by path through
-  the history capture's own code, one capture per path. Marking a step's
-  `landed:` line in the spec on a non-closing lane is not made by the landing.
+  the history capture's own code, one capture per path. On every intent
+  lane of a spec that lists steps, the closing lane included, the landing
+  marks its step's `landed:` line (850af4cf2, iss-2610110918418459).
 - **Landed (lane drainLoop): the issue key (decision 10).** The key check
   admits an issue id by shape; its pre-start checks are itd-82's eligibility
   rule, read as `abcd drain` reads it, and the peers; its run has one lane, whose
@@ -223,5 +265,8 @@ spec stays open until the last lane closes it.
   receipt carries `handback: {kind, reason, home}`, which the loop reads at the
   receipt, before the validators, discarding the lane's worktree and branch
   and ending the lane handed back.
-- **Remaining: 11** (`--auto-plan` with its ADR), and piece 3's no-host
-  driving, behind the same ADR. `--auto-plan` is not a flag yet.
+- **Remaining: 11** (`--auto-plan` with its ADR) **and 12** (the no-host
+  drive). `--auto-plan` is not a flag yet. Piece 3's no-host part became step
+  12 on 2026-10-28, needing 3 and 11, so no step waits on a later one; its reversal
+  is recorded in adr-2610222222326104, and it is built only once
+  itd-2610222215485265 ships.

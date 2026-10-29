@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 573 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/23-reading.md:187"
-remedy: "none (filed automatically)"
+remedy: "In 01-agents.md:317 say the locator derives the file from the position (agents/cold-reading-POSITION.md) and checks the frontmatter position and regime against it, as 23-reading.md:187 says."
 finding_ref: cfk-ba15b3bc97f11d24
 ---
 

@@ -45,6 +45,14 @@ var sentences = map[string]string{
 		"Writes both settings and their mirror; refuses an unconfirmed run.",
 	"abcd ahoy uninstall": "Remove abcd from this repository, leaving .abcd/ in place: " +
 		"Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.",
+	"abcd ahoy worktree": "List this repository's worktrees and its lane in the worktree store: " +
+		"Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
+	"abcd ahoy worktree add": "Add a worktree in this repository's lane of the worktree store: " +
+		"Writes the worktree, its start record and its local tier; refuses a taken or reserved name.",
+	"abcd ahoy worktree list": "List this repository's worktrees and its lane, or every lane with --all: " +
+		"Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
+	"abcd ahoy worktree prune": "Reclaim this lane's merged, clean worktrees, archiving their notes first: " +
+		"Writes the notes archive and removes the worktrees; refuses a store it cannot trust.",
 
 	"abcd banlist": "Render both banned-names layers: " +
 		"Writes nothing; refuses an unknown word without echoing it.",
@@ -240,6 +248,19 @@ var sentences = map[string]string{
 		"Writes nothing; refuses any argument.",
 	"abcd dashboard stop": "Stop the dashboard after checking its process is the one start launched: " +
 		"Writes the run file's removal; refuses when another start or stop holds the lock.",
+
+	"abcd session": "Set up live brief sessions, start one here, or run, deploy or write the team's relay and page: " +
+		"Writes nothing bare; refuses an unknown sub-verb.",
+	"abcd session blueprint": "Write the team relay's Render blueprint and Dockerfile, pinned to a release: " +
+		"Writes render.yaml and .abcd/relay/; refuses an edited file or no GitHub origin.",
+	"abcd session page": "Write the brief session's static page and its editor bundle into a directory: " +
+		"Writes only the page's six files; refuses a directory holding anything else.",
+	"abcd session setup": "Set up live brief sessions with the team's own GitHub sign-in app: " +
+		"Writes its client id, the answer and the blueprint; refuses no GitHub origin or no answer.",
+	"abcd session start": "Start a live brief session on this computer, over your tailnet: " +
+		"Writes only an answer it asks; refuses no recorded GitHub App, no Tailscale or no GitHub origin.",
+	"abcd session serve": "Run the brief session relay in the foreground, on loopback by default: " +
+		"Writes nothing; refuses a bad --listen, or no repository to serve beyond loopback.",
 
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",

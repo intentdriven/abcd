@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 171 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/02-context.md:11"
-remedy: "none (filed automatically)"
+remedy: "In itd-30 replace '/abcd:intent new --format=fiction' with the quoted create plus a format flag; the 'new' sub-verb was removed by itd-2609212130136102."
 related_intents: [itd-30]
 finding_ref: cfk-1191f7fe212f41fc
 ---

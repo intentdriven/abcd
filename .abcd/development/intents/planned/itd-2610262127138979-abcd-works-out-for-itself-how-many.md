@@ -10,6 +10,7 @@ severity: minor
 impact: fix
 origin: researcher-authored
 production_mode: hand-written
+target_release: next
 ---
 
 # A preflight waits for its turn as one whole run

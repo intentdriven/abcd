@@ -66,7 +66,11 @@ it as `<owner>/<name>` and the text reads `origin is a fork the repository
 allows (<owner>/<name>)`. Pass either on to the user.
 `own_overlap` lists each path the reservation shares with the user's own from
 another copy, as `path`, `record` and `effective_expiry` (see **When it
-refuses**); the text form warns of each on stderr. `generated_unread` says why
+refuses**); the text form warns of each on stderr. `generated_shared` lists each
+generated file the reservation shares with a live reservation of another record
+from another copy or another person (never this copy's own), as `path` and
+`record`; the text form names each on a `shared:` line, so whoever
+lands second knows to regenerate it after merging. `generated_unread` says why
 no generated file was recognised, so every shared path was judged an overlap.
 `directory_footprint` lists each footprint path naming a directory, as `path`,
 `tracked_files` (`-1` when git could not count them) and `on`, the branch it
@@ -130,7 +134,9 @@ the other record, its holder and until when. Two paths are shared when they are
 equal or one is a directory holding the other. A shared path that is a file
 `origin`'s default branch declares generated is no overlap: generated files are
 those its root `.gitattributes`, as last fetched, marks `linguist-generated`
-(or `linguist-generated=true`). That one file is read, never a nested
+(or `linguist-generated=true`), and a reservation made over one names it and
+the other record on a `shared:` line (`generated_shared`) for the second lander
+to regenerate after merging. That one file is read, never a nested
 `.gitattributes`, `.git/info/attributes` or this checkout's own copy, because
 the declaration must be one every account shares; reading it is a disk read,
 never a fetch. Patterns that set the attribute match case-sensitively;
@@ -210,6 +216,14 @@ so by setting `reservation.fork_origin` to that fork's `"<owner>/<name>"` in
 refusal without the user's word. It allows that one fork only: a fork of it is
 refused naming both, and a value that is neither `"refuse"` nor one owner and
 one name is refused, naming the file, once origin is a fork.
+
+**Exit 2 on a record under embargo.** A reservation, a renewal and a take-over
+consult the embargo store on this machine before anything is pushed, as an
+announcement does: a record the store holds, or a footprint that names
+something under embargo, is refused with nothing pushed, and so is the act when
+a store cannot be read, naming that store and its repair. A release does not
+consult it. A build's and a drain's reservations consult it too. Work on such a record goes unreserved; never reserve it
+under another id to get past the refusal.
 
 **Exit 2 is every other refusal**: an id that is not an issue, an intent or a
 release (`rel-vX.Y.Z`), no footprint for a record or one for a release, a

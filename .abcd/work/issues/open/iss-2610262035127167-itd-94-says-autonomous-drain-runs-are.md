@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 555 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-94-an-intent-that-is-not-planned-cannot-be.md:25"
-remedy: "none (filed automatically)"
+remedy: "In itd-94's press release (line 25) replace 'Autonomous drain runs get the same gate for free' with 'Autonomous runs of intents (the run protocol's step 0 and abcd build's ready check) get the same gate for free'; leave the same words in the ingested Audit Notes receipt, which is the verdict of record."
 related_intents: [itd-94]
 finding_ref: cfk-ee296f65d70bbebc
 ---

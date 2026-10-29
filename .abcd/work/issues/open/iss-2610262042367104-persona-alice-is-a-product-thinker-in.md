@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1081 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-106-abcd-sets-up-the-ci-a-repo-requires-and.md:30"
-remedy: "none (filed automatically)"
+remedy: "itd-106 line 30: Alice becomes Iris (product thinker); itd-107 line 29: replace 'Alice, a maintainer' with the registered name for the role the quote speaks as (Nia for a technical facilitator), since personas.json gives Alice solo founder and product engineer and the word maintainer is retired vocabulary per itd-2609212137129937"
 related_intents: [itd-106, itd-107]
 finding_ref: cfk-dd637a7ea4e144bf
 ---

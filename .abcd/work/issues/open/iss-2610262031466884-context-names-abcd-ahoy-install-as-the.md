@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 174 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/02-context.md:7"
-remedy: "none (filed automatically)"
+remedy: "In itd-91 replace '/abcd:init / prepare-this-repo' with '/abcd:ahoy install'; neither old name is a registered surface and record-lint names ahoy install as the successor."
 related_intents: [itd-91]
 finding_ref: cfk-e58a2bfa9acc6de1
 ---

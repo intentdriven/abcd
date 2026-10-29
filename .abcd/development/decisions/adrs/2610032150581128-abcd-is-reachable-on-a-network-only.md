@@ -5,9 +5,9 @@ status: accepted
 date: 2026-10-03
 supersedes: null
 superseded_by: null
-related_intents: [itd-2610032150577708, itd-2610032150580455, itd-2610040740108331]
+related_intents: [itd-2610032150577708, itd-2610032150580455, itd-2610040740108331, itd-2610091016262335]
 related_rfcs: []
-related_adrs: [adr-38, adr-2609091248200336]
+related_adrs: [adr-38, adr-2609091248200336, adr-2610091016270711, adr-2610161400542916]
 ---
 
 # ADR-2610032150581128: abcd is reachable on a network only through the dashboard, only while the person runs it, and only for people the person lets in
@@ -48,6 +48,27 @@ _From the security review of 2026-10-03 (Fable 5.1, verdict "block as drafted" u
 - Nothing is changed through the page over plain HTTP.
 - On the local network it runs in the foreground, stops itself when idle and after a hard limit, and says so; running unattended is allowed only behind Tailscale Serve (never Funnel), where pairing still applies and the Tailscale identity is a label, never a key.
 - The start line says the page is only as private as the network: anyone who can read the Wi-Fi can read it. The person confirms on each run that the network is their own.
+
+### Amendment of 2026-10-14: the brief session's relay is the second listener
+
+Amended in the open, as the second bullet above requires, by the change that lands `abcd session serve` (itd-2610091016262335, spc-2610141709430146). On 2026-10-14 the product thinker ruled that a team's live brief session runs on the team's own machine over Tailscale or on the team's own relay ("we offer tailscale and the rascals pattern as build-in defaults"). They also signed off on the relay living inside the abcd binary. Both rulings are recorded in itd-2610091016262335's Decisions and in adr-2610091016270711. That makes a second listener the product thinker's decision in substance. This amendment writes down the terms it runs under, which the facilitator settled on delegation:
+
+- **It is the session relay and nothing else.** `internal/surface/session` is the second package that may open a listener, beside `internal/surface/dashboard`. `TestOnlyTheDashboardOpensAListener` becomes a two-entry allowlist, and each entry cites this record.
+- **It listens only while someone has started it on purpose,** on loopback unless an address is chosen on that run. A non-loopback address (`--listen`) is the second, explicit choice the security review requires. It is meant for the team's own relay deployment, which runs behind its host's proxy (`--behind-proxy`).
+- **On a person's own machine, it is reached through Tailscale Serve, on the tailnet only, and never through Funnel.** Decision 21's objection to Serve (that Serve hides which device connects) does not bind here, because the relay never admits anyone by device identity. Admission is by the host's join code, and team membership is by GitHub's own answer on the presented token. Funnel would expose the person's computer to the internet, so a guest outside the tailnet joins through the team's relay instead.
+- **It holds no project content at rest.** A session's edits are opaque bytes in memory, dropped when the host closes the session or it goes idle. Nothing is written to disk, and no token, secret or brief text is logged.
+- **The rest of this record holds for it unchanged:** limits on message size, connections and sessions; refusal of unexpected origins; and nothing third-party served from the person's computer.
+
+This refines the dashboard's rule and does not relax it. The dashboard stays Tailscale-address-only and never uses Serve or Funnel.
+
+### Amendment of 2026-10-16: a local session's relay serves its own page
+
+Amended in the open by adr-2610161400542916. On the host's own computer, `abcd session start` runs the session relay and also serves the session page from it, so nothing reaches abcdesign.app. Every term of the 2026-10-14 amendment holds, with these additions:
+- It answers only its own tailnet name and loopback, as hosts and as page origins. Any other host is refused before anything is read.
+- It serves the page's embedded files from a fixed route table. No file is served from a requested path.
+- The page is never framed.
+
+Team membership is still decided by GitHub's answer on a GitHub App user access token, now obtained through GitHub's device flow, with no secret on the host's computer. Tailscale Serve's identity headers stay a label the relay does not read, for the reasons that record gives. Funnel stays out. Someone outside the tailnet reaches a local session only when the host shares the computer with them through Tailscale, and joins it as a guest.
 
 ## Alternatives Considered
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 417 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:328"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the Owed-review draining paragraph at 03-configuration.md lines 405-412: the on-demand bounded drain ships as the audit verb's owed form (itd-53) and the build's landing takes the audit; keep as staged only seam-iteration gating, if still intended."
 finding_ref: cfk-de5f62fdc784540c
 ---
 

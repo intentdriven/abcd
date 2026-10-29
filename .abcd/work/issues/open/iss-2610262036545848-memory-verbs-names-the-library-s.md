@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 683 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md:1139"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-configuration.md footnote 1 of the gitignore table: say `abcd library` curates `.abcd/memory/` through its ingest, ask and lint sub-verbs (not 'memory verbs') and that these are distinct from the `/abcd:memory` notes kept in `memory.json`."
 finding_ref: cfk-ac9b32a165d1bf3a
 ---
 

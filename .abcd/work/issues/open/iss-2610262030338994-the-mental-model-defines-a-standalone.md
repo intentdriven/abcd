@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 15 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:64"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (standalone bullet and the diagram label '1 or N intents to 1 spec'): a standalone intent usually ships as one spec, may be finished by a remainder spec, and ships when its last spec closes (invariant 17)."
 finding_ref: cfk-4c3eff9d1e1226a9
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 571 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/10-docs.md:39"
-remedy: "none (filed automatically)"
+remedy: "In 16-lint.md:33-35 reword 'checked nothing' to 'ran no check' (or 'never ran') for a refused target; 10-docs.md keeps the phrase for the exit-0 nothing_checked case."
 finding_ref: cfk-e828c45a707bfded
 ---
 

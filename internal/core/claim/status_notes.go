@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -101,8 +102,14 @@ func writeUnflushed(root, sub, name string, data []byte) {
 // the name of every marker an earlier build kept one per line. It stops, with
 // ctx's error, when ctx ends.
 func shownSet(ctx context.Context, root string) (map[string]bool, error) {
+	entries := statusEntries(root, shownDir)
+	if len(entries) > 0 {
+		if err := localtier.UntrackedContext(ctx, root, statusFile(shownDir)); err != nil {
+			return nil, err
+		}
+	}
 	set := map[string]bool{}
-	for _, e := range statusEntries(root, shownDir) {
+	for _, e := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}

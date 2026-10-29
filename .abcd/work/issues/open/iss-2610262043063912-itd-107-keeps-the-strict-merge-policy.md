@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1115 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-107-autonomous-routines-assemble-from-one.md:138"
-remedy: "none (filed automatically)"
+remedy: "In itd-107 lines 136-142, drop 'a record id minted concurrently on two branches' as the reason strict up-to-date stays: itd-114 shipped collision-proof ids, so that gate no longer catches such a duplicate; keep the requirement only on a reason that survives, or relax it"
 related_intents: [itd-107, itd-114]
 finding_ref: cfk-a4e14cc3a9ed0fd8
 ---

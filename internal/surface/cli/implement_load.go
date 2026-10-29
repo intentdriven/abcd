@@ -145,26 +145,27 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"ages read a tie differently or the later of which stopped counting the earlier\n" +
 			"past its " + implement.WaitCrossedCap.String() + " cap). An account at one opens its race gate at once\n" +
 			"whatever another account set, and a checkout older than the gate runs its race\n" +
-			"stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's\n" +
-			"waiter never queues\n" +
-			"behind a race waiter, and a preflight whose waiter is at its race gate is in its\n" +
-			"test stages. A waiter that has opened stands back only from a waiter that\n" +
+			"stage ungated, so set more than 1 only once no such checkout runs a preflight. A\n" +
+			"first gate's waiter never queues behind a race waiter. A preflight whose race\n" +
+			"waiter is queued runs nothing: at 1 it still counts as in its test stages, and\n" +
+			"above 1 it takes no slot until its race run starts, which the race gate keeps\n" +
+			"to one at a time. A waiter that has opened stands back only from a waiter that\n" +
 			"opened in the same moment at its own gate, never from one at the other gate.\n\n" +
-			"How many preflights may be in their test stages at once is your own machine's\n" +
-			"setting: `" + implement.PreflightSlotsKey + "` in `" + abcdhome.Display("config.json") + "`, or " + implement.PreflightSlotsEnv + " in the\n" +
+			"How many preflights the first gate admits to their test stages at once is your\n" +
+			"own machine's setting: `" + implement.PreflightSlotsKey + "` in `" + abcdhome.Display("config.json") + "`, or " + implement.PreflightSlotsEnv + " in the\n" +
 			"environment, which wins, for a trial; a whole number from 1 to " + strconv.Itoa(implement.MaxPreflightSlots) + ", 1 by default,\n" +
 			"and never read from a repository file, so a checkout cannot raise the machine's\n" +
-			"load. The most is " + strconv.Itoa(implement.MaxPreflightSlots) + " for a measured trial, and it rises once a measured trial\n" +
-			"supports more. At 1 both gates read as before the setting existed. Above 1 the\n" +
+			"load. At 1 both gates read as before the setting existed. Above 1 the\n" +
 			"first gate opens while fewer than that many other preflights or waiters running\n" +
 			"their command are in their test stages (a `--wait -- make preflight` counts\n" +
 			"once), a waiter queued ahead still shuts it, and a live race run does not shut\n" +
 			"it by itself; the load limit still does, and the race gate keeps race stages\n" +
-			"apart. A value it cannot use refuses the wait, naming where it was set. A\n" +
-			"`" + abcdhome.Display("config.json") + "` that cannot be read for it (writable by others,\n" +
-			"not valid JSON, or a `load` that is not an object) is read past instead: one\n" +
-			"preflight at a time applies, and one line on stderr names the file, the cause\n" +
-			"and how to fix it; so does a key under `load` that nothing reads.\n\n" +
+			"apart, so one race stage may run beside that many unit stages. A value it\n" +
+			"cannot use refuses the wait, naming where it was set. A `" + abcdhome.Display("config.json") + "`\n" +
+			"that cannot be read for it (writable by others, not valid JSON, or a `load`\n" +
+			"that is not an object) is read past instead: one preflight at a time applies,\n" +
+			"and one line on stderr names the file, the cause and how to fix it; so does a\n" +
+			"key under `load` that nothing reads.\n\n" +
 			"Within one account the waiter that opens also takes a hold,\n" +
 			"`" + abcdhome.Display(implement.WaitHoldFileName) + "` at the first gate and `" + abcdhome.Display(implement.WaitRaceHoldFileName) + "` at\n" +
 			"the race gate, and every other waiter of that account at the same gate stays\n" +
@@ -532,8 +533,8 @@ func pidsText(pids []int, one, many string) string {
 	return one + " (pid " + strings.Join(list, ", ") + ")"
 }
 
-// slotsText says how many preflights may be in their test stages at once, and
-// where that was set.
+// slotsText says how many preflights the first gate admits to their test
+// stages at once, and where that was set.
 func slotsText(res implement.WaitResult) string {
 	switch res.SlotsSource {
 	case implement.SlotsEnv:

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 410 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/07-library.md:11"
-remedy: "none (filed automatically)"
+remedy: "In 07-library.md call the library's second store 'memory pages' (the term itd-39 and the surfaces README use) instead of 'the memory store', add a sentence at line 11 that the merge freed the name memory and the notes command now holds it (37-memory.md), and say the 'user-scope memory not built' line means memory pages, not notes. Mirror the term in commands/library.md."
 finding_ref: cfk-09d2e3715bfed6a3
 ---
 

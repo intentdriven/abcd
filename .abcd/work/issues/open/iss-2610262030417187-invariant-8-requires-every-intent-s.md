@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 32 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:153"
-remedy: "none (filed automatically)"
+remedy: "In 03-invariants.md invariant 8, scope the press-release criteria rule to planned and shipped intents (the plan step's hasAcceptanceCriteria refuses a draft without them) and say a draft on the bench may carry none, as 05-intent.md section 6 records."
 finding_ref: cfk-5eb0022c36a85741
 ---
 

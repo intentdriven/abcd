@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 62 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:79"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (framework-provided bullet): itd-60's doc-fidelity gate is shipped (`abcd docs fidelity`, refused at spec close and launch ship without a recorded review); only itd-61's derivation loop is still unshipped."
 finding_ref: cfk-814d969a0f6bb922
 ---
 

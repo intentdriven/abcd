@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 781 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md:1021"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-configuration.md (The status block paragraph): replace the 'each item once, newest first' summary with the fixed order and caps, or cite 39-status.md alone and drop the restatement."
 finding_ref: cfk-552e727474e5d118
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 705 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/interview/session.md:29"
-remedy: "none (filed automatically)"
+remedy: "Add a core glossary entry for 'session' as a host agent session (joins a shared run, is named, shown in the status line) and have interview/session.md point to it as the grill session of the interview context."
 finding_ref: cfk-179ad29f7ffae124
 ---
 

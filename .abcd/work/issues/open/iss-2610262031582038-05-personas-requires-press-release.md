@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 202 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-82-drain-ledger-triage.md:22"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does a press-release quote that reports a real product thinker's experience take a registered persona name, or may it be attributed by role alone ('said a product thinker who ...')? (a) registered persona only, edit the intents; (b) admit role-only attribution for real accounts, edit 05-personas. Recommend (b): about 25 planned and shipped intents already do it, and it is neither a real name nor a hypothetical user."
 related_intents: [itd-82]
 finding_ref: cfk-1e5ce701d8dd381d
 ---

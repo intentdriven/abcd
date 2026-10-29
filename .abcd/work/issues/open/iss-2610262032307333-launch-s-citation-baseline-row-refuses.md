@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 277 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/04-launch.md:338"
-remedy: "none (filed automatically)"
+remedy: "In 04-launch.md lines 336-339 say the citation-baseline row is measured in the preview only, which lists a broken, unreceipted or overdue citation under would-refuse, while the cut itself does not run it; the release workflow's lint release-gate flag is what blocks (10-docs.md)."
 finding_ref: cfk-43836ca0dc59ebb6
 ---
 

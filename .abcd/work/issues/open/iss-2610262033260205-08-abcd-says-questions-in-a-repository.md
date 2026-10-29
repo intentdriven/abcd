@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 404 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/08-abcd.md:184"
-remedy: "none (filed automatically)"
+remedy: "In 08-abcd.md:184 replace 'its questions are not gated' with: only the badge, the mode and the open-question marker are skipped there, while abcd's own questions are still held to the field limits (17-guard.md:137)."
 finding_ref: cfk-e2375669e4f7f51b
 ---
 

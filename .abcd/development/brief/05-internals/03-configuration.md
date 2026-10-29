@@ -890,12 +890,12 @@ provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
 `interview.list`, `reservation.github_username`, `reservation.max_live` (1 to
 100, 10 by default, read past to 10 when the file cannot be read, which the
-refusal at the cap says) and `load.preflights` (how
-many preflights may be in their test stages at once: 1 or 2, 1 by default,
-never read from a repository, and read past, with a stderr note, when the
-file cannot be read for it, so a file that holds other settings never stops
-the load gate) are honoured from the machine layer alone, and only from a
-home outside every git working tree but the account's own
+refusal at the cap says) and `load.preflights` (how many preflights the first
+gate admits to their test stages at once, one race stage able to run beside
+them: 1 to 4, 1 by default, never read from a repository, and read past, with
+a stderr note, when the file cannot be read for it, so a file that holds other
+settings never stops the load gate) are honoured from the machine layer alone,
+and only from a home outside every git working tree but the account's own
 (`layered.MachineRoots`, the rule `RootsFor` applies): under a home inside
 one the machine layer reads as absent, so no holder is named from it and the
 cap is ten, and one stderr line from `abcd reserve` and `abcd peers` says
