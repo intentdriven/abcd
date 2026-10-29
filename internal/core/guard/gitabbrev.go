@@ -39,6 +39,18 @@ var gitLongOptions = map[string][]string{
 		"--no-receive-pack", "--no-exec", "--no-set-upstream", "--no-progress", "--no-prune",
 		"--no-follow-tags", "--no-signed", "--no-atomic", "--no-push-option",
 	},
+	"branch": {
+		"--verbose", "--quiet", "--track", "--set-upstream", "--set-upstream-to", "--unset-upstream",
+		"--color", "--remotes", "--contains", "--abbrev", "--all", "--delete", "--create-reflog",
+		"--edit-description", "--force", "--move", "--copy", "--column", "--sort", "--merged",
+		"--points-at", "--format", "--list", "--show-current", "--ignore-case", "--omit-empty",
+		"--recurse-submodules",
+		"--no-verbose", "--no-quiet", "--no-track", "--no-color", "--no-remotes", "--no-contains",
+		"--no-abbrev", "--no-all", "--no-delete", "--no-create-reflog", "--no-force", "--no-move",
+		"--no-copy", "--no-column", "--no-sort", "--no-merged", "--no-points-at", "--no-format",
+		"--no-list", "--no-show-current", "--no-ignore-case", "--no-omit-empty",
+		"--no-recurse-submodules",
+	},
 	"commit": {
 		"--quiet", "--verbose", "--file", "--author", "--date", "--message", "--reedit-message",
 		"--reuse-message", "--fixup", "--squash", "--reset-author", "--trailer", "--signoff",

@@ -437,7 +437,8 @@
         "known_bad": [
           "git push origin :feat/x",
           "git push origin :refs/heads/feat/x",
-          "git -C /repo push origin :feat/x"
+          "git -C /repo push origin :feat/x",
+          "git push origin main :feat/x"
         ],
         "known_good": [
           "git push origin main:main",
@@ -445,7 +446,10 @@
           "git push --porcelain origin 9f2c41d07be35a6c80e1f4b2a7d39c559f2c41d0:refs/heads/abcd-reserved/iss-2609020716570699",
           "abcd capture \"an agent ran git push origin :feat/x\"",
           "git push origin \"$(git branch --show-current)\":main",
-          "git push origin \"$(x)\":refs/heads/y"
+          "git push origin \"$(x)\":refs/heads/y",
+          "git push origin $(git branch --show-current):main",
+          "git push origin $BR:main",
+          "git push origin ${BR}:main"
         ]
       }
     },
@@ -463,7 +467,8 @@
         "known_bad": [
           "git branch -D feat/x",
           "git -C /repo branch -D feat/x",
-          "sh -c 'git branch -D feat/x'"
+          "sh -c 'git branch -D feat/x'",
+          "git branch -rD origin/feat/x"
         ],
         "known_good": [
           "git branch -d feat/x",

@@ -92,6 +92,35 @@ func TestLoadOverridesPatternPerField(t *testing.T) {
 	}
 }
 
+// TestLoadOverridesTheLiteralPrefixReading: arg_prefixes_literal is merged per
+// field like after_cd, so a repository can turn the literal reading off and
+// have a refspec whose source is a substitution read as a delete again, and
+// one that names nothing keeps the bundled reading.
+func TestLoadOverridesTheLiteralPrefixReading(t *testing.T) {
+	const cmd = `git push origin "$(git branch --show-current)":main`
+	for _, c := range []struct {
+		name, body string
+		want       Verdict
+	}{
+		{"turned off", `{"schema_version":1,"entries":{"git-push-delete-refspec":{"pattern":{"arg_prefixes_literal":false}}}}`, VerdictWarn},
+		{"inherited", `{"schema_version":1,"entries":{"git-push-delete-refspec":{"tier":"warn"}}}`, VerdictAllow},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r, err := Load(writeCommittedOverride(t, c.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			d, err := r.Check(cmd)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.Verdict != c.want {
+				t.Fatalf("%s: verdict = %q via %q, want %q", c.name, d.Verdict, d.EntryID, c.want)
+			}
+		})
+	}
+}
+
 func TestLoadAddsRepoEntry(t *testing.T) {
 	root := writeOverride(t, `{"schema_version":1,"entries":{"drop-database":{
 		"tier":"blocker",
