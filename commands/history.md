@@ -48,7 +48,13 @@ withheld until nothing is left behind.
 Capture of a live session is split between staging and redaction. SessionEnd
 only **stages** the raw transcript, because redacting at exit costs roughly 0.7s
 per MB and the host cancels a shutdown hook rather than wait, which silently
-dropped every transcript past a couple of megabytes. A finished sub-agent stages
+dropped every transcript past a couple of megabytes. It does not even look for
+the repository: finding one is git, and the host gives a session-end hook 1.5
+seconds in all, so it writes the transcript into one machine-level pending
+directory keyed by session id, with the directory the session ran in beside it.
+The next SessionStart files each pending transcript in its store, found from
+the note the session left when it started or else from that directory, and
+names any it cannot place, which stays pending rather than dropped until `discard --pending` removes it. A session that ran outside any repository is never placed, so its raw copy is deleted and the start says so. A finished sub-agent stages
 the same way, its own transcript alongside the session's, with the lineage that
 says which session and which agent produced it. The next SessionStart drains
 staging into the store, taking session transcripts before sub-agent ones and
@@ -57,7 +63,7 @@ stores the part that makes the rest legible. Staging is locked and keyed on
 content per session and agent: a re-fired hook carrying identical bytes is a
 no-op, one carrying different bytes replaces the staged copy, so each has one
 staged copy and the newer snapshot wins. `staged` shows what has ended but is
-not yet stored; `drain` finishes it without waiting for another session.
+not yet stored, and counts the transcripts still pending; `drain` files the pending ones and finishes the rest without waiting for another session.
 
 How long a staged file lives is bounded on four fronts, because for a while it
 was not bounded at all: the drain ran only from a hook of the repository the

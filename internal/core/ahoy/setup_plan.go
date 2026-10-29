@@ -128,8 +128,9 @@ func buildSetupPlan(det DetectionResult, asksYou []string) SetupPlan {
 		var items []string
 		for _, g := range det.Gaps {
 			// A tool is never one of the changes: it is installed only on
-			// its own question, which the plan lists among the questions.
-			if g.Scope != scope || !g.Resolvable || personOnlyGap(g.ID) || offers[g.ID] || g.Category == Readme || g.Category == Dependency {
+			// its own question, which the plan lists among the questions; nor
+			// is the live brief session question, which is asked in its turn.
+			if g.Scope != scope || !g.Resolvable || personOnlyGap(g.ID) || offers[g.ID] || g.Category == Readme || g.Category == Sessions || g.Category == Dependency {
 				continue
 			}
 			if t := strings.Join(strings.Fields(g.Title), " "); t != "" && !slices.Contains(items, t) {

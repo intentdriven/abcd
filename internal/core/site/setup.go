@@ -15,6 +15,10 @@ package site
 //     repository owns once it exists (the composition and the static inputs)
 //     is kept, and machinery that drifted refuses the whole stage — with
 //     nothing written and no remote change attempted — unless it is confirmed.
+//     A provider that publishes a project site (github-pages) writes only the
+//     site's settings, holding the switch, and the workflow: no composition
+//     and no site sources, because a project site renders only what abcd
+//     already writes (project.go). One with nothing to render is refused.
 //  2. THE FORGE. The two deployment environments the workflow runs in,
 //     restricted to the default branch and release tags, created or corrected
 //     through the forge's API as the person who invoked the verb (adr-44: a
@@ -36,6 +40,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -49,6 +54,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/launch/scaffold"
 	"github.com/intentdriven/abcd/internal/core/positioning"
 	"github.com/intentdriven/abcd/internal/core/tools"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -68,6 +74,12 @@ const (
 	EnvRender = "site-render"
 	EnvDeploy = "site"
 )
+
+// projectReleaseNote states the project route's dependency on abcd's own
+// releases: the workflow builds with abcd's latest release, and a release made
+// before project sites existed has no `site build --project`.
+const projectReleaseNote = "the workflow builds with abcd's latest release, so its build fails until abcd publishes a release " +
+	"that builds project sites (one whose `abcd site build` takes --project)"
 
 // abcdReleaseRepo is where the workflow downloads the abcd binary it renders
 // with, and whose release workflow must have signed it.
@@ -114,6 +126,10 @@ const (
 	HostNotReached   = "not_reached"
 )
 
+// FileRemoved is a file outcome: setup removed the release workflow it added,
+// because the project site is switched off.
+const FileRemoved scaffold.FileStatus = "removed"
+
 // ErrNotManaged refuses a folder abcd does not manage.
 var ErrNotManaged = errors.New("site setup: this is not a repository abcd manages (run `abcd ahoy install` first)")
 
@@ -129,10 +145,21 @@ type SetupRequest struct {
 	// Name and Domain seed the hosting block when the composition has none.
 	// Name defaults to the repository's own name.
 	Name, Domain string
+	// Provider seeds the hosting block's provider when the composition has
+	// none; empty is DefaultProvider. A provider with a switch (github-pages)
+	// is switched on only by a yes to the question setup asks.
+	Provider string
 	// Confirm replaces machinery that drifted from what setup writes.
 	Confirm bool
 	// Asker confirms each remote write; nil declines them all.
 	Asker Asker
+	// Unattended says the Asker answers for no one (--yes). It is never put
+	// the takeover of a site the host already serves: an unattended run that
+	// meets one refuses, naming it, unless ReplaceExisting answered it.
+	Unattended bool
+	// ReplaceExisting answers the takeover in advance (--replace-existing):
+	// setup publishes over a site the host already serves without asking.
+	ReplaceExisting bool
 	// Forge is the repository's forge; nil resolves GitHub through gh.
 	Forge Forge
 	// ConfirmTool answers the offer to install a missing gh when Forge is nil
@@ -238,7 +265,51 @@ func Setup(req SetupRequest) (SetupResult, error) {
 			offerNote = strings.Join(offer, "\n")
 		}
 	}
+	if forge != nil {
+		s.Repo = forge.Repo()
+	} else if repo, rerr := ahoy.GitHubRepo(root); rerr == nil {
+		s.Repo = repo
+	}
+	prof := adapter.Profile(s)
+	switchedOff := prof.Switched && manifestBytes == nil && !hostingBlock.On()
+	project := manifest.Project()
+	// A project site is built from what abcd writes; with nothing written yet
+	// it would be an empty page, so it is not switched on. A switched-off site
+	// is exempt: setup only offers to take its workflow away.
+	if project && !switchedOff {
+		ok, err := projectHasContent(root)
+		if err != nil {
+			return SetupResult{}, fmt.Errorf("site setup: %w", err)
+		}
+		if !ok {
+			return SetupResult{}, ErrProjectEmpty
+		}
+	}
+	// A public-only provider refuses a private repository before anything is
+	// asked or written. A switched-off site is exempt: setup only offers to
+	// take its workflow away.
+	//
+	// This reads GET repos/{repo}, and the github-pages adapter's Inspect
+	// reads it again, as DefaultBranch does. The repeat is kept: the reads sit
+	// on two seams (the Forge here, a hosting.Adapter's own API there), the
+	// check here holds for any public-only provider whatever its Inspect does,
+	// and passing one response through would add the forge's repository
+	// document to the provider seam for a saving of two small reads per run.
+	if prof.PublicOnly && !switchedOff {
+		if forge == nil {
+			return SetupResult{}, fmt.Errorf("site setup: %s publishes public repositories only, and whether this one is public could not be read from the forge", adapter.Name())
+		}
+		private, perr := forge.Private(ctx)
+		if perr != nil {
+			return SetupResult{}, fmt.Errorf("site setup: %s publishes public repositories only, and whether %s is public could not be read: %s",
+				adapter.Name(), forge.Repo(), firstLine(perr.Error()))
+		}
+		if private {
+			return SetupResult{}, fmt.Errorf("site setup: %s is private, and %s publishes public repositories only for now", forge.Repo(), adapter.Name())
+		}
+	}
 	branch, branchNote := defaultBranch(ctx, root, forge)
+	envNames := []string{EnvRender, prof.Environment}
 
 	res := SetupResult{Host: HostOutcome{Provider: adapter.Name(), Name: s.Name, Domain: s.Domain, Status: HostNotReached}}
 	if offerNote != "" {
@@ -246,6 +317,62 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	}
 	if branchNote != "" {
 		res.Notes = append(res.Notes, branchNote)
+	}
+	if switchedOff {
+		return setupSwitchedOff(root, branch, adapter, s, project, req, res)
+	}
+	// A provider that acts through the forge is read before anything is asked
+	// or written, so a host it would refuse is refused before the repository
+	// half is written for an address the site would not be served from.
+	_, wferr := os.Lstat(filepath.Join(root, filepath.FromSlash(SiteWorkflowRelPath)))
+	noWorkflow := os.IsNotExist(wferr)
+	takeover := ""
+	if adapter.CredentialName() == "" && forge != nil && s.Repo != "" {
+		st, err := readForgeHost(ctx, adapter, s)
+		if err != nil {
+			return SetupResult{}, fmt.Errorf("site setup: %s", firstLine(err.Error()))
+		}
+		// A site the host already serves, in a repository setup has not
+		// added its workflow to, is someone's: it is published over only
+		// after a question naming it.
+		if st.Existing != "" && noWorkflow {
+			takeover = st.Existing
+		}
+	}
+	// The switch (the PT's 2026-10-14 ruling, "ask at setup"): a new
+	// composition naming a provider that publishes only while switched on is
+	// written only on a yes, and then with the switch on. A composition that
+	// already holds the switch but has no workflow yet (its hosting block
+	// added by hand, as setup's own refusal names it) is asked too: the
+	// workflow is what publishes, and it is added only on a yes.
+	askSwitch := prof.Switched && (manifestBytes != nil || noWorkflow)
+	// The takeover is a person's answer and never a scripted one: --yes does
+	// not give it (ReplaceExisting does), and a run that only --yes answers
+	// refuses before anything is asked or written.
+	if takeover != "" && !req.ReplaceExisting {
+		if req.Unattended {
+			return SetupResult{}, fmt.Errorf("site setup: this repository already publishes a %s site, at %s, and --yes does not answer "+
+				"whether to publish over it; re-run at a terminal to be asked, or pass --replace-existing to replace it", adapter.Name(), takeover)
+		}
+		if !askSwitch && (req.Asker == nil || !req.Asker.Confirm(takeoverQuestion(adapter, takeover))) {
+			return declinedBeforeWriting(res, "the existing "+adapter.Name()+" site at "+takeover+" was not published over",
+				"re-run `abcd site setup` and answer yes, or pass --replace-existing, to publish over the existing site"), nil
+		}
+	}
+	if askSwitch {
+		if req.Asker == nil || !req.Asker.Confirm(switchQuestion(adapter, prof, takeover, manifestBytes == nil, project)) {
+			return declinedBeforeWriting(res, "the project site was not switched on",
+				"re-run `abcd site setup --provider "+adapter.Name()+"` and answer yes, to switch the project site on"), nil
+		}
+	}
+	if prof.Switched && manifestBytes != nil {
+		on := true
+		manifest.Hosting.Publish, hostingBlock.Publish = &on, &on
+		raw, merr := encodeSetupFile(manifest)
+		if merr != nil {
+			return SetupResult{}, merr
+		}
+		manifestBytes = raw
 	}
 
 	// Stage 1: the repository.
@@ -263,20 +390,25 @@ func Setup(req SetupRequest) (SetupResult, error) {
 		} else {
 			res.Notes = append(res.Notes, "a write failed, so no remote change was attempted: "+scrubRoot(werr, root))
 		}
-		for _, env := range []string{EnvRender, EnvDeploy} {
+		for _, env := range envNames {
 			res.Environments = append(res.Environments, EnvironmentOutcome{Name: env, Status: RemoteNotReached})
 		}
 		return res, nil
 	}
 	// The one exception to "a file the repository owns is kept" (the TG1
 	// ruling): a ui.json the repository already had gains each declared label
-	// it lacks, with its default words, and nothing in it is rewritten.
-	added, aerr := addMissingLabels(root, manifest.UIStrings)
+	// it lacks, with its default words, and nothing in it is rewritten. A
+	// project site has no ui.json: its words are the binary's.
+	var added []string
+	var aerr error
+	if !project {
+		added, aerr = addMissingLabels(root, manifest.UIStrings)
+	}
 	if aerr != nil {
 		res.Status = StatusRefused
 		res.Notes = append(res.Notes, "the missing interface labels could not be added to "+manifest.UIStrings+
 			", so no remote change was attempted: "+scrubRoot(aerr, root))
-		for _, env := range []string{EnvRender, EnvDeploy} {
+		for _, env := range envNames {
 			res.Environments = append(res.Environments, EnvironmentOutcome{Name: env, Status: RemoteNotReached})
 		}
 		return res, nil
@@ -303,16 +435,16 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	// sets the token first, and the workflow's first run creates the deploy
 	// environment with no policy at all: deployable from any branch.
 	createStep := fmt.Sprintf("create the forge environments %s and %s, each admitting only branch %s and tags v*, "+
-		"as the workflow's header describes, before setting any deploy secret", EnvRender, EnvDeploy, branch)
+		"as the workflow's header describes, before setting any deploy secret", envNames[0], envNames[1], branch)
 	if forge == nil {
 		envOK = false
-		for _, env := range []string{EnvRender, EnvDeploy} {
+		for _, env := range envNames {
 			res.Environments = append(res.Environments, EnvironmentOutcome{Name: env, Status: RemoteUnreachable})
 		}
 		res.Remaining = append(res.Remaining, createStep)
 	} else {
 		res.Repo = forge.Repo()
-		envs, st, note, steps := setupEnvironments(ctx, forge, branch, req.Asker)
+		envs, st, note, steps := setupEnvironments(ctx, forge, branch, envNames, req.Asker)
 		res.Environments = envs
 		res.Remaining = append(res.Remaining, steps...)
 		switch st {
@@ -320,7 +452,7 @@ func Setup(req SetupRequest) (SetupResult, error) {
 			changed = true
 		case RemoteDeclined:
 			declined, envOK = true, false
-			res.Remaining = append(res.Remaining, "re-run `abcd site setup` and confirm, to create the environments "+EnvRender+" and "+EnvDeploy)
+			res.Remaining = append(res.Remaining, "re-run `abcd site setup` and confirm, to create the environments "+envNames[0]+" and "+envNames[1])
 		case RemoteRefused:
 			refused, envOK = true, false
 			res.Notes = append(res.Notes, note)
@@ -334,7 +466,7 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	if refused {
 		res.Host.Detail = "not reached: the forge stage failed"
 	} else {
-		hc, hdeclined, hrefused := setupHost(ctx, adapter, s, req)
+		hc, hdeclined, hrefused := setupHost(ctx, adapter, s, forge != nil, req)
 		res.Host = hc
 		switch {
 		case hrefused:
@@ -360,7 +492,7 @@ func Setup(req SetupRequest) (SetupResult, error) {
 
 	// The deploy environment's secrets: never set by abcd (a value would pass
 	// through it), but their presence is readable by name.
-	res.Remaining = append(res.Remaining, secretSteps(ctx, forge, envOK, adapter, &res)...)
+	res.Remaining = append(res.Remaining, secretSteps(ctx, forge, envOK, adapter, prof.Environment, &res)...)
 
 	if wrote > 0 {
 		var paths []string
@@ -374,6 +506,12 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	}
 	res.Notes = append(res.Notes, "the site renders and deploys on the next published release, whether a person or "+
 		"the release workflows publish it; `gh workflow run site.yml` deploys the latest one now")
+	if project {
+		// The workflow downloads abcd's latest release to build with. Which
+		// release is latest is the forge's to say, and setup asks the network
+		// nothing for it, so the dependency is stated on every project setup.
+		res.Notes = append(res.Notes, projectReleaseNote)
+	}
 
 	switch {
 	case refused:
@@ -432,7 +570,8 @@ func scrubRoot(err error, root string) string {
 }
 
 // setupComposition returns the composition setup works from, and the bytes to
-// write when the repository has none yet (nil when it has one).
+// write when the repository has none yet (nil when it has one). For a provider
+// that publishes a project site, what it writes is that site's settings.
 func setupComposition(root string, req SetupRequest) (Manifest, []byte, error) {
 	bad := func(format string, args ...any) error {
 		return fmt.Errorf("%w: %s", ErrManifestInvalid, fmt.Sprintf(format, args...))
@@ -441,22 +580,36 @@ func setupComposition(root string, req SetupRequest) (Manifest, []byte, error) {
 	switch {
 	case err == nil:
 		if m.Hosting == nil {
-			h := &Hosting{Provider: DefaultProvider, Name: req.Name, Domain: req.Domain}
+			h := &Hosting{Provider: providerOf(req), Name: req.Name, Domain: req.Domain}
 			if h.Name == "" {
 				h.Name = defaultHostName(root)
 			}
 			if err := h.validate(bad); err != nil {
 				return Manifest{}, nil, err
 			}
-			if req.Domain != "" || req.Name != "" {
+			if a, ok := adapterNamed(h.Provider); ok && a.Profile(hosting.Site{}).Switched {
+				on := true
+				h.Publish = &on
+			}
+			if req.Domain != "" || req.Name != "" || req.Provider != "" {
 				// The composition is the repository's own, so setup does not
 				// rewrite it; the domain has to live in it for the next run to
 				// route the same one.
 				blk, _ := json.Marshal(h)
-				return Manifest{}, nil, fmt.Errorf("site setup: %s exists and declares no hosting block; add `\"hosting\": %s` to it rather than passing --name or --domain",
+				// The block carries the switch on, as setup would write it,
+				// and the next run still asks whether to switch the project
+				// site on before it adds the workflow that publishes.
+				msg := fmt.Sprintf("site setup: %s exists and declares no hosting block; add `\"hosting\": %s` to it rather than passing --name, --domain or --provider",
 					ManifestRelPath, blk)
+				if h.Publish != nil {
+					msg += ", then re-run `abcd site setup`, which asks whether to switch the project site on before it adds the workflow"
+				}
+				return Manifest{}, nil, errors.New(msg)
 			}
 			m.Hosting = h
+		} else if req.Provider != "" && req.Provider != m.Hosting.Provider {
+			return Manifest{}, nil, fmt.Errorf("site setup: %s already names the provider %q; edit its hosting block to change it",
+				ManifestRelPath, m.Hosting.Provider)
 		} else if (req.Name != "" && req.Name != m.Hosting.Name) || (req.Domain != "" && req.Domain != m.Hosting.Domain) {
 			return Manifest{}, nil, fmt.Errorf("site setup: %s already names the host %q and domain %q; edit its hosting block to change them",
 				ManifestRelPath, m.Hosting.Name, m.Hosting.Domain)
@@ -464,6 +617,30 @@ func setupComposition(root string, req SetupRequest) (Manifest, []byte, error) {
 		return m, nil, nil
 	case !os.IsNotExist(err):
 		return Manifest{}, nil, err
+	}
+
+	// A provider that publishes a project site gets the project site's
+	// settings and nothing else: no composition, because the site renders
+	// only what abcd writes (the product thinker's ruling of 2026-10-15).
+	a := req.Adapter
+	if a == nil {
+		a, _ = adapterNamed(providerOf(req))
+	}
+	if a != nil && a.Profile(hosting.Site{}).Project {
+		name := req.Name
+		if name == "" {
+			name = defaultHostName(root)
+		}
+		m = Manifest{SchemaVersion: 1, Mode: ModeProject, Purpose: projectSettingsPurpose,
+			Hosting: &Hosting{Provider: providerOf(req), Name: name, Domain: req.Domain}}
+		if err := m.validate(); err != nil {
+			return Manifest{}, nil, err
+		}
+		raw, err := encodeSetupFile(m)
+		if err != nil {
+			return Manifest{}, nil, err
+		}
+		return m, raw, nil
 	}
 
 	cfg, ok, cerr := positioning.LoadConfig(root)
@@ -498,7 +675,7 @@ func setupComposition(root string, req SetupRequest) (Manifest, []byte, error) {
 			Hero:     Hero{Page: hero, Figure: figureFirstImage},
 			Chapters: []Chapter{{Letter: "a", Page: hero, Layout: LayoutProse}},
 		},
-		Hosting: &Hosting{Provider: DefaultProvider, Name: name, Domain: req.Domain},
+		Hosting: &Hosting{Provider: providerOf(req), Name: name, Domain: req.Domain},
 	}
 	if err := m.validate(); err != nil {
 		return Manifest{}, nil, err
@@ -508,6 +685,19 @@ func setupComposition(root string, req SetupRequest) (Manifest, []byte, error) {
 		return Manifest{}, nil, err
 	}
 	return m, append(raw, '\n'), nil
+}
+
+// encodeSetupFile renders the file setup writes at ManifestRelPath: a project
+// site's settings, or a composition.
+func encodeSetupFile(m Manifest) ([]byte, error) {
+	if m.Project() {
+		return encodeProjectSettings(m.Hosting)
+	}
+	raw, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(raw, '\n'), nil
 }
 
 // hostCharRe is what a repository name keeps on its way to a host name.
@@ -536,6 +726,11 @@ func plannedFiles(root string, m Manifest, manifestBytes []byte, branch string, 
 		planned = append(planned, scaffold.PlannedFile{Path: ManifestRelPath, Data: manifestBytes, Seed: true})
 	}
 	for _, name := range seedNames {
+		// A project site is seeded with nothing: its interface words, styles
+		// and scripts come from the binary at build time.
+		if m.Project() {
+			break
+		}
 		data, err := setupSources.ReadFile("setupsrc/" + name)
 		if err != nil {
 			return nil, err
@@ -546,13 +741,14 @@ func plannedFiles(root string, m Manifest, manifestBytes []byte, branch string, 
 		}
 		planned = append(planned, scaffold.PlannedFile{Path: rel, Data: data, Seed: true})
 	}
-	wf, err := renderSiteWorkflow(branch, adapter)
+	wf, err := renderSiteWorkflow(branch, adapter, s, m.Project())
 	if err != nil {
 		return nil, err
 	}
 	planned = append(planned, scaffold.PlannedFile{Path: SiteWorkflowRelPath, Data: wf})
-	rel, data := adapter.HostConfig(s)
-	planned = append(planned, scaffold.PlannedFile{Path: rel, Data: data})
+	if rel, data := adapter.HostConfig(s); rel != "" {
+		planned = append(planned, scaffold.PlannedFile{Path: rel, Data: data})
+	}
 	// The writer resolves each path under the root by name, so a symlinked
 	// directory on the way would carry a write out of the repository. Refuse
 	// the run before any write rather than follow one.
@@ -585,9 +781,10 @@ func refuseSymlinkedAncestor(root, rel string) error {
 	return nil
 }
 
-// renderSiteWorkflow renders the workflow for the repository's default branch
-// and the provider's deploy step.
-func renderSiteWorkflow(branch string, adapter hosting.Adapter) ([]byte, error) {
+// renderSiteWorkflow renders the workflow for the repository's default branch,
+// the provider's deploy job and the site it publishes. project builds and
+// gates a project site (`--project`, project.go).
+func renderSiteWorkflow(branch string, adapter hosting.Adapter, s hosting.Site, project bool) ([]byte, error) {
 	raw, err := setupSources.ReadFile("setupsrc/site.yml.tmpl")
 	if err != nil {
 		return nil, err
@@ -597,6 +794,23 @@ func renderSiteWorkflow(branch string, adapter hosting.Adapter) ([]byte, error) 
 		return nil, err
 	}
 	rel, _ := adapter.HostConfig(hosting.Site{Name: "x"})
+	prof := adapter.Profile(s)
+	ifOn, baseFlag, projectFlag := "", "", ""
+	if project {
+		projectFlag = " --project"
+	}
+	if prof.Switched {
+		ifOn = "        if: steps.switch.outputs.on == 'true'\n"
+	}
+	base, err := NormaliseBasePath(prof.BasePath)
+	if err != nil {
+		return nil, err
+	}
+	if base != "/" {
+		// Plain path segments only (NormaliseBasePath), so the flag is a
+		// literal in the shell line and nothing in it is interpreted.
+		baseFlag = " --base-path " + base
+	}
 	var buf bytes.Buffer
 	err = tmpl.Execute(&buf, map[string]any{
 		// The branch is the forge's, held to scaffold.SafeBranchName, or
@@ -608,6 +822,16 @@ func renderSiteWorkflow(branch string, adapter hosting.Adapter) ([]byte, error) 
 		"DeployStep":    adapter.DeployStep(),
 		"HostConfig":    rel,
 		"AbcdRepo":      abcdReleaseRepo,
+		// The deploy job's environment and token permissions, the switch and
+		// the base path, from the provider's profile.
+		"DeployEnv":         prof.Environment,
+		"DeployPermissions": prof.Permissions,
+		"Switched":          prof.Switched,
+		"SwitchFile":        ManifestRelPath,
+		"IfOn":              ifOn,
+		"BaseFlag":          baseFlag,
+		"Project":           project,
+		"ProjectFlag":       projectFlag,
 	})
 	return buf.Bytes(), err
 }
@@ -629,8 +853,7 @@ func desiredPolicies(branch string) []BranchPolicy {
 // policies it lacks (their own endpoint, which touches nothing else); one that
 // admits more refs than that, through its protection mode or through a custom
 // rule beyond the two it needs, is left as it is, and restricting it is a step.
-func setupEnvironments(ctx context.Context, forge Forge, branch string, asker Asker) ([]EnvironmentOutcome, string, string, []string) {
-	names := []string{EnvRender, EnvDeploy}
+func setupEnvironments(ctx context.Context, forge Forge, branch string, names []string, asker Asker) ([]EnvironmentOutcome, string, string, []string) {
 	outcomes := make([]EnvironmentOutcome, len(names))
 	var steps []string
 	fail := func(what string, err error) ([]EnvironmentOutcome, string, string, []string) {
@@ -742,32 +965,50 @@ func containsPolicy(have []BranchPolicy, want BranchPolicy) bool {
 }
 
 // setupHost is the host stage.
-func setupHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site, req SetupRequest) (out HostOutcome, declined, refused bool) {
+func setupHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site, forgeReachable bool, req SetupRequest) (out HostOutcome, declined, refused bool) {
 	out = HostOutcome{Provider: adapter.Name(), Name: s.Name, Domain: s.Domain, Credential: adapter.CredentialName()}
-	src := req.Credentials
-	if src == nil {
-		src = credential.UserStore()
-	}
-	token, err := src.Resolve(adapter.CredentialName())
-	if errors.Is(err, credential.ErrNotSet) {
-		out.Status = HostNoCredential
-		out.Detail = "no " + adapter.CredentialName() + " credential on this machine, so the host was not contacted"
-		return out, false, false
-	}
-	if err != nil {
-		out.Status = HostRefused
-		out.Detail = err.Error()
-		return out, false, true
+	token := ""
+	if adapter.CredentialName() == "" {
+		// The provider acts through the forge as the person, so it needs the
+		// forge and resolves no credential.
+		if !forgeReachable || s.Repo == "" {
+			out.Status = HostNotReached
+			out.Detail = "not reached: " + adapter.Name() + " acts through the forge, which is not reachable from this checkout"
+			return out, false, false
+		}
+	} else {
+		src := req.Credentials
+		if src == nil {
+			src = credential.UserStore()
+		}
+		var err error
+		token, err = src.Resolve(adapter.CredentialName())
+		if errors.Is(err, credential.ErrNotSet) {
+			out.Status = HostNoCredential
+			out.Detail = "no " + adapter.CredentialName() + " credential on this machine, so the host was not contacted"
+			return out, false, false
+		}
+		if err != nil {
+			out.Status = HostRefused
+			out.Detail = err.Error()
+			return out, false, true
+		}
 	}
 	p := adapter.Connect(token)
 	refuse := func(err error) (HostOutcome, bool, bool) {
 		out.Status = HostRefused
-		out.Detail = strings.ReplaceAll(err.Error(), token, "[credential]")
+		out.Detail = err.Error()
+		if token != "" {
+			out.Detail = strings.ReplaceAll(out.Detail, token, "[credential]")
+		}
 		return out, false, true
 	}
 	st, err := p.Inspect(ctx, s)
 	if err != nil {
 		return refuse(err)
+	}
+	if st.Existing != "" {
+		out.Detail = "publishes to the " + adapter.Name() + " site already at " + st.Existing
 	}
 	if !st.Exists {
 		out.Changes = append(out.Changes, "create "+adapter.Name()+" host "+s.Name)
@@ -791,11 +1032,20 @@ func setupHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site, req
 			}
 		}
 	}
-	addr, err := p.Address(ctx, s)
+	addr, note, err := p.Address(ctx, s)
 	if err != nil {
 		return refuse(err)
 	}
+	if err := servedAtBase(adapter, s, addr); err != nil {
+		return refuse(err)
+	}
 	out.Address = addr
+	if note != "" {
+		if out.Detail != "" {
+			out.Detail += "; "
+		}
+		out.Detail += note
+	}
 	out.Status = HostCurrent
 	if len(out.Changes) > 0 {
 		out.Status = HostWritten
@@ -806,14 +1056,17 @@ func setupHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site, req
 // secretSteps names the deploy environment's secrets that are not set, as the
 // exact commands that set them. gh reads the value from the terminal, so it
 // never passes through abcd or a shell history.
-func secretSteps(ctx context.Context, forge Forge, envOK bool, adapter hosting.Adapter, res *SetupResult) []string {
+func secretSteps(ctx context.Context, forge Forge, envOK bool, adapter hosting.Adapter, env string, res *SetupResult) []string {
 	want := adapter.Secrets()
+	if len(want) == 0 {
+		return nil
+	}
 	missing := want
 	repo := res.Repo
 	if forge != nil && envOK {
-		names, err := forge.SecretNames(ctx, EnvDeploy)
+		names, err := forge.SecretNames(ctx, env)
 		if err != nil {
-			res.Notes = append(res.Notes, "the "+EnvDeploy+" environment's secret names could not be read, so every one is listed: "+err.Error())
+			res.Notes = append(res.Notes, "the "+env+" environment's secret names could not be read, so every one is listed: "+err.Error())
 		} else {
 			have := map[string]bool{}
 			for _, n := range names {
@@ -830,11 +1083,181 @@ func secretSteps(ctx context.Context, forge Forge, envOK bool, adapter hosting.A
 	sort.Strings(missing)
 	var steps []string
 	for _, name := range missing {
-		cmd := "gh secret set " + name + " --env " + EnvDeploy
+		cmd := "gh secret set " + name + " --env " + env
 		if repo != "" {
 			cmd += " --repo " + repo
 		}
 		steps = append(steps, "set the deploy secret: `"+cmd+"`")
 	}
 	return steps
+}
+
+// providerOf is the provider a new hosting block names.
+func providerOf(req SetupRequest) string {
+	if req.Provider != "" {
+		return req.Provider
+	}
+	return DefaultProvider
+}
+
+// firstLine keeps a forge error to its first line, so a refusal stays one line.
+func firstLine(s string) string {
+	line, _, _ := strings.Cut(s, "\n")
+	return line
+}
+
+// switchQuestion is the switch, asked once, before anything is written. A
+// site the host already serves (takeover, its address and build type) is
+// named in it, since a yes publishes over that site.
+//
+// recorded says the composition already holds the switch, written by hand, so
+// a yes leaves it as it is and adds what publishes.
+func switchQuestion(adapter hosting.Adapter, prof hosting.Profile, takeover string, recorded, project bool) string {
+	where := adapter.Name()
+	if prof.Address != "" {
+		where = prof.Address + " (" + adapter.Name() + ")"
+	}
+	yes := "Yes records the switch in " + ManifestRelPath + ", writes the site's inputs under site-src/"
+	if recorded {
+		yes = ManifestRelPath + " already holds the switch; yes leaves it as it is, writes the site's inputs under site-src/"
+	}
+	built := ""
+	if project {
+		// A project site writes no site inputs: its pages come from what abcd
+		// already writes, and its words, styles and scripts from the binary.
+		built = ", built from what abcd already writes to the repository (its identity block, brief, record and changelog)"
+		yes = "Yes records the switch in " + ManifestRelPath
+		if recorded {
+			yes = ManifestRelPath + " already holds the switch; yes leaves it as it is"
+		}
+	}
+	q := "Switch on the project site? At each release this repository's own workflow builds its about page and development record" + built +
+		" and publishes them at " + where + ". " + yes + " " +
+		"and adds " + SiteWorkflowRelPath + "; nothing else in the repository changes"
+	if takeover != "" {
+		q += ". This repository already publishes a site there, at " + takeover + ", and yes replaces it at the next release"
+	}
+	return q
+}
+
+// takeoverQuestion asks before publishing over a site the host already
+// serves, when no switch question is asked to name it.
+func takeoverQuestion(adapter hosting.Adapter, takeover string) string {
+	return "Publish over the existing " + adapter.Name() + " site? This repository already publishes one, at " + takeover +
+		", and abcd's release workflow (" + SiteWorkflowRelPath + ") replaces it at the next release"
+}
+
+// declinedBeforeWriting is a run declined before anything was written or
+// changed remotely: why, and the step that takes it further.
+func declinedBeforeWriting(res SetupResult, why, step string) SetupResult {
+	res.Status = StatusDeclined
+	res.Files, res.Environments = []scaffold.FileOutcome{}, []EnvironmentOutcome{}
+	res.Host.Detail = "not reached: " + why
+	res.Notes = append(res.Notes, why+", so nothing was written and nothing remote was changed")
+	res.Remaining = append(res.Remaining, step)
+	return res
+}
+
+// setupSwitchedOff is setup for a project site whose switch is off: the next
+// release publishes nothing whatever happens here, and setup offers to remove
+// the release workflow it added. A workflow that differs from the one setup
+// writes is a person's, and is kept. Nothing remote is touched.
+func setupSwitchedOff(root, branch string, adapter hosting.Adapter, s hosting.Site, project bool, req SetupRequest, res SetupResult) (SetupResult, error) {
+	res.Files, res.Environments = []scaffold.FileOutcome{}, []EnvironmentOutcome{}
+	res.Host.Detail = "not reached: the project site is switched off"
+	res.Notes = append(res.Notes, "the project site is switched off in "+ManifestRelPath+" (hosting.publish is not true), so the next release "+
+		"publishes nothing; pages already published stay up until they are unpublished in the repository's settings")
+	res.Status = StatusNoChange
+	want, err := renderSiteWorkflow(branch, adapter, s, project)
+	if err != nil {
+		return SetupResult{}, err
+	}
+	if err := refuseSymlinkedAncestor(root, SiteWorkflowRelPath); err != nil {
+		return SetupResult{}, err
+	}
+	path := filepath.Join(root, filepath.FromSlash(SiteWorkflowRelPath))
+	fi, err := os.Lstat(path)
+	switch {
+	case os.IsNotExist(err):
+		return res, nil
+	case err != nil:
+		return SetupResult{}, fmt.Errorf("site setup: %s could not be examined", SiteWorkflowRelPath)
+	case !fi.Mode().IsRegular():
+		res.Files = append(res.Files, scaffold.FileOutcome{Path: SiteWorkflowRelPath, Status: scaffold.StatusKept,
+			Detail: "not a regular file, so setup leaves it"})
+		return res, nil
+	}
+	// Read on the descriptor that was checked, so a link or a pipe swapped in
+	// after the Lstat is refused rather than followed; a file longer than the
+	// workflow setup writes already differs from it.
+	have, err := fsutil.ReadGuarded(path, int64(len(want))+1)
+	if errors.Is(err, fsutil.ErrTooBig) {
+		have, err = nil, nil
+	}
+	if err != nil {
+		return SetupResult{}, fmt.Errorf("site setup: %s could not be read", SiteWorkflowRelPath)
+	}
+	if !bytes.Equal(have, want) {
+		res.Files = append(res.Files, scaffold.FileOutcome{Path: SiteWorkflowRelPath, Status: scaffold.StatusKept,
+			Detail: "differs from the workflow setup writes, so it was edited by hand and setup leaves it; remove it yourself if it is no longer wanted"})
+		return res, nil
+	}
+	if req.Asker == nil || !req.Asker.Confirm("Remove "+SiteWorkflowRelPath+", the release workflow abcd added? The project site is switched off in "+
+		ManifestRelPath+", so it has nothing to publish") {
+		res.Files = append(res.Files, scaffold.FileOutcome{Path: SiteWorkflowRelPath, Status: scaffold.StatusKept, Detail: "its removal was declined"})
+		res.Status = StatusDeclined
+		res.Remaining = append(res.Remaining, "re-run `abcd site setup` and confirm, to remove "+SiteWorkflowRelPath)
+		return res, nil
+	}
+	if err := os.Remove(path); err != nil {
+		res.Status = StatusRefused
+		res.Files = append(res.Files, scaffold.FileOutcome{Path: SiteWorkflowRelPath, Status: scaffold.StatusRefused, Detail: "the removal failed"})
+		return res, nil
+	}
+	res.Files = append(res.Files, scaffold.FileOutcome{Path: SiteWorkflowRelPath, Status: FileRemoved})
+	res.Status = StatusChanged
+	res.Remaining = append(res.Remaining, "commit the removal and push it to "+branch+": `git add "+SiteWorkflowRelPath+"`")
+	return res, nil
+}
+
+// readForgeHost is the host's read, made before anything is asked or written
+// for a provider that acts through the forge: Inspect, and for a host that
+// already exists with nothing left to route, the path it serves the site
+// below. A host it would refuse later is refused here.
+func readForgeHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site) (hosting.State, error) {
+	p := adapter.Connect("")
+	st, err := p.Inspect(ctx, s)
+	if err != nil || !st.Exists || !st.Routed {
+		// A host still to be routed changes its address on Route, so its path
+		// is judged by the host stage after the route.
+		return st, err
+	}
+	addr, _, err := p.Address(ctx, s)
+	if err != nil {
+		return st, err
+	}
+	return st, servedAtBase(adapter, s, addr)
+}
+
+// servedAtBase refuses an address the host serves the site below a path other
+// than the one the workflow builds it for: every root-absolute link the build
+// writes would miss the site.
+func servedAtBase(adapter hosting.Adapter, s hosting.Site, addr string) error {
+	want, err := NormaliseBasePath(adapter.Profile(s).BasePath)
+	if err != nil {
+		return err
+	}
+	u, err := url.Parse(addr)
+	if err != nil {
+		return fmt.Errorf("%s reports an address that is not a URL", adapter.Name())
+	}
+	got := "/" + strings.Trim(u.Path, "/") + "/"
+	if got == "//" {
+		got = "/"
+	}
+	if got != want {
+		return fmt.Errorf("%s serves this site at %s, below %s, but the workflow builds it for %s; "+
+			"abcd will not publish a site whose every link would miss it", adapter.Name(), addr, got, want)
+	}
+	return nil
 }

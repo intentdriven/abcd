@@ -59,7 +59,8 @@ type waitingFilter struct {
 }
 
 // asks reports whether the question key is put. A README part rides on the
-// README question, and a status line element on the status line offer.
+// README question, a status line element on the status line offer, and where
+// live sessions run on whether to set them up.
 func (f *waitingFilter) asks(key string) bool {
 	if f.none || key == "" {
 		return false
@@ -69,6 +70,8 @@ func (f *waitingFilter) asks(key string) bool {
 		key = ReadmePromptKey
 	case strings.HasPrefix(key, elementPromptPrefix):
 		key = StatusLineOfferGapID
+	case key == SessionsWherePromptKey:
+		key = SessionsPromptKey // where sessions run follows whether to set them up
 	}
 	return f.keys[key]
 }

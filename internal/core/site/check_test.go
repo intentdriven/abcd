@@ -167,8 +167,8 @@ func TestCheckPassesAWellFormedRender(t *testing.T) {
 		t.Errorf("pages = %d, composed = %d; the record rendering should be read for the mobile gate",
 			len(res.Pages), len(res.Composed))
 	}
-	if len(res.Checks) != 7 {
-		t.Errorf("checks run = %v, want seven", res.Checks)
+	if len(res.Checks) != 8 {
+		t.Errorf("checks run = %v, want eight", res.Checks)
 	}
 }
 
@@ -272,6 +272,25 @@ func TestGeneratorWordsReadNamesAndCounts(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{"Trusted by dozens of teams.", ".abcd/absent.json", "Мы лучшие"} {
+		if g.covers(bad) {
+			t.Errorf("covers(%q) = true; nothing entitles the generator to say it", bad)
+		}
+	}
+}
+
+// TestGeneratorWordsReadAMultiWordNameBesideAYear: the footer prints
+// "© <year> <author>", and an author's name may be two words. The name is the
+// package's own metadata, so it is read whole wherever it stands in a piece;
+// its words one by one are not names, and a sentence made of them still fails.
+func TestGeneratorWordsReadAMultiWordNameBesideAYear(t *testing.T) {
+	g := generatorWords{
+		phrases: map[string]bool{"fixture author": true}, names: map[string]bool{"fixture author": true, "mit": true},
+		attribution: map[string]bool{}, exists: func(string) bool { return false },
+	}
+	if !g.covers("© 2026 Fixture Author") {
+		t.Error(`covers("© 2026 Fixture Author") = false; the year and the author's name are both the generator's to print`)
+	}
+	for _, bad := range []string{"© 2026 Fixture", "Author of record", "2026 Fixture Author wrote this"} {
 		if g.covers(bad) {
 			t.Errorf("covers(%q) = true; nothing entitles the generator to say it", bad)
 		}

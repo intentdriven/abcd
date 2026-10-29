@@ -52,9 +52,13 @@ func TestFullySetUpRerunIsOneLine(t *testing.T) {
 	idMustGit(t, repo, "commit", "--allow-empty", "-q", "-m", "first")
 	clearIdentityEnv(t)
 	// Fully set up includes the commit checks git runs (iss-2610241134315056)
-	// and the person's own identity record, each answered yes.
+	// and the person's own identity record, each answered yes, and the live
+	// brief session question answered, since a question left for later is
+	// asked again.
 	first := func(q string) bool { return isArmHooksQuestion(q) || setupConfirmID(q) == UnrecordedGapID }
-	if _, err := Install(repo, planOpts(), &planPrompter{choice: PlanProceed, confirm: first}); err != nil {
+	answered := planOpts()
+	answered.LiveSessions = LiveSessionsNone
+	if _, err := Install(repo, answered, &planPrompter{choice: PlanProceed, confirm: first}); err != nil {
 		t.Fatal(err)
 	}
 	again := &planPrompter{choice: PlanProceed}

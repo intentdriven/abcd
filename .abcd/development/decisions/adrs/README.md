@@ -213,9 +213,12 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610140859394097](2610140859394097-abcd-s-home-ignores-itself-once-and.md) | abcd's home ignores itself once, and credentials never sit in a working tree | proposed | 2026-10-14 |
 | [adr-2610141646523373](2610141646523373-ingested-pages-are-private-by-default.md) | Ingested pages are private by default and reach the project only by a person's promotion | accepted | 2026-10-14 |
 | [adr-2610141646525117](2610141646525117-the-librarian-treats-unknown-rights-as.md) | The librarian treats unknown rights as all rights reserved, files privately first, and admits only named ratings | accepted | 2026-10-14 |
+| [adr-2610141949110653](2610141949110653-the-brief-session-s-browser-editor-ships.md) | The brief session's browser editor ships as a vendored bundle the binary embeds | accepted | 2026-10-14 |
 | [adr-2610142116480836](2610142116480836-ideate-verdicts-are-private-or-public-by.md) | Ideate verdicts are private or public by the person's choice, and an idea's source is named publicly only when it graduates | accepted | 2026-10-14 |
+| [adr-2610142147242544](2610142147242544-abcd-s-site-is-built-onto-its-own-github.md) | abcd's record is built onto its own GitHub Pages, and abcdev.app becomes abcd's documentation site | proposed | 2026-10-14 |
 | [adr-2610150603484802](2610150603484802-a-fresh-install-s-facilitator-is-a.md) | A fresh install's facilitator is a person until the repository says auto | accepted | 2026-10-15 |
 | [adr-2610150729333337](2610150729333337-a-status-branch-moves-without-a.md) | A status branch moves without a preflight receipt | proposed | 2026-10-15 |
+| [adr-2610161400542916](2610161400542916-the-brief-session-page-asks-nobody-for-a.md) | The brief session page asks nobody for a relay address or a token, and a local session signs in by GitHub's device flow | accepted | 2026-10-16 |
 | [adr-2610161621415708](2610161621415708-abcd-s-command-guard-steers-agents-an-os.md) | Unattended runs abcd launches execute inside an OS sandbox | proposed | 2026-10-16 |
 | [adr-2610161733400551](2610161733400551-a-reviewer-in-a-model-matrix-run-never.md) | A reviewer or judge in a model-matrix run is told nothing about which model wrote the copy it judges | proposed | 2026-10-16 |
 | [adr-2610161940004937](2610161940004937-spent-reservation-branches-are-deleted.md) | Spent reservation branches are deleted only by one GitHub App the ruleset names | proposed | 2026-10-16 |
