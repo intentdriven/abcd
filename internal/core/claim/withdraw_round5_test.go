@@ -53,7 +53,7 @@ func TestAStateAnotherLoginChangedOnALiveReservationIsReArmedByTheRelease(t *tes
 	if _, tws := w.tipWithdrawals("rel-v0.16.0"); stateOf(tws, 11) != WithdrawnRearmed {
 		t.Fatalf("tip records #11 %q; want re-armed", stateOf(tws, 11))
 	}
-	if notes := settleNotes(res.Settles); !strings.Contains(notes, "1 commit above octo's newest push to rel-v0.16.0's branch, pushed by mal (1), are not read") {
+	if notes := settleNotes(res.Settles); !strings.Contains(notes, "1 commit above "+octo.holderID()+"'s newest push to rel-v0.16.0's branch, pushed by mal (1), are not read") {
 		t.Fatalf("settles = %+v; want mal's commit named as not read", res.Settles)
 	}
 	if !slices.Contains(f.posted(), "#11 abcd release hold: the merge of #11 is re-armed; the hold for release v0.16.0 has ended.") {
@@ -129,7 +129,7 @@ func TestAStateAnotherLoginsTombstoneChangedIsReArmedWhenTheReleaseEnds(t *testi
 	f.reset()
 	w.set(t0.Add(time.Minute))
 	s := settleAfter(t, octo)
-	if len(f.mutations()) != 0 || len(f.posted()) != 3 || s.NotEnded != "octo" || s.Commit != "" {
+	if len(f.mutations()) != 0 || len(f.posted()) != 3 || s.NotEnded != octo.holderID() || s.Commit != "" {
 		t.Fatalf("settle = %+v, mutations %v, comments %q; want nothing acted on and the tombstone named", s, f.mutations(), f.posted())
 	}
 	if !strings.Contains(strings.Join(s.Notes(), "\n"), "rel-v0.16.0's tip is a tombstone octo did not push") || !slices.Equal(s.NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) {
@@ -169,7 +169,7 @@ func TestAnotherLoginsTombstoneMidCutEndsNothing(t *testing.T) {
 	w.set(t0.Add(time.Minute))
 	before := len(f.posted())
 	s := settleAfter(t, octo)
-	if len(f.mutations()) != 0 || len(f.posted()) != before || s.NotEnded != "octo" || len(s.Settled) != 0 {
+	if len(f.mutations()) != 0 || len(f.posted()) != before || s.NotEnded != octo.holderID() || len(s.Settled) != 0 {
 		t.Fatalf("settle = %+v, mutations %v; want nothing re-armed or commented on", s, f.mutations())
 	}
 	// The same tombstone pushed by octo would end it: the record decides.
@@ -275,7 +275,7 @@ func TestARefusedWithdrawalIsNotCommentedOn(t *testing.T) {
 	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
 		t.Fatal(err)
 	}
-	want := "#11 abcd release hold: the merge of #11 is withdrawn by octo while release v0.16.0 is cut, and is re-armed after it."
+	want := "#11 abcd release hold: the merge of #11 is withdrawn by " + p.holderID() + " while release v0.16.0 is cut, and is re-armed after it."
 	if got := f.posted(); len(got) != 3 || got[2] != want {
 		t.Fatalf("comments = %q; want the retried withdrawal commented on once", got)
 	}
@@ -299,8 +299,8 @@ func TestAnAdmitOfAnotherPersonsWithdrawalIsRefused(t *testing.T) {
 	f.reset()
 	comments, tip := len(f.posted()), w.remoteTip("rel-v0.16.0")
 	_, err := o.do(Request{Record: "rel-v0.16.0", Admit: 11})
-	if err == nil || !strings.Contains(err.Error(), "#11 was withdrawn by mallory, not by you, and only its withdrawer admits it") ||
-		!strings.Contains(err.Error(), "so take the release back with --take-over and admit it then") {
+	if err == nil || !strings.Contains(err.Error(), "#11 was withdrawn by "+m.holderID()+", not by you, and only its withdrawer admits it") ||
+		!strings.Contains(err.Error(), m.holderID()+" takes the release back with --take-over and admits it") {
 		t.Fatalf("admit = %v; want it refused, naming mallory and the remedy", err)
 	}
 	if len(f.mutations()) != 0 || len(f.posted()) != comments || w.remoteTip("rel-v0.16.0") != tip || f.pr(11).method != "" {

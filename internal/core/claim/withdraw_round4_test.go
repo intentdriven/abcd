@@ -45,7 +45,7 @@ func TestAFormAnotherLoginRewroteIsNeverReArmed(t *testing.T) {
 		t.Fatal(err)
 	}
 	// mal's tombstone ends nothing; octo's own --release over it does.
-	if len(res.Settles) != 1 || !slices.Equal(res.Settles[0].NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) || res.Settles[0].NotEnded != "octo" || len(f.mutations()) != 0 {
+	if len(res.Settles) != 1 || !slices.Equal(res.Settles[0].NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) || res.Settles[0].NotEnded != octo.holderID() || len(f.mutations()) != 0 {
 		t.Fatalf("settles = %+v, mutations %v; want mal's tombstone counted and named, and nothing acted on", res.Settles, f.mutations())
 	}
 	if _, err := octo.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
@@ -160,7 +160,7 @@ func TestALiveRenewalWithdrawsAgainNothingTheRecordDoesNotSettle(t *testing.T) {
 		f.reset()
 		w.set(t0.Add(time.Hour))
 		_, err := octo.do(Request{Record: "rel-v0.16.0"})
-		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of octo's withdrawals on rel-v0.16.0") {
+		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of "+octo.holderID()+"'s withdrawals on rel-v0.16.0") {
 			t.Fatalf("%s: renewal = %v; want refused, naming why", name, err)
 		}
 		if len(f.mutations()) != 0 || w.remoteTip("rel-v0.16.0") != record {

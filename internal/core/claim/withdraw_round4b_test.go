@@ -74,7 +74,7 @@ func TestAReleaseNamesWhatItDoesNotActOnOncePerTip(t *testing.T) {
 	for _, x := range res.Settles {
 		notes += strings.Join(x.Notes(), "\n")
 	}
-	if !strings.Contains(notes, "1 commit above octo's newest push to rel-v0.16.0's branch, pushed by mal (1), are not read") {
+	if !strings.Contains(notes, "1 commit above "+octo.holderID()+"'s newest push to rel-v0.16.0's branch, pushed by mal (1), are not read") {
 		t.Fatalf("notes = %q; want mal's commit named", notes)
 	}
 	res, err = octo.reserve("iss-8", "o.go")

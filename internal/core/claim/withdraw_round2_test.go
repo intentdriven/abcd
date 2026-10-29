@@ -97,7 +97,7 @@ func TestALapsedReleaseEndsForItsHolderAndReArmsWhatItWithdrew(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := snap.ReleaseWithdrawals(cutter.dir, cutter.self(), w.clock()); len(got) != 1 || !got[0].Lapsed ||
-		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "the next act of a copy of octo's ends it and re-arms what it withdrew, while the cut's tip is their own newest push") {
+		!strings.Contains(strings.Join(got[0].Lines(), "\n"), "the next act of a copy of "+cutter.holderID()+"'s ends it and re-arms what it withdrew, while the cut's tip is their own newest push") {
 		t.Fatalf("listing inside the margin = %+v; want the lapse and when it ends", got)
 	}
 	// The cut renews in time, so its merges stay withdrawn past the old margin.
@@ -348,7 +348,7 @@ func TestGhActingAsAnotherAccountTouchesNothing(t *testing.T) {
 	if err != nil || res.Act != ActReserved {
 		t.Fatalf("reserve = %+v, %v", res, err)
 	}
-	if len(res.Withdrew) != 0 || !strings.Contains(res.ForgeUnchecked, "gh acts as quinn, but the reservation's holder is octo") || len(f.mutations()) != 0 {
+	if len(res.Withdrew) != 0 || !strings.Contains(res.ForgeUnchecked, "gh acts as quinn, but you reserve as octo") || len(f.mutations()) != 0 {
 		t.Fatalf("result = %+v, mutations %v; want nothing withdrawn and the mismatch named", res, f.mutations())
 	}
 	// Withdrawn under the right account, then gh switches.
@@ -386,7 +386,7 @@ func TestOneReleaseIsCutAtATime(t *testing.T) {
 	}
 	quinn := w.clone("99+quinn@users.noreply.github.com", "")
 	for _, p := range []*participant{quinn, octo} {
-		if _, err := p.do(Request{Record: "rel-v0.17.0"}); !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is being cut by octo") {
+		if _, err := p.do(Request{Record: "rel-v0.17.0"}); !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is being cut by "+octo.holderID()) {
 			t.Fatalf("second release = %v; want a back-off naming the first", err)
 		}
 	}
@@ -474,7 +474,7 @@ func TestWithdrawalsAnOlderBinaryDroppedAreReportedLost(t *testing.T) {
 	}
 	lost := LostReleaseWithdrawals(cutter.dir, w.clock())
 	if len(lost) != 1 || lost[0].Subject != "rel-v0.16.0" || !slices.Equal(numbersOf(lost[0].Lost), []int{11, 12, 13}) ||
-		!strings.Contains(lost[0].Line(), "#11, #12, #13 withdrawn for rel-v0.16.0 by octo are lost") {
+		!strings.Contains(lost[0].Line(), "#11, #12, #13 withdrawn for rel-v0.16.0 by "+cutter.holderID()+" are lost") {
 		t.Fatalf("lost = %+v; want #11, #12, #13 named", lost)
 	}
 	// The launch check's reading names them too.

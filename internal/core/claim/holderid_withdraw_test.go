@@ -54,3 +54,47 @@ func TestACommitAnotherLoginPushedNamingTheReadersHolderIDIsNeverReArmed(t *test
 		t.Fatalf("mutations = %v; want #11 re-armed once octo's own push recorded it", got)
 	}
 }
+
+// TestAReservationAndTombstoneAnotherLoginPushedNamingTheHoldersIDEndNothingForThem:
+// over octo's live cut, mal pushes a reservation naming octo's holder id and
+// a tombstone over it. To octo, neither is octo's push, so the release is not
+// ended for octo and nothing octo withdrew is re-armed; octo's own --release
+// still ends it.
+func TestAReservationAndTombstoneAnotherLoginPushedNamingTheHoldersIDEndNothingForThem(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	octo := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := octo.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	m, ws := w.tipWithdrawals("rel-v0.16.0")
+	if m.Holder != octo.keptHolderID() {
+		t.Fatalf("octo's cut names %q; want octo's holder id", m.Holder)
+	}
+	forged := message{Record: m.Record, Holder: m.Holder, Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: w.clock(), ExpiresAt: w.clock().Add(time.Hour), Withdrawn: ws, AssistedBy: m.AssistedBy}
+	w.pushAs(f, "rel-v0.16.0", "mal", forged.text())
+	tomb := forged
+	tomb.ReleasedAt, tomb.ExpiresAt = w.clock(), w.clock()
+	w.pushAs(f, "rel-v0.16.0", "mal", tomb.text())
+	w.set(t0.Add(time.Minute))
+	f.reset()
+
+	res, err := octo.reserve("iss-8", "o.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range res.Settles {
+		if len(s.Settled) != 0 || s.Commit != "" {
+			t.Fatalf("settles = %+v; want nothing ended by mal's pushes naming octo's id", res.Settles)
+		}
+	}
+	if got := f.mutations(); len(got) != 0 {
+		t.Fatalf("mutations %v; want nothing re-armed by mal's pushes naming octo's id", got)
+	}
+	if _, err := octo.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.mutations(); len(got) == 0 {
+		t.Fatal("octo's own --release re-armed nothing")
+	}
+}

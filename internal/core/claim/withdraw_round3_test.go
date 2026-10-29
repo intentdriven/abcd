@@ -59,7 +59,7 @@ func TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed(t *testing
 		t.Fatalf("mutations %v, #11 %+v; want nothing re-armed for a record mal pushed", f.mutations(), f.pr(11))
 	}
 	if len(res.Settles) != 1 || !slices.Equal(res.Settles[0].NotRead, []PushCount{{Pusher: "mal", Commits: 2}}) || res.Settles[0].Commit != "" ||
-		!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "2 commits above octo's newest push to rel-v0.16.0's branch, pushed by mal (2), are not read") {
+		!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "2 commits above "+octo.holderID()+"'s newest push to rel-v0.16.0's branch, pushed by mal (2), are not read") {
 		t.Fatalf("settles = %+v; want mal's two commits counted and nothing pushed", res.Settles)
 	}
 	// The genuine case: octo pushed them (the verdict kept for the tip is
@@ -103,7 +103,7 @@ func TestARecordOfPushesThatIsPartialOrBehindDefersTheReArm(t *testing.T) {
 			t.Fatalf("%s: mutations %v, tip moved %v; want nothing done", name, f.mutations(), w.remoteTip("rel-v0.16.0") != tip)
 		}
 		if i == 0 && (len(res.Settles) != 1 || res.Settles[0].Unplaced == "" ||
-			!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "abcd acts on none of octo's withdrawals on rel-v0.16.0: the forge's record of who pushed")) ||
+			!strings.Contains(strings.Join(res.Settles[0].Notes(), "\n"), "abcd acts on none of "+octo.holderID()+"'s withdrawals on rel-v0.16.0: the forge's record of who pushed")) ||
 			i > 0 && len(res.Settles) != 0 {
 			t.Fatalf("%s: settles = %+v; want why named once for the tip", name, res.Settles)
 		}
@@ -448,7 +448,7 @@ func TestALapsedReleaseStillBeingCutBlocksASecondRelease(t *testing.T) {
 	b := w.clone("99+quinn@users.noreply.github.com", "")
 	f.reset()
 	_, err := b.do(Request{Record: "rel-v0.17.0"})
-	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is still being cut by octo") ||
+	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is still being cut by "+a.holderID()) ||
 		!strings.Contains(err.Error(), "abcd reserve rel-v0.16.0 --release") || len(f.mutations()) != 0 {
 		t.Fatalf("B's reserve = %v, mutations %v; want a back-off naming how rel-v0.16.0 ends", err, f.mutations())
 	}

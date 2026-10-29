@@ -134,7 +134,7 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 		"a tombstone dated outside the window": {plant: func(w *world, f *fakeForge) {
 			m, ws := w.tipWithdrawals("rel-v0.16.0")
 			old := w.clock().Add(-15 * 24 * time.Hour)
-			tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: old, ExpiresAt: old, ReleasedAt: old,
+			tm := message{Record: m.Record, Holder: m.Holder, Copy: m.Copy, ClaimedAt: old, ExpiresAt: old, ReleasedAt: old,
 				Withdrawn: withState(withState(withState(ws, 11, WithdrawnRearmed), 12, WithdrawnRearmed), 13, WithdrawnRearmed), AssistedBy: m.AssistedBy}
 			w.pushAs(f, "rel-v0.16.0", "mal", tm.text())
 		}, above: 1},
@@ -175,7 +175,7 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 			if c.above == 1 {
 				noun = "commit"
 			}
-			if notes := settleNotes(res.Settles); !strings.Contains(notes, fmt.Sprintf("%d %s above octo's newest push to rel-v0.16.0's branch, pushed by mal (%d), are not read", c.above, noun, c.above)) {
+			if notes := settleNotes(res.Settles); !strings.Contains(notes, fmt.Sprintf("%d %s above %s's newest push to rel-v0.16.0's branch, pushed by mal (%d), are not read", c.above, noun, octo.holderID(), c.above)) {
 				t.Fatalf("notes = %q; want mal's commits counted as not read", notes)
 			}
 			if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 11) != WithdrawnRearmed || stateOf(ws, 12) != WithdrawnRearmed || stateOf(ws, 13) != WithdrawnRearmed {
@@ -199,7 +199,7 @@ func TestARenewalOverAnotherLoginsTombstoneKeepsAdmissions(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
+	tm := message{Record: m.Record, Holder: m.Holder, Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
 	w.pushAs(f, "rel-v0.16.0", "mal", tm.text())
 	w.set(t0.Add(time.Minute))
 	if rw := listingOf(t, w, octo, "rel-v0.16.0"); !slices.Equal(rw.NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) ||
@@ -221,7 +221,7 @@ func TestARenewalOverAnotherLoginsTombstoneKeepsAdmissions(t *testing.T) {
 	if _, ws := w.tipWithdrawals("rel-v0.16.0"); stateOf(ws, 13) != WithdrawnAdmitted || stateOf(ws, 11) != WithdrawnPending || stateOf(ws, 12) != WithdrawnPending {
 		t.Fatalf("renewal records %+v; want #13 admitted, #11 and #12 withdrawn", ws)
 	}
-	if !strings.Contains(settleNotes(res.Settles), "1 commit above octo's newest push to rel-v0.16.0's branch, pushed by mal (1), are not read") {
+	if !strings.Contains(settleNotes(res.Settles), "1 commit above "+octo.holderID()+"'s newest push to rel-v0.16.0's branch, pushed by mal (1), are not read") {
 		t.Fatalf("settles = %+v; want mal's tombstone counted", res.Settles)
 	}
 	if rw := listingOf(t, w, octo, "rel-v0.16.0"); len(rw.NotRead) != 0 || rw.Unplaced != "" {
@@ -237,7 +237,7 @@ func TestAPersonsNewestPushNotFoundActsOnNothingForThem(t *testing.T) {
 	w, f, octo := heldOver(t)
 	f.pushersErr = errors.New("HTTP 502")
 	rw := listingOf(t, w, octo, "rel-v0.16.0")
-	if !strings.Contains(rw.Unplaced, "HTTP 502") || rw.Reader != "octo" || len(rw.Held) != 0 {
+	if !strings.Contains(rw.Unplaced, "HTTP 502") || rw.Reader != octo.holderID() || len(rw.Held) != 0 {
 		t.Fatalf("listing = %+v; want why named for octo, and nothing held", rw)
 	}
 	commented, tip := len(f.posted()), w.remoteTip("rel-v0.16.0")
@@ -313,7 +313,7 @@ func TestAnAdmitAfterATakeOverNamesTheRemedyAndItWorks(t *testing.T) {
 	if f.pr(11).method != "SQUASH" {
 		t.Fatalf("#11 = %+v; want it armed again", f.pr(11))
 	}
-	const admitted = "#11 abcd release hold: the merge of #11 is admitted into release v0.16.0 by ann."
+	admitted := "#11 abcd release hold: the merge of #11 is admitted into release v0.16.0 by " + ann.holderID() + "."
 	if !slices.Contains(f.posted(), admitted) {
 		t.Fatalf("comments = %q; want %q", f.posted(), admitted)
 	}
@@ -331,7 +331,7 @@ func TestAnEndThatCannotBeSettledNeverReArms(t *testing.T) {
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
 	bob := message{Record: m.Record, Holder: "bob", Copy: "0123456789abcdef0123456789abcdef", ClaimedAt: w.clock(), ExpiresAt: w.clock().Add(time.Hour), Withdrawn: ws, AssistedBy: m.AssistedBy}
 	w.pushAs(f, "rel-v0.16.0", "app", bob.text())
-	tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
+	tm := message{Record: m.Record, Holder: m.Holder, Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
 	w.pushAs(f, "rel-v0.16.0", "octo", tm.text())
 	w.set(t0.Add(time.Minute))
 	commented := len(f.posted())
@@ -349,7 +349,7 @@ func TestAnEndThatCannotBeSettledNeverReArms(t *testing.T) {
 func TestAnActNeverTakesAnEndFromTheKeptPlacements(t *testing.T) {
 	w, f, octo := heldOver(t)
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
+	tm := message{Record: m.Record, Holder: m.Holder, Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
 	tomb := w.pushAs(f, "rel-v0.16.0", "mal", tm.text())
 	if _, err := Fetch(octo.dir, octo.opts()); err != nil {
 		t.Fatal(err)
@@ -362,7 +362,7 @@ func TestAnActNeverTakesAnEndFromTheKeptPlacements(t *testing.T) {
 	asks := f.pushAsks
 	f.reset()
 	s := settleAfter(t, octo)
-	if f.pushAsks == asks || f.pr(11).method != "" || len(f.mutations()) != 0 || s.NotEnded != "octo" {
+	if f.pushAsks == asks || f.pr(11).method != "" || len(f.mutations()) != 0 || s.NotEnded != octo.holderID() {
 		t.Fatalf("settle = %+v, asks %d then %d, mutations %v; want the record asked, nothing re-armed", s, asks, f.pushAsks, f.mutations())
 	}
 }
@@ -373,11 +373,11 @@ func TestAnActNeverTakesAnEndFromTheKeptPlacements(t *testing.T) {
 func TestASecondReleaseReadsTheFirstsEndFromTheRecord(t *testing.T) {
 	w, f, octo := heldOver(t)
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
+	tm := message{Record: m.Record, Holder: m.Holder, Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
 	w.pushAs(f, "rel-v0.16.0", "mal", tm.text())
 	bob := w.clone("2222+bob@users.noreply.github.com", "")
 	_, err := bob.do(Request{Record: "rel-v0.17.0"})
-	if err == nil || !strings.Contains(err.Error(), "rel-v0.16.0 is being cut by octo") || !strings.Contains(err.Error(), "its tip is a tombstone octo did not push") {
+	if err == nil || !strings.Contains(err.Error(), "rel-v0.16.0 is being cut by "+octo.holderID()) || !strings.Contains(err.Error(), "its tip is a tombstone "+octo.holderID()+" did not push") {
 		t.Fatalf("bob's reserve = %v; want it backing off, the tombstone named as ending nothing", err)
 	}
 	if _, err := octo.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
@@ -419,7 +419,7 @@ func TestACommitAnotherLoginPushedNamingThemselvesHolderLeavesTheRecordAsPushed(
 func TestAnAppPushedTombstoneOfTheHolderNamesTheApp(t *testing.T) {
 	w, f, octo := heldOver(t)
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
+	tm := message{Record: m.Record, Holder: m.Holder, Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
 	tomb := w.pushAs(f, "rel-v0.16.0", "app", tm.text())
 	w.set(t0.Add(time.Minute))
 	f.reset()
@@ -459,7 +459,7 @@ func TestTheLaunchReadingAsksTheRecordOnlyForTheReadersReleases(t *testing.T) {
 func TestTheHoldReadsAnEndItCannotSettleAsNotEnded(t *testing.T) {
 	w, f, octo := heldOver(t)
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
+	tm := message{Record: m.Record, Holder: m.Holder, Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
 	tomb := w.pushAs(f, "rel-v0.16.0", "octo", tm.text())
 	if _, err := Fetch(octo.dir, octo.opts()); err != nil {
 		t.Fatal(err)
