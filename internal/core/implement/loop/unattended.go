@@ -105,7 +105,7 @@ func runningIn(repoRoot string, now time.Time, lane func(State) bool) (_ Unatten
 	}
 	var first error
 	for _, id := range ids {
-		st, err := readStateIn(root, id)
+		st, err := readListedState(root, id)
 		if err != nil {
 			first = errors.Join(first, err)
 			continue

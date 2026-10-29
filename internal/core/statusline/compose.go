@@ -87,9 +87,12 @@ func Compose(root string, p Payload, set Settings) (Result, error) {
 // has not answered when ctx ends is killed and its element drops, exactly as
 // it drops when git will not answer at all, so a slow branch costs the row its
 // branch and nothing else: the badge, the repository and the counts still
-// render (iss-2610050556383525).
+// render (iss-2610050556383525). A stored mode is the exception: it is read
+// only once git says it tracks none of it, and one git cannot be asked about
+// in time is an error, so the row blanks rather than badge a parked stop as
+// managed.
 func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (Result, error) {
-	state, err := mode.ReadAt(root)
+	state, err := mode.ReadAtContext(ctx, root)
 	if err != nil {
 		return Result{}, err
 	}

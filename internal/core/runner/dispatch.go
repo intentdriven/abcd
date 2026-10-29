@@ -90,6 +90,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 		}
 	}
 	out := Outcome{Receipt: newRoleReceipt(req, route.Runner)}
+	out.Receipt.Route.Override = route.Override()
 
 	if route.Runner == Host {
 		if d.HostSession {
@@ -153,7 +154,9 @@ const none = "none"
 
 func (o Outcome) ran(route string, ans Answer) Outcome {
 	o.Answer = &ans
-	o.Receipt.Route = RecordOf(o.Receipt.Route.Asked, route, ans)
+	rec := RecordOf(o.Receipt.Route.Asked, route, ans)
+	rec.Override = o.Receipt.Route.Override
+	o.Receipt.Route = rec
 	return o
 }
 
@@ -167,7 +170,7 @@ func (d *Dispatcher) now() time.Time {
 // runOn runs req on the named runner, stores its transcript and validates its
 // answer. A *Failure is a reason to fall back; any other error is not.
 func (d *Dispatcher) runOn(ctx context.Context, name string, req Request) (Answer, error) {
-	rc, ok := d.Config.Runner(name)
+	rc, where, ok := d.Config.runnerFor(name, req.Role)
 	if !ok {
 		return Answer{}, fail(name, ReasonAbsent, "it is not enabled on this machine (%s.%s in the machine's config)", runnerKey, name)
 	}
@@ -175,7 +178,7 @@ func (d *Dispatcher) runOn(ctx context.Context, name string, req Request) (Answe
 		// Admitted when the configuration was read; consulted again so a
 		// runner never launches on a stale answer.
 		if err := d.Config.admitModel(rc.Model); err != nil {
-			return Answer{}, fmt.Errorf("runner: %s.%s.%s is %q, %w", runnerKey, name, modelKey, rc.Model, err)
+			return Answer{}, fmt.Errorf("runner: %s is %q, %w", where, rc.Model, err)
 		}
 	}
 	if d.Prepare != nil {

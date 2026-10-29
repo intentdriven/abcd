@@ -177,7 +177,10 @@ a directory holding the other, is refused, unless that reservation is the same
 person's from this copy, naming the deeper of the two paths,
 the other record, its holder and its expiry. A shared path that is a file
 origin's default branch declares generated is no overlap (spc-2610161044461448
-step 11): the declaration is `linguist-generated` (set, or `=true`) in the root
+step 11), and the act names each such path and the other record
+(`generated_shared`, iss-2610282340087862), since whoever lands second
+regenerates it after merging. The declaration is `linguist-generated` (set,
+or `=true`) in the root
 `.gitattributes` of origin's default branch as last fetched, read as stored
 with a 256 KiB cap and no fetch; a nested `.gitattributes`,
 `.git/info/attributes` and the working tree are never read, because the

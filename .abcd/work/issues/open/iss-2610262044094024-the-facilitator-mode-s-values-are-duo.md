@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1186 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-97-the-facilitator-is-a-mode-not-a-person.md:55"
-remedy: "none (filed automatically)"
+remedy: "In itd-97's scope bullet declare the values as human and auto (its own 2026-10-11 decision says these are the product thinker's names for duo and solo) and keep duo and solo as the press release's words; itd-2610150602547271 already specifies facilitator.mode with human and auto."
 related_intents: [itd-97, itd-2610150602547271]
 finding_ref: cfk-7f2156a738198134
 ---

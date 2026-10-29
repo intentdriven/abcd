@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 852 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-83-review-bar-fires-itself.md:84"
-remedy: "none (filed automatically)"
+remedy: "In itd-83 drop the version number from 'They ship as-is at `0.1.0`' (say 'They ship as they are')."
 related_intents: [itd-83]
 finding_ref: cfk-3a1e986ef09eb554
 ---

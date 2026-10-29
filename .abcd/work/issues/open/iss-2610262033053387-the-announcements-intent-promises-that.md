@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 357 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609151838312703-sessions-announce-what-they-are-doing.md:24"
-remedy: "none (filed automatically)"
+remedy: "In the announce intent's press release and quote say a release hold stops every session's land step from arming a merge while the cut is live, and that a pull request already armed or queued lands on its own checks; criterion C7 is already worded that way."
 related_intents: [itd-2609151838312703]
 finding_ref: cfk-7edc531cd739ffc4
 ---

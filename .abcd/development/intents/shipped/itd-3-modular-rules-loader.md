@@ -234,6 +234,10 @@ Gap audit:
   verification (criterion 5). Neither blocks the shipped promise; both are
   recorded here as follow-ups.
 
+### Amendment 2026-10-27 (product thinker)
+
+Criteria ac-5 and ac-6 are amended to what shipped, on the product thinker's ruling of 27 October 2026. ac-5 (a conventions file under 50 lines carrying the marker block) is obsolete: the marker block alone is longer, and this repository keeps its conventions in AGENTS.md with no CLAUDE.md. ac-6 (a completeness-audited harvest of the legacy methodology file, with NAMING and ARTEFACTS domains) was dropped when the bundled defaults shipped, as the ship decision names. Neither is owed; a later intent may restore either target.
+
 ## References
 
 [carl]: https://github.com/ChristopherKahler/carl "CARL — Context Augmentation & Reinforcement Layer, just-in-time rule injection for Claude Code (Kahler)"

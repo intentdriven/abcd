@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 47 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:42"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the quoted-create acceptance criterion (line 42): running the quoted create writes a draft whose Press Release is the quoted text, with Why This Matters and Acceptance Criteria seeded as prompts for the human, no interview and no persona-registry quote."
 finding_ref: cfk-79f12c9666b28c66
 ---
 

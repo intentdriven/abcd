@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1185 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-86-cold-reading-surface.md:41"
-remedy: "none (filed automatically)"
+remedy: "In itd-86 replace the design-document target and the 'reviewing code' out-of-scope bullet with itd-184's Detection object (the shipped tree against the claim record), or supersede the draft by itd-184."
 related_intents: [itd-86, itd-184]
 finding_ref: cfk-19bb3b7a364b5066
 ---

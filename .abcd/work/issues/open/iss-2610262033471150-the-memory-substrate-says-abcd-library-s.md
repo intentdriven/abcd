@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 438 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/07-memory.md:197"
-remedy: "none (filed automatically)"
+remedy: "Edit 07-memory.md section 9 (Diagnostic paragraph): scope 'ingest, ask and lint and nothing else' to the memory half of /abcd:library and point at 07-library.md for the sources half's verbs."
 finding_ref: cfk-2b42c53fea333ce2
 ---
 

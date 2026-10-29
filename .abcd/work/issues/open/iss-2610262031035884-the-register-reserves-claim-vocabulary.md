@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 79 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:202"
-remedy: "none (filed automatically)"
+remedy: "Mark the itd-33 rows in 04-naming.md (work_item.type, claim primitives, escalation choice, release.outcome, claim.status) '(predecessor vocabulary; superseded)' and point each at what replaced it, the claim on a reservation that 27-implement.md ships."
 finding_ref: cfk-f8147f2670d14b85
 ---
 

@@ -84,7 +84,7 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		Action: "Nothing. Commit the file with the rest.",
 	},
 	writeGitignore: {
-		What:   "Told git which abcd files stay on this machine, in a fenced block in .gitignore.",
+		What:   "Made sure .gitignore tells git which abcd files stay on this machine, putting in abcd's fenced block only what the file did not already list.",
 		Why:    "Your private notes and scratch files, and for a public repository abcd's records, are never committed by accident.",
 		Action: "Nothing. Leave the fenced block as it is; abcd keeps it up to date.",
 	},
@@ -352,6 +352,11 @@ var optionalSkippedHelp = map[string]SummaryItem{
 		Why:    "Which parts of README.md abcd keeps current, if any, is the owner's choice, so abcd writes none without an answer.",
 		Action: "Run abcd ahoy install at a terminal, without --yes, and answer it; or, to answer it without being asked, pass --readme-parts " + ReadmePartsChoices + " to abcd ahoy install; none answers no and is not asked again.",
 	},
+	SessionsOfferGapID: {
+		What:   "The live brief session question was not asked; live sessions are not set up.",
+		Why:    "Whether the team edits its brief live, and where sessions may run, is the owner's choice, so abcd sets nothing up without an answer.",
+		Action: "Run abcd ahoy install at a terminal, without --yes, and answer it; or, to answer it without being asked, pass --live-sessions " + LiveSessionsChoices + " to abcd ahoy install; none answers no and is not asked again.",
+	},
 	HooksArmGapID: {
 		What:   "git was not pointed at this repository's commit checks in this clone, so they do not run.",
 		Why:    "core.hooksPath chooses every hook git runs in the clone, so only your own answer at a terminal sets it.",
@@ -373,6 +378,14 @@ var readmeAwaitsConfigHelp = SummaryItem{
 	What:   optionalSkippedHelp[ReadmeOfferGapID].What,
 	Why:    optionalSkippedHelp[ReadmeOfferGapID].Why,
 	Action: "The answer is kept in .abcd/config.json, which does not exist yet: run abcd ahoy install again and answer y to creating abcd's starter files, then answer the README question at a terminal, or pass --readme-parts " + ReadmePartsChoices + " to abcd ahoy install; none answers no and is not asked again.",
+}
+
+// sessionsAwaitsConfigHelp is readmeAwaitsConfigHelp for the live brief
+// session question, kept in the same file.
+var sessionsAwaitsConfigHelp = SummaryItem{
+	What:   optionalSkippedHelp[SessionsOfferGapID].What,
+	Why:    optionalSkippedHelp[SessionsOfferGapID].Why,
+	Action: "The answer is kept in .abcd/config.json, which does not exist yet: run abcd ahoy install again and answer y to creating abcd's starter files, then answer the live brief session question at a terminal, or pass --live-sessions " + LiveSessionsChoices + " to abcd ahoy install; none answers no and is not asked again.",
 }
 
 // remainingHelp explains the required work a run left outstanding.
@@ -490,6 +503,9 @@ func (r *InstallResult) explain() {
 		}
 		if id == ReadmeOfferGapID && r.readmeAwaitsConfig {
 			it = readmeAwaitsConfigHelp
+		}
+		if id == SessionsOfferGapID && r.sessionsAwaitsConfig {
+			it = sessionsAwaitsConfigHelp
 		}
 		it.Refs = []string{id}
 		r.Summary = append(r.Summary, it)

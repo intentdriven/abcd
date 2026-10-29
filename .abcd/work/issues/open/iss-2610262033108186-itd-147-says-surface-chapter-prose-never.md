@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 369 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/04-launch.md:257"
-remedy: "none (filed automatically)"
+remedy: "Reword the paragraph at 04-launch.md lines 257-262 so the prose names no flag or sub-verb and points at the generated appendix; the gate TestSurfaceChapterProseStatesNoShape matches only double-dash spellings, so the bare spelling passes it."
 related_intents: [itd-147]
 finding_ref: cfk-c218537f8277b705
 refines: [iss-2609091956001547]

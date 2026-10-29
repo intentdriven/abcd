@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 440 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/07-memory.md:51"
-remedy: "none (filed automatically)"
+remedy: "Edit 07-memory.md section 2 (page-class table): mark external_pdf as staged until a text-extraction dependency is wired, noting ingest rejects PDF sources today."
 finding_ref: cfk-59e891f126aedae0
 ---
 

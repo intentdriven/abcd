@@ -87,7 +87,7 @@ intents:
   site workflow by test, and the provider's host configuration — written
   through the launch scaffold's shared writer. The forge environments go
   through `gh` as the invoking person, and the host through the hosting
-  adapter seam (`internal/adapter/hosting`, one provider). The manifest's
+  adapter seam (`internal/adapter/hosting`, two providers: `cloudflare` and `github-pages`). The manifest's
   `pages` block is the closed page set's switches, resolved once and consulted
   by the explorer wherever it adds a page, a tab or a link.
 - **The generic/specific boundary** of the verb family is governed by the

@@ -623,3 +623,34 @@ func TestWorktreesListsEachLinkedWorktreeTheScanSaw(t *testing.T) {
 		}
 	}
 }
+
+// TestHeldUnderCountsTheWorktreesBeneathADirectory is the count the board's
+// worktrees line takes from its one scan (spc-2609301811532881, criterion
+// 17): every live or spent linked worktree whose real path lies beneath the
+// directory is held, and the spent ones among them are reclaimable. A gone
+// worktree no longer occupies the directory, and one outside it, or beside it
+// under a name the directory's own name prefixes, is not counted.
+func TestHeldUnderCountsTheWorktreesBeneathADirectory(t *testing.T) {
+	f := newFixture(t)
+	lane := filepath.Join(f.home, "wt")
+	f.worktree("merged", "feat/merged")
+	live := f.worktree("live", "feat/live")
+	f.write(live, ".abcd/work/issues/open/iss-500-new.md", issue("iss-500", "New"))
+	gone := f.worktree("gone", "feat/gone")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+	beside := filepath.Join(f.home, "wt2")
+	f.git(f.here(), "worktree", "add", "-q", "-b", "feat/beside", beside, "main")
+
+	rep, err := peers.Scan(f.here())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if held, spent := rep.HeldUnder(lane); held != 2 || spent != 1 {
+		t.Errorf("HeldUnder(lane) = %d held, %d spent; want 2 and 1", held, spent)
+	}
+	if held, spent := rep.HeldUnder(filepath.Join(f.home, "elsewhere")); held != 0 || spent != 0 {
+		t.Errorf("HeldUnder(an empty directory) = %d, %d; want 0, 0", held, spent)
+	}
+}

@@ -92,8 +92,9 @@ payload adds:
 - `reservations`: each with its `record`, `holder`, `footprint`,
   `effective_expiry`, `state` and `commit`; `claimed_at` for a readable one;
   `copy: "this"` when it was made from this checkout; `sibling`, for the
-  reader's own, the directory name of the other worktree of this repository
-  on this computer that made it (never its key); `released_by`
+  reader's own, the other worktree of this repository on this computer that
+  made it, by its folder's name with parent folders added only where two
+  would otherwise read alike (never its key); `released_by`
   (`tombstone`, `default-branch` when the record is already resolved,
   won't-fixed, shipped or superseded on origin's default branch, or `tag`
   when a release's tag is on origin) for a released one; and for an `unreadable` one its fixed `unreadable` reason, no
@@ -119,7 +120,8 @@ payload adds:
 - `ceiling`: the reader's own live reservations against this computer's
   `reservation.max_live`: `holder`, `live`, `limit`, and where they were made
   from: `this_copy`, `siblings` (each worktree of this repository here by
-  `name`, its parent folder added where two share a name, with its `live`)
+  `name`, with as many parent folders as tell it apart where two share a
+  name, and its `live`)
   and `elsewhere` (every copy not found among those worktrees: another clone
   on this computer or another, a removed worktree, or another account pushing
   as the same login). From four fifths of the limit `warn` is true and
@@ -215,6 +217,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

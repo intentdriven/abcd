@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 700 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/record-families.md:32"
-remedy: "none (filed automatically)"
+remedy: "In record-families.md say a batch is the run's internal order and also the name of one shared-run window mode (single, claim, batch, split-roles); it is still not a record family."
 finding_ref: cfk-9a5989670e3a8ecc
 ---
 

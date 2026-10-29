@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1170 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-82-drain-ledger-triage.md:58"
-remedy: "none (filed automatically)"
+remedy: "In itd-82's Out of Scope, replace 'Merging pull requests ... human gates by design' with: merging belongs to the merge gate, whose facilitator mode decides (human: a person merges; auto: the gate arms it); planning drafts and writing decision records stay human gates."
 related_intents: [itd-82, itd-2610150602547271]
 finding_ref: cfk-95a5c8e5d359310c
 ---

@@ -612,3 +612,49 @@ func TestSetRefusesUnknownStateBeforeResolvingTheRoot(t *testing.T) {
 		t.Fatalf("the root refusal masked the vocabulary refusal: %v", err)
 	}
 }
+
+// TestAStoreACommitCarriesIsRefused: a store git tracks came with a commit,
+// not from this checkout, so it is refused rather than read as whose answer the
+// loop waits on.
+func TestAStoreACommitCarriesIsRefused(t *testing.T) {
+	root := newRepo(t)
+	makeTier(t, root)
+	want := mode.States()[len(mode.States())-1]
+	if err := mode.SetAt(root, want); err != nil {
+		t.Fatalf("SetAt(%q): %v", want, err)
+	}
+	mustGit(t, root, "add", "-f", "--", mode.FileRelPath)
+	got, err := mode.ReadAt(root)
+	if err == nil || !strings.Contains(err.Error(), "git tracks "+mode.FileRelPath) {
+		t.Fatalf("ReadAt over a tracked store = %q, %v; want it refused as tracked", got, err)
+	}
+}
+
+// TestAQuestionMarkerACommitCarriesResetsNothing: the question marker is this
+// checkout's own, so one git tracks came with a commit: it neither reads as a
+// question open nor resets a parked mode, and it is left where it stands.
+func TestAQuestionMarkerACommitCarriesResetsNothing(t *testing.T) {
+	root := newRepo(t)
+	makeTier(t, root)
+	if err := mode.SetAt(root, mode.Facilitator); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.MarkQuestionOpen(root, mode.Facilitator); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, root, "add", "-f", "--", mode.QuestionOpenRelPath)
+	if open, err := mode.QuestionOpenForTest(root); err == nil || open {
+		t.Fatalf("QuestionOpen over a tracked marker = %v, %v; want it refused", open, err)
+	}
+	reset, err := mode.ResetOnAnswer(root)
+	if err == nil || reset || !strings.Contains(err.Error(), "git tracks "+mode.QuestionOpenRelPath) {
+		t.Fatalf("ResetOnAnswer over a tracked marker = %v, %v; want it refused as tracked", reset, err)
+	}
+	mustGit(t, root, "rm", "-q", "--cached", "--", mode.QuestionOpenRelPath)
+	if got, _ := mode.ReadAt(root); got != mode.Facilitator {
+		t.Fatalf("the refused reset moved the mode to %q", got)
+	}
+	if _, err := os.Lstat(markerPath(root)); err != nil {
+		t.Fatalf("the refused reset removed the marker: %v", err)
+	}
+}

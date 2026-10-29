@@ -616,3 +616,66 @@ func mustJSON(t *testing.T, v any) []byte {
 	}
 	return raw
 }
+
+// TestPrepassRefusalsNameTheOperandNotItsText holds the pre-pass refusals to
+// naming a caller's intent id by its position, the findings path by its role
+// and a findings value by its field, without repeating any of them. An id the
+// store resolved is still named.
+func TestPrepassRefusalsNameTheOperandNotItsText(t *testing.T) {
+	const m = "zqprepassmarkerq"
+	const digits = "987654321"
+	root := prepassRepo(t)
+	check := func(name, hide string, err error, names ...string) {
+		t.Helper()
+		if err == nil {
+			t.Errorf("%s: no refusal", name)
+			return
+		}
+		if strings.Contains(err.Error(), hide) {
+			t.Errorf("%s: the refusal repeats what was passed: %v", name, err)
+		}
+		for _, want := range names {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: the refusal does not name %q: %v", name, want, err)
+			}
+		}
+	}
+
+	_, err := AssemblePrepass(root, m)
+	check("malformed id", m, err, "first argument", "itd-N")
+	_, err = AssemblePrepass(root, "itd-"+digits)
+	check("absent id", digits, err, "first argument", "abcd intent")
+	_, err = AssemblePrepass(root, "itd-19")
+	check("resolved id", m, err, "itd-19", "planned")
+
+	dir := t.TempDir()
+	_, err = ReadPrepassFindings(filepath.Join(dir, m))
+	check("findings missing", m, err, "the --findings-json path")
+	sub := filepath.Join(dir, m+"-dir")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err = ReadPrepassFindings(sub)
+	check("findings not regular", m, err, "the findings file")
+	big := filepath.Join(dir, m+"-big")
+	if err := os.WriteFile(big, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(big, maxPrepassFindingsBytes+1); err != nil {
+		t.Fatal(err)
+	}
+	_, err = ReadPrepassFindings(big)
+	check("findings too big", m, err, "the findings file", "cap")
+
+	in := prepassAssemble(t, root)
+	_, err = WritePrepassBrief(root, "itd-500", mustJSON(t, map[string]any{"_type": m, "intent": in.Intent, "input_digest": in.Digest}))
+	check("findings _type", m, err, "_type", PrepassFindingsType)
+	_, err = WritePrepassBrief(root, "itd-500", mustJSON(t, map[string]any{"_type": PrepassFindingsType, "intent": m, "input_digest": in.Digest}))
+	check("findings intent", m, err, "intent", "itd-500")
+	_, err = WritePrepassBrief(root, "itd-500", mustJSON(t, map[string]any{"_type": PrepassFindingsType, "intent": in.Intent, "input_digest": m}))
+	check("findings input_digest", m, err, "input_digest", in.Digest, "re-run")
+	_, err = WritePrepassBrief(root, "itd-500", prepassFindings(t, in, map[string]any{m: 1}))
+	check("findings unknown key", m, err, "findings shape", "key")
+	_, err = WritePrepassBrief(root, "itd-500", prepassFindings(t, in, map[string]any{"overlaps": []map[string]any{{"sibling": "itd-19", "question": "Q?", "recommendation": map[string]any{"answer": m, "reason": "r"}}}}))
+	check("findings recommendation", m, err, "overlaps[0]", "keep-both")
+}

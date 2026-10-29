@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 331 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/04-launch.md:180"
-remedy: "none (filed automatically)"
+remedy: "Reword the example at version.md line 47 so launch ship derives the version and writes the dated changelog heading and release page, and the release workflow, not the verb, tags v0.2.0."
 finding_ref: cfk-c80a09389acb5a87
 ---
 

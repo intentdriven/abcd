@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 952 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-127-a-paper-is-reconstructed-from-the.md:13"
-remedy: "none (filed automatically)"
+remedy: "In itd-127 (title, press release, why-it-matters) replace 'the provenance ledger' with 'the sources ledger', the glossary's name for itd-76's source-to-decision store; the 'provenance ledger' spelling belongs to origin and grounds stamped at commitment. Regenerate the out-of-scope line that copies the title."
 related_intents: [itd-127]
 finding_ref: cfk-27a9503a7e42c159
 ---

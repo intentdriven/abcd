@@ -170,7 +170,7 @@ var (
 // instead. It writes nothing.
 func AssemblePrepass(repoRoot, intentID string) (PrepassInput, error) {
 	if !recordid.ValidIntentID(intentID) {
-		return PrepassInput{}, fmt.Errorf("intent prepass: id %q must match ^itd-[0-9]+$", intentID)
+		return PrepassInput{}, errors.New("intent prepass: the first argument is not an intent id; it takes the form itd-N, matching ^itd-[0-9]+$ (the value given is not repeated here)")
 	}
 	corpus, err := Load(repoRoot)
 	if err != nil {
@@ -178,7 +178,7 @@ func AssemblePrepass(repoRoot, intentID string) (PrepassInput, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return PrepassInput{}, fmt.Errorf("intent prepass: %s not found in any bucket; `abcd intent` renders the store, and the pre-pass runs on a draft it lists", intentID)
+		return PrepassInput{}, errors.New("intent prepass: no intent in any bucket has the id the first argument names (it is not repeated here); `abcd intent` renders the store, and the pre-pass runs on a draft it lists")
 	}
 	if it.Bucket != BucketDrafts {
 		return PrepassInput{}, fmt.Errorf("intent prepass: %s is on %s/; the pre-pass prepares the interview of a draft, and only a record on drafts/ has one to come: run it on a draft `abcd intent` lists", it.ID, it.Bucket)
@@ -431,13 +431,13 @@ func WritePrepassBrief(repoRoot, intentID string, raw []byte) (PrepassBriefResul
 		return PrepassBriefResult{}, err
 	}
 	if f.Type != PrepassFindingsType {
-		return PrepassBriefResult{}, fmt.Errorf("intent prepass: _type %q, want %q", termsafe.CleanProseLine(f.Type, 80), PrepassFindingsType)
+		return PrepassBriefResult{}, fmt.Errorf("intent prepass: the findings file's _type is %s, want %q", termsafe.DescribeRefused(f.Type), PrepassFindingsType)
 	}
 	if !recordid.SameID(f.Intent, in.Intent) {
-		return PrepassBriefResult{}, fmt.Errorf("intent prepass: the findings are for %q, not %s", termsafe.CleanProseLine(f.Intent, 80), in.Intent)
+		return PrepassBriefResult{}, fmt.Errorf("intent prepass: the findings file's intent is %s, not %s", termsafe.DescribeRefused(f.Intent), in.Intent)
 	}
 	if f.InputDigest != in.Digest {
-		return PrepassBriefResult{}, fmt.Errorf("intent prepass: the findings were judged over input %q, and the record now assembles to %s: an input moved since the pass; re-run the pre-pass", termsafe.CleanProseLine(f.InputDigest, 80), in.Digest)
+		return PrepassBriefResult{}, fmt.Errorf("intent prepass: the findings file's input_digest (%s) is not the one the record now assembles to, %s: an input moved since the pass; re-run the pre-pass", termsafe.DescribeRefused(f.InputDigest), in.Digest)
 	}
 	qs, res, err := validatePrepass(in, f)
 	if err != nil {
@@ -475,14 +475,45 @@ func ReadPrepassFindings(path string) ([]byte, error) {
 	case err == nil:
 		return data, nil
 	case errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP):
-		return nil, fmt.Errorf("intent prepass: the findings %s are not a regular file (a symlink or a device is refused); write them to a plain file", path)
+		return nil, errors.New("intent prepass: the findings file is not a regular file (a symlink or a device is refused; its path is not repeated here); write them to a plain file")
 	case errors.Is(err, fsutil.ErrTooBig):
-		return nil, fmt.Errorf("intent prepass: the findings %s exceed the %d-byte cap", path, maxPrepassFindingsBytes)
+		return nil, fmt.Errorf("intent prepass: the findings file exceeds the %d-byte cap (its path is not repeated here)", maxPrepassFindingsBytes)
 	case errors.Is(err, fs.ErrNotExist):
-		return nil, fmt.Errorf("intent prepass: no findings at %s; write the host's findings there, or pass the path they are at", path)
+		return nil, errors.New("intent prepass: no findings file at the --findings-json path (it is not repeated here); write the host's findings there, or pass the path they are at")
 	default:
-		return nil, fmt.Errorf("intent prepass: reading the findings %s: %w", path, err)
+		return nil, fmt.Errorf("intent prepass: reading the findings file (its path is not repeated here): %w", pathErrorCause(err))
 	}
+}
+
+// pathErrorCause keeps an open error's cause and drops the path it carries,
+// so a refusal names the findings file by its role and never by the path the
+// caller typed.
+func pathErrorCause(err error) error {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err
+	}
+	return err
+}
+
+// describeFindingsDecode says why the findings file did not decode without
+// repeating its text: encoding/json names an unknown key, quotes the character
+// a syntax error stopped at and repeats a number of the wrong type. It names
+// the byte offset or the field the shape defines instead.
+func describeFindingsDecode(err error) string {
+	var syn *json.SyntaxError
+	var typ *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &syn):
+		return fmt.Sprintf("it is not valid JSON at byte %d", syn.Offset)
+	case errors.As(err, &typ):
+		return fmt.Sprintf("the %s field holds a value of the wrong type (it takes %s)", typ.Field, typ.Type)
+	case strings.HasPrefix(err.Error(), "json: unknown field "):
+		return "it carries a key the findings shape does not define (the key is not repeated here)"
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		return "it ends before the object does"
+	}
+	return "it does not decode as the findings object"
 }
 
 func decodePrepassFindings(raw []byte) (prepassReturn, error) {
@@ -493,7 +524,7 @@ func decodePrepassFindings(raw []byte) (prepassReturn, error) {
 	dec.DisallowUnknownFields()
 	var f prepassReturn
 	if err := dec.Decode(&f); err != nil {
-		return prepassReturn{}, fmt.Errorf("intent prepass: the findings are not the findings shape: %w", err)
+		return prepassReturn{}, fmt.Errorf("intent prepass: the findings file is not the findings shape: %s", describeFindingsDecode(err))
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return prepassReturn{}, errors.New("intent prepass: the findings carry data after the object")
@@ -595,7 +626,7 @@ func validatePrepass(in PrepassInput, f prepassReturn) ([]prepassQuestion, Prepa
 		}
 		if r := o.Recommendation; r != nil {
 			if prepassAnswerLabel[r.Answer] == "" {
-				return nil, res, fmt.Errorf("intent prepass: overlaps[%d] recommends %q; the answers are %s", i, termsafe.CleanProseLine(r.Answer, 40), strings.Join(PrepassAnswers, ", "))
+				return nil, res, fmt.Errorf("intent prepass: overlaps[%d] recommends %s, which is not an answer; the answers are %s", i, termsafe.DescribeRefused(r.Answer), strings.Join(PrepassAnswers, ", "))
 			}
 			if prepassBlank(r.Reason) {
 				return nil, res, fmt.Errorf("intent prepass: overlaps[%d] recommends %s without its reason", i, r.Answer)

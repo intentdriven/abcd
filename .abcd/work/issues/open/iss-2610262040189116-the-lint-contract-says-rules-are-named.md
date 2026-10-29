@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 922 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/06-lint.md:14"
-remedy: "none (filed automatically)"
+remedy: "Edit 06-lint.md section 1 (the 'no numbered code catalogue' paragraph): scope it to the two tree gates' rule names and acknowledge the codes that do exist (GL002 in internal/core/lint, the ML, MQ, MS and MR family in the memory lint), without a hand-kept table."
 related_intents: [itd-43]
 finding_ref: cfk-669af085835aa8e5
 ---

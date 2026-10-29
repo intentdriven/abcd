@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 738 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-82-drain-ledger-triage.md:44"
-remedy: "none (filed automatically)"
+remedy: "In itd-82's remedy bullet, say a record filed before the field reads its older suggested_fix: as its remedy and is eligible on that, as 35-drain.md and the code do."
 related_intents: [itd-82]
 finding_ref: cfk-2b96752b08a4f98c
 ---

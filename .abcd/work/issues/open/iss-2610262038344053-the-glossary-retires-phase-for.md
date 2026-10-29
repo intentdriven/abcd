@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 804 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/phase.md:18"
-remedy: "none (filed automatically)"
+remedy: "In 03-configuration.md replace 'comes in a later phase (itd-13)' and the other 'later phase' sequencing mentions (user-scope memory, schema migration) with 'deferred' or the intent that carries it."
 finding_ref: cfk-c370fe4ab0eb5865
 refines: [iss-2609251618079479]
 ---

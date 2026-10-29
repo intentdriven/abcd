@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1016 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/record-families.md:24"
-remedy: "none (filed automatically)"
+remedy: "In record-families.md change '(itd-2609212103565953, planned)' to shipped (step.md carries the same stale label)."
 related_intents: [itd-2609212103565953]
 finding_ref: cfk-34e8287b5bfe1b70
 ---

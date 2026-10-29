@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 183 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:167"
-remedy: "none (filed automatically)"
+remedy: "In itd-86, add a delivery-state note (as itd-44 carries) or move it to superseded: the invocation shipped as a position and a target state with the committed preset supplying the rest (adr-2609021016286571, itd-183), not 'exactly one target document'."
 related_intents: [itd-86]
 finding_ref: cfk-36ab68450553b0c7
 ---

@@ -16,7 +16,8 @@ import "sort"
 // Ids and values are placeholders of the right shape, and names come from the
 // reserved example namespace (examples-use-reserved-identifiers).
 var examples = map[string]string{
-	"abcd ahoy connect": "abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none",
+	"abcd ahoy connect":      "abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none",
+	"abcd ahoy worktree add": "abcd ahoy worktree add example-lane",
 
 	"abcd banlist add":    "abcd banlist add --private acme-internal 'acme-internal\\.example\\.com'",
 	"abcd banlist remove": "abcd banlist remove --private acme-internal",
@@ -101,6 +102,7 @@ var examples = map[string]string{
 	"abcd intent unhold":             "abcd intent unhold itd-2609010000000001",
 
 	"abcd lab harvest":   "abcd lab harvest lab-260901000000-0123abc",
+	"abcd lab matrix":    "abcd lab matrix lab-260901000000-0123abc matrix.json",
 	"abcd lab mint":      `abcd lab mint "does the snapshot keep the checkout's hooks from firing?"`,
 	"abcd lab preflight": "abcd lab preflight lab-260901000000-0123abc",
 	"abcd lab record":    "abcd lab record lab-260901000000-0123abc bare-status",

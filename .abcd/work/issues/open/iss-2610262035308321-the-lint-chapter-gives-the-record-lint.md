@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 576 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/16-lint.md:168"
-remedy: "none (filed automatically)"
+remedy: "In 06-lint.md:12 say a rule's severity resolves from its config entry as blocker or warn, and that info is carried only by a code-pinned report rule (internal/core/lint/config.go severityPinnedRules)."
 finding_ref: cfk-8b1aec720d7040f4
 ---
 

@@ -81,7 +81,8 @@ type reservationRow struct {
 	Holder string `json:"holder,omitempty"`
 	Copy   string `json:"copy,omitempty"`
 	// Sibling is the other worktree of this repository, on this machine,
-	// whose copy made the reservation: its directory's name, never its key.
+	// whose copy made the reservation: its folder's name, with parent folders
+	// added only where two would otherwise read alike, never its key.
 	Sibling         string   `json:"sibling,omitempty"`
 	Footprint       []string `json:"footprint"`
 	ClaimedAt       string   `json:"claimed_at,omitempty"`
@@ -181,7 +182,8 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"reservation with its record, holder, footprint, effective expiry and state\n" +
 			"(live, expired, released, or unreadable with its reason and the end of its\n" +
 			"hold), a live drain lane's stage when its renewal names one, the worktree of\n" +
-			"this repository on this machine that made one (by its directory's name),\n" +
+			"this repository on this machine that made one (by its folder's name, with\n" +
+			"parent folders added only where two would otherwise read alike),\n" +
 			"each person's count of live reservations, the reader's own counted by copy\n" +
 			"(this copy, each such worktree, elsewhere) against this machine's\n" +
 			"reservation.max_live with a warning from four fifths of it, since every\n" +
@@ -359,13 +361,15 @@ type boardPeersLine struct {
 	IDs  int `json:"ids"`
 }
 
-// boardPeers composes the board's peers member for the checkout containing
-// cwd, or nil: outside a checkout, when the reader fails (said on stderr), and
-// when no peer holds anything that differs here.
-func boardPeers(cwd string, stderr io.Writer) *boardPeersLine {
+// boardScan runs the board's one peers scan for the checkout containing cwd
+// and composes the two members it feeds: the peers member and the worktrees
+// member (spc-2609301811532881), so the store's line costs no second scan.
+// Each is nil outside a checkout and when the reader fails (said on stderr);
+// the peers member is nil when no peer holds anything that differs here.
+func boardScan(cwd string, stderr io.Writer) (*boardPeersLine, *boardWorktreesLine) {
 	root, err := gitutil.CheckoutRoot(cwd, peersStore)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	rep, err := peers.Scan(root)
 	if err != nil {
@@ -373,12 +377,13 @@ func boardPeers(cwd string, stderr io.Writer) *boardPeersLine {
 		// so the checkout is named by the board's display rule here too
 		// (iss-2609281613094952).
 		fmt.Fprintf(stderr, "abcd: the peers line is omitted — %s\n", termsafe.Sanitize(fsutil.DisplayPathsIn(err.Error(), root)))
-		return nil
+		return nil, nil
 	}
+	wt := boardWorktrees(root, rep, stderr)
 	if rep.IDCount() == 0 {
-		return nil
+		return nil, wt
 	}
-	return &boardPeersLine{Live: rep.Live(), IDs: rep.IDCount()}
+	return &boardPeersLine{Live: rep.Live(), IDs: rep.IDCount()}, wt
 }
 
 // peerHeldError is the not-found refusal a peer answers: the record is not in

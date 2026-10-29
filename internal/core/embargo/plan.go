@@ -311,7 +311,21 @@ func planEntry(s Store, rt *releaseTags, release string, resolved []string, a Ad
 		}
 		vulns = append(vulns, PlannedVulnerability{Package: *v.Package, VulnerableVersionRange: rng, PatchedVersions: patched, VulnerableFunctions: fns})
 	}
-	for _, part := range []struct{ name, text string }{{"summary", remote.Summary}, {"description", remote.description()}} {
+	// Every free-text field of the advisory is held to the same scan: its
+	// summary and description, and each affected package's name and
+	// vulnerable functions (a list, one entry to a line), so a finding names
+	// the field and its line, never the match.
+	parts := []struct{ name, text string }{{"summary", remote.Summary}, {"description", remote.description()}}
+	for i, v := range vulns {
+		n := ""
+		if len(vulns) > 1 {
+			n = fmt.Sprintf(" %d", i+1)
+		}
+		parts = append(parts,
+			struct{ name, text string }{"affected package" + n + "'s name", v.Package.Name},
+			struct{ name, text string }{"affected package" + n + "'s vulnerable functions", strings.Join(v.VulnerableFunctions, "\n")})
+	}
+	for _, part := range parts {
 		f, err := scanOutbound(s.Checkout, "the advisory's "+part.name, part.text, true)
 		if err != nil {
 			return PlanEntry{}, "", err

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 24 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/04-scope.md:40"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-scope.md line 40: an intent reaches `shipped/` on the close after which no open spec names it (invariant 17), not when 'its linked spec' closes."
 finding_ref: cfk-d55da1d9657fad74
 refines: [iss-2609100508566552]
 ---

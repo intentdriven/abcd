@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 980 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/02-verification-matrix.md:53"
-remedy: "none (filed automatically)"
+remedy: "Re-base itd-30 on today's capture: bare quoted text writes a seeded draft with no interview, so a fiction format would change the seed skeleton and the planning interview, not a headline, body and quote interview behind /abcd:intent new."
 related_intents: [itd-30]
 finding_ref: cfk-1bcfd2c5fdf71a04
 ---

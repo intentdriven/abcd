@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1094 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-142-the-brief-creation-interview-abcd.md:13"
-remedy: "none (filed automatically)"
+remedy: "Edit itd-44 (CLI classifier bullet, around line 111): drop the wrapper-only `abcd-intent-new` skill and route the classifier through the `/abcd:intent` command page and its binary verb; abcd ships no skills."
 related_intents: [itd-142, itd-44]
 finding_ref: cfk-7ca3b7e3c8e0d0f7
 ---

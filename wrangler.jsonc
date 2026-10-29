@@ -39,8 +39,8 @@
   // Three GitHub Environments gate that workflow, and this is the only durable
   // record of how they are configured:
   //   site-render   the render job. NO SECRETS. Deployment policy: branch
-  //                 `main` AND tags `v*`.
-  //   site          the deploy job. Same policy: branch `main` AND tags `v*`;
+  //                 `main` only.
+  //   site          the deploy job. Same policy: branch `main` only;
   //                 NO required reviewer, so the emergency redeploy is never
   //                 blocked on a human. Holds CLOUDFLARE_API_TOKEN and
   //                 CLOUDFLARE_ACCOUNT_ID.
@@ -50,14 +50,13 @@
   //                 names, so a missing environment cannot fall through to a
   //                 repo-level secret and hand the preview a production token.
   //
-  // The {main, v*} policy refuses UNREVIEWED WORKFLOW CONTENT: a dispatch runs
-  // the workflow file as it exists on the ref it was dispatched from, so an
-  // arbitrary branch is refused, while `main` is the reviewed state and a `v*`
-  // tag is immutable. It cannot be `v*` alone: the primary release path runs
-  // with a ref of refs/heads/main, so a tags-only policy would refuse every
-  // ordinary release. Residual, plainly: whoever can merge to main can change
-  // the workflow and have it run with these secrets — the repository's ordinary
-  // review boundary, not a new surface.
+  // The `main`-only policy refuses UNREVIEWED WORKFLOW CONTENT: a run executes
+  // the workflow file as it exists on the ref it runs from, so any other branch
+  // or a tag is refused, while `main` is the reviewed state. Both legitimate
+  // paths run from it: the release path's ref is refs/heads/main, and the
+  // emergency redeploy is dispatched from `main`. Residual, plainly: whoever
+  // can merge to main can change the workflow and have it run with these
+  // secrets — the repository's ordinary review boundary, not a new surface.
   //
   // `site-render` holds no secret but is still gated, because the render job
   // signs artefacts and replaces a release asset; gating it after the fact, at

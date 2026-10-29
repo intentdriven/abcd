@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 297 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/01-agents.md:20"
-remedy: "none (filed automatically)"
+remedy: "In 01-agents.md move press-release-composer out of the cite-or-be-dropped group and say, as for the changelog composer, that its payload is refused whole; also correct the blanket 'validating mode is cite-or-be-dropped' sentence in 02-disembark.md."
 finding_ref: cfk-08b1eb1c28a8a307
 ---
 

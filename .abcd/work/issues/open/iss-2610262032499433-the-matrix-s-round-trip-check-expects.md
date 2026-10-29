@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 322 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/03-embark.md:126"
-remedy: "none (filed automatically)"
+remedy: "In 06-delivery/02-verification-matrix.md, Round-trip row: replace 'memory and decisions' with the families embark writes (ADRs, issues, intents, specs, release retrospectives); memory does not travel."
 finding_ref: cfk-ca4fcb40917e7aa3
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 123 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:84"
-remedy: "none (filed automatically)"
+remedy: "In glossary/core/lifeboat.md (line 21) replace 'logbook summary' with what a lifeboat packs today (the record families, release retrospectives); 04-naming.md retired the logbook name."
 finding_ref: cfk-bd989554b4cdbe62
 ---
 

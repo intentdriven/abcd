@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 276 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:766"
-remedy: "none (filed automatically)"
+remedy: "In 24-decide.md (the paragraph saying the mint is not the ADR store's only writer, near line 18), also name ahoy install's drain-rule offer, which writes an accepted record carrying the four drain_ fields through the store's own seam on a terminal consent, and say the proposed-status rule is for abcd decide --adr mints."
 finding_ref: cfk-168e0ed0b5ba441b
 ---
 

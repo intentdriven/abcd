@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 291 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md:33"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-configuration.md (The keys the binary reads, lines 33-34): drop the oracle backend from the list of values install asks about; say install records oracle.backend as host-delegated with one note and asks only visibility, docs target, deep scan and the README question."
 finding_ref: cfk-4c476ce17c61f7f3
 refines: [iss-2610031236155833, iss-2609261447395216]
 ---

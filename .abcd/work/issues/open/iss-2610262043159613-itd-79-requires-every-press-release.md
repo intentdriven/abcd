@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1125 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-79-persona-registry.md:18"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Decision: may a press-release quote be attributed to a role alone (a nameless role such as 'an AI/agent researcher'), or must it carry the role's registered persona name? Answers: (A) the rule binds as written, so about a dozen role-only quotes in shipped, planned and draft intents get a registered name and the lint is extended to flag them; (B) amend itd-79 to allow role-only attribution, keeping the rule that any name used must be registered and role-matched. Recommend B: a nameless role invents no name, so it does not offend the rule's stated reason, the persona_registry lint already leaves it out of reach, and editing a dozen shipped records buys nothing."
 related_intents: [itd-79, itd-198]
 finding_ref: cfk-d79fd24f3489e09c
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1216 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2610091918433290-an-agent-working-in-an-abcd-managed.md:64"
-remedy: "none (filed automatically)"
+remedy: "Add an inline amendment to itd-3's out-of-scope bullet on a global rules file: reversed by itd-117 (spc-23), which layers a machine-level rules file between the bundled domains and the repository's; no intent edit is needed in the memory-notes intent."
 related_intents: [itd-2610091918433290, itd-3]
 finding_ref: cfk-c3f50407433727fb
 ---

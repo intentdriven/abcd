@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 14 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:93"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (Naurian gap paragraph): say a spec's `## Modification Grammar` section carries three sub-headings (Extends cleanly / Breaks the design / Why) plus the Ripple axis, four axes in all."
 finding_ref: cfk-7386cca5921d40bf
 ---
 

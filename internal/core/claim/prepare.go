@@ -25,6 +25,9 @@ type Options struct {
 	Version string
 	// Embargo is the embargo check an announcement is held to (C5); nil
 	// refuses every announcement, since an unchecked one is never let through.
+	// A reservation, renewal or take-over consults it as well, and with nil
+	// the check the front door registered (RegisterEmbargoCheck); with
+	// neither it is refused.
 	Embargo EmbargoCheck
 	// ForgeUser answers whose GitHub account the forge token gh resolves from
 	// the session's environment belongs to (login and numeric id): the user endpoint, asked only by an

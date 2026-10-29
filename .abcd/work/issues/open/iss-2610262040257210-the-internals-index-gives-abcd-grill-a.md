@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 930 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/README.md:14"
-remedy: "none (filed automatically)"
+remedy: "In the index row for 08-skills.md drop the design target of promotion to /abcd:intent grill; say itd-27 is superseded by itd-94, the grilling is abcd intent interview, and no grill sub-verb ships."
 finding_ref: cfk-c9c6870a12fe7eec
 ---
 

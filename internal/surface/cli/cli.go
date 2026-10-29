@@ -154,6 +154,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"hook", "subagent-stop"}, {"hook", "question-answered"},
 		{"hook", "permission-request"},
 		{"hook", "stop"}, {"hook", "stop-failure"},
+		{"hook", "dogfood-binary"},
 	} {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
@@ -356,7 +357,8 @@ func NewRootCommand() *cobra.Command {
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			ver := core.NewVersion()
-			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
+			peersLine, worktreesLine := boardScan(cwd, cmd.ErrOrStderr())
+			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: peersLine, Worktrees: worktreesLine, Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd)}
 			// One renderer draws both views in both forms; the surface reads
 			// the window, the colour rung and the locale and hands them in
 			// (spc-2610031844142274). In a pipe the board is drawn at Mono and
@@ -371,7 +373,7 @@ func NewRootCommand() *cobra.Command {
 				ASCII: !term.UTF8Locale(os.Getenv),
 			}
 			return render(cmd.OutOrStdout(), asJSON, bo, func(w io.Writer) {
-				for _, l := range board.Render(board.Input{Dir: st.Dir, Status: bo.Status, Rows: boardRows(st, bo), Version: ver}, frame) {
+				for _, l := range board.Render(board.Input{Dir: st.Dir, Status: bo.Status, Rows: boardRows(st, bo), Version: ver, Merges: bo.Facilitator.merges()}, frame) {
 					fmt.Fprintln(w, l)
 				}
 			})
@@ -417,6 +419,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newMemoryCommand(&asJSON))
 	root.AddCommand(newInboxCommand(&asJSON))
 	root.AddCommand(newDashboardCommand(&asJSON))
+	root.AddCommand(newSessionCommand(&asJSON))
 	root.AddCommand(newStatuslineCommand(&asJSON))
 
 	root.AddCommand(newAhoyCommand(&asJSON))
@@ -660,6 +663,10 @@ func NewRootCommand() *cobra.Command {
 	// host's instruction to BLOCK, so every usage error a hook can provoke refuses
 	// at exit 1 instead (iss-269).
 	applyHookPlaneFailOpen(root)
+	// After every pass that sets a flag-error function: each receives the
+	// parser's error reworded to name the flag, never the text passed with it
+	// (usage_errors.go).
+	applyUsageFlagErrors(root)
 	// Truly last: every flag-error function above is wrapped so Run can tell a
 	// flag-parse refusal from any other, and answer it in JSON when the caller
 	// typed --json (iss-2609292352131344).
@@ -862,11 +869,11 @@ func newLintDocsCommand(asJSON *bool) *cobra.Command {
 				// Surface config-load failures as clean, repo-relative
 				// diagnostics — never a raw os.Open/os.ReadFile error, whose
 				// *PathError embeds the absolute path (iss-29: no absolute path
-				// in machine output). Reference what the user typed when they
-				// passed --config, else the relative default.
+				// in machine output). Name a --config path by its flag, never
+				// by what was typed, else the relative default.
 				ref := filepath.Join(".abcd", "docs-lint.json")
 				if configPath != "" {
-					ref = configPath
+					ref = "the --config path (not repeated here)"
 				}
 				if os.IsNotExist(err) {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
@@ -879,7 +886,7 @@ func newLintDocsCommand(asJSON *bool) *cobra.Command {
 				if errors.As(err, &pe) {
 					detail = pe.Err.Error()
 				}
-				return &exitError{Code: 2, Msg: fmt.Sprintf("lint docs: cannot read config %s: %s", ref, detail)}
+				return &exitError{Code: 2, Msg: fmt.Sprintf("lint docs: cannot read config at %s: %s", ref, detail)}
 			}
 			// --release-gate promotes the citation staleness finding from the
 			// commit gate's warn to a blocker (spc-17: commits are never
@@ -1019,7 +1026,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if info, err := os.Stat(abs); err != nil || !info.IsDir() {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark probe: %s is not a directory", target)}
+				return &exitError{Code: 2, Msg: "disembark probe: the repository named is not a directory (it is not repeated here)"}
 			}
 			cov, err := lifeboat.Probe(abs, ignoredScope(probeIgnored)...)
 			if err != nil {
@@ -1036,14 +1043,16 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			covs := make([]lifeboat.Coverage, 0, len(args))
-			for _, path := range args {
+			for i, path := range args {
+				// Each report is named by its position, never by the path typed.
+				which := fmt.Sprintf("report %d (argument %d, not repeated here)", i+1, i+1)
 				// A probe report is a cross-repo artifact (produced by `probe` on
 				// other repos), so its content is untrusted: read it behind the same
 				// guards as every other operand (O_NOFOLLOW, regular-file, size cap),
 				// never a raw os.ReadFile that follows a symlink or reads unbounded.
 				data, err := fsutil.ReadGuarded(path, maxOperandJSONBytes)
 				if err != nil {
-					// Reference the path the user typed, not an absolute PathError.
+					// Name the report by its position, not by a PathError's path.
 					detail := err.Error()
 					switch {
 					case errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP):
@@ -1056,11 +1065,11 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 							detail = pe.Err.Error()
 						}
 					}
-					return &exitError{Code: 2, Msg: fmt.Sprintf("disembark coverage: cannot read %s: %s", path, detail)}
+					return &exitError{Code: 2, Msg: fmt.Sprintf("disembark coverage: cannot read %s: %s", which, detail)}
 				}
 				var cov lifeboat.Coverage
 				if err := json.Unmarshal(data, &cov); err != nil {
-					return &exitError{Code: 2, Msg: fmt.Sprintf("disembark coverage: %s is not a coverage report: %s", path, err)}
+					return &exitError{Code: 2, Msg: fmt.Sprintf("disembark coverage: %s is not a coverage report: %s", which, err)}
 				}
 				// A probe report always stamps schema_version >= 1; json.Unmarshal
 				// of any other JSON object succeeds with the zero value (schema
@@ -1069,11 +1078,11 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 				// mirroring the type-mismatch message above.
 				if cov.SchemaVersion < 1 {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"disembark coverage: %s is not a coverage report: missing schema_version", path)}
+						"disembark coverage: %s is not a coverage report: missing schema_version", which)}
 				}
 				if cov.SchemaVersion > lifeboat.SchemaVersion {
 					return &exitError{Code: 2, Msg: "disembark coverage: " +
-						update.TooNew(path, cov.SchemaVersion, lifeboat.SchemaVersion).Error()}
+						update.TooNew(which, cov.SchemaVersion, lifeboat.SchemaVersion).Error()}
 				}
 				covs = append(covs, cov)
 			}
@@ -1097,7 +1106,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if info, err := os.Stat(abs); err != nil || !info.IsDir() {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark plan: %s is not a directory", target)}
+				return &exitError{Code: 2, Msg: "disembark plan: the repository named is not a directory (it is not repeated here)"}
 			}
 			lb, err := lifeboat.Plan(abs, ignoredScope(planIgnored)...)
 			if err != nil {
@@ -1118,7 +1127,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if info, err := os.Stat(repoAbs); err != nil || !info.IsDir() {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: %s is not a directory", args[0])}
+				return &exitError{Code: 2, Msg: "disembark pack: the <repo> argument is not a directory (it is not repeated here)"}
 			}
 			// Build the source repo's secret scanner and fail closed if its config
 			// is degraded — a pack must not ship secrets under a weakened ruleset.
@@ -1544,11 +1553,11 @@ func readGuardedOperand(spec string, cap int64) ([]byte, error) {
 	if err != nil {
 		switch {
 		case errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP):
-			return nil, fmt.Errorf("%s is not a readable regular file (a symlink or non-regular operand is refused)", spec)
+			return nil, errors.New("the operand file is not a readable regular file (a symlink or non-regular operand is refused; its path is not repeated here)")
 		case errors.Is(err, fsutil.ErrTooBig):
-			return nil, fmt.Errorf("%s exceeds the %d-byte cap", spec, cap)
+			return nil, fmt.Errorf("the operand file exceeds the %d-byte cap (its path is not repeated here)", cap)
 		default:
-			return nil, err
+			return nil, fmt.Errorf("cannot read the operand file (its path is not repeated here): %w", pathErrorCause(err))
 		}
 	}
 	return data, nil
@@ -1706,20 +1715,21 @@ func newHookCommand(asJSON *bool) *cobra.Command {
 	// prompt-router — UserPromptSubmit: recall-match, dedup, inject.
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router",
-		Short: "UserPromptSubmit: inject the rules and memory notes matching the prompt",
+		Short: "UserPromptSubmit: inject the rules, memory notes and pages matching the prompt",
 		Long: `Plain, stdout is the rendered rule block the host injects, followed by a
-"## MEMORY" block of the memory notes the prompt recalls, and nothing on a
-turn with nothing new. With --json, stdout is one envelope in place of the
+"## MEMORY" block of the memory notes and pages the prompt recalls, and nothing
+on a turn with nothing new. With --json, stdout is one envelope in place of the
 generic machine-reader shape:
 
   {"text": ..., "injected": [...], "recalled": [...], "active": [...], "error": ...}
 
 text is byte for byte what the plain form writes; injected names the domains
-text carries, and recalled the notes; active is the full set of domains in
+text carries, and recalled the notes and pages (a note by its id, a page as
+page:<filename>); active is the full set of domains in
 force this turn, so a name missing from it has stopped. error is present only
 when the prompt could not be evaluated, and then active is absent: the set is
-unknown. A memory.json that cannot be read is named on stderr and recalls
-nothing, and the rules still inject. Every outcome, an error included,
+unknown. A memory.json, page store or page that cannot be read is named on
+stderr and recalls nothing, and the rules still inject. Every outcome, an error included,
 exits 0, so the hook can never wedge a session.
 
 After them comes a "## STATUS" block when the last fetch of the status
@@ -1853,16 +1863,20 @@ envelope carries it as system_message.`,
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
-			// Each note id carries its layer ("mem-… (project)"), as the
-			// rules line's names carry theirs, so the log says whether the
-			// words came from this repository's committed file or from the
-			// person's own notes.
-			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d note(s) [%s], %d bytes", len(mem.Recalled),
+			// Each item carries its layer ("mem-… (project)", "page:… (machine)"),
+			// as the rules line's names carry theirs, so the log says whether
+			// the words came from this repository's committed files or from
+			// the person's own.
+			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 || len(mem.TooLarge) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d item(s) [%s], %d bytes", len(mem.Recalled),
 					strings.Join(mem.Labels(mem.Recalled), ", "), len(mem.Text))
 				if len(mem.Omitted) > 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched note(s) [%s] did not fit this turn's budget and are tried again on the next",
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) [%s] did not fit this turn's budget and are tried again on the next",
 						len(mem.Omitted), strings.Join(mem.Labels(mem.Omitted), ", "))
+				}
+				if len(mem.TooLarge) > 0 {
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) [%s] are larger than the whole per-turn budget and do not come back in full",
+						len(mem.TooLarge), strings.Join(mem.Labels(mem.TooLarge), ", "))
 				}
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
@@ -1975,107 +1989,7 @@ envelope carries it as system_message.`,
 		Use:   "session-end",
 		Short: "SessionEnd: stage the raw transcript for the next session to redact and store",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			started := time.Now()
-			// Diagnostics go to stderr, out of band; stdout stays empty, since a
-			// Stop hook's stdout is not a place to speak to the model — unless
-			// the caller asked for --json, when it carries one result line on
-			// every path (hook_result.go, iss-2608261550596333).
-			// The result names the session it lost, as subagent-stop's does
-			// (iss-2609260221577624): in is read below, and warn names whatever
-			// of it was parsed — nothing, for a payload that did not parse.
-			var in hookInput
-			warn := func(format string, a ...any) error {
-				msg := diagnosticLine(cmd.ErrOrStderr(), "abcd history: "+format, a...)
-				emitHookResult(cmd, hookStageResult{Hook: "session-end", Outcome: hookOutcomeNotCaptured,
-					SessionID: termsafe.Sanitize(in.SessionID), Reason: strings.TrimPrefix(msg, "abcd history: ")})
-				return nil // never non-zero: a Stop hook must not wedge the session
-			}
-
-			parsed, err := readHookInput(cmd)
-			if err != nil {
-				return warn("unreadable Stop payload (%v); capturing nothing", err)
-			}
-			in = parsed
-			if in.TranscriptPath == "" {
-				return warn("Stop payload carries no transcript_path; capturing nothing")
-			}
-			cwd := in.Cwd
-			if cwd == "" {
-				if wd, err := os.Getwd(); err == nil {
-					cwd = wd
-				}
-			}
-			detectStart := time.Now()
-			det, err := ahoy.Detect(cwd)
-			detectCost := time.Since(detectStart)
-			if err == nil && det.RootSHA == "" && det.RepoIdentity.RootErr() != nil {
-				// git failing once on a loaded machine is not a directory
-				// outside any repository: ask again before giving the session
-				// up, as the sub-agent hook does (iss-2610051434156079).
-				det, err = retryDetect(cmd.ErrOrStderr(), sessionEndResolveWaits, started.Add(sessionEndRetryBudget), detectCost, cwd, det)
-			}
-			if err == nil && det.RootSHA == "" {
-				if rerr := det.RepoIdentity.RootErr(); rerr != nil {
-					return warn("git gave no root commit for %q (%s); capturing nothing", cwd, fsutil.RedactHome(rerr.Error()))
-				}
-			}
-			if err != nil || det.RootSHA == "" {
-				return warn("cannot resolve the repo's root-commit SHA from %q; capturing nothing", cwd)
-			}
-			raw, err := readTranscript(in.TranscriptPath)
-			if err != nil {
-				return warn("%v; capturing nothing", err)
-			}
-			// Stage, do NOT capture. Redaction costs ~0.7s/MB and the host cancels
-			// a shutdown hook rather than wait, so capturing here dropped every
-			// transcript past a couple of MB — silently, and precisely the long,
-			// dense sessions most worth keeping (iss-2608230817034768). Staging is
-			// one write, so this hook's cost no longer scales with the transcript;
-			// the next SessionStart drains it through the same fail-closed Capture.
-			// Resolve first, so the store's own diagnostics — a corpus migrated
-			// off the legacy location, an opt-in declaration that was not
-			// honoured — reach stderr rather than being discarded inside Stage.
-			if st, err := history.Resolve(captureRoot(cwd), det.RootSHA); err == nil {
-				for _, n := range st.Notes {
-					fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
-				}
-			}
-			res, err := stageWithRetry(cmd.ErrOrStderr(), 0, captureRoot(cwd), det.RootSHA, history.StageMeta{
-				Lineage:    history.CaptureMeta{SessionID: in.SessionID, Kind: "native", LineageSource: "hook"},
-				SourcePath: in.TranscriptPath,
-			}, raw)
-			if err != nil {
-				// The marker is where the person sees the loss: this hook exits
-				// 0, and its stderr reaches only the host's debug log.
-				if nerr := history.NoteStageMiss(captureRoot(cwd), det.RootSHA, "session "+in.SessionID, err.Error()); nerr != nil {
-					diagnosticLine(cmd.ErrOrStderr(), "abcd history: the missed stage could not be recorded either (%v)", nerr)
-				}
-				return warn("staging failed (%v); this session was not captured, and `abcd history staged` reports it", err)
-			}
-			staged := hookStageResult{Hook: "session-end", Captured: true, SessionID: res.Staged.SessionID, Bytes: res.Staged.Bytes}
-			if !res.Wrote {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: session %s already staged with identical bytes (no-op)\n", res.Staged.SessionID)
-				staged.Outcome = hookOutcomeAlreadyStaged
-				emitHookResult(cmd, staged)
-				return nil
-			}
-			if res.Replaced {
-				// Different bytes for an already-staged session: the later
-				// snapshot replaced the earlier one, and this says so rather
-				// than reporting a no-op that would hide a replaced transcript.
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: re-staged %s (%d bytes), replacing %d stale bytes; the next session redacts and stores it\n",
-					res.Staged.SessionID, res.Staged.Bytes, res.ReplacedBytes)
-				staged.Outcome, staged.ReplacedBytes = hookOutcomeRestaged, res.ReplacedBytes
-				emitHookResult(cmd, staged)
-				return nil
-			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: staged %s (%d bytes); the next session redacts and stores it\n",
-				res.Staged.SessionID, res.Staged.Bytes)
-			staged.Outcome = hookOutcomeStaged
-			emitHookResult(cmd, staged)
-			return nil
-		},
+		RunE:  runHookSessionEnd, // hook_session_end.go
 	})
 
 	// session-start — SessionStart: warn, visibly, when the transcript store is
@@ -2135,6 +2049,10 @@ envelope carries it as system_message.`,
 			// otherwise redact all of it before the user's first prompt. Whatever
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
+			// The transcripts session-end left pending go to their stores
+			// first, so this repository's drain below stores its own
+			// (iss-2610241519088123).
+			notices = append(notices, placePendingNotices()...)
 			det, detErr := ahoy.Detect(cwd)
 			if rerr := det.RepoIdentity.RootErr(); detErr == nil && rerr != nil {
 				// git did not answer for this repository: nothing is
@@ -2220,6 +2138,18 @@ envelope carries it as system_message.`,
 			// whatever the repo detection above could answer (itd-105).
 			if n := binarySkewNotice(); n != "" {
 				notices = append(notices, n)
+			}
+			// Committed hooks git does not run in this clone
+			// (iss-2610241133284600): commits and pushes pass unchecked, and
+			// until this notice nothing said so before a gate failed afterwards.
+			hooksOff := false
+			if detErr == nil {
+				if n := ahoy.HooksUnrunNotice(det.Gaps); n != "" {
+					notices = append(notices, n)
+				}
+				// Only the certain case reaches the session's context: a hooks
+				// path set elsewhere may still run the checks.
+				hooksOff = ahoy.HooksUnarmed(det.Gaps)
 			}
 			// The harness's user settings (iss-2610050556323779): a hook there
 			// that runs abcd, or an abcd status line that is gone or fails the
@@ -2314,6 +2244,13 @@ envelope carries it as system_message.`,
 				"abcd: %d session-start notice(s) on this hook's stderr; "+
 					"run `abcd history staged` for transcript backlog or `abcd ahoy` for install state.\n",
 				len(notices))
+			// The one notice the session itself must act on before it commits,
+			// so its gist reaches the context too. A constant, like the line
+			// above: the notice's own words stay on stderr.
+			if hooksOff {
+				fmt.Fprintln(cmd.OutOrStdout(),
+					"abcd: git does not run this repository's committed commit checks in this clone, so no commit made here is checked; `abcd ahoy` names the fix.")
+			}
 			return nil
 		},
 	})
@@ -2330,6 +2267,9 @@ envelope carries it as system_message.`,
 	// stop and stop-failure — Stop and StopFailure: the away mode's stop
 	// check (spc-2610180914469489 step 5). Their bodies live in hook_stop.go.
 	hookCmd.AddCommand(newHookStopCommand(), newHookStopFailureCommand())
+	// dogfood-binary and dogfood-build — the hook shims' dogfood rung
+	// (hook_dogfood.go): which build a listed checkout runs, and making it.
+	hookCmd.AddCommand(newDogfoodBinaryCommand(), newDogfoodBuildCommand())
 
 	return hookCmd
 }
@@ -2553,15 +2493,15 @@ func readTranscript(path string) ([]byte, error) {
 	if err != nil {
 		switch {
 		case errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP):
-			return nil, fmt.Errorf("transcript %q is not a readable regular file (a symlink or non-regular transcript is refused)", path)
+			return nil, errors.New("the file the transcript path names is not a readable regular file (a symlink or non-regular transcript is refused; the path is not repeated here)")
 		case errors.Is(err, fsutil.ErrTooBig):
-			return nil, fmt.Errorf("transcript %q is over the %d-byte cap", path, maxTranscriptBytes)
+			return nil, fmt.Errorf("the file the transcript path names is over the %d-byte cap (the path is not repeated here)", maxTranscriptBytes)
 		default:
-			return nil, fmt.Errorf("cannot read transcript %q (%v)", path, err)
+			return nil, fmt.Errorf("cannot read the file the transcript path names (%v; the path is not repeated here)", pathErrorCause(err))
 		}
 	}
 	if len(raw) == 0 {
-		return nil, fmt.Errorf("transcript %q is empty", path)
+		return nil, errors.New("the file the transcript path names is empty (the path is not repeated here)")
 	}
 	return raw, nil
 }
@@ -2624,8 +2564,14 @@ its .abcd/rules.json.
 --prompt "<text>" shows what that one prompt would bring back to a fresh
 session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ` + abcdhome.Display("memory.json") + ` and .abcd/memory.json,
-with its layer and the recall words that hit, each in full or as not fitting
-the per-turn budget. It reads against an empty ledger and writes nothing.
+and each memory page from .abcd/memory/ and ` + abcdhome.Display("memory") + `/, with its
+layer and the recall words that hit, each in full or as not fitting the
+per-turn budget, or as larger than the whole budget, which no turn can
+carry in full. Notes and pages share one ranked order, a BM25F relevance
+score that decides which of them fit the budget: each shows its rank and
+score and, under it, every matched term with the fields it was found in
+(recall words, title, body) and what it added to the score. It reads
+against an empty ledger and writes nothing.
 --prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.`,
 		Args: cobra.MaximumNArgs(1),
@@ -2659,7 +2605,8 @@ Read-only.`,
 				name := strings.ToUpper(args[0])
 				d, ok := rs.Lookup(name)
 				if !ok {
-					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd rules: unknown domain %q", name)}
+					known := slices.Sorted(maps.Keys(rs.Domains))
+					return &exitError{Code: 2, Msg: "abcd rules: no domain of that name (the name is not repeated here); the domains are " + strings.Join(known, ", ")}
 				}
 				return render(cmd.OutOrStdout(), *asJSON, d, func(w io.Writer) {
 					fmt.Fprint(w, rules.Render([]rules.ResolvedDomain{d}))
@@ -2682,7 +2629,7 @@ Read-only.`,
 			})
 		},
 	}
-	cmd.Flags().StringVar(&prompt, "prompt", "", "show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes it recalls")
+	cmd.Flags().StringVar(&prompt, "prompt", "", "show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes and pages it recalls")
 	return cmd
 }
 
@@ -2755,21 +2702,21 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				// than filing the words as a draft title (iss-2609091647589392).
 				if instead, ok := removedSubverbs["intent"][args[0]]; ok {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown intent subcommand %q; %s (nothing created)", args[0], instead)}
+						"unknown intent subcommand (the first argument, not repeated here); %s (nothing created)", instead)}
 				}
 				if hint := recordReadHint("intent", args); hint != "" {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown intent subcommand %q; %s (nothing created)", args[0], hint)}
+						"unknown intent subcommand (the first argument, not repeated here); %s (nothing created)", hint)}
 				}
 				if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
 					if sug == "" {
 						return &exitError{Code: 2, Msg: fmt.Sprintf(
-							"unknown intent subcommand %q; the sub-verbs are: %s (nothing created — reword the text if you meant to file a draft)",
-							args[0], strings.Join(subverbNames(cmd), ", "))}
+							"unknown intent subcommand (the first argument, not repeated here); the sub-verbs are: %s (nothing created — reword the text if you meant to file a draft)",
+							strings.Join(subverbNames(cmd), ", "))}
 					}
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown intent subcommand %q; did you mean %q? (nothing created — reword the text if you meant to file a draft)",
-						args[0], sug)}
+						"unknown intent subcommand (the first argument, not repeated here); did you mean %q? (nothing created — reword the text if you meant to file a draft)",
+						sug)}
 				}
 				// Guard: a lone bare word near NO sub-verb fell through the
 				// did-you-mean above and was filed as a draft title
@@ -2779,9 +2726,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 					if args[0] == "" {
 						return &exitError{Code: 2, Msg: "abcd intent: the draft title is empty (nothing created)"}
 					}
-					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown intent subcommand %q (nothing created — a lone word is read as a sub-verb, never as a draft title; a draft title must contain a space, so write the whole sentence)",
-						args[0])}
+					return &exitError{Code: 2, Msg: "unknown intent subcommand (the first argument, not repeated here; nothing created — a lone word is read as a sub-verb, never as a draft title; a draft title must contain a space, so write the whole sentence)"}
 				}
 				// Changed, not the value: `--title ""` is a title the user gave and
 				// the core refuses it, where an unset flag leaves the H1 derived.
@@ -3991,6 +3936,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					out.ReadmeTool = append(out.ReadmeTool, hostCall(a))
 				}
 			}
+			if res.Sessions != nil {
+				for _, a := range res.Sessions.Asks {
+					out.SessionsTool = append(out.SessionsTool, hostCall(a))
+				}
+			}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy — %s\n", res.FolderKind)
 				fmt.Fprintf(w, "  plugin root: %s\n", res.PluginRootStatus)
@@ -4106,6 +4056,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		answersPath   string
 		answeredIn    string
 		readmeParts   string
+		liveSessions  string
 		details       bool
 	)
 	installCmd := &cobra.Command{
@@ -4127,6 +4078,14 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					return &exitError{Code: 2, Msg: "abcd ahoy install: " + perr.Error() + "; nothing was written"}
 				}
 				opts.ReadmeParts = readmeParts
+			}
+			// The live brief session answer (spc-2610141709430146 step 6):
+			// refused, naming the answers, before anything is written.
+			if cmd.Flags().Changed("live-sessions") {
+				if perr := ahoy.ParseLiveSessions(liveSessions); perr != nil {
+					return &exitError{Code: 2, Msg: "abcd ahoy install: " + perr.Error() + "; nothing was written"}
+				}
+				opts.LiveSessions = liveSessions
 			}
 			opts.Outbound = outbound
 			opts.OnlyWaiting = onlyWaiting(cmd)
@@ -4270,6 +4229,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					default:
 						fmt.Fprint(w, "    the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
 					}
+					switch {
+					case !slices.Contains(res.OptionalSkipped, ahoy.SessionsOfferGapID):
+					case res.SessionsAwaitsConfig():
+						fmt.Fprint(w, "    the live brief session answer is kept in .abcd/config.json, which does not exist yet: answer y to creating abcd's starter files first, then answer the question at a terminal, or answer it with --live-sessions "+ahoy.LiveSessionsChoices+"\n")
+					default:
+						fmt.Fprint(w, "    the live brief session question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --live-sessions "+ahoy.LiveSessionsChoices+"\n")
+					}
 				}
 			}); rerr != nil {
 				return rerr
@@ -4305,6 +4271,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
 	installCmd.Flags().StringVar(&answersPath, "answers", "", "answer the setup questions from this answers file (JSON: schema_version, interview \"setup\", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key")
 	installCmd.Flags().StringVar(&readmeParts, "readme-parts", "", "answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included")
+	installCmd.Flags().StringVar(&liveSessions, "live-sessions", "", "answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up")
 	installCmd.Flags().StringVar(&answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
 	addOnlyWaitingFlag(installCmd)
 	ahoyCmd.AddCommand(installCmd)
@@ -4379,6 +4346,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoyWorktreeCommand(asJSON))
 
 	return ahoyCmd
 }
@@ -4533,8 +4501,17 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 				if res.Status == "refused" {
 					code = 2
 				}
+				// A refusal can come AFTER a toggle landed (a later step failed, or
+				// the mirror could not be written), and then "nothing was changed"
+				// is false: name what landed instead (iss-2610072347230409). The
+				// change lines quote GitHub's own status words, so they are sanitised.
+				outcome := " — nothing was changed"
+				if len(res.Changes) > 0 {
+					outcome = " — already changed on GitHub before it stopped: " +
+						termsafe.Sanitize(strings.Join(res.Changes, "; "))
+				}
 				return &exitError{Code: code, Msg: "abcd ahoy remote apply: " + res.Status +
-					" — nothing was changed (the reason is in the result's notes above)"}
+					outcome + " (the reason is in the result's notes above)"}
 			}
 			return nil
 		},
@@ -4677,6 +4654,8 @@ func optionalSkipReason(id string) string {
 		return "an agent tool's own conventions file that only repeats AGENTS.md is removed from the project only against a prompt answered at a terminal"
 	case ahoy.ReadmeOfferGapID:
 		return "which parts of README.md abcd keeps current is the owner's choice, so abcd writes none until --readme-parts or the README question answers it"
+	case ahoy.SessionsOfferGapID:
+		return "whether the team edits its brief live, and where sessions may run, is the owner's choice, so abcd records nothing until --live-sessions or the question answers it"
 	case ahoy.HooksArmGapID:
 		return "core.hooksPath chooses every hook git runs in this clone, so it is only set against a prompt answered at a terminal; or run " + ahoy.ArmHooksCommand
 	}
@@ -4694,8 +4673,8 @@ func installToolNames(names []string) (map[string]bool, error) {
 	for _, n := range names {
 		n = strings.TrimSpace(n)
 		if !accepted[n] {
-			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: --install-tool %q is not a tool ahoy install checks for; it checks for %s (nothing read, nothing written)",
-				termsafe.Sanitize(n), strings.Join(ahoy.DependencyTools, ", "))}
+			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: an --install-tool name is not a tool ahoy install checks for (the name is not repeated here); it checks for %s (nothing read, nothing written)",
+				strings.Join(ahoy.DependencyTools, ", "))}
 		}
 		named[n] = true
 	}
@@ -5304,17 +5283,17 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			// subcommand call too (iss-2609091647589392). Genuine prose still files.
 			if hint := recordReadHint("capture", args); hint != "" {
 				return &exitError{Code: 2, Msg: fmt.Sprintf(
-					"unknown capture subcommand %q; %s (nothing captured)", args[0], hint)}
+					"unknown capture subcommand (the first argument, not repeated here); %s (nothing captured)", hint)}
 			}
 			if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
 				if sug == "" {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
-						"unknown capture subcommand %q; the sub-verbs are: %s (nothing captured — reword the text if you meant to file it)",
-						args[0], strings.Join(subverbNames(cmd), ", "))}
+						"unknown capture subcommand (the first argument, not repeated here); the sub-verbs are: %s (nothing captured — reword the text if you meant to file it)",
+						strings.Join(subverbNames(cmd), ", "))}
 				}
 				return &exitError{Code: 2, Msg: fmt.Sprintf(
-					"unknown capture subcommand %q; did you mean %q? (nothing captured — reword the text if you meant to file it)",
-					args[0], sug)}
+					"unknown capture subcommand (the first argument, not repeated here); did you mean %q? (nothing captured — reword the text if you meant to file it)",
+					sug)}
 			}
 			// Guard: a lone bare word near NO sub-verb fell through the
 			// did-you-mean above and was filed as an issue
@@ -5324,9 +5303,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				if args[0] == "" {
 					return &exitError{Code: 2, Msg: "abcd capture: the issue text is empty (nothing captured)"}
 				}
-				return &exitError{Code: 2, Msg: fmt.Sprintf(
-					"unknown capture subcommand %q (nothing captured — a lone word is read as a sub-verb, never as issue text; issue text must contain a space, so write the whole sentence)",
-					args[0])}
+				return &exitError{Code: 2, Msg: "unknown capture subcommand (the first argument, not repeated here; nothing captured — a lone word is read as a sub-verb, never as issue text; issue text must contain a space, so write the whole sentence)"}
 			}
 			// Every new issue carries a remedy (ruling BX3 of 2026-09-29): the
 			// fix it proposes, one line. The machine value is refused from a
@@ -5382,8 +5359,8 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				// the flag and the set it accepts (iss-2608290810037524).
 				var fv *capture.FieldValueError
 				if errors.As(err, &fv) {
-					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture: --%s %q is not accepted; accepted values: %s (nothing captured)",
-						fv.Field, fv.Value, enumHelp(fv.Accepted))}
+					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture: the --%s value is not accepted (it is not repeated here); accepted values: %s (nothing captured)",
+						fv.Field, enumHelp(fv.Accepted))}
 				}
 				return captureRefusal("", err)
 			}
@@ -5783,6 +5760,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// made; the core refuses an empty state rather than inventing one. It stays
 	// unmarked as cobra-required to keep the tree's no-required-flags invariant.
 	dispositionCmd.Flags().StringVar(&dispState, "state", "", "the answer: accepted | rejected | declined | held (availability varies by the item's position)")
+	declareClosedSet(dispositionCmd.Flags(), "state", issueschema.DispositionStates...)
 	dispositionCmd.Flags().StringVar(&dispGrounds, "grounds", "", "disposition_grounds: why this answer (free text; required on every state except held)")
 	dispositionCmd.Flags().StringVar(&dispExit, "exit-condition", "", "what would end a held disposition (required on held; a hold exits only through a superseding disposition that cites it)")
 	dispositionCmd.Flags().StringVar(&dispSupersedes, "supersedes", "", "the standing dsp-N this answer replaces; required once an item already carries one")
@@ -6411,7 +6389,7 @@ func parseRecurs(raw string) ([]string, error) {
 			continue
 		}
 		if !readingItemIDRe.MatchString(tok) {
-			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture disposition: --recurs token %q must match rdi-N (nothing written)", tok)}
+			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture disposition: --recurs token %d must match rdi-N (it is not repeated here; nothing written)", len(ids)+1)}
 		}
 		ids = append(ids, tok)
 	}
@@ -6961,9 +6939,18 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if msg := scrubPaths(err); msg != "" {
 		// An unknown command or flag on a binary that can prove it is stale
 		// names the staleness and the way out, on a second line, from disk
-		// alone; otherwise cobra's line stands byte-for-byte
-		// (iss-2608230943088357, staleusage.go).
-		if note := staleUsageNote(root, args, msg); note != "" {
+		// alone; otherwise the refusal line stands alone (iss-2608230943088357,
+		// staleusage.go). The note reads the operand from cobra's own wording;
+		// the line itself then names the refused argument by its position
+		// (usage_errors.go).
+		note := staleUsageNote(root, args, msg)
+		msg = withholdOperands(root, msg)
+		// The backstop: whatever a verb's own wording still repeats of the
+		// arguments is withheld here, for stderr and the --json object alike
+		// (usage_errors.go). The note is added after it: it names a verb only
+		// when the plugin surface on disk documents that verb.
+		msg = withholdArguments(root, args, msg)
+		if note != "" {
 			msg += "\nabcd: " + note
 		}
 		// Masked once, here, for every verb: a refusal that echoes an operand or

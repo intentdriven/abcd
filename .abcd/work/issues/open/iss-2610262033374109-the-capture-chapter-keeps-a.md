@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 424 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/06-capture.md:521"
-remedy: "none (filed automatically)"
+remedy: "Mark section 4 of 06-capture.md (lines 519-527) as moot, since capture writes the ledger directly and nothing is left to migrate (03-configuration.md), or delete it; keep the ForceID seam note only if a migrator still needs it."
 finding_ref: cfk-27e272564119cfa7
 ---
 

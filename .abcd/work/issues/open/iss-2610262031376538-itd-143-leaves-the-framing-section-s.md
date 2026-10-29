@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 155 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-143-the-brief-gains-a-framing-chapter-under.md:47"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Is itd-143 delivered, since 06-framing.md and the lifeboat mapping row exist, or does it stay a draft narrowed to its remainder? Answers: (a) ship it and carry the interview-landing criterion to itd-142; (b) keep it a draft rewritten to what is unbuilt. Recommended (a): the chapter and the mapping row are in the tree, and the landing criterion depends on itd-142's interview, which this intent does not own."
 related_intents: [itd-143]
 finding_ref: cfk-d732acde039dc375
 ---

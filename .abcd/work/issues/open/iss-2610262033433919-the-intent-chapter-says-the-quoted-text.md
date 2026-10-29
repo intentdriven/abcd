@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 432 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:318"
-remedy: "none (filed automatically)"
+remedy: "Change the create row at 05-intent.md line 318 to say the draft seeds prompts for Why This Matters, Mechanism, Scope Conditions and Acceptance Criteria, as the matrix says."
 finding_ref: cfk-2de1a33b0185f7a8
 ---
 

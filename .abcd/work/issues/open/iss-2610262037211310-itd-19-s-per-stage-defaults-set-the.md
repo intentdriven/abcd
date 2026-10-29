@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 716 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-19-stage-aware-behaviour.md:31"
-remedy: "none (filed automatically)"
+remedy: "Re-scope itd-19's per-stage oracle defaults to a key that exists: `oracle.review` takes only `host` or `rp`, and the repo-wide `oracle.backend` choices are host-delegated, native, cli, api and mcp; drop 'in-session' and 'rp+codex', or point the stage profile at the per-agent routing rows (itd-2609170822093401). The draft also leans on `dev_sync`, which has no code."
 related_intents: [itd-19]
 finding_ref: cfk-93ca02f0c8aa300c
 ---

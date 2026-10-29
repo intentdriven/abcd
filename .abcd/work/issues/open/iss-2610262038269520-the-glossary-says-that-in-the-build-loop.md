@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 795 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/step.md:18"
-remedy: "none (filed automatically)"
+remedy: "In 01-agents.md line 229 change 'the implement loop's audit step' to 'the audit on the closing lane' (or the validate stage), keeping 'step' for a spec's piece."
 finding_ref: cfk-04707417f0b777b5
 ---
 

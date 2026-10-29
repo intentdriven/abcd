@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 402 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/06-capture.md:123"
-remedy: "none (filed automatically)"
+remedy: "In 06-capture.md lines 123-130 list the audit ingest's owed-check filer among the writers that run the filing-time match, saying what it compares (the check's own title) and leaves out; reconcile 'two unattended writers' with the reading ingest named in the next sentence."
 finding_ref: cfk-678f6b912630b161
 ---
 
