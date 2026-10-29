@@ -49,6 +49,10 @@ const (
 	// proofPRLimit is how many pull requests from the branch the forge is
 	// asked for.
 	proofPRLimit = 100
+	// proofBudget bounds the forge's answers across one prover, which proves
+	// one command line: a host that times out a hook runs the command, so a
+	// proof that outlasts the host would let the delete through unproven.
+	proofBudget = 30 * time.Second
 )
 
 // DeleteProofOptions is what the delete proof reads beyond git. Every field
@@ -63,11 +67,15 @@ type DeleteProofOptions struct {
 	// Probe is what the liveness probe reads for a worktree removal; its
 	// Reservations and Runs are read from the repository when left zero.
 	Probe ProbeOptions
+	// Budget bounds the forge's answers across the prover's life; zero is
+	// proofBudget.
+	Budget time.Duration
 }
 
 // deleteProver is the guard.DeleteProver the front doors attach.
 type deleteProver struct {
-	o DeleteProofOptions
+	o        DeleteProofOptions
+	deadline time.Time
 }
 
 // NewDeleteProver returns the prover the shell guard's front doors attach to
@@ -76,7 +84,39 @@ func NewDeleteProver(o DeleteProofOptions) guard.DeleteProver {
 	if o.RemoteTip == nil {
 		o.RemoteTip = lsRemoteTip
 	}
-	return deleteProver{o: o}
+	if o.Budget <= 0 {
+		o.Budget = proofBudget
+	}
+	return deleteProver{o: o, deadline: time.Now().Add(o.Budget)}
+}
+
+// errOutOfTime is a forge call the prover's budget did not wait for.
+var errOutOfTime = errors.New("the guard's time for proving this line ran out")
+
+// forge asks the forge within what is left of the budget. A call still
+// running at the deadline is abandoned, and its answer is no answer.
+func (p deleteProver) forge(root string, args ...string) (string, error) {
+	left := time.Until(p.deadline)
+	if left <= 0 {
+		return "", errOutOfTime
+	}
+	type answer struct {
+		out string
+		err error
+	}
+	ch := make(chan answer, 1)
+	go func() {
+		out, err := p.o.Forge(root, args...)
+		ch <- answer{out, err}
+	}()
+	t := time.NewTimer(left)
+	defer t.Stop()
+	select {
+	case a := <-ch:
+		return a.out, a.err
+	case <-t.C:
+		return "", errOutOfTime
+	}
 }
 
 // unproven is a failed proof.
@@ -84,8 +124,24 @@ func unproven(failed, settle string) guard.DeleteProof {
 	return guard.DeleteProof{Failed: clean(failed), Settle: clean(settle)}
 }
 
+// keptBy reports whether every commit tip holds is kept by def: tip is an
+// ancestor of def, or the store's merged judgement (a rebase, a squash, or a
+// pull request merged at tip) finds it merged. Ancestry alone suffices here,
+// unlike the store's reclaim, which also asks for a commit of the branch's own:
+// a branch that never left def deletes nothing def lacks.
+func keptBy(root, def, ref, tip string, prs []byte) bool {
+	if ok, err := gitutil.IsAncestor(root, tip, def); err == nil && ok {
+		return true
+	}
+	ok, _ := store.Merged(root, def, ref, tip, prs)
+	return ok
+}
+
 // ProveDelete proves one target safe, or names the check that failed.
 func (p deleteProver) ProveDelete(t guard.DeleteTarget) guard.DeleteProof {
+	if !time.Now().Before(p.deadline) {
+		return unproven(errOutOfTime.Error(), "Run the delete again, or one target at a time.")
+	}
 	root, err := gitutil.Run(t.Dir, "rev-parse", "--show-toplevel")
 	if err != nil || root == "" {
 		return unproven("the directory the command runs in is not a git checkout abcd can read", "")
@@ -160,7 +216,7 @@ func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, t g
 		return unproven("no forge was asked whether a pull request is open on it",
 			"Run the delete where gh is signed in to the repository's forge.")
 	}
-	prs, err := p.o.Forge(root, "pr", "list", "--head", t.Branch, "--state", "all",
+	prs, err := p.forge(root, "pr", "list", "--head", t.Branch, "--state", "all",
 		"--limit", strconv.Itoa(proofPRLimit),
 		"--json", "number,headRefName,headRefOid,baseRefName,isCrossRepository,state")
 	if err != nil {
@@ -175,7 +231,7 @@ func (p deleteProver) remoteBranch(root, def string, wts []gitutil.Worktree, t g
 		return unproven("pull request #"+strings.Join(open, ", #")+" is open on it",
 			"Merge or close the pull request first.")
 	}
-	if ok, _ := store.Merged(root, def, "refs/remotes/"+claim.Remote+"/"+t.Branch, tip, []byte(prs)); !ok {
+	if !keptBy(root, def, "refs/remotes/"+claim.Remote+"/"+t.Branch, tip, []byte(prs)) {
 		return unproven("its tip "+short(tip)+" holds work "+displayRef(def)+" does not "+
 			"(it is merged neither by ancestry, nor by a rebase or squash, nor by a pull request merged at that tip)",
 			"Merge it first, or keep it.")
@@ -190,12 +246,24 @@ func (p deleteProver) localBranch(root, def string, wts []gitutil.Worktree, t gu
 		return pr
 	}
 	ref := "refs/heads/" + t.Branch
-	tip, err := gitutil.Run(root, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
-	if err != nil || tip == "" {
+	// for-each-ref answers a branch that does not exist with nothing, and a
+	// failed read with an error, so the two are never confused; its pattern
+	// also matches the refs below ref, so only the exact name counts.
+	out, err := gitutil.Run(root, "for-each-ref", "--format=%(refname) %(objectname)", ref)
+	if err != nil {
+		return unproven("the branch could not be read ("+firstLine(err.Error())+")", "")
+	}
+	tip := ""
+	for _, line := range strings.Split(out, "\n") {
+		if name, sha, ok := strings.Cut(strings.TrimSpace(line), " "); ok && name == ref {
+			tip = sha
+		}
+	}
+	if tip == "" {
 		// No such branch: the delete removes nothing.
 		return guard.DeleteProof{Safe: true}
 	}
-	if ok, _ := store.Merged(root, def, ref, tip, nil); !ok {
+	if !keptBy(root, def, ref, tip, nil) {
 		return unproven("its tip "+short(tip)+" holds work "+displayRef(def)+" does not, as last fetched "+
 			"(it is merged neither by ancestry nor by a rebase or squash)",
 			"Merge it first, or fetch origin if it was merged since, or keep it.")
@@ -232,6 +300,10 @@ func (p deleteProver) worktree(root, def string, wts []gitutil.Worktree, t guard
 			" (uncommitted, untracked or ignored)",
 			"Commit what belongs in the repository, move what is worth keeping to the main checkout's .abcd/.work.local/, and delete the rest, first.")
 	}
+	if !p.reservationsRead(root) {
+		return unproven("the reservations on origin have never been fetched here, so none can be shown not to hold it",
+			"Fetch them (`abcd peers`) and run the removal again.")
+	}
 	if live, held := p.held(root, def, wt.Path); held {
 		return unproven("it may be in use: "+live, "Let whatever holds it finish, or end it, first.")
 	}
@@ -239,11 +311,21 @@ func (p deleteProver) worktree(root, def string, wts []gitutil.Worktree, t guard
 		return unproven("its HEAD is detached, so the commits it made are on no branch that can be shown merged",
 			"Put its commits on a branch and merge them, or keep it.")
 	}
-	if ok, _ := store.Merged(root, def, wt.Branch, wt.Head, nil); !ok {
+	if !keptBy(root, def, wt.Branch, wt.Head, nil) {
 		return unproven("its branch "+strings.TrimPrefix(wt.Branch, "refs/heads/")+" holds work "+displayRef(def)+
 			" does not, as last fetched", "Merge its branch first, or keep it.")
 	}
 	return guard.DeleteProof{Safe: true}
+}
+
+// reservationsRead reports whether the liveness probe has reservations to
+// read: the options' snapshot, or one this checkout fetched.
+func (p deleteProver) reservationsRead(root string) bool {
+	if !p.o.Probe.Reservations.FetchedAt.IsZero() {
+		return true
+	}
+	snap, err := claim.View(root, time.Now())
+	return err == nil && !snap.FetchedAt.IsZero()
 }
 
 // held asks the liveness probe whether anything holds the worktree. Every

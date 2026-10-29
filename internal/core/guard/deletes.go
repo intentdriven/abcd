@@ -268,6 +268,9 @@ func deleteTargets(segs []segment, dir string) (targets []DeleteTarget, read map
 			if w != "" {
 				return nil, nil, w
 			}
+			if _, under := xargsBefore(s, site.idx); under && (ok || len(ts) > 0) {
+				return nil, nil, "xargs hands the delete operands its input supplies, which the line does not fix"
+			}
 			if ok {
 				read[si] = true
 			}
@@ -366,7 +369,7 @@ var pushValueOptions = map[string]bool{"--repo": true, "--receive-pack": true, "
 // pushDeletes reads `git push`'s arguments: the remote, then the refspecs, each
 // deleted under --delete and each written `:<branch>` deleted without it.
 func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
-	del := false
+	del, dry := false, false
 	var ops []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -394,6 +397,8 @@ func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
 				del = true
 			case o == "--no-delete":
 				del = false
+			case o == "--dry-run":
+				dry = true
 			case pushValueOptions[o] && !hasValue:
 				i++
 			}
@@ -407,7 +412,9 @@ func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
 						i++
 					}
 					j = len(a)
-				case 'v', 'q', 'n', 'f', 'u', '4', '6':
+				case 'n':
+					dry = true
+				case 'v', 'q', 'f', 'u', '4', '6':
 				default:
 					return nil, "git push's option -" + string(a[j]) + " is one this reading does not know"
 				}
@@ -422,42 +429,67 @@ func pushDeletes(args []string, dir string) ([]DeleteTarget, string) {
 		}
 		return nil, ""
 	}
+	if dry {
+		// A dry run deletes nothing.
+		return nil, ""
+	}
 	remote, refspecs := ops[0], ops[1:]
 	var out []DeleteTarget
+	named := false
 	for _, rs := range refspecs {
 		name := rs
 		if !del {
 			src, dst, ok := strings.Cut(strings.TrimPrefix(rs, "+"), ":")
-			if !ok || src != "" {
+			if !ok || src != "" || dst == "" {
+				// A bare `:` pushes the matching branches and deletes none.
 				continue
 			}
 			name = dst
 		}
-		b, why := branchOperand(name)
+		named = true
+		if isOtherRef(name) {
+			// A tag or another namespace's ref is no branch: outside this
+			// proof, and left to the entry's warn.
+			continue
+		}
+		b, why := branchOperand(strings.TrimPrefix(name, "refs/heads/"))
 		if why != "" {
 			return nil, why
 		}
 		out = append(out, DeleteTarget{Kind: DeleteRemoteBranch, Dir: dir, Remote: remote, Branch: b})
 	}
-	if del && len(out) == 0 {
+	if del && !named {
 		return nil, "the push deletes but names no branch"
 	}
 	return out, ""
 }
 
-// branchOperand is a deleted ref as a branch name, or why it is not one this
-// proof can judge.
-func branchOperand(ref string) (string, string) {
-	b := strings.TrimPrefix(ref, "refs/heads/")
+// isOtherRef reports whether a pushed ref is spelled in full outside
+// refs/heads/: a tag, a note, a remote-tracking ref.
+func isOtherRef(ref string) bool {
+	return !isUnknown(ref) && strings.HasPrefix(ref, "refs/") && !strings.HasPrefix(ref, "refs/heads/")
+}
+
+// branchOperand is a deleted branch's name, as git names it under
+// refs/heads/, or why it is not one this proof can judge. A push's full
+// refs/heads/ spelling is taken off by its caller; `git branch` takes its
+// operand as the name itself, so refs/heads/x there is the branch named
+// refs/heads/x, and a name that starts refs/ is refused rather than read.
+func branchOperand(b string) (string, string) {
 	switch {
-	case isUnknown(ref):
+	case isUnknown(b):
 		return "", "a deleted branch is not fixed by the line"
 	case b == "":
 		return "", "a delete names an empty ref"
 	case strings.HasPrefix(b, "refs/"):
-		return "", ref + " is not a branch, and only a branch delete can be proven safe"
-	case strings.ContainsAny(b, "*?[\\") || strings.HasPrefix(b, "-"):
-		return "", ref + " is not a branch name the line fixes"
+		return "", b + " starts refs/, so the name is not one this proof reads as a branch's"
+	case strings.ContainsAny(b, "*?[\\{}") || strings.HasPrefix(b, "-"):
+		// {} is the placeholder find -exec and xargs -I put an operand in.
+		return "", b + " is not a branch name the line fixes"
+	case b == "@" || strings.Contains(b, "@{"):
+		// git reads @{-N} as the branch checked out N switches ago, and @ as
+		// HEAD: the name is git's to resolve, not the line's.
+		return "", b + " names a branch git resolves from its history, not one the line fixes"
 	}
 	return b, ""
 }

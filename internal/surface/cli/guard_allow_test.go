@@ -61,11 +61,13 @@ func TestGuardHookRunsADeleteThePersonAllowedOnce(t *testing.T) {
 	if _, stderr, code := runGuard("", "guard", "allow", "--once", "--command", line); code != 0 {
 		t.Fatalf("guard allow: exit %d (%s)", code, stderr)
 	}
-	_, stderr, code := runGuard(preToolUse(t, "Bash", line, repo.Root()), "guard", "hook")
-	if code != 1 || !strings.Contains(stderr, "allowed this exact command once") {
-		t.Fatalf("the allowed line: exit %d, stderr %q; want it to run loudly", code, stderr)
-	}
 	stdout, stderr, code := runGuard(preToolUse(t, "Bash", line, repo.Root()), "guard", "hook")
+	// Exit 0, so the plugin's wrapper asks no second judge, with the note on
+	// stdout, where the host reads an exit 0's answer.
+	if code != 0 || !strings.Contains(stdout, "allowed this exact command once") || strings.Contains(stdout, `"deny"`) {
+		t.Fatalf("the allowed line: exit %d, stdout %q, stderr %q; want it admitted with the note", code, stdout, stderr)
+	}
+	stdout, stderr, code = runGuard(preToolUse(t, "Bash", line, repo.Root()), "guard", "hook")
 	mustDeny(t, stdout, stderr, code)
 }
 

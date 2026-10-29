@@ -496,12 +496,14 @@ func guardHookDecide(cmd *cobra.Command) error {
 	case guard.VerdictBlock:
 		// A delete the guard could not prove, and nothing else, runs on
 		// the person's one-shot allow of this exact line, which is used
-		// up as it runs; the run is loud, as a warn is.
+		// up as it runs. The answer is exit 0 with a note on stdout, not a
+		// warn's exit 1: the plugin's hook wrapper hands an exit 1 to a
+		// second judge, which would find the allow used and deny the line.
 		if allowable {
 			if a, ok := takeGuardAllow(runDir, candidate); ok {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd guard: the person allowed this exact command once, at %s, though the guard could not prove its delete safe; it runs, and the allow is used.\n",
-					a.AllowedAt.Format(time.RFC3339))
-				return &exitError{Code: 1}
+				return writeHookNote(cmd.OutOrStdout(), fmt.Sprintf("abcd guard: the person allowed this exact command once, at %s, "+
+					"though the guard could not prove its delete safe; it runs, and the allow is used.",
+					a.AllowedAt.Format(time.RFC3339)))
 			}
 		}
 		// The host's deny: its reason is what the person sees and the

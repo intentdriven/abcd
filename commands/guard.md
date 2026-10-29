@@ -411,9 +411,9 @@ checkout is every one.
 A target is safe when every check holds, and each check refuses when it cannot
 answer:
 
-- **Merged** into origin's default branch as last fetched: by ancestry, or, for
-  a rebased or squashed branch, by patch id. The same judgement the worktree
-  store's sweep uses.
+- **Merged** into origin's default branch as last fetched: its tip is an
+  ancestor of it, or, for a rebased or squashed branch, its patches are there
+  (the worktree store's own judgement), or a pull request merged at that tip.
 - **No open pull request**, asked of the forge, for a branch on origin. A local
   `git branch -D` is judged offline against `origin/<default>` as last
   fetched; only a delete that touches origin asks the network, and a tip origin
@@ -421,16 +421,21 @@ answer:
 - **In no worktree**: a branch checked out anywhere is refused.
 - **No live reservation**: an `abcd-reserved/` or `abcd-status/` branch is never
   deleted by hand (`abcd reserve --sweep --apply` clears the spent ones), and a
-  worktree a live reservation, a running loop or a process holds is refused.
+  worktree a live reservation, a running loop or a process holds is refused, as
+  is every worktree removal in a checkout that has never fetched the
+  reservations (`abcd peers` fetches them).
 - **For a worktree, clean**: nothing staged, unstaged, untracked or ignored, not
   locked, not the main working tree, and on a branch (a detached HEAD is
   refused).
 
-A line whose targets the guard cannot read (a variable, a glob, a `refs/`
-spelling, a `cd` or a `GIT_` variable before the delete, an option it does not
-know) is refused too. The refusal names the check that failed and what settles
-it: merge the branch, close the pull request, fetch, or remove the worktree
-first.
+A line whose targets the guard cannot read (a variable, a glob, a name git
+resolves from its history such as `@{-1}`, a `{}` placeholder or a delete
+`xargs` hands its operands, a `git branch` name starting `refs/`, a `cd` or a
+`GIT_` variable before the delete, an option it does not know) is refused too. A
+pushed delete of a tag or another non-branch ref (`:refs/tags/v1`) is outside
+the proof and keeps its warning. The refusal names the check that failed and
+what settles it: merge the branch, close the pull request, fetch, or remove the
+worktree first.
 
 ### `allow` — the person's one-shot way past
 
@@ -442,8 +447,9 @@ abcd guard allow --once --command '<the exact command>'
 
 That lets the one exact line (byte for byte) through the hook once, within ten
 minutes, and lets past nothing else: a line any other hazard blocks stays
-blocked, and the allow is left unused. The hook says on stderr that the person
-allowed it and when, and runs the line. `guard check` never uses an allow, and
+blocked, and the allow is left unused. The hook admits the line with a note
+saying the person allowed it and when (exit 0, so no second judge re-reads it
+with the allow already used). `guard check` never uses an allow, and
 neither does the approver for a headless agent.
 
 **Never run `allow` yourself.** The guard refuses it when an agent runs it, in
@@ -460,9 +466,11 @@ when it was allowed and when it was used, and never who.
 The trust model is a careless agent, not a hostile one, as for the guard's
 other hazards. What it does not cover, plainly: a file tool writing into the
 store is not a shell command, so the shell guard does not see it; `git push
---prune` and `--mirror`, which delete as a side effect, are not judged here; a
-branch with no commit of its own reads as unmerged; and a local branch pushed to
-origin but not yet merged is refused like any other unmerged branch.
+--prune` and `--mirror`, which delete as a side effect, are not judged here; an
+allow is keyed on the line, not the directory, so a relative worktree path
+allowed in one directory of the repository is honoured from another; and a
+local branch pushed to origin but not yet merged is refused like any other
+unmerged branch.
 
 ## Registry and overrides
 

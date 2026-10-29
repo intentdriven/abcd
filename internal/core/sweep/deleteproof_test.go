@@ -180,6 +180,14 @@ func TestDeleteProofJudgesAWorktreeRemoval(t *testing.T) {
 	busy.Probe.Processes = cwds(filepath.Join(done, "sub"))
 	proofRefused(t, prove(t, busy, wt(done)), "it may be in use")
 
+	unfetched := idle
+	unfetched.Probe.Reservations = claim.Snapshot{}
+	p := prove(t, unfetched, wt(done))
+	proofRefused(t, p, "never been fetched")
+	if !strings.Contains(p.Settle, "abcd peers") {
+		t.Errorf("the unfetched reservations refusal does not say how to fetch them: %q", p.Settle)
+	}
+
 	if err := os.MkdirAll(filepath.Join(done, ".abcd", ".work.local"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -196,4 +204,49 @@ func TestDeleteProofJudgesAWorktreeRemoval(t *testing.T) {
 
 	proofRefused(t, prove(t, idle, wt(repo.Root())), "main working tree")
 	proofRefused(t, prove(t, idle, wt(t.TempDir())), "not a worktree git lists")
+}
+
+// TestDeleteProofKeepsABranchItsDefaultHolds pins ancestry alone as proof: a
+// branch whose tip the default branch already holds deletes nothing it
+// lacks, whether it was merged by a fast-forward with no pull request,
+// pushed to origin so, or cut and never committed to. A local branch the
+// repository does not hold is safe even where a branch below its name exists.
+func TestDeleteProofKeepsABranchItsDefaultHolds(t *testing.T) {
+	repo, _ := proofRepo(t)
+	branchWith(repo, "ff", "ff.txt")
+	repo.Git("push", "-q", "origin", "ff")
+	repo.Git("merge", "-q", "--ff-only", "ff")
+	publish(repo)
+	repo.Git("branch", "fresh")
+	branchWith(repo, "nest/sub", "n.txt")
+
+	none := DeleteProofOptions{Forge: forgeSaying(`[]`)}
+	for _, target := range []guard.DeleteTarget{
+		{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "ff"},
+		{Kind: guard.DeleteLocalBranch, Dir: repo.Root(), Branch: "ff"},
+		{Kind: guard.DeleteLocalBranch, Dir: repo.Root(), Branch: "fresh"},
+		{Kind: guard.DeleteLocalBranch, Dir: repo.Root(), Branch: "nest"},
+	} {
+		if p := prove(t, none, target); !p.Safe {
+			t.Errorf("%s: refused (%s), want safe", target, p.Failed)
+		}
+	}
+	proofRefused(t, prove(t, none, guard.DeleteTarget{Kind: guard.DeleteLocalBranch, Dir: repo.Root(), Branch: "nest/sub"}),
+		"holds work origin/main does not")
+}
+
+// TestDeleteProofRefusesOnceItsTimeRunsOut pins the budget: a forge slower
+// than what is left of it is no answer, and a target asked after it lapsed is
+// refused unread, since a host that times out the hook would run the delete.
+func TestDeleteProofRefusesOnceItsTimeRunsOut(t *testing.T) {
+	repo, _ := proofRepo(t)
+	branchWith(repo, "feat", "f.txt")
+	repo.Git("push", "-q", "origin", "feat")
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	slow := func(string, ...string) (string, error) { <-release; return `[]`, nil }
+	p := NewDeleteProver(DeleteProofOptions{Forge: slow, Budget: 50 * time.Millisecond})
+	target := guard.DeleteTarget{Kind: guard.DeleteRemoteBranch, Dir: repo.Root(), Remote: "origin", Branch: "feat"}
+	proofRefused(t, p.ProveDelete(target), "could not be asked")
+	proofRefused(t, p.ProveDelete(target), "ran out")
 }

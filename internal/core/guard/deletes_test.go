@@ -147,13 +147,20 @@ func TestGuardRefusesADeleteWhoseTargetsItCannotRead(t *testing.T) {
 		`cd ../other && git branch -D a`,
 		`GIT_DIR=/x/.git git branch -D a`,
 		`git push origin --delete 'feat/*'`,
-		`git push origin --delete refs/tags/v1`,
+		`git branch -D refs/heads/a`,
 		`git push --frobnicate origin :a`,
 		`git push origin --delete`,
 		`git branch -D --frob a`,
 		`git worktree remove a b`,
 		`git worktree remove --sideways a`,
 		`git --exec-path=/x branch -D a`,
+		`git branch -D @{-1}`,
+		`git push origin --delete @{-1}`,
+		`git branch -D @`,
+		`git for-each-ref --format="%(refname:short)" refs/heads/old/ | xargs -I{} git branch -D {}`,
+		`printf "a\nb\n" | xargs git branch -D keep`,
+		`printf "a\n" | xargs -I{} git push origin --delete {}`,
+		`git branch -D {}`,
 	} {
 		p := &recordingProver{proof: DeleteProof{Safe: true}}
 		d, err := deleteRegistry(t, t.TempDir(), p).Check(line)
@@ -178,6 +185,11 @@ func TestGuardLeavesWhatDeletesNothingItJudges(t *testing.T) {
 		"git push origin feat/x",
 		"git branch -d feat/x",
 		"git branch -Dr origin/feat/x",
+		"git push origin --delete refs/tags/v1",
+		"git push origin :",
+		"git push -n origin --delete feat/x",
+		"git push --dry-run origin :feat/x",
+		"git push origin :refs/tags/v1",
 		"git worktree list",
 		"git status",
 	} {

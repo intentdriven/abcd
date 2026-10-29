@@ -555,8 +555,9 @@ target holds any that is kept nowhere else, and whether it does is a fact about
 the repository rather than about the command's words (iss-2610241239492159).
 So the registry's delete entries only warn, and in a repository the check and
 the hook refuse every such delete whose target is not proven safe: merged into
-origin's default branch as last fetched (by ancestry, or by patch id for a
-rebased or squashed branch, the judgement the worktree store's sweep makes),
+origin's default branch as last fetched (by ancestry, by patch id for a
+rebased or squashed branch as the worktree store judges it, or by a pull
+request merged at the tip),
 with no open pull request, checked out in no worktree, held by no reservation,
 and, for a worktree, clean, unlocked and in use by nothing. A local branch
 delete is judged offline; only a delete that touches origin asks the network
@@ -574,7 +575,8 @@ it. The guard refuses the allow when an agent runs it and refuses a shell write
 into its store. As with every hazard here, the trust model is a careless agent,
 not a hostile one: a file tool writing into the store is not a shell command
 and goes unseen, a push that deletes as a side effect (pruning, mirroring) is
-not judged, and a branch with no commit of its own reads as unmerged.
+not judged, and an allow is keyed on the line, not on the directory it runs in.
+A pushed delete of a tag is outside the proof and keeps its warning.
 
 ## What an allow means
 
