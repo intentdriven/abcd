@@ -164,10 +164,18 @@ func (f *fakeForge) pushers(_ context.Context, root, ref string) ([]Push, error)
 	}
 	var out []Push
 	for _, l := range strings.Split(strings.TrimSpace(runGit(f.t, bare, "log", "--first-parent",
-		"--format=%H %P%x09%(trailers:key=Abcd-Holder,valueonly,separator=)", ref)), "\n") {
-		ids, holder, _ := strings.Cut(l, "\t")
+		"--format=%H %P%x09%(trailers:key=Abcd-Holder,valueonly,separator=)%x09%ce", ref)), "\n") {
+		ids, rest, _ := strings.Cut(l, "\t")
+		holder, committer, _ := strings.Cut(rest, "\t")
 		f := strings.Fields(ids)
-		p := Push{Before: zeroCommit, After: f[0], Pusher: strings.TrimSpace(holder)}
+		// The account that pushed is the one a hold made before the holder
+		// id names; a hold naming a holder id names no account, so the
+		// pusher is the committing clone's login, as gh would report it.
+		pusher := strings.TrimSpace(holder)
+		if validHolderID(pusher) {
+			pusher = NoReplyUsername(strings.TrimSpace(committer))
+		}
+		p := Push{Before: zeroCommit, After: f[0], Pusher: pusher}
 		if len(f) > 1 {
 			p.Before = f[1]
 		}

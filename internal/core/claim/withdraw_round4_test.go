@@ -739,7 +739,11 @@ func TestAnUnrecordedWithdrawalIsShownAgainWhenTheSettleNamingItIsLost(t *testin
 		t.Fatal(err)
 	}
 	h, _ := resolveHolder(octo.dir, identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, octo.opts(), false)
-	a := actor{root: octo.dir, who: identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, holder: h.Login,
+	self, err := ownSelf(octo.home, h.Login, false)
+	if err != nil || self.ID == "" {
+		t.Fatalf("the settling copy's holder = %+v, %v", self, err)
+	}
+	a := actor{root: octo.dir, who: identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, holder: self.ID, self: self,
 		copy: ownCopyKey(octo.dir), now: w.clock(), label: "abcd:v0.0.0"}
 	// origin goes away once the record is read, so the claim is not pushed.
 	away := w.bare + ".away"

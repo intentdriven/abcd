@@ -277,7 +277,11 @@ func TestASweepThatLosesTheTombstoneRaceReArmsNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	h, _ := resolveHolder(laptop.dir, identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, laptop.opts(), false)
-	a := actor{root: laptop.dir, who: identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, holder: h.Login,
+	self, err := ownSelf(laptop.home, h.Login, false)
+	if err != nil || self.ID == "" {
+		t.Fatalf("the settling copy's holder = %+v, %v", self, err)
+	}
+	a := actor{root: laptop.dir, who: identity{Name: "Pat Example", Email: "1234+octo@users.noreply.github.com"}, holder: self.ID, self: self,
 		copy: ownCopyKey(laptop.dir), now: w.clock(), label: "abcd:v0.0.0"}
 	// The forge's record ends at the other copy's tombstone, not at the tip
 	// the laptop read, so nothing is verified and nothing is done.
@@ -514,8 +518,11 @@ func TestTombstoneFitIsMeasuredForAnyHolder(t *testing.T) {
 	entry := func(n, idLen int) Withdrawal {
 		return Withdrawal{Number: 100000000 + n, ID: strings.Repeat("A", idLen), Form: FormAutoRebase, Head: headA, By: "octo", State: WithdrawnPending}
 	}
+	// A release reserved before the holder id names its cutter by a login,
+	// as short as octo's: the fit is not measured by it.
 	fitsAsOcto := func(ws []Withdrawal) bool {
 		m := pr.tombstone(nil)
+		m.Holder = "octo"
 		m.Withdrawn = ws
 		return checkMessage(p.dir, m.text()) == nil
 	}
@@ -561,7 +568,7 @@ func TestReArmMineSkipsAnotherPersonsEntryOnTheSameTip(t *testing.T) {
 		{Number: 11, ID: "PR_eleven", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending},
 		{Number: 12, ID: "PR_twelve", Form: FormAutoMerge, Head: headB, By: "quinn", State: WithdrawnPending},
 	}
-	out, settled, _, fails, why := rearmMine(actor{root: p.dir, holder: "octo", subject: "rel-v0.16.0"}, ws)
+	out, settled, _, fails, why := rearmMine(actor{root: p.dir, holder: "octo", self: Self{Login: "octo"}, subject: "rel-v0.16.0"}, ws)
 	if why != "" || len(fails) != 0 || len(settled) != 1 || settled[0].Number != 11 || out[1].State != WithdrawnPending ||
 		!slices.Equal(f.mutations(), []string{"enablePullRequestAutoMerge #11"}) {
 		t.Fatalf("rearmMine = %+v %+v %+v %q, mutations %v; want only octo's #11", out, settled, fails, why, f.mutations())

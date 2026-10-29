@@ -3,11 +3,13 @@ package landing
 import (
 	"context"
 	"errors"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -40,8 +42,20 @@ func (f *fixture) announcing(trailer string) {
 	f.repo.Git("commit", "-q", "-m", "fix: the widget\n\n"+trailer)
 }
 
-// statusTip is P's status branch on the bare origin, "" when it has none.
-func (f *fixture) statusTip() string { return f.onOrigin("abcd-status/octo") }
+// statusTip is P's status branch on the bare origin, "" when it has none:
+// the branch is named by P's holder id, and a home that keeps none has sent
+// nothing under one.
+func (f *fixture) statusTip() string {
+	f.t.Helper()
+	data, err := os.ReadFile(abcdhome.Path(f.home, "holder-id"))
+	if errors.Is(err, os.ErrNotExist) {
+		return ""
+	}
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return f.onOrigin("abcd-status/" + strings.TrimSpace(string(data)))
+}
 
 // colleagueRead is what a colleague's `abcd status` shows at this moment, run
 // from the working copy dir: it fetches the status branches as that verb does
@@ -85,19 +99,19 @@ func TestAColleagueSeesTheAnnouncementBeforeTheBranchIsOnOrigin(t *testing.T) {
 	}
 	var found bool
 	for _, a := range seen {
-		if a.Branch == "octo" && a.Kind == "merging" && a.Item == "iss-5" {
+		if a.Branch == f.heldBy(f.repo.Root()) && a.Kind == "merging" && a.Item == "iss-5" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("the colleague's read as land's push began: %+v; want octo's merging iss-5", seen)
+		t.Fatalf("the colleague's read as land's push began: %+v; want P's merging iss-5 under P's holder id", seen)
 	}
 	if f.onOrigin("feat/x") != f.head() {
 		t.Fatalf("feat/x on origin is %q; want the head %s pushed after the announcement", f.onOrigin("feat/x"), f.head())
 	}
 	s := step(t, res, "announce")
-	if s.Status != StatusDone || !strings.Contains(s.Note, "announced merging iss-5 on abcd-status/octo") {
-		t.Fatalf("announce step %+v; want it done, naming merging iss-5 on abcd-status/octo", s)
+	if s.Status != StatusDone || !strings.Contains(s.Note, "announced merging iss-5 on abcd-status/"+f.heldBy(f.repo.Root())) {
+		t.Fatalf("announce step %+v; want it done, naming merging iss-5 on P's holder id's status branch", s)
 	}
 }
 
@@ -153,7 +167,7 @@ func TestLandRunAgainDoesNotAnnounceTwice(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := step(t, res, "announce")
-	if f.statusCommits() != 1 || s.Status != StatusSkipped || !strings.Contains(s.Note, "merging iss-5 was already announced on abcd-status/octo") {
+	if f.statusCommits() != 1 || s.Status != StatusSkipped || !strings.Contains(s.Note, "merging iss-5 was already announced on abcd-status/"+f.heldBy(f.repo.Root())) {
 		t.Fatalf("status commits %d, announce step %+v; want the standing one named and none sent", f.statusCommits(), s)
 	}
 }

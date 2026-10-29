@@ -52,17 +52,17 @@ func TestAStandingAnnouncementIsNotSentAgainBeforeAPush(t *testing.T) {
 	if err != nil || len(first) != 1 || first[0].Live || first[0].NotPublic {
 		t.Fatalf("first push's announcement = %+v, %v; want one sent", first, err)
 	}
-	tip := w.statusTip("octo")
-	if first[0].Line() != "announced merging iss-5 on abcd-status/octo, standing until 2026-10-03T14:30:00Z" {
+	tip := w.statusTip(p.holderID())
+	if first[0].Line() != "announced merging iss-5 on abcd-status/"+p.holderID()+", standing until 2026-10-03T14:30:00Z" {
 		t.Fatalf("line = %q", first[0].Line())
 	}
 
 	w.set(t0.Add(20 * time.Minute))
 	again, err := p.beforePush([]string{"iss-5"}, e)
-	if err != nil || len(again) != 1 || !again[0].Live || w.statusTip("octo") != tip {
-		t.Fatalf("second push's announcement = %+v, %v, tip %s→%s; want the standing one, nothing sent", again, err, tip, w.statusTip("octo"))
+	if err != nil || len(again) != 1 || !again[0].Live || w.statusTip(p.holderID()) != tip {
+		t.Fatalf("second push's announcement = %+v, %v, tip %s→%s; want the standing one, nothing sent", again, err, tip, w.statusTip(p.holderID()))
 	}
-	if again[0].Line() != "merging iss-5 was already announced on abcd-status/octo, standing until 2026-10-03T14:30:00Z" {
+	if again[0].Line() != "merging iss-5 was already announced on abcd-status/"+p.holderID()+", standing until 2026-10-03T14:30:00Z" {
 		t.Fatalf("line = %q", again[0].Line())
 	}
 	// Another item's announcement on top does not hide the one standing.
@@ -77,19 +77,19 @@ func TestAStandingAnnouncementIsNotSentAgainBeforeAPush(t *testing.T) {
 	if _, err := p.announce("asking", "iss-5"); err != nil {
 		t.Fatal(err)
 	}
-	asking := w.statusTip("octo")
+	asking := w.statusTip(p.holderID())
 	n, err := p.beforePush([]string{"iss-5"}, e)
-	if err != nil || len(n) != 1 || n[0].Live || w.parentOf(w.statusTip("octo")) != asking {
+	if err != nil || len(n) != 1 || n[0].Live || w.parentOf(w.statusTip(p.holderID())) != asking {
 		t.Fatalf("with an asking of iss-5 on top = %+v, %v; want a new merging sent on top of it", n, err)
 	}
 
 	w.set(t0.Add(49*time.Minute + 30*time.Second))
-	before := w.statusTip("octo")
+	before := w.statusTip(p.holderID())
 	late, err := p.beforePush([]string{"iss-5"}, e)
-	if err != nil || len(late) != 1 || late[0].Live || w.statusTip("octo") == before {
+	if err != nil || len(late) != 1 || late[0].Live || w.statusTip(p.holderID()) == before {
 		t.Fatalf("with under a minute left = %+v, %v; want a new one sent", late, err)
 	}
-	if w.parentOf(w.statusTip("octo")) != before {
+	if w.parentOf(w.statusTip(p.holderID())) != before {
 		t.Fatalf("the new announcement is not a child of the branch's tip")
 	}
 }
@@ -109,10 +109,10 @@ func TestAMergedOnTopEndsTheStandingMerging(t *testing.T) {
 	if _, err := p.announce("merged", "iss-5"); err != nil {
 		t.Fatal(err)
 	}
-	merged := w.statusTip("octo")
+	merged := w.statusTip(p.holderID())
 	w.set(t0.Add(10 * time.Minute))
 	n, err := p.beforePush([]string{"iss-5"}, e)
-	if err != nil || len(n) != 1 || n[0].Live || w.parentOf(w.statusTip("octo")) != merged {
+	if err != nil || len(n) != 1 || n[0].Live || w.parentOf(w.statusTip(p.holderID())) != merged {
 		t.Fatalf("follow-up push after merged iss-5 = %+v, %v; want a new merging sent on top of the merged", n, err)
 	}
 }
@@ -139,12 +139,12 @@ func TestALostRaceRechecksForAStandingAnnouncement(t *testing.T) {
 		if err != nil || len(n) != 1 || n[0].Live {
 			t.Errorf("the rival announcement: %+v, %v", n, err)
 		}
-		rival = w.statusTip("octo")
+		rival = w.statusTip(p.holderID())
 	}
 	t.Cleanup(func() { beforePush = nil })
 	n, err := p.beforePush([]string{"iss-5"}, &embargoProbe{})
-	if err != nil || len(n) != 1 || !n[0].Live || rival == "" || w.statusTip("octo") != rival {
-		t.Fatalf("the push that lost the race = %+v, %v, tip %s, rival %s; want the rival's standing one, nothing more sent", n, err, w.statusTip("octo"), rival)
+	if err != nil || len(n) != 1 || !n[0].Live || rival == "" || w.statusTip(p.holderID()) != rival {
+		t.Fatalf("the push that lost the race = %+v, %v, tip %s, rival %s; want the rival's standing one, nothing more sent", n, err, w.statusTip(p.holderID()), rival)
 	}
 }
 
@@ -159,7 +159,7 @@ func TestAStandingAnnouncementOfAnotherPersonIsNotTheOneOwed(t *testing.T) {
 	}
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	n, err := p.beforePush([]string{"iss-5"}, &embargoProbe{})
-	if err != nil || len(n) != 1 || n[0].Live || w.statusTip("octo") == "" {
+	if err != nil || len(n) != 1 || n[0].Live || w.statusTip(p.holderID()) == "" {
 		t.Fatalf("octo's push after quinn's announcement = %+v, %v; want octo's own sent", n, err)
 	}
 }
@@ -193,8 +193,8 @@ func TestAnAnnouncementThatCannotBePublishedStopsBeforeThePush(t *testing.T) {
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	n, err := p.beforePush([]string{"iss-5"}, &embargoProbe{err: errors.New("the store is unreadable")})
 	var pe *PushAnnounceError
-	if !errors.As(err, &pe) || pe.Item != "iss-5" || len(n) != 0 || w.statusTip("octo") != "" {
-		t.Fatalf("notices %+v, err %v, tip %q; want a *PushAnnounceError for iss-5 and nothing sent", n, err, w.statusTip("octo"))
+	if !errors.As(err, &pe) || pe.Item != "iss-5" || len(n) != 0 || w.statusTip(p.holderID()) != "" {
+		t.Fatalf("notices %+v, err %v, tip %q; want a *PushAnnounceError for iss-5 and nothing sent", n, err, w.statusTip(p.holderID()))
 	}
 	if !strings.HasPrefix(err.Error(), "the announcement merging iss-5 could not be published: an announcement about iss-5 is refused: the embargo store on this machine could not be checked: the store is unreadable") {
 		t.Fatalf("error = %q", err)
