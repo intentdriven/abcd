@@ -355,11 +355,22 @@ func TestCheckPathJudgesWhereAWriteLandsNotHowItIsSpelt(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(linked, ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	outside := filepath.Join(base, "outside")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	for link, target := range map[string]string{
 		filepath.Join(tier, "into"):     filepath.Join(main, "internal"),
 		filepath.Join(tier, "dangling"): filepath.Join(main, "internal", "new.go"),
 		filepath.Join(tier, "rel"):      "../../internal",
+		filepath.Join(tier, "out"):      outside,
+		filepath.Join(tier, "loop1"):    filepath.Join(tier, "loop2"),
+		filepath.Join(tier, "loop2"):    filepath.Join(tier, "loop1"),
+		filepath.Join(main, "loop1"):    filepath.Join(main, "loop2"),
+		filepath.Join(main, "loop2"):    filepath.Join(main, "loop1"),
+		filepath.Join(main, "out"):      outside,
 		filepath.Join(linked, "into"):   filepath.Join(main, "internal"),
+		filepath.Join(linked, "main"):   main,
 	} {
 		if err := os.Symlink(target, link); err != nil {
 			t.Fatal(err)
@@ -382,6 +393,8 @@ func TestCheckPathJudgesWhereAWriteLandsNotHowItIsSpelt(t *testing.T) {
 		linked + sep + "into" + sep + ".." + sep + "x.go",
 		main + sep + ".abcd" + sep + ".WORK.LOCAL" + sep + "x.md",
 		main + sep + "sub" + sep + ".abcd" + sep + ".work.local" + sep + "x.md",
+		linked + sep + "main" + sep + "x.go",
+		main + sep + "loop1" + sep + "x.go", // a loop the walk gives up on still names this tree
 	}
 	if other := filepath.Join(base, "MAIN"); other != main {
 		if fi, err := os.Stat(other); err == nil && fi.IsDir() {
@@ -397,9 +410,12 @@ func TestCheckPathJudgesWhereAWriteLandsNotHowItIsSpelt(t *testing.T) {
 	for _, p := range []string{
 		tier + sep + "scratch" + sep + "x.md",
 		tier + sep + "a" + sep + ".." + sep + "b.md",
+		tier + sep + "loop1" + sep + "x.md", // the kernel refuses it (too many links); it lands nowhere else
+		tier + sep + "out" + sep + "x.go",
+		main + sep + "out" + sep + "x.go",
 	} {
 		if err := CheckPath(home, p, read(tab)); err != nil {
-			t.Errorf("CheckPath(%s): the write lands in the local tier, want nil, got %v", p, err)
+			t.Errorf("CheckPath(%s): the write lands in the local tier or in no checkout, want nil, got %v", p, err)
 		}
 	}
 }
