@@ -24,10 +24,10 @@ package capture
 
 import (
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/issuemention"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -50,26 +50,10 @@ const (
 // strengthRank orders the vocabulary for "the strongest evidence on this row".
 var strengthRank = map[string]int{StrengthRecord: 1, StrengthTree: 2, StrengthResolves: 3}
 
-// mentionRe finds an iss-N anywhere in free prose. The leading guard is the Go
-// twin of MENTION_RE in scripts/check-issue-resolution.sh, and it exists for the
-// same reason: `xiss-1` inside a longer token is not a mention of iss-1, and
-// `iss-12` is not a mention of iss-1 either (the greedy digit run takes the
-// whole number). Keeping the two spellings side by side is deliberate — the gate
-// refuses what this listing would otherwise have to report.
-var mentionRe = regexp.MustCompile(`(?:^|[^A-Za-z0-9])(iss-[0-9]+)`)
-
-// declareRe is the Go twin of DECLARE_RE: the whole declaration vocabulary,
-// nothing but the declaration on the line. A closed set of two spellings, for the
-// reason the script states — admitting `Ref:`/`See:`/`Related:` would reopen the
-// omission the rule closes. The id half is a COMMA-SEPARATED LIST because that is
-// the conventional trailer shape (`Refs: iss-1, iss-2`); refusing it made an
-// author write the trailer twice, or drop the second id, which is the omission
-// the rule exists to close. `\r?` is here because a message may arrive
-// CRLF-terminated from a forge-composed squash.
-var declareRe = regexp.MustCompile(`(?m)^(Resolves|Refs):[ \t]+(iss-[0-9]+(?:[ \t]*,[ \t]*iss-[0-9]+)*)[ \t]*\r?$`)
-
-// declaredIDRe takes the ids back out of a declaration line's id list.
-var declaredIDRe = regexp.MustCompile(`iss-[0-9]+`)
+// The mention and declaration vocabulary is RS004's, in its one Go copy
+// (core/issuemention), tied to scripts/check-issue-resolution.sh by a test:
+// the gate refuses what this listing would otherwise have to report, so the
+// two must read a message alike.
 
 // recordTierPrefix is the working-tree tier a mention can be written in without
 // anything being fixed: the record itself, the brief, the decision log. A commit
@@ -280,27 +264,14 @@ func (c mentionCommit) subject() string {
 // judge applies the evidence rules to one commit and returns the strength it
 // contributes per open id. An id it says nothing usable about is absent.
 func (c mentionCommit) judge(open map[string]Issue) map[string]string {
-	mentioned := map[string]bool{}
-	for _, m := range mentionRe.FindAllStringSubmatch(c.body, -1) {
-		mentioned[m[1]] = true
-	}
+	mentioned := issuemention.Mentioned(c.body)
 	if len(mentioned) == 0 {
 		return nil
 	}
-	declared := map[string]string{}
-	for _, m := range declareRe.FindAllStringSubmatch(c.body, -1) {
-		// One line declares the same relation for every id it lists.
-		for _, id := range declaredIDRe.FindAllString(m[2], -1) {
-			// `Resolves:` outranks `Refs:` if a message carries both for one id:
-			// the stronger claim is the one its author is answerable for.
-			if declared[id] != "Resolves" {
-				declared[id] = m[1]
-			}
-		}
-	}
+	declared := issuemention.Declared(c.body)
 
 	out := map[string]string{}
-	for id := range mentioned {
+	for _, id := range mentioned {
 		if _, isOpen := open[id]; !isOpen {
 			continue
 		}

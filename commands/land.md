@@ -139,7 +139,20 @@ that name with none at this head, since the proof may lie past the bound.
    is now disarmed and gives the command that arms it again. With no pull
    request the step is
    `stopped` with the `gh pr create` command: relay it to the user, who opens
-   the pull request; the next `abcd land` queues it.
+   the pull request; the next `abcd land` queues it. The command carries
+   `--title` (the branch's first commit's subject) and `--body-file`, naming a
+   body land composed from the branch's commits into the checkout's
+   `.abcd/.work.local/scratch/land/`: each commit's subject as a list, then
+   their `Refs:`, `Resolves:` and `Delivers:` lines, once each, then abcd's
+   own `Assisted-by: abcd:<version>` label, since abcd composed the text, and
+   the models the commits' `Assisted-by:` lines name (a commit's `None` is not
+   carried), and no commit's prose. land judges that body as the shell guard judges a
+   posted one (the outbound policy, the disclosure line, and the issue-id
+   declarations where the repository opted into them), and a body that fails
+   one is still written, with the stop's note naming the check, so the user
+   fixes it before posting. Where git does not ignore the local tier, or the
+   checkout has none (land makes none), land writes no file and the command
+   is the bare `gh pr create`.
 
 The payload carries `branch`, `head`, `checkout` (home-relative),
 `default_branch`, `push` and `enqueue` (each `key`, `on`, and the `layer` and

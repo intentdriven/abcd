@@ -82,6 +82,13 @@ type Request struct {
 	// grant them: a harness that keeps a deny list takes them there, ahead of
 	// every grant.
 	Denied []string
+	// Model is the <provider>/<model> route this request runs at, over the
+	// model the runner's own route names, so one runner serves two reviewers
+	// at two classes (itd-2610240922461281 decision 4); "" keeps the route's.
+	// It is admitted against the provider's allowlist when the request is
+	// dispatched, as a configured route is when it is read, never trusted
+	// because a caller stored it.
+	Model string
 	// SessionID names the run's transcript record when the harness reports no
 	// session of its own.
 	SessionID string
@@ -260,6 +267,13 @@ func (r Request) check() error {
 	if r.Base != "" && !gitutil.IsFullSHA(r.Base) {
 		return fmt.Errorf("runner: the base %q is not a commit's full object name", termsafe.Sanitize(r.Base))
 	}
+	if r.Model != "" {
+		provider, model, ok := strings.Cut(r.Model, "/")
+		if !ok || provider == "" || model == "" || !modelRe.MatchString(r.Model) {
+			return fmt.Errorf("runner: the request's model %q is not a <provider>/<model> route of at most 128 plain characters",
+				termsafe.Sanitize(r.Model))
+		}
+	}
 	if !sessionRe.MatchString(r.SessionID) {
 		return errors.New("runner: the request names no session id for its transcript")
 	}
@@ -267,6 +281,16 @@ func (r Request) check() error {
 		return errors.New("runner: a negative timeout")
 	}
 	return nil
+}
+
+// modelOr is the model route the request runs at: its own when it names one,
+// else route, the model the runner's configuration names ("" for the
+// harness's own default).
+func (r Request) modelOr(route string) string {
+	if r.Model != "" {
+		return r.Model
+	}
+	return route
 }
 
 func (r Request) timeout() time.Duration {

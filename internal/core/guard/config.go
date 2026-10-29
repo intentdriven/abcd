@@ -312,6 +312,10 @@ func mergePattern(base, over Pattern) Pattern {
 	if over.ArgPrefixes != nil {
 		r.ArgPrefixes = append([]string(nil), over.ArgPrefixes...)
 	}
+	if over.ArgPrefixesLiteral != nil {
+		v := *over.ArgPrefixesLiteral
+		r.ArgPrefixesLiteral = &v
+	}
 	if over.ArgValues != nil {
 		r.ArgValues = append([]string(nil), over.ArgValues...)
 	}

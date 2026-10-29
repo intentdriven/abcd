@@ -1,0 +1,22 @@
+# The publish surface: paths whose changes ship behaviour to installed users
+# (plugin hooks and commands, agent prompts, workflows, gates and their config)
+# or alter what the release and site builds produce. One path per line, rooted
+# at the repository; a trailing slash names a directory. The external
+# contribution runbook's fence (.abcd/work/intake.md, S2) reads this list.
+/hooks/
+/commands/
+/agents/
+/.claude-plugin/
+/.githooks/
+/.github/
+/scripts/
+/Makefile
+/go.mod
+/go.sum
+/.abcd/docs-lint.json
+/.abcd/record-lint.json
+/.abcd/site.json
+/mkdocs.yml
+/wrangler.jsonc
+/site-src/
+/docs/requirements.txt

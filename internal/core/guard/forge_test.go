@@ -106,7 +106,7 @@ func TestForgeTextAllowsCleanAndNonPostingCommands(t *testing.T) {
 	_, reg := forgeRepo(t, forgeOptedIn)
 	url := forgeSessionURL()
 	cases := []string{
-		`gh pr create --title "fix the walk" --body "Closes #3. Assisted-by: Claude:claude-opus-5-5"`,
+		"gh pr create --title \"fix the walk\" --body \"Closes #3.\n\nAssisted-by: Claude:claude-opus-5-5\"",
 		"gh pr create --title t --body \"$(cat <<'EOF'\nSummary\n\nAssisted-by: Claude:claude-opus-5-5\nEOF\n)\"",
 		`gh pr view 12 --json body`,
 		`gh issue list --search "` + url + `"`,
@@ -124,7 +124,8 @@ func TestForgeTextAllowsCleanAndNonPostingCommands(t *testing.T) {
 	for _, cmd := range cases {
 		t.Run(cmd, func(t *testing.T) {
 			d := forgeCheck(t, reg, cmd)
-			if contains(d.Matches, forgeTextEntryID) || contains(d.Matches, forgeUnreadEntryID) {
+			if contains(d.Matches, forgeTextEntryID) || contains(d.Matches, forgeUnreadEntryID) ||
+				contains(d.Matches, forgeDisclosureEntryID) || contains(d.Matches, forgeMentionEntryID) {
 				t.Fatalf("Check = %q via %q, want no forge-text verdict: %s", d.Verdict, d.EntryID, d.Message)
 			}
 		})
@@ -236,7 +237,9 @@ func TestForgeTextWarnsOnABodyFileItCannotRead(t *testing.T) {
 
 // TestForgeTextWarnsWhenTheScannerConfigIsBroken: a pii.json that does not
 // load would judge with a weakened detector set, so the check says it could
-// not judge (a warn), rather than either passing in silence or blocking.
+// not judge (a warn), rather than either passing in silence or blocking. The
+// body discloses its assistance, so the disclosure check, which needs no
+// scanner config, has nothing to block.
 func TestForgeTextWarnsWhenTheScannerConfigIsBroken(t *testing.T) {
 	root, reg := forgeRepo(t, forgeOptedIn)
 	if err := os.MkdirAll(filepath.Join(root, ".abcd", "config"), 0o755); err != nil {
@@ -245,7 +248,7 @@ func TestForgeTextWarnsWhenTheScannerConfigIsBroken(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, ".abcd", "config", "pii.json"), []byte("{not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	d := forgeCheck(t, reg, `gh pr create --body "`+forgeSessionURL()+`"`)
+	d := forgeCheck(t, reg, `gh pr create --body "`+forgeSessionURL()+"\n\nAssisted-by: Claude:claude-opus-5-5\"")
 	if d.Verdict != VerdictWarn || !contains(d.Matches, forgeUnreadEntryID) {
 		t.Fatalf("Check = %q via %q (matches %v), want warn via %q", d.Verdict, d.EntryID, d.Matches, forgeUnreadEntryID)
 	}
@@ -255,7 +258,7 @@ func TestForgeTextWarnsWhenTheScannerConfigIsBroken(t *testing.T) {
 }
 
 func TestForgeTextIdsAreReserved(t *testing.T) {
-	for _, id := range []string{forgeTextEntryID, forgeUnreadEntryID} {
+	for _, id := range []string{forgeTextEntryID, forgeUnreadEntryID, forgeDisclosureEntryID, forgeMentionEntryID} {
 		if !contains(reservedEntryIDs, id) {
 			t.Errorf("reservedEntryIDs = %v, want %q listed so no repo entry can claim the guard's own voice", reservedEntryIDs, id)
 		}

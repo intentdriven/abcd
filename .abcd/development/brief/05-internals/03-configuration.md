@@ -43,13 +43,15 @@ file is gone. `attribution.hook` is written by `ahoy install --attribution`, and
 one outbound switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
 absent, while a key set to `false` is the repository's choice and is left as it
-is. The remaining nine —
+is. The remaining ten —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, the filing-time match's threshold and compared fields,
 whether `abcd land` pushes and queues, whether a reservation may be made on
-an origin GitHub names a fork, and the GitHub settings the remote apply keeps
-and the checks it requires — are hand-set: the binary reads them and never
-writes them.
+an origin GitHub names a fork, the GitHub settings the remote apply keeps
+and the checks it requires, and whether the shell guard also holds a pull
+request's title and body to RS004 (`outbound.declare_mentions`, a rule a
+repository adopts, so no install sets it) — are hand-set: the binary reads them
+and never writes them.
 
 ```json
 {
@@ -96,8 +98,13 @@ writes them.
     "hook": true,                       // the committed commit-msg gate refusing a session URL or a tool
                                         //   footer; runs only the abcd `git config --local abcd.binary` names,
                                         //   which --outbound sets, clone-local, to the copy it verified
-    "forge": true                       // the shell guard refuses a posting gh pr/issue command whose title,
-                                        //   body or body file carries either shape (forge-text-outbound)
+    "forge": true,                      // the shell guard refuses a posting gh pr/issue command whose title,
+                                        //   body or body file carries either shape (forge-text-outbound), and
+                                        //   a gh pr create/new/edit whose body has no Assisted-by line in an
+                                        //   accepted form (forge-text-disclosure)
+    "declare_mentions": true            // beside forge only: the shell guard refuses a gh pr create/new/edit
+                                        //   whose title and body name an iss-N with no Resolves:/Refs: line
+                                        //   declaring it (forge-text-mention, RS004 before the push)
   },
   "rules": {
     "force_refresh_every_n": 15         // prompt-router refresh backstop (itd-3). The primary refresh is

@@ -17,7 +17,7 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
 .PHONY: build test vet clean preflight precheck load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
-	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
+	evals-cold-reading check-attribution secrets-check vulncheck scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
 # Pass VERSION=vX.Y.Z to stamp the version (release builds); omit for a dev build.
@@ -160,6 +160,22 @@ check-attribution:
 		go build -o "$$tmp/abcd" ./cmd/abcd && \
 		ABCD_OUTBOUND_BIN="$$tmp/abcd" bash scripts/check-attribution.sh commits origin/main HEAD
 
+# The two scans CI runs on every pull request (iss-2610261151381604), as
+# preflight prerequisites so a finding stops the run before its test stages wait
+# at the load gate: gitleaks over the branch's own commits (origin's default
+# branch..HEAD) and govulncheck over the module, each at the version ci.yml pins,
+# read from ci.yml. A scan that cannot run here (no gitleaks on PATH, or no
+# network for govulncheck's database) is skipped loudly, never passed in
+# silence, and CI's scan still runs. A govulncheck finding on a branch that
+# changes neither go.mod nor go.sum most likely stands on the default branch
+# (iss-2610261151481013), and govulncheck is not a required check, so it warns
+# and does not stop the run; a gitleaks that runs and cannot scan stops it.
+secrets-check:
+	@bash scripts/preflight-scans.sh secrets
+
+vulncheck:
+	@bash scripts/preflight-scans.sh vulncheck
+
 # Deterministic drift gate for the .abcd/development design record (first slice
 # of internal/core/lint). Blocking: any record drift (stale tool names, dropped
 # concepts, lifecycle or reference breakage) fails preflight and CI.
@@ -268,7 +284,8 @@ asking-sync-check:
 # warning, never a failure: load-check), then the format gate (fmt-check), the
 # six lint gates
 # (lint-reviews, lint-issues, record-lint, issue-drift,
-# docs-lint, and check-attribution over the branch's commits), the
+# docs-lint, and check-attribution over the branch's commits), the two scans
+# CI runs on every pull request (secrets-check and vulncheck), the
 # site-render gate and both tagged eval lanes (smoke, evals-cold-reading) as
 # prerequisites, then build, vet, test,
 # and race-enabled internal tests natively — every Go step on the toolchain
@@ -309,7 +326,7 @@ asking-sync-check:
 # (iss-2610161639025702, iss-2610282016250805). The race
 # stage waits at its own gate (`--race-gate`, spelt without --wait so an older
 # abcd never reads a preflight there as queued at its first gate). At one, the
-# race gate opens at once, so the preflight runs exactly as before. Above one,
+# race gate opens at once once the disk check passes. Above one,
 # the first gate admits a preflight while fewer than that many others are in
 # their test stages (one queued at its race gate runs nothing and takes no
 # slot), a live race run does not shut it by itself, and a waiter queued ahead
@@ -332,7 +349,7 @@ asking-sync-check:
 # test hung, and on 2026-10-25 claim, implement/loop and surface/cli each
 # outran 20 minutes on a 10-core Mac at a load of 5 to 7, with no test hung
 # (iss-2610250007404944).
-preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
+preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go run ./cmd/abcd implement load --wait --timeout 2h
@@ -357,7 +374,7 @@ preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift
 # and TestPrecheckRunsTheAuditTests its test lines to what this says.
 PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Appendices|Paragraph|Vocabulary|Scope|Relay|Chapter|Baseline|Domain|Definitions|Committed|Docs|Identity
 
-precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
+precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading

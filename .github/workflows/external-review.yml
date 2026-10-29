@@ -10,9 +10,9 @@ name: external-review
 # runs are the BASE repository's version of this workflow. The ruleset
 # requires the check by its name, so which workflows may report that name on a
 # pull request is held by the repository's own controls, not by this file: a
-# change under .github/ from anyone but a repository admin needs a code
-# owner's approval (.github/CODEOWNERS; admins pass it by the ruleset's
-# bypass), and the fork pull-request approval policy, recorded in
+# change under .github/ reaches the default branch only through a merge by an
+# account with write access or above, and the fork pull-request approval
+# policy, recorded in
 # .abcd/work/rulesets/repo-settings.json by `abcd ahoy remote apply`, decides
 # whose pull-request workflows wait for a maintainer before they run.
 # The job reads only the GitHub API (reviews, collaborator roles) — the PR's

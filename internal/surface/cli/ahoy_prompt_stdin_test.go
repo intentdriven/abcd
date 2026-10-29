@@ -215,7 +215,7 @@ func gitRepoWithIdentity(t *testing.T, repo, name, email string) {
 // Silence there is what made the skip ambiguous.
 func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	repo := hermeticRepo(t)
-	gitRepoWithIdentity(t, repo, "Alex Reppel", "alex@example.com")
+	gitRepoWithIdentity(t, repo, "Alice", "alice@example.com")
 	armClone(t, repo)
 	// A zsh login shell, so the shell-settings offer is raised whatever shell
 	// the machine running the test uses (itd-2610240919030303).
@@ -309,7 +309,7 @@ func TestAhoyInstallYesHelpStatesTheExclusion(t *testing.T) {
 // repository, and the run names the record it left for the person.
 func TestAhoyInstallPipedAnswersNeverRecordTheIdentity(t *testing.T) {
 	repo := hermeticRepo(t)
-	gitRepoWithIdentity(t, repo, "Alex Reppel", "alex@example.com")
+	gitRepoWithIdentity(t, repo, "Alice", "alice@example.com")
 
 	if out, err := runCLIErr(t, "ahoy", "install", "--details", "--yes", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",

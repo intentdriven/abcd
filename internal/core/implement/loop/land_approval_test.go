@@ -130,22 +130,31 @@ func TestTheLandingArmsOnlyWhereTheRulesetRequiresApproval(t *testing.T) {
 	}
 }
 
-// TestThisRepositorysOwnMirrorArms: this repository's committed mirror (a
-// merge queue, and a code-owner review with approving count 0 beside
-// .github/CODEOWNERS) still arms, so ruling AM1 leaves this project unchanged.
-func TestThisRepositorysOwnMirrorArms(t *testing.T) {
+// TestThisRepositorysOwnMirrorLeavesTheMergeOpen: this repository's committed
+// mirror (a merge queue, and a code-owner review with approving count 0) names
+// no owner since .github/CODEOWNERS was removed, so ruling AM1 no longer finds a
+// person's approval required and leaves the pull request open for a person. The
+// test reads every CODEOWNERS path the forge reads, so restoring one that names
+// an owner shows up here as a failure to update.
+func TestThisRepositorysOwnMirrorLeavesTheMergeOpen(t *testing.T) {
 	top := filepath.Join("..", "..", "..", "..")
 	files := map[string]string{}
-	for _, rel := range []string{".abcd/work/rulesets/main-protection.json", ".abcd/work/rulesets/main-review.json", ".github/CODEOWNERS"} {
+	for _, rel := range []string{".abcd/work/rulesets/main-protection.json", ".abcd/work/rulesets/main-review.json"} {
 		b, err := os.ReadFile(filepath.Join(top, filepath.FromSlash(rel)))
 		if err != nil {
 			t.Fatalf("reading this repository's %s: %v", rel, err)
 		}
 		files[rel] = string(b)
 	}
+	for _, rel := range []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} {
+		b, err := os.ReadFile(filepath.Join(top, filepath.FromSlash(rel)))
+		if err == nil {
+			files[rel] = string(b)
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("reading this repository's %s: %v", rel, err)
+		}
+	}
 	f := newLandFixtureWith(t, files)
 	l := f.landedToArmed(t)
-	if !strings.Contains(f.ghLog(t), "pr merge 7 --auto --merge") || l.Landing == nil || !l.Landing.Armed {
-		t.Fatalf("this repository's own mirror arms the merge: %+v\n%s", l.Landing, f.ghLog(t))
-	}
+	assertLeftOpen(t, f, l)
 }
