@@ -52,24 +52,11 @@ func narrowedFootprint(repoRoot string, st State, own claim.Reservation) (fp []s
 	if l.Stage != StageLand || !gitutil.IsFullSHA(l.HeadSHA) {
 		return nil, false, ""
 	}
-	def, err := defaultBranch(Context{RepoRoot: repoRoot}, l)
-	if err != nil {
-		return nil, false, "the default branch on " + Remote + " cannot be read"
+	changed, declined := laneChangedFiles(repoRoot, l, l.HeadSHA)
+	if declined != "" {
+		return nil, false, declined
 	}
-	tracking := Remote + "/" + termsafe.Sanitize(def)
-	base, err := gitutil.Run(repoRoot, "merge-base", l.HeadSHA, "refs/remotes/"+Remote+"/"+def)
-	if base = strings.TrimSpace(base); err != nil || !gitutil.IsFullSHA(base) {
-		return nil, false, "git could not read the merge base of the lane's head " + shortSHA(l.HeadSHA) + " and " + tracking
-	}
-	out, err := gitutil.RunCappedBytes(repoRoot, maxGitOutput, "diff", "--no-renames", "--name-only", "-z", base, l.HeadSHA, "--")
-	if err != nil {
-		return nil, false, "git could not read the files the lane changed since its merge base with " + tracking
-	}
-	for _, raw := range bytes.Split(out, []byte{0}) {
-		p := string(raw)
-		if p == "" {
-			continue
-		}
+	for _, p := range changed {
 		in := covers(own.Footprint, []string{p})
 		if !claim.ValidFootprintPath(p) {
 			if in {
@@ -89,4 +76,69 @@ func narrowedFootprint(repoRoot string, st State, own claim.Reservation) (fp []s
 		return nil, false, ""
 	}
 	return fp, true, ""
+}
+
+// laneChangedFiles is the files lane l changed at head, as git names them:
+// the diff of head against its merge base with origin's default branch, the
+// one reading narrowedFootprint and a lapsed revival's overlap
+// (revivalChangedFiles) share. It names the lane's own work, a conflict
+// resolved inside a sync's merge commit included, and none of the files a
+// merged default branch brought. declined, set when the files cannot be
+// read (the default branch, the merge base or the diff), says why in plain,
+// terminal-safe words, and files is then nil.
+func laneChangedFiles(repoRoot string, l Lane, head string) (files []string, declined string) {
+	def, err := defaultBranch(Context{RepoRoot: repoRoot}, l)
+	if err != nil {
+		return nil, "the default branch on " + Remote + " cannot be read"
+	}
+	tracking := Remote + "/" + termsafe.Sanitize(def)
+	base, err := gitutil.Run(repoRoot, "merge-base", head, "refs/remotes/"+Remote+"/"+def)
+	if base = strings.TrimSpace(base); err != nil || !gitutil.IsFullSHA(base) {
+		return nil, "git could not read the merge base of the lane's head " + shortSHA(head) + " and " + tracking
+	}
+	out, err := gitutil.RunCappedBytes(repoRoot, maxGitOutput, "diff", "--no-renames", "--name-only", "-z", base, head, "--")
+	if err != nil {
+		return nil, "git could not read the files the lane changed since its merge base with " + tracking
+	}
+	files = []string{}
+	for _, raw := range bytes.Split(out, []byte{0}) {
+		if p := string(raw); p != "" {
+			files = append(files, p)
+		}
+	}
+	return files, ""
+}
+
+// revivalChangedFiles is the files a lapsed revival of st's reservation is
+// judged on against the same person's other copy (claim.Request.OwnOverlapOn;
+// iss-2610261837062463, dcn-2610291352512058): the files each lane of the run
+// still at work changed, read as laneChangedFiles reads them, at its branch's
+// tip, which holds the implementer's commits before any receipt records a
+// head (the head a lane records at its worktree stage is its base). A lane
+// not yet given a branch has changed nothing, and work its implementer has
+// not committed is not read. nil, which judges the whole footprint as
+// before, when any lane's files cannot be read; a non-nil empty list when no
+// lane changed a file.
+func revivalChangedFiles(repoRoot string, st State) []string {
+	files := []string{}
+	for _, l := range st.Lanes {
+		if l.Stage == StageDone || l.Stage == StageDiscarded || l.Branch == "" {
+			continue
+		}
+		head, err := branchTip(Context{RepoRoot: repoRoot}, l)
+		if err != nil {
+			return nil
+		}
+		changed, declined := laneChangedFiles(repoRoot, l, head)
+		if declined != "" {
+			return nil
+		}
+		for _, p := range changed {
+			if p = path.Clean(p); !slices.Contains(files, p) {
+				files = append(files, p)
+			}
+		}
+	}
+	slices.Sort(files)
+	return files
 }

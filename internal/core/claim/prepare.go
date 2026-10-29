@@ -123,6 +123,19 @@ type Request struct {
 	// automated, and two automated lanes must never edit the same files
 	// (spc-2610161044461448 step 11).
 	WarnOwnOverlap bool
+	// OwnOverlapOn, with Renew, is the files the work changed, which a
+	// renewal reviving this person's own lapsed reservation is judged on
+	// against their live reservation from another copy (iss-2610261837062463,
+	// dcn-2610291352512058): an overlap with that copy backs the revival off
+	// only where that copy holds one of these files, and on any other path
+	// goes ahead, named as WarnOwnOverlap names it (Result.OwnOverlap). An
+	// overlap with another person is still judged on the whole footprint, and
+	// the reservation keeps its whole footprint: this is no narrowing (Narrow
+	// is). nil judges the whole footprint, as every other act is judged; a
+	// non-nil empty list is work that changed no file, which no copy of this
+	// person's holds off. A renewal over a live tip is judged for no overlap,
+	// so it reads none.
+	OwnOverlapOn []string
 	// Live, with Renew, refuses one's own reservation that has lapsed too
 	// (NotHeldLapsed): the land fence renews only a reservation that holds.
 	Live bool
@@ -196,6 +209,9 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 			req.Narrow = nil
 			break
 		}
+	}
+	if req.OwnOverlapOn != nil && !req.Renew {
+		return nil, refuse("only a renewal names the files its overlap with your other copy is judged on; %s", nothingPushed)
 	}
 	if req.Live && !req.Renew {
 		return nil, refuse("only a renewal can require a live reservation; %s", nothingPushed)

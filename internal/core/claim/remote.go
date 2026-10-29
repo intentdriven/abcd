@@ -112,8 +112,9 @@ type Result struct {
 	// OwnOverlap is each path this reservation shares with a live reservation
 	// the same person holds from another copy, which an act asking for it
 	// (Request.WarnOwnOverlap) goes ahead over and is told of
-	// (OwnOverlap.Warning); nil when it shares none. Every other act backs off
-	// such a path.
+	// (OwnOverlap.Warning), and a revival naming the files its work changed
+	// (Request.OwnOverlapOn) goes ahead over where it is no such file; nil
+	// when it shares none. Every other act backs off such a path.
 	OwnOverlap []OwnOverlap
 	// GeneratedShared is each path this reservation shares with another
 	// record's live reservation that was no overlap because origin's default

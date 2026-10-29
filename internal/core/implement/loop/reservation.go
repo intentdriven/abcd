@@ -75,6 +75,14 @@ func claimOptions(now time.Time) claim.Options {
 // still runs, since the land fence is where a lost reservation stops the run.
 // A view that shows the reservation held by another person or copy is said
 // too, and logged once.
+//
+// A reservation that has lapsed is revived, judged for overlap like a new
+// one (claim's crowding), but against the same person's other copy only on
+// the files the run's lanes changed (revivalChangedFiles;
+// iss-2610261837062463, dcn-2610291352512058), so that copy holding a file
+// the lanes never touched stops nothing; the renewal's note names each such
+// reservation it went ahead past. Where those files cannot be read the whole
+// footprint is judged, as before.
 func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Snapshot) string {
 	if st.ReservedAt == nil {
 		return ""
@@ -100,11 +108,27 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	// could not be made is said in the renewal's note.
 	var declined string
 	req.Narrow, _, declined = narrowedFootprint(repoRoot, *st, *own)
+	lapsed := own.State == claim.StateExpired
+	if lapsed {
+		req.OwnOverlapOn = revivalChangedFiles(repoRoot, *st)
+	}
 	res, err := reserveRenewal(repoRoot, req, claimOptions(now))
 	if err != nil {
 		return renewFailed(st, now, err)
 	}
-	note := fmt.Sprintf("renewed the reservation on %s, half its lease having passed, until %s", st.Key, stamp(res.ExpiresAt))
+	why := "half its lease having passed"
+	if lapsed {
+		why = "its lease having lapsed"
+	}
+	note := fmt.Sprintf("renewed the reservation on %s, %s, until %s", st.Key, why, stamp(res.ExpiresAt))
+	if len(res.OwnOverlap) > 0 {
+		past := make([]string, len(res.OwnOverlap))
+		for i, o := range res.OwnOverlap {
+			past[i] = o.Path + " (" + o.Record + ")"
+		}
+		note += "; revived past your other copy's reservation of " + strings.Join(past, ", ") +
+			", which no lane of this run changed"
+	}
 	switch {
 	case res.Narrowed:
 		note += fmt.Sprintf("; its footprint narrowed from %s to the files its branch changed: %s",

@@ -61,10 +61,15 @@ func (g GeneratedShare) Line() string {
 // that asks for it (Request.WarnOwnOverlap, the reserve verb's) and shares a
 // path with the same person's reservation from another copy goes ahead, and
 // res names each such path (Result.OwnOverlap); every other act backs off it,
-// as it backs off another person's. res also names each generated file it
-// shares, with the record it is shared with (Result.GeneratedShared,
-// iss-2610282340087862), and why no generated file was recognised, when the
-// overlap was judged without them (Result.GeneratedUnread).
+// as it backs off another person's, except a renewal reviving a lapsed tip
+// that names the files its work changed (Request.OwnOverlapOn;
+// iss-2610261837062463, dcn-2610291352512058): it backs off that copy only
+// where a path they share lies in one of those files, and goes ahead over
+// any other, named in res as the warned act's are. res also names each
+// generated file it shares, with the record it is shared with
+// (Result.GeneratedShared, iss-2610282340087862), and why no generated file
+// was recognised, when the overlap was judged without them
+// (Result.GeneratedUnread).
 //
 // Both are judged on the view just fetched, not compared-and-swapped: each
 // reservation is its own ref, so two people racing can each pass the cap or
@@ -127,10 +132,12 @@ func crowding(p *prepared, j judged, res *Result) error {
 							res.GeneratedShared = append(res.GeneratedShared, s)
 						}
 					}
-				case mine && p.req.WarnOwnOverlap:
+				case mine && (p.req.WarnOwnOverlap || (p.req.Renew && p.req.OwnOverlapOn != nil && !touches(p.req.OwnOverlapOn, shared))):
 					// This person's other copy: their own act, asked by hand,
 					// goes ahead and is told; an automated one (a build's, a
-					// drain's) backs off below.
+					// drain's) backs off below, unless it revives a lapsed
+					// reservation and the shared path is no file its work
+					// changed, which that copy may go on holding.
 					o := OwnOverlap{Path: shared, Record: r.Record, Expiry: r.EffectiveExpiry}
 					if !slices.Contains(own, o) {
 						own = append(own, o)
@@ -147,6 +154,18 @@ func crowding(p *prepared, j judged, res *Result) error {
 		return cmp.Or(strings.Compare(a.Path, b.Path), strings.Compare(a.Record, b.Record))
 	})
 	return nil
+}
+
+// touches reports whether a path the work changed lies in shared, the path
+// an overlap names, or shared lies in it: two automated lanes must never edit
+// the same files.
+func touches(changed []string, shared string) bool {
+	for _, c := range changed {
+		if _, ok := sharedPath(c, shared); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // overlap is the path two footprint paths share as an overlap: sharedPath's,

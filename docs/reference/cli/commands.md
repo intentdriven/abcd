@@ -2587,16 +2587,24 @@ moment it opens every race gate and every other such command counts it as a
 race run, so a second one waits for the first. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
-While it waits, in a checkout, the waiter keeps your own reservations from
-lapsing: at once and then every five minutes it renews each of your live
+While it waits, and while its command runs, in a checkout, the waiter keeps
+your own reservations from lapsing: at once and then every five minutes it
+renews each of your live
 reservations that is half through its lease and whose latest commit this copy
 pushed, for its own term or
 two hours, whichever is longer, and says each renewal on standard error. It
 never reserves anything new, takes nothing over and revives nothing that has
 lapsed, so a lease shorter than ten minutes can still lapse between two rounds;
-a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on. The renewal runs beside the gate, never in it, so
-the gate's order and its open never wait on one, and it stops when the gate
-opens. Since it runs through git and gh, no waiter counts another's git or gh
+a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on.
+On the same rounds it renews, as implement step does, the due reservation of
+each run in progress that lives in this checkout, or in another worktree of
+the repository with a lane whose worktree is this checkout, reviving one that
+has lapsed and logging each in the run record; a run whose lock another
+invocation holds is passed over, since that invocation renews it. Each is said
+on standard error, a failure once until what is said of it changes. The
+renewal runs beside the gate, never in it, so
+the gate's order and its open never wait on one, and it stops when the gated
+command exits. Since it runs through git and gh, no waiter counts another's git or gh
 child as its command: gate make or go, never git or gh itself.
 
 **Flags:**
@@ -2927,15 +2935,18 @@ By default the run's whole log is read, every day of it; --date reads one day, a
 
 #### `abcd implement status`
 
-Render the implement loop's runs in this checkout, lane by lane: Writes nothing; refuses a --run naming no run.
+Render the implement loop's runs in this checkout, lane by lane: Writes only a due reservation's renewal to its run record; refuses a --run naming no run.
 
 **Usage:** `abcd implement status [--run <run-id>] [flags]`
 
 Render the runs `abcd build` started in this checkout, or the one --run names: the
 intent and spec, each lane with its spec step and next stage, what an awaiting lane
 waits on, the pending spec steps, the fallbacks from a routed runner to the host counted
-per runner and per role, and the run record. Read-only: it writes nothing
-and creates nothing. Exit 2 when --run names no run.
+per runner and per role, and the run record. Before it renders, it renews the
+reservation of each run it shows that is due, as implement step does (half
+through its lease, or lapsed and still this copy's), logging the renewal or
+its failure in the run record; it writes nothing else and creates nothing.
+Exit 2 when --run names no run.
 
 **Flags:**
 

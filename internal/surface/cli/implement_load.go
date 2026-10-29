@@ -18,8 +18,11 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/machineload"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
 
@@ -37,11 +40,15 @@ var (
 	// loadMark is the command form's mark; nil is the core's /bin/sleep.
 	loadMark func() (func(), error)
 	// loadRenew renews the caller's own reservations half through their
-	// lease, run every loadRenewEvery while the waiter waits; loadRenewRound,
-	// when set, is called after each round has been said.
+	// lease, run every loadRenewEvery while the waiter waits and while its
+	// command runs; loadRenewRound, when set, is called after each round has
+	// been said.
 	loadRenew      = func(root string) ([]claim.Renewal, error) { return claim.RenewDue(root, claim.Options{}) }
 	loadRenewEvery = 5 * time.Minute
 	loadRenewRound func()
+	// loadRenewRuns renews the due reservations of the runs the waiter's
+	// checkout serves (loop.RenewRuns), in each round beside loadRenew.
+	loadRenewRuns = func(root string) []loop.RunRenewal { return loop.RenewRuns(root, time.Now()) }
 )
 
 // newImplementLoadCommand builds `implement load`, the load check that runs once
@@ -186,16 +193,24 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"moment it opens every race gate and every other such command counts it as a\n" +
 			"race run, so a second one waits for the first. A\n" +
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
-			"While it waits, in a checkout, the waiter keeps your own reservations from\n" +
-			"lapsing: at once and then every five minutes it renews each of your live\n" +
+			"While it waits, and while its command runs, in a checkout, the waiter keeps\n" +
+			"your own reservations from lapsing: at once and then every five minutes it\n" +
+			"renews each of your live\n" +
 			"reservations that is half through its lease and whose latest commit this copy\n" +
 			"pushed, for its own term or\n" +
 			"two hours, whichever is longer, and says each renewal on standard error. It\n" +
 			"never reserves anything new, takes nothing over and revives nothing that has\n" +
 			"lapsed, so a lease shorter than ten minutes can still lapse between two rounds;\n" +
-			"a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on. The renewal runs beside the gate, never in it, so\n" +
-			"the gate's order and its open never wait on one, and it stops when the gate\n" +
-			"opens. Since it runs through git and gh, no waiter counts another's git or gh\n" +
+			"a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on.\n" +
+			"On the same rounds it renews, as implement step does, the due reservation of\n" +
+			"each run in progress that lives in this checkout, or in another worktree of\n" +
+			"the repository with a lane whose worktree is this checkout, reviving one that\n" +
+			"has lapsed and logging each in the run record; a run whose lock another\n" +
+			"invocation holds is passed over, since that invocation renews it. Each is said\n" +
+			"on standard error, a failure once until what is said of it changes. The\n" +
+			"renewal runs beside the gate, never in it, so\n" +
+			"the gate's order and its open never wait on one, and it stops when the gated\n" +
+			"command exits. Since it runs through git and gh, no waiter counts another's git or gh\n" +
 			"child as its command: gate make or go, never git or gh itself.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -281,9 +296,14 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	if race {
 		flag = "--race-gate"
 	}
-	stopRenewal := startHoldRenewal(cmd.ErrOrStderr())
+	// The renewal goes on until the command exits, not only while the gate is
+	// shut: an agent's preflight or go test runs for hours under the gate, and
+	// nothing else renews a build's reservation meanwhile
+	// (iss-2610261837062463).
+	errOut := sharedStderr(cmd.ErrOrStderr())
+	stopRenewal := startHoldRenewal(errOut)
+	defer stopRenewal()
 	res, err := implement.WaitLoad(req)
-	stopRenewal()
 	if err != nil {
 		return &exitError{Code: 1, Msg: "abcd implement load " + flag + ": " + err.Error()}
 	}
@@ -303,7 +323,7 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	if res.Unmark != nil {
 		unmark = res.Unmark
 	}
-	code, runErr := runGated(cmd, command, unmark)
+	code, runErr := runGated(cmd, command, errOut, unmark)
 	unmark()
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
 		home, _ := os.UserHomeDir()
@@ -322,16 +342,27 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 }
 
 // startHoldRenewal renews the caller's own reservations while the waiter
-// waits, so a reservation made by hand does not lapse while its preflight
-// waits its turn (iss-2610170926295770): from the checkout the waiter runs
-// in, at once and then every loadRenewEvery, it renews each of this person's
-// live reservations that is half through its lease and whose latest commit
-// this copy pushed (claim.RenewDue), and says each renewal on w. A renewal
-// that fails, or a reservation left unrenewed, is said once until it
-// succeeds, and the wait goes on. It runs beside the gate,
-// never in it: the gate's looks, its order and its open neither wait on a
-// renewal nor read one, and stop returns at once, a renewal still in flight
-// finishing unsaid. Outside a checkout there is nothing to renew.
+// waits and while its command runs, so a reservation made by hand does not
+// lapse while its preflight waits its turn (iss-2610170926295770): from the
+// checkout the waiter runs in, at once and then every loadRenewEvery, it
+// renews each of this person's live reservations that is half through its
+// lease and whose latest commit this copy pushed (claim.RenewDue), and says
+// each renewal on w. A renewal that fails, or a reservation left unrenewed,
+// is said once until it succeeds, and the wait goes on.
+//
+// On the same rounds it renews the due reservation of each run the checkout
+// serves (loop.RenewRuns; iss-2610261837062463, dcn-2610291352512058): a run
+// in progress living in it, or in a sibling worktree with a lane whose
+// worktree it is, so a build whose implementer holds its stage for hours,
+// its go test and make preflight queued and running here, keeps its
+// reservation with no step to renew it. Each run's renewal is said on w, and
+// one that fails, or finds the reservation another's, is said once until
+// what is said of it changes.
+//
+// It runs beside the gate, never in it: the gate's looks, its order and its
+// open neither wait on a renewal nor read one, and stop returns at once, a
+// renewal still in flight finishing unsaid. Stop may be called more than
+// once. Outside a checkout there is nothing to renew.
 func startHoldRenewal(w io.Writer) (stop func()) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -351,12 +382,13 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 		}
 	}
 	// The seams are read here, once, so the goroutine reads no shared state.
-	renew, every, round := loadRenew, loadRenewEvery, loadRenewRound
+	renew, renewRuns, every, round := loadRenew, loadRenewRuns, loadRenewEvery, loadRenewRound
 	done := make(chan struct{})
 	go func() {
 		tick := time.NewTicker(every)
 		defer tick.Stop()
 		failed := map[string]bool{}
+		runSaid := map[string]string{}
 		viewFailed := false
 		for {
 			got, err := renew(root)
@@ -374,6 +406,17 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 				}
 				failed[r.Record] = r.Err != nil
 			}
+			for _, r := range renewRuns(root) {
+				note := termsafe.Sanitize(fsutil.RedactHome(r.Note))
+				key := r.Root + "\x00" + r.RunID
+				if r.Renewed || runSaid[key] != note {
+					say("abcd implement load --wait: run %s: %s\n", termsafe.Sanitize(r.RunID), note)
+				}
+				runSaid[key] = note
+				if r.Renewed {
+					delete(runSaid, key)
+				}
+			}
 			if round != nil {
 				round()
 			}
@@ -384,16 +427,45 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 			}
 		}
 	}()
+	var once sync.Once
 	return func() {
-		mu.Lock()
-		stopped = true
-		mu.Unlock()
-		close(done)
+		once.Do(func() {
+			mu.Lock()
+			stopped = true
+			mu.Unlock()
+			close(done)
+		})
 	}
 }
 
-// runGated runs the gated command with the verb's own streams and returns its
-// exit code; the error is a command that could not be started. A SIGINT or
+// sharedStderr is the waiter's standard error as the gated command and the
+// renewal's messages share it while the command runs. A file is passed to the
+// command as it is, so the command writes to it directly, a terminal staying
+// one. Any other writer is wrapped so each write holds a lock: the command's
+// output is then copied into it by a goroutine of exec's, and a
+// bytes.Buffer's own copy (ReadFrom) would drop every renewal message written
+// while the command ran.
+func sharedStderr(w io.Writer) io.Writer {
+	if _, ok := w.(*os.File); ok {
+		return w
+	}
+	return &lockedWriter{w: w}
+}
+
+// lockedWriter serializes the writes to w.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
+}
+
+// runGated runs the gated command with the verb's own streams, standard
+// error as stderr gives it (sharedStderr), and returns its exit code; the error is a command that could not be started. A SIGINT or
 // SIGTERM to the waiter is forwarded to the command, and the waiter goes on
 // waiting for it: a waiter that died first would orphan the command, whose
 // hold then reads as a dead holder's, and the next waiter would be admitted
@@ -402,9 +474,9 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 // with 1. started is called once the command has started, to stop the
 // waiter's mark (implement.WaitResult.Unmark). The caller releases the hold
 // once this returns.
-func runGated(cmd *cobra.Command, command []string, started func()) (int, error) {
+func runGated(cmd *cobra.Command, command []string, stderr io.Writer, started func()) (int, error) {
 	c := exec.Command(command[0], command[1:]...)
-	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()
+	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), stderr
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer signal.Stop(sigs)
