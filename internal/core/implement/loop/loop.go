@@ -1173,7 +1173,7 @@ func readRuns(root *os.Root) ([]State, error) {
 	}
 	out := []State{}
 	for _, id := range ids {
-		st, err := readStateIn(root, id)
+		st, err := readListedState(root, id)
 		if err != nil {
 			return nil, err
 		}

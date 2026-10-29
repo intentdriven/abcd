@@ -43,6 +43,7 @@
 package loop
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,6 +60,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -1010,6 +1012,15 @@ func ReadState(repoRoot, runID string) (State, error) {
 }
 
 func readStateIn(root *os.Root, runID string) (State, error) {
+	if rf := tierRefusal("state", "", localtier.Untracked(root.Name(), StateRelPath(runID))); rf != nil {
+		return State{}, rf
+	}
+	return readListedState(root, runID)
+}
+
+// readListedState is readStateIn for a run runIDs listed: the listing asked
+// git once for every run beneath it, so a loop over many runs asks no more.
+func readListedState(root *os.Root, runID string) (State, error) {
 	rel := StateRelPath(runID)
 	data, err := fsutil.ReadGuardedInRoot(root, rel, maxStateBytes)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -1317,6 +1328,18 @@ func runIDs(root *os.Root) ([]string, error) {
 	for _, n := range names {
 		if ValidRunID(n) {
 			ids = append(ids, n)
+		}
+	}
+	// Asked once for every run listed, so each reads as readListedState reads
+	// it, with no question a run; a file git tracks beside the runs refuses
+	// none of them.
+	if len(ids) > 0 {
+		dirs := make([]string, len(ids))
+		for i, id := range ids {
+			dirs[i] = RunRelDir + "/" + id
+		}
+		if rf := tierRefusal("state", "", localtier.UntrackedEach(context.Background(), root.Name(), dirs...)); rf != nil {
+			return nil, rf
 		}
 	}
 	slices.Sort(ids)

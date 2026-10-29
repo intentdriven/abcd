@@ -440,7 +440,9 @@ every hand-back it routed with the record change it made. It is written under
 its own lock, so two drains never open two lanes. A drain state of a later
 schema version is a newer abcd's: it is refused as that before it is strictly parsed,
 and the person is told to run the newer abcd and not to remove the file, which
-holds that drain. The state is at its second schema version, which added the
+holds that drain. A drain state git tracks came with a commit, not from this
+checkout, and is refused before it is read, naming the file and saying to
+untrack it. The state is at its second schema version, which added the
 pins, the local flag and the override field a routed judge's route record
 shares with the run state's (no drain flag sets an override);
 a first-version state is read as the second's strict subset and written back at
