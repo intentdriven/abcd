@@ -625,3 +625,172 @@ func TestHookSessionEndReStageKeepsNewerBytes(t *testing.T) {
 		t.Errorf("the store holds the older snapshot; the newer transcript is gone:\n%s", stored)
 	}
 }
+
+// recordGitCalls puts a `git` first on PATH that appends its arguments to a
+// log and then runs the real git, and returns the log's path. A log that does
+// not exist afterwards means no git process was started.
+func recordGitCalls(t *testing.T) string {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git unavailable")
+	}
+	dir := t.TempDir()
+	log := filepath.Join(t.TempDir(), "git-calls")
+	body := "#!/bin/sh\necho \"$*\" >> '" + log + "'\nexec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
+}
+
+// goneWorktree returns a directory that existed and was removed, as a
+// sub-agent's or a session's worktree is by the time a late hook runs.
+func goneWorktree(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "worktree")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestHookSessionEndStartsNoGit is iss-2610241519088123: the host gives a
+// SessionEnd hook 1.5 seconds in all, and the git the hook ran to find the
+// repository is what outlasted it on a loaded machine. The hook now starts no
+// git process, and stages a transcript whose cwd no longer resolves at all.
+func TestHookSessionEndStartsNoGit(t *testing.T) {
+	sessionEndRepo(t)
+	tp := filepath.Join(t.TempDir(), "sess.jsonl")
+	if err := os.WriteFile(tp, []byte(`{"role":"user","text":"hello"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gone := goneWorktree(t)
+	log := recordGitCalls(t)
+
+	_, stderr := runHook(t, endPayload(t, "sess-nogit", gone, tp), "hook", "session-end")
+
+	if calls, err := os.ReadFile(log); err == nil {
+		t.Errorf("hook session-end started git:\n%s", calls)
+	}
+	pending, err := history.ListPending()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 1 || pending[0].SessionID != "sess-nogit" || pending[0].Cwd != gone {
+		t.Fatalf("want the transcript pending with its cwd, got %+v\nstderr: %s", pending, stderr)
+	}
+	if !strings.Contains(stderr, "staged sess-nogit") {
+		t.Errorf("stderr does not say the transcript was staged: %q", stderr)
+	}
+}
+
+// TestHookSessionStartPlacesAPendingTranscript: the next session start files a
+// pending transcript in the store its session noted when it started, even
+// when the session's cwd is gone and the start runs outside any repository,
+// and the drain of that repository then stores it.
+func TestHookSessionStartPlacesAPendingTranscript(t *testing.T) {
+	repo, rootSHA := sessionEndRepo(t)
+	tp := filepath.Join(t.TempDir(), "sess.jsonl")
+	if err := os.WriteFile(tp, []byte(`{"role":"user","text":"noted"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The session starts in the repository, which writes its note.
+	runSessionStart(startPayload("sess-noted", repo), "hook", "session-start")
+	runHook(t, endPayload(t, "sess-noted", goneWorktree(t), tp), "hook", "session-end")
+
+	_, stderr, _ := runSessionStart(startPayload("sess-elsewhere", t.TempDir()), "hook", "session-start")
+
+	if pending, err := history.ListPending(); err != nil || len(pending) != 0 {
+		t.Fatalf("the placed transcript is still pending: %+v (err %v)\nstderr: %s", pending, err, stderr)
+	}
+	staged, err := history.ListStaged(repo, rootSHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(staged) != 1 || staged[0].SessionID != "sess-noted" || staged[0].SourcePath != tp {
+		t.Fatalf("want the transcript in the noted store's staging lane, got %+v\nstderr: %s", staged, stderr)
+	}
+
+	runSessionStart(startPayload("sess-back", repo), "hook", "session-start")
+	if _, _, err := history.Read(repo, rootSHA, "sess-noted"); err != nil {
+		t.Fatalf("the repository's next start did not store the placed transcript: %v", err)
+	}
+}
+
+// TestHookSessionStartNamesAnUnplaceableTranscript: a pending transcript that
+// no session note claims and whose cwd is gone is not dropped; the start says
+// which session it is and that it stays unredacted, and it stays pending.
+func TestHookSessionStartNamesAnUnplaceableTranscript(t *testing.T) {
+	sessionEndRepo(t)
+	tp := filepath.Join(t.TempDir(), "sess.jsonl")
+	if err := os.WriteFile(tp, []byte(`{"role":"user","text":"orphan"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, endPayload(t, "sess-orphan", goneWorktree(t), tp), "hook", "session-end")
+
+	_, stderr, _ := runSessionStart(startPayload("sess-next", t.TempDir()), "hook", "session-start")
+
+	if !strings.Contains(stderr, "session sess-orphan") || !strings.Contains(stderr, "UNREDACTED") {
+		t.Errorf("the start does not name the unplaced transcript: %q", stderr)
+	}
+	if strings.Contains(stderr, os.Getenv("HOME")) {
+		t.Errorf("the notice leaks the home directory:\n%s", stderr)
+	}
+	pending, err := history.ListPending()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("an unplaced transcript must stay pending, got %+v (err %v)", pending, err)
+	}
+}
+
+// TestHistoryDrainFilesPendingTranscripts: the verb the notices point at does
+// not wait for a session start; it files what session-end left pending and
+// stores this repository's share.
+func TestHistoryDrainFilesPendingTranscripts(t *testing.T) {
+	repo, rootSHA := sessionEndRepo(t)
+	tp := filepath.Join(t.TempDir(), "sess.jsonl")
+	if err := os.WriteFile(tp, []byte(`{"role":"user","text":"drained"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, endPayload(t, "sess-drain", repo, tp), "hook", "session-end")
+	t.Chdir(repo)
+
+	runCLI(t, "history", "drain")
+
+	if _, _, err := history.Read(repo, rootSHA, "sess-drain"); err != nil {
+		t.Fatalf("history drain did not store the pending transcript: %v", err)
+	}
+	if pending, _ := history.ListPending(); len(pending) != 0 {
+		t.Fatalf("still pending after a drain: %+v", pending)
+	}
+}
+
+// TestHookSessionStartDropsASessionOutsideAnyRepository: a session that ran in
+// a directory git says is in no repository can never be filed, so the start
+// deletes its raw copy and says so once, instead of keeping unredacted text
+// and repeating a notice at every start.
+func TestHookSessionStartDropsASessionOutsideAnyRepository(t *testing.T) {
+	sessionEndRepo(t)
+	tp := filepath.Join(t.TempDir(), "sess.jsonl")
+	if err := os.WriteFile(tp, []byte(`{"role":"user","text":"nowhere"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runHook(t, endPayload(t, "sess-nowhere", t.TempDir(), tp), "hook", "session-end")
+
+	_, stderr, _ := runSessionStart(startPayload("sess-next", t.TempDir()), "hook", "session-start")
+
+	if !strings.Contains(stderr, "session sess-nowhere") || !strings.Contains(stderr, "raw copy was deleted") {
+		t.Errorf("the start does not report the dropped transcript: %q", stderr)
+	}
+	if pending, _ := history.ListPending(); len(pending) != 0 {
+		t.Fatalf("a session outside any repository is still pending: %+v", pending)
+	}
+	_, again, _ := runSessionStart(startPayload("sess-later", t.TempDir()), "hook", "session-start")
+	if strings.Contains(again, "sess-nowhere") {
+		t.Errorf("the drop is reported again at a later start: %q", again)
+	}
+}

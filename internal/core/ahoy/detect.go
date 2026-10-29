@@ -133,6 +133,7 @@ func detect(cwd string, judgeTools bool) (DetectionResult, error) {
 		gaps = append(gaps, detectConfigValues(abs)...)
 		gaps = append(gaps, detectMarkerDrift(abs)...)
 		gaps = append(gaps, detectReadme(abs)...)
+		gaps = append(gaps, detectSessions(abs)...)
 		gaps = append(gaps, detectPathSymlink(abs, pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectStatusLine(harness)...)
 		gaps = append(gaps, detectOracleRouting(abs)...)
@@ -178,19 +179,27 @@ func detect(cwd string, judgeTools bool) (DetectionResult, error) {
 // DryRun runs Detect and returns the envelope (Adopted=nil). Zero writes.
 //
 // While the README question is open it also carries the README view
-// (readmeView), which the plugin page relays the question pair from; Detect
-// alone, which the hooks and the status board call, derives no part.
+// (readmeView), which the plugin page relays the question pair from, and
+// while the live brief session question is open, its view (sessionsView);
+// Detect alone, which the hooks and the status board call, derives no part.
 func DryRun(cwd string) (DetectionResult, error) {
 	det, err := detectJudged(cwd)
-	if err != nil || !hasGapID(det.Gaps, ReadmeOfferGapID) {
+	if err != nil || (!hasGapID(det.Gaps, ReadmeOfferGapID) && !hasGapID(det.Gaps, SessionsOfferGapID)) {
 		return det, err
 	}
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
 		return DetectionResult{}, err
 	}
-	if v, ok := readmeView(abs); ok {
-		det.Readme = &v
+	if hasGapID(det.Gaps, ReadmeOfferGapID) {
+		if v, ok := readmeView(abs); ok {
+			det.Readme = &v
+		}
+	}
+	if hasGapID(det.Gaps, SessionsOfferGapID) {
+		if v, ok := sessionsView(abs); ok {
+			det.Sessions = &v
+		}
 	}
 	return det, nil
 }

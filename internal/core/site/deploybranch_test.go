@@ -4,7 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/adapter/hosting"
 	"github.com/intentdriven/abcd/internal/adapter/hosting/cloudflare"
+	"github.com/intentdriven/abcd/internal/adapter/hosting/githubpages"
 )
 
 // TestTheWrittenWorkflowDeploysOnlyAReleaseTheDefaultBranchHolds: the render
@@ -13,7 +15,7 @@ import (
 // takes its host configuration from the default branch, never from the
 // release's tag.
 func TestTheWrittenWorkflowDeploysOnlyAReleaseTheDefaultBranchHolds(t *testing.T) {
-	wf, err := renderSiteWorkflow("trunk", cloudflare.Adapter{})
+	wf, err := renderSiteWorkflow("trunk", cloudflare.Adapter{}, hosting.Site{Name: "x"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,6 +56,17 @@ func TestTheWrittenWorkflowDeploysOnlyAReleaseTheDefaultBranchHolds(t *testing.T
 	relay := codeOf(topJob(t, text, "relay"))
 	if !strings.Contains(relay, "DEFAULT_BRANCH: 'trunk'") {
 		t.Errorf("the relay's branch is not a quoted string, so a branch named like a number is read as one:\n%s", relay)
+	}
+
+	// A project site's deploy reads nothing from the repository, and its
+	// render refuses the same releases.
+	pages, err := renderSiteWorkflow("trunk", githubpages.Adapter{}, hosting.Site{Name: "widgets", Repo: "acme/widgets"}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stepOf(t, codeOf(topJob(t, string(pages), "render")), "Refuse a release the default branch does not hold")
+	if deploy := codeOf(topJob(t, string(pages), "deploy")); strings.Contains(deploy, "actions/checkout") {
+		t.Errorf("the project site's deploy checks out the repository:\n%s", deploy)
 	}
 }
 

@@ -52,7 +52,12 @@ const (
 // the repository at repoRoot, as the pre-push hook's check does, and returns
 // its path, or "" when none names sha. A receipt must be a regular file, never
 // a symlink.
-func Receipt(repoRoot, sha string) (string, error) {
+func Receipt(repoRoot, sha string) (string, error) { return findReceipt(repoRoot, ReceiptsRelDir, sha) }
+
+// findReceipt finds the receipt file named sha under rel in any worktree git
+// lists for the repository at repoRoot: a regular file, never a symlink.
+// Preflight and review receipts are found the same way.
+func findReceipt(repoRoot, rel, sha string) (string, error) {
 	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return "", fmt.Errorf("listing the repository's worktrees: %w", err)
@@ -61,7 +66,7 @@ func Receipt(repoRoot, sha string) (string, error) {
 		if wt.Bare {
 			continue
 		}
-		p := filepath.Join(wt.Path, filepath.FromSlash(ReceiptsRelDir), sha)
+		p := filepath.Join(wt.Path, filepath.FromSlash(rel), sha)
 		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() {
 			return p, nil
 		}

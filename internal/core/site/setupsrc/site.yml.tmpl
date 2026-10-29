@@ -8,10 +8,23 @@ name: site
 # released binary — checksum- and attestation-verified before it runs — and
 # deploys the rendered artefact to <% .Provider %>. The render job holds no
 # credential, and renders a release only when the default branch holds its
-# commit. The deploy job holds the provider's, and takes nothing from the
+<% if .HostConfig %># commit. The deploy job holds the provider's, and takes nothing from the
 # repository but the default branch's host configuration file
 # (<% .HostConfig %>), never the release's.
-#
+<% else %># commit. The deploy job holds no credential either: it deploys with the
+# run's own short-lived token and runs nothing from the repository.
+<% end %><% if .Project %>#
+# A PROJECT SITE (`--project`): every page is built from what abcd already
+# writes to the repository (its identity block, brief, development record and
+# CHANGELOG.md), and its interface words, styles and scripts come from the
+# abcd binary. The repository carries no site sources.
+<% end %><% if .Switched %>#
+# THE SWITCH: the site publishes only while `"publish": true` stands in the
+# hosting block of <% .SwitchFile %> both at the released commit and at the
+# head of <% .DefaultBranch %>, and only while the repository is public.
+# Switched off, a release builds and publishes nothing, a later push or
+# dispatch included, and `abcd site setup` offers to remove this file.
+<% end %>#
 # Three entry points, one path:
 #
 #   release: published    a release published by a person or a personal token.
@@ -41,7 +54,7 @@ name: site
 #
 #   site-render   the render job. No secrets. Deployment policy: branch
 #                 `<% .DefaultBranch %>` only.
-#   site          the deploy job. Same policy. Secrets:<% range .Secrets %> <% . %><% end %>.
+#   <% printf "%-13s" .DeployEnv %> the deploy job. Same policy. <% if .Secrets %>Secrets:<% range .Secrets %> <% . %><% end %>.<% else %>No secrets: the run's own token.<% end %>
 #
 # Each environment admits only the default branch. The policy refuses
 # unreviewed workflow content: a run executes this file as it exists on its
@@ -119,7 +132,8 @@ jobs:
       contents: read
     outputs:
       tag: ${{ steps.release.outputs.tag }}
-    steps:
+<% if .Switched %>      publish: ${{ steps.switch.outputs.on }}
+<% end %>    steps:
       - name: Resolve the release to render
         id: release
         env:
@@ -164,35 +178,74 @@ jobs:
             exit 1
           fi
 
-      - name: Download abcd and its checksums
+<% if .Switched %>      # On only while all three hold: the repository is public (Pages from a
+      # private repository is public on every plan but Enterprise), and the
+      # switch is on both at the released commit and at the head of
+      # <% .DefaultBranch %>, so a switch turned off there is not undone by a
+      # later push or dispatch that renders an older tag. A missing or
+      # malformed file reads as off.
+      - name: Read the project-site switch
+        id: switch
         env:
+          REPO_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          set -euo pipefail
+          on=true
+          if [ "${REPO_PRIVATE:-}" != false ]; then
+            echo "::notice::this repository is not public, so this release publishes nothing"
+            on=false
+          fi
+          if ! jq -e '.hosting.publish == true' <% .SwitchFile %> >/dev/null 2>&1; then
+            echo "::notice::the project site is switched off in <% .SwitchFile %> at the released commit, so this release publishes nothing"
+            on=false
+          fi
+          if ! git show "origin/<% .DefaultBranch %>:<% .SwitchFile %>" 2>/dev/null | jq -e '.hosting.publish == true' >/dev/null 2>&1; then
+            echo "::notice::the project site is switched off in <% .SwitchFile %> on <% .DefaultBranch %>, so this release publishes nothing"
+            on=false
+          fi
+          echo "on=$on" >> "$GITHUB_OUTPUT"
+
+<% end %>      # abcd's highest stable vX.Y.Z release by version, never the release
+      # marked "latest": that mark can be moved to any release.
+      - name: Download abcd and its checksums
+        id: abcd
+<% .IfOn %>        env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          abcd_tag="$(gh release view --repo <% .AbcdRepo %> --json tagName --jq .tagName)"
-          tag_re='^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
-          if [[ ! $abcd_tag =~ $tag_re ]]; then
-            echo "::error::abcd's latest release tag is not vX.Y.Z; refusing to download it"
+          tags="$(gh release list --repo <% .AbcdRepo %> --exclude-drafts --exclude-pre-releases \
+            --limit 1000 --json tagName --jq '.[].tagName')"
+          version="$(printf '%s\n' "$tags" | sed -n 's/^v\([0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}\)$/\1/p' \
+            | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)"
+          ABCD_TAG="v${version}"
+          if ! [[ "$ABCD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::<% .AbcdRepo %> has no published stable vX.Y.Z release to render with"
             exit 1
           fi
-          gh release download "$abcd_tag" --repo <% .AbcdRepo %> \
+          echo "tag=$ABCD_TAG" >> "$GITHUB_OUTPUT"
+          gh release download "$ABCD_TAG" --repo <% .AbcdRepo %> \
             --pattern 'abcd-linux-amd64' --pattern 'checksums.txt' --dir "$RUNNER_TEMP"
-          printf '%s\n' "$abcd_tag" > "$RUNNER_TEMP/abcd-tag"
 
-      # The provenance is held to abcd's release workflow on main, built from
-      # main on a GitHub-hosted runner, at the commit the downloaded release's
-      # tag names.
+      # The checksum is integrity only: checksums.txt sits on the same release
+      # page as the binary, so whoever can replace one can replace both. The
+      # provenance is the authenticity check: it is held to abcd's release
+      # workflow on main, built from main on a GitHub-hosted runner, at the
+      # commit the downloaded release's tag names.
       - name: Verify abcd against its release manifest and its provenance
-        env:
+<% .IfOn %>        env:
           GH_TOKEN: ${{ github.token }}
+          ABCD_TAG: ${{ steps.abcd.outputs.tag }}
         run: |
           set -euo pipefail
+          if ! [[ "$ABCD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::the abcd release tag is not vX.Y.Z; refusing to verify it"
+            exit 1
+          fi
           cd "$RUNNER_TEMP"
           grep ' abcd-linux-amd64$' checksums.txt | sha256sum -c -
-          abcd_tag="$(cat abcd-tag)"
-          commit="$(gh api "repos/<% .AbcdRepo %>/commits/${abcd_tag}" --jq .sha)"
-          if [[ ! $commit =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::the commit of abcd $abcd_tag could not be resolved; refusing to run it"
+          commit="$(gh api "repos/<% .AbcdRepo %>/commits/${ABCD_TAG}" --jq .sha)"
+          if ! [[ "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::the commit of abcd $ABCD_TAG could not be resolved; refusing to run it"
             exit 1
           fi
           gh attestation verify abcd-linux-amd64 --repo <% .AbcdRepo %> \
@@ -203,18 +256,18 @@ jobs:
           install -m 0755 abcd-linux-amd64 "${RUNNER_TEMP}/abcd"
 
       - name: Render and check the site
-        env:
+<% .IfOn %>        env:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          "${RUNNER_TEMP}/abcd" site build --out site --version "${TAG#v}" --commit "$(git rev-parse --verify HEAD)"
-          "${RUNNER_TEMP}/abcd" lint site --out site
+          "${RUNNER_TEMP}/abcd" site build<% .ProjectFlag %> --out site --version "${TAG#v}" --commit "$(git rev-parse --verify HEAD)"<% .BaseFlag %>
+          "${RUNNER_TEMP}/abcd" lint site<% .ProjectFlag %> --out site<% .BaseFlag %>
 
       - name: Pack the rendered site
-        run: tar -czf site.tar.gz -C site .
+<% .IfOn %>        run: tar -czf site.tar.gz -C site .
 
       - name: Hand the rendered site to the deploy job
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+<% .IfOn %>        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: site-${{ steps.release.outputs.tag }}
           path: site.tar.gz
@@ -223,13 +276,16 @@ jobs:
 
   deploy:
     needs: render
-    runs-on: ubuntu-latest
+<% if .Switched %>    if: needs.render.outputs.publish == 'true' && toJSON(github.event.repository.private) == 'false'
+    # The visibility is compared as JSON: a loose `== false` reads a missing
+    # field as false, which would read as public.
+<% end %>    runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: site
+    environment: <% .DeployEnv %>
     permissions:
-      contents: read
-    steps:
-      # The host configuration is the default branch's copy, never the
+<% range .DeployPermissions %>      <% . %>
+<% end %>    steps:
+<% if .HostConfig %>      # The host configuration is the default branch's copy, never the
       # release's: this job holds the provider's credential, and the file is
       # what the deploy reads.
       - name: Check out the default branch for the host configuration
@@ -238,7 +294,7 @@ jobs:
           ref: refs/heads/<% .DefaultBranch %>
           persist-credentials: false
 
-      - name: Collect the rendered site
+<% end %>      - name: Collect the rendered site
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: site-${{ needs.render.outputs.tag }}

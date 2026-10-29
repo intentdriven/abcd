@@ -299,6 +299,9 @@ func TestEveryQuestionTheInstallAsksCanWait(t *testing.T) {
 		if strings.HasPrefix(k, readmePartKeyPrefix) {
 			k = ReadmePromptKey // a part follows the README question it belongs to
 		}
+		if k == SessionsWherePromptKey {
+			k = SessionsPromptKey // where follows whether
+		}
 		if !slices.Contains(can, k) {
 			t.Errorf("the install put %q, which waiting cannot return (it returned %v)", k, can)
 		}

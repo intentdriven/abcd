@@ -151,12 +151,13 @@ const (
 	CheckBaseline     = "baseline"
 	CheckMobile       = "mobile"
 	CheckFigureLabels = "figure-labels"
+	CheckBasePath     = "base-path"
 )
 
 // CheckNames is every check this verb runs, in the order it runs them.
 var CheckNames = []string{
 	CheckProvenance, CheckHero, CheckBannedTokens, CheckSnippets,
-	CheckBaseline, CheckMobile, CheckFigureLabels,
+	CheckBaseline, CheckMobile, CheckFigureLabels, CheckBasePath,
 }
 
 // maxOutputPageBytes bounds one emitted page read.
@@ -190,6 +191,12 @@ type CheckRequest struct {
 	// Lanes is the state-file reader a build the check makes hands the Status
 	// page, as Request.Lanes; nil reads as an absent state file.
 	Lanes statusblock.LaneReader
+	// BasePath is the path the output is served below, as Request.BasePath:
+	// a root-absolute URL resolves against it, and one outside it is a
+	// finding. Empty is the root.
+	BasePath string
+	// Project gates a project site, as Request.Project builds one.
+	Project bool
 }
 
 // CheckFinding is one failure. Every finding names the check that raised it and
@@ -226,7 +233,7 @@ type CheckResult struct {
 // OK reports whether the run found nothing that fails it.
 func (r CheckResult) OK() bool { return len(r.Findings) == 0 }
 
-// checker carries everything the seven checks read, gathered once.
+// checker carries everything the eight checks read, gathered once.
 type checker struct {
 	repoRoot string
 	// root is repoRoot as an os.Root containment scope, shared by every read of a
@@ -250,6 +257,13 @@ type checker struct {
 	sources map[string]*sourceFile
 	// styles are the parsed stylesheets the pages link, keyed by output path.
 	styles map[string]*styleSheet
+	// base is the path the output is served below (basepath.go).
+	base string
+	// identityLoc is where the Identity block lives (the composition's
+	// reference, or a project site's positioning pointer).
+	identityLoc BlockRef
+	// project gates a project site (project.go).
+	project bool
 
 	res *CheckResult
 }
@@ -274,6 +288,10 @@ func Check(req CheckRequest) (CheckResult, error) {
 	if err != nil {
 		return CheckResult{}, err
 	}
+	base, err := NormaliseBasePath(req.BasePath)
+	if err != nil {
+		return CheckResult{}, err
+	}
 
 	// Every collection is non-nil from the start: the JSON envelope is a machine
 	// surface, and a reader that has to tell `null` from `[]` is a reader that
@@ -284,7 +302,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 		Findings: []CheckFinding{}, Notes: []CheckFinding{},
 	}
 	if ok, _ := fsutil.Exists(filepath.Join(outDir, "index.html")); !ok {
-		if _, err := Build(Request{RepoRoot: repoRoot, OutDir: outDir, Lanes: req.Lanes, LeaveUI: true}); err != nil {
+		if _, err := Build(Request{RepoRoot: repoRoot, OutDir: outDir, Lanes: req.Lanes, LeaveUI: true, BasePath: base, Project: req.Project}); err != nil {
 			return CheckResult{}, err
 		}
 		res.Built = true
@@ -297,11 +315,24 @@ func Check(req CheckRequest) (CheckResult, error) {
 		}
 		return CheckResult{}, err
 	}
-	ui, err := LoadUI(repoRoot, manifest.UIStrings)
+	if err := routeAgrees(manifest, req.Project); err != nil {
+		return CheckResult{}, err
+	}
+	// A project site's interface words are the binary's, and its identity
+	// block the one abcd wrote and `.abcd/positioning.json` points at.
+	ui, identityLoc := UI{}, manifest.Identity
+	if manifest.Project() {
+		ui, err = projectUI()
+		if err == nil {
+			identityLoc, err = projectIdentity(repoRoot)
+		}
+	} else {
+		ui, err = LoadUI(repoRoot, manifest.UIStrings)
+	}
 	if err != nil {
 		return CheckResult{}, err
 	}
-	repo, err := LoadRepoMeta(repoRoot)
+	repo, err := loadRepoMetaFor(repoRoot, manifest.Project())
 	if err != nil {
 		return CheckResult{}, err
 	}
@@ -328,14 +359,19 @@ func Check(req CheckRequest) (CheckResult, error) {
 	c := &checker{
 		repoRoot: repoRoot, root: srcRoot, outDir: outDir, manifest: manifest, ui: ui, repo: repo,
 		tokens: tokens, pages: map[string]*htmlNode{}, sources: map[string]*sourceFile{},
-		styles: map[string]*styleSheet{}, res: &res,
+		styles: map[string]*styleSheet{}, res: &res, base: base,
+		identityLoc: identityLoc, project: manifest.Project(),
 	}
-	c.identity, c.hasBlock = readIdentity(repoRoot, manifest)
+	c.identity, c.hasBlock = readIdentity(repoRoot, identityLoc)
 
 	if err := c.readPages(); err != nil {
 		return CheckResult{}, err
 	}
 	c.checkProvenance()
+	if c.project {
+		c.checkProjectSources()
+		c.checkProjectTitle()
+	}
 	c.checkHero()
 	c.checkBannedTokens()
 	c.checkSnippets()
@@ -344,6 +380,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	}
 	c.checkMobile()
 	c.checkFigureLabels()
+	c.checkBasePath()
 
 	sortFindings(res.Findings)
 	sortFindings(res.Notes)
@@ -357,9 +394,12 @@ func Check(req CheckRequest) (CheckResult, error) {
 const docsLintConfigRelPath = ".abcd/docs-lint.json"
 
 // readIdentity resolves the canonical Identity block, or reports its absence.
-func readIdentity(repoRoot string, m Manifest) (positioning.Block, bool) {
+func readIdentity(repoRoot string, loc BlockRef) (positioning.Block, bool) {
+	if loc.File == "" {
+		return positioning.Block{}, false
+	}
 	blk, err := positioning.ParseBlock(repoRoot, positioning.BlockLocation{
-		File: m.Identity.File, Heading: m.Identity.Heading,
+		File: loc.File, Heading: loc.Heading,
 	})
 	if err != nil {
 		return positioning.Block{}, false
@@ -444,7 +484,13 @@ func (c *checker) readPages() error {
 				// nothing, print `ok` — the report telling a reader a gate held
 				// when it never examined the page. Deny each page-walking gate that
 				// pass, so a genuine finding on an unparsed page cannot disappear.
-				for _, name := range []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels} {
+				// The base-path gate walks the pages only below a base path; at
+				// the root every root-absolute URL is inside the site, read or not.
+				gates := []string{CheckHero, CheckBannedTokens, CheckSnippets, CheckMobile, CheckFigureLabels}
+				if c.base != "/" {
+					gates = append(gates, CheckBasePath)
+				}
+				for _, name := range gates {
 					c.fail(name, rel, "", "this page did not parse, so this gate could not examine it")
 				}
 				continue
@@ -712,7 +758,7 @@ func sourcedTexts(uses []textUse) map[string]bool {
 // identitySpan is the data-src the Identity block's text carries elsewhere on
 // the page, so a title finding points at the same place a hero finding does.
 func (c *checker) identitySpan() string {
-	return c.manifest.Identity.File + "#" + slug(c.manifest.Identity.Heading)
+	return c.identityLoc.File + "#" + slug(c.identityLoc.Heading)
 }
 
 // elementPath renders a text node's position as its ancestor chain, so a
@@ -793,7 +839,10 @@ func (c *checker) generatorWords() generatorWords {
 			addPhrase(seg)
 		}
 	}
-	// The package's own metadata, from `.claude-plugin/plugin.json`.
+	// The package's own metadata, from `.claude-plugin/plugin.json`; on a
+	// project site, the repository's name and handle from its origin remote
+	// alone (projectRepoMeta), so nothing a person wrote for the manifest
+	// passes here.
 	addName(c.repo.Name)
 	addName(c.repo.AuthorName)
 	addName(c.repo.License)
@@ -968,13 +1017,33 @@ func (g generatorWords) covers(text string) bool {
 		if g.phrases[strings.ToLower(collapseSpaces(piece))] || g.attribution[strings.ToLower(collapseSpaces(piece))] {
 			continue
 		}
-		for _, field := range strings.Fields(piece) {
-			if !g.token(field) {
+		fields := strings.Fields(piece)
+		for i := 0; i < len(fields); i++ {
+			if n := g.nameRun(fields[i:]); n > 0 {
+				i += n - 1
+				continue
+			}
+			if !g.token(fields[i]) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// nameRun is how many of fields, from the first, spell one name of more than
+// one word (the package's author, a contributor), longest first; 0 when none
+// does. The footer prints "© <year> <author>", so a two-word author shares a
+// piece with the year and is read whole there. Only names are read this way:
+// a run of interface strings is still not a sentence the generator may print.
+func (g generatorWords) nameRun(fields []string) int {
+	for n := len(fields); n > 1; n-- {
+		run := strings.ToLower(strings.Join(fields[:n], " "))
+		if g.names[run] || g.attribution[run] {
+			return n
+		}
+	}
+	return 0
 }
 
 // token reports whether one whitespace-delimited word is something the
@@ -1041,6 +1110,11 @@ func (c *checker) checkHero() {
 	if !c.hasBlock {
 		// A repository that records no Identity block renders a hero without one
 		// (graceful absence, build.go); there is nothing to compare against.
+		if c.project {
+			c.note(CheckHero, positioning.ConfigRelPath,
+				"no identity block abcd wrote is recorded; the about page renders without its hero")
+			return
+		}
 		c.note(CheckHero, c.manifest.Identity.File,
 			"no Identity block at %q; the hero renders without an eyebrow, tagline and pitch", c.manifest.Identity.Heading)
 		return
@@ -1058,11 +1132,16 @@ func (c *checker) checkHero() {
 				c.fail(CheckHero, page, c.identitySpan(),
 					"the page renders no .hero section, and the manifest composes one from %s", c.manifest.Home.Hero.Page)
 			}
+			if page == homePageRel && c.project {
+				c.fail(CheckHero, page, c.identitySpan(),
+					"the about page renders no .hero section, and the repository records an identity block")
+			}
 			continue
 		}
 		for _, want := range heroSpans {
 			text := want.field(c.identity)
-			el := findElement(hero, func(n *htmlNode) bool { return n.Name == "p" && n.HasClass(want.class) })
+			// A project site's about page sets the tagline as its heading.
+			el := findElement(hero, func(n *htmlNode) bool { return (n.Name == "p" || n.Name == "h1") && n.HasClass(want.class) })
 			switch {
 			case el == nil && text == "":
 				// The block declares none; the hero renders none.
@@ -1485,10 +1564,16 @@ func (c *checker) stylesheetsFor(page string, doc *htmlNode) []*styleSheet {
 		// stylesheet is linked that way precisely because the pages that link it
 		// sit at every depth the site has, so resolving it per-page would look
 		// for one stylesheet in as many places as there are routes and find it
-		// in none of them.
+		// in none of them. The served root is the base path: a site served at
+		// /widgets/ keeps its stylesheet at /widgets/site.css, and an href
+		// outside the base names a file the site does not serve.
 		rel := ""
 		if strings.HasPrefix(href, "/") {
-			rel = path.Clean(strings.TrimPrefix(href, "/"))
+			if !strings.HasPrefix(href, c.base) {
+				c.fail(CheckMobile, page, "", "links the stylesheet %s, which is outside the base path %s the site is served below", quote(href), c.base)
+				continue
+			}
+			rel = path.Clean(strings.TrimPrefix(href, c.base))
 		} else {
 			rel = path.Clean(path.Join(path.Dir(page), href))
 		}
@@ -1705,4 +1790,64 @@ func figureLabels(fig *htmlNode) []string {
 		out = append(out, label)
 	}
 	return out
+}
+
+// basePathAttrs are the attributes a page carries a site URL in: links and
+// form targets, every embedded resource (a responsive image's every srcset
+// candidate and a video's poster among them), an SVG reference, and the
+// graph's data address.
+var basePathAttrs = []string{"href", "src", "srcset", "poster", "action", "xlink:href", "data-graph"}
+
+// attrURLs are the URLs one attribute value carries: each candidate of a
+// srcset ("url 1x, url 2x"), the whole value of any other.
+func attrURLs(attr, v string) []string {
+	if attr != "srcset" {
+		return []string{v}
+	}
+	var out []string
+	for _, cand := range strings.Split(v, ",") {
+		if f := strings.Fields(cand); len(f) > 0 {
+			out = append(out, f[0])
+		}
+	}
+	return out
+}
+
+// climbs reports whether a URL's path has a `..` segment, written plainly or
+// percent-encoded, which a browser resolves before it requests the URL: a
+// URL that starts with the base path and climbs out of it leaves the site.
+func climbs(u string) bool {
+	if i := strings.IndexAny(u, "?#"); i >= 0 {
+		u = u[:i]
+	}
+	for _, seg := range strings.Split(u, "/") {
+		switch strings.ToLower(seg) {
+		case "..", ".%2e", "%2e.", "%2e%2e":
+			return true
+		}
+	}
+	return false
+}
+
+// checkBasePath asserts every root-absolute URL a page carries sits under the
+// base path the site is served below. A site at owner.github.io/<repo>/ that
+// links /record/ sends the reader to owner.github.io/record/, which is not
+// this site at all. At the root base every root-absolute URL is inside it.
+func (c *checker) checkBasePath() {
+	if c.base == "/" {
+		return
+	}
+	for _, page := range c.res.Pages {
+		for _, n := range findElements(c.pages[page], func(*htmlNode) bool { return true }) {
+			for _, attr := range basePathAttrs {
+				for _, u := range attrURLs(attr, n.Attr(attr)) {
+					if !strings.HasPrefix(u, "/") || strings.HasPrefix(u, "//") || (strings.HasPrefix(u, c.base) && !climbs(u)) {
+						continue
+					}
+					c.fail(CheckBasePath, page, n.Attr("data-src"), "<%s %s=%s> links outside the base path %s the site is served below",
+						n.Name, attr, quote(u), c.base)
+				}
+			}
+		}
+	}
 }
