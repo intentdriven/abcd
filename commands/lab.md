@@ -104,8 +104,7 @@ adapter gives beside it is appended to `pairs.jsonl` in the newest lab home.
 For each type, `agreement` gives `pairs`, `compared` (the adapter answered),
 `agreed`, `skipped` (the state was over the model's window, or the call
 failed), `rate`, and the compared and agreed counts in four probability
-`bands`. It ends with the `note` line, naming the lab home and the count. The
-drain's judgement before a lane opens is the type `eligibility-residual`. Show
+`bands`. It ends with the `note` line, naming the lab home and the count. Show
 the user the rates and the note: a research note filed from it is the evidence
 a ruling turns a type on with (`<provider>/<model>`, no `shadow:`), and turning
 a type on is the user's decision, never yours.
