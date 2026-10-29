@@ -30,7 +30,7 @@ Many findings below are instances of this umbrella drift; they are still listed 
 
 - `work/DECISIONS.md:3-4`:
   > "Architecture-shaping decisions graduate to an ADR under `../development/decisions/adrs/`."
-- `work/DECISIONS.md:8-23` records (all 2026-07-06): "Rebuild abcd from scratch in Go, no external tools (specstory, RepoPrompt, flow-next, Ralph, codex)"; "Transport-agnostic Go core"; "LLM work host-delegated by default"; "Spec/task layer native-minimal; … flow-next dropped. Autonomous run not a Ralph port"; "Single repo, curated release (no dev→public mirror)"; "Module path github.com/REPPL/abcd-cli; Cobra approved".
+- `work/DECISIONS.md:8-23` records (all 2026-07-06): "Rebuild abcd from scratch in Go, no external tools (specstory, RepoPrompt, flow-next, Ralph, codex)"; "Transport-agnostic Go core"; "LLM work host-delegated by default"; "Spec/task layer native-minimal; … flow-next dropped. Autonomous run not a Ralph port"; "Single repo, curated release (no dev→public mirror)"; "Module path github.com/<personal account>/abcd-cli; Cobra approved".
 - The newest ADR is `adr-20` dated 2026-07-03 (`development/decisions/adrs/README.md:135`). No adr-21+ exists.
 
 Why it's drift: these are precisely the "hard to reverse, surprising without context, real trade-off" decisions the ADR bar (`adrs/README.md:12-15`) describes — a full-language rewrite, dropping four load-bearing tools, and a repo-topology reversal — yet none is promoted. Until promoted, the ADR corpus (all 20 `status: accepted`) formally asserts the opposite architecture.
