@@ -14,17 +14,20 @@ intent (2026-09-20). Decision 5 fixes the shape: A loop over a state file,
 driven by a host session step by step by default, or by a process through
 the CLI adapter when opted in. The ADR decision 6 owes (the `--auto-plan`
 substitute for the sign-off act) is minted before that path ships and is a
-delivery of this spec. The opt-in reversal of the host-delegated boundary that
-decision 5 flagged has its own record, adr-2610222222326104, which lets
-`abcd build` adopt a no-host drive later under its four conditions; that
-drive is not this spec's (Out of scope).
+delivery of this spec. The reversal of the host-delegated boundary that
+decision 5 flagged, the loop driving itself with no host session, is recorded
+in adr-2610222222326104, which `abcd drain` builds first
+(itd-2610222215485265); this spec's step 12 adopts it for `abcd build` under
+that record's four conditions.
 
 ## Footprint
 
-The one step left to build is 11. Files are named where a step touches one
-file of a package other builds share.
+The steps left to build are 11 and 12, and 12 cannot start until
+itd-2610222215485265 ships (AGENTS.md, Boundaries), so the footprint names
+step 11's files; step 12's join it when it can start. Files are named where a
+step touches one file of a package other builds share.
 
-- packages: internal/core/implement/loop, internal/core/intent, internal/surface/cli/build.go, internal/surface/cli/cli.go, commands/build.md, commands/intent.md, .abcd/development/brief/04-surfaces/34-build.md, .abcd/development/brief/04-surfaces/05-intent.md, .abcd/development/decisions/adrs/README.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
+- packages: internal/core/implement/loop, internal/core/intent, internal/surface/cli/build.go, internal/surface/cli/cli.go, commands/build.md, commands/implement.md, commands/intent.md, .abcd/development/brief/04-surfaces/34-build.md, .abcd/development/brief/04-surfaces/27-implement.md, .abcd/development/brief/04-surfaces/05-intent.md, .abcd/development/decisions/adrs/README.md, .abcd/development/release/surface.json, docs/reference/cli/commands.md
 - tests: internal/core/implement/loop, internal/core/intent, internal/surface/cli/build_surface_test.go
 
 ## Steps
@@ -52,11 +55,11 @@ file of a package other builds share.
    Decision 5, opt-in by configuration: the same loop calling itself through
    `step` and `receipt`, starting each agent through the CLI adapter
    (`itd-2609201916056194`) and waiting for it; named in the run record
-   (criterion 9). A host session still drives the steps; a drive with no
-   host session is adr-2610222222326104's, outside this spec.
-   - packages: internal/core/implement/loop
+   (criterion 9). A host session still drives the steps; the drive with no
+   host session is step 12.
+   - packages: internal/core/implement/loop, internal/surface/cli
    - needs: 2
-   - landed: 6ce51f237
+   - landed: 45cdd1af7
 4. **The checks**
    Criteria 1 and 2: the readiness gate, the claim sections, the
    open-question count, the hold (prose until `iss-2609200830076665` ships),
@@ -105,14 +108,20 @@ file of a package other builds share.
    are all recorded, with the two adversarial reviews as validator steps and
    the ADR's substitute checked before `plan`; refused on anything less.
    - needs: 2, 4, 8
+12. **The no-host drive**
+   Decision 5's reversal, moved here from step 3 so that no step waits on a
+   later one: the loop driving itself with no host session, starting every
+   agent through the runner, under adr-2610222222326104's four conditions (the
+   person's own invocation, their own account behind a wall, a cap, and a
+   hand-back of what it cannot finish). Built only once itd-2610222215485265
+   ships, as AGENTS.md's host-delegated boundary requires; nothing marks that
+   wait yet (iss-2609260932372448).
+   - needs: 3, 11
 
 ## Out of scope
 
 The pace (its spec); the runner's implementation (the adapter's); the
-worktree store's verbs; the peer reader; the claim and the register. A drive
-of the loop with no host session: adr-2610222222326104 records that reversal
-of the host-delegated boundary, `abcd drain` builds it first
-(itd-2610222215485265), and `abcd build` adopts it later under that record.
+worktree store's verbs; the peer reader; the claim and the register.
 
 ## Approach
 
@@ -190,10 +199,9 @@ spec stays open until the last lane closes it.
   (itd-2609201916056194), the loop starts the agent itself through the runner
   and hands its receipt back through `Receipt`, and the run record names the
   runner that ran it (criterion 9); a role left on the host is handed to the
-  host exactly as before. Not built here: the loop driving itself with no
-  host session, the reversal of the host-delegated boundary decision 5
-  flagged, which adr-2610222222326104 now records and which is out of this
-  spec's scope.
+  host exactly as before. Not built: the loop driving itself with no host
+  session, the reversal of the host-delegated boundary decision 5 flagged,
+  which adr-2610222222326104 now records; it is step 12.
 - **Landed (lane fidelityOnce): piece 8**, the validators with the itd-58
   verdict invariant. The validate stage hands the lane's head to a fresh
   ruthless reviewer and a fresh security reviewer, one at a time, and on the
@@ -241,7 +249,8 @@ spec stays open until the last lane closes it.
   receipt carries `handback: {kind, reason, home}`, which the loop reads at the
   receipt, before the validators, discarding the lane's worktree and branch
   and ending the lane handed back.
-- **Remaining: 11** (`--auto-plan` with its ADR). `--auto-plan` is not a flag
-  yet. Piece 3's no-host driving left this spec on 2026-10-28: its reversal
-  is recorded in adr-2610222222326104, whose drive `abcd drain` builds first
-  (Out of scope).
+- **Remaining: 11** (`--auto-plan` with its ADR) **and 12** (the no-host
+  drive). `--auto-plan` is not a flag yet. Piece 3's no-host part became step
+  12 on 2026-10-28, needing 11, so no step waits on a later one; its reversal
+  is recorded in adr-2610222222326104, and it is built only once
+  itd-2610222215485265 ships.

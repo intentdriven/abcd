@@ -32,9 +32,10 @@ package loop
 // status read or another checkout's step is never kept waiting on a model.
 //
 // A host session always drives this call: the no-host path, where abcd runs
-// alone and a host-routed role goes to runner.fallback_host, is the process
-// driver's reversal of the host-delegated boundary, which the ADR decision 6
-// of itd-2609201916151817 owes records before either path ships.
+// alone and a host-routed role goes to runner.fallback_host, is the reversal
+// of the host-delegated boundary that adr-2610222222326104 records, which
+// `abcd drain` builds first (itd-2610222215485265) and `abcd build` adopts
+// after it (spc-2609202134338445 step 12).
 
 import (
 	"context"
