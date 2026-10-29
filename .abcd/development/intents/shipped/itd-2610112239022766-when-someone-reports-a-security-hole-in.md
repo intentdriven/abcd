@@ -11,7 +11,6 @@ refines: [itd-149]
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
-target_release: next
 ---
 
 # Private security reports stay private until their fix ships
@@ -63,11 +62,13 @@ None open. Both questions the draft carried were answered by the product thinker
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-bb21ac30f744 -->
+Fidelity review OWED (receipt rcp-bb21ac30f744).
+<!-- abcd-review-end receipt=rcp-bb21ac30f744 -->
 
 ## Decisions
 
-- 2026-10-09, product thinker (recorded on [iss-2610090703514921](../../../work/issues/open/iss-2610090703514921-a-drain-reads-only-the-issue-ledger-so.md)): private security advisories get a separate security-advisory run, distinct from the general drain, whose rule ([adr-2609291342092738](../../decisions/adrs/2609291342092738-a-drain-takes-an-issue-alone-only-when.md)) stays as it is; its design starts from a primary-source state-of-the-art check and its requirements from the hand-run; an advisory's record stays out of the public ledger until its fix lands; the fixes are held on local branches and land together just before the release that publishes the advisories.
+- 2026-10-09, product thinker (recorded on [iss-2610090703514921](../../../work/issues/resolved/iss-2610090703514921-a-drain-reads-only-the-issue-ledger-so.md)): private security advisories get a separate security-advisory run, distinct from the general drain, whose rule ([adr-2609291342092738](../../decisions/adrs/2609291342092738-a-drain-takes-an-issue-alone-only-when.md)) stays as it is; its design starts from a primary-source state-of-the-art check and its requirements from the hand-run; an advisory's record stays out of the public ledger until its fix lands; the fixes are held on local branches and land together just before the release that publishes the advisories.
 - 2026-10-11, product thinker: the security-advisory run is built before this release.
 - 2026-10-11, product thinker: it is its own command, named `embargo`, not a mode of `drain`.
 - 2026-10-11, product thinker: every security finding is judged by [abcd-fixes-what-it-adds](../../principles/abcd-fixes-what-it-adds.md); the "not abcd's" verdict is that rule's closing route.
@@ -78,12 +79,12 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 - 2026-10-11, agent: the three scope conditions are proposals for the interview, not the product thinker's answers. The Mechanism is left for the product thinker.
 - 2026-10-12, product thinker: the first rung is adopted as drafted, with what it leaves out, with one change: after a "not abcd's" or "not a vulnerability" verdict, abcd itself posts the closing explanation on the private advisory on GitHub (the advisory updated to closed with the approved text), on the person's explicit approval of the drafted text. Closing is in this rung; the other later rungs stay out.
 - 2026-10-12, product thinker: the release waits for this rung; it targets the next release.
-- 2026-10-12, product thinker: this intent refines [itd-149](../drafts/itd-149-abcd-handles-inbound-security-advisories.md), the broader draft of the same loop, which stays a draft for the rungs beyond this one; it answers [iss-2610090703514921](../../../work/issues/open/iss-2610090703514921-a-drain-reads-only-the-issue-ledger-so.md).
+- 2026-10-12, product thinker: this intent refines [itd-149](../drafts/itd-149-abcd-handles-inbound-security-advisories.md), the broader draft of the same loop, which stays a draft for the rungs beyond this one; it answers [iss-2610090703514921](../../../work/issues/resolved/iss-2610090703514921-a-drain-reads-only-the-issue-ledger-so.md).
 - 2026-10-28, technical facilitator, on the product thinker's delegation to decide what blocks an intent so it can be built: the Mechanism, the one prompt left unanswered (readiness failed on it), is worded from the press release, Why This Matters and criteria 1, 6 and 7, and stays open to the product thinker's review.
 
 ## References
 
-- [iss-2610090703514921](../../../work/issues/open/iss-2610090703514921-a-drain-reads-only-the-issue-ledger-so.md): the finding this intent answers; the change that ships it resolves it.
+- [iss-2610090703514921](../../../work/issues/resolved/iss-2610090703514921-a-drain-reads-only-the-issue-ledger-so.md): the finding this intent answers; the change that ships it resolves it.
 - [itd-149](../drafts/itd-149-abcd-handles-inbound-security-advisories.md) and its [2026-08-27 pilot note](../../research/notes/2026-08-27-security-advisory-handling-pilot.md): the broader, earlier draft of the same loop.
 - [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity.md): a remote write happens only through the caller's own identity; publication follows it.
 - [adr-2610031751065746](../../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the.md): where the private records' worktree lives.

@@ -10,6 +10,12 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "commands/drain.md"
 remedy: "Ruled 2026-10-09 by the product thinker: private advisories get a separate security-advisory drain (for example `abcd drain --security`), distinct from the general drain, whose rule stays as it is; its design starts from a primary-source state-of-the-art check on coordinated disclosure, and its requirements are drawn from a hand-run drain recorded as an abcd lab. That hand-run drain keeps each advisory's issue out of the public ledger until its fix lands, holds the fixes on local branches, and lands them together just before the release cut that publishes the advisories."
+resolution: "Answered by itd-2610112239022766: private security advisories get their own commands under abcd embargo (intake, triage, check, close, plan and publish), separate from the general drain, whose rule is unchanged; an advisory's record stays in the machine's own store, out of the public ledger, until it is published or closed."
+impact: additive
+resolved_by:
+  intent: "itd-2610112239022766"
+  spec: "spc-2610120557432880"
+  commit: "d41392a2b"
 ---
 
 A drain reads only the issue ledger, so security advisories that others submit through the forge's private vulnerability reporting never reach it. Unpublished advisories are not named by any record, so nothing in abcd shows whether they were triaged. They cannot simply be copied into the ledger as issues, because the ledger is public and an advisory stays private until it is fixed; and even a ledger issue in the security category is handed back by the drain under its default rule.
