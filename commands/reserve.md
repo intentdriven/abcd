@@ -67,8 +67,9 @@ allows (<owner>/<name>)`. Pass either on to the user.
 `own_overlap` lists each path the reservation shares with the user's own from
 another copy, as `path`, `record` and `effective_expiry` (see **When it
 refuses**); the text form warns of each on stderr. `generated_shared` lists each
-generated file the reservation shares with another record's live reservation, as
-`path` and `record`; the text form names each on a `shared:` line, so whoever
+generated file the reservation shares with a live reservation of another record
+from another copy or another person (never this copy's own), as `path` and
+`record`; the text form names each on a `shared:` line, so whoever
 lands second knows to regenerate it after merging. `generated_unread` says why
 no generated file was recognised, so every shared path was judged an overlap.
 `directory_footprint` lists each footprint path naming a directory, as `path`,

@@ -70,3 +70,25 @@ func TestAGeneratedFileSharedWithOnesOtherCopyIsNamedBesideTheWarning(t *testing
 		t.Fatalf("the generated shares = %+v; want %+v", res.GeneratedShared, want)
 	}
 }
+
+// TestGeneratedSharesAreSortedByPathThenRecord: the shares are named in path
+// order, not in the order the view lists the reservations, so a record listed
+// first can be named second.
+func TestGeneratedSharesAreSortedByPathThenRecord(t *testing.T) {
+	w := newWorld(t)
+	w.declare("gen/*.md linguist-generated\n", "gen/a.md", "gen/b.md")
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	q := w.clone("99+quinn@users.noreply.github.com", "")
+	m := w.clone("77+mira@users.noreply.github.com", "")
+	if _, err := p.reserve("iss-1", "gen/b.md"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.reserve("iss-2", "gen/a.md"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := m.reserve("iss-3", "gen/b.md", "gen/a.md")
+	want := []GeneratedShare{{Path: "gen/a.md", Record: "iss-2"}, {Path: "gen/b.md", Record: "iss-1"}}
+	if err != nil || !slices.Equal(res.GeneratedShared, want) {
+		t.Fatalf("two shared generated files = %+v, %v; want them in path order, %+v", res, err, want)
+	}
+}

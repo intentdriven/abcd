@@ -61,11 +61,10 @@ func (g GeneratedShare) Line() string {
 // that asks for it (Request.WarnOwnOverlap, the reserve verb's) and shares a
 // path with the same person's reservation from another copy goes ahead, and
 // res names each such path (Result.OwnOverlap); every other act backs off it,
-// as it backs off another person's. A shared generated file is named too,
-// with the record it is shared with (Result.GeneratedShared,
-// iss-2610282340087862). res also carries
-// why no generated file was recognised, when the overlap was judged without
-// them (Result.GeneratedUnread).
+// as it backs off another person's. res also names each generated file it
+// shares, with the record it is shared with (Result.GeneratedShared,
+// iss-2610282340087862), and why no generated file was recognised, when the
+// overlap was judged without them (Result.GeneratedUnread).
 //
 // Both are judged on the view just fetched, not compared-and-swapped: each
 // reservation is its own ref, so two people racing can each pass the cap or
