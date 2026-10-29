@@ -62,11 +62,11 @@ const (
 var registry = []Type{RemedyRead, DuplicateMatch, UnmeetableCriteria, EligibilityResidual, SourceClassification,
 	SourceSelection, MemoryCheck, LedgerCategory, LedgerSeverity, PrepassOverlap, PresentTense}
 
-// Types returns the registry, in its order.
-func Types() []Type { return slices.Clone(registry) }
+// types returns the registry, in its order.
+func types() []Type { return slices.Clone(registry) }
 
-// Known reports whether name is a type in the registry.
-func Known(name string) bool { return slices.Contains(registry, Type(name)) }
+// known reports whether name is a type in the registry.
+func known(name string) bool { return slices.Contains(registry, Type(name)) }
 
 // Bounds on a question.
 const (
@@ -107,7 +107,7 @@ func (q Question) Choices() []string {
 // Check refuses a question that does not hold together: a type outside the
 // registry, an unknown kind, no words, or options or a scale out of shape.
 func (q Question) Check() error {
-	if !Known(string(q.Type)) {
+	if !known(string(q.Type)) {
 		return fmt.Errorf("judge: %q is not a judgement type (the registry is %s)", clip(string(q.Type)), typeNames())
 	}
 	if strings.TrimSpace(q.Ask) == "" || len(q.Ask) > maxAsk {
@@ -175,9 +175,9 @@ type Judge interface {
 	Judge(ctx context.Context, s State, q Question) (Answer, error)
 }
 
-// Render is the prompt a judgement is asked as, the same for the host and the
+// render is the prompt a judgement is asked as, the same for the host and the
 // adapter.
-func Render(s State, q Question) string {
+func render(s State, q Question) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Judgement: %s (%s)\n\nQuestion: %s\n\n", q.Type, q.Kind, strings.TrimSpace(q.Ask))
 	switch q.Kind {

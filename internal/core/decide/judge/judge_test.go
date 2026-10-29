@@ -24,7 +24,7 @@ import (
 // same interface; TestTheAPIAdapterParsesTheTypedAnswer drives the real
 // Adapter over a fake oracle caller.
 
-var target = oracle.Target{Provider: "openrouter", Model: "typesafe/jev-1.13", Origin: "~/.abcd.noindex/config.json"}
+var target = oracle.Target{Provider: "openrouter", Model: "typesafe/jev-1.13", Origin: abcdhome.Display("config.json")}
 
 func dupQuestion() Question {
 	return Question{Type: DuplicateMatch, Kind: KindChoose, Ask: "Which record does this capture duplicate?",
@@ -42,7 +42,7 @@ type fake struct {
 
 func (f *fake) Judge(_ context.Context, s State, q Question) (Answer, error) {
 	f.calls++
-	f.seen = append(f.seen, Render(s, q))
+	f.seen = append(f.seen, render(s, q))
 	if f.err != nil {
 		return Answer{}, f.err
 	}
@@ -60,7 +60,7 @@ func (p *pairs) record(pr lab.Pair) (string, string, error) {
 		return "", "", p.err
 	}
 	p.got = append(p.got, pr)
-	return "lab-261029000000-abcdef0", "~/.abcd.noindex/lab/x/lab-261029000000-abcdef0/pairs.jsonl", nil
+	return "lab-261029000000-abcdef0", abcdhome.Display("lab/x/lab-261029000000-abcdef0/pairs.jsonl"), nil
 }
 
 func router(mode string, adapter *fake, rec *pairs) *Router {
@@ -70,7 +70,7 @@ func router(mode string, adapter *fake, rec *pairs) *Router {
 		t.Mode = mode
 		routes[DuplicateMatch] = t
 	}
-	return New(routes, func(oracle.Target) Judge { return adapter }, rec.record)
+	return newRouter(routes, func(oracle.Target) Judge { return adapter }, rec.record)
 }
 
 // Criterion 1: shadow — the host decides, the adapter answers beside it, and
@@ -117,7 +117,7 @@ func TestShadowWritesThePairUnderTheLabHomeAndNothingInTheRepository(t *testing.
 	before := r.Git("status", "--porcelain", "--ignored")
 	t2 := target
 	t2.Mode = oracle.JudgementShadow
-	rt := New(map[Type]oracle.Target{DuplicateMatch: t2}, func(oracle.Target) Judge { return &fake{value: "none", p: 0.7} },
+	rt := newRouter(map[Type]oracle.Target{DuplicateMatch: t2}, func(oracle.Target) Judge { return &fake{value: "none", p: 0.7} },
 		func(p lab.Pair) (string, string, error) { return lab.RecordPair(r.Root(), p) })
 	if _, _, err := rt.Decide(context.Background(), State{Text: "s"}, dupQuestion(), Answered("none")); err != nil {
 		t.Fatal(err)
@@ -271,12 +271,12 @@ func TestTheRegistryIsClosedAndAQuestionIsChecked(t *testing.T) {
 	if host.calls != 0 {
 		t.Fatal("the host was asked a refused question")
 	}
-	for _, ty := range Types() {
-		if !Known(string(ty)) {
+	for _, ty := range types() {
+		if !known(string(ty)) {
 			t.Errorf("%s is listed but not known", ty)
 		}
 	}
-	if Known("embark-lesson-ranking") {
+	if known("embark-lesson-ranking") {
 		t.Error("embark's lesson ranking is a term-overlap computation, not a judgement (iss-2610262033055327)")
 	}
 }
@@ -321,7 +321,7 @@ func TestTheHostParsesItsAnswerAtProbabilityOne(t *testing.T) {
 	if _, err := h.Judge(context.Background(), State{Text: "the state"}, dupQuestion()); err != nil {
 		t.Fatal(err)
 	}
-	if asked != Render(State{Text: "the state"}, dupQuestion()) || !strings.Contains(asked, "the state") || !strings.Contains(asked, "iss-2") {
+	if asked != render(State{Text: "the state"}, dupQuestion()) || !strings.Contains(asked, "the state") || !strings.Contains(asked, "iss-2") {
 		t.Fatalf("host prompt = %q", asked)
 	}
 }

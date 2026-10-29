@@ -49,9 +49,9 @@ func withDrainRouter(t *testing.T, mode string, adapter *drainFakeJudge, got *[]
 	}
 	prev := loadDrainRouter
 	loadDrainRouter = func(string, Options) (*decision.Router, error) {
-		return decision.New(routes, func(oracle.Target) decision.Judge { return adapter }, func(p lab.Pair) (string, string, error) {
+		return decision.NewForTest(routes, func(oracle.Target) decision.Judge { return adapter }, func(p lab.Pair) (string, string, error) {
 			*got = append(*got, p)
-			return "lab-261029000000-abcdef0", "~/.abcd.noindex/lab/x/lab-261029000000-abcdef0/pairs.jsonl", nil
+			return "lab-261029000000-abcdef0", abcdhome.Display("lab/x/lab-261029000000-abcdef0/pairs.jsonl"), nil
 		}), nil
 	}
 	t.Cleanup(func() { loadDrainRouter = prev })

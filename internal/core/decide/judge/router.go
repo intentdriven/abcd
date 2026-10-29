@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sort"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/credential"
@@ -83,14 +82,21 @@ type Router struct {
 	Diagnostics []string
 }
 
-// New is a Router over routes (a type absent from it stays on the host), the
-// adapter each target is judged by, and where shadow pairs are recorded.
-func New(routes map[Type]oracle.Target, adapter func(oracle.Target) Judge, record Recorder) *Router {
+// newRouter is a Router over routes (a type absent from it stays on the
+// host), the adapter each target is judged by, and where shadow pairs are
+// recorded.
+func newRouter(routes map[Type]oracle.Target, adapter func(oracle.Target) Judge, record Recorder) *Router {
 	r := &Router{routes: map[Type]oracle.Target{}, adapter: adapter, record: record}
 	for t, tgt := range routes {
 		r.routes[t] = tgt
 	}
 	return r
+}
+
+// NewForTest is newRouter, the seam a caller's tests route a type with
+// through a fake adapter and recorder.
+func NewForTest(routes map[Type]oracle.Target, adapter func(oracle.Target) Judge, record Recorder) *Router {
+	return newRouter(routes, adapter, record)
 }
 
 // Load reads oracle.judgements.<type> through the oracle reader, which refuses
@@ -111,7 +117,7 @@ func Load(roots layered.Roots, repoRoot string) (*Router, error) {
 		if pr.Kind != "judgement" {
 			continue
 		}
-		if !Known(pr.Name) {
+		if !known(pr.Name) {
 			diags = append(diags, fmt.Sprintf("decision adapter: oracle.judgements.%s in %s is not a judgement type (%s); it is skipped",
 				termsafe.Sanitize(clip(pr.Name)), termsafe.Sanitize(pr.Target.Origin), typeNames()))
 			continue
@@ -119,7 +125,7 @@ func Load(roots layered.Roots, repoRoot string) (*Router, error) {
 		routes[Type(pr.Name)] = pr.Target
 	}
 	creds := credential.Store(roots.Home)
-	r := New(routes, func(t oracle.Target) Judge { return Adapter{Calls: cfg, Creds: creds, Target: t} },
+	r := newRouter(routes, func(t oracle.Target) Judge { return Adapter{Calls: cfg, Creds: creds, Target: t} },
 		func(p lab.Pair) (string, string, error) { return lab.RecordPair(repoRoot, p) })
 	r.Diagnostics = diags
 	return r, nil
@@ -150,7 +156,7 @@ func (r *Router) Decide(ctx context.Context, s State, q Question, host Judge) (A
 		return Answer{}, Receipt{}, err
 	}
 	mode := r.Mode(q.Type)
-	size := tokens(Render(s, q))
+	size := tokens(render(s, q))
 	rc := Receipt{Type: q.Type, Mode: mode, Route: RouteHost, StateSHA256: s.SHA256(), StateTokens: size}
 	tgt := r.routes[q.Type]
 	if mode != oracle.JudgementHost {
@@ -238,19 +244,6 @@ func (r *Router) ask(ctx context.Context, tgt oracle.Target, s State, q Question
 	}
 	a.Value = v
 	return a, nil
-}
-
-// Routes are the types routed off the host, sorted, with their routes as the
-// configuration spells them, for a board.
-func (r *Router) Routes() []string {
-	var out []string
-	for t, tgt := range r.routes {
-		if m := r.Mode(t); m != oracle.JudgementHost {
-			out = append(out, string(t)+" = "+tgt.Route())
-		}
-	}
-	sort.Strings(out)
-	return out
 }
 
 // detail is an error's account for a pair or a receipt: terminal-safe, one

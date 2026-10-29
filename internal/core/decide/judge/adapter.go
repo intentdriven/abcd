@@ -62,7 +62,7 @@ func (a Adapter) Judge(ctx context.Context, s State, q Question) (Answer, error)
 		got = v
 		return err
 	}
-	brief := openaiapi.Brief{Instructions: adapterInstructions, Input: Render(s, q)}
+	brief := openaiapi.Brief{Instructions: adapterInstructions, Input: render(s, q)}
 	_, rec, err := a.Calls.Call(ctx, a.Creds, oracle.CallRequest{Target: a.Target, Brief: brief, Contract: contract}, a.Options...)
 	if err != nil {
 		return Answer{}, err

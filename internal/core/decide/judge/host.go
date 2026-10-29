@@ -40,7 +40,7 @@ func (h Host) Judge(ctx context.Context, s State, q Question) (Answer, error) {
 	if h.Ask == nil {
 		return Answer{}, ErrHostPending
 	}
-	text, err := h.Ask(ctx, Render(s, q))
+	text, err := h.Ask(ctx, render(s, q))
 	if err != nil {
 		return Answer{}, err
 	}
