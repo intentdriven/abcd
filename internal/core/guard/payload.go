@@ -2036,6 +2036,11 @@ func shellCPayloads(tokens []string, sites []int) (values []string, unresolved b
 				}
 				continue
 			}
+			if a == "--rcfile" || a == "--init-file" {
+				// Its value is no option, and the long options read on past it.
+				i++
+				continue
+			}
 			switch {
 			case isUnknown(a):
 				maybe = maybe || longs

