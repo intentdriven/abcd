@@ -304,12 +304,8 @@
     "commits": 6,
     "authored": 5,
     "merges": 1,
-    "humans": [
-      {
-        "name": "Fixture",
-        "commits": 6
-      }
-    ],
+    "human_authors": 1,
+    "human_commits": 6,
     "bots": [],
     "assisted_commits": 1,
     "assisted": 1,
