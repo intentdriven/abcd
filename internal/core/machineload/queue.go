@@ -256,7 +256,7 @@ func (a Ahead) Uncrossed() Ahead {
 }
 
 // Shut reports which of the queue's conditions hold the first gate shut when
-// slots units of work may be in their test stages at once (the
+// it admits slots units of work to their test stages at once (the
 // load.preflights setting; zero or less reads as one): every unit in Busy
 // takes a slot, and the gate is shut on preflight or on waiter once they are
 // all taken, by the kind of unit that takes them. A waiter queued ahead shuts

@@ -880,9 +880,9 @@ machine is not left idle while it waits for another preflight's race run
 waiter that opened in the same moment at its own gate, never from one at the
 other gate.
 
-How many preflights may be in their test stages at once is the person's own
-machine setting, never a repository's, so a checkout cannot raise the
-machine's load: `load.preflights` in `~/.abcd.noindex/config.json` (a whole
+How many preflights the first gate admits to their test stages at once is the
+person's own machine setting, never a repository's, so a checkout cannot raise
+the machine's load: `load.preflights` in `~/.abcd.noindex/config.json` (a whole
 number from 1 to 4, read through the same guarded read as every machine
 setting), or `ABCD_LOAD_PREFLIGHTS` in the waiter's environment, which wins,
 for a trial without a file edit. Four is the most; 5 and above are refused,

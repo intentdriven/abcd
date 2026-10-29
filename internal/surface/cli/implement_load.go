@@ -151,8 +151,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"above 1 it takes no slot until its race run starts, which the race gate keeps\n" +
 			"to one at a time. A waiter that has opened stands back only from a waiter that\n" +
 			"opened in the same moment at its own gate, never from one at the other gate.\n\n" +
-			"How many preflights may be in their test stages at once is your own machine's\n" +
-			"setting: `" + implement.PreflightSlotsKey + "` in `" + abcdhome.Display("config.json") + "`, or " + implement.PreflightSlotsEnv + " in the\n" +
+			"How many preflights the first gate admits to their test stages at once is your\n" +
+			"own machine's setting: `" + implement.PreflightSlotsKey + "` in `" + abcdhome.Display("config.json") + "`, or " + implement.PreflightSlotsEnv + " in the\n" +
 			"environment, which wins, for a trial; a whole number from 1 to " + strconv.Itoa(implement.MaxPreflightSlots) + ", 1 by default,\n" +
 			"and never read from a repository file, so a checkout cannot raise the machine's\n" +
 			"load. At 1 both gates read as before the setting existed. Above 1 the\n" +
@@ -160,7 +160,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"their command are in their test stages (a `--wait -- make preflight` counts\n" +
 			"once), a waiter queued ahead still shuts it, and a live race run does not shut\n" +
 			"it by itself; the load limit still does, and the race gate keeps race stages\n" +
-			"apart. A value it cannot use refuses the wait, naming where it was set. A\n" +
+			"apart, so one race stage may run beside that many unit stages. A value it\n" +
+			"cannot use refuses the wait, naming where it was set. A\n" +
 			"`" + abcdhome.Display("config.json") + "` that cannot be read for it (writable by others,\n" +
 			"not valid JSON, or a `load` that is not an object) is read past instead: one\n" +
 			"preflight at a time applies, and one line on stderr names the file, the cause\n" +
@@ -532,8 +533,8 @@ func pidsText(pids []int, one, many string) string {
 	return one + " (pid " + strings.Join(list, ", ") + ")"
 }
 
-// slotsText says how many preflights may be in their test stages at once, and
-// where that was set.
+// slotsText says how many preflights the first gate admits to their test
+// stages at once, and where that was set.
 func slotsText(res implement.WaitResult) string {
 	switch res.SlotsSource {
 	case implement.SlotsEnv:
