@@ -66,6 +66,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -1216,6 +1217,41 @@ var linkAside = func(root *os.Root, oldname, newname string) error { return root
 // maxAsides bounds the answers kept aside beside one review's return.
 const maxAsides = 99
 
+// staleAsideTemp is the age past which an answer's temporary file is taken to
+// be one a killed process left. A writer's temporary file lives only while it
+// writes at most maxReturnBytes and links the file to its name, seconds at
+// most; one untouched for an hour has no writer left to link it.
+const staleAsideTemp = time.Hour
+
+// asideTempRe matches the name keepAside gives an answer's temporary file:
+// .<route>-return-<16 hex digits>.tmp.
+var asideTempRe = regexp.MustCompile(`^\..+-return-[0-9a-f]{16}\.tmp$`)
+
+// sweepAsideTemps removes from dir the temporary files of answers kept aside
+// there that a process killed before linking them left behind: regular files
+// named as keepAside names them and last written staleAsideTemp ago or more.
+// One younger may be a concurrent writer's, about to be linked, and stands.
+// It is best effort: a directory or file it cannot read or remove is left as
+// it is, and never stops an answer being kept aside.
+func sweepAsideTemps(root *os.Root, dir string, now time.Time) {
+	d, err := root.Open(dir)
+	if err != nil {
+		return
+	}
+	entries, _ := d.ReadDir(-1)
+	_ = d.Close()
+	for _, e := range entries {
+		if !e.Type().IsRegular() || !asideTempRe.MatchString(e.Name()) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || !info.Mode().IsRegular() || now.Sub(info.ModTime()) < staleAsideTemp {
+			continue
+		}
+		_ = root.Remove(dir + "/" + e.Name())
+	}
+}
+
 // keepAside writes the route's answer beside the review's return and reports
 // the path it wrote: <route>-return.md, or the next numbered name
 // (<route>-return-2.md, ...) when an earlier answer is kept there, so an
@@ -1224,7 +1260,8 @@ const maxAsides = 99
 // which fails when the name exists, so a name a refusal reports never holds a
 // part of an answer, even if the process dies mid-write. Nothing records the
 // answer as the route's: no file beside a return says who wrote it, and only
-// placeReturn's locked write does.
+// placeReturn's locked write does. A temporary file a killed process left in
+// the directory is swept first (sweepAsideTemps).
 func keepAside(repoRoot string, aw Await, rr *ReviewRoute, ret string) (string, error) {
 	dir := filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt)))
 	if err := fsutil.EnsureRealDirAll(repoRoot, dir, dirPerm); err != nil {
@@ -1235,6 +1272,7 @@ func keepAside(repoRoot string, aw Await, rr *ReviewRoute, ret string) (string, 
 		return "", fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
+	sweepAsideTemps(root, dir, time.Now())
 	var nonce [8]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return "", fmt.Errorf("naming the answer's temporary file: %w", err)
