@@ -265,13 +265,18 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 				}
 				// A route to a provider that holds a key is the machine's alone
 				// (the ruling AA(b) of 2026-09-29, enforced by oracle.LoadAPI), so
-				// the repository's file is offered only for a keyless one.
-				where := layered.Config.MachineOrigin()
+				// the repository's file is offered only for a keyless one. Even
+				// then a judgement type is turned on only from the person's own
+				// configuration, so both files are offered its shadow spelling
+				// and the bare one is named for the machine's file alone.
+				machine, route := layered.Config.MachineOrigin(), res.Provider+"/"+res.Models[0]
 				if res.KeyHome == oracle.KeyHomeNone {
-					where = layered.Config.RepoOrigin() + " or " + where
+					line(fmt.Sprintf("point a role at it with oracle.roles.<agent> = %q in %s or %s", route, layered.Config.RepoOrigin(), machine))
+					line(fmt.Sprintf("put a judgement type in shadow on it with oracle.judgements.<type> = %q in either file; the bare %q turns the type on only from %s",
+						"shadow:"+route, route, machine))
+				} else {
+					line(fmt.Sprintf("point a role or a judgement type at it with oracle.roles.<agent> or oracle.judgements.<type> = %q in %s", route, machine))
 				}
-				line(fmt.Sprintf("point a role or a judgement type at it with oracle.roles.<agent> or oracle.judgements.<type> = %q in %s",
-					res.Provider+"/"+res.Models[0], where))
 				line(dispatchNote + ".")
 			})
 		},
