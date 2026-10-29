@@ -1129,44 +1129,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if info, err := os.Stat(repoAbs); err != nil || !info.IsDir() {
 				return &exitError{Code: 2, Msg: "disembark pack: the <repo> argument is not a directory (it is not repeated here)"}
 			}
-			// Build the source repo's secret scanner and fail closed if its config
-			// is degraded — a pack must not ship secrets under a weakened ruleset.
-			sc, err := scanner.New(repoAbs)
+			scan, err := lifeboatSecretScan(repoAbs)
 			if err != nil {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: %s", scrubPaths(err))}
-			}
-			if bad, reason := sc.Unavailable(); bad {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: secret scanner unavailable, refusing: %s", reason)}
-			}
-			// A lifeboat is written OUT of the repository, as a release is, so the
-			// scanner augmenter the source configured and nobody installed refuses
-			// the pack as it refuses a launch (the 2026-09-25 ruling on
-			// iss-2608291814575788).
-			if gap := sc.AugmenterGap(); gap != "" {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: the scanner augmenter this repository configured is not installed, refusing: %s", gap)}
-			}
-			scan := func(files []lifeboat.PlannedFile) error {
-				hard, first := 0, ""
-				for _, f := range files {
-					for _, fnd := range sc.ScanText(string(f.Content), f.Path) {
-						if fnd.Severity == scanner.SeverityHardFail {
-							hard++
-							if first == "" {
-								first = fmt.Sprintf("%s (%s)", f.Path, fnd.Kind)
-							}
-						}
-					}
-				}
-				// The augmenter runs inside ScanText, and a run that failed
-				// degrades the scanner during the walk: refuse, never read the
-				// shorter list as clean.
-				if bad, reason := sc.Unavailable(); bad {
-					return fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
-				}
-				if hard > 0 {
-					return fmt.Errorf("%d hard-fail secret(s) in planned content (first: %s); fix at source, not in the lifeboat", hard, first)
-				}
-				return nil
+				return &exitError{Code: 2, Msg: "disembark pack: " + scrubPaths(err)}
 			}
 			res, err := lifeboat.Pack(repoAbs, args[1], scan, ignoredScope(packIgnored)...)
 			if err != nil {
@@ -1206,7 +1171,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			// a drop is reported honestly, not a failure. Only structural faults
 			// (not a lifeboat, unreadable graveyard, unparseable/oversize payload)
 			// return an error and exit 2.
-			res, err := lifeboat.IngestLessons(dirAbs, raw)
+			res, err := lifeboat.IngestLessons(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark graveyard: " + scrubPaths(err)}
 			}
@@ -1246,7 +1211,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
 			}
-			res, err := lifeboat.SynthesizePrinciples(dirAbs, raw)
+			res, err := lifeboat.SynthesizePrinciples(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
 			}
@@ -1284,7 +1249,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			// refusal (ErrPressReleaseUncited): exit 2, the derived file left untouched
 			// (design §5 exception). It flows through the generic exit-2 wrapping like
 			// every other structural fault.
-			res, err := lifeboat.ComposePressRelease(dirAbs, raw)
+			res, err := lifeboat.ComposePressRelease(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark press-release: " + scrubPaths(err)}
 			}
@@ -1325,7 +1290,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			}
 			// The source repo's content is never read (the core gates it as a real dir
 			// only); a manifest failure is a MAJOR_RETHINK verdict input, exit 0.
-			res, err := lifeboat.ReviewLifeboat(dirAbs, args[1], raw)
+			res, err := lifeboat.ReviewLifeboat(dirAbs, args[1], raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
 			}
@@ -1352,6 +1317,72 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 	disembarkCmd.AddCommand(pressReleaseCmd)
 	disembarkCmd.AddCommand(reviewCmd)
 	return disembarkCmd
+}
+
+// lifeboatSecretScan builds the secret scan every verb that writes into a
+// lifeboat hands the core: pack over its planned bytes, and graveyard,
+// principles, press-release and review over the host payload they would write.
+// It builds the scanner over root and fails closed when the scanner's config is
+// degraded, since a lifeboat must not be written under a weakened ruleset. A
+// lifeboat is written OUT of the repository, as a release is, so a scanner
+// augmenter root configured and nobody installed refuses as it refuses a launch
+// (the 2026-09-25 ruling on iss-2608291814575788). The returned scan refuses on
+// any hard-fail finding: refuse, never redact.
+func lifeboatSecretScan(root string) (lifeboat.SecretScan, error) {
+	sc, err := scanner.New(root)
+	if err != nil {
+		return nil, err
+	}
+	if bad, reason := sc.Unavailable(); bad {
+		return nil, fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
+	}
+	if gap := sc.AugmenterGap(); gap != "" {
+		return nil, fmt.Errorf("the scanner augmenter this repository configured is not installed, refusing: %s", gap)
+	}
+	return func(files []lifeboat.PlannedFile) error {
+		hard, first := 0, ""
+		for _, f := range files {
+			for _, fnd := range sc.ScanText(string(f.Content), f.Path) {
+				if fnd.Severity == scanner.SeverityHardFail {
+					hard++
+					if first == "" {
+						first = fmt.Sprintf("%s (%s)", f.Path, fnd.Kind)
+					}
+				}
+			}
+		}
+		// The augmenter runs inside ScanText, and a run that failed
+		// degrades the scanner during the walk: refuse, never read the
+		// shorter list as clean.
+		if bad, reason := sc.Unavailable(); bad {
+			return fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
+		}
+		if hard > 0 {
+			return fmt.Errorf("%d hard-fail secret(s) in planned content (first: %s); fix at source, not in the lifeboat", hard, first)
+		}
+		return nil
+	}, nil
+}
+
+// deferredLifeboatSecretScan is lifeboatSecretScan over the lifeboat directory,
+// built when the core first scans rather than up front, so the core's own
+// lifeboat gate (not a directory, not a lifeboat) still answers first for an
+// operand that is not one, and the scanner is built over a directory proved to
+// be a lifeboat. A lifeboat carries no scanner settings of its own, so abcd's
+// built-in rules judge: a source repository's extra patterns and augmenter
+// apply at pack, where that repository is read. A call that would write
+// nothing has nothing to scan, and no scanner is built for it.
+func deferredLifeboatSecretScan(dirAbs string) lifeboat.SecretScan {
+	return func(files []lifeboat.PlannedFile) error {
+		if len(files) == 0 {
+			return nil
+		}
+		scan, err := lifeboatSecretScan(dirAbs)
+		if err != nil {
+			return err
+		}
+		return scan(files)
+	}
 }
 
 // newEmbarkCommand builds the operator `embark` sub-tree — the write half of the
@@ -2028,6 +2059,9 @@ envelope carries it as system_message.`,
 			// name the first prompt sets, and writes nothing to stdout
 			// (hook_session_name.go).
 			startSessionName(cmd, in, cwd)
+			// Which checkout this session works in, for the record verbs' count
+			// of sessions sharing a main checkout (hook_occupancy.go).
+			noteOccupancy(cmd, in, cwd)
 			// The away block, on every source, compaction included, and the
 			// session's start copy noted (spc-2610180914469489 step 2). The
 			// block is the home store's own words, never a tracked file's.
@@ -2692,6 +2726,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if len(args) > 0 {
+				if err := refuseSharedMainCheckout(cmd, "abcd intent", repoRoot); err != nil {
+					return err
+				}
+			}
 			// Quoted text (no sub-verb) files a new draft — the symmetric create path
 			// (itd-46). Bare invocation stays read-only status + help (never mutates).
 			if len(args) > 0 {
@@ -2796,6 +2835,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent plan", repoRoot); err != nil {
+				return err
+			}
 			// The mode belongs to the SPEC this mints; the intent's own stamp was
 			// written when its draft was created and is never rewritten.
 			mode, err := resolveProductionMode(repoRoot, planProductionMode)
@@ -2873,6 +2915,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
+			}
+			if strings.TrimSpace(readyGrounds) != "" {
+				if err := refuseSharedMainCheckout(cmd, "abcd intent ready", repoRoot); err != nil {
+					return err
+				}
 			}
 			var recorded *intent.GroundsResult
 			if strings.TrimSpace(readyGrounds) != "" {
@@ -2964,6 +3011,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent link", repoRoot); err != nil {
+				return err
+			}
 			res, err := intent.Link(repoRoot, args[0], args[1])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent link: " + err.Error()}
@@ -2984,6 +3034,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent edge", repoRoot); err != nil {
 				return err
 			}
 			res, err := intent.Edge(repoRoot, intent.EdgeRequest{
@@ -3020,6 +3073,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent hold", repoRoot); err != nil {
+				return err
+			}
 			if strings.TrimSpace(holdReason) == "" {
 				return &exitError{Code: 2, Msg: "abcd intent hold: --reason is required — a hold with no reason is a state nobody can lift on its merits (nothing written)"}
 			}
@@ -3047,6 +3103,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent unhold", repoRoot); err != nil {
+				return err
+			}
 			res, err := intent.Unhold(repoRoot, args[0])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent unhold: " + err.Error()}
@@ -3067,6 +3126,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent target", repoRoot); err != nil {
 				return err
 			}
 			res, err := intent.Target(repoRoot, args[0], args[1])
@@ -3149,6 +3211,9 @@ func newIntentReclassifyCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent reclassify", repoRoot); err != nil {
+				return err
+			}
 			res, err := intent.Reclassify(repoRoot, args[0], intent.ReclassifyRequest{Kind: kind, Bundle: bundle, By: by, Reason: reason})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent reclassify: " + err.Error()}
@@ -3197,6 +3262,11 @@ func newIntentConditionCommand(asJSON *bool) *cobra.Command {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
+			}
+			if len(args) > 1 {
+				if err := refuseSharedMainCheckout(cmd, "abcd intent condition", repoRoot); err != nil {
+					return err
+				}
 			}
 			if len(args) == 1 {
 				for _, f := range []string{"disposition", "occasioned-by", "grounds", "narrowing"} {
@@ -3391,6 +3461,9 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent audit", repoRoot); err != nil {
+				return err
+			}
 			route, err := auditRoute.resolve(cmd, "abcd intent audit", auditAgent)
 			if err != nil {
 				return err
@@ -3445,6 +3518,9 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent audit ingest", repoRoot); err != nil {
 				return err
 			}
 			if verdictJSON == "" {
@@ -3555,8 +3631,8 @@ func runOwedReviews(cmd *cobra.Command, asJSON bool) error {
 		return &exitError{Code: 2, Msg: "abcd intent audit: " + err.Error()}
 	}
 	return render(cmd.OutOrStdout(), asJSON, l, func(w io.Writer) {
-		fmt.Fprintf(w, "abcd intent audit — fidelity reviews owed %d · dead-lettered %d · ingested %d (of %d shipped)\n",
-			l.Owed, l.DeadLettered, l.Ingested, len(l.Entries))
+		fmt.Fprintf(w, "abcd intent audit — fidelity reviews owed %d · dead-lettered %d · ingested %d · hand-audited %d (of %d shipped)\n",
+			l.Owed, l.DeadLettered, l.Ingested, l.HandAudited, len(l.Entries))
 		fmt.Fprintln(w, "owed:")
 		if l.Owed == 0 {
 			fmt.Fprintln(w, "  none")
@@ -3762,6 +3838,9 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := specStoreRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd spec close", repoRoot); err != nil {
 				return err
 			}
 			// A production mode stamps the MINTED remainder and nothing else, so
@@ -4033,7 +4112,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.Flags().BoolVar(&identityMode, "identity", false,
 		"check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)")
 	ahoyCmd.Flags().BoolVar(&remoteMode, "remote", false,
-		"report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change")
+		"audit this repository's GitHub settings against abcd's baseline, one line per setting, and say what the remote apply sub-verb would change")
 	ahoyCmd.Flags().BoolVar(&providersMode, "providers", false,
 		"explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live")
 	ahoyCmd.MarkFlagsMutuallyExclusive("dry-run", "identity", "remote", "providers")
@@ -4490,9 +4569,10 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 			// A change that did not happen exits non-zero. `aborted` is on this list
 			// deliberately: a non-interactive run without --yes reads EOF, declines,
 			// and would otherwise print "aborted" and exit 0 — which to a script is
-			// indistinguishable from a write that landed. `opted_out` is the one
-			// non-change that exits clean, because leaving the repo alone IS what the
-			// repo asked for. The reason is on stdout above either way. A refusal
+			// indistinguishable from a write that landed. A run with nothing to
+			// change exits clean, settings the repo keeps included, because leaving
+			// them alone IS what the repo asked for. The reason is on stdout above
+			// either way. A refusal
 			// exits 2, the code every other verb and `ahoy install` give one; an
 			// abort keeps exit 1, where scripts already read it
 			// (iss-2610031915386832).
@@ -4542,8 +4622,13 @@ func renderRemoteResult(w io.Writer, verb string, res ahoy.RemoteResult) {
 	fmt.Fprintf(w, "  observed: secret scanning %s, push protection %s\n",
 		termsafe.Sanitize(remoteStatusWord(res.Observed.SecretScanning)),
 		termsafe.Sanitize(remoteStatusWord(res.Observed.PushProtection)))
-	for _, c := range res.Changes {
-		fmt.Fprintf(w, "  change:   %s\n", termsafe.Sanitize(c))
+	renderSettingsAudit(w, res.Audit)
+	// The read's changes are the audit's differences, already printed above
+	// one per setting; an apply's are what it changed.
+	if res.Audit == nil || res.Status != "pending" {
+		for _, c := range res.Changes {
+			fmt.Fprintf(w, "  change:   %s\n", termsafe.Sanitize(c))
+		}
 	}
 	for _, p := range res.Writes {
 		fmt.Fprintf(w, "  wrote:    %s\n", termsafe.Sanitize(p))
@@ -4552,6 +4637,43 @@ func renderRemoteResult(w io.Writer, verb string, res ahoy.RemoteResult) {
 	// failure, so the reason is printed whatever the status.
 	for _, n := range res.Notes {
 		fmt.Fprintf(w, "  note:     %s\n", termsafe.Sanitize(n))
+	}
+}
+
+// renderSettingsAudit prints the settings audit (itd-2610290746077716): the
+// visibility and plan, the checks the baseline requires, then one
+// `setting: current -> target [state] note` line per setting not at its
+// target, and the rest as one count. Every value is sanitised: it is GitHub's
+// answer or the tree's, not abcd's own words.
+func renderSettingsAudit(w io.Writer, a *ahoy.SettingsAudit) {
+	if a == nil {
+		return
+	}
+	plan := a.Plan
+	if plan == "" {
+		plan = "unknown"
+	}
+	fmt.Fprintf(w, "  visibility: %s (declared %s), plan %s\n",
+		termsafe.Sanitize(remoteStatusWord(a.Visibility)), termsafe.Sanitize(remoteStatusWord(a.DeclaredVisibility)),
+		termsafe.Sanitize(plan))
+	if len(a.RequiredChecks) > 0 {
+		fmt.Fprintf(w, "  required checks: %s\n", termsafe.Sanitize(strings.Join(a.RequiredChecks, ", ")))
+	}
+	ok := 0
+	for _, f := range a.Findings {
+		if f.State == "ok" {
+			ok++
+			continue
+		}
+		line := fmt.Sprintf("  setting:  %s: %s -> %s [%s]", f.Setting, f.Current, f.Target, f.State)
+		if f.Note != "" {
+			line += " " + f.Note
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(line))
+	}
+	fmt.Fprintf(w, "  baseline: %d settings at their target\n", ok)
+	for _, n := range a.Notes {
+		fmt.Fprintf(w, "  workflow: %s\n", termsafe.Sanitize(n))
 	}
 }
 
@@ -5170,6 +5292,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if len(args) > 0 {
+				if err := refuseSharedMainCheckout(cmd, "abcd capture", repoRoot); err != nil {
+					return err
+				}
+			}
 			// Bare invocation: read-only status render (never mutates).
 			if len(args) == 0 {
 				st, err := capture.Status(capture.StatusRequest{RepoRoot: repoRoot})
@@ -5513,6 +5640,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture resolve", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Resolve(capture.ResolveRequest{
 				RepoRoot: repoRoot, ID: args[0], Resolution: args[1], Impact: resolveImpact,
 				ByIntent: resolveByIntent, BySpec: resolveBySpec, ByCommit: resolveByCommit,
@@ -5573,6 +5703,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture link", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Link(capture.LinkRequest{
 				RepoRoot: repoRoot, ID: args[0],
 				BlockedBy: splitIDList(linkBlockedBy), Unblock: splitIDList(linkUnblock),
@@ -5607,6 +5740,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture promote", repoRoot); err != nil {
 				return err
 			}
 			// The grounds argument belongs to the ISSUE route, which has no
@@ -5682,6 +5818,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if migrateApply {
+				if err := refuseSharedMainCheckout(cmd, "abcd capture migrate --apply", repoRoot); err != nil {
+					return err
+				}
+			}
 			res, err := capture.Migrate(capture.MigrateRequest{RepoRoot: repoRoot, Apply: migrateApply})
 			// Migrate takes no input it could refuse, so what fails here is a
 			// fault and exits 1, as every ledger verb's fault does.
@@ -5728,6 +5869,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture disposition", repoRoot); err != nil {
 				return err
 			}
 			recurs, err := parseRecurs(dispRecurs)
@@ -5786,6 +5930,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture admit", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Admit(capture.AdmitRequest{RepoRoot: repoRoot, Item: args[0], Grounds: admitGrounds})
 			if err != nil {
 				return captureRefusal("admit", err)
@@ -5829,6 +5976,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture surprise", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Surprise(capture.SurpriseRequest{RepoRoot: repoRoot, OccasionedBy: surpriseOccasion, Text: args[0]})
 			if err != nil {
 				return captureRefusal("surprise", err)
@@ -5867,6 +6017,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture reframe", repoRoot); err != nil {
 				return err
 			}
 			res, err := capture.Reframe(capture.ReframeRequest{
@@ -5913,6 +6066,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture wontfix", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Wontfix(capture.WontfixRequest{
 				RepoRoot: repoRoot, ID: args[0], Reason: args[1], Grounds: wontfixGrounds,
 				ProductionMode: wontfixProductionMode, Duplicates: splitIDList(wontfixDuplicates),
@@ -5952,6 +6108,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture defer", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Defer(capture.DeferRequest{
 				RepoRoot: repoRoot, ID: args[0], After: deferAfter, Reason: deferReason,
 			})
@@ -5980,6 +6139,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture remedy", repoRoot); err != nil {
 				return err
 			}
 			res, err := capture.SetRemedy(capture.RemedyRequest{

@@ -31,7 +31,7 @@ import (
 // SchemaVersion stamps the verdict payload. It is versioned independently of
 // every other abcd artifact, so a future breaking change to the shape is
 // detectable rather than silently misread by a host composing against the old one.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // MaxPayloadBytes caps the untrusted verdict document, mirroring the synthesis and
 // release-ingest ceilings. It is exported so a front door can bound its READ at
@@ -85,6 +85,12 @@ type Store struct {
 	Visibility Visibility
 	RootSHA    string
 	Home       string
+	// SourcesDir is the sources corpus a `source:<key>` citation is resolved
+	// against (internal/core/source). It is passed in rather than found, so a
+	// test never reads the machine's own corpus; empty, or a directory where no
+	// corpus exists, means there is nothing to resolve against, and a well-formed
+	// key is accepted on its shape alone.
+	SourcesDir string
 }
 
 const (
@@ -92,8 +98,22 @@ const (
 	maxClaims = 200
 	// maxHits caps the record grill's hits.
 	maxHits = 200
-	// maxKillAttempts caps the adversarial leg's attempts.
+	// maxSearches caps the record grill's search record.
+	maxSearches = 200
+	// maxSearchTerms and maxSearchPlaces cap one search's terms and places.
+	maxSearchTerms  = 50
+	maxSearchPlaces = 50
+	// maxKillAttempts caps one reviewer's attempts.
 	maxKillAttempts = 200
+	// maxReviewers caps the adversarial leg's reviewers.
+	maxReviewers = 16
+	// maxReviewerSources caps the sources one reviewer names.
+	maxReviewerSources = 50
+	// maxOriginSources caps the sources the idea came from.
+	maxOriginSources = 50
+	// maxLabelBytes caps a reviewer's label and a ruling's "by", which name a
+	// reviewer or a person rather than say anything.
+	maxLabelBytes = 128
 	// maxRejected caps the rejected-alternatives list.
 	maxRejected = 200
 	// maxProseBytes caps one prose field after cleaning (mirrors the synthesis
@@ -101,8 +121,8 @@ const (
 	maxProseBytes = 4096
 	// maxIdeaBytes caps the idea text — a longer-form field than a single claim.
 	maxIdeaBytes = 8192
-	// maxSourceBytes caps a claim's primary-source reference (a URL or a document
-	// citation, never a document).
+	// maxSourceBytes caps a source reference (an address, a filed source key or a
+	// record id, never a document), and one search term or place.
 	maxSourceBytes = 1024
 	// maxRecordIDBytes bounds a cited id BEFORE it is matched or reported. The id
 	// grammar admits unbounded digits, so without a cap "itd-" followed by a
@@ -171,8 +191,13 @@ var legOrder = []LegKind{LegResearch, LegRecordGrill, LegAdversarialReview}
 type ClaimStatus string
 
 const (
-	// ClaimVerified: the primary source supports the claim.
+	// ClaimVerified: the primary source supports the claim, and it is not one of
+	// the sources the idea came from.
 	ClaimVerified ClaimStatus = "verified"
+	// ClaimQuoted: the claim was checked against the idea's own source and
+	// found to say what the idea says it says. That proves the quotation, not
+	// the claim, so it is never verified.
+	ClaimQuoted ClaimStatus = "quoted"
 	// ClaimFalsified: the primary source contradicts it. Three of these killed an
 	// idea in the proven manual run.
 	ClaimFalsified ClaimStatus = "falsified"
@@ -181,7 +206,7 @@ const (
 	ClaimUnverifiable ClaimStatus = "unverifiable"
 )
 
-var claimStatusEnum = map[ClaimStatus]bool{ClaimVerified: true, ClaimFalsified: true, ClaimUnverifiable: true}
+var claimStatusEnum = map[ClaimStatus]bool{ClaimVerified: true, ClaimQuoted: true, ClaimFalsified: true, ClaimUnverifiable: true}
 
 // Relation is how an existing record entry bears on the idea.
 type Relation string
@@ -244,10 +269,45 @@ type KillAttempt struct {
 // field is a refusal — a payload that smuggles grill hits into the research leg is
 // not a leg abcd knows how to read.
 type Leg struct {
-	Kind         LegKind       `json:"kind"`
-	Claims       []Claim       `json:"claims,omitempty"`
-	Hits         []GrillHit    `json:"hits,omitempty"`
-	KillAttempts []KillAttempt `json:"kill_attempts,omitempty"`
+	Kind     LegKind    `json:"kind"`
+	Claims   []Claim    `json:"claims,omitempty"`
+	Hits     []GrillHit `json:"hits,omitempty"`
+	Searches []Search   `json:"searches,omitempty"`
+	// Reviewers and Ruling are the adversarial leg's evidence. Kill attempts
+	// live under the reviewer that made them, never on the leg itself, so a
+	// record of two reviewers cannot blur into one.
+	Reviewers []Reviewer `json:"reviewers,omitempty"`
+	Ruling    *Ruling    `json:"ruling,omitempty"`
+}
+
+// Search is one search the record grill ran: the terms it searched for, the
+// places it searched, and how many entries came back. It is what lets an empty
+// grill be told from a broken one — "searched these places for these terms and
+// found nothing" is a finding, and a grill that cannot say so recorded nothing.
+// Count is a pointer so an omitted count is refused rather than read as zero.
+type Search struct {
+	Terms  []string `json:"terms"`
+	Places []string `json:"places"`
+	Count  *int     `json:"count"`
+}
+
+// Reviewer is one adversarial evaluator's whole contribution, kept under its
+// own label: what it tried, what it concluded, and what it consulted.
+type Reviewer struct {
+	Label        string        `json:"label"`
+	KillAttempts []KillAttempt `json:"kill_attempts"`
+	Verdict      Verdict       `json:"verdict"`
+	Sources      []string      `json:"sources"`
+}
+
+// Ruling settles a split between reviewers: who ruled, what they ruled, and
+// why. It is required exactly when the reviewers' verdicts differ, because a
+// record that shows a split and no ruling leaves a later reader to guess which
+// reviewer the verdict followed.
+type Ruling struct {
+	By      string  `json:"by"`
+	Verdict Verdict `json:"verdict"`
+	Reason  string  `json:"reason"`
 }
 
 // RejectedAlternative is one option considered and turned down, with the reason.
@@ -267,35 +327,39 @@ type Payload struct {
 	PromptVersion string `json:"prompt_version"`
 	// Idea is the idea as captured, in the words it entered the gauntlet with.
 	Idea string `json:"idea"`
+	// OriginSources are the sources the idea came from. The list is REQUIRED
+	// and may be empty: a claim checked only against one of these is quoted,
+	// not verified, and a verdict that left them out would skip that check by
+	// omission. An empty list says the idea has no source behind it.
+	OriginSources []string `json:"origin_sources"`
 	// Legs are the three legs, IN ORDER. An array rather than three named fields
 	// precisely so the order is a property of the document the binary can check.
 	Legs []Leg `json:"legs"`
 	// Verdict is the admission outcome.
 	Verdict Verdict `json:"verdict"`
-	// Reframing is the shape in which a reframed idea survives, in the words a
-	// graduation carries instead of the idea's own. A reframed verdict must
-	// carry one, and any other verdict must not: without it the reframing could
-	// only be smuggled in as a kill attempt, where neither a later reader nor a
-	// graduating intent can find it by its role (iss-2610262154123870).
-	Reframing string `json:"reframing,omitempty"`
 	// RejectedAlternatives are the options turned down on the way to the verdict.
 	RejectedAlternatives []RejectedAlternative `json:"rejected_alternatives"`
 	// NoRejectedAlternatives is the EXPLICIT empty marker. An empty list is
 	// admissible only with this set; omission is not, and setting it beside a
 	// populated list is a contradiction the document is refused for.
 	NoRejectedAlternatives bool `json:"no_rejected_alternatives,omitempty"`
+	// Reframing is the shape of the idea that survives a reframed verdict. It is
+	// required for that verdict and refused beside any other, so what graduates
+	// from a reframed idea is a field of the record, not a reading of its legs.
+	Reframing string `json:"reframing,omitempty"`
 }
 
 // ClaimTally counts the research leg's outcomes, so a reader of the result knows
 // what the claims table found without re-reading the record.
 type ClaimTally struct {
 	Verified     int `json:"verified"`
+	Quoted       int `json:"quoted"`
 	Falsified    int `json:"falsified"`
 	Unverifiable int `json:"unverifiable"`
 }
 
 // Total reports how many claims the research leg carried.
-func (t ClaimTally) Total() int { return t.Verified + t.Falsified + t.Unverifiable }
+func (t ClaimTally) Total() int { return t.Verified + t.Quoted + t.Falsified + t.Unverifiable }
 
 // Result is the transport-agnostic outcome of `ideate record`. It is returned only
 // when the record was written; every refusal is an error, so a caller holding a
@@ -327,7 +391,11 @@ type Result struct {
 	// them proved to resolve — the citation gate's proof, so a reviewer can check
 	// the record without re-running the resolution.
 	CitedRecords []string `json:"cited_records"`
-	// KillAttempts counts the adversarial leg's attempts.
+	// Searches counts the record grill's searches.
+	Searches int `json:"searches"`
+	// Reviewers counts the adversarial leg's reviewers.
+	Reviewers int `json:"reviewers"`
+	// KillAttempts counts the adversarial leg's attempts, across every reviewer.
 	KillAttempts int `json:"kill_attempts"`
 	// RejectedAlternatives counts the recorded alternatives.
 	RejectedAlternatives int `json:"rejected_alternatives"`

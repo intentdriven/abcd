@@ -42,14 +42,20 @@ never decides whether an idea is any good.
 
 | # | Leg | What it produces |
 |---|---|---|
-| 1 | Primary-source research | A claims table: each load-bearing claim, the **primary** source it was checked against, and the finding (`verified` / `falsified` / `unverifiable`) |
-| 2 | Record grill | Hits on the existing record, each cited by a record id the binary proves resolves, carrying a relation (`covered` / `contradicted` / `superseded`) |
-| 3 | Adversarial review | Kill attempts, each with an outcome (`survived` / `partial` / `fatal`) |
+| 1 | Primary-source research | A claims table: each load-bearing claim, the **primary** source it was checked against (an `https://` URL, a filed `source:<key>`, or a record id), and the finding (`verified` / `quoted` / `falsified` / `unverifiable`) |
+| 2 | Record grill | Hits on the existing record, each cited by a record id the binary proves resolves, carrying a relation (`covered` / `contradicted` / `superseded`), and the searches run (terms, places, and how many results came back) |
+| 3 | Adversarial review | One section per reviewer, under its own label: its kill attempts, each with an outcome (`survived` / `partial` / `fatal`), its own verdict, and the sources it consulted; where the reviewers' verdicts differ, the ruling that settled the split (who ruled, the verdict, the reason) |
 
 The order is validated rather than assumed: the legs travel as an ordered array,
 and a payload whose legs are missing, reordered, or duplicated is refused. Each
 leg changes what the next one is looking at, so running them out of order
 produces a different and weaker result.
+
+The verdict also says where the idea came from (`origin_sources`). A claim
+checked only against one of those sources is `quoted`, not `verified`: an idea
+agreeing with its own source is not evidence. A `reframed` verdict carries the
+idea's surviving shape in `reframing`, because that, not the original wording,
+is what may graduate.
 
 Only records carry citable ids, and leg 2's citations are held to that: the
 brief, the principles, the research notes and the lines of a repository's
@@ -63,7 +69,9 @@ an artefact whose provenance it does not know. That is the
 evaluator-outside-the-loop principle applied to ideas, and it is the one measured
 debiasing effect the protocol rests on. The binary cannot observe how an agent was
 run, so this obligation lives in the command page's orchestration script, which
-instructs the host to strip authorship and prior-leg framing before the hand-off.
+instructs the host to strip authorship and prior-leg framing before the hand-off,
+and to give each reviewer exactly one idea in its context: a reviewer that has
+already judged another idea compares the two instead of attacking this one.
 
 ## Behaviour
 
@@ -129,25 +137,34 @@ The refusals a caller actually meets fall into six groups, each protecting
 something a later reader depends on:
 
 - **The payload cannot be tied to a definition**: no `schema_version`, one this
-  build does not support, or no semver `prompt_version`. A verdict is the output
+  build does not support, or no semver `prompt_version`. A version-1 payload is
+  refused with a message naming version 2, never upgraded: version 1 had nowhere
+  to put a search, a second reviewer or a reframing. A verdict is the output
   of a named prompt at a named version, and an unstamped payload cannot be traced
   back to what produced it. A key the contract does not declare refuses the
   document too; the refusal names it redacted through the canonical scanner, and
   describes it when the scanner cannot be trusted.
-- **The evidence does not hold up**: a cited record id that does not resolve, a
-  cited value that is not a record id at all, a claim naming no primary source, an
-  out-of-enum verdict or outcome. Every closed set is closed, and an unregistered
+- **The evidence does not hold up**: a record id that does not resolve, written
+  outside a web address in a claim or its primary source, a grill note, a kill
+  attempt, a reviewer's label or sources, the ruling, a rejected alternative, an
+  origin source or the reframing (the refusal names where it was written; the
+  grill's search terms and places are not checked, because a searched-for id
+  that names nothing is the finding), a cited value that is not a record id
+  at all, a claim naming no primary source or one of no known shape, a
+  `source:` key the sources corpus does not carry (where a corpus exists), a
+  grill with no hits that records no searches, a `verified` claim whose source is
+  one of the idea's own origin sources, an out-of-enum verdict or outcome. Every closed set is closed, and an unregistered
   value refuses the document rather than being coerced. The refusal names the
   field and describes the value by its length, never quoting it: closed-set
   members are not redacted on the way in, so a quote would carry whatever was
   pasted there into the terminal and the transcript.
 - **The record would mislead a later reader**: an empty `rejected_alternatives`
   list with no explicit marker saying nothing was weighed, because silence and
-  "nothing was weighed" read identically; a reframed verdict with no
-  `reframing`, or a `reframing` on any other verdict, because a graduation
-  carries the reframing and must find it by its role, never inside a kill
-  attempt (iss-2610262154123870); or a verdict record that already exists
-  for this slug and date, because overwriting erases a recorded reason.
+  "nothing was weighed" read identically; a split between reviewers with no
+  ruling, a `reframed` verdict with no reframing, or a reframing beside any
+  other verdict, because each leaves the reader to guess what was decided; or a
+  verdict record that already exists for this slug and date, because
+  overwriting erases a recorded reason.
 - **The store is not answered**: neither answer, or both. The product
   thinker's answer decides who can ever read the verdict, so the verb never
   picks one.
@@ -179,8 +196,9 @@ the three host legs have already been paid for. The create is exclusive, which i
 the no-overwrite guarantee. The pointer is a new file of its own, so there is
 no shared file to read, modify and write, and no lock beyond the decision
 writer's own mint lock. If the decision cannot be recorded after the verdict
-landed, the verdict is removed again, so a run never leaves a verdict nothing
-points at.
+landed, the verdict is removed again, so a run does not leave a verdict nothing
+points at; if that removal fails too, the refusal says so and names the file to
+remove by hand.
 
 ## References
 

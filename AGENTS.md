@@ -188,13 +188,12 @@ since the last release is unknown to them. The failure is not always a
 refusal. `launch ship` refuses on its surface guard, loudly and correctly, but
 `changelog --json` returned an empty cut against a tree holding 181 shipped
 records, and `capture` would have written records through a schema the record
-gates no longer accept — a plausible wrong answer, not an error. The script
-builds this tree and runs it, so exit 2 and exit 3 reach you as themselves;
-`go run ./cmd/abcd` turns every nonzero exit into 1. The plugin command pages
-document a resolution ladder that reaches the plugin-root binary
-first and falls through to `go run` only when nothing earlier resolves; in this
-checkout the first rung exists and answers, so the fallback written for exactly
-this case is never reached by following the ladder literally
+gates no longer accept — a plausible wrong answer, not an error.
+`scripts/abcd` runs this tree's build and keeps exits 2 and 3, which `go run`
+turns into 1. The plugin command pages document a resolution ladder that
+reaches the plugin-root binary first and falls through to `go run` only when
+nothing earlier resolves; here the first rung answers, so the fallback written
+for this case is never reached by following the ladder literally
 (iss-2610070547057816 holds the surface half). The loader's `DOGFOODING` domain
 in `.abcd/rules.json` injects this rule on a prompt that names `abcd` or any of
 its top-level verbs (the `Available Commands` list of `scripts/abcd --help`).
@@ -305,6 +304,12 @@ with `*CONCURRENCY` to force it).
 - **The checkout is the unit of isolation, not the branch.** A second
   concurrent agent session works in its own `git worktree`: a branch switch
   swaps the working tree, HEAD and index under whoever else is using them.
+  The record writers enforce it: every write through `capture`, `intent`,
+  `decide` and `spec close`, and the index generator (`go generate
+  ./internal/surface/cli`), refuses (exit 3 for a verb) in a main checkout two
+  or more live sessions started in, and names the worktree store; the guard
+  hook denies the host's own file tools a write there outside
+  `.abcd/.work.local/`.
 - **That worktree goes in the machine-scoped store, and nowhere else:**
   `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, keyed on the full object name
   of the repository's root commit. Never beside the checkout, in the directory

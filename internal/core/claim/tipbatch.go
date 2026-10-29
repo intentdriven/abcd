@@ -117,8 +117,29 @@ func batchedTipBodies(root string, refs []string, budget int) map[string]tipBody
 			shas = append(shas, f[1])
 		}
 	}
+	bodies := commitBodies(root, shas, budget)
+	out := make(map[string]tipBody, len(bodies))
+	for ref, sha := range commitOf {
+		if b, ok := bodies[sha]; ok {
+			out[ref] = tipBody{name: sha, body: b}
+		}
+	}
+	return out
+}
+
+// commitBodies reads, for each of shas (full object names, each once) that
+// names a commit within the object bound, its object as stored, in two
+// commands: the commits' types and sizes from their headers (`cat-file
+// --batch-check`), then their bodies (`cat-file --batch`), each capped. A
+// commit it reads no body for is left out, as is one past budget; a command
+// that fails leaves out every one it would have read.
+func commitBodies(root string, shas []string, budget int) map[string]string {
 	if len(shas) == 0 {
 		return nil
+	}
+	inBatch := make(map[string]bool, len(shas))
+	for _, s := range shas {
+		inBatch[s] = true
 	}
 	ctx := context.Background()
 	check, err := storedGitInput(ctx, root, strings.Join(shas, "\n")+"\n", len(shas)*(len(shas[0])+32)+64,
@@ -154,14 +175,7 @@ func batchedTipBodies(root string, refs []string, budget int) map[string]tipBody
 	if err != nil {
 		return nil
 	}
-	bodies := splitCommitBatch(string(objs), wants)
-	out := make(map[string]tipBody, len(bodies))
-	for ref, sha := range commitOf {
-		if b, ok := bodies[sha]; ok {
-			out[ref] = tipBody{name: sha, body: b}
-		}
-	}
-	return out
+	return splitCommitBatch(string(objs), wants)
 }
 
 // splitCommitBatch cuts git's `cat-file --batch` answer into bodies, keyed by

@@ -259,6 +259,14 @@ func TestHostAndGuestOverTheWire(t *testing.T) {
 	hosted, _ := host.until("hosted")
 	code := hosted["code"].(string)
 	host.sendBinary([]byte{core.TagUpdate, 1, 2, 3})
+	// The roster naming the host as an author is sent once the update is in
+	// the log; a guest that joined before it could find the log empty.
+	for {
+		r, _ := host.until("roster")
+		if a, _ := r["authors"].(map[string]any); len(a) > 0 {
+			break
+		}
+	}
 
 	guest := f.dial(t, "http://localhost:5173")
 	guest.sendJSON(map[string]string{"type": "join", "code": code, "name": "Gus"})

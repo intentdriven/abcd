@@ -47,19 +47,19 @@ func TestLifeboatReportsNameDirectoriesWithoutTheHomePath(t *testing.T) {
 	check("EmbarkResult.LifeboatDir", res.LifeboatDir, "~/lifeboat")
 	check("EmbarkResult.TargetDir", res.TargetDir, "~/target")
 
-	pr, err := SynthesizePrinciples(lb, nil)
+	pr, err := SynthesizePrinciples(lb, nil, okScan)
 	if err != nil {
 		t.Fatalf("SynthesizePrinciples: %v", err)
 	}
 	check("PrinciplesResult.LifeboatDir", pr.LifeboatDir, "~/lifeboat")
 
-	press, err := ComposePressRelease(lb, nil)
+	press, err := ComposePressRelease(lb, nil, okScan)
 	if err != nil {
 		t.Fatalf("ComposePressRelease: %v", err)
 	}
 	check("PressReleaseResult.LifeboatDir", press.LifeboatDir, "~/lifeboat")
 
-	rev, err := ReviewLifeboat(lb, src, nil)
+	rev, err := ReviewLifeboat(lb, src, nil, okScan)
 	if err != nil {
 		t.Fatalf("ReviewLifeboat: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestLifeboatReportsNameDirectoriesWithoutTheHomePath(t *testing.T) {
 	grave := filepath.Join(home, "graveyard-lifeboat")
 	copyTree(t, stdFixture(t), grave)
 	les, err := IngestLessons(grave, payload(t, Lesson{ID: "les-engine-v1", Lesson: "engine v1 was retired",
-		Confidence: ConfidenceHigh, Evidence: []string{"rev-9f3a1c2d4e5b"}}))
+		Confidence: ConfidenceHigh, Evidence: []string{"rev-9f3a1c2d4e5b"}}), okScan)
 	if err != nil {
 		t.Fatalf("IngestLessons: %v", err)
 	}

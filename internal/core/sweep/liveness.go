@@ -44,6 +44,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // DefaultRecentWindow is how recent a write to a worktree must be to keep it
@@ -715,17 +716,18 @@ func (c lsofCommand) list(ctx context.Context) ([]Process, error) {
 	// newline, say) parseLsof keeps only up to the escape.
 	cmd.Env = []string{"LC_ALL=en_US.UTF-8"}
 	out := &boundedBuffer{limit: c.limit, over: cancel}
-	cmd.Stdout = out
-	// A child lsof leaves holding the pipe cannot keep Wait past the deadline.
+	// lsof's output is read to EOF before it is waited for
+	// (procgroup.RunToEOF), so a list lsof printed is read whole however late
+	// its output closes; a child lsof left holding that output holds the
+	// probe until the deadline, and no later. Once lsof is killed, it is
+	// waited for at most this long to exit.
 	cmd.WaitDelay = time.Second
-	err := cmd.Run()
+	err := procgroup.RunToEOF(ctx, cmd, out, nil)
 	switch {
 	case out.exceeded:
 		return nil, fmt.Errorf("lsof printed more than %s", sizeWords(c.limit))
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return nil, fmt.Errorf("lsof timed out after %s", c.timeout)
-	case errors.Is(err, exec.ErrWaitDelay):
-		return nil, fmt.Errorf("lsof exited but left a process holding its output")
 	case errors.Is(err, fs.ErrNotExist):
 		return nil, fmt.Errorf("lsof is missing at %s", c.path)
 	case err != nil:

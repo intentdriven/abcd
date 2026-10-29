@@ -47,6 +47,9 @@ func runHookSessionEnd(cmd *cobra.Command, _ []string) error {
 		return warn("unreadable SessionEnd payload (%v); capturing nothing", err)
 	}
 	in = parsed
+	// The session no longer works in its checkout: one file remove, so it
+	// fits the hook's short budget (hook_occupancy.go).
+	forgetOccupancy(in)
 	if in.TranscriptPath == "" {
 		return warn("SessionEnd payload carries no transcript_path; capturing nothing")
 	}

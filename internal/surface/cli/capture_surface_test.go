@@ -466,7 +466,7 @@ func TestCaptureEmptyTextNeverWrites(t *testing.T) {
 }
 
 // TestCaptureDerivedSlugNeverCarriesHomePathUsername is the regression for
-// GH #485 (reported by @jogrun): `abcd capture <text>` derived the issue slug
+// GH #485 (reported by a contributor): `abcd capture <text>` derived the issue slug
 // from the RAW text before redaction ran, so a /Users/<name>/… home path in the abcd-audit:allow
 // capture text put the caller's username into the committed issue filename even
 // though the body was redacted. deriveSlug kebab-cased the path first, so nothing

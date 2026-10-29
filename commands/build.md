@@ -643,7 +643,9 @@ A lane's stages run in order:
    until then the lane is waiting for its full check (since the time the wait
    began) while the other lanes carry on; run `make preflight` in the lane's
    worktree, then `step` again; never push, skip a hook or mint a receipt by
-   hand. It opens the pull request through `gh`, with a body built from the
+   hand. Before the push it announces `merging <the lane's record>`
+   (`/abcd:implement` says how) and pushes only once that is on `origin`; a
+   push typed by hand would post no announcement. It opens the pull request through `gh`, with a body built from the
    run's records and passed through the outbound scrub, ending with
    `Assisted-by: abcd:<version>` and then one `Assisted-by:` per model the
    lane's receipts reported, re-reads the body the forge holds and strips a

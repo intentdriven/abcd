@@ -1,7 +1,7 @@
 ---
 name: guard
 description: "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb."
-argument-hint: "[check [--command <command>] | hook | approve --dir <dir>]"
+argument-hint: "[check [--command <command>] | hook | approve --dir <dir> | allow --once --command <line>]"
 block: agents
 user-invocable: false
 ---
@@ -173,11 +173,20 @@ line ends holds the body back until the line after it closes, and its own
 lines are read as commands, as the shell runs them.
 
 The hook judges only what the host hands it, and the plugin's hook manifest
-hands it the shell tool and the question tool and nothing else. A call through
-any other tool never reaches the guard: a file the host's own tools write or
-edit, or a command a tool from another extension runs, is neither checked nor
-warned about. That is the guard's standing scope, not a degradation, and the
-`guard:` line of `abcd ahoy` does not report it.
+hands it the shell tool, the question tool and the host's file-writing tools
+(`Write`, `Edit`, `MultiEdit`, `NotebookEdit`) and nothing else. A file one of
+those tools writes is not held to the registry: it is **denied** when it lands
+in a main checkout two or more live sessions started in, with the refusal the
+record verbs give, naming the worktree store (iss-2610280051498465). The file's
+working tree is found by walking up to its `.git`, with no git subprocess, so a
+linked worktree, a checkout one session or none works in, a path in no checkout,
+and a file in a checkout's own local tier (`.abcd/.work.local/`, which git
+ignores) are written silently. A file call naming no path, a relative path with
+no absolute session directory, or a count that cannot be made, lets the write
+run and warns loudly. A call through any other
+tool never reaches the guard: a command a tool from another extension runs is
+neither checked nor warned about. That is the guard's standing scope, not a
+degradation, and the `guard:` line of `abcd ahoy` does not report it.
 
 A host whose shell tool takes a per-call working directory passes it beside the
 command as `tool_input.workdir`. The adapter resolves it against the session
@@ -397,6 +406,76 @@ without asking the approver, so the protected paths above bound only the shell.
 The abcd binary that answers the prompts is not among the paths it protects.
 Bounding those writes is the OS sandbox for launched agents
 (spc-2610161751056096), not the approver.
+
+## Branch deletes and worktree removals — proved, or refused
+
+In a repository, a delete of a branch or a worktree runs only when the guard can
+prove the target safe (iss-2610241239492159). That covers `git push --delete`
+and a `:<branch>` refspec, `git branch -D` (and `-d` with `--force`) and
+`git worktree remove`. Their registry entries are warnings, and a delete
+proven safe still carries that warning; `check` and `hook` refuse every one
+whose target they cannot prove (`git-delete-unproven`), which outside a git
+checkout is every one.
+
+A target is safe when every check holds, and each check refuses when it cannot
+answer:
+
+- **Merged** into origin's default branch as last fetched: its tip is an
+  ancestor of it, or, for a rebased or squashed branch, its patches are there
+  (the worktree store's own judgement), or a pull request merged at that tip.
+- **No open pull request**, asked of the forge, for a branch on origin. A local
+  `git branch -D` is judged offline against `origin/<default>` as last
+  fetched; only a delete that touches origin asks the network, and a tip origin
+  holds that this checkout has not fetched is refused until it is.
+- **In no worktree**: a branch checked out anywhere is refused.
+- **No live reservation**: an `abcd-reserved/` or `abcd-status/` branch is never
+  deleted by hand (`abcd reserve --sweep --apply` clears the spent ones), and a
+  worktree a live reservation, a running loop or a process holds is refused, as
+  is every worktree removal in a checkout that has never fetched the
+  reservations (`abcd peers` fetches them).
+- **For a worktree, clean**: nothing staged, unstaged, untracked or ignored, not
+  locked, not the main working tree, and on a branch (a detached HEAD is
+  refused).
+
+A line whose targets the guard cannot read (a variable, a glob, a name git
+resolves from its history such as `@{-1}`, a `{}` placeholder or a delete
+`xargs` hands its operands, a `git branch` name starting `refs/`, a `cd` or a
+`GIT_` variable before the delete, an option it does not know) is refused too. A
+pushed delete of a tag or another non-branch ref (`:refs/tags/v1`) is outside
+the proof and keeps its warning. The refusal names the check that failed and
+what settles it: merge the branch, close the pull request, fetch, or remove the
+worktree first.
+
+### `allow` — the person's one-shot way past
+
+When the person decides a refused delete is safe anyway, they run, themselves,
+in their own terminal, `abcd guard allow --once --command '<the exact command>'`.
+That lets the one exact line (byte for byte) through the hook once, within ten
+minutes, and lets past nothing else: a line any other hazard blocks stays
+blocked, and the allow is left unused. The hook admits the line with a note
+saying the person allowed it and when (exit 0, so no second judge re-reads it
+with the allow already used). `guard check` never uses an allow, and
+neither does the approver for a headless agent.
+
+**Never run `allow` yourself.** The guard refuses it when an agent runs it, in
+either spelling (`abcd …`, or `go run ./cmd/abcd …` in a source checkout), and refuses a shell write
+into its store. Tell the person the exact command and why it is safe, and let
+them decide.
+
+The allow is recorded under `~/.abcd.noindex/guard-allow/<root-commit>/`, one
+file per line, and read only when this account owns it and no one else can
+write it or its folders, as the rules loader reads `~/.abcd.noindex/rules.json`.
+It is removed as it is used. The folder's `log.jsonl` records each exact line,
+when it was allowed and when it was used, and never who.
+
+The trust model is a careless agent, not a hostile one, as for the guard's
+other hazards. What it does not cover, plainly: a file tool writing into the
+store is not a shell command, so the shell guard does not see it; `git push
+--prune` and `--mirror`, which delete as a side effect, are not judged here; an
+allow is keyed on the line, not the directory, so a relative worktree path
+allowed in one directory of the repository is honoured from another; and a
+local branch pushed to origin but not yet merged is refused like any other
+unmerged branch.
 
 ## Registry and overrides
 

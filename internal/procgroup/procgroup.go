@@ -1,7 +1,8 @@
 // Package procgroup is the one way abcd bounds a command together with every
 // process it starts: the command leads its own process group, and the bound
 // kills that group through the pid the command's own handle holds, never by a
-// pattern and never another process.
+// pattern and never another process. RunToEOF reads a bounded command's
+// output to EOF before it is waited for.
 package procgroup
 
 import (

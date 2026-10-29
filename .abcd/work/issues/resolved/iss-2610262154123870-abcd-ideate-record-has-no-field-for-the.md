@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ideate/ideate.go"
 remedy: "Add a reframing field to the verdict document, required when verdict is reframed and refused otherwise, render it under its own heading in the record, and have the next line point at it."
-resolution: "abcd ideate record now takes a reframing: a reframed verdict must carry one and any other verdict must not, it is redacted and cleaned like the idea, the record renders it under The reframing after leg 3, the result reports it, and the verb's next line points at that section. The command page and the ideate brief chapter say so."
+resolution: "The version-2 verdict document (#1239, merge a76f80942, a breaking change) takes a reframing: a reframed verdict must carry one and any other verdict must not, it is redacted and cleaned like the idea, and the record renders it under The reframing. This change completes it: the result reports the reframing, the verb's next line and the command page point at that section, and the ideate brief chapter names the refusal of a reframing beside any other verdict."
 impact: breaking
 ---
 

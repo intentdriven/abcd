@@ -200,11 +200,12 @@ func plainWord(w string) bool {
 // that the unknown-word rule must read as the word itself could be: the whole
 // word printed, its dash kept and its name printed, and its text glued to an
 // output that may be empty, and each of those printed through a parameter
-// expansion's default (`${X:-$(echo w)}`). Three spellings are the recorded residuals and are
+// expansion's default (`${X:-$(echo w)}`). Four spellings are the recorded residuals and are
 // not generated: a wholly-substituted word standing where a flag could be, a
-// `+` refspec whose prefix a substitution prints, and an operand an entry names
-// through its arg_values printed whole by a substitution — the last
-// filtered by the caller, which knows the entry.
+// `+` refspec whose prefix a substitution prints, an operand an entry names
+// through its arg_values printed whole by a substitution, and a word glued
+// after an output for an entry that reads its arg_prefixes literally — the
+// last two filtered by the caller, which knows the entry.
 func substitutionsOf(w string) []string {
 	glued := `"$(true)"` + w
 	switch {
@@ -216,8 +217,11 @@ func substitutionsOf(w string) []string {
 			out = append(out, w[:2]+"$(echo "+w[2:]+")")
 		}
 		return out
-	case strings.HasPrefix(w, "+") && len(w) > 1:
-		return []string{"+$(echo " + w[1:] + ")", glued}
+	case (strings.HasPrefix(w, "+") || strings.HasPrefix(w, ":")) && len(w) > 1:
+		// A refspec's leading `+` or `:` is read by its known text, as
+		// argPrefixMatches reads it: a refspec a substitution prints whole is
+		// how an everyday push names its branch.
+		return []string{w[:1] + "$(echo " + w[1:] + ")", glued}
 	default:
 		return []string{"$(echo " + w + ")", "`echo " + w + "`", `"$(echo ` + w + `)"`, glued, "${X:-$(echo " + w + ")}"}
 	}
@@ -260,6 +264,21 @@ func TestEverySubstitutionPositionKeepsTheVerdict(t *testing.T) {
 					// for a word the entry names through one of its readings
 					// (`../..` is `..`) as it does for one it names exactly.
 					subs = []string{`"$(true)"` + w}
+				}
+				if e.Pattern.ArgPrefixesLiteral != nil && *e.Pattern.ArgPrefixesLiteral && argPrefixMatchesAny(e.Pattern.ArgPrefixes, w) {
+					// The arg_prefixes_literal residual: the entry reads its
+					// prefix only as typed, before any substitution, so a
+					// word glued after an output that may be empty is the
+					// spelling it lets through by design (`"$(git branch
+					// --show-current)":main` is a push, not a delete). Every
+					// other substitution keeps the verdict.
+					kept := subs[:0:0]
+					for _, sub := range subs {
+						if sub != `"$(true)"`+w {
+							kept = append(kept, sub)
+						}
+					}
+					subs = kept
 				}
 				for _, sub := range subs {
 					// Inside single quotes a payload is text until the program
@@ -437,4 +456,15 @@ func TestUnknownWordWalksStayLinear(t *testing.T) {
 	if d := verdictOf(t, strings.Repeat("$(a) ", maxUnknownSites)+"x"); contains(d.Matches, substitutionEntryID) {
 		t.Errorf("at the bound: matches %v, want no %q: the walk follows every one", d.Matches, substitutionEntryID)
 	}
+}
+
+// argPrefixMatchesAny reports whether a fixture word carries one of an
+// entry's arg_prefixes as typed.
+func argPrefixMatchesAny(prefixes []string, w string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(w, p) {
+			return true
+		}
+	}
+	return false
 }

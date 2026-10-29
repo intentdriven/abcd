@@ -75,7 +75,7 @@ The unscoped-transport sweep is adapter-scoped and runs only when an oracle adap
 - **Default**: post-processor ON by default; `ABCD_REVIEW_POSTPROCESS=0` kill switch.
 - **Dirty-tree policy**: capture `worktree_sha256` and tag `dirty: true`; do NOT block.
 - **No-commit-yet policy**: refuse review on branch with zero commits; emit guidance; respect `--allow-no-commit` override.
-- **Acknowledgements**: README "Acknowledgements" cites `gitleaks` (Apache-2.0), `joelparkerhenderson/architecture-decision-record` (CC-0, ADR `NNNN` naming convention), `REPPL/abcdZero` F-075 / F-037 (prior art for abcd-side wrapper architecture).
+- **Acknowledgements**: README "Acknowledgements" cites `gitleaks` (Apache-2.0), `joelparkerhenderson/architecture-decision-record` (CC-0, ADR `NNNN` naming convention), `<personal account>/abcdZero` F-075 / F-037 (prior art for abcd-side wrapper architecture).
 
 ## What's Out of Scope
 
@@ -187,7 +187,7 @@ Gap audit:
 - Depends on: `itd-1` (acceptance gates).
 - Coordinates with: `itd-7` (RP workspace portability) — both are RepoPrompt-adapter-scoped but pull different artifact types.
 - Coordinates with: `itd-13` (scheduled dev-sync) — unscoped review pull would benefit from scheduled sync.
-- Prior art: `REPPL/abcdZero` F-075 (planned, evaluated upstream-vs-wrapper, chose wrapper) and F-037 (completed v2.5.1, shipped patch-based wrapper).
+- Prior art: `<personal account>/abcdZero` F-075 (planned, evaluated upstream-vs-wrapper, chose wrapper) and F-037 (completed v2.5.1, shipped patch-based wrapper).
 
 [bias]: https://arxiv.org/html/2603.18740v1 "Confirmation Bias in `LLM`-Assisted Security Code Review"
 [liip]: https://www.liip.ch/en/blog/preventing-context-pollution-for-%61i-agents "Liip — Preventing Context Pollution for `AI` Agents"

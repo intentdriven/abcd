@@ -63,7 +63,7 @@ func TestAGeneratedFileSharedWithOnesOtherCopyIsNamedBesideTheWarning(t *testing
 	if err != nil || res.Act != ActReserved {
 		t.Fatalf("one's own reserve over one's other copy = %+v, %v; want it reserved", res, err)
 	}
-	if want := []OwnOverlap{{Path: "a.go", Record: "iss-1", Expiry: t0.Add(2 * time.Hour)}}; !slices.Equal(res.OwnOverlap, want) {
+	if want := []OwnOverlap{{Path: "a.go", Record: "iss-1", Expiry: t0.Add(2 * time.Hour), Copy: "your copy on another computer"}}; !slices.Equal(res.OwnOverlap, want) {
 		t.Fatalf("the own overlaps = %+v; want %+v", res.OwnOverlap, want)
 	}
 	if want := []GeneratedShare{{Path: "docs/ref/commands.md", Record: "iss-1"}}; !slices.Equal(res.GeneratedShared, want) {

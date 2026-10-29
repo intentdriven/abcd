@@ -522,7 +522,7 @@ fi
 # prove the commits half reads the identity, not only the message.
 repo="$tmp/repo"
 git init -q "$repo"
-git -C "$repo" -c user.name=REPPL -c user.email=human@example.invalid \
+git -C "$repo" -c user.name=Alice -c user.email=human@example.invalid \
 	commit -q --allow-empty -m 'base'
 base="$(git -C "$repo" rev-parse HEAD)"
 SCRIPT_ABS="$(pwd)/$SCRIPT"
@@ -558,21 +558,21 @@ MSG_OK='Text.
 
 Assisted-by: Claude:claude-opus-5'
 
-commit_as REPPL human@example.invalid REPPL human@example.invalid "$MSG_OK"
+commit_as Alice human@example.invalid Alice human@example.invalid "$MSG_OK"
 commits_case accept "human identity, compliant message"
 
 # The bf68242 case: identity is the AI, message is fully compliant.
 commit_as Claude noreply@anthropic.com Claude noreply@anthropic.com "$MSG_OK"
 commits_case reject "AI author and committer, compliant message"
 
-commit_as REPPL human@example.invalid Claude noreply@anthropic.com "$MSG_OK"
+commit_as Alice human@example.invalid Claude noreply@anthropic.com "$MSG_OK"
 commits_case reject "AI committer only, compliant message"
 
-commit_as Claude claude@example.invalid REPPL human@example.invalid "$MSG_OK"
+commit_as Claude claude@example.invalid Alice human@example.invalid "$MSG_OK"
 commits_case reject "AI author by name alone, compliant message"
 
 # Vendor-agnostic, as with the co-authorship ban (iss-215).
-commit_as ChatGPT bot@openai.com REPPL human@example.invalid "$MSG_OK"
+commit_as ChatGPT bot@openai.com Alice human@example.invalid "$MSG_OK"
 commits_case reject "another vendor's AI author, compliant message"
 
 # A human whose name merely CONTAINS an AI name is not an AI identity.
@@ -601,13 +601,13 @@ commits_case reject "bot author, forge bot mailbox"
 # The `[bot]` suffix is the signal, not the name that carries it — a second
 # automation appears in the right place without an edit here.
 commit_as 'renovate[bot]' 'renovate[bot]@users.noreply.github.com' \
-	REPPL human@example.invalid "$MSG_OK"
+	Alice human@example.invalid "$MSG_OK"
 commits_case reject "another bot author, compliant message"
 
 # A machine COMMITTER on a human-authored commit is refused too. The graph reads
 # authorship, but a bot that commits on a human's behalf is a route back to the
 # same place, and the existing AI-committer case already settled the principle.
-commit_as REPPL human@example.invalid \
+commit_as Alice human@example.invalid \
 	'dependabot[bot]' '49699333+dependabot[bot]@users.noreply.github.com' "$MSG_OK"
 commits_case reject "human author, bot committer"
 
@@ -629,7 +629,7 @@ commits_case accept "outside human contributor, forge address"
 
 # Two different humans in one range is the ordinary shape of an accepted
 # contribution, and an allowlist of one name would refuse it.
-commit_as REPPL human@example.invalid REPPL human@example.invalid "$MSG_OK"
+commit_as Alice human@example.invalid Alice human@example.invalid "$MSG_OK"
 commit_as 'Ada Lovelace' '1234+ada@users.noreply.github.com' \
 	'Ada Lovelace' '1234+ada@users.noreply.github.com' "$MSG_OK"
 commits_case accept "two different human authors"
@@ -639,7 +639,7 @@ commits_case accept "two different human authors"
 # click, and 638 commits in this repository's main are shaped exactly so.
 # Refusing a `noreply@` mailbox in the committer role would turn the whole
 # history red — which is why the mailbox rule is asymmetric between the roles.
-commit_as 'Alex Reppel' '77722411+REPPL@users.noreply.github.com' \
+commit_as 'Alice' '1234567+alice@users.noreply.github.com' \
 	'GitHub' 'noreply@github.com' "$MSG_OK"
 commits_case accept "forge committer on a human-authored commit"
 
@@ -656,24 +656,24 @@ commits_case reject "configured automation name at a forge no-reply address"
 
 # A display name with the word joined by `-` or `_` is a configured account's.
 commit_as 'semantic-release-bot' 'release@example.invalid' \
-	REPPL human@example.invalid "$MSG_OK"
+	Alice human@example.invalid "$MSG_OK"
 commits_case reject "automation display name joined to the word bot by a hyphen"
 
 commit_as 'ci_bot' 'ci@example.invalid' \
-	REPPL human@example.invalid "$MSG_OK"
+	Alice human@example.invalid "$MSG_OK"
 commits_case reject "automation display name joined to the word bot by an underscore"
 
 # Renovate's default identity: whitespace does not separate in the display
 # name, so its local part is what refuses it.
 commit_as 'Renovate Bot' 'bot@renovateapp.com' \
-	REPPL human@example.invalid "$MSG_OK"
+	Alice human@example.invalid "$MSG_OK"
 commits_case reject "Renovate Bot at its default address, refused by the local part"
 
 commit_as 'Release' 'release_automation@example.invalid' \
-	REPPL human@example.invalid "$MSG_OK"
+	Alice human@example.invalid "$MSG_OK"
 commits_case reject "automation word ending the mailbox local part"
 
-commit_as REPPL human@example.invalid 'ci-robot' 'ci@example.invalid' "$MSG_OK"
+commit_as Alice human@example.invalid 'ci-robot' 'ci@example.invalid' "$MSG_OK"
 commits_case reject "configured automation committer on a human-authored commit"
 
 # The word must stand alone: names and addresses that merely END in the letters
@@ -711,11 +711,11 @@ commits_case accept "human whose surname is Bot"
 mainb="$(git -C "$repo" rev-parse --abbrev-ref HEAD)"
 merge_as() {
 	git -C "$repo" checkout -q -B side "$base"
-	commit_as REPPL human@example.invalid REPPL human@example.invalid "on the branch
+	commit_as Alice human@example.invalid Alice human@example.invalid "on the branch
 
 Assisted-by: Claude:claude-opus-5"
 	git -C "$repo" checkout -q "$mainb"
-	commit_as REPPL human@example.invalid REPPL human@example.invalid "on the trunk
+	commit_as Alice human@example.invalid Alice human@example.invalid "on the trunk
 
 Assisted-by: Claude:claude-opus-5"
 	GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" \
@@ -743,7 +743,7 @@ commits_case reject "merge commit authored by a bot"
 # no trailer of its own, so checking its text would turn every merge in this
 # repository red. Identity and message are separable, and only the message half
 # was ever generated elsewhere.
-merge_as 'Alex Reppel' '77722411+REPPL@users.noreply.github.com' \
+merge_as 'Alice' '1234567+alice@users.noreply.github.com' \
 	'GitHub' 'noreply@github.com' 'Merge pull request #1 from intentdriven/side'
 commits_case accept "forge merge commit, human author, no trailer"
 
@@ -823,7 +823,7 @@ case_is reject "declaration alongside a generated-with footer" 'Text.
 Assisted-by: None'
 
 # A human-only COMMIT passes the commit check on the same terms.
-commit_as REPPL human@example.invalid REPPL human@example.invalid 'docs: a hand-written change
+commit_as Alice human@example.invalid Alice human@example.invalid 'docs: a hand-written change
 
 Assisted-by: None'
 commits_case accept "human-only commit declaration"
@@ -879,12 +879,12 @@ case_is reject "abcd label alongside a co-authorship trailer" 'Text.
 
 Assisted-by: abcd:dev
 Co-authored-by: Someone <someone@example.invalid>'
-commit_as REPPL human@example.invalid REPPL human@example.invalid 'chore(record): itd-10 picked by run r
+commit_as Alice human@example.invalid Alice human@example.invalid 'chore(record): itd-10 picked by run r
 
 Refs: itd-10
 Assisted-by: abcd:dev'
 commits_case accept "abcd-composed commit declaration"
-commit_as REPPL human@example.invalid REPPL human@example.invalid 'chore(record): itd-10 picked by run r
+commit_as Alice human@example.invalid Alice human@example.invalid 'chore(record): itd-10 picked by run r
 
 Assisted-by: abcd:main'
 commits_case reject "abcd-composed commit with a malformed label"
@@ -893,7 +893,7 @@ commits_case reject "abcd-composed commit with a malformed label"
 # renders a fence as a code block, so it reads as an example — and a commit message
 # is never rendered as markdown. `git log` shows it verbatim, so a fenced footer
 # there is displayed exactly as a real one and lands in permanent history.
-commit_as REPPL human@example.invalid REPPL human@example.invalid 'docs: a change
+commit_as Alice human@example.invalid Alice human@example.invalid 'docs: a change
 
 ```
 🤖 Generated with [Some Tool](https://example.invalid)
@@ -905,7 +905,7 @@ commits_case reject "a fenced footer in a COMMIT MESSAGE is still refused (iss-2
 
 # An AI identity is still refused even when the message declares human-only —
 # the identity fields are what the contributor graph reads.
-commit_as Claude noreply@anthropic.com REPPL human@example.invalid 'docs: a change
+commit_as Claude noreply@anthropic.com Alice human@example.invalid 'docs: a change
 
 Assisted-by: None'
 commits_case reject "AI identity claiming human-only"

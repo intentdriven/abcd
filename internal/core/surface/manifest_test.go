@@ -46,8 +46,8 @@ func keysFor(t *testing.T, entries []ManifestEntry, file string) []string {
 // reordering or editing its members is invisible to the guardrail.
 func TestManifestEntriesFlattensDeclaredKeys(t *testing.T) {
 	root := writeManifests(t,
-		`{"name":"abcd","author":{"name":"REPPL","url":"https://example.invalid"},"keywords":["a","b"]}`,
-		`{"name":"abcd-marketplace","owner":{"name":"REPPL"},"plugins":[{"name":"abcd","source":"./"}]}`)
+		`{"name":"abcd","author":{"name":"intentdriven","url":"https://example.invalid"},"keywords":["a","b"]}`,
+		`{"name":"abcd-marketplace","owner":{"name":"intentdriven"},"plugins":[{"name":"abcd","source":"./"}]}`)
 
 	entries, err := ManifestEntries(root)
 	if err != nil {

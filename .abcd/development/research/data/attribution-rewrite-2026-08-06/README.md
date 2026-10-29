@@ -18,6 +18,8 @@ translate them, so an old citation stays readable instead of becoming a dead end
 
 - `sha-map-old-to-new.tsv` — every commit on the default branch: old id, new id,
   subject. 725 rows, validated position-by-position against tree and subject.
+  Since then, the source account's login in merge-commit subjects reads
+  `<personal account>`, so the table names no person; the commits keep it.
 - `tag-map-old-to-new.tsv` — the six release tags, with the commit each pointed
   at before and after.
 

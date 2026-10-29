@@ -99,6 +99,10 @@ var runnerSubcommands = map[string]map[string]string{
 	"pnpm": {"dlx": "pnpm dlx", "exec": "pnpm exec"},
 	"yarn": {"dlx": "yarn dlx"},
 	"bun":  {"x": "bunx"},
+	// `go run <package> [args]` builds and runs the program its package path
+	// names (`./cmd/abcd` runs abcd), the way npx runs the one its package
+	// names: a source checkout runs its own program this way.
+	"go": {"run": "go run"},
 }
 
 // runnerStart is one runner a package manager word can start: the wrapper it
@@ -281,6 +285,16 @@ var wrapperValueFlags = map[string][]string{
 	// bun's documented `bunx` grammar, for `bunx` and `bun x` alike: the
 	// package to install. `--bun` takes nothing.
 	"bunx": {"-p", "--package"},
+	// go's documented build flags that take a value (`go help build`), which
+	// `go run` reads before the package: a value-taking flag missing here
+	// would have its value read as the package, a miss and never a false
+	// block. `-exec` names the program go runs the binary under, and is a
+	// value like the rest.
+	"go run": {
+		"-C", "-p", "-asmflags", "-buildmode", "-compiler", "-gccgoflags", "-gcflags",
+		"-installsuffix", "-ldflags", "-mod", "-modfile", "-overlay", "-pgo", "-pkgdir", "-tags",
+		"-toolexec", "-exec", "-coverpkg", "-covermode",
+	},
 	// pnpm's documented exec grammar: the packages to run in and the one to
 	// resume from. NOT -c/--shell-mode, which takes nothing and hands the
 	// command to a shell.
@@ -923,6 +937,7 @@ func newEntryMatcher(p Pattern, tokens []string, spelled map[int][]string, varLe
 	want := operandWant{
 		sub: p.Subcommand, sub2: p.Subcommand2, min: p.MinOperands,
 		prefixes: p.ArgPrefixes, paths: p.ArgPaths, values: p.ArgValues, shapes: p.ArgShapes,
+		prefixLiteral: p.ArgPrefixesLiteral != nil && *p.ArgPrefixesLiteral,
 	}
 	m := entryMatcher{accept: operandAcceptance(tokens, spelled, varLead, p.ValueFlags, want, glob), nextStop: make([]int, n+1)}
 	m.nextStop[n] = n

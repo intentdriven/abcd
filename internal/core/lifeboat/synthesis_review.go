@@ -82,8 +82,14 @@ func removeLegacyReviewArtefact(root *os.Root, manifest12 string) {
 // raw is nil it runs the deterministic mapping; when raw carries a payload it
 // validates the delegated audit. It is transport-agnostic (returns an ReviewResult,
 // never prints) and fails closed on structural problems; a manifest failure is a
-// verdict input, not an error. The audit is ALWAYS written on success.
-func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte) (ReviewResult, error) {
+// verdict input, not an error. The audit is ALWAYS written on success. Both
+// audit files are secret-scanned before either is written, as pack's planned
+// bytes are; a non-nil error from scan refuses the whole call (nothing written,
+// nothing removed), and a nil scan fails closed.
+func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte, scan SecretScan) (ReviewResult, error) {
+	if scan == nil {
+		return ReviewResult{}, errors.New("review: a secret scan is required")
+	}
 	// 1. Gate the lifeboat (real dir + parseable header + schema) and read the
 	//    immutable provenance header — needed to name the audit file.
 	abs, prov, err := gateSynthLifeboat(lifeboatDir)
@@ -159,18 +165,22 @@ func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte) (ReviewResult, e
 	if err != nil {
 		return ReviewResult{}, err
 	}
+	jsonRel := path.Join(reviewArtefactDir, "review-"+manifest12+".json")
+	mdRel := path.Join(reviewArtefactDir, "review-"+manifest12+".md")
+	planned := []PlannedFile{
+		plannedFile(jsonRel, data),
+		plannedFile(mdRel, []byte(renderReviewMD(audit))),
+	}
+	if err := scan(planned); err != nil {
+		return ReviewResult{}, err
+	}
+
 	root, err := os.OpenRoot(abs)
 	if err != nil {
 		return ReviewResult{}, err
 	}
 	defer root.Close()
-
-	jsonRel := path.Join(reviewArtefactDir, "review-"+manifest12+".json")
-	mdRel := path.Join(reviewArtefactDir, "review-"+manifest12+".md")
-	if err := writeIntoLifeboat(root, abs, jsonRel, data); err != nil {
-		return ReviewResult{}, err
-	}
-	if err := writeIntoLifeboat(root, abs, mdRel, []byte(renderReviewMD(audit))); err != nil {
+	if err := writePlanned(root, abs, planned); err != nil {
 		return ReviewResult{}, err
 	}
 	// Clean replacement across the spc-30 rename: a lifeboat reviewed before it

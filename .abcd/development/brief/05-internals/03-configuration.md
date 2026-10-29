@@ -4,8 +4,8 @@ Almost nothing here is a decision anyone has to make. Installing abcd asks
 four questions and, at a terminal, a fifth about the README, records the
 answers and whether it created the README, and gets on with it; `ahoy install
 --attribution` writes one more key and `ahoy install --outbound` two more, and
-seven further keys can be hand-set and are read but never written. Beyond those
-sixteen, the binary reads only keys a person opts into: the provider adapter's
+nine further keys can be hand-set and are read but never written. Beyond those
+eighteen, the binary reads only keys a person opts into: the provider adapter's
 `oracle` keys (the reviewer route's `oracle.review` among them) and the
 interview's list style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
@@ -30,7 +30,7 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Sixteen keys plus a `meta` block. Install asks about visibility, the docs target,
+Eighteen keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and the README question (only of a person
 at a terminal, in a run without the approve-everything flag, once
@@ -43,11 +43,12 @@ file is gone. `attribution.hook` is written by `ahoy install --attribution`, and
 one outbound switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
 absent, while a key set to `false` is the repository's choice and is left as it
-is. The remaining seven —
+is. The remaining nine —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, the filing-time match's threshold and compared fields,
-whether `abcd land` pushes and queues, and whether a reservation may be made on
-an origin GitHub names a fork — are hand-set: the binary reads them and never
+whether `abcd land` pushes and queues, whether a reservation may be made on
+an origin GitHub names a fork, and the GitHub settings the remote apply keeps
+and the checks it requires — are hand-set: the binary reads them and never
 writes them.
 
 ```json
@@ -75,8 +76,17 @@ writes them.
   "scan": {
     "deep": false,                      // the native secret/PII scan is the default; deep adds an opt-in
                                         //   external backend, asked only when it is available
-    "native_secret_scanning": true      // an explicit false opts the repo out of abcd enabling the forge's
-                                        //   own secret scanning through `ahoy remote apply`
+    "native_secret_scanning": true      // an explicit false keeps the forge's own secret-scanning toggles
+                                        //   as they are in `ahoy remote apply`; the rest of the settings
+                                        //   baseline is still audited and applied
+  },
+  "github": {                           // the settings baseline of `ahoy --remote` and `ahoy remote apply`
+                                        //   (itd-2610290746077716); a key or a setting it does not know
+                                        //   refuses the run, naming it
+    "keep": ["has_wiki"],               // settings abcd leaves exactly as they are, by the keys the audit
+                                        //   prints; absent keeps nothing
+    "required_checks": ["build"]        // replaces the checks taken from the workflows; absent takes them
+                                        //   from the workflows every pull request runs
   },
   "attribution": {
     "hook": true                        // the committed prepare-commit-msg prompt asking each commit to
@@ -156,7 +166,7 @@ origin's push URLs a fork, so a malformed value (neither `"refuse"` nor one
 plain owner and one plain name), or a misspelt key under `reservation`, refuses
 a reservation on a fork naming the file and never stops one anywhere else. The machine layer's `reservation.github_username`
 (04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
-layer alone and is not one of the sixteen. The holder lookup reads the
+layer alone and is not one of the eighteen. The holder lookup reads the
 machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
 

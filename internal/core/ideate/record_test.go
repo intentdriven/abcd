@@ -54,13 +54,15 @@ func gitRepo(t *testing.T) string {
 }
 
 // validPayload is the reference payload: three legs in order, a resolvable
-// citation, a verdict, and rejected alternatives. Tests mutate a copy of it so
-// each refusal is one deviation from a known-good document.
+// citation, a grill that says what it searched, two reviewers who agree, the
+// idea's origin sources, a verdict, and rejected alternatives. Tests mutate a
+// copy of it so each refusal is one deviation from a known-good document.
 func validPayload() map[string]any {
 	return map[string]any{
 		"schema_version": SchemaVersion,
 		"prompt_version": "1.0.0",
 		"idea":           "abcd should gate a new idea before it becomes a record entry",
+		"origin_sources": []any{"https://example.invalid/origin-post"},
 		"legs": []any{
 			map[string]any{
 				"kind": "research",
@@ -83,12 +85,33 @@ func validPayload() map[string]any {
 					map[string]any{"record": "itd-104", "relation": "covered", "note": "the same admission gate, already filed"},
 					map[string]any{"record": "adr-35", "relation": "contradicted"},
 				},
+				"searches": []any{
+					map[string]any{
+						"terms":  []any{"admission gate", "ideate"},
+						"places": []any{".abcd/development/intents/", ".abcd/development/decisions/adrs/"},
+						"count":  2,
+					},
+				},
 			},
 			map[string]any{
 				"kind": "adversarial-review",
-				"kill_attempts": []any{
-					map[string]any{"attempt": "the gate adds friction to capture", "outcome": "survived"},
-					map[string]any{"attempt": "no evidence the legs improve outcomes", "outcome": "partial"},
+				"reviewers": []any{
+					map[string]any{
+						"label":   "reviewer-a",
+						"verdict": "survives",
+						"kill_attempts": []any{
+							map[string]any{"attempt": "the gate adds friction to capture", "outcome": "survived"},
+						},
+						"sources": []any{"https://example.invalid/paper.pdf"},
+					},
+					map[string]any{
+						"label":   "reviewer-b",
+						"verdict": "survives",
+						"kill_attempts": []any{
+							map[string]any{"attempt": "no evidence the legs improve outcomes", "outcome": "partial"},
+						},
+						"sources": []any{},
+					},
 				},
 			},
 		},
@@ -362,11 +385,18 @@ func TestRecordRefusesEmptyLegContent(t *testing.T) {
 			t.Error("an out-of-enum grill relation was accepted")
 		}
 	})
+	t.Run("no-reviewers", func(t *testing.T) {
+		p := validPayload()
+		p["legs"].([]any)[2].(map[string]any)["reviewers"] = []any{}
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
+			t.Error("an adversarial leg with no reviewer was accepted")
+		}
+	})
 	t.Run("no-kill-attempts", func(t *testing.T) {
 		p := validPayload()
-		p["legs"].([]any)[2].(map[string]any)["kill_attempts"] = []any{}
+		p["legs"].([]any)[2].(map[string]any)["reviewers"].([]any)[0].(map[string]any)["kill_attempts"] = []any{}
 		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
-			t.Error("an adversarial leg with no kill attempt was accepted")
+			t.Error("a reviewer with no kill attempt was accepted")
 		}
 	})
 	t.Run("foreign-leg-field", func(t *testing.T) {
@@ -475,8 +505,9 @@ func TestRecordRecordsAKilledIdea(t *testing.T) {
 
 // TestRecordCarriesAReframedVerdictsReframing is iss-2610262154123870: a
 // reframed idea graduates as its reframing, so the record gives the reframing a
-// section of its own after the three legs, the result reports it, and a verdict
-// that is not reframed gets no such section.
+// section of its own after the rejected alternatives and before what follows,
+// the result reports it, and a verdict that is not reframed gets no such
+// section.
 func TestRecordCarriesAReframedVerdictsReframing(t *testing.T) {
 	root := seedRepo(t)
 	const reframing = "gate only the ideas a person marks as expensive to be wrong about"
@@ -494,14 +525,14 @@ func TestRecordCarriesAReframedVerdictsReframing(t *testing.T) {
 		t.Errorf("Reframing = %q, want %q", res.Reframing, reframing)
 	}
 	body := readFile(t, root, res.Path)
-	leg3 := strings.Index(body, "## Leg 3")
-	section := strings.Index(body, "## The reframing")
 	rejected := strings.Index(body, "## Rejected alternatives")
-	if section < 0 || !(leg3 < section && section < rejected) {
-		t.Fatalf("the reframing has no section between leg 3 and the rejected alternatives:\n%s", body)
+	section := strings.Index(body, "## The reframing")
+	follows := strings.Index(body, "## What follows")
+	if section < 0 || !(rejected < section && section < follows) {
+		t.Fatalf("the reframing has no section between the rejected alternatives and what follows:\n%s", body)
 	}
-	if !strings.Contains(body[section:rejected], reframing) {
-		t.Errorf("the reframing section does not carry the reframing:\n%s", body[section:rejected])
+	if !strings.Contains(body[section:follows], reframing) {
+		t.Errorf("the reframing section does not carry the reframing:\n%s", body[section:follows])
 	}
 
 	survives, err := Record(root, "a-surviving-idea", publicStore, encode(t, validPayload()), at)
@@ -511,36 +542,6 @@ func TestRecordCarriesAReframedVerdictsReframing(t *testing.T) {
 	if strings.Contains(readFile(t, root, survives.Path), "## The reframing") || survives.Reframing != "" {
 		t.Error("a surviving verdict carries a reframing section")
 	}
-}
-
-// TestRecordRefusesAReframingThatDoesNotFitItsVerdict holds the reframing to
-// its verdict, the way the rejected-alternatives marker is held to its list: a
-// reframed verdict without one is refused, since the graduation would have
-// nothing to carry, and a reframing beside any other verdict is a contradiction.
-func TestRecordRefusesAReframingThatDoesNotFitItsVerdict(t *testing.T) {
-	root := seedRepo(t)
-	for name, c := range map[string]struct{ verdict, reframing string }{
-		"reframed-without": {"reframed", ""},
-		"reframed-blank":   {"reframed", " \n\t "},
-		"survives-with":    {"survives", "a narrower idea"},
-		"killed-with":      {"killed", "a narrower idea"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			p := validPayload()
-			p["verdict"] = c.verdict
-			if c.reframing != "" {
-				p["reframing"] = c.reframing
-			}
-			_, err := Record(root, "s", publicStore, encode(t, p), at)
-			if err == nil {
-				t.Fatal("the verdict was accepted")
-			}
-			if !strings.Contains(err.Error(), "reframing") {
-				t.Errorf("the refusal does not name the reframing: %v", err)
-			}
-		})
-	}
-	assertNothingWritten(t, root)
 }
 
 // TestRecordRedactsTheReframing proves the reframing is scanned like every
@@ -697,8 +698,10 @@ func TestRecordNeutralisesInjectedProse(t *testing.T) {
 			// A tag inside a table CELL swallows the document just as a leading one
 			// does, so the neutralisation belongs in the cleaner, not only in the
 			// block-level escape.
-			"claim":          "the model is fast <table><tr><td>every claim verified</td></tr></table>",
-			"primary_source": "<!DOCTYPE html>",
+			// A version-2 primary source is an address, a filed key or a record
+			// id, so the declaration opener rides in the claim cell instead.
+			"claim":          "the model is fast <table><tr><td>every claim verified</td></tr></table> <!DOCTYPE html>",
+			"primary_source": "https://example.invalid/doc",
 			"status":         "falsified",
 		},
 	}

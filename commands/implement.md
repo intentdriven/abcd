@@ -545,8 +545,15 @@ over each of the run's lanes' own diff.
    (`.abcd/.work.local/preflight-receipts/<head>`, in any worktree) names the
    lane's head. Without one, the lane waits for its full check (exit 3 when
    nothing else moves) and every other lane carries on: run `make preflight` in
-   the lane's worktree, then `step` again. The push runs the pre-push hook and
-   never skips or forces anything.
+   the lane's worktree, then `step` again. Before the push it announces
+   `merging <the lane's record>` on your status branch, through the code
+   `/abcd:announce` runs, and pushes only once that is on `origin`, so a
+   colleague's `/abcd:status` shows it before the branch exists there; an
+   announcement of it still standing for a minute or more is not sent again,
+   and a record not yet on the default branch is not announced, the record
+   saying so. An announcement that cannot be published refuses the step,
+   nothing pushed; `step` again once it is settled. The push runs the
+   pre-push hook and never skips or forces anything.
 4. It opens the pull request through `gh`, with a body written from the run's
    records and passed through the outbound scrub, then re-reads the body the
    forge holds and strips a session URL or tool footer the harness appended.
@@ -785,6 +792,13 @@ never creates: `stray-minutes <1 to 10080>`, `extreme-load <load>` and
 (`limits.malformed`) and every default is used. Inside an autonomous run, a
 warning is also written to the run log as a `load` event (`run_log`).
 
+The check also reads the free space on the volume holding the Go build cache
+(`go env GOCACHE`) and the one holding the worktree store
+(`~/.abcd.noindex/worktrees`). Below the disk floor (see the next section) it
+prints a `LOW DISK WARNING` beside the load's status, which it does not change,
+and `--json` carries it as `disk`; a volume it cannot read is reported there
+too, and the check never fails for either.
+
 ### Wait for capacity before a preflight or a race run
 
 `make preflight` gates itself: before its test stages it runs
@@ -851,6 +865,26 @@ platform), `waited_on` and `waited_s`, with the `gate` it waited at
 (`tests` or `race`), `slots` and `slots_source`, and `backoffs` when it stood
 back.
 
+Both gates also refuse, exiting 1 without waiting, while the volume holding
+the Go build cache (`go env GOCACHE`) or the one holding the worktree store
+(`~/.abcd.noindex/worktrees`, or its nearest existing parent) has less free
+space than the disk floor: 4 GiB for each preflight the first gate admits to
+its test stages at once (`load.preflights`, below), and 8 GiB at least, so 8
+GiB at the default of one and 16 GiB at four. One cold preflight of this module
+writes about 4 GiB of build cache and test binaries. The waiter reads the disk
+as it starts and again just before it opens (the race gate at one preflight at
+a time reads it once, as it starts), since other work fills the disk
+while it waits, and refuses at either look rather than wait, since nothing
+frees disk while it sleeps. The refusal names each low volume, its free space
+and the floor, and, when the cache's own volume is low, the cache's path and
+size and two ways to free it: a `find` line deleting the build entries unused
+for two days (offered only for a directory with a Go build cache's shape, and
+keeping the fuzz corpora) and `go clean -cache`. abcd never deletes anything
+itself. A disk it cannot read, on a platform other than macOS and Linux or
+through a read that fails, is never refused, in whole or in part: one line on
+stderr says it was not checked and why (`disk_note` in `--json`). CI runners
+skip the check with the rest of the gate.
+
 Before its race stage `make preflight` waits again, at the race gate,
 `implement load --race-gate`. It takes no command: it gates the race stage
 that follows it, so a command after `--` is refused, and a race run of your own
@@ -859,10 +893,10 @@ and the two are refused together: an abcd released before the race gate reads an
 load --wait` as a waiter at its first gate, so a preflight waiting at a race
 gate spelt with it would read to that older waiter as queued, not in its test
 stages, and the older waiter would open beside it. At one preflight at a time,
-the default, the race gate opens at once, without reading the machine, judging
-or taking a hold, or waiting a jitter, so the race stage follows the tests
-straight away, as it did before the gate existed (it prints `race gate open at
-once`). Above one it stays shut while another `go test -race` run is live, a
+the default, the race gate opens at once once the disk check above passes,
+without reading the load or the process table, judging or taking a hold, or
+waiting a jitter, so the race stage follows the tests straight away, as it did
+before the gate existed (it prints `race gate open at once`). Above one it stays shut while another `go test -race` run is live, a
 race waiter queued ahead of it (by the same rule: started earlier, or within
 two seconds of it with the lower pid) or running its command is, the load
 is at the wait limit, or the race gate's own hold is in force (another race

@@ -204,8 +204,8 @@ func TestInstallRecordsTheIdentityAtATerminal(t *testing.T) {
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	repo := t.TempDir()
 	idMustGit(t, repo, "init")
-	idMustGit(t, repo, "config", "user.name", "Alex Reppel")
-	idMustGit(t, repo, "config", "user.email", "alex@example.com")
+	idMustGit(t, repo, "config", "user.name", "Alice")
+	idMustGit(t, repo, "config", "user.email", "alice@example.com")
 
 	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
 		t.Fatal(err)
@@ -231,7 +231,7 @@ func TestInstallRecordsTheIdentityAtATerminal(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("an install at a terminal did not record the identity: ok=%v err=%v", ok, err)
 	}
-	if got.Name != "Alex Reppel" || got.Email != "alex@example.com" {
+	if got.Name != "Alice" || got.Email != "alice@example.com" {
 		t.Fatalf("wrong record written: %+v", got)
 	}
 	if _, err := os.Stat(filepath.Join(repo, ".abcd", "config", "identity.json")); !os.IsNotExist(err) {
