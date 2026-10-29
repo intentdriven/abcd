@@ -126,8 +126,10 @@ other builds share.
    when step 11 lands: the loop opens a lane on this step in the same move,
    and an intent lane has no hand-back that releases its reservation, so the
    person driving the run stops stepping and runs `abcd build
-   itd-2609201916151817 --release`, and the lane opened here is left for the
-   run to resume once the drain's intent has shipped.
+   itd-2609201916151817 --release`, and the lane opened here is left for
+   `abcd build itd-2609201916151817` to resume once the drain's intent has
+   shipped: that verb reserves the key again, and a bare `implement step`
+   would resume the lane with no reservation on origin.
    - needs: 3, 11
 
 ## Out of scope
@@ -137,10 +139,10 @@ worktree store's verbs; the peer reader; the claim and the register.
 
 ## Approach
 
-Test-first, in the numbered order, three lanes: 1 to 4 (state, steps,
+Test-first, in the numbered order, four lanes: 1 to 4 (state, steps,
 checks), 5 to 8 (brief, lane, receipt, validators), 9 to 11 (landing,
-record, auto-plan with its ADR), and 12 (the no-host drive) once
-itd-2610222215485265 has shipped. The step interface is exercised end to
+record, auto-plan with its ADR), and 12 (the no-host drive), which waits
+until itd-2610222215485265 has shipped. The step interface is exercised end to
 end by a test that plays the host: it reads the brief, writes a receipt,
 and calls `receipt`, so the loop is proven without any model.
 
@@ -251,8 +253,9 @@ spec stays open until the last lane closes it.
   record` renders the run record in text and JSON (lanes, verified receipts
   with each runner's reported model, every verdict, fixes, landings,
   transcripts) and, on a complete run, captures each transcript by path through
-  the history capture's own code, one capture per path. On a lane that does
-  not close the spec, the landing marks its step's `landed:` line.
+  the history capture's own code, one capture per path. On every intent
+  lane of a spec that lists steps, the closing lane included, the landing
+  marks its step's `landed:` line (850af4cf2, iss-2610110918418459).
 - **Landed (lane drainLoop): the issue key (decision 10).** The key check
   admits an issue id by shape; its pre-start checks are itd-82's eligibility
   rule, read as `abcd drain` reads it, and the peers; its run has one lane, whose
