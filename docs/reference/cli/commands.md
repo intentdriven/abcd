@@ -1791,6 +1791,43 @@ Judge a shell command against the hazard registry before it runs: Writes branch 
 
 **Usage:** `abcd guard`
 
+#### `abcd guard allow`
+
+Let one exact unproven delete through the hook, once: Writes one allow record in your home folder; refuses without --once, and when an agent runs it.
+
+**Usage:** `abcd guard allow --once --command <line> [flags]`
+
+Allows one exact command line through the shell guard's hook, once, within
+ten minutes: the person's way past a branch delete or a worktree removal the
+guard could not prove safe (merged, with no open pull request, in no
+worktree, held by no reservation, and for a worktree clean and in use by
+nothing). It lets past nothing else: a line any other hazard blocks stays
+blocked.
+
+The allow is the person's own act. The guard refuses this verb when an
+agent runs it, and refuses a shell write into the store, so run it yourself
+in a terminal (or with your host's `!` prefix). The line must match the
+agent's command byte for byte. The allow is recorded under
+~/.abcd.noindex/guard-allow/<root-commit>/, keyed on the repository's root
+commit, read only while this account owns it and no one else can write it,
+and removed as the hook uses it. The store's log.jsonl records each line,
+when it was allowed and when it was used, and never who.
+
+--once is required: an allow is only ever for one use.
+
+**Flags:**
+
+```
+      --command string   the exact command line to allow
+      --once             allow the line for one use (required)
+```
+
+**Example:**
+
+```
+abcd guard allow --once --command 'git branch -D feat/done'
+```
+
 #### `abcd guard approve`
 
 Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.

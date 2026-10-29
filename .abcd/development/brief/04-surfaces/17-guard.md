@@ -31,6 +31,7 @@ runs".
 | `check` | gate | shipped |
 | `hook` | — | shipped |
 | `approve` | — | shipped |
+| `allow` | — | shipped |
 
 The check takes the candidate as the value of its command flag or on stdin, and
 stdin is the one to prefer for a command line you did not type: the shell
@@ -49,9 +50,9 @@ Three verdicts, and they are the same decision reported two ways:
 
 | Verdict | Asked by a person or a script | Asked by the host hook |
 |---|---|---|
-| `allow` | exit 0 | exit 0, silent |
-| `warn` | exit 0, warning rendered | exit 1, warning on stderr |
-| `block` | exit 1, why + successor rendered | exit 0, the host's deny on stdout, why + successor as its reason |
+| allow | exit 0 | exit 0, silent |
+| warn | exit 0, warning rendered | exit 1, warning on stderr |
+| block | exit 1, why + successor rendered | exit 0, the host's deny on stdout, why + successor as its reason |
 
 A block names the entry, says in plain language what the command destroys, and
 gives the safe command to run instead. That successor is what makes the guard
@@ -547,6 +548,36 @@ approver. A launch whose contract grants no shell refuses every prompt unasked,
 as before; the opencode runner has no per-launch prompt answerer, so its
 launches keep the permissions opencode's own configuration sets.
 
+## A delete it cannot prove safe
+
+A branch delete, local or on origin, and a worktree removal lose work when the
+target holds any that is kept nowhere else, and whether it does is a fact about
+the repository rather than about the command's words (iss-2610241239492159).
+So the registry's delete entries only warn, and in a repository the check and
+the hook refuse every such delete whose target is not proven safe: merged into
+origin's default branch as last fetched (by ancestry, by patch id for a
+rebased or squashed branch as the worktree store judges it, or by a pull
+request merged at the tip),
+with no open pull request, checked out in no worktree, held by no reservation,
+and, for a worktree, clean, unlocked and in use by nothing. A local branch
+delete is judged offline; only a delete that touches origin asks the network
+and the forge. Every check refuses when it cannot answer, and so does a line
+whose targets the guard cannot read. The refusal names the check that failed
+and what settles it, and the teaching plane carries the same words as one rule
+beside the entries'.
+
+The person's way past is theirs alone: a one-shot allow of the one exact line,
+recorded in their home folder, read only as their own (the rule the rules
+loader applies to the machine's rules file), used once within ten minutes by
+the hook and logged with the line and both times but never who. It lets past
+nothing else a line trips, and the check and the headless approver never use
+it. The guard refuses the allow when an agent runs it and refuses a shell write
+into its store. As with every hazard here, the trust model is a careless agent,
+not a hostile one: a file tool writing into the store is not a shell command
+and goes unseen, a push that deletes as a side effect (pruning, mirroring) is
+not judged, and an allow is keyed on the line, not on the directory it runs in.
+A pushed delete of a tag is outside the proof and keeps its warning.
+
 ## What an allow means
 
 An allow means **no registry entry matched**, never that a command is safe.
@@ -838,9 +869,18 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd guard`
 
-Sub-verbs: `abcd guard approve`, `abcd guard check`, `abcd guard hook`.
+Sub-verbs: `abcd guard allow`, `abcd guard approve`, `abcd guard check`, `abcd guard hook`.
 
 Flags: none.
+
+### `abcd guard allow`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--command` | string |
+| `--once` | bool |
 
 ### `abcd guard approve`
 

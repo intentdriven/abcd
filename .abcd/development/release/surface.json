@@ -1672,6 +1672,27 @@
       "flags": []
     },
     {
+      "path": "abcd guard allow",
+      "hidden": false,
+      "sentence": "Let one exact unproven delete through the hook, once: Writes one allow record in your home folder; refuses without --once, and when an agent runs it.",
+      "flags": [
+        {
+          "name": "command",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "once",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd guard approve",
       "hidden": false,
       "block": "agents",
