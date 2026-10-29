@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -882,6 +883,11 @@ func runFootprint(repoRoot, key, specID, outcome string) ([]string, error) {
 			"give the issue's record a found_at naming the file the fix changes, which the build reserves it with")
 	}
 	fp, err := specPackages(repoRoot, specID)
+	var entry *footprintEntryError
+	if errors.As(err, &entry) {
+		return nil, refuse(StageReservation, "", "", entry.Error()+", then run abcd build again; "+outcome,
+			"name each package on the `- packages:` line of "+specID+"'s `## Footprint` section by its path alone; the reservation names those paths for every other participant")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -902,8 +908,12 @@ func noFootprint(specID, key string) string {
 const maxSpecBytes = 1 << 20
 
 // specPackages is the packages specID's `## Footprint` section names, each
+// read as its leading path alone, a trailing parenthetical note dropped, and
 // cleaned (a trailing slash dropped), in the order written; empty when the
-// spec has no such section or it names none.
+// spec has no such section or it names none. An entry that is still prose,
+// holding whitespace and naming nothing in the tree, is a
+// *footprintEntryError rather than a path that shares nothing with the
+// package it means (iss-2610241549334990).
 func specPackages(repoRoot, specID string) ([]string, error) {
 	store, err := spec.Load(repoRoot)
 	if err != nil {
@@ -918,12 +928,59 @@ func specPackages(repoRoot, specID string) ([]string, error) {
 		return nil, err
 	}
 	var out []string
-	for _, p := range spec.ReadFootprint(string(data)).Packages {
-		if p = path.Clean(strings.TrimSpace(p)); p != "." && !slices.Contains(out, p) {
+	for _, entry := range spec.ReadFootprint(string(data)).Packages {
+		p := leadingPath(entry)
+		if strings.ContainsFunc(p, unicode.IsSpace) && !inTree(repoRoot, p) {
+			return nil, &footprintEntryError{Spec: specID, Entry: entry}
+		}
+		if p = path.Clean(p); p != "." && !slices.Contains(out, p) {
 			out = append(out, p)
 		}
 	}
 	return out, nil
+}
+
+// leadingPath is a packages entry less a trailing parenthetical note:
+// `internal/core/x (new)` is internal/core/x. An entry that is all
+// parenthetical is left as it is.
+func leadingPath(entry string) string {
+	e := strings.TrimSpace(entry)
+	if !strings.HasSuffix(e, ")") {
+		return e
+	}
+	depth := 0
+	for i := len(e) - 1; i > 0; i-- {
+		switch e[i] {
+		case ')':
+			depth++
+		case '(':
+			if depth--; depth == 0 {
+				return strings.TrimSpace(e[:i])
+			}
+		}
+	}
+	return e
+}
+
+// inTree reports whether p, a repository-relative path, names something in
+// repoRoot's working tree; a path leaving the tree names nothing in it.
+func inTree(repoRoot, p string) bool {
+	rel := filepath.FromSlash(p)
+	if !filepath.IsLocal(rel) {
+		return false
+	}
+	_, err := os.Lstat(filepath.Join(repoRoot, rel))
+	return err == nil
+}
+
+// footprintEntryError is a spec's packages entry that names no path: still
+// prose once its trailing note is dropped, and nothing in the tree by that
+// name. The start refuses at the reservation on it, and the pick excludes
+// its intent at the check `footprint`.
+type footprintEntryError struct{ Spec, Entry string }
+
+func (e *footprintEntryError) Error() string {
+	return fmt.Sprintf("%s's packages entry %q under ## Footprint names no path; write it as its path alone, any note in a trailing parenthetical", e.Spec, e.Entry)
 }
 
 // releaseKey releases a reservation a start took and then could not create

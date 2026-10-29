@@ -17,6 +17,7 @@ package loop
 // rule (criterion 5, nextseries.go).
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -177,6 +178,11 @@ func candidatesAt(repoRoot, session string, now time.Time) (CandidateSet, error)
 		}
 		if reserves {
 			fp, err := specPackages(repoRoot, chk.Spec)
+			var entry *footprintEntryError
+			if errors.As(err, &entry) {
+				set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckFootprint, Reason: termsafe.Sanitize(entry.Error())})
+				continue
+			}
 			if err != nil {
 				return set, err
 			}
