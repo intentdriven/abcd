@@ -208,7 +208,7 @@ func RepoRel(base, target string) string {
 // a letter or a digit (NameContinues), so "<root>.", "<root>-old" and
 // "<root>_snapshot" are redacted while "/rootfs" under "/root" is not. The
 // bare-root case matters because a message that names exactly
-// $HOME (e.g. "cannot access /Users/alex") would otherwise leak the developer abcd-audit:allow
+// $HOME (e.g. "cannot access /Users/eve") would otherwise leak the developer abcd-audit:allow
 // identity — its base segment IS the username. The filesystem root ("/") and
 // empty or relative roots are skipped so a message is never mangled.
 //

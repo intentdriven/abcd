@@ -13,4 +13,4 @@ resolved_by:
   commit: "35b23f1"
 ---
 
-The hard_fail local_username redaction matcher (m.localBare) is built without the (?i) its home-path sibling carries, so on a case-folding filesystem a case variant of the caller login (ALEX/Alex) is neither redacted nor caught by the blocking residual scan, leaking the login into the stored transcript.
+The hard_fail local_username redaction matcher (m.localBare) is built without the (?i) its home-path sibling carries, so on a case-folding filesystem a case variant of the caller login (EVE/Eve) is neither redacted nor caught by the blocking residual scan, leaking the login into the stored transcript.

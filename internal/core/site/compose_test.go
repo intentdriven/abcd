@@ -48,10 +48,10 @@ func TestForgeLabel(t *testing.T) {
 // rule protects. A bot's bracketed name never matches.
 func TestProfileURL(t *testing.T) {
 	cases := map[string]string{
-		"77722411+REPPL@users.noreply.github.com": "https://github.com/REPPL",
-		"REPPL@users.noreply.github.com":          "https://github.com/REPPL",
-		"someone@example.com":                     "",
-		"":                                        "",
+		"1234567+alice@users.noreply.github.com": "https://github.com/alice",
+		"alice@users.noreply.github.com":         "https://github.com/alice",
+		"someone@example.com":                    "",
+		"":                                       "",
 		"49699333+dependabot[bot]@users.noreply.github.com": "",
 	}
 	for in, want := range cases {

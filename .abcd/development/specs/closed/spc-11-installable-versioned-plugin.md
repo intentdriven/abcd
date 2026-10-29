@@ -60,7 +60,7 @@ programme plan is
   **release payload only**. The dev tree stays version-**absent** (ADR-19); the
   existing `launch/lockstep.go` release-mode contract enforces the pair.
 - **The install and update path in the README** —
-  `/plugin marketplace add REPPL/abcd` → `/plugin install abcd@abcd-marketplace`;
+  `/plugin marketplace add <personal account>/abcd` → `/plugin install abcd@abcd-marketplace`;
   update with `/plugin update abcd`.
 - **A light installability smoke** — `marketplace.json` and `plugin.json` parse,
   `source` resolves, and every declared command/skill/agent/hook path exists. A

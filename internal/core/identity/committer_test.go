@@ -27,7 +27,7 @@ func isolateCommitter(t *testing.T) {
 // stamps the author from GIT_AUTHOR_*.
 func TestEffectiveCommitter_EnvFirst(t *testing.T) {
 	isolateCommitter(t)
-	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
+	dir := gitRepo(t, "Alice", "alice@example.com")
 	t.Setenv("GIT_COMMITTER_NAME", "Test User")
 	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
 	eff, err := effectiveCommitter(dir)
@@ -43,14 +43,14 @@ func TestEffectiveCommitter_EnvFirst(t *testing.T) {
 // outrank user.name/user.email, each field on its own.
 func TestEffectiveCommitter_RoleConfigThenUser(t *testing.T) {
 	isolateCommitter(t)
-	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
+	dir := gitRepo(t, "Alice", "alice@example.com")
 	runGitT(t, dir, "config", "committer.email", "ci@example.com")
 	eff, err := effectiveCommitter(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if eff.Name != "Alex Reppel" || eff.Email != "ci@example.com" {
-		t.Fatalf("committer resolution: got %+v, want Alex Reppel <ci@example.com>", eff)
+	if eff.Name != "Alice" || eff.Email != "ci@example.com" {
+		t.Fatalf("committer resolution: got %+v, want Alice <ci@example.com>", eff)
 	}
 }
 
@@ -59,8 +59,8 @@ func TestEffectiveCommitter_RoleConfigThenUser(t *testing.T) {
 // before, and the committer divergence is reported beside it and blocks.
 func TestCheck_CommitterEnvOverrideDiverges(t *testing.T) {
 	isolateCommitter(t)
-	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
-	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	dir := gitRepo(t, "Alice", "alice@example.com")
+	writePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	t.Setenv("GIT_COMMITTER_NAME", "Test User")
 	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
 	res, err := Check(dir)
@@ -85,9 +85,9 @@ func TestCheck_CommitterEnvOverrideDiverges(t *testing.T) {
 // divergence reached through config rather than the environment.
 func TestCheck_CommitterConfigDiverges(t *testing.T) {
 	isolateCommitter(t)
-	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
+	dir := gitRepo(t, "Alice", "alice@example.com")
 	runGitT(t, dir, "config", "committer.name", "Test User")
-	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	writePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	res, err := Check(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestCheck_CommitterConfigDiverges(t *testing.T) {
 // author that differs from the committer is still detected.
 func TestCheck_AuthorNotCommitterUnpinned(t *testing.T) {
 	isolateCommitter(t)
-	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
+	dir := gitRepo(t, "Alice", "alice@example.com")
 	t.Setenv("GIT_AUTHOR_NAME", "Test User")
 	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
 	res, err := Check(dir)
@@ -126,7 +126,7 @@ func TestCheck_AuthorNotCommitterUnpinned(t *testing.T) {
 func TestCheck_AuthorMismatchIsNotAlsoACommitterDivergence(t *testing.T) {
 	isolateCommitter(t)
 	dir := gitRepo(t, "Test User", "test@example.com")
-	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	writePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	res, err := Check(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -143,7 +143,7 @@ func TestCheck_AuthorMismatchIsNotAlsoACommitterDivergence(t *testing.T) {
 func TestCheck_UnsetSurvivesTheCommitterPath(t *testing.T) {
 	isolateCommitter(t)
 	dir := gitRepo(t, "", "")
-	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	writePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	res, err := Check(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestCheck_UnsetSurvivesTheCommitterPath(t *testing.T) {
 // identity — is machine-visible in the result, in each role it occupies.
 func TestCheck_FlagsAToolIdentity(t *testing.T) {
 	isolateCommitter(t)
-	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
+	dir := gitRepo(t, "Alice", "alice@example.com")
 	t.Setenv("GIT_COMMITTER_NAME", "Claude")
 	t.Setenv("GIT_COMMITTER_EMAIL", "noreply@anthropic.com")
 	res, err := Check(dir)
@@ -192,16 +192,16 @@ func TestIsToolIdentity(t *testing.T) {
 	}{
 		{RoleAuthor, "Claude", "noreply@anthropic.com", true},
 		{RoleCommitter, "Claude", "noreply@anthropic.com", true},
-		{RoleAuthor, "Alex Reppel", "bot@openai.com", true},
+		{RoleAuthor, "Alice", "bot@openai.com", true},
 		{RoleAuthor, "  copilot ", "someone@example.com", true},
 		{RoleAuthor, "Claudette", "claudette@example.com", false},
 		{RoleAuthor, "dependabot[bot]", "49699333+dependabot[bot]@users.noreply.github.com", true},
 		{RoleCommitter, "renovate[bot]", "renovate[bot]@users.noreply.github.com", true},
-		{RoleAuthor, "Alex Reppel", "1234+alex@users.noreply.github.com", false},
+		{RoleAuthor, "Alice", "1234+alice@users.noreply.github.com", false},
 		{RoleAuthor, "GitHub", "noreply@github.com", true},
 		{RoleCommitter, "GitHub", "noreply@github.com", false},
 		{RoleAuthor, "Some Tool", "do-not-reply@example.com", true},
-		{RoleAuthor, "Alex Reppel", "alex@example.com", false},
+		{RoleAuthor, "Alice", "alice@example.com", false},
 		// A configured automation's name shape: the machine_name_word and
 		// machine_local_word keys the attribution gate reads are refused here
 		// too, since the list has two readers (iss-2609090951276167).

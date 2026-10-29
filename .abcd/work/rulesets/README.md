@@ -10,15 +10,16 @@ in the tree rather than only a web console.
 - `main-protection.json` — deletion/force-push protection, the nine required
   status checks (strict), and the merge queue. **No bypass actors**: nobody
   merges past a red required check.
-- `main-review.json` — the pull-request rule requiring a code-owner review on
-  changes to the publish surface (`.github/CODEOWNERS`). Its approval count is
-  0, and the code-owner approval is required all the same: GitHub requires a
-  code owner's approval on a pull request that modifies owned content whatever
-  the count. Repository admins may bypass, so the rule binds every other
-  writer and does not hold the owner's own pull requests, an agent's under the
-  owner's identity included. That is why it is a separate ruleset: a bypass
-  covers every rule in its ruleset, so the review requirement and the required
-  checks must never share one.
+- `main-review.json` — the pull-request rule requiring a code-owner review.
+  Its approval count is 0, and the repository has no code-owners file, so the
+  rule names no owner and requires no approval: only an account with write
+  access or above can merge, which is the repository's maintainer test. The
+  publish surface is listed in `.abcd/work/publish-surface.txt`. Repository
+  admins are its bypass actors, which is why it is a separate ruleset: a
+  bypass covers every rule in its ruleset, so the review requirement and the
+  required checks must never share one. abcd's build and drain lanes arm
+  auto-merge only where a ruleset requires an approval, so in this repository
+  they leave their pull requests open for a maintainer to merge.
 - `reservations-protection.json` — deletion and force-push protection for
   `refs/heads/abcd-reserved/**`, the branches `abcd reserve` pushes
   (itd-2609091034175565). It is its own ruleset because it guards abcd's

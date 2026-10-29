@@ -233,7 +233,7 @@ B PRs. A failure here is a Cut A defect, not a Cut B blocker.
 
 **Superseded by the itd-108 grill (2026-08-11, later than this plan's
 interview).** This section previously also published `marketplace.json` as a
-release asset. The grill kept `REPPL/abcd-cli` as the marketplace source, so the
+release asset. The grill kept `<personal account>/abcd-cli` as the marketplace source, so the
 catalog stays committed and only the PLUGIN source moves to an archive. Where
 this plan and itd-108's Decisions disagree, **itd-108 wins**.
 
@@ -271,7 +271,7 @@ hardfails) and discards it. `release.yml:306` uploads `bin/abcd-*` and
 ### B2 — repoint the plugin source
 
 **Superseded in part by the itd-108 grill.** The README's `add` line does NOT
-change: the marketplace source stays `REPPL/abcd-cli`.
+change: the marketplace source stays `<personal account>/abcd-cli`.
 
 - `.claude-plugin/marketplace.json`'s PLUGIN source becomes an `archive` at a
   stable `releases/latest/download/` URL, **unpinned** — a `sha256` pin would

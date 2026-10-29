@@ -108,7 +108,7 @@ const armedAt = "2026-10-15T12:52:16Z"
 func TestTheRecordedLiveAnswersParse(t *testing.T) {
 	var a prStateAnswer
 	raw, _ := os.ReadFile(filepath.Join("testdata", "pr-state-1018-queued.json"))
-	if err := json.Unmarshal(raw, &a); err != nil || a.Data.Viewer == nil || a.Data.Viewer.Login != "REPPL" {
+	if err := json.Unmarshal(raw, &a); err != nil || a.Data.Viewer == nil || a.Data.Viewer.Login != "alice" {
 		t.Fatalf("decode #1018: %v, %+v", err, a.Data.Viewer)
 	}
 	s := a.Data.Repository.PullRequest
@@ -140,7 +140,7 @@ func TestPendingRequiredChecksAreNamedBeforeTheMergeState(t *testing.T) {
 	checks := running("check (ubuntu-latest)", "gitleaks", "dependency-review")
 	f.forge.answers = []string{
 		pr1018(t, both(unqueued("BEHIND", "", ""), checks)),
-		pr1018(t, both(unqueued("BEHIND", "REPPL", armedAt), checks)),
+		pr1018(t, both(unqueued("BEHIND", "alice", armedAt), checks)),
 	}
 	res, err := f.land(f.options())
 	if err != nil {
@@ -164,7 +164,7 @@ func TestBehindAloneIsNotAHolder(t *testing.T) {
 	at(t, "12:52:30")
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
-	f.forge.answers = []string{pr1018(t, unqueued("BEHIND", "", "")), pr1018(t, unqueued("BEHIND", "REPPL", armedAt))}
+	f.forge.answers = []string{pr1018(t, unqueued("BEHIND", "", "")), pr1018(t, unqueued("BEHIND", "alice", armedAt))}
 	res, err := f.land(f.options())
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func TestAtMostEightHeldChecksAreNamedSanitised(t *testing.T) {
 	}
 	f.forge.answers = []string{
 		pr1018(t, both(unqueued("BLOCKED", "", ""), running(all...), escaped)),
-		pr1018(t, both(unqueued("BLOCKED", "REPPL", armedAt), running(all...), escaped)),
+		pr1018(t, both(unqueued("BLOCKED", "alice", armedAt), running(all...), escaped)),
 	}
 	res, err := f.land(f.options())
 	if err != nil {
@@ -230,7 +230,7 @@ func TestAFreshArmingIsNotToggled(t *testing.T) {
 	at(t, "12:53:16")
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
-	f.forge.answers = []string{pr1018(t, unqueued("CLEAN", "", "")), pr1018(t, unqueued("CLEAN", "REPPL", armedAt))}
+	f.forge.answers = []string{pr1018(t, unqueued("CLEAN", "", "")), pr1018(t, unqueued("CLEAN", "alice", armedAt))}
 	res, err := f.land(f.options())
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +252,7 @@ func TestAnOwnArmingInsideTheGraceIsNotToggledOnARerun(t *testing.T) {
 	at(t, "13:10:00")
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
-	f.forge.answers = []string{pr1018(t, unqueued("CLEAN", "REPPL", armedAt))}
+	f.forge.answers = []string{pr1018(t, unqueued("CLEAN", "alice", armedAt))}
 	res, err := f.land(f.options())
 	if err != nil {
 		t.Fatal(err)
@@ -269,7 +269,7 @@ func TestAnOwnArmingPastTheGraceIsToggledOnce(t *testing.T) {
 	at(t, "13:30:00")
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
-	f.forge.answers = []string{pr1018(t, unqueued("CLEAN", "REPPL", armedAt)), pr1018(t, nil)}
+	f.forge.answers = []string{pr1018(t, unqueued("CLEAN", "alice", armedAt)), pr1018(t, nil)}
 	res, err := f.land(f.options())
 	if err != nil {
 		t.Fatal(err)
@@ -284,7 +284,7 @@ func TestAnOwnArmingPastTheGraceIsToggledOnce(t *testing.T) {
 	// Still unqueued after the toggle: once is all, on this run.
 	f = newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
-	f.forge.answers = []string{pr1018(t, unqueued("CLEAN", "REPPL", armedAt)), pr1018(t, unqueued("CLEAN", "REPPL", "2026-10-15T13:30:00Z"))}
+	f.forge.answers = []string{pr1018(t, unqueued("CLEAN", "alice", armedAt)), pr1018(t, unqueued("CLEAN", "alice", "2026-10-15T13:30:00Z"))}
 	if _, err := f.land(f.options()); err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +316,7 @@ func TestAFailedRearmSaysThePullRequestIsDisarmed(t *testing.T) {
 	at(t, "13:30:00")
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
-	f.forge.answers = []string{pr1018(t, unqueued("CLEAN", "REPPL", armedAt))}
+	f.forge.answers = []string{pr1018(t, unqueued("CLEAN", "alice", armedAt))}
 	f.forge.failArm = 1
 	_, err := f.land(f.options())
 	wantRefusal(t, err, "DISARMED")

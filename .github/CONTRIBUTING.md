@@ -45,11 +45,7 @@ inbound = outbound statement is the whole of it.
   not run again on the push the merge makes to `main`; a nightly run checks
   `main` instead. When the queue drops an entry, a sweep cancels the CI runs
   still going for it, so they stop holding runners the live entries need.
-- **Publish surface reviews.** Paths listed in
-  [`.github/CODEOWNERS`](CODEOWNERS) ship behaviour to installed users
-  (plugin hooks and commands, agent prompts, workflows, gates and build
-  config). Changes there additionally require a code-owner review. The applied
-  branch rulesets are mirrored under
+- **Branch rulesets.** The applied branch rulesets are mirrored under
   [`.abcd/work/rulesets/`](../.abcd/work/rulesets/).
 - **Volume cap.** At most three open pull requests per external author at a
   time — review attention is the scarce resource this protects.
