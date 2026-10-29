@@ -136,8 +136,7 @@ mint() {
 	fi
 	mkdir -p "$receipts_rel"
 	if [ "$scope" = records-only ]; then
-		printf 'commit %s\nminted %s\nscope records-only\nverdict %s\nbase %s\n' \
-			"$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$verdict" "$base" >"$receipts_rel/$now_head"
+		printf 'commit %s\nminted %s\nscope records-only\nverdict %s\nbase %s\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$verdict" "$base" >"$receipts_rel/$now_head"
 	else
 		printf 'commit %s\nminted %s\nscope full\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$receipts_rel/$now_head"
 	fi
