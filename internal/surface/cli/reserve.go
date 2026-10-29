@@ -322,9 +322,11 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"push leaves no reservation and nothing in the checkout.\n\n" +
 			"--sweep lists the spent reservation branches on origin and, with --apply, deletes\n" +
 			"them, each with a lease on the exact tip it judged, so a branch re-reserved\n" +
-			"meanwhile survives. A branch is spent when its tip has been untouched, its lease\n" +
-			"past the five-minute margin included, for --older-than days (default 7, at\n" +
-			"least 1), and either its record is resolved, won't-fixed, shipped or superseded\n" +
+			"meanwhile survives. A branch is spent when its tip has settled, its lease past\n" +
+			"the five-minute margin included (a plain release, or a hand-back on a finished\n" +
+			"record, at once, at the next sweep; any other tip only once untouched for\n" +
+			"--older-than days, default 7, at least 1),\n" +
+			"and either its record is resolved, won't-fixed, shipped or superseded\n" +
 			"on origin's default branch, or every commit on it is a reservation or a plain\n" +
 			"release, whether or not any is a release, since a lapsed lease already lets any\n" +
 			"session take the record over. A hand-back on a record still open, a commit of\n" +

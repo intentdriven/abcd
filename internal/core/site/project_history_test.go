@@ -18,9 +18,8 @@ import (
 )
 
 // The project history fixture's distinctive git facts: an author, the same
-// person under a second name (a same-author candidate pair on the health
-// page), a declared model, and two commit dates nothing else in the fixture
-// carries. None of them may reach a project site.
+// person under a second name, a declared model, and two commit dates nothing
+// else in the fixture carries. None of them may reach a project site.
 const (
 	historyAuthor      = "Zebulon Quixwright"
 	historyAuthorAlias = "zquix"
@@ -129,7 +128,7 @@ func TestAProjectSiteShowsNothingFromGitHistory(t *testing.T) {
 	if health == "" {
 		t.Fatal("the project site has no health page")
 	}
-	for _, label := range []string{ui.Health.SameAuthor, ui.Health.Undeclared, ui.Health.MultiTrailer, ui.Contributors.Assisted} {
+	for _, label := range []string{ui.Health.Undeclared, ui.Health.MultiTrailer, ui.Contributors.Assisted} {
 		if strings.Contains(health, escapeText(label)) {
 			t.Errorf("the health page carries %q, a check git history answers", label)
 		}
@@ -269,7 +268,7 @@ func TestTheComposedRouteKeepsItsGitHistoryDetails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(files[routeHealth+"index.html"]), escapeText(ui.Health.SameAuthor)) {
-		t.Error("the composed health page lost its same-author panel")
+	if !strings.Contains(string(files[routeHealth+"index.html"]), escapeText(ui.Health.Undeclared)) {
+		t.Error("the composed health page lost its undeclared-commits panel")
 	}
 }

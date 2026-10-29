@@ -61,9 +61,11 @@ func TestReserveSweepIsADryRunUntilApplied(t *testing.T) {
 		t.Fatal("a dry run moved or deleted the branch")
 	}
 
-	code, stdout, _ = reserveRun(t, dir, "reserve", "--sweep", "--older-than", "9")
-	if code != 0 || !strings.Contains(stdout, "keep") || !strings.Contains(stdout, "nothing was deleted") {
-		t.Fatalf("a nine-day dry run: exit %d\n%s; want iss-7 kept", code, stdout)
+	// A plain release does not wait the age, so a longer one still lists it.
+	code, stdout, _ = reserveRun(t, dir, "reserve", "--sweep", "--older-than", "9", "--json")
+	doc = sweepJSON{}
+	if code != 0 || json.Unmarshal([]byte(stdout), &doc) != nil || doc.Spent != 1 || doc.Deleted != 0 || doc.Branches[0].Reason != "released" {
+		t.Fatalf("a nine-day dry run: exit %d\n%s; want iss-7 still spent as released, nothing deleted", code, stdout)
 	}
 
 	code, stdout, stderr = reserveRun(t, dir, "reserve", "--sweep", "--apply")

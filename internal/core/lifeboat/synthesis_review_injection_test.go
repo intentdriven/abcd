@@ -36,7 +36,7 @@ func assertNoRawHTMLOpener(t *testing.T, md string) {
 // exit 0.
 func TestReviewMDNeutralisesInjectedSourceName(t *testing.T) {
 	dir := reviewFixture(t, "<script>evil", &Summary{Grounded: 7, Partial: 4, Blank: 3})
-	res, err := ReviewLifeboat(dir, realSourceDir(t), nil) // source basename "src" != "<script>evil"
+	res, err := ReviewLifeboat(dir, realSourceDir(t), nil, okScan) // source basename "src" != "<script>evil"
 	if err != nil {
 		t.Fatalf("ReviewLifeboat: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestReviewMDNeutralisesInjectedManifestSHA(t *testing.T) {
 	prov := `{"schema_version":2,"generator":"test","source_name":"abc","manifest_sha256":"<script>deadbeef"}`
 	writeFile(t, filepath.Join(dir, ProvenanceName), []byte(prov))
 
-	res, err := ReviewLifeboat(dir, realSourceDir(t), nil)
+	res, err := ReviewLifeboat(dir, realSourceDir(t), nil, okScan)
 	if err != nil {
 		t.Fatalf("ReviewLifeboat: %v", err)
 	}

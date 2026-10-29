@@ -82,7 +82,7 @@ func TestGraveyardPackIngestRoundTrip(t *testing.T) {
 	}
 
 	payload := fmt.Sprintf(`{"schema_version":1,"lessons":[{"id":"les-engine-reverted","lesson":"The engine was added and reverted in the same breath.","confidence":"high","evidence":[%q,"rev-000000000000"]}]}`, revID)
-	res, err := IngestLessons(dest, []byte(payload))
+	res, err := IngestLessons(dest, []byte(payload), okScan)
 	if err != nil {
 		t.Fatalf("IngestLessons: %v", err)
 	}

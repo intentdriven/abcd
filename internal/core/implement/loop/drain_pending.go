@@ -78,7 +78,33 @@ func publishPending(repoRoot string, st *DrainState, view *claim.Snapshot, now t
 	for _, p := range st.PendingHandBacks {
 		r, ok := view.Lookup(p.Issue)
 		switch {
-		case !ok || r.State != claim.StateReleased:
+		case !ok && p.Blob == "":
+			// Judged while origin's default branch could not be read, it names
+			// no record to fence on, and its branch is gone too: publishing it
+			// could hold back a record a person has changed since.
+			c := "dropped the hand-back of " + p.Issue + " pending since " + stamp(p.At) + " unpublished: its branch is gone from " + claim.Remote +
+				" and it names no record blob it was judged over, so a later judgement asks again"
+			out = append(out, c)
+			noteRoute(st, p.Issue, c)
+		case !ok:
+			// The sweep deletes a released branch at its next run, so a
+			// hand-back still pending then has no release left to publish
+			// over: it is published as the branch's first commit, which origin
+			// takes only while the branch is still absent.
+			rel := releaseOverAbsent(repoRoot, p.Issue, p.Kind, p.Blob, now)
+			if rel.pending != "" {
+				kept = append(kept, p)
+				continue
+			}
+			c := "published the hand-back of " + p.Issue + " pending since " + stamp(p.At) + ", its branch having been gone from " + claim.Remote +
+				": " + rel.clause
+			if !rel.published {
+				c = "dropped the hand-back of " + p.Issue + " pending since " + stamp(p.At) + " unpublished, as it is no longer due: its branch was gone from " +
+					claim.Remote + ", and " + rel.clause
+			}
+			out = append(out, c)
+			noteRoute(st, p.Issue, c)
+		case r.State != claim.StateReleased:
 			kept = append(kept, p)
 			continue
 		case r.ReleasedBy == claim.ReleasedByDefaultBranch:
