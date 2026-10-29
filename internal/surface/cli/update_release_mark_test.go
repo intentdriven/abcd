@@ -95,8 +95,8 @@ func TestUpdateLeavesTheMarkWhenTheReleaseIsNotItsOwnBuild(t *testing.T) {
 			args = []string{"v99.0.0"}
 		}
 		out, code := runUpdateWithMarkFake(t, "v0.7.0", fake, args...)
-		if code == 0 || fake.applied {
-			t.Fatalf("named=%v: a release that is not its own build was taken (exit %d):\n%s", named, code, out)
+		if code == 0 || !strings.Contains(out, "not-this-release") {
+			t.Fatalf("named=%v: the core's refusal was not reached or not reported (exit %d):\n%s", named, code, out)
 		}
 		if got, _ := ahoy.ReadReleaseMark(); got != "v0.7.0" {
 			t.Errorf("named=%v: the refusal moved the mark to %q", named, got)
