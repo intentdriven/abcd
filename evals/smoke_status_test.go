@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -82,8 +83,15 @@ func TestAnnounceThenStatusEndToEnd(t *testing.T) {
 	if out, code := runIn(t, octo, env, "announce", "merging", "1012"); code != 0 || panicked(out) {
 		t.Fatalf("`abcd announce merging 1012` exit=%d\n%s", code, out)
 	}
+	// The sender is the holder id the announcement minted into the home
+	// (iss-2610290809526033), never the login.
+	kept, err := os.ReadFile(filepath.Join(w.home, ".abcd.noindex", "holder-id"))
+	id := strings.TrimSpace(string(kept))
+	if err != nil || !regexp.MustCompile(`^h_[0-9a-f]{32}$`).MatchString(id) {
+		t.Fatalf("the announcement kept no holder id: %q, %v", kept, err)
+	}
 	out, code := runIn(t, pat, env, "status")
-	if code != 0 || panicked(out) || !strings.Contains(out, "@octo (claimed): merging #1012, for 30 min") {
+	if code != 0 || panicked(out) || !strings.Contains(out, id+" (claimed): merging #1012, for 30 min") || strings.Contains(out, "@octo") {
 		t.Fatalf("`abcd status` exit=%d\n%s", code, out)
 	}
 	var got struct {
@@ -93,7 +101,7 @@ func TestAnnounceThenStatusEndToEnd(t *testing.T) {
 		} `json:"announcements"`
 	}
 	runJSON(t, pat, w.home, &got, "status")
-	if len(got.Announcements) != 1 || got.Announcements[0].Sender != "octo" || got.Announcements[0].Item != "#1012" {
+	if len(got.Announcements) != 1 || got.Announcements[0].Sender != id || got.Announcements[0].Item != "#1012" {
 		t.Fatalf("`abcd status --json` announcements = %+v", got.Announcements)
 	}
 
@@ -114,7 +122,7 @@ func TestAnnounceThenStatusEndToEnd(t *testing.T) {
 		}
 		return string(out)
 	}
-	if out := hook(); !strings.Contains(out, "## STATUS\n") || !strings.Contains(out, "- @octo (claimed): merging #1012, for 30 min\n") {
+	if out := hook(); !strings.Contains(out, "## STATUS\n") || !strings.Contains(out, "- "+id+" (claimed): merging #1012, for 30 min\n") {
 		t.Fatalf("the prompt hook's text:\n%s", out)
 	}
 	if out := hook(); strings.Contains(out, "## STATUS") {
