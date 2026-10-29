@@ -342,9 +342,8 @@ func TestCloseRefusesAlreadyClosedOrPublished(t *testing.T) {
 
 // TestCloseRecordsNoEndGitHubGivesNoTimeFor: an advisory GitHub reports
 // closed or published with no time for it, one this abcd cannot read, or one
-// later than the clock allows, is
-// never stamped with the clock's time: close refuses, sends nothing and
-// records nothing.
+// later than the clock allows, is never stamped with the clock's time: close
+// refuses, sends nothing and records nothing.
 func TestCloseRecordsNoEndGitHubGivesNoTimeFor(t *testing.T) {
 	for _, state := range []string{"closed", "published"} {
 		for name, at := range map[string]any{"none": nil, "unreadable": "yesterday",

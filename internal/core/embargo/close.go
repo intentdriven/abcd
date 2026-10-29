@@ -191,7 +191,7 @@ func Close(req CloseRequest) (CloseResult, error) {
 		}
 		at, ok := forgeTime(*v, clock(req.Now))
 		if !ok {
-			return CloseResult{}, refuse("GitHub reports this advisory "+remote.State+" with a "+remote.State+"_at that is not a time this abcd reads, or one later than this machine's clock; nothing was sent or recorded",
+			return CloseResult{}, refuse("GitHub reports this advisory "+remote.State+" with a "+remote.State+"_at that is not a time this abcd reads, or one more than five minutes later than this machine's clock; nothing was sent or recorded",
 				"check this machine's clock and run `abcd embargo close` again; if GitHub's "+remote.State+"_at is not an RFC 3339 time, run it with a newer abcd, or report it")
 		}
 		ended = at
