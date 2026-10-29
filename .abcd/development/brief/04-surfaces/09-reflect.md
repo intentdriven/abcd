@@ -59,8 +59,8 @@ hidden from a person's `/abcd:` menu (the product thinker's placement of
   `criterion 2`, or an item of a numbered list) and gives one of the auditor's
   verdicts in capitals (`MET`, `MET_WITH_CONCERNS`, `NOT_MET`,
   `INCONCLUSIVE`). Any other note, a ruling's amendment line among them, is
-  not an audit. The list of reviews owed (`abcd intent audit`) reads the
-  section by the same rule, so an intent the seed counts as audited is never
+  not an audit. The intent store's list of reviews owed reads the section
+  by the same rule, so an intent the seed counts as audited is never
   one that list says owes a review.
 - The shipped intents with **no audit notes**, each with the command that
   audits it: an offer, never a gate.
