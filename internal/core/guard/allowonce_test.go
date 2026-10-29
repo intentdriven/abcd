@@ -93,13 +93,13 @@ func TestGuardRefusesAnAgentGrantingItsOwnAllow(t *testing.T) {
 	r = r.ReadingFrom(f)
 	store := abcdhome.Path(home, "guard-allow", testRootSHA)
 	for line, id := range map[string]string{
-		"abcd guard allow --once --command 'git branch -D x'":              "abcd-guard-allow",
-		"go run ./cmd/abcd guard allow --once --command 'git branch -D x'": "abcd-guard-allow",
-		"echo '{}' > " + store + "/allow-x.json":                           allowStoreEntryID,
-		"printf x | tee " + store + "/allow-x.json":                        allowStoreEntryID,
-		"cp /tmp/a.json " + store + "/allow-x.json":                        allowStoreEntryID,
-		"cat a > ~/.abcd.noindex/guard-allow/" + testRootSHA + "/x.json":   allowStoreEntryID,
-		`d=~/.abcd.noindex/guard-allow; echo x > "$d/$f"`:                  allowStoreEntryID,
+		"abcd guard allow --once --command 'git branch -D x'":               "abcd-guard-allow",
+		"go run ./cmd/abcd guard allow --once --command 'git branch -D x'":  "abcd-guard-allow",
+		"echo '{}' > " + store + "/allow-x.json":                            allowStoreEntryID,
+		"printf x | tee " + store + "/allow-x.json":                         allowStoreEntryID,
+		"cp /tmp/a.json " + store + "/allow-x.json":                         allowStoreEntryID,
+		"cat a > " + abcdhome.Display("guard-allow", testRootSHA, "x.json"): allowStoreEntryID,
+		"d=" + abcdhome.Display("guard-allow") + `; echo x > "$d/$f"`:       allowStoreEntryID,
 	} {
 		d, err := r.Check(line)
 		if err != nil {

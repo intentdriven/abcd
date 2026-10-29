@@ -154,7 +154,7 @@ func (p deleteProver) prove(t guard.DeleteTarget) guard.DeleteProof {
 	if !time.Now().Before(p.deadline) {
 		return unproven(errOutOfTime.Error(), "Run the delete again, or one target at a time.")
 	}
-	root, err := gitutil.Run(t.Dir, "rev-parse", "--show-toplevel")
+	root, err := gitutil.Toplevel(t.Dir)
 	if err != nil || root == "" {
 		return unproven("the directory the command runs in is not a git checkout abcd can read", "")
 	}

@@ -439,12 +439,8 @@ worktree first.
 
 ### `allow` — the person's one-shot way past
 
-When the person decides a refused delete is safe anyway, they run, themselves:
-
-```bash
-abcd guard allow --once --command '<the exact command>'
-```
-
+When the person decides a refused delete is safe anyway, they run, themselves,
+in their own terminal, `abcd guard allow --once --command '<the exact command>'`.
 That lets the one exact line (byte for byte) through the hook once, within ten
 minutes, and lets past nothing else: a line any other hazard blocks stays
 blocked, and the allow is left unused. The hook admits the line with a note
@@ -453,7 +449,7 @@ with the allow already used). `guard check` never uses an allow, and
 neither does the approver for a headless agent.
 
 **Never run `allow` yourself.** The guard refuses it when an agent runs it, in
-either spelling (`abcd …` or `go run ./cmd/abcd …`), and refuses a shell write
+either spelling (`abcd …`, or `go run ./cmd/abcd …` in a source checkout), and refuses a shell write
 into its store. Tell the person the exact command and why it is safe, and let
 them decide.
 

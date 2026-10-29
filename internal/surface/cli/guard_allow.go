@@ -33,7 +33,7 @@ var guardAllowNow = time.Now
 // allowRoot is the root commit of the repository dir is in, which keys its
 // allows.
 func allowRoot(dir string) (string, error) {
-	top, err := gitutil.Run(dir, "rev-parse", "--show-toplevel")
+	top, err := gitutil.Toplevel(dir)
 	if err != nil || top == "" {
 		return "", errors.New("this is not a git checkout, so there is no repository to allow a command in")
 	}

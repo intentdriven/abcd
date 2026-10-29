@@ -79,7 +79,7 @@ func GrantAllow(home, rootSHA, command string, now time.Time) (Allowed, error) {
 	if !validRootSHA(rootSHA) {
 		return Allowed{}, fmt.Errorf("%q is not a repository's root commit", rootSHA)
 	}
-	root, err := fsutil.EnsureHomeScope(home, allowRel(rootSHA), 0o700)
+	root, err := fsutil.EnsureHomeScope(home, allowRel(rootSHA), abcdhome.DirMode)
 	if err != nil {
 		return Allowed{}, err
 	}
