@@ -638,7 +638,7 @@ func TestAnEndedReleaseIsReArmedByACopyOfTheSameHolder(t *testing.T) {
 		t.Fatalf("settles = %+v; want the release settled on a tombstone", res.Settles)
 	}
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
-	if !m.released() || m.Holder != "octo" || stateOf(ws, 11) != WithdrawnRearmed || stateOf(ws, 12) != WithdrawnRearmed {
+	if !m.released() || m.Holder != laptop.holderID() || stateOf(ws, 11) != WithdrawnRearmed || stateOf(ws, 12) != WithdrawnRearmed {
 		t.Fatalf("tombstone = %+v %+v; want octo's, every one rearmed", m, ws)
 	}
 	// Idempotent: the cutting copy's next act, and a listing, do nothing.
@@ -813,7 +813,7 @@ func TestAnotherPersonsTakeOverCarriesTheStrandedWithdrawals(t *testing.T) {
 	if len(res.Stranded) != 3 || res.Stranded[0].By != octo.holderID() || len(f.mutations()) != 0 {
 		t.Fatalf("result = %+v, mutations %v; want octo's three carried and nothing re-armed", res, f.mutations())
 	}
-	if _, ws := w.tipWithdrawals("rel-v0.16.0"); len(ws) != 3 || ws[0].By != "octo" || !ws[0].Pending() {
+	if _, ws := w.tipWithdrawals("rel-v0.16.0"); len(ws) != 3 || ws[0].By != octo.holderID() || !ws[0].Pending() {
 		t.Fatalf("quinn's reservation records %+v; want octo's withdrawals carried", ws)
 	}
 	// octo's next act re-arms nothing while quinn's cut holds the branch.

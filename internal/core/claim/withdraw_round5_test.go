@@ -132,7 +132,7 @@ func TestAStateAnotherLoginsTombstoneChangedIsReArmedWhenTheReleaseEnds(t *testi
 	if len(f.mutations()) != 0 || len(f.posted()) != 3 || s.NotEnded != octo.holderID() || s.Commit != "" {
 		t.Fatalf("settle = %+v, mutations %v, comments %q; want nothing acted on and the tombstone named", s, f.mutations(), f.posted())
 	}
-	if !strings.Contains(strings.Join(s.Notes(), "\n"), "rel-v0.16.0's tip is a tombstone octo did not push") || !slices.Equal(s.NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) {
+	if !strings.Contains(strings.Join(s.Notes(), "\n"), "rel-v0.16.0's tip is a tombstone "+octo.holderID()+" did not push") || !slices.Equal(s.NotRead, []PushCount{{Pusher: "mal", Commits: 1}}) {
 		t.Fatalf("notes = %q; want the tombstone named as ending nothing, and counted as not read", s.Notes())
 	}
 	if res, err := octo.reserve("iss-9", "p.go"); err != nil || len(res.Settles) != 0 {

@@ -149,7 +149,7 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 			res, err := octo.do(Request{Record: "rel-v0.16.0", Release: true})
 			if c.buried {
 				const why = "64 commits"
-				if !strings.Contains(rw.Unplaced, why) || len(rw.Held) != 0 || !strings.Contains(strings.Join(rw.Lines(), "\n"), "abcd acts on none of octo's withdrawals on rel-v0.16.0") {
+				if !strings.Contains(rw.Unplaced, why) || len(rw.Held) != 0 || !strings.Contains(strings.Join(rw.Lines(), "\n"), "abcd acts on none of "+octo.holderID()+"'s withdrawals on rel-v0.16.0") {
 					t.Fatalf("listing = %+v; want octo's newest push named as not found, and nothing held", rw)
 				}
 				if err == nil || !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), why) || len(f.mutations()) != 0 ||
@@ -243,7 +243,7 @@ func TestAPersonsNewestPushNotFoundActsOnNothingForThem(t *testing.T) {
 	commented, tip := len(f.posted()), w.remoteTip("rel-v0.16.0")
 	f.reset()
 	_, err := octo.do(Request{Record: "rel-v0.16.0", Release: true})
-	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of octo's withdrawals on rel-v0.16.0") ||
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of "+octo.holderID()+"'s withdrawals on rel-v0.16.0") ||
 		len(f.mutations()) != 0 || w.remoteTip("rel-v0.16.0") != tip || len(f.posted()) != commented {
 		t.Fatalf("release = %v, mutations %v; want it refused with nothing done", err, f.mutations())
 	}

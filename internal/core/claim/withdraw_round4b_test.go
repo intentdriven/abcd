@@ -89,7 +89,7 @@ func TestAReleaseNamesWhatItDoesNotActOnOncePerTip(t *testing.T) {
 		set(f, record)
 		tip := w.remoteTip("rel-v0.16.0")
 		_, err := octo.do(Request{Record: "rel-v0.16.0", Release: true})
-		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of octo's withdrawals on rel-v0.16.0") ||
+		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "abcd acts on none of "+octo.holderID()+"'s withdrawals on rel-v0.16.0") ||
 			len(f.mutations()) != 0 || w.remoteTip("rel-v0.16.0") != tip {
 			t.Fatalf("%s: release = %v, mutations %v; want refused, naming why, nothing pushed", name, err, f.mutations())
 		}
