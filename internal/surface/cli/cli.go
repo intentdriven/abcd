@@ -1129,44 +1129,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if info, err := os.Stat(repoAbs); err != nil || !info.IsDir() {
 				return &exitError{Code: 2, Msg: "disembark pack: the <repo> argument is not a directory (it is not repeated here)"}
 			}
-			// Build the source repo's secret scanner and fail closed if its config
-			// is degraded — a pack must not ship secrets under a weakened ruleset.
-			sc, err := scanner.New(repoAbs)
+			scan, err := lifeboatSecretScan(repoAbs)
 			if err != nil {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: %s", scrubPaths(err))}
-			}
-			if bad, reason := sc.Unavailable(); bad {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: secret scanner unavailable, refusing: %s", reason)}
-			}
-			// A lifeboat is written OUT of the repository, as a release is, so the
-			// scanner augmenter the source configured and nobody installed refuses
-			// the pack as it refuses a launch (the 2026-09-25 ruling on
-			// iss-2608291814575788).
-			if gap := sc.AugmenterGap(); gap != "" {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: the scanner augmenter this repository configured is not installed, refusing: %s", gap)}
-			}
-			scan := func(files []lifeboat.PlannedFile) error {
-				hard, first := 0, ""
-				for _, f := range files {
-					for _, fnd := range sc.ScanText(string(f.Content), f.Path) {
-						if fnd.Severity == scanner.SeverityHardFail {
-							hard++
-							if first == "" {
-								first = fmt.Sprintf("%s (%s)", f.Path, fnd.Kind)
-							}
-						}
-					}
-				}
-				// The augmenter runs inside ScanText, and a run that failed
-				// degrades the scanner during the walk: refuse, never read the
-				// shorter list as clean.
-				if bad, reason := sc.Unavailable(); bad {
-					return fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
-				}
-				if hard > 0 {
-					return fmt.Errorf("%d hard-fail secret(s) in planned content (first: %s); fix at source, not in the lifeboat", hard, first)
-				}
-				return nil
+				return &exitError{Code: 2, Msg: "disembark pack: " + scrubPaths(err)}
 			}
 			res, err := lifeboat.Pack(repoAbs, args[1], scan, ignoredScope(packIgnored)...)
 			if err != nil {
@@ -1206,7 +1171,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			// a drop is reported honestly, not a failure. Only structural faults
 			// (not a lifeboat, unreadable graveyard, unparseable/oversize payload)
 			// return an error and exit 2.
-			res, err := lifeboat.IngestLessons(dirAbs, raw)
+			res, err := lifeboat.IngestLessons(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark graveyard: " + scrubPaths(err)}
 			}
@@ -1246,7 +1211,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
 			}
-			res, err := lifeboat.SynthesizePrinciples(dirAbs, raw)
+			res, err := lifeboat.SynthesizePrinciples(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
 			}
@@ -1284,7 +1249,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			// refusal (ErrPressReleaseUncited): exit 2, the derived file left untouched
 			// (design §5 exception). It flows through the generic exit-2 wrapping like
 			// every other structural fault.
-			res, err := lifeboat.ComposePressRelease(dirAbs, raw)
+			res, err := lifeboat.ComposePressRelease(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark press-release: " + scrubPaths(err)}
 			}
@@ -1325,7 +1290,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			}
 			// The source repo's content is never read (the core gates it as a real dir
 			// only); a manifest failure is a MAJOR_RETHINK verdict input, exit 0.
-			res, err := lifeboat.ReviewLifeboat(dirAbs, args[1], raw)
+			res, err := lifeboat.ReviewLifeboat(dirAbs, args[1], raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
 			}
@@ -1352,6 +1317,66 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 	disembarkCmd.AddCommand(pressReleaseCmd)
 	disembarkCmd.AddCommand(reviewCmd)
 	return disembarkCmd
+}
+
+// lifeboatSecretScan builds the secret scan every verb that writes into a
+// lifeboat hands the core: pack over its planned bytes, and graveyard,
+// principles, press-release and review over the host payload they would write.
+// It builds the scanner over root and fails closed when the scanner's config is
+// degraded, since a lifeboat must not be written under a weakened ruleset. A
+// lifeboat is written OUT of the repository, as a release is, so a scanner
+// augmenter root configured and nobody installed refuses as it refuses a launch
+// (the 2026-09-25 ruling on iss-2608291814575788). The returned scan refuses on
+// any hard-fail finding: refuse, never redact.
+func lifeboatSecretScan(root string) (lifeboat.SecretScan, error) {
+	sc, err := scanner.New(root)
+	if err != nil {
+		return nil, err
+	}
+	if bad, reason := sc.Unavailable(); bad {
+		return nil, fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
+	}
+	if gap := sc.AugmenterGap(); gap != "" {
+		return nil, fmt.Errorf("the scanner augmenter this repository configured is not installed, refusing: %s", gap)
+	}
+	return func(files []lifeboat.PlannedFile) error {
+		hard, first := 0, ""
+		for _, f := range files {
+			for _, fnd := range sc.ScanText(string(f.Content), f.Path) {
+				if fnd.Severity == scanner.SeverityHardFail {
+					hard++
+					if first == "" {
+						first = fmt.Sprintf("%s (%s)", f.Path, fnd.Kind)
+					}
+				}
+			}
+		}
+		// The augmenter runs inside ScanText, and a run that failed
+		// degrades the scanner during the walk: refuse, never read the
+		// shorter list as clean.
+		if bad, reason := sc.Unavailable(); bad {
+			return fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
+		}
+		if hard > 0 {
+			return fmt.Errorf("%d hard-fail secret(s) in planned content (first: %s); fix at source, not in the lifeboat", hard, first)
+		}
+		return nil
+	}, nil
+}
+
+// deferredLifeboatSecretScan is lifeboatSecretScan over the lifeboat directory,
+// built when the core first scans rather than up front, so the core's own
+// lifeboat gate (not a directory, not a lifeboat) still answers first for an
+// operand that is not one, and the scanner is built over a directory proved to
+// be a lifeboat.
+func deferredLifeboatSecretScan(dirAbs string) lifeboat.SecretScan {
+	return func(files []lifeboat.PlannedFile) error {
+		scan, err := lifeboatSecretScan(dirAbs)
+		if err != nil {
+			return err
+		}
+		return scan(files)
+	}
 }
 
 // newEmbarkCommand builds the operator `embark` sub-tree — the write half of the

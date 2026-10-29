@@ -174,7 +174,8 @@ JSON. None of these exist at pack time.
 Each delegated payload is composed by a plugin agent and validated by the
 binary, which treats it as untrusted input: it decodes the payload with
 unknown fields refused, sanitises its prose, and writes only what survives the
-citation gate. The press release is delegated to `press-release-composer`, the
+citation gate. The bytes it would write are secret-scanned before any write, as
+pack's planned bytes are, and a hard-fail secret refuses the whole write. The press release is delegated to `press-release-composer`, the
 graveyard to `graveyard-interpreter`, the principles to `principle-distiller`
 and the review to `lifeboat-reviewer`. Each prompt declares
 `reads_untrusted_input: true` and tells the agent that everything it reads is
