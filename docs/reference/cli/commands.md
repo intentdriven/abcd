@@ -4679,13 +4679,15 @@ tombstone cannot mark the hand-back is still made, plain, and says why
 
 A footprint sharing a path with another person's live reservation backs off
 (exit 3). A file that origin's default branch, as last fetched, declares
-linguist-generated in its root .gitattributes is shared, never an overlap; a
-directory never is. When that declaration cannot be read nothing is shared, and
-the act says why (generated_unread in --json). Your own reservation sharing a
-path with yours from another copy is made, and warns on stderr (own_overlap in
---json). Name files, not directories: a directory holds off every reservation of
-a file inside it. A footprint path naming a directory git tracks is reserved all
-the same, and warns on stderr, naming it and how many tracked files it covers on
+linguist-generated in its root .gitattributes is shared, never an overlap, and
+is named on a shared: line for whoever lands second to regenerate after
+merging (generated_shared in --json); a directory never is. When that
+declaration cannot be read nothing is shared, and the act says why
+(generated_unread in --json). Your own reservation sharing a path with yours
+from another copy is made, and warns on stderr (own_overlap in --json). Name
+files, not directories: a directory holds off every reservation of a file
+inside it. A footprint path naming a directory git tracks is reserved all the
+same, and warns on stderr, naming it and how many tracked files it covers on
 origin's default branch, or HEAD (directory_footprint in --json).
 
 The holder is your GitHub username, from the first of these that names it:

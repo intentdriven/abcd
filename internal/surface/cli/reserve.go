@@ -52,9 +52,12 @@ type reserveOutput struct {
 	HandBackUnpublished string             `json:"hand_back_unpublished,omitempty"`
 	// OwnOverlap is each path the reservation shares with the person's own
 	// from another copy, which it was made over; the text form warns of each
-	// on stderr. GeneratedUnread is why no generated file was recognised.
-	OwnOverlap      []reserveOwnOverlap `json:"own_overlap,omitempty"`
-	GeneratedUnread string              `json:"generated_unread,omitempty"`
+	// on stderr. GeneratedShared is each generated file it shares with
+	// another record, which the text form names on a shared: line.
+	// GeneratedUnread is why no generated file was recognised.
+	OwnOverlap      []reserveOwnOverlap     `json:"own_overlap,omitempty"`
+	GeneratedShared []reserveGeneratedShare `json:"generated_shared,omitempty"`
+	GeneratedUnread string                  `json:"generated_unread,omitempty"`
 	// DirectoryFootprint is each footprint path naming a directory git
 	// tracks, with the tracked files beneath it (iss-2610230016544142): the
 	// reservation is made all the same, and the text form warns of each on
@@ -79,6 +82,13 @@ type reserveOwnOverlap struct {
 	Path            string `json:"path"`
 	Record          string `json:"record"`
 	EffectiveExpiry string `json:"effective_expiry"`
+}
+
+// reserveGeneratedShare is a generated file shared with another record's
+// reservation.
+type reserveGeneratedShare struct {
+	Path   string `json:"path"`
+	Record string `json:"record"`
 }
 
 // reserveHandedBack is the hand-back a person's own reservation was made over.
@@ -154,13 +164,15 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"(hand_back_unpublished in --json).\n\n" +
 			"A footprint sharing a path with another person's live reservation backs off\n" +
 			"(exit 3). A file that origin's default branch, as last fetched, declares\n" +
-			"linguist-generated in its root .gitattributes is shared, never an overlap; a\n" +
-			"directory never is. When that declaration cannot be read nothing is shared, and\n" +
-			"the act says why (generated_unread in --json). Your own reservation sharing a\n" +
-			"path with yours from another copy is made, and warns on stderr (own_overlap in\n" +
-			"--json). Name files, not directories: a directory holds off every reservation of\n" +
-			"a file inside it. A footprint path naming a directory git tracks is reserved all\n" +
-			"the same, and warns on stderr, naming it and how many tracked files it covers on\n" +
+			"linguist-generated in its root .gitattributes is shared, never an overlap, and\n" +
+			"is named on a shared: line for whoever lands second to regenerate after\n" +
+			"merging (generated_shared in --json); a directory never is. When that\n" +
+			"declaration cannot be read nothing is shared, and the act says why\n" +
+			"(generated_unread in --json). Your own reservation sharing a path with yours\n" +
+			"from another copy is made, and warns on stderr (own_overlap in --json). Name\n" +
+			"files, not directories: a directory holds off every reservation of a file\n" +
+			"inside it. A footprint path naming a directory git tracks is reserved all the\n" +
+			"same, and warns on stderr, naming it and how many tracked files it covers on\n" +
 			"origin's default branch, or HEAD (directory_footprint in --json).\n\n" +
 			"The holder is your GitHub username, from the first of these that names it:\n" +
 			"user.email, when it is a GitHub no-reply address; reservation.github_username\n" +
@@ -345,6 +357,9 @@ func reserveView(res claim.Result) reserveOutput {
 			EffectiveExpiry: rfc3339(o.Expiry)})
 		out.warnings = append(out.warnings, o.Warning())
 	}
+	for _, g := range res.GeneratedShared {
+		out.GeneratedShared = append(out.GeneratedShared, reserveGeneratedShare{Path: termsafe.Sanitize(g.Path), Record: termsafe.Sanitize(g.Record)})
+	}
 	for _, d := range res.Directories {
 		out.DirectoryFootprint = append(out.DirectoryFootprint, reserveDirectory{Path: termsafe.Sanitize(d.Path),
 			TrackedFiles: d.Files, On: termsafe.Sanitize(d.On)})
@@ -402,6 +417,9 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	}
 	if out.HandBackUnpublished != "" {
 		fmt.Fprintf(w, "  no hand-back: %s\n", out.HandBackUnpublished)
+	}
+	for _, g := range out.GeneratedShared {
+		fmt.Fprintf(w, "  shared: %s\n", claim.GeneratedShare{Path: g.Path, Record: g.Record}.Line())
 	}
 	if out.GeneratedUnread != "" {
 		fmt.Fprintf(w, "  %s\n", claim.GeneratedUnreadLine(out.GeneratedUnread))

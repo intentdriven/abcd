@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"cmp"
 	"fmt"
 	"path"
 	"slices"
@@ -28,6 +29,24 @@ type OwnOverlap struct {
 	Expiry time.Time
 }
 
+// GeneratedShare is a path a reservation shares with the live reservation of
+// another record that is no overlap because origin's default branch declares
+// it generated (iss-2610282340087862): the act is made, and whoever lands
+// second regenerates the file after merging.
+type GeneratedShare struct {
+	// Path is the shared path, the deeper of the two (sharedPath).
+	Path string
+	// Record is the other reservation's record.
+	Record string
+}
+
+// Line is how a person is told their reservation shares a generated file,
+// the same words wherever it is shown.
+func (g GeneratedShare) Line() string {
+	return fmt.Sprintf("%s is also in the footprint of %s, but origin's default branch declares it generated, so it is no overlap; whichever lands second regenerates it after merging",
+		echo(g.Path), g.Record)
+}
+
 // crowding refuses an act the rest of the view forbids, judged on the view
 // just fetched: a footprint that shares a path with another live reservation
 // that is not this copy's own (the back-off), and a reservation that would take its holder past the cap
@@ -42,7 +61,9 @@ type OwnOverlap struct {
 // that asks for it (Request.WarnOwnOverlap, the reserve verb's) and shares a
 // path with the same person's reservation from another copy goes ahead, and
 // res names each such path (Result.OwnOverlap); every other act backs off it,
-// as it backs off another person's. res also carries
+// as it backs off another person's. A shared generated file is named too,
+// with the record it is shared with (Result.GeneratedShared,
+// iss-2610282340087862). res also carries
 // why no generated file was recognised, when the overlap was judged without
 // them (Result.GeneratedUnread).
 //
@@ -101,6 +122,12 @@ func crowding(p *prepared, j judged, res *Result) error {
 				shared, ok := overlap(want, held, snap.Generated)
 				switch {
 				case !ok:
+					if g, gen := generatedShare(want, held, snap.Generated); gen {
+						s := GeneratedShare{Path: g, Record: r.Record}
+						if !slices.Contains(res.GeneratedShared, s) {
+							res.GeneratedShared = append(res.GeneratedShared, s)
+						}
+					}
 				case mine && p.req.WarnOwnOverlap:
 					// This person's other copy: their own act, asked by hand,
 					// goes ahead and is told; an automated one (a build's, a
@@ -117,6 +144,9 @@ func crowding(p *prepared, j judged, res *Result) error {
 		}
 	}
 	res.OwnOverlap = own
+	slices.SortFunc(res.GeneratedShared, func(a, b GeneratedShare) int {
+		return cmp.Or(strings.Compare(a.Path, b.Path), strings.Compare(a.Record, b.Record))
+	})
 	return nil
 }
 
@@ -130,6 +160,14 @@ func overlap(want, held string, g Generated) (string, bool) {
 		return "", false
 	}
 	return shared, true
+}
+
+// generatedShare is the path two footprint paths share that overlap lets
+// through because it is a generated file, the act's to name
+// (Result.GeneratedShared).
+func generatedShare(want, held string, g Generated) (string, bool) {
+	shared, ok := sharedPath(want, held)
+	return shared, ok && g.Is(shared)
 }
 
 // notRecognised is the words a back-off adds when generated files were not

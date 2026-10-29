@@ -66,7 +66,10 @@ it as `<owner>/<name>` and the text reads `origin is a fork the repository
 allows (<owner>/<name>)`. Pass either on to the user.
 `own_overlap` lists each path the reservation shares with the user's own from
 another copy, as `path`, `record` and `effective_expiry` (see **When it
-refuses**); the text form warns of each on stderr. `generated_unread` says why
+refuses**); the text form warns of each on stderr. `generated_shared` lists each
+generated file the reservation shares with another record's live reservation, as
+`path` and `record`; the text form names each on a `shared:` line, so whoever
+lands second knows to regenerate it after merging. `generated_unread` says why
 no generated file was recognised, so every shared path was judged an overlap.
 `directory_footprint` lists each footprint path naming a directory, as `path`,
 `tracked_files` (`-1` when git could not count them) and `on`, the branch it
@@ -130,7 +133,9 @@ the other record, its holder and until when. Two paths are shared when they are
 equal or one is a directory holding the other. A shared path that is a file
 `origin`'s default branch declares generated is no overlap: generated files are
 those its root `.gitattributes`, as last fetched, marks `linguist-generated`
-(or `linguist-generated=true`). That one file is read, never a nested
+(or `linguist-generated=true`), and a reservation made over one names it and
+the other record on a `shared:` line (`generated_shared`) for the second lander
+to regenerate after merging. That one file is read, never a nested
 `.gitattributes`, `.git/info/attributes` or this checkout's own copy, because
 the declaration must be one every account shares; reading it is a disk read,
 never a fetch. Patterns that set the attribute match case-sensitively;
