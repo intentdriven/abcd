@@ -12,6 +12,11 @@ found_at: ".abcd/development/intents/planned/itd-2609221009495079-abcd-s-typed-j
 remedy: "In the decision-adapter intent drop embark's lesson ranking from the judgement-type lists (press-release rationale and scope bullet), or add a host judgement for it first: the shipped ranking is a deterministic term-overlap computation with no host answer to pair."
 related_intents: [itd-2609221009495079]
 finding_ref: cfk-0fa68fc1ec4b7f88
+resolution: "embark's lesson ranking is dropped from the decision adapter intent's judgement types and is not in the judge package's registry: the embark page ranks lessons by term overlap, a computation with no host answer to pair"
+impact: internal
+resolved_by:
+  intent: "itd-2609221009495079"
+  spec: "spc-2609221011151661"
 ---
 
 The decision-adapter intent treats embark's lesson ranking as a judgement the host answers by default; the embark page ranks lessons by term overlap, with no judgement in that step.
