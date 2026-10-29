@@ -355,7 +355,7 @@ preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift
 # no preflight: a pass says only that what it ran passes.
 # TestPrecheckRunsEveryPreflightGateButTheLoadCheck holds its gates to preflight's
 # and TestPrecheckRunsTheAuditTests its test lines to what this says.
-PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Appendices|Paragraph|Vocabulary|Scope|Relay|Chapter|Baseline|Domain|Definitions|Committed|Docs|Identity
+PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Appendices|Paragraph|Vocabulary|Scope|Relay|Chapter|Baseline|Domain|Definitions|Committed|Docs|Identity|InstallBlock|InstallCommand
 
 precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...

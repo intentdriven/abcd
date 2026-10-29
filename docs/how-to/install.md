@@ -469,16 +469,19 @@ signed build record, and the installer prints a warning saying so, with the
 To install somewhere else, end the command with `sh -s -- --bin-dir <dir>`
 instead of `sh`.
 
+If curl cannot fetch the installer, it prints an error and nothing is
+installed, but `sh` still exits 0, since it was handed nothing to run. Read
+the output rather than the exit status.
+
 The command trusts curl's defaults and your environment for the one download
-that decides what runs: the installer itself. To hold that download to the
-rules the installer applies to its own, run this form instead:
+that decides what runs: the installer itself. To tighten that download, run
+this form instead:
 
 ```sh
 curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 --noproxy '*' -fsSL https://github.com/intentdriven/abcd/releases/latest/download/install.sh | sh
 ```
 
-Each added flag closes one way the script could reach you from somewhere other
-than GitHub's release over HTTPS:
+Each added flag narrows how that download can be rerouted or weakened:
 
 - `-q` stops curl reading a `~/.curlrc` first, a configuration file that can
   add options you did not type, such as a proxy or a different certificate
@@ -494,6 +497,11 @@ than GitHub's release over HTTPS:
   (`HTTPS_PROXY`, `ALL_PROXY` and their kin), so a proxy cannot hand you a
   different script. The installer ignores those variables for its own
   downloads in either form.
+
+This form still trusts a certificate store your environment names in
+`CURL_CA_BUNDLE`, `SSL_CERT_FILE` or `SSL_CERT_DIR`, which the installer clears
+before its own downloads. Unset any of those you did not set yourself before
+you run it.
 
 ### Windows
 
@@ -534,7 +542,7 @@ names it in a gap rather than removing it: abcd does not touch a binary it does
 not own.
 
 Prefer to inspect before running? Download the installer instead of piping
-it: `curl -q --proto '=https' --tlsv1.2 -fsSLO https://github.com/intentdriven/abcd/releases/latest/download/install.sh`.
+it: `curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSLO https://github.com/intentdriven/abcd/releases/latest/download/install.sh`.
 The release attests it like the binaries, so you can check it was built by
 this repository's release workflow on `main`, from the commit the release's
 tag names, with the same policy `abcd update` holds the binary to: `gh

@@ -89,7 +89,7 @@ func runInstaller(t *testing.T, gh ghBehaviour, prepare func(home string)) insta
 
 // runInstallForm runs argv, one form of the install command, in the sandbox
 // runInstaller describes. The stub release serves the binary under every
-// released OS name, so a per-OS one-liner runs on either OS.
+// released OS name, so each form runs on either OS.
 func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(home string)) installerRun {
 	t.Helper()
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {

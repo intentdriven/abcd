@@ -83,10 +83,9 @@ var fetchingCurl = regexp.MustCompile(`curl\s+-`)
 // sees the flag.
 var qFirstCurl = regexp.MustCompile(`curl\s+-q\b`)
 
-// protoPin and protoRedirPin match the HTTPS transport pin in either quoting the
-// surfaces use — `'=https'` in the standalone script, bare `=https` inside the
-// single-quoted `sh -c '…'` one-liners, which cannot nest a single quote. The
-// `\s` after `--proto` keeps protoPin from also matching `--proto-redir`.
+// protoPin and protoRedirPin match the HTTPS transport pin quoted (`'=https'`,
+// as the installer writes it) or bare (`=https`). The `\s` after `--proto`
+// keeps protoPin from also matching `--proto-redir`.
 var protoPin = regexp.MustCompile(`--proto\s+'?=https'?`)
 var protoRedirPin = regexp.MustCompile(`--proto-redir\s+'?=https'?`)
 
@@ -107,9 +106,11 @@ func unsetsVar(script, v string) bool {
 	return regexp.MustCompile(`\bunset\b[^\n;]*\b` + regexp.QuoteMeta(v) + `\b`).MatchString(script)
 }
 
-// TestInstallSurfacesHardenCurl holds all four public install surfaces (and the
-// served render) to the curl hardening bootstrap already carries. Without it the
-// checksum step every surface performs is defeated by a local curl surface the
+// TestInstallSurfacesHardenCurl holds the installer, as reviewed and as served,
+// to the curl hardening bootstrap already carries. The documented command that
+// fetches the installer is plain by ruling and is not held to it; its hardened
+// form takes the installer's own fetch flags (installForms). Without this the
+// checksum step the installer performs is defeated by a local curl surface the
 // victim need not have set maliciously — direnv, a sourced .env — so the fix is
 // not "verify harder" but "close the fetch": -q first, the env scrub, the proto
 // pins. See GHSA-x4v8-rxvx-8v89 and hooks/bootstrap.sh.
@@ -257,8 +258,9 @@ func assertNoPrivilegeEscalation(t *testing.T, s installSurface) {
 	}
 }
 
-// assertOSResolution checks the one difference the forms are allowed: a per-OS
-// form names its OS where the universal form detects it, and nothing else moves.
+// assertOSResolution checks that the form detects the OS and builds the binary
+// name from that and $arch alone, so the name always matches what the release
+// publishes.
 func assertOSResolution(t *testing.T, s installSurface) {
 	t.Helper()
 
@@ -281,9 +283,8 @@ func assertOSResolution(t *testing.T, s installSurface) {
 }
 
 // assertArchMapping checks that the form translates the kernel's architecture
-// spellings into the ones the release matrix publishes. The OS-detecting forms
-// carry both translations; the macOS form carries only x86_64, because Apple
-// silicon already reports arm64 and aarch64 never appears there.
+// spellings into the ones the release matrix publishes: x86_64 to amd64 and
+// aarch64 to arm64.
 func assertArchMapping(t *testing.T, s installSurface) {
 	t.Helper()
 
@@ -452,13 +453,13 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
-// TestLinkedAssetsMatchTheReleaseMatrix earns the manifest's `release.assets`
-// claim.
-//
 // releasedPlatformCase reads the platform list off the installer's
 // require_released_platform: the case pattern right after `case "$1-$2" in`.
 var releasedPlatformCase = regexp.MustCompile(`case "\$1-\$2" in\s*\n\s*([a-z0-9| -]+)\)`)
 
+// TestLinkedAssetsMatchTheReleaseMatrix earns the manifest's `release.assets`
+// claim.
+//
 // The hero links four binaries and a checksums manifest by NAME. The manifest
 // says those names come from the release workflow, and the build deliberately
 // does not read that workflow — a page that parses CI configuration to decide
@@ -550,10 +551,9 @@ func TestInstallSurfacesRecordInTheNoindexHome(t *testing.T) {
 		}
 		seen++
 		t.Run(s.name, func(t *testing.T) {
-			// A one-liner redirects into the record; the installer writes a
-			// private temporary file beside it and moves it into place.
-			if !strings.Contains(s.script, "> "+pathEntryRecord) &&
-				!strings.Contains(s.script, `mv -f "$entry_tmp" `+pathEntryRecord) {
+			// The installer writes a private temporary file beside the record
+			// and moves it into place.
+			if !strings.Contains(s.script, `mv -f "$entry_tmp" `+pathEntryRecord) {
 				t.Errorf("%s does not write its record to %s", s.source, pathEntryRecord)
 			}
 			if strings.Contains(s.script, oldHome) || strings.Contains(s.script, `"$HOME/.abcd/`) {
@@ -598,6 +598,9 @@ func TestInstallSurfacesRefuseASymlinkedAbcdHome(t *testing.T) {
 // release-download prefix before checksums.txt.
 var installerFetch = regexp.MustCompile(`curl ((?:-[^\s]+ (?:'[^']*' )?)+)-fsSLO "(https://[^"\s]+/releases/latest/download/)` +
 	regexp.QuoteMeta(checksumsAsset) + `"`)
+
+// curlFlag matches one curl option and its quoted argument, if it has one.
+var curlFlag = regexp.MustCompile(`-[^\s']+(?: '[^']*')?`)
 
 // installForms returns the documented command and its hardened form, rendered
 // from the template's text: the plain form fetches the release's installer
@@ -745,8 +748,21 @@ func TestDocumentedInstallCommandFetchesTheReleasedInstaller(t *testing.T) {
 				c, releaseDownloadPrefix(t))
 		}
 	}
+	// The pin is the floor: a template that drops a flag fails here rather than
+	// weakening the hardened form in silence, and one that adds a flag fails
+	// until this line and the guide's bullet for it are written.
 	if !strings.HasPrefix(hardened, "curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 --noproxy '*' ") {
 		t.Errorf("the hardened form %q does not carry the template's fetch flags and --noproxy '*'", hardened)
+	}
+	guide := readFile(t, filepath.Join(repoRoot(), "docs", "how-to", "install.md"))
+	flags, _, _ := strings.Cut(strings.TrimPrefix(hardened, "curl "), " https://")
+	for _, flag := range curlFlag.FindAllString(flags, -1) {
+		if flag == "-fsSL" {
+			continue
+		}
+		if !strings.Contains(guide, "\n- `"+flag+"` ") {
+			t.Errorf("docs/how-to/install.md has no bullet explaining the hardened form's %s", flag)
+		}
 	}
 	documentedInstallForms := map[string][]string{
 		"README.md": {plain},
