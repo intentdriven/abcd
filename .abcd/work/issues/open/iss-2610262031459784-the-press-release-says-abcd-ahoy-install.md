@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 173 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:25"
-remedy: "none (filed automatically)"
+remedy: "In itd-83 replace the retired 'prepare-this-repo' with 'ahoy install' (the successor record-lint's retired-page rule names), and re-check that the marked conventions section it points at exists by default, since the docs target defaults to skip."
 related_intents: [itd-83]
 finding_ref: cfk-19959992e52d2edc
 ---

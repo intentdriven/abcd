@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 415 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/07-library.md:109"
-remedy: "none (filed automatically)"
+remedy: "In 29-report.md:95 stop listing the sources store among the stores keyed by the full root-commit SHA: the sources corpus is one location per machine, and only a repository's ledger inside it is named by the first twelve hex digits; reword to name only the stores the full SHA does key."
 finding_ref: cfk-f1519bb6179d5ad8
 ---
 

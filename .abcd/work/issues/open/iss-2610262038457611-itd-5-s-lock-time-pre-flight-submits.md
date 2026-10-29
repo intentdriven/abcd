@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 816 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-5-prompt-quality-additions.md:21"
-remedy: "none (filed automatically)"
+remedy: "In itd-5 lines 21 and 56 replace lifeboat-oracle with 'a reviewer reached through the host-delegated oracle seam', the wording 05-prompt-quality.md already uses"
 related_intents: [itd-5]
 finding_ref: cfk-9c0120ee3ffcbb9d
 ---

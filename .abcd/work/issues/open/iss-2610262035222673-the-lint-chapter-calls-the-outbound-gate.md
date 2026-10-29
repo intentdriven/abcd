@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 567 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/16-lint.md:91"
-remedy: "none (filed automatically)"
+remedy: "In 16-lint.md:85-92 count five surfaces, not four, and drop 'it is the only one that judges text BEFORE it is public': the guard's forge-text-outbound check (17-guard.md:102, switched on by outbound.forge) judges a posting gh pr or gh issue command's text before it is posted."
 finding_ref: cfk-32d25be7f7be7a6c
 ---
 

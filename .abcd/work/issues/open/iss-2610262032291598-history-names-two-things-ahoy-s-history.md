@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 275 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:1204"
-remedy: "none (filed automatically)"
+remedy: "In 01-ahoy.md (the uninstall paragraph near line 1340) replace 'the history store' with 'the history registry and the transcript store', naming both as left intact."
 finding_ref: cfk-d87fecf34a711c14
 ---
 

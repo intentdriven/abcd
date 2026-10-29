@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 985 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/01-build-sequence.md:142"
-remedy: "none (filed automatically)"
+remedy: "In itd-97 replace 'over the pluggable run seam (itd-29)' with the loop itd-2609201916151817 ships through abcd build; itd-29 is superseded and the seam does not ship."
 related_intents: [itd-97]
 finding_ref: cfk-6ce053e807600730
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 789 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/README.md:9"
-remedy: "none (filed automatically)"
+remedy: "In the index row for 03-configuration.md drop 'seam-backend + adapter-registry config' from the meta block's description; the backend selectors are staged keys nothing reads and no adapters registry block exists."
 finding_ref: cfk-926e7c21303f6a0a
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1256 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-89-start-the-transcript-clock.md:36"
-remedy: "none (filed automatically)"
+remedy: "in itd-39's Hook extension bullet, replace the Python file name with the Go verb abcd hook prompt-router, as dcn-2607110000000003 ruled; the memory chapter has the sibling stale line (iss-2610262041454448)"
 related_intents: [itd-89, itd-39]
 finding_ref: cfk-4d0d70e148f60077
 ---

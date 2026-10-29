@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 30 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/04-scope.md:3"
-remedy: "none (filed automatically)"
+remedy: "Edit 05-intent.md line 12: define `planned/` as a committed capability whose spec was minted at planning, awaiting its build, with no roadmap phase and no Phase 4 scheduling."
 finding_ref: cfk-8df5867543c6ec90
 ---
 

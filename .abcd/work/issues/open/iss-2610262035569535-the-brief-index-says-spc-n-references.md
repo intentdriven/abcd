@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 610 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/README.md:8"
-remedy: "none (filed automatically)"
+remedy: "Narrow the delivery-state provenance note: spc-N ids cite the predecessor store only where a chapter says so (for example spc-3 in 05-intent.md); spc-32 and the timestamp-minted spc ids are this repository's own specs under specs/."
 finding_ref: cfk-b93e13904d001792
 ---
 

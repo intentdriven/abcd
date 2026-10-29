@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 464 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-25-dredge-cross-corpus-synthesist.md:44"
-remedy: "none (filed automatically)"
+remedy: "In itd-25 (N:1 promotion semantics, dredge promote and its acceptance criterion) rename the intent-side key `resolves_issues` to `related_issues`, the key capture's promote join writes and drain and the issue-drift check read; the lint extension then reuses the existing join check."
 related_intents: [itd-25]
 finding_ref: cfk-f00bc507a6dfd19b
 ---

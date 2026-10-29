@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 426 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/07-library.md:210"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Is exit 3 reserved for contention (a peer holds it, back off and retry), or a wider 'not now' code that library's absent-corpus case also uses? Answer 1: reserve 3 for back-off and move library's absent-corpus exit to another distinct code. Answer 2: keep both and reword the land and implement pages so 3 is not defined as contention alone. Recommend answer 1: back-off on 3 is the automation-facing contract of eight verbs, waiting never helps a missing corpus, and no scripted consumer of library's 3 was found in scripts or hooks."
 finding_ref: cfk-c720291535aa09f8
 ---
 

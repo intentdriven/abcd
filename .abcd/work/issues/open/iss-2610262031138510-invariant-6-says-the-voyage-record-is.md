@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 101 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:19"
-remedy: "none (filed automatically)"
+remedy: "In 04-universal-patterns.md section 6, replace 'Both are tracked under the visibility rule' with: the log tier sits in the gitignored local tier, and voyage is operator-level under abcd's home, outside every checkout and never committed (invariant 6, adr-35)."
 finding_ref: cfk-06a792042d745545
 ---
 

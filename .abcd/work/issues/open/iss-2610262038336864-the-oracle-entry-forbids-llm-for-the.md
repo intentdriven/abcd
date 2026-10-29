@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 803 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/oracle.md:6"
-remedy: "none (filed automatically)"
+remedy: "In the oracle row of the seams table in 02-adapters.md change 'host-delegated LLM' to 'host-delegated oracle' (and 'a model' in the interface cell to the oracle's wording if desired)."
 finding_ref: cfk-1a1f664cf6083c66
 ---
 

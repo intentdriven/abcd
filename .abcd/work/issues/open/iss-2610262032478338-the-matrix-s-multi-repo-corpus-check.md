@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 317 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/02-disembark.md:216"
-remedy: "none (filed automatically)"
+remedy: "In 06-delivery/02-verification-matrix.md mark the Multi-repo corpus row (staged): .abcd/corpus.json does not exist, so the row has no runnable subject."
 finding_ref: cfk-a766bed60e2b5e3d
 ---
 

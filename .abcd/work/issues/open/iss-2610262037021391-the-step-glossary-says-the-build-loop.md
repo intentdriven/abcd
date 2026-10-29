@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 693 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/step.md:18"
-remedy: "none (filed automatically)"
+remedy: "In step.md say a spec lands its steps one lane at a time by default, and that steps declaring '- needs:' may run in parallel up to the run's ceiling (rulings DR6 and DR6b); commands/build.md line about the next pending step opening the next lane gets the same qualifier."
 finding_ref: cfk-9aede0d48387e65d
 ---
 

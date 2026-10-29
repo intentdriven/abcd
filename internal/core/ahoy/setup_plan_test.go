@@ -61,7 +61,9 @@ func planOpts() InstallOptions {
 // TestPlanProceedAsksOnceAndTakesTheDefaults is criteria 2 and 5: a repository
 // abcd has never seen, at a terminal, with the suggested answer: one plan
 // screen (which adopts), no approval of a kind of change, no value question,
-// and every default the plan lists is what lands.
+// and every default the plan lists is what lands. The live brief session
+// question, which only the owner answers, is the one question that follows,
+// and the plan says so rather than listing it as a change.
 func TestPlanProceedAsksOnceAndTakesTheDefaults(t *testing.T) {
 	setupHermetic(t)
 	repo := gitRepo(t)
@@ -71,13 +73,23 @@ func TestPlanProceedAsksOnceAndTakesTheDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(p.asked) != 1 || p.asked[0] != PlanQuestionID {
-		t.Fatalf("asked %q, want the plan screen alone", p.asked)
+	if !slices.Equal(p.asked, []string{PlanQuestionID, SessionsPromptKey}) {
+		t.Fatalf("asked %q, want the plan screen and then the live brief session question", p.asked)
 	}
 	if res.Status == "aborted" || res.Status == "refused" {
 		t.Fatalf("status %q, notes %q", res.Status, res.Notes)
 	}
 	plan := p.plans[0]
+	if len(plan.AsksYou) == 0 || !strings.HasPrefix(plan.AsksYou[0], "the live brief session question") {
+		t.Errorf("the plan does not list the live brief session question among its questions: %q", plan.AsksYou)
+	}
+	for _, g := range plan.Changes {
+		for _, it := range g.Items {
+			if strings.Contains(it, "live brief session") {
+				t.Errorf("the plan lists the live brief session question as a change: %q", it)
+			}
+		}
+	}
 	if len(plan.Changes) == 0 || plan.Changes[0].Items[0] != "adopt this repository into abcd" {
 		t.Errorf("the plan does not lead with the adoption: %+v", plan.Changes)
 	}

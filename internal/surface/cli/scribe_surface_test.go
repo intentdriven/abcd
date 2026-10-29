@@ -102,9 +102,9 @@ func scribeRepo(t *testing.T) (repo, item string) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(repo, ".git"), []byte("gitdir: nowhere\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	// A repository git answers for: the parked run's context is read only
+	// once git says it tracks none of it.
+	gitInitAt(t, repo)
 	t.Chdir(repo)
 	return repo, res.Records[0].ID
 }

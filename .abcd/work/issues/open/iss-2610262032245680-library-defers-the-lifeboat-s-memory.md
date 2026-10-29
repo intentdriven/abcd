@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 264 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/07-library.md:424"
-remedy: "none (filed automatically)"
+remedy: "In 07-library.md (the disembark bullet near line 424) drop 'declaring an exact payload is deferred to the disembark spec that wires the packer (adr-28)': the packer shipped under adr-35 with a fixed brief-section file set that has no memory section; say the lifeboat carries no memory payload today, or mark one a design target."
 finding_ref: cfk-94738d8e275fb65b
 ---
 

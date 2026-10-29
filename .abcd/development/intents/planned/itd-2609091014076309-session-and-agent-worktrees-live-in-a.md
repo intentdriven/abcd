@@ -12,11 +12,12 @@ impact: additive
 origin: researcher-authored
 production_mode: hand-written
 related_adrs: [adr-2609091248200336, adr-2609091248201071]
+related_issues: [iss-2610230014564359, iss-2610231003000222, iss-2610231011465325, iss-2610231125086511, iss-2610231125096250]
 ---
 
 # Session and agent worktrees live in a machine-scoped store that abcd lists and reclaims, never beside the user's own projects
 
-Typed links: `related_adrs` [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md) (the rule this store enacts), [adr-2609091248201071](../../decisions/adrs/2609091248201071-the-transcript-corpus-is-a-sibling-store.md) (the root-SHA-keyed sibling store whose shape this copies); `refines` [itd-2609201916151817](itd-2609201916151817-one-verb-takes-a-single-intent-from.md) (the build loop, whose lane primitive becomes this store's one primitive: its spec's piece 6 takes the store's verb once this ships); `related_intents` [itd-118](../drafts/itd-118-merged-work-leaves-no-residue-abcd.md) (the post-merge tidy that will call `prune`) and [itd-148](itd-148-every-change-starts-in-its-own-worktree.md) (every change in its own worktree, which uses this store's verbs and is `blocked_by` this draft).
+Typed links: `related_adrs` [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md) (the rule this store enacts), [adr-2609091248201071](../../decisions/adrs/2609091248201071-the-transcript-corpus-is-a-sibling-store.md) (the root-SHA-keyed sibling store whose shape this copies); `refines` [itd-2609201916151817](itd-2609201916151817-one-verb-takes-a-single-intent-from.md) (the build loop, whose lane primitive becomes this store's one primitive: its spec's piece 6 takes the store's verb once this ships); `related_intents` [itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md) (the post-merge tidy that will call `prune`) and [itd-148](itd-148-every-change-starts-in-its-own-worktree.md) (every change in its own worktree, which uses this store's verbs and is `blocked_by` this draft).
 
 ## Press Release
 
@@ -36,7 +37,7 @@ Two things separate the store from the same pile somewhere less visible, and the
 
 **Discoverability.** A worktree under `~/.abcd.noindex/` is invisible to `ls` where the user works, which is the point, and so it has to be visible somewhere else. Git already knows every worktree of a checkout wherever it sits (`git worktree list --porcelain`), so the store adds no registry of its own. What stands in for one is a proof git can give: a worktree belongs to the store when git lists it as a worktree of this repository, its real path lies inside this repository's lane, and its own common directory is this checkout's. It adds a verb that reads git's answer and says which entries are in the store, which are outside it, and what state each is in; and a line on the `/abcd` status board, so a user who never types the verb still learns the count.
 
-**Lifecycle.** A worktree whose branch has merged is garbage, and nothing today notices. Reclaiming is `abcd ahoy worktree prune`: it removes a worktree only when its branch is merged into the default branch and its tree is clean, moves the worktree's local tier into the notes archive first, and names what it declined and why. It runs when the user runs it; the status board's reclaimable count is what prompts them. Reclaiming automatically on merge is [itd-118](../drafts/itd-118-merged-work-leaves-no-residue-abcd.md)'s post-merge tidy; when that ships it calls this verb rather than inventing a second reclaim.
+**Lifecycle.** A worktree whose branch has merged is garbage, and nothing today notices. Reclaiming is `abcd ahoy worktree prune`: it removes a worktree only when its branch is merged into the default branch and its tree is clean, moves the worktree's local tier into the notes archive first, and names what it declined and why. It runs when the user runs it; the status board's reclaimable count is what prompts them. Reclaiming automatically on merge is [itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md)'s post-merge tidy; when that ships it calls this verb rather than inventing a second reclaim.
 
 ## What's In Scope
 
@@ -99,7 +100,7 @@ We expect a machine-scoped, root-SHA-keyed store with a list verb and a reclaim 
 - [adr-2609091248201071](../../decisions/adrs/2609091248201071-the-transcript-corpus-is-a-sibling-store.md) and `internal/core/history/location.go` — the sibling store this copies: user-level, root-SHA-keyed as a directory, self-creating through one seam, never through a symlink. The reasoning for the key is written there and is not repeated here.
 - [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md) — the voyage store moved to `~/.abcd.noindex/` on the same ground, and embark's destination gate "never overwrites a directory abcd did not produce": the same stance, at the destination, that prune takes in the lane.
 - [iss-2609020721142452](../../../work/issues/resolved/iss-2609020721142452-worktrees-for-parallel-lanes-are-created.md) — the captured defect and its three options; this intent is its option 2, with the list and prune verbs and the merged-branch rule the issue asked for.
-- [itd-118](../drafts/itd-118-merged-work-leaves-no-residue-abcd.md) — the post-merge tidy, which names the worktree among the residue a merge leaves; this intent supplies the store it tidies and the verb it calls.
+- [itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md) — the post-merge tidy, which names the worktree among the residue a merge leaves; this intent supplies the store it tidies and the verb it calls.
 - `AGENTS.md` § Concurrent sessions — the isolation rule this intent gives a location to.
 - `git worktree list --porcelain` and `git worktree prune` — the primitives; the verbs wrap them and add the store, the state columns and the refusal reasons, and no registry of their own.
 - [`durable-state-lives-where-the-platform-says-it-survives`](../../principles/durable-state-lives-where-the-platform-says-it-survives.md) — adjacent: that rule chooses a home by what survives the platform's lifecycle; this store's home is chosen by whose space it is. The store satisfies both, and neither is the other.

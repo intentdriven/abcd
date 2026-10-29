@@ -19,6 +19,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // StoreName is the store's folder under the repository's level of the
@@ -28,6 +29,15 @@ const StoreName = storepath.Name
 // ledgerRel is where a private record sits inside the store: the ledger's own
 // layout, so the capture and resolve code read it unchanged.
 const ledgerRel = recordid.IssuesRelDir
+
+// localTierRel is the local tier inside the store, where its state lives
+// (StateRel). Every abcd repository ignores it, and it holds only files abcd
+// writes.
+const localTierRel = ".abcd/.work.local"
+
+// localTierSpec is the pathspec naming the local tier under every spelling
+// of its case.
+const localTierSpec = ":(icase,literal)" + localTierRel
 
 // maxListing caps the store's ls-files answer.
 const maxListing = 16 << 20
@@ -42,10 +52,25 @@ const (
 )
 
 // RefusalError is a refusal with nothing written: the reason, and the one
-// thing the person can do about it. The surfaces exit 2 on it.
+// thing the person can do about it. The surfaces exit 2 on it. Store is the
+// store whose reading refused, when one did; the message never names it, and
+// a caller acting for another verb may.
 type RefusalError struct {
 	Reason string
 	Remedy string
+	Store  string
+}
+
+// atStore is err with Store set to root when it is a refusal; any other
+// error is returned as it is.
+func atStore(err error, root string) error {
+	var r *RefusalError
+	if !errors.As(err, &r) {
+		return err
+	}
+	c := *r
+	c.Store = root
+	return &c
 }
 
 func (e *RefusalError) Error() string {
@@ -56,6 +81,30 @@ func (e *RefusalError) Error() string {
 }
 
 func refuse(reason, remedy string) error { return &RefusalError{Reason: reason, Remedy: remedy} }
+
+// untracked refuses the store file at rel, under the store worktree root, when
+// git tracks it, or cannot say it does not: the store is a worktree at the
+// default branch's tip, so a file a commit carries there was written by
+// whoever made the commit, not by this account's abcd (localtier.Untracked).
+func untracked(root, rel, what string) error {
+	err := localtier.Untracked(root, rel)
+	var r *localtier.Refused
+	if errors.As(err, &r) {
+		return refuse(what+" is refused: "+r.Reason(), r.Remedy())
+	}
+	return err
+}
+
+// trackedThere reports whether git tracks the store file at rel under the
+// store worktree root. Another store is read for the ids it holds back, so
+// one git cannot answer for (its checkout deleted, say) is read as before:
+// refusing it would hold none of them back. What that accepts is a state a
+// commit replaced being read while git cannot answer for its store, which
+// nothing in a commit can bring about.
+func trackedThere(root, rel string) bool {
+	var r *localtier.Refused
+	return errors.As(localtier.Untracked(root, rel), &r) && r.Cause == nil
+}
 
 // Store is the embargo store of one repository: Root is the store worktree,
 // Checkout the working-tree root of the checkout it belongs to.
@@ -164,6 +213,21 @@ func readOtherStore(root string) (State, error) {
 	if !fsutil.IsRealDir(root) {
 		return State{}, bad("its store is not a real directory")
 	}
+	// A live worktree is held to its own store's rule: its index tracks
+	// nothing in its local tier. A folder git does not answer for (a store
+	// whose checkout is gone) has no index to ask.
+	if top, err := gitutil.Toplevel(root); err == nil && samePath(top, root) {
+		tracked, err := tracksLocalTier(root)
+		if err != nil {
+			return State{}, bad("git could not list what it tracks")
+		}
+		if tracked {
+			return State{}, bad("its index tracks a file in its local tier, which holds only what abcd writes there")
+		}
+	}
+	if err := spelledExactly(root, "the state file of another embargo store under this home is refused: "); err != nil {
+		return State{}, err
+	}
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return State{}, bad("its store could not be opened")
@@ -175,6 +239,8 @@ func readOtherStore(root string) (State, error) {
 		return emptyState(), nil
 	case err != nil:
 		return State{}, bad("it could not be examined")
+	case trackedThere(root, StateRel):
+		return State{}, bad("git tracks it, so a commit carried it there")
 	case !fi.Mode().IsRegular():
 		return State{}, bad("it is not a regular file")
 	case fsutil.CallersAlone(filepath.Join(root, filepath.FromSlash(StateRel)), fi) != nil:
@@ -278,6 +344,12 @@ func (s Store) create(home string) error {
 	if err := os.Chmod(s.Root, storeRootMode); err != nil {
 		return refuse("the embargo store was made, but its folder could not be closed to other accounts", "run `chmod 700` on the store, then run it again")
 	}
+	// The store's local tier holds only files abcd writes, so its index
+	// tracks nothing there, under any spelling of its case.
+	if _, err := gitutil.Run(s.Root, "rm", "-r", "-q", "--ignore-unmatch", "--", localTierSpec); err != nil {
+		return refuse("the embargo store was made, but git could not clear what its index tracks in its local tier: "+fsutil.RedactHome(err.Error()),
+			"move the store aside, then run `abcd embargo intake` again")
+	}
 	return nil
 }
 
@@ -285,8 +357,8 @@ func (s Store) create(home string) error {
 // store, and returns the store's state. It refuses, writing nothing, when the
 // store is not a real directory that is this repository's own worktree; when
 // it resolves inside the checkout; when its HEAD is on a branch; when its
-// state file is refused (state.go); or when its index tracks a record the
-// state names; or when another account could read its folder or a record
+// state file is refused (state.go); or when its index tracks anything in its
+// local tier, or a record the state names; or when another account could read its folder or a record
 // the state names. A refusal never names a record's file or an advisory.
 func (s Store) Verify() (State, error) {
 	if !fsutil.IsRealDir(s.Root) {
@@ -314,6 +386,9 @@ func (s Store) Verify() (State, error) {
 	} else if !exitOne {
 		return State{}, refuse("the embargo store's HEAD is on a branch, which gives its records a ref that can be pushed",
 			"detach it with `git -C <store> switch --detach`, then run it again")
+	}
+	if err := s.refuseTrackedLocalTier(); err != nil {
+		return State{}, err
 	}
 	st, err := s.loadState()
 	if err != nil {
@@ -394,6 +469,31 @@ func (s Store) refuseTracked(st State) error {
 		}
 	}
 	return nil
+}
+
+// refuseTrackedLocalTier refuses when the store's index tracks anything in
+// its local tier, under any spelling of its case: the store never commits,
+// and its local tier holds only what abcd writes there.
+func (s Store) refuseTrackedLocalTier() error {
+	tracked, err := tracksLocalTier(s.Root)
+	if err != nil {
+		return refuse("git could not list what the embargo store tracks", "settle what git reports, then run it again")
+	}
+	if tracked {
+		return refuse("the embargo store's index tracks a file in its local tier, which holds only what abcd writes there",
+			"take it out of the store's index with `git -C <store> rm -r --cached -- ':(icase).abcd/.work.local'`, which leaves every file in place, then run it again")
+	}
+	return nil
+}
+
+// tracksLocalTier reports whether the index of the worktree at root tracks
+// anything in its local tier, under any spelling of its case.
+func tracksLocalTier(root string) (bool, error) {
+	out, err := gitutil.RunCappedBytes(root, maxListing, "ls-files", "-z", "--", localTierSpec)
+	if err != nil {
+		return false, err
+	}
+	return len(out) > 0, nil
 }
 
 // inside reports whether p is dir or lies beneath it, after resolving the

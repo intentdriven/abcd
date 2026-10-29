@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 698 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/brief.md:28"
-remedy: "none (filed automatically)"
+remedy: "Call the per-lane document 'the lane brief' in 34-build.md (the stage keeps its name), or add the second sense to glossary/core/brief.md; the glossary says a project has exactly one brief."
 finding_ref: cfk-fb02a2b297b98e4e
 ---
 

@@ -88,6 +88,24 @@ type Input struct {
 	// views and both forms (spc-2610100613109045, decision 4), and the line is
 	// left out only when no version is handed in.
 	Version core.VersionInfo
+	// Merges is facilitator.mode as the layered configuration resolves it (spc-2610161609350616
+	// step 2), drawn just above the version line in both views and both forms;
+	// nil draws no line.
+	Merges *Merges
+}
+
+// Merges is who merges: facilitator.mode and the layer and origin that set
+// it, or, when the mode could not be read, the refusal. It is worded by
+// outcome ("merges: a person"), never as a bare mode, so it does not read as
+// abcd mode's facilitator state, which is whose answer the loop waits on.
+type Merges struct {
+	Mode    string // human or auto
+	Layer   string // bundled, machine, repo, …
+	Origin  string // the file that set it, or "bundled"
+	Refused string // the read's refusal; Mode is unset when this is
+	// HomeRefused says a refused home decided the mode, so Origin is the
+	// reason, not a file.
+	HomeRefused bool
 }
 
 // productMeasure caps how wide a title runs in the product thinker's view: the
@@ -122,6 +140,15 @@ func Render(in Input, f Frame) []string {
 	} else {
 		out = append(out, product(in, f)...)
 	}
+	if f.View != Facilitator {
+		if t := mergesText(in.Merges, f.View); t != "" {
+			l := "merges: " + t
+			if f.Form == Markdown {
+				l = "- " + l
+			}
+			out = append(out, l)
+		}
+	}
 	if l := versionLine(in.Version, f); l != "" {
 		out = append(out, l)
 	}
@@ -129,6 +156,41 @@ func Render(in Input, f Frame) []string {
 		out = fitWindow(out, f.Width)
 	}
 	return out
+}
+
+// mergesText names who merges and where that was set, without its label:
+// the product view says the outcome and the place, a line of its own above the
+// version; the facilitator view adds the key and the mode as configured, a
+// labelled row after the status block. A refused read says the mode is
+// unreadable and carries the refusal; a refused home names itself, not a file.
+// Nothing merges by the mode yet: the merge gate reads it only from
+// spc-2610161609350616 step 4, and until then every repository runs in human
+// mode (landing's mergeGate). So a person merges whatever the mode says, and an
+// auto is drawn as declared but not yet read, never as abcd merging.
+// The text is masked: an origin or a refusal can carry what a configuration
+// file wrote.
+func mergesText(m *Merges, v View) string {
+	if m == nil {
+		return ""
+	}
+	if m.Refused != "" {
+		return termsafe.Sanitize("unreadable (" + m.Refused + ")")
+	}
+	from, set := m.Origin, "set in "+m.Origin
+	switch {
+	case m.Layer == "bundled":
+		from, set = "the bundled default", "the bundled default"
+	case m.HomeRefused:
+		from, set = "a refused home", "the home directory was refused, so a machine-wide setting cannot be read"
+	}
+	unread := ""
+	if m.Mode == "auto" {
+		set, unread = "auto is "+set+", but the merge gate does not read it yet", "; the merge gate does not read it yet"
+	}
+	if v == Facilitator {
+		return termsafe.Sanitize("a person (facilitator.mode " + m.Mode + ", from " + from + unread + ")")
+	}
+	return termsafe.Sanitize("a person (" + set + ")")
 }
 
 // versionLine is the board's last line, the installed version as `abcd
@@ -306,6 +368,9 @@ func facilitator(in Input, f Frame) []string {
 			noun = "intent"
 		}
 		es = append(es, entry{2, fmt.Sprintf("Later: %d %s", len(b.Later), noun)})
+	}
+	if t := mergesText(in.Merges, f.View); t != "" {
+		es = append(es, entry{1, fmt.Sprintf("%-*s%s", labelWidth, "merges:", t)})
 	}
 
 	var out []string

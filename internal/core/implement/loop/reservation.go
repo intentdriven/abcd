@@ -544,13 +544,16 @@ func isPushFailure(err error) bool {
 // run record's line for it, whether it was fresh (a reserve or a take-over)
 // rather than a renewal of one this copy already held, so only a fresh one is
 // released when the run is not created, and why it could not ask the forge
-// whether origin is a fork ("" when it asked, or asked nothing).
+// whether origin is a fork ("" when it asked, or asked nothing). warnings
+// are the act's warnings of a footprint path naming a directory
+// (claim.DirectoryFootprint.Warning), which the start passes on.
 type reserved struct {
 	at            *time.Time
 	note          string
 	fresh         bool
 	forkUnchecked string
 	forkAllowed   string
+	warnings      []string
 }
 
 // reserveKey reserves a run's key on origin for this copy with req's
@@ -633,8 +636,12 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 		note += "; " + claim.ForkAllowedLine(res.ForkAllowed)
 	}
 	t := now
-	return reserved{at: &t, note: note, fresh: res.Act != claim.ActRenewed,
-		forkUnchecked: res.ForkUnchecked, forkAllowed: res.ForkAllowed}, nil
+	r := reserved{at: &t, note: note, fresh: res.Act != claim.ActRenewed,
+		forkUnchecked: res.ForkUnchecked, forkAllowed: res.ForkAllowed}
+	for _, d := range res.Directories {
+		r.warnings = append(r.warnings, d.Warning())
+	}
+	return r, nil
 }
 
 // reserveStart is a new run's reservation, once its checks pass and before
@@ -729,6 +736,7 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 		return err
 	}
 	res.Reservation, res.ForkUnchecked, res.ForkAllowed = r.note, r.forkUnchecked, r.forkAllowed
+	res.ReservationWarnings = r.warnings
 	return nil
 }
 
@@ -986,7 +994,8 @@ func noFoundAtHandBack(issue string, now time.Time) DrainRoute {
 // handed the lane back and released it (releaseOnHandBack) logged
 // reservation_released, and that record's clause is returned; one whose
 // fetch or push failed logged reservation_release_failed instead, and that
-// run, like one handed back by an abcd before that step, is released here.
+// run, like one handed back by an abcd before that step, is released here,
+// and a release that succeeds is logged on the run at reservation_released.
 // It returns the route's clause, "" for a run that holds no reservation.
 func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) string {
 	if run.ReservedAt == nil || run.Issue() == "" {
@@ -1002,8 +1011,22 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 	}
 	clause, failed := releaseReservation(repoRoot, run.Key, tombstoneKind(hb), now)
 	if failed {
-		clause += ", so it lapses with its lease"
+		return clause + ", so it lapses with its lease"
 	}
+	// The retry released it: the run's record says so (iss-2610150616434848),
+	// so its last reservation entry is no longer the failure, and a later
+	// routing over the run reuses this entry rather than pushing again. Best
+	// effort: the release is on origin whether or not the record takes it.
+	_ = mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+		for _, e := range st.Record {
+			if e.Stage == StageReservationReleased {
+				return false, nil
+			}
+		}
+		st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
+		st.UpdatedAt = now
+		return true, nil
+	})
 	return clause
 }
 

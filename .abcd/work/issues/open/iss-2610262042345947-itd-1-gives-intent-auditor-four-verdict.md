@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1078 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-1-acceptance-gates.md:46"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does itd-81's binary-verdicts rule bind the intent-auditor's four-word per-criterion verdicts, or is it narrowed to no numeric scores? Recommended: narrow it to 'a closed categorical verdict, never a numeric score' and calibrate each criterion verdict against its label, because the stated reason (numeric scales drift to the middle) does not apply to a four-word enum and the four states are shipped."
 related_intents: [itd-1, itd-81]
 finding_ref: cfk-5856fa7997d50171
 ---

@@ -182,7 +182,7 @@ func newSetupRun(t *testing.T) setupRun {
 	}
 	// The README question is answered already, for the drain rule's reason:
 	// it too is put only to a person at a terminal (spc-2610031704338417).
-	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config.json"), []byte(`{"readme": {"parts": []}}`+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config.json"), []byte(`{"readme": {"parts": []}, "sessions": {"live": "none"}}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return setupRun{home: home, repo: repo}
@@ -498,13 +498,13 @@ func TestUnansweredSetupQuestionRefusesNamingIt(t *testing.T) {
 	}
 
 	// A value the question does not offer is refused, naming the values it
-	// does offer, and never recorded.
+	// does offer without repeating the one given, and never recorded.
 	out, err = pipedSetup(t, answersFileWith(t, interview.FileAnswer{ID: "visibility", Value: "privat"}), "--adopt", "--yes")
 	if !errors.As(err, &ee) || ee.Code != 2 {
 		t.Fatalf("a value the question does not offer: %v, want exit 2\n%s", err, out)
 	}
-	if !strings.Contains(ee.Msg, `"privat"`) || !strings.Contains(ee.Msg, "private|public|later") {
-		t.Fatalf("the refusal %q does not name the value given and the values offered", ee.Msg)
+	if strings.Contains(ee.Msg, "privat\"") || !strings.Contains(ee.Msg, "a value it does not offer") || !strings.Contains(ee.Msg, "private|public|later") {
+		t.Fatalf("the refusal %q repeats the value given, or does not name the values offered", ee.Msg)
 	}
 	if after := listTree(t, run.repo); after != before || !strings.Contains(ee.Msg, "nothing was written") {
 		t.Fatalf("a value the question does not offer: refused after writing, or not saying so (%q):\n--- before\n%s--- after\n%s", ee.Msg, before, after)
@@ -546,8 +546,8 @@ func stopOf(t *testing.T, f func()) (stop *setupStop) {
 
 // TestSetupAnswerTheQuestionDoesNotOfferRefuses holds the answers door's own
 // check, whichever question it is put: a file's value the question does not
-// offer stops the run with exit 2, naming the value given and the values
-// offered, records nothing, and keeps no answer given before it.
+// offer stops the run with exit 2, naming the values offered without repeating
+// the value given, records nothing, and keeps no answer given before it.
 func TestSetupAnswerTheQuestionDoesNotOfferRefuses(t *testing.T) {
 	p := &answersPrompter{
 		setupQuestions: setupQuestions{cwd: t.TempDir(), w: io.Discard},
@@ -555,7 +555,7 @@ func TestSetupAnswerTheQuestionDoesNotOfferRefuses(t *testing.T) {
 		stamp:          interview.Terminal,
 	}
 	stop := stopOf(t, func() { p.Prompt("visibility", []string{"private", "public"}, "") })
-	if stop.code != 2 || stop.keep || !strings.Contains(stop.msg, `"privat"`) || !strings.Contains(stop.msg, "private|public|later") {
+	if stop.code != 2 || stop.keep || strings.Contains(stop.msg, "privat\"") || !strings.Contains(stop.msg, "not repeated here") || !strings.Contains(stop.msg, "private|public|later") {
 		t.Fatalf("stop %+v", stop)
 	}
 	if got := p.recorded(); len(got) != 0 {

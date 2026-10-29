@@ -27,8 +27,17 @@ refuses.
 
 ## Footprint
 
-- packages: internal/core/landing, internal/core/implement/loop, internal/core/board, internal/core/guard, internal/surface/cli, .abcd/config.json, commands/land.md, .abcd/development/brief/04-surfaces/38-land.md
+- packages: internal/core/landing/config.go, internal/core/landing/config_test.go, internal/core/layered/layered.go, internal/core/layered/layered_test.go, internal/core/landing/facilitator.go, internal/core/landing/facilitator_test.go, internal/core/landing/review.go, internal/core/landing/review_test.go, internal/core/landing/primitives.go, internal/core/landing/land.go, internal/core/board/board.go, internal/core/board/board_test.go, internal/core/guard/merge.go, internal/core/guard/merge_test.go, internal/core/guard/guard.go, internal/surface/cli/board.go, internal/surface/cli/board_status.go, internal/surface/cli/board_status_test.go, internal/surface/cli/land.go, internal/surface/cli/land_surface_test.go, internal/surface/cli/receipts.go, internal/surface/cli/guard.go, .abcd/config.json, commands/land.md, commands/guard.md, .abcd/development/brief/04-surfaces/38-land.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/brief/04-surfaces/39-status.md, commands/abcd.md
 - tests: internal/core/landing, internal/core/implement/loop, internal/core/board, internal/core/guard, internal/surface/cli
+- The packages line names the files the steps change, not their directories,
+  so the reservation does not hold unrelated work in the same packages.
+  Generated output (`docs/reference/cli/commands.md`,
+  `.abcd/development/release/surface.json` and any other linguist-generated
+  file) is reserved by no one: whoever lands second regenerates it.
+- Step 2 also changes `internal/surface/cli/cli.go`, and step 4
+  `internal/core/implement/loop/land.go` and its test. Each joins the
+  packages line when its step begins, and `abcd build` then reserves the
+  widened footprint (dcn-2610222356532638).
 
 ## Steps
 
@@ -59,6 +68,7 @@ refuses.
 4. The merge gate reads the mode
    - packages: internal/core/landing, internal/core/implement/loop
    - tests: internal/core/landing, internal/core/implement/loop
+   - needs: 1, 3
    - `mergeGate` becomes the one function `abcd land` and the loop's
      `landArm` ask.
    - `human` arms nothing and says the pull request waits for the
@@ -69,9 +79,21 @@ refuses.
    - With no queue gating the default branch, `auto` arms auto-merge, and
      where the forge refuses that, it says so.
    - AM1's approval reading is retired.
+   - The mode is read from the default branch's committed
+     `.abcd/config.json` and the machine layer, never from the checkout of
+     the branch being landed, so a branch that commits `auto`, or deletes a
+     repository-level `human`, does not decide the gate for itself
+     (dcn-2610230058333177). Tests: a lane whose own config says `auto` over a
+     default branch at `human` arms nothing; a lane that deletes the
+     default branch's `human` arms nothing.
+   - A `facilitator.mode` refusal is passed through `termsafe.Sanitize`
+     wherever a front door prints it: the board (step 2), `abcd land` and
+     the loop (here), the guard (step 5). Test: a hostile key carrying
+     terminal control bytes prints escaped.
 5. The guard's hard rule
    - packages: internal/core/guard
    - tests: internal/core/guard
+   - needs: 1, 4
    - While the mode is `human`, `abcd guard` refuses `gh pr merge --auto`,
      `gh pr merge` aimed at a queue, and a GraphQL `enqueuePullRequest`.
    - It reads the mode through the same resolver.
@@ -79,6 +101,7 @@ refuses.
 6. abcd's own repository and the docs
    - packages: .abcd/config.json, commands/land.md, .abcd/development/brief/04-surfaces/38-land.md
    - tests: internal/surface/cli
+   - needs: 4, 5
    - Set `facilitator.mode: auto` in abcd's committed config, in the same
      change as step 4, so its sessions keep queueing.
    - Make the docs say exactly what each mode does.

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 615 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-140-the-generic-specific-boundary-of-the.md:55"
-remedy: "none (filed automatically)"
+remedy: "In itd-140 line 55 rename `abcd site check` to `abcd lint site` (16-lint.md: the former site check sub-verb is an unknown command)."
 related_intents: [itd-140]
 finding_ref: cfk-8fccf072420e0e93
 ---

@@ -129,3 +129,52 @@ func TestAttributionGatesTheCommitsThatLandOnMain(t *testing.T) {
 		}
 	}
 }
+
+// TestAttributionJudgesThePullRequestFormAsItStands holds the form steps to
+// the pull request's current title and body (iss-2610261339023831). A re-run
+// replays the event it was started with, so a step that read the payload
+// judged the body as it was then: a body fixed afterwards failed again on
+// re-run, and the re-run cancelled the edited run that would have passed.
+func TestAttributionJudgesThePullRequestFormAsItStands(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	const rel = ".github/workflows/attribution.yml"
+	wf := readRepoFile(t, root, rel)
+
+	for _, field := range []string{"github.event.pull_request.body", "github.event.pull_request.title"} {
+		if strings.Contains(wf, field) {
+			t.Errorf("%s reads %s from the event payload, which a re-run replays as it was", rel, field)
+		}
+	}
+	read := findStep(t, wf, rel, `gh api "repos/$REPO/pulls/$PR_NUMBER"`)
+	if read.env["GH_TOKEN"] == "" || read.env["PR_NUMBER"] != "${{ github.event.pull_request.number }}" {
+		t.Errorf("the read step must call the API with the run's token for the event's pull request; env %v", read.env)
+	}
+	for _, out := range []string{`> "$RUNNER_TEMP/pr-title.txt"`, `> "$RUNNER_TEMP/pr-body.md"`} {
+		if !strings.Contains(read.body, out) {
+			t.Errorf("the read step must write %s", out)
+		}
+	}
+	if !strings.Contains(read.body, "set -euo pipefail") {
+		t.Error("the read step must fail the job when the API does not answer, not leave the checks empty files")
+	}
+	if !strings.Contains(wf, "github.event.pull_request.head.sha }}\n") {
+		t.Errorf("%s's concurrency group must carry the head commit, so a re-run for an earlier head cannot cancel the current head's run", rel)
+	}
+	if !strings.Contains(wf, "\n  pull-requests: read\n") {
+		t.Errorf("%s must grant pull-requests: read for the read step", rel)
+	}
+	for needle, files := range map[string][]string{
+		"check-attribution.sh body":    {`"$RUNNER_TEMP/pr-body.md"`},
+		"check-issue-resolution.sh pr": {`"$RUNNER_TEMP/pr-title.txt"`, `"$RUNNER_TEMP/pr-body.md"`},
+	} {
+		step := findStep(t, wf, rel, needle)
+		if step.line < read.line {
+			t.Errorf("step %q (line %d) runs before the read step (line %d) writes what it judges", step.name, step.line, read.line)
+		}
+		for _, f := range files {
+			if !strings.Contains(step.body, needle+" ") || !strings.Contains(step.body, f) {
+				t.Errorf("step %q must judge the file the read step wrote, %s", step.name, f)
+			}
+		}
+	}
+}

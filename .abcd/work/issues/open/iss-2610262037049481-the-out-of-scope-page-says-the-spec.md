@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 695 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/03-out-of-scope.md:172"
-remedy: "none (filed automatically)"
+remedy: "Say the close is run by abcd build's landing stage in the lane's worktree, or by hand in the change that lands the work; drop 'nothing promotes a record on its own'."
 finding_ref: cfk-510efab1af9b5dab
 ---
 

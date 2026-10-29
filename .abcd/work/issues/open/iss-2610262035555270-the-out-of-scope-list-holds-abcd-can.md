@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 609 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/03-out-of-scope.md:68"
-remedy: "none (filed automatically)"
+remedy: "Supersede itd-86 by the shipped cold-reading intents (itd-184 and itd-185) after checking nothing in its scope remains, so the generated out-of-scope list drops it."
 finding_ref: cfk-73730d0693fcfecd
 ---
 

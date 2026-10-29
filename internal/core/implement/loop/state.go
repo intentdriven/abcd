@@ -43,6 +43,7 @@
 package loop
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,8 +57,11 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/landing"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // TierRelDir is the local-ephemeral tier the run state lives in, the tier the
@@ -187,19 +191,44 @@ const lockFileName = ".lock"
 // and harness version the harness reported, the token counts and cost, and
 // the fields it could not pin (runner.Sides). Version 13 is its strict
 // subset, read as a run whose routes recorded neither side, its lanes'
-// `refused` kept, and written back at version 14; a file of version 13 or
-// lower carrying either side is not one its version wrote, and is refused.
-// Releases that write version 13 (v0.15.1) refuse a version-14 file as a
-// newer abcd's before any strict decode.
+// `refused` kept, and written back at the current version; a file of version
+// 13 or lower carrying either side is not one its version wrote, and is
+// refused. Releases that write version 13 (v0.15.1) refuse a version-14 file
+// as a newer abcd's before any strict decode.
 //
 // Version 15 added the run's review set (itd-2610240922461281,
 // spc-2610240951109420 step 1): the run's `review`, each role's reviewers at
 // their model classes, the judge and the ceiling, with the layer of each.
 // Version 14 is its strict subset, read as a run started before review sets,
-// which carries none, and written back at version 15; a file of version 14 or
-// lower carrying `review` is not one its version wrote, and is refused.
-// Releases that write version 14 refuse a version-15 file as a newer abcd's.
-const SchemaVersion = 15
+// which carries none, and written back at the current version; a file of
+// version 14 or lower carrying `review` is not one its version wrote, and is
+// refused. Releases that write version 14 refuse a version-15 file as a newer
+// abcd's.
+//
+// Version 16 added a route's pins: a pinned opencode run's route carries its
+// pin and the SHA-256 of the sealed configuration that held it
+// (`provider_pin`, `pin_config_sha256`, iss-2610161734413178), and a route
+// to a model on this machine its local pin, what its server reported and
+// that it is local (`local_pin`, `local_served`, `local`,
+// iss-2610161734428291). Version 15 is its strict subset, read as a run
+// whose routes were pointed at no pin, its review set kept, and written back
+// at version 16; a file of version 14 or 15 carrying any of them is not one
+// its version wrote, and is refused naming the key, and one of version 13 or
+// lower carrying any of them is refused with the sides it carries. Releases
+// that write version 15 refuse a version-16 file as a newer abcd's before any
+// strict decode. A route record's `override` (iss-2610161801358637), the
+// `implement step --route` text verbatim on the verified receipt or the
+// validator's return a runner ran under it, is version 16's too: it joined
+// version 16 before any release wrote that version, so a file of version 15
+// or lower carrying it is not one its version wrote, and is refused naming
+// the key. So is a validation round's `routes` (spc-2609251028149555, AC 10):
+// the tier each role of the round ran at, the tier a failed round moved it up
+// from, and the failing gate output that caused the switch.
+const SchemaVersion = 16
+
+// schemaVersionUnpinned is the version before a route's pins: read, never
+// written.
+const schemaVersionUnpinned = 15
 
 // schemaVersionUnreviewed is the version before the run's review set: read,
 // never written.
@@ -563,6 +592,36 @@ type ValidationRound struct {
 	// Fix is the verified receipt of the fresh implementer the round's
 	// findings were handed to; once set, the next step opens the next round.
 	Fix string `json:"fix,omitempty"`
+	// Routes is the tier each agent the round handed out ran at, one record
+	// per role, in the order the round handed them out (spc-2609251028149555,
+	// AC 10): the validators, and the fresh implementer the round's findings
+	// went to. Empty for a round handed out with no routing read.
+	Routes []Round `json:"routes,omitempty"`
+}
+
+// Round is the route one role of a lane's round ran at (spc-2609251028149555,
+// AC 10; itd-2609170822093401's Decision 1, "a rule, not a router"). A round
+// whose gates failed moves the next round's tier one step up the ladder local,
+// economy, frontier (oracle.Escalate), and the switch is recorded here as a
+// fact: the tier the role ran at, the tier it moved from, and the failing gate
+// output that caused it. A route that names no tier (a runner and model, a
+// role pointed at a provider, host-decides, or a role with no routing row)
+// does not move, and says why in Note.
+type Round struct {
+	Role string `json:"role"`
+	// Tier is the tier the role was asked to run at, the receipt's tier asked;
+	// "" when its route names no tier.
+	Tier oracle.Tier `json:"tier,omitempty"`
+	// EscalatedFrom is the tier the role ran at in the round before, when the
+	// failed round moved it up; "" when it did not move.
+	EscalatedFrom oracle.Tier `json:"escalated_from,omitempty"`
+	// GateOutput is the failing output of the round before this role ran, the
+	// verdicts and findings that caused any switch, bounded; "" when the role
+	// did not follow a failed round.
+	GateOutput string `json:"gate_output,omitempty"`
+	// Note says why the role did not move after a failed round: its route
+	// names no tier, or it is at the top of the ladder.
+	Note string `json:"note,omitempty"`
 }
 
 // ValidatorRun is one validator of a round: the fresh agent handed the lane,
@@ -763,7 +822,7 @@ func (s State) answered() string {
 }
 
 // metered reports the first route, in a state, that carries either side of
-// its run, which only version 14 writes, or "".
+// its run, which only version 14 and later write, or "".
 func (s State) metered() string {
 	sided := func(r *runner.RouteRecord) bool {
 		return r != nil && !reflect.DeepEqual(r.Sides, runner.Sides{})
@@ -779,6 +838,80 @@ func (s State) metered() string {
 				if sided(vr.Route) {
 					return fmt.Sprintf("%s's round %d validator %d's route", l.ID, v.Round, i+1)
 				}
+			}
+		}
+	}
+	return ""
+}
+
+// pinKey names the first of a route's pin fields, or its `local`, that the
+// route carries, or "": the fields the run state's version 16 and the drain
+// state's version 2 added.
+func pinKey(r *runner.RouteRecord) string {
+	switch {
+	case r == nil:
+		return ""
+	case r.ProviderPin != nil:
+		return "provider_pin"
+	case r.PinConfigSHA256 != "":
+		return "pin_config_sha256"
+	case r.LocalPin != nil:
+		return "local_pin"
+	case r.LocalServed != nil:
+		return "local_served"
+	case r.Local:
+		return "local"
+	}
+	return ""
+}
+
+// pinned reports the first route, in a state, that carries a pin or names
+// its model as local, which only version 16 and later write, or "".
+func (s State) pinned() string {
+	for _, l := range s.Lanes {
+		for i, r := range l.Receipts {
+			if k := pinKey(r.Route); k != "" {
+				return fmt.Sprintf("`%s` on %s's receipt %d's route", k, l.ID, i+1)
+			}
+		}
+		for _, v := range l.Validation {
+			for i, vr := range v.Validators {
+				if k := pinKey(vr.Route); k != "" {
+					return fmt.Sprintf("`%s` on %s's round %d validator %d's route", k, l.ID, v.Round, i+1)
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// overridden reports the first route record, in a state, that carries
+// `override`, which only version 16 and later write, or "".
+func (s State) overridden() string {
+	for _, l := range s.Lanes {
+		for _, r := range l.Receipts {
+			if r.Route != nil && r.Route.Override != "" {
+				return "`override` on " + l.ID + "'s " + r.Role + " receipt"
+			}
+		}
+		for _, v := range l.Validation {
+			for _, vr := range v.Validators {
+				if vr.Route != nil && vr.Route.Override != "" {
+					return "`override` on " + l.ID + "'s " + vr.Role + " return"
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// rounded reports the first validation round, in a state, that carries
+// `routes`, which only version 16 and later write, or "".
+func (s State) rounded() string {
+	for _, l := range s.Lanes {
+		for _, v := range l.Validation {
+			if len(v.Routes) > 0 {
+				return fmt.Sprintf("`routes` on %s's round %d", l.ID, v.Round)
 			}
 		}
 	}
@@ -867,7 +1000,7 @@ func StateRelPath(runID string) string { return runRel(runID) + "/" + StateFileN
 // the file to the version and the id it is stored under.
 func ReadState(repoRoot, runID string) (State, error) {
 	if !ValidRunID(runID) {
-		return State{}, refuse("state", "", "", fmt.Sprintf("%q is not a run id (run-<16 digits>)", runID),
+		return State{}, refuse("state", "", "", fmt.Sprintf("the run given (%s) is not a run id (run-<16 digits>)", termsafe.DescribeRefused(runID)),
 			"name a run `abcd implement status` lists")
 	}
 	root, err := os.OpenRoot(repoRoot)
@@ -879,6 +1012,15 @@ func ReadState(repoRoot, runID string) (State, error) {
 }
 
 func readStateIn(root *os.Root, runID string) (State, error) {
+	if rf := tierRefusal("state", "", localtier.Untracked(root.Name(), StateRelPath(runID))); rf != nil {
+		return State{}, rf
+	}
+	return readListedState(root, runID)
+}
+
+// readListedState is readStateIn for a run runIDs listed: the listing asked
+// git once for every run beneath it, so a loop over many runs asks no more.
+func readListedState(root *os.Root, runID string) (State, error) {
 	rel := StateRelPath(runID)
 	data, err := fsutil.ReadGuardedInRoot(root, rel, maxStateBytes)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -947,7 +1089,16 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnreviewed && st.Review != nil:
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a review set, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnreviewed:
+	case st.SchemaVersion <= schemaVersionUnpinned && st.overridden() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.overridden(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUnpinned && st.rounded() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.rounded(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUnpinned && st.pinned() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.pinned(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnpinned:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
@@ -1177,6 +1328,18 @@ func runIDs(root *os.Root) ([]string, error) {
 	for _, n := range names {
 		if ValidRunID(n) {
 			ids = append(ids, n)
+		}
+	}
+	// Asked once for every run listed, so each reads as readListedState reads
+	// it, with no question a run; a file git tracks beside the runs refuses
+	// none of them.
+	if len(ids) > 0 {
+		dirs := make([]string, len(ids))
+		for i, id := range ids {
+			dirs[i] = RunRelDir + "/" + id
+		}
+		if rf := tierRefusal("state", "", localtier.UntrackedEach(context.Background(), root.Name(), dirs...)); rf != nil {
+			return nil, rf
 		}
 	}
 	slices.Sort(ids)

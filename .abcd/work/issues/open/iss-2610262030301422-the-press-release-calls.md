@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 9 of .abcd/work/reviews/2026-10-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:5"
-remedy: "none (filed automatically)"
+remedy: "Reword the press release's last sentence in its opening quote (line 5): most verbs render status when bare and mutations take an explicit sub-verb or operand, with the exceptions enumerated in 04-surfaces/README.md under Bare invocation; drop 'any command' and 'the universal abcd convention'. One edit settles the duplicates filed against this sentence."
 finding_ref: cfk-c053753d683dafb4
 ---
 

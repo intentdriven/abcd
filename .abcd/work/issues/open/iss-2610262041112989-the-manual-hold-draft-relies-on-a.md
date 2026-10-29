@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 983 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/01-build-sequence.md:141"
-remedy: "none (filed automatically)"
+remedy: "Supersede or re-scope itd-57: a manual hold already ships as abcd intent hold and unhold (a held line on a draft or planned record), while the run seam, abcd configure and a spec dependency graph do not ship, so the sentinel-spec design has nothing to ride on."
 related_intents: [itd-57]
 finding_ref: cfk-a57b23115609cb09
 ---

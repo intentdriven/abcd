@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 95 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:208"
-remedy: "none (filed automatically)"
+remedy: "In 03-configuration.md (line 1039) qualify 'a domain that stays in force is still never re-injected unchanged within a session' with the fixed-N backstop: every Nth prompt (force_refresh_every_n, default 15) clears the ledger and a matching domain re-injects; correct the same sentence in 02-verification-matrix.md and AGENTS.md."
 finding_ref: cfk-4aa7accdb8607ce2
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 445 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/09-reflect.md:201"
-remedy: "none (filed automatically)"
+remedy: "In 09-reflect.md:201-205 replace 'the voyage produced' and 'the new voyage's store' and 'the new voyage's brief' with 'the project's' and 'the target repository's' wording; the glossary fixes voyage as the operator-level log of disembark and embark runs."
 finding_ref: cfk-e4102e56c9c60775
 ---
 

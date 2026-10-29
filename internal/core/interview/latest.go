@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // maxRecordBytes caps one answers record as Latest reads it: the cap an
@@ -80,6 +81,14 @@ func Latest(p Place, name string) (map[string]string, error) {
 	})
 	if len(records) > maxRecordsRead {
 		records = records[len(records)-maxRecordsRead:]
+	}
+	// Asked once for the directory, not once a record: a record git tracks
+	// came with a commit, not from an interview here, and refuses them all.
+	// The home's records are no checkout's tier, whatever repository holds it.
+	if len(records) > 0 && p.Repo != "" {
+		if err := localtier.Untracked(root.Name(), dir); err != nil {
+			return nil, fmt.Errorf("interview: %w", err)
+		}
 	}
 	out := map[string]string{}
 	for _, r := range records {
