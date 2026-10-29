@@ -3,6 +3,10 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -85,4 +89,76 @@ func refuseSharedMainCheckout(cmd *cobra.Command, verb, root string) error {
 	fmt.Fprintf(cmd.ErrOrStderr(), "%s: could not count the sessions working in this checkout (%s), so a shared main checkout is not refused this time\n",
 		verb, termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	return nil
+}
+
+// fileWriteTools are the host tool names that write a file. The hook
+// manifest's PreToolUse matcher names exactly these beside the shell and
+// question tools (TestGuardHookIsInstalledForBashCalls holds the two
+// together), so the guard hook sees every write the host's own tools make.
+var fileWriteTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit"}
+
+// isFileWriteTool reports whether a hook payload's tool writes a file.
+func isFileWriteTool(name string) bool {
+	for _, f := range fileWriteTools {
+		if strings.EqualFold(name, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// fileWriteFailOpen is the guard's fail-open-loud contract on a file tool's
+// call: the write runs, and exit 1 keeps the warning in front of a human.
+func fileWriteFailOpen(w io.Writer, format string, a ...any) error {
+	diagnosticLine(w, "abcd guard: NOT CHECKED — "+format+". This file write runs UNGUARDED.", a...)
+	return &exitError{Code: 1}
+}
+
+// fileWriteGate is the guard hook's judgement of a file the host's own tools
+// are about to write (iss-2610280051498465): the record verbs refuse a main
+// checkout two or more live sessions share, and a file written there through
+// Write or Edit lands under all of them just the same. The file's working
+// tree is found by walking up to its .git, with no git subprocess, and judged
+// by occupancy.Check, so a linked worktree, a checkout one session or none
+// works in, and a path in no checkout are allowed silently. A shared one is
+// the host's deny with the verbs' own refusal, naming the worktree store. A
+// call naming no file, or a count that could not be made, fails open loud.
+func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string) error {
+	path := filePath
+	if path == "" {
+		path = notebookPath
+	}
+	if strings.TrimSpace(path) == "" {
+		return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names no file to check", termsafe.Sanitize(tool))
+	}
+	if !filepath.IsAbs(path) {
+		base := cwd
+		if base == "" {
+			wd, err := os.Getwd()
+			if err != nil {
+				return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names a relative path and the session directory is unknown", termsafe.Sanitize(tool))
+			}
+			base = wd
+		}
+		// Joined as written, not cleaned, so the raw reading of a ".." after
+		// a link is still there for CheckPath to judge.
+		path = base + string(filepath.Separator) + path
+		if !filepath.IsAbs(path) {
+			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names a relative path and a session directory that is not absolute", termsafe.Sanitize(tool))
+		}
+	}
+	m, ok := sessionNameMachine()
+	if !ok || m.Home == "" {
+		return nil
+	}
+	err := occupancy.CheckPath(m.Home, path, m.ReadTable)
+	var shared *occupancy.SharedError
+	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &shared):
+		return denyCall("Blocked by the abcd guard (" + termsafe.Sanitize(tool) + " into a shared main checkout): " + shared.Error())
+	}
+	return fileWriteFailOpen(cmd.ErrOrStderr(), "could not count the sessions working in the checkout this file is in (%s)",
+		termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 }

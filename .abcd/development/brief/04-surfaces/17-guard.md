@@ -207,7 +207,8 @@ nothing. Where the badge does not show, the mode is neither read nor set. A
 state file or marker the gate cannot read or write, a read-only tier among
 them, is not a decision: the question runs and the hook says so on exit 1, the
 same fail-open-loud contract below. The manifest's pre-tool-use matcher names the
-shell tool and the question tool, and nothing else.
+shell tool, the question tool and the host's file-writing tools, and nothing
+else.
 
 **While the person is away** (spc-2610180914469489, "The question reroute";
 dcn-2610180937177502, dcn-2610181003477194), the gate reads the away record
@@ -295,11 +296,16 @@ no registry at all — are decided once, in the core, and every caller formats
 the same answer.
 
 One limit is not among those states, because it is never false: the guard's
-reach. The manifest's pre-tool-use matcher hands the hook the shell tool and
-the question tool and nothing else, so a call through any other tool never
-reaches the guard — a file the host's own tools write or edit, a command a tool
-from another extension runs — and nothing warns about it, since nothing
-failed. It is the guard's standing scope, not a degradation, and the `guard:`
+reach. The manifest's pre-tool-use matcher hands the hook the shell tool, the
+question tool and the host's file-writing tools (`Write`, `Edit`, `MultiEdit`,
+`NotebookEdit`) and nothing else. A file those tools write is judged only by
+where it lands: in a main checkout two or more live sessions started in, outside
+that checkout's own local tier (`.abcd/.work.local/`, which git ignores), it is
+denied with the record verbs' refusal (`occupancy.CheckPath`, which walks up to
+the file's `.git` with no git subprocess; iss-2610280051498465), and anywhere
+else it is written unchecked. A call through any other tool never reaches the
+guard — a command a tool from another extension runs — and nothing warns about
+it, since nothing failed. It is the guard's standing scope, not a degradation, and the `guard:`
 line does not report it. Whether the guard should adjudicate more than the
 shell is a separate question with a real cost: every further tool class needs
 its own hazard vocabulary, and a guard that refuses a tool it cannot reason

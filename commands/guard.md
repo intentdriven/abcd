@@ -173,11 +173,20 @@ line ends holds the body back until the line after it closes, and its own
 lines are read as commands, as the shell runs them.
 
 The hook judges only what the host hands it, and the plugin's hook manifest
-hands it the shell tool and the question tool and nothing else. A call through
-any other tool never reaches the guard: a file the host's own tools write or
-edit, or a command a tool from another extension runs, is neither checked nor
-warned about. That is the guard's standing scope, not a degradation, and the
-`guard:` line of `abcd ahoy` does not report it.
+hands it the shell tool, the question tool and the host's file-writing tools
+(`Write`, `Edit`, `MultiEdit`, `NotebookEdit`) and nothing else. A file one of
+those tools writes is not held to the registry: it is **denied** when it lands
+in a main checkout two or more live sessions started in, with the refusal the
+record verbs give, naming the worktree store (iss-2610280051498465). The file's
+working tree is found by walking up to its `.git`, with no git subprocess, so a
+linked worktree, a checkout one session or none works in, a path in no checkout,
+and a file in a checkout's own local tier (`.abcd/.work.local/`, which git
+ignores) are written silently. A file call naming no path, a relative path with
+no absolute session directory, or a count that cannot be made, lets the write
+run and warns loudly. A call through any other
+tool never reaches the guard: a command a tool from another extension runs is
+neither checked nor warned about. That is the guard's standing scope, not a
+degradation, and the `guard:` line of `abcd ahoy` does not report it.
 
 A host whose shell tool takes a per-call working directory passes it beside the
 command as `tool_input.workdir`. The adapter resolves it against the session

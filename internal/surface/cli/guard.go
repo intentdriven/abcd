@@ -244,11 +244,21 @@ func newGuardHookCommand() *cobra.Command {
 			"so each gets a verdict — the backslash is read as bash reads it, the\n" +
 			"unterminated document blocks.\n\n" +
 			"The hook judges only what the host hands it, and the plugin's hook\n" +
-			"manifest hands it the shell tool and the question tool and nothing else.\n" +
-			"A call through any other tool never reaches the guard: a file the host's\n" +
-			"own tools write or edit, or a command a tool from another extension runs,\n" +
-			"is neither checked nor warned about. That is the guard's standing scope,\n" +
-			"not a degradation, and the guard: line of abcd ahoy does not report it.\n\n" +
+			"manifest hands it the shell tool, the question tool and the host's\n" +
+			"file-writing tools (Write, Edit, MultiEdit, NotebookEdit) and nothing else.\n" +
+			"A file one of those tools writes is not held to the registry: it is denied\n" +
+			"with the host's deny when it lands in a main checkout two or more live\n" +
+			"sessions started in, with the refusal the record verbs give, naming the\n" +
+			"worktree store. The file's working tree is found by walking up to its .git,\n" +
+			"so a linked worktree, a checkout one session or none works in, a path in no\n" +
+			"checkout, and a file in a checkout's own local tier (.abcd/.work.local/,\n" +
+			"which git ignores) are written silently. A file call naming no path, a\n" +
+			"relative path with no absolute session directory, or a count that cannot\n" +
+			"be made, lets the write run and warns loudly. A call through\n" +
+			"any other tool never reaches the guard: a command a tool from another\n" +
+			"extension runs is neither checked nor warned about. That is the guard's\n" +
+			"standing scope, not a degradation, and the guard: line of abcd ahoy does\n" +
+			"not report it.\n\n" +
 			"A host whose shell tool takes a per-call working directory passes it as\n" +
 			"tool_input.workdir. It is resolved against the session directory, and a\n" +
 			"command whose workdir is an existing directory in another repository is\n" +
@@ -355,6 +365,8 @@ func guardHookDecide(cmd *cobra.Command) error {
 		switch tool, known := hookToolName(raw); {
 		case known && isQuestionTool(tool):
 			return questionFailOpen(cmd.ErrOrStderr(), "the question tool's hook payload could not be read (%s)", errUnreadableQuestionPayload)
+		case known && isFileWriteTool(tool):
+			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s tool's hook payload is not readable JSON", termsafe.Sanitize(tool))
 		case !known:
 			diagnosticLine(cmd.ErrOrStderr(),
 				"abcd guard: NOT CHECKED — the hook payload is not readable JSON, so the tool it calls is unknown. The call runs UNGUARDED.")
@@ -369,7 +381,12 @@ func guardHookDecide(cmd *cobra.Command) error {
 	if isQuestionTool(in.ToolName) {
 		return questionGate(cmd, in.Cwd, in.ToolInput.Questions)
 	}
-	// The manifest scopes this hook to the shell tool and the question
+	// A file the host's own tools write is judged by the occupancy of the
+	// working tree it lands in, not the registry (iss-2610280051498465).
+	if isFileWriteTool(in.ToolName) {
+		return fileWriteGate(cmd, in.ToolName, in.Cwd, in.ToolInput.FilePath, in.ToolInput.NotebookPath)
+	}
+	// The manifest scopes this hook to the shell, question and file-writing
 	// tools, so a different tool name means the wiring is wrong — worth
 	// saying rather than ignoring.
 	if !strings.EqualFold(in.ToolName, "Bash") {
@@ -583,6 +600,11 @@ type guardHookInput struct {
 		// check decodes it on its own path: a shape it cannot read fails
 		// that check open loudly without touching the shell path.
 		Questions json.RawMessage `json:"questions"`
+		// FilePath is the file a host's file-writing tool writes, and
+		// NotebookPath the notebook its notebook tool edits; the occupancy
+		// gate judges the working tree it lands in (hook_occupancy.go).
+		FilePath     string `json:"file_path"`
+		NotebookPath string `json:"notebook_path"`
 	} `json:"tool_input"`
 }
 
