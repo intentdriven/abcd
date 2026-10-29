@@ -908,9 +908,15 @@ that ships an intent parks an OWED review marker, so a fidelity review is owed
 by construction. The listing reads the first marker of every intent in
 `shipped/` and returns one entry per shipped intent (`intent_id`, `state`,
 `receipt_id`, and `re_emit` where the review is owed), with the totals `owed`,
-`dead_lettered` and `ingested`. The owed set is `OWED` plus `none`: a shipped
-intent with no marker at all owes the review too, and its re-emit mints the
-receipt. A `DEAD_LETTER` review is listed under its own heading, unreviewed,
+`dead_lettered`, `ingested` and `hand_audited`. The owed set is `OWED` plus
+`none`: a shipped intent with no marker at all owes the review too, and its
+re-emit mints the receipt, unless its Audit Notes read as a hand-written audit:
+one of its paragraphs or list items names an acceptance criterion (`ac-2`,
+`criterion 2`, or an item of a numbered list) and gives one of the auditor's
+verdicts in capitals (`MET`, `MET_WITH_CONCERNS`, `NOT_MET`, `INCONCLUSIVE`).
+Such an intent's state is `hand-audited`: it is counted in `hand_audited`,
+carries no receipt and no re-emit, and is not owed. Any other note, a ruling's
+amendment line among them, leaves the intent owed. A `DEAD_LETTER` review is listed under its own heading, unreviewed,
 with the reason the quarantine recorded, and is not counted as owed. An
 `INGESTED` review whose verdict left a check owed carries `audit_owed: true`,
 the `audit_owed_issue` carrying it and its `re_emit`, is counted in

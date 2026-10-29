@@ -3555,8 +3555,8 @@ func runOwedReviews(cmd *cobra.Command, asJSON bool) error {
 		return &exitError{Code: 2, Msg: "abcd intent audit: " + err.Error()}
 	}
 	return render(cmd.OutOrStdout(), asJSON, l, func(w io.Writer) {
-		fmt.Fprintf(w, "abcd intent audit — fidelity reviews owed %d · dead-lettered %d · ingested %d (of %d shipped)\n",
-			l.Owed, l.DeadLettered, l.Ingested, len(l.Entries))
+		fmt.Fprintf(w, "abcd intent audit — fidelity reviews owed %d · dead-lettered %d · ingested %d · hand-audited %d (of %d shipped)\n",
+			l.Owed, l.DeadLettered, l.Ingested, l.HandAudited, len(l.Entries))
 		fmt.Fprintln(w, "owed:")
 		if l.Owed == 0 {
 			fmt.Fprintln(w, "  none")
