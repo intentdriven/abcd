@@ -125,7 +125,7 @@ func TestSwitchingOnAProjectSiteSetsTheSwitchAndAddsTheWorkflowOnly(t *testing.T
 
 	for _, env := range []string{EnvRender, githubpages.Environment} {
 		pol := h.forge.policies[env]
-		if !reflect.DeepEqual(pol, []BranchPolicy{{Name: "main", Type: "branch"}, {Name: "v*", Type: "tag"}}) {
+		if !reflect.DeepEqual(pol, []BranchPolicy{{Name: "main", Type: "branch"}}) {
 			t.Errorf("environment %s policies = %v", env, pol)
 		}
 	}

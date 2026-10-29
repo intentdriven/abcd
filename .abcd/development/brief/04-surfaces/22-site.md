@@ -66,7 +66,7 @@ abcd's: a copy that differs refuses the whole run, with nothing written and
 no remote change attempted, unless the run is told to replace it.
 
 **The forge.** Two deployment environments, one for the render and one for the
-deploy, each admitting only the default branch and release tags, created
+deploy, each admitting only the default branch, created
 through the forge's API as the person running the verb. A missing `gh` is
 offered for install on the same terms as the remote apply's: explained, and
 installed only on a yes typed at a terminal, never on the pre-given yes; a
@@ -77,10 +77,14 @@ workflow gates on; only when the forge cannot answer does the checkout's own
 stand in, and the report's notes say so. An environment that
 already exists is never rewritten, because the forge's environment write
 replaces its whole protection set, required reviewers included: one on named
-rules and no rule beyond those two gains the rules it lacks, and one that
-admits more, through its protection mode or a rule of its own such as branch
-`*`, is reported `unrestricted`, with restricting it named as a step ahead of
-any secret step.
+rules and no rule beyond the default branch's gains that rule if it lacks it,
+and one that admits more, through its protection mode or a rule of its own such
+as branch `*` or a tag rule, is reported `unrestricted`, with restricting it
+named as a step ahead of any secret step. Every render and deploy runs on the
+default branch: A release published by hand runs only a relay job, which starts
+the workflow there with the release's tag. The render renders a release
+only when the default branch holds its commit, and the deploy takes the host
+configuration from the default branch, never from the release's tag.
 
 **The host.** With a hosting credential on this machine, the provider adapter
 creates the host, routes the custom domain to it and reports the live address.

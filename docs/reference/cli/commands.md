@@ -2550,8 +2550,8 @@ above 1 it takes no slot until its race run starts, which the race gate keeps
 to one at a time. A waiter that has opened stands back only from a waiter that
 opened in the same moment at its own gate, never from one at the other gate.
 
-How many preflights may be in their test stages at once is your own machine's
-setting: `load.preflights` in `~/.abcd.noindex/config.json`, or ABCD_LOAD_PREFLIGHTS in the
+How many preflights the first gate admits to their test stages at once is your
+own machine's setting: `load.preflights` in `~/.abcd.noindex/config.json`, or ABCD_LOAD_PREFLIGHTS in the
 environment, which wins, for a trial; a whole number from 1 to 4, 1 by default,
 and never read from a repository file, so a checkout cannot raise the machine's
 load. At 1 both gates read as before the setting existed. Above 1 the
@@ -2559,11 +2559,12 @@ first gate opens while fewer than that many other preflights or waiters running
 their command are in their test stages (a `--wait -- make preflight` counts
 once), a waiter queued ahead still shuts it, and a live race run does not shut
 it by itself; the load limit still does, and the race gate keeps race stages
-apart. A value it cannot use refuses the wait, naming where it was set. A
-`~/.abcd.noindex/config.json` that cannot be read for it (writable by others,
-not valid JSON, or a `load` that is not an object) is read past instead: one
-preflight at a time applies, and one line on stderr names the file, the cause
-and how to fix it; so does a key under `load` that nothing reads.
+apart, so one race stage may run beside that many unit stages. A value it
+cannot use refuses the wait, naming where it was set. A `~/.abcd.noindex/config.json`
+that cannot be read for it (writable by others, not valid JSON, or a `load`
+that is not an object) is read past instead: one preflight at a time applies,
+and one line on stderr names the file, the cause and how to fix it; so does a
+key under `load` that nothing reads.
 
 Within one account the waiter that opens also takes a hold,
 `~/.abcd.noindex/load-wait.json` at the first gate and `~/.abcd.noindex/load-wait-race.json` at
