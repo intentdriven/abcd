@@ -1,4 +1,4 @@
-// Package cloudflare is the one hosting provider abcd ships
+// Package cloudflare is the hosting provider abcd's own site deploys through
 // (itd-2609061543533170): an assets-only Cloudflare Worker, the host abcd's own
 // site is served from.
 //
@@ -94,6 +94,13 @@ func (Adapter) CredentialName() string { return CredentialName }
 
 // Secrets are the deploy environment's secret names.
 func (Adapter) Secrets() []string { return []string{SecretToken, SecretAccount} }
+
+// Profile: the deploy job runs in the `site` environment holding the two
+// secrets, reads the repository only, and deploys every release to a Worker
+// served at the root of its address.
+func (Adapter) Profile(hosting.Site) hosting.Profile {
+	return hosting.Profile{Environment: "site", Permissions: []string{"contents: read"}, BasePath: "/"}
+}
 
 // DeployStep runs `wrangler deploy` through the pinned action. `deploy` also
 // asserts the routes wrangler.jsonc declares, so a lost domain attachment is
@@ -401,26 +408,26 @@ func (c *client) Route(ctx context.Context, s hosting.Site) error {
 
 // Address is the custom domain when there is one, the workers.dev name
 // otherwise.
-func (c *client) Address(ctx context.Context, s hosting.Site) (string, error) {
+func (c *client) Address(ctx context.Context, s hosting.Site) (addr, note string, err error) {
 	if err := checkSite(s); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if s.Domain != "" {
-		return "https://" + s.Domain, nil
+		return "https://" + s.Domain, "", nil
 	}
 	acct, err := c.accountID(ctx)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	env, err := c.call(ctx, http.MethodGet, "read workers.dev subdomain", "/accounts/"+url.PathEscape(acct)+"/workers/subdomain", nil, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	var sub struct {
 		Subdomain string `json:"subdomain"`
 	}
 	if err := json.Unmarshal(env.Result, &sub); err != nil || !subRe.MatchString(sub.Subdomain) {
-		return "", errors.New("cloudflare: the account has no plain workers.dev subdomain to serve the site from")
+		return "", "", errors.New("cloudflare: the account has no plain workers.dev subdomain to serve the site from")
 	}
-	return "https://" + s.Name + "." + sub.Subdomain + ".workers.dev", nil
+	return "https://" + s.Name + "." + sub.Subdomain + ".workers.dev", "", nil
 }

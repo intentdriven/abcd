@@ -170,3 +170,72 @@ func TestLandTakesAtMostOneBranch(t *testing.T) {
 		t.Fatalf("exit %d, stderr %q", code, stderr)
 	}
 }
+
+// writeReturn lays one review return naming head and stating verdict.
+func writeReturn(t *testing.T, path, head, verdict string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte("# return\n\nReviewed lane head "+head[:9]+".\n\n### Verdict\n\n"+verdict+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestLandRecordsAReviewReceiptAndLandsNothing is spc-2610161609350616 step 3
+// at the front door: --record-review takes the review pair's returns, writes
+// the receipt for the branch's head when both pass the stop rule, and pushes,
+// gates and arms nothing.
+func TestLandRecordsAReviewReceiptAndLandsNothing(t *testing.T) {
+	dir, origin := landWorld(t)
+	if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(landing.TierRelDir)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	head := strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD"))
+	a, b := filepath.Join(t.TempDir(), "ruthless.md"), filepath.Join(t.TempDir(), "security.md")
+	writeReturn(t, a, head, "SHIP")
+	writeReturn(t, b, head, "APPROVE")
+	code, stdout, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b, "--json")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	var got struct {
+		Commit  string `json:"commit"`
+		Receipt string `json:"receipt"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("%v in %q", err, stdout)
+	}
+	if got.Commit != head || !strings.HasSuffix(got.Receipt, landing.ReviewReceiptsRelDir+"/"+head) {
+		t.Fatalf("--json = %+v; want the receipt for %s", got, head)
+	}
+	if fi, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(landing.ReviewReceiptsRelDir), head)); err != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("no receipt file for %s: %v", head, err)
+	}
+	if strings.Contains(gitCmd(t, origin, "branch", "--list", "feat/x"), "feat/x") {
+		t.Fatal("recording a review pushed the branch")
+	}
+}
+
+// A return that does not pass is refused with exit 2, naming it, and no
+// receipt is written; --record-review with a landing flag is refused too.
+func TestLandRefusesAReviewThatDoesNotPass(t *testing.T) {
+	dir, _ := landWorld(t)
+	if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(landing.TierRelDir)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	head := strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD"))
+	a, b := filepath.Join(t.TempDir(), "ruthless.md"), filepath.Join(t.TempDir(), "security.md")
+	writeReturn(t, a, head, "SHIP")
+	writeReturn(t, b, head, "BLOCK")
+	code, _, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b)
+	// The refusal names the return by its place on the command line: the
+	// error boundary withholds the path's own words (#1173).
+	if code != 2 || !strings.Contains(stderr, "argument 5") || !strings.Contains(stderr, "BLOCK") || strings.Contains(stderr, "security.md") {
+		t.Fatalf("exit %d, stderr %q: want 2 naming argument 5 and its BLOCK", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(landing.ReviewReceiptsRelDir), head)); err == nil {
+		t.Fatal("a refused review left a receipt")
+	}
+	writeReturn(t, b, head, "APPROVE")
+	if code, _, stderr := reserveRun(t, dir, "land", "--record-review", a, "--record-review", b, "--no-push"); code != 2 || !strings.Contains(stderr, "--no-push") {
+		t.Fatalf("exit %d, stderr %q: want --record-review with --no-push refused", code, stderr)
+	}
+}

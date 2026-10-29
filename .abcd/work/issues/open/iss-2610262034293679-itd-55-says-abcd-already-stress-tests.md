@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 500 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-55-first-principles-foundations-auditor.md:17"
-remedy: "none (filed automatically)"
+remedy: "In itd-55 replace 'the grill' and `/abcd:intent grill` (press release, scope, out of scope, acceptance criterion) with the planning interview (`abcd intent interview`, itd-94) and say where the foundations audit differs from the interview's questioning of vague terms and hidden assumptions (a non-interactive, load-ranked inventory over any reasoned document); also replace its 'fidelity reviewer' wording with `intent-auditor`."
 related_intents: [itd-55]
 finding_ref: cfk-a8ad5f2b1628ba36
 ---

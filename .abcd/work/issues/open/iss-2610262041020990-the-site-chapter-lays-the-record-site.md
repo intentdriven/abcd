@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 972 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/10-site.md:83"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does the 2026-10-04 give-up (the record site and dashboard are promised for abcd's own record only: dashboard intent decision 13, itd-140 ruling) still stand, given shipped site setup for any managed repo and the 2026-10-14 ruling that abcd provides the record for any managed repo? Answers: (1) the give-up stands; (2) the 2026-10-14 ruling overtakes it. Recommend (2): it is the later ruling, in the product thinker's own words, and the code already behaves that way."
 related_intents: [itd-2610032150577708]
 finding_ref: cfk-6bfe1c0568ebb09a
 ---

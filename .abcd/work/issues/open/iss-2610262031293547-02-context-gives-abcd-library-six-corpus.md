@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 135 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/02-context.md:13"
-remedy: "none (filed automatically)"
+remedy: "Reword 07-memory.md:197 to 'The shipped memory-store verbs are ingest, ask and lint and nothing else'; the library command carries nine sub-verbs, six of them the sources corpus's."
 finding_ref: cfk-3031d2c311078bf3
 ---
 

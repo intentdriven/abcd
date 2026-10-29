@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 209 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:56"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md line 56: itd-34's bundle command is shipped, not planned."
 related_intents: [itd-34]
 finding_ref: cfk-87d8d89f73920b84
 ---

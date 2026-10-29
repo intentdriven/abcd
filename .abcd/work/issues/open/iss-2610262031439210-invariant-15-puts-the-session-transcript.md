@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 168 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:167"
-remedy: "none (filed automatically)"
+remedy: "In itd-59's scope, replace the spelled `history/<root_sha>` path with 'the native transcript store, reached through the history verb surface': adr-2610031751066232 spells the store as `transcripts/<root-sha>` under abcd's home and invariant 15 lets only the history package spell it."
 related_intents: [itd-59]
 finding_ref: cfk-62c2409c3599cc43
 ---

@@ -616,27 +616,34 @@ rather than adding to them.
    - record: adr-2610032150581128 moved to accepted with its interview paragraph amended to D1, and invariant 7 given its inbound clause, in the same change
    - packages: internal/surface/dashboard, internal/adapter/tailscale, internal/surface/cli, commands/dashboard.md, docs/reference, .abcd/development/decisions/adrs, .abcd/development/brief/02-constraints
    - tests: TestOnlyTheDashboardOpensAListener, TestListenerScannerIsArmed, TestListensOnTailnetAddressesOnly, TestConnectionWithoutIdentityGetsNoBytes, TestTaggedNodeIsRefused, TestTailscaleHeadersAreIgnored, TestASharedInNodeIsRefused, TestARelayedRequestIsRefused, TestWhoIsReportsASharer, TestThisComputerIsRefusedOnceTheSelfCheckAnswered, TestUnexpectedHostIsRefusedBeforeAnyRead, TestServerLimits, TestSecurityHeadersOnEveryResponse, TestWritesNeedTailnetIdentity, TestStartLineNamesAddressAndWhoCan, TestStartChecksItCanReachItself, TestStartRefusesAServedPort, TestStopLeavesNothingListening, TestStopChecksTheProcessBeforeSignalling, TestOnlyStartStartsTheServer, TestStatusListsDevicesSeen, each against a fake `tailscale` on PATH and watched fail first; the surface parity test with the new page; the command reference regenerated
+   - needs: none
+   - landed: f7fe95d79, 77ca9b27a
 2. The summary and item pages, from one snapshot through the site's renderer
    - criteria: P1, P3, T3's shared snapshot and capped live updates, T4
    - security review: required before landing (routing, rendering of record text, live-update streams)
    - packages: internal/core/dashboard, internal/core/site, internal/surface/dashboard
    - tests: TestSummaryShowsWaitingNowNextInPlainWords (golden, no record handle and no command word), TestItemPageShowsTheWholePrivateRecord, TestRecordsAreLookedUpByIDOnly, TestPagesRenderThroughTheSiteRenderer, TestPagesLoadNothingFromOffTheHost, TestOneSnapshotServesEveryViewer, TestLiveUpdateConnectionsAreCapped; the site's existing record-page tests unchanged
+   - needs: 1
 3. The brief chapter pages: one reading page each, with dates and reliance
    - criteria: P4 ("last confirmed by you" reads "never" until step 4)
    - security review: not required; it adds GET routes through step 2's lookup table and changes neither the gate nor the router
    - packages: internal/core/dashboard, internal/core/site, internal/surface/dashboard
    - tests: TestBriefChapterPageHeading (changed date, uncommitted wording, "never"), TestBriefCitationCounts (a path link, a "brief invariant" mention, a record counted once), the chapter table's keys refusing an unknown chapter
+   - needs: 2
 4. Notes and Still right: the anchored store in the local tier, and the two writes
    - criteria: P5, P7 (the date), T5, T6, T7
    - security review: required before landing (the only writes, and text from the network stored and drawn)
    - packages: internal/core/dashboard, internal/surface/dashboard
    - tests: TestNoteReattaches (position, exact words, similar words, orphan, as a table), TestOrphanIsShownStruckThrough, TestOnlyTwoRoutesWrite, TestWritesNeedTailnetIdentity, TestWritesNeedCrossOriginProtection, TestNotesLiveInTheLocalTier, TestServerNeverRewritesAnItem, TestStillRightShowsToday, a note holding markup drawn as text
+   - needs: 3
 5. The handback: the session greeting, the board row, review and confirm
    - criteria: P6, P7 (the review)
    - security review: required before landing (the session channel, network-written text reaching a session, and the one verb that edits the brief)
    - packages: internal/core/dashboard, internal/surface/cli, internal/surface/dashboard, commands/dashboard.md, docs/reference
    - tests: TestSessionStartGreetingCountsOnly, TestBoardRowCountsDashboardItems, TestReviewHandsBackOneItemAtATime (with the untrusted line), TestProposalReachesDashboardAndSession, TestBriefUnchangedUntilConfirmed, TestConfirmAppliesRewordingOnlyWhenWordsReattach, TestStillRightResolvesOnAcknowledgement; the page tests for commands/dashboard.md; the surface parity test
+   - needs: 4
 6. The docs page, the brief chapter, the receipts, and the close
    - criteria: the end-to-end receipts for P1, P2 and P5; the intent's close
    - packages: docs/how-to, .abcd/development/brief/04-surfaces, .abcd/development/brief/glossary, internal/core/dashboard (tests only)
    - tests: docs-lint and record-lint clean; dated receipts in the local tier from a phone on the tailnet (the summary, an item, a note saved and re-attached after a rewording) and from one off it (no answer); a docs-fidelity review recorded for HEAD, then `abcd spec close spc-2610040741034208` (the intent already declares `impact: additive`) with a `Delivers: itd-2610032150577708` trailer
+   - needs: 1, 2, 4, 5

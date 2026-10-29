@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 58 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/00-meta.md:9"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the 'The audit loop' subsection of 05-intent.md (per-intent audit_mode and audit_budget, loop-to-acceptance) to the itd-50 re-scope shape (the loop as the last stage of abcd build), or drop it until that spec lands; do it together with iss-2610160855131633, which already carries this remedy and also names the configuration keys in 05-internals/03-configuration.md."
 finding_ref: cfk-a9ee3897f9bd5865
 ---
 

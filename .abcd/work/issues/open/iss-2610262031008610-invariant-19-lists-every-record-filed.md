@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 72 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:175"
-remedy: "none (filed automatically)"
+remedy: "In 03-invariants.md invariant 19, replace 'a record filed before that carries none and is listed as ineligible' with 'a record filed before reads its older `suggested_fix:` as its remedy and is ineligible only when it has neither'."
 finding_ref: cfk-adfb28697068a717
 ---
 

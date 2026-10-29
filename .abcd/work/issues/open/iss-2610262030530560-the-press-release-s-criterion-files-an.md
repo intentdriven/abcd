@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 57 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:43"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the capture acceptance criterion (line 43) to include the required remedy: running /abcd:capture with the quoted text and a remedy leaves an issue under open/ with frontmatter populated and provenance recorded; a filing without a remedy is refused and writes nothing."
 finding_ref: cfk-74b0b9cf959612c5
 ---
 

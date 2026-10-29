@@ -50,7 +50,7 @@ func newLabCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newLabMintCommand(asJSON), newLabPreflightCommand(asJSON), newLabRecordCommand(asJSON),
-		newLabSweepCommand(asJSON), newLabHarvestCommand(asJSON))
+		newLabSweepCommand(asJSON), newLabHarvestCommand(asJSON), newLabMatrixCommand(asJSON))
 	return cmd
 }
 
@@ -170,7 +170,10 @@ func newLabSweepCommand(asJSON *bool) *cobra.Command {
 			"searches them all for it — the pattern, not the instance — and lists every\n" +
 			"place it still stands. The snapshot, the lab's HOME and binaries, transcripts\n" +
 			"and each probe's five capture files are not swept: they are the world and the\n" +
-			"instruments, not claims; a probe's record.md is prose, and is swept. The\n" +
+			"instruments, not claims. Nor are the records a procedure writes under\n" +
+			"state/matrix/ (a matrix run's declaration, run and trial records), which are\n" +
+			"what a run was given and measured; any other file there is swept. A probe's\n" +
+			"record.md is prose, and is swept. The\n" +
 			"result is written to state/sweep.md. An unapplied correction, one too short\n" +
 			"to mean anything, or — while any correction is recorded — a document the\n" +
 			"sweep could not read (too large, binary, or not a regular file; each listed\n" +

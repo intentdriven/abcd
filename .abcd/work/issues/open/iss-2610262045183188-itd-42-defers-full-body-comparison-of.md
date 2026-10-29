@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1265 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-42-coherence-aware-grill.md:66"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Who owns loading and comparing full intent bodies at scale? Answer 1: itd-39 widens its scope from memory pages to intent bodies. Answer 2: nobody for now, and both the itd-42 deferral and itd-39's Deferred-to-by line are dropped. Recommend 2, because itd-39's whole design is keyword recall of memory pages and a pre-pass that reads an index already ships."
 related_intents: [itd-42, itd-39]
 finding_ref: cfk-066f49d040b2cb15
 ---

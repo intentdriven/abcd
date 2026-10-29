@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 564 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/23-reading.md:363"
-remedy: "none (filed automatically)"
+remedy: "At 27-implement.md:508 scope 'since abcd calls no model' to the host-driven path: the provider and runner routes do call models (23-reading.md:363, internal/core/runner), so say the model service is probed through a canary agent the lead runs because the loop's own probe cannot call one."
 finding_ref: cfk-b2493d88530ace92
 ---
 

@@ -652,3 +652,72 @@ func TestRemoteKeepsTheForkApprovalPolicyAReadFailedToSee(t *testing.T) {
 		t.Errorf("the read must report an unread policy as unread, not as a value; merge %+v notes %v", read.Merge, read.Notes)
 	}
 }
+
+// TestRemoteApplyRefusalNamesTogglesThatLanded (iss-2610072347230409): a refusal
+// reached AFTER a toggle landed on GitHub must say which toggle landed. Push
+// protection failing after secret scanning was enabled is the first such path;
+// a person told only "refused" would read the forge as untouched when one
+// setting did change.
+func TestRemoteApplyRefusalNamesTogglesThatLanded(t *testing.T) {
+	setupHermetic(t)
+	logPath := ghFake(t, bothDisabled)
+	t.Setenv("GH_FAKE_PATCH_FAIL", `"secret_scanning_push_protection":`)
+	repo := managedRepoWithOrigin(t, "https://github.com/example-org/example-repo")
+
+	res, err := RemoteApply(repo, confirmingPrompter{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != "refused" {
+		t.Fatalf("status = %q, want refused", res.Status)
+	}
+	patched := 0
+	for _, c := range ghCalls(t, logPath) {
+		if strings.Contains(c, "PATCH") {
+			patched++
+		}
+	}
+	if patched != 2 {
+		t.Fatalf("want the secret-scanning PATCH to land and the push-protection PATCH to fail, saw %d PATCH calls", patched)
+	}
+	if len(res.Changes) != 1 || !strings.HasPrefix(res.Changes[0], secretScanningKey+":") {
+		t.Errorf("changes = %v, want the one secret-scanning change that landed", res.Changes)
+	}
+	refusal := res.Notes[len(res.Notes)-1]
+	if !strings.Contains(refusal, "already landed on GitHub") || !strings.Contains(refusal, secretScanningKey+": disabled -> enabled") {
+		t.Errorf("the refusal does not name the toggle that already landed: %q", refusal)
+	}
+	if m := mirror(t, repo); m != "" {
+		t.Errorf("a partial apply was mirrored as the desired state:\n%s", m)
+	}
+}
+
+// TestRemoteApplyMirrorFailureNamesTogglesThatLanded is the second path: every
+// toggle landed, then the desired-state mirror could not be written. The
+// refusal must name both toggles as changed on GitHub.
+func TestRemoteApplyMirrorFailureNamesTogglesThatLanded(t *testing.T) {
+	setupHermetic(t)
+	ghFake(t, bothDisabled)
+	repo := managedRepoWithOrigin(t, "https://github.com/example-org/example-repo")
+	// A directory where the mirror file belongs: the atomic write cannot replace it.
+	if err := os.MkdirAll(filepath.Join(repo, filepath.FromSlash(RepoSettingsMirrorRelPath)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := RemoteApply(repo, confirmingPrompter{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != "refused" {
+		t.Fatalf("status = %q, want refused", res.Status)
+	}
+	refusal := res.Notes[len(res.Notes)-1]
+	for _, key := range []string{secretScanningKey, pushProtectionKey} {
+		if !strings.Contains(refusal, key+": disabled -> enabled") {
+			t.Errorf("the refusal does not name %s as already landed: %q", key, refusal)
+		}
+	}
+	if !strings.Contains(refusal, "already landed on GitHub") {
+		t.Errorf("the refusal does not say the toggles landed on GitHub: %q", refusal)
+	}
+}

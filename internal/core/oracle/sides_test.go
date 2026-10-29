@@ -33,7 +33,7 @@ var sidesBrief = openaiapi.Brief{Instructions: "the scribe's contract", Input: "
 func assertListed(t *testing.T, us []Unpinned) {
 	t.Helper()
 	known := map[Field]bool{}
-	for _, f := range append(append(append([]Field{}, AskedFields...), LocalFields...), ServedFields...) {
+	for _, f := range append(append(append(append([]Field{}, AskedFields...), LocalFields...), ServedFields...), LocalServedFields...) {
 		known[f] = true
 	}
 	seen := map[Field]bool{}
@@ -66,7 +66,7 @@ func TestAProviderCallRecordsBothSides(t *testing.T) {
 	cost := 0.00042
 	res.Usage = &openaiapi.Usage{PromptTokens: n(120), CompletionTokens: n(30), TotalTokens: n(150),
 		CachedTokens: n(100), CacheWriteTokens: n(20), ReasoningTokens: n(12), Cost: &cost}
-	rec := callRecord(p, sidesBrief, Settings{"temperature": raw("0")}, res)
+	rec := callRecord(p, sidesBrief, Settings{"temperature": raw("0")}, res, nil)
 	if rec.PromptSHA256 != openaiapi.PromptSHA256(sidesBrief) || rec.ServedProvider != "Fireworks" ||
 		rec.GenerationID != "gen-1" || rec.FinishReason != "stop" {
 		t.Fatalf("record = %+v", rec)

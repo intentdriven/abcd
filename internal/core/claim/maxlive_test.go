@@ -182,11 +182,11 @@ func TestAHomeInsideAWorkingTreeCannotRaiseTheCap(t *testing.T) {
 // TestAtTheCeilingTheRefusalOffersNoRaise: at 100 the setting cannot go
 // higher, so the refusal does not offer raising it.
 func TestAtTheCeilingTheRefusalOffersNoRaise(t *testing.T) {
-	err := capRefusal([]string{"iss-1"}, MaxLiveCeiling, "")
+	err := capRefusal([]string{"iss-1"}, nil, MaxLiveCeiling, "")
 	if strings.Contains(err.Error(), "raise") {
 		t.Fatalf("the refusal at the ceiling = %v; want no offer to raise it", err)
 	}
-	if err := capRefusal([]string{"iss-1"}, 1, ""); !strings.Contains(err.Error(), "raise reservation.max_live") {
+	if err := capRefusal([]string{"iss-1"}, nil, 1, ""); !strings.Contains(err.Error(), "raise reservation.max_live") {
 		t.Fatalf("the refusal below the ceiling = %v; want the offer to raise it", err)
 	}
 }

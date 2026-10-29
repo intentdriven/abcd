@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 200 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-82-drain-ledger-triage.md:44"
-remedy: "none (filed automatically)"
+remedy: "In the capture acceptance criterion of the brief press release, change the command to `/abcd:capture \"<text>\" --remedy \"<fix>\"` and list remedy among the populated frontmatter."
 related_intents: [itd-82]
 finding_ref: cfk-cf2f0db47d0c60ba
 ---

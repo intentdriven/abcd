@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 786 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/04-universal-patterns.md:90"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-universal-patterns.md section 5: say these verbs write no report (rather than 'are read-only renders'); capture, intent, spec, identity and banlist still write records."
 finding_ref: cfk-a815a4948e5a9509
 ---
 

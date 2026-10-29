@@ -328,15 +328,18 @@ of the start order with a higher pid wait on neither, and two of the start
 order disagree for a look where whole-second ages put their starts at the tie
 tolerance's edge, or once the later has stopped counting the earlier past its
 cap. A preflight run from a checkout
-older than the gate runs its race stage ungated, so two at once is safe only
-once no such checkout runs one. The setting is each account's own: an account
-at one opens its race gate at once, so its race stage can start beside an
-account at two's, and race stages are kept apart only among accounts that all
-set two. And the plain form of the first gate takes no last look, so across
-accounts two openers whose re-checks fall in one moment can both open beside a
-preflight in its tests, three in their test stages at once. A first gate's waiter never queues
-there, a race waiter never queues at the first gate, and a preflight whose
-waiter is at its race gate counts as in its test stages. Each gate keeps its
+older than the gate runs its race stage ungated, so more than one at once is
+safe only once no such checkout runs one. The setting is each account's own: an
+account at one opens its race gate at once, so its race stage can start beside
+the race stage of an account above one, and race stages are kept apart only
+among accounts that all set more than one. And the plain form of the first gate
+takes no last look, so across accounts two openers whose re-checks fall in one
+moment can both open into the last free slot, one more in their test stages
+than the setting. A first gate's waiter never queues
+there, and a race waiter never queues at the first gate. A preflight whose
+race waiter is queued runs nothing: at one it counts as in its test stages, and
+above one it takes no slot until its race run starts (iss-2610282016250805),
+since the race gate, not the slot count, keeps race runs to one at a time. Each gate keeps its
 own hold record and is shut only by it: a first gate's command hold lasts
 until its preflight starts its race run, so were it to shut the race gate, an
 earlier preflight's race waiter would wait on it while the holder's own race
@@ -345,8 +348,9 @@ the first gate admits to their test stages at once is the person's own machine
 setting (iss-2610161639025702): `load.preflights` in <!-- record-lint: forward-looking -->
 `~/.abcd.noindex/config.json`, read through the layered configuration with the
 machine layer alone, or `ABCD_LOAD_PREFLIGHTS` in the environment for a trial;
-one by default, from 1 to 2 until a measured trial supports more
-(dcn-2610161814279204), a bad value refused naming where it was set, and no
+one by default, from 1 to 4 (dcn-2610161814279204 trialled two; the product
+thinker asked on 2026-10-28 for the machine's capacity to be used, so four is
+the most, with one race run at a time and the load limit as the bounds), a bad value refused naming where it was set, and no
 repository file ever read for it, because a checkout must not raise the
 machine's load. A machine `config.json` that cannot be read for the count
 (writable by others, not valid JSON, a load that is not an object) is read
@@ -708,6 +712,7 @@ Sub-verbs: none.
 | `--discard` | string |
 | `--release` | string |
 | `--restart` | string |
+| `--route` | stringArray |
 | `--run` | string |
 | `--yielded` | string |
 

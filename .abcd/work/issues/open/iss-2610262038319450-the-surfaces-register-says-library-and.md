@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 800 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/README.md:494"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Is a page distilled from an ingested source part of the library or of memory? Answer A: the memory store (07-library, 07-memory and the code agree), so amend the register's library row to say the library holds the corpus and its cited pages sit in the memory store (recommended). Answer B: the library side, as the register's row says, which would move where those pages live."
 finding_ref: cfk-5512bc6932693807
 ---
 

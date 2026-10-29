@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 5 of .abcd/work/reviews/2026-10-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/01-platform.md:23"
-remedy: "none (filed automatically)"
+remedy: "Edit 01-platform.md (lifeboat path paragraph): say past disembarks are recorded as minimal voyage entries (manifest hash, source name and root SHA, destination, file and byte counts), with no label and no file list."
 finding_ref: cfk-5e172db90c736112
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 650 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-166-each-run-should-record-the-model.md:18"
-remedy: "none (filed automatically)"
+remedy: "In 23-reading.md (the route receipt paragraph near line 355) add the receipt's unpinned list and provider_call members, and say an empty model_reported is recorded in unpinned as not_reported (self_reported when the payload names a model)."
 related_intents: [itd-166]
 finding_ref: cfk-ffcbd9bde1eac6c8
 ---

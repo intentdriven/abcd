@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 819 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-14-prompt-registry-versioning.md:30"
-remedy: "none (filed automatically)"
+remedy: "In itd-14 move the per-prompt changelog from `agents/<name>/CHANGELOG.md` to the roster changelog at `.abcd/development/agents/CHANGELOG.md` (entries keyed on `prompt_version`), because 01-agents.md holds agents/ to prompts and their fixture directories."
 related_intents: [itd-14]
 finding_ref: cfk-ef029a806fca1870
 ---

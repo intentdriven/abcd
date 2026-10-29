@@ -222,8 +222,8 @@ func TestIntentEmptyTextNeverWrites(t *testing.T) {
 
 // TestIntentFarMissSubcommandNeverWrites is the headline: `intent nosuchverb itd-5`
 // is shaped like a subcommand call and `nosuchverb` is no sub-verb of any distance,
-// so it must be refused at exit 2 with the registered sub-verbs named, and must
-// file no draft.
+// so it must be refused at exit 2 with the registered sub-verbs named and the
+// token named by its position, and must file no draft.
 func TestIntentFarMissSubcommandNeverWrites(t *testing.T) {
 	repo := intentTestRepo(t)
 
@@ -234,8 +234,8 @@ func TestIntentFarMissSubcommandNeverWrites(t *testing.T) {
 	if code := exitCodeOf(err); code != 2 {
 		t.Fatalf("far-missed subcommand exited %d, want 2 (usage): %v", code, err)
 	}
-	if !strings.Contains(err.Error(), "nosuchverb") {
-		t.Fatalf("expected the refusal to quote the unknown token, got: %v", err)
+	if strings.Contains(err.Error(), "nosuchverb") || !strings.Contains(err.Error(), "the first argument") {
+		t.Fatalf("expected the refusal to name the unknown token by position, never quote it, got: %v", err)
 	}
 	for _, sub := range []string{"plan", "ready", "link", "audit"} {
 		if !strings.Contains(err.Error(), sub) {

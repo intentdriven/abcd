@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/launch/scaffold"
 	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -47,8 +48,8 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 	siteCmd.Flags().StringVar(&statusOut, "out", site.DefaultOutDir, "output directory to report on")
 
 	var buildOut string
-	var version, commit, stampDate string
-	var preview bool
+	var version, commit, stampDate, buildBase string
+	var preview, buildProject bool
 	buildCmd := &cobra.Command{
 		Use:  "build",
 		Args: cobra.NoArgs,
@@ -63,7 +64,9 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 				Stamp:    site.BuildStamp{Version: version, Commit: commit, GeneratedAt: stampDate, Preview: preview},
 				// The Status page's Now / Next / Later block reads the
 				// build's state file through the loop, as the bare board does.
-				Lanes: loop.StatusLanes,
+				Lanes:    loop.StatusLanes,
+				BasePath: buildBase,
+				Project:  buildProject,
 			})
 			if err != nil {
 				// A failure after the build completed ui.json still says what
@@ -85,6 +88,8 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 	buildCmd.Flags().StringVar(&commit, "commit", "", "commit for the footer and the build stamp (default: git HEAD)")
 	buildCmd.Flags().StringVar(&stampDate, "date", "", "date for the build stamp (default: the newest release's date)")
 	buildCmd.Flags().BoolVar(&preview, "preview", false, "stamp the build as unreleased at this commit, for a preview deployment of an untagged tree")
+	buildCmd.Flags().StringVar(&buildBase, "base-path", "/", basePathUsage)
+	buildCmd.Flags().BoolVar(&buildProject, "project", false, projectUsage("build"))
 	buildCmd.MarkFlagsMutuallyExclusive("preview", "version")
 	siteCmd.AddCommand(buildCmd)
 
@@ -92,6 +97,16 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 
 	return siteCmd
 }
+
+// projectUsage describes --project on the two verbs that take it: `site
+// build` builds a project site, `lint site` gates one.
+func projectUsage(verb string) string {
+	return verb + " a project site, every page built from what abcd writes to the repository and the interface words, styles and scripts " +
+		"taken from the binary; .abcd/site.json then holds the site's settings only"
+}
+
+// basePathUsage describes --base-path on the two verbs that take it.
+const basePathUsage = "path the site is served below on its host, such as /widgets/ for a project's GitHub Pages address; every root-absolute link is placed under it"
 
 // siteRootAndOut resolves what a site verb reads and where it writes. The site
 // is a fact about the repository, not about the directory the operator stands
@@ -117,7 +132,8 @@ func siteRootAndOut(cmd *cobra.Command, out string) (string, string, error) {
 // over a built output directory, rendering it first when it holds no
 // index.html. It exits 1 when any gate fails, so a release job can stop on it.
 func newLintSiteCommand(asJSON *bool) *cobra.Command {
-	var checkOut string
+	var checkOut, checkBase string
+	var checkProject bool
 	checkCmd := &cobra.Command{
 		Use:  "site",
 		Args: cobra.NoArgs,
@@ -126,7 +142,7 @@ func newLintSiteCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := site.Check(site.CheckRequest{RepoRoot: root, OutDir: out, Lanes: loop.StatusLanes})
+			res, err := site.Check(site.CheckRequest{RepoRoot: root, OutDir: out, Lanes: loop.StatusLanes, BasePath: checkBase, Project: checkProject})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd lint site: " + scrubPaths(err)}
 			}
@@ -142,6 +158,8 @@ func newLintSiteCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	checkCmd.Flags().StringVar(&checkOut, "out", site.DefaultOutDir, "built output directory to check (rendered first if absent)")
+	checkCmd.Flags().StringVar(&checkBase, "base-path", "/", basePathUsage)
+	checkCmd.Flags().BoolVar(&checkProject, "project", false, projectUsage("gate"))
 
 	return checkCmd
 }
@@ -194,9 +212,15 @@ func renderSiteStatus(w io.Writer, st site.Status) {
 		fmt.Fprintf(w, "  this repo declares no site composition; nothing to build\n")
 		return
 	}
-	fmt.Fprintf(w, "  chapters:     %d\n", st.Chapters)
+	if st.Project {
+		fmt.Fprintf(w, "  project site: built from what abcd writes; interface words from the binary\n")
+	} else {
+		fmt.Fprintf(w, "  chapters:     %d\n", st.Chapters)
+	}
 	fmt.Fprintf(w, "  issue ledger: %s\n", publishedWord(st.IssueLedge))
-	fmt.Fprintf(w, "  ui strings:   %s\n", mark(st.UIStrings, termsafe.Sanitize(st.UIPath)))
+	if !st.Project {
+		fmt.Fprintf(w, "  ui strings:   %s\n", mark(st.UIStrings, termsafe.Sanitize(st.UIPath)))
+	}
 	if st.Baseline {
 		fmt.Fprintf(w, "  baseline:     %s (%d unresolved references admitted)\n",
 			termsafe.Sanitize(st.BaselinePath), st.BaselineN)
@@ -216,6 +240,10 @@ func renderSiteStatus(w io.Writer, st site.Status) {
 		fmt.Fprintf(w, "  output:       %s (%d entries)\n", termsafe.Sanitize(st.OutDir), st.OutFiles)
 	default:
 		fmt.Fprintf(w, "  output:       %s (not built)\n", termsafe.Sanitize(st.OutDir))
+	}
+	if st.Project {
+		fmt.Fprintf(w, "run `abcd site build --project` to render\n")
+		return
 	}
 	fmt.Fprintf(w, "run `abcd site build` to render\n")
 }
@@ -275,10 +303,12 @@ func publishedWord(on bool) string {
 // writes the repository half, and — each only once confirmed (adr-44) — the
 // forge's deployment environments and, with a hosting credential on this
 // machine, the host. An unanswered run declines both remote writes, so a script
-// that pipes nothing changes nothing remote; --yes says yes in advance.
+// that pipes nothing changes nothing remote; --yes says yes in advance, except
+// to publishing over a site the host already serves, which only a person at a
+// terminal or --replace-existing answers.
 func newSiteSetupCommand(asJSON *bool) *cobra.Command {
-	var name, domain string
-	var confirm, yes bool
+	var name, domain, provider string
+	var confirm, yes, replaceExisting bool
 	cmd := &cobra.Command{
 		Use:  "setup",
 		Args: cobra.NoArgs,
@@ -299,7 +329,8 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 				asker = alwaysConfirm{}
 			}
 			res, err := site.Setup(site.SetupRequest{
-				RepoRoot: cwd, Name: name, Domain: domain, Confirm: confirm, Asker: asker,
+				RepoRoot: cwd, Name: name, Domain: domain, Provider: provider, Confirm: confirm, Asker: asker,
+				Unattended: yes, ReplaceExisting: replaceExisting,
 				ConfirmTool: confirmTool, Context: cmd.Context(),
 			})
 			if err != nil {
@@ -322,8 +353,13 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&name, "name", "", "host name when the composition names none (default: the repository's name)")
 	cmd.Flags().StringVar(&domain, "domain", "", "custom domain to route to the host when the composition names none")
+	cmd.Flags().StringVar(&provider, "provider", "", "hosting provider when the composition names none: "+strings.Join(site.Providers(), " or ")+
+		" (default "+site.DefaultProvider+"); github-pages asks whether to switch the project site on")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "replace a workflow or host configuration that differs from what setup writes")
-	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the forge and host changes without being asked (never the install of a missing gh); without it an unanswered run declines them")
+	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the forge and host changes without being asked (never the install of a missing gh, "+
+		"nor publishing over a site already live, which takes --replace-existing); without it an unanswered run declines them")
+	cmd.Flags().BoolVar(&replaceExisting, "replace-existing", false, "publish over a site the host already serves for this repository without asking; "+
+		"with --yes and no --replace-existing, setup refuses when such a site exists")
 	return cmd
 }
 
@@ -354,7 +390,10 @@ func renderSiteSetup(w io.Writer, res site.SetupResult) {
 	fmt.Fprintf(w, "  repository\n")
 	for _, f := range res.Files {
 		line := fmt.Sprintf("    %-*s %s", width, f.Status, f.Path)
-		if f.Detail != "" && f.Status != "kept" {
+		// A kept seed file's reason is the same for every seed, so it is left
+		// unsaid; any other kept file (a workflow edited by hand, or whose
+		// removal was declined) says why it was kept.
+		if f.Detail != "" && !(f.Status == scaffold.StatusKept && f.Detail == scaffold.SeedKeptDetail) {
 			line += " (" + f.Detail + ")"
 		}
 		fmt.Fprintln(w, termsafe.Sanitize(line))

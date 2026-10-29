@@ -252,3 +252,22 @@ func TestNoBacklogFileAdmitsAnUndocumentedSurface(t *testing.T) {
 		t.Fatalf("a backlogged new verb passed layer 1: refuse=%v uncovered=%+v reasons=%v", v.Refuse, v.Uncovered, v.Reasons)
 	}
 }
+
+// A saved review a commit carries was saved by whoever made the commit, not
+// this checkout's reviewer, so it is refused, never read as a match.
+func TestASavedReviewACommitCarriesIsRefused(t *testing.T) {
+	root := armedRepo(t)
+	if _, _, err := Record(root, []byte(`{"verificationResult": "PROMOTE", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": []}`), at); err != nil {
+		t.Fatal(err)
+	}
+	head := git(t, root, "rev-parse", "HEAD")
+	if got := (SavedReview{Root: root, Commit: head}).Review(); got.Status != ReviewMatch {
+		t.Fatalf("this checkout's own review: %+v; want a match", got)
+	}
+	git(t, root, "add", "-f", ReceiptsDir+"/"+head+"/"+GateName+".json")
+	git(t, root, "commit", "-q", "-m", "an unrelated change")
+	got := (SavedReview{Root: root, Commit: head}).Review()
+	if got.Status != ReviewInvalid || !strings.Contains(strings.Join(got.Problems, "\n"), "git tracks") {
+		t.Fatalf("a review a commit carries: %+v; want it refused as tracked", got)
+	}
+}

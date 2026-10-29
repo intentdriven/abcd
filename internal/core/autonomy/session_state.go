@@ -13,6 +13,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // SessionsDir is the session-state folder below a working copy's root: one
@@ -62,6 +63,11 @@ func LoadSession(copyRoot, sessionID string) (SessionState, error) {
 		return SessionState{}, err
 	}
 	defer root.Close()
+	// A state a commit carries was written by whoever made the commit, not by
+	// this copy's session, and is refused rather than read as its wake state.
+	if err := localtier.Untracked(copyRoot, path.Join(SessionsDir, sessionID+".json")); err != nil {
+		return SessionState{}, err
+	}
 	f, err := root.Open(path.Join(SessionsDir, sessionID+".json"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return SessionState{SchemaVersion: SchemaVersion}, nil

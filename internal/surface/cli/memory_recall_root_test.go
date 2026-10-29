@@ -184,7 +184,7 @@ func TestARecallPanicKeepsTheRules(t *testing.T) {
 	if res.Text != "" || len(res.Recalled) != 0 || !maps.Equal(res.Ledger, ledger) {
 		t.Fatalf("a recovered recall recalled or moved the ledger: %+v", res)
 	}
-	if !strings.Contains(errlog.String(), "abcd memory: the recall failed (boom in the recall); recalling no notes this turn") {
+	if !strings.Contains(errlog.String(), "abcd memory: the recall failed (boom in the recall); recalling no notes or pages this turn") {
 		t.Fatalf("stderr does not name the failed recall:\n%s", errlog.String())
 	}
 }

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 494 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-87-recurrence-escalation-in-capture.md:17"
-remedy: "none (filed automatically)"
+remedy: "In itd-87 replace 'dispositioned' with 'closed (resolved or wontfixed)' throughout; the glossary entry for disposition reserves the word for a researcher's answer to a reading item and says not to reuse the issue ledger's open, resolved and wontfix."
 related_intents: [itd-87]
 finding_ref: cfk-74489cbb4b5791eb
 ---

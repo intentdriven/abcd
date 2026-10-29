@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 97 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/02-dependencies.md:43"
-remedy: "none (filed automatically)"
+remedy: "In the Adapters over native defaults list of 02-dependencies.md, mark the spec (ccpm), run (Claude Workflows, harness loop, native loop) and history (specstory) adapters as design targets, matching 05-internals/02-adapters.md ('only scanner is a seam directory'), and say no registry selects a backend yet."
 finding_ref: cfk-ba721bcc7ec553f4
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 323 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/03-embark.md:104"
-remedy: "none (filed automatically)"
+remedy: "In glossary/core/record.md (the table row, the 'Where the record disagrees' note and the embark example) say embark writes five families, retrospectives included, matching 03-embark.md."
 finding_ref: cfk-c40d8e5e8fb3dcf4
 ---
 

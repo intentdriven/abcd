@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 37 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:85"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (acceptance-discipline paragraph): drop the 'discipline role that checks every spec'; intent-auditor audits a shipped intent (role 1) and the corpus (role 2), and no gate reads a discipline's body."
 finding_ref: cfk-31cda9ef21e46978
 ---
 

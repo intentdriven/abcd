@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1137 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-79-persona-registry.md:18"
-remedy: "none (filed automatically)"
+remedy: "Change 'her standing instructions' to 'their standing instructions' in the press release (line 20)"
 related_intents: [itd-79, itd-2610180912189125]
 finding_ref: cfk-d03e74e2d34b13fa
 ---

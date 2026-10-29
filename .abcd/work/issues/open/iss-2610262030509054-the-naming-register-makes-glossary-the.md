@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 51 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:144"
-remedy: "none (filed automatically)"
+remedy: "Drop 'Glossary-aware once `terminology/` exists' from the grill row (05-intent.md line 319), or delete the row, which describes a sub-verb that does not ship; the glossary is `brief/glossary/`."
 finding_ref: cfk-14d1c566f0dbb3a1
 ---
 

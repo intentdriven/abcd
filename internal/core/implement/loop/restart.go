@@ -36,6 +36,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The aside a restart saves, under the lane's directory of the run:
@@ -233,7 +235,7 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 	err = mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		i := slices.IndexFunc(st.Lanes, func(l Lane) bool { return l.ID == laneID })
 		if i < 0 {
-			return false, refuse(stageRestart, "", "", fmt.Sprintf("%s has no lane %q", st.RunID, laneID),
+			return false, refuse(stageRestart, "", "", fmt.Sprintf("%s has no lane of the name given (%s)", st.RunID, termsafe.DescribeRefused(laneID)),
 				"name a lane `abcd implement status` lists; nothing was changed")
 		}
 		lane := st.Lanes[i]
@@ -305,7 +307,7 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 		if len(told) > 1 {
 			moves := make([]string, len(told))
 			for n, a := range told {
-				moves[n] = handedMove(a)
+				moves[n] = handedMove(a, roundTier(lane, a))
 			}
 			res.Next = strings.Join(moves, "; and ")
 		}
@@ -372,7 +374,10 @@ func proveAside(repoRoot string, root *os.Root, runID string, lane Lane, aw Awai
 		}
 	}
 
-	data, err := fsutil.ReadGuardedInRoot(root, aw.Receipt, maxPartialReceiptBytes)
+	data, err := localtier.ReadInRoot(root, aw.Receipt, maxPartialReceiptBytes)
+	if rf := tierRefusal(stageRestart, laneID, err); rf != nil {
+		return provedAside{}, rf
+	}
 	switch {
 	case err == nil:
 		p.partial, p.receiptName = data, filepath.Base(aw.Receipt)

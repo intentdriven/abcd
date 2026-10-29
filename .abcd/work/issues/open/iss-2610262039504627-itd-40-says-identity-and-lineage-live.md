@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 890 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md:441"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-configuration.md (The history store): replace 'one identity-and-lineage file per repo' with 'one meta.json per repo (identity labels and the corpus pointer)' and say lineage (supersedes, superseded_by, prior names) lives in the registry entry in index.json."
 related_intents: [itd-40]
 finding_ref: cfk-a8cc9f1f15e3d872
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 130 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:161"
-remedy: "none (filed automatically)"
+remedy: "In 04-naming.md (line 161) replace 'the roadmap dashboard' with the status block on the bare `abcd` board and the site's Status page; brief/README.md line 13 carries the same phrase."
 finding_ref: cfk-acaab853bbfd4a66
 ---
 

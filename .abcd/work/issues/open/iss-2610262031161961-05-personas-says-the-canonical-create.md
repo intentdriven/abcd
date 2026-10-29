@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 108 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/05-personas.md:7"
-remedy: "none (filed automatically)"
+remedy: "Edit 05-personas.md last paragraph: mark persona picking and role-hint biasing as staged, as the verification matrix does."
 finding_ref: cfk-a9d982cd469320ad
 ---
 

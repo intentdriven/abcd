@@ -157,7 +157,7 @@ func (e *explorer) genealogySVG() (string, map[string]tlPoint) {
 
 	// The first commit: everything dated before it was designed on paper.
 	marker := ""
-	if fc := e.export.History.FirstCommit; fc != "" && dayNumber(fc) >= first && dayNumber(fc) <= last {
+	if fc := e.export.firstCommit(); fc != "" && dayNumber(fc) >= first && dayNumber(fc) <= last {
 		fx := f1(x(fc))
 		marker = `<line x1="` + fx + `" y1="` + strconv.Itoa(tlTopPad) + `" x2="` + fx + `" y2="` +
 			f1(y) + `" stroke="var(--hazard)" stroke-width="1.5" stroke-dasharray="5 4"/>` +
@@ -208,7 +208,7 @@ func (e *explorer) axisRange() (int, int) {
 	for _, r := range e.export.Releases {
 		note(r.Date)
 	}
-	note(e.export.History.FirstCommit)
+	note(e.export.firstCommit())
 	if first == 0 && last == 0 {
 		return 0, 1
 	}
@@ -410,9 +410,9 @@ func (e *explorer) mark(n ExportNode, p tlPoint, r float64, colour string) strin
 	// A mark opens the record in the graph; with the graph switched off it
 	// opens the record's own page instead, so it never points at a page the
 	// site does not have.
-	href := "/" + escapeAttr(routeGraph) + "?focus=" + escapeAttr(n.ID)
+	href := escapeAttr(e.c.at("/" + routeGraph + "?focus=" + n.ID))
 	if !e.pages.graph {
-		href = "/" + escapeAttr(RecordRoute(n))
+		href = escapeAttr(e.c.at("/" + RecordRoute(n)))
 	}
 	return `<a class="tlmark" href="` + href + `">` +
 		`<title>` + escapeText(n.ID+" · "+n.Date+" · "+n.Lifecycle) + `&#10;` + escapeText(shortTitle(n)) + `</title>` +
@@ -553,8 +553,8 @@ func (e *explorer) supersessionList(pos map[string]tlPoint) string {
 		if !ok {
 			continue
 		}
-		rows.WriteString(`<li><span class="id"><a href="/` + escapeAttr(e.routeOf(ed.From)) + `">` +
-			escapeText(ed.From) + `</a> → <a href="/` + escapeAttr(RecordRoute(target)) + `">` +
+		rows.WriteString(`<li><span class="id"><a href="` + escapeAttr(e.c.at("/"+e.routeOf(ed.From))) + `">` +
+			escapeText(ed.From) + `</a> → <a href="` + escapeAttr(e.c.at("/"+RecordRoute(target))) + `">` +
 			escapeText(ed.To) + `</a></span><span class="small">` + escapeText(shortTitle(target)) + `</span></li>`)
 		n++
 	}
@@ -566,7 +566,7 @@ func (e *explorer) supersessionList(pos map[string]tlPoint) string {
 	}
 	sortEdgesByTarget(stubs, func(ed ExportEdge) string { return ed.From })
 	for _, u := range stubs {
-		rows.WriteString(`<li><span class="id"><a href="/` + escapeAttr(e.routeOf(u.From)) + `">` +
+		rows.WriteString(`<li><span class="id"><a href="` + escapeAttr(e.c.at("/"+e.routeOf(u.From))) + `">` +
 			escapeText(u.From) + `</a> → <b class="stub">` + escapeText(u.To) + `</b></span>` +
 			`<span class="small muted">` + escapeText(e.c.ui.Record.NotInTree) + `</span></li>`)
 		n++

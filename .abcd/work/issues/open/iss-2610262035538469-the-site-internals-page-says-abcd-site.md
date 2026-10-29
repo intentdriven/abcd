@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 605 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/10-site.md:34"
-remedy: "none (filed automatically)"
+remedy: "In 10-site.md say the build writes into its output directory (default site/, settable with --out) and, apart from the missing-label completion of the interface-string file (adr-2609301720596683), nowhere else."
 finding_ref: cfk-aac2aa77d6ad8652
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 318 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/02-disembark.md:276"
-remedy: "none (filed automatically)"
+remedy: "In glossary/core/voyage.md (the 'When to use' example) drop 'with the host oracle': the voyage line carries no oracle backend or verdict; say instead that the lifeboat was packed from root SHA 3f9a and name the manifest hash the line carries."
 finding_ref: cfk-1d16b1cbc0660ebe
 ---
 

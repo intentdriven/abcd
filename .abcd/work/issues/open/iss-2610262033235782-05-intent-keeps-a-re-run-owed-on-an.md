@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 398 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:327"
-remedy: "none (filed automatically)"
+remedy: "Edit 08-abcd.md line 100 so an ingested review whose verdict left a check owed reports the owed check and its re-emit; make shippedReviewMove in internal/core/record/record.go name it (ReviewEntry already carries AuditOwed and the re-emit)."
 finding_ref: cfk-54033ef1764f0f97
 ---
 

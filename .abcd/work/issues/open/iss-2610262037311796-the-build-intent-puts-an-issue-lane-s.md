@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 729 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609201916151817-one-verb-takes-a-single-intent-from.md:76"
-remedy: "none (filed automatically)"
+remedy: "In decision 10 of the build intent replace 'the lane report carries a handback: field' with 'the lane receipt', which is where internal/core/implement/loop/receipt.go carries it and where the drain chapter puts it."
 related_intents: [itd-2609201916151817]
 finding_ref: cfk-8958d586530edc12
 ---
