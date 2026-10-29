@@ -80,6 +80,7 @@ intent-auditor's fan-out.
    - packages: internal/core/implement/loop, commands
    - tests: two reviewers of one role get distinct round paths, briefs differing only in the return path, and receipts matched by index; an older run state migrates its reviewer to index 0 or is refused by version; both reviewers are handed out within the sub-agent ceiling; a host-run reviewer's model is recorded as asked, not confirmed; pass against fail is a disagreement, two failing verdicts are not, and any failing reviewer fails the round
    - needs: 1, 2
+   - rulings: dcn-2610292236161673 (a request for a model the machine pins is refused on claude with no fallback; a request model and a --route model that differ are refused before launch, naming both)
 4. The per-reviewer findings record
    - packages: internal/core/implement/loop, internal/surface/cli, commands
    - tests: each `file:line` under a return's findings is one located finding of its reviewer; a return with none records zero and is not refused; the fix report's applied or rejected status is joined to each finding, `unknown` where it is silent; two findings at the same file and line are marked as cited by both; `implement record --json` carries them
