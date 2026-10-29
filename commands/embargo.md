@@ -134,14 +134,20 @@ recorded, never stamped with the clock's time.
 
 Run it before anything is made public: a push, a pull-request body, a
 changelog section, a release page, a record. It reads each commit's message
-and the lines it adds (a merge's against its first parent), and each text, and
+and the lines it adds (a merge's, the lines it adds against every parent, so
+what a merge of the default branch brings in is not read as the branch's
+own), and each text, and
 refuses every advisory not yet published by its id, a CVE id reserved for it,
 its title (not once the advisory is closed, since its reporter chose it and
 nothing will publish it, nor once its verdict is `public-track`, since its
 issue goes into the public ledger; its id and CVE id stay refused), and the
 store's location on this machine; any other advisory id is
 refused too unless `--allow <GHSA-id>` names it as another project's, already
-public. Each finding names its `kind`, `source`, `where` and `line` and never
+public, or GitHub lists it among this repository's own published advisories.
+GitHub is asked for those once, through your `gh`, and only when the inputs
+name an id no store holds; when it cannot be asked (no github.com origin, `gh`
+signed out, GitHub unreachable) each such id stays refused, and `note` says
+so. Each finding names its `kind`, `source`, `where` and `line` and never
 repeats the match. Text is folded before it is matched: fullwidth and other
 compatibility letters read as plain ones, every dash as a hyphen, invisible
 format characters (Unicode category Cf, such as a zero-width space or a soft

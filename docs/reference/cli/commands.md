@@ -1335,7 +1335,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [flags]`
+**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1416,10 +1416,12 @@ reservation a person made over it, lapsed or not. A yes whose reservation has
 moved on (renewed, reserved again or taken over since, or released by a person),
 or that took none because you held the issue live, publishes nothing yet: the
 drain keeps the hand-back pending (pending_hand_backs in --json) and publishes it
-over the issue's next release on origin. A record changed or finished on origin's
-default branch since, one origin holds in no one file, or a tombstone the hand-back
-would take past its cap drops it, and the move says it was dropped and why; a
-default branch that could not be read keeps it pending. A promotion
+over the issue's next release on origin, or, once the sweep has deleted that
+release, as the first commit of a branch no one has made again since. A record
+changed or finished on origin's default branch since, one origin holds in no one
+file, or a tombstone the hand-back would take past its cap drops it, and the move
+says it was dropped and why; a default branch that could not be read keeps it
+pending. A promotion
 this checkout cannot make, not holding the record as origin does, is left to a
 checkout that can. The reservation is taken once per request: one unanswered when it lapses is
 dropped and the issue asked again only after the drain's other eligible work. The
@@ -1493,6 +1495,13 @@ lost connection (`abcd implement outage`), the drain opens nothing and ends with
 stopped "outage", naming the services down, since when, the probes and the lanes it
 opened; the next `abcd drain`, once the outage is cleared, begins a new one.
 
+--skip <iss-N|path> --reason <why> holds one issue, or every issue whose found_at
+lies in that path, back for now: the move adds it to the drain's skip list (beginning
+a drain when none is in progress) and every move passes it over before anything is
+pushed or asked, named in passed with check "skipped" and the reason. --skip may be
+given more than once, all with the one --reason; --unskip takes an entry off. The
+list clears when the drain ends.
+
 Without the repository's record, the dry run and the run both refuse (exit 2),
 naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or
 merges nothing exits 0 and says why. Exit 2 on a refusal, exit 3 when another
@@ -1501,13 +1510,16 @@ drain or run holds the state lock.
 **Flags:**
 
 ```
-      --dry-run             show every open issue's disposition and the order a drain takes them; writes nothing
-      --fix-rounds string   the fix rounds a lane may take before it is handed back; wins over every configured layer
-      --judgement string    the host's answer to the judgement the drain awaits, at the path its request names
-      --max int             cap the lanes this drain opens; the default is all
-      --pace string         the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
-      --sub-agents string   the ceiling on lanes and validators alive at once; wins over every configured layer
-      --take-over           move your own live reservation of each issue this move reaches from another copy to this one; never another person's
+      --dry-run              show every open issue's disposition and the order a drain takes them; writes nothing
+      --fix-rounds string    the fix rounds a lane may take before it is handed back; wins over every configured layer
+      --judgement string     the host's answer to the judgement the drain awaits, at the path its request names
+      --max int              cap the lanes this drain opens; the default is all
+      --pace string          the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
+      --reason string        why --skip holds its issues back, shown in each pass-over
+      --skip stringArray     hold an issue (iss-N), or every issue whose found_at lies in a path, back for now; needs --reason; cleared when the drain ends
+      --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
+      --take-over            move your own live reservation of each issue this move reaches from another copy to this one; never another person's
+      --unskip stringArray   take an issue or path off the drain's skip list
 ```
 
 **Example:**
@@ -1549,11 +1561,13 @@ Check a commit range or texts for what would disclose an advisory under embargo:
 
 The outbound embargo check: before anything is made public, read a commit
 range (--range <a>..<b>: each commit's message and the lines it adds, a
-merge's against its first parent) and any texts (--file <path>, repeatable;
-- reads stdin), and refuse every unpublished advisory's id, a CVE id
-reserved for one, its title, the store's location on this machine, and any
-other advisory id --allow does not name. A finding names where the match is
-and never repeats it.
+merge's being those it adds against every parent) and any texts (--file
+<path>, repeatable; - reads stdin), and refuse every unpublished advisory's
+id, a CVE id reserved for one, its title, the store's location on this
+machine, and any other advisory id --allow does not name and GitHub does
+not list among this repository's published advisories (asked only when
+such an id is found). A finding names where the match is and never repeats
+it.
 
 Limits: a title shorter than 12 characters is not matched on its own (its
 id still is); a paraphrase or a count ("fixes several private reports") is
@@ -4848,9 +4862,11 @@ push leaves no reservation and nothing in the checkout.
 
 --sweep lists the spent reservation branches on origin and, with --apply, deletes
 them, each with a lease on the exact tip it judged, so a branch re-reserved
-meanwhile survives. A branch is spent when its tip has been untouched, its lease
-past the five-minute margin included, for --older-than days (default 7, at
-least 1), and either its record is resolved, won't-fixed, shipped or superseded
+meanwhile survives. A branch is spent when its tip has settled, its lease past
+the five-minute margin included (a plain release, or a hand-back on a finished
+record, at once, at the next sweep; any other tip only once untouched for
+--older-than days, default 7, at least 1),
+and either its record is resolved, won't-fixed, shipped or superseded
 on origin's default branch, or every commit on it is a reservation or a plain
 release, whether or not any is a release, since a lapsed lease already lets any
 session take the record over. A hand-back on a record still open, a commit of
@@ -4870,7 +4886,7 @@ exit 2 when it could not run or origin refused a deletion.
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
       --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
       --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
-      --older-than int          with --sweep, the days a branch must have been untouched past its lease (at least 1) (default 7)
+      --older-than int          with --sweep, the days a tip other than a release must have been untouched past its lease (at least 1) (default 7)
       --release                 release your reservation from this copy by pushing a tombstone
       --sweep                   list the spent reservation branches on origin, which --apply deletes; a dry run without it
       --take-over               move your own live reservation from another copy to this one
