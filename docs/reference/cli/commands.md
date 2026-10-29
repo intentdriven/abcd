@@ -2479,7 +2479,7 @@ value out of range, is reported loudly and every default is used.
 
 With --wait it waits for capacity instead of warning, and it is the one waiter
 concurrent sessions gate a preflight or a race run with, in place of a hand-written
-loop; `make preflight` runs its test stages through it. It blocks until the
+loop; `make preflight` waits at it once, as one whole run. It blocks until the
 one-minute load average is below the wait limit (`wait-load <load>` in the same
 file; by default twice the online core count), no other `go test -race` run is
 live, no other `make preflight` is running and no other waiter is ahead of it in
@@ -2550,14 +2550,14 @@ above 1 it takes no slot until its race run starts, which the race gate keeps
 to one at a time. A waiter that has opened stands back only from a waiter that
 opened in the same moment at its own gate, never from one at the other gate.
 
-How many preflights the first gate admits to their test stages at once is your
+How many preflights the first gate admits at once, each a whole run, is your
 own machine's setting: `load.preflights` in `~/.abcd.noindex/config.json`, or ABCD_LOAD_PREFLIGHTS in the
 environment, which wins, for a trial; a whole number from 1 to 4, 1 by default,
 and never read from a repository file, so a checkout cannot raise the machine's
 load. At 1 both gates read as before the setting existed. Above 1 the
-first gate opens while fewer than that many other preflights or waiters running
-their command are in their test stages (a `--wait -- make preflight` counts
-once), a waiter queued ahead still shuts it, and a live race run does not shut
+first gate opens while fewer than that many other preflights or gated commands
+are running (a `--wait -- make preflight` counts once), a waiter queued ahead
+still shuts it, and a live race run does not shut
 it by itself; the load limit still does, and the race gate keeps race stages
 apart, so one race stage may run beside that many unit stages. A value it
 cannot use refuses the wait, naming where it was set. A `~/.abcd.noindex/config.json`

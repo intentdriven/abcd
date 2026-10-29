@@ -37,9 +37,9 @@ import (
 // machineload.QueueAhead). It never signals anything.
 //
 // That is the first gate with one slot, the default. How many preflights the
-// first gate admits to their test stages at once is the person's own setting
-// (PreflightSlots, load_slots.go); above one, the first gate opens while
-// fewer than that many other units of work are in their test stages
+// first gate admits at once, each as one whole run, is the person's own
+// setting (PreflightSlots, load_slots.go); above one, the first gate opens
+// while fewer than that many other units of work are running past it
 // (machineload.Ahead.Shut), a waiter queued ahead still shuts it, a live race
 // run does not shut it by itself, and a preflight queued at its race gate,
 // running nothing, takes no slot until its race run starts
@@ -98,7 +98,7 @@ import (
 // stands back at most WaitBackoffCap times. It stands back only from a waiter
 // at its own gate (machineload.JustOpened), and at the first gate whatever the
 // slots: above one, the other keeps going and this one's next look counts it,
-// and its mark, among the units in their test stages (machineload.Ahead.Shut).
+// and its mark, among the units running past the gate (machineload.Ahead.Shut).
 // With one slot the race gate opens before any look, so it never marks or
 // stands back.
 //
@@ -413,8 +413,8 @@ type WaitResult struct {
 	UngatedTests []int `json:"ungated_tests,omitempty"`
 	// Gate is the gate waited at, GateTests or GateRace.
 	Gate string `json:"gate"`
-	// Slots is how many preflights the first gate admits to their test stages
-	// at once, and SlotsSource where that came from (PreflightSlots). With one, the race
+	// Slots is how many preflights the first gate admits at once, and
+	// SlotsSource where that came from (PreflightSlots). With one, the race
 	// gate opens at once.
 	Slots       int    `json:"slots,omitempty"`
 	SlotsSource string `json:"slots_source,omitempty"`
@@ -1009,7 +1009,7 @@ func releaseHoldIn(root *os.Root, h WaitHolder) error {
 // PreflightParallelism is the -p `make preflight` gives its test and race
 // stages (cmd/test-parallelism prints it), derived from the online cores and
 // the one-minute load as they are when the stage starts, the cores divided
-// among the preflights the first gate admits to their test stages at once
+// among the preflights the first gate admits at once
 // (machineload.GoTestParallelism, PreflightSlots). On a CI runner the machine
 // is not read and go's own default, GOMAXPROCS, stands, as it does when the
 // machine cannot be read.

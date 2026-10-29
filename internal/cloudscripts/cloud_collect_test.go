@@ -18,8 +18,8 @@ import (
 // fake that records where it ran and mints a receipt as preflight does when it
 // passes, and the one-preflight-at-a-time waiter (`abcd implement load --wait
 // -- <command>`) is a fake that runs its command at once, so no test waits on
-// this machine's load. HOME is the fixture's own, so the machine store is a
-// temporary directory.
+// this machine's load were collect to wrap the preflight in it. HOME is the
+// fixture's own, so the machine store is a temporary directory.
 
 const (
 	collectScript = "scripts/cloud/collect.sh"
@@ -292,8 +292,10 @@ func TestCollectRunsPreflightInMachineStoreWorktree(t *testing.T) {
 	if strings.Count("\n"+log, "\nmake ") != 1 {
 		t.Errorf("make ran other than once:\n%s", log)
 	}
-	if !strings.Contains(log, "go run ./cmd/abcd implement load --wait -- make -C "+store+" preflight") {
-		t.Errorf("the preflight did not wait its turn through abcd implement load --wait:\n%s", log)
+	// make preflight gates itself, waiting once as one whole run, so collect
+	// runs it plain, never inside the waiter's command form.
+	if strings.Contains(log, "implement load --wait") {
+		t.Errorf("collect wrapped make preflight in abcd implement load --wait, which its own recipe already runs it through:\n%s", log)
 	}
 	if got := strings.TrimSpace(mustRun(t, c, store, "git", "rev-parse", "--abbrev-ref", "HEAD")); got != "collect/"+collectItem {
 		t.Errorf("the worktree is on %q, want collect/%s", got, collectItem)

@@ -47,11 +47,9 @@
 #      collected commit put in the worktree;
 #   4. print, on standard output, what is about to run and the full diffstat
 #      of the collected commits against origin's default branch; then run
-#      `make preflight` there, through
-#      `go run ./cmd/abcd implement load --wait -- make -C <worktree> preflight`,
-#      the machine's one waiter, so it waits while another preflight or race
-#      run is live. The waiter is run from this checkout, not from the
-#      collected tree;
+#      `make -C <worktree> preflight` there, plain: it gates itself, waiting
+#      at the machine's one waiter once, as one whole run, before any of its
+#      stages, so it waits while another preflight runs;
 #   5. on a pass, print the branch, the receipt preflight minted in the
 #      worktree's local tier and the push command, for the person to run; on a
 #      failure, print the failures and where the worktree is kept for
@@ -373,7 +371,7 @@ mkdir -p "$log_dir"
 log="$log_dir/collect-preflight.log"
 echo "collect: running make preflight on ${head:0:12} in $wt (waiting while another preflight runs on this machine)." >&2
 rc=0
-go run ./cmd/abcd implement load --wait -- make -C "$wt" preflight 2>&1 | tee "$log" >&2 || rc=$?
+make -C "$wt" preflight 2>&1 | tee "$log" >&2 || rc=$?
 if [ "$rc" -ne 0 ]; then
 	echo "collect: the preflight's last lines (the whole run is in $log):" >&2
 	tail -n 40 "$log" >&2

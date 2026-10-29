@@ -58,7 +58,7 @@ func TestImplementLoadWaitAdmitsASecondPreflightWithTwoSlots(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d\n%s%s", code, out, errOut)
 	}
-	want := "fewer than 2 other preflights or gated commands are in their test stages (2 at once, set by " + implement.PreflightSlotsEnv + ")"
+	want := "fewer than 2 other preflights or gated commands are running (2 at once, set by " + implement.PreflightSlotsEnv + ")"
 	if !strings.Contains(out, want) {
 		t.Fatalf("output lacks %q:\n%s", want, out)
 	}

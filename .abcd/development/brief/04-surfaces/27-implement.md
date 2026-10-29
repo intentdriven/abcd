@@ -227,7 +227,7 @@ named directly.
 ## The load check
 
 The load check is what abcd's own test lanes run before they start
-(itd-2609231434459890, spc-2609231542463113): once as the first prerequisite
+(itd-2609231434459890, spc-2609231542463113): once as the first stage
 of `make preflight`, and once in the eval harness's
 `TestMain`, never once per test package. It reads the machine through
 `internal/core/machineload`, a standard-library-only leaf (macOS: the
@@ -264,7 +264,7 @@ as it was printed; the run's hand-written load samples share the name and carry
 no `triggers`. Without its wait flag the check exits 0 on every status: it never
 refuses, waits or signals anything. With its wait flag it is the one waiter
 concurrent sessions gate a preflight or a race run with, and `make preflight`
-runs its own test stages through it: it blocks until the one-minute load is
+waits at it once, as one whole run: it blocks until the one-minute load is
 below the wait limit, no other `go test -race` run is live, no other
 `make preflight` is running and no other waiter is ahead of it in the queue (one
 that started earlier, whatever its pid, or within two seconds of it with the
@@ -334,7 +334,7 @@ account at one opens its race gate at once, so its race stage can start beside
 the race stage of an account above one, and race stages are kept apart only
 among accounts that all set more than one. And the plain form of the first gate
 takes no last look, so across accounts two openers whose re-checks fall in one
-moment can both open into the last free slot, one more in their test stages
+moment can both open into the last free slot, one more running
 than the setting. A first gate's waiter never queues
 there, and a race waiter never queues at the first gate. A preflight whose
 race waiter is queued runs nothing: at one it counts as in its test stages, and
@@ -344,7 +344,7 @@ own hold record and is shut only by it: a first gate's command hold lasts
 until its preflight starts its race run, so were it to shut the race gate, an
 earlier preflight's race waiter would wait on it while the holder's own race
 waiter queued behind that earlier one, and neither would move. How many preflights
-the first gate admits to their test stages at once is the person's own machine
+the first gate admits at once, each a whole run, is the person's own machine
 setting (iss-2610161639025702): `load.preflights` in <!-- record-lint: forward-looking -->
 `~/.abcd.noindex/config.json`, read through the layered configuration with the
 machine layer alone, or `ABCD_LOAD_PREFLIGHTS` in the environment for a trial;
@@ -359,12 +359,12 @@ preflight at a time applies, since the gate never read that file before the
 setting existed; an unknown key in its load object is named on that line too.
 Only a `load.preflights` that is there and unusable refuses the wait. At one the
 first gate reads exactly as above. Above one it
-admits a waiter while fewer than that many units of work are in their test
-stages (a running preflight, or a waiter running its command, counted once
+admits a waiter while fewer than that many units of work are running
+(a running preflight, or a waiter running its command, counted once
 where one runs beneath the other), a waiter queued ahead still shuts it, a live
 race run does not shut it by itself and the load limit still does, and an
 opener still stands back from one that opened beside it, as above, whose mark
-then counts it as a unit in its test stages; an opener stands back only from a
+then counts it as a running unit; an opener stands back only from a
 waiter at its own gate; a lone race run gated in the command form, its
 command `go test -race`, is gated as a race run for both gates: it stays
 shut while another race run is live, judges and takes the race gate's hold as

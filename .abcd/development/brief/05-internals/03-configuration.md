@@ -891,7 +891,7 @@ provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `interview.list`, `reservation.github_username`, `reservation.max_live` (1 to
 100, 10 by default, read past to 10 when the file cannot be read, which the
 refusal at the cap says) and `load.preflights` (how many preflights the first
-gate admits to their test stages at once, one race stage able to run beside
+gate admits at once, each a whole run, one race stage able to run beside
 them: 1 to 4, 1 by default, never read from a repository, and read past, with
 a stderr note, when the file cannot be read for it, so a file that holds other
 settings never stops the load gate) are honoured from the machine layer alone,
