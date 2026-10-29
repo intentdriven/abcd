@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 127 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/03-evidence/04-tradeoffs.md:29"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does a mid-pack interrupt write a forensic checkpoint? Answers: (a) yes, staged: keep the matrix row, decide where it lands and amend the tradeoffs entry; (b) no, a pack completes or writes nothing: drop the staged row, its open question and the universal-patterns mentions. Recommend (b): no resume ships or is planned, the pack stages and swaps with the provenance file written last as its commit marker, and nothing in the code writes a checkpoint."
 finding_ref: cfk-22b4bd78a97ac486
 ---
 

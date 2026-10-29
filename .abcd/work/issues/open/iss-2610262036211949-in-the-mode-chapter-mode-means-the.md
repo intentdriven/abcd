@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 642 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/26-mode.md:4"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Should the planned facilitator-mode intent keep the bare word mode (key facilitator.mode, values human or auto, 'the mode' on the board) beside the mode chapter's waiting-on state and away mode? Answer A: keep the key facilitator.mode but label the board line and prose by what it decides (for example 'merges: human or auto') and leave mode to abcd mode. Answer B: rename the waiting-on state or its verb word, which changes a shipped surface. Recommend A: the shipped badge and verb stay untouched and only the unbuilt intent changes."
 related_intents: [itd-2610150602547271]
 finding_ref: cfk-5114c49234f6b384
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 433 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/03-out-of-scope.md:166"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the 'Phased-in additions captured post-brief' paragraph: itd-27 is superseded by itd-94 (no grill sub-verb), itd-28 and itd-34 are shipped, and there is no phase to scope them into."
 finding_ref: cfk-4c241131bd4cdba6
 ---
 

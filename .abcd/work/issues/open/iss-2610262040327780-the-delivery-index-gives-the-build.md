@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 938 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/README.md:10"
-remedy: "none (filed automatically)"
+remedy: "In the index row for 01-build-sequence.md describe a dependency DAG of build steps (scaffold, install and launch, history capture and memory, intent and review, spec engine, run seam, lifeboat) instead of 'MVP, then the companion harness, then a named host'."
 finding_ref: cfk-d92229149573d195
 ---
 

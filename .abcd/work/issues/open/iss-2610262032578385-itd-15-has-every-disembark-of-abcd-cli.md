@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 341 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-15-self-dogfooded-sota-audit.md:16"
-remedy: "none (filed automatically)"
+remedy: "Re-scope itd-15 as an explicit, operator-run synthesis sub-verb over an already-packed lifeboat (or a developer-side prompt audit), not a Pass C that runs automatically inside pack; drop 'automatically' and the three-pass wording."
 related_intents: [itd-15]
 finding_ref: cfk-113d63e32ac5298b
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1152 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention.md:47"
-remedy: "none (filed automatically)"
+remedy: "In the lab discipline line 47 replace 'a decisions-log line' with 'a decision record (abcd decide)'."
 related_intents: [itd-2609251624540864, itd-2609151138388536]
 finding_ref: cfk-ab2e69d175a6b14b
 ---

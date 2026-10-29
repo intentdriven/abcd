@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 309 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:472"
-remedy: "none (filed automatically)"
+remedy: "In glossary/core/library.md drop 'corpus' from forbidden_synonyms, or add a line that the sources corpus is the name of the store the library command maintains; the shipped chapter, command page and code all use the word."
 finding_ref: cfk-4f9c91725a376b78
 ---
 

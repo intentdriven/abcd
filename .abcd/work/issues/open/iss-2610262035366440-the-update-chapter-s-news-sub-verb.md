@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 584 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/21-update.md:87"
-remedy: "none (filed automatically)"
+remedy: "In 03-configuration.md:621 add the after-update store (internal/core/afterupdate) to the user-scope inventory, together with the ideas store, and to the matching tree in 01-ahoy.md."
 finding_ref: cfk-2179252c4bdaeba8
 ---
 

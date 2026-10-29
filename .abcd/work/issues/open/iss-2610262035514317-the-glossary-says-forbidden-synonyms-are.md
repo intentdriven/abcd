@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 603 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/README.md:7"
-remedy: "none (filed automatically)"
+remedy: "Narrow 'registered here and nowhere else' to the forbidden synonyms of glossary terms, and say docs-lint's banned_tokens in .abcd/docs-lint.json (the retired role word, the harness tokens) are a separate register for published prose."
 finding_ref: cfk-07bad166e87eb26a
 ---
 

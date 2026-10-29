@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 956 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-5-prompt-quality-additions.md:97"
-remedy: "none (filed automatically)"
+remedy: "In itd-5's Inheritance section (line 97) and the first acceptance criterion (line 117), replace 'will carry prompt_version 1.0.0 at close' and the 1.0.0 changelog entry with itd-81's rule: an agent stays in the 0.x band until it clears its calibration corpus, and 1.0.0 is stamped at that earned lock"
 related_intents: [itd-5]
 finding_ref: cfk-5c7c8ce47c4fd62a
 ---

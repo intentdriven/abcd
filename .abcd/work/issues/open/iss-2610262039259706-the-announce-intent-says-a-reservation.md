@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 858 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609151838312703-sessions-announce-what-they-are-doing.md:91"
-remedy: "none (filed automatically)"
+remedy: "In 05-internals/04-universal-patterns.md drop 'multi-agent claims per itd-33' from the coordination-state note: itd-33 is superseded and claims are reservations on the shared remote (itd-2609091034175565); keep .abcd/coordination/ for the shape lock only, which is a design target."
 related_intents: [itd-2609151838312703]
 finding_ref: cfk-5e5737c6696a73d9
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 349 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-83-review-bar-fires-itself.md:66"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Where does itd-83's fallback pointer for a harness that does not run the rules hook live, given that the working-conventions block of AGENTS.md never names abcd and the marker block that does is written only when docs.target is not its default, skip? Answers: (a) in the marker block, with 'install abcd and the review bar is simply on' narrowed to hosts that run the hook and, for the rest, to repos whose docs target writes the block; (b) a default install writes a one-line pointer (a different docs.target default or a new pointer block); (c) drop the fallback. Recommended (a): it keeps both deliberate rules (the conventions block never names abcd, and install writes nothing it was not asked to) and makes the promise honest."
 related_intents: [itd-83]
 finding_ref: cfk-9fb2bd9c1fb75fe0
 ---

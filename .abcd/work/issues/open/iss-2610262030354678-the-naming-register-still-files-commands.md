@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 18 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:66"
-remedy: "none (filed automatically)"
+remedy: "In 04-naming.md replace 'later phases' (line 66) and each 'a later phase' on the dredge, loot, audit and failure_mode_tag rows with 'staged' or a pointer to the draft intent; sequencing is dependencies plus the lifecycle shelves (adr-2609212115255771)."
 finding_ref: cfk-bd01696217220132
 ---
 

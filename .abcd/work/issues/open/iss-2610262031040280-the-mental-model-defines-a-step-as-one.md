@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 82 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:56"
-remedy: "none (filed automatically)"
+remedy: "Edit 27-implement.md (status-render sentence): replace 'the landing step it stopped before' with a stage-side word such as 'the landing move', so step names only a spec's piece."
 finding_ref: cfk-b341b06acbf8e1ff
 ---
 

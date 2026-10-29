@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 741 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/35-drain.md:606"
-remedy: "none (filed automatically)"
+remedy: "In 35-drain.md, replace 'No runner reports tokens or money, so neither is counted' with the true reason: the spend is counted in agent runs because that is the unit common to host-run and runner-run lanes, while a runner-routed run carries its tokens and cost in its own run record (itd-166)."
 related_intents: [itd-166]
 finding_ref: cfk-b271cc6b5dcea03a
 ---

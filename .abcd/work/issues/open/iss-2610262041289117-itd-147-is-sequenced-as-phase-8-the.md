@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1002 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-147-the-brief-s-surface-chapters-are-a.md:99"
-remedy: "none (filed automatically)"
+remedy: "In glossary/core/phase.md change 'Roadmap phases run 0-7' to 0-8, noting that Phase 8 has two documents (phase-8-brief-currency.md and phase-8-the-closed-loop.md) and that Phases 7 and 8 have no plumbing-phase of that number."
 related_intents: [itd-147]
 finding_ref: cfk-a666b9be5e69c153
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 733 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609221009495079-abcd-s-typed-judgements-can-run-through.md:45"
-remedy: "none (filed automatically)"
+remedy: "In the decision-adapter intent state that lab harvest gains a per-type agreement section computed from the adapter's recorded pairs (new scope on the shipped lab verb), or name a new sub-verb for it; the lab chapter describes a harvest that only assembles prose sections."
 related_intents: [itd-2609221009495079]
 finding_ref: cfk-98716f3a82450774
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 802 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/library.md:6"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Is 'corpus' a forbidden word for the library (glossary/core/library.md, status draft), or is 'sources corpus' the sanctioned name of the library's on-disk store, as the --corpus flag, commands/library.md and the library, banlist and surfaces chapters have it? Answers: (1) the glossary drops 'corpus' from forbidden_synonyms and names 'sources corpus' as the store beneath the library; (2) every chapter, command page and the flag are renamed. Recommend (1): the shipped flag and command pages already use the word, a rename is breaking, and glossary/core/ledger.md already says 'sources corpus'."
 finding_ref: cfk-a5b9f88a20151139
 ---
 

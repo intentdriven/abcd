@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 857 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md:115"
-remedy: "none (filed automatically)"
+remedy: "In 04-surfaces/README.md drop row 25 (/abcd:worktree) or restate it as the staged ahoy worktree sub-verb: decision 5 of itd-2609091014076309 makes it a sub-verb of ahoy, so no top-level command page will exist, and the sub-verb belongs in 01-ahoy.md's sub-verb table when built."
 related_intents: [itd-2609091014076309]
 finding_ref: cfk-fb7437d0a5e70412
 ---

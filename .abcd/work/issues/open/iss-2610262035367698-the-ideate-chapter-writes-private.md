@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 583 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/18-ideate.md:88"
-remedy: "none (filed automatically)"
+remedy: "In 03-configuration.md:621 add the ideas store (private idea verdicts, owner-only, keyed on the root commit; internal/core/ideate) and the after-update store (internal/core/afterupdate) to the user-scope inventory, and to the matching tree in 01-ahoy.md, which the chapter says must agree."
 finding_ref: cfk-cfff9aff74f1b24a
 ---
 

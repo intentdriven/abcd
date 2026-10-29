@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 594 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/surface.md:45"
-remedy: "none (filed automatically)"
+remedy: "In surface.md allow bare 'surface' inside the identity chapter, commands/identity.md and positioning.json, where the registry itself calls the held texts surfaces, or name the sense 'identity surface' and drop the coined 'rendered surface'."
 finding_ref: cfk-8b95fce550438343
 ---
 

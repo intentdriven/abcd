@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 67 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:15"
-remedy: "none (filed automatically)"
+remedy: "In 03-invariants.md invariant 4 (and 05-internals/04-universal-patterns.md section 4), scope 'all inter-agent data is JSON' to data the core validates and name the exceptions: a Markdown artefact built as a model's context (history reconstruct) and the prose-verdict reviewers (see iss-2610262031138048)."
 finding_ref: cfk-97d08d265a8dd54b
 ---
 

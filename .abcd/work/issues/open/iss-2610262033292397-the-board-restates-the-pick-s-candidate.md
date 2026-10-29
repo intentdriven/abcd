@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 411 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/08-abcd.md:349"
-remedy: "none (filed automatically)"
+remedy: "In 08-abcd.md:349 drop 'so the head is always the intent the pick would choose' or name the one exclusion the board does not read, the pick's footprint check in a checkout with an origin remote; the alternative is a code change adding that check to internal/core/statusblock."
 finding_ref: cfk-e69b1431dcdec54a
 ---
 

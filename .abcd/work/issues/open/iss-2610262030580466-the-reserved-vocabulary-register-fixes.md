@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 68 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:187"
-remedy: "none (filed automatically)"
+remedy: "In 04-naming.md (line 187) scope the row to lifeboat review verdicts (family 1) and register the other closed verdict sets in use: PROMOTE, HOLD, INCONCLUSIVE for the docs review receipt and the implement loop's reviewer words."
 finding_ref: cfk-3abc0592b519dd23
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1045 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/01-build-sequence.md:15"
-remedy: "none (filed automatically)"
+remedy: "Reword 'milestone' (the opening, 'Two commitments shape every milestone' and the validation cadence) as build step or stage; this is the build-sequence part of the sweep iss-2609251618079479 already carries."
 related_intents: [itd-2609211913453478]
 finding_ref: cfk-38b88cb72e994fa1
 ---

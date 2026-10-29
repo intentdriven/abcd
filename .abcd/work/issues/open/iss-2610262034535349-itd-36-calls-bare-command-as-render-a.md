@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 531 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-36-memory-unification.md:41"
-remedy: "none (filed automatically)"
+remedy: "In itd-36 line 41 change 'the universal bare-command-as-render discipline' to 'the bare-command-as-render convention', since 05-intent.md and 08-skills.md say it is common and not universal."
 related_intents: [itd-36]
 finding_ref: cfk-efbb03d750b2a83f
 ---
