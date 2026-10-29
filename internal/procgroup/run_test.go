@@ -85,3 +85,41 @@ func TestRunToEOFReportsAFailureAsItself(t *testing.T) {
 		t.Errorf("RunToEOF = %v with stderr %q; want exit 3 and %q", err, errOut.String(), "why\n")
 	}
 }
+
+// TestRunToEOFGivesOneWriterForBothStreamsOnePipe: a writer given as both
+// stdout and stderr is written by one reader, in the order the command
+// wrote, as exec's one descriptor for it would be.
+func TestRunToEOFGivesOneWriterForBothStreamsOnePipe(t *testing.T) {
+	cmd := shCommand(t, context.Background(), `echo a; echo b >&2; echo c`)
+	var both bytes.Buffer
+	if err := RunToEOF(context.Background(), cmd, &both, &both); err != nil {
+		t.Fatal(err)
+	}
+	if both.String() != "a\nb\nc\n" {
+		t.Errorf("read %q; want %q", both.String(), "a\nb\nc\n")
+	}
+}
+
+// failingWriter refuses every write.
+type failingWriter struct{}
+
+var errRefused = errors.New("refused")
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errRefused }
+
+// TestRunToEOFDrainsAndReportsAWriterThatFails: a writer that fails leaves
+// the command neither blocked on a full pipe nor reported as a success; the
+// rest of its output is drained and the writer's error returned.
+func TestRunToEOFDrainsAndReportsAWriterThatFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cmd := shCommand(t, ctx, `i=0; while [ $i -lt 4000 ]; do echo 0123456789012345678901234567890123456789; i=$((i+1)); done`)
+	start := time.Now()
+	err := RunToEOF(ctx, cmd, failingWriter{}, nil)
+	if took := time.Since(start); took > 30*time.Second {
+		t.Errorf("returned after %s; want the command to finish once drained", took)
+	}
+	if !errors.Is(err, errRefused) {
+		t.Errorf("RunToEOF = %v; want the writer's error", err)
+	}
+}

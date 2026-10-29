@@ -87,10 +87,11 @@ var statuslineGitContext = func(parent context.Context, gitBudget time.Duration)
 }
 
 // previousCommandWaitDelay is how long the verb waits, after killing the
-// previous command's group, for the command to exit. What it writes is read
-// to EOF before it is waited for (procgroup.RunToEOF), so a command that
-// answered is never reported as a wait that ran out, and one whose output a
-// child keeps open is stopped at previousCommandBudget.
+// previous command's group, for the command to exit. The verb's own streams
+// are files, which the command writes to directly; any other writer (a test's
+// buffer) is read to EOF before the command is waited for
+// (procgroup.RunToEOF), so a command that answered is never reported as a
+// wait that ran out.
 const previousCommandWaitDelay = 100 * time.Millisecond
 
 // newStatuslineCommand builds the `statusline` verb — the harness-facing shell

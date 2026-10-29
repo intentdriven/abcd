@@ -70,6 +70,8 @@ func TestAQueueStateAnswerWithErrorsIsRefused(t *testing.T) {
 // is read once the pipe closes, never refused as a wait that ran out
 // (iss-2610272041031418).
 func TestGHReadsAnAnswerWhoseOutputClosesLate(t *testing.T) {
+	// A home of its own, so no gh abcd recorded there is chosen over the stub.
+	t.Setenv("HOME", t.TempDir())
 	bin := t.TempDir()
 	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\necho answer\nsleep 2 &\n"), 0o755); err != nil {
 		t.Fatal(err)

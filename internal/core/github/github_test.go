@@ -181,6 +181,8 @@ func TestRunnerTimeoutWrapsErrTimeout(t *testing.T) {
 // the pipe closes, never refused as a wait that ran out
 // (iss-2610272041031418).
 func TestRunnerReadsAnAnswerWhoseOutputClosesLate(t *testing.T) {
+	// A home of its own, so no gh abcd recorded there is chosen over the stub.
+	t.Setenv("HOME", t.TempDir())
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\necho '{}'\nsleep 2 &\n"), 0o755); err != nil {
 		t.Fatal(err)
