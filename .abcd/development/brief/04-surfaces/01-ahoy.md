@@ -96,8 +96,9 @@ flags.
   repository's `github.keep`), or `unknown`. A setting it could not read is
   `unknown`, never off. It reports the real visibility beside the declared one,
   and the owner's plan where the sign-in can see it. It requires only the checks
-  every pull request's workflows report, and names a required check no workflow
-  is known to report. A tightening that could break a working CI is advisory
+  every pull request's workflows report, reading a workflow's trigger only in
+  plain YAML and leaving out one written in any other form, and names a
+  required check no workflow is known to report. A tightening that could break a working CI is advisory
   until the workflows comply, and so is one over a workflow or local action it
   could not read, or drawn from workflow files that differ from the default
   branch's on GitHub. The organization's Actions policy is read and

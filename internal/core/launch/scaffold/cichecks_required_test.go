@@ -329,7 +329,7 @@ func TestRequiredChecksSeesTheFiltersInEveryForm(t *testing.T) {
 // front of a trigger's value hides nothing from the reader: a flow mapping
 // behind one, on the event, on `on:` itself or on the line after the key,
 // is still left out, while an anchor over block filters still has them read.
-// It also pins the merge-key and alias forms flowBody must see past the first
+// It also pins the merge-key and alias forms the reader must see past the first
 // line and on the line after the key.
 func TestRequiredChecksSeesThroughAnAnchor(t *testing.T) {
 	repo := writeWorkflows(t, map[string]string{
@@ -345,5 +345,27 @@ func TestRequiredChecksSeesThroughAnAnchor(t *testing.T) {
 	checks, notes := RequiredChecks(repo, "main", false)
 	if !reflect.DeepEqual(checks, []string{"build", "plain"}) {
 		t.Errorf("checks = %v, want [build plain]; notes %v", checks, notes)
+	}
+}
+
+// TestRequiredChecksLeavesOutAnyTriggerShapeItDoesNotRead pins the fallback
+// the reader rests on: it reads a subset of YAML, so under a pull-request
+// trigger it accepts only GitHub's five filter keys written plainly, and at the
+// events' level only plain keys, and leaves out any other shape (a key behind
+// an anchor or a tag, a complex `?` key, a merge key, an unknown key) rather
+// than read it as unfiltered.
+func TestRequiredChecksLeavesOutAnyTriggerShapeItDoesNotRead(t *testing.T) {
+	repo := writeWorkflows(t, map[string]string{
+		"anchor-key.yml":   "on:\n  pull_request:\n    &p paths: [x]\njobs:\n  a:\n    runs-on: x\n",
+		"tag-key.yml":      "on:\n  pull_request:\n    !!str paths: [x]\njobs:\n  b:\n    runs-on: x\n",
+		"complex-key.yml":  "on:\n  pull_request:\n    ? paths\n    : [x]\njobs:\n  c:\n    runs-on: x\n",
+		"tagged-event.yml": "on:\n  !!str pull_request:\n    paths: [x]\njobs:\n  d:\n    runs-on: x\n",
+		"merge-on.yml":     "on:\n  <<: *triggers\n  pull_request:\njobs:\n  e:\n    runs-on: x\n",
+		"unknown-key.yml":  "on:\n  pull_request:\n    pathz: [x]\njobs:\n  f:\n    runs-on: x\n",
+		"filters.yml":      "on:\n  pull_request:\n    # all five, plainly\n    'branches': [main]\n    types: [opened, synchronize, reopened]\n  push:\n    branches: [main]\njobs:\n  build:\n    runs-on: x\n",
+	})
+	checks, notes := RequiredChecks(repo, "main", false)
+	if !reflect.DeepEqual(checks, []string{"build"}) {
+		t.Errorf("checks = %v, want [build]; notes %v", checks, notes)
 	}
 }

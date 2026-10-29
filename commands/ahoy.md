@@ -1308,9 +1308,11 @@ mismatch is advisory: no command of abcd's changes a repository's visibility.
 Only checks that every pull request reports are required. A workflow that runs
 only when some paths change, one whose base-branch filter leaves the default
 branch out, one whose `types:` filter leaves out a pull request's opening or a
-push to it, one whose trigger is written as an inline `{...}` mapping or an
-alias abcd does not read, and, under a merge queue, one that does not run on the queue, are
-left out and named. A required check that no workflow is known to report is
+push to it, one whose trigger is written in any form outside the plain YAML
+abcd reads (an inline `{...}` mapping, an alias, an anchor, a tag, a merge key,
+or a key that is not one of GitHub's five filters), and, under a merge queue,
+one that does not run on the queue, are left out and named: a form abcd does
+not read leaves a check out, never makes it required. A required check that no workflow is known to report is
 named too, because a pull request waits on it until it reports. A repository
 with no CI is given no required check.
 

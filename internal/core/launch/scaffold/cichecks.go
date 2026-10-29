@@ -118,6 +118,8 @@ func sortedKeys(set map[string]bool) []string {
 // matches defaultBranch; and, when mergeQueue is set, also on `merge_group`,
 // since a queue entry waits on the same contexts. Each workflow or job left
 // out is named in notes, so a person can see why a check is not required.
+// The trigger is read as a subset of YAML (unreadShape): a trigger in any
+// other form is left out, never read as unfiltered.
 // Fails toward omission, like DeriveCIChecks: an empty answer requires nothing.
 func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, notes []string) {
 	seen := map[string]bool{}
@@ -133,8 +135,9 @@ func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, no
 		}
 		why := ""
 		switch {
-		case flowMapping(on, "pull_request") || flowMapping(on, "pull_request_target") || flowBody(prBody):
-			why = "writes its pull-request trigger as a flow mapping or an alias, whose filters abcd does not read"
+		case flowMapping(on, "pull_request") || flowMapping(on, "pull_request_target") || unreadShape(on, prBody):
+			why = "writes its pull-request trigger in a form abcd does not read (a flow mapping, an alias, " +
+				"an anchor, a tag, a merge key or a key that is not one of GitHub's filters)"
 		case blockHasKey(prBody, "paths") || blockHasKey(prBody, "paths-ignore"):
 			why = "runs only when some paths change"
 		case blockHasKey(prBody, "branches-ignore"):
@@ -191,31 +194,98 @@ func flowMapping(on []string, event string) bool {
 	return false
 }
 
-// flowBody reports whether an event's body hides its filters from the line
-// reader: a flow mapping on the line after its key, an alias, or a merge key
-// (`<<: *name`) that brings filters in from an anchor.
-func flowBody(body []string) bool {
-	first := true
-	for _, l := range body {
-		t := strings.TrimSpace(l)
-		if t == "" || strings.HasPrefix(t, "#") {
-			continue
-		}
-		if first {
-			// An anchor or tag alone on its line leaves the node's value to come.
-			if t = stripNodeProps(t); t == "" {
+// prFilterKeys are the filters GitHub reads under a pull-request trigger.
+var prFilterKeys = map[string]bool{
+	"branches": true, "branches-ignore": true, "paths": true, "paths-ignore": true, "types": true,
+}
+
+// plainKeyRe matches a key written plainly: a bare word, or one quoted whole.
+var plainKeyRe = regexp.MustCompile(`^(?:[A-Za-z_][A-Za-z0-9_-]*|"[A-Za-z_][A-Za-z0-9_-]*"|'[A-Za-z_][A-Za-z0-9_-]*')$`)
+
+// unreadShape reports whether the `on:` block's events or the pull-request
+// trigger's body leave the YAML subset this line reader parses. That subset is
+// the safety net under RequiredChecks: at the events' level only plain keys
+// and list items; under the trigger only GitHub's five filter keys, written
+// plainly, whose values are an inline list or `- item` lines, with no anchor,
+// alias or tag in front of a value or an item. Any other shape (a key behind
+// an anchor or a tag, a complex `?` key, a merge key, a flow mapping, an alias,
+// an unknown key) is unread, and the workflow is left out rather than read as
+// unfiltered, so a shape not foreseen here falls to omission, never to a
+// required check.
+func unreadShape(on, prBody []string) bool {
+	if level := onLevel(on); level > 0 {
+		for _, l := range on {
+			t := plainLine(l)
+			if t == "" || indentOf(l) != level || t == "-" || strings.HasPrefix(t, "- ") {
 				continue
 			}
+			if k, _, ok := strings.Cut(t, ":"); !ok || !plainKeyRe.MatchString(strings.TrimSpace(k)) {
+				return true
+			}
 		}
-		if first && (strings.HasPrefix(t, "{") || strings.HasPrefix(t, "*")) {
-			return true
+	}
+	keyIndent := -1
+	for _, l := range prBody {
+		t := plainLine(l)
+		if t == "" {
+			continue
 		}
-		first = false
-		if strings.HasPrefix(t, "<<") {
+		ind := indentOf(l)
+		if keyIndent < 0 {
+			keyIndent = ind
+		}
+		switch {
+		case ind < keyIndent:
 			return true
+		case ind > keyIndent:
+			// A filter's value: only a `- item` line.
+			if !strings.HasPrefix(t, "- ") || !plainValue(strings.TrimSpace(t[2:])) {
+				return true
+			}
+		default:
+			k, v, ok := strings.Cut(t, ":")
+			k = strings.TrimSpace(k)
+			if !ok || !plainKeyRe.MatchString(k) || !prFilterKeys[strings.Trim(k, `"'`)] {
+				return true
+			}
+			if v = strings.TrimSpace(v); v != "" && !plainValue(v) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+// plainLine is a line trimmed of its indentation and trailing comment, or ""
+// for a blank or comment line.
+func plainLine(l string) string {
+	t := strings.TrimSpace(l)
+	if strings.HasPrefix(t, "#") {
+		return ""
+	}
+	if i := strings.Index(t, " #"); i >= 0 {
+		t = strings.TrimSpace(t[:i])
+	}
+	return t
+}
+
+// plainValue reports whether a filter's value, or one list item, is a plain
+// or quoted scalar or a one-line flow sequence of them: nothing a YAML node
+// property (`&` anchor, `*` alias, `!` tag), a block scalar or a nested
+// collection could change the meaning of.
+func plainValue(v string) bool {
+	if strings.HasPrefix(v, "[") {
+		if !strings.HasSuffix(v, "]") {
+			return false
+		}
+		for _, item := range strings.Split(v[1:len(v)-1], ",") {
+			if item = strings.TrimSpace(item); item == "" || !plainValue(item) {
+				return false
+			}
+		}
+		return true
+	}
+	return v != "" && !strings.ContainsAny(v[:1], "&*!|>{[?@`%")
 }
 
 // stripNodeProps drops the anchor (`&name`) and tag (`!tag`) properties a
