@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 35 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:72"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (classification-at-plan-time paragraph): the third role on intent-auditor is a design target with no registered verb, on demand only when built; continuous invocation is deferred."
 finding_ref: cfk-117460a9a7ad6fbf
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 12 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/02-context.md:11"
-remedy: "none (filed automatically)"
+remedy: "Edit the /abcd:intent bullet in 02-context.md (line 11): drop 'ship' and 'grill' from the remaining design targets, delete 'ship drives that spec to completion (or the full pipeline if from drafts/)', and say closing the spec ships the intent. One edit settles iss-2610262031159277 as well."
 finding_ref: cfk-440184740afdc1cd
 ---
 

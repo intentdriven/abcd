@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 463 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-25-dredge-cross-corpus-synthesist.md:34"
-remedy: "none (filed automatically)"
+remedy: "In itd-25 replace 'the universal convention' with 'the common convention' and say bare `/abcd:dredge` renders state, per the Bare invocation section of 04-surfaces/README.md."
 related_intents: [itd-25]
 finding_ref: cfk-9feb95f02b831800
 ---

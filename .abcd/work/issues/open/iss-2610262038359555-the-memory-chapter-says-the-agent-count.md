@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 805 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/07-memory.md:158"
-remedy: "none (filed automatically)"
+remedy: "Edit 07-memory.md section 6: replace 'The agent count stays at 15' with a statement that carries no number (or 18, matching 01-agents.md), keeping the point that the curator gains roles, not peers."
 finding_ref: cfk-965eacd5c171d8a5
 ---
 

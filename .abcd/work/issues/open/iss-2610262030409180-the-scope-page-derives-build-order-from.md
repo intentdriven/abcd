@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 29 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/04-scope.md:3"
-remedy: "none (filed automatically)"
+remedy: "Edit 05-intent.md (the two Intent IDs bullets, lines 74 and 179): say build order comes from `blocked_by`, `builds_on` and the shelves, not the phase plan, which is history."
 finding_ref: cfk-53eeab88b62911ca
 ---
 

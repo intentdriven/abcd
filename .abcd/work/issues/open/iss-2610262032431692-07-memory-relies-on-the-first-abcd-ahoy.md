@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 308 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/07-memory.md:42"
-remedy: "none (filed automatically)"
+remedy: "Edit 07-memory.md (page model, line 42): say the legacy page backfill of source.class session_memory runs when a library verb first touches the store (internal/core/memory/writer.go backfillLegacy), not on the first /abcd:ahoy."
 finding_ref: cfk-e6b3b1048d8f53f6
 ---
 

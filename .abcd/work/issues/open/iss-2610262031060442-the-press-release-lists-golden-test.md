@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 86 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:27"
-remedy: "none (filed automatically)"
+remedy: "In the Plumbing bullet (line 27) mark golden-test fixtures, the periodic SOTA audit and the self-improvement pre-flight as staged, or drop them; only the structural prompt linter, prompt-version frontmatter and injection-canary fixtures ship."
 finding_ref: cfk-c4ca8f72231bafc5
 ---
 

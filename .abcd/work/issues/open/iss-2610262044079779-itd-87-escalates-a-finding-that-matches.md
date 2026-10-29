@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1184 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-87-recurrence-escalation-in-capture.md:17"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): When a consistency finding's stable key matches an already resolved or wontfix record, does the pass mark it addressed and file nothing (G1), or file a new entry citing the closed one as a recurrence (itd-87)? Recommend: for a resolved record, surface it as a recurrence and file the escalation, because identical quoted text still present means the fix did not hold (recurrence-is-signal); for a wontfix record keep addressed, since a person already ruled on that text."
 related_intents: [itd-87, itd-2609291923559186]
 finding_ref: cfk-489645189d2b62c6
 ---

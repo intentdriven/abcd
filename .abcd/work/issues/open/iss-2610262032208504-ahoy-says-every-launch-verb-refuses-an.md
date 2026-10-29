@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 255 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:826"
-remedy: "none (filed automatically)"
+remedy: "In 01-ahoy.md, the sentence ending 'would leave every launch verb refusing the repository' (now near line 925, not 826): say only the launch preview and the scaffold refuse a repository with no declared kind, while the cut, the archive render and the receipts check read an absent declaration as the plugin shape."
 finding_ref: cfk-bb02fca88570f898
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 115 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:65"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (bundle-member bullet): the shared spec carries `intents:` (every member) and `bundle:` beside the scalar `intent:`, not a list-valued `intent:`."
 finding_ref: cfk-9b175bf0febf1c2c
 ---
 

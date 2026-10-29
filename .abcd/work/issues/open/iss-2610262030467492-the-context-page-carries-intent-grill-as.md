@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 43 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/02-context.md:15"
-remedy: "none (filed automatically)"
+remedy: "Delete the 'Designed, not built: the intent grill sub-verb' paragraph and its bullet from 02-context.md (lines 15-17): itd-27 is superseded by shipped itd-94, whose planning interview is the grilling."
 finding_ref: cfk-24bf4c0612e5ed9c
 ---
 

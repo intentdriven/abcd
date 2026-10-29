@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 148 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-26-loot-oss-vendor.md:46"
-remedy: "none (filed automatically)"
+remedy: "Edit itd-26: drop the `loot list` sub-verb (line 46) and let bare `/abcd:loot [--source ...]` render the looted entries, which the first acceptance criterion already says bare `/abcd:loot` does."
 related_intents: [itd-26]
 finding_ref: cfk-263626fabca94c28
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 142 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-10-purge-uninstall.md:16"
-remedy: "none (filed automatically)"
+remedy: "In itd-10's press release, Why This Matters and acceptance criteria, drop 'lifeboat' and 'logbook' from what destroy removes (the lifeboat is out-of-tree under adr-35 and logbook was retired in favour of the local tier's logs); keep the rest of the .abcd namespace"
 related_intents: [itd-10]
 finding_ref: cfk-6d41c22e3285c1bf
 ---

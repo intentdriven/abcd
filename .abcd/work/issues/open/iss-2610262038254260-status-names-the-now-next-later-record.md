@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 794 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/record-families.md:28"
-remedy: "none (filed automatically)"
+remedy: "Rename the 'status' family row in record-families.md once the board rename lands (iss-2610150726321422 holds the product thinker's 2026-10-15 ruling that the status board becomes the dashboard, freeing 'status' for abcd status); until then qualify the row as 'the status board view'."
 finding_ref: cfk-c18ad121f15699d8
 ---
 

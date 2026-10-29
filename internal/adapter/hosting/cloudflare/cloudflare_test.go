@@ -49,7 +49,7 @@ func TestCreateRouteAndReportAgainstTheFake(t *testing.T) {
 	if !st.Exists || !st.Routed {
 		t.Fatalf("after create and route, state is %+v", st)
 	}
-	addr, err := p.Address(ctx, site)
+	addr, _, err := p.Address(ctx, site)
 	if err != nil {
 		t.Fatalf("address: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestAddressWithoutADomainIsTheWorkersDevName(t *testing.T) {
 	if fake.Writes() != 0 {
 		t.Fatalf("routing a site with no domain wrote: %v", fake.CallLog())
 	}
-	addr, err := p.Address(ctx, s)
+	addr, _, err := p.Address(ctx, s)
 	if err != nil {
 		t.Fatalf("address: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestEveryCallFailsLoudly(t *testing.T) {
 			return p.Route(context.Background(), site)
 		}},
 		{cloudflaretest.GetSubdomain, func(p hosting.Provider) error {
-			_, err := p.Address(context.Background(), hosting.Site{Name: "example-site"})
+			_, _, err := p.Address(context.Background(), hosting.Site{Name: "example-site"})
 			return err
 		}},
 	}
@@ -266,5 +266,16 @@ func TestRepositoryHalf(t *testing.T) {
 	}
 	if strings.Contains(step, "run:") {
 		t.Fatalf("the deploy step runs a shell; it should only call the pinned action:\n%s", step)
+	}
+}
+
+// TestTheProfileIsTheSecretHoldingSiteEnvironment: the deploy job runs in the
+// `site` environment that holds the two secrets, reads the repository only,
+// deploys every release and serves the site at the root of its address.
+func TestTheProfileIsTheSecretHoldingSiteEnvironment(t *testing.T) {
+	p := Adapter{}.Profile(hosting.Site{Name: "example-site"})
+	if p.Environment != "site" || len(p.Permissions) != 1 || p.Permissions[0] != "contents: read" ||
+		p.Switched || p.PublicOnly || p.BasePath != "/" {
+		t.Fatalf("profile = %+v", p)
 	}
 }

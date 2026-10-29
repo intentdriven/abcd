@@ -322,9 +322,11 @@ jobs:
     if: github.event_name != 'workflow_dispatch' && !cancelled() && needs.verify.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
     timeout-minutes: 20
     runs-on: ubuntu-latest
-    # A human stands between merge and publish: the environment carries a required
-    # reviewer, so nothing ships until someone approves the pending deployment —
-    # the server-side gate a merged PR cannot edit its way past.
+    # The job runs in the `release` environment. When the environment carries
+    # a required reviewer, nothing ships until someone approves the pending
+    # deployment; with none, the job runs as soon as verify and the tag are in
+    # place. The reviewer is a setting of the repository's environment, not of
+    # this file.
     environment: release
     permissions:
       contents: write       # create the Release and upload its assets (no branch push)
@@ -601,16 +603,17 @@ jobs:
         # --notes is prepended to the generated notes: it states the harness floor
         # the archive-sourced plugin needs (ruling E3).
         #
-        # THE WINDOW: the ship's merge to main already names this release's archive
-        # in the catalog, and the archive is downloadable only once the Release is
-        # published — after this job and the site render — later still while the
-        # release environment's approval waits. An install or update
-        # in between fails closed: the download 404s, the harness refuses, and an
-        # installed plugin stays on its previous release. Nothing wrong can be
-        # installed, because the pinned digest refuses any other bytes. The window
-        # cannot be closed from this side (the pin must be in the tagged tree, so
-        # it lands before the tag), so it is kept short: approve the release
-        # deployment promptly once the ship merges.
+        # THE WINDOW: the ship's merge to main already names this release's
+        # archive in the catalog, and the archive is downloadable only once the
+        # Release is published — after this job and the site render — and later
+        # still when the release environment carries a reviewer and its approval
+        # waits. An install or update in between fails closed: the download 404s,
+        # the harness refuses, and an installed plugin stays on its previous
+        # release. Nothing wrong can be installed, because the pinned digest
+        # refuses any other bytes. The window cannot be closed from this side (the
+        # pin must be in the tagged tree, so it lands before the tag), so it is
+        # kept short: where the environment carries a reviewer, approve the
+        # release deployment promptly once the ship merges.
         #
         # The draft's numeric id is read back straight after it is created: the
         # one Release carrying the tag must be this draft, and every later read

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 823 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-37-modification-grammar.md:63"
-remedy: "none (filed automatically)"
+remedy: "Amend section 8 to say a namespace's declared class is its dominant behaviour and entry-level immutability inside it is allowed (as already for the issue ledger and memory's immutable source classes), so itd-37's per-spec append-only pages can sit in .abcd/memory/"
 related_intents: [itd-37]
 finding_ref: cfk-d05351831fdb0337
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 310 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:874"
-remedy: "none (filed automatically)"
+remedy: "In 01-ahoy.md call the setup answers 'the answers file' (and the provenance and path-entry artefacts 'files') where no id or minting command makes them records, as glossary/core/record.md reserves the word; the uses are near lines 819, 961 and 973."
 finding_ref: cfk-d2fa072897f6c63c
 ---
 

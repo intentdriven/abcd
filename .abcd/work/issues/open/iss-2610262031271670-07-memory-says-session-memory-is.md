@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 131 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:56"
-remedy: "none (filed automatically)"
+remedy: "In 07-memory.md (line 50 and the vendor-boundary paragraph) mark session_memory distillation via `dev-sync memory` as staged; 08-abcd.md and 03-configuration.md section 2 already say no dev-sync verb is registered or coded."
 finding_ref: cfk-b566df961a16bdb2
 ---
 

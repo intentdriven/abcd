@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 8 of .abcd/work/reviews/2026-10-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:27"
-remedy: "none (filed automatically)"
+remedy: "Drop '/abcd:run' and the itd-29 operator surface from the 'Plumbing that makes it possible' bullet (line 27): itd-29 is superseded by itd-2609201916151817 (planned) and no run verb or commands/run.md exists."
 finding_ref: cfk-0fac43cb23fe6cbc
 ---
 

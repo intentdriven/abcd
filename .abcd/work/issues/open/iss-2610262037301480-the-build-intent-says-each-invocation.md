@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 728 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609201916151817-one-verb-takes-a-single-intent-from.md:21"
-remedy: "none (filed automatically)"
+remedy: "In the build intent say each invocation performs one move (one stage of a lane) instead of one step, per BU1 (iss-2609291313276243): a spec's steps and a lane's stages are two words; the host-facing verb name implement step stays."
 related_intents: [itd-2609201916151817]
 finding_ref: cfk-6bd3c576f4651693
 ---

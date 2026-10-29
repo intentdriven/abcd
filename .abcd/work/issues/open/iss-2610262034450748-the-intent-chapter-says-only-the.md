@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 520 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:366"
-remedy: "none (filed automatically)"
+remedy: "Change 05-intent.md line 366 from 'the reading-ingest verb only' to the promotion of an accepted reading item (the capture promote route), which is the sole minter of the value."
 related_intents: [itd-2609020625400169]
 finding_ref: cfk-0db6cbf423e03b12
 ---

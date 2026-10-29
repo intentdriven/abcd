@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 254 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/06-capture.md:334"
-remedy: "none (filed automatically)"
+remedy: "Reword 06-capture.md lines 332-335: the deferral verb refuses a record graded below major, but an absent, misspelled or out-of-enum grade does block the cut (gradeBlocks in internal/core/changelog/findings.go), so such a record is graded first and then deferred; optionally say the same in 04-launch.md lines 585-588."
 finding_ref: cfk-7111704d5c136f3a
 ---
 

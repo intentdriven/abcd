@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 186 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/05-personas.md:5"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): May a press-release quote be attributed to one of abcd's own roles ('a product thinker', 'a technical facilitator') instead of a registry persona? Answers: (a) yes, amend 05-personas.md and itd-79; (b) no, rewrite every such quote to the registered name. Recommended (a): the lint reads only `said <Name>,` and about 47 intents already use role attributions that name the framework's two roles (adr-2609151528057260), which is not the hypothetical-user phrasing the page bans; a bare 'a facilitator' as here should then be tightened to the two named roles."
 related_intents: [itd-57]
 finding_ref: cfk-f2b059c305a016b9
 ---

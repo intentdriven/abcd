@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 316 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/02-disembark.md:234"
-remedy: "none (filed automatically)"
+remedy: "In 06-delivery/02-verification-matrix.md, Disembark read-only row: replace 'hashes the source tree ... byte-identical' with the fingerprint the test asserts (path, mode and size, .git skipped), as 02-disembark.md states."
 finding_ref: cfk-48bc0762da27533a
 ---
 

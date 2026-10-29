@@ -376,10 +376,14 @@ type assetPipe struct {
 	root *os.Root
 	// copies maps a repo-relative source to its output-relative destination.
 	copies map[string]string
+	// base is the build's base path, which every picture's src sits under.
+	base string
+	// project leaves every picture out (a project site, project.go).
+	project bool
 }
 
-func newAssetPipe(repoRoot string, root *os.Root) *assetPipe {
-	return &assetPipe{repoRoot: repoRoot, root: root, copies: map[string]string{}}
+func newAssetPipe(repoRoot string, root *os.Root, base string) *assetPipe {
+	return &assetPipe{repoRoot: repoRoot, root: root, copies: map[string]string{}, base: base}
 }
 
 // Copies lists the rasters to copy, sorted, as (source, destination) pairs.
@@ -396,6 +400,12 @@ func (a *assetPipe) Copies() [][2]string {
 // directory of the page the reference was written in, so `../assets/img/x.png`
 // resolves the way a reader on GitHub sees it.
 func (a *assetPipe) render(pageDir, src, alt string, at Source) (string, error) {
+	// A project site renders no picture: every picture lives under docs/,
+	// a person's own files, and asking for pictures or offering to make them
+	// is a later intent (iss-2610150529485165). The picture is left out.
+	if a.project {
+		return "", nil
+	}
 	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") || strings.HasPrefix(src, "data:") {
 		return "", &UnsupportedError{Path: at.Path, Line: at.Line, Construct: "remote image",
 			Detail: "every picture is a committed asset under docs/assets/img/; " + quote(src) + " is fetched at render time"}
@@ -460,7 +470,7 @@ func (a *assetPipe) render(pageDir, src, alt string, at Source) (string, error) 
 	// `/record/adr/adr-1/`. An output-relative src resolves only at the root and
 	// 404s everywhere else — a picture missing on hundreds of pages and present
 	// on the one page anybody previews.
-	return `<img src="/` + escapeAttr(dst) + `" alt="` + escapeAttr(alt) + `"` + size + ` loading="lazy">`, nil
+	return `<img src="` + escapeAttr(sitePath(a.base, "/"+dst)) + `" alt="` + escapeAttr(alt) + `"` + size + ` loading="lazy">`, nil
 }
 
 // pngSize reads a PNG's pixel dimensions out of its IHDR chunk, so the page can

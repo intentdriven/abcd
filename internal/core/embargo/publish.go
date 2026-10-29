@@ -201,7 +201,8 @@ func publishOne(s Store, repo string, e PlanEntry) string {
 }
 
 // versionsHeld compares GitHub's copy of an advisory's affected packages
-// with the planned ones, entry by entry, and says what differs.
+// with the planned ones, entry by entry (package, ranges and vulnerable
+// functions), and says what differs.
 func versionsHeld(a remoteAdvisory, want []PlannedVulnerability) string {
 	if len(a.Vulnerabilities) != len(want) {
 		return fmt.Sprintf("GitHub's copy carries %d affected packages where %d were planned", len(a.Vulnerabilities), len(want))
@@ -215,9 +216,23 @@ func versionsHeld(a remoteAdvisory, want []PlannedVulnerability) string {
 			return fmt.Sprintf("GitHub's copy does not carry the planned affected range in entry %d", i+1)
 		case v.PatchedVersions == nil || *v.PatchedVersions != w.PatchedVersions:
 			return fmt.Sprintf("GitHub's copy does not carry the planned patched version in entry %d", i+1)
+		case !sameFunctions(v.VulnerableFunctions, w.VulnerableFunctions):
+			return fmt.Sprintf("GitHub's copy does not carry the planned vulnerable functions in entry %d", i+1)
 		}
 	}
 	return ""
+}
+
+// sameFunctions reports whether a and b name the same vulnerable functions,
+// in any order; none and an empty list are the same.
+func sameFunctions(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	a, b = slices.Clone(a), slices.Clone(b)
+	slices.Sort(a)
+	slices.Sort(b)
+	return slices.Equal(a, b)
 }
 
 // plainJSON is v as compact JSON without HTML escaping, so a range such as

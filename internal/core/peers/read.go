@@ -119,6 +119,29 @@ func (r Report) Worktrees() []SeenWorktree {
 	return out
 }
 
+// HeldUnder counts the linked worktrees the scan saw whose real path lies
+// beneath dir, and the spent ones among them: the board's worktrees line,
+// with dir the repository's lane in the worktree store. A gone worktree is
+// not counted, because it no longer occupies dir. Paths compare resolved, so
+// a lane reached through a symlinked home still holds what git reports.
+func (r Report) HeldUnder(dir string) (held, spent int) {
+	base := realPath(dir)
+	for _, w := range r.Worktrees() {
+		if w.Gone {
+			continue
+		}
+		rel, err := filepath.Rel(base, realPath(w.Path))
+		if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			continue
+		}
+		held++
+		if w.Spent {
+			spent++
+		}
+	}
+	return held, spent
+}
+
 // Read returns the peer picture for the checkout at root, which is a checkout
 // root (gitutil.CheckoutRoot's answer), not an arbitrary directory under it.
 //

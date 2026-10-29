@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 448 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/record.md:4"
-remedy: "none (filed automatically)"
+remedy: "In record.md replace the closed list 'itd, spc, adr, iss or rdg' with the id kinds the citation grammar and abcd record-id dispatch admit (itd, spc, adr, iss, dcn, adm, srp, rfm, rdg), or point at that one list."
 finding_ref: cfk-9b80a35daf87d651
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 6 of .abcd/work/reviews/2026-10-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/01-platform.md:17"
-remedy: "none (filed automatically)"
+remedy: "Edit 01-platform.md (Front doors paragraph, line 17): the CLI and the markdown plugin surface that shells to the binary both ship; only the MCP server is a later front door."
 finding_ref: cfk-b61f1a105b5163b3
 ---
 

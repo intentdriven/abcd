@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 992 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/02-verification-matrix.md:80"
-remedy: "none (filed automatically)"
+remedy: "Reword itd-44 so it builds the capture-time suggested_kind classifier together with the decision verdict (itd-34 shipped without it) and drop the abcd-intent-new skill route; or capture the classifier as its own intent and block itd-44 on it."
 related_intents: [itd-44]
 finding_ref: cfk-a7eb62b7ff9f24c2
 ---

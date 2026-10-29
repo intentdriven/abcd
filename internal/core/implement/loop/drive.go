@@ -32,9 +32,10 @@ package loop
 // status read or another checkout's step is never kept waiting on a model.
 //
 // A host session always drives this call: the no-host path, where abcd runs
-// alone and a host-routed role goes to runner.fallback_host, is the process
-// driver's reversal of the host-delegated boundary, which the ADR decision 6
-// of itd-2609201916151817 owes records before either path ships.
+// alone and a host-routed role goes to runner.fallback_host, is the reversal
+// of the host-delegated boundary that adr-2610222222326104 records, which
+// `abcd drain` builds first (itd-2610222215485265) and `abcd build` adopts
+// after it (spc-2609202134338445 step 12).
 
 import (
 	"context"
@@ -102,6 +103,13 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 	if rs.Config != nil {
 		routed = func(role string) bool { return rs.Config.RouteFor(role).Runner != runner.Host }
 		overrides = rs.Config.FlagRoutes()
+		o.runnerRoute = func(role string) (string, string) {
+			r := rs.Config.RouteFor(role)
+			if r.Runner == runner.Host {
+				return "", ""
+			}
+			return r.Runner, r.Override()
+		}
 	}
 	res, err := advanceWith(repoRoot, runID, steps, o, routed, overrides)
 	if err != nil || res.Awaiting == nil || !res.handed || rs.Config == nil {

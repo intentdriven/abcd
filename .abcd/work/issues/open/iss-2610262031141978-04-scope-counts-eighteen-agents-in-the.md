@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 104 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/04-scope.md:32"
-remedy: "none (filed automatically)"
+remedy: "Edit 07-memory.md section 6: replace 'The agent count stays at 15' with a count-free statement that principle-distiller gains role responsibilities, not agent peers."
 finding_ref: cfk-073bbd86f43efab8
 ---
 

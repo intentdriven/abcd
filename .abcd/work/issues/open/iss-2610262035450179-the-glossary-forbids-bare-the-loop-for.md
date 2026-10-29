@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 595 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/loop.md:57"
-remedy: "none (filed automatically)"
+remedy: "In 26-mode.md retitle the chapter and its first line to say the autonomous run waits on the answer (the crosswalk's name for abcd's unit, docs/reference/terminology.md), not bare 'the Loop' or 'the agent loop'; commands/mode.md and the 04-surfaces README row carry the same 'agent loop' phrase and move with it."
 finding_ref: cfk-b151ab1d96510144
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 586 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/16-lint.md:9"
-remedy: "none (filed automatically)"
+remedy: "Reword the sentence at 04-universal-patterns.md:90: it is about reports, so say these verbs write no report pair, not that they are read-only renders with zero writes. capture, intent and spec write records, guard writes a branch record and the question marker, identity and banlist have write paths, and lint site builds into its output directory when it holds no index.html (16-lint.md:9)."
 finding_ref: cfk-f6e5defdf3bcb034
 ---
 

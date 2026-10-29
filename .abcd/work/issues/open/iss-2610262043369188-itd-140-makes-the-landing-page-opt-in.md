@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1149 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-140-the-generic-specific-boundary-of-the.md:29"
-remedy: "none (filed automatically)"
+remedy: "In itd-140 rule 2 (line 29) remove the landing page from the opt-in list: it is the site's root and cannot be switched off; keep the cast imagery, install tab row, install.sh and deploy workflow as the opt-in specific side."
 related_intents: [itd-140, itd-2609061543533170]
 finding_ref: cfk-d385a76a93971c41
 ---

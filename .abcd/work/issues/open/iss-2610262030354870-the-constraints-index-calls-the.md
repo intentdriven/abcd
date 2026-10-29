@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 19 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/README.md:12"
-remedy: "none (filed automatically)"
+remedy: "Change row 3 of the constraints README to describe 03-invariants.md as the canonical home of the project's invariants and drop 'placeholder'."
 finding_ref: cfk-b6dc35cfd23f2d0b
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 414 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/09-reflect.md:143"
-remedy: "none (filed automatically)"
+remedy: "In 34-build.md:538 scope 'waits on the ADR decision 6' to the unattended loop's process driver, and say the plain-Terminal interview verbs already take runner.fallback_host (internal/core/interview/written.go Reaches; the runner Dispatcher with Attended)."
 finding_ref: cfk-915dcc6ebae66b24
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 592 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/reading-position.md:60"
-remedy: "none (filed automatically)"
+remedy: "In reading-position.md replace the 'comparative does not assemble and refuses' example with the shipped behaviour (it assembles from the one undispositioned widening run at the target) and rewrite the sentence on the scope a position 'was commissioned about' to the two-operand invocation (adr-2609021016286571)."
 finding_ref: cfk-40af2c5a36de4619
 ---
 

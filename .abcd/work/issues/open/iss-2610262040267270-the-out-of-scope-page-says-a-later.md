@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 931 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/03-out-of-scope.md:172"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the page's opening and its 'enters work by being scoped into a phase' sentence: sequencing is dependencies plus the lifecycle shelves (adr-2609212115255771); fold into the sweep iss-2609251618079479."
 finding_ref: cfk-bd3d43f482289db0
 refines: [iss-2609251618079479]
 ---

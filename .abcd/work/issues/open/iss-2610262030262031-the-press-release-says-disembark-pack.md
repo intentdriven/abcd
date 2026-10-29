@@ -9,8 +9,10 @@ found_during: "abcd intent consistency, finding 1 of .abcd/work/reviews/2026-10-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:23"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the pack bullet in the press release's What's In Scope (line 23): pack is one deterministic read-only pass that writes brief/, graveyard/, rescue/, retrospectives/, docs/adrs, activity/issues and coverage.{json,md}; the press release, principles, graveyard lessons and review are later synthesis sub-verbs over the packed lifeboat. Drop 'three passes', 'targeted chat retrieval' and 'distil/compose/audit'."
 finding_ref: cfk-460cc04582bff3e5
+deferred_after: v0.15.1
+deferral_reason: "Deferred by the product thinker on 2026-10-27 (dcn-2610271112330536): the brief's single-home rewrite (dcn-2610271112339516, dcn-2610271112330235) rewrites or removes most of the passages this record quotes."
 ---
 
 The press release says disembark pack runs three agent passes; the disembark chapter says pack is one deterministic run with no model passes
@@ -23,3 +25,7 @@ A premise contradiction (severity major) found by the cross-document consistency
 The press release describes pack as three passes, including targeted chat retrieval and a distil/compose/audit pass. The disembark chapter says packing dispatches no agents, runs no model passes, and leaves synthesis to later sub-verbs over an already-packed lifeboat. A pack cannot both run a distil/compose/audit pass and run no model passes, so anyone building from the press release would build machinery the surface rules out.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 1.
+
+## Deferral 2026-10-27
+
+Deferred past v0.15.1: Deferred by the product thinker on 2026-10-27 (dcn-2610271112330536): the brief's single-home rewrite (dcn-2610271112339516, dcn-2610271112330235) rewrites or removes most of the passages this record quotes.
