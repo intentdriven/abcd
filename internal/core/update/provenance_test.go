@@ -198,7 +198,10 @@ func repoAPI(t *testing.T, byDigest map[string][]byte, refs map[string]string) *
 
 func testAttestations(t *testing.T, u *Updater, api *httptest.Server) *githubAttestations {
 	t.Helper()
-	return &githubAttestations{u: u, endpoint: api.URL + "/attestations/", gitEndpoint: api.URL + "/git/", trusted: fixtureTrusted(t), policy: releasePolicy}
+	g := newGitHubAttestations(u)
+	g.dl.AllowHost(strings.TrimPrefix(api.URL, "http://"))
+	g.endpoint, g.gitEndpoint, g.trusted = api.URL+"/attestations/", api.URL+"/git/", fixtureTrusted(t)
+	return g
 }
 
 func TestAttestationsVerifyThroughTheAPI(t *testing.T) {
@@ -411,7 +414,7 @@ func TestTUFFetcherSignalsANotFound(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	t.Cleanup(srv.Close)
 	u := newUpdater(srv.URL, nil, testAssetName, true, nil)
-	_, err := tufFetcher{u: u}.DownloadFile(srv.URL+"/2.root.json", 1<<20, 0)
+	_, err := tufFetcher{dl: u.dl}.DownloadFile(srv.URL+"/2.root.json", 1<<20, 0)
 	var httpErr *metadata.ErrDownloadHTTP
 	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusNotFound {
 		t.Fatalf("a 404 must be metadata.ErrDownloadHTTP{404}, got %#v", err)
@@ -452,9 +455,9 @@ func TestReleaseProvenanceLeavesTheEnvironmentAlone(t *testing.T) {
 	if got := os.Getenv("SSL_CERT_FILE"); got != "/nonexistent/ca.pem" {
 		t.Errorf("SSL_CERT_FILE was changed to %q", got)
 	}
-	tr, ok := g.u.client.Transport.(*http.Transport)
+	tr, ok := g.dl.Client.Transport.(*http.Transport)
 	if !ok || tr.Proxy != nil {
-		t.Errorf("the check's client must honour no proxy: %#v", g.u.client.Transport)
+		t.Errorf("the check's client must honour no proxy: %#v", g.dl.Client.Transport)
 	}
 }
 

@@ -97,18 +97,36 @@ func TestAStartForASessionIsNotRefusedByItsOwnClaim(t *testing.T) {
 
 // TestAStartForASessionThatHasNotJoinedWritesNothing: the claim is the
 // session's, so a session the shared run does not hold is refused before the
-// run is created.
+// run is created, naming the --session flag and never the name it was given.
 func TestAStartForASessionThatHasNotJoinedWritesNothing(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	sha := repo.Git("rev-list", "--max-parents=0", "HEAD")
 	sharedRun(t, repo.Root(), sha, "host-a")
-	_, err := Start(repo.Root(), "itd-10", Options{Session: "ghost"})
-	if r := mustRefusal(t, err); r.Stage != StageClaim || r.Contention || !strings.Contains(r.Reason, "ghost") {
-		t.Fatalf("a start for an unjoined session = %+v; want the claim step refused naming it", r)
+	ghost := "Gh0st_" + strings.Repeat("Q7", 12)
+	_, err := Start(repo.Root(), "itd-10", Options{Session: ghost})
+	if r := mustRefusal(t, err); r.Stage != StageClaim || r.Contention || strings.Contains(r.Reason, ghost) ||
+		!strings.Contains(r.Reason, "the --session given") || !strings.Contains(r.Reason, "has not joined") {
+		t.Fatalf("a start for an unjoined session = %+v; want the claim step refused naming the flag, not the session", r)
 	}
 	runTierAbsent(t, repo.Root())
 	if _, err := Start(repo.Root(), "itd-10", Options{Session: "../x"}); err == nil {
 		t.Fatal("a start for a session that is not a name succeeded")
+	}
+	runTierAbsent(t, repo.Root())
+	notAName := "not a name\t" + strings.Repeat("Q7", 8)
+	_, err = Start(repo.Root(), "itd-10", Options{Session: notAName})
+	if r := mustRefusal(t, err); strings.Contains(r.Reason, strings.Repeat("Q7", 8)) || !strings.Contains(r.Reason, "the --session given") {
+		t.Fatalf("a start for a session that is not a name = %+v; want it named by the flag, not repeated", r)
+	}
+	runTierAbsent(t, repo.Root())
+	// A session whose name is a letter or a word of the refusal itself is
+	// named by the flag where the refusal names the session, and nowhere else.
+	for _, short := range []string{"a", "join"} {
+		_, err = Start(repo.Root(), "itd-10", Options{Session: short})
+		r := mustRefusal(t, err)
+		if !strings.Contains(r.Reason, "the --session given has not joined this run (run `abcd implement join` first)") {
+			t.Fatalf("a start for unjoined session %q = %q; want the refusal intact, the flag in the session's place", short, r.Reason)
+		}
 	}
 	runTierAbsent(t, repo.Root())
 }

@@ -766,6 +766,9 @@ func forgeRouteAnswer(t *testing.T, root, runID string, aw Await) {
 }
 
 // editState rewrites the run's state file through edit, as a JSON document.
+//
+// A state edited back to a version before 15 drops the review set a new run
+// writes (unreviewOlder), since no file of those versions carries one.
 func editState(t *testing.T, root, runID string, edit func(doc map[string]any)) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(StateRelPath(runID)))
@@ -778,6 +781,7 @@ func editState(t *testing.T, root, runID string, edit func(doc map[string]any)) 
 		t.Fatal(err)
 	}
 	edit(doc)
+	unreviewOlder(doc)
 	out, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -1239,7 +1243,7 @@ func TestATakeBackThatCannotReadSaysTheReturnStands(t *testing.T) {
 
 // TestAVersion11ReservationReadsAsVersion12: version 11, the run's
 // reservation, is version 12's strict subset. A version-11 file carrying
-// `reserved_at` reads as the current version and is written back at 12 with
+// `reserved_at` reads as the current version and is written back at it with
 // its reservation kept; a version-12 file carrying both the reservation and
 // the route's answer reads with both.
 func TestAVersion11ReservationReadsAsVersion12(t *testing.T) {
@@ -1258,7 +1262,7 @@ func TestAVersion11ReservationReadsAsVersion12(t *testing.T) {
 	if err != nil || st.SchemaVersion != SchemaVersion || st.ReservedAt == nil || !st.ReservedAt.Equal(reserved) {
 		t.Fatalf("a version-11 file carrying a reservation reads as the current version with it: %+v %v", st.ReservedAt, err)
 	}
-	// The next mutation writes it back at version 12, the reservation kept.
+	// The next mutation writes it back at the current version, the reservation kept.
 	if _, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{}); err == nil {
 		t.Fatal("no return stands yet, so the hand-back is refused and nothing is written")
 	}

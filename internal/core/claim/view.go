@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The states a listing shows a reservation in.
@@ -41,7 +44,16 @@ type Reservation struct {
 	// Holder is the GitHub username the tip names; "" when it is unreadable.
 	Holder string
 	// Copy is CopyThis when the tip names this checkout's own copy, else "".
-	Copy      string
+	Copy string
+	// key is the copy key the tip names, for finding it among this
+	// checkout's other worktrees (siblingCopy); never shown.
+	key string
+	// Sibling is the name of the other worktree of this repository, on this
+	// machine, whose copy made the tip (iss-2610231004140527): the fewest
+	// trailing folders of its path no other worktree's path ends in, never
+	// its key; "" for this copy, for a copy elsewhere, and until
+	// NameSiblings fills it. It is display only: no judgement reads it.
+	Sibling   string
 	Footprint []string
 	ClaimedAt time.Time
 	// EffectiveExpiry is when it stops holding: the lease clamped to a day,
@@ -94,6 +106,10 @@ type Snapshot struct {
 	// the view does not trust origin's default branch as this clone holds
 	// it; "" otherwise.
 	GeneratedUnread string
+	// SiblingsUnread is why NameSiblings could not list this repository's
+	// worktrees, "" otherwise.
+	SiblingsUnread string
+	siblingsNamed  bool
 }
 
 // LiveByHolder counts each person's live reservations of records, as the cap
@@ -158,6 +174,14 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 // tip, and origin's default branch only when a record is there to derive.
 func viewOf(root string, now time.Time, derive bool, only func(subject string) bool) (Snapshot, error) {
 	now = now.UTC().Truncate(time.Second)
+	// The fetch stamp says when this copy last read origin; one git tracks
+	// came with a commit and says nothing of this copy. Asked only of a stamp
+	// there is.
+	if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(reservations.stampRel()))); err == nil {
+		if err := localtier.Untracked(root, reservations.stampRel()); err != nil {
+			return Snapshot{}, err
+		}
+	}
 	snap := Snapshot{FetchedAt: lastFetched(root, reservations), Reservations: []Reservation{}}
 	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", TrackingPrefix)
 	if err != nil {
@@ -173,7 +197,7 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	if len(refs) == 0 {
 		return snap, nil
 	}
-	tree, err := emptyTree(root)
+	tree, err := emptyTreeName(root)
 	if err != nil {
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
 	}
@@ -242,6 +266,12 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	return snap, nil
 }
 
+// YourCopy names the copy of the person's own that holds r when it is not
+// this one: "your worktree <path> on this machine" when a sibling worktree of
+// the checkout at root keeps its key, else "your copy on another computer"
+// (iss-2610250013552001).
+func (r Reservation) YourCopy(root string) string { return yourCopyAt(siblingCopy(root, r.key)) }
+
 // listed is one tip as the view shows it, judged at now. derivedBy is what
 // released it outside its own tip (ReleasedByDefaultBranch or ReleasedByTag),
 // "" when nothing did.
@@ -258,7 +288,7 @@ func listed(t tip, id, derivedBy, own string, now time.Time) Reservation {
 	} else {
 		v := lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, now)
 		r.Holder, r.Footprint, r.ClaimedAt, r.EffectiveExpiry = t.Holder, t.Footprint, t.ClaimedAt, v.EffectiveExpiry
-		r.Stage = t.Stage
+		r.Stage, r.key = t.Stage, t.Copy
 		if own != "" && t.Copy == own {
 			r.Copy = CopyThis
 		}
@@ -310,15 +340,111 @@ func lastFetched(root string, ns namespace) time.Time {
 	return at.UTC()
 }
 
-// ownCopyKey is this checkout's copy key when one is kept, read without
-// minting one; "" otherwise.
+// NameSiblings fills Sibling on holder's tips made from another worktree of
+// the repository at root on this machine, reading each worktree's kept copy
+// key once (iss-2610231004140527). It is the only reader of the worktrees, so
+// a view that never shows a sibling never lists them; a second call does
+// nothing. A tip of anyone else is never named, since a copy key is no secret
+// from whoever pushed a tip. When the worktrees cannot be listed, every tip
+// reads as made elsewhere and SiblingsUnread says why.
+func (s *Snapshot) NameSiblings(root, holder string) {
+	if s.siblingsNamed {
+		return
+	}
+	s.siblingsNamed = true
+	var sibs map[string]siblingAt
+	for i := range s.Reservations {
+		r := &s.Reservations[i]
+		if r.Copy == CopyThis || !validCopyKey(r.key) || holder == "" || !sameHolder(r.Holder, holder) {
+			continue
+		}
+		if sibs == nil {
+			sibs, s.SiblingsUnread = siblingCopies(root, ownCopyKey(root))
+		}
+		r.Sibling = sibs[r.key].Name
+	}
+}
+
+// siblingAt is one sibling worktree as abcd names it: Name, the shortest
+// tail of its path that tells it apart (siblingTail), where a listing shows
+// it, and Path, home-redacted, where a hold's words name it; both
+// terminal-safe. A copied worktree, two holding one key, joins both of each
+// with " or ".
+type siblingAt struct{ Name, Path string }
+
+// siblingCopies maps the copy key kept in each other worktree of the
+// repository at root to that worktree, own's excluded, read without minting a
+// key. It is the one reading of the worktrees every surface names a sibling
+// from (iss-2610272352153282). unread is why the worktrees could not be
+// listed, "" when they were.
+func siblingCopies(root, own string) (sibs map[string]siblingAt, unread string) {
+	sibs = map[string]siblingAt{}
+	wts, err := gitutil.ListWorktrees(root, gitutil.MaxWorktreeListing)
+	if err != nil {
+		return sibs, "this repository's worktrees could not be listed (" + redacted(err) + "), so holds from them count as made elsewhere"
+	}
+	var paths []string
+	for _, wt := range wts {
+		if !wt.Bare {
+			paths = append(paths, wt.Path)
+		}
+	}
+	for _, wt := range wts {
+		if wt.Bare {
+			continue
+		}
+		key := ownCopyKey(wt.Path)
+		if key == "" || key == own {
+			continue
+		}
+		at := siblingAt{Name: termsafe.Sanitize(siblingTail(wt.Path, paths)), Path: termsafe.Sanitize(fsutil.RedactHome(wt.Path))}
+		if prev, ok := sibs[key]; ok {
+			at = siblingAt{Name: prev.Name + " or " + at.Name, Path: prev.Path + " or " + at.Path}
+		}
+		sibs[key] = at
+	}
+	return sibs, ""
+}
+
+// siblingTail is the fewest trailing folders of p that no other of paths ends
+// in: its directory's name alone unless another worktree shares it
+// (iss-2610272352168723), and the whole of p, home-redacted, when every tail
+// is shared. Tails are cut from the home-redacted paths, so the folders of
+// the home directory itself never show.
+func siblingTail(p string, paths []string) string {
+	segs := tailSegments(p)
+	for k := 1; k < len(segs); k++ {
+		tail := strings.Join(segs[len(segs)-k:], "/")
+		shared := false
+		for _, q := range paths {
+			qs := tailSegments(q)
+			if q != p && len(qs) >= k && strings.Join(qs[len(qs)-k:], "/") == tail {
+				shared = true
+				break
+			}
+		}
+		if !shared {
+			return tail
+		}
+	}
+	return fsutil.RedactHome(p)
+}
+
+// tailSegments is p cleaned and home-redacted, split into its folders.
+func tailSegments(p string) []string {
+	return strings.Split(filepath.ToSlash(fsutil.RedactHome(filepath.Clean(p))), "/")
+}
+
+// ownCopyKey is the copy key the checkout at root keeps, read without minting
+// one; "" when it keeps none that is valid. It is the one reader of a kept key,
+// this checkout's or a sibling worktree's (siblingCopy, siblingCopies).
 func ownCopyKey(root string) string {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return ""
 	}
 	defer r.Close()
-	data, err := fsutil.ReadGuardedInRoot(r, copyKeyRel, 256)
+	data, err := localtier.ReadInRoot(r, copyKeyRel, 256)
 	if err != nil {
 		return ""
 	}

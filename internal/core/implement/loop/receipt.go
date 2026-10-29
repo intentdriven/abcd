@@ -29,6 +29,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -454,10 +455,13 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 // than quoted raw (iss-2609290300462829).
 func readReceipt(repoRoot string, root *os.Root, rel, laneID string) (LaneReceipt, error) {
 	var rc LaneReceipt
-	data, err := fsutil.ReadGuardedInRoot(root, rel, maxReceiptBytes)
+	data, err := localtier.ReadInRoot(root, rel, maxReceiptBytes)
 	if errors.Is(err, fs.ErrNotExist) {
 		return rc, refuse("receipt", "", laneID, "no receipt at "+rel,
 			"the implementer writes it there when its lane is built; hand it back once it exists")
+	}
+	if rf := tierRefusal("receipt", laneID, err); rf != nil {
+		return rc, rf
 	}
 	if err != nil {
 		return rc, refuse("receipt", "", laneID, fmt.Sprintf("%s cannot be read as a receipt: %v", rel, err),
@@ -569,12 +573,15 @@ func laneFileGap(repoRoot string, dir *os.Root, rel, what string) string {
 	case !fsutil.ValidRelPath(rel) || filepath.IsAbs(rel):
 		return fmt.Sprintf("%s (%s is not a path inside the lane's directory)", what, termsafe.DescribeRefused(rel))
 	}
-	fi, err := dir.Lstat(rel)
+	fi, err := localtier.LstatInRoot(dir, rel)
 	if err == nil && fi.Mode().IsRegular() && fi.Size() > 0 {
 		return ""
 	}
 	named := scanner.RedactRefusal(repoRoot, rel)
+	var tracked *localtier.Refused
 	switch {
+	case errors.As(err, &tracked):
+		return fmt.Sprintf("%s (%s)", what, tracked.Reason())
 	case errors.Is(err, fs.ErrNotExist):
 		return fmt.Sprintf("%s (%s does not exist)", what, named)
 	case err != nil:

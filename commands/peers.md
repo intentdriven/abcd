@@ -75,7 +75,10 @@ payload adds:
 
 - `reservations`: each with its `record`, `holder`, `footprint`,
   `effective_expiry`, `state` and `commit`; `claimed_at` for a readable one;
-  `copy: "this"` when it was made from this checkout; `released_by`
+  `copy: "this"` when it was made from this checkout; `sibling`, for the
+  reader's own, the other worktree of this repository on this computer that
+  made it, by its folder's name with parent folders added only where two
+  would otherwise read alike (never its key); `released_by`
   (`tombstone`, `default-branch` when the record is already resolved,
   won't-fixed, shipped or superseded on origin's default branch, or `tag`
   when a release's tag is on origin) for a released one; and for an `unreadable` one its fixed `unreadable` reason, no
@@ -90,6 +93,30 @@ payload adds:
   live shows none, so the field is then absent; the text form shows the
   stage beside a live one alone.
 - `live_by_holder`: each person's count of live reservations.
+- `lapsed_releases`: each release whose cut stopped renewing its reservation
+  with no tag on origin (an expired `rel-vX.Y.Z` reservation), which holds no
+  merge, with its `release`, `subject`, `holder`, `copy: "this"` when it was
+  made from this checkout, `renewed_at` (its last claim), `lapsed_at` and
+  `text`, the line the text form shows it by: the cut lapsed, no merge is
+  held, and from five minutes after the lapse any copy reserves the release
+  again, to resume the cut or, followed by `--release`, to withdraw it. Tell
+  the user no merge waits on it (iss-2610241104098581).
+- `ceiling`: the reader's own live reservations against this computer's
+  `reservation.max_live`: `holder`, `live`, `limit`, and where they were made
+  from: `this_copy`, `siblings` (each worktree of this repository here by
+  `name`, with as many parent folders as tell it apart where two share a
+  name, and its `live`)
+  and `elsewhere` (every copy not found among those worktrees: another clone
+  on this computer or another, a removed worktree, or another account pushing
+  as the same login). From four fifths of the limit `warn` is true and
+  `warning` says so: every session and account on one login counts toward one
+  total, and another account's own ceiling cannot be read from here, so it may
+  already be held at it. Relay the warning, and before reserving more, ask
+  which holds can be released. `note`, when present, says why the machine's
+  configuration was read past (the default limit then applies) or why the
+  worktrees could not be listed (their holds then count as `elsewhere`).
+  Absent when the reader's login cannot be named without the network, or
+  `reservation.max_live` holds a value a reservation would be refused on.
 - `release_holds`: each release being cut (a live `rel-vX.Y.Z` reservation,
   or an unreadable one within its hold, which holds every other session's
   merge until its tag is on origin; see `/abcd:reserve`), with its `release`,
@@ -134,6 +161,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

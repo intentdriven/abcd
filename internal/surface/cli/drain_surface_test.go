@@ -134,6 +134,11 @@ func TestTheBareDrainOpensALaneAndSaysWhatItDid(t *testing.T) {
 	if strings.Contains(stdout.String(), "in-progress") {
 		t.Errorf("no lane opens before the judgement:\n%s", stdout.String())
 	}
+	// The person is told once, as the drain begins, that approval prompts
+	// are refused while it runs (iss-2610171110154902).
+	if n := strings.Count(stderr.String(), unattendedRefusalNotice); n != 1 {
+		t.Errorf("the drain's first move carries the prompt notice %d times on stderr, want once:\n%s", n, stderr.String())
+	}
 	stdout.Reset()
 	stderr.Reset()
 	if code := Run([]string{"drain", "--json"}, &stdout, &stderr); code != 0 {
@@ -148,6 +153,9 @@ func TestTheBareDrainOpensALaneAndSaysWhatItDid(t *testing.T) {
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &judging); err != nil || judging.Judging.Issue != id {
 		t.Fatalf("--json names the judgement awaited: %v\n%s", err, stdout.String())
+	}
+	if strings.Contains(stdout.String()+stderr.String(), unattendedRefusalNotice) {
+		t.Errorf("a later move of the drain repeats the prompt notice:\n%s", stderr.String())
 	}
 	answer, _ := json.Marshal(map[string]any{"schema_version": 1, "issue": id, "remedy_sha256": judging.Judging.RemedySHA256,
 		"answer": "no", "reason": "an internal ordering fix"})
@@ -761,7 +769,10 @@ func TestDrainSkipHoldsAnIssueBackWithItsReason(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", t.TempDir())
-	held := captureWithRemedy(t, "a nil map is written before it is made", "--category", "bug", "--remedy", "make the map first")
+	// The held issue's category comes first in the drain order, so the move
+	// reaches it before the other's judgement whatever the ids' random tails:
+	// two captures in one second would otherwise order by those alone.
+	held := captureWithRemedy(t, "a nil map is written before it is made", "--category", "tech-debt", "--remedy", "make the map first")
 	other := captureWithRemedy(t, "the page names the flag twice", "--category", "bug", "--remedy", "name it once")
 
 	for _, args := range [][]string{

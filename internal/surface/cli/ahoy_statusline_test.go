@@ -46,7 +46,7 @@ func TestAhoyInstallYesReportsTheSkippedStatusLineOffer(t *testing.T) {
 	settings := harnessSettingsFixture(t, `{"padding": 1}`)
 	before, _ := os.ReadFile(settings)
 
-	out := runCLI(t, "ahoy", "install", "--yes", "--adopt",
+	out := runCLI(t, "ahoy", "install", "--details", "--yes", "--adopt",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 	var res struct {
@@ -63,7 +63,7 @@ func TestAhoyInstallYesReportsTheSkippedStatusLineOffer(t *testing.T) {
 		t.Error("--yes rewrote the harness settings")
 	}
 
-	text := runCLI(t, "ahoy", "install", "--yes")
+	text := runCLI(t, "ahoy", "install", "--details", "--yes")
 	s := string(text)
 	if !strings.Contains(s, "optional, not covered by --yes: ") || !strings.Contains(s, "statusline.offered") {
 		t.Errorf("text render does not name the skipped offer:\n%s", s)
@@ -80,7 +80,7 @@ func TestAhoyInstallPipedAnswersWireTheStatusLine(t *testing.T) {
 	hermeticRepo(t)
 	settings := harnessSettingsFixture(t, `{"statusLine": {"type": "command", "command": "bash /tmp/prev.sh"}}`)
 	answers := strings.Repeat("y\n", 24)
-	out, errOut, err := runCLIPipedStdinSplit(t, answers, "ahoy", "install",
+	out, errOut, err := runCLIPipedStdinSplit(t, answers, "ahoy", "install", "--details",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 	if err != nil {
@@ -133,7 +133,7 @@ func TestAhoyInstallSanitizesRefusalNotes(t *testing.T) {
 		t.Fatal(err)
 	}
 	answers := strings.Repeat("y\n", 24)
-	out, errOut, err := runCLIPipedStdinSplit(t, answers, "ahoy", "install",
+	out, errOut, err := runCLIPipedStdinSplit(t, answers, "ahoy", "install", "--details",
 		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false")
 	if err != nil {

@@ -134,12 +134,19 @@ var setupConfirmIDs = []struct {
 	{"adopt", func(s string) bool { return s == "Adopt this unmanaged repo into abcd?" }},
 	{OracleRoutingMachineGapID, func(s string) bool { return s == machineRoutingQuestion() }},
 	{OracleRoutingRepoGapID, func(s string) bool { return s == repoRoutingQuestion() }},
+	{ShellPathOfferGapID, isShellPathQuestion},
+	{HooksArmGapID, isArmHooksQuestion},
 	{StatusLineOfferGapID, isStatusLineOfferQuestion},
+	{DownloadQuestionID, isDownloadQuestion},
 	{DrainRuleOfferGapID, func(s string) bool { return s == drainRuleQuestion() }},
 	{"history.lineage", func(s string) bool {
 		return strings.HasPrefix(s, "Re-founded from ") && strings.HasSuffix(s, "? Link lineage?")
 	}},
 	{"git_identity.establish", func(s string) bool { return strings.HasPrefix(s, "Commit to this repository as ") }},
+	{UnrecordedGapID, func(s string) bool {
+		return strings.HasPrefix(s, "Record ") && strings.Contains(s, " as who you commit as on this machine? ")
+	}},
+	{LegacyPinGapID, func(s string) bool { return strings.HasPrefix(s, legacyPinQuestionPrefix) }},
 	{"remote.apply", func(s string) bool { return strings.HasPrefix(s, "Change GitHub settings on ") }},
 }
 
@@ -234,10 +241,11 @@ func splitConfirm(text string) ([]question.Block, string) {
 
 // SetupMachineWide reports whether the setup question id changes the machine
 // rather than the repository: the status line, which every repository on the
-// machine shows, and the machine's routing table. Its answer is recorded in
+// machine shows, the machine's routing table, and the PATH line in the
+// person's shell settings. Its answer is recorded in
 // the home's interviews, the rest in the repository's local tier.
 func SetupMachineWide(id string) bool {
-	return strings.HasPrefix(id, elementPromptPrefix) || id == OracleRoutingMachineGapID
+	return strings.HasPrefix(id, elementPromptPrefix) || id == OracleRoutingMachineGapID || id == ShellPathOfferGapID
 }
 
 // SetupFixedValues returns the values an answers file may give the setup
@@ -250,6 +258,8 @@ func SetupMachineWide(id string) bool {
 func SetupFixedValues(id string) (values []string, ok bool) {
 	var q question.Question
 	switch {
+	case id == PlanQuestionID:
+		q = SetupPlanQuestion(0, SetupPlan{})
 	case id == "adopt", strings.HasPrefix(id, approvePrefix), confirmIDKnown(id):
 		q = SetupConfirmQuestion(0, "")
 	case strings.HasPrefix(id, elementPromptPrefix):

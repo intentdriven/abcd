@@ -14,6 +14,10 @@
 // exercised against an httptest server (which binds loopback) by relaxing the
 // predicate in the test alone, while the shipped default — BlockedIP — is never
 // relaxed anywhere. A guard nobody can test end-to-end is a guard nobody trusts.
+//
+// Download (download.go) composes them into the one transport rule a download
+// of release bytes holds to, so abcd's own update path and the tool installer
+// decide which hosts they may reach in one place.
 package urlguard
 
 import (

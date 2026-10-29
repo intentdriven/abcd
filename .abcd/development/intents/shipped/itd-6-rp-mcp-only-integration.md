@@ -147,8 +147,100 @@ carries all of them.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-d270e2e0acfb -->
-Fidelity review OWED (receipt rcp-d270e2e0acfb).
+<!-- abcd-review: INGESTED receipt=rcp-d270e2e0acfb -->
+Fidelity review — receipt rcp-d270e2e0acfb (verifier abcd:intent-auditor claude-opus-5-5).
+
+Provenance: abcd:intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:ac9edc6f4a31d514575d1b4b0d066d26901309910e8b635ba651cdbbca57f36f
+Input attestations: diff:d1255b8c59858e7a795005631f89cb28c1b659b6..141a1b9be0e3887c6d6533eda0d9c328f2497c52, the change PR #976 (feat/repoprompt-reviewer-cloud) brought onto main on 2026-10-15: 35 commits, 67b6e22e0 to 331d18bc0, including the spec close 94128c891; located from git history, since the request names no range@-; repository:2e03c61e454bf09ecda8cee0ae2f377157b522f7 (origin/main when reviewed); the route's code is unchanged since 141a1b9be apart from two assertions in validate_review_test.go@-;
+
+Acceptance rollup: MET 3 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 1
+
+Audit owed (receipt rcp-d270e2e0acfb): ac-1 INCONCLUSIVE. Remedy: re-run the audit. Carried by iss-2610241426406882.
+
+Per-criterion verdicts:
+- ac-1 — INCONCLUSIVE: abcd's side is built: oracle.review is read from either file, implement step hands a ruthless or security review given to the host to DriveReview, the adapter sends it as one MCP Streamable HTTP session, and the return is checked by the same parseVerdict and recorded through the same receipt as a host's. Whether the requests reach RepoPrompt cannot be settled from the inputs. Every test answers from mcptest, a server the test owns, and the brief says no test reaches a real RepoPrompt. The adapter assumes RepoPrompt serves Streamable HTTP at a loopback URL and offers oracle_send taking message, and nothing in the delivery checks either. Ruling H1b (dcn-2609290000000007) says itd-6 is finished only after one run against the real RepoPrompt app, and no such run is recorded. The route is also narrower than the Given: oracle.review = rp alone sends nothing, because the route needs oracle.rp.url in the machine's file (the repository's file is refused) and otherwise falls back as absent.
+  evidence: internal/surface/cli/build.go:1045 — "review, lerr := loop.LoadReviewRoute(roots, agentPrompt)"
+  evidence: internal/surface/cli/build.go:1059 — "res, err = loop.DriveReview(ctx, root, id, res, loop.DefaultStages(), loop.Options{}, review)"
+  evidence: internal/adapter/repoprompt/repoprompt.go:244 — "args := map[string]any{"message": request}"
+  evidence: internal/core/implement/loop/validate.go:946 — "route := runner.RouteRecord{Asked: rr.Name, Ran: rr.Name}"
+  evidence: internal/core/implement/loop/validate.go:569 — "word, err := parseVerdict(string(raw), reviewerVerdicts[v.Role])"
+  evidence: internal/core/implement/loop/validate_review_test.go:80 — "func TestTheReviewsGoToRepoPromptOverMCPAndTheLoopRecordsTheirVerdicts(t *testing.T) {"
+  evidence: internal/adapter/repoprompt/mcptest/mcptest.go:3 — "no test reaches a real RepoPrompt or the network"
+  evidence: .abcd/development/brief/05-internals/02-adapters.md:247-249 — "RepoPrompt's MCP server must therefore answer over HTTP at that address; abcd starts no bridge to a server that speaks only stdio."
+  evidence: .abcd/work/decisions/dcn-2609290000000007-the-product-thinker-answered-twenty-six.md:6 — "itd-6 is finished only after running once against the real RepoPrompt app, a check owed to a person"
+  evidence: internal/core/oracle/review.go:108 — "if f.Layer != layered.Machine {"
+  evidence: internal/core/implement/loop/validate.go:1331 — "return "", &reviewFailure{runner.ReasonAbsent, rr.Absent}"
+- ac-2 — MET: With the route configured and nothing answering (connection refused, a bound run out, no server named, a refused or unparsable answer, a return with no verdict, a step interrupted), DriveReview hands every review with no usable return to fallBack. fallBack records a FallbackReceipt (role, asked rp, reason, abcd's detail, ran host) in the run's state and record, retried while the lock is busy, and the step's next move names it. The host is handed the same brief and return path, and its return is then recorded as any validator's. Loop and front-door tests hold each reason, and status and record count the fallbacks.
+  evidence: internal/core/implement/loop/validate.go:923 — "return fallBack(repoRoot, runID, res, aw, rr, err, o)"
+  evidence: internal/core/implement/loop/validate.go:1003 — "fb := runner.FallbackReceipt{At: o.now(), Role: aw.Role, Asked: rr.Name, Reason: runner.ReasonFailed, Detail: fallbackDetail(cause), Ran: runner.Host}"
+  evidence: internal/core/implement/loop/drive.go:218-220 — "the %s was routed to %s, which was %s (%s); %s runs it"
+  evidence: internal/core/implement/loop/validate_review_test.go:198 — "func TestAReviewTheRouteDoesNotReturnFallsBackToTheHostWithAReceipt(t *testing.T) {"
+  evidence: internal/core/implement/loop/validate_review_test.go:296 — "func TestAnInterruptedStepFallsBackAsInterrupted(t *testing.T) {"
+  evidence: internal/surface/cli/build_review_surface_test.go:115 — "func TestAReviewTheOracleDoesNotReturnFallsBackAndIsCountedAtTheFrontDoor(t *testing.T) {"
+- ac-3 — MET: With oracle.review unset or host, LoadReviewRoute returns nil and DriveReview passes the step's result through untouched, and oracle.rp is not read at all off the rp route. A test holds the step's result and the state byte-identical to the plain host-driven step, with no request rendered. The adapter's files import no process, file, environment or system-call API. No other abcd code references RepoPrompt or writes oracle.review or oracle.rp; the scanner's pre-existing sessionKey pattern only redacts.
+  evidence: internal/core/implement/loop/validate.go:867 — "if rv.Route != oracle.ReviewRP {"
+  evidence: internal/core/implement/loop/validate.go:902 — "if rr == nil || res.Awaiting == nil || !res.handed || res.Route != nil || res.Fallback != nil {"
+  evidence: internal/core/oracle/review.go:86 — "if rv.Route != ReviewRP {"
+  evidence: internal/core/implement/loop/validate_review_test.go:320 — "func TestAnUnconfiguredRouteLeavesTheReviewAndTheStateByteIdentical(t *testing.T) {"
+  evidence: internal/core/oracle/review_test.go:37 — "func TestTheReviewRouteIsTheHostUnlessConfigured(t *testing.T) {"
+  evidence: internal/adapter/repoprompt/nothing_test.go:17 — "func TestTheAdapterStartsNothingAndReadsNothing(t *testing.T) {"
+  evidence: internal/adapter/repoprompt/repoprompt.go:9 — "The adapter connects and nothing else. It never starts RepoPrompt or any"
+- ac-4 — MET: The adapters chapter puts both reviewer routes under one heading, the command-line runner and RepoPrompt over MCP as adjacent bullets, each naming its opt-in (roles.< role>.runner; oracle.review = rp with oracle.rp.url in the machine's file). The build command page puts the RepoPrompt paragraph right after the command-line runner's, naming the same opt-in, and the implement page does the same.
+  evidence: .abcd/development/brief/05-internals/02-adapters.md:189 — "### Reviewer routes — the command-line runner, and RepoPrompt over MCP"
+  evidence: .abcd/development/brief/05-internals/02-adapters.md:197 — "- **The command-line runner** (`internal/core/runner`, itd-2609201916056194)"
+  evidence: .abcd/development/brief/05-internals/02-adapters.md:226-228 — "**RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the review to the RepoPrompt the person runs, which answers with whichever model the person configured in it. The opt-in is `oracle.review = rp` in the"
+  evidence: commands/build.md:401 — "A role can run through a command-line runner instead of an agent you start."
+  evidence: commands/build.md:443-444 — "A build lane's reviews can go to RepoPrompt over MCP instead of a reviewer you start. This is an opt-in: `oracle.review` set to `rp` in the repository's"
+  evidence: commands/implement.md:287 — "With `oracle.review` set to `rp` (the repository's `.abcd/config.json` or"
+
+Gap audit:
+- honoured:
+  - Host-delegated by default, and oracle.review = rp in the repository's or the machine's file opts a lane's reviews in, the repository's file winning (decision 1).
+    evidence: internal/core/oracle/review.go:76 — "v, err := layered.Get(s, ReviewKey, ReviewHost, func(name string) error {"
+    evidence: internal/core/oracle/review_test.go:52 — "func TestOracleReviewIsReadFromTheRepositoryOrTheMachine(t *testing.T) {"
+  - abcd picks no oracle and no model and reads no RepoPrompt preset: the request carries only the tool's message (and new_chat when the tool declares it), and RepoPrompt answers with the model the person configured.
+    evidence: internal/adapter/repoprompt/repoprompt.go:6 — "RepoPrompt answers with whichever model the person configured in it"
+    evidence: internal/adapter/repoprompt/repoprompt.go:244 — "args := map[string]any{"message": request}"
+  - abcd spawns nothing for a review and never starts, installs or configures RepoPrompt: the adapter only connects to the address it is handed, and a test holds its imports to no process, file or environment API.
+    evidence: internal/adapter/repoprompt/nothing_test.go:17 — "func TestTheAdapterStartsNothingAndReadsNothing(t *testing.T) {"
+    evidence: internal/adapter/repoprompt/repoprompt.go:9 — "The adapter connects and nothing else. It never starts RepoPrompt or any"
+  - An unreachable RepoPrompt falls back to the host's own agent, and a receipt says it fell back and why, counted per route and per role (decision 3).
+    evidence: internal/core/implement/loop/validate.go:1003 — "Asked: rr.Name, Reason: runner.ReasonFailed, Detail: fallbackDetail(cause), Ran: runner.Host}"
+    evidence: internal/core/implement/loop/drive.go:218 — "st.Fallbacks = append(st.Fallbacks, fb)"
+    evidence: internal/surface/cli/build_review_surface_test.go:115 — "func TestAReviewTheOracleDoesNotReturnFallsBackAndIsCountedAtTheFrontDoor(t *testing.T) {"
+  - Reviews only, not audits: only the ruthless and security reviewers take the route, and the intent-auditor stays on the host (decision 2).
+    evidence: internal/core/implement/loop/validate.go:906 — "words, ok := reviewerVerdicts[aw.Role]"
+    evidence: internal/core/implement/loop/validate_review_test.go:1027 — "func TestAnAuditorsVerdictIsNeverTheRoutes(t *testing.T) {"
+  - MCP is spoken with the standard library alone, so go.mod carries no MCP dependency; the delivered range leaves go.mod and go.sum unchanged (Status paragraph).
+    evidence: internal/adapter/repoprompt/repoprompt.go:2-3 — "a client of the Model Context Protocol's Streamable HTTP transport, spoken with the standard library alone"
+    evidence: go.mod:5-13 — "require ("
+  - The brief's adapters chapter and the command page show the adapter as one entry beside the command-line runner, with the opt-in named (spec scope 5).
+    evidence: .abcd/development/brief/05-internals/02-adapters.md:189 — "### Reviewer routes — the command-line runner, and RepoPrompt over MCP"
+    evidence: commands/build.md:443-444 — "A build lane's reviews can go to RepoPrompt over MCP instead of a reviewer you start. This is an opt-in"
+- diverged:
+  - The Given 'oracle.review = rp in the repository's or the machine's configuration' sends the reviews to RepoPrompt (re-filed paragraph, ac-1, CHANGELOG.md:109). In the delivery the route also needs oracle.rp.url, which only ~/.abcd.noindex/config.json may declare (a repository declaring oracle.rp is refused). With oracle.review = rp alone, every review falls back as absent. The spec records this as an agent's choice for review, and open issue iss-2610151422150430 notes the changelog line omits the URL.
+    evidence: CHANGELOG.md:109 — "With `oracle.review = rp` in the repository's or the machine's abcd configuration, a `build` lane sends its ruthless and security reviews to RepoPrompt over MCP"
+    evidence: internal/core/oracle/review.go:108 — "if f.Layer != layered.Machine {"
+    evidence: internal/core/implement/loop/validate.go:1331 — "return "", &reviewFailure{runner.ReasonAbsent, rr.Absent}"
+    evidence: .abcd/development/specs/closed/spc-2609211950427074-rp-mcp-only-integration.md:70 — "2026-10-12 (agent's choice, for review): **The server's address is the"
+  - 'It calls RP via MCP' (first scoped as the mcp__RepoPrompt__* tools) is delivered as MCP's Streamable HTTP transport only, to a loopback URL the person names. A RepoPrompt MCP server that speaks only stdio is out of reach, since abcd starts no bridge. The tool shape (oracle_send taking message, optional new_chat) is assumed, not checked against RepoPrompt.
+    evidence: .abcd/development/brief/05-internals/02-adapters.md:247-249 — "RepoPrompt's MCP server must therefore answer over HTTP at that address; abcd starts no bridge to a server that speaks only stdio."
+    evidence: internal/adapter/repoprompt/repoprompt.go:55 — "const DefaultTool = "oracle_send""
+    evidence: internal/adapter/repoprompt/repoprompt.go:329 — "the %s tool takes no message argument, so it cannot take a review request"
+  - The typed RPUnavailable of the press release's quote is delivered as *repoprompt.Error with a Kind (unreachable, timeout, refused, unparsable, failed) that becomes the fallback's reason. No RPUnavailable type exists, as the Status paragraph says.
+    evidence: internal/adapter/repoprompt/repoprompt.go:125 — "KindUnreachable Kind = "unreachable""
+    evidence: internal/adapter/repoprompt/repoprompt.go:134 — "type Error struct {"
+  - The in-scope same-chat re-review semantics (a re-review MUST stay in the same RP chat, with chat_id threaded back) are delivered as a new chat for every review (new_chat: true when the tool declares it), and no chat_id is read. The re-filing's list of drops does not name this rule; the spec records the drop as an agent's choice for review.
+    evidence: internal/adapter/repoprompt/repoprompt.go:246 — "args["new_chat"] = true"
+    evidence: .abcd/development/specs/closed/spc-2609211950427074-rp-mcp-only-integration.md:99-100 — "the intent's same-chat re-review rule belongs to the predecessor lineage the re-filing set aside"
+  - The original scope's three-step cascade (RP MCP, Codex CLI, in-session) and ahoy's one-time setup discovery were dropped by the 2026-09-21 re-filing. The delivery is one route that falls straight back to the host. ahoy's presence check ('open RP and try again' once per session), which the re-filing does not name, is not built: reachability is found per review and recorded as the fallback's reason.
+    evidence: internal/core/implement/loop/validate.go:1003 — "Ran: runner.Host}"
+    evidence: internal/adapter/repoprompt/repoprompt.go:11 — "for a server: the one address it reaches is the URL its caller hands it"
+- missing:
+  - The live run against the real RepoPrompt app. Ruling H1b says itd-6 is finished only after one such run, a check owed to a person. The delivery moved the intent to shipped/ with every test on a test-owned MCP server and no record of the run, and no ledger issue tracks it as owed; the command-line runner's equivalent is tracked as iss-2609301519558538.
+    evidence: .abcd/work/decisions/dcn-2609290000000007-the-product-thinker-answered-twenty-six.md:6 — "itd-6 is finished only after running once against the real RepoPrompt app, a check owed to a person"
+    evidence: .abcd/development/brief/05-internals/02-adapters.md:276-277 — "No test reaches a real RepoPrompt: every one runs against an MCP server the test owns on the loopback address."
+    evidence: internal/adapter/repoprompt/mcptest/mcptest.go:3 — "no test reaches a real RepoPrompt or the network"
 <!-- abcd-review-end receipt=rcp-d270e2e0acfb -->
 
 ### Linkage note (2026-09-30)

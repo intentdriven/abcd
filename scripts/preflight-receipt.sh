@@ -124,12 +124,37 @@ mint() {
 	echo "preflight: push receipt minted for ${now_head:0:12} — a push of that commit passes the pre-push gate."
 }
 
+# own_receipt <dir>: the worktree at dir holds a receipt for $commit that is
+# its own. A local tier git tracks anything in came with a commit, so no
+# receipt in it counts: by any letter case of its name, since a filesystem that
+# folds case opens .abcd/.Work.Local as the tier, by any other spelling that
+# opens the tier's own directory, and with .abcd itself tracked as a link or a
+# submodule. A worktree git cannot list counts for nothing either. Git is asked
+# about dir alone, never through a repository the hook's environment names.
+own_receipt() {
+	local listed pairs pair
+	[ -f "$1/$receipts_rel/$commit" ] || return 1
+	listed=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR \
+		git -C "$1" -c core.quotePath=false ls-files 2>/dev/null) || return 1
+	# Here-strings, not pipes, as in state(): under pipefail a listing longer
+	# than a pipe holds would turn grep's match into "no match".
+	if grep -qiE '^"?\.abcd(/\.work\.local(/|$)|$)' <<<"$listed"; then
+		return 1
+	fi
+	pairs=$(awk -F/ 'NF > 1 && !seen[$1 "/" $2]++ { print $1 "/" $2 }' <<<"$listed") || return 1
+	while IFS= read -r pair; do
+		if [ -n "$pair" ] && [ "$1/${pair%%/*}" -ef "$1/.abcd" ] && [ "$1/$pair" -ef "$1/.abcd/.work.local" ]; then
+			return 1
+		fi
+	done <<<"$pairs"
+}
+
 check() {
 	local commit="$1" wt
 	case "$commit" in
 	*[!0-9a-f]* | "") return 2 ;;
 	esac
-	if [ -f "$receipts_rel/$commit" ]; then
+	if own_receipt .; then
 		return 0
 	fi
 	# A commit's receipt is valid in whichever worktree of this repository it was
@@ -142,7 +167,7 @@ check() {
 		"worktree "*) wt="${wt#worktree }" ;;
 		*) continue ;;
 		esac
-		if [ -f "$wt/$receipts_rel/$commit" ]; then
+		if own_receipt "$wt"; then
 			return 0
 		fi
 	done <<<"$(git worktree list --porcelain 2>/dev/null || true)"

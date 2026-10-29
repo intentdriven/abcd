@@ -1,13 +1,14 @@
 package identity
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -46,15 +47,29 @@ func runGitT(t *testing.T, dir string, args ...string) {
 	}
 }
 
-func writePin(t *testing.T, root, body string) {
+// writePin records body as the person's own machine-wide identity record,
+// under the test's own HOME (gittest.Env pins HOME to a per-test temp dir).
+// The name is kept from when the identity was committed into the repository;
+// root is unused, and nothing is written there: the repository names no one
+// (itd-2610240918547728).
+func writePin(t *testing.T, _ string, body string) {
 	t.Helper()
-	dir := filepath.Join(root, ".abcd", "config")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	writeHomeFile(t, MachineRecordRef().Rel, body)
+}
+
+// writeHomeFile writes body at rel under the test HOME, the folders 0700 and
+// the file 0600 as abcd writes them.
+func writeHomeFile(t *testing.T, rel, body string) string {
+	t.Helper()
+	gittest.Env(t)
+	p := filepath.Join(os.Getenv("HOME"), filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "identity.json"), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	return p
 }
 
 func TestCheck_Match(t *testing.T) {
@@ -81,21 +96,145 @@ func TestCheck_Mismatch(t *testing.T) {
 	if res.Status != StatusMismatch {
 		t.Fatalf("want StatusMismatch, got %v — %s", res.Status, res.Reason)
 	}
-	if res.Effective.Email != "test@example.com" || res.Pin.Email != "alex@example.com" {
+	if res.Effective.Email != "test@example.com" || res.Record.Email != "alex@example.com" {
 		t.Fatalf("result did not carry both identities: %+v", res)
 	}
 }
 
-func TestCheck_NoPin(t *testing.T) {
+func TestCheck_NoRecord(t *testing.T) {
 	isolate(t)
 	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
-	// no identity.json written
+	// no record written
 	res, err := Check(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != StatusNoPin {
-		t.Fatalf("want StatusNoPin, got %v — %s", res.Status, res.Reason)
+	if res.Status != StatusNoRecord {
+		t.Fatalf("want StatusNoRecord, got %v — %s", res.Status, res.Reason)
+	}
+	if res.Blocks() {
+		t.Fatal("a human identity with no record must commit (criterion 5: whatever launched the run supplied it)")
+	}
+}
+
+// TestCheck_IgnoresACommittedPin is criterion 2 at the gate: a repository that
+// still commits another person's identity no longer decides who may commit.
+// The contributor's own human identity, with no record of their own, is not
+// refused and the result names no one but them.
+func TestCheck_IgnoresACommittedPin(t *testing.T) {
+	isolate(t)
+	dir := gitRepo(t, "Second Contributor", "second@example.com")
+	writeRepoPin(t, dir, `{"name":"A Maintainer","email":"maintainer@example.com"}`)
+	res, err := Check(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != StatusNoRecord || res.Blocks() {
+		t.Fatalf("a committed pin decided the gate: %v blocks=%v — %s", res.Status, res.Blocks(), res.Reason)
+	}
+	if strings.Contains(res.Reason+res.CommitterReason, "Maintainer") {
+		t.Fatalf("the result names the maintainer: %+v", res)
+	}
+}
+
+// TestCheck_RepoRecordOutranksTheMachineRecord: a person who commits to one
+// repository under a work identity records it for that repository, keyed on
+// its root commit, and it wins over their machine-wide default there.
+func TestCheck_RepoRecordOutranksTheMachineRecord(t *testing.T) {
+	isolate(t)
+	dir := gitRepo(t, "Alex at Work", "alex@work.example")
+	// isolate blanks GIT_AUTHOR_*, which git reads as an empty ident.
+	t.Setenv("GIT_AUTHOR_NAME", "Alex at Work")
+	t.Setenv("GIT_AUTHOR_EMAIL", "alex@work.example")
+	runGitT(t, dir, "commit", "--allow-empty", "-m", "root", "--no-verify")
+	sha := gittest.RootCommit(t, dir)
+	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	ref, err := repoRecordRef(sha)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeHomeFile(t, ref.Rel, `{"name":"Alex at Work","email":"alex@work.example"}`)
+	res, err := Check(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != StatusOK || res.RecordAt != ref {
+		t.Fatalf("want the repository's own record to decide: %v at %+v — %s", res.Status, res.RecordAt, res.Reason)
+	}
+}
+
+// TestCheck_RefusedRecordFailsClosed: a record that is there and cannot be
+// trusted (writable by another account, a symlink, unparseable) is an error,
+// never a fall-through to "no record".
+func TestCheck_RefusedRecordFailsClosed(t *testing.T) {
+	for name, mutate := range map[string]func(t *testing.T, p string){
+		"group-writable": func(t *testing.T, p string) {
+			if err := os.Chmod(p, 0o620); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"symlink": func(t *testing.T, p string) {
+			target := p + ".real"
+			if err := os.Rename(p, target); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, p); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"malformed": func(t *testing.T, p string) {
+			if err := os.WriteFile(p, []byte("{garbage"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"incomplete": func(t *testing.T, p string) {
+			if err := os.WriteFile(p, []byte(`{"name":"Alex"}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			isolate(t)
+			t.Setenv("HOME", t.TempDir())
+			dir := gitRepo(t, "Alex Reppel", "alex@example.com")
+			p := writeHomeFile(t, MachineRecordRef().Rel, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+			mutate(t, p)
+			if _, err := Check(dir); err == nil || !errors.Is(err, ErrRecordRefused) {
+				t.Fatalf("want ErrRecordRefused, got %v", err)
+			}
+		})
+	}
+}
+
+// TestCheck_RecordBehindASymlinkedHomeIsRefused: the record is refused behind
+// a symlinked user-level home, as the rules loader refuses rules.json there.
+func TestCheck_RecordBehindASymlinkedHomeIsRefused(t *testing.T) {
+	isolate(t)
+	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
+	home := os.Getenv("HOME")
+	real := filepath.Join(t.TempDir(), "real-home")
+	if err := os.MkdirAll(real, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "identity.json"), []byte(`{"name":"Alex Reppel","email":"alex@example.com"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(home, filepath.FromSlash(abcdhome.Rel()))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Check(dir); err == nil || !errors.Is(err, ErrRecordRefused) {
+		t.Fatalf("want a record behind a symlinked home refused, got %v", err)
+	}
+}
+
+func writeRepoPin(t *testing.T, root, body string) {
+	t.Helper()
+	cfg := filepath.Join(root, ".abcd", "config")
+	if err := os.MkdirAll(cfg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg, "identity.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -135,130 +274,119 @@ func TestCheck_AuthorEnvOverride(t *testing.T) {
 	}
 }
 
-func TestLoadPin_Malformed(t *testing.T) {
-	isolate(t)
-	dir := t.TempDir()
-	writePin(t, dir, `{"name": "no closing quote`)
-	if _, _, err := LoadPin(dir); err == nil {
-		t.Fatal("want error on malformed identity.json, got nil")
-	}
+func recordHome(t *testing.T) string {
+	t.Helper()
+	gittest.Env(t)
+	return os.Getenv("HOME")
 }
 
-func TestLoadPin_MissingFields(t *testing.T) {
-	isolate(t)
-	dir := t.TempDir()
-	writePin(t, dir, `{"name":"Alex Reppel"}`) // no email
-	if _, _, err := LoadPin(dir); err == nil {
-		t.Fatal("want error when email is empty, got nil")
-	}
-}
-
-func TestWritePin_RoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	want := Pin{Name: "Alex Reppel", Email: "alex@example.com"}
-	if err := WritePin(dir, want); err != nil {
+func TestWriteRecord_RoundTrip(t *testing.T) {
+	home := recordHome(t)
+	want := Record{Name: "Alex Reppel", Email: "alex@example.com"}
+	if err := WriteRecord(home, MachineRecordRef(), want); err != nil {
 		t.Fatal(err)
 	}
-	got, ok, err := LoadPin(dir)
+	got, ref, ok, err := loadRecord(home, "")
 	if err != nil || !ok {
-		t.Fatalf("LoadPin after WritePin: ok=%v err=%v", ok, err)
+		t.Fatalf("loadRecord after WriteRecord: ok=%v err=%v", ok, err)
 	}
-	if got != want {
-		t.Fatalf("round-trip mismatch: got %+v want %+v", got, want)
+	if got != want || ref != MachineRecordRef() {
+		t.Fatalf("round-trip mismatch: got %+v at %+v, want %+v", got, ref, want)
 	}
-}
-
-// TestWritePin_DoesNotFollowSymlink proves the atomic write does not clobber a
-// symlink target: a plain os.WriteFile at a symlinked identity.json followed the
-// link and wrote through to the victim; the canonical temp+rename replaces the
-// symlink itself, leaving the target untouched.
-func TestWritePin_DoesNotFollowSymlink(t *testing.T) {
-	dir := t.TempDir()
-	victim := filepath.Join(dir, "victim.txt")
-	const sentinel = "do-not-touch"
-	if err := os.WriteFile(victim, []byte(sentinel), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfgDir := filepath.Join(dir, ".abcd", "config")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(victim, filepath.Join(cfgDir, "identity.json")); err != nil {
-		t.Skipf("cannot symlink: %v", err)
-	}
-	if err := WritePin(dir, Pin{Name: "Alex", Email: "alex@example.com"}); err != nil {
-		t.Fatalf("WritePin: %v", err)
-	}
-	got, err := os.ReadFile(victim)
+	st, err := os.Stat(filepath.Join(home, filepath.FromSlash(ref.Rel)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != sentinel {
-		t.Errorf("WritePin followed the symlink and clobbered the target: %q", got)
+	if st.Mode().Perm() != 0o600 {
+		t.Fatalf("the record was written %v, want 0600", st.Mode().Perm())
 	}
 }
 
-func TestWritePin_RequiresBothFields(t *testing.T) {
-	dir := t.TempDir()
-	if err := WritePin(dir, Pin{Name: "Alex"}); err == nil {
+func TestWriteRecord_RepoScope(t *testing.T) {
+	home := recordHome(t)
+	ref, err := repoRecordRef(strings.Repeat("ab", 20))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Record{Name: "Alex at Work", Email: "alex@work.example"}
+	if err := WriteRecord(home, ref, want); err != nil {
+		t.Fatal(err)
+	}
+	got, at, ok, err := loadRecord(home, strings.Repeat("ab", 20))
+	if err != nil || !ok || got != want || at != ref {
+		t.Fatalf("got %+v at %+v ok=%v err=%v", got, at, ok, err)
+	}
+	if _, err := repoRecordRef("../../etc"); err == nil {
+		t.Fatal("a root name that is not an object name must be refused")
+	}
+}
+
+func TestWriteRecord_RequiresBothFields(t *testing.T) {
+	if err := WriteRecord(recordHome(t), MachineRecordRef(), Record{Name: "Alex"}); err == nil {
 		t.Fatal("want error when email is missing")
 	}
 }
 
-// The self-contained pre-commit hook reads the pin with a naive sed, so the
-// stored value must round-trip through it (iss-63). WritePin refuses the
-// characters JSON must always escape (double-quote, backslash, control), which
-// the sed cannot read back, and stores &, <, > literally (no HTML escaping) so
-// a legal git identity like "Marks & Spencer" is not fail-closed.
-func TestWritePin_RejectsUnpinnableChars(t *testing.T) {
-	dir := t.TempDir()
-	for _, p := range []Pin{
+// A record never names a machine: it is the person's own.
+func TestWriteRecord_RefusesAMachineIdentity(t *testing.T) {
+	if err := WriteRecord(recordHome(t), MachineRecordRef(), Record{Name: "Claude", Email: "noreply@anthropic.com"}); err == nil {
+		t.Fatal("want a machine identity refused")
+	}
+}
+
+// The self-contained pre-commit hook reads the record with a naive sed, so
+// the stored value must round-trip through it (iss-63). WriteRecord refuses
+// the characters JSON must always escape (double-quote, backslash, control),
+// which the sed cannot read back, and stores &, <, > literally (no HTML
+// escaping) so a legal git identity like "Marks & Spencer" is not
+// fail-closed.
+func TestWriteRecord_RejectsUnpinnableChars(t *testing.T) {
+	home := recordHome(t)
+	for _, r := range []Record{
 		{Name: `Alex "the dev"`, Email: "alex@example.com"}, // double-quote
 		{Name: `back\slash`, Email: "alex@example.com"},     // backslash
 		{Name: "line\nbreak", Email: "alex@example.com"},    // control char
 		{Name: "Alex", Email: `a"x@example.com`},            // quote in email
 	} {
-		if err := WritePin(dir, p); err == nil {
-			t.Fatalf("want error for unpinnable pin %+v", p)
+		if err := WriteRecord(home, MachineRecordRef(), r); err == nil {
+			t.Fatalf("want error for unpinnable record %+v", r)
 		}
 	}
 }
 
-func TestWritePin_LegalIdentitiesRoundTrip(t *testing.T) {
-	for _, want := range []Pin{
+func TestWriteRecord_LegalIdentitiesRoundTrip(t *testing.T) {
+	for _, want := range []Record{
 		{Name: "Marks & Spencer", Email: "ci@m-and-s.example"}, // & is legal, must not HTML-escape
 		{Name: "O'Brien", Email: "obrien@example.com"},         // apostrophe
 		{Name: "José <team>", Email: "jose@example.com"},       // unicode + < >
 	} {
-		dir := t.TempDir()
-		if err := WritePin(dir, want); err != nil {
+		home := recordHome(t)
+		if err := WriteRecord(home, MachineRecordRef(), want); err != nil {
 			t.Fatalf("legal identity %+v must write: %v", want, err)
 		}
-		got, ok, err := LoadPin(dir)
+		got, _, ok, err := loadRecord(home, "")
 		if err != nil || !ok || got != want {
 			t.Fatalf("round-trip %+v: got %+v ok=%v err=%v", want, got, ok, err)
 		}
-		// With HTML escaping off, the raw pin carries &, <, > literally; the bug
-		// (escaping on) would store the \uXXXX form instead, so the literal char
-		// would be ABSENT from the file — which the hook's sed cannot read back.
-		raw, err := os.ReadFile(filepath.Join(dir, PinRelPath))
+		raw, err := os.ReadFile(filepath.Join(home, filepath.FromSlash(MachineRecordRef().Rel)))
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, r := range []rune{'&', '<', '>'} {
 			if strings.ContainsRune(want.Name, r) && !strings.ContainsRune(string(raw), r) {
-				t.Fatalf("pin did not store %q literally (HTML-escaped?); the hook sed cannot read it back:\n%s", r, raw)
+				t.Fatalf("record did not store %q literally (HTML-escaped?); the hook sed cannot read it back:\n%s", r, raw)
 			}
 		}
 	}
 }
 
-// Blocks reports whether a pre-commit hook should refuse the commit: a mismatch
-// or an unset identity blocks; OK and NoPin (opted-out) do not.
+// Blocks reports whether a pre-commit hook should refuse the commit: a
+// mismatch or an unset identity blocks; OK and NoRecord do not, unless a
+// machine identity is in either role, which blocks whatever the record.
 func TestBlocks(t *testing.T) {
 	cases := map[Status]bool{
 		StatusOK:       false,
-		StatusNoPin:    false,
+		StatusNoRecord: false,
 		StatusMismatch: true,
 		StatusUnset:    true,
 	}
@@ -266,72 +394,9 @@ func TestBlocks(t *testing.T) {
 		if got := (Result{Status: s}).Blocks(); got != want {
 			t.Errorf("Status %v: Blocks()=%v, want %v", s, got, want)
 		}
-	}
-}
-
-// TestLoadPinReadsProductionModeDefault proves the itd-91 attribution seam is
-// EXTENDED rather than duplicated: the repo's default production mode is an
-// optional member of the pin the repo already commits, read by the one reader
-// that already exists (spc-56). A second config file would be a second reader.
-func TestLoadPinReadsProductionModeDefault(t *testing.T) {
-	isolate(t)
-	dir := t.TempDir()
-	writePin(t, dir, `{"name":"A Maintainer","email":"maintainer@example.com","production_mode":"dictated-and-formatted"}`)
-	pin, ok, err := LoadPin(dir)
-	if err != nil || !ok {
-		t.Fatalf("LoadPin: ok=%v err=%v", ok, err)
-	}
-	if pin.ProductionMode != "dictated-and-formatted" {
-		t.Fatalf("pin production_mode = %q, want dictated-and-formatted", pin.ProductionMode)
-	}
-	got, err := DeclaredProductionMode(dir)
-	if err != nil {
-		t.Fatalf("DeclaredProductionMode: %v", err)
-	}
-	if string(got) != "dictated-and-formatted" {
-		t.Fatalf("DeclaredProductionMode = %q, want dictated-and-formatted", got)
-	}
-}
-
-// TestLoadPinRefusesUnknownProductionMode proves the member is validated at the
-// boundary exactly as a malformed pin already is: a value outside the closed set
-// is an error, never a silently-ignored member that would let every record the
-// repo mints carry a mode nothing can read.
-func TestLoadPinRefusesUnknownProductionMode(t *testing.T) {
-	isolate(t)
-	dir := t.TempDir()
-	writePin(t, dir, `{"name":"A Maintainer","email":"maintainer@example.com","production_mode":"typed"}`)
-	if _, _, err := LoadPin(dir); err == nil {
-		t.Fatal("want an error on an out-of-vocabulary production_mode, got nil")
-	}
-	if _, err := DeclaredProductionMode(dir); err == nil {
-		t.Fatal("DeclaredProductionMode: want an error on an out-of-vocabulary pin, got nil")
-	}
-}
-
-// TestLoadPinAbsentMemberDefaultsHandWritten proves the member is optional in
-// both directions: a pin written before it existed loads unchanged, and a repo
-// with no pin at all still has a default. An absent member means hand-written.
-func TestLoadPinAbsentMemberDefaultsHandWritten(t *testing.T) {
-	isolate(t)
-	dir := t.TempDir()
-	writePin(t, dir, `{"name":"A Maintainer","email":"maintainer@example.com"}`)
-	pin, ok, err := LoadPin(dir)
-	if err != nil || !ok {
-		t.Fatalf("LoadPin: ok=%v err=%v", ok, err)
-	}
-	if pin.ProductionMode != "" {
-		t.Fatalf("pin production_mode = %q, want the member absent", pin.ProductionMode)
-	}
-	got, err := DeclaredProductionMode(dir)
-	if err != nil || got != provenance.DefaultMode {
-		t.Fatalf("DeclaredProductionMode with an absent member = %q, %v; want %q", got, err, provenance.DefaultMode)
-	}
-	// A repo that has not adopted the identity gate at all still has a default.
-	unpinned := t.TempDir()
-	got, err = DeclaredProductionMode(unpinned)
-	if err != nil || got != provenance.DefaultMode {
-		t.Fatalf("DeclaredProductionMode with no pin = %q, %v; want %q", got, err, provenance.DefaultMode)
+		if !(Result{Status: s, AuthorIsTool: true}).Blocks() || !(Result{Status: s, CommitterIsTool: true}).Blocks() {
+			t.Errorf("Status %v: a machine identity must block", s)
+		}
 	}
 }
 

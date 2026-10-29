@@ -432,6 +432,7 @@ func TestAVersion9StateCarryingAKeptAwaitIsRefused(t *testing.T) {
 			t.Fatal(err)
 		}
 		doc["schema_version"] = version
+		unreviewOlder(doc)
 		edit(doc["lanes"].([]any)[0].(map[string]any))
 		out, _ := json.MarshalIndent(doc, "", "  ")
 		if err := os.WriteFile(path, out, 0o600); err != nil {

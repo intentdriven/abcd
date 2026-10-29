@@ -148,7 +148,14 @@ func (p *drawnPrompter) AtTerminal() bool { return true }
 // it with exit 1. The words name no verb: ahoy remote apply and site setup
 // ask through this door too.
 func (p *drawnPrompter) put(q question.Question) ask.Answer {
-	got, err := drawnPut(p.term, question.Ask{Questions: []question.Question{q}})
+	// Setup asks each question on its one line first; ? shows the whole
+	// question and asks it again (itd-2610240823055889, criterion 6).
+	brief := p.term
+	brief.Explain = true
+	got, err := drawnPut(brief, question.Ask{Questions: []question.Question{ahoy.BriefQuestion(q)}})
+	if errors.Is(err, ask.ErrExplain) {
+		got, err = drawnPut(p.term, question.Ask{Questions: []question.Question{q}})
+	}
 	switch {
 	case errors.Is(err, ask.ErrInterrupted):
 		panic(&setupStop{code: ask.ExitInterrupted, msg: "interrupted at " + q.Chip +
@@ -193,6 +200,48 @@ func (p *drawnPrompter) Confirm(text string) bool {
 	a := p.put(q)
 	p.record(q, a.Value, "", interview.Terminal)
 	return a.Value == "yes"
+}
+
+// Plan draws the plan screen, which makes the drawn door an
+// ahoy.PlanPrompter: the plan, its one line and its three answers, recorded
+// under ahoy.PlanQuestionID; deciding later cancels.
+func (p *drawnPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
+	p.n++
+	q := ahoy.SetupPlanQuestion(p.n, plan)
+	a := p.put(q)
+	p.record(q, a.Value, "", interview.Terminal)
+	c, ok := ahoy.PlanChoiceOf(a.Value)
+	if !ok || a.Later {
+		c = ahoy.PlanCancel
+	}
+	return c, true
+}
+
+// RecordDefaultConfirm records the plan's yes to an offer it did not put,
+// which makes the drawn door an ahoy.DefaultRecorder: the question numbered
+// and recorded as if asked, so a replay of the record answers it the same.
+func (p *drawnPrompter) RecordDefaultConfirm(text string, yes bool) {
+	q := p.confirm(text)
+	v := "no"
+	if yes {
+		v = "yes"
+	}
+	p.record(q, v, "", interview.Terminal)
+}
+
+// RecordDefaultPrompt records the plan's default for a value question it did
+// not put.
+func (p *drawnPrompter) RecordDefaultPrompt(key string, choices []string, def, value string) {
+	q := p.value(key, choices, def)
+	p.record(q, value, "", interview.Terminal)
+}
+
+// RecordDefaultHelped records the plan's default for a helped value question
+// it did not put.
+func (p *drawnPrompter) RecordDefaultHelped(h ahoy.PromptHelp, choices []string, def, value string) {
+	p.n++
+	q := ahoy.SetupHelpedQuestion(p.n, h, choices, def)
+	p.record(q, value, "", interview.Terminal)
 }
 
 // confirmTool draws the tool-install question. It is not part of the record:
@@ -249,8 +298,8 @@ func (p *answersPrompter) answer(q question.Question, flag string) (interview.Fi
 			return e, o
 		}
 	}
-	panic(&setupStop{code: 2, msg: fmt.Sprintf("abcd ahoy install: the answers file answers %s (%s) with %q, which it does not offer (%s); %s",
-		q.Chip, q.ID, termsafe.Sanitize(e.Value), strings.Join(values, "|"), writtenBefore(q.ID))})
+	panic(&setupStop{code: 2, msg: fmt.Sprintf("abcd ahoy install: the answers file answers %s (%s) with a value it does not offer (the value is not repeated here); it offers %s; %s",
+		q.Chip, q.ID, strings.Join(values, "|"), writtenBefore(q.ID))})
 }
 
 // writtenBefore says what a run the answers file stopped at the question id
@@ -277,15 +326,27 @@ func writtenBefore(id string) string {
 func settleSetupAnswers(cwd string, opts ahoy.InstallOptions, file interview.Answers) error {
 	for _, e := range file.Answers {
 		id := strings.TrimSpace(e.ID)
+		if why := ahoy.LegacyApprovalRefusal(id); why != "" {
+			return &exitError{Code: 2, Msg: "abcd ahoy install: " + termsafe.Sanitize(why) + "; nothing was written, and no answers record was written"}
+		}
 		values, fixed := ahoy.SetupFixedValues(id)
 		if fixed && !slices.Contains(values, strings.TrimSpace(e.Value)) {
-			return &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: the answers file answers %s with %q, which it does not offer (%s); "+
-				"nothing was written, and no answers record was written", termsafe.Sanitize(id), termsafe.Sanitize(e.Value), strings.Join(values, "|"))}
+			return &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: the answers file answers %s with a value it does not offer (the value is not repeated here); it offers %s; "+
+				"nothing was written, and no answers record was written", termsafe.Sanitize(id), strings.Join(values, "|"))}
 		}
 	}
 	var missing string
 	var missingChoices []string
+	// The plan approves the adoption and every kind of change at once.
+	planned := false
+	if e, ok := file.Find(ahoy.PlanQuestionID); ok {
+		c, _ := ahoy.PlanChoiceOf(e.Value)
+		planned = c == ahoy.PlanProceed || c == ahoy.PlanCustomise
+	}
 	err := ahoy.WalkConfigValueQuestions(cwd, opts, func(id string) bool {
+		if id == "adopt" || strings.HasPrefix(id, "approve.") {
+			return planned
+		}
 		e, ok := file.Find(id)
 		return ok && strings.TrimSpace(e.Value) == "yes"
 	}, func(key string, choices []string, def string) string {
@@ -350,11 +411,26 @@ func (p *answersPrompter) Confirm(text string) bool {
 	case q.ID == "adopt":
 		flag = "pass --adopt or --refuse-adopt"
 	case strings.HasPrefix(q.ID, "approve."):
-		flag = "pass --yes to approve every kind of change"
+		flag = "answer " + ahoy.PlanQuestionID + " in the answers file, or pass --yes to approve every kind of change"
 	}
 	e, o := p.answer(q, flag)
 	p.record(q, o.Value, e.Note, p.place(e))
 	return o.Value == "yes"
+}
+
+// Plan answers the plan screen from the file, which makes the answers door an
+// ahoy.PlanPrompter: approve.plan is the one approval a file gives, and a
+// file that does not answer it stops the run before anything is written.
+func (p *answersPrompter) Plan(plan ahoy.SetupPlan) (ahoy.PlanChoice, bool) {
+	p.n++
+	q := ahoy.SetupPlanQuestion(p.n, plan)
+	e, o := p.answer(q, "no flag answers it (--yes approves every kind of change without the plan)")
+	p.record(q, o.Value, e.Note, p.place(e))
+	c, ok := ahoy.PlanChoiceOf(o.Value)
+	if !ok {
+		c = ahoy.PlanCancel
+	}
+	return c, true
 }
 
 // readSetupAnswers reads --answers for the setup interview: strict JSON, one
@@ -362,7 +438,7 @@ func (p *answersPrompter) Confirm(text string) bool {
 func readSetupAnswers(path string) (interview.Answers, error) {
 	data, err := fsutil.ReadGuarded(path, interview.MaxAnswersBytes)
 	if err != nil {
-		return interview.Answers{}, &exitError{Code: 2, Msg: "abcd ahoy install: reading the answers file: " + scrubPaths(err) + " (nothing written)"}
+		return interview.Answers{}, &exitError{Code: 2, Msg: "abcd ahoy install: reading the answers file (its path is not repeated here): " + pathErrorCause(err).Error() + " (nothing written)"}
 	}
 	a, err := interview.ParseAnswers(data, setupInterviewName)
 	if err != nil {

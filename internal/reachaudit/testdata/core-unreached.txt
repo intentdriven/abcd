@@ -28,14 +28,12 @@ internal/core/guard.Load
 internal/core/guard.Merge
 internal/core/guard.Validate
 internal/core/history.DefaultConfig
-internal/core/identity.LoadPin
 internal/core/implement.LoadResultFromEvent
 internal/core/implement.ReadingCorpus
 internal/core/implement.Roles
 internal/core/implement.TouchesReadingCorpus
 internal/core/implement/loop.Check
 internal/core/implement/loop.ValidLaneID
-internal/core/implement/loop.ValidRunID
 internal/core/intent.CreateFromText
 internal/core/intent.DuplicateConditionIDs
 internal/core/intent.IsClaimPrompt
@@ -91,7 +89,6 @@ internal/core/memory.SourceHashes
 internal/core/memory.SourcesIndexPath
 internal/core/memory.WithStoreLock
 internal/core/memory.WritePages
-internal/core/oracle.Ceiling
 internal/core/oracle.Denied
 internal/core/oracle.ParseTier
 internal/core/positioning.DefaultConfig
@@ -116,12 +113,10 @@ internal/core/site.LinkDefinitions
 internal/core/site.LoadAuthorship
 internal/core/site.LoadBaseline
 internal/core/site.LoadBibliography
-internal/core/site.LoadManifest
 internal/core/site.LoadPrinciples
 internal/core/site.LoadRepoMeta
 internal/core/site.LoadUI
 internal/core/site.PrinciplesDir
-internal/core/site.Providers
 internal/core/site.RecordRoute
 internal/core/spec.Validate
 internal/core/spec.WithStoreLock

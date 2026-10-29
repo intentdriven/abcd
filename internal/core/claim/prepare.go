@@ -25,6 +25,9 @@ type Options struct {
 	Version string
 	// Embargo is the embargo check an announcement is held to (C5); nil
 	// refuses every announcement, since an unchecked one is never let through.
+	// A reservation, renewal or take-over consults it as well, and with nil
+	// the check the front door registered (RegisterEmbargoCheck); with
+	// neither it is refused.
 	Embargo EmbargoCheck
 	// ForgeUser answers whose GitHub account the forge token gh resolves from
 	// the session's environment belongs to (login and numeric id): the user endpoint, asked only by an
@@ -228,7 +231,7 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 		return nil, refuse("a release reservation holds every merge and takes no footprint; %s", nothingPushed)
 	}
 	if !release && !req.Release && !req.Renew && len(req.Footprint) == 0 {
-		return nil, refuse("a reservation names the files the work will change: pass --footprint <path> once per path; %s", nothingPushed)
+		return nil, refuse("a reservation names the files the work will change: pass --footprint <path> once per path, a renewal of one you hold included; %s", nothingPushed)
 	}
 	for _, p := range req.Footprint {
 		if !validFootprint(p) {

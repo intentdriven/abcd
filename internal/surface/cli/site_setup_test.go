@@ -90,7 +90,7 @@ func TestSiteSetupRefusesAnUnmanagedFolder(t *testing.T) {
 // TestSiteSetupNeverInstallsGhOnAScriptedYes is the end-to-end no at site
 // setup (the DQ3 ruling): with gh missing from a repository whose origin is on
 // the forge, a piped y and --yes each reach the gh offer through the CLI and
-// decline it, so the install step is never attempted (brew's absence would
+// decline it, so the install is never attempted (the test binary's lack of a network would
 // otherwise be the reason), no question is put to the pipe, the notes carry
 // why and the command to run by hand, and the forge stage is not reached.
 func TestSiteSetupNeverInstallsGhOnAScriptedYes(t *testing.T) {
@@ -125,7 +125,7 @@ func TestSiteSetupNeverInstallsGhOnAScriptedYes(t *testing.T) {
 				t.Fatalf("not JSON (err %v): %v\n%s\n%s", err, jerr, out, errOut)
 			}
 			notes := strings.Join(res.Notes, "\n")
-			if !strings.Contains(notes, tc.why) || !strings.Contains(notes, "brew install gh") {
+			if !strings.Contains(notes, tc.why) || !strings.Contains(notes, "download gh 2.103.2") {
 				t.Errorf("the notes lack %q or the command to run:\n%s", tc.why, notes)
 			}
 			if strings.Contains(notes, "is not on PATH, so the step cannot run") {
@@ -311,5 +311,77 @@ func TestSiteVerbsSayWhichLabelsTheyAdded(t *testing.T) {
 	}
 	if !strings.HasPrefix(errOut, "abcd site build: "+want) {
 		t.Fatalf("a failed build names the label it added before the error: stderr = %q, err = %v", errOut, err)
+	}
+}
+
+// TestSiteSetupTakesTheGitHubPagesProvider: --provider reaches the verb. With
+// no forge to say whether the repository is public, the github-pages provider
+// refuses before it asks or writes anything, since it publishes public
+// repositories only (itd-2610091010348892).
+func TestSiteSetupTakesTheGitHubPagesProvider(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := gittest.NewRepo(t)
+	r.Write("AGENTS.md", "# Example\n\n<!-- BEGIN ABCD -->\nmanaged\n<!-- END ABCD -->\n")
+	r.Write(".abcd/positioning.json", `{"schema_version": 1, "block": {"file": ".abcd/development/IDENTITY.md", "heading": "Identity (canonical)"}, "severity": "warn", "surfaces": []}`+"\n")
+	r.Write(".abcd/development/IDENTITY.md", "# Identity\n\n## Identity (canonical)\n\n- **Title:** Example\n- **Tagline:** An example.\n")
+	r.Write("docs/README.md", "# Example\n\nThe example's documentation.\n")
+	r.Commit("the example")
+	t.Chdir(r.Root())
+
+	out, err := runCLIErr(t, "site", "setup", "--provider", "github-pages", "--yes")
+	if code := exitCodeOf(err); code != 2 || !strings.Contains(err.Error(), "github-pages publishes public repositories only") {
+		t.Fatalf("exit %d, %v:\n%s", code, err, out)
+	}
+	if _, serr := os.Stat(filepath.Join(r.Root(), ".abcd", "site.json")); !os.IsNotExist(serr) {
+		t.Fatal("a refused run wrote the composition")
+	}
+	if out, err = runCLIErr(t, "site", "setup", "--provider", "no-such-host"); exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "not a provider abcd ships") {
+		t.Fatalf("an unknown provider: %v\n%s", err, out)
+	}
+}
+
+// TestSiteSetupTextSaysWhyAWorkflowWasKept: setup keeps a switched-off site's
+// workflow when it was edited by hand or its removal was declined, and the text
+// output says which. A seed file the repository already had is kept for the
+// one reason every seed is, which the output does not repeat.
+func TestSiteSetupTextSaysWhyAWorkflowWasKept(t *testing.T) {
+	for _, why := range []string{
+		"differs from the workflow setup writes, so it was edited by hand and setup leaves it; remove it yourself if it is no longer wanted",
+		"its removal was declined",
+		"not a regular file, so setup leaves it",
+	} {
+		res := site.SetupResult{
+			Status: site.StatusNoChange,
+			Files: []scaffold.FileOutcome{
+				{Path: "site-src/site.css", Status: scaffold.StatusKept, Detail: scaffold.SeedKeptDetail},
+				{Path: ".github/workflows/site.yml", Status: scaffold.StatusKept, Detail: why},
+			},
+			Host: site.HostOutcome{Provider: "github-pages", Name: "example-site", Status: site.HostNotReached},
+		}
+		var buf bytes.Buffer
+		renderSiteSetup(&buf, res)
+		if !strings.Contains(buf.String(), ".github/workflows/site.yml ("+why+")") {
+			t.Errorf("the kept workflow's reason %q is not printed:\n%s", why, buf.String())
+		}
+		if strings.Contains(buf.String(), scaffold.SeedKeptDetail) {
+			t.Errorf("a kept seed file repeats the reason every seed is kept:\n%s", buf.String())
+		}
+	}
+}
+
+// TestSiteSetupTakesReplaceExisting: --yes answers the forge and host changes
+// but never the takeover of a live site; --replace-existing is the one way to
+// answer that in advance.
+func TestSiteSetupTakesReplaceExisting(t *testing.T) {
+	cmd := newSiteSetupCommand(new(bool))
+	f := cmd.Flags().Lookup("replace-existing")
+	if f == nil || f.Value.Type() != "bool" {
+		t.Fatal("site setup has no --replace-existing switch")
+	}
+	if !strings.Contains(f.Usage, "already") {
+		t.Errorf("--replace-existing usage does not say it publishes over a site already there: %q", f.Usage)
+	}
+	if yes := cmd.Flags().Lookup("yes").Usage; !strings.Contains(yes, "--replace-existing") {
+		t.Errorf("--yes usage does not say it leaves the takeover to --replace-existing: %q", yes)
 	}
 }

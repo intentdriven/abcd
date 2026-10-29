@@ -92,23 +92,6 @@ var subagentResolveWaits = []time.Duration{100 * time.Millisecond, 400 * time.Mi
 // transcript is marked as missed rather than dropped unseen.
 var subagentStageRetries = 3
 
-// sessionEndResolveWaits are retryDetect's pauses for the session-end hook,
-// which the host gives 1.5 seconds in all unless the hook asks for more
-// (SessionEnd's default budget, per the host's hooks reference): two short
-// pauses cover a git that failed once. Detection itself takes most of a
-// second on a loaded machine, which is when git fails, so the pauses are
-// bounded by sessionEndRetryBudget from the hook's start rather than counted:
-// a retry whose pause and detection, costed at the first detection's time,
-// cannot end before it is not begun, leaving the stage its time. Its stage is not retried for the same reason; a session's own lock is
-// contended only by that session re-firing.
-var sessionEndResolveWaits = []time.Duration{100 * time.Millisecond, 300 * time.Millisecond}
-
-// sessionEndRetryBudget is how long after the session-end hook starts a
-// detection retry, its pause and its detection both (costed at what the first
-// detection took), must have ended, leaving the rest of the host's 1.5
-// seconds to the stage.
-var sessionEndRetryBudget = 1200 * time.Millisecond
-
 // newSubagentStopCommand builds `abcd hook subagent-stop`.
 func newSubagentStopCommand() *cobra.Command {
 	return &cobra.Command{
@@ -319,39 +302,6 @@ func stageWithRetry(w io.Writer, retries int, repoRoot, rootSHA string, meta his
 		res, err = history.Stage(repoRoot, rootSHA, meta, raw)
 	}
 	return res, err
-}
-
-// retryDetect is the session-end hook's retrySubagentStore: when git gave no
-// root commit for a repository-shaped cwd, detection is asked again after
-// each of waits whose pause and detection (costed at cost, the first
-// detection's time) end before deadline, and a try that turns definite (a root, or git answering
-// that there is none) ends the retries. Each retry is said on stderr
-// (iss-2610051434156079).
-func retryDetect(w io.Writer, waits []time.Duration, deadline time.Time, cost time.Duration, cwd string, first ahoy.DetectionResult) (ahoy.DetectionResult, error) {
-	det := first
-	if errors.Is(det.RepoIdentity.RootErr(), gitutil.ErrLazyFetchFloor) {
-		return det, nil
-	}
-	for i, wait := range waits {
-		if time.Now().Add(wait + cost).After(deadline) {
-			fmt.Fprintf(w, "abcd history: git gave no root commit for the cwd, and no time is left to ask again\n")
-			return det, nil
-		}
-		time.Sleep(wait)
-		next, err := ahoy.Detect(cwd)
-		if err != nil {
-			return next, err
-		}
-		det = next
-		if det.RootSHA != "" {
-			fmt.Fprintf(w, "abcd history: the repository resolved on try %d, after git first gave no root commit for the cwd\n", i+2)
-			return det, nil
-		}
-		if det.RepoIdentity.RootErr() == nil {
-			return det, nil
-		}
-	}
-	return det, nil
 }
 
 // subagentStageMeta assembles the lineage for one sub-agent stage, running the

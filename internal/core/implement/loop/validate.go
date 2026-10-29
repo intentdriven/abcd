@@ -76,6 +76,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -161,6 +162,9 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 			lane.Syncs = syncs
 		}
 	}
+	// The round's record gains each role's route as it is handed out, so the
+	// lane's rounds are copied before any is written.
+	lane.Validation = slices.Clone(lane.Validation)
 	cur := &lane.Validation[n-1]
 	if cur.HeadSHA != lane.HeadSHA {
 		return Outcome{}, refuse(string(StageValidate), "", lane.ID,
@@ -172,11 +176,15 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 		if v.Verdict != "" || lane.awaited(v.Return) {
 			continue
 		}
-		if err := writeValidatorBrief(c, *lane, *cur, v); err != nil {
+		route, moved, err := routeRound(c, *lane, cur, v.Role, failedBefore(*lane, cur.Round))
+		if err != nil {
+			return Outcome{}, err
+		}
+		if err := writeValidatorBrief(c, *lane, *cur, v, route); err != nil {
 			return Outcome{}, err
 		}
 		return Outcome{Await: &Await{Role: v.Role, Brief: v.Brief, Receipt: v.Return},
-			Note: fmt.Sprintf("round %d: %s's head %s handed to a fresh %s; awaiting its return at %s", cur.Round, lane.ID, shortSHA(cur.HeadSHA), v.Role, v.Return)}, nil
+			Note: fmt.Sprintf("round %d: %s's head %s handed to a fresh %s; awaiting its return at %s%s", cur.Round, lane.ID, shortSHA(cur.HeadSHA), v.Role, v.Return, moved)}, nil
 	}
 	for _, v := range cur.Validators {
 		if v.Verdict == "" {
@@ -202,12 +210,16 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 			}
 			return Outcome{HandBack: &hb}, nil
 		}
-		brief, receipt, err := writeFixBrief(c, *lane, *cur, failing)
+		route, moved, err := routeRound(c, *lane, cur, RoleImplementer, cur)
+		if err != nil {
+			return Outcome{}, err
+		}
+		brief, receipt, err := writeFixBrief(c, *lane, *cur, failing, route)
 		if err != nil {
 			return Outcome{}, err
 		}
 		return Outcome{Await: &Await{Role: RoleImplementer, Brief: brief, Receipt: receipt},
-			Note: fmt.Sprintf("round %d did not pass (%s); its findings go to a fresh implementer, who applies each or rejects it in writing", cur.Round, verdictsLine(*cur))}, nil
+			Note: fmt.Sprintf("round %d did not pass (%s); its findings go to a fresh implementer, who applies each or rejects it in writing%s", cur.Round, verdictsLine(*cur), moved)}, nil
 	}
 	if err := reportsCarryNoVerdict(c, *lane); err != nil {
 		return Outcome{}, err
@@ -304,7 +316,7 @@ func abs(repoRoot, rel string) string { return filepath.Join(repoRoot, filepath.
 
 // writeValidatorBrief renders the brief of one validator of a round and, for
 // the intent-auditor, the fidelity request it reads.
-func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRun) error {
+func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRun, route *oracle.Route) error {
 	var b bytes.Buffer
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	st := c.State
@@ -328,6 +340,7 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		}
 	}
 	p("\nRead only; change nothing in the worktree or on the branch.\n\n")
+	p("%s", routingSection(route))
 	if v.Role == RoleAuditor {
 		a, delivered, err := composeAudit(c, lane)
 		if err != nil {
@@ -460,7 +473,7 @@ func ranInRun(st State, n int) bool {
 
 // writeFixBrief renders the brief of the fresh implementer a round's findings
 // go to, and returns it and the receipt it awaits.
-func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorRun) (string, string, error) {
+func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorRun, route *oracle.Route) (string, string, error) {
 	dir, err := roundDir(c.State.RunID, lane.ID, r.Round, FixDirName)
 	if err != nil {
 		return "", "", err
@@ -494,6 +507,7 @@ func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorR
 	p("`%s`, or reject it in writing in your report, naming the finding and the reason. The next\n", lane.Worktree)
 	p("round hands the lane's head to every validator again, fresh; they read your report.\n\n")
 	p("Your brief as the lane's implementer, with the record it was rendered from: `%s`\n\n", abs(c.RepoRoot, lane.Brief))
+	p("%s", routingSection(route))
 	p("## What you hand back\n\n")
 	p("- your report, at `%s` (in the receipt: `%s/%s`)\n", abs(c.RepoRoot, dir+"/"+ReportFileName), inLane, ReportFileName)
 	p("- the definition of done's whole output, at `%s` (in the receipt: `%s/%s`)\n", abs(c.RepoRoot, dir+"/"+DoDFileName), inLane, DoDFileName)
@@ -574,10 +588,9 @@ func verifyValidation(c Context, lane *Lane, receiptRel string) error {
 		v.Verdict, v.Pass = word.word, word.pass
 		// The route's answer, as its step placed and recorded it, is the
 		// route's review: judged on the bytes this verifier read, once.
+		// Only a reviewer's verdict parses, so only a reviewer reaches here.
 		if a := c.Await.Answered; a != nil && a.Route == oracle.ReviewRP && a.SHA256 == answerDigest(raw) {
-			if _, reviewer := reviewerVerdicts[v.Role]; reviewer {
-				v.Route = &runner.RouteRecord{Asked: a.Route, Ran: a.Route}
-			}
+			v.Route = &runner.RouteRecord{Asked: a.Route, Ran: a.Route}
 		}
 		return nil
 	}
@@ -617,9 +630,12 @@ func readReturn(repoRoot, rel, laneID string) ([]byte, error) {
 		return nil, fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
-	data, err := fsutil.ReadGuardedInRoot(root, rel, maxReturnBytes)
+	data, err := localtier.ReadInRoot(root, rel, maxReturnBytes)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, refuse("receipt", "", laneID, "no return at "+rel, "the validator writes it there; hand it back once it exists")
+	}
+	if rf := tierRefusal("receipt", laneID, err); rf != nil {
+		return nil, rf
 	}
 	if err != nil {
 		return nil, refuse("receipt", "", laneID, fmt.Sprintf("%s cannot be read as a return: %v", rel, err),
@@ -723,7 +739,10 @@ func reportsCarryNoVerdict(c Context, lane Lane) error {
 			continue
 		}
 		report := laneDir + "/" + rc.Report
-		data, err := fsutil.ReadGuardedInRoot(root, report, maxReportBytes)
+		data, err := localtier.ReadInRoot(root, report, maxReportBytes)
+		if rf := tierRefusal(string(StageValidate), lane.ID, err); rf != nil {
+			return rf
+		}
 		if err != nil {
 			return refuse(string(StageValidate), "", lane.ID, fmt.Sprintf("%s, the report %s names, cannot be read: %v", report, rel, errCause(err)),
 				"restore the report the verified receipt named")
@@ -1139,7 +1158,7 @@ func removePlaced(repoRoot, runID, rel string) (bool, error) {
 		return false, fmt.Errorf("the route's return still stands at %s: opening the checkout: %w", rel, err)
 	}
 	defer root.Close()
-	b, err := fsutil.ReadGuardedInRoot(root, rel, maxReturnBytes)
+	b, err := localtier.ReadInRoot(root, rel, maxReturnBytes)
 	switch {
 	case errors.Is(err, fs.ErrNotExist), errors.Is(err, fsutil.ErrNotRegular), errors.Is(err, fsutil.ErrTooBig):
 		// Nothing there, or nothing the route placed: an answer is a regular
@@ -1390,7 +1409,7 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 		return "", fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
-	brief, err := fsutil.ReadGuardedInRoot(root, lane.Brief, maxRecordBytes)
+	brief, err := localtier.ReadInRoot(root, lane.Brief, maxRecordBytes)
 	if err != nil {
 		return "", fmt.Errorf("the lane's brief %s: %w", lane.Brief, errCause(err))
 	}
@@ -1464,7 +1483,7 @@ func reportOf(repoRoot string, root *os.Root, runID, laneID, receiptRel string) 
 	if err != nil {
 		return "", err
 	}
-	data, err := fsutil.ReadGuardedInRoot(root, dir+"/"+rc.Report, maxReportBytes)
+	data, err := localtier.ReadInRoot(root, dir+"/"+rc.Report, maxReportBytes)
 	if err != nil {
 		return "", fmt.Errorf("the report %s names: %w", receiptRel, errCause(err))
 	}

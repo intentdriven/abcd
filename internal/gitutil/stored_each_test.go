@@ -46,13 +46,20 @@ func TestTheStoredLineReadEndsWithItsContext(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v; want the deadline", err)
 	}
+	// The first read's git may or may not have started before its deadline
+	// on a loaded machine, so what is held is that the second, whose context
+	// has already ended, starts none.
+	countRuns := func() int {
+		data, _ := os.ReadFile(runs)
+		return strings.Count(string(data), "run\n")
+	}
+	before := countRuns()
 	done, cancelDone := context.WithCancel(context.Background())
 	cancelDone()
 	if err := gitutil.EachAsStoredContext(done, t.TempDir(), 64, func(string) {}, "for-each-ref"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v; want the ended context", err)
 	}
-	data, _ := os.ReadFile(runs)
-	if got := strings.Count(string(data), "run\n"); got != 1 {
-		t.Fatalf("git ran %d times; want once, for the first read only", got)
+	if got := countRuns(); got != before || got > 1 {
+		t.Fatalf("git ran %d times (%d before the ended read); want no run for a read whose context had ended, and at most one for the first", got, before)
 	}
 }

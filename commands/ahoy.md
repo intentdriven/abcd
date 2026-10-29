@@ -65,7 +65,11 @@ Then summarise the JSON for the user:
   checkout) or pinned version, and whether it is up to date, stale, or of an
   undeterminable vintage relative to the on-disk reference. Report them so a
   binary running behind its own source is never silent. The comparison is
-  disk-only — no network.
+  disk-only — no network. The `staleness` line names the reference it was
+  compared against (the checkout tip or the plugin manifest pin), and a fresh
+  pinned install's line names `abcd update --check` as the way to compare with
+  the newest release. Relay it whole: "up to date" on its own reads as current
+  to someone several releases behind their pin.
 - `superseded_root` — present only when the binary that answered is served from a
   plugin root other than the one this session resolves. A plugin root is named
   for the commit it was installed from, so a binary path pinned into a page
@@ -91,10 +95,14 @@ Then summarise the JSON for the user:
 - `gaps` — how many are outstanding, and for each actionable one its `title`,
   `category`, and `fix_hint`; call out which are `required`. A `dependency` gap
   carries `tool`, the tool registry's explanation: relay `what`, the
-  `requirement` for `capability_name`, `without_it`, `does`, the exact `step`
-  and `effects` (what the install does on the machine and over the network,
-  Homebrew's own analytics included) rather than a bare command, so the
-  person can judge the install.
+  `requirement` for `capability_name`, `without_it`, `does`, the `download`
+  (the version abcd's release fixes, its URL, the bin folder it goes into and
+  `checks`, how far it is checked, which says "checksum only" for a tool
+  whose makers sign nothing) and `effects` rather than a bare command, so the
+  person can judge the install. A `deps.<tool>_incompatible` gap names a copy
+  already installed whose version abcd does not work with: relay `tool.plan`'s
+  `existing` (where it is and why it does not fit) and `runs` (which copy
+  abcd will run, and which the person's shell runs).
 - A report-only gap, one with `resolvable` false, is a note abcd only reports:
   `install` never closes it, and the person has to act. Relay each one's
   `detail` and `fix_hint` as they stand, rather than folding it into the
@@ -330,14 +338,22 @@ target's `.abcd/.work.local/scratch/` (create the directory via
    (`"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy --json`, `banlist.hooks_path`) and act
    on it:
 
-   - `unarmed` — point git at the committed hooks, once per clone:
+   - `unarmed` — point git at the committed hooks, once per clone. Where no
+     hooks path is set at any scope, `abcd ahoy install` run at a terminal asks
+     this as its own question (the `banlist.hooks_unarmed` gap), naming
+     `core.hooksPath` and the clone's `.git/config`, sets it on a yes and reads
+     it back; off a terminal, under `--yes` or on a no, the report lists the
+     command, and the install is `partial`, never `clean`, until git runs the
+     hooks:
 
      ```bash
-     git config core.hooksPath .githooks
+     git config --local core.hooksPath .githooks
      ```
 
      Report the hooks as scaffolded but unarmed if the user declines that
-     config change — never silently.
+     config change — never silently. A local value naming another directory
+     is the person's (`banlist.hooks_path_elsewhere`): abcd does not replace
+     it.
    - `foreign` — a hooks path set outside the clone (a global or system hooks
      dispatcher) is in force. Leave it alone: never set a local
      `core.hooksPath` over it, which would shadow the dispatcher in this clone.
@@ -425,6 +441,78 @@ are committed.
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --json
 ```
 
+#### The setup flow
+
+Setup checks everything before it asks anything, then asks as few questions as
+it can, each on one line
+([adr-2610241101463288](../.abcd/development/decisions/adrs/2610241101463288-setup-asks-short-questions-and-lists-its.md)).
+
+1. **The basics.** With no `git` command, in a folder that is not the top of a
+   git repository, or on an account with no agent harness, there is nothing to
+   set up: the install stops before its first question, writes nothing, and
+   exits 2 with one message naming what is missing. Relay that message as it
+   stands. Every other missing basic goes on the report's checklist at the end.
+2. **The plan screen.** At a terminal, and through an answers file, setup shows
+   one plan: every change it would make, grouped by where it lands (this
+   repository, this machine), every default it would take with where to change
+   it (the visibility, the docs target, deep scanning, the house-style rule,
+   the artefact kind, the model routing tables, the drain rule, the README
+   parts, and the status line's parts, all on), and the questions it asks
+   whatever the answer. It asks once: `proceed`, `customise` or `cancel`; a
+   bare Enter is no answer, so it asks again, and end of input cancels.
+   Proceed makes every change and takes every default listed; customise asks
+   each kind of change and each value in turn before anything is written;
+   cancel, or deciding later, writes nothing. For a repository abcd does not
+   manage yet, proceed and customise also adopt it, so the plan is the one
+   question that adopts.
+3. **The questions only a person can answer.** The live brief session
+   question, the abcd download, the shell settings, the commit checks (`core.hooksPath` in this clone's
+   `.git/config`), the status line (one entry in the assistant's settings),
+   the commit identity and each tool abcd offers to install are each their own
+   question, naming the value and where it is written, whatever the answer to
+   the plan, in that order, and the plan lists exactly the ones the run will
+   ask. None is ever asked behind the plan or behind an approval of a kind of
+   change: at a terminal a tool's question is its own consent, so no
+   `dependency` approval is asked there, and customising never drops it.
+4. **The abcd download.** Where abcd is not on the `PATH` and the plugin's
+   verified cache cannot supply a copy, setup offers to download abcd before it
+   offers the status line: the release the running abcd was stamped as, or, in
+   a source checkout of abcd, the newest release tag the checkout holds. On a
+   yes it fetches that release's binary for this computer, checks it against
+   the release's `checksums.txt` and the build provenance its release workflow
+   signed (the check `abcd update` makes), writes it to `~/.local/bin/abcd` (or
+   the `--bin-dir` folder) and records it in `~/.abcd.noindex/path-entry`, so
+   the status line is wired in the same run. Setup never asks about the status
+   line when it cannot wire it. `--yes` never downloads; a no writes nothing,
+   and the README's install line does the same by hand.
+5. **One line each.** Every question is one line naming what it decides; `?`
+   (typed as the answer, or as the first key in the arrow-key list) shows the
+   whole question (what each answer does, what holds now and where to change
+   it later) and asks again. The numbered list (`ABCD_ACCESSIBLE`, `TERM=dumb`
+   or `interview.list` set to `numbered`) and `NO_COLOR` work as before.
+6. **The report.** The run ends in three parts: **Done**, one line per change
+   with where it landed; **Needs you**, a numbered checklist, each item the
+   exact step and why; and **Next**, one step. A change the person said yes to
+   that then failed (a tool download that failed its sha256 or its signed build
+   record, an abcd download that did not verify, a shell-settings edit, the
+   commit checks) is a **Needs you** item carrying the reason and the step by
+   hand, such as the copy to put back over a startup file abcd could not
+   restore, never only a note behind `--details`. `--details` adds the full
+   record (every path written and every note). A repository already fully set
+   up is reported in one line, `abcd is already set up here; nothing
+   changed.`, and nothing is written.
+
+A first run at a terminal with the suggested answers therefore asks the plan
+and the person-only questions alone: the abcd download, the shell settings,
+the commit checks and the commit identity, plus the status line where it can be
+wired and one question for each tool it offers to install.
+
+In a source checkout of abcd, `go run ./cmd/abcd ahoy install` is treated as
+current: `go run` builds the checkout as it stands, so its unstamped vintage is
+not refused as stale there. Any other unstamped binary is still refused. On
+the `PATH` there means a release copy, as anywhere else: the `--dev` shim
+rebuilds abcd on every call and is never the status line's entry.
+
 **This writes.** It applies the actionable gaps the detection pass found — the
 marker block (into `AGENTS.md` only, and only where `--docs-target agents_md`
 names it; the default, `skip`, names none), the `.abcd/` scaffolding, the owned
@@ -464,8 +552,21 @@ abcd-owned entry already on `PATH`, which is adopted exactly where it stands.
 system-wide one — and fails loudly when it is not writable. abcd never escalates
 privileges, so never suggest re-running any of this under `sudo`; report the
 failure and let the user pick a directory they own. If the report carries a
-`path.bin_dir_not_on_path` gap, relay its one-line `export` fix verbatim and
-leave the user's shell profile alone.
+`path.bin_dir_not_on_path` gap, relay its fix hint verbatim: it is what is true
+of the person's shell settings. Where the file their shell reads already adds
+the folder (their own line, or the one this run added), the step is to open a
+new terminal, because the shell reads that file when it starts; where abcd
+will not edit the file, it is the one-line `export` with the reason; only
+where setup will ask does it name the question. Do not
+edit the user's shell settings yourself: `abcd ahoy install` run at a terminal
+asks the person whether to add that line to the file their shell reads, and
+its one line names both, as in ``Add `export PATH="$HOME/.local/bin:$PATH"` to
+~/.zshrc?``; `?` shows the rest, including that the line puts the folder ahead
+of the rest of the `PATH`. It adds the line only on a yes (the
+`path.shell_settings_offered` gap), keeps a copy of the file first, never
+edits a file that is a link kept elsewhere, and `abcd ahoy uninstall` removes
+the line again. Off a terminal, under `--yes`, or on a no, the line stays the
+person's to add.
 
 The entry install writes is the abcd-owned copy of the verified release binary,
 taken from the persistent plugin data directory a session's hooks provision.
@@ -475,9 +576,10 @@ release the cache attestation names; when the check fails or cannot
 reach GitHub's attestations API or the Sigstore TUF repository, install writes
 no entry and its note names what failed and how to check the release by hand
 with `gh attestation verify`. Relay that note verbatim.
-When no verified copy is there, install writes no entry at all rather than a
-symlink into the plugin root, which stops working at the next plugin update, and
-its note names the command to run first: the install one-liner in the README,
+When no verified copy is there, install writes no symlink into the plugin root,
+which stops working at the next plugin update: where nothing is at the `PATH`
+target it asks the download question above instead, and on a no (or under
+`--yes`) its note names the other way, the install one-liner in the README,
 which downloads the release binary, verifies it against that release's own
 checksums and records it, after which a re-run of `ahoy install` adopts it.
 Relay that note verbatim. Every install run checks the abcd-owned copy
@@ -525,9 +627,10 @@ deferred with decide later, is left as it is. With `--yes` it answers no
 question at all: the artefact kind and the house-style question are left
 unwritten, each still waiting, and a note names the run that asks them.
 
-**One line answers one question.** The install asks one approval per gap
-category present — often several — and every line after the last one you supply
-reads end-of-input and DECLINES. `yes` is the reliable form because it never
+**One line answers one question.** Off a terminal, a piped answer stream is not
+shown the plan: the install asks one approval per gap category present — often
+several — and every line after the last one you supply reads end-of-input and
+DECLINES. `yes` is the reliable form because it never
 runs out; a single `printf 'y\n'` answers the first question only and silently
 declines the rest. The questions come in a fixed order (dependency,
 safe-autocreate, config-change, status-line, oracle-routing, drain-rule, conventions-file, user-state, plugin-owned), so a
@@ -556,8 +659,14 @@ never offer an answer the question does not list. The config values asked
 also name the flag that answers them without the question (`--visibility`,
 `--docs-target`, `--scan-deep`), and the matching gap's fix
 hint names it too: in a scripted run, pass the user's answer through the flag
-rather than lining a piped answer up with the question. A question no flag
-answers, such as the artefact kind, ends its explanation instead on a
+rather than lining a piped answer up with the question. A piped answer that
+is not one of a config value's answers is never saved: that setting stays
+missing, while the other questions are still asked and the values they and
+the flags give are saved. The deep-scan question is where `yes |` meets
+this, since its `y` is neither `true` nor `false`: a note names the answer,
+the two it accepts and `--scan-deep`, and `config.scan_deep_missing` is the
+gap left. Relay the note and pass the user's answer as `--scan-deep`. A
+question no flag answers, such as the artefact kind, ends its explanation instead on a
 `(Change later: <where>)` line saying where the answer is changed afterwards.
 `--yes` chooses no value, so a `--yes` run that still has a value to ask says so
 once, above the first such question.
@@ -577,47 +686,58 @@ EVERY question, so only reach for it once they have agreed to all of them.
 
 **At a terminal the questions are drawn; through this page they are relayed
 in an answers file.** When stdin, stdout and stderr are all terminals, the
-install draws each question itself (the material, the question, each answer
-with its meaning, and decide later last), answered by the arrow keys or by
-its number, and Ctrl-C ends the run with exit 130, keeping the answers given
-before it. Every answer is recorded, with the question as it was asked and
+install draws each question itself on its one line with its answers' labels
+(the plan screen with its plan), answered by the arrow keys or by its number;
+`?` draws the whole question (the material, each answer with its meaning, and
+decide later last) and asks it again, and Ctrl-C ends the run with exit 130,
+keeping the answers given before it. Every answer is recorded, with the question as it was asked and
 where it was answered, in `.abcd/.work.local/interviews/setup-<stamp>.json`,
 and the answers that change the machine (the status line, the machine's
 routing table) in `~/.abcd.noindex/interviews/`; a run that ends aborted or
 refused changed nothing and records nothing. Through this page, put each
 question to the user with the host's question tool, quoting the question
 exactly as the install writes it, then pass their answers in an answers file
-and say where they were given:
+and say where they were given. The plan screen is the first: relay its plan
+(the changes, each default with where to change it, and the questions that
+follow) as its material, and its three answers, `proceed`, `customise` and
+`cancel`, as options. Then relay each person-only question the run reaches
+(the download, the shell settings, the commit checks, the status line, the
+commit identity, a tool) as its own question, never folded into the plan's
+answer:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --answers <file> --answered-in "Claude Code" --json
 ```
 
 The file is one JSON object: `{"schema_version": 1, "interview": "setup",
-"answers": [{"id": "adopt", "value": "yes"}, {"id": "visibility", "value":
+"answers": [{"id": "approve.plan", "value": "proceed"}, {"id": "visibility", "value":
 "private", "note": "<optional>"}]}`. Each answer names its question by id
-(a value question's key, `adopt`, `approve.<category>` for a kind of change,
-or the offer's gap id) and gives one of the values the question offers, or
-`later` to decide later; an unknown or repeated key is refused. With
+(a value question's key, `approve.plan` for the plan screen, `abcd.download`
+for the download, or the offer's gap id) and gives one of the values the
+question offers, or `later` to decide later; an unknown or repeated key is
+refused. The plan answers every kind of change at once, so an
+`approve.<category>` id an earlier release asked for is refused with exit 2,
+naming `approve.plan`, before anything is written; from a file, `proceed` and
+`customise` both approve every kind of change, and each value still comes
+from the file. With
 `--answers`, each question is written as plain text on stderr. A value
-the question does not offer, or a missing answer to the adoption, an
-approval or a setting value the run would ask (the visibility, the docs
+the question does not offer, or a missing answer to the plan screen or a
+setting value the run would ask (the visibility, the docs
 target, deep scanning), stops the run with exit 2 before anything is
 written, naming the question's id, the flag that answers it, if any, and the
 line to add; nothing is recorded. Put that question to the user, add their
 answer, and run again. The questions the run itself decides to ask (the
 status line's elements, the offers, the artefact kind) are checked when
 they are asked: a stop there leaves the steps before it done, says so, and
-the next run asks only what is still open. The git identity, the
-drain rule and installing a tool are never answered from a file. `--answers`
+the next run asks only what is still open. The git identity, the identity
+record, the drain rule and installing a tool are never answered from a file. `--answers`
 replaces the piped answer stream for that run.
 
 **A value flag needs the settings approval.** `--visibility`, `--docs-target`,
 `--oracle-backend` and `--scan-deep` are held to the config-change approval
-like any other settings change: a flag that would change a saved setting puts
-the config-change question even when nothing else would, and only a yes, given
-at the prompt, as `approve.config-change` in the answers file, or by `--yes`,
-saves it. `later`, a no or end of input drops the flag: nothing it would change
+like any other settings change: a flag that would change a saved setting is
+listed on the plan, and only `proceed`, a yes to the config-change question
+under `customise`, `approve.plan` in the answers file, or `--yes` saves it. `later`, a no or end of input drops the flag: nothing it would change
 is saved or moved, and the run names each dropped flag in a note.
 
 **Stdin must end, or the prompt waits.** With stdin at end-of-input every
@@ -627,37 +747,96 @@ prompt WAIT for the answer that never comes, rather than declining. For a run
 that must not block and must not prompt, close stdin or pre-answer everything:
 `abcd ahoy install --yes --refuse-adopt < /dev/null`.
 
-`--yes` approves every resolvable category but never adopts the optional
-git-identity pin, because the pin records whatever git identity is currently
-configured, never wires the status line (below), because that rewrites a
+`--yes` approves every resolvable category but never records who the person
+commits as (below), because that would record whatever git identity is
+currently configured, never wires the status line (below), because that rewrites a
 harness-wide setting, never accepts a model-tier routing table (below),
 because a table decides which model every delegated step asks for, and never
 adds the drain eligibility record (below), because the record decides what an
 unattended agent may change in the repository. When the result carries `optional_skipped`, report it and
-offer the `yes |` form above as the way to apply it, except `drain_rule.offered`
-and `conventions.retire_offered`, which only a person at a terminal is asked,
-and `readme.offered`, which this page relays as the README question pair
-below and answers with `--readme-parts`.
+offer the `yes |` form above as the way to apply it, except
+`git_identity.unrecorded`, `git_identity.repo_pin`, `drain_rule.offered` and
+`conventions.retire_offered`, which only a person at a terminal is asked,
+`readme.offered`, which this page relays as the README question pair
+below and answers with `--readme-parts`, and `sessions.offered`, which it
+relays as the live brief session questions below and answers with
+`--live-sessions`.
+
+**Each person's commit identity is their own, kept on their own machine.**
+Nothing in a repository names who may commit to it. The person's record lives
+under their home directory: `~/.abcd.noindex/identity/<root-sha>.json` for one
+repository (keyed on its root commit, so a work identity can stay with work
+repositories), else `~/.abcd.noindex/identity.json` for every other repository
+on the machine. Both hold `{"name": "…", "email": "…"}`, must be a file the
+person owns that no other account can write, and are refused behind a
+symlinked `~/.abcd.noindex`. The commit check holds the author and committer
+to that record, and refuses a machine identity (an AI tool's or a bot's) in
+either role whether or not there is one; with no record, a human identity
+commits. A wrong record is changed by editing the file, or by removing it and
+running `abcd ahoy install` at a terminal to be asked again.
+
+**The identity record question is a person's alone.** When no record applies
+(`git_identity.unrecorded`), the install proposes the person's usual git
+identity (the global `user.name`/`user.email`, else the one git resolves in
+this repository, never a machine's) and records it in
+`~/.abcd.noindex/identity.json` only on a yes. It is its own question, asked
+only at a terminal and behind no category approval. Off a terminal, or under
+`--yes`, it records nothing and the result lists `git_identity.unrecorded` in
+`optional_skipped`; relay that and tell the user to run `abcd ahoy install` in
+their own terminal. Never write the record on the user's behalf.
+
+**A repository that still stores an identity is migrated.** A repository set up
+before this change committed one person's identity in
+`.abcd/config/identity.json` (`git_identity.repo_pin`). abcd no longer reads it
+to check commits. On its owner's machine (the person whose git identity is the
+stored one) the install asks, at a terminal, whether to move it: a yes records
+it as that person's record for this repository, keeps any `production_mode` it
+declared in `.abcd/config/provenance.json`, removes `identity.json` from the
+working tree, and says each of those; the owner commits the removal. On anyone
+else's machine the gap says only that the stored identity is not theirs and is
+not read, names no one, and nothing is copied or removed. The stored file is read through
+the guarded reader: one that is a symlink, not a regular file, or over 64 KiB
+is reported as `git_identity.uncheckable` and not read.
 
 **The git identity question is a person's alone.** When the author or committer
-a commit would carry diverges from the identity pin, or is a machine identity
-(`git_identity.mismatch`, `git_identity.unset`, `git_identity.committer`,
-`git_identity.tool`), the install proposes the human identity (the pin, else
-the global git identity) and asks whether to commit to this repository as it,
-but only at a terminal. Off a terminal it asks nothing and writes nothing, and a
+a commit would carry diverges from the person's own record, or is a machine
+identity (`git_identity.mismatch`, `git_identity.unset`,
+`git_identity.committer`, `git_identity.tool`), the install proposes the human
+identity (the person's own record, else their global git identity, never one a
+repository names) and asks whether to commit to this repository as it, naming
+the identity and `.git/config`, but only at a terminal. It is its own question:
+the plan and the settings approval never list it, and no answer to either
+declines it. Off a terminal it asks nothing and writes nothing, and a
 piped `yes` does not answer it; neither does `--yes`. Relay the result's note to
 the user and tell them to run `abcd ahoy install` in their own terminal, or to
 set `user.name` and `user.email` themselves; never set them on the user's
 behalf. For an autonomous routine the human identity is set by whatever launches
-it, before its first commit.
+it, before its first commit: on a fresh machine with no record, the commit check
+lets through the human identity the launcher supplied and refuses a machine's.
 
-**The tool question.** When a `dependency` gap is present and its category is
-approved, each missing tool is its own question, and a piped answer never
-answers it: installing runs a program on the machine. At a terminal the install
-shows the explanation and asks `Install <tool> now by running <step>? [y/N]`.
+**The tool question.** When a `dependency` gap is present, each tool abcd has
+no usable copy of is its own question, asked last of the person-only
+questions, and a piped answer never answers it: installing puts a program on
+the machine. At a terminal that question is its own consent, so no
+`dependency` approval is asked first and customising the plan never drops it;
+off a terminal the category's approval keeps its place in the fixed order, and
+no tool is installed. A copy already installed some other way is used, and
+nothing asked or installed, when its version lies in the range abcd works
+with. abcd's own recorded copy is used while its version is the one abcd's
+release pins; at another version in the range it still runs and, when setup
+runs its steps, the pin is offered as an update (`deps.gitleaks_upgrade`, never
+required, and a no keeps the copy that works), and outside the
+range it is not run and abcd's pinned copy is offered over it
+(`deps.gitleaks_incompatible`). The download replaces only a copy that is still
+the bytes abcd wrote, never another file. The detection pass the hooks and the
+status board run starts no tool: it counts a copy on the `PATH` as installed,
+and only `abcd ahoy install` (and `--dry-run`) runs a copy's version command to
+judge it. At a terminal the install shows the explanation and asks
+`Install <tool> now: download <tool> <version> into <bin folder>, <checks>? [y/N]`.
 Through this page, ask the technical facilitator with the host's question tool
 instead: present the gap's `tool` explanation (what it is, whether this
-capability needs it, what works without it, the exact step, what the install
+capability needs it, what works without it, the download and how far it is
+checked, any copy already installed and which copy will run, what the install
 does), and only on their yes run
 
 ```bash
@@ -667,16 +846,23 @@ does), and only on their yes run
 `--install-tool` is the relayed yes, for the named tool only, and it also
 answers the `dependency` category's question, which is then not asked (so a
 piped answer stream has one question fewer); never pass it without the user's
-answer. The result's `changes` reports what ran and whether
-its verify passed; a no, a failed step or a missing package manager is a `notes`
-line ending in what the capability continues on (`continuing on the native
-secret scanner`). The step runs in its own process group, bounded at 15
-minutes, and a timeout kills that group; a process the step moves out of the
-group (`setsid`) escapes the kill and can outlive the run, so abcd stops
-waiting on its output 10 seconds after the step ends and reports a step that
-left one behind as failed. `--yes` never installs a tool, and a run with `CI` set
-to any value, or with `GITHUB_ACTIONS=true`, installs none and is not asked. A name that is not a tool `ahoy install` checks
-for is refused, naming the ones it does.
+answer. The install downloads the one build abcd's release names (no version is
+ever looked up), checks its sha256 against the one abcd's release pins, and,
+for a tool whose makers sign their builds (gh), checks its signed build record
+against the pinned signing workflow, all before anything is written. Only then
+is the program written into the person's own bin folder (`$XDG_BIN_HOME`, else
+`$XDG_DATA_HOME/../bin`, else `~/.local/bin`) with no admin rights, verified by
+its version, and recorded in `~/.abcd.noindex/tools.json`, so abcd runs that
+copy whatever comes first on PATH and `abcd ahoy uninstall` removes it while it
+is still the bytes abcd wrote. The result's `changes` reports what was
+installed and how far it was checked; a no, a failed check or a failed download
+is a `notes` line saying why, that nothing was written, and what the capability
+continues on (`continuing on the native secret scanner`). abcd never changes a
+copy it did not install: when the bin folder already holds one of that name, it
+installs nothing and says so. No step it shows or runs needs admin rights.
+`--yes` never installs a tool, and a run with `CI` set to any value, or with
+`GITHUB_ACTIONS=true`, installs none and is not asked. A name that is not a tool
+`ahoy install` checks for is refused, naming the ones it does.
 
 **The seeded documentation check.** A repository with no
 `.abcd/docs-lint.json` gets one. Its `roots` list `docs` when that folder
@@ -766,6 +952,34 @@ the `notes` with its line; relay those notes as they stand. A project with no
 `README.md` gets one holding only the chosen parts. Committing the result is
 the owner's act.
 
+**The live brief session questions.** Setup asks "Set up live brief
+sessions?" (`yes`, `no`, then deciding later) and, on a yes, "Where may
+sessions run?" (`local`, `cloud`, `both`, then deciding later). The answer is
+stored as `sessions.live` in `.abcd/config.json`: where sessions may run, or
+`none` for a no, which is never asked again. Deciding later stores nothing,
+so the next setup run asks again, and so do `abcd session start` and
+`abcd session blueprint` at a terminal. At a terminal, in a run without
+`--yes`, the install asks them itself, after the README pair; off a terminal,
+and under `--yes`, they are never asked, and the result lists
+`sessions.offered` under `optional_skipped`.
+
+Through this page, while the question is open, the bare detection
+(`ahoy --json`) carries `sessions` and `sessions_tool`, the two questions as
+your question tool's input, built from the words the terminal shows. Ask
+`sessions_tool[0]` alone, exactly as given: never reworded, never with a
+preview, never with an option marked. On a yes, ask `sessions_tool[1]`. Then
+pass the answer:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --live-sessions local|cloud|both|none --json
+```
+
+A no to the first question is `none`. A `Decide later` at either is no
+answer: pass no flag. Any other value is refused with exit 2 before anything
+is written. Recording the answer sets nothing up: the steps are
+`abcd session setup` (see `/abcd:session`), which waits on the person in a
+browser, so tell the user to run it in a Terminal of their own.
+
 **The artefact kind.** A repository with no `.abcd/config/artefact.json` carries
 an `artefact.missing` gap: the launch verbs choose what to preview, check and
 scaffold by the kind declared there, and refuse to guess it. Once config changes
@@ -784,12 +998,14 @@ is an `artefact.invalid` gap instead: the file is the user's, so the install
 reports it and never overwrites it.
 
 **The status-line offer.** When the harness's user-level settings file exists
-(`$CLAUDE_CONFIG_DIR/settings.json`, or `~/.claude/settings.json`) and its
-`statusLine` is absent or is a command that is not abcd's, the install asks
-whether to install abcd's status line — one paragraph of reason, then one
-question, then one on/off prompt per element after the badge (repository,
-branch, model, context, five-hour and seven-day usage, intent and issue
-counts; default on). The question shows the one change: the file, and the
+(`$CLAUDE_CONFIG_DIR/settings.json`, or `~/.claude/settings.json`), its
+`statusLine` is absent or is a command that is not abcd's, and abcd's `PATH`
+entry is on record (or the download question can put it there first), the
+install asks whether to install abcd's status line in that file, running that
+entry — one paragraph of reason, then one question, then, under `customise`,
+one on/off prompt per element after the badge (repository, branch, model,
+context, five-hour and seven-day usage, intent and issue counts; default on,
+which `proceed` takes without asking). The question shows the one change: the file, and the
 `statusLine` entry's value now and after. Present the reason and the change to
 the user and relay their answer; never answer it for them.
 
@@ -1033,7 +1249,13 @@ abcd took the row — or removed, when none was recorded — and the receipt's
 `~/.abcd.noindex/backups/` first; a status line that is not abcd's is left
 alone, and `~/.abcd.noindex/statusline.json` itself stays, because it is the
 user's configuration. Run `uninstall` before removing abcd: a status line left
-pointing at a removed abcd is blank in every repository. It never touches
+pointing at a removed abcd is blank in every repository. It also removes each
+tool copy abcd installed, by the record in `~/.abcd.noindex/tools.json`, while
+it is still the bytes abcd wrote: report `tools`, one entry per recorded copy
+with its `path` (tilde form) and `note` (removed, already gone, or changed since
+and left untouched), and `tools_note` when the record could not be read. A copy
+of the same tool installed any other way was never recorded and is never
+touched. It never touches
 `hooks.json`. An entry that was
 installed with `--bin-dir` into a directory outside `PATH` cannot be found by a
 `PATH` scan — pass the same `--bin-dir <dir>` to `uninstall` to remove it.
@@ -1102,10 +1324,11 @@ named.
 The call goes through the GitHub CLI (`gh`), so the write is made by the user's
 own authenticated identity and abcd never holds a token. If `gh` is absent, the
 verb explains it from the tool registry (what it is, that these verbs require
-it, the exact install step and what that install does) and offers to install
-it, running the step only on a yes typed at a terminal. `--yes` never answers
+it, the checked download and what that install does) and offers to install
+it, downloading it only on a yes typed at a terminal. `--yes` never answers
 that offer, and neither does a piped answer, so through this page the offer is
-declined: the verb refuses, and its notes carry the explanation and the command.
+declined: the verb refuses, and its notes carry the explanation and the
+by-hand download (its URL, the sha256 to check, and where the program goes).
 Relay them; the install is the user's to run, by hand or by running the verb at
 a terminal. `ahoy --remote` never offers the install, since it writes nothing,
 and names this verb as the one that does. It is idempotent — a repository already in the desired
@@ -1246,7 +1469,33 @@ without it, and when that succeeds the block is written with
 `stream_usage: false` (its calls then go without the field) and the result
 says so in `stream_usage_note`: relay that line. `--stream-usage=false`
 writes that setting outright, for a server known to refuse the field, and
-the verification is then asked once, as given. A `~/.abcd.noindex` that is a
+the verification is then asked once, as given. The block it writes pins no
+model and reads nothing back: a pin to one OpenRouter provider (`pins`,
+iss-2610161734413178) and `read_generation: true` (OpenRouter's record of
+what served each call, one extra request per call, made only because the
+person turned it on) are added to the block by hand afterwards, on an
+OpenRouter block alone, as the configuration chapter of the brief describes,
+and a configured provider's verification sends the first listed model's pin
+when it has one. A block on this machine takes a local pin there instead
+(the runtime, its version, the weights' digest, quantisation, context length
+and KV-cache type, and on llama.cpp the GGUF file's name, since llama-server
+reports no digest, iss-2610161734428291), which probes the server before the
+route is used. No runtime reports the KV-cache type, so the refusal of a q4
+cache on llama-server rests on the pin's declaration, and the record lists
+the served cache type as not verified. The verification never reads the generation record back,
+even when the block says `read_generation: true`: that would be one more
+request for an answer the verification discards. A role
+routed through opencode to a pinned model is refused while the person's
+environment sets `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` or
+`OPENCODE_CONFIG_CONTENT`, since the run's own sealed configuration would
+replace theirs or be overridden by it: unset it for pinned runs, or route
+the role without a pin. `~/.opencode/opencode.json` is not refused, so a
+routing entry for that model there can override the pin, which is one reason
+the pin is recorded as not verified on that path, and so are a local pin's
+weights, quantisation, runtime version and context, though the probe checked
+them. The claude runner holds no pin, so a role routed through it to a pinned
+model is refused before it starts: route the role through opencode, or remove
+the pin. A `~/.abcd.noindex` that is a
 symlink (into a dotfiles checkout, say) is refused with nothing written, in
 any home, naming the link: the key would otherwise land wherever it points.
 A `--file` pointer is refused, naming the link, when any directory between the
@@ -1334,19 +1583,31 @@ prompt in a fresh session, and writes nothing. `domains` lists each rule
 domain the prompt matches, with the recall words that hit (`hits`, or
 `*NAME` for a star activation); `notes` lists each memory note it recalls
 from `~/.abcd.noindex/memory.json` or the project's `.abcd/memory.json`, with
-its `layer` (`machine` or `project`) and the recall words that hit. Each
-carries a `form`: `full`, or `over-budget` when it would not fit the
-per-turn budget and would come back on a later prompt instead. `disabled`
-is true under the kill switch, and then nothing comes back; `unreadable`
-names a `memory.json` that could not be read, and why. Use it when someone
-asks why a rule or a note did, or did not, come back on a prompt. A
+its `layer` (`machine` or `project`) and the recall words that hit; `pages`
+lists each memory page it recalls from the project's `.abcd/memory/` or
+`~/.abcd.noindex/memory/`, by its `key` (`page:<filename>`, the name the
+hook's envelope gives it), with its `filename`, `title`, `layer` and the
+recall words that hit. A page comes back only when its frontmatter declares
+a `recall:` list, and a page in the project's store suppresses the machine's
+page of the same name. Notes and pages share one ranked order: each carries
+its `rank` (1 first), its BM25F relevance `score`, and `terms`, each matched
+term with how often it was found in the item's `recall` words, `title` and
+`body` and its `contribution` to the score; the ranking decides which items
+fit the budget. Each carries a `form`: `full`, `over-budget` when
+it would not fit the per-turn budget and would come back on a later prompt
+instead, or `too-large` when it is larger than the whole per-turn budget and
+no prompt brings it back in full. `disabled` is true under the kill switch, and then nothing comes
+back; `unreadable` names a `memory.json`, page store or page that could not
+be read, why, and its `kind` (`note` or `page`). Use it when someone asks why
+a rule, a note or a page did, or did not, come back on a prompt. A
 positional DOMAIN with `--prompt` is refused, exit 2: `rules <DOMAIN>`
 renders one domain's rules instead.
 
 ## Scoping note: `--identity` is CLI-only
 
 `abcd ahoy --identity` exits non-zero when the author or the committer a commit
-would carry diverges from the committed pin. It exists to be wired into a pre-commit hook or CI, where
+would carry diverges from the identity the person recorded on their machine, or
+is a machine identity. It exists to be wired into a pre-commit hook or CI, where
 its exit code is the whole point, so it stays a bare-CLI entrypoint rather than a
 plugin mode; report it only if a user asks how the identity gate fails
 closed.
@@ -1358,6 +1619,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

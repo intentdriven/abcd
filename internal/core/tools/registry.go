@@ -11,14 +11,21 @@
 // asks on the terminal, the plugin page asks through the host's question tool,
 // and this code is the same under both (criterion 5).
 //
-// The trust boundary is Install. What it runs is fixed data in this file,
-// compiled into the binary: an argv per platform, never composed from a flag, a
-// repository file or an environment value, never a shell string. It runs only
-// after the caller's Confirm returns yes, never in CI, and never a program that
-// resolves inside the repository it was asked from. See install.go.
+// The trust boundary is Install. What it fetches is fixed data compiled into the
+// binary (release.go): one release download per platform, named by its full
+// URL with its sha256 pinned beside it, never composed from a flag, a
+// repository file or an environment value, and never discovered (brief
+// invariant 7: no version-discovery request exists anywhere in abcd). It runs
+// only after the caller's Confirm returns yes, never in CI, writes nothing
+// until the download has passed its check, and needs no admin rights. See
+// install.go and adr-2610241057124151.
 package tools
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+)
 
 // Requirement is whether a capability needs a tool or merely works better with
 // it (adr-22: most dependencies are optional adapters over a native default).
@@ -72,46 +79,36 @@ type Use struct {
 	OnDecline string
 }
 
-// Step is one platform's install step: the package manager it uses, by name,
-// and the exact argv run. Argv[0] is a bare program name resolved on PATH at
-// run time; the rest are literal arguments.
-type Step struct {
-	Manager string
-	Argv    []string
-}
-
 // Tool is one registry entry.
 type Tool struct {
 	Name     string
 	What     string // what the tool is, plainly
 	Homepage string // where to read what it is
 	Uses     map[Capability]Use
-	Install  map[string]Step // keyed by runtime.GOOS
+	// Release is the one build of the tool abcd installs: its version, its
+	// download per platform with the sha256 pinned here, and how far its
+	// makers let a download be checked (release.go).
+	Release Release
 	// Effects is what the install does on the machine and over the network, and
 	// what it does not.
 	Effects string
-	// Verify is the argv that proves the tool runs once installed.
+	// Verify is the argv that proves the tool runs once installed; argv[0] is
+	// the tool's name, replaced by the absolute path of the copy being judged.
 	Verify []string
 }
 
-// homebrew builds the Homebrew step for a formula. Homebrew is the one package
-// manager with a single fixed command on both supported platforms (macOS, and
-// Linux through Homebrew on Linux); a machine without it is told so, never
-// offered a step composed for some other manager.
-func homebrew(formula string) Step {
-	return Step{Manager: "Homebrew", Argv: []string{"brew", "install", formula}}
-}
-
-// homebrewEffects is what a Homebrew install does beyond the machine, said in
-// full because it is part of the sentence the install question is answered on:
-// brew install may first update its package lists over the network, downloads
-// the package, and sends Homebrew's own install analytics unless the person's
-// Homebrew settings turn them off. abcd neither adds to nor subtracts from
-// that: the step runs with the person's environment, as if they typed it.
-func homebrewEffects(program string) string {
-	return "Homebrew uses the network: it may first update its package lists, then downloads the " + program +
-		" program (with anything it depends on) and puts it on your PATH, and it sends Homebrew's own install " +
-		"analytics unless your Homebrew settings turn them off (brew analytics off)."
+// downloadEffects is what a checked download does beyond the machine, said in
+// full because it is part of the sentence the install question is answered
+// on: one download from the tool's own GitHub release (and, for a tool whose
+// makers sign their builds, one read of GitHub's attestations API and of the
+// Sigstore trust root), nothing sent but the requests themselves, no admin
+// rights, and nothing written until the download has passed its check.
+func downloadEffects(program string) string {
+	return "abcd downloads the one " + program + " build its own release names from " + program +
+		"'s GitHub release page, checks it against the sha256 abcd's release fixes before anything is written, " +
+		"and puts the program in your own bin folder (~/.local/bin unless XDG_BIN_HOME names another); it needs no admin " +
+		"rights, uses no package manager, and records the copy in " + abcdhome.Display("tools.json") + " so abcd runs exactly " +
+		"that copy and abcd ahoy uninstall removes it."
 }
 
 // registry is the curated set (the product thinker's decision 2). An entry is
@@ -147,8 +144,8 @@ var registry = map[string]Tool{
 					"is installed or .abcd/config/gitleaks.json sets enabled to false",
 			},
 		},
-		Install: map[string]Step{"darwin": homebrew("gitleaks"), "linux": homebrew("gitleaks")},
-		Effects: homebrewEffects("gitleaks") + " The install changes no repository and starts no background service; " +
+		Release: gitleaksRelease,
+		Effects: downloadEffects("gitleaks") + " The install changes no repository and starts no background service; " +
 			"abcd runs gitleaks only in a repository that opts in.",
 		Verify: []string{"gitleaks", "version"},
 	},
@@ -166,8 +163,8 @@ var registry = map[string]Tool{
 				OnDecline: "the settings on GitHub stay unread and unchanged",
 			},
 		},
-		Install: map[string]Step{"darwin": homebrew("gh"), "linux": homebrew("gh")},
-		Effects: homebrewEffects("gh") + " The install does not sign you in: run gh auth login afterwards, " +
+		Release: ghRelease,
+		Effects: downloadEffects("gh") + " The install does not sign you in: run gh auth login afterwards, " +
 			"and abcd never sees the token.",
 		Verify: []string{"gh", "--version"},
 	},

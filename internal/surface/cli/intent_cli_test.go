@@ -352,6 +352,31 @@ func TestIntentReadyGreenExit0(t *testing.T) {
 	}
 }
 
+// TestIntentReadyWarnsOnSerialStepsAndExits0 is dcn-2610230857411093: a spec of
+// two or more steps where no step declares `needs:` draws a [warn] steps row
+// naming the fix, and the verdict stays READY with exit 0 — a warning, never a
+// refusal.
+func TestIntentReadyWarnsOnSerialStepsAndExits0(t *testing.T) {
+	repo := intentTestRepo(t)
+	writeRepoFile(t, repo, cliPlanned+"/itd-10-alpha.md",
+		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
+			"## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- ok\n"+cliGroundsSection)
+	writeRepoFile(t, repo, cliSpecsOpen+"/spc-1-alpha.md",
+		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n\n## Summary\n\nA written design record.\n\n"+
+			"## Steps\n\n1. The parser\n2. The loop\n")
+
+	out, errb, err := runCLISplit(t, "intent", "ready", "itd-10")
+	if code := exitCodeOf(err); code != 0 {
+		t.Fatalf("exit = %d (%v), want 0 — the serial warning never refuses:\n%s\n%s", code, err, out, errb)
+	}
+	if !strings.Contains(out, "READY") || strings.Contains(out, "NOT READY") {
+		t.Fatalf("the verdict must stay READY:\n%s", out)
+	}
+	if !strings.Contains(out, "[warn] steps:") || !strings.Contains(out, "fully serial") || !strings.Contains(out, "- needs: none") {
+		t.Fatalf("the steps row must warn and name the fix:\n%s", out)
+	}
+}
+
 // TestIntentReadyRefusesAnOpenQuestion is iss-2610101610446956: the readiness
 // verb runs the open-questions check the build runs, so a record that would
 // pass every one of the gate's other checks but still asks a question reports

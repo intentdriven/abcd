@@ -19,13 +19,13 @@ impact: additive
 
 # Before an agent starts on an item, it reserves it on the shared remote, and everyone who works on the project sees the reservation
 
-Typed links: `refines` [itd-2609221656373558](itd-2609221656373558-two-orchestrator-sessions-in-one-user.md) (the shipped in-run claim, whose lease shape, two-hour default, back-off refusal and liveness judgement this record carries to the shared remote; the judgement moves into one function both use) and [itd-2609211116005482](itd-2609211116005482-abcd-build-next-picks-the-readiest.md) (the pick's exclusions gain "held by another person's reservation" and the view's age); `supersedes` [itd-33](../superseded/itd-33-agent-communication-infrastructure.md) (agent coordination through a local `active-work.json`, which decision 1 rules out); `related_issues` [iss-2609020716570699](../../../work/issues/resolved/iss-2609020716570699-nothing-tells-an-agent-that-a-record-it.md) (the duplicated re-fixes and pull requests this record exists to prevent); `related_intents` [itd-2609091416295622](itd-2609091416295622-a-session-sees-the-records-its-sibling.md) (the read-only sibling-worktree listing; prose cross-reference to the 2026-09-09 ruling, which gave it its own record), [itd-2609091416304128](../drafts/itd-2609091416304128-capture-resolve-refuses-a-record-the.md) (the resolve-time refusal; prose cross-reference to the same ruling), [itd-2609091014076309](../planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md) (the machine-scoped worktree store), [itd-2609150819440345](../superseded/itd-2609150819440345-which-session-holds-which-worktree.md) (the wider register of running sessions, kept for later; its decision 4 is this record's transport), [itd-2610031259176838](../drafts/itd-2610031259176838-someone-outside-the-project-can-reserve.md) (outside contributors, who cannot push a reservation branch), [itd-118](../drafts/itd-118-merged-work-leaves-no-residue-abcd.md) (the home of tombstone-branch deletion); `related_adrs` [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md) (a tool never writes in space it was not handed) and [adr-2610031352212697](../../decisions/adrs/2610031352212697-claims-are-branches-on-the-shared-remote.md) (reservations are branches on the shared remote, nothing kept on one computer is the register, and reservation text is data; accepted). Prose cross-reference, not a typed link, because no schema field carries the relation ([iss-2609091256264547](../../../work/issues/open/iss-2609091256264547-three-of-the-four-mandated-typed.md)): [iss-2608220750029993](../../../work/issues/open/iss-2608220750029993-session-presence-detection-for-shared.md), session presence, which this record answers for records and not for sessions.
+Typed links: `refines` [itd-2609221656373558](itd-2609221656373558-two-orchestrator-sessions-in-one-user.md) (the shipped in-run claim, whose lease shape, two-hour default, back-off refusal and liveness judgement this record carries to the shared remote; the judgement moves into one function both use) and [itd-2609211116005482](itd-2609211116005482-abcd-build-next-picks-the-readiest.md) (the pick's exclusions gain "held by another person's reservation" and the view's age); `supersedes` [itd-33](../superseded/itd-33-agent-communication-infrastructure.md) (agent coordination through a local `active-work.json`, which decision 1 rules out); `related_issues` [iss-2609020716570699](../../../work/issues/resolved/iss-2609020716570699-nothing-tells-an-agent-that-a-record-it.md) (the duplicated re-fixes and pull requests this record exists to prevent); `related_intents` [itd-2609091416295622](itd-2609091416295622-a-session-sees-the-records-its-sibling.md) (the read-only sibling-worktree listing; prose cross-reference to the 2026-09-09 ruling, which gave it its own record), [itd-2609091416304128](../drafts/itd-2609091416304128-capture-resolve-refuses-a-record-the.md) (the resolve-time refusal; prose cross-reference to the same ruling), [itd-2609091014076309](../planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md) (the machine-scoped worktree store), [itd-2609150819440345](../superseded/itd-2609150819440345-which-session-holds-which-worktree.md) (the wider register of running sessions, kept for later; its decision 4 is this record's transport), [itd-2610031259176838](../drafts/itd-2610031259176838-someone-outside-the-project-can-reserve.md) (outside contributors, who cannot push a reservation branch), [itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md) (the home of tombstone-branch deletion); `related_adrs` [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user.md) (a tool never writes in space it was not handed) and [adr-2610031352212697](../../decisions/adrs/2610031352212697-claims-are-branches-on-the-shared-remote.md) (reservations are branches on the shared remote, nothing kept on one computer is the register, and reservation text is data; accepted). Prose cross-reference, not a typed link, because no schema field carries the relation ([iss-2609091256264547](../../../work/issues/open/iss-2609091256264547-three-of-the-four-mandated-typed.md)): [iss-2608220750029993](../../../work/issues/open/iss-2608220750029993-session-presence-detection-for-shared.md), session presence, which this record answers for records and not for sessions.
 
 **On words.** Every surface a person reads says **reservation**. Inside the record and the code a reservation is a **claim**, the name the shipped in-run `implement claim` already uses; the two words name one thing.
 
 ## Press Release
 
-> **Two people's agents no longer start the same piece of work.** When an agent starts on an item, abcd reserves it for the person the agent works for. The reservation is a small branch on the project's shared copy that nobody ever merges: Everyone who works on the project sees it, whichever computer they work on, and so does an agent working from a cloud session. If someone else already holds the item, or the files the work will touch, abcd says who and until when, and the agent takes something else. A reservation lasts two hours and is renewed every hour while the work goes on, so one left behind by a closed laptop frees itself. It stops counting the moment the work is merged. Starting a build reserves the item, and a person working by hand reserves with one short command.
+> **Two people's agents never start the same piece of work.** When an agent starts on an item, abcd reserves it for the person the agent works for. The reservation is a small branch on the project's shared copy that nobody ever merges: Everyone who works on the project sees it, whichever computer they work on, and so does an agent working from a cloud session. If someone else already holds the item, or the files the work will touch, abcd says who and until when, and the agent takes something else. A reservation lasts two hours and is renewed every hour while the work goes on, so one left behind by a closed laptop frees itself. It stops counting the moment the work is merged. Starting a build reserves the item, and a person working by hand reserves with one short command.
 >
 > "There are two of us now, on two computers, each running agents, and sometimes a cloud session as well," said Maya, an autonomous-development practitioner. "My agents could only see what my own machine knew, so they would happily start an item my colleague's agents were halfway through. Now they see the reservation before they begin, and the one that loses finds out in seconds, not after a night's work. Moving a piece of work from one of my copies to another is one flag."
 
@@ -110,7 +110,7 @@ Two adversarial reviews of this rewrite followed, design and feasibility, then r
 - **The wider session register**, saying which sessions run and what each holds: [itd-2609150819440345](../superseded/itd-2609150819440345-which-session-holds-which-worktree.md), kept as a draft for later.
 - **Outside contributors**, who cannot push a branch to the remote: [itd-2610031259176838](../drafts/itd-2610031259176838-someone-outside-the-project-can-reserve.md).
 - **The resolve-time refusal** of a record already terminal on the default branch: [itd-2609091416304128](../drafts/itd-2609091416304128-capture-resolve-refuses-a-record-the.md).
-- **Deleting reservation branches.** Tombstones are deleted by [itd-118](../drafts/itd-118-merged-work-leaves-no-residue-abcd.md)'s sweep from an ordinary machine, since the cloud proxy rejects deletions.
+- **Deleting reservation branches.** Tombstones are deleted by [itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md)'s sweep from an ordinary machine, since the cloud proxy rejects deletions.
 - **Keeping one person's sessions in one copy apart.** Any session in the copy that made a reservation may renew or release it; sessions sharing one run are kept apart by the in-run `implement claim`, unchanged.
 - **Judging that two records describe one observation**: [itd-87](../drafts/itd-87-recurrence-escalation-in-capture.md).
 - **Moving, listing or reclaiming worktrees**: [itd-2609091014076309](../planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md).
@@ -289,8 +289,345 @@ None open.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-0d4b99e46049 -->
-Fidelity review OWED (receipt rcp-0d4b99e46049).
+<!-- abcd-review: INGESTED receipt=rcp-0d4b99e46049 -->
+Fidelity review — receipt rcp-0d4b99e46049 (verifier abcd:intent-auditor claude-opus-5-5).
+
+Provenance: abcd:intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:3a7ad73072cb8c25d771f230d2b81e47224d3a7e97f5f6ad34613b1afcb97185
+Input attestations: diff:c43b46bfb47f9b0cd995f0cccabdb403afa556f9..c9d94ebd1c34e4eb40bfa3bb57b8a75da43b6f36@sha256:c41642d22fc6aafc895a5392c95bf8a3793adc34ec437d59dd295b52886917d6; merge:b9bf7bc6ac9a2e48cbdf5ec41c7f44302d9fdaf9@-; merge:5801ad0ab1e6d25f2b268b7c190550022877f116@-; merge:dcdbafa7f40c4e5dad482a4f170c0f2f7eb456fe@-; merge:c9d94ebd1c34e4eb40bfa3bb57b8a75da43b6f36@-; repository:18170d03fab7435c8001999973e4093002226e20@-; intent:.abcd/development/intents/shipped/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md@sha256:ee3f93226513c196021578dd5dbcae5bcb77e8a60432626c14083a6f2369a34e; spec:.abcd/development/specs/closed/spc-2610031753359849-nothing-tells-an-agent-that-a-record-it.md@sha256:ac0b2f1396b513a60c335651156965c256298ff30b73c8f13fe6d829f5b287d0; request:.abcd/.work.local/reviews/rcp-0d4b99e46049.request.md@sha256:e6e63c32458c8bc96f53ba8dc2d2bf23ef8a996c14c25db1ebc7b7ce7f3fa757;
+
+Acceptance rollup: MET 52 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: TestAReservationIsAParentlessEmptyTreeCommitAndLeavesTheCheckoutAlone reserves from a detached HEAD with a dirty and staged tree against a bare origin and asserts a parentless commit on the empty tree at refs/heads/abcd-reserved/iss-5, authored and committed as P's git identity, whose trailers carry iss-5, octo, a.go, claimed 14:00Z, expiring 16:00Z and Assisted-by: abcd:< version>, with HEAD, index and porcelain status unchanged and no local reservation branch.
+  evidence: internal/core/claim/remote_test.go:142 — "p.git("checkout", "-q", "--detach", "HEAD")"
+  evidence: internal/core/claim/remote_test.go:163 — "tree != "4b825dc642cb6eb9a060e54bf8d69288fbee4904""
+  evidence: internal/core/claim/remote_test.go:171 — ""Assisted-by: abcd:dev""
+  evidence: internal/core/claim/remote_test.go:176 — "h != head || i != index || s != status"
+- ac-2 — MET: Q's reserve over P's live reservation is refused as ErrBackOff naming octo and the effective expiry, origin's tip is unmoved, and even --take-over cannot move another person's live reservation; the CLI maps the back-off to exit 3.
+  evidence: internal/core/claim/remote_test.go:195 — "want := "iss-5 is reserved by octo until 2026-10-03T16:00:00Z; back off and take other work""
+  evidence: internal/core/claim/remote_test.go:199 — "if got := w.remoteTip("iss-5"); got != tip {"
+  evidence: internal/surface/cli/reserve.go:292 — "return &exitError{Code: 3, Msg: msg}"
+- ac-3 — MET: Both shapes of the race are driven (git's client rejecting the advertised tip, and origin's own compare-and-swap refusing a push that landed while Q's was received): lostRace re-fetches, re-judges and refuses with the back-off naming octo, origin's tip stays P's and Q holds no local reservation ref.
+  evidence: internal/core/claim/remote_test.go:254 — "want := "iss-5 was reserved by octo while this push was on its way, until 2026-10-03T16:00:00Z; back off and take other work""
+  evidence: internal/core/claim/remote_test.go:266 — "if local := q.git("for-each-ref", "refs/heads/abcd-reserved/"); local != "" {"
+  evidence: internal/core/claim/remote.go:298 — "return backOff("%s was reserved by %s while this push was on its way, until %s; back off and take other work","
+- ac-4 — MET: A second reserve from the same checkout, which shares its copy key, 30 minutes later is ActRenewed: a child of the first commit whose Abcd-Expires-At moves from 16:00Z to 16:30Z.
+  evidence: internal/core/claim/remote_test.go:283 — "if err != nil || res.Act != ActRenewed {"
+  evidence: internal/core/claim/remote_test.go:287 — "if w.parentOf(tip) != first.Commit || !res.ExpiresAt.After(first.ExpiresAt) ||"
+  evidence: internal/core/claim/remote_test.go:288 — "Abcd-Expires-At: 2026-10-03T16:30:00Z"
+- ac-5 — MET: P's release over Q's tip is refused naming quinn and saying nothing was pushed, and origin's tip is unmoved.
+  evidence: internal/core/claim/remote_test.go:325 — "err.Error() != "iss-5 is reserved by quinn, not by you; nothing was pushed""
+  evidence: internal/core/claim/remote_test.go:328 — "if w.remoteTip("iss-5") != tip {"
+  evidence: internal/core/claim/remote.go:436 — "fmt.Sprintf("%s is reserved by %s, not by you; %s", p.id, j.Holder, nothingPushed))"
+- ac-6 — MET: P's release pushes a child of the reservation with the subject 'abcd reservation released' and Abcd-Expires-At equal to Abcd-Released-At (14:20Z); the branch remains (the committed hook refuses any deletion under the prefix), and a second release reports already_released and pushes nothing.
+  evidence: internal/core/claim/remote_test.go:349 — "if tip == "" || w.parentOf(tip) != first.Commit || !strings.HasPrefix(msg, "abcd reservation released: iss-5") ||"
+  evidence: internal/core/claim/remote_test.go:350 — "Abcd-Released-At: 2026-10-03T14:20:00Z"
+  evidence: .githooks/pre-push:432 — "a branch under $row_prefix ends by a push, never a deletion"
+- ac-7 — MET: After P's tombstone, Q's reserve is ActReserved as a child of the tombstone commit (the released row of the push table).
+  evidence: internal/core/claim/remote_test.go:372 — "if err != nil || res.Act != ActReserved || w.parentOf(w.remoteTip("iss-5")) != rel.Commit {"
+  evidence: internal/core/claim/remote.go:372 — "return res, m, j.Commit, nil"
+- ac-8 — MET: At P's effective expiry plus the five-minute margin by Q's injected clock, Q's reserve is ActTakenOver as a child of P's tip, Replaced naming octo and the 16:00Z expiry; the text render prints the replaced holder and the lapse time.
+  evidence: internal/core/claim/remote_test.go:386 — "w.set(t0.Add(2*time.Hour + TakeoverMargin))"
+  evidence: internal/core/claim/remote_test.go:388 — "res.Replaced.Holder != "octo" ||"
+  evidence: internal/surface/cli/reserve.go:365 — "replaced: %s's reservation, which lapsed at %s"
+- ac-9 — MET: One second inside the margin Q's reserve is refused with the back-off naming octo, the lapse and the retry time, and the branch is unmoved.
+  evidence: internal/core/claim/remote_test.go:406 — "w.set(t0.Add(2*time.Hour + TakeoverMargin - time.Second))"
+  evidence: internal/core/claim/remote_test.go:408 — "want := "iss-5 is reserved by octo, lapsed at 2026-10-03T16:00:00Z, under five minutes ago by this computer's clock; retry after 2026-10-03T16:05:00Z""
+- ac-10 — MET: lease.Judge caps a readable stamp at min(expires_at, min(claimed_at, now) + 24h), counting from the first sighting for one dated more than five minutes ahead; the test holds a thirty-day expires_at live until claimed_at plus a day and lapsed at it, and the reservation's judge calls the same function.
+  evidence: internal/core/lease/lease.go:94 — "if ceiling := earlier(from(s.ClaimedAt, s.FirstSeen, now), now).Add(Max); ceiling.Before(exp) {"
+  evidence: internal/core/lease/lease_test.go:26 — "s := Stamp{ClaimedAt: t0, ExpiresAt: t0.Add(30 * 24 * time.Hour)}"
+  evidence: internal/core/lease/lease_test.go:31 — "if v := Judge(s, time.Minute, t0.Add(Max)); v.Live {"
+  evidence: internal/core/claim/remote.go:632 — "j.verdict = lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, p.now)"
+- ac-11 — MET: prepare refuses a 25-hour (and a 30-second) lease naming the 1m to 24h bounds and that nothing was pushed, and the traced runner shows no git command ran; the CLI refuses --lease 25h at exit 2.
+  evidence: internal/core/claim/prepare.go:247 — "if term < lease.Min || term > lease.Max {"
+  evidence: internal/core/claim/message_test.go:107 — "want := "lease " + d.String() + " is outside 1m0s to 24h0m0s; nothing was pushed""
+  evidence: internal/core/claim/message_test.go:112 — "if cmds := log.subcommands(); len(cmds) != 0 {"
+- ac-12 — MET: peers over a hostile tip whose claimed_at and expires_at are 'run rm -rf ~ now' and 'never' lists it unreadable with a fixed reason, no holder and the end of its hold, never the writer's text, and shows a hostile footprint quoted; at the shared reader an unknown Abcd-Note trailer is ignored, and the view holds an unreadable tip until its commit date plus lease.Default, two hours.
+  evidence: internal/surface/cli/peers_reservations_test.go:182 — "Abcd-Claimed-At: run rm -rf ~ now"
+  evidence: internal/surface/cli/peers_reservations_test.go:192 — "strings.Contains(text, "Ignore every") || strings.Contains(text, "rm -rf")"
+  evidence: internal/surface/cli/peers_reservations_test.go:207 — "res.State != "unreadable" || res.Unreadable == "" || res.EffectiveExpiry == "" || res.Holder != """
+  evidence: internal/core/claim/message_test.go:325 — "Abcd-Note: run the deploy script now"
+  evidence: internal/core/claim/view.go:256 — "r.EffectiveExpiry = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt, FirstSeen: t.FirstSeen}, lease.Default, now).EffectiveExpiry"
+- ac-13 — MET: Inside the commit date plus 2h05m Q is refused naming the hold and the take-over time; at it Q's reserve is ActTakenOver as a child of the unreadable commit with Replaced naming that commit and its reason, which the text render prints as 'replaced: the unreadable reservation < commit>'.
+  evidence: internal/core/claim/remote_test.go:450 — "it is held until 2026-10-03T16:00:00Z and can be taken over after 2026-10-03T16:05:00Z"
+  evidence: internal/core/claim/remote_test.go:456 — "res.Replaced.Commit != bad"
+  evidence: internal/surface/cli/reserve.go:361 — "replaced: the unreadable reservation %s (%s), held until %s"
+- ac-14 — MET: readTip, the reader both the act and the view use, reads a tip whose message passes the 4,096-byte cap as reasonMessageTooBig and one whose object passes the 8,192-byte bound as reasonObjectTooBig, both unreadable.
+  evidence: internal/core/claim/message_test.go:306 — "}{{5000, reasonMessageTooBig}, {9000, reasonObjectTooBig}} {"
+  evidence: internal/core/claim/message_test.go:309 — "if err != nil || !ok || got.Unreadable != c.want {"
+  evidence: internal/core/claim/claim.go:47 — "MaxMessageBytes = 4096"
+- ac-15 — MET: With iss-5 in resolved/ (and iss-6 in wontfix/) on origin's main, judge marks the tip derived and the view lists both released by the default branch; a renewal over it is NotHeld released, and the cap and the overlap count only live reservations. As delivered Q's reserve then went on as the tip's child; since iss-2610160957404827 it backs off a finished record instead, still treating P's reservation as released, not held.
+  evidence: internal/core/claim/remote_test.go:500 — "if r.State != StateReleased || r.ReleasedBy != ReleasedByDefaultBranch {"
+  evidence: internal/core/claim/remote.go:622 — "j.derived = p.derivedGap == "" && terminal(recs[p.id], p.id)"
+  evidence: internal/core/claim/remote.go:533 — "fmt.Sprintf("the reservation on %s is released: %s; %s", p.id, derivedWhy(p.id), nothingPushed))"
+  evidence: internal/core/claim/crowd.go:59 — "if r.State == StateLive && r.Record != p.id {"
+- ac-16 — MET: A third clone's peers --json, after P reserved iss-5 and itd-7 (and released iss-8) and Q reserved iss-6, lists all four from refs/remotes/origin/abcd-reserved/* with holder, footprint, effective expiry and state, counts octo's live reservations as 2, stamps the fetch, and prunes a branch origin dropped.
+  evidence: internal/surface/cli/peers_reservations_test.go:110 — ""iss-5": {"octo", "live", []string{"a.go"}},"
+  evidence: internal/surface/cli/peers_reservations_test.go:127 — "if got.LiveByHolder["octo"] != 2 || got.LiveByHolder["quinn"] != 1 || len(got.LiveByHolder) != 2 {"
+  evidence: internal/surface/cli/peers_reservations_test.go:161 — "t.Fatalf("iss-6 is still listed after origin dropped it: %+v", res)"
+  evidence: internal/core/claim/claim.go:43 — "TrackingPrefix = "refs/remotes/" + Remote + "/abcd-reserved/""
+- ac-17 — MET: prepare resolves octo from both no-reply forms and writes Abcd-Holder: octo; the resolver reads the no-reply login first.
+  evidence: internal/core/claim/message_test.go:144 — "for _, email := range []string{"1234+octo@users.noreply.github.com", "octo@users.noreply.github.com"} {"
+  evidence: internal/core/claim/message_test.go:150 — "if p.holder != "octo" ||"
+  evidence: internal/core/claim/holder.go:152 — "if u := NoReplyUsername(who.Email); u != "" && validUsername(u) {"
+- ac-18 — MET: With user.email pat@example.com and ~/.abcd.noindex/config.json naming octo, prepare's holder is octo; the machine key is the resolver's second source, read from the machine layer only.
+  evidence: internal/core/claim/message_test.go:160 — "r := newCheckout(t, "pat@example.com")"
+  evidence: internal/core/claim/message_test.go:163 — "if err != nil || p.holder != "octo" {"
+  evidence: internal/core/claim/holder.go:155 — "u, err := machineHolder(o.home())"
+- ac-19 — MET_WITH_CONCERNS: Realised as delivered: at c9d94ebd1, the end of the delivered range, a reserve with neither source was refused naming user.email and the machine config.json and saying the repository's own configuration is never read, and the test asserted that over a repository naming mallory. Concern: PR #1037 (iss-2610152046379890, merged after this delivery under the 'no manual steps' ruling) added the session's forge token as a third source, so at HEAD such a reserve takes the holder from gh when it answers, and otherwise refuses naming only the token's failure class, never the two user-level sources; the repository's value is still never used and nothing is pushed, but the intent's In Scope and decision 32 still state the two-source refusal.
+  evidence: c9d94ebd1:internal/core/claim/message_test.go:129 — "want := "cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and " + abcdhome.Display("config.json") + " sets no " +"
+  evidence: c9d94ebd1:internal/core/claim/holder.go:116 — "return "", refuse("cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and %s sets no %s; "+"
+  evidence: internal/core/claim/holder.go:170 — "return tokenHolder(root, o)"
+  evidence: internal/core/claim/message_test.go:178 — "want := "could not work out whose GitHub account this session uses: " + errForgeNoToken.Error() + "; nothing was sent or pushed""
+  evidence: internal/core/claim/holder_test.go:219 — "func TestRepoConfigCannotBlockTokenFallback(t *testing.T) {"
+- ac-20 — MET: A laptop clone resolving octo through the machine config holds iss-5; a cloud clone with octo's no-reply address is refused with the back-off and 'you are already building iss-5 on another computer, until 2026-10-03T16:00:00Z', followed by the --take-over hint, and the branch is unmoved.
+  evidence: internal/core/claim/remote_test.go:514 — "laptop := w.clone("pat@example.com", machineConfig(t, `{"reservation": {"github_username": "octo"}}`))"
+  evidence: internal/core/claim/remote_test.go:521 — "want := "you are already building iss-5 on another computer, until 2026-10-03T16:00:00Z; pass --take-over to continue here""
+  evidence: internal/core/claim/remote.go:403 — "return Result{}, message{}, "", backOff("you are already building %s on another computer, until %s; pass --take-over to continue here","
+- ac-21 — MET: With its only remote renamed upstream the act refuses naming upstream as the remote found, with no remote it says so, and nothing reaches origin.
+  evidence: internal/core/claim/remote_test.go:564 — "want := "reservations live on the remote named origin, and this checkout's remotes are: upstream; nothing was pushed""
+  evidence: internal/core/claim/remote_test.go:572 — "if w.remoteTip("iss-5") != "" {"
+- ac-22 — MET: An origin pointing at a path that does not exist fails at the fetch quoting git's reason (the gone.git path) and ending 'no reservation was made'; no ref and no fetch stamp is left.
+  evidence: internal/core/claim/remote_test.go:583 — "if !errors.Is(err, ErrRefused) || !strings.HasPrefix(err.Error(), "could not read the reservations from origin: ") ||"
+  evidence: internal/core/claim/remote_test.go:584 — "!strings.Contains(err.Error(), "gone.git") || !strings.HasSuffix(err.Error(), "; no reservation was made") {"
+  evidence: internal/core/claim/remote_test.go:587 — "if refs := p.git("for-each-ref", "refs/heads/abcd-reserved/", TrackingPrefix); refs != "" {"
+- ac-23 — MET: A bare origin whose pre-receive refuses refs/heads/abcd-reserved/* makes the act fail as 'origin refused the reservation push:' quoting the hook's own message and ending 'no reservation was made', leaving no ref.
+  evidence: internal/core/claim/remote_test.go:607 — "if !errors.Is(err, ErrRefused) || !strings.HasPrefix(err.Error(), "origin refused the reservation push: ") ||"
+  evidence: internal/core/claim/remote_test.go:608 — "!strings.Contains(err.Error(), "the proxy refuses abcd-reserved pushes") || !strings.HasSuffix(err.Error(), "; no reservation was made") {"
+  evidence: internal/core/claim/remote_test.go:611 — "if w.remoteTip("iss-5") != "" || p.git("for-each-ref", "refs/heads/abcd-reserved/") != "" {"
+- ac-24 — MET: The fixture installs the committed .githooks/pre-push and pushes a parentless empty-tree reserve, a renewal, a take-over and a tombstone with git push --porcelain, the verb's own push shape (pushTo), with hooks on and no receipt; each lands and the preflight never runs. The verb makes that push through gitutil.Net, which runs the repository's hooks, with no --no-verify.
+  evidence: internal/surface/cli/githook_prepush_reserve_test.go:60 — "if out, err := c.push("--porcelain", "origin", next+":"+reservedRef); err != nil {"
+  evidence: internal/surface/cli/githook_prepush_test.go:69 — "for _, rel := range []string{".githooks/pre-push", "scripts/preflight-receipt.sh"} {"
+  evidence: internal/core/claim/remote.go:256 — "return []string{"push", "--porcelain", Remote, sha + ":" + ref}"
+  evidence: internal/gitutil/net.go:39 — "The repository's hooks run (the pre-push gate is the point)"
+- ac-25 — MET: Ordinary history pushed under the prefix, an empty-tree tip over a non-empty commit, and a non-empty-tree child of a reservation each meet 'no passing preflight'; reservation_shape requires every commit in the pushed range to have the empty tree.
+  evidence: internal/surface/cli/githook_prepush_reserve_test.go:82 — "if err == nil || !strings.Contains(out, "no passing preflight") {"
+  evidence: .githooks/pre-push:195 — "reservation_shape() {"
+  evidence: .githooks/pre-push:198 — "only_empty_trees "$local_sha""
+- ac-26 — MET: A forced push replacing a reservation tip with an unrelated empty-tree chain is refused as non-fast-forward and origin keeps the first reservation; the guard runs before the receipt-less exemption for every branch.
+  evidence: internal/surface/cli/githook_prepush_reserve_test.go:128 — "if err == nil || !strings.Contains(out, "non-fast-forward") {"
+  evidence: .githooks/pre-push:448 — "echo "pre-push: refusing non-fast-forward (force) push to '$branch'." >&2"
+  evidence: .githooks/pre-push:456 — "if receiptless_row "$branch" && shape_check "$row_shape" "$remote_sha" "$local_sha"; then"
+- ac-27 — MET: abcd reserve iss-5 with no --footprint exits 2 with the footprint refusal and origin holds nothing for iss-5.
+  evidence: internal/surface/cli/reserve_surface_test.go:119 — "want := "abcd reserve: a reservation names the files the work will change: pass --footprint < path> once per path; nothing was pushed""
+  evidence: internal/surface/cli/reserve_surface_test.go:123 — "if tip := w.remoteTip(t, "iss-5"); tip != "" {"
+  evidence: internal/core/claim/prepare.go:230 — "if !release && !req.Release && !req.Renew && len(req.Footprint) == 0 {"
+- ac-28 — MET: The written commit object carries no home, checkout path or host and is authored by the person's identity; the message passes the outbound policy, which refuses one carrying a session URL; reserve's text, --json and refusal renders under a temporary HOME carry no home path or host, and peers' failure render is checked for home paths.
+  evidence: internal/core/claim/message_test.go:412 — "for _, leak := range []string{home, r.Root(), host} {"
+  evidence: internal/core/claim/message_test.go:420 — "if err := checkMessage(r.Root(), p.reservation().text()); err != nil {"
+  evidence: internal/surface/cli/reserve_surface_test.go:263 — "if len(host) >= 4 && strings.Contains(out, host) {"
+  evidence: internal/surface/cli/peers_reservations_test.go:254 — "noHomePath(t, w.home, raw+stderr)"
+- ac-29 — MET: A footprint carrying ; | & $( ) backticks, a colon, an asterisk and quotes is written and read back verbatim, and the traced git runner shows it in no argument; it travels only in the message on standard input.
+  evidence: internal/core/claim/message_test.go:381 — "if log.anyArgContains("$(e)") || log.anyArgContains("refs/heads/main*") {"
+  evidence: internal/core/claim/message_test.go:386 — "if err != nil || !ok || got.Unreadable != "" || !slices.Equal(got.Footprint, []string{hostile, "ok.go"}) {"
+- ac-30 — MET: Two hundred long footprint paths are refused with the cap message after only config reads, and writeCommit measures again and refuses without writing an object.
+  evidence: internal/core/claim/message_test.go:246 — "bytes, over the 4096-byte cap: name fewer or shorter footprint paths; nothing was pushed"
+  evidence: internal/core/claim/message_test.go:265 — "if after := r.Git("count-objects"); after != before {"
+- ac-31 — MET: Eleven malformed arguments (wrong case, other families, padding, path and refspec shapes, an escape) are refused as not a reservable id before any git command; reservableID admits only CitedIDRe ids canonicalised to iss- or itd- (and, since a later spec, a rel-vX.Y.Z subject) before refName is formed.
+  evidence: internal/core/claim/message_test.go:122 — "for _, arg := range []string{"", "ISS-5", "adr-5", "spc-5", "iss-", "iss-0", "itd-5 ", "iss-5/../main","
+  evidence: internal/core/claim/message_test.go:132 — "if cmds := log.subcommands(); len(cmds) != 0 {"
+  evidence: internal/core/claim/claim.go:124 — "if !recordid.CitedIDRe.MatchString(arg) {"
+- ac-32 — MET: The in-run claim's judge calls lease.Judge, as the reservation's judge does, and its DefaultLease, MinLease and MaxLease are the lease package's; TestClaimJudgesThroughTheSharedLease adds the shared clamp, and the in-run claim tests were last edited on 2026-10-04, before the 2026-10-12 refactor, so they run unchanged.
+  evidence: internal/core/implement/claim.go:427 — "return lease.Judge(lease.Stamp{ClaimedAt: c.ClaimedAt, ExpiresAt: c.ExpiresAt}, UnreadableClaimGrace, now)"
+  evidence: internal/core/claim/remote.go:632 — "j.verdict = lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, p.now)"
+  evidence: internal/core/implement/lease_test.go:25 — "func TestClaimJudgesThroughTheSharedLease(t *testing.T) {"
+  evidence: git log -- internal/core/implement/claim_test.go — "a1ed114bd Sun Oct 4 08:59:13 2026 +0100 feat!: rename abcd's home to ~/.abcd.noindex and stop while ~/.abcd stands"
+- ac-33 — MET: A reserve, a renewal and a release authored by a no-reply identity and carrying Assisted-by: abcd:< version> pass scripts/check-attribution.sh commits over their range with 'check-attribution: clean'.
+  evidence: internal/core/claim/gates_test.go:65 — "cmd := exec.Command("bash", filepath.Join(root, "scripts", "check-attribution.sh"), "commits", "origin/main", tip)"
+  evidence: internal/core/claim/gates_test.go:68 — "if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "check-attribution: clean") {"
+- ac-34 — MET: Start on a planned intent whose spec names packages internal/widget and commands/ pushes P's reservation with footprint [internal/widget, commands], records reserved_at and a reservation note, and a resume renews it as the tip's child; abcd build --json names the reservation it took.
+  evidence: internal/core/implement/loop/build_reserve_test.go:220 — "if fp := footprintOf(t, bare, "itd-10"); !slices.Equal(fp, []string{"internal/widget", "commands"}) {"
+  evidence: internal/core/implement/loop/build_reserve_test.go:224 — "if tip.holder != "octo" || tip.released {"
+  evidence: internal/surface/cli/build_reserve_surface_test.go:39 — "if !strings.HasPrefix(started.Reservation, "reserved itd-8 on origin for this copy until ") ||"
+- ac-35 — MET: A spec with no ## Footprint refuses the start at the reservation stage, not as contention, naming spc-1 and the missing section and that nothing was started; no run tier is created and origin holds no reservation.
+  evidence: internal/core/implement/loop/build_reserve_test.go:292 — "want := "spc-1 has no footprint under ## Footprint to reserve itd-10 with; fill its packages line, then run abcd build again; nothing was started""
+  evidence: internal/core/implement/loop/build_reserve_test.go:297 — "if tip := originReservation(t, bare, reservedRef); tip.commit != "" {"
+- ac-36 — MET: abcd build itd-8 --release after a build pushes a tombstone child of the run's reservation, says the run's state is unchanged, leaves the state file byte-identical, and a second release reports already_released.
+  evidence: internal/surface/cli/build_reserve_surface_test.go:54 — "if code != 0 || !strings.Contains(out, "released the reservation on itd-8") || !strings.Contains(out, "the run's state is unchanged") {"
+  evidence: internal/surface/cli/build_reserve_surface_test.go:61 — "if parent := gitCmd(t, w.origin, "rev-parse", tomb+"^"); parent != reserved {"
+  evidence: internal/surface/cli/build_reserve_surface_test.go:64 — "if after, err := os.ReadFile(statePath); err != nil || string(after) != string(before) {"
+- ac-37 — MET: The drain reserves the issue whose lane it opens, as P from this copy, with its found_at path (commands/drain.md, and AGENTS.md from AGENTS.md:3 with the locator dropped), records it in the run, and reserves no issue whose lane has not opened.
+  evidence: internal/core/implement/loop/drain_reserve_test.go:69 — "if fp := footprintOf(t, bare, secondIssue); !slices.Equal(fp, []string{"commands/drain.md"}) {"
+  evidence: internal/core/implement/loop/drain_reserve_test.go:96 — "if fp := footprintOf(t, bare, eligibleIssue); !slices.Equal(fp, []string{"AGENTS.md"}) {"
+- ac-38 — MET: With Q's live reservation on itd-10 fetched into P's view, the candidates exclude itd-10 at the peers check with a reason naming quinn, the expiry and 'as of the last fetch under a minute ago'; the CLI's build next --json excludes the reserved intent from disk alone.
+  evidence: internal/core/implement/loop/build_reserve_test.go:71 — "if e.Check != CheckPeers || !strings.Contains(e.Reason, "reserved by quinn until ") ||"
+  evidence: internal/core/implement/loop/build_reserve_test.go:72 — "!strings.Contains(e.Reason, "as of the last fetch under a minute ago") {"
+  evidence: internal/surface/cli/reservation_render_test.go:183 — "if code != 2 || !strings.Contains(raw, `"id": "itd-8"`) || !strings.Contains(raw, "reserved by octo until ") {"
+- ac-39 — MET: Start over Q's fetched reservation is refused at the check stage, peers check, as contention, naming quinn and the view's age, never suggesting --take-over, creating no run and leaving origin's tip unmoved.
+  evidence: internal/core/implement/loop/build_reserve_test.go:123 — "if r.Stage != "check" || r.Check != CheckPeers || !r.Contention {"
+  evidence: internal/core/implement/loop/build_reserve_test.go:126 — "if !strings.Contains(r.Reason, "reserved by quinn until ") || !strings.Contains(r.Reason, "as of the last fetch") {"
+- ac-40 — MET: A step 61 minutes into the run's two-hour reservation pushes a child of the tip with a fresh two-hour lease, logs reservation_renewed with the new expiry in the run record, and still performs its stage.
+  evidence: internal/core/implement/loop/reservation_test.go:176 — "reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-61*time.Minute), "internal/widget")"
+  evidence: internal/core/implement/loop/reservation_test.go:181 — "if after.commit == before.commit || after.parent != before.commit {"
+  evidence: internal/core/implement/loop/reservation_test.go:187 — "if note := recordNote(t, f.repo, f.runID, StageReservationRenewed); !strings.Contains(note, "itd-10") || !strings.Contains(note, after.expires.Format(time.RFC3339)) {"
+- ac-41 — MET: A step 30 minutes into the lease leaves origin's tip unchanged and logs no reservation stage.
+  evidence: internal/core/implement/loop/reservation_test.go:199 — "reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")"
+  evidence: internal/core/implement/loop/reservation_test.go:202 — "if after := originReservation(t, f.bare, reservedRef); after.commit != before.commit {"
+- ac-42 — MET: After P's lapsed reservation is taken over by Q, the step at the arming is refused as contention naming quinn's reservation and expiry, no pr merge runs, the lane stays unarmed, and Q's tip is untouched; landFence runs at the top of landArm.
+  evidence: internal/core/implement/loop/reservation_test.go:272 — "want := "the reservation on itd-10 is now quinn's, until " + qTip.expires.Format(time.RFC3339) + ", so this lane does not arm its merge""
+  evidence: internal/core/implement/loop/reservation_test.go:249 — "if strings.Contains(f.ghLog(t), "pr merge") {"
+  evidence: internal/core/implement/loop/land.go:722 — "holds, notice, err := landFence(c, *lane, fenceLease)"
+- ac-43 — MET: Under a mirror whose queue timeout is 45 minutes (and 150, 3000), the fence renews P's reservation as the tip's child with a 24-hour lease, well past 45 minutes plus the margin, before the rule decides whether to arm; since the 2026-10-14 review the fence takes lease.Max under any mirror rather than the timeout plus a margin.
+  evidence: internal/core/implement/loop/reservation_test.go:349 — "{"45", 24 * time.Hour},"
+  evidence: internal/core/implement/loop/reservation_test.go:361 — "if after.parent != before.commit || after.expires.Sub(after.claimed) != tc.lease || after.claimed.Before(now) {"
+  evidence: internal/core/implement/loop/land.go:722 — "holds, notice, err := landFence(c, *lane, fenceLease)"
+- ac-44 — MET: With no ruleset mirror the fence renews for 24 hours, lease.Max, and leaves the pull request open for a person (decision 40, delivered in PR #1034).
+  evidence: internal/core/implement/loop/parked_reserve_test.go:192 — ""no mirror":"
+  evidence: internal/core/implement/loop/parked_reserve_test.go:201 — "if tip.expires.Sub(tip.claimed) != 24*time.Hour {"
+  evidence: internal/core/implement/loop/reservation.go:216 — "const fenceLease = lease.Max"
+- ac-45 — MET: The fixture's lane commits the spec close (Delivers: itd-10) and its head is pushed to origin's main, so the intent is shipped there; the next step marks the lane done and pushes a tombstone child of the fenced reservation, its note saying it released it.
+  evidence: internal/core/implement/loop/reservation_test.go:459 — "if !tomb.released || tomb.parent != held.commit || tomb.holder != "octo" {"
+  evidence: internal/core/implement/loop/reservation_test.go:462 — "if note := landNote(t, f); !strings.Contains(note, "released the reservation on itd-10") {"
+  evidence: internal/core/implement/loop/land_test.go:230 — "f.repo.Git("push", "-q", "origin", head+":refs/heads/main")"
+  evidence: internal/core/implement/loop/land_test.go:260 — ""Delivers: itd-10""
+- ac-46 — MET: Q takes the fenced reservation over past its day plus the margin; after the merge the step completes the landing, leaves Q's tip as it stands, and its note names the reservation left with quinn.
+  evidence: internal/core/implement/loop/reservation_test.go:509 — "if got := originReservation(t, f.bare, reservedRef); got.commit != qTip.commit {"
+  evidence: internal/core/implement/loop/reservation_test.go:512 — "if note := landNote(t, f); !strings.Contains(note, "left the reservation on itd-10") || !strings.Contains(note, "quinn") {"
+- ac-47 — MET: With ten live reservations an eleventh is refused (ErrRefused, a CapError holding the ten) naming the cap and iss-1..iss-10, and origin gets nothing, while Q is not refused by P's ten; the cap is MaxLive, ten, unless the person's own machine setting reservation.max_live (added after this delivery) changes it.
+  evidence: internal/core/claim/capoverlap_test.go:34 — "want := "you hold 10 live reservations, the most one person may hold: iss-1, iss-10, iss-2, iss-3, iss-4, iss-5, " +"
+  evidence: internal/core/claim/capoverlap_test.go:46 — "t.Fatalf("a reservation over the cap reached origin: %s", tip)"
+  evidence: internal/core/claim/crowd.go:17 — "const MaxLive = 10"
+- ac-48 — MET: With iss-1 reserved by octo on commands/reserve.md and internal/core/claim, quinn's reserves sharing an equal path, a file beneath a reserved directory or a directory over a reserved file are each refused with the back-off naming the shared path quoted, iss-1, octo and its expiry, and nothing reaches origin.
+  evidence: internal/core/claim/capoverlap_test.go:130 — "want := `"` + c.path + `" is in the footprint of iss-1` + held"
+  evidence: internal/core/claim/capoverlap_test.go:134 — "if tip := w.remoteTip(c.id); tip != "" {"
+  evidence: internal/core/claim/crowd.go:112 — "return backOff("%s is in the footprint of %s, reserved by %s until %s%s; take other work; %s","
+- ac-49 — MET: After Q's fetch, origin is moved away, HTTP requests are counted and gh is stubbed: abcd iss-5 and the board show octo's reservation 'as of the last fetch', build itd-8 is refused at the peers check (exit 3) and build next excludes itd-8, a reservation made after the fetch is not seen, the fetch stamp is unmoved, and no request or gh call is made; build next's age wording is asserted at the loop level (ac-38).
+  evidence: internal/surface/cli/reservation_render_test.go:101 — "if err := os.Rename(w.origin, w.origin+".away"); err != nil {"
+  evidence: internal/surface/cli/reservation_render_test.go:131 — "!strings.HasPrefix(r.Text, "live, reserved by octo until ") || !strings.Contains(r.Text, ", as of the last fetch ") {"
+  evidence: internal/surface/cli/reservation_render_test.go:166 — "if !strings.HasPrefix(reserved, "reserved by octo until ") || !strings.Contains(reserved, ", as of the last fetch ") {"
+  evidence: internal/surface/cli/reservation_render_test.go:178 — "if code != 3 || !strings.Contains(raw, `"check": "peers"`) || !strings.Contains(raw, "reserved by octo until ") ||"
+  evidence: internal/surface/cli/reservation_render_test.go:190 — "if n := atomic.LoadInt32(&hits); n != 0 {"
+- ac-50 — MET: With no fetch stamped in a checkout that has an origin, Describe renders the reservation as 'unknown, nothing has been fetched here; `abcd peers` fetches', never none, and a tip a plain git fetch left is shown with its age unknown.
+  evidence: internal/core/record/reservation_test.go:54 — "d.Reservation.Text != "unknown, nothing has been fetched here; `abcd peers` fetches" {"
+  evidence: internal/core/claim/render.go:137 — "return "as of a fetch of unknown age""
+- ac-51 — MET: After the landing removes the lane's build/ branch, origin still holds abcd-reserved/itd-10, the checkout's remote-tracking ref for it remains, and no local branch exists under the reservation prefix.
+  evidence: internal/core/implement/loop/reservation_test.go:476 — "if got := f.repo.Git("for-each-ref", "refs/heads/"+l.Branch); got != "" {"
+  evidence: internal/core/implement/loop/reservation_test.go:479 — "if got := originReservation(t, f.bare, reservedRef); got.commit == "" {"
+  evidence: internal/core/claim/claim.go:41 — "// The prefix is disjoint from the implement loop's lane prefix build/."
+- ac-52 — MET: The cloud copy's reserve with TakeOver is ActTakenOver as a child of the laptop's commit whose Abcd-Copy is the cloud copy's key, Replaced naming octo's other copy; the CLI prints 'took over iss-5' and 'your copy on another computer' and never a copy key.
+  evidence: internal/core/claim/remote_test.go:545 — "if err != nil || res.Act != ActTakenOver || res.Replaced == nil || res.Replaced.Copy != CopyAnother || res.Replaced.Holder != "octo" {"
+  evidence: internal/core/claim/remote_test.go:553 — "if w.parentOf(tip) != first.Commit || !strings.Contains(w.remoteMessage(tip), "Abcd-Copy: "+cloudKey) {"
+  evidence: internal/surface/cli/reserve_surface_test.go:228 — "if code != 0 || !strings.Contains(text, "took over iss-5") || !strings.Contains(text, "your copy on another computer") {"
+- ac-53 — MET: After P's second computer takes the reservation over with TakeOver, the laptop lane's step at the arming is refused as contention, 'moved to your copy on another computer', and nothing is armed.
+  evidence: internal/core/implement/loop/reservation_test.go:289 — "if res, err := claim.Reserve(p2, claim.Request{Record: "itd-10", Footprint: []string{"internal/widget"}, TakeOver: true}, clockAt(now.Add(-time.Minute))); err != nil || res.Act != claim.ActTakenOver {"
+  evidence: internal/core/implement/loop/reservation_test.go:293 — "if want := "the reservation on itd-10 moved to your copy on another computer, so this lane does not arm its merge here"; r.Reason != want {"
+
+Gap audit:
+- honoured:
+  - When an agent starts on an item, abcd reserves it for the person the agent works for: a build at its start, a drain as each lane opens.
+    evidence: internal/core/implement/loop/build_reserve_test.go:220 — "if fp := footprintOf(t, bare, "itd-10"); !slices.Equal(fp, []string{"internal/widget", "commands"}) {"
+    evidence: internal/core/implement/loop/drain_reserve_test.go:69 — "if fp := footprintOf(t, bare, secondIssue); !slices.Equal(fp, []string{"commands/drain.md"}) {"
+  - The reservation is a branch on the shared remote that nobody merges, a chain of empty-tree commits that leaves the caller's HEAD, index and working tree alone.
+    evidence: internal/core/claim/claim.go:42 — "RefPrefix = "refs/heads/abcd-reserved/""
+    evidence: internal/core/claim/remote_test.go:163 — "tree != "4b825dc642cb6eb9a060e54bf8d69288fbee4904""
+    evidence: internal/core/claim/remote_test.go:176 — "h != head || i != index || s != status"
+  - If someone else already holds the item, or the files the work will touch, abcd says who and until when, and the agent takes something else.
+    evidence: internal/core/claim/remote_test.go:195 — "want := "iss-5 is reserved by octo until 2026-10-03T16:00:00Z; back off and take other work""
+    evidence: internal/core/claim/capoverlap_test.go:130 — "want := `"` + c.path + `" is in the footprint of iss-1` + held"
+    evidence: internal/core/implement/loop/build_reserve_test.go:71 — "if e.Check != CheckPeers || !strings.Contains(e.Reason, "reserved by quinn until ") ||"
+  - Everyone who works on the project sees the reservation, from any computer or clone, as last fetched and with the view's age.
+    evidence: internal/surface/cli/peers_reservations_test.go:127 — "if got.LiveByHolder["octo"] != 2 || got.LiveByHolder["quinn"] != 1 || len(got.LiveByHolder) != 2 {"
+    evidence: internal/surface/cli/reservation_render_test.go:131 — "!strings.HasPrefix(r.Text, "live, reserved by octo until ") || !strings.Contains(r.Text, ", as of the last fetch ") {"
+  - A reservation is renewed at half its lease while the work goes on, and one left behind lapses and can be taken over.
+    evidence: internal/core/implement/loop/reservation_test.go:181 — "if after.commit == before.commit || after.parent != before.commit {"
+    evidence: internal/core/claim/remote_test.go:388 — "res.Replaced.Holder != "octo" ||"
+  - It stops counting the moment the work is merged: a record terminal on origin's default branch releases its reservation, with no step needed.
+    evidence: internal/core/claim/remote_test.go:500 — "if r.State != StateReleased || r.ReleasedBy != ReleasedByDefaultBranch {"
+  - The one that loses finds out in seconds: a lost race is refused naming the winner and writes nothing.
+    evidence: internal/core/claim/remote_test.go:254 — "want := "iss-5 was reserved by octo while this push was on its way, until 2026-10-03T16:00:00Z; back off and take other work""
+  - Moving a piece of work from one of a person's copies to another is one flag, --take-over.
+    evidence: internal/surface/cli/reserve_surface_test.go:228 — "if code != 0 || !strings.Contains(text, "took over iss-5") || !strings.Contains(text, "your copy on another computer") {"
+    evidence: internal/core/claim/remote_test.go:553 — "if w.parentOf(tip) != first.Commit || !strings.Contains(w.remoteMessage(tip), "Abcd-Copy: "+cloudKey) {"
+  - One liveness judgement serves the in-run implement claim and the reservation.
+    evidence: internal/core/implement/claim.go:427 — "return lease.Judge(lease.Stamp{ClaimedAt: c.ClaimedAt, ExpiresAt: c.ExpiresAt}, UnreadableClaimGrace, now)"
+    evidence: internal/core/claim/remote.go:632 — "j.verdict = lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, p.now)"
+  - The pre-push hook exempts reservation chains narrowly and still refuses a non-fast-forward push.
+    evidence: .githooks/pre-push:195 — "reservation_shape() {"
+    evidence: internal/surface/cli/githook_prepush_reserve_test.go:128 — "if err == nil || !strings.Contains(out, "non-fast-forward") {"
+- diverged:
+  - A reservation lasts two hours: once a lane reaches land the fence renews it for a day, lease.Max, mirror or not (decision 40, amending decision 29 and C44 after a two-hour lapse let a colleague's drain redo work only waiting to merge), and the queue's check timeout is no longer read.
+    evidence: internal/core/implement/loop/reservation.go:216 — "const fenceLease = lease.Max"
+    evidence: internal/core/implement/loop/parked_reserve_test.go:201 — "if tip.expires.Sub(tip.claimed) != 24*time.Hour {"
+    evidence: .abcd/work/issues/resolved/iss-2610152020234609-fence-holds-a-day-without-a-mirror.md:19 — "a pull request the land step leaves waiting on a person holds its reservation on the shared remote for a day, mirror or not"
+  - A person working by hand reserves with one short command: decision 39 made abcd reserve an agent's verb, kept off a person's /abcd: menu though still runnable from the CLI, and a person sees reservations on the board and a record's page.
+    evidence: commands/reserve.md:6 — "user-invocable: false"
+  - With neither a no-reply user.email nor the machine key, every write is refused naming both sources (In Scope, decision 32, C19): after this delivery the act asks the session's forge token third, reserves under its account when gh answers, and otherwise refuses naming only the token's failure; the intent's text was not amended.
+    evidence: internal/core/claim/holder.go:170 — "return tokenHolder(root, o)"
+    evidence: internal/core/claim/message_test.go:178 — "want := "could not work out whose GitHub account this session uses: " + errForgeNoToken.Error() + "; nothing was sent or pushed""
+    evidence: internal/core/claim/holder_test.go:219 — "func TestRepoConfigCannotBlockTokenFallback(t *testing.T) {"
+  - A cloud session reserves, sees and honours reservations exactly as a second person's machine does (decision 4): as delivered it reserved only once its clone's identity named the person; a hosted clone carries the host's vendor identity (the 2026-10-15 probe) and was refused for want of a username until the token fallback merged after this delivery (PR #1037).
+    evidence: c9d94ebd1:internal/core/claim/holder.go:116 — "return "", refuse("cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and %s sets no %s; "+"
+    evidence: .abcd/work/issues/resolved/iss-2610152046379890-a-hosted-cloud-session-s-clone-carries.md:21 — "A hosted cloud session's clone carries the host's default vendor identity as its git author, not the person's"
+  - The land fence catches a reservation lost mid-work before the merge is armed (Mechanism): it does, but as delivered it ran only at arming, after the lane's push and pull request, so a drain lane paused past its lease and taken over by another account became a duplicate public pull request; a push fence and drain-move renewals were added after this delivery (iss-2610161015393523, major).
+    evidence: .abcd/work/issues/resolved/iss-2610161015393523-a-drain-s-in-progress-lane-is-renewed.md:20 — "the land fence runs only at arming, after the push and the pull request, so the duplicate becomes a public pull request"
+    evidence: internal/core/implement/loop/land.go:722 — "holds, notice, err := landFence(c, *lane, fenceLease)"
+  - The footprint refusal keeps apart work on different items that would touch the same files (Mechanism): as delivered, directory footprints turned away whole packages of work, one account holding internal/core/implement/loop blocking 32 eligible issues, and a same-person renewal had to drop files it changes; later records narrowed the check (iss-2610152125101468).
+    evidence: .abcd/work/issues/resolved/iss-2610152125101468-a-reservation-footprint-can-hold-a-whole.md:22 — "while one account holds internal/core/implement/loop, every other account is blocked from all 32 eligible issues under it"
+    evidence: .abcd/work/issues/resolved/iss-2610152125101468-a-reservation-footprint-can-hold-a-whole.md:20 — "the messaging reservation's renewal was refused twice and had to leave out .githooks/pre-push, the ruleset mirror and the generated CLI reference, which it does change"
+  - A per-person cap of ten live reservations (decision 15): since iss-2610170717515674 the cap is the person's own machine setting reservation.max_live, 1 to 100, ten when unset.
+    evidence: internal/core/claim/crowd.go:13 — "// MaxLive is the most live reservations one person may hold unless their"
+    evidence: internal/core/claim/maxlive.go:12 — "reservation.max_live in ~/.abcd.noindex/config.json, the machine layer"
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2610031753354810 — survived: Reservations live on origin alone: a checkout without a remote named origin is refused naming the remotes found, and a remote that refuses the push, standing for a missing write permission, makes no reservation.
+  evidence: internal/core/claim/claim.go:38 — "Remote = "origin""
+  evidence: internal/core/claim/remote_test.go:564 — "want := "reservations live on the remote named origin, and this checkout's remotes are: upstream; nothing was pushed""
+  evidence: internal/core/claim/remote_test.go:607 — "!strings.HasPrefix(err.Error(), "origin refused the reservation push: ")"
+- cond-2610031753352651 — survived: Every act is one plain fast-forward branch push under refs/heads/abcd-reserved/; the forge's ruleset there refuses only deletion and non-fast-forward, and this checkout's view as last fetched holds 138 reservation branches pushed to the real origin. The hosted proxy's acceptance still rests on the 2026-10-03 probe; nothing in the repository re-observes it.
+  evidence: internal/core/claim/remote.go:256 — "return []string{"push", "--porcelain", Remote, sha + ":" + ref}"
+  evidence: .abcd/work/rulesets/reservations-protection.json:24 — ""type": "non_fast_forward""
+  evidence: refs/remotes/origin/abcd-reserved/iss-2610100649471088 — "abcd reservation: iss-2610100649471088"
+- cond-2610031753357820 — untested: Every on: push trigger still filters on main or v* tags, and the one workflow added since, the reservation sweep, runs on a schedule and by hand, so the argument still stands; but nothing in the delivery or the repository records a real reservation push and the runs it did or did not start, which the condition names as its proof.
+  evidence: .github/workflows/auto-release.yml:39 — "branches: [main]"
+  evidence: .github/workflows/attribution.yml:52 — "branches: [main]"
+  evidence: .github/workflows/release.yml:29 — "- 'v*'"
+  evidence: .github/workflows/reservation-sweep.yml:27 — "schedule:"
+- cond-2610031753357092 — survived: Each record has one reservation branch, a release adds a tombstone and deletes nothing, and origin as last fetched holds 150 branches, 138 of them reservations, far under 5,000; since this delivery a daily sweep (iss-2610142200389875, not itd-118) deletes spent ones.
+  evidence: internal/core/claim/remote_test.go:349 — "if tip == "" || w.parentOf(tip) != first.Commit || !strings.HasPrefix(msg, "abcd reservation released: iss-5") ||"
+  evidence: refs/remotes/origin/abcd-reserved/iss-2610100649471088 — "abcd reservation: iss-2610100649471088"
+  evidence: .github/workflows/reservation-sweep.yml:28 — "- cron: "37 4 * * *""
+- cond-2610031753351641 — narrowed: Reservations stay advisory among writers: the holder is a self-declared trailer and any writer can append a child to another's branch. But the delivery made deletion and force refused: the forge's 'reservations protection' ruleset refuses deletion and non-fast-forward under refs/heads/abcd-reserved/** for everyone but the sweep App, and the committed pre-push hook refuses a deletion there.
+  narrowing: Holds for fast-forward appends only: any writer can still push a child naming any holder onto a reservation branch; deleting or rewriting one is refused by the forge ruleset (bypassed only by the sweep App) and, for a push through the hooks, by the pre-push hook.
+  evidence: .abcd/work/rulesets/reservations-protection.json:21 — ""type": "deletion""
+  evidence: .abcd/work/rulesets/reservations-protection.json:4 — ""actor_id": "RESERVATION_SWEEP_APP_ID","
+  evidence: .githooks/pre-push:432 — "a branch under $row_prefix ends by a push, never a deletion"
+  evidence: .abcd/development/specs/closed/spc-2610031753359849-nothing-tells-an-agent-that-a-record-it.md:778 — "people who share push access in good faith. Any writer with push access"
+- cond-2610031753358669 — survived: One username is one person: a laptop resolving octo through the machine config and a cloud clone resolving it through the no-reply address are judged one person, two copies, and usernames compare without regard to case.
+  evidence: internal/core/claim/remote_test.go:521 — "want := "you are already building iss-5 on another computer, until 2026-10-03T16:00:00Z; pass --take-over to continue here""
+  evidence: internal/core/claim/holder.go:48 — "func sameHolder(a, b string) bool { return strings.EqualFold(a, b) }"
+- cond-2610031753352100 — survived: Expiry is judged by the reader's clock against the writer's times with a five-minute take-over margin; the day clamp counts from the earlier of the claim and the reader's now (and from the first sighting for a claim dated more than five minutes ahead), and the code names the residual bound for a holder whose clock runs behind.
+  evidence: internal/core/claim/claim.go:61 — "TakeoverMargin = lease.Skew"
+  evidence: internal/core/lease/lease.go:33 — "const Skew = 5 * time.Minute"
+  evidence: internal/core/lease/lease.go:94 — "if ceiling := earlier(from(s.ClaimedAt, s.FirstSeen, now), now).Add(Max); ceiling.Before(exp) {"
+  evidence: internal/core/claim/claim.go:57 — "// A holder whose clock runs behind by more than half its lease plus this"
+- cond-2610031753358608 — survived: Renewal happens only when something runs it, a step at half the lease (and, since the 2026-10-14 review, a receipt and each drain move over a parked lane); a reservation left to lapse is taken over and the land fence then refuses the merge, the failure the multi-account drain investigation of 2026-10-16 met (iss-2610161015393523).
+  evidence: internal/core/implement/loop/reservation_test.go:181 — "if after.commit == before.commit || after.parent != before.commit {"
+  evidence: internal/core/implement/loop/reservation_test.go:265 — "reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-130*time.Minute), "internal/widget")"
+  evidence: internal/core/implement/loop/reservation_test.go:272 — "want := "the reservation on itd-10 is now quinn's, until " + qTip.expires.Format(time.RFC3339) + ", so this lane does not arm its merge""
+- cond-2610031753354769 — survived: The cap and the overlap are judged by crowding after the act's own fetch and before the commit and push, on that view, with no compare-and-swap across records.
+  evidence: internal/core/claim/remote.go:169 — "gap, err := fetch(root, p.now, noReservation, reservations)"
+  evidence: internal/core/claim/remote.go:196 — "if err := crowding(p, j, &res); err != nil {"
+  evidence: internal/core/claim/crowd.go:48 — "// Both are judged on the view just fetched, not compared-and-swapped: each"
+- cond-2610031753356382 — narrowed: The derived release covers the merge itself as assumed. But decision 40 made the fence's own renewal a day, mirror or not, and later renewals keep that term, so the merge queue's wait no longer depends on implement step renewing during the first day.
+  narrowing: The queue's wait depends on continued renewal (a step, a receipt, or a drain move over the parked lane) only past the day the fence's own lease.Max renewal holds; within that day the fence covers it alone, and the derived release covers the merge.
+  evidence: internal/core/implement/loop/reservation.go:216 — "const fenceLease = lease.Max"
+  evidence: internal/core/implement/loop/parked_reserve_test.go:201 — "if tip.expires.Sub(tip.claimed) != 24*time.Hour {"
+  evidence: internal/core/claim/remote_test.go:500 — "if r.State != StateReleased || r.ReleasedBy != ReleasedByDefaultBranch {"
+- cond-2610031753358785 — survived: Renders and the build's peers check read refs/remotes/origin/abcd-reserved/* from disk: a reservation made after the last fetch reads as none, a view a plain git fetch left is shown with its age unknown, and the reserving push itself refuses the same item as a lost race.
+  evidence: internal/surface/cli/reservation_render_test.go:146 — "if r := rec.Reservation; r == nil || r.State != "none" {"
+  evidence: internal/core/claim/render.go:137 — "return "as of a fetch of unknown age""
+  evidence: internal/core/claim/remote_test.go:254 — "want := "iss-5 was reserved by octo while this push was on its way, until 2026-10-03T16:00:00Z; back off and take other work""
+- cond-2610031753359470 — survived: A reservation carries the record id, a username, a random copy key, repository-relative paths, UTC times and the abcd label; the written commit carries no home, checkout path or host, and the message passes the outbound policy before it is written.
+  evidence: internal/core/claim/message_test.go:412 — "for _, leak := range []string{home, r.Root(), host} {"
+  evidence: internal/core/claim/message_test.go:420 — "if err := checkMessage(r.Root(), p.reservation().text()); err != nil {"
+  evidence: internal/core/claim/message_test.go:31 — "Abcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55"
+- cond-2610031753355764 — narrowed: The cloud copy sees only origin: the reservation lives on origin, each clone keeps its own copy key, and the tests' cloud clone, carrying the person's no-reply address, is judged exactly as a second machine. But the 2026-10-15 probe found a hosted clone carries the host's vendor identity, and as delivered the holder resolver then refused for want of a username unless a person set user.email or the machine key.
+  narrowing: As delivered it holds for a cloud clone whose git identity is the person's GitHub no-reply address or whose home sets reservation.github_username; a hosted clone with the host's vendor identity could not reserve until the forge-token holder, merged after this delivery (PR #1037, iss-2610152046379890), named the person from the session's token.
+  evidence: internal/core/claim/remote_test.go:515 — "cloud := w.clone("1234+octo@users.noreply.github.com", "")"
+  evidence: c9d94ebd1:internal/core/claim/holder.go:116 — "return "", refuse("cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and %s sets no %s; "+"
+  evidence: .abcd/work/issues/resolved/iss-2610152046379890-a-hosted-cloud-session-s-clone-carries.md:21 — "A hosted cloud session's clone carries the host's default vendor identity as its git author, not the person's"
+  evidence: internal/core/claim/holder.go:170 — "return tokenHolder(root, o)"
 <!-- abcd-review-end receipt=rcp-0d4b99e46049 -->
 
 ## Grounds

@@ -9,8 +9,10 @@
 // ceiling (itd-2609201925079472, pace.*), the RepoPrompt review route (itd-6,
 // oracle.review), the runner per role (itd-2609201916056194,
 // roles.<role>.runner), the duplicate-match threshold (itd-2609212137116617,
-// match.threshold) and how a plain-Terminal interview takes a choice from a
-// list (itd-2610030810370060, interview.list). A consumer reads through it rather than opening a file of
+// match.threshold), how a plain-Terminal interview takes a choice from a
+// list (itd-2610030810370060, interview.list), and the build loop's review set
+// and model-class map (itd-2610240922461281, review.* and models.classes, the
+// map and the ceiling read from the machine layer alone). A consumer reads through it rather than opening a file of
 // its own, so the precedence order, the guarded reads and the refusals are
 // spelled once.
 //
@@ -33,7 +35,9 @@
 // error naming the file: a present file that is not a regular file, is a
 // symlink or sits behind one, is writable by others (machine layer), is not
 // valid JSON, holds a key twice, carries trailing content, or declares the
-// wrong schema_version; an unknown key under a claimed namespace; a value in
+// wrong schema_version; an unknown key under a claimed namespace, or the
+// namespace itself spelt in another case or written with a key below it as one
+// dotted member; a value in
 // the winning layer that does not decode to the caller's type or fails its
 // check. None of these falls through to a lower layer or to the default,
 // because a configuration that silently does less than it says is the failure
@@ -598,8 +602,11 @@ func objectAt(d *doc, key string) (map[string]json.RawMessage, bool, error) {
 // it sits in and the keys the namespace takes, so a misspelt key never lets a
 // default apply unannounced. namespace "" claims the file's top level (a file
 // one reader owns outright); a "*" segment claims every member at that level
-// (roles.* claims each role's keys, whatever the role is called). A namespace
-// no layer holds is not an error.
+// (roles.* claims each role's keys, whatever the role is called). A named
+// segment spelt in another case in any layer ("Facilitator" for facilitator),
+// or written with a key below it as one dotted member ("facilitator.mode"), is
+// refused too, since Lookup would ignore it and a lower layer would decide.
+// A namespace no layer holds is not an error.
 func (s *Stack) Claim(namespace string, keys ...string) error {
 	allowed := map[string]bool{}
 	for _, k := range keys {
@@ -619,6 +626,11 @@ func (s *Stack) Claim(namespace string, keys ...string) error {
 func claimIn(d *doc, obj map[string]json.RawMessage, at string, rest []string, top bool, allowed map[string]bool, keys []string) error {
 	if !top && len(rest) > 0 {
 		seg := rest[0]
+		if seg != "*" {
+			if err := refuseDotted(d, obj, at, seg); err != nil {
+				return err
+			}
+		}
 		var names []string
 		if seg == "*" {
 			for k := range obj {
@@ -627,6 +639,8 @@ func claimIn(d *doc, obj map[string]json.RawMessage, at string, rest []string, t
 			sort.Strings(names)
 		} else if _, ok := obj[seg]; ok {
 			names = []string{seg}
+		} else if err := refuseMiscased(d, obj, at, seg); err != nil {
+			return err
 		}
 		for _, n := range names {
 			p := joinKey(at, n)
@@ -671,6 +685,55 @@ func claimIn(d *doc, obj map[string]json.RawMessage, at string, rest []string, t
 	}
 	return fmt.Errorf("%s (%s layer): unknown key %s; nothing reads it, so it would change nothing. "+
 		"%s takes: %s", d.originFor(joinKey(at, unknown[0])), d.layer, list, scope, strings.Join(keys, ", "))
+}
+
+// refuseMiscased refuses a member of obj that names the claimed segment seg in
+// another case ("Facilitator" for facilitator). Lookup reads the exact
+// spelling, so such a member would be ignored and the layer below it would
+// decide what the file meant to set: a machine-wide setting written with a
+// capital would silently lose to a repository's. Case is judged as
+// encoding/json binds a key (Unicode simple folding, strings.EqualFold); the
+// duplicate-key check has already refused a file holding both spellings, so
+// at most one member matches. Both keys are bounded and %q-escaped.
+func refuseMiscased(d *doc, obj map[string]json.RawMessage, at, seg string) error {
+	var near []string
+	for k := range obj {
+		if k != seg && strings.EqualFold(k, seg) {
+			near = append(near, k)
+		}
+	}
+	if len(near) == 0 {
+		return nil
+	}
+	sort.Strings(near)
+	want := joinKey(at, seg)
+	return fmt.Errorf("%s (%s layer): %q is spelt in another case than %q; keys are read exactly as spelt, "+
+		"so it would change nothing and a lower layer or the default would decide; spell it %q",
+		d.originFor(want), d.layer, BoundKey(joinKey(at, near[0])), BoundKey(want), BoundKey(want))
+}
+
+// refuseDotted refuses a member of obj that spells the claimed segment seg
+// and a key below it as one dotted key ("facilitator.mode" for facilitator,
+// in any case): the records name settings that way, but Lookup reads only the
+// nested spelling, so such a member would be ignored and the layer below it
+// would decide, as with a miscased one (refuseMiscased). It is judged even
+// beside the nested spelling, which the duplicate-key check does not treat as
+// the same key. Both keys are bounded and %q-escaped.
+func refuseDotted(d *doc, obj map[string]json.RawMessage, at, seg string) error {
+	var dotted []string
+	for k := range obj {
+		if head, _, ok := strings.Cut(k, "."); ok && strings.EqualFold(head, seg) {
+			dotted = append(dotted, k)
+		}
+	}
+	if len(dotted) == 0 {
+		return nil
+	}
+	sort.Strings(dotted)
+	want := joinKey(at, seg)
+	return fmt.Errorf("%s (%s layer): %q is one dotted key, and keys are read nested, so it would change nothing and a lower layer or the default would decide; "+
+		"write it as an object under %q",
+		d.originFor(want), d.layer, BoundKey(joinKey(at, dotted[0])), BoundKey(want))
 }
 
 // Value is a resolved configuration value with its provenance.

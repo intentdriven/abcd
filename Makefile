@@ -16,7 +16,7 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 # Go step `preflight` makes, below.
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
-.PHONY: build test vet clean preflight load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
+.PHONY: build test vet clean preflight precheck load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
 	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
@@ -38,8 +38,18 @@ test:
 # cold-reading evals below. Behind the `smoke` build tag so they stay out of the
 # unit-test lane; run explicitly here, under `make preflight`, in CI's smoke job,
 # and in the release verify gate.
+# The eval lanes' budget (iss-2610241228178135): with no -timeout, go test kills
+# the evals package at ten minutes, which a loaded development machine reached
+# with no test hung. Each workflow step that runs an eval lane sets its own,
+# below its job's timeout-minutes, so a hang there still dumps goroutines
+# (internal/core/lint/evallanebudget_test.go holds both).
+EVAL_TIMEOUT ?= 20m
+ifeq ($(strip $(EVAL_TIMEOUT)),)
+override EVAL_TIMEOUT := 20m
+endif
+
 smoke:
-	go test -tags smoke ./evals/...
+	go test -tags smoke -timeout $(EVAL_TIMEOUT) ./evals/...
 
 # The cold-reading evals alone (evals/coldreading_*_test.go): the read-block eval
 # that falsifies the assembler's blindfold by planting sentinel warm content in a
@@ -65,7 +75,7 @@ smoke:
 # second cold-reading eval joins the lane by carrying that constraint, with no
 # edit to this target or to the workflow.
 evals-cold-reading:
-	go test -tags coldreading ./evals/...
+	go test -tags coldreading -timeout $(EVAL_TIMEOUT) ./evals/...
 
 # Format gate, resolved through the toolchain go.mod declares
 # (iss-2609081953452204). Not `gofmt` off PATH: gofmt's rules move between
@@ -278,8 +288,8 @@ asking-sync-check:
 # Both lanes are named even though `smoke` compiles a superset of
 # `evals-cold-reading`'s files: they are separate tag sets, so a cold-reading
 # file reaching for a smoke-only helper compiles under one and not the other,
-# which is the split CI's two jobs cover. About five seconds each on a warm
-# cache, against roughly a minute for the gates already here.
+# which is the split CI's two jobs cover. Under a minute each in CI, and
+# several on a loaded machine, hence EVAL_TIMEOUT above.
 #
 # The test stages wait their turn on the machine (iss-2610102020442624,
 # iss-2610140638074587). Before them the load gate (`abcd implement load
@@ -291,17 +301,19 @@ asking-sync-check:
 # checks again, so two preflights in one quiet minute do not start together; a
 # preflight whose own gate is waiting takes that waiter's place in the queue.
 # It gives up after two hours, failing the preflight and naming what it still
-# waited on, and on a CI runner it opens at once. How many preflights may be in
-# their test stages at once is the person's own machine setting, never the
-# checkout's: load.preflights in ~/.abcd.noindex/config.json, or
-# ABCD_LOAD_PREFLIGHTS in the environment for a trial, one by default and two
-# at most until a measured trial supports more (iss-2610161639025702). The race
+# waited on, and on a CI runner it opens at once. How many preflights the
+# first gate admits to their test stages at once, one race stage able to run
+# beside them, is the person's own machine setting, never the checkout's:
+# load.preflights in ~/.abcd.noindex/config.json, or ABCD_LOAD_PREFLIGHTS in
+# the environment for a trial, one by default and four at most
+# (iss-2610161639025702, iss-2610282016250805). The race
 # stage waits at its own gate (`--race-gate`, spelt without --wait so an older
 # abcd never reads a preflight there as queued at its first gate). At one, the
 # race gate opens at once, so the preflight runs exactly as before. Above one,
 # the first gate admits a preflight while fewer than that many others are in
-# their test stages, a live race run does not shut it by itself, and a waiter
-# queued ahead still does; and the race gate is shut while another go test
+# their test stages (one queued at its race gate runs nothing and takes no
+# slot), a live race run does not shut it by itself, and a waiter queued ahead
+# still does; and the race gate is shut while another go test
 # -race run or race waiter ahead is live, the load is at the limit or the race
 # gate's own hold is in force. That keeps race stages apart among checkouts
 # that have this gate: one at a time within an account, and across accounts
@@ -310,7 +322,7 @@ asking-sync-check:
 # v0.15.1, or two of the start order whose whole-second ages read a tie
 # differently or the later of which stopped counting the earlier past its
 # five-minute cap). An older checkout's
-# race stage is ungated, so set 2 only once none runs a preflight. Each test
+# race stage is ungated, so set more than 1 only once none runs a preflight. Each test
 # stage then takes a go test -p derived from the online cores and the load as
 # the stage starts, at most the cores divided by the setting
 # (cmd/test-parallelism), so one run cannot saturate the machine.
@@ -330,6 +342,28 @@ preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift
 	p=$$(go run ./cmd/test-parallelism) && \
 	go test -race -p "$$p" -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
+
+# The precheck (iss-2610230016523625): the minutes-long pass a lane runs before
+# it queues a preflight, so a test that reads the whole tree fails before the
+# queue rather than after it. It runs preflight's gates (all but the load check,
+# which reads the machine and only warns), build and vet, the packages whose
+# tests audit the record, the generated pages and the agent definitions, in full,
+# and the command and site packages' audit tests, chosen by name: a test in those
+# two packages that reads the committed tree carries one of the PRECHECK_AUDIT_TESTS
+# words in its name, which is how a new one joins without a list to keep. It skips
+# the full unit and race stages, needs no load gate, mints no receipt and replaces
+# no preflight: a pass says only that what it ran passes.
+# TestPrecheckRunsEveryPreflightGateButTheLoadCheck holds its gates to preflight's
+# and TestPrecheckRunsTheAuditTests its test lines to what this says.
+PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Appendices|Paragraph|Vocabulary|Scope|Relay|Chapter|Baseline|Domain|Definitions|Committed|Docs|Identity
+
+precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
+	go build ./...
+	go vet ./...
+	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading
+	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site
+
+precheck: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
 
 # The push receipt (iss-2608290810036869, iss-2608210738378295). The pre-push hook
 # never runs this target: git opens a push's connection before it runs the hook,
@@ -386,7 +420,7 @@ preflight: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
 # about 8.8 ms, and no test asserts what a flush makes true. The skip needs a
 # test binary as well as this opt-in, so a binary built or run here, the lint
 # gates' `go run` tools included, still flushes. CI's test steps set the same.
-test preflight: export ABCD_TEST_SKIP_FLUSH := 1
+test preflight precheck: export ABCD_TEST_SKIP_FLUSH := 1
 
 # The load check (itd-2609231434459890): reads the machine's load and process
 # table once and warns about programs left running and extreme load. It exits 0

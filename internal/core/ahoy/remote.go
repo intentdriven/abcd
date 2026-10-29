@@ -53,11 +53,24 @@ type RemoteSecurity struct {
 // claim a contribution document made about them rested on a web console. Each is a
 // pointer, omitted when the response does not carry it, because "false" and "the
 // API did not say" are different facts.
+//
+// ForkPRContributorApproval is the repository's fork pull-request approval
+// policy: which outside contributors' pull-request workflows wait for the
+// technical facilitator's approval before they run
+// (first_time_contributors_new_to_github, first_time_contributors or
+// all_external_contributors). A required check is
+// matched by its name, so which workflows run on a pull request decides what
+// may report that name; it is recorded for the same reason as the rest, and
+// omitted where the repository has no such policy (the API answers 404). A
+// read that fails otherwise is said in a note, and an apply then keeps the
+// policy the mirror already records, so a failed request never reads as a
+// changed policy.
 type RemoteMergeHygiene struct {
-	DeleteBranchOnMerge *bool `json:"delete_branch_on_merge,omitempty"`
-	AllowMergeCommit    *bool `json:"allow_merge_commit,omitempty"`
-	AllowSquashMerge    *bool `json:"allow_squash_merge,omitempty"`
-	AllowRebaseMerge    *bool `json:"allow_rebase_merge,omitempty"`
+	DeleteBranchOnMerge       *bool  `json:"delete_branch_on_merge,omitempty"`
+	AllowMergeCommit          *bool  `json:"allow_merge_commit,omitempty"`
+	AllowSquashMerge          *bool  `json:"allow_squash_merge,omitempty"`
+	AllowRebaseMerge          *bool  `json:"allow_rebase_merge,omitempty"`
+	ForkPRContributorApproval string `json:"fork_pr_contributor_approval,omitempty"`
 }
 
 // RemoteResult is the outcome of a remote config read or apply.
@@ -154,7 +167,7 @@ func RemoteRead(cwd string) (RemoteResult, error) {
 	if done {
 		return res, nil
 	}
-	observed, merge, err := ghSecurityState(abs, res.Repo)
+	observed, merge, forkErr, err := ghSecurityState(abs, res.Repo)
 	if err != nil {
 		res = refuseRemote(res, "could not read "+res.Repo+"'s security settings, so nothing is known about what would change: "+errText(err))
 		// The read installs nothing (looking is never acting); it names the
@@ -166,6 +179,9 @@ func RemoteRead(cwd string) (RemoteResult, error) {
 		return res, nil
 	}
 	res.Observed, res.Merge = observed, merge
+	if forkErr != nil {
+		res.Notes = append(res.Notes, "the fork pull-request approval policy could not be read, so it is not reported: "+errText(forkErr))
+	}
 	res.Changes = pendingChanges(observed)
 	res.Status = "already_up_to_date"
 	if len(res.Changes) > 0 {
@@ -207,9 +223,19 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 		return res, nil
 	}
 	res.Notes = append(res.Notes, offer...)
-	observed, merge, err := ghSecurityState(abs, res.Repo)
+	observed, merge, forkErr, err := ghSecurityState(abs, res.Repo)
 	if err != nil {
 		return refuseRemote(res, "could not read "+res.Repo+"'s security settings; nothing was changed, because a write over an unknown state is a guess: "+errText(err)), nil
+	}
+	if forkErr != nil {
+		// The mirror records what was seen, so a policy left unread keeps the
+		// one it already records rather than reading as removed.
+		merge.ForkPRContributorApproval = mirroredForkPRApproval(abs)
+		kept := "it records none"
+		if merge.ForkPRContributorApproval != "" {
+			kept = "it keeps " + merge.ForkPRContributorApproval
+		}
+		res.Notes = append(res.Notes, "the fork pull-request approval policy could not be read, so the mirror is not changed for it ("+kept+"): "+errText(forkErr))
 	}
 	res.Observed, res.Merge = observed, merge
 
@@ -237,8 +263,9 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 			continue
 		}
 		if err := ghEnable(abs, res.Repo, step.key); err != nil {
-			return refuseRemote(res, "could not enable "+step.key+" on "+res.Repo+
-				"; the remaining steps were not attempted and no desired state was recorded: "+errText(err)), nil
+			return refuseRemote(res, "could not enable "+step.key+" on "+res.Repo+": "+errText(err)+
+				"; the remaining steps were not attempted and no desired state was recorded"+
+				landedBeforeRefusal(res.Changes)), nil
 		}
 		res.Changes = append(res.Changes, step.key+": "+displayStatus(step.have)+" -> "+statusEnabled)
 	}
@@ -252,7 +279,7 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 	if err != nil {
 		res.Status = "refused"
 		res.Notes = append(res.Notes, "the remote state is correct but the desired-state mirror could not be written ("+
-			RepoSettingsMirrorRelPath+"), so nothing in the tree records it: "+errText(err))
+			RepoSettingsMirrorRelPath+"): "+errText(err)+"; nothing in the tree records it"+landedBeforeRefusal(res.Changes))
 		return res, nil
 	}
 	if wrote {
@@ -281,7 +308,10 @@ func OfferGH(guard string, confirm tools.Confirm) (notes []string, ok bool) {
 		return nil, true
 	}
 	res := newToolInstaller(guard).Install("gh", tools.GitHubSettings, confirm)
-	if res.Ran && res.Installed && res.Verified {
+	if res.Ready && !res.Ran {
+		return nil, true
+	}
+	if res.Ready {
 		return []string{res.Summary() + "; the install does not sign gh in, so if GitHub refuses the request, run gh auth login"}, true
 	}
 	notes = []string{"the GitHub CLI (gh) is not on PATH: " + res.Summary()}
@@ -352,6 +382,18 @@ func refuseRemote(res RemoteResult, reason string) RemoteResult {
 	return res
 }
 
+// landedBeforeRefusal words the toggles this run already changed on GitHub, for
+// a refusal reached after one of them landed (iss-2610072347230409). A refusal
+// that said only what failed would read as "the forge is untouched" when it is
+// not, and the person would re-run or report against a state that has moved.
+// Empty when nothing landed, so a refusal before the first toggle reads as before.
+func landedBeforeRefusal(changes []string) string {
+	if len(changes) == 0 {
+		return ""
+	}
+	return "; this run had already landed on GitHub, and left in place: " + strings.Join(changes, "; ")
+}
+
 // pendingChanges names the toggles that are not yet in the desired state.
 func pendingChanges(observed RemoteSecurity) []string {
 	var out []string
@@ -381,10 +423,13 @@ func displayStatus(s string) string {
 // and therefore writes — the safe direction: the write is idempotent on GitHub's
 // side, whereas assuming enabled would leave a repo unprotected while reporting it
 // covered.
-func ghSecurityState(cwd, repo string) (RemoteSecurity, RemoteMergeHygiene, error) {
+//
+// The fork pull-request approval policy is a second request, so it can fail
+// on its own: forkErr says why it was left unread, and the rest stands.
+func ghSecurityState(cwd, repo string) (sec RemoteSecurity, merge RemoteMergeHygiene, forkErr, err error) {
 	out, err := github.API(cwd, nil, "-H", "Accept: application/vnd.github+json", "repos/"+repo)
 	if err != nil {
-		return RemoteSecurity{}, RemoteMergeHygiene{}, err
+		return RemoteSecurity{}, RemoteMergeHygiene{}, nil, err
 	}
 	var doc struct {
 		SecurityAndAnalysis map[string]struct {
@@ -396,17 +441,65 @@ func ghSecurityState(cwd, repo string) (RemoteSecurity, RemoteMergeHygiene, erro
 		AllowRebaseMerge    *bool `json:"allow_rebase_merge"`
 	}
 	if err := json.Unmarshal(out, &doc); err != nil {
-		return RemoteSecurity{}, RemoteMergeHygiene{}, fmt.Errorf("the API response could not be read as JSON")
+		return RemoteSecurity{}, RemoteMergeHygiene{}, nil, fmt.Errorf("the API response could not be read as JSON")
 	}
+	policy, forkErr := ghForkPRApproval(cwd, repo)
 	return RemoteSecurity{
 			SecretScanning: doc.SecurityAndAnalysis[secretScanningKey].Status,
 			PushProtection: doc.SecurityAndAnalysis[pushProtectionKey].Status,
 		}, RemoteMergeHygiene{
-			DeleteBranchOnMerge: doc.DeleteBranchOnMerge,
-			AllowMergeCommit:    doc.AllowMergeCommit,
-			AllowSquashMerge:    doc.AllowSquashMerge,
-			AllowRebaseMerge:    doc.AllowRebaseMerge,
-		}, nil
+			DeleteBranchOnMerge:       doc.DeleteBranchOnMerge,
+			AllowMergeCommit:          doc.AllowMergeCommit,
+			AllowSquashMerge:          doc.AllowSquashMerge,
+			AllowRebaseMerge:          doc.AllowRebaseMerge,
+			ForkPRContributorApproval: policy,
+		}, forkErr, nil
+}
+
+// ghForkPRApproval reads the repository's fork pull-request approval policy
+// from the Actions permissions API. A 404 is a repository with no such policy,
+// "" with no error; any other failure, or an answer naming no policy, is an
+// error, so an unread policy is never recorded as an absent one.
+func ghForkPRApproval(cwd, repo string) (string, error) {
+	out, err := github.API(cwd, nil, "-H", "Accept: application/vnd.github+json",
+		"repos/"+repo+"/actions/permissions/fork-pr-contributor-approval")
+	if err != nil {
+		if strings.Contains(err.Error(), "HTTP 404") {
+			return "", nil
+		}
+		return "", err
+	}
+	var doc struct {
+		ApprovalPolicy string `json:"approval_policy"`
+	}
+	if json.Unmarshal(out, &doc) != nil {
+		return "", errors.New("the API response could not be read as JSON")
+	}
+	if doc.ApprovalPolicy == "" {
+		return "", errors.New("the API answered without naming a policy")
+	}
+	return doc.ApprovalPolicy, nil
+}
+
+// mirroredForkPRApproval is the fork pull-request approval policy the
+// committed mirror records, or "" when it records none or cannot be read.
+func mirroredForkPRApproval(cwd string) string {
+	root, err := os.OpenRoot(cwd)
+	if err != nil {
+		return ""
+	}
+	defer root.Close()
+	have, err := fsutil.ReadGuardedInRoot(root, RepoSettingsMirrorRelPath, maxAhoyFileBytes)
+	if err != nil {
+		return ""
+	}
+	var doc struct {
+		Observed RemoteMergeHygiene `json:"observed"`
+	}
+	if json.Unmarshal(have, &doc) != nil {
+		return ""
+	}
+	return doc.Observed.ForkPRContributorApproval
 }
 
 // ghEnable PATCHes one toggle to enabled. The body goes in on STDIN as JSON rather

@@ -18,6 +18,26 @@ Run:
 
 Paste its output to the user unchanged, in one fenced block: add nothing inside the fence, and retell none of it outside the fence. The output is the view for the product thinker, a few plain lines: what is being built, the next three things to build, and how many more are ready or parked. It is drawn for a person to read as it stands.
 
+## Who merges
+
+In a repository abcd manages the board also says who merges a ready pull
+request: the repository's `facilitator.mode`, as the layered configuration
+resolves it, and the layer that set it. The product view draws one line above the version
+(`merges: a person (the bundled default)`); the facilitator view draws it as a
+`merges:` row after the status block, naming the key and the mode as configured
+(`merges: a person (facilitator.mode human, from the bundled default)`). No
+merge gate reads the mode yet, so a person merges in every repository, and an
+`auto` is drawn as set but not yet read (`merges: a person (auto is set in
+.abcd/config.json, but the merge gate does not read it yet)`). `--json` carries it as
+`facilitator` (`key`, `mode`, `layer`, `origin`, and `home_refused` when a
+refused home decided it). A person from any layer wins,
+so a `human` in `~/.abcd.noindex/config.json` reads as a person whatever the
+repository says, and a refused home reads as a person (`merges: a person (the
+home directory was refused, so a machine-wide setting cannot be read)`). When
+the mode cannot be read, the line says it is unreadable, and `--json` carries
+only `key` and the refusal as `error`. This is not `/abcd:mode`'s `facilitator` state, which says whose answer
+the loop is waiting on right now; `facilitator.mode` declares who should merge.
+
 ## The version
 
 The board's last line is the installed abcd version, in both views and both
@@ -222,7 +242,12 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **When no binary resolves.** If every rung fails, the fix is **not** to install
 Go. A compiler is a dependency of neither supported install route, which both

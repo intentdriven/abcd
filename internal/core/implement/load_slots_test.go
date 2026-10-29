@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -12,8 +13,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/machineload"
 )
 
-// How many preflights may be in their test stages at once is the person's own
-// machine setting (iss-2610161639025702): load.preflights in
+// How many preflights the first gate admits to their test stages at once is
+// the person's own machine setting (iss-2610161639025702): load.preflights in
 // ~/.abcd.noindex/config.json, or ABCD_LOAD_PREFLIGHTS for a trial, and one
 // by default. No repository file is read for it, so a checkout cannot raise
 // the machine's load.
@@ -94,26 +95,39 @@ func TestPreflightSlotsRefusesABadValue(t *testing.T) {
 	}
 }
 
-// TestPreflightSlotsIsCappedAtTwoUntilMeasured: the product thinker approved
-// a measured trial of two preflights at once (dcn-2610161814279204), so two is
-// the most either place may set; three and four are refused, saying the limit
-// rises once a measured trial supports it.
-func TestPreflightSlotsIsCappedAtTwoUntilMeasured(t *testing.T) {
-	if MaxPreflightSlots != 2 {
-		t.Fatalf("MaxPreflightSlots = %d, want 2 until a measured trial supports more", MaxPreflightSlots)
+// TestPreflightSlotsIsCappedAtFour: the product thinker asked on 2026-10-28
+// for the machine's capacity to be used, so three and four are accepted from
+// either place, and five is refused naming where it was set and the most.
+// One race run at a time and the load limit stay the bounds.
+func TestPreflightSlotsIsCappedAtFour(t *testing.T) {
+	if MaxPreflightSlots != 4 {
+		t.Fatalf("MaxPreflightSlots = %d, want 4", MaxPreflightSlots)
 	}
-	const why = "the limit rises once a measured trial supports it"
-	for _, v := range []string{"3", "4"} {
-		_, _, _, err := PreflightSlots(slotsEnv(v), t.TempDir())
-		if err == nil || !strings.Contains(err.Error(), PreflightSlotsEnv) || !strings.Contains(err.Error(), why) {
-			t.Errorf("%s=%s: err = %v, want a refusal naming the variable and saying %q", PreflightSlotsEnv, v, err, why)
+	for _, c := range []struct {
+		v    string
+		want int
+	}{{"3", 3}, {"4", 4}} {
+		n, src, _, err := PreflightSlots(slotsEnv(c.v), t.TempDir())
+		if err != nil || n != c.want || src != SlotsEnv {
+			t.Errorf("%s=%s: PreflightSlots = %d, %q, %v; want %d from the environment", PreflightSlotsEnv, c.v, n, src, err, c.want)
 		}
 		home := t.TempDir()
-		writeMachineConfig(t, home, `{"load": {"preflights": `+v+`}}`)
-		_, _, _, err = PreflightSlots(noEnv, home)
-		if err == nil || !strings.Contains(err.Error(), "config.json") || !strings.Contains(err.Error(), why) {
-			t.Errorf("load.preflights %s: err = %v, want a refusal naming config.json and saying %q", v, err, why)
+		writeMachineConfig(t, home, `{"load": {"preflights": `+c.v+`}}`)
+		n, src, _, err = PreflightSlots(noEnv, home)
+		if err != nil || n != c.want || src != SlotsMachine {
+			t.Errorf("load.preflights %s: PreflightSlots = %d, %q, %v; want %d from the machine", c.v, n, src, err, c.want)
 		}
+	}
+	const most = "the first gate admits at most 4 preflights to their test stages at once"
+	_, _, _, err := PreflightSlots(slotsEnv("5"), t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), PreflightSlotsEnv) || !strings.Contains(err.Error(), most) {
+		t.Errorf("%s=5: err = %v, want a refusal naming the variable and saying %q", PreflightSlotsEnv, err, most)
+	}
+	home := t.TempDir()
+	writeMachineConfig(t, home, `{"load": {"preflights": 5}}`)
+	_, _, _, err = PreflightSlots(noEnv, home)
+	if err == nil || !strings.Contains(err.Error(), "config.json") || !strings.Contains(err.Error(), most) {
+		t.Errorf("load.preflights 5: err = %v, want a refusal naming config.json and saying %q", err, most)
 	}
 }
 
@@ -282,6 +296,70 @@ func TestWaitWithTwoSlotsIsNotShutByARaceRunAlone(t *testing.T) {
 	}
 	if res.Status != WaitTimedOut || !reflect.DeepEqual(res.Still, []string{WaitOnRaceRun}) || res.Slots != 1 || res.Gate != GateTests {
 		t.Fatalf("result = %+v, want a timeout still on [race-run] at the tests gate with 1 slot", res)
+	}
+}
+
+// TestWaitAdmitsBesideAPreflightAtItsRaceGate is the queue of 2026-10-28
+// (iss-2610282016250805): with two slots, preflight A queued at its race gate
+// and preflight B in its race run kept every other first gate shut on
+// preflight while one stage ran. A runs nothing, so it takes no slot and the
+// gate opens beside B; a unit stage beside B fills both slots again, and the
+// line names only the two that take them. With one slot the gate stays shut,
+// as it always was.
+func TestWaitAdmitsBesideAPreflightAtItsRaceGate(t *testing.T) {
+	scene := func() ([]machineload.Proc, map[int][]string) {
+		procs := []machineload.Proc{
+			{PID: 80000, PPID: 1, PGID: 80000, UID: 502, Age: 9 * time.Minute, Name: "make"},
+			{PID: 80001, PPID: 80000, PGID: 80000, UID: 502, Age: 2 * time.Minute, Name: "go"},
+			{PID: 80002, PPID: 80001, PGID: 80000, UID: 502, Age: 2 * time.Minute, Name: "abcd"},
+			{PID: 81000, PPID: 1, PGID: 81000, UID: 502, Age: 9 * time.Minute, Name: "make"},
+			raceRun(81001, 81000),
+		}
+		args := map[int][]string{
+			80000: {"preflight"},
+			80001: {"run", "./cmd/abcd", "implement", "load", "--race-gate", "--timeout", "2h"},
+			80002: {"implement", "load", "--race-gate", "--timeout", "2h"},
+			81000: {"preflight"},
+		}
+		return procs, args
+	}
+	procs, args := scene()
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(t.TempDir(), 60000, clock, poll{load: 3, procs: procs, args: args})
+	req.Getenv = slotsEnv("2")
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitOpen || len(res.WaitedOn) != 0 {
+		t.Fatalf("result = %+v, want open: a preflight at its race gate takes no slot", res)
+	}
+
+	procs, args = scene()
+	unit, unitArgs := otherAccountsPreflight(82000)
+	for k, v := range unitArgs {
+		args[k] = v
+	}
+	clock = &fakeClock{now: waitT0}
+	req = waitReq(t.TempDir(), 60000, clock, poll{load: 3, procs: append(procs, unit...), args: args})
+	req.Getenv = slotsEnv("2")
+	req.Timeout = time.Minute
+	if res, err = WaitLoad(req); err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || !reflect.DeepEqual(res.Still, []string{WaitOnPreflight}) || !reflect.DeepEqual(res.Preflights, []int{81000, 82000}) {
+		t.Fatalf("result = %+v, want a timeout still on [preflight] naming the race run 81000 and the unit stage 82000", res)
+	}
+
+	procs, args = scene()
+	clock = &fakeClock{now: waitT0}
+	req = waitReq(t.TempDir(), 60000, clock, poll{load: 3, procs: procs, args: args})
+	req.Timeout = time.Minute
+	if res, err = WaitLoad(req); err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || !slices.Contains(res.Still, WaitOnPreflight) {
+		t.Fatalf("result = %+v, want one slot still shut on preflight", res)
 	}
 }
 

@@ -50,12 +50,35 @@ payload's `reservation` says what was done (`reserved <id> on origin for this
 copy until <expiry>, footprint: …`); a run in a checkout without `origin`
 reserves nothing and carries none.
 
+The reservation names exactly the paths that line names, so a file named there
+is reserved as that file, and one reservation holds them for every step of the
+run. A path naming a directory git tracks is reserved as it stands, and the
+start warns on stderr, `abcd build: warning: footprint "<path>" is a directory
+covering <n> tracked files on <branch>, …; reserved anyway: name the files the
+work changes instead` (`reservation_warnings` in `--json`, a list of those
+lines). `build next` warns the same way for the run it starts, and its
+`--json` carries the list under `start`. A directory holds off every other
+reservation of a file inside it, so tell the user, and suggest narrowing the
+spec's `- packages:` line to the files the work changes. A step's own
+`- packages:` line is not read for the reservation.
+
 - A spec with no footprint is refused at the `reservation` stage, exit 2,
   starting nothing: `<spc-N> has no footprint under ## Footprint to reserve
   <itd-N> with; fill its packages line, then run abcd build again; nothing was
   started`. An issue whose `found_at` names no repository-relative path is
   refused the same way. Report the refusal as it stands: the footprint is the spec's to name, never one invented here.
-- Another person's live reservation, or yours from another computer, refuses
+- Each entry of that line is read as its path alone. An entry that names
+  something in the tree as written is reserved as written; otherwise a
+  trailing parenthetical note set off by a space is dropped
+  (`internal/core/x (new)` reserves `internal/core/x`, while
+  `app/(marketing)` stays whole), and a comma inside a note does not split
+  the entry. An entry that is still prose
+  once its note is dropped, holding a space and naming nothing in the tree,
+  is refused at the `reservation` stage, exit 2, starting nothing: `<spc-N>'s
+  packages entry "<entry>" under ## Footprint names no path; write it as its
+  path alone, any note in a trailing parenthetical, then run abcd build
+  again; nothing was started`.
+- Another person's live reservation, or yours from another copy, refuses
   the start as contention, exit 3: back off and take other work. Each
   worktree is its own copy, so a build in a sibling worktree of this checkout
   whose footprint overlaps one already reserved there backs off the same way. For your own
@@ -157,8 +180,10 @@ pass:
   alone, with no fetch and no push: another person's live reservation (or an
   unreadable one within its hold) is named with its holder, its expiry and the
   view's age, `reserved by octo until 2026-10-03T15:00:00Z, as of the last
-  fetch 12 minutes ago`, and so is yours from another computer, its reason and
-  remedy naming `--take-over` (another person's never does). This copy's own
+  fetch 12 minutes ago`, and so is your own from another copy, named as the
+  worktree when it is one of this checkout's and otherwise as your copy on
+  another computer, its reason and remedy naming `--take-over` (another
+  person's never does). This copy's own
   reservation is never a holder. `/abcd:peers` fetches them afresh; a view
   nothing here fetched holds none.
 
@@ -173,12 +198,33 @@ When the checks pass, the payload names the `run_id`, the `state` file
 (`.abcd/.work.local/run/<run-id>/state.json`), the first `lane` (the spec's first
 unlanded step), the `pending` spec steps, `claim` (the claim `--session` took,
 or null), `reservation` (above; absent when nothing was reserved),
-and `next`, the move to make. The
+`reservation_warnings` (above; absent when there is none), and `next`, the move to make. The
 local tier is never created: in a repository abcd does not manage the verb
 refuses. Starting again while the run is in progress creates nothing, runs no
 check, and reports `resumed: true` with the same run and an empty `checks`: the
 run's own lanes move and claim the intent, so judging it again would refuse the
 run as its own peer.
+
+**Approval prompts are refused while the run runs.** A new run says so once,
+in one line on stderr (stdout's JSON is untouched; a resume says nothing).
+While the run is unfinished and its state was written within the last two
+hours (the reservation lease), the host's approval prompt for a shell command
+in this checkout or in a lane the host runs is refused, not shown, because nobody is
+at the terminal to answer it: the agent is told to rewrite the command so it
+needs no approval, each step its own plain command and a script's steps on
+the command line rather than in a file, a heredoc or a `bash -c` string, or to
+skip the step and say why in its report. Sent again unchanged, it is refused
+again; this refusal never turns into an approval. A lane abcd starts through
+the claude runner runs with the host's hooks off, so its prompts never reach
+this refusal: the guard answers them (`abcd guard approve`, below). In a
+session with no run, the prompt
+shows as usual. `build next` says the same once, as it starts a run or begins
+a series.
+
+Refusal stops when the run finishes, when it hands a lane back or holds one
+(the work is then the person's), or after two hours with no activity in the
+run. No verb ends a run early, so a person who interrupts a build and carries
+on by hand sees the prompts again two hours after the run last moved.
 
 ## Pick the next intent
 
@@ -191,8 +237,9 @@ When the argument is `next`, let the run choose the intent:
 The candidates are the planned intents that pass every check above, judged by
 the same function, less one this checkout already has a run in progress for.
 In a checkout with `origin`, an intent whose spec's `## Footprint` names no
-packages is excluded too, at the check `footprint`, since its start would be
-refused at the reservation; the pick moves to the next candidate.
+packages, or names one by prose rather than by its path, is excluded too, at
+the check `footprint`, since its start would be refused at the reservation;
+the pick moves to the next candidate.
 Each is scored from its record, three parts at equal weight, each 0 to 100:
 
 - criteria clarity: the share of its acceptance criteria written in
@@ -350,6 +397,40 @@ A malformed pace or ceiling, typed or configured (`--pace 90`, a work window of
 stage with exit 2, naming the value and the accepted form, and nothing is
 written. Starting again keeps the run's pace: a flag naming another pace is
 refused, and one naming the same pace resumes.
+
+## The review set
+
+A new run also reads its review set once, when it starts: how many reviewers
+each of the two code-review roles (`ruthless-reviewer`, `security-reviewer`)
+runs, and at which model class. The `intent-auditor` keeps its single run.
+
+- `review.reviewers`: a list of one or two classes for both roles, or an object
+  naming a list per role (`{"security-reviewer": ["middle"]}`); each role takes
+  the highest layer that sets it (the repository's `.abcd/config.json`, then
+  `~/.abcd.noindex/config.json`), else the bundled pair, `middle` and `below`.
+- `review.judge`: one class, or absent. A judge runs only once its agent has
+  cleared itd-81's calibration gate, and none has yet, so a set naming one is
+  refused at the `review` stage; without one the stricter verdict decides.
+- `review.max_reviewers`: the machine's ceiling on reviewers per role, 1 or 2
+  (2 when unset), read from `~/.abcd.noindex/config.json` alone. A repository
+  list longer than the ceiling is clamped, with one line on stderr naming both
+  files; a repository's own `max_reviewers` is skipped with a warning.
+- `models.classes`: the class map, `top`, `middle`, `below` and `smallest`, each
+  a `<provider>/<model>` route. It is read from `~/.abcd.noindex/config.json`
+  over the bundled map alone, which spends the person's key and so is theirs to
+  say: a repository's map is skipped with a warning. The bundled map is one
+  vendor's models, a default and not part of the rule.
+
+The payload's `review`, beside `pace`, carries each role's `reviewers` (each
+`class` with the `model` the map resolves it to and the map's `map_layer` and
+`map_origin`), the list's `layer` and `origin`, `clamped` when the ceiling cut
+it, the `judge` (null for none) and `max_reviewers`; the run record's `review`
+line and the text output's `review:` line name each class with its model. A
+class the map does not carry, a list of none or more than two, a misspelt key
+under `review` or `models.classes`, and a route that is not
+`<provider>/<model>` are refused at the `review` stage with exit 2 before
+anything is written. Starting again keeps the run's review set, whatever the
+files say by then. A run started before review sets carries `review: null`.
 
 Last, once every other check passes, the budget check asks each runner a role
 of the run is routed to (below) for its remaining quota, in agent runs, and
@@ -521,7 +602,11 @@ A lane's stages run in order:
    a `security-reviewer` and, on the lane whose landing ships the intent, an
    `intent-auditor`. Start each as a fresh agent with its brief and hand its
    return back unedited; the loop records the verdict itself. A round one of
-   them did not pass goes to a fresh `implementer` with the findings. The audit
+   them did not pass goes to a fresh `implementer` with the findings, and the
+   next round asks each role one model tier up (`local`, `economy`,
+   `frontier`) from the tier it ran at; when the result names a `tier`, start
+   the agent on a model of that tier (`/abcd:implement` says which routes
+   move). The audit
    passes only when every criterion is met: an undecided (`INCONCLUSIVE`)
    criterion fails the round as a not-met one does. Once the lane has taken the
    run's fix rounds, a round that still does not pass hands the lane back: the
@@ -691,6 +776,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

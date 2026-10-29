@@ -488,6 +488,21 @@ still be open, and the drain never opens a second. Without a remote named
 `origin`, a handed-back issue stays passed over, and so does an issue whose
 run in this checkout was handed back.
 
+The move that begins a drain says once, in one line on stderr (stdout's JSON is
+untouched), that approval prompts are refused while it runs: the host's
+approval prompt for a shell command in this checkout or in a lane the host runs is
+refused rather than shown, and the agent is told to rewrite the command into
+plain steps abcd can check, or skip the step and say why in its report, as
+`/abcd:build` describes. The refusal never turns into an approval; a lane
+started through the claude runner runs with the host's hooks off, and the
+guard answers its prompts instead (`abcd guard approve`).
+
+Refusal stops when the drain stops, or after two hours with no activity in the
+drain. A lane handed back does not stop it, since the drain routes the
+hand-back and moves on to the next issue unattended. No verb ends a drain
+early, so a person who interrupts a drain and carries on by
+hand sees the prompts again two hours after it last moved.
+
 ### Holding an issue back for now
 
 To keep the drain off one issue, or off every issue whose `found_at` lies in
@@ -627,6 +642,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

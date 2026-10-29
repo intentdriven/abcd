@@ -15,9 +15,14 @@ created detached and never committed. The record never enters this
 repository's public ledger, and the link from an advisory to its record lives
 in the store's state, not in the record. Every sub-verb checks the store
 before it reads or writes it, and refuses, writing nothing, when the store is
-on a branch, tracks a private record, sits inside the checkout, or is open to
+on a branch, tracks a private record or any file in its local tier, sits inside the checkout, or is open to
 other accounts on the machine: the store's folder is kept at `700` and each
 private record at `600`, and a refusal names the `chmod` that restores them.
+The store's local tier (`.abcd/.work.local/`) holds only files abcd writes: a
+store whose index tracks anything there, under any spelling of its case, is
+refused, and so is a state file under a link or under a folder spelled another
+way, whose refusal names the folder to rename in place. Another project's store
+under the same home is held to the same rules before the check reads it.
 
 Every request to GitHub is the person's own `gh`, signed in to an account that
 may read and edit the repository's security advisories; abcd holds no token.
@@ -71,7 +76,7 @@ lists each restore owed, as for publish below.
 "${CLAUDE_PLUGIN_ROOT}/abcd" embargo triage --json <iss-N|GHSA-id> <verdict> --by "<who decided>" [...]
 ```
 
-The verdict is the person's decision. Ask for it; never choose it yourself.
+The verdict is the person's decision, recorded under their name, so never record one they have not given. Do not hand the choice back bare either: ask the product thinker to confirm, under a `Product` chip, with the question text itself carrying, one advisory per tab, the advisory's title, in outcome terms throughout, with no record ids, no code and no verb's verdict words: its evidence (what someone could do with it and who is exposed), the verdict the record supports, and one line on why each other verdict does not fit. Where two verdicts are each defensible, ask between them neutrally instead. Run triage with `--by` naming them only on their yes.
 
 | Verdict | Needs | What happens |
 | --- | --- | --- |
@@ -112,10 +117,13 @@ again. With the approval abcd closes the advisory, reads it back to confirm it
 is closed with that text, and records `closed_at`. A read-back that does not
 confirm it exits 1 naming which half did not hold. An advisory GitHub already
 reports closed (a close whose read-back or record failed, or one closed by
-hand) is not sent anything: `closed_at` is recorded from GitHub,
-`reconciled` is true, and `text_held` says whether its description begins
-with the drafted text; one GitHub reports published is refused, and its
-`published_at` recorded.
+hand) is not sent anything: `closed_at` is recorded from GitHub's own
+timestamp, `reconciled` is true, and `text_held` says whether its description
+begins with the drafted text; one GitHub reports published is refused, and its
+`published_at` recorded from GitHub's own timestamp. One GitHub reports closed
+or published with no time for it, a time abcd cannot read, or one more than
+five minutes later than this machine's clock, is refused with nothing sent or
+recorded, never stamped with the clock's time.
 
 ## Check
 
@@ -129,8 +137,9 @@ changelog section, a release page, a record. It reads each commit's message
 and the lines it adds (a merge's against its first parent), and each text, and
 refuses every advisory not yet published by its id, a CVE id reserved for it,
 its title (not once the advisory is closed, since its reporter chose it and
-nothing will publish it; its id and CVE id stay refused), and the store's
-location on this machine; any other advisory id is
+nothing will publish it, nor once its verdict is `public-track`, since its
+issue goes into the public ledger; its id and CVE id stay refused), and the
+store's location on this machine; any other advisory id is
 refused too unless `--allow <GHSA-id>` names it as another project's, already
 public. Each finding names its `kind`, `source`, `where` and `line` and never
 repeats the match. Text is folded before it is matched: fullwidth and other
@@ -230,7 +239,8 @@ release is always taken first, whatever the store holds.
 `left_out` names each advisory the plan does not publish and why: its record
 is resolved neither in the release nor in the store with a fix commit the plan
 accepts, its fix is in no published release up to the release, its package is not set on GitHub, or its
-text carries a secret, a private name, or another advisory still under embargo
+summary, description, or any affected package's name or vulnerable functions
+carry a secret, a private name, or another advisory still under embargo
 (a closed one's title included: it stays private on GitHub). Show the user the
 whole plan, then `approve_with`.
 

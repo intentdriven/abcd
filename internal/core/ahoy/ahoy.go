@@ -131,6 +131,10 @@ type DetectionResult struct {
 	// by DryRun while the question is open (readme.offered) and omitted
 	// otherwise (spc-2610031704338417).
 	Readme *ReadmeView `json:"readme,omitempty"`
+	// Sessions is the live brief session questions as the plugin page relays
+	// them, carried by DryRun while they are open (sessions.offered) and
+	// omitted otherwise (spc-2610141709430146 step 6).
+	Sessions *SessionsView `json:"sessions,omitempty"`
 
 	// pluginRoot is the resolved plugin root; not serialized.
 	pluginRoot string
@@ -202,6 +206,12 @@ type InstallOptions struct {
 	// readme.parts (readme_apply.go); a value ParseReadmeParts refuses refuses
 	// the install before any write.
 	ReadmeParts string
+	// LiveSessions is --live-sessions as given: local, cloud, both or none;
+	// "" is the flag not given. It answers the live brief session questions
+	// in any run, --yes included, and is stored as sessions.live
+	// (sessions_ask.go); a value ParseLiveSessions refuses refuses the
+	// install before any write.
+	LiveSessions string
 	// ApproveDependency answers the dependency category's question yes without
 	// asking it: the front door sets it when the person named a tool to
 	// install (--install-tool), which is that answer given in advance. Every
@@ -220,6 +230,11 @@ type InstallOptions struct {
 	// cannot import it, because update imports ahoy. Nil refuses every
 	// promotion: there is no unverified path.
 	VerifyProvenance ProvenanceCheck
+	// DownloadAbcd fetches and verifies a release binary for the download
+	// question setup asks where abcd is not on the PATH (abcd_download.go):
+	// the front door supplies abcd update's checked fetch, since update
+	// imports this package. Nil offers no download.
+	DownloadAbcd DownloadRelease
 	// OnlyWaiting is the setup the yes to the after-update offer runs
 	// (spc-2610170635097509, step 7): only the questions and changed
 	// defaults Waiting returns for this repository are put to the prompter,
@@ -256,11 +271,12 @@ type InstallResult struct {
 	// silent failure, so the reason travels with the result.
 	Notes []string `json:"notes,omitempty"`
 	// OptionalSkipped names the optional gaps a --yes run deliberately did not
-	// apply: the advisory git-identity pin, the status-line offer and the two
-	// model-tier routing offers (which accept a table only on an answer). --yes
-	// approves every resolvable CATEGORY, but it never writes the pin, because
-	// the pin captures whatever git identity happens to be configured and an
-	// unattended run would canonicalise a sandbox or agent identity; and it never
+	// apply: the person's own identity record (and moving a pin the
+	// repository still stores), the status-line offer and the two model-tier
+	// routing offers (which accept a table only on an answer). --yes approves
+	// every resolvable CATEGORY, but it never records who a person commits as,
+	// because that captures whatever git identity happens to be configured and
+	// an unattended run would record a sandbox or agent identity; and it never
 	// wires the status line, because that rewrites a harness-wide user setting
 	// and takes element choices only a prompt can carry. The exclusion is
 	// reported rather than assumed: a run that says "already up to date" while
@@ -274,6 +290,11 @@ type InstallResult struct {
 	// (iss-164).
 	Headline string        `json:"headline"`
 	Summary  []SummaryItem `json:"summary"`
+	// Report is the three-part report setup ends on (setup_report.go): done,
+	// needs you and next, or one line for a repository already set up.
+	Report SetupReport `json:"report"`
+	// needs is the needs-you checklist the run found in its last detection.
+	needs []ReportStep
 	// writeKinds runs parallel to Writes: what each write is, which the summary
 	// explains. Unexported, so the wire shape is unchanged.
 	writeKinds []writeKind
@@ -287,6 +308,12 @@ type InstallResult struct {
 	// skipped and ends with no .abcd/config.json to keep its answer in, so the
 	// summary names the starter files first (iss-2610120505551170).
 	readmeAwaitsConfig bool
+	// sessionsAwaitsConfig is the same for the live brief session question.
+	sessionsAwaitsConfig bool
+	// heldByHooks is the status the run would have had but for committed
+	// hooks git does not run, which make it partial (iss-2610241134315056);
+	// "" when they did not.
+	heldByHooks string
 }
 
 // ReadmeAwaitsConfig reports whether the run left the README question
@@ -294,6 +321,11 @@ type InstallResult struct {
 // starter files exist, the question is not asked and --readme-parts is
 // refused, so the way to answer it starts with creating them.
 func (r InstallResult) ReadmeAwaitsConfig() bool { return r.readmeAwaitsConfig }
+
+// SessionsAwaitsConfig is ReadmeAwaitsConfig for the live brief session
+// question, whose answer is kept in the same file and whose --live-sessions is
+// refused there too.
+func (r InstallResult) SessionsAwaitsConfig() bool { return r.sessionsAwaitsConfig }
 
 // ApplyResult is the outcome of one apply step.
 type ApplyResult struct {
@@ -325,12 +357,26 @@ type StatusLineReceipt struct {
 	Note     string `json:"note"`
 }
 
+// ShellPathReceipt is what uninstall did with the PATH line abcd added to the
+// person's shell settings.
+type ShellPathReceipt struct {
+	Removed bool   `json:"removed"`
+	Note    string `json:"note"`
+}
+
 // UninstallReceipt is the outcome of Uninstall.
 type UninstallReceipt struct {
 	Marker     MarkerReceipt     `json:"marker"`
 	Readme     ReadmeReceipt     `json:"readme"`
 	Symlink    SymlinkReceipt    `json:"symlink"`
 	StatusLine StatusLineReceipt `json:"status_line"`
+	ShellPath  ShellPathReceipt  `json:"shell_path"`
+	// Tools is what became of each tool copy abcd installed and recorded in
+	// ~/.abcd.noindex/tools.json: removed while still the bytes abcd wrote,
+	// left untouched otherwise (itd-2610240918594138, criterion 4).
+	Tools []tools.Removal `json:"tools"`
+	// ToolsNote is set when the record could not be read or rewritten.
+	ToolsNote string `json:"tools_note,omitempty"`
 }
 
 // DoctorReport is the outcome of Doctor: the detection envelope plus read-only

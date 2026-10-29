@@ -113,7 +113,7 @@ func TestInstallScrubsALegacyCredentialFromTheHistoryStore(t *testing.T) {
 
 	if res, err := Install(r.Root(), installOpts(), RefusingPrompter{}); err != nil {
 		t.Fatal(err)
-	} else if res.Status != "clean" {
+	} else if settled(res) != "clean" {
 		t.Fatalf("precondition: first install status = %q (remaining %v), want clean", res.Status, res.Remaining)
 	}
 	sha := deriveIdentity(r.Root()).RootSHA

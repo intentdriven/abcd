@@ -94,7 +94,7 @@ func (a *applyCtx) stepArtefact() {
 		return
 	}
 	defer root.Close()
-	// Contained under an os.Root opened at the repository, as the identity pin
+	// Contained under an os.Root opened at the repository, as the declared production mode
 	// is: a committed .abcd ancestor symlink is refused rather than followed.
 	if err := fsutil.WriteFileAtomicInRoot(root, launch.ArtefactRelPath, data, 0o644); err != nil {
 		a.refuse("could not write " + launch.ArtefactRelPath + ": " + errText(err))

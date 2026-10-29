@@ -79,8 +79,164 @@ _None open; the product thinker delegated this bundle's planning decisions on 20
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-710de708faa8 -->
-Fidelity review OWED (receipt rcp-710de708faa8).
+<!-- abcd-review: INGESTED receipt=rcp-710de708faa8 -->
+Fidelity review — receipt rcp-710de708faa8 (verifier abcd:intent-auditor claude-opus-5-5).
+
+Provenance: abcd:intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:19d260c1998ec14bc2e71f6803d8a32ba3841de4a92857c11a48b0b6d3ef7ae7
+Input attestations: diff:spc-2610161044461448 steps 5, 8 and 13 as merged to main: 7611c2a1f 4dcea36d3 1bc82f1f2 f59267b30 8739ad7f6 00e95902b a1c16e21f (step 5); 40b14c21b e7975ddb4 730aca57b (step 8); 41b9add2a 1b5ed80a9 (step 13); 80764362b (spec close)@-; tree:origin/main at 2e03c61e4, read in the lowcpu-audits worktree, whose later commits add audit notes only (nothing under internal/, commands/ or .gitattributes differs)@-;
+
+Acceptance rollup: MET 8 · MET_WITH_CONCERNS 3 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: stuckReason reads three identical refusals, sixty minutes refusing at one stage, or a refusal that cannot change (stuck.go:192-213), and the drain's move then hands the lane back as stuck with the refusal as its reason and releases its reservation with a stuck tombstone (drain.go:781-809, stuck.go:252-256), pinned by TestThreeIdenticalRefusalsHandTheLaneBackAsStuck and TestSixtyMinutesRefusingAtOneStageHandTheLaneBackAsStuck; concerns: the same move reserves the next eligible issue and asks its judgement, which is what the test asserts, so that issue's lane opens in the same move only when a routed judge answers no within it or a no already stands; the sixty minutes count only refusals no more than fifteen minutes apart (dcn-2610170118506273), so a lane stepped less often is bounded by the identical-refusal count alone; and a refusal naming no lane, such as the run's config tripwire raised before the state is read, is never counted
+  evidence: internal/core/implement/loop/stuck.go:205 — "case r.Count >= b.refusals.Value:"
+  evidence: internal/core/implement/loop/stuck.go:208 — "case mins >= b.minutes.Value:"
+  evidence: internal/core/implement/loop/drain.go:781 — "if stuckReason(run, *bounds) != "" {"
+  evidence: internal/core/implement/loop/stuck.go:256 — "releaseOnHandBack(repoRoot, st, *lane.HandBack, now)"
+  evidence: internal/core/implement/loop/drain_stuck_test.go:84 — "if kind, _ := tombstoneTrailers(t, bare, secondIssue); kind != claim.HandBackStuck {"
+  evidence: internal/core/implement/loop/drain_stuck_test.go:93 — "t.Fatalf("the same move takes up the next eligible issue: %+v", res.Judging)"
+  evidence: internal/core/implement/loop/drain.go:1029 — "if taken == nil {"
+  evidence: internal/core/implement/loop/stuck.go:156 — "if now.Sub(p.Last) <= stuckGap {"
+  evidence: internal/core/implement/loop/loop.go:719 — "if err := configTripwire(repoRoot, runID); err != nil {"
+- ac-2 — MET: waitByDesign keeps out of the lane's log every refusal carrying checkWait, which the real landing sets on its preflight-receipt wait (land.go:452), and every outage wait, which netFailure marks (outage.go:334); TestAWaitByDesignIsNotStuck steps each wait seven times fifteen minutes apart, ninety minutes, finds nothing logged, and the drain's move leaves the lane in progress with nothing routed
+  evidence: internal/core/implement/loop/stuck.go:119 — "return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld"
+  evidence: internal/core/implement/loop/land.go:452 — "r.checkWait = since"
+  evidence: internal/core/implement/loop/outage.go:334 — "r.outage = &outageReport{service: implement.ServiceNetwork, kind: implement.OutageTool, lane: lane, what: what}"
+  evidence: internal/core/implement/loop/drain_stuck_test.go:289 — "t.Fatalf("a lane waiting ninety minutes on %s is still in progress: %+v", tc.name, res)"
+- ac-3 — MET: the brief refuses an issue held resolved or wontfix at the lane's base with a refusal marked final (issuebrief.go:56-64), stuckReason hands back on a final refusal before either bound is read (stuck.go:203-204), and TestABriefRefusedForAnIssueFinishedAtItsBaseHandsBackAtOnce logs one refusal (count 1, final) and the very next drain move routes a stuck hand-back saying it cannot change
+  evidence: internal/core/implement/loop/issuebrief.go:63 — "r.final = id + " is finished at the lane's base""
+  evidence: internal/core/implement/loop/stuck.go:203 — "case r.Final != "":"
+  evidence: internal/core/implement/loop/drain_stuck_test.go:326 — "!strings.Contains(r.Reason, "cannot change")"
+- ac-4 — MET: decidable lets --discard take a lane handed back as stuck (hold.go:130-132, stuckLane at hold.go:186-188), Discard removes its worktree and branch and records the issue run over (hold.go:173-178, 202-260), the CLI's implement step calls loop.Discard (build.go:1035), and TestDiscardAcceptsALaneHandedBackAsStuck asserts the lane discarded, the run complete, the worktree gone and the branch deleted
+  evidence: internal/core/implement/loop/hold.go:130 — "if l := st.Lanes[i]; flag == "--discard" && stuckLane(l) {"
+  evidence: internal/surface/cli/build.go:1035 — "res, err = loop.Discard(root, id, discard, loop.Options{})"
+  evidence: internal/core/implement/loop/drain_stuck_test.go:357 — "if st.Lanes[0].Stage != StageDiscarded || !st.Complete() {"
+- ac-5 — MET: readParked reads a pull request the listing shows CLOSED as closed (drain_finish.go:154-155); finishMerged then hands the lane back as closed and releases its reservation with the hand-back's tombstone under the run's lock (drain_finish.go:291-297, 391-413), the drain routes the hand-back home (drain.go:701-728) and names it ahead of next (drain.go:480-481); TestAClosedPullRequestReleasesAndHandsBackItsLane asserts the released tip, the closed tombstone, the route and next naming #7 as closed
+  evidence: internal/core/implement/loop/drain_finish.go:154 — "case pr.State == "CLOSED":"
+  evidence: internal/core/implement/loop/drain_finish.go:403 — "releaseOnHandBack(repoRoot, st, *lane.HandBack, now)"
+  evidence: internal/core/implement/loop/drain_parked_test.go:149 — "if kind, _ := tombstoneTrailers(t, f.bare, secondIssue); kind != claim.HandBackClosed {"
+  evidence: internal/core/implement/loop/drain_parked_test.go:162 — "if !strings.Contains(res.Next, "#7") || !strings.Contains(res.Next, "closed") {"
+- ac-6 — MET: a listing showing the pull request CONFLICTING reads the lane as conflicting (drain_finish.go:158-159), which held() leaves out of the parked renewal loop (drain_finish.go:170, 215), the lane-in-progress renewal never renews a parked lane (drain_lease.go:72-75), and the reading is named in next; TestAConflictingPullRequestIsNotRenewedAndIsNamed asserts the reservation's tip unmoved at twelve and a half hours, next naming #7 and the conflict, and no hand-back
+  evidence: internal/core/implement/loop/drain_finish.go:158 — "case pr.Mergeable == MergeableConflicting:"
+  evidence: internal/core/implement/loop/drain_finish.go:215 — "if run.ReservedAt == nil || !read[run.RunID].held() {"
+  evidence: internal/core/implement/loop/drain_lease.go:74 — "return run.ReservedAt != nil && outcome == DrainLaneInProgress && parkedAtLand(run) < 0"
+  evidence: internal/core/implement/loop/drain_parked_test.go:199 — "if tip := originReservation(t, f.bare, ref); tip.commit != fenced.commit {"
+  evidence: internal/core/implement/loop/drain_parked_test.go:205 — "if !strings.Contains(res.Next, "#7") || !strings.Contains(res.Next, "conflict") {"
+- ac-7 — MET_WITH_CONCERNS: finishMerged calls listParked once in any move that finds a parked lane (drain_finish.go:196-203), a single gh pr list --state all --author @me (drain_finish.go:115-116) matched to every lane by number and head branch, and TestEveryParkedLaneIsReadInOneForgeListing counts exactly one listing for two parked lanes; concern: the one call is one page of the person's latest 100 pull requests (parkedListLimit, dcn-2610170728074867), so a parked lane whose pull request is older is read as unread and kept renewed, never read from the forge
+  evidence: internal/core/implement/loop/drain_finish.go:199 — "listed, unread := listParked(repoRoot)"
+  evidence: internal/core/implement/loop/drain_finish.go:115 — "out, err := landing.GH(repoRoot, "pr", "list", "--state", "all", "--author", "@me","
+  evidence: internal/core/implement/loop/drain_finish.go:90 — "const parkedListLimit = 100"
+  evidence: internal/core/implement/loop/drain_finish.go:149 — "is not among the forge's listing of your latest %d pull requests, so its lane is kept held"
+  evidence: internal/core/implement/loop/drain_parked_test.go:111 — "if got := f.parkedListings(t) - before; got != 1 {"
+- ac-8 — MET: an open pull request the listing does not show conflicting reads as waiting (drain_finish.go:160-164), held() keeps it in the renewal loop, renewed at half its lease (drain_finish.go:170, 213-233), and parkedNote names every parked reading ahead of next on each move (drain_finish.go:417-426, drain.go:480-481); TestAnOpenParkedLaneIsRenewedAndNamedAsWaiting asserts a fresh renewal on origin and next naming #7 as waiting
+  evidence: internal/core/implement/loop/drain_finish.go:163 — "n+" is open, waiting on a person's merge (merge state "+status+"), so its lane is kept held""
+  evidence: internal/core/implement/loop/drain.go:480 — "if note := parkedNote(res.Parked); note != "" {"
+  evidence: internal/core/implement/loop/drain_parked_test.go:227 — "if tip := originReservation(t, f.bare, ref); tip.parent != fenced.commit || tip.released || tip.claimed.Before(at) {"
+  evidence: internal/core/implement/loop/drain_parked_test.go:233 — "if !strings.Contains(res.Next, "#7") || !strings.Contains(res.Next, "waiting") {"
+- ac-9 — MET_WITH_CONCERNS: the issue lane's sync, run at its landing before its records and push (land.go:142-148), fetches origin's default branch and merges it whenever it has moved (sync.go:110-134); a conflict confined to files declared linguist-generated, the CLI reference among them (.gitattributes:58), is aborted and sent to a fresh implementer whose brief says to regenerate them (sync.go:191-207, 402-406), whose receipt must contain the merged sha (sync.go:427) before a fresh round of validators judges it, pinned by TestAConflictOnADeclaredGeneratedFileGoesToTheImplementer; concerns: that round is a sync, which counts no fix round (sync.go:14-15, dcn-2610170755303451), not the fix round promised; no test carries such a conflict through the regeneration to a pushed, mergeable pull request, re-landing being pinned only for a conflict-free resync; and iss-2610170921271252, still open, records that this pre-push merge is unbounded, so a slow lane can re-merge and re-validate without ever pushing
+  evidence: internal/core/implement/loop/land.go:145 — "if out, synced, err := syncLane(c, lane); err != nil || synced {"
+  evidence: internal/core/implement/loop/sync.go:111 — "if tracking, err = fetchDefault(c, *lane, def); err != nil {"
+  evidence: internal/core/implement/loop/sync.go:196 — "gen, unread := claim.GeneratedFiles(c.RepoRoot)"
+  evidence: internal/core/implement/loop/sync.go:207 — "return Outcome{Goto: StageValidate, LandLeft: true, Reservation: reserved, Note: conflictNote(lane.ID, def, merged, paths, siblings, s.Brief)}, true, nil"
+  evidence: internal/core/implement/loop/sync.go:427 — "on, err := gitutil.IsAncestor(c.RepoRoot, s.Merged, lane.HeadSHA)"
+  evidence: internal/core/implement/loop/sync.go:14 — "A sync does not count against"
+  evidence: .gitattributes:58 — "docs/reference/cli/commands.md linguist-generated"
+  evidence: internal/core/implement/loop/sync_default_test.go:140 — "t.Fatalf("the conflict goes to an implementer: %+v", l)"
+  evidence: .abcd/work/issues/open/iss-2610170921271252-before-its-push-an-issue-lane-re-fetches.md:15 — "can run round after round of validators and never reach its push"
+- ac-10 — MET: for a parked lane the listing shows conflicting, finishMerged checks a driver-free merge as the forge merges (syncable, drain_finish.go:346-353) and, when it conflicts in declared generated files alone, takes the run's own landing step (resyncParked, drain_finish.go:274-289), whose resyncLane withdraws an armed merge as a step of its own and otherwise merges the default branch (sync.go:284-302); the drain reads the lane as syncing and drives it again (drain.go:693-697); the while-it-waits-armed subtest asserts --disable-auto, ParkedSyncing, the lane in progress and no hand-back, then the lane's next step re-entering the sync
+  evidence: internal/core/implement/loop/drain_finish.go:274 — "if p.State == ParkedConflicting && syncable(repoRoot, tracking, lane.Landing.Pushed) {"
+  evidence: internal/core/implement/loop/sync.go:292 — "if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {"
+  evidence: internal/core/implement/loop/drain.go:696 — "st.Lanes[i].Outcome, finished = DrainLaneInProgress, true"
+  evidence: internal/core/implement/loop/sync_default_test.go:319 — "t.Fatalf("the drain reads the lane as syncing again: %+v", p)"
+  evidence: internal/core/implement/loop/sync_default_test.go:325 — "if st, err := ReadState(f.repo.Root(), f.runID); err != nil || st.Lanes[0].HandBack != nil {"
+- ac-11 — MET: a sync merge that conflicts in any path the declaration does not name is aborted with the branch unchanged and refused, before the records and the push, with a final refusal naming the files (sync.go:191-199, 236-247), which the drain's stuck rule hands back at once (stuck.go:203-204); TestAConflictOnAnUndeclaredFileHandsBackAndPushesNothing asserts the refusal names plain.txt, no branch reaches origin, and the next drain move's stuck route names plain.txt
+  evidence: internal/core/implement/loop/sync.go:197 — "if others := undeclared(paths, gen); len(others) > 0 {"
+  evidence: internal/core/implement/loop/sync.go:245 — "r.final = "its merge of " + Remote + "'s default branch conflicts in " + named + ", which is not declared generated""
+  evidence: internal/core/implement/loop/sync_default_test.go:172 — "if f.remoteBranch(t, l.Branch) != "" {"
+  evidence: internal/core/implement/loop/sync_default_test.go:181 — "if route.Kind != claim.HandBackStuck || !strings.Contains(route.Reason, "plain.txt") {"
+
+Gap audit:
+- honoured:
+  - a drain lane that keeps refusing (the same way three times, for sixty minutes at one stage, or in a way that cannot change) is handed back as stuck, says why, releases its reservation, and the drain moves past it
+    evidence: internal/core/implement/loop/drain.go:781 — "if stuckReason(run, *bounds) != "" {"
+    evidence: internal/core/implement/loop/stuck.go:252 — "hb := HandBack{Kind: HandBackStuck, Reason: why,"
+    evidence: internal/core/implement/loop/drain_stuck_test.go:81 — "if !strings.Contains(r.Wrote, "released the reservation on "+secondIssue) {"
+  - a lane whose issue turned out to be fixed already, finished at its base, is handed back at once
+    evidence: internal/core/implement/loop/issuebrief.go:63 — "r.final = id + " is finished at the lane's base""
+    evidence: internal/core/implement/loop/drain_stuck_test.go:326 — "!strings.Contains(r.Reason, "cannot change")"
+  - a stuck lane is discarded through the step verb, with no run directory removed by hand
+    evidence: internal/core/implement/loop/hold.go:130 — "if l := st.Lanes[i]; flag == "--discard" && stuckLane(l) {"
+    evidence: internal/surface/cli/build.go:1035 — "res, err = loop.Discard(root, id, discard, loop.Options{})"
+  - lanes waiting on a merge are read from their pull requests in one listing each move: a closed one is handed back and released, a conflicting one is no longer renewed and is named, an open one is renewed and named as waiting
+    evidence: internal/core/implement/loop/drain_finish.go:199 — "listed, unread := listParked(repoRoot)"
+    evidence: internal/core/implement/loop/drain_finish.go:154 — "case pr.State == "CLOSED":"
+    evidence: internal/core/implement/loop/drain_finish.go:158 — "case pr.Mergeable == MergeableConflicting:"
+    evidence: internal/core/implement/loop/drain_parked_test.go:111 — "if got := f.parkedListings(t) - before; got != 1 {"
+  - lanes merge the default branch before they land, and a conflict on declared generated files goes to an implementer to regenerate rather than to a person, including when a waiting pull request starts to conflict
+    evidence: internal/core/implement/loop/sync.go:111 — "if tracking, err = fetchDefault(c, *lane, def); err != nil {"
+    evidence: internal/core/implement/loop/sync_default_test.go:106 — "len(parents) != 3 || parents[1] != judged || parents[2] != tip"
+    evidence: internal/core/implement/loop/sync.go:403 — "Every one of them is a file the repository declares generated (`linguist-generated` in its"
+    evidence: internal/core/implement/loop/drain_finish.go:274 — "if p.State == ParkedConflicting && syncable(repoRoot, tracking, lane.Landing.Pushed) {"
+- diverged:
+  - a pull request that left the merge queue stops holding its issue: gh pr list names no merge-queue entry and the arming stands for it, so an open, unconflicting pull request dropped from the queue is read as waiting and kept renewed
+    evidence: .abcd/development/intents/shipped/itd-2610161016391855-a-drain-lane-that-cannot-finish-no.md:21 — "so one that closed, left the merge queue or started to conflict stops holding its issue and is named"
+    evidence: internal/core/implement/loop/drain_finish.go:93 — "merge-queue entry (ghcontract pins its list), so the arming"
+    evidence: internal/core/implement/loop/drain_finish.go:163 — "n+" is open, waiting on a person's merge (merge state "+status+"), so its lane is kept held""
+  - a pull request that started to conflict stops holding its issue: its reservation is only no longer renewed, so it stays live, and counts against the cap, until its current lease lapses, which the mechanism names as the failure (a conflicting pull request keeping its issue reserved past the next move)
+    evidence: .abcd/development/intents/shipped/itd-2610161016391855-a-drain-lane-that-cannot-finish-no.md:33 — "a closed or conflicting pull request keeps its issue reserved past the next move"
+    evidence: internal/core/implement/loop/drain_finish.go:159 — "so its lane is no longer renewed: a person merges the default branch into it, or closes it"
+    evidence: internal/core/implement/loop/drain_parked_test.go:209 — "t.Fatalf("a conflicting lane is not handed back by the drain: %+v %v", st.Lanes[0], err)"
+  - generated files are regenerated rather than conflicting on them: abcd declares only the CLI reference and the surface manifest, not the brief's surfaces page the spec said its declaration would name and the intent counts in 18 merges, so that page still conflicts and its lane hands back
+    evidence: .abcd/development/specs/closed/spc-2610161044461448-drain-many-accounts.md:63 — "abcd's own declaration names the generated CLI reference, the surface manifest and the brief's surfaces page."
+    evidence: .gitattributes:56 — "The brief's surface chapters are not named: each mixes hand-written prose with"
+    evidence: .abcd/development/intents/shipped/itd-2610161016391855-a-drain-lane-that-cannot-finish-no.md:25 — "54 touched the generated CLI reference, 29 the surface manifest and 18 the brief's surfaces page"
+  - the conflict on a generated file goes back to the implementer as a fix round: it goes to a fresh implementer as a sync round that counts no fix round
+    evidence: internal/core/implement/loop/sync.go:14 — "A sync does not count against"
+    evidence: .abcd/work/decisions/dcn-2610170755303451-a-lane-s-merge-of-the-default-branch-is.md:6 — "like every sync counts no fix round"
+  - the drain moves on to the next issue in the same move: it reserves the next issue and asks its judgement there, and that issue's lane opens only once the judgement answers no, in the same move only through a routed judge
+    evidence: internal/core/implement/loop/drain.go:1029 — "if taken == nil {"
+    evidence: internal/core/implement/loop/drain_stuck_test.go:93 — "t.Fatalf("the same move takes up the next eligible issue: %+v", res.Judging)"
+  - a step that keeps refusing is handed back after a bound: the sixty minutes count only refusals no more than fifteen minutes apart, and a refusal naming no lane, such as the run's config tripwire raised before the state is read, is never counted
+    evidence: internal/core/implement/loop/stuck.go:59 — "const stuckGap = drainWaitMinutes * time.Minute"
+    evidence: internal/core/implement/loop/stuck.go:133 — "if !ok || st.Issue() == "" || r.Lane == "" || waitByDesign(r) {"
+    evidence: internal/core/implement/loop/loop.go:719 — "if err := configTripwire(repoRoot, runID); err != nil {"
+  - lanes waiting on a merge are read from their pull requests each move: only the person's latest 100 pull requests are listed, and a lane the listing does not show, or every lane when the listing fails, keeps its reservation renewed as before
+    evidence: internal/core/implement/loop/drain_finish.go:90 — "const parkedListLimit = 100"
+    evidence: internal/core/implement/loop/drain_parked_test.go:282 — "t.Fatalf("the lane's reservation is renewed: fenced %+v, now %+v", fenced, tip)"
+    evidence: .abcd/work/decisions/dcn-2610170728074867-a-drain-move-reads-its-parked-lanes-from.md:6 — "a pull request the listing does not show, or a listing that fails, keeps its lane renewed as before"
+- missing:
+  - a bound on the pre-push merge of the default branch: an issue lane re-merges and re-validates whenever the default branch moved, with no limit, so a slow lane may never reach its push (iss-2610170921271252, still open)
+    evidence: .abcd/work/issues/open/iss-2610170921271252-before-its-push-an-issue-lane-re-fetches.md:15 — "can run round after round of validators and never reach its push"
+    evidence: .abcd/work/issues/open/iss-2610170921271252-before-its-push-an-issue-lane-re-fetches.md:12 — "Merge the default branch into a lane at most once per lane before its push, or at most once per N minutes"
+  - a test carrying a generated-file conflict through the implementer's regeneration to a pushed, mergeable pull request: the tests stop at the sync brief, and re-landing is pinned only for a conflict-free resync
+    evidence: internal/core/implement/loop/sync_default_test.go:140 — "t.Fatalf("the conflict goes to an implementer: %+v", l)"
+    evidence: internal/core/implement/loop/sync_default_test.go:241 — "t.Run("and lands again once a fresh round judges the merge", func(t *testing.T) {"
+  - evidence from drains on several accounts: the three-account lab rerun on the built binary, which the spec's proof requires before close, is not recorded in the repository, and the close commit moves only records
+    evidence: .abcd/development/specs/closed/spc-2610161044461448-drain-many-accounts.md:75 — "Before this spec closes, the three-account lab of 2026-10-16 is run again on the built binary, every account on the same build."
+    evidence: 80764362b — "4 files changed, 12 insertions(+), 6 deletions(-)"
+
+Scope-condition dispositions:
+- cond-2610161044463127 — survived: a refused step is logged on its lane only on the implement-step path, inside the run's state write (loop.go:766-771, noteRefusal at stuck.go:131-178), and the drain judges a lane only from that run state (drain.go:768-786); nothing reads a lane worked by hand, and only an issue run logs, which every drain lane is (stuck.go:133)
+  evidence: internal/core/implement/loop/loop.go:769 — "if noteRefusal(st, err, now) {"
+  evidence: internal/core/implement/loop/stuck.go:133 — "if !ok || st.Issue() == "" || r.Lane == "" || waitByDesign(r) {"
+  evidence: internal/core/implement/loop/drain.go:768 — "run, err := ReadState(repoRoot, l.RunID)"
+- cond-2610161044469748 — narrowed: a move that finds a parked lane makes one listing (drain_finish.go:196-203), names one it cannot read, and the next move lists afresh; but the listing is one page of the person's latest 100 pull requests, and a lane the listing fails on or does not show is kept renewed at half its lease as before (dcn-2610170728074867, pinned by TestAParkedLaneTheForgeDoesNotAnswerForIsKeptHeld) rather than renewing nothing
+  narrowing: holds for parked lanes whose pull requests are among the person's latest 100 that one gh pr list --state all --author @me --limit 100 returns; a lane outside that page, or every parked lane when the listing fails or does not parse, is read as unread, named as kept held, and still has its reservation renewed at half its lease on every move until a listing shows it
+  evidence: internal/core/implement/loop/drain_finish.go:90 — "const parkedListLimit = 100"
+  evidence: internal/core/implement/loop/drain_finish.go:144 — "could not be read from the forge ("+unread+"), so its lane is kept held"
+  evidence: internal/core/implement/loop/drain_finish.go:170 — "func (p DrainParked) held() bool { return p.State == ParkedWaiting || p.State == ParkedUnread }"
+  evidence: internal/core/implement/loop/drain_parked_test.go:282 — "t.Fatalf("the lane's reservation is renewed: fenced %+v, now %+v", fenced, tip)"
+  evidence: .abcd/work/decisions/dcn-2610170728074867-a-drain-move-reads-its-parked-lanes-from.md:6 — "a pull request the listing does not show, or a listing that fails, keeps its lane renewed as before"
+- cond-2610161044462911 — survived: claim.GeneratedFiles reads only the root .gitattributes on origin's default branch as last fetched (generated.go:13-21, 58-59), and each sync and resync fetches that branch first (sync.go:111, land.go:751); abcd declares the CLI reference and the surface manifest and leaves the brief's surface chapters undeclared, and an undeclared conflict at the lane's sync is a final refusal the drain hands back at once with nothing pushed (sync.go:197-198, TestAConflictOnAnUndeclaredFileHandsBackAndPushesNothing); a waiting pull request with such a conflict is named and no longer renewed, as ac-6 has it
+  evidence: internal/core/claim/generated.go:17 — "shares: the root .gitattributes on origin's default branch, as this checkout"
+  evidence: internal/core/claim/generated.go:59 — "return generatedFilesAt(root, originDefault(root))"
+  evidence: .gitattributes:56 — "The brief's surface chapters are not named: each mixes hand-written prose with"
+  evidence: internal/core/implement/loop/sync_default_test.go:181 — "if route.Kind != claim.HandBackStuck || !strings.Contains(route.Reason, "plain.txt") {"
+- cond-2610161044466579 — survived: a conflict confined to declared generated files goes to a fresh implementer whose brief says to regenerate them with the repository's own generator, and abcd itself runs no command the repository declares (sync.go:22-25, 191-207, 402-406), pinned by TestAConflictOnADeclaredGeneratedFileGoesToTheImplementer; any other conflict is a final refusal handed back at once at the sync, and at the arming or the merge wait is refused for a person by conflictRefusal, as a conflicting pull request is today (sync.go:236-247, 267-271); the regeneration itself is the agent's and no test exercises it
+  evidence: internal/core/implement/loop/sync.go:25 — "permissions: abcd itself runs no command the repository declares."
+  evidence: internal/core/implement/loop/sync.go:403 — "Every one of them is a file the repository declares generated (`linguist-generated` in its"
+  evidence: internal/core/implement/loop/sync.go:270 — "return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)"
+  evidence: internal/core/implement/loop/sync_default_test.go:140 — "t.Fatalf("the conflict goes to an implementer: %+v", l)"
 <!-- abcd-review-end receipt=rcp-710de708faa8 -->
 
 ## Decisions

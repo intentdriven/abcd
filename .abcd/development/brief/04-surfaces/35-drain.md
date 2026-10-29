@@ -440,7 +440,14 @@ every hand-back it routed with the record change it made. It is written under
 its own lock, so two drains never open two lanes. A drain state of a later
 schema version is a newer abcd's: it is refused as that before it is strictly parsed,
 and the person is told to run the newer abcd and not to remove the file, which
-holds that drain. A drain that has ended is
+holds that drain. A drain state git tracks came with a commit, not from this
+checkout, and is refused before it is read, naming the file and saying to
+untrack it. The state is at its second schema version, which added the
+pins, the local flag and the override field a routed judge's route record
+shares with the run state's (no drain flag sets an override);
+a first-version state is read as the second's strict subset and written back at
+the second, and one that carries any of those fields is refused naming the
+field, which the first version never wrote. A drain that has ended is
 kept for reading, and the next invocation begins a new one. The cap is set when
 a drain begins, and a different cap named while it runs is refused rather than
 ignored. The pace is the implement loop's, resolved through the same layers when
@@ -671,6 +678,17 @@ so that a later drain takes issues a person would have decided. What guards it:
   deferral, hold whatever the record says, and so does a deferral whose
   liveness the checkout cannot read: no release tag, a tag newer than the
   checkout's own, or a value that is not a release tag.
+
+## Approval prompts while it runs
+
+A drain is unattended, as a build is, so while one has not stopped and its
+state was written within the reservation lease, the host's approval prompts
+for shell commands in its checkout and in the lanes the host runs are refused rather than shown,
+on the terms [`34-build.md`](34-build.md#approval-prompts-while-it-runs) sets
+out (iss-2610171110154902). A lane handed back does not end it, since the
+drain routes the hand-back and goes on unattended; refusal stops when the
+drain stops or after two hours with no activity. The move that begins a drain
+says so once, on stderr.
 
 ## What it refuses
 

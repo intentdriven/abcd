@@ -117,7 +117,7 @@ This would be shown wrong if, on the proof rung or on the first three items hand
 - **Messages between cloud and local sessions** while they run; reports are read after the fact. The session mailbox is [itd-2609151838312703](itd-2609151838312703-sessions-announce-what-they-are-doing.md)'s, and it never leaves the local network.
 - **The wider register of running sessions** ([itd-2609150819440345](../superseded/itd-2609150819440345-which-session-holds-which-worktree.md)).
 - **Recurring cloud routines** and their template ([itd-107](../drafts/itd-107-autonomous-routines-assemble-from-one.md)).
-- **Deleting spent work-in-progress branches.** The proxy refuses deletions; a sweep from an ordinary machine is the reservation record's tidy-up route ([itd-118](../drafts/itd-118-merged-work-leaves-no-residue-abcd.md)).
+- **Deleting spent work-in-progress branches.** The proxy refuses deletions; a sweep from an ordinary machine is the reservation record's tidy-up route ([itd-118](../superseded/itd-118-merged-work-leaves-no-residue-abcd.md)).
 - **The two issue-local halves**: the worktree guidance (iss-2610120729076366) and the tests that should name their prerequisites (iss-2610120724251698), routed above.
 
 ## Decisions

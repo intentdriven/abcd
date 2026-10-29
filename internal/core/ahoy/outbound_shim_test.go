@@ -172,7 +172,7 @@ func TestOutboundShimWritesNoHookGitRunsWhereGitRunsOtherHooks(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.Status != "already_up_to_date" {
+		if settled(res) != "already_up_to_date" {
 			t.Errorf("a rerun status = %q (writes %v), want already_up_to_date", res.Status, res.Writes)
 		}
 		assertNote(t, res, "core.hooksPath")
@@ -311,7 +311,7 @@ func TestOutboundShimRefreshesOnlyItsOwnStaleCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != "already_up_to_date" {
+	if settled(res) != "already_up_to_date" {
 		t.Errorf("a rerun over a current shim status = %q (writes %v), want already_up_to_date", res.Status, res.Writes)
 	}
 	if fi, err := os.Stat(shimPath(repo)); err != nil || !fi.ModTime().Equal(old) {

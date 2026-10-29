@@ -52,3 +52,15 @@ At about 20:00 the gate held 23 waiter processes across sessions, admitting one 
 - The work-around in use is an outer `abcd implement load --wait --timeout 8h -- make preflight`, which keeps its place while the inner gate takes over.
 - One session folded four reviewed branches into one, to need one preflight instead of four.
 - A review's own race run also timed out after its 30-minute default without running a test.
+
+## Evidence: 2026-10-24
+
+Two records-only branches (four issue records, and a draft intent with its index) failed `abcd land` five times between 16:20 and 23:19 CEST without a check failing:
+- once on a smoke lane killed at its 10-minute limit while seven preflights ran on the machine;
+- four times on the load gate's 2-hour wait, with first six and later two waiters ahead, the oldest waiting more than five hours.
+
+Each retry re-ran every stage before the gate (about 20 minutes) and rejoined the queue at the back. A records-only change still needed the full build, test and race stages to earn the receipt the pre-push hook asks for (iss-2610171105560765 holds the timeout half).
+
+## Further evidence 2026-10-27 (abcd-1, build itd-82 lane-1)
+
+- The implement loop's landing commits its own records after the lane's preflight has passed: the spec step's `landed:` mark and the receipt's issue resolution, as one records-only commit (808720029 on `build/run-2610260500113538-lane-1`). That commit is the lane's new head, so the landing waits for a second whole `make preflight` before it pushes. The first, on 6594725b5, had passed at 09:24Z. The second started at 09:59Z, with the machine's shutdown window closing, for a diff that touches two record files and no code.

@@ -45,9 +45,16 @@ func TestMain(m *testing.M) {
 	// check back over recorded bundles (ahoy_provenance_test.go). The shipping
 	// value is kept so the wiring itself stays asserted.
 	shippedAhoyReleaseProvenance = ahoyReleaseProvenance
+	// No install here downloads abcd: the download question is offered only
+	// with a downloader wired, and the download's own tests stand one in.
+	ahoyDownloadRelease = nil
 	ahoyReleaseProvenance = func(string, []byte) (string, error) {
 		return "https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main", nil
 	}
+	// The fixtures' cache artefacts carry no Go build metadata, so the claim
+	// a promotion holds them to is stood in as well; ahoy's own tests hold
+	// the binding itself.
+	ahoy.AcceptReleaseClaimsForTest()
 	// The deep installability tier re-executes the running binary as its
 	// isolated child. Under `go test` that binary is this test binary, so it
 	// stands in for abcd when the runner marks it: the real subprocess path runs
@@ -73,12 +80,20 @@ func TestMain(m *testing.M) {
 		os.Exit(code)
 	}
 	pageRunnerExtraEnv = []string{cliTestAsBinaryEnv + "=1"}
+	// The machine's login shell never shapes a setup run here: with no shell
+	// named, the shell-settings offer (itd-2610240919030303) is not raised,
+	// and a test that wants it names one with t.Setenv.
+	os.Setenv("SHELL", "")
+	os.Unsetenv("ZDOTDIR")
 	ahoy.SetCurrentVintageForTest(func() vintage.Current {
 		return vintage.Current{Revision: "testvintage", Known: true}
 	})
 	// No install run here starts the machine's own agent tool to read its
 	// version; the one test of that warning swaps in a stub reading.
 	ahoy.NoHostVersionForTest()
+	// Every install here runs under a fixture home with no harness folder,
+	// some with PATH narrowed past git.
+	ahoy.AssumeSetupBasicsForTest()
 	// No hook run here names a session unless its test asks: naming reads
 	// the machine's process table and writes a register into the home, and a
 	// test that did not ask for either must see stdout exactly as before.

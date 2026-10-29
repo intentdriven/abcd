@@ -85,10 +85,13 @@ the attempt made before a command or a compaction has the host's own ten-minute
 limit. While any bootstrap runs, the one at session start included, the host
 shows a one-line abcd status message in place of its usual spinner text, so a
 slow first download reads as a wait rather than a hang.
-Session end is the deliberate exception: it resolves the plugin root then
+Session end is one deliberate exception: it resolves the plugin root then
 `PATH` but never downloads, because a fetch there would race the host's
 shutdown and lose the very transcript it exists to capture — so it says in one
 line if the transcript was not captured rather than blocking on a bootstrap.
+The hooks that run when a turn ends, when a turn ends on an error and when a
+sub-agent finishes download nothing either: each resolves the plugin root then
+`PATH` and says in one line what did not happen.
 Session start is the other exception, in the other direction: it resolves the
 plugin root alone, and when that is empty it fails closed rather than reaching
 for `PATH` at all. A session where provisioning cannot succeed degrades loudly
@@ -481,6 +484,14 @@ Add this line to your shell profile:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+Or let setup add it: abcd's setup, run at a terminal, asks whether to add that
+line to the file your shell reads (`~/.zshrc` for zsh; for bash,
+`~/.bash_profile` on macOS and `~/.bashrc` on Linux), names the file, and adds
+the line only if you say yes. It keeps a copy of the file in
+`~/.abcd.noindex/backups/` first, never edits a file that is a link to one kept
+elsewhere, and abcd's uninstall takes the line out again. Open a new terminal
+afterwards.
+
 The one-liners above take no options — they always install to `~/.local/bin`
 and print no `PATH` warning — and they record that install as this machine's
 `abcd` in `~/.abcd.noindex/path-entry`, replacing whatever the record named before, so
@@ -531,8 +542,9 @@ The script abcdev.app serves at `/install.sh` does what the one-liners do,
 the same `gh attestation verify` step and its warning included, and one thing
 more: after the install it records the release in
 `~/.abcd.noindex/release-mark`, the newest-release mark the plugin's bootstrap
-and `abcd update` keep, and only ever raises it. It does not write
-`~/.abcd.noindex/path-entry`.
+and `abcd update` keep, and only ever raises it. Like the one-liners, it
+refuses a `~/.abcd.noindex` that is a symlink before it downloads anything, and
+records the installed path and its SHA-256 in `~/.abcd.noindex/path-entry`.
 
 ## What adopting a repository commits
 
@@ -607,7 +619,8 @@ Outside `.abcd/`, a default adoption names abcd in exactly three committed
 files, and nowhere else:
 
 - `.githooks/pre-commit` and `.githooks/pre-merge-commit`, the name-guard hooks,
-  which run the `abcd` binary on each commit and merge.
+  which check each commit and merge for the names this machine bans, and run
+  the `abcd` binary only where a clone opts in.
 - The fenced block in `.gitignore`, between `# BEGIN ABCD` and `# END ABCD`,
   whose header asks you not to edit it by hand.
 
@@ -616,7 +629,12 @@ markers they carry, so a hook whose marker is renamed or stripped reads as
 someone else's hook, a fence without its markers reads as drifted, and
 `abcd ahoy` reports either as a gap.
 
-`README.md` is not among them. abcd writes in it only after you answer yes to
+The fence carries only the entries your `.gitignore` does not already list. A
+line you wrote yourself outside the fence, such as `.abcd/.work.local/`, stays
+the one in force and is not repeated inside it; the fence is written even when
+that leaves it empty, so `abcd ahoy` still finds it.
+
+`README.md` is not among those three files. abcd writes in it only after you answer yes to
 the README question below, and only the parts you choose; the marks around
 each part name abcd, as the fence in `.gitignore` does.
 
@@ -740,6 +758,59 @@ and names the line. A `README.md` holding no part is never written. A
 in it; one you made is kept, even when empty. The uninstall's text names what
 it did on its `readme:` line, for example
 `readme: links removed; licence edited by hand, left`.
+
+## Live brief sessions
+
+In a live brief session the team edits the project's brief together during a
+call, on the host's own computer over Tailscale, on the team's own relay on
+Render, or both ([Run a brief session relay](run-a-brief-session-relay.md)).
+Setup asks whether to set them up.
+
+### The questions
+
+At a terminal, in a run without `--yes`, setup asks "Set up live brief
+sessions?": `yes`, `no`, or `later`, the default. `yes` goes on to "Where may
+sessions run?": `local`, `cloud`, `both` or `later`. Each question says what
+it decides, its current setting and how to change it later. Through the
+plugin, your agent harness asks the same two questions with its own question
+tool, one at a time.
+
+The answer is saved as `sessions.live` in `.abcd/config.json`: `local`,
+`cloud`, `both`, or `none` for a no. A no is never asked again. `later`, at
+either question, saves nothing, so the next setup run asks again, and so do
+`abcd session start` and `abcd session blueprint`, run at a terminal. The
+answer is kept in `.abcd/config.json`, so the questions are asked only once
+abcd's starter files exist.
+
+Setup only records the answer. The setting up itself is
+`abcd session setup`, which you run in a Terminal of your own: it registers
+the team's own GitHub sign-in app from a form GitHub opens already filled in,
+keeps only the app's public client id, and says what is left to do. It runs by
+hand at any time, after a no too.
+
+### Answering it with `--live-sessions`
+
+```sh
+'<plugin-root>/abcd' ahoy install --live-sessions both
+```
+
+```sh
+'<plugin-root>/abcd' ahoy install --live-sessions none
+```
+
+The flag takes `local`, `cloud`, `both`, or `none`, which answers no. It
+answers the questions in any run, `--yes` included, and is saved as their
+answer is. Any other value is refused with exit 2, naming the four, before
+anything is written. A value that differs from the saved one is shown as a
+change (`sessions.live: not set -> both`).
+
+### What `--yes` does
+
+`--yes` never answers the questions. While they are unanswered, a `--yes` run
+without `--live-sessions` lists `sessions.offered` under `optional_skipped`,
+and its summary says "The live brief session question was not asked" and
+names `--live-sessions`. A run whose answers are piped in is not asked either,
+and reports it the same way.
 
 ## Build
 

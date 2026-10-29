@@ -9,12 +9,31 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
+
+// The reservation acts this binary makes consult the embargo check an
+// announcement does (claim.checkEmbargo): the reserve verb names it, and the
+// callers that build their own options, the implement loop's build and drain
+// among them, get it registered here.
+func init() { claim.RegisterEmbargoCheck(reserveEmbargoCheck) }
+
+// reserveEmbargoCheck is the announcement's embargo check, with the store
+// that could not be read named when one could not, so the person is told
+// which store to settle.
+func reserveEmbargoCheck(root, home, text string, records []string) (bool, error) {
+	held, err := announceEmbargoCheck(root, home, text, records)
+	var r *embargo.RefusalError
+	if err != nil && errors.As(err, &r) && r.Store != "" {
+		err = fmt.Errorf("%w; the store at %s", err, r.Store)
+	}
+	return held, err
+}
 
 // reserveStore is the noun the checkout resolution names in its refusal.
 const reserveStore = "the reservation"
@@ -52,11 +71,28 @@ type reserveOutput struct {
 	HandBackUnpublished string             `json:"hand_back_unpublished,omitempty"`
 	// OwnOverlap is each path the reservation shares with the person's own
 	// from another copy, which it was made over; the text form warns of each
-	// on stderr. GeneratedUnread is why no generated file was recognised.
-	OwnOverlap      []reserveOwnOverlap `json:"own_overlap,omitempty"`
-	GeneratedUnread string              `json:"generated_unread,omitempty"`
-	note            string
-	warnings        []string
+	// on stderr. GeneratedShared is each generated file it shares with
+	// another record, which the text form names on a shared: line.
+	// GeneratedUnread is why no generated file was recognised.
+	OwnOverlap      []reserveOwnOverlap     `json:"own_overlap,omitempty"`
+	GeneratedShared []reserveGeneratedShare `json:"generated_shared,omitempty"`
+	GeneratedUnread string                  `json:"generated_unread,omitempty"`
+	// DirectoryFootprint is each footprint path naming a directory git
+	// tracks, with the tracked files beneath it (iss-2610230016544142): the
+	// reservation is made all the same, and the text form warns of each on
+	// stderr.
+	DirectoryFootprint []reserveDirectory `json:"directory_footprint,omitempty"`
+	note               string
+	warnings           []string
+}
+
+// reserveDirectory is a footprint path naming a directory: the tracked files
+// beneath it on the branch it was read from (-1 when git could not count
+// them).
+type reserveDirectory struct {
+	Path         string `json:"path"`
+	TrackedFiles int    `json:"tracked_files"`
+	On           string `json:"on"`
 }
 
 // reserveOwnOverlap is a path shared with one's own reservation from another
@@ -65,6 +101,13 @@ type reserveOwnOverlap struct {
 	Path            string `json:"path"`
 	Record          string `json:"record"`
 	EffectiveExpiry string `json:"effective_expiry"`
+}
+
+// reserveGeneratedShare is a generated file shared with another record's
+// reservation.
+type reserveGeneratedShare struct {
+	Path   string `json:"path"`
+	Record string `json:"record"`
 }
 
 // reserveHandedBack is the hand-back a person's own reservation was made over.
@@ -78,6 +121,7 @@ type reserveHandedBack struct {
 type reserveReplaced struct {
 	Holder          string `json:"holder,omitempty"`
 	Copy            string `json:"copy,omitempty"`
+	YourCopy        string `json:"your_copy,omitempty"`
 	Commit          string `json:"commit"`
 	EffectiveExpiry string `json:"effective_expiry"`
 	Unreadable      string `json:"unreadable,omitempty"`
@@ -139,11 +183,22 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"(hand_back_unpublished in --json).\n\n" +
 			"A footprint sharing a path with another person's live reservation backs off\n" +
 			"(exit 3). A file that origin's default branch, as last fetched, declares\n" +
-			"linguist-generated in its root .gitattributes is shared, never an overlap; a\n" +
-			"directory never is. When that declaration cannot be read nothing is shared, and\n" +
-			"the act says why (generated_unread in --json). Your own reservation sharing a\n" +
-			"path with yours from another copy is made, and warns on stderr (own_overlap in\n" +
-			"--json).\n\n" +
+			"linguist-generated in its root .gitattributes is shared, never an overlap, and\n" +
+			"is named on a shared: line for whoever lands second to regenerate after\n" +
+			"merging (generated_shared in --json); a directory never is. When that\n" +
+			"declaration cannot be read nothing is shared, and the act says why\n" +
+			"(generated_unread in --json). Your own reservation sharing a path with yours\n" +
+			"from another copy is made, and warns on stderr (own_overlap in --json). Name\n" +
+			"files, not directories: a directory holds off every reservation of a file\n" +
+			"inside it. A footprint path naming a directory git tracks is reserved all the\n" +
+			"same, and warns on stderr, naming it and how many tracked files it covers on\n" +
+			"origin's default branch, or HEAD (directory_footprint in --json).\n\n" +
+			"A reservation, a renewal and a take-over consult the embargo store on this\n" +
+			"machine before anything is pushed, as an announcement does: a record the store\n" +
+			"holds, or a footprint naming something under embargo, is refused (exit 2) with\n" +
+			"nothing pushed, and so is the act when a store cannot be read, naming that\n" +
+			"store. A release does not consult it. A build's and a drain's reservations\n" +
+			"consult it too.\n\n" +
 			"The holder is your GitHub username, from the first of these that names it:\n" +
 			"user.email, when it is a GitHub no-reply address; reservation.github_username\n" +
 			"in the machine configuration (the repository's own configuration is never read\n" +
@@ -234,7 +289,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			}
 			noteMachineHome(cmd.ErrOrStderr(), "abcd reserve")
 			res, err := claim.Reserve(root, claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
-				TakeOver: takeOver, Release: release, WarnOwnOverlap: true}, claim.Options{ForgeUser: reserveForgeUser})
+				TakeOver: takeOver, Release: release, WarnOwnOverlap: true}, claim.Options{Embargo: reserveEmbargoCheck, ForgeUser: reserveForgeUser})
 			if err != nil {
 				return reserveRefusal(err)
 			}
@@ -309,7 +364,7 @@ func reserveView(res claim.Result) reserveOutput {
 		out.Footprint = append(out.Footprint, termsafe.Sanitize(f))
 	}
 	if r := res.Replaced; r != nil {
-		out.Replaced = &reserveReplaced{Holder: r.Holder, Copy: r.Copy, Commit: r.Commit,
+		out.Replaced = &reserveReplaced{Holder: r.Holder, Copy: r.Copy, YourCopy: termsafe.Sanitize(r.YourCopy), Commit: r.Commit,
 			EffectiveExpiry: rfc3339(r.EffectiveExpiry), Unreadable: r.Unreadable}
 	}
 	if h := res.HandedBack; h != nil {
@@ -326,6 +381,14 @@ func reserveView(res claim.Result) reserveOutput {
 		out.OwnOverlap = append(out.OwnOverlap, reserveOwnOverlap{Path: termsafe.Sanitize(o.Path), Record: termsafe.Sanitize(o.Record),
 			EffectiveExpiry: rfc3339(o.Expiry)})
 		out.warnings = append(out.warnings, o.Warning())
+	}
+	for _, g := range res.GeneratedShared {
+		out.GeneratedShared = append(out.GeneratedShared, reserveGeneratedShare{Path: termsafe.Sanitize(g.Path), Record: termsafe.Sanitize(g.Record)})
+	}
+	for _, d := range res.Directories {
+		out.DirectoryFootprint = append(out.DirectoryFootprint, reserveDirectory{Path: termsafe.Sanitize(d.Path),
+			TrackedFiles: d.Files, On: termsafe.Sanitize(d.On)})
+		out.warnings = append(out.warnings, d.Warning())
 	}
 	return out
 }
@@ -360,7 +423,7 @@ func renderReserve(w io.Writer, out reserveOutput) {
 		case r.Unreadable != "":
 			fmt.Fprintf(w, "  replaced: the unreadable reservation %s (%s), held until %s\n", shortCommit(r.Commit), r.Unreadable, r.EffectiveExpiry)
 		case r.Copy == claim.CopyAnother:
-			fmt.Fprintf(w, "  replaced: your copy on another computer, which held it until %s\n", r.EffectiveExpiry)
+			fmt.Fprintf(w, "  replaced: %s, which held it until %s\n", r.YourCopy, r.EffectiveExpiry)
 		default:
 			fmt.Fprintf(w, "  replaced: %s's reservation, which lapsed at %s\n", r.Holder, r.EffectiveExpiry)
 		}
@@ -379,6 +442,9 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	}
 	if out.HandBackUnpublished != "" {
 		fmt.Fprintf(w, "  no hand-back: %s\n", out.HandBackUnpublished)
+	}
+	for _, g := range out.GeneratedShared {
+		fmt.Fprintf(w, "  shared: %s\n", claim.GeneratedShare{Path: g.Path, Record: g.Record}.Line())
 	}
 	if out.GeneratedUnread != "" {
 		fmt.Fprintf(w, "  %s\n", claim.GeneratedUnreadLine(out.GeneratedUnread))

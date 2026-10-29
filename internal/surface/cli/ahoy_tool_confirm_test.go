@@ -42,7 +42,7 @@ func TestToolConfirmAsksOnlyAtATerminal(t *testing.T) {
 		t.Fatalf("a y typed at a terminal was not a yes: %+v", ans)
 	}
 	asked := w.String()
-	for _, want := range []string{"what abcd uses it for:", "without it:", "brew install gitleaks", "[y/N]"} {
+	for _, want := range []string{"what abcd uses it for:", "without it:", "download gitleaks 8.30.1 into", "[y/N]"} {
 		if !strings.Contains(asked, want) {
 			t.Errorf("the terminal question lacks %q:\n%s", want, asked)
 		}
@@ -78,7 +78,8 @@ func TestToolConfirmNamedAndYes(t *testing.T) {
 }
 
 // TestInstallToolRefusesAnUnknownName: an --install-tool name ahoy install
-// does not check for is refused before anything runs, naming the ones it does.
+// does not check for is refused before anything runs, naming the ones it does
+// and never repeating the one passed.
 // gh is in the registry but no install gap names it, so it is refused too: a
 // flag that would be accepted and then do nothing is a silent no.
 func TestInstallToolRefusesAnUnknownName(t *testing.T) {
@@ -88,17 +89,21 @@ func TestInstallToolRefusesAnUnknownName(t *testing.T) {
 		if err == nil {
 			t.Fatalf("--install-tool %s was accepted", name)
 		}
-		for _, want := range append([]string{name}, ahoy.DependencyTools...) {
+		for _, want := range append([]string{"--install-tool name"}, ahoy.DependencyTools...) {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("refusal lacks %q: %v", want, err)
 			}
+		}
+		if strings.Contains(err.Error(), "frobnicate") || strings.Contains(err.Error(), `"gh"`) {
+			t.Errorf("refusal repeats the name passed: %v", err)
 		}
 	}
 }
 
 // toolFreePath leaves git on PATH (the install reads the checkout) and nothing
-// else, so neither gitleaks nor a package manager is found and no install
-// step can ever run from this test.
+// else, so no gitleaks is found, and points the bin folder at a directory of
+// the test's own; a test binary's installer has no network, so no download
+// can ever be made from this test.
 func toolFreePath(t *testing.T) {
 	t.Helper()
 	gitBin, err := exec.LookPath("git")
@@ -110,6 +115,7 @@ func toolFreePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)
+	t.Setenv("XDG_BIN_HOME", t.TempDir())
 	// Both of the variables cienv.Runner reads, so the confirmation path runs
 	// on a CI runner as it does on a workstation.
 	t.Setenv("CI", "")
@@ -142,7 +148,7 @@ func TestAhoyInstallPipedYesExplainsAndKeepsTheNativeScanner(t *testing.T) {
 	joined := strings.Join(notes, "\n")
 	for _, want := range []string{
 		"dependency: gitleaks — optional for",
-		"install step (Homebrew): brew install gitleaks",
+		"install: download gitleaks 8.30.1 into",
 		"gitleaks not installed (no terminal to ask at",
 		"continuing on the native secret scanner",
 	} {
@@ -154,8 +160,8 @@ func TestAhoyInstallPipedYesExplainsAndKeepsTheNativeScanner(t *testing.T) {
 
 // TestAhoyInstallNamedToolReachesTheStep is the host's relayed yes end to
 // end: with stdin closed, --install-tool answers the dependency question and
-// the install is attempted; here the package manager is absent, so the
-// result says so and nothing ran.
+// the install is attempted; here the test binary has no network, so the
+// download fails, the result says so, and nothing was written.
 func TestAhoyInstallNamedToolReachesTheStep(t *testing.T) {
 	hermeticRepo(t)
 	toolFreePath(t)
@@ -170,7 +176,8 @@ func TestAhoyInstallNamedToolReachesTheStep(t *testing.T) {
 		}
 	}
 	joined := strings.Join(notes, "\n")
-	if !strings.Contains(joined, "Homebrew (brew) is not on PATH") || !strings.Contains(joined, "continuing on the native secret scanner") {
+	if !strings.Contains(joined, "a test binary never reaches the network") || !strings.Contains(joined, "nothing was written") ||
+		!strings.Contains(joined, "continuing on the native secret scanner") {
 		t.Fatalf("the named install did not reach the step, or was silent:\n%s", joined)
 	}
 }

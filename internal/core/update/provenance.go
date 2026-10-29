@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -107,14 +108,27 @@ type provenanceVerifier interface {
 // the updater's pinned transport and verifies each until one holds.
 type githubAttestations struct {
 	u           *Updater
+	dl          *urlguard.Download // u's transport, reaching only the check's own hosts
 	endpoint    string
 	gitEndpoint string
 	trusted     func() (root.TrustedMaterial, error)
 	policy      provenancePolicy
 }
 
+// newGitHubAttestations builds the check over u's pinned transport, reaching
+// only the hosts it reads from: the attestations API and the Sigstore TUF
+// repository. They are not u's hosts, so a release download's requests and
+// redirects never reach them.
 func newGitHubAttestations(u *Updater) *githubAttestations {
-	return &githubAttestations{u: u, endpoint: attestationEndpoint, gitEndpoint: gitEndpoint, trusted: u.sigstoreTrustedRoot, policy: releasePolicy}
+	var hosts []string
+	for _, raw := range []string{attestationEndpoint, gitEndpoint, tuf.DefaultMirror} {
+		if parsed, err := url.Parse(raw); err == nil {
+			hosts = append(hosts, parsed.Host)
+		}
+	}
+	g := &githubAttestations{u: u, dl: u.dl.Sibling(hosts...), endpoint: attestationEndpoint, gitEndpoint: gitEndpoint, policy: releasePolicy}
+	g.trusted = g.sigstoreTrustedRoot
+	return g
 }
 
 // VerifyReleaseProvenance verifies one release asset's SLSA build provenance
@@ -150,6 +164,9 @@ func ReleaseProvenanceForTest(apiBase string, trustedRootJSON []byte) (func(tag 
 		return nil, err
 	}
 	g := newReleaseProvenance(releaseOrigin, nil, true)
+	if parsed, err := url.Parse(apiBase); err == nil {
+		g.dl.AllowHost(parsed.Host)
+	}
 	g.endpoint = apiBase + "/attestations/"
 	g.gitEndpoint = apiBase + "/git/"
 	g.trusted = func() (root.TrustedMaterial, error) { return tr, nil }
@@ -232,7 +249,7 @@ func (g *githubAttestations) resolveTagCommit(tag string) (string, error) {
 
 // getGitObject reads one git API answer into obj.
 func (g *githubAttestations) getGitObject(rawURL string, obj *gitObject) error {
-	body, _, err := g.u.getWith(rawURL, maxGitObjectBytes, map[string]string{
+	body, _, err := getVia(g.dl, rawURL, maxGitObjectBytes, map[string]string{
 		"Accept":               "application/vnd.github+json",
 		"X-GitHub-Api-Version": "2022-11-28",
 	})
@@ -259,7 +276,7 @@ func (g *githubAttestations) getGitObject(rawURL string, obj *gitObject) error {
 // bundle is skipped, and a list of only those verifies nothing.
 func (g *githubAttestations) fetch(hexDigest string) ([]json.RawMessage, error) {
 	rawURL := g.endpoint + "sha256:" + hexDigest + "?per_page=100"
-	body, _, err := g.u.getWith(rawURL, maxAttestationBytes, map[string]string{
+	body, _, err := getVia(g.dl, rawURL, maxAttestationBytes, map[string]string{
 		"Accept":               "application/vnd.github+json",
 		"X-GitHub-Api-Version": "2022-11-28",
 	})
@@ -405,11 +422,11 @@ func predicateNamesCommit(predicate []byte, repo, commit string) error {
 }
 
 // sigstoreTrustedRoot fetches the Sigstore public-good trusted root through
-// TUF, anchored on the root.json sigstore-go embeds, over the updater's pinned
+// TUF, anchored on the root.json sigstore-go embeds, over the check's pinned
 // transport. Nothing is cached: the client starts from an empty temporary
 // directory it never writes to, so a stale or planted cache can play no part
 // and nothing is left behind (the default would write ~/.sigstore).
-func (u *Updater) sigstoreTrustedRoot() (root.TrustedMaterial, error) {
+func (g *githubAttestations) sigstoreTrustedRoot() (root.TrustedMaterial, error) {
 	dir, err := os.MkdirTemp("", "abcd-tuf-")
 	if err != nil {
 		return nil, err
@@ -420,20 +437,20 @@ func (u *Updater) sigstoreTrustedRoot() (root.TrustedMaterial, error) {
 		RepositoryBaseURL: tuf.DefaultMirror,
 		CachePath:         dir,
 		DisableLocalCache: true,
-		Fetcher:           tufFetcher{u: u},
+		Fetcher:           tufFetcher{dl: g.dl},
 	}
 	return root.FetchTrustedRootWithOptions(opts)
 }
 
-// tufFetcher is go-tuf's fetcher over the updater's client: no proxy, no CA
-// override, the urlguard policy, redirects only within the pinned hosts.
-type tufFetcher struct{ u *Updater }
+// tufFetcher is go-tuf's fetcher over the check's download: no proxy, no CA
+// override, the urlguard policy, requests and redirects only to its hosts.
+type tufFetcher struct{ dl *urlguard.Download }
 
 func (f tufFetcher) DownloadFile(urlPath string, maxLength int64, _ time.Duration) ([]byte, error) {
 	if maxLength <= 0 || maxLength > maxTUFBytes {
 		maxLength = maxTUFBytes
 	}
-	body, _, err := f.u.get(urlPath, maxLength)
+	body, _, err := getVia(f.dl, urlPath, maxLength, nil)
 	if err != nil {
 		var nf *notFoundError
 		if errors.As(err, &nf) {

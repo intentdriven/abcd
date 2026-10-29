@@ -114,7 +114,9 @@ jobs:
     if: github.event_name != 'push' || github.ref_type != 'tag'
     # The race step's own -timeout (40m, sized in ci.yml) must fire before this
     # does, or a hang reads as a cancelled job with no goroutine dump: 40m for
-    # the slowest package plus about 10m this job spends before it starts.
+    # the slowest package plus about 10m this job spends before it starts. The
+    # smoke step after it fits the same way: 40m, its own 8m, and three minutes
+    # for the untimed steps (evallanebudget_test.go).
     timeout-minutes: 55
     runs-on: ubuntu-latest
     permissions:
@@ -181,7 +183,7 @@ jobs:
         run: bash scripts/check-reviews.sh
 
       - name: Smoke every command (self-discovering harness)
-        run: make smoke
+        run: make smoke EVAL_TIMEOUT=8m
 
       # --- The pinned plugin archive (adr-2609231048308186; ruling E1) --------
       # The ship committed the release's plugin archive — its download address
@@ -320,9 +322,11 @@ jobs:
     if: github.event_name != 'workflow_dispatch' && !cancelled() && needs.verify.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
     timeout-minutes: 20
     runs-on: ubuntu-latest
-    # A human stands between merge and publish: the environment carries a required
-    # reviewer, so nothing ships until someone approves the pending deployment —
-    # the server-side gate a merged PR cannot edit its way past.
+    # The job runs in the `release` environment. When the environment carries
+    # a required reviewer, nothing ships until someone approves the pending
+    # deployment; with none, the job runs as soon as verify and the tag are in
+    # place. The reviewer is a setting of the repository's environment, not of
+    # this file.
     environment: release
     permissions:
       contents: write       # create the Release and upload its assets (no branch push)
@@ -544,17 +548,28 @@ jobs:
         # the step below uploads, before anything is published.
         run: go run ./cmd/abcd launch archive --out bin --tag "${TAG}" --verify --repository "${GITHUB_REPOSITORY}"
 
-      - name: Generate checksums.txt over the four binaries and the plugin archive
-        # Hash the exact binaries and the archive above into a sha256sum-format
-        # manifest, uploaded as a release asset. No rebuild — the bytes hashed here
-        # are the bytes uploaded below.
+      - name: Stage the installer script beside the binaries
+        # install.sh is site-src/install.sh.tmpl from the released commit, copied
+        # byte for byte, so `curl -fsSL …/releases/latest/download/install.sh | sh`
+        # runs the installer reviewed in that commit (iss-2610240827243654). It
+        # lands in bin/ AFTER the VCS-stamp check (it is not a binary) and BEFORE
+        # the manifest, so it is checksummed, attested, uploaded and verified
+        # with the binaries: the release page cannot carry an installer this
+        # workflow did not sign. It is named explicitly in each step below, not
+        # caught by the abcd-* globs.
+        run: cp site-src/install.sh.tmpl bin/install.sh
+
+      - name: Generate checksums.txt over the four binaries, the plugin archive and install.sh
+        # Hash the exact binaries, the archive and the installer above into a
+        # sha256sum-format manifest, uploaded as a release asset. No rebuild — the
+        # bytes hashed here are the bytes uploaded below.
         run: |
           set -euo pipefail
           cd bin
-          sha256sum abcd-* > checksums.txt
+          sha256sum abcd-* install.sh > checksums.txt
           cat checksums.txt
 
-      - name: Attest build provenance for the binaries, the plugin archive and checksums.txt
+      - name: Attest build provenance for the binaries, the plugin archive, install.sh and checksums.txt
         # Signed SLSA build-provenance over the exact files uploaded below. Runs
         # BEFORE the Release so a failed attestation aborts before publishing.
         # Skipped on a user-owned private repo (GitHub gates the feature by repo
@@ -572,9 +587,10 @@ jobs:
         with:
           subject-path: |
             bin/abcd-*
+            bin/install.sh
             bin/checksums.txt
 
-      - name: Create the draft GitHub Release with the binaries, the plugin archive and checksums.txt
+      - name: Create the draft GitHub Release with the binaries, the plugin archive, install.sh and checksums.txt
         # --draft: the Release is created unpublished, with every asset this job
         # built attached. site.yml (the `site` job below) attaches site.tar.gz
         # and then publishes it, so the Release becomes visible only once all of
@@ -587,16 +603,17 @@ jobs:
         # --notes is prepended to the generated notes: it states the harness floor
         # the archive-sourced plugin needs (ruling E3).
         #
-        # THE WINDOW: the ship's merge to main already names this release's archive
-        # in the catalog, and the archive is downloadable only once the Release is
-        # published — after this job and the site render — later still while the
-        # release environment's approval waits. An install or update
-        # in between fails closed: the download 404s, the harness refuses, and an
-        # installed plugin stays on its previous release. Nothing wrong can be
-        # installed, because the pinned digest refuses any other bytes. The window
-        # cannot be closed from this side (the pin must be in the tagged tree, so
-        # it lands before the tag), so it is kept short: approve the release
-        # deployment promptly once the ship merges.
+        # THE WINDOW: the ship's merge to main already names this release's
+        # archive in the catalog, and the archive is downloadable only once the
+        # Release is published — after this job and the site render — and later
+        # still when the release environment carries a reviewer and its approval
+        # waits. An install or update in between fails closed: the download 404s,
+        # the harness refuses, and an installed plugin stays on its previous
+        # release. Nothing wrong can be installed, because the pinned digest
+        # refuses any other bytes. The window cannot be closed from this side (the
+        # pin must be in the tagged tree, so it lands before the tag), so it is
+        # kept short: where the environment carries a reviewer, approve the
+        # release deployment promptly once the ship merges.
         #
         # The draft's numeric id is read back straight after it is created: the
         # one Release carrying the tag must be this draft, and every later read
@@ -604,7 +621,7 @@ jobs:
         id: draft
         run: |
           set -euo pipefail
-          gh release create "${TAG}" bin/abcd-* bin/checksums.txt --draft --verify-tag --title "${TAG}" --notes "${RELEASE_NOTES}" --generate-notes
+          gh release create "${TAG}" bin/abcd-* bin/install.sh bin/checksums.txt --draft --verify-tag --title "${TAG}" --notes "${RELEASE_NOTES}" --generate-notes
           id_re='^[0-9]+$'
           rows="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
             --jq '.[] | [.id, .draft, .tag_name] | @tsv')"
@@ -634,7 +651,7 @@ jobs:
           assets="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" --paginate \
             --jq '.[] | [.id, .name] | @tsv')"
           built=0
-          for f in bin/abcd-* bin/checksums.txt; do
+          for f in bin/abcd-* bin/install.sh bin/checksums.txt; do
             name="${f##*/}"
             aid="$(awk -F '\t' -v n="$name" '$2 == n {print $1}' <<<"$assets")"
             if [[ ! $aid =~ $id_re ]]; then
@@ -723,10 +740,10 @@ jobs:
   # the site workflow reads: `gh release create` has already returned.
   #
   # PUBLICATION happens here. The `release` job leaves the Release a DRAFT holding
-  # the binaries, the plugin archive and checksums.txt and hands on its numeric id;
-  # site.yml's render attaches site.tar.gz to that draft, and its `publish` job
-  # checks every asset again and then publishes the Release, both by that id,
-  # before its `deploy` job moves abcdev.app. So the Release becomes visible only
+  # the binaries, the plugin archive, install.sh and checksums.txt and hands on its
+  # numeric id; site.yml's render attaches site.tar.gz to that draft, and its
+  # `publish` job checks every asset again and then publishes the Release, both by
+  # that id, before its `deploy` job moves abcdev.app. So the Release becomes visible only
   # once every asset is attached, and no asset is added after publication — the
   # flow immutable releases require. A failed render therefore leaves the Release
   # an unpublished draft: re-run the failed jobs of this run, which renders,

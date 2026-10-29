@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -371,7 +372,7 @@ func renewAtFence(c Context, lane Lane, term time.Duration, act fenceAct) (time.
 			return time.Time{}, r
 		case claim.NotHeldAnotherCopy:
 			return time.Time{}, contend(stage, "", lane.ID,
-				"the reservation on "+id+" moved to your copy on another computer"+not+" here",
+				"the reservation on "+id+" moved to "+nh.YourCopy+not+" here",
 				"carry the lane on from that copy, or take the reservation back here (`abcd reserve "+id+" --take-over --footprint <path>`), then "+again)
 		case claim.NotHeldReleased:
 			if nh.Derived {
@@ -515,7 +516,7 @@ func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) (out release
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherPerson:
 		out = released{clause: "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherCopy:
-		out = released{clause: "left the reservation on " + id + " as it stands: your copy on another computer holds it"}
+		out = released{clause: "left the reservation on " + id + " as it stands: " + nh.YourCopy + " holds it"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldMoved:
 		out = released{clause: "left the reservation on " + id + " as it stands: it was renewed or reserved again since the drain took it"}
 	case errors.Is(err, claim.ErrRefused) && !isPushFailure(err):
@@ -544,13 +545,16 @@ func isPushFailure(err error) bool {
 // run record's line for it, whether it was fresh (a reserve or a take-over)
 // rather than a renewal of one this copy already held, so only a fresh one is
 // released when the run is not created, and why it could not ask the forge
-// whether origin is a fork ("" when it asked, or asked nothing).
+// whether origin is a fork ("" when it asked, or asked nothing). warnings
+// are the act's warnings of a footprint path naming a directory
+// (claim.DirectoryFootprint.Warning), which the start passes on.
 type reserved struct {
 	at            *time.Time
 	note          string
 	fresh         bool
 	forkUnchecked string
 	forkAllowed   string
+	warnings      []string
 }
 
 // reserveKey reserves a run's key on origin for this copy with req's
@@ -633,8 +637,12 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 		note += "; " + claim.ForkAllowedLine(res.ForkAllowed)
 	}
 	t := now
-	return reserved{at: &t, note: note, fresh: res.Act != claim.ActRenewed,
-		forkUnchecked: res.ForkUnchecked, forkAllowed: res.ForkAllowed}, nil
+	r := reserved{at: &t, note: note, fresh: res.Act != claim.ActRenewed,
+		forkUnchecked: res.ForkUnchecked, forkAllowed: res.ForkAllowed}
+	for _, d := range res.Directories {
+		r.warnings = append(r.warnings, d.Warning())
+	}
+	return r, nil
 }
 
 // reserveStart is a new run's reservation, once its checks pass and before
@@ -729,6 +737,7 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 		return err
 	}
 	res.Reservation, res.ForkUnchecked, res.ForkAllowed = r.note, r.forkUnchecked, r.forkAllowed
+	res.ReservationWarnings = r.warnings
 	return nil
 }
 
@@ -874,6 +883,11 @@ func runFootprint(repoRoot, key, specID, outcome string) ([]string, error) {
 			"give the issue's record a found_at naming the file the fix changes, which the build reserves it with")
 	}
 	fp, err := specPackages(repoRoot, specID)
+	var entry *footprintEntryError
+	if errors.As(err, &entry) {
+		return nil, refuse(StageReservation, "", "", entry.Error()+", then run abcd build again; "+outcome,
+			"name each package on the `- packages:` line of "+specID+"'s `## Footprint` section by its path alone; the reservation names those paths for every other participant")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -894,8 +908,13 @@ func noFootprint(specID, key string) string {
 const maxSpecBytes = 1 << 20
 
 // specPackages is the packages specID's `## Footprint` section names, each
-// cleaned (a trailing slash dropped), in the order written; empty when the
-// spec has no such section or it names none.
+// read as written when that names something in the tree and otherwise as its
+// leading path alone, a trailing parenthetical note dropped, and cleaned (a
+// trailing slash dropped), in the order written; empty when the
+// spec has no such section or it names none. An entry that is still prose,
+// holding whitespace and naming nothing in the tree, is a
+// *footprintEntryError rather than a path that shares nothing with the
+// package it means (iss-2610241549334990).
 func specPackages(repoRoot, specID string) ([]string, error) {
 	store, err := spec.Load(repoRoot)
 	if err != nil {
@@ -910,12 +929,66 @@ func specPackages(repoRoot, specID string) ([]string, error) {
 		return nil, err
 	}
 	var out []string
-	for _, p := range spec.ReadFootprint(string(data)).Packages {
-		if p = path.Clean(strings.TrimSpace(p)); p != "." && !slices.Contains(out, p) {
+	for _, entry := range spec.ReadFootprint(string(data)).Packages {
+		p := strings.TrimSpace(entry)
+		if !inTree(repoRoot, p) {
+			p = leadingPath(p)
+		}
+		if strings.ContainsFunc(p, unicode.IsSpace) && !inTree(repoRoot, p) {
+			return nil, &footprintEntryError{Spec: specID, Entry: entry}
+		}
+		if p = path.Clean(p); p != "." && !slices.Contains(out, p) {
 			out = append(out, p)
 		}
 	}
 	return out, nil
+}
+
+// leadingPath is a packages entry less a trailing parenthetical note, one
+// set off from the path by whitespace: `internal/core/x (new)` is
+// internal/core/x, while `app/(marketing)` is a path and stays whole. An
+// entry that is all parenthetical is left as it is.
+func leadingPath(entry string) string {
+	e := strings.TrimSpace(entry)
+	if !strings.HasSuffix(e, ")") {
+		return e
+	}
+	depth := 0
+	for i := len(e) - 1; i > 0; i-- {
+		switch e[i] {
+		case ')':
+			depth++
+		case '(':
+			if depth--; depth == 0 {
+				if lead := strings.TrimRightFunc(e[:i], unicode.IsSpace); len(lead) < i {
+					return lead
+				}
+				return e
+			}
+		}
+	}
+	return e
+}
+
+// inTree reports whether p, a repository-relative path, names something in
+// repoRoot's working tree; a path leaving the tree names nothing in it.
+func inTree(repoRoot, p string) bool {
+	rel := filepath.FromSlash(p)
+	if !filepath.IsLocal(rel) {
+		return false
+	}
+	_, err := os.Lstat(filepath.Join(repoRoot, rel))
+	return err == nil
+}
+
+// footprintEntryError is a spec's packages entry that names no path: still
+// prose once its trailing note is dropped, and nothing in the tree by that
+// name. The start refuses at the reservation on it, and the pick excludes
+// its intent at the check `footprint`.
+type footprintEntryError struct{ Spec, Entry string }
+
+func (e *footprintEntryError) Error() string {
+	return fmt.Sprintf("%s's packages entry %q under ## Footprint names no path; write it as its path alone, any note in a trailing parenthetical", e.Spec, e.Entry)
 }
 
 // releaseKey releases a reservation a start took and then could not create
@@ -986,7 +1059,8 @@ func noFoundAtHandBack(issue string, now time.Time) DrainRoute {
 // handed the lane back and released it (releaseOnHandBack) logged
 // reservation_released, and that record's clause is returned; one whose
 // fetch or push failed logged reservation_release_failed instead, and that
-// run, like one handed back by an abcd before that step, is released here.
+// run, like one handed back by an abcd before that step, is released here,
+// and a release that succeeds is logged on the run at reservation_released.
 // It returns the route's clause, "" for a run that holds no reservation.
 func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) string {
 	if run.ReservedAt == nil || run.Issue() == "" {
@@ -1002,8 +1076,22 @@ func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) s
 	}
 	clause, failed := releaseReservation(repoRoot, run.Key, tombstoneKind(hb), now)
 	if failed {
-		clause += ", so it lapses with its lease"
+		return clause + ", so it lapses with its lease"
 	}
+	// The retry released it: the run's record says so (iss-2610150616434848),
+	// so its last reservation entry is no longer the failure, and a later
+	// routing over the run reuses this entry rather than pushing again. Best
+	// effort: the release is on origin whether or not the record takes it.
+	_ = mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+		for _, e := range st.Record {
+			if e.Stage == StageReservationReleased {
+				return false, nil
+			}
+		}
+		st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
+		st.UpdatedAt = now
+		return true, nil
+	})
 	return clause
 }
 

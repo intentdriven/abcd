@@ -198,7 +198,8 @@ func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, erro
 func validIssueKey(key string) bool { return issueIDRe.MatchString(key) }
 
 // keyCheck admits an intent id or an issue id and refuses everything else by
-// name, quoting the refused key escaped.
+// the form it takes, never repeating the refused key: the row reaches the
+// --json refusal document, which the error boundary's pass does not read.
 func keyCheck(key string) (CheckRow, bool) {
 	row := CheckRow{Name: CheckKey}
 	switch {
@@ -211,7 +212,7 @@ func keyCheck(key string) (CheckRow, bool) {
 		row.Detail = key + " is an issue"
 		return row, true
 	default:
-		row.Detail = fmt.Sprintf("%q is not a record id this verb builds (itd-N or iss-N)", key)
+		row.Detail = "the record id given is not one this verb builds (itd-N or iss-N); it is not repeated here"
 		row.Remedy = "name a planned intent (`abcd build <itd-N>`) or an open issue the drain rule takes (`abcd build <iss-N>`)"
 	}
 	return row, false
@@ -459,8 +460,8 @@ func (snap *peerSnapshot) reservationHolder(id string) (holder string, yours boo
 		if snap.takeOver {
 			return "", false
 		}
-		return fmt.Sprintf("your copy on another computer reserved it until %s, %s; to continue here, run `abcd build %s --take-over`",
-			stamp(r.EffectiveExpiry), snap.reserved.AsOf(snap.now), id), true
+		return fmt.Sprintf("%s reserved it until %s, %s; to continue here, run `abcd build %s --take-over`",
+			r.YourCopy(snap.root), stamp(r.EffectiveExpiry), snap.reserved.AsOf(snap.now), id), true
 	}
 	return snap.reserved.HeldBy(id, snap.now), false
 }

@@ -31,3 +31,13 @@ The same failure is filed from another worktree as iss-2610241829569682 (not yet
 ## Grounds
 
 - pursued: we expect the three tests to pass on a machine where git starts slowly and the owed-work check never to report a cut-short reading as whole; a run where a git read past the deadline still yields Incomplete false would show it wrong
+
+## Evidence 2026-10-25 (measured by a second session on the same machine)
+
+With no preflight running, at a load of about 6 on ten cores:
+
+- A push to a file-path remote took about 0.4 s and a fetch about 0.33 s, both at under 10% CPU. Launching a git transport helper took about 270 ms at 3% CPU, against 23 ms for `git --version`.
+- TestEachForgeLookupEndsAtTheBudget ran 74 git processes, totalling 6.4 s of git time, and failed on every run on a clean copy of the default branch, even alone. CI passed the same commit.
+- The endpoint scanner was the top CPU consumer.
+
+So the time goes to git's local transport rather than to CPU, which is why the sub-second budgets failed at low load.

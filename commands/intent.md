@@ -153,8 +153,9 @@ rewritten — linking an existing draft with `capture promote --intent` writes t
 `production_mode` is the closed choice `--production-mode` carries:
 `hand-written`, `dictated-and-formatted`, or `scribe-transcribed`. Any other
 value is refused and nothing is written. An absent flag takes the repo's
-declared default from `.abcd/config/identity.json`, falling back to
-`hand-written`. `abcd intent plan` takes the same flag, which stamps the **spec**
+declared default from `.abcd/config/provenance.json` (or, in a repository not
+yet migrated, the `production_mode` of its `.abcd/config/identity.json`),
+falling back to `hand-written`. `abcd intent plan` takes the same flag, which stamps the **spec**
 it mints; the intent's own stamp was written when its draft was created and is
 never rewritten.
 
@@ -334,7 +335,7 @@ any question is a valid answer, but silence is not consent.
 - In abcd's own interviews, draft each question through the abcd:question-drafter agent: hand it the material to quote, whom the question is for, the decision, and the defensible answers, and ask the question it returns. It applies these rules and counts the rows the way the check does, so the question fits. When it refuses a draft or the draft runs over a limit, fix the brief and redraft it without telling the person: The drafter's refusals and retries are the agent's own work, and the next thing the person sees is the question itself. A host with no agents drafts the question itself, to the same rules.
 - Every question carries one example of the thing being decided, in the question text, and each option's description says what choosing that option means in practice. An abcd question carries no side preview: While a preview shows, the host hides every option's description and cuts the preview to the rows it has, so the meaning goes where it always shows. A question that offers a choice between two forms explains the difference between them, so an answer is never given on wording alone.
 - Each option's description names its gain and its cost, never one option's alone, so the trade-offs between the options read in the same neutral form.
-- An option is never marked, styled, or ordered as recommended: No "(Recommended)" label, no star, no recommended option first. The host's own instruction for its question tool asks for a recommended first option; abcd's rule reverses it. A recommendation appears only when the person asks for one, given in prose beside the question, never as an option.
+- An option is never marked, styled, or ordered as recommended: No "(Recommended)" label, no star, no recommended option first. The host's own instruction for its question tool asks for a recommended first option; abcd's rule reverses it. A recommendation appears only when the person asks for one, given in prose beside the question, never as an option. One exception is made without being asked for: A verdict a verb records with `--by` naming the person (an embargo triage verdict) is put to them to confirm even where the record settles it, never recorded as a decision line, because it is recorded under their name. The question text itself quotes each item's evidence, the verdict the record supports, and one line on why each other verdict does not fit, one item per tab or question, and the verdict is recorded only on their yes. Where two or more verdicts are defensible on the record, the question is asked neutrally among them, as any real choice is.
 - Deferral is a real answer and is recorded as one; silence is never consent, and a step whose answer is missing is asked again rather than assumed.
 - In abcd's own interviews, address the person in their register: The product thinker gets outcomes and choices in product terms, with no record ids, no code, and no internals; the technical facilitator gets the mechanism, the ids, and the trade-offs.
 - In abcd's own interviews, when it is not known which role the person holds, the first question asks that, and the mode records the answer so the next question does not ask again.
@@ -491,6 +492,11 @@ checks; the judgement is yours, as the host.
     acceptance criterion. Where the work is larger than one implementer can
     hold and land, list its steps under the minted `## Steps` section (see
     [Steps](#steps-the-unit-below-a-spec)); a spec that lists none is one step.
+    With two or more steps, declare each step's needs: `- needs:` and the
+    earlier steps it waits for by number, or `- needs: none` for a step that
+    waits on nothing. A step without the line waits for every step before it,
+    so a spec whose steps declare none runs fully serial, and `abcd intent
+    ready` warns on it.
     Fill the minted `## Footprint` section: `- packages:` the packages the
     spec expects to touch, comma-separated, and `- tests:` the tests that will
     show it works. `abcd build next` scores a spec's test path and footprint
@@ -578,14 +584,21 @@ line and its footprint indented beneath it:
 2. The remainder copy
    - packages: internal/core/intent
    - tests: the remainder carries the unlanded steps
+   - needs: 1
 ```
 
 `- landed:` names what landed the step, a pull request or a commit; a step
-without it is not landed. Any other line indented under a step is the author's
-and travels with it. `abcd intent ready` reports the section's shape on its
-advisory `steps` row: the steps listed and how many have landed, or none and so
-one step. A section that is not a numbered list is named there with the shape
-above, and never withholds readiness. The close below reads it too: a
+without it is not landed. `- needs:` names the earlier steps a step waits for,
+by number, or `none`; a step without the line waits for every step before it,
+so the build runs a step beside earlier ones only when its line says it may.
+Declare each step's needs whenever the spec lists two or more. Any other line
+indented under a step is the author's and travels with it. `abcd intent ready`
+reports the section's shape on its advisory `steps` row: the steps listed and
+how many have landed, or none and so one step. A section that is not a numbered
+list is named there with the shape above, and a spec with two or more steps still
+to build, none after the first declaring `needs:`, draws a warning there, saying the steps run fully
+serial and naming the fix; record-lint's `spec_steps_serial` rule names the same
+open specs at warn. Neither ever withholds readiness. The close below reads it too: a
 `--remainder` close carries the steps not marked landed into the spec it mints,
 and refuses, writing nothing, when the section cannot be read as steps.
 
@@ -1302,6 +1315,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

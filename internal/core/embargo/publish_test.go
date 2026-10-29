@@ -499,3 +499,29 @@ func TestRestoreNamedUntilTheRecordIsInTheCheckout(t *testing.T) {
 		t.Fatalf("a record the checkout holds is still named: %+v", p.Restores)
 	}
 }
+
+// TestVersionsHeldComparesVulnerableFunctions: the read-back after the
+// versions update compares each affected package's vulnerable functions with
+// the planned ones too, in any order.
+func TestVersionsHeldComparesVulnerableFunctions(t *testing.T) {
+	str := func(s string) *string { return &s }
+	pkg := Package{Ecosystem: "go", Name: examplePackage}
+	want := []PlannedVulnerability{{Package: pkg, VulnerableVersionRange: "< 0.9.0", PatchedVersions: "0.9.0",
+		VulnerableFunctions: []string{"parser.Parse", "parser.Lex"}}}
+	got := func(fns []string) remoteAdvisory {
+		return remoteAdvisory{Vulnerabilities: []remoteVulnerability{{Package: &pkg, VulnerableVersionRange: str("< 0.9.0"),
+			PatchedVersions: str("0.9.0"), VulnerableFunctions: fns}}}
+	}
+	if why := versionsHeld(got([]string{"parser.Lex", "parser.Parse"}), want); why != "" {
+		t.Fatalf("the same functions in another order: %q; want held", why)
+	}
+	for _, fns := range [][]string{nil, {"parser.Parse"}, {"parser.Parse", "parser.Other"}, {"parser.Parse", "parser.Lex", "parser.Other"}} {
+		if why := versionsHeld(got(fns), want); !strings.Contains(why, "vulnerable functions in entry 1") {
+			t.Fatalf("functions %q: %q; want the mismatch named", fns, why)
+		}
+	}
+	none := []PlannedVulnerability{{Package: pkg, VulnerableVersionRange: "< 0.9.0", PatchedVersions: "0.9.0", VulnerableFunctions: []string{}}}
+	if why := versionsHeld(got(nil), none); why != "" {
+		t.Fatalf("no functions planned, none carried: %q; want held", why)
+	}
+}
