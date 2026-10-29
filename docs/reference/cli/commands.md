@@ -1335,7 +1335,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [flags]`
+**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1495,6 +1495,13 @@ lost connection (`abcd implement outage`), the drain opens nothing and ends with
 stopped "outage", naming the services down, since when, the probes and the lanes it
 opened; the next `abcd drain`, once the outage is cleared, begins a new one.
 
+--skip <iss-N|path> --reason <why> holds one issue, or every issue whose found_at
+lies in that path, back for now: the move adds it to the drain's skip list (beginning
+a drain when none is in progress) and every move passes it over before anything is
+pushed or asked, named in passed with check "skipped" and the reason. --skip may be
+given more than once, all with the one --reason; --unskip takes an entry off. The
+list clears when the drain ends.
+
 Without the repository's record, the dry run and the run both refuse (exit 2),
 naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or
 merges nothing exits 0 and says why. Exit 2 on a refusal, exit 3 when another
@@ -1503,13 +1510,16 @@ drain or run holds the state lock.
 **Flags:**
 
 ```
-      --dry-run             show every open issue's disposition and the order a drain takes them; writes nothing
-      --fix-rounds string   the fix rounds a lane may take before it is handed back; wins over every configured layer
-      --judgement string    the host's answer to the judgement the drain awaits, at the path its request names
-      --max int             cap the lanes this drain opens; the default is all
-      --pace string         the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
-      --sub-agents string   the ceiling on lanes and validators alive at once; wins over every configured layer
-      --take-over           move your own live reservation of each issue this move reaches from another copy to this one; never another person's
+      --dry-run              show every open issue's disposition and the order a drain takes them; writes nothing
+      --fix-rounds string    the fix rounds a lane may take before it is handed back; wins over every configured layer
+      --judgement string     the host's answer to the judgement the drain awaits, at the path its request names
+      --max int              cap the lanes this drain opens; the default is all
+      --pace string          the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
+      --reason string        why --skip holds its issues back, shown in each pass-over
+      --skip stringArray     hold an issue (iss-N), or every issue whose found_at lies in a path, back for now; needs --reason; cleared when the drain ends
+      --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
+      --take-over            move your own live reservation of each issue this move reaches from another copy to this one; never another person's
+      --unskip stringArray   take an issue or path off the drain's skip list
 ```
 
 **Example:**

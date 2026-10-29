@@ -1481,6 +1481,20 @@
           "hidden": false
         },
         {
+          "name": "reason",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "skip",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "sub-agents",
           "shorthand": "",
           "type": "string",
@@ -1491,6 +1505,13 @@
           "name": "take-over",
           "shorthand": "",
           "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "unskip",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
