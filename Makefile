@@ -309,7 +309,7 @@ asking-sync-check:
 # (iss-2610161639025702, iss-2610282016250805). The race
 # stage waits at its own gate (`--race-gate`, spelt without --wait so an older
 # abcd never reads a preflight there as queued at its first gate). At one, the
-# race gate opens at once, so the preflight runs exactly as before. Above one,
+# race gate opens at once once the disk check passes. Above one,
 # the first gate admits a preflight while fewer than that many others are in
 # their test stages (one queued at its race gate runs nothing and takes no
 # slot), a live race run does not shut it by itself, and a waiter queued ahead

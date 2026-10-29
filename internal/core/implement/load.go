@@ -178,6 +178,9 @@ type LoadResult struct {
 	RunLog          LoadRunLog      `json:"run_log"`
 	// Reason says why the check was skipped or could not read everything.
 	Reason string `json:"reason,omitempty"`
+	// Disk is the low-disk finding (load_disk.go), nil when every volume read
+	// has room; it is a warning beside the load's status, never a failure.
+	Disk *DiskCheck `json:"disk,omitempty"`
 }
 
 // CheckLoad runs the load check once. It never returns an error: a machine it
@@ -197,6 +200,7 @@ func CheckLoad(req LoadRequest) LoadResult {
 		res.Reason = "skipped on a CI runner (" + reason + "): a fresh runner carries no programs left from earlier work, so there is nothing to warn about"
 		return res
 	}
+	res.Disk = ReadDisk(req.Home, diskFloorAt(getenv, req.Home)).Report()
 
 	read := req.Read
 	if read == nil {

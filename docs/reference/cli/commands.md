@@ -2584,9 +2584,10 @@ the race stage that follows it, and a race run of your own goes through
 `--wait -- go test -race`. It is spelt without --wait because an
 older abcd reads any `implement load --wait` as a waiter at its first gate, and
 would count a preflight at its race gate as queued, not in its tests, so the two
-are refused together. At one preflight at a time, the default, it opens at once,
-without reading the machine, taking a hold or waiting a jitter, so a preflight's
-race stage follows its tests exactly as before. Above one it is shut only while
+are refused together. At one preflight at a time, the default, it opens at once
+once the disk check below passes, without reading the load or the process table,
+taking a hold or waiting a jitter, so a preflight's race stage follows its tests
+as before. Above one it is shut only while
 another `go test -race` run is live, a race waiter is ahead of it (by the same
 rule) or running its command, the load is at the wait limit, or the race gate's
 own hold is in force (each gate is shut only by its own gate's hold). That keeps
@@ -2620,6 +2621,19 @@ that cannot be read for it (writable by others, not valid JSON, or a `load`
 that is not an object) is read past instead: one preflight at a time applies,
 and one line on stderr names the file, the cause and how to fix it; so does a
 key under `load` that nothing reads.
+
+Both gates refuse, exiting 1 without waiting, while the volume holding the Go
+build cache (`go env GOCACHE`) or the one holding the worktree store
+(`~/.abcd.noindex/worktrees`) has less free space than the disk floor: 4 GiB for each
+preflight the first gate admits at once (`load.preflights`), and 8 GiB at least, so
+8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts
+and again just before it opens (the race gate at one preflight at a time reads
+it once, as it starts), and refuses at either look. The refusal names
+each low volume, its free space and the floor, and, when the cache's own volume
+is low, the cache's size and a command that deletes its build entries unused for
+two days. A disk it cannot read, in whole or in part, is never refused: one line
+on stderr says it was not checked, and why. The load check (`--site`) prints the
+same finding as a warning and never fails for it.
 
 Within one account the waiter that opens also takes a hold,
 `~/.abcd.noindex/load-wait.json` at the first gate and `~/.abcd.noindex/load-wait-race.json` at
@@ -2657,7 +2671,7 @@ child as its command: gate make or go, never git or gh itself.
 **Flags:**
 
 ```
-      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold
+      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold
       --site string        where the check runs: preflight | eval-harness
       --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 30m0s)
       --wait               wait until the load is below the wait limit and no other go test -race run is live
