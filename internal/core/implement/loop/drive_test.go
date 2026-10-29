@@ -53,6 +53,7 @@ func TestMain(m *testing.M) {
 	if mode := os.Getenv(loopFakeEnv); mode != "" {
 		os.Exit(loopFakeHarness(mode))
 	}
+	announceBeforePush = noAnnouncement
 	// The package is too long for one test process under the preflight's
 	// package budget (iss-2610251004378066).
 	if code, ok := testshard.Shard(); ok {

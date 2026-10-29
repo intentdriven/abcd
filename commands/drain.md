@@ -369,7 +369,10 @@ what it did in `next`:
   `abcd guard approve`, against the hazard registry at the lane's base commit
   (`commands/guard.md`). The brief is the issue with its remedy as the
   work; the implementer's receipt names the issue in `resolves`, and the landing
-  resolves it and opens one pull request.
+  resolves it and opens one pull request. Before the landing pushes the lane's
+  branch, it announces `merging <iss-N>` on your status branch and pushes only
+  once that is on `origin` (`/abcd:implement` says how); a push typed by hand
+  would post no announcement.
 - **It waits.** While that lane is in progress, a drain opens nothing and names
   the run again. One lane at a time.
 - **It hands a stuck lane back.** A lane that cannot finish does not hold the

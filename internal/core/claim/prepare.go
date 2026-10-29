@@ -138,6 +138,11 @@ type Request struct {
 	// a build's start), or one outside LaneStages, is refused before anything
 	// is pushed.
 	Stage string
+	// Admit, on a release subject, is the number of a pull request the
+	// release reservation withdrew, which the cutting copy rules in: it is
+	// re-armed in its recorded form, pinned to its withdrawn head, and a
+	// renewal records it admitted. 0 for every other act.
+	Admit int
 }
 
 // prepared is a request checked and filled in from the checkout, before the
@@ -197,6 +202,7 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 			break
 		}
 	}
+	req.Narrow = uniquePaths(req.Narrow)
 	if req.Live && !req.Renew {
 		return nil, refuse("only a renewal can require a live reservation; %s", nothingPushed)
 	}
@@ -227,6 +233,16 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 		return nil, refuse("only a reservation is a drain's to back off a hand-back, never a release or a renewal; %s", nothingPushed)
 	}
 	release := isRelease(id)
+	if req.Admit != 0 {
+		switch {
+		case !release:
+			return nil, refuse("only a release reservation admits a pull request; %s", nothingPushed)
+		case !validPRNumber(req.Admit):
+			return nil, refuse("%d is not a pull request number; %s", req.Admit, nothingPushed)
+		case req.Release || req.Renew || req.TakeOver || len(req.Footprint) > 0 || req.Lease != 0 || req.Drain || req.Stage != "":
+			return nil, refuse("an admission takes no footprint, lease, take-over, renewal or release; %s", nothingPushed)
+		}
+	}
 	if release && len(req.Footprint) > 0 {
 		return nil, refuse("a release reservation holds every merge and takes no footprint; %s", nothingPushed)
 	}
@@ -238,6 +254,12 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 			return nil, refuse("footprint %s is not a repository-relative path; %s", echo(p), nothingPushed)
 		}
 	}
+	// A path named twice is one path, kept where it was first named, so a
+	// renewal naming the held footprint again beside its new paths never
+	// grows the message with repeats until it passes the cap
+	// (iss-2610290507514841). A valid path is already clean, so equal text
+	// is the same path.
+	req.Footprint = uniquePaths(req.Footprint)
 	term := req.Lease
 	switch {
 	case term == 0 && release && !req.Release:
@@ -299,6 +321,20 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 		}
 	}
 	return p, nil
+}
+
+// uniquePaths is paths with each repeat dropped, in the order first named.
+func uniquePaths(paths []string) []string {
+	if len(paths) < 2 {
+		return paths
+	}
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if !slices.Contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // reservation is the message a reserve, renewal or take-over pushes.

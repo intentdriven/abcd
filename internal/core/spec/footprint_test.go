@@ -56,3 +56,15 @@ func TestReadFootprintReadsTheSection(t *testing.T) {
 		t.Fatalf("a fenced heading is not the section: %+v", got)
 	}
 }
+
+// TestReadFootprintSplitsOnlyOutsideParentheses: a comma inside an entry's
+// parenthetical note is the note's, so the entry stays whole, note and all,
+// for its reader to take apart (iss-2610241549334990).
+func TestReadFootprintSplitsOnlyOutsideParentheses(t *testing.T) {
+	written := "# a\n\n## Footprint\n\n" +
+		"- packages: internal/core/x (new), scripts/cloud/connectors/claude (new, the host connector), commands/\n"
+	want := []string{"internal/core/x (new)", "scripts/cloud/connectors/claude (new, the host connector)", "commands/"}
+	if got := ReadFootprint(written).Packages; !slices.Equal(got, want) {
+		t.Fatalf("packages = %q, want %q", got, want)
+	}
+}

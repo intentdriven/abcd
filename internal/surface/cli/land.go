@@ -53,10 +53,18 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"     `make preflight` runs in the branch's checkout, its output on stderr, and the\n" +
 			"     head must be unchanged, a receipt present and origin's URLs as checked after\n" +
 			"     it. A repository whose make file declares no preflight target gets no push.\n" +
-			"  4. Push (land.push): a plain push of the gated commit to the branch's name on\n" +
+			"  4. Announce (with land.push on): before the push, \"merging <item>\" is posted on\n" +
+			"     your status branch, as abcd announce posts it, for each issue, intent or pull\n" +
+			"     request the branch's own commits name in a Refs:, Resolves: or Delivers:\n" +
+			"     trailer, and the push waits until each is on origin. One you already\n" +
+			"     announced, standing a minute more, is not sent again; a record not yet on\n" +
+			"     the default branch is not announced, and the step says so. One that cannot\n" +
+			"     be published refuses the landing, nothing pushed. A push typed by hand with\n" +
+			"     git push posts no announcement.\n" +
+			"  5. Push (land.push): a plain push of the gated commit to the branch's name on\n" +
 			"     origin, with the repository's hooks running, never forced, never the default\n" +
 			"     branch.\n" +
-			"  5. Enqueue (land.enqueue): the branch's open pull request, armed for the merge\n" +
+			"  6. Enqueue (land.enqueue): the branch's open pull request, armed for the merge\n" +
 			"     queue where the merge gate allows it (today: only where a merge queue gates the\n" +
 			"     default branch and a ruleset requires a person's approval), pinned to the\n" +
 			"     head, then confirmed in the queue. An arming someone else made is left as it\n" +
@@ -86,7 +94,8 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"line on stderr names it.\n\n" +
 			"Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,\n" +
 			"which names what was done before it; reservations that cannot be fetched are\n" +
-			"one, made before anything is pushed. Exit 3 when a release being cut holds the\n" +
+			"one, and so is an announcement that cannot be published, each made before\n" +
+			"anything is pushed. Exit 3 when a release being cut holds the\n" +
 			"landing: it names the release, its holder and until when.\n\n" +
 			"--record-review records the review pair's verdicts for the branch's head and\n" +
 			"lands nothing: given once per reviewer's return (at least two, no two the\n" +
