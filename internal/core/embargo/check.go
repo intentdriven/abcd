@@ -140,6 +140,7 @@ type denySet struct {
 	needles  []needle
 	held     map[string]bool // every id a store holds, canonGHSA's form
 	allowed  map[string]bool // --allow'ed ids, canonGHSA's form
+	ownPub   map[string]bool // ids GitHub lists as this repository's published advisories, canonGHSA's form
 	unlisted bool            // refuse an id of that shape no store holds
 	embargo  int
 	counted  map[string]bool // the ids embargo counts, canonGHSA's form
@@ -155,8 +156,10 @@ type heldStore struct {
 // files, and reports every unpublished advisory's id, its reserved CVE id, its
 // title (unless the advisory was moved to the public track, which is fixed in
 // the open) and the store's location, plus any advisory id the store does not
-// hold that --allow does not name. Inputs are read before the store, so a
-// refusal to read one is the same with or without a store.
+// hold that --allow does not name and GitHub does not list among this
+// repository's published advisories (publishedOnGitHub, asked only when the
+// inputs name such an id). Inputs are read before the store, so a refusal to
+// read one is the same with or without a store.
 //
 // The deny set is the union of every store under this home
 // (storepath.Reachable): this checkout's own, verified as every sub-verb
@@ -237,18 +240,17 @@ func Check(req CheckRequest) (CheckResult, error) {
 	res.IntakeAt = oldestIntake(stores)
 	res.IntakeStale = res.IntakeAt == nil || now.Sub(*res.IntakeAt) > staleIntake
 
-	for _, c := range commits {
-		res.Findings = append(res.Findings, ds.scan(c.message, "commit "+c.sha, "message", 1)...)
-		for _, add := range c.added {
-			where := "added line in " + ds.nameOr(add.path, "a file the commit changes")
-			for _, run := range add.runs {
-				res.Findings = append(res.Findings, ds.scan(run.text, "commit "+c.sha, where, run.line)...)
-			}
-			named := ds.scan(add.path, "commit "+c.sha, "a file name the commit adds", 0)
-			for i := range named {
-				named[i].Snippet = ""
-			}
-			res.Findings = append(res.Findings, named...)
+	res.Findings = ds.scanInputs(commits, texts)
+	// An id the stores do not hold may be one of this repository's own
+	// advisories, already published: GitHub is asked for those once, and
+	// only when the inputs name such an id. An answer that cannot be had
+	// leaves each refused, never passed.
+	if slices.ContainsFunc(res.Findings, func(f CheckFinding) bool { return f.Kind == KindUnlistedAdvisoryID }) {
+		if pub, ok := publishedOnGitHub(top); ok {
+			ds.ownPub = pub
+			res.Findings = ds.scanInputs(commits, texts)
+		} else {
+			res.Note = joinNotes(res.Note, unaskedNote)
 		}
 	}
 	// A record is named by its place among those asked, never by its id: the
@@ -259,14 +261,70 @@ func Check(req CheckRequest) (CheckResult, error) {
 			res.Findings = append(res.Findings, CheckFinding{Kind: KindEmbargoedRecord, Source: "record " + strconv.Itoa(i+1)})
 		}
 	}
+	return res, nil
+}
+
+// unaskedNote is the check's note when it found an advisory id the stores do
+// not hold and could not ask GitHub whether this repository published it.
+const unaskedNote = "GitHub could not be asked which advisory ids this repository has published, so each id no store holds stays refused"
+
+func joinNotes(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + "; " + b
+}
+
+// publishedOnGitHub is the advisory ids GitHub lists as this repository's
+// published advisories, read through the person's own gh from the
+// repository origin names; ok is false when there is no such origin or the
+// listing cannot be had. GitHub's answer is untrusted: only an id of the
+// advisory shape, listed as published, is taken, and nothing else of it is
+// kept.
+func publishedOnGitHub(top string) (map[string]bool, bool) {
+	repo, err := originRepo(top)
+	if err != nil {
+		return nil, false
+	}
+	list, err := listAdvisories(top, repo, "published")
+	if err != nil {
+		return nil, false
+	}
+	pub := map[string]bool{}
+	for _, a := range list {
+		if a.State == "published" && ghsaShapeRe.MatchString(strings.ToLower(a.GHSAID)) && len(a.GHSAID) == len("GHSA-xxxx-xxxx-xxxx") {
+			pub[canonGHSA(a.GHSAID)] = true
+		}
+	}
+	return pub, true
+}
+
+// scanInputs scans each commit's message, added lines and file names, and
+// each text, in that order.
+func (ds denySet) scanInputs(commits []commitText, texts []checkText) []CheckFinding {
+	findings := []CheckFinding{}
+	for _, c := range commits {
+		findings = append(findings, ds.scan(c.message, "commit "+c.sha, "message", 1)...)
+		for _, add := range c.added {
+			where := "added line in " + ds.nameOr(add.path, "a file the commit changes")
+			for _, run := range add.runs {
+				findings = append(findings, ds.scan(run.text, "commit "+c.sha, where, run.line)...)
+			}
+			named := ds.scan(add.path, "commit "+c.sha, "a file name the commit adds", 0)
+			for i := range named {
+				named[i].Snippet = ""
+			}
+			findings = append(findings, named...)
+		}
+	}
 	for i, t := range texts {
 		src := "stdin"
 		if t.name != "-" {
 			src = "file " + ds.nameOr(t.name, "argument "+strconv.Itoa(i+1))
 		}
-		res.Findings = append(res.Findings, ds.scan(t.body, src, "", 1)...)
+		findings = append(findings, ds.scan(t.body, src, "", 1)...)
 	}
-	return res, nil
+	return findings
 }
 
 // embargoedRecord reports whether a store's state links id to an advisory not yet
@@ -375,10 +433,12 @@ type addedRun struct {
 // program), and the patch passes --no-ext-diff and --no-textconv so no diff
 // driver or text conversion the repository configures runs, or decides what
 // the check reads; --text keeps a file marked binary from hiding its lines.
-// A merge commit's diff is read against its first parent, so a line the merge
-// itself adds (a conflict resolution, an evil merge) is read too; a line it
-// brings in from a merged commit of the range is then read twice, which can
-// only add findings.
+// A merge commit is read for the lines it adds against every one of its
+// parents (mergeAdds), so a line the merge itself adds (a conflict
+// resolution, an evil merge) is read, and a line it brings in from a parent
+// is not: one from a parent in the range is read in the commit of the range
+// that added it, and one from a parent behind the range's start is already
+// behind it, as the default branch is when a branch merges it.
 func readRange(top, rng string) ([]commitText, error) {
 	rng = strings.TrimSpace(rng)
 	if rng == "" {
@@ -406,17 +466,111 @@ func readRange(top, rng string) ([]commitText, error) {
 		if err != nil {
 			return nil, refuse("a commit message of the range could not be read within the check's limit", "narrow the range, then run it again")
 		}
-		patch, err := gitutil.RunCappedBytes(top, maxCheckGit, "log", "-1", "--no-show-signature", "--format=", "-p",
-			"--no-ext-diff", "--no-textconv", "--text", "--no-color", "--no-renames", "--no-relative",
-			"--diff-merges=first-parent", "--unified=0", "--src-prefix=a/", "--dst-prefix=b/", sha, "--")
+		parents, err := gitutil.RunCappedBytes(top, maxCheckText, "log", "-1", "--no-show-signature", "--format=%P", sha, "--")
 		if err != nil {
 			return nil, refuse("a commit of the range could not be read within the check's limit", "narrow the range, then run it again")
 		}
-		added, err := parseAddedLines(patch)
+		ps := strings.Fields(string(parents))
+		for _, p := range ps {
+			if !gitutil.IsFullSHA(p) {
+				return nil, refuse("git listed a commit's parents in a form this abcd does not read", "run it again; if it persists, report it")
+			}
+		}
+		var added []fileAdds
+		if len(ps) < 2 {
+			added, err = commitAdds(top, "log", "-1", "--no-show-signature", "--format=", "-p", sha)
+		} else {
+			added, err = mergeAdds(top, sha, ps)
+		}
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, commitText{sha: sha, message: string(msg), added: added})
+	}
+	return out, nil
+}
+
+// commitAdds runs git with args (a commit's patch, or a diff between two
+// commits) under the check's patch options and reads the lines it adds.
+func commitAdds(top string, args ...string) ([]fileAdds, error) {
+	full := append(args, "--no-ext-diff", "--no-textconv", "--text", "--no-color", "--no-renames", "--no-relative",
+		"--unified=0", "--src-prefix=a/", "--dst-prefix=b/", "--")
+	patch, err := gitutil.RunCappedBytes(top, maxCheckGit, full...)
+	if err != nil {
+		return nil, refuse("a commit of the range could not be read within the check's limit", "narrow the range, then run it again")
+	}
+	return parseAddedLines(patch)
+}
+
+// mergeAdds is what a merge commit adds against every one of its parents: a
+// file is kept when the merge changes it against each parent, and a line of
+// it when each parent's diff adds it at the same line of the merge's tree.
+// Consecutive kept lines stay one run, so a token wrapped across them still
+// reads whole.
+func mergeAdds(top, sha string, parents []string) ([]fileAdds, error) {
+	type lines map[int]string
+	var perParent []map[string]lines
+	var order []string
+	for i, p := range parents {
+		adds, err := commitAdds(top, "diff", p, sha)
+		if err != nil {
+			return nil, err
+		}
+		m := map[string]lines{}
+		for _, fa := range adds {
+			ls := m[fa.path]
+			if ls == nil {
+				ls = lines{}
+				m[fa.path] = ls
+				if i == 0 {
+					order = append(order, fa.path)
+				}
+			}
+			for _, run := range fa.runs {
+				for j, text := range strings.Split(run.text, "\n") {
+					ls[run.line+j] = text
+				}
+			}
+		}
+		perParent = append(perParent, m)
+	}
+	var out []fileAdds
+	for _, path := range order {
+		kept := lines{}
+		for n, text := range perParent[0][path] {
+			kept[n] = text
+		}
+		changedInEach := true
+		for _, m := range perParent[1:] {
+			ls, ok := m[path]
+			if !ok {
+				changedInEach = false
+				break
+			}
+			for n, text := range kept {
+				if other, ok := ls[n]; !ok || other != text {
+					delete(kept, n)
+				}
+			}
+		}
+		if !changedInEach {
+			continue
+		}
+		nums := make([]int, 0, len(kept))
+		for n := range kept {
+			nums = append(nums, n)
+		}
+		slices.Sort(nums)
+		fa := fileAdds{path: path}
+		for i, n := range nums {
+			if i > 0 && n == nums[i-1]+1 {
+				last := &fa.runs[len(fa.runs)-1]
+				last.text += "\n" + kept[n]
+				continue
+			}
+			fa.runs = append(fa.runs, addedRun{line: n, text: kept[n]})
+		}
+		out = append(out, fa)
 	}
 	return out, nil
 }
@@ -736,7 +890,7 @@ func (ds denySet) matches(text string) []span {
 			break
 		}
 		id := canonGHSA(norm[loc[0]:loc[1]])
-		if ds.held[id] || ds.allowed[id] || placeholderGHSA(id) || !wordEdge(norm, loc[0], loc[1]) {
+		if ds.held[id] || ds.allowed[id] || ds.ownPub[id] || placeholderGHSA(id) || !wordEdge(norm, loc[0], loc[1]) {
 			continue
 		}
 		sp := toOrig(loc[0], loc[1])

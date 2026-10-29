@@ -1545,11 +1545,13 @@ Check a commit range or texts for what would disclose an advisory under embargo:
 
 The outbound embargo check: before anything is made public, read a commit
 range (--range <a>..<b>: each commit's message and the lines it adds, a
-merge's against its first parent) and any texts (--file <path>, repeatable;
-- reads stdin), and refuse every unpublished advisory's id, a CVE id
-reserved for one, its title, the store's location on this machine, and any
-other advisory id --allow does not name. A finding names where the match is
-and never repeats it.
+merge's being those it adds against every parent) and any texts (--file
+<path>, repeatable; - reads stdin), and refuse every unpublished advisory's
+id, a CVE id reserved for one, its title, the store's location on this
+machine, and any other advisory id --allow does not name and GitHub does
+not list among this repository's published advisories (asked only when
+such an id is found). A finding names where the match is and never repeats
+it.
 
 Limits: a title shorter than 12 characters is not matched on its own (its
 id still is); a paraphrase or a count ("fixes several private reports") is

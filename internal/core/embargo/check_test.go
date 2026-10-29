@@ -720,3 +720,83 @@ func TestPublicationDenySetKeepsClosedTitles(t *testing.T) {
 		t.Fatalf("the publication set holds the advisory being published: %+v", ds.needles)
 	}
 }
+
+// TestCheckSkipsWhatAMergeBringsInFromOutsideTheRange: a branch that has
+// merged the default branch is judged by its own lines. A line the merge
+// brings in from a parent behind the range's start is already there and is
+// not read, while a line the merge adds against every parent still is.
+func TestCheckSkipsWhatAMergeBringsInFromOutsideTheRange(t *testing.T) {
+	cf := newCheckFixture(t)
+	r := cf.f.repo
+	r.Git("switch", "-q", "-c", "feature")
+	r.Write("feature.txt", "clean\n")
+	r.Commit("feature work")
+	r.Git("switch", "-q", "main")
+	r.Write("upstream.txt", "already public: "+ghsaRealShaped+"\n")
+	r.Commit("main work")
+	main := r.Git("rev-parse", "HEAD")
+	r.Git("switch", "-q", "feature")
+	r.Git("merge", "-q", "--no-ff", "--no-commit", "main")
+	r.Write("resolved.txt", "names "+ghsaOpen+"\n")
+	r.Git("add", "resolved.txt")
+	r.Git("commit", "-q", "-m", "merge main")
+	merge := r.Git("rev-parse", "HEAD")
+
+	res, err := Check(CheckRequest{Home: cf.f.home, RepoRoot: r.Root(), Range: main + "..HEAD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKinds(t, res, KindAdvisoryID)
+	if f := res.Findings[0]; f.Source != "commit "+merge || f.Where != "added line in resolved.txt" || f.Line != 1 {
+		t.Fatalf("merge finding %+v", f)
+	}
+}
+
+// ghsaOtherShaped is a second advisory id of a real one's shape that no store
+// holds, assembled at run time as ghsaRealShaped is.
+var ghsaOtherShaped = "GHSA-" + strings.Join([]string{"3c4f", "5g6h", "7j8m"}, "-")
+
+// TestCheckPassesAnIdThisRepositoryPublished: an advisory id the store does
+// not hold passes when GitHub lists it among this repository's published
+// advisories, asked once a check finds such an id and never before; an id it
+// does not list stays refused as unlisted.
+func TestCheckPassesAnIdThisRepositoryPublished(t *testing.T) {
+	cf := newCheckFixture(t)
+	cf.f.repo.Git("remote", "add", "origin", "https://github.com/example/example.git")
+	g := newGHFake(t)
+	b, err := json.Marshal([]map[string]any{advisoryJSON(ghsaRealShaped, "published", "high", "an upstream report", "its text")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.answer("GET", listPath, "published", 0, string(b))
+
+	wantKinds(t, cf.text(t, "clean text\n"))
+	if n := len(g.calls()); n != 0 {
+		t.Fatalf("a check that found no unlisted id asked GitHub %d time(s)", n)
+	}
+	wantKinds(t, cf.text(t, "see "+strings.ToLower(ghsaRealShaped)+"\n"))
+	wantKinds(t, cf.text(t, "see "+ghsaRealShaped+" and "+ghsaOtherShaped+"\n"), KindUnlistedAdvisoryID)
+	if n := len(g.calls()); n != 2 {
+		t.Fatalf("two checks asked GitHub %d time(s), want once each", n)
+	}
+}
+
+// TestCheckKeepsAnUnlistedIdGitHubCannotConfirm: with no github.com origin,
+// or when GitHub cannot be read, an unlisted id stays refused and the note
+// says GitHub could not be asked.
+func TestCheckKeepsAnUnlistedIdGitHubCannotConfirm(t *testing.T) {
+	cf := newCheckFixture(t)
+	res := cf.text(t, "see "+ghsaRealShaped+"\n")
+	wantKinds(t, res, KindUnlistedAdvisoryID)
+	if !strings.Contains(res.Note, "published") {
+		t.Fatalf("note %q does not say GitHub could not be asked", res.Note)
+	}
+	cf.f.repo.Git("remote", "add", "origin", "https://github.com/example/example.git")
+	g := newGHFake(t)
+	g.fail("GET", listPath, "published", "HTTP 502: Bad Gateway")
+	res = cf.text(t, "see "+ghsaRealShaped+"\n")
+	wantKinds(t, res, KindUnlistedAdvisoryID)
+	if !strings.Contains(res.Note, "published") || strings.Contains(res.Note, "502") {
+		t.Fatalf("note %q", res.Note)
+	}
+}
