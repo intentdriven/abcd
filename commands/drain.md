@@ -277,7 +277,12 @@ what it did in `next`:
   `pending_hand_backs`; a later move whose view shows the issue released by a
   tombstone that marks no hand-back publishes it over that release, fenced on
   it and on the blob the `yes` was judged over, so your own reserve and
-  release never erase it. A record changed or finished on origin's default
+  release never erase it. A view that shows no branch at all, the sweep having
+  deleted the release first, publishes it as the branch's first commit, which
+  origin takes only while the branch is still absent: if anyone reserves the
+  issue meanwhile, the hand-back stays pending for that reservation's release.
+  One judged while origin's default branch could not be read names no record
+  to fence on, so over a deleted branch it is dropped, and the move says so. A record changed or finished on origin's default
   branch since, one origin holds in no one file, or a tombstone the hand-back
   would take past its cap ends it with nothing published, and the move says
   in `next` and in the route's `wrote` that it was dropped, and why, never
