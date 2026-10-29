@@ -635,6 +635,28 @@
         ]
       }
     },
+    "abcd-land-approve": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "abcd",
+        "subcommand": "land",
+        "flags": ["--approve"]
+      },
+      "why": "Recording the technical facilitator's approval of a head is the person's own act: the merge gate arms what it approves, so an approval an agent records is a false record of who approved, whatever facilitator.mode says.",
+      "successor": "Leave this one to the person: tell them the head you believe is ready and why, and let them run `abcd land --approve` themselves.",
+      "fixtures": {
+        "known_bad": [
+          "abcd land --approve",
+          "abcd land feat/x --approve",
+          "abcd land --approve=true"
+        ],
+        "known_good": [
+          "abcd land",
+          "abcd land --record-review a.md --record-review b.md",
+          "abcd capture \"an agent ran abcd land --approve\""
+        ]
+      }
+    },
     "abcd-source-ledger-flip": {
       "tier": "blocker",
       "pattern": {

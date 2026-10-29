@@ -110,6 +110,10 @@ var wordReaders = map[string]string{
 	"abbreviatesAlternative": "exempt: reads the known text flagGroupHit hands it",
 	"gitValueFlags":          "exempt: builds the value-flag table the git passes read words with, and reads no word",
 
+	// merge.go: the merge rule (spc-2610161609350616 step 5).
+	"mergeCommands": "sitesNamed and operandReadings; a later word the line does not fix reads as empty, so a flag a substitution prints is not taken as --auto",
+	"approveGoRun":  "sitesNamed; a word the line does not fix reads as empty, so a package or flag a substitution prints is not taken as abcd's or as --approve, as commands/guard.md names",
+
 	// speculate.go
 	"eligibleStart": "steppedBeforeCommand and anyProgram: no start where no program name is fixed",
 	"allNoglob":     "commandSites",

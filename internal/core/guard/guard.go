@@ -207,6 +207,10 @@ type Registry struct {
 	// forge is the forge-text opt-in of the repository this registry was
 	// loaded for (forge.go); nil for a registry with no repository behind it.
 	forge *forgeGate
+
+	// merge is the facilitator mode a front door handed in (merge.go,
+	// WithMergeMode); nil judges no merge command.
+	merge *mergeGate
 }
 
 // Decision is what core returns for one candidate command. It carries no
@@ -605,6 +609,9 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	if sig, ok := r.sharedStashSignal(segs, r.gitValueFlags()); ok {
 		signals = append(signals, sig)
 	}
+	// The merge rule (merge.go): the merge commands while facilitator.mode is
+	// human, and the facilitator's approval act in any mode.
+	signals = append(signals, r.mergeSignals(segs)...)
 
 	// A brace group the tokenizer did not expand (past the cap) is folded in the same way,
 	// and AFTER the payload expansion so a group hidden inside an inspectable
@@ -955,7 +962,7 @@ func message(v Verdict, e Entry) string {
 }
 
 func cloneRegistry(r Registry) Registry {
-	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees, files: r.files, forge: r.forge}
+	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees, files: r.files, forge: r.forge, merge: r.merge}
 	if r.Entries != nil {
 		out.Entries = make(map[string]Entry, len(r.Entries))
 		for id, e := range r.Entries {

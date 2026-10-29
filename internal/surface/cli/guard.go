@@ -12,6 +12,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -398,7 +399,7 @@ func guardHookDecide(cmd *cobra.Command) error {
 	// was refused), so the session keeps checking against it and the drop
 	// is announced loudly (iss-2608261551087492). Only an unavailable
 	// registry — unreachable with the embedded defaults — fails open.
-	ld := guard.LoadRepo(sessionRoot)
+	ld := loadRepoGuard(sessionRoot)
 	reg := ld.Registry
 	repoDropped := false
 	switch ld.Posture {
@@ -459,7 +460,7 @@ func guardHookDecide(cmd *cobra.Command) error {
 	// and never subtract one.
 	if wd.Exists {
 		if root := rulesRoot(wd.Path, cmd.ErrOrStderr()); root != sessionRoot {
-			wld := guard.LoadRepo(root)
+			wld := loadRepoGuard(root)
 			wreg := wld.Registry.ReadingFrom(files)
 			if wld.Posture == guard.LoadRepoDropped {
 				repoDropped = true
@@ -620,7 +621,31 @@ func loadGuardRegistry(w io.Writer) (guard.Loaded, error) {
 	if err != nil {
 		return guard.Loaded{}, err
 	}
-	return guard.LoadRepo(rulesRoot(cwd, w)), nil
+	return loadRepoGuard(rulesRoot(cwd, w)), nil
+}
+
+// loadRepoGuard is guard.LoadRepo for the repository at root, judging the
+// merge commands by its facilitator.mode (guard.WithMergeMode,
+// spc-2610161609350616 step 5), read through the merge gate's own resolver
+// (landing.ReadDefaultFacilitator): the default branch's committed
+// .abcd/config.json and the machine layer. A mode that cannot be read counts
+// as human, and the refusal says why, its text masked as every other
+// facilitator.mode refusal is.
+func loadRepoGuard(root string) guard.Loaded {
+	ld := guard.LoadRepo(root)
+	ld.Registry = ld.Registry.WithMergeMode(guardMergeMode(root))
+	return ld
+}
+
+// guardMergeMode reads the mode for the repository at root.
+func guardMergeMode(root string) guard.MergeMode {
+	return func() (bool, string) {
+		f, err := landing.ReadDefaultFacilitator(root)
+		if err != nil {
+			return true, "facilitator.mode cannot be read (" + termsafe.Sanitize(scrubPaths(err)) + "), so it counts as human"
+		}
+		return f.Mode != landing.ModeAuto, termsafe.Sanitize(fmt.Sprintf("facilitator.mode is %s (%s layer, %s)", f.Mode, f.Layer, f.Origin))
+	}
 }
 
 // guardDropNotice is the loud line the hook prints when a repo layer was

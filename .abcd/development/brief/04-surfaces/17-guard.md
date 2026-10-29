@@ -101,8 +101,8 @@ a checkout with more than one worktree), `interpreter-reads-stream` (a shell
 handed its script through a pipe, as in `cat x | sh`) or `forge-text-outbound`
 (a posting `gh pr` or `gh issue` command whose title or body carries a live
 agent-session URL or a tool attribution footer, in a repository that opted into
-the forge-text check, iss-2610142210511831), is enforced but not
-taught; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
+the forge-text check, iss-2610142210511831) or the merge rule below, is
+enforced but not taught; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
 script that deletes, which the guard refuses as `shell-c-variable-delete`
 (iss-2610161612200864), are taught by two rules the generator adds after the
 entries', each written beside the code that reads it. The registry taught is the one the guard
@@ -115,6 +115,43 @@ named on stderr and never taught. An entry's why and successor are each at most
 then refuses nothing. How the domain is recalled, overridden and
 silenced is the rules loader's
 ([`05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
+
+## The merge rule
+
+Who merges is decided by `facilitator.mode`
+([`38-land.md`](38-land.md), itd-2610150602547271). `abcd land` and the build
+loop ask one merge gate before arming anything; the guard holds the same line
+on the commands themselves, so a path that never asks the gate is still
+stopped. The guard reads the mode through the gate's own resolver: the default
+branch's committed `.abcd/config.json` and `~/.abcd.noindex/config.json`, a
+`human` in either winning, never the working tree's copy. A mode that cannot be
+read counts as `human`. The guard cannot import that resolver (it sits above
+the guard), so each front door that loads a repository's registry hands the mode
+in; a registry with no mode handed in judges no merge command.
+
+While the mode is `human`, three commands are refused, each naming the setting
+that allows it:
+
+- `gh pr merge --auto`, under `merge-auto-human`;
+- any other `gh pr merge` that merges, into the merge queue where one gates the
+  default branch and at once where none does, under `merge-now-human`
+  (`gh pr merge --disable-auto` withdraws an arming and is allowed);
+- a `gh api graphql` call whose query is the `enqueuePullRequest` or
+  `enablePullRequestAutoMerge` mutation, under `merge-enqueue-human`. A query
+  read from a file is not seen.
+
+In `auto` all three are allowed, and the merge gate decides what abcd arms.
+
+The technical facilitator's approval act, the land verb's approval of a head
+([`38-land.md`](38-land.md)), is refused to an agent in every mode: the merge
+gate counts that record as an approval of the head, so an agent that writes it
+records a false approval. Run through the binary it is refused by the registry
+entry `abcd-land-approve`, which the `SHELL` domain teaches; run through
+`go run ./cmd/abcd`, which no pattern can name, it is refused in code as
+`abcd-land-approve-go-run`. A package or flag word a substitution prints is not
+read. The three merge ids
+and `abcd-land-approve-go-run` are reserved, so a repository's
+`.abcd/guard.json` cannot declare an entry under them.
 
 ## The question gate
 

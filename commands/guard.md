@@ -960,6 +960,30 @@ one stash stack for the whole repository, so a bare pop can take another
 worktree's work. A stash with a message and a pop by entry (`stash@{N}`) are not
 warned about, and neither is anything in a single-worktree clone.
 
+Merging is the technical facilitator's decision where `facilitator.mode` is
+`human`. The guard reads the mode the way `abcd land`'s merge gate does: from
+the default branch's committed `.abcd/config.json` and
+`~/.abcd.noindex/config.json`, a `human` in either winning, and a mode it cannot
+read counting as `human`. While it is `human`, three commands are a **block**,
+each naming the setting that allows it (`facilitator.mode: auto` on the default
+branch, with no `human` in the machine layer): `gh pr merge --auto`
+(`merge-auto-human`); any other `gh pr merge` that merges, into the queue where
+one gates the default branch and at once where none does (`merge-now-human`;
+`gh pr merge --disable-auto` withdraws an arming and is allowed); and a
+`gh api graphql` whose query is the `enqueuePullRequest` or
+`enablePullRequestAutoMerge` mutation (`merge-enqueue-human`). A query read from
+a file is not seen. In `auto` all three are allowed. The safe form is to say
+the pull request is ready for the technical facilitator's approval and leave the
+arming to `abcd land`.
+
+Recording the technical facilitator's approval, `abcd land --approve`, is a
+**block** in every mode: it is the person's own act, and an approval an agent
+records is a false record of who approved. The binary's spelling is the registry
+entry `abcd-land-approve`; the `go run ./cmd/abcd land --approve` spelling is
+refused as `abcd-land-approve-go-run`. A package or flag word that a
+substitution prints is not read. Never run either; tell the person which
+head you believe is ready and let them run it.
+
 A `bash -c` or `sh -c` script built from variables that runs `rm`, `rmdir`,
 `shred` or `unlink` is a **block** (`shell-c-variable-delete`): what it deletes
 is named only when it runs, so no check made before it can read it, and a host
