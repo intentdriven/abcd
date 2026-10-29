@@ -6,7 +6,7 @@ kind: null
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2610150602547271]
-related_issues: [iss-2610290730539347, iss-2610170717491755]
+related_issues: [iss-2610290730539347]
 severity: major
 impact: additive
 origin: researcher-authored
