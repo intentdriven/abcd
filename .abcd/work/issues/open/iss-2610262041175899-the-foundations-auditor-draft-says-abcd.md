@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 990 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/01-build-sequence.md:99"
-remedy: "none (filed automatically)"
+remedy: "In itd-55 replace 'the grill' with the planning interview (abcd intent interview, itd-94) as the existing acceptance-criteria stress test, or drop the comparison."
 related_intents: [itd-55]
 finding_ref: cfk-993a1aa12f978831
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 959 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-37-modification-grammar.md:17"
-remedy: "none (filed automatically)"
+remedy: "State in itd-37's delivered-state paragraph that the section is not yet required in practice: no committed spec carries it, abcd spec scaffolds none and no lint checks it (verification matrix row is staged)"
 related_intents: [itd-37]
 finding_ref: cfk-aedbbff530d3f178
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 492 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-57-manual-hold-sentinel.md:17"
-remedy: "none (filed automatically)"
+remedy: "Supersede itd-57 (abcd intent reclassify naming the resolution of iss-2609200830076665 in the reason; record a one-line decision first if --by needs an intent or ADR) or re-scope it: a person-lifted hold already ships as `abcd intent hold` and `unhold`, a held line that build's start checks, the pick and the board's head refuse, so the sentinel-spec design is not needed."
 related_intents: [itd-57]
 finding_ref: cfk-a37b178d672987dc
 ---

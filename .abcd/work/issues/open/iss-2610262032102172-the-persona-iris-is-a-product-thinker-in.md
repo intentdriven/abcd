@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 231 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:7"
-remedy: "none (filed automatically)"
+remedy: "In the shipped intent's customer quote replace 'Iris, a technical facilitator' with 'Nia, a facilitator' (the registered facilitator persona); the receipt digest covers only the Acceptance Criteria body, so the quote edit leaves the audit receipt valid."
 related_intents: [itd-2609150819445595]
 finding_ref: cfk-d7a3fa58a2d50a30
 ---

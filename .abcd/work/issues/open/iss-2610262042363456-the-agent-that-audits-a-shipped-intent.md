@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1080 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-1-acceptance-gates.md:17"
-remedy: "none (filed automatically)"
+remedy: "In itd-25 line 46 rename 'intent-fidelity-reviewer' to 'intent-auditor'."
 related_intents: [itd-1, itd-25]
 finding_ref: cfk-606df9014334d862
 ---

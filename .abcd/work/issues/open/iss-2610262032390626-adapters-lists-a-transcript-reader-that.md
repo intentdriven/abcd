@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 300 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/02-adapters.md:350"
-remedy: "none (filed automatically)"
+remedy: "In the same 'Lifeboat source readers' rewrite of 02-adapters.md, mark the transcript reader as a design target; no shipped tier reads a transcript store."
 finding_ref: cfk-5df5eaf7ecefb0c4
 ---
 

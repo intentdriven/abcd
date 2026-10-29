@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 353 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-8-with-code-bundling.md:31"
-remedy: "none (filed automatically)"
+remedy: "In itd-8 drop the 'code-rescuer agent extended' scope bullet and say `pack --with-code` decides the code copy set deterministically (a rule over tracked files or a named path list, as mapping.go decides the rest); no agent runs inside pack."
 related_intents: [itd-8]
 finding_ref: cfk-d97b88475a6ed430
 ---

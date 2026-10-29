@@ -9,8 +9,10 @@ found_during: "abcd intent consistency, finding 307 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:470"
-remedy: "none (filed automatically)"
+remedy: "In 05-internals/07-memory.md mark section 0's user-scope memory/ row and section 9's two-scope index.md query as the planned design (itd-39), and state what ships: the prompt hook recalls memory.json notes from the machine and project layers (internal/core/recall), with pages joining later."
 finding_ref: cfk-52daa7c00e2bfbc2
+deferred_after: v0.15.1
+deferral_reason: "Deferred by the product thinker on 2026-10-27 (dcn-2610271112330536): the brief's single-home rewrite (dcn-2610271112339516, dcn-2610271112330235) rewrites or removes most of the passages this record quotes."
 ---
 
 ahoy says the user-scope ~/.abcd.noindex/memory/ resolves nothing today; 07-memory has the prompt hook querying the index of both the repo and the user memory scope
@@ -23,3 +25,7 @@ A premise contradiction (severity major) found by the cross-document consistency
 01-ahoy's inventory of the user-scope home marks memory/ as curated cross-project pages of a later phase that nothing resolves, and puts the person's own recalled notes in memory.json beside the project's .abcd/memory.json. 07-memory states as current that personal preferences land in ~/.abcd.noindex/memory/ and that the hook queries the index.md of both the repo and the user scope. Both cannot describe the same machine: either the hook reads a user-scope memory/ index or nothing resolves that directory.
 
 Evidence: `.abcd/work/reviews/2026-10-26-consistency/00-summary.md`, finding 307.
+
+## Deferral 2026-10-27
+
+Deferred past v0.15.1: Deferred by the product thinker on 2026-10-27 (dcn-2610271112330536): the brief's single-home rewrite (dcn-2610271112339516, dcn-2610271112330235) rewrites or removes most of the passages this record quotes.

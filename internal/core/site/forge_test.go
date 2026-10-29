@@ -137,7 +137,7 @@ func crowded() *fakeGHAPI {
 			"name": env, "deployment_branch_policy": map[string]bool{"protected_branches": false, "custom_branch_policies": true},
 		})
 		f.lists[f.env(env, "/deployment-branch-policies")] = []map[string]any{
-			{"name": "main", "type": "branch"}, {"name": "v*", "type": "tag"},
+			{"name": "main", "type": "branch"},
 		}
 	}
 	for i := 0; i < 130; i++ {

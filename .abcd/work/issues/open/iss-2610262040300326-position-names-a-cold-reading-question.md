@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 936 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/reading-position.md:5"
-remedy: "none (filed automatically)"
+remedy: "In record-families.md line 30 rename the 'position (how soon)' axis (for example 'placement' or 'timing'), since reading-position.md reserves bare 'position' for the reading chapter and charter."
 finding_ref: cfk-608abd7ec23ce5fb
 ---
 

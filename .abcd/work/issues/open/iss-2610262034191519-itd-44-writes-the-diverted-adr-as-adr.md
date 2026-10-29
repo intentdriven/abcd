@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 487 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-44-fourth-intent-kind-decision.md:122"
-remedy: "none (filed automatically)"
+remedy: "In itd-44 replace capture writing `adr-<next-free>-<slug>.md` with a call to `abcd decide --adr`, which mints a timestamp id and names the file by the stamp then the slug (24-decide.md, adr-45); in 05-intent.md line 93 stop naming new ADR files `NNNN-<slug>.md` zero-padded (the ordinals 0001-0058 keep that shape, every newer ADR is stamp-named)."
 related_intents: [itd-44]
 finding_ref: cfk-968326c60e3149f0
 ---

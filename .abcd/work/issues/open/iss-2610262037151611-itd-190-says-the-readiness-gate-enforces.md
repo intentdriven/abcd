@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 710 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-190-the-claim-recording-gradient-an-intent-s.md:39"
-remedy: "none (filed automatically)"
+remedy: "In itd-190 state the shipped staging: the mechanism and scope-conditions rows are advisory at the readiness gate (reported, never gating) and bind at a build run (34-build.md); reword 'the gate exits non-zero' to match."
 related_intents: [itd-190]
 finding_ref: cfk-4dda363b4287b78c
 ---

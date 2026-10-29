@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 574 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/24-decide.md:68"
-remedy: "none (filed automatically)"
+remedy: "In 04-universal-patterns.md:196 move the decisions folder (and the issue ledger's records) out of the Compounding-curated row into Append-only: a decision record is created exclusively and never edited (24-decide.md:68), and the same table already lists issue-ledger entries as append-only."
 finding_ref: cfk-41b679b1f51bc544
 ---
 

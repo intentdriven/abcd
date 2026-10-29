@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 704 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/loop.md:50"
-remedy: "none (filed automatically)"
+remedy: "In loop.md, after registering the implement loop, allow bare 'the loop' inside chapters whose subject is the implement loop once it has been named there (34-build.md, 27-implement.md, commands/build.md), and keep the full name everywhere else."
 finding_ref: cfk-0cbe8fd62b187dc2
 ---
 

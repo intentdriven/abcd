@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 619 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/23-reading.md:319"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): May 'disposition' name three state sets (a reading item's accepted, rejected, declined or held; a scope condition's survived, narrowed, falsified or untested; a release-receipt finding's fixed, invalid or deferred), or must the receipt field take another name? Answer 1: keep the word and widen the glossary entry to list each object's state set. Answer 2: rename the receipt field. Recommend answer 1: the receipt field is already built and checked (internal/core/lint/receiptdispositions.go) and the glossary already carries a second sense."
 related_intents: [itd-2610141956319695]
 finding_ref: cfk-6d1c5a87f82f4824
 ---

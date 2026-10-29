@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1131 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-109-a-two-part-verification-suite-for-abcd.md:29"
-remedy: "none (filed automatically)"
+remedy: "In itd-109 name the role wherever it says the maintainer: the technical facilitator records a disposition over a failed or pending machine check, and the product thinker records one that accepts a criterion as unmet; fix the quote's attribution in the same edit"
 related_intents: [itd-109, itd-2609212137129937]
 finding_ref: cfk-09229528449657ac
 ---

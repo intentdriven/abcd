@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // The working copy's local state, in the checkout's local tier. The tier is
@@ -78,7 +79,7 @@ func copyKey(root string) (string, error) {
 	// Another run minted it first, or an earlier one did. A racing writer's
 	// create precedes its write by an instant, so an empty read is retried.
 	for attempt := 0; ; attempt++ {
-		data, err := fsutil.ReadGuardedInRoot(r, copyKeyRel, 256)
+		data, err := localtier.ReadInRoot(r, copyKeyRel, 256)
 		if err != nil {
 			return "", refuse("cannot read %s: %s; %s", copyKeyRel, redacted(err), nothingPushed)
 		}

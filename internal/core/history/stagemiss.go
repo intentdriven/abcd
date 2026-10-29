@@ -65,6 +65,49 @@ func NoteStageMiss(repoRoot, rootSHA, who, reason string) error {
 	if err != nil {
 		return err
 	}
+	return noteMissAt(path, who, reason)
+}
+
+// NotePendingMiss records one session transcript the session-end hook read
+// and could not even write into the pending directory. The marker sits in that
+// directory, since the hook has no repository to put it beside, and the next
+// session start reports it (TakePendingMiss).
+func NotePendingMiss(who, reason string) error {
+	dir, err := pendingDirReal()
+	if err != nil {
+		return err
+	}
+	return noteMissAt(filepath.Join(dir, stageMissFilename), who, reason)
+}
+
+// TakePendingMiss reads the pending directory's miss marker and removes it,
+// under the marker's lock, so the misses are reported once, by the session
+// start that reads them. A missing marker is not an error.
+func TakePendingMiss() (StageMissNote, bool, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return StageMissNote{}, false, fmt.Errorf("history: cannot resolve the caller's home directory: %v", err)
+	}
+	dir := filepath.Join(home, filepath.FromSlash(userStoreRelPath), pendingDirName)
+	path := filepath.Join(dir, stageMissFilename)
+	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+		return StageMissNote{}, false, nil
+	}
+	var note StageMissNote
+	var ok bool
+	err = fsutil.WithFileLock(path+".lock", stageMissLockTimeout, func() error {
+		var rerr error
+		note, ok, rerr = readStageMiss(path)
+		if rerr != nil || !ok {
+			return rerr
+		}
+		return os.Remove(path)
+	})
+	return note, ok, err
+}
+
+// noteMissAt counts one miss in the marker at path.
+func noteMissAt(path, who, reason string) error {
 	if len(reason) > stageMissReasonMax {
 		reason = reason[:stageMissReasonMax]
 	}

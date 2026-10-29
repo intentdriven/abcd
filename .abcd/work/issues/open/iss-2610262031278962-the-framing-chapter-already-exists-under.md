@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 132 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/06-framing.md:3"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Is itd-143 delivered, since the chapter 06-framing.md and the lifeboat mapping row exist, or does it stay a draft narrowed to its remainder? Answers: (a) ship it and carry criterion 3 (interview landing) to itd-142; (b) keep it a draft, rewritten to what is unbuilt. Recommended (a): criteria 1, 2 and 4 are met by the tree and the mapping, and criterion 3 depends on itd-142's interview, which this intent says it does not own."
 finding_ref: cfk-a347d173fe8b7906
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 354 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-90-brief-interview-for-the-blanks.md:43"
-remedy: "none (filed automatically)"
+remedy: "In itd-90 strike 'Embark (itd-88, M5) owns reconciling answers into a target' (itd-88 carries no such milestone and embark writes only its five record families and the marker block) and name the real owner of the write into the brief: itd-142, which refines itd-90 and commits the interview's confirmed products to the brief."
 related_intents: [itd-90]
 finding_ref: cfk-94400eb0e0738111
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 491 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-78-intent-dependency-graph.md:17"
-remedy: "none (filed automatically)"
+remedy: "Narrow itd-78 to what is still unshipped (the derived-priority view `abcd intent graph`, the priority-inversion and reverse-field lints, suspect-link fingerprints); say the declared edges ship as `abcd intent edge` with the stale_edge and edge_cycle lints, and drop the press-release sentence that presents the edge half as new."
 related_intents: [itd-78]
 finding_ref: cfk-ac1c9072faf5bfe6
 ---

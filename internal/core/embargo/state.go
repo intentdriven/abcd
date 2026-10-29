@@ -175,10 +175,23 @@ func (st State) validate() error {
 func (s Store) StatePath() string { return filepath.Join(s.Root, filepath.FromSlash(StateRel)) }
 
 // loadState reads the state through the trust checks: a regular file (never a
-// link), owned by this account and closed to group and other writes, within
+// link, nor under one), owned by this account and closed to group and other writes, within
 // its cap, one strict JSON document, every field in shape. An absent file is
 // an empty state.
 func (s Store) loadState() (State, error) {
+	if err := spelledExactly(s.Root, "the embargo store's state file is refused: "); err != nil {
+		return State{}, err
+	}
+	// Every folder on the way to the state is a real directory, so a link
+	// on its path never leads the read to a file the store did not write.
+	if ok, err := fsutil.ProbeRealDirAll(s.Root, filepath.ToSlash(filepath.Dir(StateRel))); err != nil {
+		if errors.Is(err, fsutil.ErrNotRealDir) {
+			return State{}, refuseState("a folder on its path is not a real directory")
+		}
+		return State{}, refuseState("its folder could not be examined")
+	} else if !ok {
+		return emptyState(), nil
+	}
 	p := s.StatePath()
 	fi, err := os.Lstat(p)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -193,6 +206,9 @@ func (s Store) loadState() (State, error) {
 	if fsutil.CallersAlone(p, fi) != nil {
 		return State{}, refuseState("it is not this account's alone (another owner, or a group or other write bit)")
 	}
+	if err := untracked(s.Root, StateRel, "the embargo store's state file"); err != nil {
+		return State{}, err
+	}
 	data, err := fsutil.ReadGuarded(p, maxStateBytes)
 	if err != nil {
 		return State{}, refuseState("it could not be read within its size limit")
@@ -202,6 +218,50 @@ func (s Store) loadState() (State, error) {
 		return State{}, refuseState(why)
 	}
 	return st, nil
+}
+
+// spelledExactly refuses, its reason led by lead, when a name on the state's
+// path under root differs from its exact spelling only by case (Unicode case
+// folding, so a Kelvin sign counts as a K): the state is read only where abcd
+// writes it, under its exact spelling. The walk stops at the first name
+// absent under any spelling.
+func spelledExactly(root, lead string) error {
+	dir := root
+	for _, name := range strings.Split(StateRel, "/") {
+		entries, err := os.ReadDir(dir)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return &RefusalError{Reason: lead + "a folder on its path could not be listed",
+				Remedy: "check the permissions of the store, then run it again"}
+		}
+		exact := false
+		for _, e := range entries {
+			switch {
+			case e.Name() == name:
+				exact = true
+			case strings.EqualFold(e.Name(), name):
+				return misspelled(lead, e.Name(), name)
+			}
+		}
+		if !exact {
+			return nil
+		}
+		dir = filepath.Join(dir, name)
+	}
+	return nil
+}
+
+// misspelled is spelledExactly's refusal for found, a name on the state's
+// path that is the exact name spelled another way. The folder may hold the store's
+// private records, so the remedy renames it where it stands and moves
+// nothing out of the store.
+func misspelled(lead, found, exact string) error {
+	return &RefusalError{
+		Reason: fmt.Sprintf("%sthe name %q on its path differs from %s only by case", lead, found, exact),
+		Remedy: fmt.Sprintf("rename %q to %s where it stands in the store (through a temporary name, since the filesystem may ignore case), moving nothing out of the store, then run it again", found, exact),
+	}
 }
 
 // decodeState is the state a state file's bytes hold, or why they are

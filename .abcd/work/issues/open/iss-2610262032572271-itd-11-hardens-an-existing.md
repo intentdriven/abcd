@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 339 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-11-pass-b-pitfall-mitigation.md:36"
-remedy: "none (filed automatically)"
+remedy: "Reframe itd-11: it does not harden an existing chat-distiller (none ships; 01-agents.md lists it as a design target and disembark says the transcript-reading distiller is not built and gated on itd-11), so state that the intent would introduce the transcript-reading Pass B and say what it is blocked on, or move it to superseded if disembark's single deterministic pass makes it moot"
 related_intents: [itd-11]
 finding_ref: cfk-493be1d7112c6274
 ---

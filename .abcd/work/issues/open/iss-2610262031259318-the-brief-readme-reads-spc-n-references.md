@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 128 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:163"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the delivery-state provenance note in brief/README.md (lines 8-15): an unqualified `spc-N` is a native-store spec, a predecessor id is marked '(predecessor store)' per the two-namespace rule in specs/README.md; also replace 'roadmap dashboard' there with the status block."
 finding_ref: cfk-f0d881f70a3b6189
 ---
 

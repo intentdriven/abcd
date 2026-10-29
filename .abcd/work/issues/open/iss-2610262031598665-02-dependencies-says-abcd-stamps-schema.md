@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 205 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-166-each-run-should-record-the-model.md:69"
-remedy: "none (filed automatically)"
+remedy: "In 02-dependencies.md Out of scope, replace 'abcd stamps schema_version: 1 everywhere' with what holds: each record family stamps its own current version (run state is at 14 and migrates older files on read), and cross-version migration of the record store stays itd-9; the same edit resolves iss-2610262030364518."
 related_intents: [itd-166]
 finding_ref: cfk-8b0815e4ace235d1
 ---

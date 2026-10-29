@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 10 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/02-context.md:31"
-remedy: "none (filed automatically)"
+remedy: "Redraw the pack/unpack diagram in 02-context.md to match the tree in 02-disembark.md section 5 (brief/, graveyard/, rescue/, retrospectives/, docs/adrs/, activity/issues/, coverage.*, _provenance.json), with press-release and principles files shown as added later by the synthesis sub-verbs; drop research/ and audit/."
 finding_ref: cfk-da77b2b302b86740
 ---
 

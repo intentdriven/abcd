@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 302 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/04-universal-patterns.md:161"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-universal-patterns.md section 6 (the paragraphs after the later-sibling additions): remove 'Both are tracked under the visibility rule'; say the local tier is always gitignored and the voyage store is outside every repository and never committed."
 finding_ref: cfk-beeb05409782f6ca
 ---
 

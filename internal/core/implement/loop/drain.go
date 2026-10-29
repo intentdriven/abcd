@@ -40,6 +40,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -1379,9 +1380,12 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 		return DrainState{}, false, fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
-	data, err := fsutil.ReadGuardedInRoot(root, DrainStateRel, maxDrainStateBytes)
+	data, err := localtier.ReadInRoot(root, DrainStateRel, maxDrainStateBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		return DrainState{}, false, nil
+	}
+	if rf := tierRefusal(StageDrain, "", err); rf != nil {
+		return DrainState{}, false, rf
 	}
 	if err != nil {
 		return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s cannot be read as the drain's state: %v", DrainStateRel, err),

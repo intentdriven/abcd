@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 13 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:74"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (the fourth-capture-verdict paragraph): mark the capture-time classifier and the decision verdict as staged (itd-44, a draft, nothing built), in the naming register's words, and keep only the three-valued persisted kind as current."
 finding_ref: cfk-a3375e88a7a40b71
 ---
 

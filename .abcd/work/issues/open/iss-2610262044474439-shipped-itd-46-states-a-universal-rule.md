@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1230 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-46-abcd-intent-quoted-text-create-symmetric.md:18"
-remedy: "none (filed automatically)"
+remedy: "In the same itd-46 line 18 reword, scope 'never mutates state' to the intent and capture bare forms; the planned menu intent's decision 4 already rules that bare abcd may set the waiting-on status in a Terminal."
 related_intents: [itd-46, itd-2610031215002409]
 finding_ref: cfk-8fd46c40a9229c87
 ---

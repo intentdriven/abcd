@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 63 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:85"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (acceptance-discipline paragraph): say the brief's press-release chapter and some surface chapters carry an `## Acceptance` block and that the rest rest on the truth rule and the doc-fidelity gate, instead of claiming every surface chapter does."
 finding_ref: cfk-377b88c76bffa00f
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 978 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/08-skills.md:15"
-remedy: "none (filed automatically)"
+remedy: "Edit itd-85 (What's In Scope wiring bullet): replace 'prepare-this-repo Phase 2' with the install section of commands/ahoy.md as the consumer of `abcd audit --json`."
 related_intents: [itd-85]
 finding_ref: cfk-d9478f34bb7340e3
 ---

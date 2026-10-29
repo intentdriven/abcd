@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 829 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-25-dredge-cross-corpus-synthesist.md:53"
-remedy: "none (filed automatically)"
+remedy: "In itd-25's out-of-scope bullet say `issue-scout` is a design-target agent that does not exist in agents/ (the 01-agents.md roster), or drop the sentence; do not describe it as existing."
 related_intents: [itd-25]
 finding_ref: cfk-eab9560c26b2eeab
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 914 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/02-adapters.md:341"
-remedy: "none (filed automatically)"
+remedy: "In the 'Lifeboat source readers' rewrite of 02-adapters.md, replace the probe, extract and copy contract with the Source interface (Section, Tier, Probe) the code defines."
 related_intents: [itd-95]
 finding_ref: cfk-69843aeb4330f9a8
 ---

@@ -624,6 +624,16 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, cu...)
 	}
 
+	// local_tier_untracked asks git what it tracks under the local tier, which
+	// no root walks, so it runs once here.
+	if ltCfg, ok := cfg.Rules[ruleLocalTierUntracked]; ok && ltCfg.Enabled {
+		lt, err := checkLocalTierUntracked(repoRoot, ltCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, lt...)
+	}
+
 	// brief_flag_landed reads the brief's review flags against their chapters,
 	// both outside cfg.Roots' walk, so it runs once here.
 	if bfCfg, ok := cfg.Rules[ruleBriefFlagLanded]; ok && bfCfg.Enabled {
