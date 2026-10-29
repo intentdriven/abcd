@@ -81,13 +81,14 @@ type Hold struct {
 	// subject, rel-vX.Y.Z.
 	Release string `json:"release"`
 	Subject string `json:"subject"`
-	// Holder is the GitHub username cutting it; "" when the reservation is
-	// unreadable.
+	// Holder is the holder cutting it, as the reservation names them: a
+	// holder id, or the GitHub username a hold made before the id names; ""
+	// when the reservation is unreadable.
 	Holder string `json:"holder,omitempty"`
 	// Copy is CopyThis when the reservation names this checkout's own copy.
 	Copy string `json:"copy,omitempty"`
-	// Mine is true when the hold is under the reader's own username, from
-	// any copy; Own when it is also this copy's: the cutting session itself.
+	// Mine is true when the hold is the reader's own (Self.Owns), from any
+	// copy; Own when it is also this copy's: the cutting session itself.
 	// Only releaseHolds sets them.
 	Mine bool `json:"mine"`
 	Own  bool `json:"own"`

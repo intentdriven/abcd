@@ -39,7 +39,7 @@ func TestEveryCopyButTheCuttingOneIsHeld(t *testing.T) {
 			"merge it from the copy cutting v0.16.0, or wait until v0.16.0 is tagged or that copy releases rel-v0.16.0"},
 		{"another person", q,
 			"release v0.16.0 is being cut by " + p.keptHolderID() + ", until 2026-10-03T15:00:00Z" + tail,
-			"ask " + p.keptHolderID() + " to merge it or to release rel-v0.16.0, or wait until v0.16.0 is tagged"},
+			"wait until v0.16.0 is tagged, or until rel-v0.16.0, held by " + p.keptHolderID() + " from the copy cutting it, ends: its holder releases it, or stops renewing it and it ends at 2026-10-03T15:00:00Z; the copy cutting it can also merge this itself"},
 	} {
 		m, err := FetchMergeHold(c.p.dir, t0, c.p.opts())
 		if err != nil {

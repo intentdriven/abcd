@@ -466,7 +466,7 @@ func (f mergeForge) arm(root string, w Withdrawal) (string, error) {
 // merged). Any other state ("" back) posts nothing: a mismatched node id
 // names no pull request the record is trusted for, and a kept or partial
 // withdrawal did not happen as a comment would say. Every value in it is
-// validated data (a number, the release's tag, a GitHub username), so it
+// validated data (a number, the release's tag, a holder id), so it
 // carries no free text from the branch, no session URL and no tool footer.
 // The person is named without an at-sign, so a comment mentions no one;
 // every subscriber of the pull request is notified, as by any comment.

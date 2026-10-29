@@ -211,7 +211,9 @@ func (p *prepared) actor() actor {
 }
 
 // longestLogin and longestLabel are the room a tombstone leaves for whoever
-// writes it: the longest GitHub username, and an Assisted-by label longer
+// writes it: the longest holder name, a GitHub username of 39 characters,
+// which an old withdrawal may still name and which is longer than any holder
+// id, and an Assisted-by label longer
 // than any abcd composes. Whichever copy of whichever person settles a
 // release writes its tombstone, so its fit is not measured by the cutter's
 // own login and label.

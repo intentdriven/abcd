@@ -78,8 +78,11 @@ func (m MergeHold) Reason() string {
 // (yourCopyAt).
 func (h Hold) yourCopy() string { return yourCopyAt(h.Sibling) }
 
-// Waits is what ends each hold, for the caller's next step: ask the holder,
-// or wait for the tag or the hold's end. "" when nothing holds.
+// Waits is what ends each hold, for the caller's next step: the copy cutting
+// the release merges it, or that copy's holder releases the hold or stops
+// renewing it, or the tag reaches origin. Another person's hold is named by
+// its subject and its holder id, which names no one a reader could ask, so
+// the words say what ends it rather than whom to ask. "" when nothing holds.
 func (m MergeHold) Waits() string {
 	waits := make([]string, 0, len(m.Holds))
 	for _, h := range m.Holds {
@@ -91,7 +94,8 @@ func (m MergeHold) Waits() string {
 		case h.Mine:
 			waits = append(waits, "merge it from the copy cutting "+h.Release+", or wait until "+h.Release+" is tagged or that copy releases "+h.Subject)
 		default:
-			waits = append(waits, "ask "+h.Holder+" to merge it or to release "+h.Subject+", or wait until "+h.Release+" is tagged")
+			waits = append(waits, "wait until "+h.Release+" is tagged, or until "+h.Subject+", held by "+h.Holder+" from the copy cutting it, ends: "+
+				"its holder releases it, or stops renewing it and it ends at "+stamp(h.EffectiveExpiry)+"; the copy cutting it can also merge this itself")
 		}
 	}
 	return strings.Join(waits, "; ")

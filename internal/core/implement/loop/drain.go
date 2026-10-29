@@ -952,9 +952,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				continue
 			}
 			// Under --take-over, this person's own reservation from another
-			// copy (a hosted session's, lost with its local tier) holds
-			// nothing off: the reservation act below takes it over
-			// (spc-2610161044461448 step 15).
+			// copy holds nothing off: the reservation act below takes it over
+			// (spc-2610161044461448 step 15). A hosted session that restarted
+			// lost its local tier, so its earlier copy is another copy; it is
+			// still this person's only when its holder id is (claim.Self): kept
+			// across sessions by ABCD_HOLDER_ID, or declared in holder-ids. A
+			// restart that minted a fresh id reads its earlier holds as another
+			// person's, which no take-over moves.
 			var takeOver claim.Self
 			if o.TakeOver {
 				takeOver = capHolder

@@ -178,8 +178,9 @@ func (a Announcement) Standing(now time.Time) bool { return a.Unreadable == "" &
 // BranchDoubt is a status branch read as doubtful (C11): named, with the
 // reason, while every other branch is still read.
 type BranchDoubt struct {
-	// Branch is the name after abcd-status/, always a lower-case username: a
-	// branch by any other name is counted, never kept as a doubt.
+	// Branch is the name after abcd-status/, always a holder id or a
+	// lower-case username (statusName): a branch by any other name is
+	// counted, never kept as a doubt.
 	Branch string
 	Reason string
 	// Tip is the commit the branch ended in when it was found doubtful; "" for
@@ -263,7 +264,8 @@ type StatusFetch struct {
 // FetchStatus is `abcd status`'s read of the remote: it lists the status
 // branches on origin (`git ls-remote`), then fetches, in one command, the
 // reservations with origin's release tags, every status branch whose name is
-// a lower-case GitHub username and origin's default branch, and stamps when.
+// a holder id or a lower-case GitHub username and origin's default branch,
+// and stamps when.
 // A branch under abcd-status/ by any other name is not fetched: two names that
 // differ only in case break every fetch on a case-insensitive filesystem
 // (decision 10), so it is counted, never named and never kept (C11). Then it
@@ -324,7 +326,7 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 // listStatusBranches asks origin which status branches it holds (`git
 // ls-remote origin refs/heads/abcd-status/*`), read line by line, never
 // whole, so however many origin lists the listing is read: the first
-// maxStatusBranches names that are lower-case GitHub usernames, in origin's
+// maxStatusBranches names that are holder ids or lower-case GitHub usernames, in origin's
 // order, then sorted; how many more such names it listed (past), which are
 // not read and not fetched; and the tally of every other name, which is not
 // fetched and is never kept. own, when not "", is the sender's own branch
