@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 451 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/spec.md:4"
-remedy: "none (filed automatically)"
+remedy: "In spec.md replace 'ordered tasks with acceptance criteria', 'decomposed into numbered tasks', 'task lists' and the 'Task spc-3.1' example with steps listed under the spec's Steps section; leave acceptance criteria to the intent."
 finding_ref: cfk-c0b08563c9500da2
 ---
 

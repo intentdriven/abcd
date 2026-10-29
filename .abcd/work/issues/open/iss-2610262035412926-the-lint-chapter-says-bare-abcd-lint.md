@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 590 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/16-lint.md:144"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does the agents-and-hosts help block hold verbs no person types, or verbs no person needs to type? Answer 1: no person needs to type them; reword README.md:163 and keep lint, guard, banlist, identity, docs and site in the block. Answer 2: literally no person types them, so move the ones a person does type to the people groups. Recommend answer 1: the chapters rightly say a person can run lint or guard, and the product thinker's 2026-10-09 placement was by what a person needs to do their job."
 finding_ref: cfk-302bf7f4a3928fa3
 ---
 

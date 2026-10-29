@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1001 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-125-the-lifeboat-verdict-says-what-it-is.md:20"
-remedy: "none (filed automatically)"
+remedy: "In the disembark milestone of 01-build-sequence.md, change 'runs the host-delegated audit' to 'runs the host-delegated review'."
 related_intents: [itd-125]
 finding_ref: cfk-886be6b6b5e097d6
 ---

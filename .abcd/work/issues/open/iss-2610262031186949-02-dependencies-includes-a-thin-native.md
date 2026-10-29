@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 112 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/02-dependencies.md:44"
-remedy: "none (filed automatically)"
+remedy: "In glossary/core/loop.md reword 'abcd never owns the run loop' to match adr-27: abcd owns the contract, an adapter supplies the loop, and the thin native Go loop is abcd's own always-available floor adapter (a design target, not built); the dependencies edit that marks it staged is tracked under iss-2610262031110865."
 finding_ref: cfk-9145786f18dc419e
 ---
 

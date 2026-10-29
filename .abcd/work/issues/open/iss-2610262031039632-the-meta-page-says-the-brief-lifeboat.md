@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 80 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/00-meta.md:44"
-remedy: "none (filed automatically)"
+remedy: "Reword 'in the lifeboat's section shape' at 31-lab.md:99 (and the same phrase in commands/lab.md:92 and the Harvest comment in internal/core/lab/harvest.go) to say the harvest borrows the lifeboat's grounded/partial/blank grading and its what-worked, what-is-open and coverage sections, with intention, method and candidates its own."
 finding_ref: cfk-86e3bd635db4907a
 ---
 

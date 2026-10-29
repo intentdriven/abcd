@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 156 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention.md:40"
-remedy: "none (filed automatically)"
+remedy: "In the lab discipline line 40 reword 'in the lifeboat's section shape' to say the harvest has six sections, each graded grounded, partial or blank the way the lifeboat grades a brief section; fix the same phrase in commands/lab.md and the internal/core/lab/harvest.go comments."
 related_intents: [itd-2609251624540864]
 finding_ref: cfk-f4ec523a961973f3
 ---

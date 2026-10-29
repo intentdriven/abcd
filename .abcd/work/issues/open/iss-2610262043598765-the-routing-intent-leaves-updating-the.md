@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1175 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609170822093401-the-oracle-choice-is-one-repo-wide-value.md:129"
-remedy: "none (filed automatically)"
+remedy: "In the routing intent replace 'Updating the proposal from measurements - itd-17' (out of scope, related_intents and the 'Learned routing (itd-17) refines this' paragraph) with a live owner or drop it: itd-17 is superseded by itd-2609221009495079, which rules a learned router out; itd-64 (benchmark-driven configuration) is the candidate owner."
 related_intents: [itd-2609170822093401, itd-2609221009495079]
 finding_ref: cfk-ecec464ea12e13ee
 ---

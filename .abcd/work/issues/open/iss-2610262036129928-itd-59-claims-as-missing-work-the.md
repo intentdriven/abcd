@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 631 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/11-history.md:372"
-remedy: "none (filed automatically)"
+remedy: "Re-scope itd-59 to the unattended passes not yet routed through capture: the runner already stores each delegated agent's transcript through internal/core/history (internal/core/runner/transcript.go); state what the draft adds beyond that, or retire it."
 related_intents: [itd-59]
 finding_ref: cfk-9f67ebabcc3035d6
 ---

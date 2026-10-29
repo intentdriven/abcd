@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1072 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/regime.md:4"
-remedy: "none (filed automatically)"
+remedy: "In itd-142 lines 19 and 60 rename 'question regimes' to 'question kinds' so regime keeps the glossary's four licences; the 'entailment' kind also borrows a position name and should be renamed."
 related_intents: [itd-142]
 finding_ref: cfk-4caff5ff9e9e159f
 ---

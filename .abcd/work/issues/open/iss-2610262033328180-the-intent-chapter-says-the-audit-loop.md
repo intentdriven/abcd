@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 418 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:578"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the Audit-loop mode and budget paragraph at 03-configuration.md lines 415-427 per iss-2610160855131633 to describe the loop as abcd build's last stage (itd-50 decision 1), or drop the per-intent keys."
 finding_ref: cfk-f94f53f1a6997d34
 ---
 

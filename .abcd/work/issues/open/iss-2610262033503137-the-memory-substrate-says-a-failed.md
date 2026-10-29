@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 441 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/07-memory.md:140"
-remedy: "none (filed automatically)"
+remedy: "Edit 07-memory.md section 5 (coverage check): drop 'refuses next quotation block'; say a failed cumulative check is an MQ002 blocker that makes `abcd library lint` exit nonzero, and nothing refuses at ingest."
 finding_ref: cfk-791a99c89edbe335
 ---
 

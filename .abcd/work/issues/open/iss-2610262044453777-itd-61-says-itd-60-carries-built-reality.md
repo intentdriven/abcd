@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1227 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-61-brief-change-derivation.md:44"
-remedy: "none (filed automatically)"
+remedy: "In itd-61 (press release line 24 and the out-of-scope bullet) say itd-60 carries built reality into the brief only, and name the public-docs forward direction as a later rung that is reported and never refuses, so the forward direction scoped out is the brief's alone."
 related_intents: [itd-61, itd-60]
 finding_ref: cfk-890a06ca52b5bf84
 ---

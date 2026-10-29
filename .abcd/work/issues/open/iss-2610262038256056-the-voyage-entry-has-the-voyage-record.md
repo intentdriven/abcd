@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 793 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/voyage.md:4"
-remedy: "none (filed automatically)"
+remedy: "In voyage.md limit the definition to disembark runs, mark the embark/provenance.json and embark/from layout as staged, and drop 'and embark' from the lead and the 'When to use' line."
 finding_ref: cfk-19a7823fd42630fc
 ---
 

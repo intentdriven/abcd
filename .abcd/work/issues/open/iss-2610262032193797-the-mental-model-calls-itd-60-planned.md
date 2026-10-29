@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 252 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:79"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (framework-provided bullet): itd-60's doc-fidelity gate is shipped; name only itd-61's derivation loop as planned."
 related_intents: [itd-60]
 finding_ref: cfk-4debaca702ff2863
 ---

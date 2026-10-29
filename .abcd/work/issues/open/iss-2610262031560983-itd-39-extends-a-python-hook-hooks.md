@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 197 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-39-scope-aware-memory-retrieval.md:33"
-remedy: "none (filed automatically)"
+remedy: "In itd-39, replace hooks/prompt_router_hook.py (the Hook extension bullet) with the binary's `abcd hook prompt-router`, and say the Python script never ships."
 related_intents: [itd-39]
 finding_ref: cfk-5ac269b7a8343812
 ---

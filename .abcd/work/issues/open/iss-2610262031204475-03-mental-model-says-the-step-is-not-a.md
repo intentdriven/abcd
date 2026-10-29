@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 117 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:56"
-remedy: "none (filed automatically)"
+remedy: "Edit glossary/core/record-families.md: map the record families as intent, spec, bundle, issue, release and status, and show step as the `## Steps` section beneath a spec rather than a family row, keeping the record_family_key table and internal/core/lint/recordfamilies_test.go in step."
 finding_ref: cfk-e2a234912c17cc11
 ---
 

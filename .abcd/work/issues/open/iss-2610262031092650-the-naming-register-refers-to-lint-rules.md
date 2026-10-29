@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 92 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:147"
-remedy: "none (filed automatically)"
+remedy: "In 04-naming.md replace `GL002` (line 147) with the rule's name (the forbidden-synonym rule) and drop the reserved `SD001` (line 101) and `VR001` (line 133) codes, saying those checks are held by review; 06-lint.md says rules are named, not numbered."
 finding_ref: cfk-7f1147d3a9595a61
 ---
 

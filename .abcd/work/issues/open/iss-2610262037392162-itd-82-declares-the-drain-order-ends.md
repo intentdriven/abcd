@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 739 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-82-drain-ledger-triage.md:49"
-remedy: "none (filed automatically)"
+remedy: "In itd-82's Order bullet, state the shipped order: category, then severity, then file-scoped issues before directory-scoped ones, then rendezvous-hash order on origin (oldest first only with no origin), citing dcn-2610161040368890."
 related_intents: [itd-82]
 finding_ref: cfk-3dee3f366ce2a5e2
 ---

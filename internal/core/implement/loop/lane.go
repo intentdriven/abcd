@@ -21,6 +21,7 @@ package loop
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 
@@ -117,6 +118,59 @@ func laneWorktree(repoRoot, runID, laneID string) (LaneWorktree, error) {
 		Branch:   BranchPrefix + name,
 		lane:     l,
 	}, nil
+}
+
+// HeldWorktrees is what the build loop holds in the worktree store, for the
+// store's prune (spc-2609301811532881): every lane of a run whose state is not
+// complete, by the name laneName gives it in the store, read across the local
+// tier of every checkout git lists for the repository, because a run's state
+// lives in the checkout that started it. A state file that cannot be read
+// holds every worktree named after its run; a run directory that cannot be
+// listed fails the read, so prune removes nothing. It is a
+// worktree.HeldReader.
+func HeldWorktrees(repoRoot string) (worktree.Held, error) {
+	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
+	if err != nil {
+		return worktree.Held{}, fmt.Errorf("listing the repository's worktrees: %w", err)
+	}
+	held := worktree.Held{Names: map[string]string{}}
+	for _, wt := range wts {
+		// A checkout whose directory is gone holds no state to read.
+		if wt.Bare || wt.Prunable || !fsutil.IsRealDir(wt.Path) {
+			continue
+		}
+		if err := heldIn(wt.Path, &held); err != nil {
+			return worktree.Held{}, err
+		}
+	}
+	return held, nil
+}
+
+// heldIn adds what the runs in the checkout at dir hold to held.
+func heldIn(dir string, held *worktree.Held) error {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return fmt.Errorf("opening %s to read its runs: %w", fsutil.RedactHome(dir), err)
+	}
+	defer root.Close()
+	ids, err := runIDs(root)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		st, err := readStateIn(root, id)
+		if err != nil {
+			held.Runs = append(held.Runs, id)
+			continue
+		}
+		if st.Complete() {
+			continue
+		}
+		for _, l := range st.Lanes {
+			held.Names[id+"-"+l.ID] = id
+		}
+	}
+	return nil
 }
 
 // loopWorktree refuses a lane whose recorded worktree is not the path

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 442 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/02-verification-matrix.md:86"
-remedy: "none (filed automatically)"
+remedy: "In the Memory ingest row mark the lifeboat licence gate (staged): the shipped ingest classifies restrictive licences and never refuses on them (internal/core/memory/provenance.go)."
 finding_ref: cfk-a911326ab8560f8f
 ---
 

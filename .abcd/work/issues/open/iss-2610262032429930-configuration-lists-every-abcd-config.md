@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 306 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md:7"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-configuration.md (opening paragraph and the config.json schema): add the repository-layer `release.digest` key (read by internal/core/release/digest.go) to the opt-in keys the binary reads."
 finding_ref: cfk-3fe2a75d9e49c394
 ---
 

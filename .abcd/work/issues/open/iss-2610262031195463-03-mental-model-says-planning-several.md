@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 114 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:56"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md line 56: planning several intents onto one spec in one act is shipped (itd-34, `intent plan <itd-A> <itd-B> --bundle <name>`)."
 finding_ref: cfk-abfb865855dc944e
 ---
 

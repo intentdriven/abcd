@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 982 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/01-build-sequence.md:178"
-remedy: "none (filed automatically)"
+remedy: "Re-home the verification report under the gitignored local tier (run output, per the 2026-07-12 adjudication) instead of the retired logbook path, and check its /abcd:audit surface name against itd-124, which named the conformance check lint."
 related_intents: [itd-35]
 finding_ref: cfk-a3780ea149973f90
 ---

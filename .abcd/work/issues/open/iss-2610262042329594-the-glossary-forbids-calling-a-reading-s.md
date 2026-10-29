@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1076 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/position.md:25"
-remedy: "none (filed automatically)"
+remedy: "In itd-143 line 68 name the reading by its position instead of 'the Step 2 reading'."
 related_intents: [itd-143]
 finding_ref: cfk-039e3daeb4d8a01e
 ---

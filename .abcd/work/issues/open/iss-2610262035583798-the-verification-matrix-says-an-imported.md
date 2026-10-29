@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 612 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/02-verification-matrix.md:32"
-remedy: "none (filed automatically)"
+remedy: "In the Native transcript capture row replace 'an optional import merges by timestamp and content hash' with: an import is a capture on the import route, idempotent on content hash, session id and source labels together."
 finding_ref: cfk-9e6f404c12389b1c
 ---
 

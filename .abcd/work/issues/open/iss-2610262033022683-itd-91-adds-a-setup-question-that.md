@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 351 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-91-ai-attribution-preference.md:31"
-remedy: "none (filed automatically)"
+remedy: "Re-scope itd-91 as an extension of the shipped attribution opt-in (ahoy install with the attribution flag: committed prepare-commit-msg prompt, choice recorded), naming only the delta (a choice among conventions and a single read seam), and replace the retired onboarding surface with ahoy install."
 related_intents: [itd-91]
 finding_ref: cfk-32f923352a02ae56
 ---

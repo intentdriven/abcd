@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 785 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/04-universal-patterns.md:188"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-universal-patterns.md section 8 intro: drop '(lint code reserved at 06-lint.md)'; no lint rule enforces lifecycle-class agreement, so say it is a design target."
 finding_ref: cfk-52769062ca7e1f5a
 ---
 

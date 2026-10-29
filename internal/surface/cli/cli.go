@@ -357,7 +357,8 @@ func NewRootCommand() *cobra.Command {
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			ver := core.NewVersion()
-			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd)}
+			peersLine, worktreesLine := boardScan(cwd, cmd.ErrOrStderr())
+			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: peersLine, Worktrees: worktreesLine, Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd)}
 			// One renderer draws both views in both forms; the surface reads
 			// the window, the colour rung and the locale and hands them in
 			// (spc-2610031844142274). In a pipe the board is drawn at Mono and
@@ -4345,6 +4346,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoyWorktreeCommand(asJSON))
 
 	return ahoyCmd
 }

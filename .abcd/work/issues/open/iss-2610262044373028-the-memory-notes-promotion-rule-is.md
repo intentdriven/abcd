@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1219 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2610091918433290-an-agent-working-in-an-abcd-managed.md:61"
-remedy: "none (filed automatically)"
+remedy: "In the memory-notes intent's promotion decision replace 'more than two maintainers ... another maintainer' with the vocabulary the shipped ruling allows (the technical facilitator, or people with write access to the repository); the promotion criteria moved to itd-2610111655362931, so carry the same wording there."
 related_intents: [itd-2610091918433290, itd-2609212137129937]
 finding_ref: cfk-246a04d257239063
 ---

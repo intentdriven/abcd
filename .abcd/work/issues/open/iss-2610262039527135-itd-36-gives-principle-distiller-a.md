@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 892 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/01-agents.md:21"
-remedy: "none (filed automatically)"
+remedy: "Amend itd-36's closure note to say the curator role on principle-distiller was not delivered (the host agent distils at ingest and the binary maintains the log and index), and correct the 07-memory.md sentences that give principle-distiller the curator duty."
 related_intents: [itd-36]
 finding_ref: cfk-647b485434280a35
 ---

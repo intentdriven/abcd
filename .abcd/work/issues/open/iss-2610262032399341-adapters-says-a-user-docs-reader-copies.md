@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 299 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/02-adapters.md:357"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the 'Lifeboat source readers' section of 02-adapters.md to match the code (Source interface with three tiers: git, conventions, native) and mark the user_docs reader, which no pack builds, as a design target."
 finding_ref: cfk-35e6a8982d86d03b
 ---
 

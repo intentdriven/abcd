@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 422 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:534"
-remedy: "none (filed automatically)"
+remedy: "In 04-universal-patterns.md (lines 130-137) replace 'registered review sub-verbs of /abcd:intent' with audit-bucket sub-verbs, since adr-40 reserves review for change-judgement and files audit and consistency under audit."
 finding_ref: cfk-38353fa1648aa045
 ---
 

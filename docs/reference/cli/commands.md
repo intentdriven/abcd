@@ -167,6 +167,55 @@ Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of
       --bin-dir string   directory holding the PATH entry to remove; needed only when it was installed with --bin-dir into a directory that is not on PATH
 ```
 
+#### `abcd ahoy worktree`
+
+List this repository's worktrees and its lane in the worktree store: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.
+
+**Usage:** `abcd ahoy worktree`
+
+##### `abcd ahoy worktree add`
+
+Add a worktree in this repository's lane of the worktree store: Writes the worktree, its start record and its local tier; refuses a taken or reserved name.
+
+**Usage:** `abcd ahoy worktree add <name> [flags]`
+
+**Flags:**
+
+```
+      --branch string   check out this existing local branch instead of making a new one
+```
+
+**Example:**
+
+```
+abcd ahoy worktree add example-lane
+```
+
+##### `abcd ahoy worktree list`
+
+List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.
+
+**Usage:** `abcd ahoy worktree list [flags]`
+
+**Flags:**
+
+```
+      --all   walk every lane in the worktree store on this machine
+```
+
+##### `abcd ahoy worktree prune`
+
+Reclaim this lane's merged, clean worktrees, archiving their notes first: Writes the notes archive and removes the worktrees; refuses a store it cannot trust.
+
+**Usage:** `abcd ahoy worktree prune [flags]`
+
+**Flags:**
+
+```
+      --dry-run           archive and remove nothing; report what a real run would
+      --yes stringArray   reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run
+```
+
 ### `abcd announce`
 
 Post a fixed-form announcement on the shared remote: Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.
