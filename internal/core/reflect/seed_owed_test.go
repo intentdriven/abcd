@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -18,9 +19,17 @@ const amendedOwedNotes = "## Audit Notes\n\n" +
 	"Fidelity review OWED (receipt rcp-bbbbbbbbbbbb).\n" +
 	"<!-- abcd-review-end receipt=rcp-bbbbbbbbbbbb -->\n"
 
-// legacyNotes is a hand-written audit from before the reviewer existed: prose
-// and no review marker.
-const legacyNotes = "## Audit Notes\n\nAudited by hand on 2026-07-01: every criterion holds.\n"
+// legacyNotes is a hand-written audit from before the reviewer existed: no
+// review marker, and a paragraph that names the criteria and gives the
+// auditor's verdict on each (intent.HandAudited).
+const legacyNotes = "## Audit Notes\n\nAudited by hand on 2026-07-01 against the merged code: criteria 1 and 2\n" +
+	"are MET, and criterion 3 is NOT_MET because the refusal names no tag.\n"
+
+// strayNotes is an Audit Notes section with no review marker that holds only a
+// ruling's amendment line: it names no criterion and gives no verdict, so it is
+// not an audit (iss-2610241431221889).
+const strayNotes = "## Audit Notes\n\n" +
+	"- 2026-10-02 — Amendment to decision 8, recorded by lane rd2 of autonomous run A.\n"
 
 // Criterion 2: an owed review is not audit notes whatever other prose the
 // section carries, so the intent is named and offered the audit. A hand-written
@@ -45,6 +54,49 @@ func TestSeedOffersTheAuditToAnOwedReviewBesideAnAmendmentNote(t *testing.T) {
 	}
 	if s.Metrics.Audited != 1 || s.Metrics.Unaudited != 1 {
 		t.Errorf("metrics audited/unaudited = %d/%d, want 1/1", s.Metrics.Audited, s.Metrics.Unaudited)
+	}
+}
+
+// Criterion 2, read by the one rule the owed listing reads: a section with no
+// review marker is audit notes only when it names the criteria and gives a
+// verdict on them. A stray amendment line is not, so the intent is offered the
+// audit; a hand-written paragraph with verdicts is. The seed and the owed
+// listing agree on both records (iss-2610241431221889).
+func TestSeedJudgesAnUnmarkedSectionByTheOwedListingsRule(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write(shippedDir+"itd-1-first.md", intentDoc("itd-1", "additive", "", "The first promise", auditedNotes))
+	r.Commit("first release")
+	r.Git("tag", "v0.1.0")
+	r.Write(shippedDir+"itd-2-stray.md", intentDoc("itd-2", "fix", "", "A promise with a stray note", strayNotes))
+	r.Write(shippedDir+"itd-3-legacy.md", intentDoc("itd-3", "fix", "", "An old promise", legacyNotes))
+	r.Commit("second release")
+	r.Git("tag", "v0.2.0")
+
+	s, err := BuildSeed(r.Root(), "v0.2.0")
+	if err != nil {
+		t.Fatalf("BuildSeed: %v", err)
+	}
+	want := []AuditOffer{{IntentID: "itd-2", Command: "abcd intent audit itd-2"}}
+	if !stdreflect.DeepEqual(s.Unaudited, want) {
+		t.Fatalf("unaudited = %+v, want %+v", s.Unaudited, want)
+	}
+
+	corpus, err := intent.Load(r.Root())
+	if err != nil {
+		t.Fatalf("intent.Load: %v", err)
+	}
+	for _, si := range s.Intents {
+		it, ok := corpus.Lookup(si.ID)
+		if !ok {
+			t.Fatalf("%s not in the intent store", si.ID)
+		}
+		e, err := intent.ReviewOf(r.Root(), it)
+		if err != nil {
+			t.Fatalf("ReviewOf(%s): %v", si.ID, err)
+		}
+		if si.Audited == e.IsOwed() {
+			t.Errorf("%s: seed audited=%v but the owed listing says owed=%v (%+v)", si.ID, si.Audited, e.IsOwed(), e)
+		}
 	}
 }
 

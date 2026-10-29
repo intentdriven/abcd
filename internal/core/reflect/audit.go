@@ -18,23 +18,33 @@ var (
 )
 
 // readAuditNotes reads the record's `## Audit Notes` section into it: whether
-// it carries audit notes at all, the ingested receipt, and the counts. The
-// section runs to the next heading of any depth, the one notion of a section
-// every reader of these records shares (mdrecord.SectionLineRange), so a
-// sub-heading parked under the placeholder is not an audit.
+// it carries audit notes at all, the ingested receipt, and the counts. For a
+// record that carries a review marker, the section the counts are read from
+// runs to the next heading of any depth, the one notion of a section every
+// reader of these records shares (mdrecord.SectionLineRange). A sub-heading
+// parked under the placeholder is not an audit either way: with no marker it
+// is judged by intent.HandAudited, and a note naming no criterion with a
+// verdict is not one.
 //
 // An ingested review is recognised by its `Acceptance rollup:` line, read from
 // the prose only (a fenced or commented rollup is an example, not a verdict).
-// A section with other prose — a hand-written audit from before the reviewer
-// existed — counts as audited with no counts. The placeholder the intent
-// template carries and an owed review's marker are not audit notes.
+// The placeholder the intent template carries and an owed review's marker are
+// not audit notes.
 //
-// An owed review is not audit notes whatever else the section holds: the
-// marker is the record's review state (intent.ReviewStateOf, the one reader
-// of it), and a ruling's amendment note written above it is not an audit
-// (itd-24 criterion 2, iss-2610241431221889).
+// The review marker decides first (intent.ReviewStateOf, the one reader of
+// it). An owed review is not audit notes whatever else the section holds: a
+// ruling's amendment note written above it is not an audit (itd-24 criterion
+// 2, iss-2610241431221889). A section with no marker at all is audit notes,
+// with no counts, only when intent.HandAudited reads it as a hand-written
+// audit, one that names the acceptance criteria and gives a verdict on them:
+// the rule the list of reviews owed reads it by, so the seed never counts as
+// audited an intent that list says owes a review.
 func readAuditNotes(text string, it *SeedIntent) {
-	if state, _ := intent.ReviewStateOf(text); state == intent.ReviewOwed {
+	switch state, _ := intent.ReviewStateOf(text); state {
+	case intent.ReviewOwed:
+		return
+	case intent.ReviewNone:
+		it.Audited = intent.HandAudited(text)
 		return
 	}
 	_, body := frontmatter.Split(text)

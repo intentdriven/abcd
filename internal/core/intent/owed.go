@@ -21,20 +21,23 @@ import (
 // the authority, the same one the emit reuses, so the listing and the re-emit
 // can never disagree about which receipt an intent carries.
 
-// Review states. The first three are the marker's own words; ReviewNone is a
-// shipped intent with no marker at all (shipped before markers existed, or a
-// ship whose emit failed).
+// Review states. The first three are the marker's own words. A shipped intent
+// with no marker at all (shipped before markers existed, or a ship whose emit
+// failed) is ReviewHandAudited when its Audit Notes read as a hand-written
+// audit (HandAudited, the rule the retrospective seed reads too), and
+// ReviewNone otherwise.
 const (
-	ReviewOwed       = "OWED"
-	ReviewIngested   = "INGESTED"
-	ReviewDeadLetter = "DEAD_LETTER"
-	ReviewNone       = "none"
+	ReviewOwed        = "OWED"
+	ReviewIngested    = "INGESTED"
+	ReviewDeadLetter  = "DEAD_LETTER"
+	ReviewHandAudited = "hand-audited"
+	ReviewNone        = "none"
 )
 
 // ReviewEntry is one shipped intent's fidelity-review state.
 type ReviewEntry struct {
 	IntentID string `json:"intent_id"`
-	// State is OWED, INGESTED, DEAD_LETTER, or none.
+	// State is OWED, INGESTED, DEAD_LETTER, hand-audited, or none.
 	State string `json:"state"`
 	// ReceiptID is the receipt the first marker names; empty for none, where the
 	// re-emit mints one.
@@ -55,7 +58,8 @@ type ReviewEntry struct {
 }
 
 // IsOwed reports whether the entry is in the owed set: OWED plus none. A
-// dead-lettered review is unreviewed but not owed; it is reported apart.
+// dead-lettered review is unreviewed but not owed; it is reported apart. A
+// hand-written audit with no marker owes nothing.
 func (e ReviewEntry) IsOwed() bool {
 	return e.State == ReviewOwed || e.State == ReviewNone
 }
@@ -70,6 +74,9 @@ type ReviewListing struct {
 	// AuditOwed counts the ingested receipts whose verdict left a check owed;
 	// they are counted in Ingested too.
 	AuditOwed int `json:"audit_owed"`
+	// HandAudited counts the intents with no marker whose Audit Notes read as a
+	// hand-written audit; they are not owed.
+	HandAudited int `json:"hand_audited"`
 }
 
 // ReEmitCommand is the command that re-emits a shipped intent's review request.
@@ -107,6 +114,8 @@ func reviewsOf(repoRoot string, corpus Corpus) (ReviewListing, error) {
 			if e.AuditOwed {
 				l.AuditOwed++
 			}
+		case e.State == ReviewHandAudited:
+			l.HandAudited++
 		}
 	}
 	return l, nil
@@ -126,7 +135,8 @@ func ReviewStateOf(content string) (state, receipt string) {
 
 // ReviewOf reads one intent's review state from its record. The caller decides
 // whether the intent's bucket owes a review; this reads the marker whatever the
-// bucket.
+// bucket. A record with no marker is read by HandAudited: hand-audited when its
+// Audit Notes name the criteria with a verdict, none (owed) otherwise.
 func ReviewOf(repoRoot string, it Intent) (ReviewEntry, error) {
 	data, err := readRepoFile(filepath.Join(repoRoot, it.Path), it.Path)
 	if err != nil {
@@ -135,6 +145,9 @@ func ReviewOf(repoRoot string, it Intent) (ReviewEntry, error) {
 	content := string(data)
 	e := ReviewEntry{IntentID: it.ID}
 	e.State, e.ReceiptID = ReviewStateOf(content)
+	if e.State == ReviewNone && HandAudited(content) {
+		e.State = ReviewHandAudited
+	}
 	switch e.State {
 	case ReviewOwed, ReviewNone:
 		e.ReEmit = ReEmitCommand(it.ID)

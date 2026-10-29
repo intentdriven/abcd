@@ -55,8 +55,10 @@ type SeedIntent struct {
 	Path   string `json:"path"`
 	Impact string `json:"impact"`
 	// Audited is true when the record carries audit notes: an ingested review
-	// (its `Acceptance rollup:` line) or a hand-written audit. A placeholder, an
-	// owed review and an absent section are not audit notes.
+	// (its `Acceptance rollup:` line) or, with no review marker, a hand-written
+	// audit that names the criteria and gives a verdict on them
+	// (intent.HandAudited, the owed listing's rule too). A placeholder, an owed
+	// review, a stray note and an absent section are not audit notes.
 	Audited bool        `json:"audited"`
 	Receipt string      `json:"receipt,omitempty"`
 	Rollup  AuditRollup `json:"rollup"`
