@@ -118,9 +118,9 @@ a launch. Relay the refusal message so the user knows what to fix.
 The later verbs that write a host payload into the lifeboat (`graveyard`,
 `principles`, `press-release` and `review`) secret-scan the bytes they would
 write before any write, and a hard-fail secret refuses the whole call (exit 2),
-leaving the lifeboat as it was. They scan with abcd's built-in rules: a source
-repository's own extra patterns and its gitleaks opt-in apply at pack, where
-that repository is read.
+leaving the lifeboat as it was. A packed lifeboat carries no scanner settings of
+its own, so abcd's built-in rules judge: a source repository's own extra
+patterns and its gitleaks opt-in apply at pack, where that repository is read.
 
 ## Graveyard interpretation (layer 3)
 
