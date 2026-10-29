@@ -9,6 +9,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/guard"
@@ -165,7 +166,7 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			case guard.LoadRepoDropped:
 				return &exitError{Code: 2, Msg: fmt.Sprintf("guard check: %s", scrubPaths(ld.Err))}
 			}
-			reg := ld.Registry
+			reg := ld.Registry.ProvingDeletes(guardDeleteProver())
 			// A disabled registry evaluated nothing, so there is no answer to
 			// render — and a bare `allow` here is indistinguishable from a real
 			// clearance to the CI job or script using this verb as a gate. Same
@@ -198,6 +199,7 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 
 	guardCmd.AddCommand(newGuardHookCommand())
 	guardCmd.AddCommand(newGuardApproveCommand())
+	guardCmd.AddCommand(newGuardAllowCommand(asJSON))
 	return guardCmd
 }
 
@@ -439,7 +441,11 @@ func guardHookDecide(cmd *cobra.Command) error {
 		runDir = wd.Path
 	}
 	files := guard.NewFiles(runDir)
-	reg = reg.ReadingFrom(files)
+	// Both registries prove a delete's targets with one prover, so a
+	// delete the line makes is refused unless it is proven safe
+	// (iss-2610241239492159).
+	prover := guardDeleteProver()
+	reg = reg.ReadingFrom(files).ProvingDeletes(prover)
 	dec, err := reg.Check(candidate)
 	switch {
 	case errors.Is(err, guard.ErrUnparsableCommand):
@@ -451,6 +457,10 @@ func guardHookDecide(cmd *cobra.Command) error {
 	case err != nil:
 		return failOpen("the command line could not be checked (%s)", scrubPaths(err))
 	}
+	// allowable is whether every block among the decisions is one a
+	// person's one-shot allow of the exact line may pass: a delete the
+	// guard could not prove, and nothing else.
+	allowable := dec.Verdict != guard.VerdictBlock || dec.AllowableOnce
 	// The command runs in the workdir, so the registry of the repository
 	// it runs in names its hazards too. Only an existing directory has
 	// one: the probed host fails a call whose workdir it cannot enter.
@@ -460,13 +470,14 @@ func guardHookDecide(cmd *cobra.Command) error {
 	if wd.Exists {
 		if root := rulesRoot(wd.Path, cmd.ErrOrStderr()); root != sessionRoot {
 			wld := guard.LoadRepo(root)
-			wreg := wld.Registry.ReadingFrom(files)
+			wreg := wld.Registry.ReadingFrom(files).ProvingDeletes(prover)
 			if wld.Posture == guard.LoadRepoDropped {
 				repoDropped = true
 				diagnosticLine(cmd.ErrOrStderr(), "%s", guardDropNotice("the working directory's", wld.Err))
 			}
 			if !wreg.Disabled && wld.Posture != guard.LoadUnavailable {
 				if wdec, cerr := wreg.Check(candidate); cerr == nil {
+					allowable = allowable && (wdec.Verdict != guard.VerdictBlock || wdec.AllowableOnce)
 					diags := dec.Diagnostics
 					dec = guard.Strictest(dec, wdec)
 					dec.Diagnostics = mergeDiagnostics(diags, wdec.Diagnostics)
@@ -483,6 +494,16 @@ func guardHookDecide(cmd *cobra.Command) error {
 	}
 	switch dec.Verdict {
 	case guard.VerdictBlock:
+		// A delete the guard could not prove, and nothing else, runs on
+		// the person's one-shot allow of this exact line, which is used
+		// up as it runs; the run is loud, as a warn is.
+		if allowable {
+			if a, ok := takeGuardAllow(runDir, candidate); ok {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd guard: the person allowed this exact command once, at %s, though the guard could not prove its delete safe; it runs, and the allow is used.\n",
+					a.AllowedAt.Format(time.RFC3339))
+				return &exitError{Code: 1}
+			}
+		}
 		// The host's deny: its reason is what the person sees and the
 		// agent is handed, so the refusal itself is the lesson.
 		return denyCall(termsafe.Sanitize(dec.Message))

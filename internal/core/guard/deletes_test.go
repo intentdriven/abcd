@@ -191,3 +191,32 @@ func TestGuardLeavesWhatDeletesNothingItJudges(t *testing.T) {
 		}
 	}
 }
+
+// TestDeleteLessonIsTheRefusal: the teaching plane's rule for the delete proof
+// is the refusal's own words, so an agent taught the delete entries' warns is
+// also taught that, in a repository, an unproven delete is refused, and the
+// person's one-shot way past it.
+func TestDeleteLessonIsTheRefusal(t *testing.T) {
+	got := Defaults().DeleteLesson()
+	sig := deleteRefusal(nil, nil)
+	if want := "Refused by the guard (" + deleteEntryID + "), in a repository: "; !strings.HasPrefix(got, want) {
+		t.Errorf("the delete lesson does not open with %q:\n%s", want, got)
+	}
+	for _, want := range []string{"`git push --delete`", "`git branch -D`", "`git worktree remove`", "no open pull request",
+		"a deleted branch or worktree takes with it whatever only it held", "abcd guard allow --once", "an agent cannot"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the delete lesson does not carry %q:\n%s", want, got)
+		}
+	}
+	if !strings.Contains(got, strings.TrimPrefix(sig.successor, " ")) {
+		t.Errorf("the delete lesson's instead is not the refusal's:\n%s", got)
+	}
+	if strings.Contains(got, "\n") {
+		t.Errorf("the delete lesson spans lines; a rule is one bullet:\n%s", got)
+	}
+	off := Defaults()
+	off.Disabled = true
+	if l := off.DeleteLesson(); !strings.HasPrefix(l, guardOffLead+" ("+deleteEntryID+")") {
+		t.Errorf("under a disabled registry the delete lesson does not say the guard is off:\n%s", l)
+	}
+}

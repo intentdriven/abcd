@@ -223,6 +223,25 @@ func deleteRefusal(failed, settle []string) payloadSignal {
 	}
 }
 
+// DeleteLesson is the rule the teaching plane carries for the delete proof,
+// which no registry entry describes: the delete entries teach a warn, and in a
+// repository the guard refuses each one it cannot prove safe. It is generated
+// from the refusal's own words, so the lesson and the refusal cannot part, and
+// opens with the guard-off lead under a disabled registry, as every lesson does.
+func (r Registry) DeleteLesson() string {
+	lead := "Refused by the guard"
+	if r.Disabled {
+		lead = guardOffLead
+	}
+	sig := deleteRefusal([]string{"its target is not proven safe"}, []string{
+		"Merge the branch, close its pull request, fetch, or clean and release the worktree first.",
+	})
+	return lead + " (" + deleteEntryID + "), in a repository: `git push --delete`, a `:<branch>` refspec, " +
+		"`git branch -D` (or `-d --force`) and `git worktree remove`, unless the target is proven merged into " +
+		"origin's default branch, with no open pull request, in no worktree and held by no reservation, and a " +
+		"worktree clean. " + sig.reason + " Instead: " + sig.successor
+}
+
 // deleteTargets reads every delete the line's segments make. read holds the
 // index of each segment that is a deleting git command read whole, even one
 // that deletes nothing the proof judges (`git branch -D -r`); why is non-empty when a
