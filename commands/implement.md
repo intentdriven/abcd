@@ -545,8 +545,15 @@ over each of the run's lanes' own diff.
    (`.abcd/.work.local/preflight-receipts/<head>`, in any worktree) names the
    lane's head. Without one, the lane waits for its full check (exit 3 when
    nothing else moves) and every other lane carries on: run `make preflight` in
-   the lane's worktree, then `step` again. The push runs the pre-push hook and
-   never skips or forces anything.
+   the lane's worktree, then `step` again. Before the push it announces
+   `merging <the lane's record>` on your status branch, through the code
+   `/abcd:announce` runs, and pushes only once that is on `origin`, so a
+   colleague's `/abcd:status` shows it before the branch exists there; an
+   announcement of it still standing for a minute or more is not sent again,
+   and a record not yet on the default branch is not announced, the record
+   saying so. An announcement that cannot be published refuses the step,
+   nothing pushed; `step` again once it is settled. The push runs the
+   pre-push hook and never skips or forces anything.
 4. It opens the pull request through `gh`, with a body written from the run's
    records and passed through the outbound scrub, then re-reads the body the
    forge holds and strips a session URL or tool footer the harness appended.
