@@ -796,7 +796,8 @@ type generatorWords struct {
 	// the package's own metadata.
 	names map[string]bool
 	// attribution is the authorship vocabulary the attribution surface prints —
-	// contributor names and declared `Assisted-by:` values, read out of git.
+	// bot and tool author names and declared `Assisted-by:` values, read out of
+	// git. No person's name is in it: the page counts people and names none.
 	// It is empty everywhere else, which is what keeps the escape scoped to the
 	// one page adr-47 decision 3 grants it to.
 	attribution map[string]bool
@@ -952,6 +953,11 @@ func uiStrings(ui UI) []string {
 	walk = func(v reflect.Value, t reflect.Type) {
 		for i := 0; i < t.NumField(); i++ {
 			f := t.Field(i)
+			if retiredLabel(f) {
+				// No page renders a retired label, so it is not a word the
+				// generator may add.
+				continue
+			}
 			switch f.Type.Kind() {
 			case reflect.Struct:
 				walk(v.Field(i), f.Type)

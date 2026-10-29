@@ -98,3 +98,24 @@ func TestContributorsNameNoPerson(t *testing.T) {
 		t.Error("record.json lost the bots row")
 	}
 }
+
+// TestHumansWithNoAddressAreNotOnePerson: an author recorded with an empty
+// address (`Dave <>`) has nothing to be keyed by but the name, so two such
+// authors under different names are two people, and one name with no address
+// is still one person.
+func TestHumansWithNoAddressAreNotOnePerson(t *testing.T) {
+	f := newFixture(t)
+	f.commitBy("2026-03-08T09:00:00+00:00", "docs: dave one", "Dave <>")
+	f.commitBy("2026-03-08T10:00:00+00:00", "docs: dave two", "dave <>")
+	f.commitBy("2026-03-08T11:00:00+00:00", "docs: eve one", "Eve <>")
+
+	a, err := LoadAuthorship(f.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The fixture's own author, Dave (two spellings of one name, no address),
+	// and Eve.
+	if a.HumanAuthors != 3 {
+		t.Errorf("human authors = %d, want 3: authors with no address folded together", a.HumanAuthors)
+	}
+}

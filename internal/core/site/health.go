@@ -230,12 +230,14 @@ func (e *explorer) healthIsolated() string {
 // The page once raised two author names the evidence said were one person,
 // with the `.mailmap` line that would fold them. Both names, the profile each
 // linked and the forge login in the suggested line are a person named on a
-// published page, which the site no longer does (adr-2610291037481588). The
-// fold the panel proposed is now applied where the people are counted
-// (humanKey), so nothing is left for it to report. Its two interface strings
-// stay declared in ui.json, and so in HealthUI, because the file is decoded
-// with unknown fields refused and a managed repository's ui.json that declares
-// them must still build.
+// published page, which the site no longer does (adr-2610291037481588). Part
+// of what it paired is folded where the people are counted (humanKey): two
+// identities sharing one forge login count as one person. The other half, an
+// author whose name is another identity's login, is not folded, since a name
+// is not evidence of a person; such a pair counts twice until a `.mailmap`
+// folds it. Its two interface strings are retired labels in HealthUI
+// (retiredLabel): a ui.json that declares them still builds, and nothing
+// requires, adds or renders them.
 
 // --- 4. authored commits declaring nothing --------------------------------
 

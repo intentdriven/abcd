@@ -102,15 +102,23 @@ type Author struct {
 // git and the case of a mailbox is not something a person chooses twice. A
 // forge privacy address is keyed on the login it carries instead, so its two
 // forms (`1234+name@…` and `name@…`) fold to one person, compared without
-// regard to case as the forge compares logins. A name is never a key: two
-// people may share one, and a count that merged them would be wrong in the
-// other direction. Anything finer is the repository's `.mailmap`, which
+// regard to case as the forge compares logins. A name is not a key while
+// there is an address: two people may share one, and a count that merged them
+// would be wrong in the other direction. Anything finer is the repository's `.mailmap`, which
 // shortlog has already applied.
-func humanKey(email string) string {
+//
+// The one exception is an EMPTY address (`Name <>`), which identifies nobody:
+// keying it as the empty address would fold every such author into one
+// person. Such an author is keyed by the name, case-folded and trimmed, since
+// it is the only thing the commit says about who wrote it.
+func humanKey(name, email string) string {
 	if u := claim.NoReplyUsername(email); u != "" {
 		return "login:" + strings.ToLower(u)
 	}
-	return "email:" + strings.ToLower(strings.TrimSpace(email))
+	if e := strings.ToLower(strings.TrimSpace(email)); e != "" {
+		return "email:" + e
+	}
+	return "name:" + strings.ToLower(strings.TrimSpace(name))
 }
 
 // ModelTally is one distinct `Assisted-by:` value and how often it appears.
@@ -304,7 +312,7 @@ func LoadAuthorship(repoRoot string) (Authorship, error) {
 			a.Bots = append(a.Bots, Author{Name: name, Commits: n, email: email})
 			continue
 		}
-		people[humanKey(email)] = true
+		people[humanKey(name, email)] = true
 		a.HumanCommits += n
 	}
 	a.HumanAuthors = len(people)

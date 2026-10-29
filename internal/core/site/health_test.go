@@ -196,7 +196,8 @@ func TestHealthRaisesNoAuthorPair(t *testing.T) {
 
 // TestHumanKeyFoldsOnePersonsIdentities pins the counting key directly: both
 // forms of a forge privacy address are one login, a mailbox is one person in
-// any case, and a name never enters the key.
+// any case, and a name never enters the key while there is an address (the
+// two sides are given different names to show it).
 func TestHumanKeyFoldsOnePersonsIdentities(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -210,10 +211,18 @@ func TestHumanKeyFoldsOnePersonsIdentities(t *testing.T) {
 		{"a mailbox and a privacy address", "dave@example.com", "dave@users.noreply.github.com", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := humanKey(tc.a) == humanKey(tc.b); got != tc.same {
+			if got := humanKey("Alice", tc.a) == humanKey("Bob", tc.b); got != tc.same {
 				t.Errorf("humanKey(%q) == humanKey(%q) is %v, want %v", tc.a, tc.b, got, tc.same)
 			}
 		})
+	}
+	// An empty address identifies nobody, so the name is the key: two names
+	// are two people, and one name in two cases is one.
+	if humanKey("Dave", "") == humanKey("Eve", "") {
+		t.Error("two authors with no address fold into one person")
+	}
+	if humanKey("Dave", " ") != humanKey("dave", "") {
+		t.Error("one name with no address counts twice")
 	}
 }
 

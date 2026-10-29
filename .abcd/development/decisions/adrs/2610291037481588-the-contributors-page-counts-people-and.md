@@ -27,8 +27,9 @@ quoted the login in the address.
 That is how every site abcd builds behaved, for abcd's own repository and for
 any repository abcd manages. On 2026-10-29 the product thinker ruled that what
 abcd publishes names no person: no member's name and no member's login appears
-in credits (iss-2610291028185585). The repository has since dropped its
-`.mailmap`, so nothing in the tree folds one person's identities into one.
+in credits (iss-2610291028185585). Where a repository keeps no `.mailmap`,
+nothing in it folds one person's identities into one, so a count taken from
+`git shortlog` alone would count one person once per identity.
 
 The rest of the page is not about people. The bots-and-tools row names tools,
 and the `Assisted-by:` tally names models, which is the attribution escape
@@ -47,15 +48,23 @@ later page or export can publish a name that was never kept.
 People are counted once each by a simple key. A forge privacy address counts by
 the login it carries, compared without regard to case, so both forms of that
 address (with and without the numeric prefix) are one person. Any other address
-counts by itself, case-folded. A name is never a key, because two people can
-share a name and a count that merged them would be wrong the other way. A
-repository that needs a finer fold restores a `.mailmap`, which `git shortlog`
-applies before the count is taken.
+counts by itself, case-folded. A name is not a key while there is an address,
+because two people can share a name and a count that merged them would be wrong
+the other way. An author recorded with an empty address (`Name <>`) is the one
+exception: an empty address identifies nobody, and keying on it would fold
+every such author into one person, so that author is keyed by the name,
+case-folded and trimmed. A repository that needs a finer fold keeps a
+`.mailmap`, which `git shortlog` applies before the count is taken.
 
-The health page's same-author panel is withdrawn: what it proposed is now
-applied where people are counted, and showing it named two people. Its two
-interface strings stay declared, because `ui.json` is decoded with unknown
-fields refused and a managed repository that declares them must still build.
+The health page's same-author panel is withdrawn, because showing it named two
+people. Part of what it paired is folded where people are counted: two
+identities that share one forge login. The other half is not: the panel also
+paired an author whose name was another identity's login, and the count does
+not fold that, since a name is not evidence of a person. Such a pair counts
+twice until a `.mailmap` folds it. The panel's two interface strings become
+retired labels: a `ui.json` that declares them still builds, since the file is
+decoded with unknown fields refused, but nothing requires them, the build no
+longer adds them to a file that lacks them, and no page renders them.
 
 The bots-and-tools row and the `Assisted-by:` tally stay as they were. Bot
 entries lose the profile link the export could carry for them, since the row
@@ -95,9 +104,10 @@ renamed JSON fields), decided on their delegation and open to change.
   bot entries no longer carry `profile`. A reader of the old list breaks, so
   the change is recorded as breaking.
 - **The count can run one high.** One person committing from two unrelated
-  mailboxes, or from a mailbox and a privacy address, counts twice until the
-  repository folds them in a `.mailmap`. The page does not say which identities
-  were folded, since saying so would name them.
+  mailboxes, from a mailbox and a privacy address, or under a name that is
+  another identity's login, counts twice until the repository folds them in a
+  `.mailmap`. The page does not say which identities were folded, since saying
+  so would name them.
 - **The provenance check no longer admits a person's name on the contributors
   page.** Only tool names and declared models are in its attribution
   vocabulary, so a name that reached the page would fail `abcd site check`.

@@ -128,7 +128,7 @@ func TestAProjectSiteShowsNothingFromGitHistory(t *testing.T) {
 	if health == "" {
 		t.Fatal("the project site has no health page")
 	}
-	for _, label := range []string{ui.Health.SameAuthor, ui.Health.Undeclared, ui.Health.MultiTrailer, ui.Contributors.Assisted} {
+	for _, label := range []string{ui.Health.Undeclared, ui.Health.MultiTrailer, ui.Contributors.Assisted} {
 		if strings.Contains(health, escapeText(label)) {
 			t.Errorf("the health page carries %q, a check git history answers", label)
 		}

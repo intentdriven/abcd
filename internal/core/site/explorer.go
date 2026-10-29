@@ -192,7 +192,7 @@ func (e *explorer) hasFoundations() bool {
 }
 
 // hasContributors reports whether the contributors page is built. A project
-// site has none: its author names and declared tools are read out of git
+// site has none: its count of authors and its declared tools are read out of git
 // history, which is not something abcd writes to the repository, and a project
 // site renders only what abcd writes (project.go).
 func (e *explorer) hasContributors() bool { return !e.c.project }
@@ -804,7 +804,7 @@ func (e *explorer) contributorsPage() (string, error) {
 		// no person is in it.
 		if len(a.Bots) > 0 {
 			var rows strings.Builder
-			rows.WriteString(`<thead><tr><th>` + escapeText(ui.Contributors.Authors) + `</th><th class="tnum">` +
+			rows.WriteString(`<thead><tr><th>` + escapeText(ui.Contributors.Tools) + `</th><th class="tnum">` +
 				escapeText(ui.Tiles.Commits) + `</th></tr></thead><tbody>`)
 			for _, t := range a.Bots {
 				rows.WriteString(`<tr class="muted"><td>` + escapeText(t.Name) + ` <span class="rel">` +
