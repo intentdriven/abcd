@@ -154,11 +154,7 @@ make preflight      # the pre-push gate: the load check first (load-check,
                     # site-render +
                     # smoke + evals-cold-reading,
                     # then build + vet +
-                    # test + race (internal), all on the go.mod toolchain;
-                    # a committed change confined to .abcd/development/ and
-                    # .abcd/work/ that no test names runs precheck's tests
-                    # (those that read the record tree among them) in place
-                    # of test + race, says so, and its receipt says so
+                    # test + race (internal), all on the go.mod toolchain
 make precheck       # minutes, no queue: preflight's gates, build, vet, the
                     # record, page and agent audit packages, and the command
                     # and site audit tests chosen by name; no unit or race
@@ -362,8 +358,7 @@ with `*CONCURRENCY` to force it).
   `check-attribution`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test -timeout 40m ./...`, and
-  `go test -race -timeout 40m ./internal/...` (for a records-only change,
-  precheck's tests in their place, as the build section says), under `ABCD_TEST_SHARDS=3`,
+  `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,
   which runs the three longest packages as three test processes each
   (`internal/testshard`). The load
   check runs first (`load-check`, a warning, never a failure) and is not a gate:
