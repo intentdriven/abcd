@@ -29,8 +29,9 @@ import (
 // every path, so each acts on the SIGTERM. So a hook git would start, or a
 // program a hook would start, while the stop is under way is never started,
 // rather than escaping the stop and holding git's output for the whole
-// WaitDelay (iss-2610292307181518). The reads share one read's time limit, so
-// the stop takes no longer than it did with one. The sweep it returns, run
+// WaitDelay (iss-2610292307181518). The reads share twice one read's time
+// limit, so a read after the first always has at least one read's time, and
+// a read that fails ends them. The sweep it returns, run
 // once Wait has returned, waits until stopGrace has passed since the stop and
 // then stops each process that is still running, with any process one of them
 // started since, the same way, and sends each SIGKILL; it returns at once
@@ -53,7 +54,9 @@ import (
 // each stopped member SIGHUP and then SIGCONT. A process in the group whose
 // parent is the shell (the other end of a pipe from abcd) keeps the group from
 // being orphaned, and the tree then stays stopped until something continues
-// it.
+// it. A descendant in a process group of its own (one a hook started with
+// setsid) is never continued that way, since its group was orphaned from the
+// start.
 func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 	var mu sync.Mutex
 	var stopped time.Time
@@ -72,7 +75,7 @@ func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 				_ = cmd.Process.Signal(syscall.SIGCONT)
 			}
 		}()
-		stopDescendants(&desc, cmd.Process.Pid)
+		stopDescendants(&desc, 2*procTableTimeout, cmd.Process.Pid)
 		if afterSnapshot != nil {
 			afterSnapshot()
 		}
@@ -102,12 +105,15 @@ func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 				return
 			}
 			if !time.Now().Before(deadline) {
+				if beforeSweepKill != nil {
+					beforeSweepKill(alive)
+				}
 				pids := make([]int, 0, len(alive))
 				for _, p := range alive {
 					_ = syscall.Kill(p.pid, syscall.SIGSTOP)
 					pids = append(pids, p.pid)
 				}
-				stopDescendants(&alive, pids...)
+				stopDescendants(&alive, procTableTimeout, pids...)
 				for _, p := range alive {
 					_ = syscall.Kill(p.pid, syscall.SIGKILL)
 				}
@@ -125,20 +131,30 @@ const stopRounds = 4
 // table shows that stopped does not already hold, appending each to stopped
 // as it is stopped, so a caller continuing them on every path continues each
 // one stopped so far. It reads the table again until a read finds none new,
-// at most stopRounds times, all within procTableTimeout, and adds nothing
-// where the table cannot be read.
-func stopDescendants(stopped *[]procEntry, roots ...int) {
+// at most stopRounds times, each read within procTableTimeout and all of them
+// within budget, and ends at a read that fails, the table unread or the
+// budget spent.
+func stopDescendants(stopped *[]procEntry, budget time.Duration, roots ...int) {
 	seen := map[int]bool{}
 	for _, p := range *stopped {
 		seen[p.pid] = true
 	}
-	by := time.Now().Add(procTableTimeout)
+	by := time.Now().Add(budget)
 	for range stopRounds {
-		if !time.Now().Before(by) {
+		now := time.Now()
+		if !now.Before(by) {
+			return
+		}
+		until := now.Add(procTableTimeout)
+		if by.Before(until) {
+			until = by
+		}
+		table := readProcTableBy(until)
+		if table == nil {
 			return
 		}
 		fresh := false
-		for _, p := range descendantsOf(readProcTableBy(by), roots) {
+		for _, p := range descendantsOf(table, roots) {
 			if seen[p.pid] {
 				continue
 			}
@@ -156,6 +172,10 @@ func stopDescendants(stopped *[]procEntry, roots ...int) {
 // afterSnapshot, when set, runs in the stop between the reads of git's
 // descendants and the signals, so a test can hold the stop open there.
 var afterSnapshot func()
+
+// beforeSweepKill, when set, runs in the sweep between its read of the
+// processes still running and their stop, so a test can act in that gap.
+var beforeSweepKill func(alive []procEntry)
 
 // procEntry is one live process of the table: its pid, its parent's, and its
 // start time as ps prints it, which with the pid names the process.

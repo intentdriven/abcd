@@ -24,13 +24,16 @@ import (
 // waits far past any deadline.
 func TestAStoppedCommitLeavesNoChildGitStartsAfterTheSnapshot(t *testing.T) {
 	dir, pidFile := lateChildRepo(t)
-	afterSnapshot = func() { time.Sleep(2 * time.Second) }
+	var held time.Time
+	afterSnapshot = func() {
+		time.Sleep(2 * time.Second)
+		held = time.Now()
+	}
 	t.Cleanup(func() { afterSnapshot = nil })
 	stalled := errors.New("did not finish")
 
-	began := time.Now()
 	_, err := RunCommitCommandBounded(dir, 500*time.Millisecond, stalled, "commit", "-q", "-m", "late", "--", "a.md")
-	took := time.Since(began)
+	took := time.Since(held)
 	if !errors.Is(err, stalled) {
 		t.Fatalf("the stopped commit was not refused as stalled: %v", err)
 	}
@@ -38,8 +41,8 @@ func TestAStoppedCommitLeavesNoChildGitStartsAfterTheSnapshot(t *testing.T) {
 	if pid, ok := lateChildAlive(t, pidFile); ok {
 		t.Errorf("prepare-commit-msg's program (pid %d) is still running after the stop", pid)
 	}
-	if took > 2*time.Second+stopGrace {
-		t.Errorf("the commit took %s: a late child held git's output for the WaitDelay", took)
+	if took >= stopGrace {
+		t.Errorf("the commit came back %s after the stop was let go: a late child held git's output for the WaitDelay", took)
 	}
 }
 
@@ -136,10 +139,19 @@ func TestAStopThatCannotReadTheTableStillContinuesGit(t *testing.T) {
 // window a deadline that lands between two hooks leaves.
 func TestAStopFreezesGitItself(t *testing.T) {
 	dir, pidFile := lateChildRepo(t)
+	began := filepath.Join(t.TempDir(), "pre-commit.began")
+	if err := os.WriteFile(filepath.Join(dir, ".git", "hooks", "pre-commit"), []byte("#!/bin/sh\n: > '"+began+"'\nsleep 2\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	was := psPaths
 	psPaths = []string{filepath.Join(t.TempDir(), "no-ps")}
 	t.Cleanup(func() { psPaths = was })
-	afterSnapshot = func() { time.Sleep(2 * time.Second) }
+	var inHook bool
+	afterSnapshot = func() {
+		_, err := os.Stat(began)
+		inHook = err == nil
+		time.Sleep(3 * time.Second)
+	}
 	t.Cleanup(func() { afterSnapshot = nil })
 	stalled := errors.New("did not finish")
 
@@ -147,8 +159,64 @@ func TestAStopFreezesGitItself(t *testing.T) {
 	if !errors.Is(err, stalled) {
 		t.Fatalf("the stopped commit was not refused as stalled: %v", err)
 	}
+	if !inHook {
+		t.Skip("git had not started pre-commit when the stop began, so the stop was not held between two hooks")
+	}
 	if _, err := os.Stat(pidFile); err == nil {
 		t.Fatal("git started prepare-commit-msg while the stop was under way")
+	}
+}
+
+// TestTheSweepStopsASurvivorBeforeKillingIt: a process that outlives the
+// stop's SIGTERM and starts a child between the sweep's read and its SIGKILL
+// is stopped first, and the child, found by a read made once it is stopped,
+// is killed with it rather than left running.
+func TestTheSweepStopsASurvivorBeforeKillingIt(t *testing.T) {
+	tmp := t.TempDir()
+	survivorPid, childPid := filepath.Join(tmp, "survivor.pid"), filepath.Join(tmp, "child.pid")
+	script := "trap '' TERM; trap 'sleep 60 & echo $! > \"" + childPid + "\"' USR1; echo $$ > '" + survivorPid + "'; while :; do sleep 0.1; done"
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", "/bin/sh -c '"+strings.ReplaceAll(script, "'", `'\''`)+"' & wait")
+	cmd.WaitDelay = time.Second
+	sweep := stopWithDescendants(cmd)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		for _, f := range []string{childPid, survivorPid} {
+			if pid, ok := readPid(f); ok {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+			}
+		}
+	})
+	survivor := waitPid(t, survivorPid)
+	beforeSweepKill = func([]procEntry) {
+		_ = syscall.Kill(survivor, syscall.SIGUSR1)
+		waitPid(t, childPid)
+	}
+	t.Cleanup(func() { beforeSweepKill = nil })
+
+	cancel()
+	_ = cmd.Wait()
+	sweep()
+	child, _ := readPid(childPid)
+	time.Sleep(300 * time.Millisecond)
+	if state := procState(t, child); state != "" && !strings.HasPrefix(state, "Z") {
+		t.Errorf("the child the survivor started before the SIGKILL (pid %d) is still running, in state %q", child, state)
+	}
+}
+
+// waitPid is the pid written to path, waiting up to five seconds for it.
+func waitPid(t *testing.T, path string) int {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if pid, ok := readPid(path); ok {
+			return pid
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no pid was written to %s", path)
+		}
 	}
 }
 
