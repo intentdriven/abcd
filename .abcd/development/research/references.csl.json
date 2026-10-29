@@ -253,6 +253,22 @@
     "URL": "https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions"
   },
   {
+    "id": "parecki2026browserapps",
+    "type": "report",
+    "author": [
+      {"family": "Parecki", "given": "Aaron"},
+      {"family": "De Ryck", "given": "Philippe"},
+      {"family": "Waite", "given": "David"}
+    ],
+    "title": "OAuth 2.0 for Browser-Based Applications",
+    "publisher": "IETF OAuth Working Group",
+    "genre": "Internet-Draft",
+    "number": "draft-ietf-oauth-browser-based-apps-27",
+    "note": "Since published as RFC 10017 (BCP 212)",
+    "issued": {"date-parts": [[2026, 8]]},
+    "URL": "https://datatracker.ietf.org/doc/draft-ietf-oauth-browser-based-apps/27/"
+  },
+  {
     "id": "pearce2022asleep",
     "type": "paper-conference",
     "author": [
