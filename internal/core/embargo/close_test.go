@@ -341,12 +341,14 @@ func TestCloseRefusesAlreadyClosedOrPublished(t *testing.T) {
 }
 
 // TestCloseRecordsNoEndGitHubGivesNoTimeFor: an advisory GitHub reports
-// closed or published with no time for it, or one this abcd cannot read, is
+// closed or published with no time for it, one this abcd cannot read, or one
+// later than the clock allows, is
 // never stamped with the clock's time: close refuses, sends nothing and
 // records nothing.
 func TestCloseRecordsNoEndGitHubGivesNoTimeFor(t *testing.T) {
 	for _, state := range []string{"closed", "published"} {
-		for name, at := range map[string]any{"none": nil, "unreadable": "yesterday"} {
+		for name, at := range map[string]any{"none": nil, "unreadable": "yesterday",
+			"ahead": fixedNow.Add(48 * time.Hour).Format(time.RFC3339)} {
 			t.Run(state+"/"+name, func(t *testing.T) {
 				cf := newCloseFixture(t)
 				a := advisoryJSON(cf.ghsa, state, "high", seededTitle, reporterText)
