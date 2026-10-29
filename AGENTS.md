@@ -146,15 +146,12 @@ Start with the plan and the design record:
 Run from the repo root.
 
 ```bash
-make preflight      # the pre-push gate: the load check first (load-check,
-                    # a warning, never a failure), then fmt-check +
-                    # lint-reviews +
-                    # lint-issues + record-lint +
-                    # issue-drift + docs-lint + check-attribution +
-                    # secrets-check + vulncheck + site-render +
-                    # smoke + evals-cold-reading,
-                    # then build + vet +
-                    # test + race (internal), all on the go.mod toolchain
+make preflight      # the pre-push gate: load-check (a warning, never a
+                    # failure), then fmt-check + lint-reviews + lint-issues +
+                    # record-lint + issue-drift + docs-lint + check-attribution
+                    # + secrets-check + vulncheck + site-render + smoke +
+                    # evals-cold-reading, then build + vet + test + race
+                    # (internal), all on the go.mod toolchain
 make precheck       # minutes, no queue: preflight's gates, build, vet, the
                     # record, page and agent audit packages, and the command
                     # and site audit tests chosen by name; no unit or race
@@ -366,8 +363,6 @@ with `*CONCURRENCY` to force it).
   lanes are named separately because their files carry a build tag, so
   `go test ./...` compiles none of them; each takes under a minute in CI and
   runs under `-timeout $(EVAL_TIMEOUT)`, 20m by default.
-  `secrets-check` and `vulncheck` run CI's gitleaks and govulncheck scans
-  before the push; `scripts/preflight-scans.sh` says when one skips or warns.
 - **Preflight judges with CI's toolchain.** `make fmt-check`, the format gate
   CI's check job runs, is preflight's first gate, straight after the load
   check. It resolves gofmt from the toolchain `go.mod` declares rather than from
