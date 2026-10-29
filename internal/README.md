@@ -93,6 +93,12 @@ plugin surface, and a future MCP server share one engine.
   over them. History importing either assembler to learn the grammar would pull
   the assemblers into the transcript store, so the grammar lives here and each of
   them imports it.
+- **`core/session/`** — the brief session relay's engine
+  (spc-2610141709430146): rooms, join codes, the member and guest roles, each
+  room's update log held in memory only, guests' suggestions, the Yjs client
+  ids credited to members, the limits and rates, and `blueprint`, which writes
+  the team's own relay deployment under `.abcd/relay/`. It never parses the
+  brief and never writes to disk; `surface/session` carries it over the wire.
 - **`core/relink/`** — the one link-repoint primitive. A record's folder is its
   status, so every lifecycle transition is a rename, and a rename strands every
   relative link that named the file where it was. The verbs that move a record
@@ -274,6 +280,22 @@ plugin surface, and a future MCP server share one engine.
   front door compensates by making a disabled registry loud rather than silent.
   Fail-open-loud on a broken guard belongs to the hook shim (`hooks/hooks.json`)
   and the `abcd guard hook` adapter, not here.
+- **`core/dogfood/`** — which abcd binary a hook runs in a checkout the person
+  opted in to dogfooding through `~/.abcd.noindex/dogfood-roots`
+  (iss-2610070547057816), and the build it runs. The list is read through
+  `fsutil.HomeDeclarationEntry`, each line naming a checkout, the https or ssh
+  remote its reviewed branch lives on (a path, `file://`, `git://` or `http://`
+  remote is refused, as one an agent or the network path can move), and that
+  branch; a listed main checkout covers the
+  worktrees it records. `Build`, run in the background, is the only caller of
+  the network: it reads the branch's tip with `git ls-remote` against the
+  declared remote, records it in the store under a lock, and builds that commit,
+  its commit and trees re-hashed and its `git archive` export checked against
+  them, into `~/.abcd.noindex/dogfood/<root-sha>/<commit>/`. `Resolve`, the
+  hook's half, names a build only for the recorded tip; the checkout's refs and
+  remote config never choose one. Every failure leaves the installed release
+  running, said on stderr. The hook shims reach it through
+  `hook dogfood-binary`.
 - **`core/board/`** — the status board's one renderer (spc-2610031844142274):
   the product thinker's view and the facilitator's, each as text fitted or
   wrapped to the window or as a markdown list a host session pastes unchanged.
@@ -385,6 +407,18 @@ plugin surface, and a future MCP server share one engine.
   width and a colour rung, and the sanitising every part passes first. The
   width comes from `term.Size`; text is measured and wrapped through
   `textwidth`.
+- **`surface/session/`** — the relay's HTTP front door, behind `abcd session
+  serve`: the WebSocket at `/session` speaking `core/session`'s messages, the
+  web sign-in's callback at `/auth/callback` and its exchange at
+  `/auth/token` that adds the team's secret, `/config`,
+  `/healthz`, and the origin and forwarded-address checks.
+- **`surface/session/web/`** — the static session page `abcd session page
+  --out` writes, embedded in the binary: the HTML, the page script, the
+  stylesheet and the vendored, provenance-pinned editor bundle. The page joins
+  a relay, edits the brief live, and sends the session back to GitHub as
+  pre-filled issues or one pull request with the person's own token. No Node
+  toolchain enters the repository (adr-47), so its tests are Go tests that pin
+  the script's structure.
 - **`surface/mcp/`** *(later)* — an additive front door exposing the same core
   verbs as `mcp:abcd:*` tools. Added once a surface is worth exposing; no core
   rework required because the core is transport-agnostic.

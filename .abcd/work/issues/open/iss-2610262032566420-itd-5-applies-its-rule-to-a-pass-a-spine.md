@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 337 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-5-prompt-quality-additions.md:25"
-remedy: "none (filed automatically)"
+remedy: "In itd-5 line 25 (and the canary list at line 66 and acceptance criteria at lines 119-120), replace the Pass A spine / chat-distiller / embark-scaffolder roster with every prompt in agents/ today, and describe the unbuilt design-roster agents as future specs the rule will bind"
 related_intents: [itd-5]
 finding_ref: cfk-378a76eababddbfe
 ---

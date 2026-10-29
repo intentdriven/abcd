@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 641 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/22-site.md:111"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Should the Now/Next/Later block keep the name status (status block, status page, the status family in the record-families glossary) now that abcd status is the shared-remote view, or be renamed as itd-2609151838312703 promised? Answer 1: rename the block's surfaces so status names one thing. Answer 2: keep the block's names and drop the rename claim from the intent. Recommend a narrow answer 1: stop calling the site page the status page (it is already the record health page) and record that the block keeps its internal name."
 related_intents: [itd-2609151838312703]
 finding_ref: cfk-9848ee40938cdd86
 ---

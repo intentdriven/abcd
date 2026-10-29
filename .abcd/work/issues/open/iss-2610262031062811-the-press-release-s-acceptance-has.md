@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 87 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:43"
-remedy: "none (filed automatically)"
+remedy: "Reword 04-universal-patterns.md:90 to say these verbs write no report file of their own, and split the list: capture, intent, spec and identity write records, while lint, guard, banlist, rules and --version are read-only renders."
 finding_ref: cfk-aba87e37c6230e40
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 23 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:13"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does invariant 3 mean every verb has a CLI route that runs with no host session (so the ahoy preparation workflow and the build loop's host dependence are violations to fix), or that every verb has a CLI route while judgement steps may stay host-delegated (adr-25), so the invariant should name those two interim gaps? Recommend the second: adr-25 already makes LLM steps host-delegated, both records already call the gaps interim, and an invariant that lists its staged exceptions is honest where a known-violated one is not."
 finding_ref: cfk-ebd9a9be1defd02f
 ---
 

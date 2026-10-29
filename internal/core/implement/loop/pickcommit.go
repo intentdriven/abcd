@@ -28,11 +28,8 @@ package loop
 // else on the branch or in the worktree is refused and left where it is.
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -52,14 +49,10 @@ const maxGitOutput = 1 << 20
 // test can shorten it.
 var commitTimeout = 10 * time.Minute
 
-// worktreeAddTimeout bounds the lane's `git worktree add` (worktreeAddGit).
-// Its checkout writes every file of the tree through the repository's content
-// filters, and a Git LFS smudge downloads each object it names, so its time
-// scales with the tree and the network rather than with a person's answer: it
-// is not held to commitTimeout. The bound is there only so an unattended run
-// is never held forever by a post-checkout hook that waits. A var so a test
-// can shorten it.
-var worktreeAddTimeout = 60 * time.Minute
+// worktreeAddTimeout bounds the lane's `git worktree add` (worktreeAddGit):
+// gitutil.CheckoutBound, the checkout's own bound, which the store's add
+// shares, not commitTimeout. A var so a test can shorten it.
+var worktreeAddTimeout = gitutil.CheckoutBound
 
 // resetTimeout bounds the lane's reset --hard (resetLaneTree), as
 // worktreeAddTimeout bounds the checkout and for the same reason: the reset
@@ -67,13 +60,6 @@ var worktreeAddTimeout = 60 * time.Minute
 // LFS smudge downloading what it names, so its time scales with the tree and
 // the network. A var so a test can shorten it.
 var resetTimeout = 60 * time.Minute
-
-// commitStopGrace is how long a commitGit command that ran past commitTimeout
-// and the processes it started have, once told to stop (SIGTERM to git and
-// each of its descendants, on which git removes its lock files), before they
-// are killed and git's output pipes closed; and how long a process a hook or
-// signing program left behind may hold those pipes once git has exited.
-const commitStopGrace = 5 * time.Second
 
 // pickSubject is the pick commit's subject line.
 func pickSubject(st State) string {
@@ -110,7 +96,7 @@ func pickMessage(st State) string {
 // content filter a global `git lfs install` defines, a global ignore file)
 // with the program-starting knobs and automatic maintenance pinned off.
 func pickGit(dir string, args ...string) (string, error) {
-	return runTreeGit(gitutil.WorkingTreeCommand(dir, args...), args)
+	return gitutil.RunTreeCommand(gitutil.WorkingTreeCommand(dir, args...), args)
 }
 
 // commitGit is pickGit for a command that runs the repository's hooks on the
@@ -124,24 +110,17 @@ func pickGit(dir string, args ...string) (string, error) {
 // (iss-2610111729399920, iss-2610120640452939). A restart's clean stays on
 // pickGit: `git clean` runs no hook, so the pins change nothing there.
 //
-// Because those programs run, the command is bounded: past commitTimeout git
-// and the processes below it (its hooks, their children, a signing program it
-// ran) are told to stop together (SIGTERM to git and each descendant,
-// stopWithDescendants, so git removes its lock files and a stopped commit
-// leaves no index.lock), killed commitStopGrace later if they have not, and
-// the call is refused naming the deadline (errCommitStalled). A hook's child
-// is stopped with git because it would otherwise go on writing into the
-// lane's worktree after the loop has given up on the command, and after
-// undoStalledSync has reset that worktree; one that has detached (reparented
-// to init) before the stop is out of reach. Git stays in abcd's process
-// group, as the person's own git runs in the shell's, so a prompt on the
-// terminal and an interrupt behave as they do there. A program a hook started
-// that outlives a git which finished in time is not killed (the hook's own
-// children are the repository's), but it cannot hold the call either: its
-// hold on git's output is cut after commitStopGrace. A git that exited 0 is a
-// made commit even then.
+// Because those programs run, the command is bounded by commitTimeout through
+// gitutil.RunCommitCommandBounded: past it git and the processes below it are
+// stopped together, so git removes its lock files and a stopped commit leaves
+// no index.lock, and the call is refused naming the deadline
+// (errCommitStalled). A hook's child is stopped with git because it would
+// otherwise go on writing into the lane's worktree after the loop has given up
+// on the command, and after undoStalledSync has reset that worktree; one that
+// has detached (reparented to init) before the stop is out of reach. A git
+// that exited 0 is a made commit even then.
 func commitGit(dir string, args ...string) (string, error) {
-	return boundedGit(dir, commitTimeout, errCommitStalled, args)
+	return gitutil.RunCommitCommandBounded(dir, commitTimeout, errCommitStalled, args...)
 }
 
 // worktreeAddGit is commitGit for the lane's `git worktree add`, which runs
@@ -150,36 +129,14 @@ func commitGit(dir string, args ...string) (string, error) {
 // time scales with the tree, and a stop at its bound is refused as a checkout
 // that did not finish (errCheckoutStalled), never as a signing prompt.
 func worktreeAddGit(dir string, args ...string) (string, error) {
-	return boundedGit(dir, worktreeAddTimeout, errCheckoutStalled, args)
-}
-
-// boundedGit runs a gitutil.WorkingTreeCommitCommand in dir, stopped past
-// limit and refused then with stalled, as commitGit describes.
-func boundedGit(dir string, limit time.Duration, stalled error, args []string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), limit)
-	defer cancel()
-	cmd := gitutil.WorkingTreeCommitCommand(ctx, dir, args...)
-	sweep := stopWithDescendants(cmd)
-	cmd.WaitDelay = commitStopGrace
-	out, err := runTreeGit(cmd, args)
-	sweep()
-	switch {
-	case err == nil:
-		return out, nil
-	case cmd.ProcessState != nil && cmd.ProcessState.Success() && errors.Is(err, exec.ErrWaitDelay):
-		// git finished; something it started held the pipes past the grace.
-		return "", nil
-	case ctx.Err() != nil:
-		return "", fmt.Errorf("git %s: %w within %s, so git was stopped", treeGitSub(args), stalled, limit)
-	}
-	return "", err
+	return gitutil.RunCommitCommandBounded(dir, worktreeAddTimeout, errCheckoutStalled, args...)
 }
 
 // errCommitStalled names a commitGit command stopped at its deadline.
 var errCommitStalled = errors.New("a signing prompt or hook did not finish")
 
 // errCheckoutStalled names a worktreeAddGit command stopped at its bound.
-var errCheckoutStalled = errors.New("the checkout (its content filters, such as a Git LFS download, and its post-checkout hook) did not finish")
+var errCheckoutStalled = gitutil.ErrCheckoutStalled
 
 // errResetStalled names a resetLaneTree stopped at its bound.
 var errResetStalled = errors.New("the reset (its content filters, such as a Git LFS download, and the repository's hooks) did not finish")
@@ -193,20 +150,8 @@ var errResetStalled = errors.New("the reset (its content filters, such as a Git 
 // by resetTimeout rather than commitTimeout, and a stop there is refused as a
 // reset that did not finish (errResetStalled), never as a signing prompt.
 func resetLaneTree(dir, head string) error {
-	_, err := boundedGit(dir, resetTimeout, errResetStalled, []string{"reset", "--hard", "--quiet", head})
+	_, err := gitutil.RunCommitCommandBounded(dir, resetTimeout, errResetStalled, "reset", "--hard", "--quiet", head)
 	return err
-}
-
-// treeGitSub is the subcommand args runs, past any `-c` overrides.
-func treeGitSub(args []string) string {
-	sub := args
-	for len(sub) > 2 && sub[0] == "-c" {
-		sub = sub[2:]
-	}
-	if len(sub) == 0 {
-		return ""
-	}
-	return sub[0]
 }
 
 // pickGitIndex is pickGit on a scratch index, for a command that must read the
@@ -217,30 +162,7 @@ func pickGitIndex(dir, index string, args ...string) (string, error) {
 	}
 	cmd := gitutil.WorkingTreeCommand(dir, args...)
 	cmd.Env = append(cmd.Env, "GIT_INDEX_FILE="+index)
-	return runTreeGit(cmd, args)
-}
-
-// runTreeGit runs a pickGit command, bounding what it reads back.
-func runTreeGit(cmd *exec.Cmd, args []string) (string, error) {
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	// The subcommand an error names follows any `-c` overrides the caller put
-	// before it.
-	sub := args
-	for len(sub) > 2 && sub[0] == "-c" {
-		sub = sub[2:]
-	}
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if len(msg) > 2048 {
-			msg = msg[:2048]
-		}
-		return "", fmt.Errorf("git %s: %w (%s)", sub[0], err, msg)
-	}
-	if stdout.Len() > maxGitOutput {
-		return "", fmt.Errorf("git %s wrote more than %d bytes", sub[0], maxGitOutput)
-	}
-	return stdout.String(), nil
+	return gitutil.RunTreeCommand(cmd, args)
 }
 
 // pickCommit makes, or finds, the pick's record-only commit on the lane's

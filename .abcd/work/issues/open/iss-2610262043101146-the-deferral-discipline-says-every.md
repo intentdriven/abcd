@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1119 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-2610141956319695-a-deferred-finding-is-its-own-captured.md:20"
-remedy: "none (filed automatically)"
+remedy: "In decision 22 of the model-matrix intent add that a check-copy finding the person confirms as a real defect and does not fix in the run is captured as its own record (itd-2610141956319695), while the run's own record keeps the comparison data."
 related_intents: [itd-2610141956319695, itd-2610161733316518]
 finding_ref: cfk-5ed9f071ab1ea9c1
 ---

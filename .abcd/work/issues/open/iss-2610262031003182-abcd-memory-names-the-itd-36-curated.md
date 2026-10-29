@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 73 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/03-evidence/04-tradeoffs.md:37"
-remedy: "none (filed automatically)"
+remedy: "In the Memory unification entry of 04-tradeoffs.md (line 37) name `/abcd:library` (ingest, ask and lint under library since the 2026-10-09 merge) in place of `/abcd:memory`, which today keeps agents' notes."
 finding_ref: cfk-adb1d5ff4b7c7c65
 ---
 

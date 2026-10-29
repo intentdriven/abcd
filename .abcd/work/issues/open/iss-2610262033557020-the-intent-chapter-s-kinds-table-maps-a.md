@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 450 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:83"
-remedy: "none (filed automatically)"
+remedy: "Change the standalone row's mapping cell at 05-intent.md line 83 from 'One spec (1:1)' to one spec at a time with a remainder spec possible (1:n, invariant 17, adr-2609151513118583)."
 finding_ref: cfk-8ffb357cb9856868
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 961 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-142-the-brief-creation-interview-abcd.md:36"
-remedy: "none (filed automatically)"
+remedy: "In itd-142 (press release and scope) name the ledger: 'the provenance ledger' for the record of grounds, and 'the local ledger side' for declined alternatives and traces; bare 'ledger' is reserved for the issue ledger."
 related_intents: [itd-142]
 finding_ref: cfk-876f6df1c1971089
 ---

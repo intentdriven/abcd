@@ -153,7 +153,7 @@ currency-clean.
 "${CLAUDE_PLUGIN_ROOT}/abcd" lint site --out site
 ```
 
-reads the built output directory and the repository it came from, and runs seven
+reads the built output directory and the repository it came from, and runs eight
 independent gates. Each reports EVERY failure it finds rather than the first, so
 one run is one review round. An output directory with no `index.html` is
 rendered first: a caller who has not built yet is asking the same question as
@@ -165,7 +165,15 @@ one who has. It writes nothing except that render, and reaches no network.
   a file name or an asset name. The `<title>` and `<meta name="description">`
   carry Identity text with no attribute to name it, and are checked against the
   Identity block rather than skipped; a page that names itself reads
-  `<page> · <project>`, and both halves are held up.
+  `<page> · <project>`, and both halves are held up. With `--project` (a
+  project site, built by `abcd site build --project`), every `data-src` on
+  every page, the record's own pages included, must also name a file abcd
+  writes: anything under `.abcd/` but the local tier, or `CHANGELOG.md`. A
+  span from `docs/`, `README.md` or any other file a person wrote fails, and
+  the interface strings are the binary's own. A project site with no title,
+  because it has neither an identity block abcd wrote nor a GitHub origin to
+  name it, fails here too. A gate whose `--project` and `.abcd/site.json`
+  disagree is refused, both ways.
 - `hero` — the rendered hero's eyebrow, tagline and pitch equal the Identity
   block, read through the same parser the positioning surfaces use.
 - `banned-tokens` — the documentation lint's banned tokens, over the text every
@@ -190,6 +198,11 @@ one who has. It writes nothing except that render, and reaches no network.
   needs a browser and runs in CI.
 - `figure-labels` — every text label in a lifted diagram is a phrase on the page
   it illustrates, where the manifest asks for it.
+- `base-path` — every root-absolute link a page carries sits under the path
+  the site is served below, given with `--base-path` (`/widgets/` for a site
+  served at `owner.github.io/widgets/`); the stylesheet the `mobile` gate reads
+  is resolved against the same path. At the default, `/`, every root-absolute
+  link is inside the site and the gate has nothing to find.
 
 Report the gates that passed, then every finding under the gate that raised it,
 each with the file and the `data-src` span a reader's next edit goes to. Exit is
@@ -243,6 +256,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

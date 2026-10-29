@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 986 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/phase.md:18"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Is the phase negotiator withdrawn because phases are retired, or re-scoped to negotiate dependency order and Now / Next / Later placement? Recommend withdraw: its output unit no longer exists and a dependency-order negotiator would be a different intent to capture fresh."
 related_intents: [itd-41]
 finding_ref: cfk-8193a92b0cb1e676
 ---

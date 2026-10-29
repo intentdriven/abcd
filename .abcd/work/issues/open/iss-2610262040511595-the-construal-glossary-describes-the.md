@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 960 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/construal.md:20"
-remedy: "none (filed automatically)"
+remedy: "The framing chapter (01-product/06-framing.md), its mapping row and tier hypothesis, and the first instance exist: ship or re-scope itd-143 to what remains (the interview landing)."
 related_intents: [itd-143]
 finding_ref: cfk-162b2a62e152cab5
 ---

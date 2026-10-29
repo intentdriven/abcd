@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 457 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-84-intent-decomposition.md:122"
-remedy: "none (filed automatically)"
+remedy: "In itd-84 (the 'subsumes the unbuilt intent_sota gate' paragraph and the last In Scope item) say the intent_sota record-lint rule shipped armed at warn, and that the validator's SOTA-rooting check complements it rather than replacing it"
 related_intents: [itd-84]
 finding_ref: cfk-c17a80f83537f3ac
 ---

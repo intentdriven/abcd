@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 181 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/04-scope.md:19"
-remedy: "none (filed automatically)"
+remedy: "Edit draft itd-97: cite the run machinery of itd-2609201916151817 (the build and implement loop) in place of the superseded itd-29 run seam, in the scope line and the related-intents line."
 related_intents: [itd-97]
 finding_ref: cfk-a65851931342f1ab
 ---

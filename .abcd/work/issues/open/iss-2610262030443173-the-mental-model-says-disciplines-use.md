@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 38 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:85"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (acceptance-discipline paragraph): discipline intents carry the rule under `## Rule` with Given-When-Then acceptance (the seven older) or under `## The rule` with `## The gate`, `## Fit` and `## Staging` (the nine since itd-190), and point at 05-intent."
 finding_ref: cfk-3c9665e8c3d68e03
 ---
 

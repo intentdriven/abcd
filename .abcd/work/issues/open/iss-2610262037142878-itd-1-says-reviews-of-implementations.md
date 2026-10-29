@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 709 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-1-acceptance-gates.md:47"
-remedy: "none (filed automatically)"
+remedy: "In itd-1 line 47 say the SHIP, NEEDS_WORK, MAJOR_RETHINK family assesses a packed lifeboat only (01-agents.md verdict-tag protocol) and that the implement loop's reviewers state SHIP or FIX FIRST, APPROVE, BLOCK or NEEDS-INPUT; drop the oracle reviews of plans, implementations and completions and the native receipt schema validator."
 related_intents: [itd-1]
 finding_ref: cfk-6c071faeba99b9d5
 ---

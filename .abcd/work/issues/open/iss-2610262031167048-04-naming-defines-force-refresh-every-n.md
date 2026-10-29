@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 107 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:208"
-remedy: "none (filed automatically)"
+remedy: "Correct the Rules-loader dedup row (02-verification-matrix.md line 73): say the primary refresh is event-driven and a fixed-N backstop (default 15) also clears the ledger; delete 'Nothing counts prompts'."
 finding_ref: cfk-0bbb2e8f1fd7c735
 ---
 

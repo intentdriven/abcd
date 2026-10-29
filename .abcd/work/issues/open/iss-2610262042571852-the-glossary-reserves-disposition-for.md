@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1105 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/disposition.md:4"
-remedy: "none (filed automatically)"
+remedy: "Same edit as iss-2610262033006141: name the drain summary's per-issue disposition (commands/drain.md ships a dispositions list) as a separate sense in the disposition entry."
 related_intents: [itd-82]
 finding_ref: cfk-6605e36ade33f075
 ---

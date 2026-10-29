@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 166 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/04-scope.md:3"
-remedy: "none (filed automatically)"
+remedy: "Edit draft itd-78: delete the 'intent phase-scoped earlier than its blocker's phase' lint check from the scope, since phases are retired."
 related_intents: [itd-78]
 finding_ref: cfk-94f9db24433c81cd
 ---

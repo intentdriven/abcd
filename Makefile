@@ -318,17 +318,19 @@ asking-sync-check:
 # checks again, so two preflights in one quiet minute do not start together; a
 # preflight whose own gate is waiting takes that waiter's place in the queue.
 # It gives up after two hours, failing the preflight and naming what it still
-# waited on, and on a CI runner it opens at once. How many preflights may be in
-# their test stages at once is the person's own machine setting, never the
-# checkout's: load.preflights in ~/.abcd.noindex/config.json, or
-# ABCD_LOAD_PREFLIGHTS in the environment for a trial, one by default and two
-# at most until a measured trial supports more (iss-2610161639025702). The race
+# waited on, and on a CI runner it opens at once. How many preflights the
+# first gate admits to their test stages at once, one race stage able to run
+# beside them, is the person's own machine setting, never the checkout's:
+# load.preflights in ~/.abcd.noindex/config.json, or ABCD_LOAD_PREFLIGHTS in
+# the environment for a trial, one by default and four at most
+# (iss-2610161639025702, iss-2610282016250805). The race
 # stage waits at its own gate (`--race-gate`, spelt without --wait so an older
 # abcd never reads a preflight there as queued at its first gate). At one, the
 # race gate opens at once, so the preflight runs exactly as before. Above one,
 # the first gate admits a preflight while fewer than that many others are in
-# their test stages, a live race run does not shut it by itself, and a waiter
-# queued ahead still does; and the race gate is shut while another go test
+# their test stages (one queued at its race gate runs nothing and takes no
+# slot), a live race run does not shut it by itself, and a waiter queued ahead
+# still does; and the race gate is shut while another go test
 # -race run or race waiter ahead is live, the load is at the limit or the race
 # gate's own hold is in force. That keeps race stages apart among checkouts
 # that have this gate: one at a time within an account, and across accounts
@@ -337,7 +339,7 @@ asking-sync-check:
 # v0.15.1, or two of the start order whose whole-second ages read a tie
 # differently or the later of which stopped counting the earlier past its
 # five-minute cap). An older checkout's
-# race stage is ungated, so set 2 only once none runs a preflight. Each test
+# race stage is ungated, so set more than 1 only once none runs a preflight. Each test
 # stage then takes a go test -p derived from the online cores and the load as
 # the stage starts, at most the cores divided by the setting
 # (cmd/test-parallelism), so one run cannot saturate the machine.

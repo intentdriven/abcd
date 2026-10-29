@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1130 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-191-the-selection-criteria-are-a-declared.md:20"
-remedy: "none (filed automatically)"
+remedy: "In itd-191 line 20 replace 'the maintainer's act' with 'the product thinker's act' and the 'committed 2026-08-28, maintainer' attribution likewise."
 related_intents: [itd-191, itd-2609212137129937]
 finding_ref: cfk-509be2a63c2576a2
 ---

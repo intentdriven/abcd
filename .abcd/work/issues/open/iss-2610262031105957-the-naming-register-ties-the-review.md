@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 94 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:181"
-remedy: "none (filed automatically)"
+remedy: "In 04-naming.md line 181 change the review bucket's '(family-1 verdicts)' to say a lifeboat review returns family 1 while a change reviewer states its own closed words (SHIP/FIX FIRST, APPROVE/BLOCK/NEEDS-INPUT), as the 01-agents.md Verdict-tag protocol records."
 finding_ref: cfk-6b8d360a3ec3eb30
 ---
 

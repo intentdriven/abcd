@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1070 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/disposition.md:25"
-remedy: "none (filed automatically)"
+remedy: "In itd-87 line 31 replace 'dispositioned entries (resolve, wontfix)' with 'closed entries (resolved or wontfix)'."
 related_intents: [itd-87]
 finding_ref: cfk-736424e371fdf8bf
 ---

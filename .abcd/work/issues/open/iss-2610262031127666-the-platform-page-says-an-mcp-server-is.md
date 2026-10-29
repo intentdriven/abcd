@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 100 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/01-platform.md:17"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-universal-patterns.md section 3 (the MCP bullet): mark abcd as an MCP server that interoperates with the companion harness as staged, since no MCP server ships (adr-23, a later front door)."
 finding_ref: cfk-e253661dc49290e9
 ---
 

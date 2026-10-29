@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 806 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/07-memory.md:169"
-remedy: "none (filed automatically)"
+remedy: "Edit 07-memory.md section 7 (library lint row): cite 07-library.md's exit contract (only blockers exit nonzero) instead of a divergence 06-lint.md section 2 records; 06-lint covers the two tree gates, not the memory lint."
 finding_ref: cfk-85eb0d91ee3d9e03
 ---
 

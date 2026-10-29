@@ -47,6 +47,7 @@ are wiring rather than user-facing surface are listed separately under
 | 37 | `/abcd:embargo` | shipped | Keep a privately reported security advisory off the public ledger until its fix ships, then close or publish it on your approval of exactly what it shows | [`37-embargo.md`](37-embargo.md) |
 | 37 | `/abcd:memory` | shipped | Keep short lessons an agent would otherwise relearn, stamped with who wrote them, when and in which session, and refused when they would hold a secret, a private name or a network address | [`37-memory.md`](37-memory.md) |
 | 37 | `/abcd:reserve` | shipped | Reserve an issue, intent or release on the shared remote before starting it, so another person, computer or hosted session sees it is taken | [`37-reserve.md`](37-reserve.md) |
+| 37 | `/abcd:session` | shipped | Run the relay a team's live brief session goes through, on the host's machine over Tailscale Serve or on the team's own relay, write that relay's blueprint, and write the session's static page | [`37-session.md`](37-session.md) |
 | 38 | `/abcd:announce` | shipped | Post a short fixed-form announcement on the shared remote, so every other session, under any account, on any machine or in the cloud, sees what this one is doing | [`38-announce.md`](38-announce.md) |
 | 38 | `/abcd:land` | shipped | Push a branch once its preflight passed and queue its pull request where the merge gate allows, resumable by running it again | [`38-land.md`](38-land.md) |
 | 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
@@ -145,7 +146,7 @@ the command's sentence (the section below).
 
 | Block | Group | Verbs |
 |---|---|---|
-| people | set-up | `ahoy`, `dashboard`, `update`, and the framework's `help` and `completion` |
+| people | set-up | `ahoy`, `dashboard`, `session`, `update`, and the framework's `help` and `completion` |
 | people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `library`, `status` |
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
@@ -226,8 +227,9 @@ read-only render of their own state, and close on the next move where there is
 one to name.
 
 It is a convention rather than a universal, and the exceptions are where the
-tree does not yet meet its own discipline. Eight parents print usage with no state
-at all: `disembark`, `docs`, `embargo`, `embark`, `guard`, `history`, `ideate`, and `scribe`. Bare
+tree does not yet meet its own discipline. Nine parents print usage with no state
+at all: `disembark`, `docs`, `embargo`, `embark`, `guard`, `history`, `ideate`, `scribe`,
+and `session`, whose running relay keeps its sessions in that process's memory alone. Bare
 `abcd launch` refuses with a hint to pass `--dry-run`. Bare
 `abcd build` refuses as a usage error because its one operand is the intent it
 starts a run for; the run's state renders through `abcd implement status`. Bare
@@ -295,6 +297,12 @@ the checkout from the root the loader resolves for the working directory.
 - **`abcd rules <DOMAIN>`** renders that one domain, matched case-insensitively,
   whatever its state and whatever the kill switch, so a dormant domain stays
   inspectable. An unknown name exits 2.
+- **`abcd rules --prompt "<text>"`** shows what that one prompt would bring back
+  to a fresh session, running the prompt router's own path: the domains its
+  words match, then the memory notes and pages it would recall, ranked together
+  with each one's rank, score and the terms that scored it, and the form each
+  would take (`full`, `over-budget` or `too-large`), with any layer or page that
+  could not be read. It writes nothing: no session state is loaded or saved.
 - **Diagnostics go to stderr, never stdout**, so the JSON form stays one
   document: a refused root, a domain skipped for carrying no rules, and each
   bundled entry of a guardrail domain an override's list leaves out.
@@ -360,7 +368,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `dashboard`, `decide`, `disembark`, `docs`, `drain`, `embargo`, `embark`,
 `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`, `intent`, `lab`,
 `land`, `launch`, `library`, `lint`, `memory`, `mode`, `peers`, `reading`,
-`reflect`, `report`, `reserve`, `scribe`, `site`, `status`, `update`.
+`reflect`, `report`, `reserve`, `scribe`, `session`, `site`, `status`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

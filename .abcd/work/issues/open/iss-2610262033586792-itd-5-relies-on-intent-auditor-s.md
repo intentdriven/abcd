@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 459 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-5-prompt-quality-additions.md:102"
-remedy: "none (filed automatically)"
+remedy: "Reword itd-5 line 102 and the acceptance-criteria header: the audit applies to each agent's own shipped intent, whose acceptance criteria carry this discipline's inherited gates; the discipline itself is not audited by abcd intent audit"
 related_intents: [itd-5]
 finding_ref: cfk-dcc9823dbb4870a1
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 116 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:74"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (the fourth-capture-verdict paragraph): mark the itd-44 classifier as staged, a draft not yet planned, matching the out-of-scope list and the naming register."
 finding_ref: cfk-69e39ea08041a000
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 443 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/07-memory.md:50"
-remedy: "none (filed automatically)"
+remedy: "Edit 07-memory.md sections 0 and 2: mark the dev-sync memory harvest and the session_memory distil-on-sync row as staged; session_memory today is only the default class backfilled onto legacy pages."
 finding_ref: cfk-7e29ed375ac87a9f
 ---
 

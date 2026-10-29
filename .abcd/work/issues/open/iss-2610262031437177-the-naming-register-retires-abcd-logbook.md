@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 167 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:83"
-remedy: "none (filed automatically)"
+remedy: "Change itd-35 lines 42 and 59 to `.abcd/.work.local/logs/audit/lifeboat-<ts>/`, the location 05-intent.md already gives audit/lifeboat."
 related_intents: [itd-35]
 finding_ref: cfk-f721fe4a1148fd0f
 ---

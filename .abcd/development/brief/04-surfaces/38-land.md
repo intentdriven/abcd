@@ -257,5 +257,6 @@ Sub-verbs: none.
 |---|---|
 | `--no-enqueue` | bool |
 | `--no-push` | bool |
+| `--record-review` | stringArray |
 
 <!-- surface-appendix:end -->

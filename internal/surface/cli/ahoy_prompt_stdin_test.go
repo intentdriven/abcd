@@ -266,10 +266,11 @@ func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 	// table is accepted only on an answer, so --yes names them as well; and so
 	// is the drain eligibility record (ruling BX2), which decides what an
 	// unattended agent may change; and so is the README question
-	// (spc-2610031704338417), which only the owner answers; and so is the
+	// (spc-2610031704338417), which only the owner answers; so is the
 	// shell-settings offer (itd-2610240919030303), which edits a file of the
-	// person's only on their own yes.
-	want := "git_identity.unrecorded readme.offered path.shell_settings_offered oracle_routing.machine_offered oracle_routing.repo_offered drain_rule.offered"
+	// person's only on their own yes; and so is the live brief session
+	// question (spc-2610141709430146 step 6).
+	want := "git_identity.unrecorded readme.offered sessions.offered path.shell_settings_offered oracle_routing.machine_offered oracle_routing.repo_offered drain_rule.offered"
 	if strings.Join(res.OptionalSkipped, " ") != want {
 		t.Fatalf("optional_skipped = %v, want [%s]\n%s", res.OptionalSkipped, want, jsonOut)
 	}

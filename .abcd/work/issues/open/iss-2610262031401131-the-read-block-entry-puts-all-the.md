@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 160 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/read-block.md:17"
-remedy: "none (filed automatically)"
+remedy: "In ledger/read-block.md add the one positional exception: at the comparative position two body fields of one committed widening run's items are admitted as the candidate set (adr-2609021016272867, brief invariant 15); every other prior-run output stays inside the block."
 finding_ref: cfk-bcbe37d864c222e3
 refines: [iss-2609020626100041]
 ---
