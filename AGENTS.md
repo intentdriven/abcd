@@ -341,9 +341,7 @@ with `*CONCURRENCY` to force it).
   verb run from it reads the worktree around it instead.
 - **A session cutting a release has the final say on what merges before its
   tag.** A change ready while a peer is mid-cut is handed over as a pull
-  request and merged or held on the cutting session's ruling, while the cut's
-  reservation is live: a hold past its lapse holds nothing, so re-read its
-  expiry just before acting on it or relaying it.
+  request and merged or held on the cutting session's ruling.
 - **Record ids need no coordination between checkouts.** Captures, intents,
   specs and ADRs mint timestamp-numeric ids through one allocator (adr-45):
   `abcd decide --adr "<title>"` allocates `adr-<yymmddHHMMSS><rrrr>`, and the
