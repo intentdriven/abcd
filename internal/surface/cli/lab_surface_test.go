@@ -191,3 +191,27 @@ func TestLabHarvestPrintsTheShadowAgreement(t *testing.T) {
 		t.Fatalf("harvest --json leaked the home path:\n%s", out)
 	}
 }
+
+// A type whose pairs were all skipped has nothing compared, so the harvest
+// prints its agreement as n/a, as harvest.md does, never as 0%.
+func TestLabHarvestPrintsNAForATypeWithNothingCompared(t *testing.T) {
+	_, repo := labCheckout(t)
+	code, out, errOut := runLab(t, "lab", "--json", "mint", "does", "the", "adapter", "agree?")
+	if code != 0 {
+		t.Fatalf("lab mint exit %d: %s%s", code, out, errOut)
+	}
+	var m struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(out), &m); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lab.RecordPair(repo, lab.Pair{Type: "remedy-read", Kind: "choose", StateSHA256: strings.Repeat("e", 64),
+		Host: "no", Target: "openrouter/typesafe/jev-1.13", Skipped: lab.SkippedWindow}); err != nil {
+		t.Fatal(err)
+	}
+	code, out, _ = runLab(t, "lab", "harvest", m.ID)
+	if code != 0 || !strings.Contains(out, "agreement remedy-read: 0/0 compared agree (n/a), 1 skipped") {
+		t.Fatalf("harvest (exit %d):\n%s", code, out)
+	}
+}

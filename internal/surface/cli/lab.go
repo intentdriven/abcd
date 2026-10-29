@@ -361,8 +361,14 @@ func renderHarvest(w io.Writer, res lab.Harvested) {
 	// line per judgement type, then the research note's line.
 	if a := res.Agreement; a != nil {
 		for _, t := range a.Types {
-			fmt.Fprintf(w, "agreement %s: %d/%d compared agree (%.0f%%), %d skipped\n",
-				termsafe.Sanitize(t.Type), t.Agreed, t.Compared, t.Rate*100, t.Skipped)
+			// A type with nothing compared has no rate: n/a, as harvest.md
+			// prints it, never 0%.
+			rate := "n/a"
+			if t.Compared > 0 {
+				rate = fmt.Sprintf("%.0f%%", t.Rate*100)
+			}
+			fmt.Fprintf(w, "agreement %s: %d/%d compared agree (%s), %d skipped\n",
+				termsafe.Sanitize(t.Type), t.Agreed, t.Compared, rate, t.Skipped)
 		}
 		if a.Unreadable > 0 {
 			fmt.Fprintf(w, "  %s in pairs.jsonl did not parse and are not counted\n", countOf(a.Unreadable, "line"))
