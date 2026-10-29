@@ -579,6 +579,7 @@ func renderLoad(w io.Writer, res implement.LoadResult) {
 	case implement.LoadWarning:
 		renderLoadWarning(w, res)
 	}
+	fmt.Fprint(w, res.Disk.WarningText(res.Site))
 	if res.RunLog.Error != "" {
 		fmt.Fprintf(w, "could not write the load warning to the run log: %s; the warning above stands\n", res.RunLog.Error)
 	}
