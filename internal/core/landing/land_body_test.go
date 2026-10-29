@@ -39,7 +39,13 @@ func TestNoPullRequestComposesTheBodyFromTheCommits(t *testing.T) {
 	f.repo.Write("second.txt", "more\n")
 	f.repo.Git("add", "second.txt")
 	f.repo.Git("commit", "-q", "-m", "docs: say which families the walk reads\n\nDelivers: itd-3\nAssisted-by: Claude:claude-opus-5-5\nAssisted-by: ExampleVendor:model-b")
-	res, err := f.land(f.options())
+	// The trailers make the landing announce before it pushes. Git's identity
+	// names the sender, so no forge is asked whose account it is, and the
+	// embargo check, which is not what this test is about, lets it through.
+	f.asPat()
+	o := f.options()
+	o.Announce.Embargo = func(_, _, _ string, _ []string) (bool, error) { return false, nil }
+	res, err := f.land(o)
 	if err != nil {
 		t.Fatal(err)
 	}
