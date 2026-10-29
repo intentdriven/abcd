@@ -115,6 +115,11 @@ type Result struct {
 	// (OwnOverlap.Warning); nil when it shares none. Every other act backs off
 	// such a path.
 	OwnOverlap []OwnOverlap
+	// GeneratedShared is each path this reservation shares with another
+	// record's live reservation that was no overlap because origin's default
+	// branch declares it generated (GeneratedShare.Line), sorted by path and
+	// record; nil when it shares none.
+	GeneratedShared []GeneratedShare
 	// GeneratedUnread is why the overlap judgement recognised no generated
 	// file: origin's default branch declares them but its declaration could
 	// not be read (GeneratedUnreadLine), so every shared path was judged an
