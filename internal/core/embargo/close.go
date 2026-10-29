@@ -178,21 +178,38 @@ func Close(req CloseRequest) (CloseResult, error) {
 	if err != nil {
 		return CloseResult{}, err
 	}
+	// An end GitHub already holds is recorded from GitHub's own timestamp,
+	// as intake and the publication plan record it, and never stamped with
+	// the clock's time: one GitHub gives no time for refuses, recording
+	// nothing.
+	var ended time.Time
+	if remote.State == "closed" || remote.State == "published" {
+		v := remote.endedAt()
+		if v == nil || strings.TrimSpace(*v) == "" {
+			return CloseResult{}, refuse("GitHub reports this advisory "+remote.State+" but gives no "+remote.State+"_at; nothing was sent or recorded",
+				"run `abcd embargo close` again once GitHub shows the advisory's "+remote.State+"_at")
+		}
+		at, ok := forgeTime(*v, clock(req.Now))
+		if !ok {
+			return CloseResult{}, refuse("GitHub reports this advisory "+remote.State+" with a "+remote.State+"_at that is not a time this abcd reads; nothing was sent or recorded",
+				"run `abcd embargo close` again once GitHub shows the advisory's "+remote.State+"_at as a time")
+		}
+		ended = at
+	}
 	switch remote.State {
 	case "triage", "draft":
 	case "closed":
 		// A close sent before whose read-back or save failed, or one made
 		// on GitHub by hand: record what GitHub reports, and send nothing.
-		now := clock(req.Now)
-		recordForgeEnd(&st.Advisories[i], "closed", now)
+		recordForgeEnd(&st.Advisories[i], "closed", ended)
 		if err := s.SaveState(st); err != nil {
 			return CloseResult{}, fmt.Errorf("embargo: GitHub reports this advisory closed, but its closed_at could not be recorded (nothing was sent): %w", err)
 		}
 		held := approvedTextHeld(remote.description(), text)
 		return CloseResult{GHSAID: a.GHSAID, IssueID: a.IssueID, Verdict: *a.Verdict, ForgeState: "closed", Text: text,
-			Closed: true, ClosedAt: &now, Reconciled: true, TextHeld: &held}, nil
+			Closed: true, ClosedAt: &ended, Reconciled: true, TextHeld: &held}, nil
 	case "published":
-		recordForgeEnd(&st.Advisories[i], "published", clock(req.Now))
+		recordForgeEnd(&st.Advisories[i], "published", ended)
 		if err := s.SaveState(st); err != nil {
 			return CloseResult{}, fmt.Errorf("embargo: GitHub reports this advisory published, so it is not closed, but its published_at could not be recorded (nothing was sent): %w", err)
 		}

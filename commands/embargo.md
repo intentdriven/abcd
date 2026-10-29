@@ -117,10 +117,12 @@ again. With the approval abcd closes the advisory, reads it back to confirm it
 is closed with that text, and records `closed_at`. A read-back that does not
 confirm it exits 1 naming which half did not hold. An advisory GitHub already
 reports closed (a close whose read-back or record failed, or one closed by
-hand) is not sent anything: `closed_at` is recorded from GitHub,
-`reconciled` is true, and `text_held` says whether its description begins
-with the drafted text; one GitHub reports published is refused, and its
-`published_at` recorded.
+hand) is not sent anything: `closed_at` is recorded from GitHub's own
+timestamp, `reconciled` is true, and `text_held` says whether its description
+begins with the drafted text; one GitHub reports published is refused, and its
+`published_at` recorded from GitHub's own timestamp. One GitHub reports closed
+or published with no time for it, or a time abcd cannot read, is refused with
+nothing sent or recorded, never stamped with the clock's time.
 
 ## Check
 

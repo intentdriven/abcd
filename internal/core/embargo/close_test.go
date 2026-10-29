@@ -39,9 +39,21 @@ func newCloseFixture(t *testing.T) closeFixture {
 	return cf
 }
 
+// ghEnded is the time the fake GitHub gives for an advisory it reports
+// closed or published: apart from the clock close runs on, so a test tells
+// GitHub's time from the run's.
+var ghEnded = fixedNow.Add(30 * time.Minute)
+
 func (cf closeFixture) remote(t *testing.T, state, description string) string {
 	t.Helper()
-	b, err := json.Marshal(advisoryJSON(cf.ghsa, state, "high", seededTitle, description))
+	a := advisoryJSON(cf.ghsa, state, "high", seededTitle, description)
+	switch state {
+	case "closed":
+		a["closed_at"] = ghEnded.Format(time.RFC3339)
+	case "published":
+		a["published_at"] = ghEnded.Format(time.RFC3339)
+	}
+	b, err := json.Marshal(a)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,10 +334,37 @@ func TestCloseRefusesAlreadyClosedOrPublished(t *testing.T) {
 		_, err := cf.close("")
 		mustRefuse(t, err, "published")
 		noWrites(t, cf.g)
-		if a := cf.state(t); a.PublishedAt == nil || a.ForgeState != "published" || a.ClosedAt != nil {
+		if a := cf.state(t); a.PublishedAt == nil || !a.PublishedAt.Equal(ghEnded) || a.ForgeState != "published" || a.ClosedAt != nil {
 			t.Fatalf("published_at not recorded from GitHub: %+v", a)
 		}
 	})
+}
+
+// TestCloseRecordsNoEndGitHubGivesNoTimeFor: an advisory GitHub reports
+// closed or published with no time for it, or one this abcd cannot read, is
+// never stamped with the clock's time: close refuses, sends nothing and
+// records nothing.
+func TestCloseRecordsNoEndGitHubGivesNoTimeFor(t *testing.T) {
+	for _, state := range []string{"closed", "published"} {
+		for name, at := range map[string]any{"none": nil, "unreadable": "yesterday"} {
+			t.Run(state+"/"+name, func(t *testing.T) {
+				cf := newCloseFixture(t)
+				a := advisoryJSON(cf.ghsa, state, "high", seededTitle, reporterText)
+				a[state+"_at"] = at
+				b, err := json.Marshal(a)
+				if err != nil {
+					t.Fatal(err)
+				}
+				cf.g.answer("GET", cf.path, "", 1, string(b))
+				_, err = cf.close("")
+				mustRefuse(t, err, state+"_at")
+				noWrites(t, cf.g)
+				if a := cf.state(t); a.ClosedAt != nil || a.PublishedAt != nil {
+					t.Fatalf("an end recorded with no time from GitHub: %+v", a)
+				}
+			})
+		}
+	}
 }
 
 // TestCloseRecordsClosedOnGitHub: an advisory GitHub already reports closed
@@ -349,7 +388,7 @@ func TestCloseRecordsClosedOnGitHub(t *testing.T) {
 			if !res.Closed || !res.Reconciled || res.TextHeld == nil || *res.TextHeld != withText || res.ClosedAt == nil {
 				t.Fatalf("result %+v", res)
 			}
-			if a := cf.state(t); a.ClosedAt == nil || !a.ClosedAt.Equal(fixedNow.Add(2*time.Hour)) || a.ForgeState != "closed" {
+			if a := cf.state(t); a.ClosedAt == nil || !a.ClosedAt.Equal(ghEnded) || !res.ClosedAt.Equal(ghEnded) || a.ForgeState != "closed" {
 				t.Fatalf("closed_at not recorded from GitHub: %+v", a)
 			}
 		})
