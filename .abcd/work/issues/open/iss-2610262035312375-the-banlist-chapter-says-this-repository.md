@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 578 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/20-banlist.md:79"
-remedy: "none (filed automatically)"
+remedy: "In the docs-currency bullet at 06-lint.md:10 add that the names/ banned tokens also read the configuration's name_roots (.abcd, scripts, commands and the other shipped surfaces), every text file, as 20-banlist.md:72-80 and internal/core/lint/lint.go lintNameRoots do."
 finding_ref: cfk-11d838950e712344
 ---
 

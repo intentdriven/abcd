@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 929 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/01-build-sequence.md:100"
-remedy: "none (filed automatically)"
+remedy: "Retitle the 'Via /abcd:intent grill' section: itd-27 is superseded by itd-94 and no grill sub-verb ships; keep the glossary-aware write-back only as a note for the planning interview (abcd intent interview) if it is still wanted."
 finding_ref: cfk-6a83794c767d978b
 ---
 

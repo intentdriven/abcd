@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 481 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-169-an-agent-loop-that-stops-says-who-it-is.md:12"
-remedy: "none (filed automatically)"
+remedy: "Narrow itd-169 to what the badge leaves: a stop that is a question or a halt must state what it needs and carry its options. Whom it addresses already ships as the `abcd mode` badge state (itd-200, spc-70) and each question's chip; supersede the draft if nothing remains."
 related_intents: [itd-169]
 finding_ref: cfk-6cbaaef51eba7011
 ---

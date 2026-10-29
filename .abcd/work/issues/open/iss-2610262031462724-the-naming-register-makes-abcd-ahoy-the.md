@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 175 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:14"
-remedy: "none (filed automatically)"
+remedy: "Rewrite itd-57 so it does not name `abcd configure` (no such verb; ahoy is the setup surface) and reconcile it with the shipped `abcd intent hold` and `unhold`, or supersede it by them."
 related_intents: [itd-57]
 finding_ref: cfk-927ad4807524f895
 ---

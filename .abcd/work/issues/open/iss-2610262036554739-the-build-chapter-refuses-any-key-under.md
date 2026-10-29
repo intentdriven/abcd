@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 684 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/34-build.md:231"
-remedy: "none (filed automatically)"
+remedy: "In 34-build.md list the pace keys the reader accepts as six: the four resolved at a run's start plus pace.stuck_refusals and pace.stuck_minutes, which the drain reads from the same layers."
 finding_ref: cfk-c72b79054080fdbd
 ---
 

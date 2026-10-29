@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 626 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-134-every-abcd-managed-cli-greets-like-abcd.md:13"
-remedy: "none (filed automatically)"
+remedy: "In itd-134 (title and why-it-matters) say the banner renders from the identity block's title and tagline (and pitch if wanted), and name where the version comes from (the repo's own release or build metadata), since the block has no version field."
 related_intents: [itd-134]
 finding_ref: cfk-d2d16231fd872e8f
 ---

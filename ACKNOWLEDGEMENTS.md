@@ -447,6 +447,16 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   and Harbor's `TrialResult` (0.24.0) at
   [`harbor-framework/harbor@d0fe0b24703f`](https://github.com/harbor-framework/harbor/blob/d0fe0b24703f4e53806be5cb3b5e07d622aebbfa/src/harbor/models/trial/result.py).
   abcd runs neither and depends on neither.
+- **Safe-fix tiers in linters (Ruff, <https://docs.astral.sh/ruff/linter/>;
+  ESLint, <https://eslint.org/docs/latest/extend/custom-rules>) and the
+  static-analysis lessons of Google (Sadowski et al., "Lessons from Building
+  Static Analysis Tools at Google", *Communications of the ACM* 61, 4 (2018))
+  and Facebook (Distefano et al., "Scaling Static Analyses at Facebook",
+  *Communications of the ACM* 62, 8 (2019))** — the evidence that a finding
+  fixed where it is found gets fixed while a filed one mostly does not, and the
+  test for which fixes need no decision: one that keeps the meaning. The
+  fix-in-place discipline (itd-2610271130017437) follows them; the evidence is
+  `.abcd/development/research/notes/2026-10-27-fix-in-place-or-file-sota.md`.
 
 ## References & sources
 

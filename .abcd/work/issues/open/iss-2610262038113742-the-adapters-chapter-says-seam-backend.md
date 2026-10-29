@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 778 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/02-adapters.md:28"
-remedy: "none (filed automatically)"
+remedy: "In 02-adapters.md (and the same sentence in 04-universal-patterns.md) say the seam.backend selectors are design: only oracle.backend is read, it records a choice and routes nothing, and spec.backend, run.backend and history.backend are staged keys."
 finding_ref: cfk-a46f8ddae99b060a
 ---
 

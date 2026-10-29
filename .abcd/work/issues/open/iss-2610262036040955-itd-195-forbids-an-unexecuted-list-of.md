@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 621 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-195-a-claim-about-how-the-code-behaves-is.md:21"
-remedy: "none (filed automatically)"
+remedy: "In 24-decide.md replace the list of which readers call recordid.CanonADRID and which carry their own derivation with a cited parity test over all derivations, or state only what the code in hand does."
 related_intents: [itd-195]
 finding_ref: cfk-5546cd9ed7243e31
 ---

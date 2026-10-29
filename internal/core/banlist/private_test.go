@@ -579,6 +579,27 @@ func TestListPrivateReportsANotIgnoredStore(t *testing.T) {
 	})
 }
 
+// TestAPrivateStoreACommitCarriesIsRefused: a store git tracks came with a
+// commit, not from this checkout's person, so it is refused as theirs rather
+// than read as their layer.
+func TestAPrivateStoreACommitCarriesIsRefused(t *testing.T) {
+	root := t.TempDir()
+	initRepo(t, root, ".abcd/.work.local/\n")
+	writePrivate(t, root, privateFormatDecl+"\nwidget-partner   widgetworks\n")
+	cmd := exec.Command("git", "-C", root, "add", "-f", "--", PrivateRelPath)
+	cmd.Env = gittest.Env(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git add -f: %v\n%s", err, out)
+	}
+	_, err := ListPrivate(root)
+	if !errors.Is(err, ErrMalformedStore) || !strings.Contains(err.Error(), "git tracks "+PrivateRelPath) {
+		t.Fatalf("ListPrivate over a tracked store = %v; want it refused as tracked", err)
+	}
+	if strings.Contains(err.Error(), "widgetworks") {
+		t.Fatalf("the refusal echoes the store's content: %v", err)
+	}
+}
+
 // initRepo makes root a real git repo (with the isolated environment the tree's
 // git-spawning tests share) so the ignored-path check has something to answer.
 func initRepo(t *testing.T, root string, gitignore string) {

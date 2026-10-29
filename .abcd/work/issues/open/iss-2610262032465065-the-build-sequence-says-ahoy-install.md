@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 314 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:848"
-remedy: "none (filed automatically)"
+remedy: "In 06-delivery/01-build-sequence.md (the Install bullet near line 55) drop 'carrying its configuration as flags rather than a wizard': at a terminal the install asks each value question through the drawn door, and the flags pre-answer those questions."
 finding_ref: cfk-d4d5717d70fa1e17
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 406 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:592"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the audit-loop table at 05-intent.md lines 580-598 per iss-2610160855131633 so INCONCLUSIVE fails the fix round like NOT_MET (ruling DQ1a, itd-50 decision 5, 34-build.md line 712); this edit belongs to that open issue's rewrite."
 finding_ref: cfk-369c31f201d4177f
 ---
 

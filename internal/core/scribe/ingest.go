@@ -36,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/reading"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -363,6 +364,13 @@ func proveContext(req IngestRequest, out Output) (Context, Manifest, error) {
 		ctxPath = filepath.Join(req.RepoRoot, filepath.FromSlash(ctxPath))
 	}
 	manifestPath := filepath.Join(filepath.Dir(ctxPath), ManifestFileName)
+	// A parked run inside the checkout that a commit carries was parked by
+	// whoever made the commit, not by this checkout's session.
+	if rel, err := filepath.Rel(req.RepoRoot, filepath.Dir(ctxPath)); err == nil && filepath.IsLocal(rel) {
+		if err := localtier.Untracked(req.RepoRoot, filepath.ToSlash(rel)); err != nil {
+			return Context{}, Manifest{}, fmt.Errorf("scribe: the parked session for %s: %w", out.Run, err)
+		}
+	}
 	mRaw, err := fsutil.ReadGuarded(manifestPath, reading.MaxFileBytes)
 	if err != nil {
 		return Context{}, Manifest{}, fmt.Errorf("scribe: reading the parked manifest for %s: %w; assemble the "+

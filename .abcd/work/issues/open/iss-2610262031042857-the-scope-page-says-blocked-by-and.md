@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 81 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/04-scope.md:40"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-scope.md line 40: `blocked_by` and the readiness gate decide when a lane can take an intent; `builds_on` is an advisory edge the lint and the graph page read, not the build."
 finding_ref: cfk-7b47f4cb34d7488e
 ---
 

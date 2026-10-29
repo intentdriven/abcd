@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 900 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md:428"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-configuration.md (lines near 428-430, 682, 1169, 1215): replace 'a later phase' with 'staged' or a dependency on the intent that would build it, per the retirement of phases (adr-2609212115255771)."
 related_intents: [itd-2609211913453478]
 finding_ref: cfk-ec59b609a78be04c
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 327 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/03-embark.md:3"
-remedy: "none (filed automatically)"
+remedy: "Add glossary/core/embark.md for the shipped lifeboat-unpack command, and rename or qualify the grill-opening entry (glossary/interview/embark.md) so 'embark' no longer resolves to the unshipped concept; list core/embark in its not_to_be_confused_with."
 finding_ref: cfk-982f17602f37b073
 ---
 

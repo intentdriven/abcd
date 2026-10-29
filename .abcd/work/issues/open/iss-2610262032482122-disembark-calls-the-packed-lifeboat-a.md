@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 319 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/02-disembark.md:280"
-remedy: "none (filed automatically)"
+remedy: "In 02-disembark.md (the re-pack acceptance near line 280 and the 'versioned pair of snapshot directories' wording) say lifeboat instead of snapshot; glossary/core/voyage.md's 'latest snapshot' wants the same."
 finding_ref: cfk-80697634ac786a14
 ---
 

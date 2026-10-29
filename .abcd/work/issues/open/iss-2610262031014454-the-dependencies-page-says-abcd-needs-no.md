@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 75 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/02-dependencies.md:3"
-remedy: "none (filed automatically)"
+remedy: "In 02-dependencies.md, name the dashboard route (start refuses unless Tailscale is running and recent enough) as a second declared exception beside the runner fence, and change the opening 'no required external tools' and 'every other route still needs no external tool' to 'except the routes named here'."
 finding_ref: cfk-bf8174e3f8051c97
 ---
 

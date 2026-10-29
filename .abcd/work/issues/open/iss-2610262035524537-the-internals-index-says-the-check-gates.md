@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 604 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/README.md:16"
-remedy: "none (filed automatically)"
+remedy: "In the index row for 10-site.md say the abcd lint site gates and the explorer pages ship, not 'the check gates'."
 finding_ref: cfk-b3ce36a04af0243c
 ---
 

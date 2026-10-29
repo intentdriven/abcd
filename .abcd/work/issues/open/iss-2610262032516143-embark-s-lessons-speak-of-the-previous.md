@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 326 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/03-embark.md:57"
-remedy: "none (filed automatically)"
+remedy: "In 03-embark.md (the lessons bullet near line 57) say 'the previous project' and 'the new project's brief' instead of voyage; commands/embark.md and itd-24 carry the same wording."
 finding_ref: cfk-a1655910dea6bf42
 ---
 

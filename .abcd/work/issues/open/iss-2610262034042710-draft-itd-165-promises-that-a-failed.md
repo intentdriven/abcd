@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 467 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-165-an-intent-that-fails-its-own-fidelity.md:12"
-remedy: "none (filed automatically)"
+remedy: "Supersede or re-scope itd-165 with `abcd intent reclassify`: the audit ingest already captures a major bug for a NOT_MET criterion and a minor inconsistency for an INCONCLUSIVE one, so the draft's premise that no record is created and that an inconclusive verdict files nothing is false; keep only a gate or ratchet remainder if one is wanted."
 related_intents: [itd-165]
 finding_ref: cfk-789e69b5eb7d3ad8
 ---

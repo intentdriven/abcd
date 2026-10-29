@@ -167,6 +167,55 @@ Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of
       --bin-dir string   directory holding the PATH entry to remove; needed only when it was installed with --bin-dir into a directory that is not on PATH
 ```
 
+#### `abcd ahoy worktree`
+
+List this repository's worktrees and its lane in the worktree store: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.
+
+**Usage:** `abcd ahoy worktree`
+
+##### `abcd ahoy worktree add`
+
+Add a worktree in this repository's lane of the worktree store: Writes the worktree, its start record and its local tier; refuses a taken or reserved name.
+
+**Usage:** `abcd ahoy worktree add <name> [flags]`
+
+**Flags:**
+
+```
+      --branch string   check out this existing local branch instead of making a new one
+```
+
+**Example:**
+
+```
+abcd ahoy worktree add example-lane
+```
+
+##### `abcd ahoy worktree list`
+
+List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.
+
+**Usage:** `abcd ahoy worktree list [flags]`
+
+**Flags:**
+
+```
+      --all   walk every lane in the worktree store on this machine
+```
+
+##### `abcd ahoy worktree prune`
+
+Reclaim this lane's merged, clean worktrees, archiving their notes first: Writes the notes archive and removes the worktrees; refuses a store it cannot trust.
+
+**Usage:** `abcd ahoy worktree prune [flags]`
+
+**Flags:**
+
+```
+      --dry-run           archive and remove nothing; report what a real run would
+      --yes stringArray   reclaim this quiet candidate too (repeatable); a name not in the lane refuses the run
+```
+
 ### `abcd announce`
 
 Post a fixed-form announcement on the shared remote: Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.
@@ -2501,8 +2550,8 @@ above 1 it takes no slot until its race run starts, which the race gate keeps
 to one at a time. A waiter that has opened stands back only from a waiter that
 opened in the same moment at its own gate, never from one at the other gate.
 
-How many preflights may be in their test stages at once is your own machine's
-setting: `load.preflights` in `~/.abcd.noindex/config.json`, or ABCD_LOAD_PREFLIGHTS in the
+How many preflights the first gate admits to their test stages at once is your
+own machine's setting: `load.preflights` in `~/.abcd.noindex/config.json`, or ABCD_LOAD_PREFLIGHTS in the
 environment, which wins, for a trial; a whole number from 1 to 4, 1 by default,
 and never read from a repository file, so a checkout cannot raise the machine's
 load. At 1 both gates read as before the setting existed. Above 1 the
@@ -2510,11 +2559,12 @@ first gate opens while fewer than that many other preflights or waiters running
 their command are in their test stages (a `--wait -- make preflight` counts
 once), a waiter queued ahead still shuts it, and a live race run does not shut
 it by itself; the load limit still does, and the race gate keeps race stages
-apart. A value it cannot use refuses the wait, naming where it was set. A
-`~/.abcd.noindex/config.json` that cannot be read for it (writable by others,
-not valid JSON, or a `load` that is not an object) is read past instead: one
-preflight at a time applies, and one line on stderr names the file, the cause
-and how to fix it; so does a key under `load` that nothing reads.
+apart, so one race stage may run beside that many unit stages. A value it
+cannot use refuses the wait, naming where it was set. A `~/.abcd.noindex/config.json`
+that cannot be read for it (writable by others, not valid JSON, or a `load`
+that is not an object) is read past instead: one preflight at a time applies,
+and one line on stderr names the file, the cause and how to fix it; so does a
+key under `load` that nothing reads.
 
 Within one account the waiter that opens also takes a hold,
 `~/.abcd.noindex/load-wait.json` at the first gate and `~/.abcd.noindex/load-wait-race.json` at
@@ -4694,13 +4744,15 @@ tombstone cannot mark the hand-back is still made, plain, and says why
 
 A footprint sharing a path with another person's live reservation backs off
 (exit 3). A file that origin's default branch, as last fetched, declares
-linguist-generated in its root .gitattributes is shared, never an overlap; a
-directory never is. When that declaration cannot be read nothing is shared, and
-the act says why (generated_unread in --json). Your own reservation sharing a
-path with yours from another copy is made, and warns on stderr (own_overlap in
---json). Name files, not directories: a directory holds off every reservation of
-a file inside it. A footprint path naming a directory git tracks is reserved all
-the same, and warns on stderr, naming it and how many tracked files it covers on
+linguist-generated in its root .gitattributes is shared, never an overlap, and
+is named on a shared: line for whoever lands second to regenerate after
+merging (generated_shared in --json); a directory never is. When that
+declaration cannot be read nothing is shared, and the act says why
+(generated_unread in --json). Your own reservation sharing a path with yours
+from another copy is made, and warns on stderr (own_overlap in --json). Name
+files, not directories: a directory holds off every reservation of a file
+inside it. A footprint path naming a directory git tracks is reserved all the
+same, and warns on stderr, naming it and how many tracked files it covers on
 origin's default branch, or HEAD (directory_footprint in --json).
 
 A reservation, a renewal and a take-over consult the embargo store on this

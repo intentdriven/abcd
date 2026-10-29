@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 144 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-5-prompt-quality-additions.md:87"
-remedy: "none (filed automatically)"
+remedy: "In itd-5 Add 4, replace 'does NOT modify the oracle cascade' and the pre-cascade selector wording with the oracle-seam wording the verification matrix already uses: capability_scope leaves the oracle seam unchanged and capability-aware routing, when built, is a pre-dispatch selector above the seam; drop the 'fixed cascade' reference to universal-patterns section 7"
 related_intents: [itd-5]
 finding_ref: cfk-a32d99498eaf9b44
 ---

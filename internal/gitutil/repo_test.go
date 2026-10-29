@@ -1,6 +1,7 @@
 package gitutil_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -250,5 +251,26 @@ func TestRootCommit(t *testing.T) {
 	}
 	if got, err := gitutil.RootCommit(t.TempDir()); got != "" || err != nil {
 		t.Errorf("RootCommit(non-repo) = %q, %v; want \"\", nil", got, err)
+	}
+}
+
+// TestTrackedInTreeListsTheTreeWhateverCoreWorktreeNames: the tree at top is
+// listed as itself, so a core.worktree set elsewhere neither hides what its
+// index tracks nor reads as a tree git cannot answer for.
+func TestTrackedInTreeListsTheTreeWhateverCoreWorktreeNames(t *testing.T) {
+	repo := t.TempDir()
+	if out, err := runGit(t, repo, "init", "-q"); err != nil {
+		t.Fatal(out)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "a.md"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commitAll(t, repo)
+	if out, err := runGit(t, repo, "config", "core.worktree", t.TempDir()); err != nil {
+		t.Fatal(out)
+	}
+	got, err := gitutil.TrackedInTreeContext(context.Background(), repo)
+	if err != nil || len(got) != 1 || got[0] != "a.md" {
+		t.Fatalf("TrackedInTreeContext under a core.worktree set elsewhere = %q, %v; want [a.md]", got, err)
 	}
 }

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -212,6 +213,133 @@ func TestPrePushPassesACommitWithAReceipt(t *testing.T) {
 	}
 	if tip := c.remoteTip("feature"); tip != head {
 		t.Errorf("the remote holds %q, want %s", tip, head)
+	}
+}
+
+// A receipt is the checkout's own. One a later commit carries (added past the
+// local tier's ignore rule) was minted by whoever made that commit, so it lets
+// no push through, even of the very commit it names.
+func TestPrePushRefusesAReceiptACommitCarries(t *testing.T) {
+	c := newPrePushCase(t)
+	first := c.commit("feature.md", "a feature\n")
+	rel := ".abcd/.work.local/preflight-receipts/" + first
+	c.write(rel, "commit "+first+"\nminted 2026-01-01T00:00:00Z\n", 0o644)
+	c.git("add", "-f", rel)
+	c.git("commit", "-q", "-m", "an unrelated change")
+	out, err := c.push("origin", first+":refs/heads/feature")
+	if err == nil {
+		t.Fatalf("a receipt a commit carries let the push through\n%s", out)
+	}
+	if !strings.Contains(out, "no passing preflight") {
+		t.Errorf("the refusal does not say what is missing\n%s", out)
+	}
+	if tip := c.remoteTip("feature"); tip != "" {
+		t.Errorf("the remote moved to %s although the push was refused", tip)
+	}
+}
+
+// Pushed from a linked worktree, the hook runs with git's GIT_DIR naming that
+// worktree, and a sibling's receipt is still judged by the sibling's own
+// index: one the primary checkout tracks counts for nothing there either.
+func TestPrePushRefusesAReceiptASiblingCheckoutTracks(t *testing.T) {
+	c := newPrePushCase(t)
+	sibling := filepath.Join(t.TempDir(), "sibling")
+	c.git("worktree", "add", "-q", "-b", "lane", sibling)
+	if err := os.WriteFile(filepath.Join(sibling, "lane.md"), []byte("lane\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "lane.md"}, {"commit", "-q", "-m", "lane"}} {
+		if out, err := c.run(sibling, "git", args...); err != nil {
+			t.Fatal(out)
+		}
+	}
+	lane, err := c.run(sibling, "git", "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(lane)
+	}
+	lane = strings.TrimSpace(lane)
+	rel := ".abcd/.work.local/preflight-receipts/" + lane
+	c.write(rel, "commit "+lane+"\nminted 2026-01-01T00:00:00Z\n", 0o644)
+	c.git("add", "-f", rel)
+	c.git("commit", "-q", "-m", "an unrelated change")
+	out, err := c.run(sibling, "git", "push", "origin", "lane")
+	if err == nil {
+		t.Fatalf("a receipt the primary checkout tracks let a sibling's push through\n%s", out)
+	}
+	if tip := c.remoteTip("lane"); tip != "" {
+		t.Errorf("the remote moved to %s although the push was refused", tip)
+	}
+}
+
+// A tier git tracks anything in, by any letter case of its name, holds no
+// receipt that counts: a filesystem that folds case opens .abcd/.Work.Local as
+// the tier itself.
+func TestPrePushRefusesAReceiptBesideATierSpelledAnotherWay(t *testing.T) {
+	c := newPrePushCase(t)
+	head := c.commit("feature.md", "a feature\n")
+	if out := c.preflight(c.dir); !strings.Contains(out, "receipt minted for "+head[:12]) {
+		t.Fatalf("a preflight on a clean tree minted no receipt\n%s", out)
+	}
+	blob := c.git("rev-parse", "HEAD:seed.md")
+	c.git("update-index", "--add", "--cacheinfo", "100644,"+blob+",.abcd/.Work.Local/run/drain.json")
+	out, err := c.push("origin", head+":refs/heads/feature")
+	if err == nil {
+		t.Fatalf("a receipt beside a tier git tracks a file in let the push through\n%s", out)
+	}
+	if tip := c.remoteTip("feature"); tip != "" {
+		t.Errorf("the remote moved to %s although the push was refused", tip)
+	}
+}
+
+// A listing longer than a pipe holds is judged whole: the tracked tier entry
+// sorts first, and a check that stops reading at its first match must still
+// count it as a match, never as none.
+func TestPrePushRefusesAReceiptACommitCarriesAmongManyFiles(t *testing.T) {
+	c := newPrePushCase(t)
+	for i := range 2500 {
+		c.write(fmt.Sprintf("pad/%04d-%s.md", i, strings.Repeat("x", 60)), "x\n", 0o644)
+	}
+	c.git("add", "pad")
+	first := c.commit("feature.md", "a feature\n")
+	rel := ".abcd/.work.local/preflight-receipts/" + first
+	c.write(rel, "commit "+first+"\nminted 2026-01-01T00:00:00Z\n", 0o644)
+	c.git("add", "-f", rel)
+	c.git("commit", "-q", "-m", "an unrelated change")
+	if listed := c.git("ls-files"); len(listed) < 128<<10 {
+		t.Fatalf("the listing is %d bytes; it must outgrow a pipe's buffer", len(listed))
+	}
+	out, err := c.push("origin", first+":refs/heads/feature")
+	if err == nil {
+		t.Fatalf("a receipt a commit carries let the push through beside a long listing\n%s", out)
+	}
+	if tip := c.remoteTip("feature"); tip != "" {
+		t.Errorf("the remote moved to %s although the push was refused", tip)
+	}
+}
+
+// On a filesystem that folds names, a spelling no letter case of the tier's
+// name matches (the Kelvin sign for its k) still opens the tier, and is judged
+// by the directory it opens.
+func TestPrePushRefusesAReceiptBesideATierFoldedByTheFilesystem(t *testing.T) {
+	c := newPrePushCase(t)
+	head := c.commit("feature.md", "a feature\n")
+	if out := c.preflight(c.dir); !strings.Contains(out, "receipt minted for "+head[:12]) {
+		t.Fatalf("a preflight on a clean tree minted no receipt\n%s", out)
+	}
+	spelled := ".abcd/.wor\u212a.local"
+	tier, errT := os.Stat(filepath.Join(c.dir, ".abcd", ".work.local"))
+	folded, errF := os.Stat(filepath.Join(c.dir, filepath.FromSlash(spelled)))
+	if errT != nil || errF != nil || !os.SameFile(tier, folded) {
+		t.Skip("this filesystem does not fold the Kelvin sign onto k")
+	}
+	blob := c.git("rev-parse", "HEAD:seed.md")
+	c.git("update-index", "--add", "--cacheinfo", "100644,"+blob+","+spelled+"/run/drain.json")
+	out, err := c.push("origin", head+":refs/heads/feature")
+	if err == nil {
+		t.Fatalf("a receipt beside a tier git tracks a file in let the push through\n%s", out)
+	}
+	if tip := c.remoteTip("feature"); tip != "" {
+		t.Errorf("the remote moved to %s although the push was refused", tip)
 	}
 }
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 994 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/01-build-sequence.md:131"
-remedy: "none (filed automatically)"
+remedy: "Re-aim itd-59 at the lane agents abcd build runs instead of 'the autonomous worker on the pluggable run seam', which is a design target."
 related_intents: [itd-59]
 finding_ref: cfk-630f65fdba9ae370
 ---

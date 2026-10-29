@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 305 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/04-universal-patterns.md:195"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-universal-patterns.md section 8 table: move 'capture issue-ledger entries (immutable post-create)' out of the Append-only row; the Compounding-curated row already lists the .abcd/work/issues/ ledger."
 finding_ref: cfk-1eefd1f7f776665d
 ---
 

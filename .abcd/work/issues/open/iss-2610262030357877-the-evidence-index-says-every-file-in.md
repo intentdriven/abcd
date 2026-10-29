@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 20 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/03-evidence/README.md:4"
-remedy: "none (filed automatically)"
+remedy: "Change the status line of 04-tradeoffs.md from PARTIAL to LIVE, as its three siblings and the chapter README say."
 finding_ref: cfk-f85189e46ebe0d83
 ---
 

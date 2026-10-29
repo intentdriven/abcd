@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 848 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-57-manual-hold-sentinel.md:13"
-remedy: "none (filed automatically)"
+remedy: "If itd-57 is re-scoped rather than superseded, replace 'voyage' in its title, press release and the 'voyage-agnostic' line with plain words (the repository, the project); the word names the operations log only (adr-35, glossary/core/voyage.md). No edit if itd-57 is superseded."
 related_intents: [itd-57]
 finding_ref: cfk-bbe7d73a3c7ac9ef
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 849 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-61-brief-change-derivation.md:24"
-remedy: "none (filed automatically)"
+remedy: "In 04-universal-patterns.md (the doc-fidelity entry in the logs layout and the forward-source marker paragraph) replace 'draft intent itd-60 ... planned ... not yet built' with the shipped state: itd-60 sits in intents/shipped/ and the gate is internal/core/docfidelity; check the content-addressed layout and paired-stamp wording against what that store writes."
 related_intents: [itd-61]
 finding_ref: cfk-773c91fe27c0bf7d
 ---

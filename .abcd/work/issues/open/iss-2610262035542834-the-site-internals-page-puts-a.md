@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 606 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/10-site.md:109"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does itd-140 rule 3 (adr-47 decision 6: no repo-agnostic claim until a second sparse instance demonstrates it) still gate the site, now that site setup ships for any managed repository and the 2026-10-14 Pages ruling promises the record for every managed repo? Answers: (1) the gate stands and the Pages intent's second-repo acceptance becomes the demonstration; (2) a new ruling lifts the gate. Recommend (1): it keeps the discipline and needs only prose edits, while the shipped setup verb is already described as what it does rather than as a genericity claim."
 finding_ref: cfk-25368db992dc57ff
 ---
 

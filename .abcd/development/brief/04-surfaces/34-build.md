@@ -140,17 +140,23 @@ reservation keeps people, and one person's computers, apart. In a checkout
 with a remote named `origin`, a run reserves its key there once its checks and
 its budget check pass and before the run is created, through
 `internal/core/claim`, as `abcd reserve` does: with the packages its spec's
-`## Footprint` `- packages:` line names, each cleaned of a trailing slash, for
-an intent, and the path an issue's `found_at` names for an issue. The
-reservation names exactly those paths, so a file named there is reserved as
+`## Footprint` `- packages:` line names, each read as written when that names
+something in the tree and otherwise as its path alone (a trailing
+parenthetical note set off by a space dropped, a comma inside one not
+splitting the entry), and cleaned of a trailing slash, for an intent, and the
+path an issue's `found_at` names for an issue. The reservation names exactly
+those paths, so a file named there is reserved as
 that file, and one reservation holds them for every step of the run; a step's
 own packages line is not read for it. A path naming a directory git tracks is
 reserved as it stands, and the start warns of it as the reserve verb does,
 naming the directory and its tracked files (`reservation_warnings`, a warning
 on stderr in the text form; iss-2610230016544142). A spec with
 no footprint, or an issue with no such path, is refused at the `reservation`
-stage, starting nothing (C35); another's hold, a person's or this person's
-other copy's, is contention at the same stage; a take-over asked for passes
+stage, starting nothing (C35), and so is a spec whose packages entry is still
+prose once its note is dropped, holding a space and naming nothing in the
+tree, the refusal naming the spec and the entry (iss-2610241549334990);
+another's hold, a person's or this person's other copy's, is contention at the
+same stage; a take-over asked for passes
 through, moving this person's own live reservation from another copy and never
 another person's, and the peers check then does not count that copy as a holder. The
 run's state records the reservation (`reserved_at`) and its record names it;
@@ -176,7 +182,8 @@ The pick sub-verb chooses the intent instead of taking one named
 intents that pass every check above, judged by the same function, less one
 this checkout already has a run in progress for, and, in a checkout with a
 remote named `origin`, less one whose spec's `## Footprint` names no packages
-to reserve it with (the check `footprint`), since its start would be refused
+to reserve it with, or names one by prose (the check `footprint`), since its
+start would be refused
 at the reservation; a planned intent a check excludes is named with the first
 check that excluded it. Each candidate is
 scored from its record, three parts of 0 to 100 at equal weight (decision 7,
@@ -595,8 +602,10 @@ configuration sets. An
 interrupt or a termination kills the runner's process group. The status and
 record verbs count the fallbacks per runner and per role. A host session
 always drives this: the no-host path, where a host-routed role goes to the
-machine's `runner.fallback_host`, is the process driver's reversal of the
-host-delegated boundary, and waits on the ADR decision 6 of the intent owes.
+machine's `runner.fallback_host`, is the reversal of the host-delegated
+boundary that adr-2610222222326104 records; `abcd drain` builds it first
+(itd-2610222215485265), and `abcd build` adopts it after that, in step 12 of
+spc-2609202134338445.
 
 **The reviewer route** (itd-6, spc-2609211950427074). A build lane's ruthless
 and security reviews can go to RepoPrompt over MCP instead of the host's own

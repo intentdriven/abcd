@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 495 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-86-cold-reading-surface.md:35"
-remedy: "none (filed automatically)"
+remedy: "Rewrite itd-86 against what shipped (itd-180 output contract, itd-184 four positions, itd-183 assembled input): drop the in-scope bullet that each detection lands as a reading record, or move itd-86 to intents/superseded/ with superseded_by itd-184 and drop it from brief/06-delivery/03-out-of-scope.md in the same change."
 related_intents: [itd-86]
 finding_ref: cfk-597f29e1cd4fcd99
 ---

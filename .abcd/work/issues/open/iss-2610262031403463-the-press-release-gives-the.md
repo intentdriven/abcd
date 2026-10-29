@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 161 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:7"
-remedy: "none (filed automatically)"
+remedy: "Change 'Alice' to 'Iris' in itd-106's customer quote: personas.json gives Iris the 'product thinker' role hint and Alice solo founder and product engineer."
 related_intents: [itd-106]
 finding_ref: cfk-7e540bf8983ab184
 ---
