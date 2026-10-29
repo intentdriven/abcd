@@ -102,7 +102,10 @@ func TestLoadOverridesTheLiteralPrefixReading(t *testing.T) {
 		name, body string
 		want       Verdict
 	}{
-		{"turned off", `{"schema_version":1,"entries":{"git-push-delete-refspec":{"pattern":{"arg_prefixes_literal":false}}}}`, VerdictWarn},
+		// Read as a delete, the line is refused: a registry loaded for a
+		// repository proves its deletes (deletes.go), and this one has no
+		// prover, as a front door would attach.
+		{"turned off", `{"schema_version":1,"entries":{"git-push-delete-refspec":{"pattern":{"arg_prefixes_literal":false}}}}`, VerdictBlock},
 		{"inherited", `{"schema_version":1,"entries":{"git-push-delete-refspec":{"tier":"warn"}}}`, VerdictAllow},
 	} {
 		t.Run(c.name, func(t *testing.T) {

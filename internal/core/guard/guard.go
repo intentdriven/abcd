@@ -217,6 +217,10 @@ type Registry struct {
 	// forge is the forge-text opt-in of the repository this registry was
 	// loaded for (forge.go); nil for a registry with no repository behind it.
 	forge *forgeGate
+
+	// deletes proves a delete's targets safe (deletes.go); nil for a registry
+	// no front door attached one to, which refuses every delete.
+	deletes DeleteProver
 }
 
 // Decision is what core returns for one candidate command. It carries no
@@ -545,6 +549,9 @@ func (r Registry) check(command string) (Decision, error) {
 	v, err := r.judge(command, rc, nil)
 	if err != nil {
 		return Decision{}, err
+	}
+	if sig, ok := r.deleteSignal(v); ok {
+		v.signals = append(v.signals, sig)
 	}
 	d := r.decide(v)
 	if rc != nil {
@@ -970,7 +977,7 @@ func message(v Verdict, e Entry) string {
 }
 
 func cloneRegistry(r Registry) Registry {
-	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees, files: r.files, forge: r.forge}
+	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees, files: r.files, forge: r.forge, deletes: r.deletes}
 	if r.Entries != nil {
 		out.Entries = make(map[string]Entry, len(r.Entries))
 		for id, e := range r.Entries {

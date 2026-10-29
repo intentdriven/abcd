@@ -38,7 +38,16 @@ var wordReaders = map[string]string{
 
 	// branchacts.go: the away mode's created-branch recorder, which records
 	// and refuses nothing.
-	"branchActsIn":      "isUnknown on every word: a command with a word nothing fixes is read as no branch act",
+	"branchActsIn": "isUnknown on every word: a command with a word nothing fixes is read as no branch act",
+	// deletes.go: the delete proof's reading. Each refuses the line on any
+	// word isUnknown reports, so a word nothing fixes is never read as a
+	// literal target, option or command name.
+	"deleteTargets":     "reads only cd/pushd/popd and GIT_ words; a git site comes from sitesNamed",
+	"deletesIn":         "isUnknown on the -C value and the subcommand, and mayDelete refuses an unknown word",
+	"pushDeletes":       "isUnknown on every word before it is read",
+	"branchDeletes":     "isUnknown on every word before it is read",
+	"branchOperand":     "reads a word pushDeletes or branchDeletes has already found fixed",
+	"worktreeRemoves":   "isUnknown on every word before it is read",
 	"branchCommandActs": "exempt: reads only words branchActsIn found known",
 	"createFlagActs":    "exempt: reads only words branchActsIn found known",
 	"flagValue":         "exempt: reads only words branchActsIn found known",
