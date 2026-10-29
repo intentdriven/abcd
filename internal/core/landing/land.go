@@ -102,10 +102,23 @@ const (
 	StatusLanded = "landed"
 )
 
-// gateTimeout bounds one preflight run: the load waiter it starts with gives
-// up after two hours, and the gates after it take well under one. A var so a
-// test can shorten it.
-var gateTimeout = 4 * time.Hour
+// preflightGateWait is how long `make preflight` waits at the load gate for
+// its turn as one whole run: the --timeout its recipe gives the gate's
+// command form (itd-2610262127138979). TestGateTimeoutOutlastsTheWholeRunWait
+// reads that --timeout from the Makefile and holds gateTimeout above it, so
+// the two cannot drift.
+const preflightGateWait = 12 * time.Hour
+
+// preflightRunBound is how long a whole preflight run may take once the gate
+// admits it, on a loaded machine: the gates, the eval lanes, build, vet, and
+// the unit and race stages, each of those two under a 40-minute package
+// budget.
+const preflightRunBound = 4 * time.Hour
+
+// gateTimeout bounds one `make preflight`: its wait at the load gate and then
+// the whole run it admits, so land never kills a preflight still waiting its
+// turn or partway through its run. A var so a test can shorten it.
+var gateTimeout = preflightGateWait + preflightRunBound
 
 // gateWaitDelay bounds the wait for the preflight's output once it has exited
 // or been killed (procgroup.Bound).

@@ -230,6 +230,10 @@ const parallelismCall = `p=$$(go run ./cmd/test-parallelism) && \`
 // preflight that did nothing wrong.
 const wholeRunTimeout = 12 * time.Hour
 
+// stagesMakeVar is the variable preflight's gate runs the stages' make
+// through (TestPreflightWaitsAsOneWholeRun).
+const stagesMakeVar = "PREFLIGHT_STAGES_MAKE"
+
 // TestPreflightWaitsAsOneWholeRun: `make preflight` has no prerequisite and
 // runs nothing before the load gate's command form, which runs every stage
 // (preflightStages) as its command, so a queued preflight does no lint, eval,
@@ -259,8 +263,17 @@ func TestPreflightWaitsAsOneWholeRun(t *testing.T) {
 	}
 	gate := strings.Fields(lines[0])
 	cmd := slices.Index(gate, "--")
-	if !strings.HasPrefix(lines[0], loadGateCall+" ") || cmd < 0 || !slices.Equal(gate[cmd+1:], []string{"$(MAKE)", "--no-print-directory", preflightStages}) {
-		t.Fatalf("preflight's first line is %q; want %s ... -- $(MAKE) --no-print-directory %s", lines[0], loadGateCall, preflightStages)
+	if !strings.HasPrefix(lines[0], loadGateCall+" ") || cmd < 0 || !slices.Equal(gate[cmd+1:], []string{"$(" + stagesMakeVar + ")"}) {
+		t.Fatalf("preflight's first line is %q; want %s ... -- $(%s)", lines[0], loadGateCall, stagesMakeVar)
+	}
+	// make runs a recipe line that names MAKE itself even under -n, -q and
+	// -t, so a dry run would queue at the gate for hours; named through a
+	// variable, the line is an ordinary one, which those forms never run.
+	if strings.Contains(recipe, "$(MAKE)") || strings.Contains(recipe, "${MAKE}") {
+		t.Errorf("preflight's recipe names MAKE directly, so make -n, -q and -t run its gate:\n%s", recipe)
+	}
+	if want := stagesMakeVar + " = $(MAKE) --no-print-directory " + preflightStages; !slices.Contains(strings.Split(makefile, "\n"), want) {
+		t.Errorf("the Makefile does not declare %q", want)
 	}
 	at := slices.Index(gate[:cmd], "--timeout")
 	if at < 0 || at+1 >= cmd {

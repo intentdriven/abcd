@@ -294,7 +294,7 @@ asking-sync-check:
 #
 # A preflight waits for its turn as one whole run (itd-2610262127138979,
 # iss-2610241537197997): `preflight` runs nothing but the load gate's command
-# form (`abcd implement load --wait -- $(MAKE) preflight-stages`), so a queued
+# form (`abcd implement load --wait -- make preflight-stages`), so a queued
 # preflight does no lint, eval, build, vet or test work, and the waiter is the
 # parent of the whole run, its turn held until the run ends. Its prerequisites
 # ran before the old gate, which stood only before the test stages, so thirty
@@ -339,8 +339,18 @@ asking-sync-check:
 # outran 20 minutes on a 10-core Mac at a load of 5 to 7, with no test hung
 # (iss-2610250007404944).
 preflight:
-	go run ./cmd/abcd implement load --wait --timeout 12h -- $(MAKE) --no-print-directory preflight-stages
+	go run ./cmd/abcd implement load --wait --timeout 12h -- $(PREFLIGHT_STAGES_MAKE)
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
+
+# The make the gate runs the stages with. It is named through this variable so
+# the gate's line is an ordinary recipe line: make runs a line that names MAKE
+# directly even under -n, -q and -t, and a dry run would then queue at the gate
+# for hours. So `make -n preflight` prints the gate's line and runs nothing;
+# `make -n preflight-stages` shows the stages. The cost is make's jobserver: a
+# `make -j` preflight runs its stages one job at a time.
+# The 12h above is internal/core/landing's preflightGateWait, which `abcd land`
+# bounds a preflight by (TestGateTimeoutOutlastsTheWholeRunWait).
+PREFLIGHT_STAGES_MAKE = $(MAKE) --no-print-directory preflight-stages
 
 # preflight's stages: its gates as prerequisites, then build, vet and the two
 # test stages. It is `preflight`'s command, run inside the turn the load gate

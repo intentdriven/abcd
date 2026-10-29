@@ -513,7 +513,10 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		if req.Race && n <= 1 {
 			res.Status = WaitOpen
 			res.Reason = "one preflight at a time may be in its test stages, so the race stage follows its tests at once"
-			res.Still = nil
+			// An open gate names nothing that held it shut; what an earlier
+			// look found is WaitedOn's.
+			res.Still, res.RaceRuns, res.Holder = nil, []int{}, nil
+			res.Preflights, res.Waiters, res.UngatedTests = nil, nil, nil
 			res.WaitedS = now().Sub(start).Seconds()
 			return true, nil
 		}

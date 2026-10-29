@@ -300,6 +300,10 @@ func TestWaitRaceGateOpensOnceTheCountFallsToOne(t *testing.T) {
 	if res.Status != WaitOpen || res.Slots != 1 || !reflect.DeepEqual(res.WaitedOn, []string{WaitOnRaceRun}) || res.Hold != nil {
 		t.Fatalf("%+v; want shut on [race-run] with 2 slots, then open at once, without a hold, with 1", res)
 	}
+	// An open result names nothing that held it shut: that is WaitedOn's.
+	if len(res.RaceRuns) != 0 || len(res.Waiters) != 0 || len(res.Preflights) != 0 || res.Holder != nil || len(res.Still) != 0 {
+		t.Fatalf("%+v; want the open result to carry no race runs, waiters, preflights, holder or still", res)
+	}
 }
 
 // TestWaitWholeRunWithTwoSlotsHoldsOnlyToSettle: above one slot a whole run's
