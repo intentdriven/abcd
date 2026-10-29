@@ -4033,7 +4033,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.Flags().BoolVar(&identityMode, "identity", false,
 		"check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)")
 	ahoyCmd.Flags().BoolVar(&remoteMode, "remote", false,
-		"report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change")
+		"audit this repository's GitHub settings against abcd's baseline, one line per setting, and say what the remote apply sub-verb would change")
 	ahoyCmd.Flags().BoolVar(&providersMode, "providers", false,
 		"explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live")
 	ahoyCmd.MarkFlagsMutuallyExclusive("dry-run", "identity", "remote", "providers")
@@ -4490,9 +4490,10 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 			// A change that did not happen exits non-zero. `aborted` is on this list
 			// deliberately: a non-interactive run without --yes reads EOF, declines,
 			// and would otherwise print "aborted" and exit 0 — which to a script is
-			// indistinguishable from a write that landed. `opted_out` is the one
-			// non-change that exits clean, because leaving the repo alone IS what the
-			// repo asked for. The reason is on stdout above either way. A refusal
+			// indistinguishable from a write that landed. A run with nothing to
+			// change exits clean, settings the repo keeps included, because leaving
+			// them alone IS what the repo asked for. The reason is on stdout above
+			// either way. A refusal
 			// exits 2, the code every other verb and `ahoy install` give one; an
 			// abort keeps exit 1, where scripts already read it
 			// (iss-2610031915386832).
@@ -4542,8 +4543,13 @@ func renderRemoteResult(w io.Writer, verb string, res ahoy.RemoteResult) {
 	fmt.Fprintf(w, "  observed: secret scanning %s, push protection %s\n",
 		termsafe.Sanitize(remoteStatusWord(res.Observed.SecretScanning)),
 		termsafe.Sanitize(remoteStatusWord(res.Observed.PushProtection)))
-	for _, c := range res.Changes {
-		fmt.Fprintf(w, "  change:   %s\n", termsafe.Sanitize(c))
+	renderSettingsAudit(w, res.Audit)
+	// The read's changes are the audit's differences, already printed above
+	// one per setting; an apply's are what it changed.
+	if res.Audit == nil || res.Status != "pending" {
+		for _, c := range res.Changes {
+			fmt.Fprintf(w, "  change:   %s\n", termsafe.Sanitize(c))
+		}
 	}
 	for _, p := range res.Writes {
 		fmt.Fprintf(w, "  wrote:    %s\n", termsafe.Sanitize(p))
@@ -4552,6 +4558,43 @@ func renderRemoteResult(w io.Writer, verb string, res ahoy.RemoteResult) {
 	// failure, so the reason is printed whatever the status.
 	for _, n := range res.Notes {
 		fmt.Fprintf(w, "  note:     %s\n", termsafe.Sanitize(n))
+	}
+}
+
+// renderSettingsAudit prints the settings audit (itd-2610290746077716): the
+// visibility and plan, the checks the baseline requires, then one
+// `setting: current -> target [state] note` line per setting not at its
+// target, and the rest as one count. Every value is sanitised: it is GitHub's
+// answer or the tree's, not abcd's own words.
+func renderSettingsAudit(w io.Writer, a *ahoy.SettingsAudit) {
+	if a == nil {
+		return
+	}
+	plan := a.Plan
+	if plan == "" {
+		plan = "unknown"
+	}
+	fmt.Fprintf(w, "  visibility: %s (declared %s), plan %s\n",
+		termsafe.Sanitize(remoteStatusWord(a.Visibility)), termsafe.Sanitize(remoteStatusWord(a.DeclaredVisibility)),
+		termsafe.Sanitize(plan))
+	if len(a.RequiredChecks) > 0 {
+		fmt.Fprintf(w, "  required checks: %s\n", termsafe.Sanitize(strings.Join(a.RequiredChecks, ", ")))
+	}
+	ok := 0
+	for _, f := range a.Findings {
+		if f.State == "ok" {
+			ok++
+			continue
+		}
+		line := fmt.Sprintf("  setting:  %s: %s -> %s [%s]", f.Setting, f.Current, f.Target, f.State)
+		if f.Note != "" {
+			line += " " + f.Note
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(line))
+	}
+	fmt.Fprintf(w, "  baseline: %d settings at their target\n", ok)
+	for _, n := range a.Notes {
+		fmt.Fprintf(w, "  workflow: %s\n", termsafe.Sanitize(n))
 	}
 }
 

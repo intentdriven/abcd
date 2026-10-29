@@ -7,19 +7,20 @@ target, enforcement, conditions, bypass actors, rules — no volatile ids or
 timestamps) so every gate claim in the contribution documents has a source of truth
 in the tree rather than only a web console.
 
-- `main-protection.json` — deletion/force-push protection, the nine required
-  status checks (strict), and the merge queue. **No bypass actors**: nobody
+- `main-protection.json` — deletion/force-push protection, the required
+  status checks (strict; the file's `required_status_checks` list is the
+  count), and the merge queue. **No bypass actors**: nobody
   merges past a red required check.
 - `main-review.json` — the pull-request rule requiring a code-owner review.
   Its approval count is 0, and the repository has no code-owners file, so the
   rule names no owner and requires no approval: only an account with write
   access or above can merge, which is the repository's maintainer test. The
-  publish surface is listed in `.abcd/work/publish-surface.txt`. Repository
-  admins are its bypass actors, which is why it is a separate ruleset: a
-  bypass covers every rule in its ruleset, so the review requirement and the
-  required checks must never share one. abcd's build and drain lanes arm
-  auto-merge only where a ruleset requires an approval, so in this repository
-  they leave their pull requests open for a maintainer to merge.
+  publish surface is listed in `.abcd/work/publish-surface.txt`. **No bypass
+  actors.** It is a separate ruleset so that a bypass, if one is ever added,
+  cannot also cover the required checks: a bypass covers every rule in its
+  ruleset. abcd's build and drain lanes arm auto-merge only where a ruleset
+  requires an approval, so in this repository they leave their pull requests
+  open for a maintainer to merge.
 - `reservations-protection.json` — deletion and force-push protection for
   `refs/heads/abcd-reserved/**`, the branches `abcd reserve` pushes
   (itd-2609091034175565). It is its own ruleset because it guards abcd's
@@ -66,15 +67,21 @@ in the tree rather than only a web console.
   cut still pushes its new tag.
 - `repo-settings.json` — the repository-object settings, which the rulesets above
   do not cover: a ruleset is not a repository setting, and these live behind
-  `GET /repos/{owner}/{repo}`. Two sections, deliberately apart. `managed` is what
-  `abcd ahoy remote apply` drives and restores — GitHub's native secret scanning and
-  secret-scanning push protection, the belt-and-braces layer alongside the CI
-  full-history secret scan. `observed` is a snapshot of the merge-hygiene settings
-  abcd records but never sets (`delete_branch_on_merge`, and which merge methods the
-  repository allows): they encode a maintainer's workflow rather than a security
-  posture, and a verb that drove them would change how the project merges on the
-  strength of a default nobody chose. Collapsing the two would make the file read as
-  a promise about settings nothing enforces.
+  `GET /repos/{owner}/{repo}`. Three sections, deliberately apart. `managed` is what
+  `abcd ahoy remote apply` holds the repository to, the settings baseline at its
+  target (the security toggles, the repository's flags, the Actions policy and
+  the workflow token). `owed` names the settings the plan or the visibility does
+  not offer yet. `observed` is a snapshot of the merge-hygiene settings abcd
+  records (`delete_branch_on_merge`, and which merge methods the repository
+  allows); of these the apply sets only `delete_branch_on_merge`. The merge
+  methods encode a maintainer's workflow rather than a security posture, and a
+  verb that drove them would change how the project merges on the strength of a
+  default nobody chose. Collapsing the sections would make the file read as a
+  promise about settings nothing enforces.
+- `abcd-*.json` — a ruleset `abcd ahoy remote apply` created or updated
+  (`abcd: default branch`, `abcd: code-owner review`, `abcd: release tags`),
+  written by that verb in the same normalised form. This repository has none:
+  its rulesets above were made by hand.
 
 Refresh the rulesets after any settings change (ids: 19969675, 21045110, 24921633, 24933439, 25302453):
 

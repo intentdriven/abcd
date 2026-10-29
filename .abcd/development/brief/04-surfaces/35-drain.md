@@ -323,7 +323,10 @@ on origin's default branch backs off, with a tip or without one
    pending in its state, carries it into the next drain, and publishes it over
    the issue's next release on origin, a tombstone marking no hand-back, as
    that tombstone's child, fenced on it and on the blob the yes was judged
-   over; a tip already marking a hand-back, a record finished or changed on
+   over, or, when the sweep has deleted that release first, as the first
+   commit of a branch origin no longer holds, which the plain push lands only
+   while it is still absent, and dropped there when it names no judged blob
+   (adr-2610161940004937); a tip already marking a hand-back, a record finished or changed on
    origin's default branch since, one origin holds in no one file, or a
    tombstone the hand-back would take past its cap ends it with nothing
    published, and the move says it was dropped and why; a default branch that

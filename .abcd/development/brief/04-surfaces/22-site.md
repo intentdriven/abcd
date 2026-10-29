@@ -280,7 +280,9 @@ check's report prints each name as it runs it, passing or failing.
 Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and
 every manifest-selected span; the verbatim record rendering is exempt; and the
 attribution escape is a verification, so a name on the contributors page must match
-a trailer or contributor git actually carries. The externally-generated docs tree
+a trailer, or a bot or tool author, that git actually carries. The page names no
+person: the human authors are a count of people and of their commits
+(adr-2610291037481588), so a person's name there fails the check. The externally-generated docs tree
 is dropped from the page walk before any gate sees it, the mobile checks included,
 so they say nothing about that subtree: its words are gated at the source by
 docs-lint instead. In production the two trees share one output directory, so

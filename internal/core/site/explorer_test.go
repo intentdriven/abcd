@@ -435,8 +435,9 @@ func TestContributorsStatesTheAbcdLabelApart(t *testing.T) {
 }
 
 // TestContributorsSeparatesAuthorshipFromDisclosure pins the page's whole point:
-// humans are the authors of record, the trailer tallies are disclosure, and the
-// policy that requires them is quoted beside the number.
+// humans are the authors of record, counted and never named, the trailer
+// tallies are disclosure, and the policy that requires them is quoted beside
+// the number.
 func TestContributorsSeparatesAuthorshipFromDisclosure(t *testing.T) {
 	f := newFixture(t)
 	out := t.TempDir()
@@ -444,8 +445,7 @@ func TestContributorsSeparatesAuthorshipFromDisclosure(t *testing.T) {
 	page := outFile(t, out, "contributors/index.html")
 
 	for _, want := range []string{
-		"Authors of record",
-		"Fixture",
+		`<b class="tnum">1</b> Authors of record`,
 		"Assisted-by trailers",
 		"assistant-model-1",
 		// the policy span the manifest selects, with its provenance and its file
