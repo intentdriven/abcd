@@ -247,6 +247,39 @@ is sent to a provider. No test reaches a real provider: the client and every
 dispatching verb are exercised end to end against a fake on the loopback
 address, and the key is built at run time.
 
+### The decision adapter — typed judgements, measured in a lab first
+
+The decision adapter (itd-2609221009495079, `core/decide/judge`) answers abcd's
+closed-option judgements with a value and a probability. It has no generative
+step. Every judgement goes through one interface, `(state, typed question) →
+(value, probability)`. A question is one of three kinds: choose one of N,
+score on a scale, or yes/no. Its type is one of a closed registry
+([`03-configuration.md`](03-configuration.md) lists it). The host's own
+judgement implements the interface at probability 1, and so does the decision
+model reached through the API adapter above, so the two are compared like for
+like. The adapter renders the same prompt the host is shown, sends it through
+`APIConfig.Call` (which admits the target against the allowlist and the
+denylist again and resolves the key by name), and reads back one JSON object
+with a `value` among the question's choices and a `probability` from 0 to 1.
+The model cannot abstain, so any other answer is not an answer.
+
+A router switches each type by configuration alone, so no caller changes when
+a type moves. With `host`, or nothing set, the host decides. With
+`shadow:<provider>/<model>`, the host decides and the adapter's answer is
+recorded beside it, as a pair in the newest lab home's `pairs.jsonl`, never in
+the repository. A state larger than the model's 32K window is recorded as
+skipped with its size. With a bare `<provider>/<model>`, the adapter decides,
+and the run record names the route and the model the provider reported. An
+adapter that cannot answer leaves the decision to the host, with a fallback
+receipt saying why. The allowlist refusal of adr-2609221009491186 happens when
+the configuration is read, before any call. `abcd lab harvest` turns the pairs
+into agreement per type, with counts and probability bands, and the research
+note filed from it is the evidence a ruling turns a type on with. The first
+candidate is `typesafe/jev-1.13` on OpenRouter's list. The live paid check
+against it is owed to a person (iss-2609291925398978). The tests drive the
+router, the pairs file, the harvest and the drain's judgement with a fake
+adapter and a temporary home.
+
 ### Reviewer routes — the command-line runner, and RepoPrompt over MCP
 
 A build lane's ruthless and security reviews, which the validate stage hands
