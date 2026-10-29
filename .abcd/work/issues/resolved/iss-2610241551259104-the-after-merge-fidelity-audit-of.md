@@ -12,6 +12,10 @@ found_at: ".abcd/development/intents/shipped/itd-2610030720038073-abcd-keeps-its
 remedy: "fix, then re-run the audit: make ac-6 NOT_MET of itd-2610030720038073 hold in the delivered code, then re-emit the request with `abcd intent audit itd-2610030720038073` and ingest the re-run's verdict; a verdict with no criterion NOT_MET or INCONCLUSIVE clears the flag and resolves this record"
 related_intents: [itd-2610030720038073]
 refines: [iss-2610241427397332, iss-2610241431221889, iss-2610241426406882]
+resolution: "The measured receipt for ac-6 is taken in the real renamed store: 0.56% mean combined indexer CPU against 3.28% for the old shape (research note 2026-10-28-home-rename-receipt); the run-log half has no run log to read and is stated as such."
+impact: internal
+resolved_by:
+  intent: "itd-2610030720038073"
 ---
 
 The after-merge fidelity audit of itd-2610030720038073 judged a criterion unmet, so its check is still owed: ac-6 NOT_MET
