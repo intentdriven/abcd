@@ -23,7 +23,7 @@ func statVolume(path string) (Volume, error) {
 	return Volume{
 		Free:  st.Bavail * uint64(st.Bsize),
 		Total: st.Blocks * uint64(st.Bsize),
-		ID:    fmt.Sprintf("%d:%d", st.Fsid.Val[0], st.Fsid.Val[1]),
+		ID:    volumeID(int64(st.Fsid.Val[0]), int64(st.Fsid.Val[1])),
 		Mount: string(mount),
 	}, nil
 }

@@ -15,9 +15,12 @@ func statVolume(path string) (Volume, error) {
 	if err := syscall.Statfs(path, &st); err != nil {
 		return Volume{}, fmt.Errorf("could not read the free space (statfs: %w)", err)
 	}
+	// Block counts are in fragment-size units (f_frsize), as statvfs(3) and
+	// df read them; f_bsize is the preferred I/O size, which differs on some
+	// FUSE mounts (blockBytes).
 	return Volume{
-		Free:  uint64(st.Bavail) * uint64(st.Bsize),
-		Total: uint64(st.Blocks) * uint64(st.Bsize),
-		ID:    fmt.Sprintf("%d:%d", st.Fsid.X__val[0], st.Fsid.X__val[1]),
+		Free:  blockBytes(uint64(st.Bavail), int64(st.Frsize), int64(st.Bsize)),
+		Total: blockBytes(uint64(st.Blocks), int64(st.Frsize), int64(st.Bsize)),
+		ID:    volumeID(int64(st.Fsid.X__val[0]), int64(st.Fsid.X__val[1])),
 	}, nil
 }

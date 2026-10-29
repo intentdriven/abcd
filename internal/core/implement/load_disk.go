@@ -26,35 +26,66 @@ import (
 // So the waiter (WaitLoad) refuses to admit a test stage, at either gate,
 // while the volume holding the Go build cache (`go env GOCACHE`) or the one
 // holding the worktree store (~/.abcd.noindex/worktrees, or its nearest
-// existing ancestor) has less than DiskFloor free, and the load check
-// (CheckLoad) reports the same finding as a warning, never failing. The
-// waiter refuses rather than waits: nothing frees disk while it sleeps, so a
-// wait would only hold the preflight until its timeout. The refusal names
-// each low volume, its free space, the floor, the cache's path and size, and
-// the age-based trim a person can run. abcd never trims the cache itself:
-// deleting another tool's files is not the gate's call.
+// existing ancestor) has less than the floor free (DiskFloorFor), and the
+// load check (CheckLoad) reports the same finding as a warning, never
+// failing. The waiter reads the disk when it starts and again just before it
+// opens, since other work fills the disk while it waits; it refuses rather
+// than waits, since nothing frees disk while it sleeps. The refusal names
+// each low volume, its free space and the floor, and, when the cache's own
+// volume is low, the cache's path and size and the age-based trim a person
+// can run. abcd never trims the cache itself: deleting another tool's files
+// is not the gate's call.
 //
 // A platform whose free space abcd cannot read (other than macOS and Linux),
-// or a read that fails, is reported as unknown and never refused.
+// or a read that fails, is reported and never refused.
 
-// DiskFloor is the free space, in bytes, below which the load gate admits no
-// test stage. Measured on 29 Oct 2026, the stages one `make preflight` of
-// this module builds (go build, go vet, go test and go test -race over
-// internal/), run into an empty build cache, wrote 1.9 GiB of cache entries,
-// and their test binaries took another 1.9 GiB of the temporary directory at
-// the peak: about 4 GiB for one cold preflight. The person's load.preflights
-// admits at most four at once (MaxPreflightSlots), so 16 GiB holds four cold
-// preflights side by side before the volume runs out. It is a constant: the
-// person-level load settings (load.preflights in ~/.abcd.noindex/config.json)
-// take no other key today, and a floor a repository could lower would defeat
-// it.
-const DiskFloor uint64 = 16 << 30
+// DiskPerPreflight is the free space the floor keeps for each preflight the
+// gate admits to its test stages at once. Measured on 29 Oct 2026, the stages
+// one `make preflight` of this module builds (go build, go vet, go test and
+// go test -race over internal/), run into an empty build cache, wrote 1.9 GiB
+// of cache entries, and their test binaries took another 1.9 GiB of the
+// temporary directory at the peak: about 4 GiB for one cold preflight.
+const DiskPerPreflight uint64 = 4 << 30
+
+// DiskFloorMin is the lowest the floor goes, whatever the slots: one cold
+// preflight's 4 GiB, and as much again for everything else writing to the
+// volume while it runs.
+const DiskFloorMin uint64 = 8 << 30
+
+// DiskFloorFor is the free space, in bytes, below which the load gate admits
+// no test stage, for a gate admitting slots preflights to their test stages
+// at once (load.preflights, PreflightSlots): DiskPerPreflight for each, and
+// DiskFloorMin at least. So 8 GiB at the default of one and 16 GiB at four.
+// It follows only the person's own load.preflights (or its environment
+// variable), never a repository file, so no checkout can lower it.
+func DiskFloorFor(slots int) uint64 {
+	return max(uint64(max(slots, 0))*DiskPerPreflight, DiskFloorMin)
+}
+
+// diskFloorAt is the floor for the account whose home is home, at the slots
+// its settings give; a setting that cannot be used (which the wait refuses
+// for) reads as the default of one.
+func diskFloorAt(getenv func(string) string, home string) uint64 {
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil || h == "" {
+			return DiskFloorFor(1)
+		}
+		home = h
+	}
+	slots, _, _, err := PreflightSlots(getenv, home)
+	if err != nil {
+		slots = 1
+	}
+	return DiskFloorFor(slots)
+}
 
 // The disk statuses.
 const (
-	// DiskOK: every volume read has at least DiskFloor free.
+	// DiskOK: every volume read has at least the floor free; Reason says
+	// when a volume could not be read beside one that was.
 	DiskOK = "ok"
-	// DiskLow: at least one volume has less than DiskFloor free.
+	// DiskLow: at least one volume has less than the floor free.
 	DiskLow = "low"
 	// DiskUnknown: no volume could be read (an unsupported platform, or reads
 	// that failed); nothing is refused for it.
@@ -98,17 +129,23 @@ type DiskCheck struct {
 	// measured.
 	Reason string `json:"reason,omitempty"`
 
-	// goCacheShell is the cache's path as the trim command names it, and
-	// goCacheMeasured whether its size was.
-	goCacheShell    string
-	goCacheMeasured bool
+	// goCacheShell is the cache's path as the trim command names it,
+	// goCacheFuzz the pattern naming its fuzz corpora there, goCacheMeasured
+	// whether its size was measured, and goCacheTrimmable whether it has a
+	// Go build cache's shape and is not the home or above it, so the gate
+	// offers a command deleting files in it (machineload.LooksLikeGoCache).
+	goCacheShell     string
+	goCacheFuzz      string
+	goCacheMeasured  bool
+	goCacheTrimmable bool
+	goCacheHome      bool
 }
 
 // ReadDisk judges the free space for the account whose home is home ("" is
-// this process's). It is a variable only so tests replace it: the core's own
-// tests by default (load_disk_test.go), so none reads the real disk unless it
-// asks.
-var ReadDisk = func(home string) DiskCheck { return checkDisk(home, realDiskProbe) }
+// this process's) against floor (DiskFloorFor). It is a variable only so
+// tests replace it: the core's own tests by default (load_disk_test.go), so
+// none reads the real disk unless it asks.
+var ReadDisk = func(home string, floor uint64) DiskCheck { return checkDisk(home, realDiskProbe(floor)) }
 
 // diskProbe is what checkDisk reads the machine through.
 type diskProbe struct {
@@ -118,17 +155,20 @@ type diskProbe struct {
 	volume func(string) (machineload.Volume, error)
 	// cacheSize measures the cache (machineload.GoCacheSize).
 	cacheSize func(string) (machineload.CacheSize, error)
-	// floor is DiskFloor, a field so a test can state its own.
+	// floor is the floor judged against (DiskFloorFor).
 	floor uint64
 }
 
-var realDiskProbe = diskProbe{
-	goCache: machineload.GoCacheDir,
-	volume:  machineload.ReadVolume,
-	cacheSize: func(dir string) (machineload.CacheSize, error) {
-		return machineload.GoCacheSize(dir, machineload.GoCacheBudget)
-	},
-	floor: DiskFloor,
+// realDiskProbe reads the machine, judging against floor.
+func realDiskProbe(floor uint64) diskProbe {
+	return diskProbe{
+		goCache: machineload.GoCacheDir,
+		volume:  machineload.ReadVolume,
+		cacheSize: func(dir string) (machineload.CacheSize, error) {
+			return machineload.GoCacheSize(dir, machineload.GoCacheBudget)
+		},
+		floor: floor,
+	}
 }
 
 // checkDisk reads the volumes holding the Go build cache and the worktree
@@ -148,6 +188,7 @@ func checkDisk(home string, p diskProbe) DiskCheck {
 		targets = append(targets, target{DiskHoldsGoCache, cache})
 		out.GoCache = displayPath(home, cache)
 		out.goCacheShell = shellPath(home, cache)
+		out.goCacheFuzz = shellWord(globEscape(displayPath(home, cache)) + "/fuzz/*")
 	}
 	if home != "" {
 		targets = append(targets, target{DiskHoldsWorktreeStore, abcdhome.Path(home, "worktrees")})
@@ -186,6 +227,8 @@ func checkDisk(home string, p diskProbe) DiskCheck {
 		out.Status = DiskUnknown
 	}
 	if cacheLow {
+		out.goCacheHome = holdsHome(cache, home)
+		out.goCacheTrimmable = !out.goCacheHome && machineload.LooksLikeGoCache(cache)
 		if size, err := p.cacheSize(cache); err != nil {
 			reasons = append(reasons, "the Go build cache's size could not be measured: "+termsafe.Sanitize(fsRedact(err.Error(), home)))
 		} else {
@@ -197,7 +240,8 @@ func checkDisk(home string, p diskProbe) DiskCheck {
 	return out
 }
 
-// Refusal is the waiter's refusal when a volume is low, nil otherwise.
+// Refusal is the waiter's refusal when a volume is low as it starts, nil
+// otherwise.
 func (d DiskCheck) Refusal() error {
 	if d.Status != DiskLow {
 		return nil
@@ -207,10 +251,43 @@ func (d DiskCheck) Refusal() error {
 		"so this refuses at once; nothing was waited for.\n" + d.describe())
 }
 
-// Report is the load check's copy of the finding: nil when every volume read
-// has room, so the check's report is unchanged then.
+// RefusalAtOpen is the waiter's refusal when a volume is low at its last
+// look before it opens, after it has waited: other work filled the disk
+// while it waited. Nil when no volume is low.
+func (d DiskCheck) RefusalAtOpen() error {
+	if d.Status != DiskLow {
+		return nil
+	}
+	return errors.New("the disk fell below the floor while this waited, so no test stage is admitted: a test stage writes gigabytes of build output and test binaries, " +
+		"and on a full disk every preflight fails or writes truncated files. The gate did not open and took no hold.\n" + d.describe())
+}
+
+// Note is one line saying what the check could not read, "" when it read
+// every volume or found one low (the refusal or warning then says it). An
+// unknown check, or one that read one volume but not the other, refuses
+// nothing; the note is how the person learns the disk went unchecked.
+func (d DiskCheck) Note() string {
+	switch {
+	case d.Status == DiskUnknown:
+		return "the disk was not checked: " + orUnread(d.Reason) + "; the gate does not refuse for a disk it cannot read"
+	case d.Status == DiskOK && d.Reason != "":
+		return "the disk was checked only in part: " + d.Reason + "; the volume read has room, and the gate does not refuse for the one it could not read"
+	}
+	return ""
+}
+
+// orUnread is reason, or a stand-in when there is none.
+func orUnread(reason string) string {
+	if reason == "" {
+		return "no volume could be read"
+	}
+	return reason
+}
+
+// Report is the load check's copy of the finding: nil when every volume was
+// read and has room, so the check's report is unchanged then.
 func (d DiskCheck) Report() *DiskCheck {
-	if d.Status == DiskOK {
+	if d.Status == DiskOK && d.Reason == "" {
 		return nil
 	}
 	return &d
@@ -225,8 +302,9 @@ func (d *DiskCheck) WarningText(site string) string {
 	switch d.Status {
 	case DiskLow:
 		return fmt.Sprintf("LOW DISK WARNING (%s): the load gate will admit no test stage until there is more room.\n%s", site, d.describe())
-	case DiskUnknown:
-		return fmt.Sprintf("disk check (%s): free space could not be read (%s); carrying on without checking it\n", site, d.Reason)
+	}
+	if note := d.Note(); note != "" {
+		return fmt.Sprintf("disk check (%s): %s\n", site, note)
 	}
 	return ""
 }
@@ -258,6 +336,8 @@ func (d DiskCheck) describe() string {
 		fmt.Fprintf(&b, "  %s free on %s, which holds %s; the floor is %s.\n",
 			bytesText(v.FreeBytes), where, strings.Join(holds, " and "), bytesText(d.FloorBytes))
 	}
+	fmt.Fprintf(&b, "  The floor is %s for each preflight the gate admits to its test stages at once (%s in %s, or %s), and %s at least.\n",
+		bytesText(DiskPerPreflight), PreflightSlotsKey, abcdhome.Display("config.json"), PreflightSlotsEnv, bytesText(DiskFloorMin))
 	if cacheLow {
 		switch {
 		case !d.goCacheMeasured:
@@ -268,9 +348,21 @@ func (d DiskCheck) describe() string {
 		default:
 			fmt.Fprintf(&b, "  The Go build cache holds %s.\n", bytesText(d.GoCacheBytes))
 		}
-		b.WriteString("  Go trims only entries unused for five days. To delete the entries unused for two days:\n")
-		fmt.Fprintf(&b, "    find %s -type f -mmin +2880 -delete\n", d.goCacheShell)
-		b.WriteString("  or, all or nothing, to empty the cache, so the next build rebuilds everything:\n    go clean -cache\n")
+		b.WriteString("  Go trims only entries unused for five days.")
+		if d.goCacheTrimmable {
+			// -H follows a symlinked cache; the fuzz corpora, which go clean
+			// -cache keeps, are skipped by path, since -delete turns on
+			// depth-first order, in which -prune does nothing.
+			b.WriteString(" To delete the entries unused for two days, keeping the fuzz corpora:\n")
+			fmt.Fprintf(&b, "    find -H %s -type f ! -path %s -mmin +2880 -delete\n", d.goCacheShell, d.goCacheFuzz)
+			b.WriteString("  or, all or nothing, to empty the cache, so the next build rebuilds everything:\n    go clean -cache\n")
+		} else {
+			why := "does not have a Go build cache's shape"
+			if d.goCacheHome {
+				why = "is the home directory or holds it"
+			}
+			fmt.Fprintf(&b, " %s %s, so no command deleting files in it is offered. To empty the cache, so the next build rebuilds everything:\n    go clean -cache\n", d.GoCache, why)
+		}
 	}
 	if storeLow {
 		b.WriteString("  Remove the store worktrees no longer in use (git worktree remove <path>), or free space on that volume otherwise.\n")
@@ -310,7 +402,14 @@ var shellUnquoted = regexp.MustCompile(`^[A-Za-z0-9._/:@%+=-]+$`)
 // under home, with the tilde left bare so the shell expands it, and the rest
 // quoted when it needs it.
 func shellPath(home, p string) string {
-	prefix, rest := "", displayPath(home, p)
+	return shellWord(displayPath(home, p))
+}
+
+// shellWord is a displayed path (displayPath) as one shell word: the tilde of
+// a home-relative path left bare so the shell expands it, and the rest
+// quoted when it needs it.
+func shellWord(display string) string {
+	prefix, rest := "", display
 	if strings.HasPrefix(rest, "~/") {
 		prefix, rest = "~/", strings.TrimPrefix(rest, "~/")
 	}
@@ -318,6 +417,28 @@ func shellPath(home, p string) string {
 		return prefix + rest
 	}
 	return prefix + shellquote.Single(rest)
+}
+
+// globEscape escapes the characters find's -path reads as a pattern, so a
+// path holding them matches only itself.
+func globEscape(p string) string {
+	var b strings.Builder
+	for _, c := range p {
+		if strings.ContainsRune(`*?[\`, c) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
+}
+
+// holdsHome reports whether dir is the home or a directory above it.
+func holdsHome(dir, home string) bool {
+	if home == "" {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(home))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }
 
 // fsRedact replaces home in s with ~, so no message carries the home's path.

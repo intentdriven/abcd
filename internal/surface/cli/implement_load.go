@@ -131,9 +131,10 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"`--wait -- go test -race`. It is spelt without --wait because an\n" +
 			"older abcd reads any `implement load --wait` as a waiter at its first gate, and\n" +
 			"would count a preflight at its race gate as queued, not in its tests, so the two\n" +
-			"are refused together. At one preflight at a time, the default, it opens at once,\n" +
-			"without reading the machine, taking a hold or waiting a jitter, so a preflight's\n" +
-			"race stage follows its tests exactly as before. Above one it is shut only while\n" +
+			"are refused together. At one preflight at a time, the default, it opens at once\n" +
+			"once the disk check below passes, without reading the load or the process table,\n" +
+			"taking a hold or waiting a jitter, so a preflight's race stage follows its tests\n" +
+			"as before. Above one it is shut only while\n" +
 			"another `go test -race` run is live, a race waiter is ahead of it (by the same\n" +
 			"rule) or running its command, the load is at the wait limit, or the race gate's\n" +
 			"own hold is in force (each gate is shut only by its own gate's hold). That keeps\n" +
@@ -166,6 +167,17 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"that is not an object) is read past instead: one preflight at a time applies,\n" +
 			"and one line on stderr names the file, the cause and how to fix it; so does a\n" +
 			"key under `load` that nothing reads.\n\n" +
+			"Both gates refuse, exiting 1 without waiting, while the volume holding the Go\n" +
+			"build cache (`go env GOCACHE`) or the one holding the worktree store\n" +
+			"(`" + abcdhome.Display("worktrees") + "`) has less free space than the disk floor: 4 GiB for each\n" +
+			"preflight the first gate admits at once (`" + implement.PreflightSlotsKey + "`), and 8 GiB at least, so\n" +
+			"8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts\n" +
+			"and again just before it opens, and refuses at either look. The refusal names\n" +
+			"each low volume, its free space and the floor, and, when the cache's own volume\n" +
+			"is low, the cache's size and a command that deletes its build entries unused for\n" +
+			"two days. A disk it cannot read, in whole or in part, is never refused: one line\n" +
+			"on stderr says it was not checked, and why. The load check (`--site`) prints the\n" +
+			"same finding as a warning and never fails for it.\n\n" +
 			"Within one account the waiter that opens also takes a hold,\n" +
 			"`" + abcdhome.Display(implement.WaitHoldFileName) + "` at the first gate and `" + abcdhome.Display(implement.WaitRaceHoldFileName) + "` at\n" +
 			"the race gate, and every other waiter of that account at the same gate stays\n" +
@@ -289,6 +301,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	}
 	if res.SlotsNote != "" {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load %s: %s\n", flag, res.SlotsNote)
+	}
+	if res.DiskNote != "" {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load %s: %s\n", flag, res.DiskNote)
 	}
 	if err := render(out, asJSON, res, func(w io.Writer) { renderLoadWait(w, res) }); err != nil {
 		return err

@@ -200,7 +200,7 @@ func CheckLoad(req LoadRequest) LoadResult {
 		res.Reason = "skipped on a CI runner (" + reason + "): a fresh runner carries no programs left from earlier work, so there is nothing to warn about"
 		return res
 	}
-	res.Disk = ReadDisk(req.Home).Report()
+	res.Disk = ReadDisk(req.Home, diskFloorAt(getenv, req.Home)).Report()
 
 	read := req.Read
 	if read == nil {

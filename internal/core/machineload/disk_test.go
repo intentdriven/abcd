@@ -146,3 +146,49 @@ func TestGoCacheDir(t *testing.T) {
 		}
 	}
 }
+
+// TestVolumeIDZeroIsNone: a zero filesystem ID, which FUSE, NFS and older
+// tmpfs report for every volume, is no identity, so two such volumes are
+// never taken for one.
+func TestVolumeIDZeroIsNone(t *testing.T) {
+	if got := volumeID(0, 0); got != "" {
+		t.Fatalf("volumeID(0, 0) = %q, want no identity", got)
+	}
+	if got := volumeID(16777230, 26); got != "16777230:26" {
+		t.Fatalf("volumeID = %q", got)
+	}
+	if got := volumeID(0, 7); got != "0:7" {
+		t.Fatalf("volumeID(0, 7) = %q", got)
+	}
+}
+
+// TestBlockBytesCountsFragments: statfs counts blocks in the fragment size,
+// not the preferred I/O size, falling back to the block size only when the
+// fragment size is not reported.
+func TestBlockBytesCountsFragments(t *testing.T) {
+	if got := blockBytes(10, 4096, 1<<20); got != 40960 {
+		t.Fatalf("blockBytes with frsize 4096, bsize 1 MiB = %d, want 40960", got)
+	}
+	if got := blockBytes(10, 0, 512); got != 5120 {
+		t.Fatalf("blockBytes with no frsize = %d, want 5120", got)
+	}
+}
+
+// TestLooksLikeGoCache: the go command's README, or all 256 subdirectories,
+// make a cache; a directory with neither is not one.
+func TestLooksLikeGoCache(t *testing.T) {
+	full := cacheFixture(t, 256, 1)
+	if err := os.Remove(filepath.Join(full, "README")); err != nil {
+		t.Fatal(err)
+	}
+	readme := t.TempDir()
+	if err := os.WriteFile(filepath.Join(readme, "README"), []byte(goCacheREADME+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	some := cacheFixture(t, 3, 1) // its README is not the go command's
+	for dir, want := range map[string]bool{full: true, readme: true, some: false, filepath.Join(full, "absent"): false} {
+		if got := LooksLikeGoCache(dir); got != want {
+			t.Errorf("LooksLikeGoCache(%s) = %v, want %v", dir, got, want)
+		}
+	}
+}

@@ -3,6 +3,7 @@ package machineload
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -25,12 +26,14 @@ type Volume struct {
 	// its nearest existing ancestor (NearestExisting).
 	Path string
 	// Free is the bytes an unprivileged writer can still use on the volume
-	// (the blocks available to a non-root user times the block size), the
-	// figure `df` reports as available.
+	// (the blocks available to a non-root user times the size they are
+	// counted in), the figure `df` reports as available.
 	Free uint64
 	// Total is the volume's size in bytes.
 	Total uint64
 	// ID tells two volumes apart: two paths on one volume read the same ID.
+	// It is "" when the volume reports no identity (volumeID), and a volume
+	// without one is never taken for another.
 	ID string
 	// Mount is where the volume is mounted, when the platform says so cheaply
 	// (macOS); "" otherwise.
@@ -45,6 +48,31 @@ func ReadVolume(path string) (Volume, error) {
 	v, err := statVolume(p)
 	v.Path = p
 	return v, err
+}
+
+// volumeID is a volume's identity from its filesystem ID (statfs's f_fsid):
+// "" for an ID of zero, which FUSE filesystems (sshfs, virtiofs), NFS and
+// older tmpfs report for every volume, so two such volumes are never read as
+// one.
+func volumeID(a, b int64) string {
+	if a == 0 && b == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d", a, b)
+}
+
+// blockBytes is blocks counted in statfs's fragment size (f_frsize), the
+// unit statvfs(3) and df count blocks in; a filesystem that reports no
+// fragment size counts them in its block size.
+func blockBytes(blocks uint64, frsize, bsize int64) uint64 {
+	unit := frsize
+	if unit <= 0 {
+		unit = bsize
+	}
+	if unit <= 0 {
+		return 0
+	}
+	return blocks * uint64(unit)
 }
 
 // NearestExisting is path itself when it exists, else its nearest ancestor
@@ -190,6 +218,32 @@ func goCacheSize(dir string, budget time.Duration, now func() time.Time) (CacheS
 		out.Bytes = uint64(float64(sum) * float64(out.Subdirs) / float64(out.Sampled))
 	}
 	return out, nil
+}
+
+// goCacheREADME is the opening of the README the go command writes at the top
+// of every build cache it opens (cmd/go/internal/cache).
+const goCacheREADME = "This directory holds cached build artifacts from the Go build system."
+
+// LooksLikeGoCache reports whether dir has the Go build cache's shape: the
+// README the go command writes there, or all 256 of the subdirectories it
+// creates (00 to ff). A directory named by GOCACHE that is not a cache (a
+// project, or a home) is not one, so the gate prints no command that deletes
+// files in it.
+func LooksLikeGoCache(dir string) bool {
+	if b, err := os.ReadFile(filepath.Join(dir, "README")); err == nil && strings.HasPrefix(string(b), goCacheREADME) {
+		return true
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	n := 0
+	for _, e := range entries {
+		if e.IsDir() && isHexByte(e.Name()) {
+			n++
+		}
+	}
+	return n == 256
 }
 
 // isHexByte reports whether name is two lowercase hex digits, the name of one
