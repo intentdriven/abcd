@@ -14,24 +14,24 @@ func TestSynthesisDecoderRefusalsRedactTheKey(t *testing.T) {
 	const key = `"reviewer_notes /Users/zzotherperson/notes":1` // abcd-lint:allow — a planted home path in a KEY
 	cases := map[string]func(t *testing.T) error{
 		"lessons": func(t *testing.T) error {
-			_, err := IngestLessons(stdFixture(t), []byte(`{"schema_version":1,`+key+`,"lessons":[]}`))
+			_, err := IngestLessons(stdFixture(t), []byte(`{"schema_version":1,`+key+`,"lessons":[]}`), okScan)
 			return err
 		},
 		"press release": func(t *testing.T) error {
 			dir := synthLifeboat(t, map[string]string{briefPressReleasePath: briefPR})
 			_, err := ComposePressRelease(dir, []byte(`{"schema_version":1,"mode":"delegated","prompt_version":"0.1.0",`+
-				`"headline":"h","body":"b","evidence":["brief/x"],`+key+`}`))
+				`"headline":"h","body":"b","evidence":["brief/x"],`+key+`}`), okScan)
 			return err
 		},
 		"principles": func(t *testing.T) error {
 			_, err := SynthesizePrinciples(adrLifeboat(t), []byte(`{"schema_version":1,"mode":"delegated",`+
-				`"prompt_version":"0.1.0","principles":[],`+key+`}`))
+				`"prompt_version":"0.1.0","principles":[],`+key+`}`), okScan)
 			return err
 		},
 		"review": func(t *testing.T) error {
 			dir := reviewFixture(t, "abc", &Summary{Grounded: 7, Blank: 3})
 			_, err := ReviewLifeboat(dir, realSourceDir(t), []byte(`{"schema_version":1,"mode":"delegated",`+
-				`"prompt_version":"0.1.0","verdict":"SHIP","findings":[],`+key+`}`))
+				`"prompt_version":"0.1.0","verdict":"SHIP","findings":[],`+key+`}`), okScan)
 			return err
 		},
 	}
