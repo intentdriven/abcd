@@ -28,12 +28,13 @@ var landSeams landing.Options
 // pull request's merge where the merge gate allows, each step resumable by
 // running the verb again.
 func newLandCommand(asJSON *bool) *cobra.Command {
-	var noPush, noEnqueue bool
+	var noPush, noEnqueue, approve bool
 	var reviews []string
 	cmd := &cobra.Command{
 		Use: "land [<branch>]",
 		Long: "abcd land [<branch>] [--no-push] [--no-enqueue]\n" +
-			"abcd land [<branch>] --record-review <return> --record-review <return> [...]\n\n" +
+			"abcd land [<branch>] --record-review <return> --record-review <return> [...]\n" +
+			"abcd land [<branch>] --approve\n\n" +
 			"Land a branch whose work is committed: the checkout's current branch, or the one\n" +
 			"named, from the worktree that has it checked out. Each step can be resumed by\n" +
 			"running abcd land again.\n\n" +
@@ -56,12 +57,24 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"  4. Push (land.push): a plain push of the gated commit to the branch's name on\n" +
 			"     origin, with the repository's hooks running, never forced, never the default\n" +
 			"     branch.\n" +
-			"  5. Enqueue (land.enqueue): the branch's open pull request, armed for the merge\n" +
-			"     queue where the merge gate allows it (today: only where a merge queue gates the\n" +
-			"     default branch and a ruleset requires a person's approval), pinned to the\n" +
-			"     head, then confirmed in the queue. An arming someone else made is left as it\n" +
-			"     is. With no pull request it prints the `gh pr create` command and stops; it\n" +
-			"     never opens one.\n\n" +
+			"  5. Enqueue (land.enqueue): the branch's open pull request, armed where the merge\n" +
+			"     gate allows it, pinned to the head: into the merge queue by its method where\n" +
+			"     one gates the default branch (then confirmed in the queue), otherwise as the\n" +
+			"     forge's auto-merge (a merge commit; a forge that refuses it is said). An\n" +
+			"     arming someone else made is left as it is. With no pull request it prints\n" +
+			"     the `gh pr create` command and stops; it never opens one.\n\n" +
+			"The merge gate reads facilitator.mode from the default branch's committed\n" +
+			".abcd/config.json and " + abcdhome.Display("config.json") + " (human from either wins;\n" +
+			"human by default), never from the branch being landed. A pull request whose\n" +
+			"author has Read or Triage permission, or none, is armed only once an approval of\n" +
+			"its head counts, in either mode. An approval counts when it is the latest review\n" +
+			"by someone with Write, Maintain or Admin permission, approves the head commit\n" +
+			"and is not the author's, or when the technical facilitator recorded it with\n" +
+			"--approve. Then, and for an author with one of those: human arms only once an\n" +
+			"approval of the head counts, and otherwise says it waits for the technical\n" +
+			"facilitator's; auto arms only a head a review receipt names (--record-review),\n" +
+			"and otherwise names the commit. An author whose permission cannot be read is\n" +
+			"unverified, and nothing is armed.\n\n" +
 			"land.push and land.enqueue are read from .abcd/config.json (in the working\n" +
 			"directory's checkout and the branch's own) and " + abcdhome.Display("config.json") + ",\n" +
 			"default true, and off wins from any layer: any file can turn an act off and none\n" +
@@ -91,7 +104,12 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			".abcd/.work.local/review-receipts/ when every verdict passes the stop rule\n" +
 			"(SHIP or APPROVE: no critical or major finding). A return that does not pass is\n" +
 			"refused naming it, exit 2, and nothing is written. It takes no --no-push or\n" +
-			"--no-enqueue.",
+			"--no-enqueue.\n\n" +
+			"--approve records the technical facilitator's approval of the branch's head and\n" +
+			"lands nothing: it writes .abcd/.work.local/approvals/<head>, which the merge\n" +
+			"gate counts as an approval of that commit, and of no other. It is the\n" +
+			"facilitator's own act, for a pull request they authored (the forge refuses an\n" +
+			"author's approval of their own): the shell guard refuses it to an agent.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return &exitError{Code: 2, Msg: "abcd land: takes at most one branch, not " + fmt.Sprint(len(args)) + "; nothing was pushed"}
@@ -102,6 +120,12 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
+			}
+			if approve {
+				if noPush || noEnqueue || len(reviews) > 0 {
+					return &exitError{Code: 2, Msg: "abcd land: --approve lands nothing, so it takes no --no-push, --no-enqueue or --record-review; nothing was written"}
+				}
+				return approveHead(cmd, *asJSON, cwd, args)
 			}
 			if len(reviews) > 0 {
 				if noPush || noEnqueue {
@@ -131,6 +155,7 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&noPush, "no-push", false, "do not push the branch this run; print the push command instead")
 	cmd.Flags().BoolVar(&noEnqueue, "no-enqueue", false, "do not arm or queue the pull request this run")
+	cmd.Flags().BoolVar(&approve, "approve", false, "record the technical facilitator's approval of the branch's head, a person's act the shell guard refuses to an agent; lands nothing")
 	cmd.Flags().StringArrayVar(&reviews, "record-review", nil, "record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing")
 	return cmd
 }
@@ -169,6 +194,36 @@ func recordReview(cmd *cobra.Command, asJSON bool, cwd string, args, paths []str
 	}{sha, receipt}
 	return render(cmd.OutOrStdout(), asJSON, view, func(w io.Writer) {
 		fmt.Fprintf(w, "abcd land: recorded the review receipt for %s (%s)\n", sha, termsafe.Sanitize(fsutil.RedactHome(receipt)))
+	})
+}
+
+// approveHead is `abcd land --approve`: it records the technical
+// facilitator's approval of the head of the branch named (or the checkout's
+// current branch), which the merge gate counts as an approval of that commit
+// (spc-2610161609350616 step 4).
+func approveHead(cmd *cobra.Command, asJSON bool, cwd string, args []string) error {
+	rev := "HEAD"
+	if len(args) == 1 {
+		rev = "refs/heads/" + args[0]
+	}
+	root, err := gitutil.CheckoutRoot(cwd, "the approvals")
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd land: " + termsafe.Sanitize(err.Error()) + "; nothing was written"}
+	}
+	sha, err := gitutil.Run(root, "rev-parse", "--verify", "--quiet", rev+"^{commit}")
+	if err != nil || sha == "" {
+		return &exitError{Code: 2, Msg: "abcd land: the branch's head cannot be resolved; nothing was written"}
+	}
+	rec, err := landing.RecordApproval(root, sha)
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd land: " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "; nothing was written"}
+	}
+	view := struct {
+		Commit   string `json:"commit"`
+		Approval string `json:"approval"`
+	}{sha, rec}
+	return render(cmd.OutOrStdout(), asJSON, view, func(w io.Writer) {
+		fmt.Fprintf(w, "abcd land: recorded the technical facilitator's approval of %s (%s)\n", sha, termsafe.Sanitize(fsutil.RedactHome(rec)))
 	})
 }
 

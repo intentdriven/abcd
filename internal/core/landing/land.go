@@ -1233,15 +1233,23 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 	case err != nil:
 		return err
 	}
-	d := mergeGate(rule, res.Default)
-	if !d.arm {
-		res.add("enqueue", StatusLeft, "pull request #"+n+": "+d.why, "")
-		return nil
-	}
 	owner, name, ok := strings.Cut(nameWithOwner, "/")
-	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") || !ownerName(owner) || !repoName(name) {
 		return refuse("the forge client names the repository "+strconv.Quote(nameWithOwner)+", not owner/name, so land cannot ask the forge for pull request #"+n+"'s state, and nothing was armed",
 			"check the forge client (gh repo view), then run abcd land again")
+	}
+	// The merge gate (facilitator.go): the mode as the default branch's tip
+	// just fetched and the machine layer declare it, never the branch's own
+	// checkout (dcn-2610230058333177), the author's role, the approvals of
+	// the head, and in auto a review receipt naming it.
+	d, err := DecideMerge(MergeQuery{RepoRoot: dir, Roots: o.Roots, Tip: tip, TipName: Remote + "/" + res.Default, Default: res.Default,
+		Rule: rule, Repo: nameWithOwner, PR: n, Head: res.Head, Forge: func(args ...string) (string, error) { return o.Forge(dir, args...) }})
+	if err != nil {
+		return refuse(fsutil.RedactHome(err.Error())+" at "+Remote+"/"+res.Default+", so nothing was armed", "correct the file it names, then run abcd land again")
+	}
+	if !d.Arm {
+		res.add("enqueue", StatusLeft, "pull request #"+n+": "+d.Why, "")
+		return nil
 	}
 	view := func() (prState, error) {
 		out, err := forge(o, dir, prStateArgs(owner, name, n)...)
@@ -1267,7 +1275,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 	}
 	// The arming is pinned to the head land checked: the forge refuses it when
 	// the pull request's head is another commit.
-	armArgs := []string{"pr", "merge", n, "--auto", MergeMethods[rule.Method], "--match-head-commit=" + res.Head}
+	armArgs := []string{"pr", "merge", n, "--auto", d.Method, "--match-head-commit=" + res.Head}
 	arm := func() error {
 		_, err := forge(o, dir, armArgs...)
 		return err
@@ -1280,7 +1288,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 		return refuse("pull request #"+n+" conflicts with "+res.Default+", and a conflicting pull request never enters the queue, so nothing was armed",
 			"merge "+res.Default+" into "+res.Branch+" and settle the conflict, then run abcd land again")
 	}
-	note := "pull request #" + n + ": " + d.why
+	note := "pull request #" + n + ": " + d.Why
 	if s.IsInMergeQueue {
 		res.add("enqueue", StatusDone, note+reviewText(s)+"; it is already in the merge queue", "")
 		return nil
@@ -1309,6 +1317,12 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 		rearm = rearmArgs(s, n, res.Head)
 	default:
 		if err := arm(); err != nil {
+			if rule.Method == "" {
+				// With no queue the arming is the forge's auto-merge, which a
+				// repository can leave switched off: said, not retried.
+				res.add("enqueue", StatusLeft, "pull request #"+n+": no merge queue gates "+res.Default+", and the forge refused to arm its auto-merge ("+forgeWhy(err)+"), so nothing was armed: allow auto-merge in the repository's settings, or merge it yourself", "")
+				return nil
+			}
 			return err
 		}
 		if s, err = confirmView(view, n, res.Head); err != nil {
@@ -1316,6 +1330,12 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 		}
 	}
 	note += reviewText(s)
+	if rule.Method == "" {
+		// No queue to confirm or toggle: the forge merges an armed pull
+		// request once its required checks pass.
+		res.add("enqueue", StatusDone, note+"; the forge merges it once its required checks pass", "")
+		return nil
+	}
 	// The confirmation (iss-2610090642376032): an armed pull request the
 	// forge reports CLEAN can still sit outside the queue, and toggling
 	// auto-merge once has queued it where the forge's enqueue call failed. It
@@ -1520,32 +1540,6 @@ func reviewText(s prState) string {
 		return "; the forge requires no review for this pull request"
 	}
 	return "; the forge reports the review decision " + termsafe.Sanitize(s.ReviewDecision)
-}
-
-// gateDecision is the merge gate's answer: whether land arms the merge, and
-// why, in words a step reports.
-type gateDecision struct {
-	arm bool
-	why string
-}
-
-// mergeGate decides whether land arms a pull request's merge. It is the one
-// place that decision is made, and the seat of the facilitator mode draft
-// itd-97 describes (auto: queue at once; human: the merge waits for the
-// facilitator), which replaces this function when its toggle is built. Until
-// then every repository runs in human mode, and in human mode ruling AM1 is
-// the behaviour: auto-merge is armed only where a merge queue gates the
-// default branch AND a ruleset holds the merge for a person's approval, so
-// what land arms a person must still approve; anywhere else the merge is left
-// to a person. Nothing else in the landing decides human or auto.
-func mergeGate(r MergeRule, def string) gateDecision {
-	switch {
-	case r.Method == "":
-		return gateDecision{why: "no merge queue gates " + def + " (per the ruleset mirror), so its merge is left to a person"}
-	case !r.Approval:
-		return gateDecision{why: "the ruleset requires no person's approval on " + def + ", so under ruling AM1 its merge is left for a person to make"}
-	}
-	return gateDecision{arm: true, why: "auto-merge armed through " + def + "'s merge queue (" + strings.ToLower(r.Method) + ")"}
 }
 
 func short(sha string) string {

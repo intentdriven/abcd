@@ -74,6 +74,65 @@ type fakeForge struct {
 	arms    int
 	// err fails every call.
 	err error
+	// author is the pull request's author ("" is author-a); roles answer
+	// each account's permission read with a role_name (a missing account is
+	// the forge's 404; "!"+text fails the read with text); reviews is the
+	// pull request's reviews ("" is one approval of @HEAD@ by maintainer-b,
+	// a maintainer other than the author), its @HEAD@ replaced.
+	author  string
+	roles   map[string]string
+	reviews string
+}
+
+// defaultRoles are the permissions the fake forge reports when a test sets
+// none: the author can write, and the reviewer maintains.
+var defaultRoles = map[string]string{"author-a": `{"permission":"write","role_name":"write","user":{"login":"author-a"}}`,
+	"maintainer-b": `{"permission":"write","role_name":"maintain","user":{"login":"maintainer-b"}}`}
+
+// approvedBy is a reviews answer: one APPROVED review of commit by login.
+func approvedBy(login, commit string) string {
+	return `[{"id":1,"user":{"login":"` + login + `"},"state":"APPROVED","commit_id":"` + commit + `","submitted_at":"2026-10-29T10:00:00Z"}]`
+}
+
+// rest answers the forge's REST reads the merge gate makes, as the forge
+// does: a GET only (no method, no field), of a resource ghcontract pins.
+func (f *fakeForge) rest(args []string) (string, error) {
+	if len(args) != 2 {
+		return "", fmt.Errorf("fake forge: the merge gate reads with a plain GET, not %v", args)
+	}
+	prefix := "repos/" + f.owner() + "/"
+	path, ok := strings.CutPrefix(args[1], prefix)
+	if !ok {
+		return "", fmt.Errorf("fake forge: unexpected repository in %v", args)
+	}
+	switch {
+	case strings.HasPrefix(path, "collaborators/") && strings.HasSuffix(path, "/permission"):
+		login := strings.TrimSuffix(strings.TrimPrefix(path, "collaborators/"), "/permission")
+		roles := f.roles
+		if roles == nil {
+			roles = defaultRoles
+		}
+		a, ok := roles[login]
+		switch {
+		case !ok:
+			return "", errors.New("gh: Not Found (HTTP 404)")
+		case strings.HasPrefix(a, "!"):
+			return "", errors.New(a[1:])
+		}
+		return a, nil
+	case path == "pulls/7/reviews?per_page=100":
+		if f.reviews == "" {
+			return approvedBy("maintainer-b", f.head), nil
+		}
+		return strings.ReplaceAll(f.reviews, "@HEAD@", f.head), nil
+	case path == "pulls/7":
+		author := f.author
+		if author == "" {
+			author = "author-a"
+		}
+		return `{"user":{"login":"` + author + `"},"head":{"sha":"` + f.head + `","ref":"feat/x"}}`, nil
+	}
+	return "", fmt.Errorf("fake forge: unexpected call %v", args)
 }
 
 func (f *fakeForge) run(_ string, args ...string) (string, error) {
@@ -85,6 +144,10 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 	// does this one, from gh's own lists.
 	if err := ghcontract.Check(args); err != nil {
 		return "", err
+	}
+	// The merge gate's REST reads (facilitator.go).
+	if len(args) > 1 && args[0] == "api" && args[1] != "graphql" {
+		return f.rest(args)
 	}
 	switch strings.Join(args[:min(2, len(args))], " ") {
 	case "repo view":
@@ -205,11 +268,21 @@ type fixture struct {
 
 func newFixture(t *testing.T, ruleset string) *fixture {
 	t.Helper()
+	return newFixtureFiles(t, ruleset, nil)
+}
+
+// newFixtureFiles is newFixture with files committed on the default branch
+// beside the ruleset (its .abcd/config.json, say).
+func newFixtureFiles(t *testing.T, ruleset string, files map[string]string) *fixture {
+	t.Helper()
 	repo := gittest.NewRepo(t)
 	repo.Write(".gitignore", ".abcd/.work.local/\n")
 	repo.Write("Makefile", "preflight:\n\t@true\n")
 	if ruleset != "" {
 		repo.Write(".abcd/work/rulesets/main-protection.json", ruleset)
+	}
+	for name, body := range files {
+		repo.Write(name, body)
 	}
 	repo.Commit("the base")
 	bare := filepath.Join(t.TempDir(), "origin.git")
@@ -577,47 +650,83 @@ func TestAConflictingPullRequestIsRefusedUnarmed(t *testing.T) {
 	}
 }
 
-func TestNoQueueLeavesTheMergeToAPerson(t *testing.T) {
+// With no merge queue gating the default branch, an armed merge is the
+// forge's auto-merge (a merge commit), and the landing does not wait for or
+// toggle a queue entry.
+func TestNoQueueArmsAutoMerge(t *testing.T) {
 	f := newFixture(t, noQueueRuleset)
 	f.forge.prs = f.prFor(f.head())
+	f.forge.views = []string{viewBlocked}
 	res, err := f.land(f.options())
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := step(t, res, "enqueue")
-	if f.forge.called("pr", "merge") != 0 || s.Status != StatusLeft || !strings.Contains(s.Note, "no merge queue") {
-		t.Fatalf("enqueue step %+v, calls %v: want nothing armed and the person told", s, f.forge.calls)
+	if f.forge.called("pr", "merge", "7", "--auto", "--merge", "--match-head-commit="+f.head()) != 1 || s.Status != StatusDone ||
+		!strings.Contains(s.Note, "no merge queue gates main") || strings.Contains(s.Note, "merge queue yet") {
+		t.Fatalf("enqueue step %+v, calls %v: want auto-merge armed with no queue to wait on", s, f.forge.calls)
 	}
 }
 
-// Ruling AM1, which human mode is today: a queue no approval guards is left
-// for a person to merge.
-func TestAQueueWithoutApprovalIsLeftForAPerson(t *testing.T) {
-	f := newFixture(t, unreviewedQueueRuleset)
+// Where the forge refuses auto-merge (a repository that leaves it off) and no
+// queue gates the default branch, the landing says so and arms nothing.
+func TestNoQueueAndAutoMergeRefusedIsSaid(t *testing.T) {
+	f := newFixture(t, noQueueRuleset)
 	f.forge.prs = f.prFor(f.head())
+	f.forge.views = []string{viewBlocked}
+	f.forge.failArm = 1
 	res, err := f.land(f.options())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s := step(t, res, "enqueue"); f.forge.called("pr", "merge") != 0 || s.Status != StatusLeft || !strings.Contains(s.Note, "approval") {
-		t.Fatalf("enqueue step %+v, calls %v", s, f.forge.calls)
+	if s := step(t, res, "enqueue"); s.Status != StatusLeft || !strings.Contains(s.Note, "refused to arm its auto-merge") {
+		t.Fatalf("enqueue step %+v: want the forge's refusal said", s)
 	}
 }
 
-// The rule is read at the merge base with the default branch: a ruleset the
-// branch itself adds cannot arm its own merge.
-func TestARulesetOnTheBranchTipDoesNotDecideTheMerge(t *testing.T) {
-	f := newFixture(t, "")
-	f.repo.Write(".abcd/work/rulesets/main-protection.json", queueRuleset)
-	f.repo.Commit("a ruleset the branch adds")
+// Ruling AM1 is retired: a ruleset's approval rule no longer decides the
+// arming. A queue no rule guards arms once the forge holds a counted approval
+// (the fake's default), and one whose rule asks for an approval waits, in
+// human mode, while none counts.
+func TestTheRulesetsApprovalRuleNoLongerDecides(t *testing.T) {
+	f := newFixture(t, unreviewedQueueRuleset)
 	f.forge.prs = f.prFor(f.head())
 	f.forge.views = []string{viewBlocked, viewQueued}
 	res, err := f.land(f.options())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s := step(t, res, "enqueue"); f.forge.called("pr", "merge") != 0 || s.Status != StatusLeft {
-		t.Fatalf("enqueue step %+v, calls %v: want the base's rule (none), nothing armed", s, f.forge.calls)
+	if s := step(t, res, "enqueue"); f.forge.called("pr", "merge", "7", "--auto", "--merge") != 1 || s.Status != StatusDone {
+		t.Fatalf("enqueue step %+v, calls %v: an approved head arms though no rule asks for approval", s, f.forge.calls)
+	}
+
+	g := newFixture(t, queueRuleset)
+	g.forge.prs = g.prFor(g.head())
+	g.forge.reviews = "[]"
+	res, err = g.land(g.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := step(t, res, "enqueue"); g.forge.called("pr", "merge") != 0 || s.Status != StatusLeft || !strings.Contains(s.Note, "technical facilitator's approval") {
+		t.Fatalf("enqueue step %+v, calls %v: a rule asking for approval arms nothing while none counts", s, g.forge.calls)
+	}
+}
+
+// The rule is read at the merge base with the default branch: a ruleset the
+// branch itself adds cannot choose its own merge's method.
+func TestARulesetOnTheBranchTipDoesNotDecideTheMerge(t *testing.T) {
+	f := newFixture(t, "")
+	f.repo.Write(".abcd/work/rulesets/main-protection.json", strings.Replace(queueRuleset, `"MERGE"`, `"SQUASH"`, 1))
+	f.repo.Commit("a ruleset the branch adds")
+	f.forge.prs = f.prFor(f.head())
+	f.forge.views = []string{viewBlocked}
+	res, err := f.land(f.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := step(t, res, "enqueue"); f.forge.called("pr", "merge", "7", "--auto", "--squash") != 0 || f.forge.called("pr", "merge", "7", "--auto", "--merge") != 1 ||
+		!strings.Contains(s.Note, "no merge queue gates") {
+		t.Fatalf("enqueue step %+v, calls %v: want the base's rule (no queue), not the branch's squash queue", s, f.forge.calls)
 	}
 }
 
@@ -650,22 +759,6 @@ func TestARepositoryWithNoPreflightTargetGetsNoPush(t *testing.T) {
 	wantRefusal(t, err, "no preflight")
 	if len(f.pushes()) != 0 {
 		t.Fatalf("pushed %v", f.pushes())
-	}
-}
-
-func TestMergeGateAppliesAM1(t *testing.T) {
-	for _, c := range []struct {
-		rule MergeRule
-		arm  bool
-	}{
-		{MergeRule{}, false},
-		{MergeRule{Method: "MERGE"}, false},
-		{MergeRule{Approval: true}, false},
-		{MergeRule{Method: "SQUASH", Approval: true}, true},
-	} {
-		if d := mergeGate(c.rule, "main"); d.arm != c.arm || d.why == "" {
-			t.Errorf("mergeGate(%+v) = %+v, want arm %v with a reason", c.rule, d, c.arm)
-		}
 	}
 }
 

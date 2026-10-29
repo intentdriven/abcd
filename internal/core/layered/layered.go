@@ -138,6 +138,15 @@ type Roots struct {
 	// is "" so nothing is read from or written to it, and the machine layer
 	// reads as absent instead of failing the load. RootsFor's notes say why.
 	HomeRefused bool
+	// RepoAt, when set, is the commit (a full object name) the repository
+	// layer is read at, from the object store of the repository at Repo,
+	// never from its working tree; RepoAtName names it in every origin and
+	// refusal ("origin/main"). The merge gate reads facilitator.mode this way
+	// at the default branch's tip, so a branch that commits its own value, or
+	// deletes the default branch's, does not decide the gate for itself
+	// (dcn-2610230058333177).
+	RepoAt     string
+	RepoAtName string
 }
 
 // RootsFor is the one way a front door resolves Roots for a working directory,
@@ -259,13 +268,18 @@ func Load(f File, r Roots) (*Stack, error) {
 		machine: doc{layer: Machine, origin: f.MachineOrigin()},
 	}
 	if r.Repo != "" {
-		raw, err := readRepo(r.Repo, f.RepoRel)
+		read := func() ([]byte, error) { return readRepo(r.Repo, f.RepoRel) }
+		if r.RepoAt != "" {
+			s.repo.origin = f.RepoOrigin() + " at " + r.RepoAtName
+			read = func() ([]byte, error) { return readRepoAt(r.Repo, r.RepoAt, f.RepoRel) }
+		}
+		raw, err := read()
 		if err != nil {
-			return nil, fmt.Errorf("%s (repo layer): %w", f.RepoOrigin(), err)
+			return nil, fmt.Errorf("%s (repo layer): %w", s.repo.origin, err)
 		}
 		if raw != nil {
 			if s.repo.root, err = parse(raw, f); err != nil {
-				return nil, fmt.Errorf("%s (repo layer): %w", f.RepoOrigin(), err)
+				return nil, fmt.Errorf("%s (repo layer): %w", s.repo.origin, err)
 			}
 		}
 	}
@@ -314,6 +328,38 @@ func readRepo(repoRoot, rel string) ([]byte, error) {
 		return nil, fmt.Errorf("it is larger than %d bytes", MaxFileBytes)
 	}
 	return nil, fmt.Errorf("it could not be read inside the checkout: %w", err)
+}
+
+// readRepoAt reads rel as the commit at holds it in the repository at
+// repoRoot: a regular blob (mode 100644 or 100755), bounded by MaxFileBytes. A
+// symlink, a submodule or a tree at the path is refused, as readRepo refuses
+// one in the working tree, and a commit with nothing at the path returns
+// (nil, nil).
+func readRepoAt(repoRoot, at, rel string) ([]byte, error) {
+	if !gitutil.IsFullSHA(at) {
+		return nil, fmt.Errorf("the commit %q to read it at is not a full object name", at)
+	}
+	entry, err := gitutil.RunCappedBytes(repoRoot, 4096, "ls-tree", "-z", at, "--", rel)
+	if err != nil {
+		return nil, fmt.Errorf("it could not be listed at the commit: %w", err)
+	}
+	line := strings.TrimSuffix(string(entry), "\x00")
+	if line == "" {
+		return nil, nil
+	}
+	meta, path, ok := strings.Cut(line, "\t")
+	fields := strings.Fields(meta)
+	if !ok || path != rel || len(fields) != 3 {
+		return nil, errors.New("git listed it in a shape that is not one entry")
+	}
+	if fields[1] != "blob" || (fields[0] != "100644" && fields[0] != "100755") {
+		return nil, errors.New("it is not a regular file at the commit (a symlink, a directory or a submodule), so it is refused rather than followed")
+	}
+	raw, err := gitutil.RunCappedBytes(repoRoot, MaxFileBytes, "cat-file", "blob", fields[2])
+	if err != nil {
+		return nil, fmt.Errorf("it could not be read at the commit: %w", err)
+	}
+	return raw, nil
 }
 
 // readMachine reads ~/.abcd.noindex/<rel> through the home-declaration guard: a regular

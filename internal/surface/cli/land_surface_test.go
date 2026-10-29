@@ -239,3 +239,38 @@ func TestLandRefusesAReviewThatDoesNotPass(t *testing.T) {
 		t.Fatalf("exit %d, stderr %q: want --record-review with --no-push refused", code, stderr)
 	}
 }
+
+// TestLandApproveRecordsTheFacilitatorsApproval is spc-2610161609350616 step
+// 4's approval act at the front door: --approve records the technical
+// facilitator's approval of the branch's head and lands nothing, and is
+// refused beside a landing flag.
+func TestLandApproveRecordsTheFacilitatorsApproval(t *testing.T) {
+	dir, origin := landWorld(t)
+	if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(landing.TierRelDir)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	head := strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD"))
+	if code, _, stderr := reserveRun(t, dir, "land", "--approve", "--no-enqueue"); code != 2 || !strings.Contains(stderr, "--approve lands nothing") {
+		t.Fatalf("exit %d, stderr %q: want --approve with --no-enqueue refused", code, stderr)
+	}
+	code, stdout, stderr := reserveRun(t, dir, "land", "--approve", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, stderr)
+	}
+	var got struct {
+		Commit   string `json:"commit"`
+		Approval string `json:"approval"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("%v in %q", err, stdout)
+	}
+	if got.Commit != head || !strings.HasSuffix(got.Approval, landing.ApprovalsRelDir+"/"+head) {
+		t.Fatalf("--json = %+v; want the approval of %s", got, head)
+	}
+	if fi, err := os.Lstat(filepath.Join(dir, filepath.FromSlash(landing.ApprovalsRelDir), head)); err != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("no approval file for %s: %v", head, err)
+	}
+	if strings.Contains(gitCmd(t, origin, "branch", "--list", "feat/x"), "feat/x") {
+		t.Fatal("recording an approval pushed the branch")
+	}
+}

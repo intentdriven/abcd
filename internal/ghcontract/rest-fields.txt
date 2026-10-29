@@ -1,0 +1,27 @@
+# The forge's REST resources, as far as abcd's merge gate reads into them: one
+# field a line, "<resource>.<field>", where a field holding an object is
+# followed by its own fields as "<resource>.<field>.<subfield>".
+#
+# Read on 2026-10-29 by one live, read-only GET of each resource against
+# abcd's own repository (gh api, no -X, no field), printing the keys only:
+#   collaborator-permission  GET repos/{owner}/{repo}/collaborators/{login}/permission
+#   pull-request-review      GET repos/{owner}/{repo}/pulls/{number}/reviews
+#   pull-request             GET repos/{owner}/{repo}/pulls/{number}
+# Refresh it by making those calls again.
+collaborator-permission.permission
+collaborator-permission.role_name
+collaborator-permission.user
+collaborator-permission.user.login
+pull-request-review.id
+pull-request-review.user
+pull-request-review.user.login
+pull-request-review.state
+pull-request-review.commit_id
+pull-request-review.submitted_at
+pull-request-review.body
+pull-request-review.author_association
+pull-request.user
+pull-request.user.login
+pull-request.head
+pull-request.head.sha
+pull-request.head.ref

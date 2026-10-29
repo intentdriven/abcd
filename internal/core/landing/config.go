@@ -2,9 +2,11 @@ package landing
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The landing's configuration keys, in .abcd/config.json and
@@ -234,4 +236,38 @@ func readMode(r layered.Roots) (Facilitator, error) {
 		return Facilitator{Key: KeyFacilitatorMode, Mode: ModeAuto, Layer: vals[0].layer, Origin: vals[0].origin}, nil
 	}
 	return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Bundled.String(), Origin: layered.Bundled.String()}, nil
+}
+
+// ReadFacilitatorAt resolves facilitator.mode as the merge gate reads it: the
+// repository layer is .abcd/config.json as the commit tip holds it (the
+// default branch's tip, named name in every origin), read from the object
+// store of the repository at repoRoot, beside r's machine layer, never the
+// checkout of the branch being landed (dcn-2610230058333177). So a branch that
+// commits auto, or deletes the default branch's human, does not decide the
+// gate for itself. r's Repo is replaced; its Home and HomeRefused are kept.
+// The error is the reader's raw text, for the caller to mask.
+func ReadFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator, error) {
+	r.Repo, r.RepoAt, r.RepoAtName = repoRoot, tip, name
+	return readMode(r)
+}
+
+// ReadDefaultFacilitator resolves facilitator.mode for the repository holding
+// cwd as the merge gate does (ReadFacilitatorAt), at the tip of the default
+// branch git tracks for it (gitutil.DefaultRef), with the machine layer
+// RootsFor resolves for cwd. The shell guard reads the mode through it. A
+// repository with no default branch to read is an error: a caller that cannot
+// read the mode takes it as human.
+func ReadDefaultFacilitator(cwd string) (Facilitator, error) {
+	r, _ := layered.RootsFor(cwd)
+	root, err := gitutil.Toplevel(cwd)
+	if err != nil {
+		return Facilitator{}, fmt.Errorf("%s is not inside a git checkout, so the default branch's %s cannot be read", fsutil.RedactHome(cwd), KeyFacilitatorMode)
+	}
+	ref := gitutil.DefaultRef(root)
+	tip, err := gitutil.Run(root, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+	if ref == "" || err != nil || !gitutil.IsFullSHA(tip) {
+		return Facilitator{}, fmt.Errorf("the repository has no default branch to read %s at", KeyFacilitatorMode)
+	}
+	name := strings.TrimPrefix(strings.TrimPrefix(ref, "refs/remotes/"), "refs/heads/")
+	return ReadFacilitatorAt(r, root, tip, name)
 }
