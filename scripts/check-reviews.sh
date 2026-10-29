@@ -157,29 +157,277 @@ done
 # view, and a pathspec hides one of them), and a file that was deleted or renamed
 # away has no working-tree path left to probe from. Scanning the history instead
 # of the tree sees all three shapes.
+#
+# ONE exception, and a narrow one (iss-2610290855523061): a commit that removes
+# a person's login or name from a review. It is exempt only when ALL hold — its
+# message carries the trailer `Review-Redaction: names`; every review file it
+# touches is modified in place (M; a D, R or T is never exempt); and each of
+# those changes is a pure substitution, every removed span name-shaped and every
+# inserted span exactly one member of REDACTION_PLACEHOLDERS. Anything else in
+# the same file — a reworded word, an added or dropped sentence, a re-spaced
+# line — leaves the commit under RD002 like any other edit.
+REDACTION_TRAILER="Review-Redaction: names"
+# The fixed public placeholder set. A redaction says what was there by role,
+# never by a different name; extend the set in its own reviewed change.
+REDACTION_PLACEHOLDERS=(
+  "the product thinker"
+  "the technical facilitator"
+  "a contributor"
+  "(the product thinker's login)"
+  "<personal account>"
+  "<login>"
+  "<name>"
+  "<redacted>"
+)
+# Name-shaped: a forge login (alphanumerics and hyphens, at most 39, not
+# starting with a hyphen), optionally @-prefixed and optionally in code
+# backticks; or one to three capitalised words, a person's name.
+NAME_SHAPE='^(`@?[A-Za-z0-9][A-Za-z0-9-]{0,38}`|@?[A-Za-z0-9][A-Za-z0-9-]{0,38}|[A-Z][A-Za-z'"'"'-]*( [A-Z][A-Za-z'"'"'-]*){0,2})$'
+# The word-diff tokens: a run of word characters, or any one other non-blank
+# character, so a login inside a path or a URL is its own token.
+WORD_RE='[A-Za-z0-9_-]+|[^[:space:]]'
+# The per-machine private name list (internal/core/banlist.PrivateRelPath).
+# Where it exists, a removed span must also match one of its entries — the
+# public shape check above admits any single word, the list admits only names.
+# Absent (CI, a fresh clone), the public check is the whole test.
+PRIVATE_NAMES=".abcd/.work.local/private-names.txt"
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+is_placeholder() {
+  local p
+  for p in "${REDACTION_PLACEHOLDERS[@]}"; do
+    [ "$1" = "$p" ] && return 0
+  done
+  return 1
+}
+
+# load_private reads the private list once, in the reading the committed
+# .githooks/pre-commit applies: line 1 exactly `# abcd-banlist: keyed` makes
+# every entry KEY<space-or-tab>PATTERN, otherwise each line is one whole-line
+# pattern; blank and `#` lines are skipped; patterns are grep -iE. A store that
+# cannot be read for what it is refuses the run — never an entry's content, only
+# its line number, is ever printed.
+private_state=unread
+private_pats=()
+private_lines=()
+load_private() {
+  [ "$private_state" = unread ] || return 0
+  private_state=absent
+  [ -e "$PRIVATE_NAMES" ] || [ -L "$PRIVATE_NAMES" ] || return 0
+  if [ -L "$PRIVATE_NAMES" ] || [ ! -f "$PRIVATE_NAMES" ]; then
+    echo "check-reviews: $PRIVATE_NAMES is not a regular file — refusing rather than skipping the private name check." >&2
+    exit 2
+  fi
+  local raw line keyed=0 n=0 key pat
+  while IFS= read -r raw || [ -n "$raw" ]; do
+    n=$((n + 1))
+    line="${raw%$'\r'}"
+    [ "$n" -eq 1 ] && line="${line#$'\xef\xbb\xbf'}"
+    line="${line%"${line##*[! $'\t']}"}"
+    line="${line#"${line%%[! $'\t']*}"}"
+    if [ "$n" -eq 1 ] && [ "$line" = "# abcd-banlist: keyed" ]; then
+      keyed=1
+      continue
+    fi
+    case "$line" in '' | \#*) continue ;; esac
+    pat="$line"
+    if [ "$keyed" -eq 1 ]; then
+      key="${line%%[ $'\t']*}"
+      pat="${line#"$key"}"
+      pat="${pat#"${pat%%[! $'\t']*}"}"
+      if [ -z "$pat" ] || ! printf '%s' "$key" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._/-]*$'; then
+        echo "check-reviews: $PRIVATE_NAMES line $n is not a KEY<space-or-tab>PATTERN entry — refusing; its content is withheld." >&2
+        exit 2
+      fi
+    fi
+    private_pats+=("$pat")
+    private_lines+=("$n")
+  done <"$PRIVATE_NAMES"
+  private_state=present
+}
+
+# on_private_list <span> reports whether the span, its backticks and @ shed,
+# matches an entry of the private list. A pattern grep refuses is a fault.
+on_private_list() {
+  local core="$1" i rc
+  core="${core#\`}"
+  core="${core%\`}"
+  core="${core#@}"
+  i=0
+  while [ "$i" -lt "${#private_pats[@]}" ]; do
+    rc=0
+    grep -Eiq -e "${private_pats[$i]}" <<<"$core" 2>/dev/null || rc=$?
+    case "$rc" in
+    0) return 0 ;;
+    1) ;;
+    *)
+      echo "check-reviews: $PRIVATE_NAMES line ${private_lines[$i]} is a pattern grep -E refuses — refusing; its content is withheld." >&2
+      exit 2
+      ;;
+    esac
+    i=$((i + 1))
+  done
+  return 1
+}
+
+# pure_redaction <sha> <path> reports whether the commit's change to the file is
+# a pure name-to-placeholder substitution; on refusal it sets why_not. Removed
+# spans are never printed: they are the names being taken out.
+#
+# The word diff is read whole (one hunk spanning the file) and both sides are
+# rebuilt from it and compared with the real blobs byte for byte, because a
+# word diff ignores whitespace between tokens: without the rebuild a re-spaced
+# or re-wrapped line would pass as unchanged. A side the stream does not rebuild
+# exactly — a file without a final newline among them — is refused.
+why_not=""
+pure_redaction() {
+  local sha="$1" p="$2" rc n rem add pairs=0
+  rc=0
+  git cat-file blob "$sha^1:$p" >"$work/old" 2>"$work/err" || rc=$?
+  [ "$rc" -eq 0 ] && { git cat-file blob "$sha:$p" >"$work/new" 2>"$work/err" || rc=$?; }
+  if [ "$rc" -ne 0 ]; then
+    echo "check-reviews: git cat-file for $p at $sha failed (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
+    cat "$work/err" >&2
+    exit 2
+  fi
+  n=$(($(wc -l <"$work/old") + $(wc -l <"$work/new") + 1))
+  rc=0
+  git diff --no-color --no-ext-diff --no-textconv -U"$n" --word-diff=porcelain \
+    --word-diff-regex="$WORD_RE" "$sha^1" "$sha" -- "$p" >"$work/wd" 2>"$work/err" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "check-reviews: git diff for $p at $sha failed (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
+    cat "$work/err" >&2
+    exit 2
+  fi
+  # Porcelain: ' ' common text, '-' removed, '+' added, '~' end of line. A '-'
+  # must be followed at once by its '+', and a '+' preceded by its '-': a bare
+  # removal or insertion is not a substitution. Pairs go out two lines each.
+  rc=0
+  LC_ALL=C awk -v old="$work/old.re" -v new="$work/new.re" -v pairs="$work/pairs" '
+    BEGIN { state = "head"; prev = ""; hunks = 0; bad = 0
+            printf "" > old; printf "" > new; printf "" > pairs }
+    state == "head" {
+      if ($0 ~ /^@@ /) { state = "hunk"; hunks++; next }
+      if ($0 ~ /^(diff --git |index |--- |\+\+\+ )/) next
+      bad = 1; exit
+    }
+    {
+      c = substr($0, 1, 1); t = substr($0, 2)
+      if (c == " ") { if (prev == "-") { bad = 1; exit }; printf "%s", t > old; printf "%s", t > new }
+      else if (c == "-") { if (prev == "-") { bad = 1; exit }; printf "%s", t > old; rem = t }
+      else if (c == "+") { if (prev != "-") { bad = 1; exit }; printf "%s", t > new; print rem > pairs; print t > pairs }
+      else if (c == "~") { if (prev == "-") { bad = 1; exit }; printf "\n" > old; printf "\n" > new }
+      else { bad = 1; exit }
+      prev = c
+    }
+    END { if (bad || hunks != 1 || prev == "-") exit 1 }
+  ' "$work/wd" || rc=$?
+  if [ "$rc" -ne 0 ] || ! cmp -s "$work/old" "$work/old.re" || ! cmp -s "$work/new" "$work/new.re"; then
+    why_not="the change is not a pure substitution of spans"
+    return 1
+  fi
+  load_private
+  while IFS= read -r rem && IFS= read -r add; do
+    pairs=$((pairs + 1))
+    if ! grep -Eq -- "$NAME_SHAPE" <<<"$rem"; then
+      why_not="a removed span is not name-shaped"
+      return 1
+    fi
+    if ! is_placeholder "$add"; then
+      why_not="an inserted span is not one of the fixed placeholders"
+      return 1
+    fi
+    if [ "$private_state" = present ] && ! on_private_list "$rem"; then
+      why_not="a removed span is not on the private name list"
+      return 1
+    fi
+  done <"$work/pairs"
+  if [ "$pairs" -eq 0 ]; then
+    why_not="the change substitutes nothing"
+    return 1
+  fi
+  return 0
+}
+
 rc=0
-history="$(git log --format='' --name-status --diff-filter=DMRT -- "$ROOT" 2>&1)" || rc=$?
+history="$(git log --format='commit %H' --name-status --diff-filter=DMRT -- "$ROOT" 2>&1)" || rc=$?
 if [ "$rc" -ne 0 ]; then
   echo "check-reviews: git log over $ROOT failed (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
   echo "$history" >&2
   exit 2
 fi
-# Each emitted line is a status then one path, or — for an R — a status then the
-# old and new path, tab-separated. Both sides of a rename are review files in
-# their own right, so both columns are checked. The population is the dated
-# review dirs only; reviews/README.md and the sha-keyed receipt dirs are outside
-# it and stay mutable.
+# Each commit opens with `commit <sha>`; each line after it is a status then one
+# path, or — for an R — a status then the old and new path, tab-separated. Both
+# sides of a rename are review files in their own right, so both columns are
+# checked. The population is the dated review dirs only; reviews/README.md and
+# the sha-keyed receipt dirs are outside it and stay mutable. A commit's review
+# entries are gathered first, because the exemption is judged per commit.
+review_re='^\.abcd/work/reviews/[0-9]{4}-[0-9]{2}-[0-9]{2}-[^/]+/.*\.md$'
+c_sha=""
+c_status=()
+c_path=()
+
+judge_commit() {
+  [ "${#c_path[@]}" -gt 0 ] || return 0
+  local i reason="" trailers
+  rc=0
+  trailers="$(git log -1 --format='%(trailers:only,unfold)' "$c_sha" 2>&1)" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "check-reviews: reading the trailers of $c_sha failed (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
+    echo "$trailers" >&2
+    exit 2
+  fi
+  if grep -Fxq -- "$REDACTION_TRAILER" <<<"$trailers"; then
+    i=0
+    while [ "$i" -lt "${#c_path[@]}" ]; do
+      if [ "${c_status[$i]}" != M ]; then
+        reason="the $REDACTION_TRAILER trailer covers an in-place edit only, not history status ${c_status[$i]}"
+        break
+      fi
+      if ! pure_redaction "$c_sha" "${c_path[$i]}"; then
+        reason="the $REDACTION_TRAILER trailer is present, but $why_not"
+        break
+      fi
+      i=$((i + 1))
+    done
+    if [ -z "$reason" ]; then
+      for i in "${c_path[@]}"; do
+        echo "  RD002 redaction $i — a pure name redaction in ${c_sha:0:12}; allowed"
+      done
+      return 0
+    fi
+  fi
+  i=0
+  while [ "$i" -lt "${#c_path[@]}" ]; do
+    note "RD002 ${c_path[$i]} — review files are append-only; changed after creation (history status ${c_status[$i]})${reason:+; $reason}"
+    i=$((i + 1))
+  done
+  fail=1
+}
+
 while IFS="$(printf '\t')" read -r status old new; do
   [ -n "$status" ] || continue
+  case "$status" in
+  "commit "*)
+    judge_commit
+    c_sha="${status#commit }"
+    c_status=()
+    c_path=()
+    continue
+    ;;
+  esac
   for p in "$old" "$new"; do
     [ -n "$p" ] || continue
-    printf '%s' "$p" | grep -Eq '^\.abcd/work/reviews/[0-9]{4}-[0-9]{2}-[0-9]{2}-[^/]+/.*\.md$' || continue
-    note "RD002 $p — review files are append-only; changed after creation (history status $status)"
-    fail=1
+    grep -Eq -- "$review_re" <<<"$p" || continue
+    c_status+=("$status")
+    c_path+=("$p")
   done
 done <<EOF
 $history
 EOF
+judge_commit
 
 # Review files live inside dated dirs (depth >=2); the root README is mutable.
 # (while-read, not mapfile — portable to the bash 3.2 that macOS ships.)

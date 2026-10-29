@@ -175,6 +175,107 @@ git -C "$d" add -A
 git -C "$d" commit -qm "amend the charter"
 expect pass "$d" "the root README stays mutable"
 
+# --- RD002: the one exception, a pure name redaction -------------------------
+#
+# A commit trailed `Review-Redaction: names` may change a review file in place
+# when every change is a name-shaped span swapped for a member of the gate's
+# fixed placeholder set — nothing reworded, added, removed or re-spaced. Each
+# fixture below differs from the clean one by exactly one of those, so each
+# refusal is pinned to the condition it names. Persona names only.
+
+# namesrepo makes a scratch repo whose history holds a review file that names a
+# login and a person, committed add-only, so the redaction commit is the only
+# post-creation change in it.
+namesrepo() {
+	local d
+	d="$(newrepo "$1")"
+	printf '# People\n\nOpened by alice-dev on the forge.\nReviewed by Alice Smith, who signed off.\n' >"$d/$SCOPE/02-people.md"
+	git -C "$d" add -A
+	git -C "$d" commit -qm "add a review naming people"
+	echo "$d"
+}
+
+# redact <repo> <trailer: yes|no> <new body> commits the rewritten review file.
+redact() {
+	printf '%s' "$3" >"$1/$SCOPE/02-people.md"
+	git -C "$1" add -A
+	if [ "$2" = yes ]; then
+		git -C "$1" commit -qm "redact names from a review" -m "Review-Redaction: names"
+	else
+		git -C "$1" commit -qm "redact names from a review"
+	fi
+}
+
+# privatelist <repo> <body> writes the per-machine private name list. It is
+# written after the last commit, so it stays untracked, as the real one is.
+privatelist() {
+	mkdir -p "$1/.abcd/.work.local"
+	printf '%s' "$2" >"$1/.abcd/.work.local/private-names.txt"
+}
+
+# refute <repo> <label> <text> asserts the gate's output never carries <text>:
+# a refusal about a removed span must not repeat the span it refused.
+refute() {
+	local out
+	out="$(cd "$1" && "$BASH" "$GATE" 2>&1)" || true
+	if grep -qiF -- "$3" <<<"$out"; then
+		printf 'cases: FAIL %s — the output repeats a removed span:\n%s\n' "$2" "$out" >&2
+		failures=$((failures + 1))
+		return
+	fi
+	printf 'cases: ok   %s (no removed span in the output)\n' "$2"
+}
+
+CLEAN=$'# People\n\nOpened by <login> on the forge.\nReviewed by the product thinker, who signed off.\n'
+
+d="$(namesrepo redact-clean)"
+redact "$d" yes "$CLEAN"
+expect pass "$d" "RD002 a trailed pure name redaction is allowed" "RD002 redaction"
+
+d="$(namesrepo redact-reworded)"
+redact "$d" yes $'# People\n\nOpened by <login> on the forge.\nReviewed by the product thinker, who approved.\n'
+expect fail "$d" "RD002 a redaction that also rewords prose" "a removed span is not name-shaped"
+
+d="$(namesrepo redact-respaced)"
+redact "$d" yes $'# People\n\nOpened by <login> on the  forge.\nReviewed by the product thinker, who signed off.\n'
+expect fail "$d" "RD002 a redaction that also changes whitespace" "not a pure substitution"
+
+d="$(namesrepo redact-no-trailer)"
+redact "$d" no "$CLEAN"
+expect fail "$d" "RD002 a pure redaction without the trailer" "RD002"
+
+d="$(namesrepo redact-off-set)"
+redact "$d" yes $'# People\n\nOpened by someone on the forge.\nReviewed by the product thinker, who signed off.\n'
+expect fail "$d" "RD002 a replacement outside the placeholder set" "not one of the fixed placeholders"
+
+d="$(namesrepo redact-delete)"
+git -C "$d" rm -q "$SCOPE/02-people.md"
+git -C "$d" commit -qm "redact names from a review" -m "Review-Redaction: names"
+expect fail "$d" "RD002 a trailed deletion is still refused" "not history status D"
+
+d="$(namesrepo redact-rename)"
+git -C "$d" mv "$SCOPE/02-people.md" "$SCOPE/03-people.md"
+git -C "$d" commit -qm "redact names from a review" -m "Review-Redaction: names"
+expect fail "$d" "RD002 a trailed rename is still refused" "not history status R"
+
+# Where the private list exists, a removed span must also be on it. Both of the
+# list's formats are read: keyed (KEY PATTERN) and legacy (whole-line patterns).
+d="$(namesrepo redact-private-on)"
+redact "$d" yes "$CLEAN"
+privatelist "$d" $'# abcd-banlist: keyed\npersona-login alice-dev\npersona-name alice smith\n'
+expect pass "$d" "RD002 a redaction whose spans are on the keyed private list" "RD002 redaction"
+
+d="$(namesrepo redact-private-legacy)"
+redact "$d" yes "$CLEAN"
+privatelist "$d" $'alice-dev\nAlice Smith\n'
+expect pass "$d" "RD002 a redaction whose spans are on the legacy private list" "RD002 redaction"
+
+d="$(namesrepo redact-private-off)"
+redact "$d" yes "$CLEAN"
+privatelist "$d" $'# abcd-banlist: keyed\npersona-login alice-dev\npersona-other bob-dev\n'
+expect fail "$d" "RD002 a removed span missing from the private list" "not on the private name list"
+refute "$d" "RD002 the private-list refusal withholds the span" "Alice Smith"
+
 # --- RD004: every review names the commit it read (itd-28) --------------------
 
 # addreview <repo> <dir-name> <summary-text> commits one new review folder.
