@@ -483,6 +483,9 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	if roots, _ := layered.MachineRoots(home); roots.HomeRefused {
 		return res, errors.New("the home directory lies inside a working tree, so the load gate keeps no hold there; run with your own home; nothing was waited for")
 	}
+	if err := ReadDisk(home).Refusal(); err != nil {
+		return res, err
+	}
 	root, err := fsutil.EnsureHomeScope(home, abcdhome.Rel(), abcdhome.DirMode)
 	if err != nil {
 		return res, fmt.Errorf("nothing was waited for: %w", err)
