@@ -847,3 +847,52 @@ func TestSetupRefusesASymlinkAtTheCACopy(t *testing.T) {
 		t.Errorf("the symlink was replaced or removed (%v, %v)", st.Mode(), err)
 	}
 }
+
+// TestSetupSaysWhereTheHolderIDCameFrom (iss-2610290809526033): a hosted
+// session's home is not kept, so the setup names the holder id the lookup
+// minted, for the person to copy into the environment's settings as
+// ABCD_HOLDER_ID; with the variable set it says the id came from there; set to
+// anything but one id, it says so and never echoes the value. It never writes
+// an id.
+func TestSetupSaysWhereTheHolderIDCameFrom(t *testing.T) {
+	const minted = "h_0123456789abcdef0123456789abcdef"
+	answer := `{"login":"` + tokenLogin + `","id":4242,"noreply":"` + tokenNoReply + `","source":"token","holder_id":"` + minted + `"}`
+	for _, tc := range []struct {
+		name      string
+		env       []string
+		want, not []string
+	}{
+		{"minted here", nil,
+			[]string{"holder id: " + minted + ", kept in this session's home only", "set ABCD_HOLDER_ID=" + minted + " in the environment's settings"}, nil},
+		{"from the variable", []string{"ABCD_HOLDER_ID=h_ffffffffffffffffffffffffffffffff"},
+			[]string{"holder id: taken from ABCD_HOLDER_ID"}, []string{minted, "h_ffff"}},
+		{"a malformed variable", []string{"ABCD_HOLDER_ID=octo-person-id"},
+			[]string{"ABCD_HOLDER_ID is set but is not a holder id"}, []string{"octo-person-id", minted}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newSetupCase(t)
+			out, code := c.script(append(append(setupRemote, "FAKE_HOLDER="+answer), tc.env...), setupScript)
+			if code != 0 {
+				t.Fatalf("setup exited %d\n%s", code, out)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(out, w) {
+					t.Errorf("setup output lacks %q:\n%s", w, out)
+				}
+			}
+			for _, n := range tc.not {
+				if strings.Contains(out, n) {
+					t.Errorf("setup output carries %q:\n%s", n, out)
+				}
+			}
+			if strings.Contains(c.callLog(), "holder-id") {
+				t.Errorf("setup wrote a holder id itself:\n%s", c.callLog())
+			}
+		})
+	}
+	c := newSetupCase(t)
+	out, _ := c.script(append(setupRemote, "FAKE_HOLDER="+holderJSON(tokenLogin, tokenNoReply, "token")), setupScript)
+	if strings.Contains(out, "holder id:") {
+		t.Errorf("an answer carrying no holder id was named one:\n%s", out)
+	}
+}

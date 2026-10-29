@@ -302,9 +302,16 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"consult it too.\n\n" +
 			"The holder is named by your holder id: h_ and 32 random lower-case hex\n" +
 			"characters, minted the first time one is needed into ~/.abcd.noindex/holder-id\n" +
-			"(owner-only) and kept, so nothing abcd pushes carries your GitHub login. A\n" +
-			"holder-id file another account owns or could write, or one that holds no id,\n" +
-			"is refused, never replaced. A reservation under an id listed in\n" +
+			"(owner-only) and kept. No trailer and no branch name abcd pushes carries your\n" +
+			"GitHub login; each commit's author and committer fields still carry your git\n" +
+			"identity, and holds already pushed under your login are not rewritten. A fresh\n" +
+			"mint says so once on stderr: holds made under an earlier id of yours read as\n" +
+			"someone else's until they lapse. ABCD_HOLDER_ID, when set, is your id instead,\n" +
+			"read before the file and never written to it: set it to the id --holder prints\n" +
+			"in a hosted or ephemeral session's own settings, whose home is not kept; set to\n" +
+			"anything but one id, every act refuses. A holder-id file another account owns\n" +
+			"or could write, or one that holds no id, is refused, never replaced. A\n" +
+			"reservation under an id listed in\n" +
 			"~/.abcd.noindex/holder-ids (one per line, # comments; the ids your other\n" +
 			"machines and accounts print with --holder) is yours too, from another copy.\n\n" +
 			"abcd still works out your GitHub username, which is never pushed, from the first\n" +
@@ -319,8 +326,8 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"(.abcd/.work.local/), where this copy's key is kept. `abcd peers` lists every\n" +
 			"reservation.\n\n" +
 			"--holder prints the account an act from this checkout would reserve as and the\n" +
-			"source that named it (git, config or token), then your holder id, where it is\n" +
-			"kept, and any ids declared as yours, or its --json document. It may make that\n" +
+			"source that named it (git, config or token), then your holder id, where it\n" +
+			"comes from, and any ids declared as yours, or its --json document. It may make that\n" +
 			"one call to the user endpoint in two cases: git's identity is a person's but\n" +
 			"carries neither a GitHub no-reply address nor a machine key; or git's identity\n" +
 			"is not a person's (unset, or a machine's), when the machine key is skipped. It\n" +
@@ -436,6 +443,11 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 	return cmd
 }
 
+// holderIDScope is what the holder id does and does not keep out of what abcd
+// pushes, the same words the help and the brief use.
+const holderIDScope = "no trailer and no branch name abcd pushes carries your login, " +
+	"though each commit's author and committer still carry your git identity, and holds already pushed are not rewritten"
+
 // reserveHolderOutput is `reserve --holder`'s document: the account and the
 // source that named it, as before, with the holder id what abcd pushes names
 // the person by, where it is kept, and the ids the person declares as theirs
@@ -443,6 +455,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 type reserveHolderOutput struct {
 	claim.Holder
 	HolderID          string   `json:"holder_id"`
+	HolderIDFrom      string   `json:"holder_id_from"`
 	HolderIDFile      string   `json:"holder_id_file"`
 	DeclaredHolderIDs []string `json:"declared_holder_ids"`
 	DeclaredIDsFile   string   `json:"declared_holder_ids_file"`
@@ -472,11 +485,15 @@ func runReserveHolder(w, errw io.Writer, asJSON bool) error {
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 	}
-	out := reserveHolderOutput{Holder: h, HolderID: self.ID, HolderIDFile: claim.HolderIDFile,
+	from, where := claim.HolderIDFile, "kept in "+claim.HolderIDFile
+	if self.FromEnv {
+		from, where = claim.HolderIDEnv, "from "+claim.HolderIDEnv
+	}
+	out := reserveHolderOutput{Holder: h, HolderID: self.ID, HolderIDFrom: from, HolderIDFile: claim.HolderIDFile,
 		DeclaredHolderIDs: append([]string{}, self.Declared...), DeclaredIDsFile: claim.DeclaredHolderIDsFile}
 	return render(w, asJSON, out, func(w io.Writer) {
 		fmt.Fprintf(w, "would reserve as %s (from %s)\n", h.Login, h.Source)
-		fmt.Fprintf(w, "holder id: %s (kept in %s); what abcd pushes names you by it, never by your login\n", self.ID, claim.HolderIDFile)
+		fmt.Fprintf(w, "holder id: %s (%s); %s\n", self.ID, where, holderIDScope)
 		if len(self.Declared) > 0 {
 			fmt.Fprintf(w, "also yours: %s (declared in %s)\n", strings.Join(self.Declared, ", "), claim.DeclaredHolderIDsFile)
 		}

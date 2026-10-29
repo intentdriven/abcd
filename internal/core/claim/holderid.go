@@ -4,10 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -38,6 +40,13 @@ const (
 	maxHolderIDsBytes = 64 << 10
 )
 
+// HolderIDEnv is the environment variable that names this account's holder
+// id where the home is not kept between sessions (a hosted or ephemeral
+// session): set, it is read before HolderIDFile and is the id, and it is
+// never written to the file. Set to anything but one holder id, every act
+// that needs the id is refused, and neither the file nor a mint stands in.
+const HolderIDEnv = "ABCD_HOLDER_ID"
+
 // HolderIDFile is where the person's holder id is kept, and
 // DeclaredHolderIDsFile where they declare the ids of their other machines
 // and accounts as theirs too, both in the tilde form a message names them by.
@@ -47,6 +56,44 @@ var (
 )
 
 var holderIDRe = regexp.MustCompile(`^h_[0-9a-f]{32}$`)
+
+// envHolderID is the holder id HolderIDEnv names: set is false when the
+// variable is unset or empty; a value that is set and is not one holder id
+// is an error, which never echoes the value.
+func envHolderID() (id string, set bool, err error) {
+	v, ok := os.LookupEnv(HolderIDEnv)
+	if !ok || v == "" {
+		return "", false, nil
+	}
+	if !validHolderID(v) {
+		return "", true, refuse("%s is set but is not a holder id (h_ and 32 lower-case hex characters), so which holds are yours cannot be told; "+
+			"it is never replaced by %s or by a new id: set it to the id `abcd reserve --holder` prints, or unset it; %s",
+			HolderIDEnv, HolderIDFile, nothingSent)
+	}
+	return v, true, nil
+}
+
+// mintNotice is where a fresh mint is told (RegisterMintNotice); nil tells
+// no one.
+var mintNotice atomic.Pointer[func(string)]
+
+// RegisterMintNotice sets where the sentence saying a fresh holder id was
+// minted goes: the front door registers one that writes it to stderr, once,
+// at the mint that wrote the file. nil stops it.
+func RegisterMintNotice(f func(string)) {
+	if f == nil {
+		mintNotice.Store(nil)
+		return
+	}
+	mintNotice.Store(&f)
+}
+
+// MintNoticeLine is the sentence a fresh mint of id is told by.
+func MintNoticeLine(id string) string {
+	return fmt.Sprintf("minted a new holder id, %s, and kept it in %s: holds made under an earlier id of yours (another home, or this one before it was emptied) "+
+		"read as someone else's until they lapse, and the cap counts them apart; to keep one id, set %s to it in each environment, or list your earlier ids in %s",
+		id, HolderIDFile, HolderIDEnv, DeclaredHolderIDsFile)
+}
 
 // validHolderID reports whether s is a holder id: h_ and 32 lower-case hex
 // characters, exactly.
@@ -61,8 +108,11 @@ func validHolder(s string) bool { return validHolderID(s) || validUsername(s) }
 // holder resolver yields, which only a hold made before the id names. The
 // zero Self owns nothing.
 type Self struct {
-	// ID is the kept holder id, "" when none is kept (a read never mints it).
+	// ID is the holder id: the one HolderIDEnv names, else the kept one; ""
+	// when there is neither (a read never mints it).
 	ID string
+	// FromEnv is true when ID is the one HolderIDEnv names.
+	FromEnv bool
 	// Declared is the ids DeclaredHolderIDsFile lists, in its order.
 	Declared []string
 	// Login is the resolved GitHub login, "" when it cannot be told.
@@ -100,20 +150,30 @@ func (s Self) Name() string {
 func OwnSelf(login string, o Options) (Self, error) { return ownSelf(o.home(), login, true) }
 
 // ReaderSelf is whose holds are the reader's own, read as a render reads
-// them: the kept and declared holder ids, never minting one, and the login
-// resolved with no network act. A home inside a git working tree that is not
-// the account's own names no id, and a file that refuses is read as naming no id,
-// so a render shows the holds it cannot tell as the person's as another's,
-// and the act that needs them refuses naming the file.
+// them: the holder id HolderIDEnv names, else the kept one, never minting
+// one, the declared ids, and the login resolved with no network act. A home
+// inside a git working tree that is not the account's own names no one: no
+// id and no login, since the login too may be read from that home's machine
+// configuration, so a render names no hold as the reader's, old login holds
+// included. A file that refuses, or a malformed variable, is read as naming
+// no id, so a render shows the holds it cannot tell as the person's as
+// another's, and the act that needs them refuses naming the file.
 func ReaderSelf(root string, o Options) Self { return readerSelf(root, o) }
 
 func readerSelf(root string, o Options) Self {
-	s := Self{Login: readerHolder(root, o)}
 	home := o.home()
-	if home == "" || gitutil.HomeInsideWorkingTree(home) != "" {
+	if home != "" && gitutil.HomeInsideWorkingTree(home) != "" {
+		return Self{}
+	}
+	s := Self{Login: readerHolder(root, o)}
+	if home == "" {
 		return s
 	}
-	if id, _, err := readHolderID(home); err == nil {
+	if id, set, err := envHolderID(); set {
+		if err == nil {
+			s.ID, s.FromEnv = id, true
+		}
+	} else if id, _, err := readHolderID(home); err == nil {
 		s.ID = id
 	}
 	if ids, err := declaredHolderIDs(home); err == nil {
@@ -122,8 +182,9 @@ func readerSelf(root string, o Options) Self {
 	return s
 }
 
-// ownSelf is the person's own ids in home, with login: the kept id, minted
-// when mint is set and none is kept, and the declared ones. A file either
+// ownSelf is the person's own ids in home, with login: the id HolderIDEnv
+// names when it is set, else the kept id, minted when mint is set and none is
+// kept, and the declared ones. A file either
 // reads from that refuses (holderFileRefusal), or one that holds no id, is
 // refused, never replaced. A home inside a git working tree that is not the
 // account's own is refused as the machine layer is (layered.MachineRoots):
@@ -138,10 +199,15 @@ func ownSelf(home, login string, mint bool) (Self, error) {
 		return Self{}, refuse("HOME lies inside the git working tree at %s and is not this account's home, so %s is neither read nor written there "+
 			"and which holds are yours cannot be told; run abcd with your own HOME; %s", tree, HolderIDFile, nothingSent)
 	}
-	var err error
-	if mint {
+	id, set, err := envHolderID()
+	switch {
+	case err != nil:
+		return Self{}, err
+	case set:
+		s.ID, s.FromEnv = id, true
+	case mint:
 		s.ID, err = holderID(home)
-	} else {
+	default:
 		s.ID, _, err = readHolderID(home)
 	}
 	if err != nil {
@@ -191,22 +257,36 @@ func readKeptID(read func() ([]byte, fsutil.DeclarationRefusal, error)) (string,
 		if validHolderID(id) {
 			return id, true, nil
 		}
-		if id != "" || attempt >= 20 {
+		if id != "" {
 			return "", true, refuse("%s does not hold a holder id (h_ and 32 lower-case hex characters), so which holds are yours cannot be told; "+
 				"it is never replaced: remove it to mint a new id, and list the old one in %s if it named holds of yours; %s",
 				HolderIDFile, DeclaredHolderIDsFile, nothingSent)
+		}
+		if attempt >= 20 {
+			// Another run's mint may have written its id since, and may
+			// already have pushed under it: removing the file now would
+			// mint a second id beside one already in use.
+			return "", true, refuse("%s is empty: another abcd run is most likely minting your holder id at this moment, so which holds are yours cannot be told yet; "+
+				"retry; only if it is still empty on a second try, look at the file (a run stopped mid-write leaves it empty) before doing anything with it; %s",
+				HolderIDFile, nothingSent)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
 // mintHolderID mints a holder id into home: the home is made private if it
-// is not there (abcdhome.DirMode), and the id written by an exclusive create
-// at abcdhome.FileMode, so two first needs racing keep one id; the one that
-// finds the file made reads the winner's id back, through the directory it
-// holds open.
+// is not there (abcdhome.DirMode), each level judged as the read judges it
+// (fsutil.EnsureHomeDeclarationScope), so no id is minted, or pushed under,
+// in a directory another account can change; and the id written by an
+// exclusive create at abcdhome.FileMode, so two first needs racing keep one
+// id; the one that finds the file made reads the winner's id back, through
+// the directory it holds open. The winner alone tells the mint
+// (RegisterMintNotice).
 func mintHolderID(home string) (string, error) {
-	dir, err := fsutil.EnsureHomeScope(home, abcdhome.Rel(), abcdhome.DirMode)
+	dir, err := fsutil.EnsureHomeDeclarationScope(home, abcdhome.Rel(), abcdhome.DirMode)
+	if errors.Is(err, fsutil.ErrHomeScopeExposed) {
+		return "", refuse("%s, so no holder id is minted there; %s", err.Error(), nothingSent)
+	}
 	if err != nil {
 		return "", refuse("cannot open %s to keep your holder id in: %s; %s", abcdhome.Display(), redacted(err), nothingSent)
 	}
@@ -218,6 +298,9 @@ func mintHolderID(home string) (string, error) {
 	minted := holderIDPrefix + hex.EncodeToString(raw[:])
 	err = fsutil.CreateExclusiveIn(dir, holderIDLeaf, []byte(minted+"\n"), abcdhome.FileMode)
 	if err == nil {
+		if f := mintNotice.Load(); f != nil {
+			(*f)(MintNoticeLine(minted))
+		}
 		return minted, nil
 	}
 	if !errors.Is(err, os.ErrExist) {

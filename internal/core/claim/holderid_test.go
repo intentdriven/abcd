@@ -452,8 +452,8 @@ func TestAHomeInsideAWorkingTreeKeepsNoHolderID(t *testing.T) {
 	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "HOME lies inside the git working tree") || w.remoteTip("iss-5") != "" {
 		t.Fatalf("an act under a HOME inside a working tree = %v; want it refused, nothing pushed", err)
 	}
-	if s := ReaderSelf(p.dir, p.opts()); s.ID != "" || len(s.Declared) != 0 || s.Owns(planted) {
-		t.Fatalf("the reader under such a HOME = %+v; want no holder id read", s)
+	if s := ReaderSelf(p.dir, p.opts()); s.ID != "" || len(s.Declared) != 0 || s.Owns(planted) || s.Login != "" || s.Owns("octo") || s.Known() {
+		t.Fatalf("the reader under such a HOME = %+v; want no holder id read and no login, so no hold reads as theirs", s)
 	}
 
 	bare := filepath.Join(tree, "fresh")
@@ -462,5 +462,61 @@ func TestAHomeInsideAWorkingTreeKeepsNoHolderID(t *testing.T) {
 	}
 	if _, err := os.Lstat(abcdhome.Path(bare, "holder-id")); !os.IsNotExist(err) {
 		t.Fatalf("the refused mint wrote %s: %v", abcdhome.Path(bare, "holder-id"), err)
+	}
+}
+
+// TestAnIDNamedStatusBranchWhoseSenderIsAnotherIDIsDoubtful: a branch named
+// by one holder id whose announcement names another id as its sender is
+// shown as doubtful, as a login-named branch naming another login is: the
+// name of the branch is its owner, whatever its commits claim.
+func TestAnIDNamedStatusBranchWhoseSenderIsAnotherIDIsDoubtful(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	owner, other := "h_"+strings.Repeat("1", 32), "h_"+strings.Repeat("2", 32)
+	w.pushStatus(owner, announcementMsg("merged", "#7", other, t0, 30*time.Minute), "")
+	w.pushStatus(other, announcementMsg("asking", "#8", other, t0, 30*time.Minute), "")
+
+	pat.status(nil)
+	v := pat.read()
+	byBranch := map[string]Announcement{}
+	for _, a := range v.Announcements {
+		byBranch[a.Branch] = a
+	}
+	if a, ok := byBranch[owner]; !ok || a.Doubtful != DoubtSender || a.Sender != other {
+		t.Fatalf("abcd-status/%s reads %+v; want its announcement doubtful: %s", owner, a, DoubtSender)
+	}
+	if a, ok := byBranch[other]; !ok || a.Doubtful != "" {
+		t.Fatalf("abcd-status/%s reads %+v; want its own announcement not doubtful", other, a)
+	}
+	if got := pat.notes(); !strings.Contains(got, other+" on abcd-status/"+owner+" (doubtful: "+DoubtSender+")") {
+		t.Fatalf("the block:\n%s\nwant the id-named branch's other sender shown as doubtful", got)
+	}
+}
+
+// TestOnePersonsHandBacksUnderTheirLoginAndTheirIDListAsTwoHolders: the
+// listing of the last day's hand-backs knows no one's ids but by what the
+// tombstones name, so one person's hand-back made before the holder id (named
+// by their login) and one made after (named by their id) list as two
+// holders. It is the stated cost of the change, and it lapses with the
+// window: no tombstone named by a login is made any more, so a day after the
+// update the person lists once.
+func TestOnePersonsHandBacksUnderTheirLoginAndTheirIDListAsTwoHolders(t *testing.T) {
+	now := t0.Add(time.Hour)
+	id := "h_" + strings.Repeat("3", 32)
+	handBack := func(record, holder string, at time.Time) Reservation {
+		return Reservation{Record: record, Holder: holder, State: StateReleased, ReleasedBy: ReleasedByTombstone,
+			HandedBack: HandBackKinds[0], ReleasedAt: at}
+	}
+	s := Snapshot{Reservations: []Reservation{
+		handBack("iss-5", "octo", now.Add(-2*time.Hour)),
+		handBack("iss-6", id, now.Add(-time.Hour)),
+	}}
+	got := s.RecentHandBacks(now)
+	if len(got) != 2 || got[0].Holder != id || got[1].Holder != "octo" {
+		t.Fatalf("hand-backs = %+v; want the id's and the login's listed apart", got)
+	}
+	later := now.Add(HandBackWindow - 90*time.Minute)
+	if got := s.RecentHandBacks(later); len(got) != 1 || got[0].Holder != id {
+		t.Fatalf("a day on, hand-backs = %+v; want the id's alone", got)
 	}
 }

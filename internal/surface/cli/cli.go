@@ -29,6 +29,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/board"
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/identity"
@@ -6911,6 +6912,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// made at the umask by an earlier abcd or by hand is narrowed here, once,
 	// before any verb reads or writes in it (homestop.go, narrowHome).
 	narrowHome()
+	// A fresh holder id is told once, on stderr, by the run that minted it
+	// (claim.RegisterMintNotice): the drain and build loops reserve inside
+	// this same run, so their mint is told here too.
+	claim.RegisterMintNotice(func(line string) { fmt.Fprintln(stderr, "abcd: "+line) })
+	defer claim.RegisterMintNotice(nil)
 
 	// abcd's home ignores itself (itd-2610140858048004): laid before the
 	// command for a home that already exists, and after it for a home the

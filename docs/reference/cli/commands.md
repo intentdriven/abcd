@@ -4824,9 +4824,16 @@ consult it too.
 
 The holder is named by your holder id: h_ and 32 random lower-case hex
 characters, minted the first time one is needed into ~/.abcd.noindex/holder-id
-(owner-only) and kept, so nothing abcd pushes carries your GitHub login. A
-holder-id file another account owns or could write, or one that holds no id,
-is refused, never replaced. A reservation under an id listed in
+(owner-only) and kept. No trailer and no branch name abcd pushes carries your
+GitHub login; each commit's author and committer fields still carry your git
+identity, and holds already pushed under your login are not rewritten. A fresh
+mint says so once on stderr: holds made under an earlier id of yours read as
+someone else's until they lapse. ABCD_HOLDER_ID, when set, is your id instead,
+read before the file and never written to it: set it to the id --holder prints
+in a hosted or ephemeral session's own settings, whose home is not kept; set to
+anything but one id, every act refuses. A holder-id file another account owns
+or could write, or one that holds no id, is refused, never replaced. A
+reservation under an id listed in
 ~/.abcd.noindex/holder-ids (one per line, # comments; the ids your other
 machines and accounts print with --holder) is yours too, from another copy.
 
@@ -4843,8 +4850,8 @@ identity git had is shown nowhere. The checkout must have its local tier
 reservation.
 
 --holder prints the account an act from this checkout would reserve as and the
-source that named it (git, config or token), then your holder id, where it is
-kept, and any ids declared as yours, or its --json document. It may make that
+source that named it (git, config or token), then your holder id, where it
+comes from, and any ids declared as yours, or its --json document. It may make that
 one call to the user endpoint in two cases: git's identity is a person's but
 carries neither a GitHub no-reply address nor a machine key; or git's identity
 is not a person's (unset, or a machine's), when the machine key is skipped. It

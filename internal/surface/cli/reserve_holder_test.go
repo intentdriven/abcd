@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
 // `abcd reserve --holder` (iss-2610152046379890): the account a reservation
@@ -43,23 +45,25 @@ func TestReserveHolderPlainAndJSON(t *testing.T) {
 	cloneHomes[pat] = w.home
 	calls := fakeForge(t, "octo-person", 4242, nil)
 
-	code, stdout, stderr := reserveRun(t, p, "reserve", "--holder")
+	code, stdout, stderr := reserveRunRaw(t, p, "reserve", "--holder")
 	kept, err := os.ReadFile(filepath.Join(w.home, ".abcd.noindex", "holder-id"))
 	id := strings.TrimSpace(string(kept))
 	if err != nil || !regexp.MustCompile(`^h_[0-9a-f]{32}$`).MatchString(id) {
 		t.Fatalf("--holder kept %q, %v; want a minted holder id", kept, err)
 	}
-	idLine := "holder id: " + id + " (kept in ~/.abcd.noindex/holder-id); what abcd pushes names you by it, never by your login\n"
-	if code != 0 || stdout != "would reserve as octo (from git)\n"+idLine || stderr != "" {
-		t.Fatalf("exit %d, stdout %q, stderr %q; want the git holder and the holder id", code, stdout, stderr)
+	idLine := "holder id: " + id + " (kept in ~/.abcd.noindex/holder-id); no trailer and no branch name abcd pushes carries your login, " +
+		"though each commit's author and committer still carry your git identity, and holds already pushed are not rewritten\n"
+	if code != 0 || stdout != "would reserve as octo (from git)\n"+idLine || stderr != "abcd: "+claim.MintNoticeLine(id)+"\n" {
+		t.Fatalf("exit %d, stdout %q, stderr %q; want the git holder and the holder id, and the mint told once", code, stdout, stderr)
 	}
-	code, stdout, stderr = reserveRun(t, p, "reserve", "--holder", "--json")
+	code, stdout, stderr = reserveRunRaw(t, p, "reserve", "--holder", "--json")
 	var got map[string]any
-	if err := json.Unmarshal([]byte(stdout), &got); code != 0 || err != nil {
-		t.Fatalf("--json: exit %d, %v\n%s%s", code, err, stdout, stderr)
+	if err := json.Unmarshal([]byte(stdout), &got); code != 0 || err != nil || stderr != "" {
+		t.Fatalf("--json: exit %d, %v\n%s%s; want the kept id read and no second mint told", code, err, stdout, stderr)
 	}
 	want := map[string]any{"login": "octo", "id": float64(1234), "noreply": octoMail, "source": "git",
-		"holder_id": id, "holder_id_file": "~/.abcd.noindex/holder-id", "declared_holder_ids_file": "~/.abcd.noindex/holder-ids"}
+		"holder_id": id, "holder_id_from": "~/.abcd.noindex/holder-id", "holder_id_file": "~/.abcd.noindex/holder-id",
+		"declared_holder_ids_file": "~/.abcd.noindex/holder-ids"}
 	if len(got) != len(want)+1 {
 		t.Fatalf("--json = %v; want %v and declared_holder_ids", got, want)
 	}
@@ -202,5 +206,33 @@ func TestReserveHolderRealForgeClasses(t *testing.T) {
 	code, stdout, stderr := reserveRun(t, pat, "reserve", "--holder")
 	if want := prefix + "the GitHub CLI (gh) is not on PATH; nothing was sent or pushed"; code != 2 || stdout != "" || !strings.Contains(stderr, want) {
 		t.Fatalf("gh missing: exit %d, stdout %q, stderr %q; want %q", code, stdout, stderr, want)
+	}
+}
+
+// TestReserveHolderNamesTheEnvironmentsID: with ABCD_HOLDER_ID set, --holder
+// prints that id and says it came from there, mints nothing and tells no
+// mint; set to anything but an id, it refuses, naming the variable and not
+// its value.
+func TestReserveHolderNamesTheEnvironmentsID(t *testing.T) {
+	w := newReserveWorld(t)
+	p := w.clone(t, "p", octoMail)
+	env := "h_00112233445566778899aabbccddeeff"
+	t.Setenv(claim.HolderIDEnv, env)
+	code, stdout, stderr := reserveRunRaw(t, p, "reserve", "--holder")
+	if code != 0 || !strings.Contains(stdout, "holder id: "+env+" (from ABCD_HOLDER_ID); no trailer and no branch name") || stderr != "" {
+		t.Fatalf("exit %d, stdout %q, stderr %q; want the variable's id, from the variable, and no mint told", code, stdout, stderr)
+	}
+	if _, err := os.Lstat(filepath.Join(w.home, ".abcd.noindex", "holder-id")); !os.IsNotExist(err) {
+		t.Fatalf("--holder under the variable wrote the home's holder-id: %v", err)
+	}
+	code, stdout, _ = reserveRun(t, p, "reserve", "--holder", "--json")
+	var got map[string]any
+	if err := json.Unmarshal([]byte(stdout), &got); code != 0 || err != nil || got["holder_id"] != env || got["holder_id_from"] != "ABCD_HOLDER_ID" {
+		t.Fatalf("--json: exit %d, %v, %v; want the variable's id from ABCD_HOLDER_ID", code, err, got)
+	}
+	t.Setenv(claim.HolderIDEnv, "not-an-id")
+	code, stdout, stderr = reserveRun(t, p, "reserve", "--holder")
+	if code != 2 || stdout != "" || !strings.Contains(stderr, "ABCD_HOLDER_ID is set but is not a holder id") || strings.Contains(stderr, "not-an-id") {
+		t.Fatalf("a malformed variable: exit %d, stdout %q, stderr %q; want exit 2 naming the variable only", code, stdout, stderr)
 	}
 }

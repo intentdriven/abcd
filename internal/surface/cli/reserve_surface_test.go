@@ -119,8 +119,18 @@ func (w *reserveWorld) remoteTip(t *testing.T, id string) string {
 	return gitCmd(t, w.origin, "for-each-ref", "--format=%(objectname)", "refs/heads/abcd-reserved/"+id)
 }
 
-// reserveRun runs the CLI in dir and returns its exit code and both streams.
+// reserveRun runs the CLI in dir and returns its exit code and both streams,
+// less the line telling a fresh holder id's mint, which the first act under
+// each clone's home prints (claim.MintNoticeLine): the tests of that line
+// read it through reserveRunRaw.
 func reserveRun(t *testing.T, dir string, args ...string) (int, string, string) {
+	t.Helper()
+	code, stdout, stderr := reserveRunRaw(t, dir, args...)
+	return code, stdout, withoutMintNotice(stderr)
+}
+
+// reserveRunRaw is reserveRun with stderr as the CLI wrote it.
+func reserveRunRaw(t *testing.T, dir string, args ...string) (int, string, string) {
 	t.Helper()
 	t.Chdir(dir)
 	if h := cmp.Or(cloneHomes[dir], worldHome); h != "" && harnessHome(os.Getenv("HOME")) {
@@ -129,6 +139,18 @@ func reserveRun(t *testing.T, dir string, args ...string) (int, string, string) 
 	var stdout, stderr bytes.Buffer
 	code := Run(args, &stdout, &stderr)
 	return code, stdout.String(), stderr.String()
+}
+
+// withoutMintNotice is s less each line telling a fresh holder id's mint.
+func withoutMintNotice(s string) string {
+	lines := strings.SplitAfter(s, "\n")
+	out := lines[:0]
+	for _, l := range lines {
+		if !strings.HasPrefix(l, "abcd: minted a new holder id, ") {
+			out = append(out, l)
+		}
+	}
+	return strings.Join(out, "")
 }
 
 // reserveJSON is the --json document of one act.

@@ -463,6 +463,16 @@ func EnsureHomeScope(home, dir string, perm os.FileMode) (*os.Root, error) {
 	return openHomeScope(home, dir, true, perm, nil)
 }
 
+// EnsureHomeDeclarationScope is EnsureHomeScope for a writer of a file that
+// ReadHomeDeclaration will later take as the caller's word: each level, made
+// or found, is also judged as OpenHomeDeclarationScope judges it, so a
+// writer never writes a declaration into a directory its reader would
+// refuse (*HomeScopeExposedError, ErrHomeScopeExposed), and nothing that
+// follows the write is done on a file another account could have placed.
+func EnsureHomeDeclarationScope(home, dir string, perm os.FileMode) (*os.Root, error) {
+	return openHomeScope(home, dir, true, perm, vetDeclarationDir)
+}
+
 // openHomeScope is OpenHomeScope and EnsureHomeScope; vet, when non-nil, is
 // also given the FileInfo of each level's own descriptor, once that descriptor
 // is confirmed to be the level vetted, and its error ends the walk.
