@@ -134,6 +134,37 @@ type Result struct {
 	// renewal, which names no footprint and keeps the tip's, and for a
 	// footprint of files alone.
 	Directories []DirectoryFootprint
+	// Dropped is each path of the footprint of this person's own live tip
+	// that a reserve renewing it, or taking it over from their other copy,
+	// leaves out (iss-2610290507512835), in the tip's order: the act wrote
+	// its own footprint in place of the tip's, so none of them is held now
+	// (DroppedLine). nil when it keeps every path, over a lapsed tip, which
+	// held nothing, and for every other act.
+	Dropped []string
+}
+
+// DroppedLine is how a person is told the paths their reserve stopped
+// holding (Result.Dropped), the same words wherever it is shown.
+func DroppedLine(paths []string) string {
+	quoted := make([]string, len(paths))
+	for i, p := range paths {
+		quoted[i] = echo(p)
+	}
+	return fmt.Sprintf("the footprint leaves out %s, which the reservation it replaced held, so this reservation no longer holds them; name each again with --footprint to keep it",
+		strings.Join(quoted, ", "))
+}
+
+// droppedPaths is each path of held that footprint leaves out, in held's
+// order: one neither named again nor beneath a directory it names (within);
+// nil when it keeps them all.
+func droppedPaths(held, footprint []string) []string {
+	var out []string
+	for _, p := range held {
+		if !within([]string{p}, footprint) && !slices.Contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // beforePush, when a test sets it, runs between the judgement and the push:
@@ -414,6 +445,11 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 		return res, m, j.Commit, nil
 	case j.mine && j.thisCopy:
 		res.Act, res.RenewedLive = ActRenewed, j.verdict.Live
+		if j.verdict.Live {
+			// A lapsed tip held nothing while it lapsed, so reviving it
+			// drops nothing.
+			res.Dropped = droppedPaths(j.Footprint, m.Footprint)
+		}
 		if p.req.Drain && j.verdict.Live {
 			// A drain's re-reserve that renews its own live hold, reached
 			// when a build started the lane's run during the drain's move, is
@@ -438,6 +474,9 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 		res.Act = ActTakenOver
 		res.Replaced = &Replaced{Holder: j.Holder, Copy: CopyAnother, YourCopy: yourCopyAt(siblingCopy(p.root, j.Copy)),
 			Commit: j.Commit, EffectiveExpiry: exp}
+		if j.verdict.Live {
+			res.Dropped = droppedPaths(j.Footprint, m.Footprint)
+		}
 		return res, m, j.Commit, nil
 	}
 	switch {

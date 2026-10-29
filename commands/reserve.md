@@ -65,9 +65,16 @@ read, or a github.com URL does not name exactly one owner and one repository,
 it as `<owner>/<name>` and the text reads `origin is a fork the repository
 allows (<owner>/<name>)`. Pass either on to the user.
 `own_overlap` lists each path the reservation shares with the user's own from
-another copy, as `path`, `record` and `effective_expiry` (see **When it
-refuses**); the text form warns of each on stderr. `generated_shared` lists each
-generated file the reservation shares with a live reservation of another record
+another copy, as `path`, `record`, `effective_expiry` and `copy`, the copy it
+is held from: "your worktree … on this machine", "your copy on another
+computer", or "your other copy" when the worktrees here could not be listed,
+with `copy_unread` saying why (see **When it refuses**); the text form warns of
+each on stderr. `dropped_footprint` lists each path a live reservation of the
+user's own that this act replaced held and its footprint leaves out, a reserve
+that renews one included: none of them is held now, and the text form warns on
+stderr. Tell the user which paths no longer hold, and reserve again naming
+those the work still changes with the rest. A path named twice is written
+once. `generated_shared` lists each generated file the reservation shares with a live reservation of another record
 from another copy or another person (never this copy's own), as `path` and
 `record`; the text form names each on a `shared:` line, so whoever
 lands second knows to regenerate it after merging. `generated_unread` says why
@@ -170,9 +177,12 @@ made.** The user's own reservations from this copy are no overlap at all,
 since that work is this copy's. One the user holds from another computer or
 another checkout that shares a path with this reservation does not refuse it:
 the act goes ahead, exit 0, and warns on stderr, `abcd reserve: warning:
-"<path>" is also in the footprint of <record>, which you hold from your other
-copy until <time>; reserved anyway, since both are yours` (`own_overlap` in
-`--json`). Tell the user both pieces of work change that path. Only this verb
+"<path>" is also in the footprint of <record>, which you hold from <copy>
+until <time>; reserved anyway, since both are yours`, where `<copy>` is "your
+worktree … on this machine", "your copy on another computer", or "your other
+copy" when the worktrees could not be listed, which the line then ends by
+saying (`own_overlap` in `--json`). Tell the user both pieces of work change that path, and where
+the other one is. Only this verb
 does so, a reserve with `--take-over` included. A build's and a drain's
 reservations are automated and still back off such a path, and so does a
 drain's pass-over.

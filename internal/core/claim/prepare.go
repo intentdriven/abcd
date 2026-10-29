@@ -197,6 +197,7 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 			break
 		}
 	}
+	req.Narrow = uniquePaths(req.Narrow)
 	if req.Live && !req.Renew {
 		return nil, refuse("only a renewal can require a live reservation; %s", nothingPushed)
 	}
@@ -238,6 +239,12 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 			return nil, refuse("footprint %s is not a repository-relative path; %s", echo(p), nothingPushed)
 		}
 	}
+	// A path named twice is one path, kept where it was first named, so a
+	// renewal naming the held footprint again beside its new paths never
+	// grows the message with repeats until it passes the cap
+	// (iss-2610290507514841). A valid path is already clean, so equal text
+	// is the same path.
+	req.Footprint = uniquePaths(req.Footprint)
 	term := req.Lease
 	switch {
 	case term == 0 && release && !req.Release:
@@ -299,6 +306,20 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 		}
 	}
 	return p, nil
+}
+
+// uniquePaths is paths with each repeat dropped, in the order first named.
+func uniquePaths(paths []string) []string {
+	if len(paths) < 2 {
+		return paths
+	}
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if !slices.Contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // reservation is the message a reserve, renewal or take-over pushes.

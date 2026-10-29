@@ -4749,11 +4749,15 @@ is named on a shared: line for whoever lands second to regenerate after
 merging (generated_shared in --json); a directory never is. When that
 declaration cannot be read nothing is shared, and the act says why
 (generated_unread in --json). Your own reservation sharing a path with yours
-from another copy is made, and warns on stderr (own_overlap in --json). Name
-files, not directories: a directory holds off every reservation of a file
-inside it. A footprint path naming a directory git tracks is reserved all the
-same, and warns on stderr, naming it and how many tracked files it covers on
-origin's default branch, or HEAD (directory_footprint in --json).
+from another copy is made, and warns on stderr, naming that copy (own_overlap
+in --json). Name files, not directories: a directory holds off every
+reservation of a file inside it. A footprint path naming a directory git
+tracks is reserved all the same, and warns on stderr, naming it and how many
+tracked files it covers on origin's default branch, or HEAD
+(directory_footprint in --json). A path named twice is written once. A reserve
+of a record you already hold writes its footprint in place of the one held,
+and warns on stderr, naming each held path it leaves out (dropped_footprint in
+--json): name them again to keep holding them.
 
 A reservation, a renewal and a take-over consult the embargo store on this
 machine before anything is pushed, as an announcement does: a record the store
