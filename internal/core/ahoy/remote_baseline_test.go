@@ -688,3 +688,55 @@ func TestRemoteAuditHoldsASettingWhosePrerequisiteStaysOff(t *testing.T) {
 		t.Errorf("the note does not name the prerequisite: %q", got["secret_scanning_push_protection"].Note)
 	}
 }
+
+// TestRemoteAuditCountsALocalActionUnderTheWorkflowsDirectoryAsUnread pins
+// that only a workflow file the walk reads is skipped as a reusable workflow:
+// a composite action in a directory under .github/workflows is not read, so
+// it holds SHA pinning at advisory like any other local action.
+func TestRemoteAuditCountsALocalActionUnderTheWorkflowsDirectoryAsUnread(t *testing.T) {
+	setupHermetic(t)
+	pinned := strings.Replace(dessauWorkflow,
+		"actions/checkout@v4", "actions/checkout@0123456789abcdef0123456789abcdef01234567", 1)
+	caller := "on: push\npermissions: {}\njobs:\n  a:\n    steps:\n      - uses: ./.github/workflows/setup\n"
+	routes := dessauRoutes()
+	routes["GET repos/"+auditRepo+"/contents/.github/workflows?ref=main"] = workflowsRoute(map[string]string{"ci.yml": pinned, "caller.yml": caller})
+	ghRoutedFake(t, routes)
+	repo := dessauRepo(t)
+	writeTreeFile(t, repo, ".github/workflows/ci.yml", pinned)
+	writeTreeFile(t, repo, ".github/workflows/caller.yml", caller)
+	writeTreeFile(t, repo, ".github/workflows/setup/action.yml", "runs:\n  using: composite\n  steps:\n    - uses: actions/setup-go@v5\n")
+
+	res, err := RemoteRead(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := findingsBySetting(t, res)
+	wantStates(t, got, map[string]string{"actions_sha_pinning": "advisory"})
+	if !strings.Contains(got["actions_sha_pinning"].Note, "./.github/workflows/setup") {
+		t.Errorf("the local action is not named: %q", got["actions_sha_pinning"].Note)
+	}
+}
+
+// TestRemoteAuditOffersADependentWhosePrerequisiteIsKeptOn pins that a
+// prerequisite kept as it is while it is already on does not hold the
+// setting that depends on it: GitHub accepts push protection over secret
+// scanning that is on, whoever asked abcd to leave scanning alone.
+func TestRemoteAuditOffersADependentWhosePrerequisiteIsKeptOn(t *testing.T) {
+	setupHermetic(t)
+	routes := dessauRoutes()
+	routes["GET repos/"+auditRepo] = ghRoute{Body: strings.Replace(routes["GET repos/"+auditRepo].Body,
+		`"secret_scanning":{"status":"disabled"}`, `"secret_scanning":{"status":"enabled"}`, 1)}
+	routes["GET repos/"+auditRepo+"/vulnerability-alerts"] = ghRoute{}
+	ghRoutedFake(t, routes)
+	repo := dessauRepo(t)
+	setConfigValue(t, repo, "github", "keep", []any{"secret_scanning", "dependabot_alerts"})
+
+	res, err := RemoteRead(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantStates(t, findingsBySetting(t, res), map[string]string{
+		"secret_scanning": "kept", "secret_scanning_push_protection": "differs",
+		"dependabot_alerts": "kept", "dependabot_security_updates": "differs",
+	})
+}

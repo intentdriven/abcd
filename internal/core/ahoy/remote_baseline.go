@@ -332,9 +332,13 @@ func auditSettings(in auditInput) *SettingsAudit {
 // security updates need Dependabot alerts. GitHub would refuse the write, and
 // the refusal would stop the apply before the rest of the baseline lands.
 func holdUnmetPrerequisites(a *SettingsAudit) {
+	met := map[string]bool{}
 	state := map[string]string{}
 	for _, f := range a.Findings {
 		state[f.Setting] = f.State
+		// On now (whether or not abcd is asked to leave it alone), or about to
+		// be turned on by this same apply, ahead of what depends on it.
+		met[f.Setting] = f.State == findingOK || f.State == findingDiffers || f.Current == statusEnabled
 	}
 	for i, f := range a.Findings {
 		need := ""
@@ -344,7 +348,7 @@ func holdUnmetPrerequisites(a *SettingsAudit) {
 		case settingDependabotFixes:
 			need = settingDependabotAlerts
 		}
-		if need == "" || f.State != findingDiffers || state[need] == findingOK || state[need] == findingDiffers {
+		if need == "" || f.State != findingDiffers || met[need] {
 			continue
 		}
 		a.Findings[i].State = findingAdvisory

@@ -150,7 +150,7 @@ found by name among the repository's own: `abcd: default branch`,
 bypass actor. An update adds what the baseline asks for to what the ruleset
 holds and removes nothing, so a rule, parameter, ref or bypass someone added
 stays. A ruleset abcd cannot read whole, of another target, or excluding refs
-is not updated. A setting GitHub accepts only on top of another that stays off
+is not updated. A setting GitHub accepts only on top of another that is off and stays off
 (push protection without secret scanning, security updates without alerts) is
 advisory. No request body names the repository's visibility. It then
 mirrors the result into the repo's committed settings mirror, which has three

@@ -292,10 +292,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
 `,
+		"with-input.yml": `on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      pull_request: {description: PR, required: false}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+`,
 	})
 	checks, _ := RequiredChecks(repo, "main", false)
-	if !reflect.DeepEqual(checks, []string{"build"}) {
-		t.Errorf("checks = %v, want [build]", checks)
+	if !reflect.DeepEqual(checks, []string{"build", "test"}) {
+		t.Errorf("checks = %v, want [build test]", checks)
 	}
 }
 
@@ -307,6 +316,7 @@ func TestRequiredChecksSeesTheFiltersInEveryForm(t *testing.T) {
 		"quoted.yml":    "on:\n  pull_request:\n    \"paths\": [\"docs/**\"]\njobs:\n  docs:\n    runs-on: x\n",
 		"next-line.yml": "on:\n  pull_request:\n    {paths: [docs/**]}\njobs:\n  docs2:\n    runs-on: x\n",
 		"alias.yml":     "on:\n  pull_request: *pr\njobs:\n  aliased:\n    runs-on: x\n",
+		"merge-key.yml": "on:\n  pull_request:\n    <<: *filters\njobs:\n  merged:\n    runs-on: x\n",
 		"ci.yml":        "on:\n  pull_request:\njobs:\n  build:\n    runs-on: x\n",
 	})
 	checks, notes := RequiredChecks(repo, "main", false)

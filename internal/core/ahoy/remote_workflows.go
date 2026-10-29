@@ -70,6 +70,12 @@ func readWorkflowFacts(root string) workflowFacts {
 		return f
 	}
 	local := map[string]bool{}
+	walked := map[string]bool{}
+	for _, e := range entries {
+		if !e.IsDir() && isWorkflowFile(e.Name()) {
+			walked[e.Name()] = true
+		}
+	}
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !(strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")) {
@@ -95,8 +101,9 @@ func readWorkflowFacts(root string) workflowFacts {
 				continue
 			}
 			ref := m[1]
-			if strings.HasPrefix(ref, "./.github/workflows/") && !strings.Contains(strings.TrimPrefix(ref, "./.github/workflows/"), "/") {
-				// A local reusable workflow is one of the files this walk reads.
+			if name, ok := strings.CutPrefix(ref, "./.github/workflows/"); ok && walked[name] {
+				// A local reusable workflow is one of the files this walk reads;
+				// a directory there is a local action, and is not.
 				continue
 			}
 			if strings.HasPrefix(ref, "./") {

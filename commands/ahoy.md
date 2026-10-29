@@ -1372,8 +1372,9 @@ one whose target is not the one abcd's ruleset of that name has, and one that
 excludes refs are not updated, and nothing of them changes. A repository with a
 hundred rulesets or more is refused, because abcd reads one page of them.
 Push protection waits for secret scanning, and Dependabot security updates for
-Dependabot alerts: while the first stays off, kept or not offered, the second
-is advisory, because GitHub refuses it. Rules from several rulesets add up on GitHub, so a ruleset the repository
+Dependabot alerts: while the first is off and the apply will not turn it on
+(it is kept, owed or unknown), the second is advisory, because GitHub refuses
+it. A first setting that is on, kept or not, never holds the second. Rules from several rulesets add up on GitHub, so a ruleset the repository
 already has keeps working beside abcd's.
 
 After every step succeeds, the apply writes two mirrors. The desired state goes

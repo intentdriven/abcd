@@ -170,7 +170,11 @@ func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, no
 // trigger is never read as unfiltered.
 func flowMapping(on []string, event string) bool {
 	re := eventRe(event)
+	level := onLevel(on)
 	for _, l := range on {
+		if ind := indentOf(l); ind != 0 && ind != level {
+			continue
+		}
 		t := strings.TrimSpace(l)
 		if i := strings.Index(t, " #"); i >= 0 {
 			t = t[:i]
@@ -187,15 +191,23 @@ func flowMapping(on []string, event string) bool {
 	return false
 }
 
-// flowBody reports whether an event's body opens with a flow mapping on the
-// line after its key.
+// flowBody reports whether an event's body hides its filters from the line
+// reader: a flow mapping on the line after its key, an alias, or a merge key
+// (`<<: *name`) that brings filters in from an anchor.
 func flowBody(body []string) bool {
+	first := true
 	for _, l := range body {
 		t := strings.TrimSpace(l)
 		if t == "" || strings.HasPrefix(t, "#") {
 			continue
 		}
-		return strings.HasPrefix(t, "{")
+		if first && (strings.HasPrefix(t, "{") || strings.HasPrefix(t, "*")) {
+			return true
+		}
+		first = false
+		if strings.HasPrefix(t, "<<") {
+			return true
+		}
 	}
 	return false
 }
