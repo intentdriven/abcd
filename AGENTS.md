@@ -146,15 +146,12 @@ Start with the plan and the design record:
 Run from the repo root.
 
 ```bash
-make preflight      # the pre-push gate: the load check first (load-check,
-                    # a warning, never a failure), then fmt-check +
-                    # lint-reviews +
-                    # lint-issues + record-lint +
-                    # issue-drift + docs-lint + check-attribution +
-                    # site-render +
-                    # smoke + evals-cold-reading,
-                    # then build + vet +
-                    # test + race (internal), all on the go.mod toolchain
+make preflight      # the pre-push gate: load-check (a warning, never a
+                    # failure), then fmt-check + lint-reviews + lint-issues +
+                    # record-lint + issue-drift + docs-lint + check-attribution
+                    # + secrets-check + vulncheck + site-render + smoke +
+                    # evals-cold-reading, then build + vet + test + race
+                    # (internal), all on the go.mod toolchain
 make precheck       # minutes, no queue: preflight's gates, build, vet, the
                     # record, page and agent audit packages, and the command
                     # and site audit tests chosen by name; no unit or race
@@ -353,9 +350,9 @@ with `*CONCURRENCY` to force it).
 
 ## Definition of done
 
-- `make preflight` is clean — the eight gates (`fmt-check`, `lint-reviews`,
+- `make preflight` is clean — the ten gates (`fmt-check`, `lint-reviews`,
   `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
-  `check-attribution`, `site-render`), both tagged eval
+  `check-attribution`, `secrets-check`, `vulncheck`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test -timeout 40m ./...`, and
   `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,
