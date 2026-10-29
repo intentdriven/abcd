@@ -4,7 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
 // The tests in this file hold a request's model to the pins the machine sets
@@ -71,5 +74,33 @@ func TestARequestForAnUnpinnedModelCarriesNoRoutePin(t *testing.T) {
 	}
 	if a := out.Answer; a.LocalPin != nil || a.ProviderPin != nil || a.ModelAsked != req.Model {
 		t.Fatalf("answer = %+v, want the request's model and no pin", a)
+	}
+}
+
+// TestClaudeRefusesARequestForAPinnedModel: claude's own model is unpinned, and
+// a request asks it for the pinned one: claude can hold no pin, so it refuses
+// at launch naming the request's model, before anything is launched or
+// probed, and the role falls back as a machine route to that model does.
+func TestClaudeRefusesARequestForAPinnedModel(t *testing.T) {
+	o := newOllamaRunFake(t, true)
+	machine, name := overridePinMachine(o.srv.URL+"/v1", "devstral")
+	machine = strings.Replace(machine, `"claude":{}`, `"claude":{"model":"`+name+`/devstral"}`, 1)
+	c := mustLoad(t, `{"roles":{"implementer":{"runner":"claude"}},`+machine[1:], "")
+	f := newFake(t, "ok", Claude, OpenCode)
+	req := f.request(roleImplementer)
+	req.Model = name + "/" + localRunModel
+	out, err := newHarness(t, c, true).d.Dispatch(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.Handoff || out.Answer != nil || out.Fallback == nil {
+		t.Fatalf("outcome = %+v, want the host handed the role after a fallback", out)
+	}
+	fb := out.Fallback
+	if fb.Asked != Claude || fb.Reason != ReasonFailed || !strings.Contains(fb.Detail, "the machine pins "+layered.BoundKey(req.Model)+",") {
+		t.Fatalf("fallback = %+v, want claude refusing the request's pinned model", fb)
+	}
+	if f.launched(Claude) || o.probes.Load() != 0 {
+		t.Fatal("claude was launched, or the pinned model probed, for a pinned request model")
 	}
 }
