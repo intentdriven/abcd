@@ -1,6 +1,7 @@
 package gitutil
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -136,7 +137,7 @@ func TreePathTypes(root, commit string, paths []string) ([]string, error) {
 	}
 	cmd := isolatedGit(root, "cat-file", "--batch-check=%(objectname) %(objecttype)")
 	cmd.Stdin = strings.NewReader(in.String())
-	out, overflowed, err := runBoundedCmd(cmd, limit)
+	out, overflowed, err := runBoundedCmd(context.Background(), cmd, limit)
 	if err != nil {
 		return nil, err
 	}

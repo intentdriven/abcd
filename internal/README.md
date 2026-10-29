@@ -385,7 +385,11 @@ plugin surface, and a future MCP server share one engine.
   pattern; `Lead` and `Kill` are the same two halves for a caller that keeps
   its own timer and select. The `abcd land` preflight and the status line's
   previous command use `Bound`; the runner's launcher and the tool installer
-  use `Lead` and `Kill`.
+  use `Lead` and `Kill`. `RunToEOF` reads a command's output to EOF before
+  it is waited for, so a command that answered is never reported as a wait
+  that ran out (exec times its own copy from the command's exit): gitutil's
+  context-bound runners, the forge clients, lsof, tailscale and the status
+  line's previous command read through it.
 - **`textwidth/`** — the one display-width measure, word wrap, fit to width
   and break by width (East Asian wide runes count two), a pure leaf with no
   terminal I/O. It sits outside

@@ -175,3 +175,19 @@ func TestRunnerTimeoutWrapsErrTimeout(t *testing.T) {
 		t.Fatalf("a gh that never answers gave %v; want an error wrapping ErrTimeout", err)
 	}
 }
+
+// TestRunnerReadsAnAnswerWhoseOutputClosesLate: gh answers and exits 0, and a
+// process it left keeps the pipe open for a while: the answer is read once
+// the pipe closes, never refused as a wait that ran out
+// (iss-2610272041031418).
+func TestRunnerReadsAnAnswerWhoseOutputClosesLate(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\necho '{}'\nsleep 2 &\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	out, err := API(t.TempDir(), nil, "repos/example/example")
+	if err != nil || string(out) != "{}\n" {
+		t.Fatalf("API = %q, %v; want %q, nil", out, err, "{}\n")
+	}
+}

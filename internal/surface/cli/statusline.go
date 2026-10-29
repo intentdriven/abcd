@@ -87,7 +87,10 @@ var statuslineGitContext = func(parent context.Context, gitBudget time.Duration)
 }
 
 // previousCommandWaitDelay is how long the verb waits, after killing the
-// previous command's group, for the pipes it shared to close.
+// previous command's group, for the command to exit. What it writes is read
+// to EOF before it is waited for (procgroup.RunToEOF), so a command that
+// answered is never reported as a wait that ran out, and one whose output a
+// child keeps open is stopped at previousCommandBudget.
 const previousCommandWaitDelay = 100 * time.Millisecond
 
 // newStatuslineCommand builds the `statusline` verb — the harness-facing shell
@@ -341,14 +344,12 @@ func runPreviousStatusCommand(cmd *cobra.Command, previous string, stdin []byte,
 	sh := exec.CommandContext(ctx, "sh", "-c", previous)
 	sh.Env = append(os.Environ(), statuslineFallbackEnv+"=1")
 	sh.Stdin = bytes.NewReader(stdin)
-	sh.Stdout = cmd.OutOrStdout()
-	sh.Stderr = cmd.ErrOrStderr()
 	// The command leads its own process group, and the bound kills the group
 	// through the pid this handle holds — never a pattern, never another
 	// process — so a pipeline or a background child it started ends with it
 	// rather than outliving the refresh.
 	procgroup.Bound(sh, previousCommandWaitDelay)
-	err := sh.Run()
+	err := procgroup.RunToEOF(ctx, sh, cmd.OutOrStdout(), cmd.ErrOrStderr())
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
