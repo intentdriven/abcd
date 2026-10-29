@@ -56,7 +56,7 @@ func TestSharersCountsLiveSessionsInOneCheckout(t *testing.T) {
 	}
 
 	later := table(now, 101, 102, 103) // d's host has ended
-	got, err := Sharers(home, main, read(later))
+	got, err := sharers(home, main, read(later))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestSharersIgnoresAReusedPID(t *testing.T) {
 		{PID: 201, PPID: 1, Name: "claude", Age: time.Minute},             // a new process on a's pid
 		{PID: 202, PPID: 1, Name: "claude", Age: time.Hour + 2*time.Hour}, // b, still running
 	}}
-	got, err := Sharers(home, "/w", read(reused))
+	got, err := sharers(home, "/w", read(reused))
 	if err != nil || !slices.Equal(got, []string{"b"}) {
 		t.Errorf("a reused pid must not count: %v %v", got, err)
 	}
@@ -98,7 +98,7 @@ func TestSharersReadsNoTableForOneSession(t *testing.T) {
 	if err := Note(home, "a", "/w", hostOf(tab, 501), tab); err != nil {
 		t.Fatal(err)
 	}
-	got, err := Sharers(home, "/w", func() (sessionname.Table, error) {
+	got, err := sharers(home, "/w", func() (sessionname.Table, error) {
 		t.Fatal("the process table was read for one marker")
 		return sessionname.Table{}, nil
 	})
@@ -121,13 +121,13 @@ func TestNoteReplacesAndForgetRemoves(t *testing.T) {
 	if err := Note(home, "a", "/two", hostOf(tab, 301), tab); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := Sharers(home, "/two", read(tab)); !slices.Equal(got, []string{"a", "b"}) {
+	if got, _ := sharers(home, "/two", read(tab)); !slices.Equal(got, []string{"a", "b"}) {
 		t.Errorf("the session must count where it was noted last: %v", got)
 	}
 	if err := Forget(home, "a"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := Sharers(home, "/two", read(tab)); len(got) != 0 {
+	if got, _ := sharers(home, "/two", read(tab)); len(got) != 0 {
 		t.Errorf("with a forgotten, one session is left and nothing is shared: %v", got)
 	}
 }
@@ -154,8 +154,8 @@ func TestMainWorkingTree(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(linked, ".git"), []byte("gitdir: /x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if !MainWorkingTree(main) || MainWorkingTree(linked) || MainWorkingTree(t.TempDir()) {
-		t.Error("MainWorkingTree must hold only for a .git directory")
+	if !mainWorkingTree(main) || mainWorkingTree(linked) || mainWorkingTree(t.TempDir()) {
+		t.Error("mainWorkingTree must hold only for a .git directory")
 	}
 }
 
@@ -173,7 +173,7 @@ func TestNoteReplacesAnotherMarkerUnderTheSameHost(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := Sharers(home, "/w", read(tab))
+	got, err := sharers(home, "/w", read(tab))
 	if err != nil || !slices.Equal(got, []string{"after-clear", "other"}) {
 		t.Errorf("sharers = %v (%v), want [after-clear other]", got, err)
 	}
@@ -213,7 +213,7 @@ func TestSharersSkipsAMarkerAnotherAccountCanWrite(t *testing.T) {
 	if err := os.Chmod(abcdhome.Path(home, dirLeaf, "b.json"), 0o666); err != nil {
 		t.Fatal(err)
 	}
-	got, err := Sharers(home, "/w", read(tab))
+	got, err := sharers(home, "/w", read(tab))
 	if err != nil || len(got) != 0 {
 		t.Errorf("a world-writable marker must not count: %v %v", got, err)
 	}

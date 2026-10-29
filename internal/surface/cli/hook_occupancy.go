@@ -22,7 +22,7 @@ func noteOccupancy(cmd *cobra.Command, in hookInput, cwd string) {
 	if in.SessionID == "" || in.AgentID != "" {
 		return
 	}
-	top, err := gitutil.RevParseAbsPath(cwd, "--show-toplevel")
+	top, err := gitutil.Toplevel(cwd)
 	if err != nil {
 		return // not a checkout: there is no working tree to share
 	}

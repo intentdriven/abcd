@@ -193,12 +193,12 @@ func Forget(home, sessionID string) error {
 	return nil
 }
 
-// Sharers returns the ids of the sessions whose marker names checkout and
+// sharers returns the ids of the sessions whose marker names checkout and
 // whose host is still running, one per host process, sorted. The process
 // table is read, through readTable, only when two or more markers name
 // checkout, so a checkout no one else works in costs one folder read. A
 // marker whose host has ended is removed.
-func Sharers(home, checkout string, readTable func() (sessionname.Table, error)) ([]string, error) {
+func sharers(home, checkout string, readTable func() (sessionname.Table, error)) ([]string, error) {
 	dir, err := open(home, false)
 	if err != nil {
 		return nil, fmt.Errorf("occupancy: %w", err)
@@ -259,10 +259,10 @@ func canonical(path string) string {
 	return filepath.Clean(path)
 }
 
-// MainWorkingTree reports whether root, a working-tree top, is a repository's
+// mainWorkingTree reports whether root, a working-tree top, is a repository's
 // main working tree rather than a linked worktree: git keeps a directory at a
 // main tree's .git and a file at a linked one's.
-func MainWorkingTree(root string) bool {
+func mainWorkingTree(root string) bool {
 	fi, err := os.Stat(filepath.Join(root, ".git"))
 	return err == nil && fi.IsDir()
 }
@@ -286,10 +286,10 @@ func (e *SharedError) Error() string {
 // made, which the caller reports and writes past: a count it cannot make is
 // not evidence that the checkout is shared.
 func Check(home, root string, readTable func() (sessionname.Table, error)) error {
-	if !MainWorkingTree(root) {
+	if !mainWorkingTree(root) {
 		return nil
 	}
-	ids, err := Sharers(home, root, readTable)
+	ids, err := sharers(home, root, readTable)
 	if err != nil {
 		return err
 	}
