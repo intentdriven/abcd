@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 262 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:526"
-remedy: "none (filed automatically)"
+remedy: "Add the sessions/names.json machine register (with its lock file) to the user-scope tree in 01-ahoy.md and to the mirrored inventory prose in 05-internals/03-configuration.md."
 finding_ref: cfk-c17ab4808f07d5a6
 ---
 

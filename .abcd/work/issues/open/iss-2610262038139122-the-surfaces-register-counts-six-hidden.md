@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 780 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/README.md:276"
-remedy: "none (filed automatically)"
+remedy: "In the register's hook row, list the Stop and StopFailure entrypoints (`hook stop`, `hook stop-failure`) and correct the count to nine, which are the entrypoints the code registers and hooks.json wires."
 finding_ref: cfk-c9f383759a446cd0
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 688 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/README.md:248"
-remedy: "none (filed automatically)"
+remedy: "Soften the register's bare-invocation paragraph: say it is the one complete enumeration of the exceptions and that a chapter may state its own verb's bare behaviour in a line, while the exception-table test keeps the paragraph complete."
 finding_ref: cfk-2b065f822d5d3b59
 ---
 

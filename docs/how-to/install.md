@@ -629,7 +629,12 @@ markers they carry, so a hook whose marker is renamed or stripped reads as
 someone else's hook, a fence without its markers reads as drifted, and
 `abcd ahoy` reports either as a gap.
 
-`README.md` is not among them. abcd writes in it only after you answer yes to
+The fence carries only the entries your `.gitignore` does not already list. A
+line you wrote yourself outside the fence, such as `.abcd/.work.local/`, stays
+the one in force and is not repeated inside it; the fence is written even when
+that leaves it empty, so `abcd ahoy` still finds it.
+
+`README.md` is not among those three files. abcd writes in it only after you answer yes to
 the README question below, and only the parts you choose; the marks around
 each part name abcd, as the fence in `.gitignore` does.
 
@@ -753,6 +758,59 @@ and names the line. A `README.md` holding no part is never written. A
 in it; one you made is kept, even when empty. The uninstall's text names what
 it did on its `readme:` line, for example
 `readme: links removed; licence edited by hand, left`.
+
+## Live brief sessions
+
+In a live brief session the team edits the project's brief together during a
+call, on the host's own computer over Tailscale, on the team's own relay on
+Render, or both ([Run a brief session relay](run-a-brief-session-relay.md)).
+Setup asks whether to set them up.
+
+### The questions
+
+At a terminal, in a run without `--yes`, setup asks "Set up live brief
+sessions?": `yes`, `no`, or `later`, the default. `yes` goes on to "Where may
+sessions run?": `local`, `cloud`, `both` or `later`. Each question says what
+it decides, its current setting and how to change it later. Through the
+plugin, your agent harness asks the same two questions with its own question
+tool, one at a time.
+
+The answer is saved as `sessions.live` in `.abcd/config.json`: `local`,
+`cloud`, `both`, or `none` for a no. A no is never asked again. `later`, at
+either question, saves nothing, so the next setup run asks again, and so do
+`abcd session start` and `abcd session blueprint`, run at a terminal. The
+answer is kept in `.abcd/config.json`, so the questions are asked only once
+abcd's starter files exist.
+
+Setup only records the answer. The setting up itself is
+`abcd session setup`, which you run in a Terminal of your own: it registers
+the team's own GitHub sign-in app from a form GitHub opens already filled in,
+keeps only the app's public client id, and says what is left to do. It runs by
+hand at any time, after a no too.
+
+### Answering it with `--live-sessions`
+
+```sh
+'<plugin-root>/abcd' ahoy install --live-sessions both
+```
+
+```sh
+'<plugin-root>/abcd' ahoy install --live-sessions none
+```
+
+The flag takes `local`, `cloud`, `both`, or `none`, which answers no. It
+answers the questions in any run, `--yes` included, and is saved as their
+answer is. Any other value is refused with exit 2, naming the four, before
+anything is written. A value that differs from the saved one is shown as a
+change (`sessions.live: not set -> both`).
+
+### What `--yes` does
+
+`--yes` never answers the questions. While they are unanswered, a `--yes` run
+without `--live-sessions` lists `sessions.offered` under `optional_skipped`,
+and its summary says "The live brief session question was not asked" and
+names `--live-sessions`. A run whose answers are piped in is not asked either,
+and reports it the same way.
 
 ## Build
 

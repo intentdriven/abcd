@@ -1,0 +1,39 @@
+# abcd session blueprint v0.17.1 sha256:93b698fcf646080df78ae481a672b4604a833a22ecb983f44491dacc16515fe7
+# The team's own brief session relay: one free web service built from the
+# Dockerfile under .abcd/relay/. Deploy it with Render's Deploy button,
+# https://render.com/deploy?repo=https://github.com/acme/brief,
+# or on Render choose New, then Blueprint, and pick this repository.
+# One deploy serves all of the team's sessions. A session lives in the relay's
+# memory only, so a redeploy ends every open session; that is why autoDeploy
+# is off. abcd refuses to overwrite this file once it is edited.
+services:
+  - type: web
+    name: abcd-session-relay
+    runtime: docker
+    plan: free
+    dockerfilePath: ./.abcd/relay/Dockerfile
+    dockerContext: ./.abcd/relay
+    healthCheckPath: /healthz
+    autoDeploy: false
+    envVars:
+      # The team's own GitHub App, the only kind of sign-in app the relay
+      # takes. Render's form asks for the secret when the relay is created;
+      # it is never in git and stays on the relay. The client id is public.
+      - key: ABCD_SESSION_GITHUB_CLIENT_ID
+        sync: false
+      - key: ABCD_SESSION_GITHUB_CLIENT_SECRET
+        sync: false
+      # The origins of the session pages this relay admits, as a comma
+      # list of https origins: abcdesign.app unless the blueprint was told
+      # others. An entry for a page served below a base path names it
+      # (https://host/base/), and the sign-in returns only to a page under
+      # exactly that path. It is not a secret.
+      - key: ABCD_SESSION_ORIGINS
+        value: "https://abcdesign.app"
+      # The repositories this relay serves sessions for, read from the
+      # checkout's origin when this file was written: a comma list of
+      # owner/name, or of owners for all of an owner's repositories. It is
+      # not a secret. Listening beyond loopback, the relay refuses to start
+      # without it.
+      - key: ABCD_SESSION_REPOS
+        value: "acme/brief"

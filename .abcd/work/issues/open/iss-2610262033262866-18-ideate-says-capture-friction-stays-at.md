@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 405 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/18-ideate.md:14"
-remedy: "none (filed automatically)"
+remedy: "In 18-ideate.md:14 reword 'capture friction stays at one line' to 'ideate adds no friction to capture'; a capture is one line of text plus one line of remedy (06-capture.md:71)."
 finding_ref: cfk-e5fb94e7c0b1c3bd
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 27 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/00-meta.md:9"
-remedy: "none (filed automatically)"
+remedy: "In the press release's Open Questions section, drop the sentence 'A future intent (likely paired with itd-15 ...) may quantify it' and register the round-trip fidelity floor question in 03-evidence/03-open-questions.md (or carry it as an inline 'Open question (adr-35)' note); retire the stale Pass B bullet in the same edit."
 finding_ref: cfk-d8712271d2a7c944
 ---
 

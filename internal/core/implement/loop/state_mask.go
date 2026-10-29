@@ -124,6 +124,14 @@ func (r ValidationRound) masked() ValidationRound {
 		v.Route = maskPtr(v.Route, maskRoute)
 		return v
 	})
+	r.Routes = maskEach(r.Routes, func(t Round) Round {
+		t.Role, t.Note = line(t.Role), free(t.Note)
+		t.Tier, t.EscalatedFrom = oracle.Tier(line(string(t.Tier))), oracle.Tier(line(string(t.EscalatedFrom)))
+		// The mask can lengthen text (an invalid byte becomes an escape), so
+		// the bound holds after it too.
+		t.GateOutput = boundGateOutput(free(boundGateOutput(t.GateOutput)))
+		return t
+	})
 	return r
 }
 
@@ -197,13 +205,31 @@ func (t Transcript) masked() Transcript {
 }
 
 // maskRoute masks the route a runner reported, its model above all, and both
-// sides of its run (itd-166), each string the harness supplied included.
+// sides of its run (itd-166), each string the harness supplied included, and
+// the pin a pinned opencode run was pointed at (iss-2610161734413178), or
+// the local pin and what its server reported (iss-2610161734428291).
 func maskRoute(r runner.RouteRecord) runner.RouteRecord {
-	r.Asked, r.Ran, r.Model = line(r.Asked), line(r.Ran), line(r.Model)
+	r.Asked, r.Ran, r.Model, r.Override = line(r.Asked), line(r.Ran), line(r.Model), line(r.Override)
 	s := &r.Sides
 	s.ModelAsked, s.ServedProvider, s.FinishReason = line(s.ModelAsked), line(s.ServedProvider), line(s.FinishReason)
 	s.HarnessVersion, s.PromptSHA256 = line(s.HarnessVersion), line(s.PromptSHA256)
 	s.ServedModels = maskEach(s.ServedModels, line)
+	s.PinConfigSHA256 = line(s.PinConfigSHA256)
+	s.ProviderPin = maskPtr(s.ProviderPin, func(p oracle.Pin) oracle.Pin {
+		p.Order, p.Quantizations = maskEach(p.Order, line), maskEach(p.Quantizations, line)
+		p.DataCollection, p.CanonicalSlug = line(p.DataCollection), line(p.CanonicalSlug)
+		return p
+	})
+	s.LocalPin = maskPtr(s.LocalPin, func(p oracle.LocalPin) oracle.LocalPin {
+		p.Runtime, p.RuntimeVersion, p.WeightsSHA256 = line(p.Runtime), line(p.RuntimeVersion), line(p.WeightsSHA256)
+		p.WeightsFile, p.Quantisation, p.KVCacheType = line(p.WeightsFile), line(p.Quantisation), line(p.KVCacheType)
+		return p
+	})
+	s.LocalServed = maskPtr(s.LocalServed, func(v oracle.LocalServed) oracle.LocalServed {
+		v.Model, v.RuntimeVersion, v.WeightsSHA256 = line(v.Model), line(v.RuntimeVersion), line(v.WeightsSHA256)
+		v.Quantisation = line(v.Quantisation)
+		return v
+	})
 	s.Cost = maskPtr(s.Cost, func(c oracle.Cost) oracle.Cost {
 		c.Unit = line(c.Unit)
 		return c

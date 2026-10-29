@@ -42,8 +42,9 @@ func newLintCommand(asJSON *bool) *cobra.Command {
 			// violations against a directory that is not there (B41). Fail with a
 			// usage error instead, matching the disembark probe guard.
 			if info, statErr := os.Stat(dir); statErr != nil || !info.IsDir() {
-				shown := rootDir
-				if shown == "" {
+				// A --root path is named by its flag, never by what was typed.
+				shown := "the --root path (not repeated here)"
+				if rootDir == "" {
 					shown = dir
 				}
 				return &exitError{Code: 2, Msg: fmt.Sprintf("lint: %s is not a directory", shown)}

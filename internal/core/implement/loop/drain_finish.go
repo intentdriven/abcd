@@ -309,7 +309,7 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 			if w.kind != wantBinary || w.hold {
 				return false, nil
 			}
-			res, err := performMove(repoRoot, st, DefaultStages(), w, now)
+			res, err := performMove(repoRoot, st, DefaultStages(), w, now, nil)
 			if err != nil {
 				return false, err
 			}
@@ -366,7 +366,7 @@ func resyncParked(repoRoot, runID string, now time.Time) (note string, moved boo
 		if w.kind != wantBinary || w.hold {
 			return false, nil
 		}
-		res, err := performMove(repoRoot, st, DefaultStages(), w, now)
+		res, err := performMove(repoRoot, st, DefaultStages(), w, now, nil)
 		if err != nil {
 			return false, err
 		}

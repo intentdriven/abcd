@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 689 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md:621"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-configuration.md user-scope inventory (and the matching tree in 01-ahoy.md, which must agree): add the `dashboard/` store holding the run file and devices list."
 finding_ref: cfk-35d393e3f9db697e
 ---
 

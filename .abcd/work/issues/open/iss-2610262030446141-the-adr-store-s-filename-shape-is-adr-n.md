@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 39 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:74"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md and 05-intent.md to name the ADR store's files by the id without its adr- prefix: `<stamp>-<slug>.md` for ids minted since adr-45 and `NNNN-<slug>.md` for the ordinals 0001-0058."
 finding_ref: cfk-2a2480b4074403cc
 ---
 

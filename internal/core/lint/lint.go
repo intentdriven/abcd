@@ -418,6 +418,14 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			findings = append(findings, su...)
 		}
 
+		if ssCfg, ok := cfg.Rules[ruleSpecStepsSerial]; ok && ssCfg.Enabled {
+			ss, err := checkSpecStepsSerial(repoRoot, rootAbs, ssCfg, cfg)
+			if err != nil {
+				return nil, err
+			}
+			findings = append(findings, ss...)
+		}
+
 		if fsCfg, ok := cfg.Rules["forbidden_synonyms"]; ok && fsCfg.Enabled {
 			fs, err := checkForbiddenSynonyms(repoRoot, rootAbs, fsCfg)
 			if err != nil {
@@ -614,6 +622,16 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			return nil, err
 		}
 		findings = append(findings, cu...)
+	}
+
+	// local_tier_untracked asks git what it tracks under the local tier, which
+	// no root walks, so it runs once here.
+	if ltCfg, ok := cfg.Rules[ruleLocalTierUntracked]; ok && ltCfg.Enabled {
+		lt, err := checkLocalTierUntracked(repoRoot, ltCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, lt...)
 	}
 
 	// brief_flag_landed reads the brief's review flags against their chapters,

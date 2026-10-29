@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 965 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/step.md:18"
-remedy: "none (filed automatically)"
+remedy: "In the planned build intent's press release change 'does one step' to 'does one stage' (34-build.md already says 'does at most one stage')."
 related_intents: [itd-2609201916151817]
 finding_ref: cfk-259609c8848ec806
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 855 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-86-cold-reading-surface.md:29"
-remedy: "none (filed automatically)"
+remedy: "Rewrite itd-86 so it no longer proposes a one-document surface the agent catalogue already ships as four position prompts over the assembled input (reading assemble and reading ingest); keep only the residual scope (settled-enough check, closing line), or supersede it by itd-184 and move it to intents/superseded/."
 related_intents: [itd-86]
 finding_ref: cfk-8268a24ee9762f2b
 ---

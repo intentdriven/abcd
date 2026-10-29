@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -87,5 +88,26 @@ func TestComposeContextDropsOnlyTheBranchWhenGitRunsOut(t *testing.T) {
 	}
 	if got := plainOf(t, res.Row, KeyBranch); got != "main" {
 		t.Errorf("branch = %q, want main", got)
+	}
+}
+
+// TestComposeContextNeverBadgesAnUnreadModeAsManaged: a stored mode is read
+// only once git says it tracks none of it, so with git's time spent the
+// composition is an error, never a badge saying managed over a stop parked on
+// someone; with time to answer it reads the mode.
+func TestComposeContextNeverBadgesAnUnreadModeAsManaged(t *testing.T) {
+	root := composeRepo(t)
+	git(t, root, "commit", "--allow-empty", "-m", "root")
+	if err := mode.SetAt(root, mode.Facilitator); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if res, err := ComposeContext(ctx, root, Payload{}, Defaults()); err == nil {
+		t.Fatalf("a mode git was not asked about in time composed as %q: %q", res.State, res.Row.Plain())
+	}
+	res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
+	if err != nil || res.State != mode.Facilitator {
+		t.Fatalf("with time to answer: state %q, %v; want %q", res.State, err, mode.Facilitator)
 	}
 }

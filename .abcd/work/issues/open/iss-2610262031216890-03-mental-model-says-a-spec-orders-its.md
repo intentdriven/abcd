@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 118 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:83"
-remedy: "none (filed automatically)"
+remedy: "Edit glossary/core/spec.md: replace 'ordered tasks', 'numbered tasks', 'task lists' and the 'Task spc-3.1' example with steps under `## Steps`, since the step entry forbids task as a synonym."
 finding_ref: cfk-8d82b1b31246d91b
 ---
 

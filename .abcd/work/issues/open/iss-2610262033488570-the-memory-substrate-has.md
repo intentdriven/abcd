@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 439 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/07-memory.md:16"
-remedy: "none (filed automatically)"
+remedy: "Edit 07-memory.md section 0: mark the principle-distiller routing rule and the user-scope pages as staged (07-library 'Not built'; 03-configuration says nothing resolves ~/.abcd.noindex/memory/ today)."
 finding_ref: cfk-4397f5d197a7001e
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 820 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-81-judge-calibration.md:25"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Decision: where does an agent's calibration corpus live? Answers: (A) under agents/NAME/corpus/ as itd-81 says, which widens 01-agents.md's rule that agents/ holds prompts and fixture directories only and ships the corpus in the plugin bundle; (B) in the durable record beside the agent changelog (.abcd/development/agents/NAME/corpus/), which keeps that rule true and never ships. Recommend B: a corpus of known-bad artefacts is development evidence, the released plugin should not carry it, and the launch bundle already excludes the .abcd namespace."
 related_intents: [itd-81]
 finding_ref: cfk-911a73ce9cdc3f57
 ---

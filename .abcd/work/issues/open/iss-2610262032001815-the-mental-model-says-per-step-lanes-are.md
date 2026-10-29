@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 208 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:56"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md line 56: itd-2609212103565953 (per-step lanes) is shipped, not planned."
 related_intents: [itd-2609212103565953]
 finding_ref: cfk-b3e75bc581941792
 ---

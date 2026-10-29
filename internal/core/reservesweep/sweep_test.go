@@ -1,6 +1,8 @@
 package reservesweep
 
 import (
+	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -147,6 +149,61 @@ func TestADryRunListsWhatItWouldDeleteAndDeletesNothing(t *testing.T) {
 			t.Fatalf("after a dry run %s's tip is %q; want %s untouched", id, got, sha)
 		}
 	}
+}
+
+// TestADryRunLeavesTheObjectStoreUntouched holds the sweep's read to the
+// object store as a reservations view is held: once the reservations are
+// fetched, a dry run adds, removes and refreshes no file under .git/objects
+// (iss-2610231038335615).
+func TestADryRunLeavesTheObjectStoreUntouched(t *testing.T) {
+	w := newWorld(t)
+	dir := w.clone()
+	put(t, dir, "iss-7", released(t, dir, "iss-7", t0))
+	w.clock = t0.Add(2 * week)
+	if _, err := Sweep(dir, w.opts(false)); err != nil {
+		t.Fatal(err)
+	}
+	objects := filepath.Join(dir, ".git", "objects")
+	past := time.Now().Add(-time.Hour).Truncate(time.Second)
+	for path := range objectFiles(t, objects) {
+		if err := os.Chtimes(path, past, past); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before := objectFiles(t, objects)
+	if _, err := Sweep(dir, w.opts(false)); err != nil {
+		t.Fatal(err)
+	}
+	if after := objectFiles(t, objects); !maps.Equal(before, after) {
+		for path, at := range after {
+			if was, ok := before[path]; !ok || !was.Equal(at) {
+				t.Errorf("the dry run wrote %s", path)
+			}
+		}
+		t.Fatal("the dry run changed the object store")
+	}
+}
+
+// objectFiles is every file under the object store at dir with its
+// modification time.
+func objectFiles(t *testing.T, dir string) map[string]time.Time {
+	t.Helper()
+	files := map[string]time.Time{}
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		files[path] = info.ModTime()
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }
 
 // TestApplyDeletesOnlyTheSpentBranches: a spent release is deleted, while a

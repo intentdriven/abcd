@@ -510,13 +510,15 @@ func newImplementLogCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kv := map[string]string{}
-			for _, f := range fields {
+			// A --field is named by its position among the --field flags, never
+			// by its text.
+			for i, f := range fields {
 				m := fieldArgRe.FindStringSubmatch(f)
 				if m == nil {
-					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement log: --field %q is not key=value (nothing written)", f)}
+					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement log: --field number %d is not key=value (it is not repeated here; nothing written)", i+1)}
 				}
 				if _, dup := kv[m[1]]; dup {
-					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement log: --field %s is given twice (nothing written)", m[1])}
+					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement log: --field number %d gives a key an earlier --field gave, so that key is given twice (it is not repeated here; nothing written)", i+1)}
 				}
 				kv[m[1]] = m[2]
 			}
@@ -612,10 +614,20 @@ func implementReport(date, logPath string) (implement.Report, error) {
 	if date != "" && logPath != "" {
 		return implement.Report{}, fmt.Errorf("%w: --date and --log name two different logs; give one", implement.ErrRefused)
 	}
+	// A malformed --date is refused before the run is read, naming the flag
+	// and the shape it takes, never the value given.
+	var day time.Time
+	if date != "" {
+		d, err := time.Parse(time.DateOnly, date)
+		if err != nil {
+			return implement.Report{}, fmt.Errorf("%w: --date is not YYYY-MM-DD (the value given is not repeated here)", implement.ErrRefused)
+		}
+		day = d
+	}
 	if logPath != "" {
 		data, err := fsutil.ReadGuarded(logPath, maxReportLogBytes)
 		if err != nil {
-			return implement.Report{}, fmt.Errorf("%w: cannot read the log: %v", implement.ErrRefused, err)
+			return implement.Report{}, fmt.Errorf("%w: cannot read the --log file (its path is not repeated here): %v", implement.ErrRefused, pathErrorCause(err))
 		}
 		events, bad := implement.ParseLog(fsutil.RedactHome(logPath), data)
 		return implement.Compare(events, bad), nil
@@ -629,10 +641,6 @@ func implementReport(date, logPath string) (implement.Report, error) {
 		return implement.Report{}, err
 	}
 	if date != "" {
-		day, err := time.Parse(time.DateOnly, date)
-		if err != nil {
-			return implement.Report{}, fmt.Errorf("%w: --date %q is not YYYY-MM-DD", implement.ErrRefused, date)
-		}
 		name := day.Format(time.DateOnly) + ".jsonl"
 		kept := events[:0]
 		for _, e := range events {

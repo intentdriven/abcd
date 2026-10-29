@@ -280,15 +280,24 @@ jobs:
     # technical facilitator (dcn-2610181756328249): ten merge-group runs took
     # 35.1 to 49.3 minutes, one within a minute of the warning, on a leg whose
     # race pass keeps its three test slots full, so its time is its total work
-    # and varies with the runner. Raising it again is the technical
+    # and varies with the runner. The coordinating session raised it to 85 on
+    # 2026-10-28, on delegation from the technical facilitator
+    # (dcn-2610282036219503): that day's passing merge-group runs took 46 to 68
+    # minutes and run 40752008734 was cancelled at the cap after 71
+    # (iss-2610282035340363). Raising it again is the technical
     # facilitator's call, and the remedy for a leg near the cap is a faster
-    # suite (iss-2610181711260494). The ubuntu leg's ceiling is 30. The drain
+    # suite (iss-2610181711260494). The ubuntu leg's ceiling is 45. The drain
     # bundle (spc-2610161044461448) grew the loop package's race run until the
     # leg reached 31 minutes, and it spent from 2026-10-17 at 45
     # (dcn-2610171803056931). It came back to 30 when the leg's plain pass
     # stopped rerunning every internal test the race lane already runs
     # (iss-2610171803053186): the worst of five merge-group runs had spent 9.3
-    # minutes on that rerun. The race step's -timeout lifts go test's 10m
+    # minutes on that rerun. The coordinating session raised it to 45 again on
+    # 2026-10-28, on delegation from the technical facilitator
+    # (dcn-2610280635092222): merge-group runs took 29, 29 and 29 minutes and a
+    # fourth was cancelled at 30, a second after its race tests passed, which
+    # rebuilt every group queued behind it. Its warning, ten minutes ahead, now
+    # fires at 35. The race step's -timeout lifts go test's 10m
     # per-package default, so a slow package runs on to this ceiling instead of
     # failing at ten minutes. The step names its slowest packages first, so they
     # start with the step rather than behind every faster package; a hang in one
@@ -297,7 +306,7 @@ jobs:
     # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds every leg at or below the
     # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
     # end of the job below it.
-    timeout-minutes: ${{ matrix.os == 'macos-latest' && 70 || 30 }}
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 85 || 45 }}
     strategy:
       fail-fast: false
       matrix:
@@ -315,13 +324,14 @@ jobs:
           echo "::notice title=macOS suite runs in the merge queue::${msg}"
           printf '### macOS suite runs in the merge queue\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
 
-      # The clock for the warning step at the end of the job. It is the first
-      # step that runs on the macOS leg, so the time the runner spent before it
-      # (queueing, set-up) is not counted, and the elapsed time the warning
-      # reads is a lower bound on what the merge queue's clock shows.
+      # The clock for the warning step at the end of the job, on every leg the
+      # warning runs on. It is the first step that runs there, so the time the
+      # runner spent before it (queueing, set-up) is not counted, and the
+      # elapsed time the warning reads is a lower bound on what the merge
+      # queue's clock shows.
       - name: Record the job's start
         id: started
-        if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
+        if: matrix.os != 'macos-latest' || github.event_name != 'pull_request'
         run: echo "epoch=$(date +%s)" >>"$GITHUB_OUTPUT"
 
       # Full history: the record-lint step below arms `-agent-diff` against the
@@ -573,27 +583,29 @@ jobs:
           go run ./cmd/abcd lint site --out "$RUNNER_TEMP/site-render-check"
 
       # Warn before the cap cancels (ruling Z's cancel policy, 2026-09-28). A
-      # macOS check that runs past WARN_AFTER_MINUTES is ten minutes from the
-      # leg's 70-minute ceiling, and a cancellation there carries nothing but the
-      # cancellation. The rule for a cancelled check is to rerun it once; a
-      # second cancellation for the same reason stops that pull request and
-      # opens a speed lane, never another raise of the timeout. This warning
-      # moves that signal ahead of the first cancellation: it is emitted at the
-      # job's end, for a run that finished past the line, so a check that
-      # passed between 60 and 70 minutes says so before one is cancelled at
-      # the cap. It never fails the
-      # job: `always()` runs it however the steps before it ended, and
-      # `continue-on-error` holds even a broken script to a warning.
-      # TestCheckJobWarnsBeforeTheQueueCap pins the threshold ten minutes below
-      # the leg's ceiling, and CEILING_MINUTES, the cap the message names, to
-      # that ceiling.
+      # check that runs past WARN_AFTER_MINUTES is ten minutes from its leg's
+      # ceiling (85 minutes on macOS, 45 on ubuntu), and a cancellation there
+      # carries nothing but the cancellation. The rule for a cancelled check is
+      # to rerun it once; a second cancellation for the same reason stops that
+      # pull request and opens a speed lane, never another raise of the
+      # timeout. This warning moves that signal ahead of the first
+      # cancellation: it is emitted at the job's end, for a run that finished
+      # past the line, so a check that passed within ten minutes of its leg's
+      # cap says so before one is cancelled at the cap. It runs on every leg
+      # but the macOS one on a pull request, which runs only its stand-in. It
+      # never fails the job: `always()` runs it however the steps before it
+      # ended, and `continue-on-error` holds even a broken script to a warning.
+      # TestCheckJobWarnsBeforeTheQueueCap pins each leg's threshold ten
+      # minutes below that leg's ceiling, CEILING_MINUTES, the cap the message
+      # names, to that ceiling, and the clock step to every leg it warns on.
       - name: Warn when the check nears the queue's cap
-        if: always() && matrix.os == 'macos-latest' && github.event_name != 'pull_request'
+        if: always() && (matrix.os != 'macos-latest' || github.event_name != 'pull_request')
         continue-on-error: true
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
-          WARN_AFTER_MINUTES: 60
-          CEILING_MINUTES: 70
+          LEG: ${{ matrix.os }}
+          WARN_AFTER_MINUTES: ${{ matrix.os == 'macos-latest' && 75 || 35 }}
+          CEILING_MINUTES: ${{ matrix.os == 'macos-latest' && 85 || 45 }}
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)
@@ -603,11 +615,11 @@ jobs:
           esac
           elapsed=$(($(date +%s) - STARTED_AT))
           minutes=$((elapsed / 60))
-          echo "check (macos-latest) has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
+          echo "check (${LEG}) has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
           if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
-            msg="check (macos-latest) ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
-            echo "::warning title=macOS check near the queue's cap::${msg}"
-            printf '### macOS check near the merge queue cap\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
+            msg="check (${LEG}) ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
+            echo "::warning title=check (${LEG}) near its cap::${msg}"
+            printf '### check (%s) near its cap\n\n%s\n' "$LEG" "$msg" >>"$GITHUB_STEP_SUMMARY"
           fi
 
   # Secrets never land in history: the history each run would land is scanned —

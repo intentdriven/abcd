@@ -325,13 +325,16 @@ Each is designed to the marked option, and the reason is given beneath it.
    - packages: internal/core/ahoy, internal/core/runner
    - tests: TestHarnessTableCoversEveryAdapter, TestHarnessFloorVerdicts, TestHarnessVersionsCompareAsNumbers, TestHarnessNotCheckedReasons, TestHarnessCommandAdmission, each watched fail first; TestHostVersionWarning and the runner's adapter tests pass unchanged
    - waits on spc-2610031156364295 step 5, which writes the reading and the floor this step widens <!-- record-lint: forward-looking -->
+   - needs: none
 2. The update check carries the harness lines
    - criteria: H1, H2, H3, H4, H5
    - packages: internal/surface/cli, docs/reference, commands/update.md
    - tests: TestUpdateCheckObjectIsUnchanged, its testdata captured from the base in the step's first commit; TestHarnessLinesNeverGoOnline, TestUpdateCheckWarnsBelowTheFloor, TestUpdateCheckQuietAtOrAboveTheFloor, TestUpdateCheckNamesUncheckedHarnesses, each watched fail first; TestOnlyUpdateCheckTouchesTheNetwork unchanged; the command reference regenerated with `go generate ./internal/surface/cli`
    - lands after step 1
+   - needs: 1
 3. The how-to, the brief, the receipt and the close
    - criteria: H6, H7; the intent's close
    - packages: docs/how-to, .abcd/development/brief/04-surfaces
    - tests: TestUpdateCheckDocsAddNoAllowEscape; docs-lint and record-lint clean; the dated receipt taken at the step's branch tip before the pull request; a docs-fidelity review recorded for HEAD, then `abcd spec close spc-2610031342374947` (the intent already declares `impact: additive`) with a `Delivers: itd-2610031026190632` trailer
    - lands after step 2
+   - needs: 2

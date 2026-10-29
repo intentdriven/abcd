@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 740 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-82-drain-ledger-triage.md:50"
-remedy: "none (filed automatically)"
+remedy: "In itd-82's Ceilings bullet, say --max caps lanes opened and that the drain runs until nothing eligible is left by default, with no --until-empty flag (that flag belongs to build next)."
 related_intents: [itd-82]
 finding_ref: cfk-a65dcb9b54783fce
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 602 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/voyage.md:35"
-remedy: "none (filed automatically)"
+remedy: "In voyage.md replace 'privacy-hygiene audit rule' and 'fail its own audit' with 'lint rule' and 'fail its own lint'."
 finding_ref: cfk-e788471a7800d013
 ---
 

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"os/exec"
@@ -43,9 +44,9 @@ var slowSleep = "sleep " + strconv.Itoa(int(slowWork/time.Second))
 
 // loadedGitLatency is how long the fake git takes before it hands a question
 // it does not hang on to the real git: longer than the production git budget,
-// as a loaded runner's git can be. A test whose row needs git's answer widens
-// the budgets past it (widenBudgets), so its claim holds on a loaded machine
-// too.
+// as a loaded runner's git can be. A test whose row needs git's answer before
+// the git it hangs ends git's share on that git starting, not on a clock
+// (gitDeadlineOnceStarted), so its claim holds however loaded the machine.
 const loadedGitLatency = "sleep 0.4"
 
 // widenBudgets resizes the verb's budgets for one test to sizes a loaded
@@ -57,6 +58,52 @@ func widenBudgets(t *testing.T) {
 	overall, git, previous := statuslineBudget, statuslineGitBudget, previousCommandBudget
 	statuslineBudget, statuslineGitBudget, previousCommandBudget = 4*time.Second, 2*time.Second, 2*time.Second
 	t.Cleanup(func() { statuslineBudget, statuslineGitBudget, previousCommandBudget = overall, git, previous })
+}
+
+// gitDeadlineOnceStarted ends git's share of one refresh when the hanging git
+// has started — once pidFile holds the full line its fixture writes first —
+// instead of at a clock. Git's wall-clock share is spent across every git the
+// row asks (statuslineGitBudget), so a test whose checkout git must answer
+// before the hanging one raced that answer against the clock, and lost it on
+// a machine loaded enough that the checkout's own git outlasted the budget:
+// the row went blank, or named the wrong git (iss-2610230814127624).
+//
+// So the clock is taken out of the race both ways. The git budget the notes
+// name is set SHORTER than loadedGitLatency, so a share still ended by the
+// clock would end before the checkout's git answered on every run, not only a
+// loaded one. And abcd's own ceiling is set past slowWork, so the only clock
+// left is stopCeiling's, which a verb that waited for the hang still fails.
+// The production budgets and their order are pinned by
+// TestStatuslineBudgetIsUnderASecond, and the production share's deadline by
+// TestStatuslineGitContextEndsAtTheGitBudget.
+func gitDeadlineOnceStarted(t *testing.T, pidFile string) {
+	t.Helper()
+	overall, git, gitContext := statuslineBudget, statuslineGitBudget, statuslineGitContext
+	statuslineBudget, statuslineGitBudget = slowWork*2, 100*time.Millisecond
+	started := func() bool {
+		raw, err := os.ReadFile(pidFile)
+		return err == nil && strings.HasSuffix(string(raw), "\n")
+	}
+	statuslineGitContext = func(parent context.Context, _ time.Duration) (context.Context, context.CancelFunc) {
+		ctx, cancel := context.WithCancel(parent)
+		go func() {
+			tick := time.NewTicker(5 * time.Millisecond)
+			defer tick.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-tick.C:
+					if started() {
+						cancel()
+						return
+					}
+				}
+			}
+		}()
+		return ctx, cancel
+	}
+	t.Cleanup(func() { statuslineBudget, statuslineGitBudget, statuslineGitContext = overall, git, gitContext })
 }
 
 // hasNote reports whether stderr carries a note of the verb's own, from
@@ -188,6 +235,27 @@ func TestStatuslineBudgetIsUnderASecond(t *testing.T) {
 	}
 }
 
+// TestStatuslineGitContextEndsAtTheGitBudget pins the production git share:
+// it ends at the budget it is given, and with abcd's own ceiling. The deadline
+// tests that need git to answer first end it on a signal instead
+// (gitDeadlineOnceStarted); this is what keeps the production share a clock.
+func TestStatuslineGitContextEndsAtTheGitBudget(t *testing.T) {
+	parent, cancelParent := context.WithCancel(context.Background())
+	before := time.Now()
+	ctx, cancel := statuslineGitContext(parent, time.Hour)
+	defer cancel()
+	deadline, ok := ctx.Deadline()
+	if !ok || deadline.Before(before.Add(time.Hour)) || deadline.After(time.Now().Add(time.Hour)) {
+		t.Errorf("git share deadline = %s (set %t), want one hour from its start", deadline, ok)
+	}
+	cancelParent()
+	select {
+	case <-ctx.Done():
+	default:
+		t.Error("the git share outlived abcd's own context")
+	}
+}
+
 // TestStatuslineHungGitDoesNotFreezeTheLine: every git the verb starts sleeps
 // for slowWork. The verb returns at git's budget, not at the work's end,
 // exits 0, and says on stderr why the row is empty.
@@ -213,13 +281,14 @@ func TestStatuslineHungGitDoesNotFreezeTheLine(t *testing.T) {
 // checkout, as slowly as a loaded machine's git, but hangs on the branch. The
 // row renders without the branch, badge first, once git's budget stops the
 // branch — the best partial row — and the branch git is gone: killed at the
-// budget, not abandoned to run on after the refresh. Like its siblings it
-// proves the bound stops the work under the widened budgets and stopCeiling,
-// never how soon (iss-2610090642407850).
+// budget, not abandoned to run on after the refresh. Git's share ends when the
+// branch git starts (gitDeadlineOnceStarted), so the checkout's slow git never
+// races it (iss-2610230814127624); like its siblings it proves the bound stops
+// the work under stopCeiling, never how soon (iss-2610090642407850).
 func TestStatuslineSlowBranchStillRendersThePartialRow(t *testing.T) {
 	root := managedCheckout(t)
-	widenBudgets(t)
 	pidFile := filepath.Join(t.TempDir(), "pids")
+	gitDeadlineOnceStarted(t, pidFile)
 	fakeGit(t, `for a in "$@"; do case "$a" in symbolic-ref|--short) echo $$ >> '`+pidFile+`'; exec `+slowSleep+`;; esac; done
 `+loadedGitLatency+`; exec "$REAL_GIT" "$@"`)
 
@@ -235,14 +304,11 @@ func TestStatuslineSlowBranchStillRendersThePartialRow(t *testing.T) {
 	}
 	t.Logf("returned in %s (git budget %s)", took, statuslineGitBudget)
 
-	// Every branch git that started must be gone. One stopped before its
-	// first line ran (a loaded machine) wrote no pid and left nothing behind.
+	// Every branch git that started must be gone. Git's share ended only
+	// once one had written its pid, so there is at least one.
 	raw, err := os.ReadFile(pidFile)
-	if os.IsNotExist(err) {
-		return
-	}
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("the branch git never started: %v", err)
 	}
 	for _, field := range strings.Fields(string(raw)) {
 		pid, err := strconv.Atoi(field)
@@ -335,7 +401,10 @@ func TestStatuslineSlowPreviousCommandIsStopped(t *testing.T) {
 // nothing printed — whether abcd manages the checkout is unknown, so neither
 // abcd's row nor the previous command can be vouched for — and the git it
 // started is gone: killed at the deadline, not left to run on after every
-// refresh. The checkout's own git answers as slowly as a loaded machine's.
+// refresh. The checkout's own git answers as slowly as a loaded machine's,
+// and git's share ends only once the root-commit git has started
+// (gitDeadlineOnceStarted), so that slowness never takes the share first
+// (iss-2610230814127624).
 func TestStatuslineKillsTheRootCommitGit(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -343,7 +412,8 @@ func TestStatuslineKillsTheRootCommitGit(t *testing.T) {
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv(statuslineFallbackEnv, "")
-	widenBudgets(t)
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	gitDeadlineOnceStarted(t, pidFile)
 	repo := t.TempDir()
 	gitInitAt(t, repo)
 	gitCommitAt(t, repo, "one")
@@ -365,12 +435,12 @@ func TestStatuslineKillsTheRootCommitGit(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeUserSettings(t, `{"schema_version":1,"previous_command":"printf previous"}`)
-	// Control: with a git that answers, the checkout is abcd's.
+	// Control: with a git that answers, the checkout is abcd's. No hanging
+	// git starts, so git's share never ends and no clock races the control.
 	if out, _, code, _ := statuslineWithin(t, strings.NewReader(payloadFor(repo))); code != 0 || !strings.Contains(out, "abcd-managed") {
 		t.Fatalf("control: stdout %q exit %d, want abcd's row for a registered checkout", out, code)
 	}
 
-	pidFile := filepath.Join(t.TempDir(), "pid")
 	fakeGit(t, `for a in "$@"; do case "$a" in rev-list) echo $$ > '`+pidFile+`'; exec `+slowSleep+`;; esac; done
 `+loadedGitLatency+`; exec "$REAL_GIT" "$@"`)
 
@@ -383,7 +453,7 @@ func TestStatuslineKillsTheRootCommitGit(t *testing.T) {
 	}
 	pid, ok := readPid(t, pidFile)
 	if !ok {
-		return
+		t.Fatal("the root-commit git never started")
 	}
 	if !goneWithin(pid) {
 		_ = syscall.Kill(pid, syscall.SIGKILL)

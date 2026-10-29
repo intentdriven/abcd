@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 293 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md:805"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-configuration.md (three-tier table, shared work row): replace 'the append-only decision log' with 'the decisions folder, one record per decision'."
 finding_ref: cfk-7f3626302a5444b7
 ---
 

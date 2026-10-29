@@ -59,7 +59,7 @@ func keepFirstFetched(root string, now time.Time, only func(subject string) bool
 	if err != nil {
 		return
 	}
-	tree, err := emptyTree(root)
+	tree, err := emptyTreeName(root)
 	if err != nil {
 		return
 	}

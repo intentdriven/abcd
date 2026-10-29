@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 321 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/02-disembark.md:81"
-remedy: "none (filed automatically)"
+remedy: "In 05-internals/07-memory.md (section 4, near line 118) say the lifeboat is designed to publish curated project memory and that the gate's consumer is still future: the shipped pack's output shape carries no memory pages (07-library.md already says 'designed to', payload deferred)."
 finding_ref: cfk-d9baf26f1d1778d7
 ---
 

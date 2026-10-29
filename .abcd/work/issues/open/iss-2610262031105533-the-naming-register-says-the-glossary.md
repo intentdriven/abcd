@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 96 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:144"
-remedy: "none (filed automatically)"
+remedy: "In 04-universal-patterns.md (local logs layout, lines 117-123) drop the grill/ session directory and its 'written inline to terminology/' note; it is the log layout of the grill sub-verb from superseded itd-27, which does not ship."
 finding_ref: cfk-e0f22a7c0af23931
 ---
 

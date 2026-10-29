@@ -115,11 +115,25 @@ type Result struct {
 	// (OwnOverlap.Warning); nil when it shares none. Every other act backs off
 	// such a path.
 	OwnOverlap []OwnOverlap
+	// GeneratedShared is each path this reservation shares with another
+	// record's live reservation that was no overlap because origin's default
+	// branch declares it generated (GeneratedShare.Line), sorted by path and
+	// record; nil when it shares none.
+	GeneratedShared []GeneratedShare
 	// GeneratedUnread is why the overlap judgement recognised no generated
 	// file: origin's default branch declares them but its declaration could
 	// not be read (GeneratedUnreadLine), so every shared path was judged an
 	// overlap; "" when it was read, there is none, or no overlap was judged.
 	GeneratedUnread string
+	// Directories is each path of the footprint the request named that is a
+	// directory git tracks (iss-2610230016544142), with the tracked files
+	// beneath it: the act is made all the same, and a surface tells the
+	// person to name the files instead (DirectoryFootprint.Warning). Every
+	// act that names a footprint is judged, a reserve that renews this copy's
+	// own tip (ActRenewed) included; nil for a release, for a Request.Renew
+	// renewal, which names no footprint and keeps the tip's, and for a
+	// footprint of files alone.
+	Directories []DirectoryFootprint
 }
 
 // beforePush, when a test sets it, runs between the judgement and the push:
@@ -142,6 +156,10 @@ type judged struct {
 	// blob at all (this checkout names none of it, or its tree would not
 	// read), "" when it was read, whatever it held.
 	blobUnread string
+	// defaultRef is origin's default branch as the judgement named it, after
+	// the act's fetch, "" when this checkout names none: the footprint's
+	// directories are read from it under that one name.
+	defaultRef string
 	verdict    lease.Verdict
 	// mine and thisCopy compare a readable tip's holder and copy with the
 	// person and copy acting.
@@ -155,14 +173,18 @@ func (j judged) released() bool {
 	return j.present && (j.derived || j.Unreadable == "" && j.message.released())
 }
 
-// Reserve performs one act against origin: fetch, judge, write one commit,
-// then one plain push, which is the compare-and-swap. A release pushes the
+// Reserve performs one act against origin: ask the embargo check (for a
+// reservation, renewal or take-over; checkEmbargo), fetch, judge, write one commit, then one plain
+// push, which is the compare-and-swap. A release pushes the
 // tombstone; every other request reserves, renews or takes over, by what the
 // tip it judged allows. A refusal pushes nothing; a failure leaves nothing
 // locally but an unreferenced commit git's collection removes.
 func Reserve(root string, req Request, o Options) (Result, error) {
 	p, err := prepare(root, req, o, func(root string) error { return originPresent(root, "reservations") })
 	if err != nil {
+		return Result{}, err
+	}
+	if err := checkEmbargo(p, o); err != nil {
 		return Result{}, err
 	}
 	tree, err := emptyTree(root)
@@ -238,6 +260,9 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		return Result{}, lostRace(p, tree, j, perr)
 	}
 	notePushed(root, p.id, sha)
+	if !p.req.Release && !p.req.Renew {
+		res.Directories = directoryFootprints(root, j.defaultRef, res.Footprint)
+	}
 	res.Commit = sha
 	res.Copy = CopyThis
 	res.DerivedUnchecked = p.derivedGap
@@ -621,6 +646,7 @@ func judge(p *prepared, tree string) (judged, error) {
 		// One name for the default branch, resolved after the act's fetch,
 		// which can create or move origin/HEAD (iss-2610180545134593).
 		ref := originDefault(p.root)
+		j.defaultRef = ref
 		recs, err := defaultRecords(p.root, ref)
 		if err != nil && p.derivedGap == "" {
 			return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",

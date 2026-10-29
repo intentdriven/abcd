@@ -27,6 +27,15 @@ failed-provisioning fallback whose guidance framed Go as a requirement it is not
 
 Ideas and methodologies that shaped the design — not code abcd depends on.
 
+- **"Redesigning source control at Anthropic" (Anthropic engineering, 2026-10-13,
+  <https://www.anthropic.com/engineering/redesigning-source-control>)** — two
+  observations from its account of agent-scale development, each reframed by an
+  ideate run of 2026-10-14 before adoption: that an adversarial review can turn
+  "overly defensive" and add validation and complexity no constraint requires,
+  which became the rule that a reviewer's extra check names what it protects
+  (itd-2610141646463379); and its "superfan" agents that each watch one
+  component, which became a cheap event watcher that wakes an agent only when
+  something needs action (itd-2610141646469491).
 - **The International Code of Signals (International Maritime Organization)** —
   the maritime flag alphabet whose Alfa, Bravo, Charlie and Delta are encoded
   pixel-for-pixel as abcd's logo (itd-133, `internal/livery`): the halved
@@ -357,6 +366,45 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   dashboard's writes pass through: over plain HTTP it judges a request's
   Origin against its Host, with no token to keep.
   <https://pkg.go.dev/net/http#CrossOriginProtection>
+- **coder/websocket (Coder, ISC, <https://github.com/coder/websocket>)** —
+  the WebSocket library the brief session's relay speaks through
+  (`internal/surface/session`, spc-2610141709430146 step 1): one module with
+  no dependencies of its own. Like golang.org/x/term it is named here rather
+  than in `go.mod` alone, because the product thinker approved it by name as
+  the one dependency the relay adds.
+- **The rascals demo repository's join pattern** — the precedent for how a
+  person joins a brief session and how a team runs its relay
+  (itd-2610091016262335, adr-2610091016270711): a six-character code from a
+  31-symbol alphabet with the look-alike characters left out, drawn from a
+  cryptographic source; wrong codes limited per address, an IPv6 visitor
+  counted by its /64, and the forwarded address trusted only behind a
+  declared proxy; and one free Render web service, deployed from a Blueprint
+  with its secret unsynced, serving every room. `internal/core/session` and
+  `abcd session blueprint` follow it.
+- **Yjs, y-protocols and y-codemirror.next (Kevin Jahns and contributors,
+  MIT), CodeMirror 6 (Marijn Haverbeke and others, MIT) and
+  qrcode-generator (Kazuhiko Arase, MIT)** — the brief session page's shared
+  document, presence, Markdown editor and QR code
+  (`abcd session page`, spc-2610141709430146 step 3), vendored as one
+  provenance-pinned bundle the binary embeds (adr-2610141949110653); every
+  bundled package and its licence is listed in
+  `internal/surface/session/web/vendor/`. <https://yjs.dev>
+  <https://codemirror.net> <https://github.com/kazuhikoarase/qrcode-generator>
+- **The W3C Web Annotation Data Model's TextQuoteSelector** — the shape of a
+  guest's suggestion on the session page: the quoted passage with up to 32
+  characters of context either side, the fallback a team member's page
+  locates the passage by when the suggestion's relative positions no longer
+  resolve. <https://www.w3.org/TR/annotation-model/#text-quote-selector>
+- **PKCE (RFC 7636), the IETF's OAuth 2.0 for Browser-Based Applications and
+  the OAuth 2.0 Security Best Current Practice (RFC 9700)** — the session
+  page's GitHub sign-in: an S256 challenge and a random state held in session
+  storage across the redirect, with the code exchanged by the team's relay as
+  the token-mediating backend, and the redirect bound to the relay's own
+  registered callback, so the code reaches only a destination GitHub binds
+  (adr-2610161400542916's amendment).
+  <https://www.rfc-editor.org/rfc/rfc7636>
+  <https://datatracker.ietf.org/doc/draft-ietf-oauth-browser-based-apps/>
+  <https://www.rfc-editor.org/rfc/rfc9700>
 - **TruffleHog (Truffle Security)** — the optional deeper secret scanner the
   `scan.deep` recommendation keys on when the binary is present
   (`internal/core/ahoy`); integrated as an opt-in engine, never bundled.
@@ -388,6 +436,27 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   repository's root, `abcd ahoy` can write abcd's conventions section into it
   (`internal/core/ahoy/marker.go`), and a host-named instructions file is kept
   only as a bridge to it.
+- **Inspect AI (UK AI Security Institute, <https://inspect.aisi.org.uk>) and
+  Harbor (the Terminal-Bench harness, <https://github.com/harbor-framework/harbor>)**
+  — two evaluation harnesses whose per-trial records a model-matrix run's trial
+  record maps onto field by field, and back (itd-2610161733316518,
+  `internal/core/matrix/export.go`), so a later move to either replaces only the
+  scheduler. The mapping is pinned to the sources read on 2026-10-23: Inspect's
+  `EvalSample` (log version 2) at
+  [`UKGovernmentBEIS/inspect_ai@157980923b29`](https://github.com/UKGovernmentBEIS/inspect_ai/blob/157980923b2993d2496a8d150c81f32465f15991/src/inspect_ai/log/_log.py)
+  and Harbor's `TrialResult` (0.24.0) at
+  [`harbor-framework/harbor@d0fe0b24703f`](https://github.com/harbor-framework/harbor/blob/d0fe0b24703f4e53806be5cb3b5e07d622aebbfa/src/harbor/models/trial/result.py).
+  abcd runs neither and depends on neither.
+- **Safe-fix tiers in linters (Ruff, <https://docs.astral.sh/ruff/linter/>;
+  ESLint, <https://eslint.org/docs/latest/extend/custom-rules>) and the
+  static-analysis lessons of Google (Sadowski et al., "Lessons from Building
+  Static Analysis Tools at Google", *Communications of the ACM* 61, 4 (2018))
+  and Facebook (Distefano et al., "Scaling Static Analyses at Facebook",
+  *Communications of the ACM* 62, 8 (2019))** — the evidence that a finding
+  fixed where it is found gets fixed while a filed one mostly does not, and the
+  test for which fixes need no decision: one that keeps the meaning. The
+  fix-in-place discipline (itd-2610271130017437) follows them; the evidence is
+  `.abcd/development/research/notes/2026-10-27-fix-in-place-or-file-sota.md`.
 
 ## References & sources
 
@@ -455,39 +524,47 @@ CSL-JSON: [`.abcd/development/research/references.csl.json`](.abcd/development/r
 19. Michael Nygard. 2011. Documenting architecture decisions. Cognitect blog
     (15 November 2011).
     <https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions>
-20. Hammond Pearce, Baleegh Ahmad, Benjamin Tan, Brendan Dolan-Gavitt, and
+20. Aaron Parecki, Philippe De Ryck, and David Waite. 2026. OAuth 2.0 for
+    Browser-Based Applications. IETF OAuth Working Group,
+    draft-ietf-oauth-browser-based-apps-27 (August 2026), since published as
+    RFC 10017 (BCP 212). Its token-mediating backend pattern (section 6.2) is
+    the one the brief session relay's sign-in exchange follows: the page holds
+    the PKCE verifier and receives the token, and the relay adds the client
+    secret and makes the exchange (spc-2610141709430146).
+    <https://datatracker.ietf.org/doc/draft-ietf-oauth-browser-based-apps/27/>
+21. Hammond Pearce, Baleegh Ahmad, Benjamin Tan, Brendan Dolan-Gavitt, and
     Ramesh Karri. 2022. Asleep at the keyboard? Assessing the security of
     GitHub Copilot's code contributions. In *Proceedings of the 43rd IEEE
     Symposium on Security and Privacy (S&P 2022)*, 754–768.
     [arXiv:2108.09293](https://arxiv.org/abs/2108.09293)
-21. Neil Perry, Megha Srivastava, Deepak Kumar, and Dan Boneh. 2023. Do users
+22. Neil Perry, Megha Srivastava, Deepak Kumar, and Dan Boneh. 2023. Do users
     write more insecure code with AI assistants? In *Proceedings of the 2023
     ACM SIGSAC Conference on Computer and Communications Security (CCS '23)*,
     2785–2799. [doi:10.1145/3576915.3623157](https://doi.org/10.1145/3576915.3623157)
-22. Ranjan Sapkota, Konstantinos I. Roumeliotis, and Manoj Karkee. 2025. Vibe
+23. Ranjan Sapkota, Konstantinos I. Roumeliotis, and Manoj Karkee. 2025. Vibe
     coding vs. agentic coding: Fundamentals and practical implications of
     agentic AI. [arXiv:2505.19443](https://arxiv.org/abs/2505.19443)
-23. Advait Sarkar, Andrew D. Gordon, Carina Negreanu, Christian Poelitz, Sruti
+24. Advait Sarkar, Andrew D. Gordon, Carina Negreanu, Christian Poelitz, Sruti
     Srinivasa Ragavan, and Ben Zorn. 2022. What is it like to program with
     artificial intelligence? In *Proceedings of the 33rd Annual Conference of
     the Psychology of Programming Interest Group (PPIG 2022)*. [arXiv:2208.06213](https://arxiv.org/abs/2208.06213)
-24. Christopher Scaffidi, Mary Shaw, and Brad A. Myers. 2005. Estimating the
+25. Christopher Scaffidi, Mary Shaw, and Brad A. Myers. 2005. Estimating the
     numbers of end users and end user programmers. In *Proceedings of the 2005
     IEEE Symposium on Visual Languages and Human-Centric Computing (VL/HCC
     '05)*, 207–214. [doi:10.1109/VLHCC.2005.34](https://doi.org/10.1109/VLHCC.2005.34)
-25. Donald A. Schön. 1983. *The Reflective Practitioner: How Professionals
+26. Donald A. Schön. 1983. *The Reflective Practitioner: How Professionals
     Think in Action*. Basic Books, New York.
     <https://openlibrary.org/works/OL3466056W>
-26. Shivani Shukla, Himanshu Joshi, and Romilla Syed. 2025. Security
+27. Shivani Shukla, Himanshu Joshi, and Romilla Syed. 2025. Security
     degradation in iterative
     AI code generation — a systematic analysis of the paradox. In *Proceedings
     of the 2025 IEEE International Symposium on Technology and Society (ISTAS
     2025)*. [arXiv:2506.11022](https://arxiv.org/abs/2506.11022)
-27. U.S. Copyright Office. 2025. *Copyright and Artificial Intelligence,
+28. U.S. Copyright Office. 2025. *Copyright and Artificial Intelligence,
     Part 2: Copyrightability*. <https://www.copyright.gov/ai/>
-28. Gerald M. Weinberg. 1971. *The Psychology of Computer Programming*. Van
+29. Gerald M. Weinberg. 1971. *The Psychology of Computer Programming*. Van
     Nostrand Reinhold, New York.
     <https://openlibrary.org/works/OL1958820W>
-29. Songwen Zhao, Danqing Wang, Kexun Zhang, Jiaxuan Luo, Zhuo Li, and Lei Li.
+30. Songwen Zhao, Danqing Wang, Kexun Zhang, Jiaxuan Luo, Zhuo Li, and Lei Li.
     2025. Is vibe coding safe? Benchmarking vulnerability of agent-generated
     code in real-world tasks. [arXiv:2512.03262](https://arxiv.org/abs/2512.03262)

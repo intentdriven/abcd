@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 575 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/16-lint.md:147"
-remedy: "none (filed automatically)"
+remedy: "In 06-lint.md:56 qualify 'the whole of CI's lint coverage' as the record and docs tiers only, or name the site-render gate and the attribution workflow's lint outbound step that also run in CI."
 finding_ref: cfk-205ef65dce0c8191
 ---
 

@@ -95,13 +95,15 @@ func TestBuildPaceFlagsWinOverTheConfiguration(t *testing.T) {
 }
 
 // TestBuildRefusesAMalformedPace is criterion 9 at the surface: a malformed
-// --pace or --sub-agents is refused at exit 2, naming the value and the
+// --pace or --sub-agents is refused at exit 2, naming the flag and the
 // accepted form, and writes nothing.
 func TestBuildRefusesAMalformedPace(t *testing.T) {
 	repo := buildRepo(t)
-	for _, args := range [][]string{{"--pace", "90"}, {"--sub-agents", "two"}, {"--pace", "0/300"}} {
-		ref := refusalDocs(t, 2, append([]string{"build", "itd-10", "--json"}, args...)...)
-		if ref["stage"] != "pace" || !strings.Contains(ref["reason"].(string), args[1]) ||
+	// A value that does not parse is named by its flag and length; one that
+	// parses but is out of range is named.
+	for _, args := range [][]string{{"--pace", "90", "a 2-byte value"}, {"--sub-agents", "two", "a 3-byte value"}, {"--pace", "0/300", "0/300"}} {
+		ref := refusalDocs(t, 2, append([]string{"build", "itd-10", "--json"}, args[:2]...)...)
+		if ref["stage"] != "pace" || !strings.Contains(ref["reason"].(string), args[2]) ||
 			!strings.Contains(ref["remedy"].(string), "<work-minutes>/<pause-minutes>") {
 			t.Fatalf("%v: refusal = %v", args, ref)
 		}

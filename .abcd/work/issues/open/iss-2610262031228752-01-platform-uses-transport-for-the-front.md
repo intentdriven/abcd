@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 120 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/01-platform.md:17"
-remedy: "none (filed automatically)"
+remedy: "Edit glossary/core/transport.md: record the front-door sense used in 'transport-agnostic core' and in the surface entry's 'transport package', or point that sense at surface, so the term is not left with only the oracle sense."
 finding_ref: cfk-39f510dbd783e81a
 ---
 

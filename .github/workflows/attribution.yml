@@ -54,11 +54,16 @@ on:
 concurrency:
   # A merge_group event has no PR number; run_id keeps each queue entry in its
   # own group rather than all of them sharing (and cancelling) one empty key.
-  group: attribution-${{ github.event.pull_request.number || github.run_id }}
+  # The head commit is in the key too, so a re-run of a run for an earlier
+  # head cannot cancel the run for the pull request's current one; runs for
+  # one head still replace each other, and each reads the form as it stands.
+  group: attribution-${{ github.event.pull_request.number || github.run_id }}-${{ github.event.pull_request.head.sha }}
   cancel-in-progress: true
 
 permissions:
   contents: read
+  # The form steps read the pull request's current title and body (below).
+  pull-requests: read
 
 jobs:
   attribution:
@@ -119,17 +124,38 @@ jobs:
           set -euo pipefail
           go build -o "$RUNNER_TEMP/abcd" ./cmd/abcd
 
-      # The body is attacker-controlled text, so it reaches the shell ONLY as an
-      # environment variable. Interpolating ${{ github.event.pull_request.body }}
-      # directly into a run: block would splice that text into the script the runner
-      # executes — the classic template-injection hole. `printf '%s' "$PR_BODY"` is
-      # an ordinary variable expansion and is never re-scanned for substitutions.
+      # The form steps judge the pull request's title and body AS THEY STAND,
+      # read from the API, never from the event payload. A re-run replays the
+      # event it was started with, so a payload read judged the body as it was
+      # then: a body fixed afterwards failed again on re-run, and the re-run,
+      # joining this workflow's concurrency group, cancelled the edited run that
+      # would have passed (iss-2610261339023831).
+      #
+      # The title and body are attacker-controlled text, so they reach the runner
+      # only as files: jq writes them, and no step interpolates them into a run:
+      # block (the classic template-injection hole) or reads them into its
+      # environment. The PR number is the event's, an integer.
+      - name: Read the pull request's current title and body
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "attribution: ${EVENT_NAME} run — no pull-request form to read, nothing was read."
+            exit 0
+          fi
+          gh api "repos/$REPO/pulls/$PR_NUMBER" > "$RUNNER_TEMP/pr.json"
+          jq -j '.title' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/pr-title.txt"
+          jq -j '.body // ""' "$RUNNER_TEMP/pr.json" > "$RUNNER_TEMP/pr-body.md"
+
       # The exemption is announced rather than silent: a step that no-ops must say
       # so, or a green tick reads as "the body was checked and passed" when nothing
       # was checked at all.
       - name: Check the pull-request body
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           EVENT_NAME: ${{ github.event_name }}
           ABCD_OUTBOUND_BIN: ${{ runner.temp }}/abcd
@@ -143,7 +169,6 @@ jobs:
             echo "attribution: pull request authored by a bot — body check exempt, nothing was checked."
             exit 0
           fi
-          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.md"
           bash scripts/check-attribution.sh body "$RUNNER_TEMP/pr-body.md"
 
       # RS004 on the pull-request FORM: a title or body that names an iss-N must
@@ -161,13 +186,9 @@ jobs:
       # would never be judged there. The commit half of RS004 stays in ci.yml's
       # issue-resolution job, where the base/head range already is.
       #
-      # Same env-var handling as the body step above: attacker-controlled text
-      # reaches the shell only through the environment, never spliced into the
-      # script the runner executes.
+      # It reads the files the read step wrote, as the body step does.
       - name: Record mentions in the pull-request form declare themselves (RS004)
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
@@ -180,9 +201,7 @@ jobs:
             echo "attribution: pull request authored by a bot — form check exempt, nothing was checked."
             exit 0
           fi
-          printf '%s' "$PR_TITLE" > "$RUNNER_TEMP/pr-title.txt"
-          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body-rs004.md"
-          bash scripts/check-issue-resolution.sh pr "$RUNNER_TEMP/pr-title.txt" "$RUNNER_TEMP/pr-body-rs004.md"
+          bash scripts/check-issue-resolution.sh pr "$RUNNER_TEMP/pr-title.txt" "$RUNNER_TEMP/pr-body.md"
 
       # The gate's own rules are proven in CI, not only asserted. iss-214 asked for
       # this: the trailer regex must be checked against the forms actually in this

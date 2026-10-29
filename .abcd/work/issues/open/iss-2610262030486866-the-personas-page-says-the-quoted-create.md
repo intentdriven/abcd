@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 46 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/05-personas.md:7"
-remedy: "none (filed automatically)"
+remedy: "Edit 05-personas.md last paragraph: say the canonical create writes the quoted text as the press release and the persona_registry lint checks attributions; picking a persona is staged."
 finding_ref: cfk-3cc13edd1f7ac842
 ---
 

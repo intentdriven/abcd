@@ -47,7 +47,9 @@ type Footprint struct {
 
 // ReadFootprint reads the first live `## Footprint` section of a spec: a
 // heading inside a fence or a comment is an example, not the section. A key
-// given twice keeps its first value, the one a reader meets first.
+// given twice keeps its first value, the one a reader meets first. The
+// packages value splits on its commas outside parentheses, each entry kept as
+// written, note and all.
 func ReadFootprint(content string) Footprint {
 	fp := Footprint{Packages: []string{}}
 	lines := strings.Split(content, "\n")
@@ -74,7 +76,7 @@ func ReadFootprint(content string) Footprint {
 				continue
 			}
 			gotPackages = true
-			for _, p := range strings.Split(value, ",") {
+			for _, p := range splitOutsideParens(value) {
 				if p = strings.TrimSpace(p); p != "" {
 					fp.Packages = append(fp.Packages, p)
 				}
@@ -88,4 +90,24 @@ func ReadFootprint(content string) Footprint {
 		}
 	}
 	return fp
+}
+
+// splitOutsideParens splits a packages value on its commas, less those inside
+// a parenthetical note: `x (new, the host connector)` is one entry, its note
+// left on it for the reader to drop (iss-2610241549334990).
+func splitOutsideParens(value string) []string {
+	var out []string
+	depth, from := 0, 0
+	for i, r := range value {
+		switch {
+		case r == '(':
+			depth++
+		case r == ')' && depth > 0:
+			depth--
+		case r == ',' && depth == 0:
+			out = append(out, value[from:i])
+			from = i + 1
+		}
+	}
+	return append(out, value[from:])
 }

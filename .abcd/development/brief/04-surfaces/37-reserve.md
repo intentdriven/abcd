@@ -32,8 +32,18 @@ hold, below), and does one of two things: it reserves the record, or it
 releases this copy's reservation of it. A third form, the holder query, takes
 no record and is described under "The holder" below. A reservation names every
 repository-relative path the work will change, one path to a flag, never split
-on commas, and the footprint is required. Its lease is from one minute to 24
-hours, two hours by default. A release takes no footprint, take-over or lease.
+on commas, and the footprint is required. Each path should name a file. A
+path naming a directory holds off every other reservation of any file inside
+it, so a lane holding a whole package serialises every unrelated lane that
+touches one file there (iss-2610230016544142). A footprint path naming a
+directory git tracks is still reserved, never refused, and the act names it,
+with how many tracked files lie beneath it and the branch they were counted on
+(origin's default branch as last fetched, or the checkout's own head for a
+directory only it holds), telling the person to name the files instead
+(`directory_footprint`, a warning on stderr in the text form). A path neither
+holds as a directory, such as a file the work will add, draws nothing. Its
+lease is from one minute to 24 hours, two hours by default. A release takes no
+footprint, take-over or lease.
 Bare `abcd reserve` refuses as a usage error and points at `abcd peers`, which
 lists the reservations. The flags are in the appendix below.
 
@@ -167,7 +177,10 @@ a directory holding the other, is refused, unless that reservation is the same
 person's from this copy, naming the deeper of the two paths,
 the other record, its holder and its expiry. A shared path that is a file
 origin's default branch declares generated is no overlap (spc-2610161044461448
-step 11): the declaration is `linguist-generated` (set, or `=true`) in the root
+step 11), and the act names each such path and the other record
+(`generated_shared`, iss-2610282340087862), since whoever lands second
+regenerates it after merging. The declaration is `linguist-generated` (set,
+or `=true`) in the root
 `.gitattributes` of origin's default branch as last fetched, read as stored
 with a 256 KiB cap and no fetch; a nested `.gitattributes`,
 `.git/info/attributes` and the working tree are never read, because the
@@ -226,6 +239,19 @@ stops every act of such a person, a username from their token included. For
 anyone else a `config.json` that cannot be read at all (writable by others,
 not valid JSON) is read past, ten applies, and the refusal at the cap says
 why; at the ceiling of 100 the refusal no longer offers raising it.
+
+The count is by login, while each machine reads its own ceiling, so another
+account that pushes as the same login is counted against the same total under a
+ceiling no session here can read (iss-2610231004140527). Two places say so. The
+refusal at the cap groups the held records by the copy each was made from: this
+copy, each other worktree of the repository on this machine by its directory's
+name, and elsewhere. And `abcd peers` counts the reader's own live reservations
+the same way against this machine's ceiling, warning from four fifths of it
+that the total is shared with every session and account on the login. A sibling
+worktree is told apart by the copy key kept in its local tier, read without
+minting one and only for the reader's own holds; the key itself is never
+shown. The worktrees are listed only by those two readers, never by the view
+every other surface shares.
 
 An act the judgement finds reserves afresh, a reservation over no tip or a
 released one, or a take-over, then asks the forge whether origin is a fork,
@@ -382,6 +408,8 @@ on a fork origin, and on every other refusal and failure. The JSON document carr
 `copy` (`this` or `another`, never a copy's key), `footprint`, `claimed_at`,
 `effective_expiry`, `commit`, `replaced` for a take-over,
 `derived_unchecked` when the default branch could not be read,
+`directory_footprint` (`path`, `tracked_files`, `on`) for each footprint path
+naming a directory,
 `fork_unchecked` when the forge could not say whether origin is a fork,
 `fork_allowed`, the fork's owner/name, when the check was waived for the fork
 the repository allows, and

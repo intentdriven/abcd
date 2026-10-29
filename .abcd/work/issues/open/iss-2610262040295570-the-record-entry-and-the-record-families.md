@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 935 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/record.md:32"
-remedy: "none (filed automatically)"
+remedy: "Reconcile the two uses of 'record family': record.md senses row 3 should name the filed id kinds (adr, itd, iss, spc, dcn and the reading ids) and point to record-families.md; record-families.md should say which of its seven rows are filed families and which (step, bundle, release, status) are groupings or views, and add or exclude ADR and decision rows explicitly."
 finding_ref: cfk-3031eb3efc669510
 ---
 

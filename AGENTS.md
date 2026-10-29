@@ -83,7 +83,7 @@ a re-checked handle and never by pattern, clean proven by what is running, and
 explicit consent with a cap below the core count on a live development machine;
 and the load gate a preflight waits at: test stages admitted as many at once as
 the person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one
-by default and two at most, never set by a repository), and race stages kept
+by default and four at most, never set by a repository), and race stages kept
 apart among checkouts that have the race gate: one at a time within an account,
 and across accounts all but a narrow window (a race waiter gone before its race
 run shows, or, after a pid wrap, two waiters whose start and pid disagree: one
@@ -155,6 +155,10 @@ make preflight      # the pre-push gate: the load check first (load-check,
                     # smoke + evals-cold-reading,
                     # then build + vet +
                     # test + race (internal), all on the go.mod toolchain
+make precheck       # minutes, no queue: preflight's gates, build, vet, the
+                    # record, page and agent audit packages, and the command
+                    # and site audit tests chosen by name; no unit or race
+                    # stage. Run it before queuing a preflight
 make build          # cross-compiles bin/abcd-<goos>-<arch> (there is no plain bin/abcd)
 make fmt-check      # format gate, run through the go.mod toolchain's gofmt
 make fmt            # rewrite what fmt-check names, with that same gofmt
@@ -192,6 +196,17 @@ this case is never reached by following the ladder literally
 (iss-2608230943088357 holds the surface half). The loader's `DOGFOODING` domain
 in `.abcd/rules.json` injects this rule on a prompt that names `abcd` or any of
 its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`).
+
+**The hooks run the latest reviewed default branch where the person opts in.**
+The hooks run the installed release, which `go run` cannot reach. A checkout
+listed in `~/.abcd.noindex/dogfood-roots` (its path, a tab, the `https://` or
+ssh URL of a remote no agent can move, optionally a tab and the branch) runs, in
+every hook, a build of that branch's tip as the declared remote reports it;
+nothing in the checkout chooses it, and until it is ready, or when it fails, the
+installed release runs and says so. The opt-in is the person's act, never an
+agent's; the `DOGFOODING` domain in `.abcd/rules.json` carries the whole rule.
+For this repository the line is
+`mkdir -p ~/.abcd.noindex && printf '%s\t%s\t%s\n' '<checkout>' 'https://github.com/intentdriven/abcd.git' main >> ~/.abcd.noindex/dogfood-roots`.
 
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
@@ -265,7 +280,11 @@ new session, so it holds only throwaway files for the turn at hand (the
 - **Wired or it isn't done.** Every verb is reachable from both the CLI and the
   plugin markdown surface and demonstrably executes there — no dead scaffolding.
 - **Host-delegated by default.** LLM review/agent work is delegated to the host;
-  native/CLI/API/MCP oracles are opt-in adapters.
+  native/CLI/API/MCP oracles are opt-in adapters. The one written exception is
+  a drain the person drives from a plain terminal, which starts agents itself
+  on their own invocation
+  ([adr-2610222222326104](.abcd/development/decisions/adrs/2610222222326104-abcd-drives-agents-with-no-host-session.md));
+  it is not built until itd-2610222215485265 ships.
 - **Single repo, curated release.** `.abcd/**` stays in-tree and is present in
   every repository checkout — marketplace installs and release source archives
   included — never in the released binaries; the launch bundler denies the

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 312 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:1070"
-remedy: "none (filed automatically)"
+remedy: "In 06-delivery/02-verification-matrix.md qualify the 'ahoy rules-loader install' row: the marker block is injected only where docs.target is agents_md (a default install writes none), while the rules override skeleton and the hook-manifest check are what a default install does."
 finding_ref: cfk-36af3cf1f3c88b6d
 ---
 

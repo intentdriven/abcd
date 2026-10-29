@@ -20,5 +20,8 @@
   },
   "repo": {
     "visibility": "public"
+  },
+  "sessions": {
+    "live": "local"
   }
 }

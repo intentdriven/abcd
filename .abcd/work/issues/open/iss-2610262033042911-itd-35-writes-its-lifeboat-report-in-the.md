@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 355 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-35-lifeboat-integrity-audit.md:42"
-remedy: "none (filed automatically)"
+remedy: "In itd-35 change the report path (scope bullet at line 42 and the acceptance bullet at line 59) to `.abcd/.work.local/logs/audit/lifeboat-<ts>/report.{json,md}`, the home 05-intent.md already gives `/abcd:audit lifeboat`; leave the voyage store to embark and disembark provenance."
 related_intents: [itd-35]
 finding_ref: cfk-b01c709d57778adb
 ---

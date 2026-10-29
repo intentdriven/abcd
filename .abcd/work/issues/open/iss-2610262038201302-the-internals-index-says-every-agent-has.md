@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 788 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/README.md:7"
-remedy: "none (filed automatically)"
+remedy: "In the index row for 01-agents.md say fourteen of the eighteen prompts declare JSON inputs and outputs and the four repo-workflow reviewer and researcher prompts do not, as 01-agents.md does."
 finding_ref: cfk-beb5d2b696a02d00
 duplicates: [iss-2610160608434377]
 ---

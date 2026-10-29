@@ -128,6 +128,48 @@ var pseudoVersionTail = regexp.MustCompile(`[0-9]{14}-[0-9a-f]{12}$`)
 // fixed release and the tests of the reader itself put the real one back.
 var copyRelease = releaseTagOfBinary
 
+// checkReleaseClaim is CheckReleaseClaim read through the copyRelease seam:
+// TestMain stands in a check every fixture passes, and the tests of the
+// binding put claimedRelease back over a stood-in claim.
+var checkReleaseClaim = claimedRelease
+
+// AcceptReleaseClaimsForTest makes every release claim pass and returns a
+// restore func, for a front door's tests whose cache fixtures carry no Go
+// build metadata, as they stand in the provenance check. Production never
+// calls it.
+func AcceptReleaseClaimsForTest() (restore func()) {
+	prev := checkReleaseClaim
+	checkReleaseClaim = func([]byte, string) error { return nil }
+	return func() { checkReleaseClaim = prev }
+}
+
+func claimedRelease(data []byte, tag string) error {
+	claim, err := copyRelease(data)
+	return claimIs(claim, err, tag)
+}
+
+// CheckReleaseClaim refuses bytes whose Go build metadata does not name tag as
+// the release they were built as. The release a build was made at is stamped
+// into it by Go from the tag the release workflow built at, and the provenance
+// covers those bytes, so only the release that cut a build can claim it. Read,
+// never run.
+func CheckReleaseClaim(data []byte, tag string) error {
+	claim, err := releaseTagOfBinary(data)
+	return claimIs(claim, err, tag)
+}
+
+// claimIs is the binding: the release a build claims, or why it claims none,
+// held to tag.
+func claimIs(claim string, err error, tag string) error {
+	if err != nil {
+		return err
+	}
+	if claim != tag {
+		return errors.New("its build metadata names release " + claim + ", not " + buildValue(tag, maxBuildValueRunes, "…") + ", so it is not this release's build")
+	}
+	return nil
+}
+
 // releaseTagOfBinary reads the release tag a binary's Go build metadata
 // claims (releaseOfBuild), or why it claims none.
 func releaseTagOfBinary(data []byte) (string, error) {
