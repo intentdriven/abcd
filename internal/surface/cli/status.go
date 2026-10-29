@@ -115,8 +115,9 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"drain lane's stage and each holder's hand-backs from the last day.\n\n" +
 			"It reads the remote once: it lists the status branches on origin (git\n" +
 			"ls-remote), then fetches, in one command, the reservations with origin's\n" +
-			"release tags, the first 500 status branches whose names are GitHub\n" +
-			"usernames in lower case, and origin's default branch, and stamps when in\n" +
+			"release tags, the first 500 status branches whose names are holder ids or\n" +
+			"GitHub usernames in lower case (the names before the holder id), and\n" +
+			"origin's default branch, and stamps when in\n" +
 			"the local tier. A branch under abcd-status/ by any other name is counted,\n" +
 			"never named, and not fetched; branches past the 500 are counted and not\n" +
 			"fetched. Before the fetch, this checkout's copy of each status branch that\n" +
@@ -125,9 +126,11 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"read; a copy that cannot be deleted is named, and the fetch goes on. Then\n" +
 			"it asks the forge (gh api, the repository's activity record) who pushed\n" +
 			"each standing announcement it has not asked about yet, on at most ten\n" +
-			"branches, the one waiting longest first: a sender is verified when the\n" +
-			"forge names the branch's owner, doubtful when it names someone else, and\n" +
-			"claimed when the forge cannot say or an app pushed it.\n\n" +
+			"branches named by a username, the one waiting longest first: a sender is\n" +
+			"verified when the forge names the branch's owner, doubtful when it names\n" +
+			"someone else, and claimed when the forge cannot say or an app pushed it. A\n" +
+			"branch named by a holder id names no account the forge's record could\n" +
+			"match, so it is not asked about and its senders stay claimed.\n\n" +
 			"An announcement stands for its life from when this checkout first fetched it,\n" +
 			"not by the sender's clock. One whose sender is not its branch's owner, one\n" +
 			"that does not read as an announcement (never shown but by its branch and the\n" +

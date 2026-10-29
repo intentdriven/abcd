@@ -29,7 +29,7 @@ func TestHeldByNamesAnotherCopysReservationWithTheViewsAge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := snap.HeldBy("iss-5", at), "reserved by octo until 2026-10-03T16:00:00Z, as of the last fetch 12 minutes ago"; got != want {
+	if got, want := snap.HeldBy("iss-5", at), "reserved by "+p.keptHolderID()+" until 2026-10-03T16:00:00Z, as of the last fetch 12 minutes ago"; got != want {
 		t.Errorf("HeldBy(iss-5) = %q; want %q", got, want)
 	}
 	for _, id := range []string{"iss-6", "iss-7"} {
@@ -103,8 +103,8 @@ func TestLineForNamesTheRecordsReservationInEveryState(t *testing.T) {
 		id   string
 		text string
 	}{
-		{q, "iss-5", "live, reserved by octo until 2026-10-03T16:00:00Z" + asOf},
-		{laptop, "iss-5", "live, reserved by octo (another copy of yours) until 2026-10-03T16:00:00Z" + asOf},
+		{q, "iss-5", "live, reserved by " + p.keptHolderID() + " until 2026-10-03T16:00:00Z" + asOf},
+		{laptop, "iss-5", "live, reserved by " + p.keptHolderID() + " (another copy of yours) until 2026-10-03T16:00:00Z" + asOf},
 		{q, "iss-6", "none" + asOf},
 	} {
 		l, ok := LineFor(c.who.dir, c.id, at, c.who.opts())
@@ -112,7 +112,7 @@ func TestLineForNamesTheRecordsReservationInEveryState(t *testing.T) {
 			t.Errorf("LineFor(%s) = %+v, %v; want %q", c.id, l, ok, c.text)
 		}
 	}
-	if l, _ := LineFor(p.dir, "iss-5", t0, p.opts()); l.Copy != LineThisCopy || l.Holder != "octo" || l.State != StateLive {
+	if l, _ := LineFor(p.dir, "iss-5", t0, p.opts()); l.Copy != LineThisCopy || l.Holder != p.keptHolderID() || l.State != StateLive {
 		t.Errorf("the holder's own line = %+v; want this copy's live reservation", l)
 	}
 

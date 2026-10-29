@@ -13,7 +13,7 @@ import (
 
 // Announcements (itd-2609151838312703, spc-2610150728396006 step 2): a
 // session's short fixed-form announcement is one empty-tree commit on the
-// sender's own status branch, abcd-status/<username in lower case>, pushed with
+// sender's own status branch, abcd-status/<holder id>, pushed with
 // one plain push. These tests prove C1 to C5 against a bare origin.
 
 // embargoProbe is an embargo check that finds what it is told to, and records
@@ -43,6 +43,17 @@ func (p *participant) announceWith(req AnnounceRequest, e *embargoProbe) (Announ
 	return Announce(p.dir, req, o)
 }
 
+// holderID is p's holder id, minted into its home when none is kept yet, as
+// its first reservation or announcement mints it.
+func (p *participant) holderID() string {
+	p.w.t.Helper()
+	id, err := holderID(p.home)
+	if err != nil {
+		p.w.t.Fatal(err)
+	}
+	return id
+}
+
 // statusTip is a status branch's head on origin, "" when absent.
 func (w *world) statusTip(name string) string {
 	w.t.Helper()
@@ -58,7 +69,7 @@ func (w *world) publish(rel string) {
 }
 
 // TestAnAnnouncementIsOneEmptyTreeCommitOnTheSendersOwnStatusBranch is C1: the
-// commit changes no file, sits on abcd-status/<username in lower case>, is
+// commit changes no file, sits on abcd-status/<holder id>, is
 // authored as the person, carries the kind, the item, the sender, the working
 // copy, the time sent and the expiry and nothing else, and leaves the checkout
 // alone; a second announcement is its child.
@@ -71,10 +82,11 @@ func TestAnAnnouncementIsOneEmptyTreeCommitOnTheSendersOwnStatusBranch(t *testin
 	if err != nil {
 		t.Fatalf("announce: %v", err)
 	}
-	tip := w.statusTip("octo")
-	if tip == "" || res.Commit != tip || res.Branch != "abcd-status/octo" || res.Sender != "Octo" ||
+	id := p.holderID()
+	tip := w.statusTip(id)
+	if tip == "" || res.Commit != tip || res.Branch != "abcd-status/"+id || res.Sender != id ||
 		res.Kind != "merging" || res.Item != "#1012" || res.Attempts != 1 {
-		t.Fatalf("result %+v, origin's tip %q; want the announcement at abcd-status/octo", res, tip)
+		t.Fatalf("result %+v, origin's tip %q; want the announcement at abcd-status/%s", res, tip, id)
 	}
 	if !res.SentAt.Equal(t0) || !res.ExpiresAt.Equal(t0.Add(DefaultAnnouncementLife)) {
 		t.Fatalf("sent %s, expires %s; want %s and %s later", res.SentAt, res.ExpiresAt, t0, DefaultAnnouncementLife)
@@ -93,7 +105,7 @@ func TestAnAnnouncementIsOneEmptyTreeCommitOnTheSendersOwnStatusBranch(t *testin
 		t.Fatal(err)
 	}
 	want := "abcd announcement: merging #1012\n\n" +
-		"Abcd-Announcement: merging\nAbcd-Item: #1012\nAbcd-Sender: Octo\nAbcd-Copy: " + strings.TrimSpace(string(key)) + "\n" +
+		"Abcd-Announcement: merging\nAbcd-Item: #1012\nAbcd-Sender: " + id + "\nAbcd-Copy: " + strings.TrimSpace(string(key)) + "\n" +
 		"Abcd-Sent-At: 2026-10-03T14:00:00Z\nAbcd-Expires-At: 2026-10-03T14:30:00Z\nAssisted-by: abcd:dev"
 	if got := w.remoteMessage(tip); got != want {
 		t.Fatalf("message:\n%s\nwant:\n%s", got, want)
@@ -107,7 +119,7 @@ func TestAnAnnouncementIsOneEmptyTreeCommitOnTheSendersOwnStatusBranch(t *testin
 
 	w.set(t0.Add(time.Minute))
 	next, err := p.announce("merged", "#1012")
-	if err != nil || w.parentOf(next.Commit) != tip || w.statusTip("octo") != next.Commit {
+	if err != nil || w.parentOf(next.Commit) != tip || w.statusTip(p.holderID()) != next.Commit {
 		t.Fatalf("the second announcement %+v, %v; want a child of %s at the tip", next, err, tip)
 	}
 }
@@ -138,8 +150,8 @@ func TestALostRaceIsRebuiltOnTheNewTipAndSent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("announce after a lost race: %v", err)
 	}
-	if res.Attempts != 2 || w.statusTip("octo") != res.Commit || w.parentOf(res.Commit) != rival || rival == "" {
-		t.Fatalf("result %+v, rival %s, tip %s; want the second attempt rebuilt on the rival", res, rival, w.statusTip("octo"))
+	if res.Attempts != 2 || w.statusTip(p.holderID()) != res.Commit || w.parentOf(res.Commit) != rival || rival == "" {
+		t.Fatalf("result %+v, rival %s, tip %s; want the second attempt rebuilt on the rival", res, rival, w.statusTip(p.holderID()))
 	}
 	for _, c := range log.cmds {
 		if c[0] != "push" {
@@ -175,13 +187,13 @@ func TestARaceLostEveryTimeIsNotSent(t *testing.T) {
 	_, err := p.announce("merging", "#1012")
 	var ns *NotSentError
 	if !errors.As(err, &ns) || !errors.Is(err, ErrRefused) || !strings.HasPrefix(err.Error(), "not sent: ") ||
-		!strings.Contains(err.Error(), "abcd-status/octo moved under this push and each of 3 retries") {
+		!strings.Contains(err.Error(), "abcd-status/"+p.holderID()+" moved under this push and each of 3 retries") {
 		t.Fatalf("announce = %v; want a not-sent refusal blaming the race", err)
 	}
 	if rivals != 4 {
 		t.Fatalf("%d pushes were tried; want the first and three retries", rivals)
 	}
-	if msg := w.remoteMessage(w.statusTip("octo")); !strings.Contains(msg, "Abcd-Item: #7") {
+	if msg := w.remoteMessage(w.statusTip(p.holderID())); !strings.Contains(msg, "Abcd-Item: #7") {
 		t.Fatalf("origin's tip is not the rival's:\n%s", msg)
 	}
 }
@@ -223,7 +235,7 @@ func TestAFinalPushRefusedWithTheTipStandingIsNotBlamedOnTheRace(t *testing.T) {
 		t.Fatalf("%d pushes were tried; want the first and three retries", pushes)
 	}
 	if msg := err.Error(); strings.Contains(msg, "moved under this push and each of") ||
-		!strings.Contains(msg, "refused by policy") || !strings.Contains(msg, "abcd-status/octo had not moved") {
+		!strings.Contains(msg, "refused by policy") || !strings.Contains(msg, "abcd-status/"+p.holderID()+" had not moved") {
 		t.Fatalf("announce = %q; want origin's reason, saying the tip had not moved, and no lost race blamed for it", msg)
 	}
 }
@@ -245,7 +257,7 @@ func TestAPushRefusedForAnotherReasonIsNotSentAtOnce(t *testing.T) {
 	if n := strings.Count(strings.Join(log.subcommands(), " "), "push"); n != 1 {
 		t.Fatalf("%d pushes; want one", n)
 	}
-	if tip := w.statusTip("octo"); tip != "" {
+	if tip := w.statusTip(p.holderID()); tip != "" {
 		t.Fatalf("origin holds %s", tip)
 	}
 }
@@ -282,7 +294,7 @@ func TestARetryThatCannotBeWrittenSaysAPushWasMade(t *testing.T) {
 	if !errors.As(err, &ae) || errors.Is(err, ErrRefused) {
 		t.Fatalf("announce = %#v; want an *AnnounceError, not a refusal", err)
 	}
-	if ae.Pushes != 1 || ae.Branch != "abcd-status/octo" {
+	if ae.Pushes != 1 || ae.Branch != "abcd-status/"+p.holderID() {
 		t.Fatalf("pushes %d to %q; want 1 to abcd-status/octo", ae.Pushes, ae.Branch)
 	}
 	if msg := err.Error(); strings.Contains(msg, nothingPushed) || !strings.Contains(msg, "origin refused the push") ||
@@ -323,11 +335,11 @@ func TestAPushReportedRefusedThatLandedIsNotSentTwice(t *testing.T) {
 				}
 				beforePush = nil
 				landed = unsentCommit(t, p)
-				p.git("push", "-q", "origin", landed+":"+StatusRefPrefix+"octo")
+				p.git("push", "-q", "origin", landed+":"+StatusRefPrefix+p.holderID())
 				tip = landed
 				if onTop {
 					tip = runGit(t, w.bare, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-p", landed, "-m", "on top")
-					runGit(t, w.bare, "update-ref", StatusRefPrefix+"octo", tip, landed)
+					runGit(t, w.bare, "update-ref", StatusRefPrefix+p.holderID(), tip, landed)
 				}
 				p.git("config", "remote.origin.pushurl", filepath.Join(t.TempDir(), "nowhere.git"))
 			}
@@ -338,8 +350,8 @@ func TestAPushReportedRefusedThatLandedIsNotSentTwice(t *testing.T) {
 			if err != nil {
 				t.Fatalf("announce = %v; want it reported sent", err)
 			}
-			if res.Commit != landed || res.Attempts != 1 || res.Branch != "abcd-status/octo" || w.statusTip("octo") != tip {
-				t.Fatalf("result %+v, origin's tip %s; want the landed commit %s, one attempt", res, w.statusTip("octo"), landed)
+			if res.Commit != landed || res.Attempts != 1 || res.Branch != "abcd-status/"+p.holderID() || w.statusTip(p.holderID()) != tip {
+				t.Fatalf("result %+v, origin's tip %s; want the landed commit %s, one attempt", res, w.statusTip(p.holderID()), landed)
 			}
 			if n := strings.Count(strings.Join(log.subcommands(), " "), "push"); n != 1 {
 				t.Fatalf("%d pushes; want one", n)
@@ -366,7 +378,7 @@ func TestAPushRefusedAndThenUnfetchableMayHaveReachedOrigin(t *testing.T) {
 
 	_, err := p.announce("merging", "#1012")
 	var ae *AnnounceError
-	if !errors.As(err, &ae) || errors.Is(err, ErrRefused) || ae.Pushes != 1 || ae.Branch != "abcd-status/octo" {
+	if !errors.As(err, &ae) || errors.Is(err, ErrRefused) || ae.Pushes != 1 || ae.Branch != "abcd-status/"+p.holderID() {
 		t.Fatalf("announce = %#v; want an *AnnounceError counting one push to abcd-status/octo", err)
 	}
 	if msg := err.Error(); strings.HasPrefix(msg, "not sent") || strings.Contains(msg, nothingPushed) ||
@@ -408,7 +420,7 @@ func TestAnAnnouncementOutsideTheFixedFormIsRefusedBeforeAnyGit(t *testing.T) {
 			t.Errorf("%+v ran git before refusing: %v", tc.req, cmds)
 		}
 	}
-	if tip := w.statusTip("octo"); tip != "" {
+	if tip := w.statusTip(p.holderID()); tip != "" {
 		t.Fatalf("a refused announcement reached origin: %s", tip)
 	}
 }
@@ -514,7 +526,7 @@ func TestARecordAbsentFromTheDefaultBranchIsRefused(t *testing.T) {
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("announce iss-5 = %v; want %q", err, want)
 	}
-	if tip := w.statusTip("octo"); tip != "" {
+	if tip := w.statusTip(p.holderID()); tip != "" {
 		t.Fatalf("a refused announcement reached origin: %s", tip)
 	}
 
@@ -569,7 +581,7 @@ func TestTheDefaultBranchIsAskedOfOriginWhenThisCloneNamesNone(t *testing.T) {
 	}
 	noHead()
 
-	before := w.statusTip("octo")
+	before := w.statusTip(p.holderID())
 	p.git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "absent.git"))
 	_, err = p.announce("merged", "iss-5")
 	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "git ls-remote --symref origin HEAD") ||
@@ -577,7 +589,7 @@ func TestTheDefaultBranchIsAskedOfOriginWhenThisCloneNamesNone(t *testing.T) {
 		strings.Contains(err.Error(), "set-head") {
 		t.Fatalf("announce with origin unreachable = %v; want the refusal saying what was tried", err)
 	}
-	if tip := w.statusTip("octo"); tip != before {
+	if tip := w.statusTip(p.holderID()); tip != before {
 		t.Fatalf("a refused announcement reached origin: %s", tip)
 	}
 	noHead()
@@ -609,7 +621,7 @@ func TestAnOriginHEADNamingABranchCalledHEADIsRefused(t *testing.T) {
 	if got := p.git("for-each-ref", "refs/remotes/origin/HEAD"); got != "" {
 		t.Fatalf("origin/HEAD was written: %s", got)
 	}
-	if tip := w.statusTip("octo"); tip != "" {
+	if tip := w.statusTip(p.holderID()); tip != "" {
 		t.Fatalf("a refused announcement reached origin: %s", tip)
 	}
 }
@@ -661,7 +673,7 @@ func TestAnEmbargoedRecordIsRefused(t *testing.T) {
 	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "could not be checked") {
 		t.Fatalf("announce with no embargo check = %v; want it refused", err)
 	}
-	if tip := w.statusTip("octo"); tip != "" {
+	if tip := w.statusTip(p.holderID()); tip != "" {
 		t.Fatalf("a refused announcement reached origin: %s", tip)
 	}
 
@@ -742,15 +754,16 @@ func TestAToolsGitIdentityIsSentAsTheTokensAccount(t *testing.T) {
 			if forge.calls != 1 {
 				t.Fatalf("the forge was asked %d times; want once", forge.calls)
 			}
-			tip := w.statusTip(tokenLogin)
-			if res.Sender != tokenLogin || res.Branch != "abcd-status/"+tokenLogin || tip == "" || res.Commit != tip {
-				t.Fatalf("result %+v, origin's tip %q; want it sent as %s", res, tip, tokenLogin)
+			id := p.holderID()
+			tip := w.statusTip(id)
+			if res.Sender != id || res.Branch != "abcd-status/"+id || tip == "" || res.Commit != tip {
+				t.Fatalf("result %+v, origin's tip %q; want it sent as %s", res, tip, id)
 			}
 			if who := runGit(t, w.bare, "log", "-1", "--format=%an <%ae>|%cn <%ce>", tip); who != tokenAuthor+"|"+tokenAuthor {
 				t.Fatalf("author|committer = %q; want the token's account in both roles", who)
 			}
-			if msg := w.remoteMessage(tip); !strings.Contains(msg, "Abcd-Sender: "+tokenLogin+"\n") {
-				t.Fatalf("the announcement does not name the token's account as sender:\n%s", msg)
+			if msg := w.remoteMessage(tip); !strings.Contains(msg, "Abcd-Sender: "+id+"\n") || strings.Contains(msg, tokenLogin) {
+				t.Fatalf("the announcement does not name the holder id alone as sender:\n%s", msg)
 			}
 			shownNowhere(t, log, fmt.Sprintf("%+v", res), w.bare, p.dir)
 		})
@@ -803,10 +816,10 @@ func TestAPersonWithNoNoReplyAddressIsSentAsTheTokensAccount(t *testing.T) {
 	p := w.clone("pat@example.com", "")
 	forge := &forgeFake{login: tokenLogin, id: tokenID}
 	res, err := p.announceForge("merging", "#1012", forge)
-	if err != nil || res.Sender != tokenLogin || forge.calls != 1 {
-		t.Fatalf("announce = %+v, %v after %d forge calls; want it sent as %s", res, err, forge.calls, tokenLogin)
+	if err != nil || res.Sender != p.holderID() || forge.calls != 1 {
+		t.Fatalf("announce = %+v, %v after %d forge calls; want it sent as the holder id", res, err, forge.calls)
 	}
-	if who := runGit(t, w.bare, "log", "-1", "--format=%an <%ae>", w.statusTip(tokenLogin)); who != "Pat Example <pat@example.com>" {
+	if who := runGit(t, w.bare, "log", "-1", "--format=%an <%ae>", w.statusTip(p.holderID())); who != "Pat Example <pat@example.com>" {
 		t.Fatalf("author = %q; want the person's own git identity", who)
 	}
 }
@@ -820,8 +833,8 @@ func TestAnAnnouncementWithNoGitIdentityIsAuthoredAsTheTokensAccount(t *testing.
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	p.git("config", "user.name", "")
 	res, err := p.announceForge("merging", "#1012", &forgeFake{login: tokenLogin, id: tokenID})
-	if err != nil || res.Sender != tokenLogin {
-		t.Fatalf("announce = %+v, %v; want it sent as %s", res, err, tokenLogin)
+	if err != nil || res.Sender != p.holderID() {
+		t.Fatalf("announce = %+v, %v; want it sent as the holder id", res, err)
 	}
 	if who := runGit(t, w.bare, "log", "-1", "--format=%an <%ae>|%cn <%ce>", res.Commit); who != tokenAuthor+"|"+tokenAuthor {
 		t.Fatalf("author|committer = %q; want the token's account in both roles", who)
@@ -896,11 +909,12 @@ func (w *world) twinOnOrigin(twin, commit string) {
 // origin holds abcd-status/octo beside abcd-status/Octo, which a globbed fetch
 // cannot write on a case-insensitive filesystem, so a glob would refuse every
 // announcement there. announce lists origin's status branches first
-// (git ls-remote) and fetches each lower-case username by its own refspec:
+// (git ls-remote) and fetches each holder id and lower-case username by its own refspec:
 // the sender's branch is fetched and extended, and the twin is never fetched.
 func TestACaseCollidingStatusBranchDoesNotStopAnAnnouncement(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
+	w.pushStatus("octo", announcementMsg("asking", "#7", "octo", t0, time.Hour), "")
 	first, err := p.announce("merging", "#1012")
 	if err != nil {
 		t.Fatalf("the first announcement: %v", err)
@@ -919,7 +933,7 @@ func TestACaseCollidingStatusBranchDoesNotStopAnAnnouncement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("announce beside a case-colliding twin = %v; want it sent", err)
 	}
-	if w.parentOf(next.Commit) != first.Commit || w.statusTip("octo") != next.Commit {
+	if w.parentOf(next.Commit) != first.Commit || w.statusTip(p.holderID()) != next.Commit {
 		t.Fatalf("the announcement %+v is not the child of %s at the tip", next, first.Commit)
 	}
 	if refs := p.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); strings.Contains(refs, "Octo") {
@@ -950,7 +964,7 @@ func TestAnAnnouncementWithNothingToFetchFetchesNothingElse(t *testing.T) {
 	if _, err := p.announce("merging", "#1012"); err != nil {
 		t.Fatalf("announce = %v; want it sent", err)
 	}
-	if w.statusTip("octo") == "" {
+	if w.statusTip(p.holderID()) == "" {
 		t.Fatal("the announcement did not reach origin")
 	}
 	if refs := p.git("for-each-ref", "--format=%(refname)", "refs/remotes/origin/main"); refs != "" {
@@ -980,11 +994,11 @@ func TestTheSendersOwnBranchIsFetchedPastTheCap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("announce with %d status branches sorting before the sender's = %v; want it sent", len(names), err)
 	}
-	if next.Attempts != 1 || w.parentOf(next.Commit) != first.Commit || w.statusTip("pat") != next.Commit {
+	if next.Attempts != 1 || w.parentOf(next.Commit) != first.Commit || w.statusTip(p.holderID()) != next.Commit {
 		t.Fatalf("the announcement %+v is not the child of %s at the tip, sent at the first push", next, first.Commit)
 	}
 	refs := strings.Fields(p.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix))
-	if len(refs) != maxStatusBranches+1 || !slices.Contains(refs, StatusTrackingPrefix+"pat") || slices.Contains(refs, StatusTrackingPrefix+names[maxStatusBranches]) {
+	if len(refs) != maxStatusBranches+1 || !slices.Contains(refs, StatusTrackingPrefix+p.holderID()) || slices.Contains(refs, StatusTrackingPrefix+names[maxStatusBranches]) {
 		t.Fatalf("fetched %d status branches; want the first %d and the sender's", len(refs), maxStatusBranches)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,8 +15,9 @@ import (
 )
 
 // `abcd reserve --holder` (iss-2610152046379890): the account a reservation
-// act from this checkout would be made as, and which source named it. It
-// reserves nothing, writes nothing and pushes nothing.
+// act from this checkout would be made as, and which source named it, and the
+// holder id the act pushes in its place (iss-2610290809526033). It reserves
+// nothing, pushes nothing, and writes only the holder id when none is kept.
 
 // forgeCalls is a fake of the forge's user endpoint the reserve verb is
 // given, counting its calls.
@@ -36,32 +38,50 @@ func TestReserveHolderPlainAndJSON(t *testing.T) {
 	w := newReserveWorld(t)
 	p := w.clone(t, "p", octoMail)
 	pat := w.clone(t, "pat", "pat@example.com")
+	// The same person's second checkout on this machine, whose git identity
+	// is not a no-reply address: it keeps its holder id in the same home.
+	cloneHomes[pat] = w.home
 	calls := fakeForge(t, "octo-person", 4242, nil)
 
 	code, stdout, stderr := reserveRun(t, p, "reserve", "--holder")
-	if code != 0 || stdout != "would reserve as octo (from git)\n" || stderr != "" {
-		t.Fatalf("exit %d, stdout %q, stderr %q; want the git holder", code, stdout, stderr)
+	kept, err := os.ReadFile(filepath.Join(w.home, ".abcd.noindex", "holder-id"))
+	id := strings.TrimSpace(string(kept))
+	if err != nil || !regexp.MustCompile(`^h_[0-9a-f]{32}$`).MatchString(id) {
+		t.Fatalf("--holder kept %q, %v; want a minted holder id", kept, err)
+	}
+	idLine := "holder id: " + id + " (kept in ~/.abcd.noindex/holder-id); what abcd pushes names you by it, never by your login\n"
+	if code != 0 || stdout != "would reserve as octo (from git)\n"+idLine || stderr != "" {
+		t.Fatalf("exit %d, stdout %q, stderr %q; want the git holder and the holder id", code, stdout, stderr)
 	}
 	code, stdout, stderr = reserveRun(t, p, "reserve", "--holder", "--json")
 	var got map[string]any
 	if err := json.Unmarshal([]byte(stdout), &got); code != 0 || err != nil {
 		t.Fatalf("--json: exit %d, %v\n%s%s", code, err, stdout, stderr)
 	}
-	want := map[string]any{"login": "octo", "id": float64(1234), "noreply": octoMail, "source": "git"}
-	if len(got) != len(want) {
-		t.Fatalf("--json = %v; want %v", got, want)
+	want := map[string]any{"login": "octo", "id": float64(1234), "noreply": octoMail, "source": "git",
+		"holder_id": id, "holder_id_file": "~/.abcd.noindex/holder-id", "declared_holder_ids_file": "~/.abcd.noindex/holder-ids"}
+	if len(got) != len(want)+1 {
+		t.Fatalf("--json = %v; want %v and declared_holder_ids", got, want)
 	}
 	for k, v := range want {
 		if got[k] != v {
 			t.Fatalf("--json = %v; want %v", got, want)
 		}
 	}
+	if d, ok := got["declared_holder_ids"].([]any); !ok || len(d) != 0 {
+		t.Fatalf("--json declared_holder_ids = %v; want []", got["declared_holder_ids"])
+	}
 	if calls.n != 0 {
 		t.Fatalf("a noreply user.email asked the forge %d times", calls.n)
 	}
 
+	other := "h_0123456789abcdef0123456789abcdef"
+	if err := os.WriteFile(filepath.Join(w.home, ".abcd.noindex", "holder-ids"), []byte(other+" # the laptop\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	code, stdout, stderr = reserveRun(t, pat, "reserve", "--holder")
-	if code != 0 || stdout != "would reserve as octo-person (from token)\n" || calls.n != 1 {
+	if code != 0 || stdout != "would reserve as octo-person (from token)\n"+idLine+
+		"also yours: "+other+" (declared in ~/.abcd.noindex/holder-ids)\n" || calls.n != 1 {
 		t.Fatalf("exit %d, stdout %q, stderr %q after %d calls; want the token's holder after one", code, stdout, stderr, calls.n)
 	}
 }

@@ -117,7 +117,7 @@ func (h Hold) Text() string {
 		return fmt.Sprintf("release %s held by an unreadable reservation (%s) until %s: merges are held",
 			h.Release, h.Unreadable, stamp(h.EffectiveExpiry))
 	}
-	return fmt.Sprintf("release %s being cut by @%s: merges are held", h.Release, h.Holder)
+	return fmt.Sprintf("release %s being cut by %s: merges are held", h.Release, senderName(h.Holder))
 }
 
 // Line is the line a listing shows a judged hold by (JudgedHolds), by the
@@ -182,10 +182,10 @@ type Lapsed struct {
 // off; the withdrawal is a take-over and a release, since only the holder
 // releases a reservation.
 func (l Lapsed) Text() string {
-	return fmt.Sprintf("release %s: the cut by @%s lapsed at %s, last renewed %s, with no tag %s on origin; "+
+	return fmt.Sprintf("release %s: the cut by %s lapsed at %s, last renewed %s, with no tag %s on origin; "+
 		"no merge is held. From %s, any copy reserves it again with `abcd reserve %s`, to resume the cut or, "+
 		"followed by `abcd reserve %s --release`, to withdraw it",
-		l.Release, l.Holder, stamp(l.LapsedAt), stamp(l.RenewedAt), l.Release, stamp(l.LapsedAt.Add(TakeoverMargin)),
+		l.Release, senderName(l.Holder), stamp(l.LapsedAt), stamp(l.RenewedAt), l.Release, stamp(l.LapsedAt.Add(TakeoverMargin)),
 		l.Subject, l.Subject)
 }
 
@@ -207,8 +207,9 @@ func (s Snapshot) Lapsed(now time.Time) []Lapsed {
 
 // releaseHolds is every release being cut as this checkout last fetched the
 // reservations, from disk alone: no fetch, no push and nothing written
-// (invariant 7). Each hold's Mine says whether it is under the username a
-// reservation verb here would resolve, and Own whether it is also from this
+// (invariant 7). Each hold's Mine says whether it is the reader's own
+// (ReaderSelf: their holder id, a declared one, or their login on a hold made
+// before the id), and Own whether it is also from this
 // copy. JudgedHolds reads it, for MergeHolds, which judges a merge from it for
 // the land fence and `abcd land`, and for `abcd peers`, which shows each hold
 // by the same rule (Hold.Line), as `abcd status` and the prompt hook do. It
@@ -223,9 +224,9 @@ func releaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 	if len(holds) == 0 {
 		return nil, nil
 	}
-	reader := readerHolder(root, o)
+	reader := readerSelf(root, o)
 	for i, h := range holds {
-		holds[i].Mine = h.Unreadable == "" && reader != "" && sameHolder(h.Holder, reader)
+		holds[i].Mine = h.Unreadable == "" && reader.Owns(h.Holder)
 		holds[i].Own = holds[i].Mine && h.Copy == CopyThis
 		if holds[i].Mine && !holds[i].Own {
 			holds[i].Sibling = siblingCopy(root, h.key)

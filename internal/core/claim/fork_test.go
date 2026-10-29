@@ -456,8 +456,8 @@ func TestTheMachineHolderKeySitsBesideTheForkKey(t *testing.T) {
 	stubForge(t, github.Repo{Fork: true, Parent: "intentdriven/abcd"}, nil)
 	originOnGitHub(t, "git@github.com:octo/abcd.git")
 	res, err := p.reserve("iss-5", "a.go")
-	if err != nil || res.Act != ActReserved || res.Holder != "octo" || res.ForkAllowed != "octo/abcd" {
-		t.Fatalf("%+v %v; want the reservation made as octo, warned of the allowed fork", res, err)
+	if err != nil || res.Act != ActReserved || res.Holder != p.keptHolderID() || res.ForkAllowed != "octo/abcd" {
+		t.Fatalf("%+v %v; want the reservation made by the holder id, warned of the allowed fork", res, err)
 	}
 }
 

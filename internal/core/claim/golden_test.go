@@ -5,7 +5,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/shellquote"
@@ -21,9 +23,12 @@ type goldenAct struct {
 	stampContent string
 }
 
+// goldenHolderID is the holder id the golden scenarios keep.
+const goldenHolderID = "h_00112233445566778899aabbccddeeff"
+
 // goldenScenario reserves iss-5 from a fresh clone with everything an act's
 // bytes depend on held fixed: the clock (t0), the git identity, the working
-// copy's key and the version the Assisted-by label names.
+// copy's key, the holder id and the version the Assisted-by label names.
 func goldenScenario(t *testing.T) goldenAct {
 	t.Helper()
 	w := newWorld(t)
@@ -35,6 +40,7 @@ func goldenScenario(t *testing.T) goldenAct {
 	if err := os.WriteFile(key, []byte("0123456789abcdef0123456789abcdef\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	keepHolderID(t, p.home, goldenHolderID)
 	log := traced(t)
 	res, err := Reserve(p.dir, Request{Record: "iss-5", Footprint: []string{"internal/a.go", "docs/b.md"}},
 		Options{Now: clockAt(t0), Home: p.home, Version: "1.2.3"})
@@ -80,9 +86,11 @@ func runGitRaw(t *testing.T, dir string, args ...string) string {
 // that commit.
 func TestAReservationActIsByteForByteWhatItWas(t *testing.T) {
 	g := goldenScenario(t)
-	const sha = "194d2abe630c556738c07b00670a1e6f55396fda"
-	// The one deliberate change since baf57cf5e: every reservations fetch also
-	// takes origin's release tags (releaseTagsRefspec, release.go).
+	const sha = "855f075567e91378eca82e78a7fc1073437fbaa3"
+	// The deliberate changes since baf57cf5e: every reservations fetch also
+	// takes origin's release tags (releaseTagsRefspec, release.go), and the
+	// holder is named by the holder id, not the login (iss-2610290809526033),
+	// which moves the commit's name.
 	wantFetch := []string{"fetch", "--prune", "--no-tags", "origin",
 		"+refs/heads/abcd-reserved/*:refs/remotes/origin/abcd-reserved/*",
 		"+refs/tags/v*:refs/abcd/release-tags/v*",
@@ -94,14 +102,14 @@ func TestAReservationActIsByteForByteWhatItWas(t *testing.T) {
 	if !slices.Equal(g.push, wantPush) {
 		t.Errorf("push = %q; want %q", g.push, wantPush)
 	}
-	const wantObject = "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\n" +
+	wantObject := "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\n" +
 		"author Pat Example <1234+octo@users.noreply.github.com> 1791036000 +0000\n" +
 		"committer Pat Example <1234+octo@users.noreply.github.com> 1791036000 +0000\n" +
 		"\n" +
 		"abcd reservation: iss-5\n" +
 		"\n" +
 		"Abcd-Reservation: iss-5\n" +
-		"Abcd-Holder: octo\n" +
+		"Abcd-Holder: " + goldenHolderID + "\n" +
 		"Abcd-Copy: 0123456789abcdef0123456789abcdef\n" +
 		"Abcd-Footprint: internal/a.go\n" +
 		"Abcd-Footprint: docs/b.md\n" +
@@ -147,6 +155,11 @@ func TestTheStatusFetchIsTheCommandItWas(t *testing.T) {
 	maya := w.clone("5+maya@users.noreply.github.com", "")
 	octo := w.clone("6+octo@users.noreply.github.com", "")
 	pat := w.clone("9+pat@users.noreply.github.com", "")
+	keepHolderID(t, maya.home, "h_"+strings.Repeat("a", 32))
+	keepHolderID(t, octo.home, "h_"+strings.Repeat("b", 32))
+	// A status branch named by a login, as one made before the holder id is,
+	// is listed and fetched beside them.
+	w.pushStatus("quinn", announcementMsg("asking", "#3", "quinn", t0, time.Hour), "")
 	octo.announceAs("merging", "#1")
 	maya.announceAs("merging", "#2")
 	stdinLog := stdinOfFetches(t)
@@ -169,8 +182,10 @@ func TestTheStatusFetchIsTheCommandItWas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("no fetch read its stdin: %v", err)
 	}
-	stdin := "+refs/heads/abcd-status/maya:refs/remotes/origin/abcd-status/maya\n" +
-		"+refs/heads/abcd-status/octo:refs/remotes/origin/abcd-status/octo\n"
+	a, b := "h_"+strings.Repeat("a", 32), "h_"+strings.Repeat("b", 32)
+	stdin := "+refs/heads/abcd-status/" + a + ":refs/remotes/origin/abcd-status/" + a + "\n" +
+		"+refs/heads/abcd-status/" + b + ":refs/remotes/origin/abcd-status/" + b + "\n" +
+		"+refs/heads/abcd-status/quinn:refs/remotes/origin/abcd-status/quinn\n"
 	if string(got) != stdin {
 		t.Fatalf("the fetch read on stdin %q; want %q", got, stdin)
 	}

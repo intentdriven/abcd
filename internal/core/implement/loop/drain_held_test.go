@@ -62,7 +62,7 @@ func passedFor(t *testing.T, res DrainResult, id string) Excluded {
 func TestAHeldIssueGetsNoPushAndNoJudgement(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
 	q := otherCopy(t, bare, quinnEmail)
-	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"docs"}}, claim.Options{}); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"docs"}}, as(t, q, claim.Options{})); err != nil {
 		t.Fatal(err)
 	}
 	held := refOf(t, bare, secondIssue)
@@ -76,7 +76,7 @@ func TestAHeldIssueGetsNoPushAndNoJudgement(t *testing.T) {
 	if n := pushes(); n != 1 {
 		t.Fatalf("the move pushed %d time(s); want one, the next issue's reservation", n)
 	}
-	if p := passedFor(t, res, secondIssue); p.Check != CheckReservation || !strings.Contains(p.Reason, secondIssue+" is reserved by quinn") ||
+	if p := passedFor(t, res, secondIssue); p.Check != CheckReservation || !strings.Contains(p.Reason, secondIssue+" is reserved by "+heldBy(t, quinnEmail)) ||
 		!strings.Contains(p.Reason, "no judgement") {
 		t.Fatalf("the pass-over names Q and says nothing was asked: %+v", p)
 	}
@@ -97,7 +97,7 @@ func TestAHeldIssueGetsNoPushAndNoJudgement(t *testing.T) {
 func TestAHeldFootprintGetsNoPushAndNoJudgement(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
 	q := otherCopy(t, bare, quinnEmail)
-	if _, err := claim.Reserve(q, claim.Request{Record: "iss-2609300000000999", Footprint: []string{"commands"}}, claim.Options{}); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: "iss-2609300000000999", Footprint: []string{"commands"}}, as(t, q, claim.Options{})); err != nil {
 		t.Fatal(err)
 	}
 	res, err := Drain(repo.Root(), Options{}, DrainOptions{})
@@ -105,7 +105,7 @@ func TestAHeldFootprintGetsNoPushAndNoJudgement(t *testing.T) {
 		t.Fatal(err)
 	}
 	if p := passedFor(t, res, secondIssue); p.Check != CheckReservation ||
-		!strings.HasPrefix(p.Reason, `"commands/drain.md" is in the footprint of iss-2609300000000999, reserved by quinn`) {
+		!strings.HasPrefix(p.Reason, `"commands/drain.md" is in the footprint of iss-2609300000000999, reserved by `+heldBy(t, quinnEmail)) {
 		t.Fatalf("the pass-over names the footprint's record and holder: %+v", p)
 	}
 	if refOf(t, bare, secondIssue) != "" {
@@ -128,7 +128,7 @@ func TestAJudgementYesReleasesTheReservationTakenBeforeIt(t *testing.T) {
 	if first.Judging == nil || first.Judging.Issue != secondIssue {
 		t.Fatalf("the move asks over the documentation issue: %+v", first.Judging)
 	}
-	if r := originReservation(t, bare, claim.RefPrefix+secondIssue); r.commit == "" || r.released || r.holder != "octo" {
+	if r := originReservation(t, bare, claim.RefPrefix+secondIssue); r.commit == "" || r.released || r.holder != heldBy(t, patEmail) {
 		t.Fatalf("the issue is reserved, as P, before its judgement is asked: %+v", r)
 	}
 	if runCount(t, repo) != 0 {
@@ -186,7 +186,7 @@ func TestPassingOverHeldIssuesAddsNoFetch(t *testing.T) {
 	_, _ = claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Release: true}, claim.Options{})
 	q := otherCopy(t, bare, quinnEmail)
 	for id, fp := range map[string]string{secondIssue: "commands/drain.md", eligibleIssue: "AGENTS.md"} {
-		if _, err := claim.Reserve(q, claim.Request{Record: id, Footprint: []string{fp}}, claim.Options{}); err != nil {
+		if _, err := claim.Reserve(q, claim.Request{Record: id, Footprint: []string{fp}}, as(t, q, claim.Options{})); err != nil {
 			t.Fatal(err)
 		}
 	}

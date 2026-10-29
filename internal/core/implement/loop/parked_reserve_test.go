@@ -73,7 +73,7 @@ func TestADrainKeepsItsOpenPullRequestLanesHeld(t *testing.T) {
 		now := at
 		drainAt(t, f.repo.Root(), Options{Now: func() time.Time { return now }})
 		tip := originReservation(t, f.bare, ref)
-		if tip.holder != "octo" || tip.released || tip.claimed.Before(at) || tip.expires.Sub(tip.claimed) != 24*time.Hour {
+		if tip.holder != heldBy(t, patEmail) || tip.released || tip.claimed.Before(at) || tip.expires.Sub(tip.claimed) != 24*time.Hour {
 			t.Fatalf("the drain move at +%s renews the parked lane's reservation: %+v", after, tip)
 		}
 	}
@@ -83,13 +83,12 @@ func TestADrainKeepsItsOpenPullRequestLanesHeld(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(q, ".git", "info", "exclude"), []byte(".abcd/.work.local/\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"AGENTS.md"}},
-		claim.Options{Now: func() time.Time { return at }}); !errors.Is(err, claim.ErrBackOff) {
+	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"AGENTS.md"}}, as(t, q, claim.Options{Now: func() time.Time { return at }})); !errors.Is(err, claim.ErrBackOff) {
 		t.Fatalf("another account reserving the parked issue after a day and a half = %v; want the back-off", err)
 	}
 	qres := drainAt(t, q, Options{Now: func() time.Time { return at }})
 	i := slices.IndexFunc(qres.Passed, func(e Excluded) bool { return e.ID == secondIssue })
-	if i < 0 || qres.Passed[i].Check != CheckReservation || !strings.Contains(qres.Passed[i].Reason, "reserved by octo") {
+	if i < 0 || qres.Passed[i].Check != CheckReservation || !strings.Contains(qres.Passed[i].Reason, "reserved by "+heldBy(t, patEmail)) {
 		t.Fatalf("another account's drain passes the parked issue over: passed %+v, lane %+v", qres.Passed, qres.Lane)
 	}
 }
@@ -242,17 +241,17 @@ func TestAStepNamesAReservationAnotherHoldsNow(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-130*time.Minute), "internal/widget")
 	q := otherCopy(t, f.bare, quinnEmail)
-	if res, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/gadget"}}, clockAt(now.Add(-time.Minute))); err != nil || res.Act != claim.ActTakenOver {
+	if res, err := claim.Reserve(q, claim.Request{Record: "itd-10", Footprint: []string{"internal/gadget"}}, as(t, q, clockAt(now.Add(-time.Minute)))); err != nil || res.Act != claim.ActTakenOver {
 		t.Fatalf("Q takes the lapsed reservation over: %+v %v", res, err)
 	}
 	if _, err := claim.Fetch(f.repo.Root(), clockAt(now)); err != nil {
 		t.Fatal(err)
 	}
 	res := f.step(t)
-	if !strings.Contains(res.Next, "the reservation on itd-10 is held by quinn") {
+	if !strings.Contains(res.Next, "the reservation on itd-10 is held by "+heldBy(t, quinnEmail)) {
 		t.Fatalf("the step names who holds the reservation now: %q", res.Next)
 	}
-	if note := recordNote(t, f.repo, f.runID, StageReservationLost); !strings.Contains(note, "quinn") {
+	if note := recordNote(t, f.repo, f.runID, StageReservationLost); !strings.Contains(note, heldBy(t, quinnEmail)) {
 		t.Fatalf("the run record logs the lost reservation: %q", note)
 	}
 	f.step(t)

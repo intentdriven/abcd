@@ -340,14 +340,14 @@ func lastFetched(root string, ns namespace) time.Time {
 	return at.UTC()
 }
 
-// NameSiblings fills Sibling on holder's tips made from another worktree of
+// NameSiblings fills Sibling on self's tips (Self.Owns) made from another worktree of
 // the repository at root on this machine, reading each worktree's kept copy
 // key once (iss-2610231004140527). It is the only reader of the worktrees, so
 // a view that never shows a sibling never lists them; a second call does
 // nothing. A tip of anyone else is never named, since a copy key is no secret
 // from whoever pushed a tip. When the worktrees cannot be listed, every tip
 // reads as made elsewhere and SiblingsUnread says why.
-func (s *Snapshot) NameSiblings(root, holder string) {
+func (s *Snapshot) NameSiblings(root string, self Self) {
 	if s.siblingsNamed {
 		return
 	}
@@ -355,7 +355,7 @@ func (s *Snapshot) NameSiblings(root, holder string) {
 	var sibs map[string]siblingAt
 	for i := range s.Reservations {
 		r := &s.Reservations[i]
-		if r.Copy == CopyThis || !validCopyKey(r.key) || holder == "" || !sameHolder(r.Holder, holder) {
+		if r.Copy == CopyThis || !validCopyKey(r.key) || !self.Owns(r.Holder) {
 			continue
 		}
 		if sibs == nil {

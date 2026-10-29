@@ -193,7 +193,7 @@ func (f *narrowFixture) stepAt(t *testing.T, at time.Time) {
 func (f *narrowFixture) renewedAt(t *testing.T, before reservation, at time.Time) reservation {
 	t.Helper()
 	tip := f.tip(t)
-	if tip.parent != before.commit || tip.released || tip.holder != "octo" || !tip.claimed.Equal(at) {
+	if tip.parent != before.commit || tip.released || tip.holder != heldBy(t, patEmail) || !tip.claimed.Equal(at) {
 		t.Fatalf("the renewal is this holder's, over the last one, at %s: before %+v, after %+v", stamp(at), before, tip)
 	}
 	return tip
@@ -302,7 +302,7 @@ func TestALanesDirectoryReservationNarrowsToItsChangedFiles(t *testing.T) {
 	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs/page.md"}) {
 		t.Fatalf("the resume keeps the narrowed footprint, never reserving the directory again: %q (%s)", fp, again.Reservation)
 	}
-	if tip := f.tip(t); tip.parent != narrowed.commit || tip.released || tip.holder != "octo" {
+	if tip := f.tip(t); tip.parent != narrowed.commit || tip.released || tip.holder != heldBy(t, patEmail) {
 		t.Fatalf("the resume is a renewal of the narrowed reservation: before %+v, after %+v", narrowed, tip)
 	}
 }

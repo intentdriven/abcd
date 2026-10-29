@@ -20,7 +20,7 @@ func TestReserveOverOnesOtherCopyWarnsInBothRenders(t *testing.T) {
 	}
 	code, stdout, stderr := reserveRun(t, laptop, "reserve", "iss-2", "--footprint", "internal/x/a.go")
 	const warning = `abcd reserve: warning: "internal/x/a.go" is also in the footprint of iss-1, which you hold from your other copy until `
-	if code != 0 || !strings.Contains(stdout, "reserved iss-2 for octo") || !strings.HasPrefix(stderr, warning) ||
+	if code != 0 || !strings.Contains(stdout, "reserved iss-2 for "+heldBy(t, laptop)) || !strings.HasPrefix(stderr, warning) ||
 		!strings.HasSuffix(stderr, "; reserved anyway, since both are yours\n") || strings.Contains(stdout, "warning") {
 		t.Fatalf("the reserve over one's other copy: exit %d, stdout %q, stderr %q; want it made, warned on stderr", code, stdout, stderr)
 	}

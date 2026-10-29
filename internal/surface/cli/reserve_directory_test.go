@@ -22,7 +22,7 @@ func TestReserveOfADirectoryWarnsInBothRenders(t *testing.T) {
 
 	code, stdout, stderr := reserveRun(t, p, "reserve", "iss-1", "--footprint", "docs", "--footprint", "README.md")
 	const warning = `abcd reserve: warning: footprint "docs" is a directory covering 2 tracked files on origin/main`
-	if code != 0 || !strings.Contains(stdout, "reserved iss-1 for octo") || !strings.HasPrefix(stderr, warning) ||
+	if code != 0 || !strings.Contains(stdout, "reserved iss-1 for "+heldBy(t, p)) || !strings.HasPrefix(stderr, warning) ||
 		!strings.Contains(stderr, "name the files the work changes instead") || strings.Count(stderr, "\n") != 1 ||
 		strings.Contains(stdout, "warning") {
 		t.Fatalf("the reserve of a directory: exit %d, stdout %q, stderr %q; want it made, warned on stderr", code, stdout, stderr)

@@ -179,7 +179,7 @@ func TestAMergedLaneParkedAtLandIsFinishedOnTheNextDrainMove(t *testing.T) {
 	if st.ReservedAt == nil {
 		t.Fatal("the drain's run holds the issue's reservation")
 	}
-	if tomb := originReservation(t, f.bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != "octo" {
+	if tomb := originReservation(t, f.bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != heldBy(t, patEmail) {
 		t.Fatalf("finishing the merged lane tombstones its reservation: %+v", tomb)
 	}
 	if st.NextEligibleAt == nil || !st.NextEligibleAt.Equal(until) {

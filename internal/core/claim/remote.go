@@ -669,7 +669,7 @@ func judge(p *prepared, tree string) (judged, error) {
 		return j, nil
 	}
 	j.verdict = lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, p.now)
-	j.mine = sameHolder(t.Holder, p.holder)
+	j.mine = p.self.Owns(t.Holder)
 	j.thisCopy = t.Copy == p.copy
 	return j, nil
 }

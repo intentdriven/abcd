@@ -25,14 +25,14 @@ func TestReserveOverAHandBackGoesAheadWithANote(t *testing.T) {
 		t.Fatalf("P's reservation: exit %d\n%s%s", code, stdout, stderr)
 	}
 	t.Chdir(p)
-	if _, err := claim.Reserve(p, claim.Request{Record: "iss-5", Release: true, HandBack: claim.HandBackUserVisible}, claim.Options{}); err != nil {
+	if _, err := claim.Reserve(p, claim.Request{Record: "iss-5", Release: true, HandBack: claim.HandBackUserVisible}, claim.Options{Home: cloneHomes[p]}); err != nil {
 		t.Fatalf("P's hand-back: %v", err)
 	}
 
 	q := w.clone(t, "q", quinnMail)
 	code, text, stderr := reserveRun(t, q, "reserve", "iss-5", "--footprint", "b.go")
-	if code != 0 || !strings.Contains(text, "reserved iss-5 for quinn") ||
-		!strings.Contains(text, "\n  note: iss-5 was handed back by octo as user-visible at ") ||
+	if code != 0 || !strings.Contains(text, "reserved iss-5 for "+heldBy(t, q)) ||
+		!strings.Contains(text, "\n  note: iss-5 was handed back by "+heldBy(t, p)+" as user-visible at ") ||
 		!strings.Contains(text, "this reservation is a person's own, so it was made\n") {
 		t.Fatalf("Q's reserve over the hand-back: exit %d, stdout %q, stderr %q; want it made, with the note", code, text, stderr)
 	}
@@ -40,7 +40,7 @@ func TestReserveOverAHandBackGoesAheadWithANote(t *testing.T) {
 	// the tombstone carries it, and the release says so.
 	code, text, stderr = reserveRun(t, q, "reserve", "iss-5", "--release")
 	if code != 0 || !strings.Contains(text, "released iss-5") ||
-		!strings.Contains(text, "\n  note: iss-5 was handed back by octo as user-visible at ") ||
+		!strings.Contains(text, "\n  note: iss-5 was handed back by "+heldBy(t, p)+" as user-visible at ") ||
 		!strings.Contains(text, "so the hand-back still stands") {
 		t.Fatalf("Q's release: exit %d, stdout %q, stderr %q; want it released, the hand-back kept", code, text, stderr)
 	}
@@ -56,7 +56,7 @@ func TestReserveOverAHandBackGoesAheadWithANote(t *testing.T) {
 		} `json:"handed_back"`
 	}
 	if err := json.Unmarshal([]byte(raw), &got); err != nil || got.HandedBack == nil || got.HandedBack.Kind != "user-visible" ||
-		got.HandedBack.Holder != "quinn" || got.HandedBack.At == "" {
+		got.HandedBack.Holder != heldBy(t, q) || got.HandedBack.At == "" {
 		t.Fatalf("the --json payload's hand-back = %+v (%v); want the user-visible hand-back Q's release kept\n%s", got.HandedBack, err, raw)
 	}
 	code, raw, stderr = reserveRun(t, q, "reserve", "iss-5", "--release", "--json")

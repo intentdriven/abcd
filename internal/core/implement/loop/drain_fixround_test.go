@@ -383,10 +383,10 @@ func TestALaneOnALapsedHoldAsksTheForkQuestionAgain(t *testing.T) {
 func TestADrainWithNoViewBacksOffAHandBackAtItsReservation(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
 	q := otherCopy(t, bare, quinnEmail)
-	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}, Drain: true}, claim.Options{}); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Footprint: []string{"commands/drain.md"}, Drain: true}, as(t, q, claim.Options{})); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Release: true, HandBack: claim.HandBackUserVisible}, claim.Options{}); err != nil {
+	if _, err := claim.Reserve(q, claim.Request{Record: secondIssue, Release: true, HandBack: claim.HandBackUserVisible}, as(t, q, claim.Options{})); err != nil {
 		t.Fatal(err)
 	}
 	tomb := refOf(t, bare, secondIssue)
@@ -399,7 +399,7 @@ func TestADrainWithNoViewBacksOffAHandBackAtItsReservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p := passedFor(t, res, secondIssue); p.Check != CheckReservation || !strings.Contains(p.Reason, "was handed back by quinn as user-visible") {
+	if p := passedFor(t, res, secondIssue); p.Check != CheckReservation || !strings.Contains(p.Reason, "was handed back by "+heldBy(t, quinnEmail)+" as user-visible") {
 		t.Fatalf("the pass-over names the hand-back: %+v", p)
 	}
 	if refOf(t, bare, secondIssue) != tomb {

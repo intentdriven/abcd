@@ -48,6 +48,15 @@ func (w *world) pushStatus(branch, msg, tree string, parents ...string) string {
 	return sha
 }
 
+// legacyAnnounce pushes the announcement a release before the holder id
+// sent: on the status branch named by the sender's login, which it carries as
+// its sender, sent at the world's time for thirty minutes, with parents; it
+// returns the commit.
+func (w *world) legacyAnnounce(login, kind, item string, parents ...string) string {
+	w.t.Helper()
+	return w.pushStatus(login, announcementMsg(kind, item, login, w.clock(), 30*time.Minute), "", parents...)
+}
+
 // pushMany appends one commit per message to abcd-status/<branch> on origin
 // in one fast-import, and returns the new tip.
 func (w *world) pushMany(branch string, msgs []string) string {
@@ -127,7 +136,7 @@ func TestEachAnnouncementIsShownOnceFromItsFieldsAlone(t *testing.T) {
 		}
 		p.status(nil)
 		got := p.notes()
-		for _, want := range []string{NotesHeading + "\n", "- @maya (claimed): merging #1012, for 30 min\n", GrantsNothing + "\n",
+		for _, want := range []string{NotesHeading + "\n", "- " + maya.keptHolderID() + " (claimed): merging #1012, for 30 min\n", GrantsNothing + "\n",
 			"as of the last fetch under a minute ago"} {
 			if !strings.Contains(got, want) {
 				t.Fatalf("the block:\n%s\nwant it to carry %q", got, want)
@@ -167,7 +176,7 @@ func TestAnAnnouncementStandsFromItsFirstFetchNotTheSendersClock(t *testing.T) {
 	if len(v.Announcements) != 1 || v.Announcements[0].Commit != sent.Commit || !v.Announcements[0].Until.Equal(t0.Add(30*time.Minute)) {
 		t.Fatalf("at 29 minutes = %+v; want the one announcement standing until 30 minutes after the first fetch", v.Announcements)
 	}
-	if got := v.Announcements[0].Line(w.clock()); got != "@maya (claimed): merging #1012, for 1 min" {
+	if got := v.Announcements[0].Line(w.clock()); got != maya.keptHolderID()+" (claimed): merging #1012, for 1 min" {
 		t.Fatalf("line = %q", got)
 	}
 	w.set(t0.Add(30 * time.Minute))
@@ -299,7 +308,7 @@ func TestADoubtfulAnnouncementIsFlaggedAndEveryOtherBranchStillRead(t *testing.T
 	pat.status(nil)
 	got := pat.notes()
 	for _, want := range []string{
-		"- @maya (claimed): merging #1012, for 30 min\n",
+		"- " + maya.keptHolderID() + " (claimed): merging #1012, for 30 min\n",
 		"- @maya on abcd-status/quinn (doubtful: it names a sender other than the branch's owner): merged #7, for 30 min\n",
 		"- abcd-status/zed (doubtful: its tree is not the empty tree): an announcement that is not shown\n",
 		"- 1 status branch whose name is not read; `abcd status` says how to list them\n",
@@ -549,7 +558,7 @@ func TestStatusListsEveryoneWithTheReservationsAndTheHold(t *testing.T) {
 	w.set(t0.Add(2 * time.Minute))
 	pat.status(nil)
 	v := pat.read()
-	if len(v.Announcements) != 2 || v.Announcements[0].Sender != "quinn" || v.Announcements[1].Sender != "maya" ||
+	if len(v.Announcements) != 2 || v.Announcements[0].Sender != quinn.keptHolderID() || v.Announcements[1].Sender != maya.keptHolderID() ||
 		v.Announcements[0].Kind != "asking" || v.Announcements[0].Item != "#7" || !v.Announcements[0].SentAt.Equal(t0.Add(time.Minute)) {
 		t.Fatalf("announcements = %+v; want quinn's then maya's", v.Announcements)
 	}
@@ -563,10 +572,10 @@ func TestStatusListsEveryoneWithTheReservationsAndTheHold(t *testing.T) {
 		!snap.FetchedAt.Equal(v.FetchedAt) {
 		t.Fatalf("view = %+v, reservations = %+v; want the fetch dated and the release reservation listed", v, snap)
 	}
-	if len(v.Holds) != 1 || v.Holds[0].Text() != "release v0.16.0 being cut by @maya: merges are held" {
+	if len(v.Holds) != 1 || v.Holds[0].Text() != "release v0.16.0 being cut by "+maya.keptHolderID()+": merges are held" {
 		t.Fatalf("holds = %+v; want the release held", v.Holds)
 	}
-	if got := pat.notes(); !strings.Contains(got, "- release v0.16.0 being cut by @maya: merges are held\n") {
+	if got := pat.notes(); !strings.Contains(got, "- release v0.16.0 being cut by "+maya.keptHolderID()+": merges are held\n") {
 		t.Fatalf("the block:\n%s\nwant the hold", got)
 	}
 }
@@ -576,32 +585,32 @@ func TestStatusListsEveryoneWithTheReservationsAndTheHold(t *testing.T) {
 // or, in a record that reaches the tip, no push that carried the commit
 // (claimed); a forge that cannot be asked leaves the sender
 // claimed and says why; a commit the forge answered for, naming a pusher or
-// none, is not asked about again.
+// none, is not asked about again. The branches are named by logins, as a
+// release before the holder id named them; a branch named by a holder id names
+// no account to check, so it is never asked about and stays claimed.
 func TestASenderIsCheckedAgainstTheForgesRecord(t *testing.T) {
 	w := newWorld(t)
-	maya := w.clone("5+maya@users.noreply.github.com", "")
-	quinn := w.clone("7+quinn@users.noreply.github.com", "")
-	zed := w.clone("8+zed@users.noreply.github.com", "")
-	ann := w.clone("6+ann@users.noreply.github.com", "")
+	rosa := w.clone("4+rosa@users.noreply.github.com", "")
 	pat := w.clone("9+pat@users.noreply.github.com", "")
-	m := maya.announceAs("merging", "#1012")
-	q := quinn.announceAs("asking", "#7")
-	zed.announceAs("merged", "#8")
-	a9 := ann.announceAs("answered", "#9")
-	a10 := ann.announceAs("answered", "#10")
+	m := w.legacyAnnounce("maya", "merging", "#1012")
+	q := w.legacyAnnounce("quinn", "asking", "#7")
+	w.legacyAnnounce("zed", "merged", "#8")
+	a9 := w.legacyAnnounce("ann", "answered", "#9")
+	a10 := w.legacyAnnounce("ann", "answered", "#10", a9)
+	r := rosa.announceAs("merging", "#11")
 	asked := map[string]int{}
 	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
 		asked[branch]++
 		switch branch {
 		case "maya":
-			return []Push{{Before: zeroCommit, After: m.Commit, Pusher: "Maya"}}, nil
+			return []Push{{Before: zeroCommit, After: m, Pusher: "Maya"}}, nil
 		case "quinn":
-			return []Push{{Before: zeroCommit, After: q.Commit, Pusher: "mallory"}}, nil
+			return []Push{{Before: zeroCommit, After: q, Pusher: "mallory"}}, nil
 		case "zed":
 			return nil, errors.New("gh is not on PATH")
 		case "ann":
 			// The record reaches the tip, and no push it holds carried #9.
-			return []Push{{Before: a9.Commit, After: a10.Commit, Pusher: "ann"}}, nil
+			return []Push{{Before: a9, After: a10, Pusher: "ann"}}, nil
 		}
 		return []Push{}, nil
 	}
@@ -619,14 +628,15 @@ func TestASenderIsCheckedAgainstTheForgesRecord(t *testing.T) {
 		"#8":    "@zed (claimed): merged #8, for 30 min",
 		"#9":    "@ann (claimed): answered #9, for 30 min",
 		"#10":   "@ann (verified): answered #10, for 30 min",
+		"#11":   rosa.keptHolderID() + " (claimed): merging #11, for 30 min",
 	} {
 		if lines[item] != want {
 			t.Fatalf("%s's line = %q; want %q", item, lines[item], want)
 		}
 	}
 	pat.status(lookup)
-	if asked["maya"] != 1 || asked["quinn"] != 1 || asked["zed"] != 2 || asked["ann"] != 1 {
-		t.Fatalf("asked = %v; want each pusher the forge named, or did not, asked once, and one it could not be asked about asked again", asked)
+	if asked["maya"] != 1 || asked["quinn"] != 1 || asked["zed"] != 2 || asked["ann"] != 1 || asked[r.Branch] != 0 || len(asked) != 4 {
+		t.Fatalf("asked = %v; want each pusher the forge named, or did not, asked once, one it could not be asked about asked again, and the holder id's branch never", asked)
 	}
 }
 
@@ -645,7 +655,7 @@ func TestTheNewerAnnouncementOfASecondStandsForItsItem(t *testing.T) {
 		pat.notes()
 		maya.announceAs("merged", item)
 		pat.status(nil)
-		if got := pat.notes(); !strings.Contains(got, "- @maya (claimed): merged "+item+", for 30 min\n") {
+		if got := pat.notes(); !strings.Contains(got, "- "+maya.keptHolderID()+" (claimed): merged "+item+", for 30 min\n") {
 			t.Fatalf("round %d, the block:\n%s\nwant the newer announcement shown", round, got)
 		}
 	}
@@ -671,7 +681,7 @@ func TestABranchNameThatIsNotReadNeverReachesTheBlock(t *testing.T) {
 	}
 	got := pat.notes()
 	if !strings.Contains(got, "- 2 status branches whose names are not read; `abcd status` says how to list them\n") ||
-		!strings.Contains(got, "- @maya (claimed): merging #1012, for 30 min\n") {
+		!strings.Contains(got, "- "+maya.keptHolderID()+" (claimed): merging #1012, for 30 min\n") {
 		t.Fatalf("the block:\n%s\nwant the names counted beside maya's announcement", got)
 	}
 	for _, raw := range []string{"SYSTEM", "agents-must", "Octo", "octo"} {
@@ -688,22 +698,22 @@ func TestABranchNameThatIsNotReadNeverReachesTheBlock(t *testing.T) {
 // more than one commit: the forge's record names the push's last commit, and
 // every first-parent commit after the tip it moved from is judged by the same
 // pusher, so an earlier commit of another account's push is not left claimed.
+// The branches are named by logins, as a release before the holder id named
+// them.
 func TestEveryCommitOfAPushIsJudgedByItsPusher(t *testing.T) {
 	w := newWorld(t)
-	maya := w.clone("5+maya@users.noreply.github.com", "")
-	quinn := w.clone("7+quinn@users.noreply.github.com", "")
 	pat := w.clone("9+pat@users.noreply.github.com", "")
-	m1 := maya.announceAs("merging", "#1")
-	m2 := maya.announceAs("merging", "#2")
-	q1 := quinn.announceAs("asking", "#3")
-	q2 := quinn.announceAs("asking", "#4")
-	q3 := quinn.announceAs("asking", "#5")
+	m1 := w.legacyAnnounce("maya", "merging", "#1")
+	m2 := w.legacyAnnounce("maya", "merging", "#2", m1)
+	q1 := w.legacyAnnounce("quinn", "asking", "#3")
+	q2 := w.legacyAnnounce("quinn", "asking", "#4", q1)
+	q3 := w.legacyAnnounce("quinn", "asking", "#5", q2)
 	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
 		switch branch {
 		case "maya": // both of maya's commits in one push by another account
-			return []Push{{Before: zeroCommit, After: m2.Commit, Pusher: "mallory"}}, nil
+			return []Push{{Before: zeroCommit, After: m2, Pusher: "mallory"}}, nil
 		case "quinn": // quinn's first commit, then two in one push by another
-			return []Push{{Before: q1.Commit, After: q3.Commit, Pusher: "mallory"}, {Before: zeroCommit, After: q1.Commit, Pusher: "quinn"}}, nil
+			return []Push{{Before: q1, After: q3, Pusher: "mallory"}, {Before: zeroCommit, After: q1, Pusher: "quinn"}}, nil
 		}
 		return nil, nil
 	}
@@ -713,8 +723,8 @@ func TestEveryCommitOfAPushIsJudgedByItsPusher(t *testing.T) {
 		checks[a.Commit] = a.Check + " " + a.Pusher
 	}
 	for c, want := range map[string]string{
-		m1.Commit: "doubtful mallory", m2.Commit: "doubtful mallory",
-		q1.Commit: "verified ", q2.Commit: "doubtful mallory", q3.Commit: "doubtful mallory",
+		m1: "doubtful mallory", m2: "doubtful mallory",
+		q1: "verified ", q2: "doubtful mallory", q3: "doubtful mallory",
 	} {
 		if checks[c] != want {
 			t.Fatalf("checks = %v; want %s %q", checks, c, want)
@@ -767,7 +777,7 @@ func TestJunkDoubtsNeverBuryAnAnnouncement(t *testing.T) {
 	pat.status(nil)
 	got := pat.notes()
 	lines := strings.Split(strings.TrimSpace(got), "\n")
-	if len(lines) < 5 || lines[3] != "- @maya (claimed): merging #1012, for 30 min" {
+	if len(lines) < 5 || lines[3] != "- "+maya.keptHolderID()+" (claimed): merging #1012, for 30 min" {
 		t.Fatalf("the block:\n%s\nwant maya's announcement first", got)
 	}
 	if !strings.Contains(got, "\n- 36 doubts about the status branches and their announcements, not shown one by one; `abcd status` lists them\n") ||
@@ -814,7 +824,7 @@ func TestTheStatusStateIsPruned(t *testing.T) {
 	keepDoubt(pat.dir, BranchDoubt{Branch: "gone", Reason: DoubtMerged, Tip: strings.Repeat("a", 40), FoundAt: t0.Add(-2 * MaxAnnouncementLife)})
 	keepDoubt(pat.dir, BranchDoubt{Branch: "here", Reason: DoubtMerged, Tip: strings.Repeat("b", 40), FoundAt: t0.Add(-time.Hour)})
 	staleMark := put(strings.TrimPrefix(statusBranches.markRel(StatusTrackingPrefix+"gone"), statusBranches.stateDir+"/"), []byte(strings.Repeat("c", 40)+"\n"), time.Hour)
-	liveMark := filepath.Join(pat.dir, filepath.FromSlash(statusBranches.markRel(StatusTrackingPrefix+"maya")))
+	liveMark := filepath.Join(pat.dir, filepath.FromSlash(statusBranches.markRel(StatusTrackingPrefix+maya.keptHolderID())))
 
 	w.set(t0.Add(time.Minute))
 	maya.announceAs("merged", "#1")
@@ -848,13 +858,13 @@ func TestAStatusBranchDeletedOnOriginLeavesNothingBehind(t *testing.T) {
 	if v := pat.read(); len(v.Announcements) != 2 {
 		t.Fatalf("announcements = %+v; want maya's and zed's", v.Announcements)
 	}
-	runGit(t, w.bare, "update-ref", "-d", StatusRefPrefix+"zed")
+	runGit(t, w.bare, "update-ref", "-d", StatusRefPrefix+zed.keptHolderID())
 	pat.status(nil)
-	if refs := pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); strings.Contains(refs, "zed") || !strings.Contains(refs, "maya") {
+	if refs := pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); strings.Contains(refs, zed.keptHolderID()) || !strings.Contains(refs, maya.keptHolderID()) {
 		t.Fatalf("tracking refs after zed was deleted on origin: %q; want maya's alone", refs)
 	}
 	v := pat.read()
-	if len(v.Announcements) != 1 || v.Announcements[0].Branch != "maya" {
+	if len(v.Announcements) != 1 || v.Announcements[0].Branch != maya.keptHolderID() {
 		t.Fatalf("announcements = %+v; want maya's alone", v.Announcements)
 	}
 	if got := pat.notes(); strings.Contains(got, "zed") {

@@ -164,18 +164,23 @@ func TestTheHolderReadsBesideTheCap(t *testing.T) {
 // TestAHomeInsideAWorkingTreeCannotRaiseTheCap: a HOME that lies inside a
 // git working tree, which a repository's committed settings could point a
 // session at, is not read as the machine's layer for the cap, as
-// layered.RootsFor refuses it for every other machine key.
+// layered.RootsFor refuses it for every other machine key. Since the holder
+// id (iss-2610290809526033) is neither read nor kept under such a HOME, an
+// act there is refused before any cap is read, so no reservation is made at
+// all, and the cap the tree sets raises nothing; the ceiling a render reads
+// under it is still ten, saying why.
 func TestAHomeInsideAWorkingTreeCannotRaiseTheCap(t *testing.T) {
 	w := newWorld(t)
 	tree := gittest.NewRepo(t)
 	home := filepath.Join(tree.Root(), "home")
 	writeConfig(t, home, `{"reservation": {"max_live": 50}}`)
 	p := w.clone("1234+octo@users.noreply.github.com", home)
-	reserveN(t, p, 10)
-	_, err := p.reserve("iss-11", "f11.go")
-	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "you hold 10 live reservations, the most one person may hold") ||
-		!strings.Contains(err.Error(), "HOME lies inside a git working tree") {
-		t.Fatalf("the eleventh with a HOME inside a working tree setting 50 = %v; want the cap of ten saying why", err)
+	_, err := p.reserve("iss-1", "f1.go")
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "HOME lies inside the git working tree") || w.remoteTip("iss-1") != "" {
+		t.Fatalf("a reservation under a HOME inside a working tree setting 50 = %v; want it refused, nothing pushed", err)
+	}
+	if n, note, err := maxLive(home); err != nil || n != MaxLive || !strings.Contains(note, "HOME lies inside a git working tree") {
+		t.Fatalf("the cap under such a HOME = %d, %q, %v; want ten, saying why", n, note, err)
 	}
 }
 
@@ -213,7 +218,7 @@ func TestLiveHeldByLeavesOutAReleaseHold(t *testing.T) {
 		{Record: "iss-2", Holder: "Octo", State: StateLive},
 		{Record: "iss-3", Holder: "quinn", State: StateLive},
 	}}
-	if got := snap.LiveHeldBy("octo", "iss-9"); len(got) != 2 || got[0] != "iss-1" || got[1] != "iss-2" {
+	if got := snap.LiveHeldBy(Self{Login: "octo"}, "iss-9"); len(got) != 2 || got[0] != "iss-1" || got[1] != "iss-2" {
 		t.Fatalf("LiveHeldBy = %v; want iss-1 and iss-2, the release hold left out", got)
 	}
 }

@@ -15,8 +15,9 @@ announcements reach a running session at its next prompt, once each.
 **What it does to the remote.** The command's documented meaning is one read
 of the remote: it lists the status branches on `origin` (`git ls-remote`),
 then fetches, in one command, the reservations with `origin`'s release tags,
-the first 500 status branches whose names are GitHub usernames in lower case,
-in `origin`'s order, and `origin`'s default branch. The status branches are
+the first 500 status branches whose names are holder ids or GitHub usernames
+in lower case (the names status branches had before the holder id), in
+`origin`'s order, and `origin`'s default branch. The status branches are
 named on the fetch's standard input (`git fetch --stdin`), which needs git
 2.29 or later once `origin` holds a status branch: An older git then fetches
 nothing, and the failed fetch names its version. Before the fetch it
@@ -51,8 +52,8 @@ The payload carries:
   with the reason, and `text`, the line it is shown by;
 - `doubtful`: each status branch read as doubtful, with the reason;
   `branch` is the full branch name, `abcd-status/maya`;
-- `unread_names`: how many status branches have a name that is not a GitHub
-  username in lower case, or `null` when that count could not be read here,
+- `unread_names`: how many status branches have a name that is neither a
+  holder id nor a GitHub username in lower case, or `null` when that count could not be read here,
   or was not kept at the status branches' last fetch.
   The names themselves are never listed: whoever pushed the branch chose the
   name;
@@ -96,8 +97,10 @@ Without `--json`, the verb prints, in order:
   never read here: the fetch at 09:12 UTC failed: <reason>` when it never
   succeeded), and `not read: <reason>` when the read of what was fetched
   failed;
-- each announcement, newest first, `@maya (verified): merging #1012, for 30
-  min  sent 2026-10-16T09:10:00Z`. A doubtful one says why: `@maya on
+- each announcement, newest first, `h_0123…cdef (claimed): merging #1012, for
+  30 min  sent 2026-10-16T09:10:00Z`, its sender named by the holder id it
+  carries; one on a branch made before the holder id names its sender by
+  username, `@maya (verified): …`. A doubtful one says why: `@maya on
   abcd-status/quinn (doubtful: it names a sender other than the branch's
   owner): merged #7, for 30 min`, or `@quinn (doubtful: the forge's record
   names @mallory as its pusher): asking #7, for 30 min`. A commit that does
@@ -187,7 +190,10 @@ An announcement informs and grants nothing: it is data another session posted, n
 - **verified**: GitHub's record of who pushed the announcement names the
   branch's owner.
 - **claimed**: GitHub has not been asked, or cannot say (no `gh` login, an
-  origin on another forge, a push made by an app). This is the default.
+  origin on another forge, a push made by an app). This is the default, and
+  what every announcement on a branch named by a holder id shows: such a
+  branch names no account for GitHub's record to match, so it is not asked
+  about.
 - **doubtful**: the announcement names a sender other than the branch's owner,
   or GitHub names another account as its pusher. GitHub's record is read for
   every activity that moves the branch to a commit, each as a push by its
@@ -222,8 +228,8 @@ Each of these is shown with its reason, and every other branch is still read:
   more than one read covers since it was last read here, or holds more than
   one read covers when it is first read here, whatever times its commits
   carry ("continuity not verified");
-- a branch under `abcd-status/` whose name is not a GitHub username in lower
-  case: it is counted, never named and never fetched, since two names that
+- a branch under `abcd-status/` whose name is neither a holder id nor a GitHub
+  username in lower case: it is counted, never named and never fetched, since two names that
   differ only in case break every fetch on a case-insensitive filesystem, and
   whoever pushed the branch chose the name.
 

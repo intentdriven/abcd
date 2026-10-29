@@ -12,20 +12,33 @@ import (
 // (itd-2609151838312703 C17): every first-parent commit a push carried is
 // judged by its pusher, a commit two pushes cover takes the one that is not
 // the owner, and a push whose extent the walk cannot read vouches for no more
-// than it can prove.
+// than it can prove. Only a status branch named by a login is asked about: one
+// named by a holder id names no account, so these branches are made as a
+// release before the holder id made them (legacyAnnounce).
 
-// octoBranch is a world where octo sent n announcements, one push each, and
-// pat, who reads them; it returns the commits, oldest first.
+// octoBranch is a world where octo sent n announcements, one push each, on
+// the branch named by the login, and pat, who reads them; it returns the
+// commits, oldest first.
 func octoBranch(t *testing.T, n int) (*world, *participant, []string) {
 	t.Helper()
 	w := newWorld(t)
-	octo := w.clone("6+octo@users.noreply.github.com", "")
 	pat := w.clone("9+pat@users.noreply.github.com", "")
+	return w, pat, w.legacyChain("octo", n)
+}
+
+// legacyChain is n announcements login sent, one after another on the branch
+// its login names; it returns the commits, oldest first.
+func (w *world) legacyChain(login string, n int) []string {
+	w.t.Helper()
 	var cs []string
 	for i := 1; i <= n; i++ {
-		cs = append(cs, octo.announceAs("merging", "#"+strings.Repeat("1", i)).Commit)
+		var parents []string
+		if len(cs) > 0 {
+			parents = cs[len(cs)-1:]
+		}
+		cs = append(cs, w.legacyAnnounce(login, "merging", "#"+strings.Repeat("1", i), parents...))
 	}
-	return w, pat, cs
+	return cs
 }
 
 // checksAfter is how pat judges each announcement once the forge answered
@@ -335,10 +348,8 @@ func TestARecordShortOfTheTipIsAskedAgain(t *testing.T) {
 func TestATipAnAppPushedReachesTheRecord(t *testing.T) {
 	for _, short := range []bool{false, true} {
 		w := newWorld(t)
-		octo := w.clone("6+octo@users.noreply.github.com", "")
 		pat := w.clone("9+pat@users.noreply.github.com", "")
-		first := octo.announceAs("merging", "#1").Commit
-		octo.announceAs("merging", "#2")
+		first := w.legacyChain("octo", 2)[0]
 		asked := 0
 		lookup := func(_ context.Context, _, branch string) ([]Push, error) {
 			if branch != "octo" {
@@ -386,13 +397,9 @@ func TestATipAnAppPushedReachesTheRecord(t *testing.T) {
 func TestAnAnnouncementReadAfterAnAppsTipIsAskedAbout(t *testing.T) {
 	withIntakeCap(t, 3)
 	w := newWorld(t)
-	bob := w.clone("7+bob@users.noreply.github.com", "")
 	pat := w.clone("9+pat@users.noreply.github.com", "")
-	a := bob.announceAs("merging", "#1").Commit
-	var cs []string
-	for _, item := range []string{"#2", "#3", "#4"} {
-		cs = append(cs, bob.announceAs("merging", item).Commit)
-	}
+	all := w.legacyChain("bob", 4)
+	a, cs := all[0], all[1:]
 	asked := 0
 	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
 		if branch != "bob" {

@@ -40,9 +40,9 @@ until its lane shows.
 the reservation keeps people apart. In a checkout with a remote named
 `origin`, the run reserves its key there, as `/abcd:reserve` does, once the
 checks below pass and before the run is created: the branch
-`abcd-reserved/<id>` on `origin`, naming you (your GitHub username, from a
-no-reply `user.email` or `reservation.github_username` in
-`~/.abcd.noindex/config.json`), this copy, and the files the spec's
+`abcd-reserved/<id>` on `origin`, naming you (by your holder id, kept in
+`~/.abcd.noindex/holder-id`, never by your GitHub username), this copy, and
+the files the spec's
 `## Footprint` `- packages:` line names (an issue's `found_at` path for
 `build <iss-N>`). Every other participant, a second person, a second
 computer, a cloud session, sees it before starting the same item. The

@@ -100,7 +100,7 @@ func TestThePromptHookReturnsInsideItsSecond(t *testing.T) {
 		start := time.Now()
 		out, _ := runHook(t, hookInputJSON(t, fmt.Sprintf("s-bound-%d", i), pat, "hello there"), "hook", "prompt-router")
 		took := time.Since(start)
-		showed := strings.Contains(out, "- @octo (claimed): merging #1012, for 30 min\n")
+		showed := strings.Contains(out, "- "+heldBy(t, octo)+" (claimed): merging #1012, for 30 min\n")
 		t.Logf("try %d: the hook took %s, showing the announcement: %t", i, took, showed)
 		requireOriginUntouched(t, touched)
 		if took > ceiling {
@@ -146,7 +146,7 @@ func TestThePromptHookShowsEachAnnouncementOnce(t *testing.T) {
 	touched := hangOrigin(t, pat)
 
 	out, _ := runHook(t, hookInputJSON(t, "s-status", pat, "hello there"), "hook", "prompt-router")
-	for _, want := range []string{claim.NotesHeading + "\n", "- @octo (claimed): merging #1012, for 30 min\n", claim.GrantsNothing + "\n"} {
+	for _, want := range []string{claim.NotesHeading + "\n", "- " + heldBy(t, octo) + " (claimed): merging #1012, for 30 min\n", claim.GrantsNothing + "\n"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("the hook's text:\n%s\nwant it to carry %q", out, want)
 		}
@@ -168,7 +168,7 @@ func TestThePromptHookShowsEachAnnouncementOnce(t *testing.T) {
 	}
 	writeRepoRules(t, pat, `{"schema_version": 1, "domains": `)
 	env := routerJSON(t, "s-status", pat, "hello")
-	if env.Error == "" || !strings.Contains(env.Text, "- @octo (claimed): merged #1012, for 30 min\n") {
+	if env.Error == "" || !strings.Contains(env.Text, "- "+heldBy(t, octo)+" (claimed): merged #1012, for 30 min\n") {
 		t.Fatalf("with rules.json unreadable, the envelope = %+v; want the error and the status block", env)
 	}
 	if code, _, stderr := reserveRun(t, octo, "announce", "asking", "1012"); code != 0 {
@@ -178,7 +178,7 @@ func TestThePromptHookShowsEachAnnouncementOnce(t *testing.T) {
 		t.Fatalf("status: exit %d, %s", code, stderr)
 	}
 	plain, _ := runHook(t, hookInputJSON(t, "s-status", pat, "hello"), "hook", "prompt-router")
-	if !strings.Contains(plain, "- @octo (claimed): asking #1012, for 30 min\n") {
+	if !strings.Contains(plain, "- "+heldBy(t, octo)+" (claimed): asking #1012, for 30 min\n") {
 		t.Fatalf("with rules.json unreadable, the plain hook:\n%s\nwant the status block", plain)
 	}
 }
@@ -251,7 +251,7 @@ func TestTheHooksDeadlineStartsWithTheHook(t *testing.T) {
 	}
 	defer claim.SetPromptReadBudgetForTest(readSpare)()
 	again := runSlowHook(t, hookInputJSON(t, "s-spent", pat, "hello again"), delay, delay+readSpare)
-	if !strings.Contains(again, "- @octo (claimed): merging #1012, for 30 min\n") {
+	if !strings.Contains(again, "- "+heldBy(t, octo)+" (claimed): merging #1012, for 30 min\n") {
 		t.Fatalf("the next prompt, with time left after the payload:\n%s\nwant the announcement, never shown", again)
 	}
 }

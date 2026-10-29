@@ -103,14 +103,15 @@ func TestPeersFetchesAndListsEveryReservationWithCounts(t *testing.T) {
 	if len(got.Reservations) != 4 {
 		t.Fatalf("listed %d reservations, want 4: %+v", len(got.Reservations), got.Reservations)
 	}
+	octo, quinn := heldBy(t, p), heldBy(t, q)
 	for id, want := range map[string]struct {
 		holder, state string
 		footprint     []string
 	}{
-		"iss-5": {"octo", "live", []string{"a.go"}},
-		"itd-7": {"octo", "live", []string{"b.go", "internal/core/claim"}},
-		"iss-6": {"quinn", "live", []string{"c.go"}},
-		"iss-8": {"octo", "released", []string{"d.go"}},
+		"iss-5": {octo, "live", []string{"a.go"}},
+		"itd-7": {octo, "live", []string{"b.go", "internal/core/claim"}},
+		"iss-6": {quinn, "live", []string{"c.go"}},
+		"iss-8": {octo, "released", []string{"d.go"}},
 	} {
 		res := got.Reservations[byID[id]]
 		if res.Record != id || res.Holder != want.holder || res.State != want.state ||
@@ -124,7 +125,7 @@ func TestPeersFetchesAndListsEveryReservationWithCounts(t *testing.T) {
 	if got.Reservations[byID["iss-8"]].ReleasedBy != "tombstone" {
 		t.Errorf("iss-8 = %+v; want released by its tombstone", got.Reservations[byID["iss-8"]])
 	}
-	if got.LiveByHolder["octo"] != 2 || got.LiveByHolder["quinn"] != 1 || len(got.LiveByHolder) != 2 {
+	if got.LiveByHolder[octo] != 2 || got.LiveByHolder[quinn] != 1 || len(got.LiveByHolder) != 2 {
 		t.Errorf("live_by_holder = %v; want octo 2, quinn 1", got.LiveByHolder)
 	}
 	if got.View.FetchedAt == "" || got.View.AgeSeconds == nil || *got.View.AgeSeconds < 0 || *got.View.AgeSeconds > 300 {
@@ -147,7 +148,7 @@ func TestPeersFetchesAndListsEveryReservationWithCounts(t *testing.T) {
 		}
 		return out
 	}()
-	for _, want := range []string{"iss-100", "reservations", "iss-5", `"a.go"`, "octo", "live", "quinn", "released"} {
+	for _, want := range []string{"iss-100", "reservations", "iss-5", `"a.go"`, octo, "live", quinn, "released"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the text listing lacks %q:\n%s", want, text)
 		}
@@ -225,7 +226,9 @@ func TestPeersRendersTheLastViewWhenTheFetchFails(t *testing.T) {
 	if code, out, errOut := reserveRun(t, p, "reserve", "iss-5", "--footprint", "a.go"); code != 0 {
 		t.Fatalf("reserve: exit %d\n%s%s", code, out, errOut)
 	}
-	r := w.clone(t, "r", quinnMail)
+	// P's second checkout, so it runs under the HOME origin lies in, and the
+	// failed fetch's origin path is one the home redaction must catch.
+	r := w.clone(t, "r", octoMail)
 	if code, out, errOut := reserveRun(t, r, "peers"); code != 0 {
 		t.Fatalf("the first peers: exit %d\n%s%s", code, out, errOut)
 	}
@@ -283,7 +286,7 @@ func TestPeersWithoutAnOriginListsNoReservations(t *testing.T) {
 func TestPeersShowsTheReleaseHold(t *testing.T) {
 	w := newReserveWorld(t)
 	p := w.clone(t, "p", octoMail)
-	if code, out, errOut := reserveRun(t, p, "reserve", "rel-v0.16.0"); code != 0 || !strings.Contains(out, "reserved rel-v0.16.0 for octo") {
+	if code, out, errOut := reserveRun(t, p, "reserve", "rel-v0.16.0"); code != 0 || !strings.Contains(out, "reserved rel-v0.16.0 for "+heldBy(t, p)) {
 		t.Fatalf("reserving the release: exit %d\n%s%s", code, out, errOut)
 	}
 	if code, out, errOut := reserveRun(t, p, "reserve", "iss-5", "--footprint", "a.go"); code != 0 {
@@ -307,16 +310,16 @@ func TestPeersShowsTheReleaseHold(t *testing.T) {
 	if len(got.ReleaseHolds) != 1 {
 		t.Fatalf("release_holds = %+v; want the one cut", got.ReleaseHolds)
 	}
-	h := got.ReleaseHolds[0]
-	if h.Release != "v0.16.0" || h.Subject != "rel-v0.16.0" || h.Holder != "octo" || h.EffectiveExpiry == "" ||
-		h.Text != "release v0.16.0 being cut by @octo: merges are held" {
+	h, id := got.ReleaseHolds[0], heldBy(t, p)
+	if h.Release != "v0.16.0" || h.Subject != "rel-v0.16.0" || h.Holder != id || h.EffectiveExpiry == "" ||
+		h.Text != "release v0.16.0 being cut by "+id+": merges are held" {
 		t.Fatalf("hold = %+v", h)
 	}
-	if got.LiveByHolder["octo"] != 1 {
-		t.Fatalf("live_by_holder = %v; want octo 1, the release outside the count", got.LiveByHolder)
+	if got.LiveByHolder[id] != 1 {
+		t.Fatalf("live_by_holder = %v; want P's holder id 1, the release outside the count", got.LiveByHolder)
 	}
 	_, text, _ := reserveRun(t, r, "peers")
-	if !strings.Contains(text, "\n  release v0.16.0 being cut by @octo: merges are held\n") || !strings.Contains(text, "rel-v0.16.0  live  octo") {
+	if !strings.Contains(text, "\n  release v0.16.0 being cut by "+id+": merges are held\n") || !strings.Contains(text, "rel-v0.16.0  live  "+id) {
 		t.Fatalf("the text listing lacks the hold line:\n%s", text)
 	}
 

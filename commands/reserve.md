@@ -18,8 +18,9 @@ them on the board (bare `/abcd:abcd`) and on a record's page
 **What it does to the remote.** The command's documented meaning is a push: it
 writes one commit to the branch `abcd-reserved/<record-id>` on the remote named
 `origin`, and to nothing else. The commit changes no file (its tree is the
-empty tree); its trailers name the record, the holder, this working copy, the
-footprint and the lease. The push is a plain fast-forward with the
+empty tree); its trailers name the record, the holder (by an opaque holder id,
+never the user's GitHub login), this working copy, the footprint and the
+lease. The push is a plain fast-forward with the
 repository's hooks running, never forced and never with `--no-verify`, and it
 touches no HEAD, index or working tree here. When git's identity does not name
 the holder (below), it also makes one read-only call to GitHub's user endpoint,
@@ -188,8 +189,10 @@ and the output names the copy it replaced (`replaced.your_copy` in `--json`).
 It never moves another person's.
 
 **Exit 2 when the user is at the cap.** One person may hold at most ten live
-reservations by default, counted across every record by username, whichever of
-their sessions and copies holds them. A reservation past that is refused,
+reservations by default, counted across every record by whose holds are
+theirs (their holder id, any id declared in `~/.abcd.noindex/holder-ids`, and
+their username on a reservation made before the holder id), whichever of their
+sessions and copies holds them. A reservation past that is refused,
 naming the cap and the reservations; a renewal, and a take-over of the user's
 own other copy, of a reservation still live are never refused by the cap, while
 renewing one that has lapsed counts as a new one. The refusal advises waiting
@@ -238,8 +241,7 @@ the home directory redacted. Relay it.
 access to the repository and act in good faith. They are not an access
 control: anyone who can push can append a commit to another holder's
 reservation branch, and the holder a reservation names is read from its own
-trailer, set from that writer's `user.email`, machine configuration or token,
-so it is self-declared. The forge's push permissions are the only boundary.
+trailer, the holder id that writer's own home keeps, so it is self-declared. The forge's push permissions are the only boundary.
 
 **Clocks.** A reservation's expiry is written by the holder's clock and
 judged by the reader's, and the five-minute margin is all the disagreement it
@@ -252,15 +254,32 @@ reservation dated more than five minutes ahead of the reader counts from when
 that copy first fetched it, so it holds at most a day from then. Keep the
 machines that reserve on network time.
 
-**The holder** is the user's GitHub username, from the first of these that
-names it: `git config user.email` when it is a GitHub no-reply address;
-`reservation.github_username` in `~/.abcd.noindex/config.json`; and the
-account the session's own GitHub token belongs to, through one call to
+**The holder** is named by the user's holder id: `h_` and 32 random lower-case
+hex characters, minted the first time one is needed into
+`~/.abcd.noindex/holder-id` (owner-only) and kept, so nothing a reservation
+pushes, in its text or its branch names, carries the user's GitHub login. A
+holder-id file another account owns or could write, or one that holds no id,
+is refused, never replaced, and under a HOME inside a git working tree that is
+not the account's own no holder id is read or kept, so the act refuses. The ids
+of the user's other machines and accounts
+(each prints its own with `--holder`) can be listed in
+`~/.abcd.noindex/holder-ids`, one per line with `#` comments; a reservation
+under one of them is the user's own, from another copy.
+
+abcd still works out the user's GitHub username, locally, from the first of
+these that names it: `git config user.email` when it is a GitHub no-reply
+address; `reservation.github_username` in `~/.abcd.noindex/config.json`; and
+the account the session's own GitHub token belongs to, through one call to
 GitHub's user endpoint. The repository's own configuration is never read for
-it. When git's identity is not a person's (unset, or a machine's, as in a
-hosted cloud session), the token alone names the holder and that account
+it. A reservation made before the holder id names that username in its
+trailer, and is still the user's own: renewing or releasing it writes the
+holder id. A copy on an older abcd release reads a reservation named by a
+holder id as unreadable: it treats the record as held until that reservation's
+hold ends, and cannot renew it, so renew from the copy on the new release, or
+update the older copy. When git's identity is not a person's (unset, or a machine's, as in
+a hosted cloud session), the token alone names the account, and that account
 authors the reservation commit; the identity git had is shown nowhere. When
-nothing names the holder the refusal says why; relay it.
+nothing names the account the refusal says why; relay it.
 
 To learn the holder without reserving anything:
 
@@ -268,14 +287,17 @@ To learn the holder without reserving anything:
 "${CLAUDE_PLUGIN_ROOT}/abcd" reserve --holder --json
 ```
 
-It prints `{"login", "id", "noreply", "source"}` (`source` is `git`, `config`
-or `token`; `id` and `noreply` when known), or as text `would reserve as
-<login> (from <source>)`. It may make that one user-endpoint call in two
-cases: git's identity is a person's but carries neither a no-reply address nor
-a machine key; or git's identity is not a person's (unset, or a machine's), when
-the machine key is skipped. It takes no record id and no other flag, and
-reserves, writes and pushes nothing. Exit 0 when the account is known, 2 when
-not. Its `noreply` is the account's address; a person's own git identity still
+It prints `{"login", "id", "noreply", "source", "holder_id",
+"holder_id_file", "declared_holder_ids", "declared_holder_ids_file"}`
+(`source` is `git`, `config` or `token`; `id` and `noreply` when known), or as
+text `would reserve as <login> (from <source>)`, then `holder id: <id> (kept in
+~/.abcd.noindex/holder-id)` and, when any are declared, `also yours: <ids>`.
+None of it is pushed. It may make that one user-endpoint call in two cases:
+git's identity is a person's but carries neither a no-reply address nor a
+machine key; or git's identity is not a person's (unset, or a machine's), when
+the machine key is skipped. It takes no record id and no other flag, reserves
+and pushes nothing, and writes only the holder id, when none is kept yet. Exit
+0 when the account and the holder id are known, 2 when not. Its `noreply` is the account's address; a person's own git identity still
 authors their commits.
 
 ## Release when done

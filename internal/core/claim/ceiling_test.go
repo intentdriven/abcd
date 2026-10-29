@@ -28,6 +28,8 @@ func (p *participant) worktreeAt(dir string) *participant {
 // (iss-2610231004140527): a reservation made from another worktree of this
 // clone reads as that worktree, by its name and never its key; one made from
 // another clone, though by the same person, reads as made elsewhere.
+// NameSiblings is handed the reader's holder id and their login as the
+// resolver would yield it, in another case.
 func TestTheViewNamesTheSiblingWorktreeAReservationWasMadeFrom(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -54,7 +56,7 @@ func TestTheViewNamesTheSiblingWorktreeAReservationWasMadeFrom(t *testing.T) {
 			t.Fatalf("the plain view named %s's sibling %q", r.Record, r.Sibling)
 		}
 	}
-	snap.NameSiblings(p.dir, "OCTO")
+	snap.NameSiblings(p.dir, Self{ID: p.keptHolderID(), Login: "OCTO"})
 	got := map[string]Reservation{}
 	for _, r := range snap.Reservations {
 		got[r.Record] = r
@@ -80,7 +82,8 @@ func TestTheViewNamesTheSiblingWorktreeAReservationWasMadeFrom(t *testing.T) {
 // (iss-2610231004140527): a person's live holds are counted by copy (this
 // one, each sibling worktree here, and elsewhere) against this machine's
 // reservation.max_live, with a warning from four fifths of it that says
-// another account pushing as the same login counts too.
+// every account whose holds are the person's counts too: here another
+// computer's, whose holder id this home declares.
 func TestTheCeilingCountsAPersonsHoldsByCopyAndWarnsNearTheLimit(t *testing.T) {
 	w := newWorld(t)
 	home := t.TempDir()
@@ -97,6 +100,7 @@ func TestTheCeilingCountsAPersonsHoldsByCopyAndWarnsNearTheLimit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	declareHolderIDs(t, home, far.keptHolderID()+"\n")
 	if _, err := Fetch(p.dir, p.opts()); err != nil {
 		t.Fatal(err)
 	}
@@ -108,15 +112,15 @@ func TestTheCeilingCountsAPersonsHoldsByCopyAndWarnsNearTheLimit(t *testing.T) {
 	if !ok {
 		t.Fatal("no ceiling for the reader")
 	}
-	if c.Holder != "octo" || c.Live != 4 || c.Limit != 5 || c.ThisCopy != 2 || c.Elsewhere != 1 ||
+	if c.Holder != p.keptHolderID() || c.Live != 4 || c.Limit != 5 || c.ThisCopy != 2 || c.Elsewhere != 1 ||
 		len(c.Siblings) != 1 || c.Siblings[0].Name != "lane-b" || c.Siblings[0].Live != 1 {
-		t.Fatalf("ceiling = %+v; want octo 4 of 5: this copy 2, lane-b 1, elsewhere 1", c)
+		t.Fatalf("ceiling = %+v; want the holder id 4 of 5: this copy 2, lane-b 1, elsewhere 1", c)
 	}
 	if !c.Warn {
 		t.Fatal("4 of 5 is not warned of")
 	}
 	msg := c.Warning()
-	for _, want := range []string{"4 of", "5", "same login", "not readable here"} {
+	for _, want := range []string{"4 of", "5", "account whose holds are yours", "not readable here"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("warning %q lacks %q", msg, want)
 		}
@@ -137,7 +141,8 @@ func TestTheCeilingCountsAPersonsHoldsByCopyAndWarnsNearTheLimit(t *testing.T) {
 
 // TestTheCapRefusalSaysWhichCopyHoldsEachReservation (iss-2610231004140527):
 // at the cap, the refusal names each held record with the copy it was made
-// from, so the person can tell this machine's holds from the rest.
+// from, so the person can tell this machine's holds from the rest; the one
+// made elsewhere is another computer's, whose holder id this home declares.
 func TestTheCapRefusalSaysWhichCopyHoldsEachReservation(t *testing.T) {
 	w := newWorld(t)
 	home := t.TempDir()
@@ -153,6 +158,7 @@ func TestTheCapRefusalSaysWhichCopyHoldsEachReservation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	declareHolderIDs(t, home, far.keptHolderID()+"\n")
 	_, err := p.reserve("iss-4", "iss-4.go")
 	if err == nil {
 		t.Fatal("a fourth reservation at a cap of 3 was made")
@@ -198,7 +204,7 @@ func TestNameSiblingsNamesOnlyTheHoldersOwnAndTellsClashingNamesApart(t *testing
 		{Record: "iss-3", Holder: "octo", State: StateLive, key: keys["c"]},
 		{Record: "iss-4", Holder: "mallory", State: StateLive, key: keys["a"]},
 	}}
-	snap.NameSiblings(p.dir, "octo")
+	snap.NameSiblings(p.dir, Self{Login: "octo"})
 	want := map[string]string{"iss-1": "a/lane-b", "iss-2": "b/lane-b", "iss-4": ""}
 	for _, r := range snap.Reservations {
 		if r.Record == "iss-3" {
@@ -216,7 +222,7 @@ func TestNameSiblingsNamesOnlyTheHoldersOwnAndTellsClashingNamesApart(t *testing
 	}
 
 	gone := Snapshot{Reservations: []Reservation{{Record: "iss-1", Holder: "octo", State: StateLive, key: keys["a"]}}}
-	gone.NameSiblings(t.TempDir(), "octo")
+	gone.NameSiblings(t.TempDir(), Self{Login: "octo"})
 	if gone.Reservations[0].Sibling != "" || !strings.Contains(gone.SiblingsUnread, "could not be listed") {
 		t.Fatalf("outside a repository: sibling %q, unread %q; want none and the reason", gone.Reservations[0].Sibling, gone.SiblingsUnread)
 	}
@@ -320,7 +326,7 @@ func TestTheCapRefusalNamesOnlyTheHoldersOwnCopiesAndWhyNoSiblingIs(t *testing.T
 		{Record: "iss-1", Holder: "mallory", State: StateLive, Copy: CopyThis},
 		{Record: "iss-1", Holder: "octo", State: StateExpired, Copy: CopyThis},
 	}}
-	err := capRefusalIn(&snap, t.TempDir(), "octo", []string{"iss-1"}, 1, "")
+	err := capRefusalIn(&snap, t.TempDir(), Self{Login: "octo"}, []string{"iss-1"}, 1, "")
 	for _, want := range []string{"elsewhere: iss-1", "could not be listed"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q lacks %q", err, want)

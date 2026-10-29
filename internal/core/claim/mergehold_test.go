@@ -38,8 +38,8 @@ func TestEveryCopyButTheCuttingOneIsHeld(t *testing.T) {
 			"release v0.16.0 is being cut by your copy on another computer, until 2026-10-03T15:00:00Z" + tail,
 			"merge it from the copy cutting v0.16.0, or wait until v0.16.0 is tagged or that copy releases rel-v0.16.0"},
 		{"another person", q,
-			"release v0.16.0 is being cut by octo, until 2026-10-03T15:00:00Z" + tail,
-			"ask octo to merge it or to release rel-v0.16.0, or wait until v0.16.0 is tagged"},
+			"release v0.16.0 is being cut by " + p.keptHolderID() + ", until 2026-10-03T15:00:00Z" + tail,
+			"ask " + p.keptHolderID() + " to merge it or to release rel-v0.16.0, or wait until v0.16.0 is tagged"},
 	} {
 		m, err := FetchMergeHold(c.p.dir, t0, c.p.opts())
 		if err != nil {

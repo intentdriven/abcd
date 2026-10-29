@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"os"
@@ -8,7 +9,9 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
@@ -24,6 +27,41 @@ import (
 func (w *reserveWorld) statusTipAt(t *testing.T, name string) string {
 	t.Helper()
 	return gitCmd(t, w.origin, "for-each-ref", "--format=%(objectname)", "refs/heads/abcd-status/"+name)
+}
+
+// legacyAnnounce appends to origin the announcement a release before the
+// holder id sent: "merging #<item>" on abcd-status/<login>, carrying the login
+// as its sender, sent now for thirty minutes; it returns the branch's new tip.
+// Only such a branch names an account the forge's record can be asked about.
+func (w *reserveWorld) legacyAnnounce(t *testing.T, login, item string) string {
+	t.Helper()
+	now := time.Now().UTC().Truncate(time.Second)
+	msg := "abcd announcement: merging #" + item + "\n\nAbcd-Announcement: merging\nAbcd-Item: #" + item + "\nAbcd-Sender: " + login +
+		"\nAbcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\nAbcd-Sent-At: " + now.Format(time.RFC3339) +
+		"\nAbcd-Expires-At: " + now.Add(30*time.Minute).Format(time.RFC3339) + "\n"
+	path := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(path, []byte(msg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tree := gitCmd(t, w.origin, "hash-object", "-w", "-t", "tree", "/dev/null")
+	args := []string{"-c", "user.name=Pat Example", "-c", "user.email=pat@example.invalid", "-c", "commit.gpgsign=false", "commit-tree", tree}
+	if tip := w.statusTipAt(t, login); tip != "" {
+		args = append(args, "-p", tip)
+	}
+	sha := gitCmd(t, w.origin, append(args, "-F", path)...)
+	gitCmd(t, w.origin, "update-ref", claim.StatusRefPrefix+login, sha)
+	return sha
+}
+
+// heldBy is the holder id the clone at dir's reservations and announcements
+// name: the one kept in the home it runs under (cloneHome).
+func heldBy(t *testing.T, dir string) string {
+	t.Helper()
+	data, err := os.ReadFile(abcdhome.Path(cmp.Or(cloneHomes[dir], worldHome), "holder-id"))
+	if err != nil {
+		t.Fatalf("no holder id is kept for the clone at %s: %v", dir, err)
+	}
+	return strings.TrimSpace(string(data))
 }
 
 type announceJSON struct {
@@ -51,13 +89,14 @@ func TestAnnounceSendsAndSaysSo(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("--json is not one JSON document: %v\n%s", err, stdout)
 	}
-	tip := w.statusTipAt(t, "octo")
-	if got.Kind != "merging" || got.Item != "#1012" || got.Sender != "octo" || got.Branch != "abcd-status/octo" ||
+	id := heldBy(t, p)
+	tip := w.statusTipAt(t, id)
+	if got.Kind != "merging" || got.Item != "#1012" || got.Sender != id || got.Branch != "abcd-status/"+id ||
 		got.Commit != tip || tip == "" || got.Attempts != 1 || got.SentAt == "" || got.ExpiresAt == "" {
 		t.Fatalf("--json %+v, origin's tip %q", got, tip)
 	}
 	code, stdout, stderr = reserveRun(t, p, "announce", "merged", "1012")
-	want := regexp.MustCompile(`^abcd announce: sent "merged #1012" as octo on abcd-status/octo, standing until \S+Z \(30m0s\)\n$`)
+	want := regexp.MustCompile(`^abcd announce: sent "merged #1012" as ` + id + ` on abcd-status/` + id + `, standing until \S+Z \(30m0s\)\n$`)
 	if code != 0 || !want.MatchString(stdout) {
 		t.Fatalf("exit %d, stdout %q, stderr %q; want %s", code, stdout, stderr, want)
 	}
@@ -90,7 +129,7 @@ func TestAnnounceUsageErrorsPushNothing(t *testing.T) {
 			t.Errorf("%s: exit %d, stderr %q, stdout %q; want exit 2 and %q", tc.name, code, stderr, stdout, tc.want)
 		}
 	}
-	if tip := w.statusTipAt(t, "octo"); tip != "" {
+	if tip := gitCmd(t, w.origin, "for-each-ref", "--format=%(objectname)", "refs/heads/abcd-status/"); tip != "" {
 		t.Fatalf("a refused announcement reached origin: %s", tip)
 	}
 }
@@ -133,7 +172,7 @@ func TestAnnounceIsHeldToTheEmbargoStore(t *testing.T) {
 		if code != 2 || !strings.Contains(stderr, "an announcement about "+held+" is refused: the embargo store on this machine holds it") {
 			t.Fatalf("announce %s: exit %d, stderr %q, stdout %q; want the embargo refusal", held, code, stderr, stdout)
 		}
-		if tip := w.statusTipAt(t, "octo"); tip != "" {
+		if tip := gitCmd(t, w.origin, "for-each-ref", "--format=%(objectname)", "refs/heads/abcd-status/"); tip != "" {
 			t.Fatalf("an embargoed announcement reached origin: %s", tip)
 		}
 		if code, _, stderr := reserveRun(t, p, "announce", "merged", "#9"); code != 0 {
@@ -162,7 +201,7 @@ func TestAnnounceIsHeldToTheEmbargoStore(t *testing.T) {
 		if code != 2 || !strings.Contains(stderr, "the embargo store on this machine could not be checked") {
 			t.Fatalf("exit %d, stderr %q, stdout %q; want the refusal", code, stderr, stdout)
 		}
-		if tip := w.statusTipAt(t, "octo"); tip != "" {
+		if tip := gitCmd(t, w.origin, "for-each-ref", "--format=%(objectname)", "refs/heads/abcd-status/"); tip != "" {
 			t.Fatalf("an unchecked announcement reached origin: %s", tip)
 		}
 	})
@@ -186,13 +225,14 @@ func TestAnnounceNeverShowsAToolsIdentity(t *testing.T) {
 
 	var shown strings.Builder
 	code, stdout, stderr := reserveRun(t, p, "announce", "merging", "#1012")
-	if code != 0 || !strings.Contains(stdout, `sent "merging #1012" as octo-person on abcd-status/octo-person`) {
+	id := heldBy(t, p)
+	if code != 0 || !strings.Contains(stdout, `sent "merging #1012" as `+id+` on abcd-status/`+id) || strings.Contains(stdout, "octo-person") {
 		t.Fatalf("exit %d, stdout %q, stderr %q; want it sent as the token's account", code, stdout, stderr)
 	}
 	shown.WriteString(stdout + stderr)
 	code, stdout, stderr = reserveRun(t, p, "announce", "merged", "#1012", "--json")
 	var got announceJSON
-	if err := json.Unmarshal([]byte(stdout), &got); code != 0 || err != nil || got.Sender != "octo-person" || got.Branch != "abcd-status/octo-person" {
+	if err := json.Unmarshal([]byte(stdout), &got); code != 0 || err != nil || got.Sender != id || got.Branch != "abcd-status/"+id {
 		t.Fatalf("--json: exit %d, %v, %+v, stderr %q; want it sent as the token's account", code, err, got, stderr)
 	}
 	shown.WriteString(stdout + stderr)
@@ -200,7 +240,7 @@ func TestAnnounceNeverShowsAToolsIdentity(t *testing.T) {
 		t.Fatal("the forge was never asked; the sender cannot have come from the token")
 	}
 	const person = "octo-person <4242+octo-person@users.noreply.github.com>"
-	if who := gitCmd(t, w.origin, "log", "--format=%an <%ae>|%cn <%ce>", "refs/heads/abcd-status/octo-person"); who != person+"|"+person+"\n"+person+"|"+person {
+	if who := gitCmd(t, w.origin, "log", "--format=%an <%ae>|%cn <%ce>", "refs/heads/abcd-status/"+id); who != person+"|"+person+"\n"+person+"|"+person {
 		t.Fatalf("the announcements are authored and committed by\n%s\nwant %s in both roles", who, person)
 	}
 
@@ -227,8 +267,8 @@ func TestAnnounceNeverShowsAToolsIdentity(t *testing.T) {
 			t.Fatalf("the tool's identity %q is shown:\n%s", leak, shown.String())
 		}
 	}
-	if !strings.Contains(shown.String(), "Abcd-Sender: octo-person") {
-		t.Fatalf("the announcement does not name the token's account as sender:\n%s", shown.String())
+	if !strings.Contains(shown.String(), "Abcd-Sender: "+id+"\n") || strings.Contains(shown.String(), "Abcd-Sender: octo-person") {
+		t.Fatalf("the announcement does not name the holder id as sender:\n%s", shown.String())
 	}
 }
 
@@ -285,7 +325,7 @@ func TestAnnounceSaysAPushMayHaveLandedWhenTheBranchCannotBeReadBack(t *testing.
 	code, stdout, stderr := reserveRun(t, p, "announce", "merging", "#1012")
 	if code != 2 || stdout != "" || strings.Contains(stderr, "nothing was pushed") || strings.Contains(stderr, "not sent: ") ||
 		!strings.Contains(stderr, "refused here") ||
-		!strings.Contains(stderr, "origin refused 1 earlier push to abcd-status/octo and a refused push may still have reached it") {
+		!strings.Contains(stderr, "origin refused 1 earlier push to abcd-status/"+heldBy(t, p)+" and a refused push may still have reached it") {
 		t.Fatalf("exit %d, stderr %q, stdout %q; want exit 2 saying the push may have reached origin", code, stderr, stdout)
 	}
 }

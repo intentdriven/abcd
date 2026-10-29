@@ -143,13 +143,18 @@ type Request struct {
 // prepared is a request checked and filled in from the checkout, before the
 // remote is asked anything.
 type prepared struct {
-	root   string
-	id     string
-	req    Request
-	lease  time.Duration
-	now    time.Time
-	who    identity
+	root  string
+	id    string
+	req   Request
+	lease time.Duration
+	now   time.Time
+	who   identity
+	// holder is the holder id every message the act writes names (holderid.go),
+	// and self whose holds are the person's own: that id, the ids their home
+	// declares, and the login the resolver named, which only a hold made before
+	// the id carries.
 	holder string
+	self   Self
 	copy   string
 	label  string
 	// home is where the machine layer of the configuration is read, for the
@@ -266,7 +271,10 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if err != nil {
 		return nil, err
 	}
-	p.holder = h.Login
+	if p.self, err = ownSelf(p.home, h.Login, true); err != nil {
+		return nil, err
+	}
+	p.holder = p.self.ID
 	if !p.who.person() {
 		// Git's identity is unset or a machine's: the token's account authors
 		// the reservation, so that identity never reaches a commit.

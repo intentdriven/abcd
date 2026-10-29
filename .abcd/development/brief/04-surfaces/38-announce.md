@@ -37,26 +37,39 @@ kinds. The flag is in the appendix below.
 ## What it writes
 
 The announcement is one empty-tree commit on the sender's own status branch,
-`refs/heads/abcd-status/<GitHub username in lower case>` on `origin`, one
-branch per person, written with `git commit-tree` and pushed with one plain
+`refs/heads/abcd-status/<holder id>` on `origin` (the holder id a reservation
+names, `h_` and 32 lower-case hex characters, kept in
+`~/.abcd.noindex/holder-id`; iss-2610290809526033), one branch per person, written with `git commit-tree` and pushed with one plain
 fast-forward push, the repository's hooks running. Its subject is
 `abcd announcement: <kind> <item>`, and its trailers carry the kind
 (`Abcd-Announcement`), the item (`Abcd-Item`), the sender (`Abcd-Sender`, the
-GitHub username as resolved), the working copy (`Abcd-Copy`, the key a
+holder id, never the person's login), the working copy (`Abcd-Copy`, the key a
 reservation uses), the time sent (`Abcd-Sent-At`), the expiry
 (`Abcd-Expires-At`) and abcd's composed `Assisted-by: abcd:<version>` label,
 and nothing else. The commit is authored as the person: their own git identity
 when it is a person's, and otherwise the account the session's forge token
-belongs to. Nothing touches HEAD, the index or the working tree.
+belongs to. Nothing touches HEAD, the index or the working tree. A status
+branch made before the holder id is named by its sender's GitHub username in
+lower case and carries it as `Abcd-Sender`; such a branch is still read, and
+none is pushed any more. A copy on an older release reads only the
+login-named branches, so it does not see an announcement on a holder-id branch
+until it updates; a person running two versions sends from the new one.
+Pushing no login has one cost, and it is a stated limitation: the forge's
+record of who pushed names an account, and a holder id names none it could be
+matched against, so the sender of an announcement on a holder-id branch is
+shown as claimed, never as verified (`abcd status`, C17). Only a branch named
+by a username, made before the holder id, can still show its sender as
+verified.
 
 The verb first lists the status branches on origin (`git ls-remote`), then
-fetches the first 500 whose names are lower-case GitHub usernames, in
+fetches the first 500 whose names are holder ids or lower-case GitHub
+usernames, in
 origin's order and with the sender's own among them, each by its own refspec, with origin's default branch in one fetch, and the status branches
 alone in a second when the default branch cannot be read. It never fetches the
 namespace by a glob: a branch whose name differs from another only in case
 (`abcd-status/Octo` beside `abcd-status/octo`) would break such a fetch on a
-case-insensitive filesystem, so a name that is not a lower-case username is
-not fetched at all; and it never names a branch the listing did not show,
+case-insensitive filesystem, so a name that is neither a holder id nor a
+lower-case username is not fetched at all; and it never names a branch the listing did not show,
 since a fetch of a branch origin does not hold fails. Each refused push is
 followed by one more listing and fetch. A push git reported refused that the branch
 now holds landed, and is reported sent. A push that lost a race to another of
@@ -92,7 +105,8 @@ not a refusal: exit 2 says a refused push may still have reached origin.
   message; a store that exists but cannot be checked refuses every
   announcement.
 - No GitHub account to send as is refused before any fetch or push, naming
-  the failure's class and never the identity it rejected. The sender is
+  the failure's class and never the identity it rejected, and so is a
+  holder-id file the reservation's holder would refuse. The account is
   resolved by the one resolver a reservation's holder is
   (`internal/core/claim`), in the same order: user.email when it is a GitHub
   no-reply address, then `reservation.github_username` in the machine

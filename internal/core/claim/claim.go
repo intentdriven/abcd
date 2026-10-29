@@ -8,8 +8,8 @@
 // refs/heads/).
 //
 // A reservation is a chain of empty-tree commits written with `git
-// commit-tree`, whose trailers name the record, the holder (a GitHub
-// username), the working copy, the footprint and the lease. Every act is one
+// commit-tree`, whose trailers name the record, the holder (an opaque holder
+// id, holderid.go, never the person's login), the working copy, the footprint and the lease. Every act is one
 // plain fast-forward push, which is already the compare-and-swap: the remote
 // takes it only when the tip the writer judged is still the tip.
 //

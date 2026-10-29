@@ -18,9 +18,11 @@ import (
 // short fixed-form notice to every other participant: a kind from a fixed
 // list, the record or pull request it concerns, and an expiry, with no free
 // text. It is one empty-tree commit on the sender's own status branch,
-// refs/heads/abcd-status/<username in lower case> on origin, pushed with one
-// plain push, so it reuses the reservation's writer, fetch, push and reader
-// rather than copying them (one-canonical-primitive).
+// refs/heads/abcd-status/<holder id> on origin (holderid.go; a branch made
+// before the holder id is named by the sender's username in lower case, and
+// is still read, never written), pushed with one plain push, so it reuses
+// the reservation's writer, fetch, push and reader rather than copying them
+// (one-canonical-primitive).
 
 const (
 	// StatusRefPrefix is where the status branches sit on the remote, one per
@@ -67,8 +69,8 @@ var announcementFamily = &family{
 // abcd-status/Octo) break a globbed fetch on a case-insensitive filesystem.
 // Nor is a branch named blind, since a fetch naming a branch origin does not
 // hold yet (a person's first announcement) fails. Origin is listed first, and
-// each branch it holds whose name is a lower-case username is fetched by its
-// own refspec (fetchStatus).
+// each branch it holds whose name is a holder id or a lower-case username is
+// fetched by its own refspec (fetchStatus).
 var statusBranches = namespace{remote: StatusRefPrefix, tracking: StatusTrackingPrefix, stateDir: tierRelDir + "/status", noun: "the status branches"}
 
 // fetchStatus is announce's read of the remote: it lists the status branches
@@ -108,7 +110,7 @@ const noAnnouncement = "no announcement was sent"
 const (
 	reasonAnnouncementKind        = "its kind is not one of merging, merged, asking, answered, handed-over"
 	reasonAnnouncementItem        = "it does not name one issue or intent id or pull-request number as its item"
-	reasonAnnouncementSender      = "it does not name one GitHub username as its sender"
+	reasonAnnouncementSender      = "it does not name one holder id or GitHub username as its sender"
 	reasonAnnouncementExpiry      = "its expiry is not after the time it was sent and within 24 hours of it"
 	reasonOutsideTrailers         = "it carries text outside its trailers, or a trailer not written exactly"
 	reasonAnnouncementAttribution = "its Assisted-by is not the abcd:<version> label abcd writes"
@@ -142,8 +144,8 @@ type AnnounceResult struct {
 	Kind string
 	// Item is in its canonical form: a record's canonical id, or "#N".
 	Item string
-	// Sender is the person's GitHub username as resolved, and Branch their
-	// status branch, abcd-status/<Sender in lower case>.
+	// Sender is the person's holder id (holderid.go), never their login, and
+	// Branch their status branch, abcd-status/<Sender>.
 	Sender    string
 	Branch    string
 	SentAt    time.Time
@@ -238,7 +240,8 @@ func parseAnnouncement(text string) (announcement, string) {
 // each written exactly `Key: value` at the start of its line, in its
 // canonical spelling; the message before it is exactly the subject the kind
 // and item give; the kind is in the list, the item an issue or intent id or a
-// pull-request number, the sender a GitHub username and the copy a key, each
+// pull-request number, the sender a holder id (or, on an announcement made
+// before the id, a GitHub username) and the copy a key, each
 // once; the times are RFC 3339 in UTC to the second, the expiry after the time
 // sent and within 24 hours of it; and the attribution appears at most once,
 // as the abcd:<version> label abcd writes.
@@ -263,7 +266,7 @@ func validateAnnouncement(t trailers) (announcement, string) {
 	if t.lead != a.subject() {
 		return announcement{}, reasonOutsideTrailers
 	}
-	if a.Sender, ok = t.one(keySender); !ok || !validUsername(a.Sender) {
+	if a.Sender, ok = t.one(keySender); !ok || !validHolder(a.Sender) {
 		return announcement{}, reasonAnnouncementSender
 	}
 	if a.Copy, ok = t.one(keyCopy); !ok || !validCopyKey(a.Copy) {
@@ -367,7 +370,14 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 	if err != nil {
 		return nil, err
 	}
-	sender := h.Login
+	// The sender is the holder id, never the login the resolver named: that
+	// account authors the commit when git's identity is not a person's, and
+	// its login reaches no trailer and no ref name.
+	self, err := ownSelf(p.home, h.Login, true)
+	if err != nil {
+		return nil, err
+	}
+	sender := self.ID
 	if !p.who.person() {
 		// Git's identity is unset or a machine's: the token's account authors
 		// the announcement, so that identity never reaches a commit.
@@ -375,7 +385,7 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 	}
 	p.msg = announcement{Kind: req.Kind, Item: item, Sender: sender, Copy: key, SentAt: p.now, ExpiresAt: p.now.Add(life),
 		AssistedBy: o.assistedBy()}
-	p.branch = strings.ToLower(sender)
+	p.branch = sender
 	text := p.msg.text()
 	if back, why := parseAnnouncement(text); why != "" || back != p.msg {
 		return nil, refuse("the announcement abcd composed does not read back (%s), which is a defect in abcd; %s", why, nothingPushed)

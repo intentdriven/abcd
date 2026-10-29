@@ -108,8 +108,8 @@ func TestAReleaseSitsOutsideTheLiveCap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := snap.LiveByHolder(); got["octo"] != MaxLive || len(got) != 1 {
-		t.Fatalf("live by holder = %v; want octo %d, the releases not counted", got, MaxLive)
+	if got := snap.LiveByHolder(); got[p.keptHolderID()] != MaxLive || len(got) != 1 {
+		t.Fatalf("live by holder = %v; want the holder id %d, the releases not counted", got, MaxLive)
 	}
 }
 
@@ -132,10 +132,10 @@ func TestAReleaseHoldIsShownAndEndsAtItsTag(t *testing.T) {
 		t.Fatalf("Q's holds = %+v, %v; want P's release", holds, err)
 	}
 	h := holds[0]
-	if h.Release != "v0.16.0" || h.Subject != "rel-v0.16.0" || h.Holder != "octo" || h.Own || !h.EffectiveExpiry.Equal(t0.Add(lease.Max)) {
-		t.Fatalf("hold = %+v; want v0.16.0 held by octo, not Q's own, until %s", h, t0.Add(lease.Max))
+	if h.Release != "v0.16.0" || h.Subject != "rel-v0.16.0" || h.Holder != p.keptHolderID() || h.Own || !h.EffectiveExpiry.Equal(t0.Add(lease.Max)) {
+		t.Fatalf("hold = %+v; want v0.16.0 held by P's holder id, not Q's own, until %s", h, t0.Add(lease.Max))
 	}
-	if want := "release v0.16.0 being cut by @octo: merges are held"; h.Text() != want {
+	if want := "release v0.16.0 being cut by " + p.keptHolderID() + ": merges are held"; h.Text() != want {
 		t.Fatalf("the hold line = %q; want %q", h.Text(), want)
 	}
 
@@ -223,8 +223,8 @@ func TestTheHolderReleasesTheHold(t *testing.T) {
 		t.Fatalf("Q releasing P's release = %v; want refused as another person's", err)
 	}
 	if _, err := q.do(Request{Record: "rel-v0.16.0"}); !errors.Is(err, ErrBackOff) ||
-		!strings.Contains(err.Error(), "rel-v0.16.0 is reserved by octo until 2026-10-04T14:00:00Z") {
-		t.Fatalf("Q reserving P's release = %v; want the back-off naming octo", err)
+		!strings.Contains(err.Error(), "rel-v0.16.0 is reserved by "+p.keptHolderID()+" until 2026-10-04T14:00:00Z") {
+		t.Fatalf("Q reserving P's release = %v; want the back-off naming P's holder id", err)
 	}
 	if res, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil || res.Act != ActReleased {
 		t.Fatalf("P releasing = %+v, %v", res, err)

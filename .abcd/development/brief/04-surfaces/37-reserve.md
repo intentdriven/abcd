@@ -49,8 +49,48 @@ lists the reservations. The flags are in the appendix below.
 
 ## The holder
 
-The holder is the person's GitHub username, worked out by the one holder
-resolver in `internal/core/claim` (invariant 10). When git's identity, read
+What a reservation pushes names its holder by the person's holder id
+(iss-2610290809526033): `h_` and 32 lower-case hex characters, 128 random bits
+minted once, on first need, into `~/.abcd.noindex/holder-id` with an exclusive
+create at mode 0600, so two racing first needs keep one id. It is no hash of
+anything, so it says nothing of the account; the underscore cannot occur in a
+GitHub username, so it never collides with the login an older reservation
+names; and lower case keeps a status branch named by it apart from every other
+on a case-insensitive filesystem. It is read back only when the file is a
+regular file the account owns and no other account can write, through the
+guard every home declaration is read through; a file that fails that, or holds
+no id, refuses the act and is never replaced. A HOME inside a git working tree
+that is not the account's own is judged as the machine layer is: no holder id
+is read from it or minted into it, so an act there refuses before anything is
+pushed and a render names no hold as the reader's. Nothing abcd pushes, in its
+text or its ref names, carries the person's login.
+
+A hold is the person's own when its holder is their kept id, an id listed in
+`~/.abcd.noindex/holder-ids` (one per line, `#` comments, under the same
+guards; absent, it lists none), which is where a person declares the ids of
+their other machines and accounts, or, on a hold made before the holder id,
+the login the resolver below yields, compared without regard to case. Every
+"yours" judgement reads it this way: the renewal and release of one's own
+reservation, the other-copy back-off and warning, the cap's count, the
+ceiling, the land fence's own-release check and the renders that say "you".
+A renewal or release of an old reservation of the person's writes the holder
+id; no commit carries the login beside it, not even for one release.
+
+Across versions the change fails safe. A copy on an older release reads the
+new holds as held until it updates: its reader takes a holder to be a GitHub
+username, and no holder id is one, so it reads each new reservation as
+unreadable, which it holds until the default lease from the commit's date and
+the take-over margin have passed, backing off and never writing over it. A
+person running two versions renews only from the new one: the older copy
+refuses to renew a hold it cannot read, while the new one reads both the holds
+it made and the login-named holds the older one made, and writes the holder id
+when it renews them. The older reader is not run in the tests; what pins this
+is that no minted id passes the username rule and that a reader meeting a
+holder it cannot read backs off until the hold ends and leaves origin's tip as
+it stands.
+
+The person's GitHub username is still worked out, locally and never pushed, by
+the one holder resolver in `internal/core/claim` (invariant 10). When git's identity, read
 under the person's own configuration, is a person's (`user.name` and
 `user.email` both set, and not a machine identity as the attribution gate
 judges an author), the holder comes from the first of: `user.email` when it is
@@ -65,12 +105,12 @@ key of the checkout root and a digest of the variables that pick gh and its
 token and of gh's `hosts.yml`, so a `gh auth switch` asks again, and a failure
 is never kept. When git's identity is not a person's (unset, or a machine's, as in a
 hosted container whose clone comes with a vendor identity while its token is
-the person's), the token alone names the holder, the machine key is skipped so
+the person's), the token alone names the account, the machine key is skipped so
 that the author's address and the login come from the same account, and that
 account authors and commits the reservation as `<login>
 <id+login@users.noreply.github.com>`. The identity git had is then shown
 nowhere: in no output, commit, trailer, ref name or refusal. When no source
-names the holder the act is refused, the refusal naming the class of the
+names the account the act is refused, the refusal naming the class of the
 failure and never the git identity it rejected.
 
 Only an explicit act asks the user endpoint: a reservation, a renewal, a
@@ -79,20 +119,25 @@ board, a record's page and `abcd peers`) never do, and when only the token
 could name the reader they treat the reader as unknown.
 
 The holder query prints `would reserve as <login> (from <source>)`, the
-source being `git`, `config` or `token`, or as JSON the document
-`{"login", "id", "noreply", "source"}` (`id` and `noreply` when known). It may
+source being `git`, `config` or `token`, then `holder id: <id> (kept in
+~/.abcd.noindex/holder-id)` and, when any are declared, `also yours: <ids>`;
+or as JSON the document `{"login", "id", "noreply", "source", "holder_id",
+"holder_id_file", "declared_holder_ids", "declared_holder_ids_file"}` (`id`
+and `noreply` when known). None of it is pushed. It may
 make that one user-endpoint call in the same two cases as a reservation: when
 git's identity is a person's but neither its address nor the machine layer
 names the holder, and when git's identity is not a person's, whatever the
-machine layer says. It takes no record id and no other flag, and reserves,
-writes and pushes nothing. It exits 0 when the account is known and 2 when not.
+machine layer says. It takes no record id and no other flag, reserves and
+pushes nothing, and writes only the holder id, minted when none is kept. It
+exits 0 when the account and the holder id are known and 2 when not.
 
 ## What it writes
 
 The reservation is `refs/heads/abcd-reserved/<record-id>` on `origin`, a chain
 of empty-tree commits written with `git commit-tree` and pushed with one plain
 fast-forward push, the repository's hooks running. Each commit's trailers name
-the record (`Abcd-Reservation`), the holder (`Abcd-Holder`, a GitHub username),
+the record (`Abcd-Reservation`), the holder (`Abcd-Holder`, the holder id; a
+GitHub username on a reservation made before it, still read),
 the working copy (`Abcd-Copy`, a random key kept in the checkout's local tier),
 the footprint (`Abcd-Footprint`, one per path), the lease (`Abcd-Claimed-At`,
 `Abcd-Expires-At`) and abcd's composed `Assisted-by: abcd:<version>` label; a
@@ -163,7 +208,8 @@ fetch of that branch succeeds (dcn-2610161837009957).
 
 The act is then judged against the rest of the fetched view. A reservation
 that would take its holder past their cap of live reservations, ten unless
-their machine raises it, counted by username across every record, is refused
+their machine raises it, counted across every record by whose holds are
+theirs (the holder id, the declared ids and, on older holds, the login), is refused
 naming the cap and the reservations, with the advice to wait for one of their
 pull requests to merge, which ends its reservation, rather than release one
 whose work is done, or to raise the cap; the refusal is typed, so a drain waits
@@ -240,14 +286,16 @@ anyone else a `config.json` that cannot be read at all (writable by others,
 not valid JSON) is read past, ten applies, and the refusal at the cap says
 why; at the ceiling of 100 the refusal no longer offers raising it.
 
-The count is by login, while each machine reads its own ceiling, so another
-account that pushes as the same login is counted against the same total under a
-ceiling no session here can read (iss-2610231004140527). Two places say so. The
+The count is by whose holds are the person's (their holder id, the ids they
+declare, and their login on older holds), while each machine reads its own
+ceiling, so another account whose id is declared here is counted against the
+same total under a ceiling no session here can read (iss-2610231004140527). Two places say so. The
 refusal at the cap groups the held records by the copy each was made from: this
 copy, each other worktree of the repository on this machine by its directory's
 name, and elsewhere. And `abcd peers` counts the reader's own live reservations
 the same way against this machine's ceiling, warning from four fifths of it
-that the total is shared with every session and account on the login. A sibling
+that the total is shared with every session and account whose holds are the
+reader's. A sibling
 worktree is told apart by the copy key kept in its local tier, read without
 minting one and only for the reader's own holds; the key itself is never
 shown. The worktrees are listed only by those two readers, never by the view
@@ -299,7 +347,8 @@ does.
 
 Reservations coordinate people who share push access in good faith; they are
 not an access control. Any writer who can push can append to another holder's
-branch, and the holder is a self-declared trailer, so the forge's push
+branch, and the holder is a self-declared trailer (anyone who reads a holder id
+can write it), so the forge's push
 permissions are the only boundary.
 
 Expiry is the holder's clock judged by the reader's, and the five-minute

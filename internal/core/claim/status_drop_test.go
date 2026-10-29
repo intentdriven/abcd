@@ -33,7 +33,7 @@ func TestOnlyTheStatusCopiesAreDropped(t *testing.T) {
 	pat.git("symbolic-ref", StatusTrackingPrefix+"sym", "refs/heads/abcd-status/pat")
 	pat.status(nil)
 	refs := pat.git("for-each-ref", "--format=%(refname)")
-	for _, want := range []string{"refs/heads/abcd-status/pat", "refs/remotes/origin/other", "refs/abcd/keep-me", StatusTrackingPrefix + "maya"} {
+	for _, want := range []string{"refs/heads/abcd-status/pat", "refs/remotes/origin/other", "refs/abcd/keep-me", StatusTrackingPrefix + maya.keptHolderID()} {
 		if !strings.Contains(refs, want+"\n") && !strings.HasSuffix(refs, want) {
 			t.Fatalf("refs after the status fetch:\n%s\nwant %s kept", refs, want)
 		}
@@ -55,7 +55,7 @@ func TestADropThatCannotBeMadeIsAGapNotAFailedFetch(t *testing.T) {
 	maya.announceAs("merging", "#1012")
 	zed.announceAs("asking", "#7")
 	pat.status(nil)
-	runGit(t, w.bare, "update-ref", "-d", StatusRefPrefix+"zed")
+	runGit(t, w.bare, "update-ref", "-d", StatusRefPrefix+zed.keptHolderID())
 	lock := filepath.Join(pat.dir, ".git", "packed-refs.lock")
 	if err := os.WriteFile(lock, nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestTheAnnouncementsAreReadWhenTheHoldsAreNot(t *testing.T) {
 		t.Fatalf("announcements = %+v; want maya's read all the same", v.Announcements)
 	}
 	got := pat.notes()
-	for _, want := range []string{"- release holds unread: their read failed; `abcd status` says why\n", "- @maya (claimed): merging #1012, for 30 min\n"} {
+	for _, want := range []string{"- release holds unread: their read failed; `abcd status` says why\n", "- " + maya.keptHolderID() + " (claimed): merging #1012, for 30 min\n"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the block:\n%s\nwant it to carry %q", got, want)
 		}
@@ -176,7 +176,7 @@ func TestADropPastTheListingsSizeStillDeletes(t *testing.T) {
 	pat := w.clone("9+pat@users.noreply.github.com", "")
 	maya.announceAs("merging", "#1012")
 	pat.status(nil)
-	tip := strings.TrimSpace(pat.git("rev-parse", StatusTrackingPrefix+"maya"))
+	tip := strings.TrimSpace(pat.git("rev-parse", StatusTrackingPrefix+maya.keptHolderID()))
 	packed := filepath.Join(pat.dir, ".git", "packed-refs")
 	pat.git("pack-refs", "--all")
 	data, err := os.ReadFile(packed)
@@ -212,7 +212,7 @@ func TestADropPastTheListingsSizeStillDeletes(t *testing.T) {
 	if res.NotDropped != "" {
 		t.Fatalf("not dropped = %q; want every copy deleted", res.NotDropped)
 	}
-	if refs := pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); refs != StatusTrackingPrefix+"maya" {
+	if refs := pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); refs != StatusTrackingPrefix+maya.keptHolderID() {
 		t.Fatalf("status copies after the drop: %d bytes; want only maya's", len(refs))
 	}
 	if v := pat.read(); len(v.Announcements) != 1 || v.Announcements[0].Item != "#1012" {

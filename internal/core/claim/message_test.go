@@ -147,8 +147,8 @@ func TestTheHolderIsReadFromANoReplyAddress(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", email, err)
 		}
-		if p.holder != "octo" || !strings.Contains(p.reservation().text(), "\nAbcd-Holder: octo\n") {
-			t.Fatalf("%s: holder = %q; want octo in the trailer", email, p.holder)
+		if p.self.Login != "octo" || !validHolderID(p.holder) || !strings.Contains(p.reservation().text(), "\nAbcd-Holder: "+p.holder+"\n") {
+			t.Fatalf("%s: holder = %q, login %q; want octo resolved and the holder id in the trailer", email, p.holder, p.self.Login)
 		}
 	}
 }
@@ -160,7 +160,7 @@ func TestTheHolderIsReadFromTheMachineConfig(t *testing.T) {
 	r := newCheckout(t, "pat@example.com")
 	home := machineConfig(t, `{"reservation": {"github_username": "octo"}}`)
 	p, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: home})
-	if err != nil || p.holder != "octo" {
+	if err != nil || p.self.Login != "octo" {
 		t.Fatalf("holder = %+v, %v; want octo from the machine config", p, err)
 	}
 }
@@ -186,7 +186,7 @@ func TestARepositoryConfiguredUsernameIsNeverUsed(t *testing.T) {
 	}
 	home := machineConfig(t, `{"reservation": {"github_username": "octo"}}`)
 	p, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: home})
-	if err != nil || p.holder != "octo" {
+	if err != nil || p.self.Login != "octo" {
 		t.Fatalf("with both layers: %+v, %v; want the machine's octo", p, err)
 	}
 }

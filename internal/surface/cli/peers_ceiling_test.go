@@ -77,18 +77,19 @@ func TestPeersNamesEachHoldsCopyAndWarnsNearTheCeiling(t *testing.T) {
 		}
 	}
 	c := got.Ceiling
-	if c == nil || c.Holder != "octo" || c.Live != 4 || c.Limit != 5 || c.ThisCopy != 2 || c.Elsewhere != 1 ||
+	if c == nil || c.Holder != heldBy(t, p) || c.Live != 4 || c.Limit != 5 || c.ThisCopy != 2 || c.Elsewhere != 1 ||
 		len(c.Siblings) != 1 || c.Siblings[0].Name != "lane-b" || c.Siblings[0].Live != 1 || !c.Warn ||
-		!strings.Contains(c.Warning, "same login") {
-		t.Fatalf("ceiling = %+v; want octo 4 of 5 (this copy 2, lane-b 1, elsewhere 1) with the warning", c)
+		!strings.Contains(c.Warning, "whose holds are yours") {
+		t.Fatalf("ceiling = %+v; want P's holder id 4 of 5 (this copy 2, lane-b 1, elsewhere 1) with the warning", c)
 	}
 
 	code, text, _ := reserveRun(t, p, "peers")
 	if code != 0 {
 		t.Fatalf("peers: exit %d\n%s", code, text)
 	}
+	id := heldBy(t, p)
 	for _, want := range []string{`from the worktree "lane-b" on this machine`,
-		`your holds: octo 4 of 5 (this copy 2, "lane-b" 1, elsewhere 1)`, "warning: octo holds 4 of the 5"} {
+		`your holds: ` + id + ` 4 of 5 (this copy 2, "lane-b" 1, elsewhere 1)`, "warning: " + id + " holds 4 of the 5"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the listing lacks %q:\n%s", want, text)
 		}
@@ -120,7 +121,7 @@ func TestPeersTextSaysWhyTheCeilingIsTheDefault(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("peers: exit %d\n%s", code, text)
 	}
-	for _, want := range []string{"your holds: octo 1 of 10", "note: the machine configuration could not be read"} {
+	for _, want := range []string{"your holds: " + heldBy(t, p) + " 1 of 10", "note: the machine configuration could not be read"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the listing lacks %q:\n%s", want, text)
 		}

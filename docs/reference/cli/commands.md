@@ -232,10 +232,11 @@ long it stands (default 30m, from 1m to 24h). An announcement carries no free te
 question points at the item, and the conversation happens there.
 
 The announcement is one commit that changes no file on your own status branch,
-abcd-status/<your GitHub username in lower case> on the remote named origin,
-carrying the kind, the item, you as sender, this working copy, the time sent
-and the expiry. The verb lists the status branches on origin (git ls-remote),
-fetches each one named by a lower-case GitHub username, with origin's default
+abcd-status/<your holder id> on the remote named origin, carrying the kind,
+the item, you as sender (your holder id), this working copy, the time sent and
+the expiry. The verb lists the status branches on origin (git ls-remote),
+fetches each one named by a holder id or a lower-case GitHub username (the
+names announcements had before the holder id, still read), with origin's default
 branch, then makes one plain fast-forward push with the repository's hooks
 running. A push that lost a race to another of your sessions is rebuilt on the
 new tip and pushed again, up to three times; then it says "not sent" and why.
@@ -243,12 +244,14 @@ Nothing is ever forced.
 
 A record must already be on origin's default branch, since an announcement is
 public; a record the embargo store on this machine holds is refused, and so is
-every announcement when that store cannot be checked. The sender is worked out
-as reserve's holder is: from user.email when it is a GitHub no-reply address,
-then reservation.github_username in the machine configuration, then the
-session's forge token, asked whose account it is. When git's identity is not a
-person's, the token's account sends and authors the announcement, and the
-identity git had is shown nowhere.
+every announcement when that store cannot be checked. The sender is your holder
+id, as reserve's holder is (`abcd reserve --holder` prints it), so no
+announcement carries your GitHub login; the account is still worked out as
+reserve's is: from user.email when it is a GitHub no-reply address, then
+reservation.github_username in the machine configuration, then the session's
+forge token, asked whose account it is. When git's identity is not a person's,
+the token's account authors the announcement, and the identity git had is
+shown nowhere.
 
 Exit 0 when the announcement reached origin; exit 2 on every refusal, when it
 was not sent, and when a push was made but whether it landed cannot be told.
@@ -4711,7 +4714,7 @@ abcd reserve --sweep [--apply] [--older-than <days>]
 Reserve an issue or an intent on the shared remote before starting work on it, so
 every other participant sees it is taken. The reservation is the branch
 abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits
-naming the record, the holder (your GitHub username), this working copy, the files
+naming the record, the holder (your holder id, below), this working copy, the files
 the work will change (--footprint, once per repository-relative path) and the
 lease (--lease, from 1m to 24h; default 2h, or 24h for a release).
 
@@ -4762,23 +4765,35 @@ nothing pushed, and so is the act when a store cannot be read, naming that
 store. A release does not consult it. A build's and a drain's reservations
 consult it too.
 
-The holder is your GitHub username, from the first of these that names it:
-user.email, when it is a GitHub no-reply address; reservation.github_username
-in the machine configuration (the repository's own configuration is never read
-for it); and the account this session's own GitHub token belongs to, which
-takes one call to GitHub's user endpoint, through gh. When git's identity is
-not a person's (unset, or a machine's), the token alone names the holder, that
-account authors the reservation commit, and the identity git had is shown
-nowhere. The checkout must have its local tier (.abcd/.work.local/), where this
-copy's key is kept. `abcd peers` lists every reservation.
+The holder is named by your holder id: h_ and 32 random lower-case hex
+characters, minted the first time one is needed into ~/.abcd.noindex/holder-id
+(owner-only) and kept, so nothing abcd pushes carries your GitHub login. A
+holder-id file another account owns or could write, or one that holds no id,
+is refused, never replaced. A reservation under an id listed in
+~/.abcd.noindex/holder-ids (one per line, # comments; the ids your other
+machines and accounts print with --holder) is yours too, from another copy.
+
+abcd still works out your GitHub username, which is never pushed, from the first
+of these that names it: user.email, when it is a GitHub no-reply address;
+reservation.github_username in the machine configuration (the repository's own
+configuration is never read for it); and the account this session's own GitHub
+token belongs to, which takes one call to GitHub's user endpoint, through gh. A
+reservation made before the holder id names that username, and is still yours.
+When git's identity is not a person's (unset, or a machine's), the token alone
+names the account, that account authors the reservation commit, and the
+identity git had is shown nowhere. The checkout must have its local tier
+(.abcd/.work.local/), where this copy's key is kept. `abcd peers` lists every
+reservation.
 
 --holder prints the account an act from this checkout would reserve as and the
-source that named it (git, config or token), or its --json document. It may
-make that one call to the user endpoint in two cases: git's identity is a
-person's but carries neither a GitHub no-reply address nor a machine key; or
-git's identity is not a person's (unset, or a machine's), when the machine key
-is skipped. It takes no record id and no other flag, and reserves, writes and
-pushes nothing. It exits 0 when the account is known and 2 when not.
+source that named it (git, config or token), then your holder id, where it is
+kept, and any ids declared as yours, or its --json document. It may make that
+one call to the user endpoint in two cases: git's identity is a person's but
+carries neither a GitHub no-reply address nor a machine key; or git's identity
+is not a person's (unset, or a machine's), when the machine key is skipped. It
+takes no record id and no other flag, reserves and pushes nothing, and writes
+only the holder id, when none is kept yet. It exits 0 when the account and the
+holder id are known and 2 when not.
 
 Exit 0 when the act reached origin (or a release was already made); exit 3 when
 the record is held by someone else or by your other copy, so back off; exit 2
@@ -4806,7 +4821,7 @@ exit 2 when it could not run or origin refused a deletion.
 ```
       --apply                   with --sweep, delete the spent branches, each only while its tip is the one judged
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
-      --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
+      --holder                  say which GitHub account an act would reserve as, and from where, and your holder id; reserves nothing
       --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
       --older-than int          with --sweep, the days a branch must have been untouched past its lease (at least 1) (default 7)
       --release                 release your reservation from this copy by pushing a tombstone
@@ -5302,8 +5317,9 @@ drain lane's stage and each holder's hand-backs from the last day.
 
 It reads the remote once: it lists the status branches on origin (git
 ls-remote), then fetches, in one command, the reservations with origin's
-release tags, the first 500 status branches whose names are GitHub
-usernames in lower case, and origin's default branch, and stamps when in
+release tags, the first 500 status branches whose names are holder ids or
+GitHub usernames in lower case (the names before the holder id), and
+origin's default branch, and stamps when in
 the local tier. A branch under abcd-status/ by any other name is counted,
 never named, and not fetched; branches past the 500 are counted and not
 fetched. Before the fetch, this checkout's copy of each status branch that
@@ -5312,9 +5328,11 @@ origin, one whose name is not read and one past the 500 leave nothing to
 read; a copy that cannot be deleted is named, and the fetch goes on. Then
 it asks the forge (gh api, the repository's activity record) who pushed
 each standing announcement it has not asked about yet, on at most ten
-branches, the one waiting longest first: a sender is verified when the
-forge names the branch's owner, doubtful when it names someone else, and
-claimed when the forge cannot say or an app pushed it.
+branches named by a username, the one waiting longest first: a sender is
+verified when the forge names the branch's owner, doubtful when it names
+someone else, and claimed when the forge cannot say or an app pushed it. A
+branch named by a holder id names no account the forge's record could
+match, so it is not asked about and its senders stay claimed.
 
 An announcement stands for its life from when this checkout first fetched it,
 not by the sender's clock. One whose sender is not its branch's owner, one

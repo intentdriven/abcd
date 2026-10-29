@@ -22,6 +22,10 @@ type world struct {
 	bare string
 	mu   sync.Mutex
 	now  time.Time
+	// homes is the home each email's clones share when a test names none:
+	// one person's copies on one machine share their abcd home, and with it
+	// their holder id (holderid.go).
+	homes map[string]string
 }
 
 // participant is one working copy: a clone with its own git identity, local
@@ -64,14 +68,24 @@ func (w *world) set(at time.Time) {
 }
 
 // clone makes a participant whose user.email is email; home, when not "",
-// is the home the machine layer is read under.
+// is the home the machine layer is read under and the holder id is kept in,
+// and otherwise every clone of one email shares one home, as one person's
+// copies on one machine do. A test standing for another computer, or another
+// account, of the same person names a home of its own.
 func (w *world) clone(email, home string) *participant {
 	w.t.Helper()
 	dir := filepath.Join(w.t.TempDir(), "copy")
 	w.seed.Git("clone", "-q", w.bare, dir)
 	p := &participant{w: w, dir: dir, home: home}
 	if p.home == "" {
-		p.home = w.t.TempDir()
+		key := strings.ToLower(email)
+		if w.homes[key] == "" {
+			if w.homes == nil {
+				w.homes = map[string]string{}
+			}
+			w.homes[key] = w.t.TempDir()
+		}
+		p.home = w.homes[key]
 	}
 	for _, kv := range [][2]string{{"user.name", "Pat Example"}, {"user.email", email}, {"gc.auto", "0"},
 		{"gc.autodetach", "false"}, {"maintenance.auto", "false"}, {"core.fsmonitor", "false"}} {
@@ -167,7 +181,7 @@ func TestAReservationIsAParentlessEmptyTreeCommitAndLeavesTheCheckoutAlone(t *te
 		t.Fatalf("author|committer = %q; want P's git identity", who)
 	}
 	msg := w.remoteMessage(tip)
-	for _, want := range []string{"Abcd-Reservation: iss-5\n", "Abcd-Holder: octo\n", "Abcd-Footprint: a.go\n",
+	for _, want := range []string{"Abcd-Reservation: iss-5\n", "Abcd-Holder: " + p.keptHolderID() + "\n", "Abcd-Footprint: a.go\n",
 		"Abcd-Claimed-At: 2026-10-03T14:00:00Z\n", "Abcd-Expires-At: 2026-10-03T16:00:00Z\n", "Assisted-by: abcd:dev"} {
 		if !strings.Contains(msg+"\n", want) {
 			t.Fatalf("message lacks %q:\n%s", want, msg)
@@ -192,7 +206,7 @@ func TestAnotherPersonsLiveReservationIsRefusedWithTheBackOffExit(t *testing.T) 
 	tip := w.remoteTip("iss-5")
 	w.set(t0.Add(time.Hour))
 	_, err := q.reserve("iss-5", "b.go")
-	want := "iss-5 is reserved by octo until 2026-10-03T16:00:00Z; back off and take other work"
+	want := "iss-5 is reserved by " + p.keptHolderID() + " until 2026-10-03T16:00:00Z; back off and take other work"
 	if !errors.Is(err, ErrBackOff) || err.Error() != want {
 		t.Fatalf("Q's reserve = %v; want %q", err, want)
 	}
@@ -251,7 +265,7 @@ func TestAStaleViewLosesTheRaceAndNamesTheWinner(t *testing.T) {
 				}
 			}
 			_, err := q.reserve("iss-5", "b.go")
-			want := "iss-5 was reserved by octo while this push was on its way, until 2026-10-03T16:00:00Z; back off and take other work"
+			want := "iss-5 was reserved by " + w.holderIDOf("1234+octo@users.noreply.github.com") + " while this push was on its way, until 2026-10-03T16:00:00Z; back off and take other work"
 			if !errors.Is(err, ErrBackOff) || err.Error() != want {
 				t.Fatalf("Q's reserve = %v; want %q", err, want)
 			}
@@ -260,7 +274,7 @@ func TestAStaleViewLosesTheRaceAndNamesTheWinner(t *testing.T) {
 					t.Fatalf("origin's pre-receive never ran, so the push was not refused by the remote: %v", serr)
 				}
 			}
-			if !strings.Contains(w.remoteMessage(w.remoteTip("iss-5")), "Abcd-Holder: octo") {
+			if !strings.Contains(w.remoteMessage(w.remoteTip("iss-5")), "Abcd-Holder: "+p.keptHolderID()+"\n") {
 				t.Fatalf("origin's tip is not P's")
 			}
 			if local := q.git("for-each-ref", "refs/heads/abcd-reserved/"); local != "" {
@@ -322,8 +336,8 @@ func TestReleasingAnotherPersonsReservationPushesNothing(t *testing.T) {
 	}
 	tip := w.remoteTip("iss-5")
 	_, err := p.do(Request{Record: "iss-5", Release: true})
-	if !errors.Is(err, ErrRefused) || err.Error() != "iss-5 is reserved by quinn, not by you; nothing was pushed" {
-		t.Fatalf("P's release = %v; want the refusal naming quinn", err)
+	if !errors.Is(err, ErrRefused) || err.Error() != "iss-5 is reserved by "+q.keptHolderID()+", not by you; nothing was pushed" {
+		t.Fatalf("P's release = %v; want the refusal naming Q's holder id", err)
 	}
 	if w.remoteTip("iss-5") != tip {
 		t.Fatalf("the branch moved")
@@ -385,9 +399,9 @@ func TestAReservationLapsedPastTheMarginIsTakenOverNamingWhatItReplaced(t *testi
 	}
 	w.set(t0.Add(2*time.Hour + TakeoverMargin))
 	res, err := q.reserve("iss-5", "b.go")
-	if err != nil || res.Act != ActTakenOver || res.Replaced == nil || res.Replaced.Holder != "octo" ||
+	if err != nil || res.Act != ActTakenOver || res.Replaced == nil || res.Replaced.Holder != p.keptHolderID() ||
 		!res.Replaced.EffectiveExpiry.Equal(t0.Add(2*time.Hour)) || res.Replaced.Commit != first.Commit {
-		t.Fatalf("Q's take-over = %+v (%+v), %v; want octo's reservation to 16:00Z replaced", res, res.Replaced, err)
+		t.Fatalf("Q's take-over = %+v (%+v), %v; want P's reservation to 16:00Z replaced", res, res.Replaced, err)
 	}
 	if w.parentOf(w.remoteTip("iss-5")) != first.Commit {
 		t.Fatalf("the take-over is not a child of P's tip")
@@ -405,7 +419,7 @@ func TestAReservationLapsedUnderTheMarginIsRefused(t *testing.T) {
 	tip := w.remoteTip("iss-5")
 	w.set(t0.Add(2*time.Hour + TakeoverMargin - time.Second))
 	_, err := q.reserve("iss-5", "b.go")
-	want := "iss-5 is reserved by octo, lapsed at 2026-10-03T16:00:00Z, under five minutes ago by this computer's clock; retry after 2026-10-03T16:05:00Z"
+	want := "iss-5 is reserved by " + p.keptHolderID() + ", lapsed at 2026-10-03T16:00:00Z, under five minutes ago by this computer's clock; retry after 2026-10-03T16:05:00Z"
 	if !errors.Is(err, ErrBackOff) || err.Error() != want {
 		t.Fatalf("Q's reserve = %v; want %q", err, want)
 	}
@@ -508,7 +522,8 @@ func TestATerminalRecordOnTheDefaultBranchReleasesItsReservation(t *testing.T) {
 
 // TestAnotherCopyOfTheSamePersonIsRefusedWithoutTakeOver is C20: a laptop that
 // resolves its username through the machine config and a cloud copy that
-// resolves it through a no-reply address are one person, two copies.
+// resolves it through a no-reply address are one person, two copies, once the
+// cloud copy's home declares the laptop's holder id.
 func TestAnotherCopyOfTheSamePersonIsRefusedWithoutTakeOver(t *testing.T) {
 	w := newWorld(t)
 	laptop := w.clone("pat@example.com", machineConfig(t, `{"reservation": {"github_username": "octo"}}`))
@@ -516,6 +531,7 @@ func TestAnotherCopyOfTheSamePersonIsRefusedWithoutTakeOver(t *testing.T) {
 	if _, err := laptop.reserve("iss-5", "a.go"); err != nil {
 		t.Fatal(err)
 	}
+	declareHolderIDs(t, cloud.home, laptop.keptHolderID()+"\n")
 	tip := w.remoteTip("iss-5")
 	_, err := cloud.reserve("iss-5", "a.go")
 	want := "you are already building iss-5 on another computer, until 2026-10-03T16:00:00Z; pass --take-over to continue here"
@@ -541,8 +557,9 @@ func TestTakeOverMovesTheReservationToThisCopy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	declareHolderIDs(t, cloud.home, laptop.keptHolderID()+"\n")
 	res, err := cloud.do(Request{Record: "iss-5", Footprint: []string{"a.go"}, TakeOver: true})
-	if err != nil || res.Act != ActTakenOver || res.Replaced == nil || res.Replaced.Copy != CopyAnother || res.Replaced.Holder != "octo" {
+	if err != nil || res.Act != ActTakenOver || res.Replaced == nil || res.Replaced.Copy != CopyAnother || res.Replaced.Holder != laptop.keptHolderID() {
 		t.Fatalf("take-over = %+v (%+v), %v; want the laptop's copy replaced", res, res.Replaced, err)
 	}
 	cloudKey, err := copyKey(cloud.dir)

@@ -71,7 +71,7 @@ func TestTheViewJudgesEveryReservationFromDiskAlone(t *testing.T) {
 	if got["iss-5"].Copy != CopyThis || got["itd-9"].Copy != "" || !slices.Equal(got["itd-9"].Footprint, []string{"c.go"}) {
 		t.Errorf("copies: iss-5 %q, itd-9 %q; want this copy's marked and Q's not", got["iss-5"].Copy, got["itd-9"].Copy)
 	}
-	if lh := snap.LiveByHolder(); lh["octo"] != 1 || lh["quinn"] != 1 || len(lh) != 2 {
+	if lh := snap.LiveByHolder(); lh[p.keptHolderID()] != 1 || lh[q.keptHolderID()] != 1 || len(lh) != 2 {
 		t.Errorf("live by holder = %v; want octo 1, quinn 1", lh)
 	}
 

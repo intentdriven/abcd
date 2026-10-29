@@ -154,7 +154,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"Reserve an issue or an intent on the shared remote before starting work on it, so\n" +
 			"every other participant sees it is taken. The reservation is the branch\n" +
 			"abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits\n" +
-			"naming the record, the holder (your GitHub username), this working copy, the files\n" +
+			"naming the record, the holder (your holder id, below), this working copy, the files\n" +
 			"the work will change (--footprint, once per repository-relative path) and the\n" +
 			"lease (--lease, from 1m to 24h; default 2h, or 24h for a release).\n\n" +
 			"A session cutting a release reserves the release instead, rel-vX.Y.Z, with no\n" +
@@ -199,22 +199,33 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"nothing pushed, and so is the act when a store cannot be read, naming that\n" +
 			"store. A release does not consult it. A build's and a drain's reservations\n" +
 			"consult it too.\n\n" +
-			"The holder is your GitHub username, from the first of these that names it:\n" +
-			"user.email, when it is a GitHub no-reply address; reservation.github_username\n" +
-			"in the machine configuration (the repository's own configuration is never read\n" +
-			"for it); and the account this session's own GitHub token belongs to, which\n" +
-			"takes one call to GitHub's user endpoint, through gh. When git's identity is\n" +
-			"not a person's (unset, or a machine's), the token alone names the holder, that\n" +
-			"account authors the reservation commit, and the identity git had is shown\n" +
-			"nowhere. The checkout must have its local tier (.abcd/.work.local/), where this\n" +
-			"copy's key is kept. `abcd peers` lists every reservation.\n\n" +
+			"The holder is named by your holder id: h_ and 32 random lower-case hex\n" +
+			"characters, minted the first time one is needed into ~/.abcd.noindex/holder-id\n" +
+			"(owner-only) and kept, so nothing abcd pushes carries your GitHub login. A\n" +
+			"holder-id file another account owns or could write, or one that holds no id,\n" +
+			"is refused, never replaced. A reservation under an id listed in\n" +
+			"~/.abcd.noindex/holder-ids (one per line, # comments; the ids your other\n" +
+			"machines and accounts print with --holder) is yours too, from another copy.\n\n" +
+			"abcd still works out your GitHub username, which is never pushed, from the first\n" +
+			"of these that names it: user.email, when it is a GitHub no-reply address;\n" +
+			"reservation.github_username in the machine configuration (the repository's own\n" +
+			"configuration is never read for it); and the account this session's own GitHub\n" +
+			"token belongs to, which takes one call to GitHub's user endpoint, through gh. A\n" +
+			"reservation made before the holder id names that username, and is still yours.\n" +
+			"When git's identity is not a person's (unset, or a machine's), the token alone\n" +
+			"names the account, that account authors the reservation commit, and the\n" +
+			"identity git had is shown nowhere. The checkout must have its local tier\n" +
+			"(.abcd/.work.local/), where this copy's key is kept. `abcd peers` lists every\n" +
+			"reservation.\n\n" +
 			"--holder prints the account an act from this checkout would reserve as and the\n" +
-			"source that named it (git, config or token), or its --json document. It may\n" +
-			"make that one call to the user endpoint in two cases: git's identity is a\n" +
-			"person's but carries neither a GitHub no-reply address nor a machine key; or\n" +
-			"git's identity is not a person's (unset, or a machine's), when the machine key\n" +
-			"is skipped. It takes no record id and no other flag, and reserves, writes and\n" +
-			"pushes nothing. It exits 0 when the account is known and 2 when not.\n\n" +
+			"source that named it (git, config or token), then your holder id, where it is\n" +
+			"kept, and any ids declared as yours, or its --json document. It may make that\n" +
+			"one call to the user endpoint in two cases: git's identity is a person's but\n" +
+			"carries neither a GitHub no-reply address nor a machine key; or git's identity\n" +
+			"is not a person's (unset, or a machine's), when the machine key is skipped. It\n" +
+			"takes no record id and no other flag, reserves and pushes nothing, and writes\n" +
+			"only the holder id, when none is kept yet. It exits 0 when the account and the\n" +
+			"holder id are known and 2 when not.\n\n" +
 			"Exit 0 when the act reached origin (or a release was already made); exit 3 when\n" +
 			"the record is held by someone else or by your other copy, so back off; exit 2\n" +
 			"on every other refusal and failure. Nothing is pushed on a refusal, and a failed\n" +
@@ -309,15 +320,28 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&takeOver, "take-over", false, "move your own live reservation from another copy to this one")
 	cmd.Flags().DurationVar(&leaseFor, "lease", 0, "how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)")
 	cmd.Flags().BoolVar(&release, "release", false, "release your reservation from this copy by pushing a tombstone")
-	cmd.Flags().BoolVar(&holder, "holder", false, "say which GitHub account an act would reserve as, and from where; reserves nothing")
+	cmd.Flags().BoolVar(&holder, "holder", false, "say which GitHub account an act would reserve as, and from where, and your holder id; reserves nothing")
 	sweep = addSweepFlags(cmd)
 	return cmd
 }
 
+// reserveHolderOutput is `reserve --holder`'s document: the account and the
+// source that named it, as before, with the holder id what abcd pushes names
+// the person by, where it is kept, and the ids the person declares as theirs
+// too. None of it is pushed.
+type reserveHolderOutput struct {
+	claim.Holder
+	HolderID          string   `json:"holder_id"`
+	HolderIDFile      string   `json:"holder_id_file"`
+	DeclaredHolderIDs []string `json:"declared_holder_ids"`
+	DeclaredIDsFile   string   `json:"declared_holder_ids_file"`
+}
+
 // runReserveHolder is `reserve --holder`: the account a reservation act from
-// this checkout would be made as, and the source that named it. It writes
-// nothing; when git's identity names no holder it may ask the forge's user
-// endpoint once, as the act itself would.
+// this checkout would be made as, the source that named it, and the holder id
+// the act would push in its place. It writes only the holder id, minted when
+// none is kept yet; when git's identity names no holder it may ask the
+// forge's user endpoint once, as the act itself would.
 func runReserveHolder(w, errw io.Writer, asJSON bool) error {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -328,11 +352,24 @@ func runReserveHolder(w, errw io.Writer, asJSON bool) error {
 		return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was reserved"}
 	}
 	noteMachineHome(errw, "abcd reserve")
-	h, err := claim.ResolveHolder(root, claim.Options{ForgeUser: reserveForgeUser})
+	o := claim.Options{ForgeUser: reserveForgeUser}
+	h, err := claim.ResolveHolder(root, o)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 	}
-	return render(w, asJSON, h, func(w io.Writer) { fmt.Fprintf(w, "would reserve as %s (from %s)\n", h.Login, h.Source) })
+	self, err := claim.OwnSelf(h.Login, o)
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+	}
+	out := reserveHolderOutput{Holder: h, HolderID: self.ID, HolderIDFile: claim.HolderIDFile,
+		DeclaredHolderIDs: append([]string{}, self.Declared...), DeclaredIDsFile: claim.DeclaredHolderIDsFile}
+	return render(w, asJSON, out, func(w io.Writer) {
+		fmt.Fprintf(w, "would reserve as %s (from %s)\n", h.Login, h.Source)
+		fmt.Fprintf(w, "holder id: %s (kept in %s); what abcd pushes names you by it, never by your login\n", self.ID, claim.HolderIDFile)
+		if len(self.Declared) > 0 {
+			fmt.Fprintf(w, "also yours: %s (declared in %s)\n", strings.Join(self.Declared, ", "), claim.DeclaredHolderIDsFile)
+		}
+	})
 }
 
 // reserveRefusal maps the core's two refusal classes to their exit codes: the

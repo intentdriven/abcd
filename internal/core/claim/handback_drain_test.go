@@ -41,7 +41,7 @@ func wantDrainBackOff(t *testing.T, w *world, who *participant, what string) {
 	t.Helper()
 	before := w.remoteTip("iss-5")
 	res, err := who.do(Request{Record: "iss-5", Footprint: []string{"c.go"}, Drain: true})
-	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "was made over a hand-back by octo as user-visible at 2026-10-03T14:00:00Z") {
+	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "was made over a hand-back by "+w.holderIDOf("1234+octo@users.noreply.github.com")+" as user-visible at 2026-10-03T14:00:00Z") {
 		t.Fatalf("%s over a reservation made over a standing hand-back = %+v, %v; want the hand-back's back-off", what, res, err)
 	}
 	if w.remoteTip("iss-5") != before {
