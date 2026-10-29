@@ -18,10 +18,12 @@ import (
 // the person names the older tag themselves.
 
 // latestUpdater resolves a bare update to a fixed latest tag and records
-// whether the swap ran.
+// whether the swap ran. With refusal set, Apply refuses with it instead of
+// swapping, as the core does for a release it will not take.
 type latestUpdater struct {
 	latest  string
 	applied bool
+	refusal *update.Refusal
 }
 
 func (f *latestUpdater) ResolveTag(requested string) (string, error) {
@@ -32,6 +34,9 @@ func (f *latestUpdater) ResolveTag(requested string) (string, error) {
 }
 
 func (f *latestUpdater) Apply(_, tag string, _ io.Writer) (update.Report, error) {
+	if f.refusal != nil {
+		return update.Report{Action: update.ActionRefused, Tag: tag, Refusal: f.refusal}, nil
+	}
 	f.applied = true
 	return swappedReceipt(tag), nil
 }
@@ -40,6 +45,14 @@ func (f *latestUpdater) Apply(_, tag string, _ io.Writer) (update.Report, error)
 // mark seeded at mark ("" for none), returning the fake, the output and the
 // exit code.
 func runUpdateWithMark(t *testing.T, mark, latest string, args ...string) (*latestUpdater, string, int) {
+	t.Helper()
+	fake := &latestUpdater{latest: latest}
+	out, code := runUpdateWithMarkFake(t, mark, fake, args...)
+	return fake, out, code
+}
+
+// runUpdateWithMarkFake is runUpdateWithMark with the updater supplied.
+func runUpdateWithMarkFake(t *testing.T, mark string, fake *latestUpdater, args ...string) (string, int) {
 	t.Helper()
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".local", "bin")
@@ -59,13 +72,36 @@ func runUpdateWithMark(t *testing.T, mark, latest string, args ...string) (*late
 			t.Fatal(err)
 		}
 	}
-	fake := &latestUpdater{latest: latest}
 	orig := newUpdater
 	newUpdater = func() updater { return fake }
 	t.Cleanup(func() { newUpdater = orig })
 	var out bytes.Buffer
 	code := Run(append([]string{"update", "--yes"}, args...), &out, &out)
-	return fake, out.String(), code
+	return out.String(), code
+}
+
+// TestUpdateLeavesTheMarkWhenTheReleaseIsNotItsOwnBuild: a newer tag whose
+// release carries an older release's genuine build is refused by the core as
+// not this release, and the refusal leaves the mark where it was, so a later
+// genuine release is not refused as older than a tag that installed nothing.
+func TestUpdateLeavesTheMarkWhenTheReleaseIsNotItsOwnBuild(t *testing.T) {
+	for _, named := range []bool{false, true} {
+		fake := &latestUpdater{latest: "v99.0.0", refusal: &update.Refusal{
+			Shape:  "not-this-release",
+			Detail: "its build metadata names release v0.6.1, not v99.0.0, so it is not this release's build",
+		}}
+		var args []string
+		if named {
+			args = []string{"v99.0.0"}
+		}
+		out, code := runUpdateWithMarkFake(t, "v0.7.0", fake, args...)
+		if code == 0 || fake.applied {
+			t.Fatalf("named=%v: a release that is not its own build was taken (exit %d):\n%s", named, code, out)
+		}
+		if got, _ := ahoy.ReadReleaseMark(); got != "v0.7.0" {
+			t.Errorf("named=%v: the refusal moved the mark to %q", named, got)
+		}
+	}
 }
 
 // TestUpdateRefusesALatestReleaseOlderThanTheMark: a bare update whose latest
