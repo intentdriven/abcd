@@ -360,13 +360,8 @@ with `*CONCURRENCY` to force it).
   lanes are named separately because their files carry a build tag, so
   `go test ./...` compiles none of them; each takes under a minute in CI and
   runs under `-timeout $(EVAL_TIMEOUT)`, 20m by default.
-  `secrets-check` and `vulncheck` are CI's gitleaks and govulncheck scans at
-  the versions `ci.yml` pins (`scripts/preflight-scans.sh`), run before the
-  push so their findings cost no hosted run; a scan that cannot run here (no
-  gitleaks on PATH, no network) is skipped loudly and left to CI, and a
-  govulncheck finding on a branch that moves no dependency warns rather than
-  stops (govulncheck is not a required check, and the finding most likely
-  stands on the default branch).
+  `secrets-check` and `vulncheck` run CI's gitleaks and govulncheck scans
+  before the push; `scripts/preflight-scans.sh` says when one skips or warns.
 - **Preflight judges with CI's toolchain.** `make fmt-check`, the format gate
   CI's check job runs, is preflight's first gate, straight after the load
   check. It resolves gofmt from the toolchain `go.mod` declares rather than from
