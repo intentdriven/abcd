@@ -17,6 +17,7 @@ package loop
 // rule (criterion 5, nextseries.go).
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -39,8 +40,9 @@ const StagePick = "pick"
 const CheckRun = "run"
 
 // CheckFootprint is the exclusion of a planned intent whose spec names no
-// footprint packages to reserve it with, in a checkout with a remote named
-// origin: its start would be refused at the reservation.
+// footprint packages to reserve it with, or names one by prose rather than by
+// its path, in a checkout with a remote named origin: its start would be
+// refused at the reservation.
 const CheckFootprint = "footprint"
 
 // Excluded is a planned intent the pick did not consider, with the first
@@ -177,6 +179,11 @@ func candidatesAt(repoRoot, session string, now time.Time) (CandidateSet, error)
 		}
 		if reserves {
 			fp, err := specPackages(repoRoot, chk.Spec)
+			var entry *footprintEntryError
+			if errors.As(err, &entry) {
+				set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckFootprint, Reason: termsafe.Sanitize(entry.Error())})
+				continue
+			}
 			if err != nil {
 				return set, err
 			}
