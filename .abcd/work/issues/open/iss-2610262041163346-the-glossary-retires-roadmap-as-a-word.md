@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 989 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/roadmap.md:18"
-remedy: "none (filed automatically)"
+remedy: "In itd-61 replace 'the roadmap' (four uses, including 'captured into the roadmap') with 'the intent backlog' or 'Now / Next / Later'."
 related_intents: [itd-61]
 finding_ref: cfk-1ab3349b49525dcd
 ---

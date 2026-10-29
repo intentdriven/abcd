@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 44 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/02-context.md:11"
-remedy: "none (filed automatically)"
+remedy: "Remove 'disciplines move from drafts/ to disciplines/ on plan and stay there' from 02-context.md:11 or mark it staged: plan's discipline branch does not ship."
 finding_ref: cfk-22452cb95401e2ce
 ---
 

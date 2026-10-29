@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 199 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-50-loop-toward-acceptance.md:25"
-remedy: "none (filed automatically)"
+remedy: "In itd-50, replace the retired name intent-fidelity-reviewer with intent-auditor (press release, Why This Matters, Audit Notes placeholder, Related)."
 related_intents: [itd-50]
 finding_ref: cfk-8366953637717750
 ---

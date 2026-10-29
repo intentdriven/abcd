@@ -201,7 +201,7 @@ last, and a fourth reads its record at the end:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement status [--run <run-id>] --json
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] [--route <role>=runner:<name>[@<provider>/<model>]]... --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> [--run <run-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement record [--run <run-id>] [--transcript <path>]... --json
 ```
@@ -275,6 +275,33 @@ on stderr: the role is the host's, as if unrouted, and no fallback is recorded.
 One it sets to `host` keeps the role on the host over the machine's route to a
 runner, with a warning naming the repository's file, the role and the machine
 route it displaced.
+`step --route <role>=runner:<name>[@<provider>/<model>]` routes one role this
+step hands out (`implementer`, `ruthless-reviewer`, `security-reviewer` or
+`intent-auditor`) to a runner for that step alone, over every configured route,
+and asks it for the model after `@` in place of `runner.<name>.model`, which
+every other role keeps; one `--route` per role. The runner must be one
+`~/.abcd.noindex/config.json` enables and the model one its provider lists, or
+the step is refused before anything is written, naming the fix; a tier route,
+or a `--route` with `--release`, `--discard`, `--restart` or
+`--accept-config-change` (which writes its acceptance before the step is
+judged), is refused too. The
+model is held to the pins the machine sets for it, as the machine's own model
+is, so a `--route` naming claude, which holds no pin, for a model the machine
+pins is refused before anything is written, naming `runner.opencode.model`; a
+machine route to claude for a pinned model is refused by claude at launch, and
+the role falls back. A step hands at
+most one role out, so a `--route` for a role it will not hand out (it performs a
+stage abcd runs itself, hands out another role, or re-tells an agent already
+out) is refused before anything is written, naming the role it hands out or that
+it hands none. When a lane's landing comes first and may wait on the forge,
+whether the role is handed out is known only after the landing moves: a
+`--route` it then did not use is warned of on stderr, named in the result's
+`route_unused`, and recorded in the run record. A warning about a role's
+configured route (the repository keeping it on the host) is not printed for a
+role the `--route` replaces. The role's receipt in the run's state carries the
+`--route` verbatim as `route.override`, which is state schema version 16's.
+When the runner falls back to the host, the fallback receipt names the runner
+asked and the `--route` text is not recorded.
 The runner's receipt is verified by the stage's own verifier: a verified one
 completes the stage in the same call, and the result's `route` names the runner
 that ran it. A runner that is absent, refuses, fails, runs past its time or
@@ -403,7 +430,26 @@ not deleted: `receipt` refuses, naming that checkout and removing nothing.
 ceiling, and writes a fix brief only once every validator of the round has
 returned; it records each verdict from the validator's own return; the fidelity audit passes only
 when every criterion is met, so an undecided (`INCONCLUSIVE`) criterion sends
-the lane to a fresh implementer as a not-met one does. A lane that has taken
+the lane to a fresh implementer as a not-met one does. Each role a round hands
+out is asked for the model tier its routing row names, and a round that does
+not pass moves each role one step up for the next round (`local`, `economy`,
+`frontier`; `frontier` and `host-decides` stay), from the tier it ran at, never
+two steps at once; a round that passes moves nothing, up or down. When the
+result names a `tier` (and `next` says "at model tier"), start the agent on a
+model of that tier; the brief's routing section names it too. The round
+records each role's route under its `routes` in the state: the `tier`, the
+`escalated_from` tier and the failed round's `gate_output` (bounded and
+masked). A route that names no tier does not move and the result names none: a
+role on a runner (a machine route or a `--route`), a review the reviewer route
+takes, a role `oracle.roles.<role>` points at a provider, a `host-decides` row,
+and the implementer, which has no routing row; its record carries the gate
+output and a `note` saying why. An escalated tier refuses the step at
+`validate`, naming the provider, only where a connection serves that tier off
+its allowlist; no connection serves a tier today, so an escalated tier goes to
+the host. A routing table or provider configuration `step` cannot read is
+refused at `routing`, and its non-fatal reports are said on stderr; nothing is
+written by a refusal. A round's `routes` is state schema
+version 16's. A lane that has taken
 the run's fix rounds (`build --fix-rounds`, bundled 3) and still does not pass
 is handed back: the result's `hand_back` names the verdict `unachievable` and
 the last findings, and the loop starts nothing further for it. Its sibling
@@ -834,42 +880,48 @@ hold: a first gate's `--wait -- make preflight` holds its gate until its
 preflight starts its race run, and were that to shut the race gate too, an
 earlier preflight's race stage would wait on it while the holder's own race
 waiter queued behind that earlier one, and neither would move. A preflight waiting there has passed its first gate and
-counts as in its test stages. A waiter that has opened stands back only from a
+runs nothing: at one preflight at a time it counts as in its test stages, and
+above one it takes no slot at the first gate until its race run starts, so the
+machine is not left idle while it waits for another preflight's race run
+(iss-2610282016250805). A waiter that has opened stands back only from a
 waiter that opened in the same moment at its own gate, never from one at the
 other gate.
 
-How many preflights may be in their test stages at once is the person's own
-machine setting, never a repository's, so a checkout cannot raise the
-machine's load: `load.preflights` in `~/.abcd.noindex/config.json` (a whole
-number from 1 to 2, read through the same guarded read as every machine
+How many preflights the first gate admits to their test stages at once is the
+person's own machine setting, never a repository's, so a checkout cannot raise
+the machine's load: `load.preflights` in `~/.abcd.noindex/config.json` (a whole
+number from 1 to 4, read through the same guarded read as every machine
 setting), or `ABCD_LOAD_PREFLIGHTS` in the waiter's environment, which wins,
-for a trial without a file edit. Two is the most for now, for a measured trial
-of two preflights at once; 3 and 4 are refused, saying the limit rises once a
-measured trial supports it. It is 1 by default, and the preflight then runs
+for a trial without a file edit. Four is the most; 5 and above are refused,
+naming where the value was set. One race run at a time and the load limit stay
+the bounds whatever the setting. It is 1 by default, and the preflight then runs
 exactly as before the setting existed: the first gate reads as described
-above, and the race gate opens at once. What 2 adds: the first gate admits a
+above, and the race gate opens at once. What a setting above 1 adds: the first gate admits a
 preflight while fewer than that many other preflights or waiters running their
-command are in their test stages (`--wait -- make preflight` counts once), a
-waiter queued ahead still shuts it, and a live race run does not shut it by
-itself; the load limit still does, and the race gate waits as described
+command are in their test stages (`--wait -- make preflight` counts once, and
+a preflight queued at its race gate not at all), a waiter queued ahead still
+shuts it, and a live race run does not shut it by itself; the load limit still
+does, and the race gate waits as described
 above. The first gate's last look still applies: an opener that finds another
 opened in the same moment stands back as above, and its next look counts that
 waiter, from the moment its mark shows it running, as one of the preflights in
 their test stages. Race stages are kept apart only among preflights whose
 checkouts have the race gate: a preflight run from a checkout older than the
-gate runs its race stage ungated, so set 2 only once no such checkout runs a
-preflight. Each stage's `go test -p` is then at most the cores divided by the
-setting, so two concurrent stages do not each take the whole machine. A value
-that is not a whole number from 1 to 2 refuses the wait, naming where it was
+gate runs its race stage ungated, so set more than 1 only once no such checkout
+runs a preflight. Each stage's `go test -p` is then at most the cores divided
+by the setting, and never below a quarter of them, so concurrent stages do not
+each take the whole machine; a race stage can run beside as many unit stages
+as the setting, and the load limit bounds that one extra stage. A value
+that is not a whole number from 1 to 4 refuses the wait, naming where it was
 set; a `load.preflights` in a repository's `.abcd/config.json` is never read.
 
-What 2 does not close, across accounts, which share no hold:
+What a setting above 1 does not close, across accounts, which share no hold:
 
 - **Accounts that set it differently.** The setting is each account's own, and
   an account at 1 opens its race gate at once, as before the gate existed, so
-  its race stage can start while an account at 2 is in its race stage, and the
-  gate of the account at 2 sees that race run only once it is live. Race
-  stages are kept apart only among accounts that all set 2.
+  its race stage can start while an account above 1 is in its race stage, and
+  the gate of the account above 1 sees that race run only once it is live.
+  Race stages are kept apart only among accounts that all set more than 1.
 - **A race stage starting.** A race waiter exits as it opens, and its
   preflight's `go test -race` shows in the process table a few seconds later,
   once `cmd/test-parallelism` has run; a race waiter of another account that
@@ -882,10 +934,10 @@ What 2 does not close, across accounts, which share no hold:
   or once the later has stopped counting the earlier past its five-minute cap
   on crossed waiters (the cap grows by a step for each crossed waiter more
   ahead, so the earlier normally opens first).
-- **Three in their test stages.** The plain form of the first gate, which
+- **One more in their test stages.** The plain form of the first gate, which
   `make preflight` runs, takes no last look either, so two accounts' openers
-  whose re-checks fall in one moment can both open beside a preflight already
-  in its tests, three preflights in their test stages at once.
+  whose re-checks fall in one moment can both open into the last free slot,
+  one preflight more in its test stages than the setting.
 
 A `~/.abcd.noindex/config.json` that cannot be read for the count does not
 stop the wait: one that others can write, one that is not valid JSON, or one
@@ -1010,6 +1062,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

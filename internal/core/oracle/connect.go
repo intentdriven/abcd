@@ -498,7 +498,9 @@ var KeyHomesProse = credential.HomesProse
 // 422, openaiapi.ErrUsageRefused), the call is asked once more without it,
 // and *setup is set when that succeeds, for the block to say so. With setup
 // nil (a configured provider's key verified again) a refusal is never
-// retried and names the block's setting, as an ordinary call's does.
+// retried and names the block's setting, as an ordinary call's does. Neither
+// reads the generation record back, even on a block that sets
+// read_generation.
 func providerService(p Provider, denylist []DenyEntry, rec *CallRecord, setup *bool, opts ...openaiapi.Option) credential.Service {
 	return credential.Service{
 		Name:      p.Key,
@@ -509,6 +511,10 @@ func providerService(p Provider, denylist []DenyEntry, rec *CallRecord, setup *b
 			// replaces them.
 			bounded := append([]openaiapi.Option{openaiapi.WithTimeout(verifyTimeout), openaiapi.WithFirstByteTimeout(verifyTimeout)}, opts...)
 			verify := func(p Provider) error {
+				// The verification never reads the generation record back,
+				// whatever the block says: its answer is discarded, so the
+				// readback would be one request more for nothing.
+				p.ReadGeneration = false
 				_, r, err := complete(ctx, p, key, p.Models[0], verifyBrief,
 					Settings{"max_tokens": json.RawMessage(`16`)}, nil, denylist, bounded...)
 				r.Credential = p.Key

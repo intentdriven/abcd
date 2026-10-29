@@ -49,7 +49,8 @@ func reasons(us []oracle.Unpinned) map[oracle.Field]oracle.UnpinnedReason {
 func assertFixedLists(t *testing.T, us []oracle.Unpinned) {
 	t.Helper()
 	known := map[oracle.Field]bool{}
-	for _, f := range append(append([]oracle.Field{}, oracle.AskedFields...), oracle.ServedFields...) {
+	for _, f := range append(append(append(append([]oracle.Field{}, oracle.AskedFields...), oracle.LocalFields...),
+		oracle.ServedFields...), oracle.LocalServedFields...) {
 		known[f] = true
 	}
 	seen := map[oracle.Field]bool{}

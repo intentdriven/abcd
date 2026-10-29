@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 298 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/06-lint.md:70"
-remedy: "none (filed automatically)"
+remedy: "Edit 06-lint.md section 5 closing sentence and the first acceptance bullet in section 6: remove the claim that the documentation-auditor audits the contract on every disembark; state the contract is held by the armed gates (record-lint, docs-lint) and the surface_coverage checks."
 finding_ref: cfk-c92970006c432a65
 ---
 

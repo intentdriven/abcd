@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 287 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/31-lab.md:99"
-remedy: "none (filed automatically)"
+remedy: "In 31-lab.md (and the matching comment in internal/core/lab/harvest.go) say the harvest has a six-section shape of its own that borrows the lifeboat's grounded, partial and blank coverage grades, rather than saying it takes the lifeboat's section shape."
 finding_ref: cfk-97916ed151c6ff3f
 ---
 

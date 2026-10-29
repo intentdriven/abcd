@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 315 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/02-disembark.md:75"
-remedy: "none (filed automatically)"
+remedy: "In 06-delivery/01-build-sequence.md (the disembark bullet near line 155) drop 'and runs the host-delegated audit' from the pack and say the host-delegated review is the separate disembark review sub-verb over the packed lifeboat."
 finding_ref: cfk-387bc770caa83b30
 ---
 

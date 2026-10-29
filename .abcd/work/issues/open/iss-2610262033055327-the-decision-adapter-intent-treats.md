@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 359 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609221009495079-abcd-s-typed-judgements-can-run-through.md:28"
-remedy: "none (filed automatically)"
+remedy: "In the decision-adapter intent drop embark's lesson ranking from the judgement-type lists (press-release rationale and scope bullet), or add a host judgement for it first: the shipped ranking is a deterministic term-overlap computation with no host answer to pair."
 related_intents: [itd-2609221009495079]
 finding_ref: cfk-0fa68fc1ec4b7f88
 ---

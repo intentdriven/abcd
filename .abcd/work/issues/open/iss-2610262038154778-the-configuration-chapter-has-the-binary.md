@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 782 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md:93"
-remedy: "none (filed automatically)"
+remedy: "Edit the Rules-loader dedup row in 02-verification-matrix.md: say the primary refresh is event-driven but a fixed-N backstop (`rules.force_refresh_every_n`, default 15) does count prompts; drop 'Nothing counts prompts'."
 finding_ref: cfk-fcab6019e0ea0b51
 ---
 

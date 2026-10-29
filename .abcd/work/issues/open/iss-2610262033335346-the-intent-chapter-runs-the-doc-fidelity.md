@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 419 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:518"
-remedy: "none (filed automatically)"
+remedy: "In 04-universal-patterns.md line 144 replace 'draft intent itd-60 ... not yet built' with the shipped state (itd-60 sits in intents/shipped/ and the gate is internal/core/docfidelity), and reconcile the layout note that follows."
 finding_ref: cfk-08b3bbf946b441af
 ---
 

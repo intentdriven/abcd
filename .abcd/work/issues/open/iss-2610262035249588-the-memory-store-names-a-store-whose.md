@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 569 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/11-history.md:394"
-remedy: "none (filed automatically)"
+remedy: "In 11-history.md:393-394 reword 'the memory store' to 'the library's memory pages' (library ingest takes a document or a web address); the /abcd:memory notes store is a different store."
 finding_ref: cfk-8f3ebf8c3c9cffbe
 ---
 

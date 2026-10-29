@@ -62,6 +62,11 @@ type ahoyOutput struct {
 	// Q1 alone, then the parts as tabs of at most four (spc-2610031704338417).
 	// The plugin page passes each on unchanged.
 	ReadmeTool []*hostQuestionCall `json:"readme_tool,omitempty"`
+	// SessionsTool is the live brief session questions, while they are open,
+	// as the host's question tool takes them: Q1 alone, then Q2 alone
+	// (spc-2610141709430146 step 6). The plugin page passes each on
+	// unchanged.
+	SessionsTool []*hostQuestionCall `json:"sessions_tool,omitempty"`
 }
 
 // checkResult is the explicit network check's outcome, named source and all.

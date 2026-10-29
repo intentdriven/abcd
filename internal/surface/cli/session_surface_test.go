@@ -1,0 +1,892 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/coder/websocket"
+	coresession "github.com/intentdriven/abcd/internal/core/session"
+	"github.com/intentdriven/abcd/internal/gittest"
+)
+
+// sessionDigest is the checksum the fake release publishes.
+const sessionDigest = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+
+// fakeSessionRelease serves a release's checksums.txt from memory: no test
+// reaches the network.
+type fakeSessionRelease struct{ asked []string }
+
+func (f *fakeSessionRelease) FetchReleaseAsset(tag, name string) ([]byte, string, bool, error) {
+	f.asked = append(f.asked, tag+"/"+name)
+	url := "https://github.com/intentdriven/abcd/releases/download/" + tag + "/" + name
+	if tag == "v9.9.9" {
+		return nil, url, false, nil
+	}
+	return []byte(sessionDigest + "  abcd-linux-amd64\n"), url, true, nil
+}
+
+func swapSessionRelease(t *testing.T) *fakeSessionRelease {
+	t.Helper()
+	f := &fakeSessionRelease{}
+	old := newSessionReleaseFetcher
+	newSessionReleaseFetcher = func() (coresession.AssetFetcher, error) { return f, nil }
+	t.Cleanup(func() { newSessionReleaseFetcher = old })
+	return f
+}
+
+// managedSessionRepo is a checkout abcd manages, as the working directory.
+func managedSessionRepo(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	repo := filepath.Join(home, "repo")
+	gitInitAt(t, repo)
+	gitRemoteAt(t, repo, "https://github.com/acme/brief.git")
+	if err := os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte("<!-- BEGIN ABCD -->\n<!-- END ABCD -->\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+	return repo
+}
+
+// gitRemoteAt names url as dir's origin remote.
+func gitRemoteAt(t *testing.T, dir, url string) {
+	t.Helper()
+	cmd := exec.Command("git", "-C", dir, "remote", "add", "origin", url)
+	cmd.Env = gittest.Env(t)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git remote add: %v (%s)", err, out)
+	}
+}
+
+func TestSessionBlueprintWritesThePinnedFiles(t *testing.T) {
+	repo := managedSessionRepo(t)
+	rel := swapSessionRelease(t)
+	out := string(runCLI(t, "session", "blueprint", "--release", "v0.17.1"))
+	for _, want := range []string{".abcd/relay/Dockerfile", "written render.yaml", "v0.17.1", sessionDigest, "checksums.txt", "https://render.com/deploy?repo=https://github.com/acme/brief"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output does not say %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(strings.ToLower(out), "funnel") {
+		t.Errorf("output mentions Funnel:\n%s", out)
+	}
+	docker, err := os.ReadFile(filepath.Join(repo, ".abcd", "relay", "Dockerfile"))
+	if err != nil || !bytes.Contains(docker, []byte(sessionDigest+"  /usr/local/bin/abcd")) {
+		t.Fatalf("Dockerfile: %v\n%s", err, docker)
+	}
+	if strings.Join(rel.asked, ",") != "v0.17.1/checksums.txt" {
+		t.Fatalf("fetched %v", rel.asked)
+	}
+
+	// --json puts the result alone on stdout; the fetch is named on stderr.
+	root := NewRootCommand()
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"session", "blueprint", "--release", "v0.17.1", "--json"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var res coresession.BlueprintResult
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatalf("%v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "checksums.txt") {
+		t.Errorf("stderr does not name the fetch: %q", stderr.String())
+	}
+	if res.Digest != sessionDigest || len(res.Files) != 2 || res.Files[0].State != "unchanged" {
+		t.Fatalf("--json = %+v", res)
+	}
+}
+
+func TestSessionBlueprintRefusals(t *testing.T) {
+	repo := managedSessionRepo(t)
+	swapSessionRelease(t)
+
+	// This test binary is no release, so the release must be named.
+	out, err := runCLIStdinErr(t, "", "session", "blueprint")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "--release") {
+		t.Fatalf("no --release on a dev build: %v\n%s", err, out)
+	}
+	// A release older than the first to carry `abcd session` is refused by
+	// name: its container would exit at once.
+	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.14.1"); exitCode(err) != 2 || !strings.Contains(err.Error(), "abcd session") {
+		t.Fatalf("a release without the session verb: %v, want exit 2 naming abcd session", err)
+	}
+	for _, args := range [][]string{
+		{"session", "blueprint", "--release", "latest"},
+		{"session", "blueprint", "--release", "v9.9.9"},
+	} {
+		if _, err := runCLIStdinErr(t, "", args...); exitCode(err) != 2 {
+			t.Errorf("%v: %v, want exit 2", args, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".abcd")); err == nil {
+		t.Fatal("a refusal created .abcd/")
+	}
+
+	runCLI(t, "session", "blueprint", "--release", "v0.17.1")
+	yaml := filepath.Join(repo, "render.yaml")
+	edited, err := os.ReadFile(yaml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(yaml, bytes.Replace(edited, []byte("plan: free"), []byte("plan: starter"), 1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.2")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "render.yaml") {
+		t.Fatalf("an edited render.yaml: %v, want exit 2 naming it", err)
+	}
+
+	// Outside a checkout abcd manages.
+	plain := t.TempDir()
+	gitInitAt(t, plain)
+	t.Chdir(plain)
+	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.1"); exitCode(err) != 2 {
+		t.Fatalf("an unmanaged checkout: %v, want exit 2", err)
+	}
+}
+
+// syncBuffer is a writer a running server and a test read at once.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+// startServe runs `abcd session serve` with args until the test ends, and
+// returns its output so far once it is listening.
+func startServe(t *testing.T, args ...string) (*syncBuffer, func() error) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	root := NewRootCommand()
+	out := &syncBuffer{}
+	root.SetOut(out)
+	root.SetErr(out)
+	root.SetArgs(append([]string{"session", "serve"}, args...))
+	done := make(chan error, 1)
+	go func() { done <- root.ExecuteContext(ctx) }()
+	stop := func() error {
+		cancel()
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(10 * time.Second):
+			return errors.New("serve did not stop")
+		}
+	}
+	t.Cleanup(func() { _ = stop() })
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(out.String(), "http://") {
+		select {
+		case err := <-done:
+			t.Fatalf("serve ended: %v\n%s", err, out.String())
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("serve never said where it listens:\n%s", out.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return out, stop
+}
+
+func TestSessionServeListensOnLoopbackAndStops(t *testing.T) {
+	t.Setenv("ABCD_SESSION_GITHUB_CLIENT_SECRET", "test-secret-value-never-printed")
+	out, stop := startServe(t, "--listen", "127.0.0.1:0", "--client-id", "Iv1.publicid", "--json")
+	var started struct {
+		URL      string `json:"url"`
+		Loopback bool   `json:"loopback"`
+		SignIn   bool   `json:"sign_in"`
+		Hint     string `json:"hint"`
+	}
+	if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&started); err != nil {
+		t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+	}
+	if !started.Loopback || !started.SignIn || !strings.HasPrefix(started.URL, "http://127.0.0.1:") {
+		t.Fatalf("start = %+v", started)
+	}
+	if !strings.Contains(started.Hint, "tailscale serve") || strings.Contains(strings.ToLower(started.Hint), "funnel") {
+		t.Fatalf("hint = %q, want Serve and never Funnel", started.Hint)
+	}
+	resp, err := http.Get(started.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("healthz = %d", resp.StatusCode)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	if strings.Contains(out.String(), "test-secret-value-never-printed") {
+		t.Fatalf("the secret reached the output:\n%s", out.String())
+	}
+	if _, err := http.Get(started.URL + "/healthz"); err == nil {
+		t.Fatal("the relay still answers after it stopped")
+	}
+}
+
+// TestSessionServeOnLoopbackCountsTailnetVisitorsApart: serve on loopback
+// is the host's own machine behind Tailscale Serve, so the wrong codes of one
+// tailnet address shut out that address and not every visitor Serve proxies.
+func TestSessionServeOnLoopbackCountsTailnetVisitorsApart(t *testing.T) {
+	out, _ := startServe(t, "--listen", "127.0.0.1:0", "--json")
+	var started struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&started); err != nil {
+		t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+	}
+	wsURL := "ws" + strings.TrimPrefix(started.URL, "http") + "/session"
+	// join tries a wrong code once on ws and returns the error code the
+	// relay answers; dial connects as Serve proxies the visitor at addr.
+	join := func(ws *websocket.Conn) string {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := ws.Write(ctx, websocket.MessageText, []byte(`{"type":"join","code":"ZZZZZZ"}`)); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		_, data, err := ws.Read(ctx)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		var m map[string]any
+		_ = json.Unmarshal(data, &m)
+		code, _ := m["code"].(string)
+		return code
+	}
+	dial := func(addr string) *websocket.Conn {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ws, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPHeader: http.Header{
+			"Origin": {"https://abcdesign.app"}, "X-Forwarded-For": {addr},
+		}})
+		if err != nil {
+			t.Fatalf("dial as %s: %v", addr, err)
+		}
+		t.Cleanup(func() { _ = ws.CloseNow() })
+		return ws
+	}
+	mal := dial("100.101.102.103") // abcd-lint:allow: a tailnet address, the shape under test
+	for i := 0; i < coresession.New(coresession.Options{}).Limits().MaxFailedJoins; i++ {
+		if got := join(mal); got != "bad-code" {
+			t.Fatalf("wrong code %d: %q, want bad-code", i, got)
+		}
+	}
+	if got := join(dial("100.101.102.103")); got != "too-many-tries" { // abcd-lint:allow: a tailnet address, the shape under test
+		t.Fatalf("the address past its limit: %q, want too-many-tries", got)
+	}
+	if got := join(dial("100.64.0.9")); got != "bad-code" { // abcd-lint:allow: a tailnet address, the shape under test
+		t.Fatalf("another tailnet address: %q, want bad-code, not held up by the first", got)
+	}
+}
+
+func TestSessionServeTextNamesTheTailnetRoute(t *testing.T) {
+	t.Setenv("ABCD_SESSION_GITHUB_CLIENT_SECRET", "")
+	out, stop := startServe(t, "--listen", "127.0.0.1:0")
+	_ = stop()
+	text := out.String()
+	for _, want := range []string{"loopback", "tailscale serve --bg", "sign-in is not set up", "serves sessions for"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("output does not say %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(strings.ToLower(text), "funnel") {
+		t.Errorf("output mentions Funnel:\n%s", text)
+	}
+}
+
+// TestSessionServeWithoutASecretOffersNoSignIn: the device flow belongs to
+// a local session alone (abcd session start). serve with a client id and no
+// secret says sign-in is off, and its /config offers none.
+func TestSessionServeWithoutASecretOffersNoSignIn(t *testing.T) {
+	t.Setenv("ABCD_SESSION_GITHUB_CLIENT_SECRET", "")
+	out, stop := startServe(t, "--listen", "127.0.0.1:0", "--client-id", "Iv1.publicid", "--json")
+	var started struct {
+		URL    string `json:"url"`
+		SignIn bool   `json:"sign_in"`
+	}
+	if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&started); err != nil {
+		t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+	}
+	if started.SignIn {
+		t.Errorf("serve with no secret says sign-in is on: %s", out.String())
+	}
+	resp, err := http.Get(started.URL + "/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(body), `"sign_in":false`) || strings.Contains(string(body), `"device"`) {
+		t.Errorf("/config = %s, want sign-in off and no device flow", body)
+	}
+	_ = stop()
+
+	out, stop = startServe(t, "--listen", "127.0.0.1:0", "--client-id", "Iv1.publicid")
+	_ = stop()
+	if text := out.String(); !strings.Contains(text, "sign-in is not set up") || strings.Contains(text, "device flow") {
+		t.Errorf("serve with no secret:\n%s\nwant sign-in not set up, and no device flow", text)
+	}
+}
+
+func TestSessionServeRefusals(t *testing.T) {
+	for _, args := range [][]string{
+		{"session", "serve", "--listen", "nonsense"},
+		{"session", "serve", "--listen", "example.com:80"},
+		{"session", "serve", "--listen", "127.0.0.1:99999"},
+		{"session", "serve", "--origin", "*"},
+		{"session", "serve", "extra"},
+	} {
+		if _, err := runCLIStdinErr(t, "", args...); exitCode(err) != 2 {
+			t.Errorf("%v: %v, want exit 2", args, err)
+		}
+	}
+}
+
+func TestSessionPageWritesThePageAndRefusesAForeignDirectory(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "page")
+	text := string(runCLI(t, "session", "page", "--out", out))
+	for _, want := range []string{"wrote 6 files", "index.html", "404.html", "vendor/collab.js", "/<owner>/<repo>/brief/"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("output does not say %q:\n%s", want, text)
+		}
+	}
+	var res struct {
+		Out      string   `json:"out"`
+		Files    []string `json:"files"`
+		Replaced bool     `json:"replaced"`
+	}
+	if err := json.Unmarshal(runCLI(t, "session", "page", "--out", out, "--json"), &res); err != nil {
+		t.Fatal(err)
+	}
+	if !res.Replaced || len(res.Files) != 6 || res.Out != out {
+		t.Fatalf("--json = %+v", res)
+	}
+
+	foreign := t.TempDir()
+	if err := os.WriteFile(filepath.Join(foreign, "notes.md"), []byte("mine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := runCLIStdinErr(t, "", "session", "page", "--out", foreign)
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "notes.md") || !strings.Contains(err.Error(), "nothing written") {
+		t.Fatalf("a foreign --out: %v, want exit 2 naming notes.md", err)
+	}
+	if entries, _ := os.ReadDir(foreign); len(entries) != 1 {
+		t.Fatalf("a refusal wrote into the directory: %v", entries)
+	}
+	if _, err := runCLIStdinErr(t, "", "session", "page"); exitCode(err) != 2 {
+		t.Fatalf("no --out: %v, want exit 2", err)
+	}
+}
+
+func TestSessionPageWritesUnderABasePath(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "page")
+	var res struct {
+		BasePath string `json:"base_path"`
+	}
+	if err := json.Unmarshal(runCLI(t, "session", "page", "--out", out, "--base-path", "abcdesign", "--json"), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.BasePath != "/abcdesign/" {
+		t.Fatalf("base_path = %q, want /abcdesign/", res.BasePath)
+	}
+	html, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(html), `src="/abcdesign/session.js"`) {
+		t.Fatalf("index.html does not load /abcdesign/session.js:\n%s", html)
+	}
+	text := string(runCLI(t, "session", "page", "--out", out, "--base-path", "/abcdesign/"))
+	if !strings.Contains(text, "/abcdesign/<owner>/<repo>/brief/") {
+		t.Errorf("the next step does not name the page under its base path:\n%s", text)
+	}
+	if text := string(runCLI(t, "session", "page", "--out", out)); !strings.Contains(text, "opens at /<owner>/<repo>/brief/") {
+		t.Errorf("the default next step changed:\n%s", text)
+	}
+	fresh := filepath.Join(t.TempDir(), "page")
+	_, err = runCLIStdinErr(t, "", "session", "page", "--out", fresh, "--base-path", "../up")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "plain path segments") {
+		t.Fatalf("a bad --base-path: %v, want exit 2", err)
+	}
+	if _, err := os.Stat(fresh); !os.IsNotExist(err) {
+		t.Fatal("a refused --base-path created the directory")
+	}
+}
+
+func TestSessionPageHelpSaysWhatGitHubIsReachedFor(t *testing.T) {
+	text := string(runCLI(t, "session", "page", "--help"))
+	flat := strings.Join(strings.Fields(text), " ")
+	if !strings.Contains(flat, "to github.com for sign-in and to open the pre-filled issues a session sends") {
+		t.Errorf("the help does not say the page opens pre-filled issues on github.com:\n%s", text)
+	}
+	if !strings.Contains(flat, "--base-path") {
+		t.Errorf("the help does not name --base-path:\n%s", text)
+	}
+}
+
+// TestSessionBlueprintServesTheOriginRepository: the blueprint names the
+// checkout's origin repository as the one the relay serves, as a plain
+// environment value; without a GitHub origin it refuses and writes nothing.
+func TestSessionBlueprintServesTheOriginRepository(t *testing.T) {
+	repo := managedSessionRepo(t)
+	swapSessionRelease(t)
+	out := string(runCLI(t, "session", "blueprint", "--release", "v0.17.1"))
+	if !strings.Contains(out, "acme/brief") {
+		t.Errorf("output does not name the served repository:\n%s", out)
+	}
+	yaml, err := os.ReadFile(filepath.Join(repo, "render.yaml"))
+	if err != nil || !bytes.Contains(yaml, []byte("- key: ABCD_SESSION_REPOS\n        value: \"acme/brief\"")) {
+		t.Fatalf("render.yaml: %v\n%s", err, yaml)
+	}
+
+	bare := managedSessionRepoWithoutOrigin(t)
+	_, err = runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.1")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "origin") {
+		t.Fatalf("no origin: %v, want exit 2 naming the origin", err)
+	}
+	if _, err := os.Stat(filepath.Join(bare, ".abcd", "relay")); err == nil {
+		t.Fatal("a refusal wrote the blueprint")
+	}
+}
+
+// managedSessionRepoWithoutOrigin is a managed checkout with no remote, as
+// the working directory.
+func managedSessionRepoWithoutOrigin(t *testing.T) string {
+	t.Helper()
+	repo := filepath.Join(t.TempDir(), "bare")
+	gitInitAt(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte("<!-- BEGIN ABCD -->\n<!-- END ABCD -->\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+	return repo
+}
+
+// TestSessionServeBeyondLoopbackNeedsItsRepositories: a relay listening
+// beyond this computer refuses to start without the repositories it serves,
+// and refuses a malformed one. 192.0.2.1 is a documentation address no test
+// machine holds, so a run that gets past the checks fails to listen instead
+// of listening.
+func TestSessionServeBeyondLoopbackNeedsItsRepositories(t *testing.T) {
+	t.Setenv("ABCD_SESSION_REPOS", "")
+	_, err := runCLIStdinErr(t, "", "session", "serve", "--listen", "192.0.2.1:0")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "--repo") || !strings.Contains(err.Error(), "nothing started") {
+		t.Fatalf("no repositories: %v, want exit 2 naming --repo", err)
+	}
+	for _, args := range [][]string{
+		{"--repo", "acme/brief"},
+		{"--owner", "acme"},
+	} {
+		_, err := runCLIStdinErr(t, "", append([]string{"session", "serve", "--listen", "192.0.2.1:0"}, args...)...)
+		if exitCode(err) != 2 || !strings.Contains(err.Error(), "cannot listen") {
+			t.Errorf("%v: %v, want past the check to the listen", args, err)
+		}
+	}
+	t.Setenv("ABCD_SESSION_REPOS", "acme/brief")
+	_, err = runCLIStdinErr(t, "", "session", "serve", "--listen", "192.0.2.1:0")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "cannot listen") {
+		t.Errorf("ABCD_SESSION_REPOS: %v, want past the check to the listen", err)
+	}
+	for _, c := range []struct {
+		env  string
+		args []string
+	}{
+		{"", []string{"--repo", "acme"}},
+		{"", []string{"--repo", "acme/brief/x"}},
+		{"", []string{"--owner", "acme/brief"}},
+		{"acme/brief,a/b/c", nil},
+		{"acme/brief,,", nil},
+	} {
+		t.Setenv("ABCD_SESSION_REPOS", c.env)
+		_, err := runCLIStdinErr(t, "", append([]string{"session", "serve", "--listen", "127.0.0.1:0"}, c.args...)...)
+		if exitCode(err) != 2 {
+			t.Errorf("env %q args %v: %v, want exit 2", c.env, c.args, err)
+		}
+	}
+}
+
+// TestSessionServeOnLoopbackServesTheOriginRepository: on loopback with no
+// list, the relay serves the checkout's origin repository, or every
+// repository outside a checkout; a list given is the list served.
+func TestSessionServeOnLoopbackServesTheOriginRepository(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	gitInitAt(t, repo)
+	gitRemoteAt(t, repo, "git@github.com:acme/brief.git")
+	if r, o, err := sessionServed(true, nil, nil, "", repo); err != nil || strings.Join(r, ",") != "acme/brief" || len(o) != 0 {
+		t.Fatalf("in a checkout: %v %v %v, want acme/brief", r, o, err)
+	}
+	if r, o, err := sessionServed(true, nil, nil, "", t.TempDir()); err != nil || len(r)+len(o) != 0 {
+		t.Fatalf("outside a checkout: %v %v %v, want every repository", r, o, err)
+	}
+	if _, _, err := sessionServed(false, nil, nil, "", repo); err == nil {
+		t.Fatal("beyond loopback, the origin stood in for a list")
+	}
+	r, o, err := sessionServed(false, []string{"acme/notes"}, nil, " acme/brief , team ", repo)
+	if err != nil || strings.Join(r, ",") != "acme/notes,acme/brief" || strings.Join(o, ",") != "team" {
+		t.Fatalf("with a list: %v %v %v", r, o, err)
+	}
+
+	// The start line says what it serves.
+	t.Setenv("ABCD_SESSION_REPOS", "")
+	t.Chdir(repo)
+	out, stop := startServe(t, "--listen", "127.0.0.1:0", "--json")
+	_ = stop()
+	var s struct {
+		Repos []string `json:"repos"`
+		Any   bool     `json:"any_repository"`
+	}
+	if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&s); err != nil {
+		t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+	}
+	if strings.Join(s.Repos, ",") != "acme/brief" || s.Any {
+		t.Fatalf("start = %+v, want acme/brief", s)
+	}
+}
+
+// TestSessionBlueprintWritesTheRelayOrigin: --relay-origin adds relays.json,
+// and a malformed one is refused with nothing written.
+func TestSessionBlueprintWritesTheRelayOrigin(t *testing.T) {
+	repo := managedSessionRepo(t)
+	swapSessionRelease(t)
+	_, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.1", "--relay-origin", "http://relay.example.org")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "--relay-origin") {
+		t.Fatalf("an http relay origin: %v, want exit 2", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".abcd")); err == nil {
+		t.Fatal("a refusal wrote .abcd/")
+	}
+	out := string(runCLI(t, "session", "blueprint", "--release", "v0.17.1", "--relay-origin", "https://relay.example.org"))
+	if !strings.Contains(out, ".abcd/relay/relays.json") {
+		t.Errorf("output does not name relays.json:\n%s", out)
+	}
+	// The exact callback the team's app must list for the relay's sign-in.
+	if !strings.Contains(out, "https://relay.example.org/auth/callback") || !strings.Contains(out, "Callback URL") {
+		t.Errorf("output does not name the relay's callback to add:\n%s", out)
+	}
+	data, err := os.ReadFile(filepath.Join(repo, ".abcd", "relay", "relays.json"))
+	if err != nil || !strings.Contains(string(data), `"https://relay.example.org"`) {
+		t.Fatalf("relays.json: %v\n%s", err, data)
+	}
+}
+
+// TestSessionServeSignsInThroughAGitHubAppOnly: the relay no longer takes an
+// OAuth app; a deployment still naming one is refused rather than started
+// with a sign-in it cannot honour, and the old variable set to github-app is
+// harmless (security review 2, item 3).
+func TestSessionServeSignsInThroughAGitHubAppOnly(t *testing.T) {
+	t.Setenv("ABCD_SESSION_REPOS", "")
+	for _, v := range []string{"oauth-app", "personal-token"} {
+		t.Setenv("ABCD_SESSION_GITHUB_APP_TYPE", v)
+		_, err := runCLIStdinErr(t, "", "session", "serve", "--listen", "127.0.0.1:0")
+		if exitCode(err) != 2 || !strings.Contains(err.Error(), "ABCD_SESSION_GITHUB_APP_TYPE") || !strings.Contains(err.Error(), "GitHub App") {
+			t.Fatalf("ABCD_SESSION_GITHUB_APP_TYPE=%s: %v, want exit 2 naming the variable and a GitHub App", v, err)
+		}
+	}
+	t.Setenv("ABCD_SESSION_GITHUB_APP_TYPE", "github-app")
+	t.Setenv("ABCD_SESSION_GITHUB_CLIENT_SECRET", "test-secret-value-never-printed")
+	out, _ := startServe(t, "--listen", "127.0.0.1:0", "--client-id", "Iv1.publicid", "--json")
+	var started struct {
+		URL string `json:"url"`
+	}
+	if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&started); err != nil {
+		t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+	}
+	resp, err := http.Get(started.URL + "/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var cfg map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil || cfg["app_type"] != "github-app" {
+		t.Fatalf("/config = %v, %v; want github-app", cfg, err)
+	}
+}
+
+// TestSessionServeReadsItsOriginsFromTheEnvironment: with no --origin, serve
+// admits exactly the origins ABCD_SESSION_ORIGINS names, which the blueprint
+// sets on the team's relay; --origin, given, wins; a malformed entry is
+// refused (security review 2, item 4).
+func TestSessionServeReadsItsOriginsFromTheEnvironment(t *testing.T) {
+	t.Setenv("ABCD_SESSION_REPOS", "")
+	allowed := func(base, o string) bool {
+		req, _ := http.NewRequest(http.MethodGet, base+"/config", nil)
+		req.Header.Set("Origin", o)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.Header.Get("Access-Control-Allow-Origin") == o
+	}
+	urlOf := func(out *syncBuffer) string {
+		var started struct {
+			URL string `json:"url"`
+		}
+		if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&started); err != nil {
+			t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+		}
+		return started.URL
+	}
+	t.Setenv("ABCD_SESSION_ORIGINS", "https://pages.example.org, https://other.example.org")
+	out, stop := startServe(t, "--listen", "127.0.0.1:0", "--json")
+	base := urlOf(out)
+	for o, want := range map[string]bool{
+		"https://pages.example.org": true, "https://other.example.org": true, "https://abcdesign.app": false, "http://localhost:8000": false,
+	} {
+		if got := allowed(base, o); got != want {
+			t.Errorf("origin %s admitted=%v, want %v", o, got, want)
+		}
+	}
+	_ = stop()
+	out, stop = startServe(t, "--listen", "127.0.0.1:0", "--json", "--origin", "https://flag.example.org")
+	base = urlOf(out)
+	if !allowed(base, "https://flag.example.org") || allowed(base, "https://pages.example.org") {
+		t.Error("--origin did not replace ABCD_SESSION_ORIGINS")
+	}
+	_ = stop()
+	t.Setenv("ABCD_SESSION_ORIGINS", "https://pages.example.org/x/../y/")
+	_, err := runCLIStdinErr(t, "", "session", "serve", "--listen", "127.0.0.1:0")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "ABCD_SESSION_ORIGINS") {
+		t.Fatalf("a malformed ABCD_SESSION_ORIGINS: %v, want exit 2 naming it", err)
+	}
+}
+
+// TestSessionBlueprintNamesThePageOrigins: --origin names the page origins
+// render.yaml admits, https://abcdesign.app by default.
+func TestSessionBlueprintNamesThePageOrigins(t *testing.T) {
+	repo := managedSessionRepo(t)
+	swapSessionRelease(t)
+	runCLI(t, "session", "blueprint", "--release", "v0.17.1")
+	data, err := os.ReadFile(filepath.Join(repo, "render.yaml"))
+	if err != nil || !strings.Contains(string(data), "- key: ABCD_SESSION_ORIGINS\n        value: \"https://abcdesign.app\"") {
+		t.Fatalf("render.yaml: %v\n%s", err, data)
+	}
+	runCLI(t, "session", "blueprint", "--release", "v0.17.1", "--origin", "https://pages.example.org", "--origin", "https://abcdesign.app")
+	data, _ = os.ReadFile(filepath.Join(repo, "render.yaml"))
+	if !strings.Contains(string(data), "value: \"https://pages.example.org,https://abcdesign.app\"") {
+		t.Fatalf("render.yaml does not name the given origins:\n%s", data)
+	}
+	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.1", "--origin", "http://pages.example.org"); exitCode(err) != 2 {
+		t.Fatalf("an http page origin: %v, want exit 2", err)
+	}
+	// A page served below a base path is named with it.
+	runCLI(t, "session", "blueprint", "--release", "v0.17.1", "--origin", "https://acme.github.io/brief")
+	data, _ = os.ReadFile(filepath.Join(repo, "render.yaml"))
+	if !strings.Contains(string(data), "value: \"https://acme.github.io/brief/\"") {
+		t.Fatalf("render.yaml does not name the page's base path:\n%s", data)
+	}
+	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.1", "--origin", "https://acme.github.io/x/../"); exitCode(err) != 2 {
+		t.Fatalf("a base path with a dot segment: %v, want exit 2", err)
+	}
+}
+
+// swapTailnet answers for this computer's tailnet name.
+func swapTailnet(t *testing.T, name string, err error) {
+	t.Helper()
+	old := sessionTailnetName
+	sessionTailnetName = func(context.Context, string) (string, error) { return name, err }
+	t.Cleanup(func() { sessionTailnetName = old })
+}
+
+// writeSessionApp writes the GitHub App's public client id where repository
+// setup records it.
+func writeSessionApp(t *testing.T, repo, body string) {
+	t.Helper()
+	dir := filepath.Join(repo, ".abcd", "relay")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "github-app.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// startSession runs `abcd session start` with args until the test ends, and
+// returns its output once it has printed the link.
+func startSession(t *testing.T, args ...string) (*syncBuffer, func() error) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	root := NewRootCommand()
+	out := &syncBuffer{}
+	root.SetOut(out)
+	root.SetErr(out)
+	root.SetArgs(append([]string{"session", "start"}, args...))
+	done := make(chan error, 1)
+	go func() { done <- root.ExecuteContext(ctx) }()
+	stop := func() error {
+		cancel()
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(10 * time.Second):
+			return errors.New("start did not stop")
+		}
+	}
+	t.Cleanup(func() { _ = stop() })
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(out.String(), "https://") {
+		select {
+		case err := <-done:
+			t.Fatalf("start ended: %v\n%s", err, out.String())
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("start never printed its link:\n%s", out.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return out, stop
+}
+
+// TestSessionStartServesTheBriefOnTheTailnet: `abcd session start` is the
+// host's one command for a local session. It serves the checkout's
+// repository, signs in by GitHub's device flow with the client id setup
+// recorded, serves the page itself, answers only its tailnet name and
+// loopback, and prints the Tailscale step and the link (adr-2610161400542916).
+func TestSessionStartServesTheBriefOnTheTailnet(t *testing.T) {
+	repo := managedSessionRepo(t)
+	writeSessionApp(t, repo, `{"client_id": "Iv23liPublicId"}`)
+	swapTailnet(t, "host.example.ts.net", nil)
+	// A secret in the environment is never read: a local session holds none.
+	t.Setenv("ABCD_SESSION_GITHUB_CLIENT_SECRET", "test-secret-value-never-printed")
+	out, stop := startSession(t, "--port", "0", "--json")
+	var started struct {
+		URL       string `json:"url"`
+		Link      string `json:"link"`
+		Repo      string `json:"repo"`
+		ServeStep string `json:"serve_step"`
+		SignIn    string `json:"sign_in"`
+	}
+	if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&started); err != nil {
+		t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+	}
+	port := started.URL[strings.LastIndex(started.URL, ":")+1:]
+	if !strings.HasPrefix(started.URL, "http://127.0.0.1:") || started.Link != "https://host.example.ts.net/acme/brief/brief/" ||
+		started.Repo != "acme/brief" || started.ServeStep != "tailscale serve --bg "+port || started.SignIn != "device" {
+		t.Fatalf("start = %+v", started)
+	}
+	get := func(host, path string) (int, string) {
+		req, _ := http.NewRequest(http.MethodGet, started.URL+path, nil)
+		req.Host = host
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var b bytes.Buffer
+		_, _ = b.ReadFrom(resp.Body)
+		return resp.StatusCode, b.String()
+	}
+	if code, body := get("host.example.ts.net", "/acme/brief/brief/"); code != http.StatusOK || !strings.Contains(body, `name="abcd-session-relay" content="self"`) {
+		t.Fatalf("the brief page on the tailnet name: %d\n%s", code, body)
+	}
+	if code, _ := get("evil.example", "/acme/brief/brief/"); code != http.StatusMisdirectedRequest {
+		t.Fatalf("another host name: %d, want 421", code)
+	}
+	if code, body := get("127.0.0.1:"+port, "/config"); code != http.StatusOK || !strings.Contains(body, `"flow":"device"`) || !strings.Contains(body, "Iv23liPublicId") {
+		t.Fatalf("/config: %d %s", code, body)
+	}
+	wsURL := "ws" + strings.TrimPrefix(started.URL, "http") + "/session"
+	dial := func(origin string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ws, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {origin}}})
+		if err == nil {
+			_ = ws.CloseNow()
+		}
+		return err
+	}
+	if err := dial("https://host.example.ts.net"); err != nil {
+		t.Fatalf("the tailnet page was refused: %v", err)
+	}
+	if err := dial("https://abcdesign.app"); err == nil {
+		t.Fatal("a local session admitted abcdesign.app's page")
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	if strings.Contains(out.String(), "test-secret-value-never-printed") {
+		t.Fatalf("the secret reached the output:\n%s", out.String())
+	}
+}
+
+// TestSessionStartSaysWhatToDoInPlainWords: the text names the one Tailscale
+// step, the link, and how people outside the tailnet join, and never Funnel.
+func TestSessionStartSaysWhatToDoInPlainWords(t *testing.T) {
+	repo := managedSessionRepo(t)
+	writeSessionApp(t, repo, `{"client_id": "Iv23liPublicId"}`)
+	swapTailnet(t, "host.example.ts.net", nil)
+	out, stop := startSession(t, "--port", "0")
+	_ = stop()
+	text := out.String()
+	for _, want := range []string{"acme/brief", "tailscale serve --bg ", "https://host.example.ts.net/acme/brief/brief/", "guests", "Ctrl-C"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("output does not say %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(strings.ToLower(text), "funnel") {
+		t.Errorf("output mentions Funnel:\n%s", text)
+	}
+}
+
+// TestSessionStartRefusals: no client id, no Tailscale, or no GitHub
+// repository, and nothing starts.
+func TestSessionStartRefusals(t *testing.T) {
+	repo := managedSessionRepo(t)
+	swapTailnet(t, "host.example.ts.net", nil)
+	t.Setenv("ABCD_SESSION_GITHUB_CLIENT_ID", "")
+	if _, err := runCLIStdinErr(t, "", "session", "start", "--port", "0"); exitCode(err) != 2 || !strings.Contains(err.Error(), "sign-in is not set up") {
+		t.Errorf("no client id: %v, want exit 2 saying sign-in is not set up", err)
+	}
+	writeSessionApp(t, repo, `{"client_id": "Iv23liPublicId", "client_secret": "x"}`)
+	if _, err := runCLIStdinErr(t, "", "session", "start", "--port", "0"); exitCode(err) != 2 || !strings.Contains(err.Error(), "client_secret") {
+		t.Errorf("a secret in the app file: %v, want exit 2", err)
+	}
+	writeSessionApp(t, repo, `{"client_id": "Iv23liPublicId"}`)
+	swapTailnet(t, "", errors.New("Tailscale is not running on this computer"))
+	if _, err := runCLIStdinErr(t, "", "session", "start", "--port", "0"); exitCode(err) != 2 || !strings.Contains(err.Error(), "Tailscale") {
+		t.Errorf("no Tailscale: %v, want exit 2 naming Tailscale", err)
+	}
+	swapTailnet(t, "host.example.ts.net", nil)
+	for _, args := range [][]string{
+		{"session", "start", "--port", "99999"},
+		{"session", "start", "--client-id", "has space"},
+		{"session", "start", "extra"},
+	} {
+		if _, err := runCLIStdinErr(t, "", args...); exitCode(err) != 2 {
+			t.Errorf("%v: %v, want exit 2", args, err)
+		}
+	}
+	t.Chdir(managedSessionRepoWithoutOrigin(t))
+	if _, err := runCLIStdinErr(t, "", "session", "start", "--port", "0", "--client-id", "Iv23liPublicId"); exitCode(err) != 2 {
+		t.Errorf("a checkout without a GitHub origin: %v, want exit 2", err)
+	}
+}

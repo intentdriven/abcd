@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 88 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/02-context.md:13"
-remedy: "none (filed automatically)"
+remedy: "In the library-versus-memory paragraph of 04-surfaces/README.md, say the library's page store (the 'memory store' at .abcd/memory/, the name commands/library.md and 07-library.md use) is distinct from the memory notes the /abcd:memory command keeps, so 'memory store' and 'memory notes' are not read as one thing."
 finding_ref: cfk-2592e631a03ee510
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 616 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-2610040754453237-any-team-that-manages-its-project-with.md:18"
-remedy: "none (filed automatically)"
+remedy: "Supersede the draft by itd-2610091010348892 (planned: an opted-in project's record built at each release on its own Pages) after carrying its two open questions (the sample project shared with itd-2610040754440360; default publish versus private) into that intent; `abcd site setup` (itd-2609061543533170) already ships the pages."
 related_intents: [itd-2610040754453237]
 finding_ref: cfk-9f2e5a740002e597
 ---

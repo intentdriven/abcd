@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 261 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:463"
-remedy: "none (filed automatically)"
+remedy: "In 07-library.md (the merge paragraph near line 11), add that the word memory now belongs to the later notes verb (37-memory.md; the machine and project memory.json layers), a different store from the library's .abcd/memory/ pages, so 'neither old name survives as an alias' means the retired store command, not the word."
 finding_ref: cfk-47630482cff91573
 ---
 

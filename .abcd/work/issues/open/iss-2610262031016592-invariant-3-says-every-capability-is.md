@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 76 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:13"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Same ruling as iss-2610262030375215: invariant 3 as every verb with a CLI route that runs host-free, or as every verb with a CLI route while judgement steps stay host-delegated. Recommend the second, naming build's no-host path (and ahoy's preparation workflow) as staged exceptions."
 finding_ref: cfk-92a73d279f95be8f
 ---
 

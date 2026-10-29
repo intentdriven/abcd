@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 233 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:64"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md standalone bullet: a standalone intent may be delivered through more than one spec and ships when its last spec closes (invariant 17), with itd-2609091034175565 as the example."
 related_intents: [itd-2609091034175565]
 finding_ref: cfk-04108d6ba2cab3b8
 ---

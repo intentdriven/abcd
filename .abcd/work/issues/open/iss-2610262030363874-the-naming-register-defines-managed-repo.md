@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 22 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:223"
-remedy: "none (filed automatically)"
+remedy: "Reword the managed-repo row in the 04-naming.md reserved-vocabulary table: managed means an abcd marker block or a registry entry for the root commit; an in-tree `.abcd/` is a reported signal only and `.git/` is not required."
 finding_ref: cfk-4142a6ea8b0943cc
 ---
 

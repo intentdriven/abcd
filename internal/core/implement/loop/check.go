@@ -198,7 +198,8 @@ func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, erro
 func validIssueKey(key string) bool { return issueIDRe.MatchString(key) }
 
 // keyCheck admits an intent id or an issue id and refuses everything else by
-// name, quoting the refused key escaped.
+// the form it takes, never repeating the refused key: the row reaches the
+// --json refusal document, which the error boundary's pass does not read.
 func keyCheck(key string) (CheckRow, bool) {
 	row := CheckRow{Name: CheckKey}
 	switch {
@@ -211,7 +212,7 @@ func keyCheck(key string) (CheckRow, bool) {
 		row.Detail = key + " is an issue"
 		return row, true
 	default:
-		row.Detail = fmt.Sprintf("%q is not a record id this verb builds (itd-N or iss-N)", key)
+		row.Detail = "the record id given is not one this verb builds (itd-N or iss-N); it is not repeated here"
 		row.Remedy = "name a planned intent (`abcd build <itd-N>`) or an open issue the drain rule takes (`abcd build <iss-N>`)"
 	}
 	return row, false

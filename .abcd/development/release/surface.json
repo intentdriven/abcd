@@ -288,6 +288,13 @@
           "hidden": false
         },
         {
+          "name": "live-sessions",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "only-waiting",
           "shorthand": "",
           "type": "bool",
@@ -374,6 +381,61 @@
           "name": "bin-dir",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd ahoy worktree",
+      "hidden": false,
+      "sentence": "List this repository's worktrees and its lane in the worktree store: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
+      "flags": []
+    },
+    {
+      "path": "abcd ahoy worktree add",
+      "hidden": false,
+      "sentence": "Add a worktree in this repository's lane of the worktree store: Writes the worktree, its start record and its local tier; refuses a taken or reserved name.",
+      "flags": [
+        {
+          "name": "branch",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd ahoy worktree list",
+      "hidden": false,
+      "sentence": "List this repository's worktrees and its lane, or every lane with --all: Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
+      "flags": [
+        {
+          "name": "all",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd ahoy worktree prune",
+      "hidden": false,
+      "sentence": "Reclaim this lane's merged, clean worktrees, archiving their notes first: Writes the notes archive and removes the worktrees; refuses a store it cannot trust.",
+      "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "yes",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -1687,6 +1749,13 @@
       "sentence": "Delete one staged or quarantined raw transcript for good: Writes the deletion; refuses without --yes.",
       "flags": [
         {
+          "name": "pending",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "root-sha",
           "shorthand": "",
           "type": "string",
@@ -1828,6 +1897,16 @@
     {
       "path": "abcd hook",
       "hidden": true,
+      "flags": []
+    },
+    {
+      "path": "abcd hook dogfood-binary",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd hook dogfood-build",
+      "hidden": false,
       "flags": []
     },
     {
@@ -2394,6 +2473,13 @@
           "hidden": false
         },
         {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "run",
           "shorthand": "",
           "type": "string",
@@ -2803,6 +2889,20 @@
       "flags": []
     },
     {
+      "path": "abcd lab matrix",
+      "hidden": false,
+      "sentence": "Show a model matrix run's plan, or record the run its digest consents to: Writes the run record only with --approve; refuses a metered run with no cap.",
+      "flags": [
+        {
+          "name": "approve",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd lab mint",
       "hidden": false,
       "sentence": "Mint a lab for one question, with a standalone snapshot at the pin: Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",
@@ -2852,6 +2952,13 @@
           "name": "no-push",
           "shorthand": "",
           "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "record-review",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -3401,9 +3508,23 @@
       "sentence": "Gate the built website, rendering it first when absent: Writes only inside the output directory; refuses a site failing any gate with exit 1.",
       "flags": [
         {
+          "name": "base-path",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "out",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "project",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }
@@ -3824,6 +3945,161 @@
       ]
     },
     {
+      "path": "abcd session",
+      "hidden": false,
+      "group": "set-up",
+      "block": "people",
+      "sentence": "Set up live brief sessions, start one here, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb.",
+      "flags": []
+    },
+    {
+      "path": "abcd session blueprint",
+      "hidden": false,
+      "sentence": "Write the team relay's Render blueprint and Dockerfile, pinned to a release: Writes render.yaml and .abcd/relay/; refuses an edited file or no GitHub origin.",
+      "flags": [
+        {
+          "name": "origin",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "relay-origin",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd session page",
+      "hidden": false,
+      "sentence": "Write the brief session's static page and its editor bundle into a directory: Writes only the page's six files; refuses a directory holding anything else.",
+      "flags": [
+        {
+          "name": "base-path",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "out",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd session serve",
+      "hidden": false,
+      "sentence": "Run the brief session relay in the foreground, on loopback by default: Writes nothing; refuses a bad --listen, or no repository to serve beyond loopback.",
+      "flags": [
+        {
+          "name": "behind-proxy",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "client-id",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "listen",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "origin",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "owner",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "repo",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd session setup",
+      "hidden": false,
+      "sentence": "Set up live brief sessions with the team's own GitHub sign-in app: Writes its client id, the answer and the blueprint; refuses no GitHub origin or no answer.",
+      "flags": [
+        {
+          "name": "relay-origin",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "where",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd session start",
+      "hidden": false,
+      "sentence": "Start a live brief session on this computer, over your tailnet: Writes only an answer it asks; refuses no recorded GitHub App, no Tailscale or no GitHub origin.",
+      "flags": [
+        {
+          "name": "client-id",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "port",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd site",
       "hidden": false,
       "group": "agents",
@@ -3844,6 +4120,13 @@
       "hidden": false,
       "sentence": "Render the website into the output directory: Writes there, plus a missing label into site-src/ui.json; refuses a non-empty directory it did not write.",
       "flags": [
+        {
+          "name": "base-path",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "commit",
           "shorthand": "",
@@ -3867,6 +4150,13 @@
         },
         {
           "name": "preview",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "project",
           "shorthand": "",
           "type": "bool",
           "required": false,
@@ -3904,6 +4194,20 @@
           "name": "name",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "provider",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "replace-existing",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         },

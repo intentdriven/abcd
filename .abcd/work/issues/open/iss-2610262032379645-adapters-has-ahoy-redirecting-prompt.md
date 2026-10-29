@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 294 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/02-adapters.md:289"
-remedy: "none (filed automatically)"
+remedy: "In 02-adapters.md reword the prompt-exports redirect to the future tense and either choose a home outside the registry-only history folder or say the ahoy inventory gains the folder when it is built."
 finding_ref: cfk-c1ffd3841d8cae0d
 ---
 

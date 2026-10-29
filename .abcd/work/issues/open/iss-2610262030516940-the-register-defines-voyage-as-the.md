@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 53 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:231"
-remedy: "none (filed automatically)"
+remedy: "In 09-reflect.md (lines 201-205) replace 'the voyage' and 'the new voyage's store and brief' with plain words (the repository, the new repository's store and brief); voyage is the operations namespace only (adr-35)."
 finding_ref: cfk-20ecf1c8f71f2743
 ---
 

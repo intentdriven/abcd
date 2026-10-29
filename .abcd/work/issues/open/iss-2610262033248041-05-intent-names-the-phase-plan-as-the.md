@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 400 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:74"
-remedy: "none (filed automatically)"
+remedy: "In 05-intent.md lines 74 and 179 replace 'the canonical build order is the phase plan at roadmap/phases/' with dependencies (blocked_by, builds_on) plus the lifecycle shelves and build next's pick order; also fix line 12's 'scoped into a roadmap phase'."
 finding_ref: cfk-6e0be541d84f19ce
 ---
 

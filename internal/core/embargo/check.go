@@ -217,14 +217,14 @@ func Check(req CheckRequest) (CheckResult, error) {
 		}
 		st, err := s.Verify()
 		if err != nil {
-			return CheckResult{}, err
+			return CheckResult{}, atStore(err, s.Root)
 		}
 		stores = append(stores, heldStore{root: s.Root, st: st})
 	}
 	for _, root := range reach.Others {
 		st, err := readOtherStore(root)
 		if err != nil {
-			return CheckResult{}, err
+			return CheckResult{}, atStore(err, root)
 		}
 		stores = append(stores, heldStore{root: root, st: st})
 	}
@@ -566,7 +566,7 @@ func buildDenySet(stores []heldStore, allowed map[string]bool) (denySet, error) 
 		}
 	}
 	for _, h := range stores {
-		ds.addEmbargoed(h.st, "", true)
+		ds.addEmbargoed(h.st, "", denyForRange)
 	}
 	if ds.embargo == 0 {
 		return ds, nil
@@ -605,19 +605,34 @@ func (ds *denySet) countOnce(id string) {
 	}
 }
 
+// denyMode names which deny set addEmbargoed builds. The two differ only in
+// a closed advisory's title, and the type keeps a caller from passing a bare
+// bool that silently builds the other set.
+type denyMode int
+
+const (
+	// denyForPublication is the set a text that leaves for GitHub is held
+	// to: the text another advisory publishes, or a closing text its
+	// reporter reads. A closed advisory stays private on GitHub, so its
+	// title stays in this set.
+	denyForPublication denyMode = iota + 1
+	// denyForRange is the range and file check's set. A closed advisory's
+	// title was chosen by its reporter and nothing will ever publish it, so
+	// held there forever a title such as "Merge pull request" would refuse
+	// every range after it; this set drops it.
+	denyForRange
+)
+
 // addEmbargoed adds every advisory under embargo but the one with id skip:
 // each not yet published (a closed one stays private on GitHub, so it stays
 // in the set), by its id and reserved CVE id, and by its title unless it was
 // moved to the public track (that issue is fixed in the open), is shorter
-// than minTitleRunes, or is closed while dropClosedTitles is set; and each
-// pending a severity, the same way. Only the range and file check sets
-// dropClosedTitles: a closed advisory's title was chosen by its reporter and
-// nothing will ever publish it, so held there forever a title such as "Merge
-// pull request" would refuse every range after it. The text another
-// advisory publishes, or a closing text its reporter reads, still refuses
-// it: the closed advisory stays private on GitHub. Its id and CVE id stay
-// in every set.
-func (ds *denySet) addEmbargoed(st State, skip string, dropClosedTitles bool) {
+// than minTitleRunes, or is closed while mode is denyForRange; and each
+// pending a severity, the same way. Its id and CVE id stay in every set. Any
+// mode but denyForRange keeps a closed advisory's title, so a mode not
+// named here (the zero denyMode included) holds more, never less.
+func (ds *denySet) addEmbargoed(st State, skip string, mode denyMode) {
+	dropClosedTitles := mode == denyForRange
 	for _, a := range st.Advisories {
 		if a.PublishedAt != nil || (skip != "" && canonGHSA(a.GHSAID) == canonGHSA(skip)) {
 			continue
@@ -661,7 +676,7 @@ func (ds *denySet) addTitle(title string) {
 // project's, already public.
 func othersDenySet(st State, self string) denySet {
 	ds := denySet{}
-	ds.addEmbargoed(st, self, false)
+	ds.addEmbargoed(st, self, denyForPublication)
 	return ds
 }
 

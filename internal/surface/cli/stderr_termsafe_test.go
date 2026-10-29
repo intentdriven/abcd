@@ -18,13 +18,15 @@ import (
 
 // hostilePath is a transcript path a host payload could carry: ESC opening a
 // colour sequence and an RLO override, the two runes the review reproduced.
+// The hooks name the path by its role and never repeat it, so it reaches
+// neither stderr nor the --json reason, runes and all.
 const hostilePath = "/nonexistent/\x1b[31mRED‮.jsonl"
 
 func TestSessionEndMasksAttackRunesOnStderr(t *testing.T) {
 	repo, _ := sessionEndRepo(t)
 	stdout, stderr := runHook(t, endPayload(t, "sess-hostile", repo, hostilePath), "hook", "session-end", "--json")
-	if !strings.Contains(stderr, "RED") {
-		t.Fatalf("stderr no longer echoes the transcript path, so this test proves nothing:\n%q", stderr)
+	if strings.Contains(stderr, "RED") || !strings.Contains(stderr, "transcript path") {
+		t.Fatalf("stderr must name the transcript path by its role and never repeat it:\n%q", stderr)
 	}
 	assertNoAttackRunes(t, "session-end stderr", stderr)
 	r := decodeHookResult(t, stdout)
@@ -38,8 +40,8 @@ func TestSubagentStopMasksAttackRunesOnStderr(t *testing.T) {
 	repo, _ := sessionEndRepo(t)
 	stdout, stderr := runHook(t, subagentPayload(t, "sess-hostile", repo, "ah1", hostilePath, "general-purpose"),
 		"hook", "subagent-stop", "--json")
-	if !strings.Contains(stderr, "RED") {
-		t.Fatalf("stderr no longer echoes the transcript path, so this test proves nothing:\n%q", stderr)
+	if strings.Contains(stderr, "RED") || !strings.Contains(stderr, "transcript path") {
+		t.Fatalf("stderr must name the transcript path by its role and never repeat it:\n%q", stderr)
 	}
 	assertNoAttackRunes(t, "subagent-stop stderr", stderr)
 	r := decodeHookResult(t, stdout)

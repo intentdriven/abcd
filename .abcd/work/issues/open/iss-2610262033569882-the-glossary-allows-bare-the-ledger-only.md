@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 454 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/ledger.md:44"
-remedy: "none (filed automatically)"
+remedy: "Name 'the sources ledger' where 07-library.md says bare 'the ledger' for the provenance store (line 247 among others), or let the ledger glossary entry allow the bare form inside the library chapter, where the ledger sub-verb lives."
 finding_ref: cfk-e24eac9749ba609a
 ---
 

@@ -1513,8 +1513,8 @@ func TestCaptureWithoutFoundAtSaysNoLocationWasNamed(t *testing.T) {
 // TestCaptureEnumRefusalNamesTheFlagAndItsSet is iss-2608290810037524: a
 // closed-set flag's refusal named the value and blamed "malformed
 // frontmatter" — a layer the caller never wrote. It names the flag and the
-// accepted set instead, for every closed enumeration on the capture path, and
-// writes nothing.
+// accepted set instead, without repeating the value passed, for every closed
+// enumeration on the capture path, and writes nothing.
 func TestCaptureEnumRefusalNamesTheFlagAndItsSet(t *testing.T) {
 	repo := captureLedgerRepo(t)
 	for _, c := range []struct{ flag, value, member string }{
@@ -1527,8 +1527,11 @@ func TestCaptureEnumRefusalNamesTheFlagAndItsSet(t *testing.T) {
 			t.Fatalf("%s %s was accepted:\n%s", c.flag, c.value, out)
 		}
 		msg := err.Error() + string(out)
-		if !strings.Contains(msg, c.flag+" \""+c.value+"\"") || !strings.Contains(msg, c.member) {
+		if !strings.Contains(msg, "the "+c.flag+" value") || !strings.Contains(msg, c.member) {
 			t.Errorf("%s refusal does not name the flag and its accepted set: %s", c.flag, msg)
+		}
+		if strings.Contains(msg, c.value) {
+			t.Errorf("%s refusal repeats the value passed: %s", c.flag, msg)
 		}
 		if strings.Contains(msg, "malformed frontmatter") {
 			t.Errorf("%s refusal blames frontmatter the caller never wrote: %s", c.flag, msg)

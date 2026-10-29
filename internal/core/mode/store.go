@@ -1,6 +1,7 @@
 package mode
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -68,6 +70,13 @@ func Set(cwd string, s State) error {
 // here, and reporting "nobody is waiting" over it would hide exactly the parked
 // stop this store exists to make visible.
 func ReadAt(repoRoot string) (State, error) {
+	return ReadAtContext(context.Background(), repoRoot)
+}
+
+// ReadAtContext is ReadAt with its git question bound to ctx, for a reader
+// that holds a budget (the status line); a context that ends first is an
+// error, never Managed.
+func ReadAtContext(ctx context.Context, repoRoot string) (State, error) {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
 		return "", fmt.Errorf("opening the checkout to read %s: %w", StoreName, err)
@@ -78,8 +87,12 @@ func ReadAt(repoRoot string) (State, error) {
 	// `.work.local` committed as a symlink out of the tree — cannot walk the read
 	// outside the checkout. A path that escapes the root is not an fs.ErrNotExist,
 	// so the absent-means-managed branch below fails closed on the escape rather
-	// than reporting it as "the file is not there".
+	// than reporting it as "the file is not there". A store git tracks came with
+	// a commit, not from this checkout, and is refused the same way.
 	data, err := fsutil.ReadGuardedInRoot(root, FileRelPath, maxStoreBytes)
+	if err == nil {
+		err = localtier.UntrackedContext(ctx, repoRoot, FileRelPath)
+	}
 	switch {
 	case err == nil:
 	case errors.Is(err, fs.ErrNotExist):

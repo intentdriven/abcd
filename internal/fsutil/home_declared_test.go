@@ -96,3 +96,49 @@ func TestHomeDeclarationNamesSaysWhyAPresentDeclarationWasIgnored(t *testing.T) 
 		t.Fatalf("the ignored declaration must say why: %q", ignored)
 	}
 }
+
+// A declaration whose entries carry fields after the path, separated by tabs,
+// is read through HomeDeclarationEntry: the path field is matched exactly as
+// HomeDeclarationNames matches a whole line, and the fields after it come back
+// trimmed, in order. A path-only line is declared with no fields. The first
+// entry naming the target is the one that answers.
+func TestHomeDeclarationEntryReturnsTheFieldsAfterThePath(t *testing.T) {
+	home := t.TempDir()
+	rel := declareIn(t, home, "roots",
+		"# a comment\n/example/other\thttps://example.invalid/other.git\n"+
+			"/example/checkout-absent\t https://example.invalid/a.git \tmain\n"+
+			"/example/checkout-absent\thttps://example.invalid/second.git\n"+
+			"/example/bare\n", 0o600)
+	fields, declared, ignored := HomeDeclarationEntry(home, rel, 1<<10, "/example/checkout-absent", false)
+	if !declared || ignored != "" || strings.Join(fields, "|") != "https://example.invalid/a.git|main" {
+		t.Fatalf("fields %q, declared %v, ignored %q; want the first naming entry's two fields", fields, declared, ignored)
+	}
+	fields, declared, _ = HomeDeclarationEntry(home, rel, 1<<10, "/example/bare", false)
+	if !declared || len(fields) != 0 {
+		t.Fatalf("a path-only line: fields %q, declared %v; want declared with no fields", fields, declared)
+	}
+	if _, declared, _ = HomeDeclarationEntry(home, rel, 1<<10, "/example/unlisted", false); declared {
+		t.Fatal("an unlisted target was declared")
+	}
+}
+
+// HomeDeclarationNames keeps reading a whole line as one path: a line holding
+// a tab names the path with the tab in it, as it always has, so the readers
+// that declare checkouts alone (trusted-roots and its siblings) are unchanged.
+func TestHomeDeclarationNamesReadsATabbedLineWhole(t *testing.T) {
+	home := t.TempDir()
+	rel := declareIn(t, home, "roots", "/example/checkout-absent\thttps://example.invalid/a.git\n", 0o600)
+	if declared, _ := HomeDeclarationNames(home, rel, 1<<10, "/example/checkout-absent", false); declared {
+		t.Fatal("HomeDeclarationNames split a tabbed line into a path and fields")
+	}
+}
+
+// HomeDeclarationEntry refuses what HomeDeclarationNames refuses, saying why.
+func TestHomeDeclarationEntrySaysWhyAPresentDeclarationWasIgnored(t *testing.T) {
+	home := t.TempDir()
+	rel := declareIn(t, home, "roots", "/example/checkout-absent\thttps://example.invalid/a.git\n", 0o622)
+	fields, declared, ignored := HomeDeclarationEntry(home, rel, 1<<10, "/example/checkout-absent", false)
+	if declared || fields != nil || !strings.Contains(ignored, "writable by others") {
+		t.Fatalf("fields %q, declared %v, ignored %q; want a refusal saying why", fields, declared, ignored)
+	}
+}

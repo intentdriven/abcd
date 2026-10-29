@@ -206,3 +206,17 @@ func TestOnlyWaitingDeclinesAnOfferThatDoesNotWait(t *testing.T) {
 		t.Fatalf("the person was put %v, want %v", inner.keys, want)
 	}
 }
+
+// TestOnlyWaitingPutsWhereSessionsRunWithTheSessionsQuestion: the second live
+// session question follows the first, so a waiting sessions question is put
+// whole and one that does not wait is not put at all.
+func TestOnlyWaitingPutsWhereSessionsRunWithTheSessionsQuestion(t *testing.T) {
+	waits := &waitingFilter{keys: map[string]bool{SessionsPromptKey: true}}
+	if !waits.asks(SessionsPromptKey) || !waits.asks(SessionsWherePromptKey) {
+		t.Fatal("a waiting sessions question was not put whole")
+	}
+	other := &waitingFilter{keys: map[string]bool{"visibility": true}}
+	if other.asks(SessionsPromptKey) || other.asks(SessionsWherePromptKey) {
+		t.Fatal("a sessions question that does not wait was put")
+	}
+}

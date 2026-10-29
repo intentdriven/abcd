@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 124 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/06-framing.md:13"
-remedy: "none (filed automatically)"
+remedy: "Edit 06-framing.md (opening paragraph and construal): say 'the provenance ledger's' construal and 'the provenance ledger work', not the bare ledger."
 finding_ref: cfk-6d7764452ff61392
 ---
 

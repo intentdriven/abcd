@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 644 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/17-guard.md:127"
-remedy: "none (filed automatically)"
+remedy: "Add 17-guard.md:127 to the intent's owed brief edits (its decision 4 names only 08-abcd.md and commands/abcd.md): the menu is a third setter of the waiting-on state, so either it sets it through the abcd mode primitive and always clears it, or the gate's ownership test is amended when the menu ships."
 related_intents: [itd-2610031215002409]
 finding_ref: cfk-0c85a14992d529ee
 ---

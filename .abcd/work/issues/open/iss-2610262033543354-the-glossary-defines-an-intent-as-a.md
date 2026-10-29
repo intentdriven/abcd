@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 449 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/intent.md:4"
-remedy: "none (filed automatically)"
+remedy: "Widen the definition: an intent is a press-release-shaped description of a feature written before implementation, or, for a discipline-kind intent, a stated rule with no press release."
 finding_ref: cfk-cd946e61da8f705f
 ---
 

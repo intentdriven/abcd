@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 726 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md:46"
-remedy: "none (filed automatically)"
+remedy: "Rename the pruned-tier archive in the worktree-store intent (scope bullet and decisions 4 and 10) to a name without 'notes' (for example a reclaimed-tiers store), and mirror it in the store layout of 04-surfaces/01-ahoy.md and 05-internals/03-configuration.md, before the store is built. The announce intent already retired 'note' for the same clash with the memory note."
 related_intents: [itd-2609091014076309]
 finding_ref: cfk-5720d4198d0524cc
 ---

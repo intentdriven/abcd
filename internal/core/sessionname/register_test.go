@@ -182,6 +182,54 @@ func TestStartLeavesAPersonsOwnNameAlone(t *testing.T) {
 	}
 }
 
+// TestActsGatesExactlyThePersonaRead is iss-2610152324354563: the front door
+// resolves the repository root, a git call, only when Acts says so, so Acts
+// must answer yes for every payload whose start reads the persona list and no
+// for every other. A titled startup only records the session as the person's
+// (keep), which needs no repository: Acts answers no for it, and Start with no
+// root still records it. The persona read is seen through a list that cannot
+// be used, whose note a start that reads it always carries.
+func TestActsGatesExactlyThePersonaRead(t *testing.T) {
+	bad := writePersonas(t, `{"personas": []}`)
+	for _, c := range []struct {
+		name string
+		req  Request
+	}{
+		{"titled startup", Request{SessionID: "p", Source: "startup", Title: "Zed"}},
+		{"untitled startup", Request{SessionID: "p", Source: "startup"}},
+		{"untitled fork", Request{SessionID: "p", Source: "fork"}},
+		{"titled fork", Request{SessionID: "p", Source: "fork", Title: "Zed"}},
+		{"untitled resume", Request{SessionID: "p", Source: "resume"}},
+		{"titled resume", Request{SessionID: "p", Source: "resume", Title: "Zed"}},
+		{"untitled clear", Request{SessionID: "p", Source: "clear"}},
+		{"titled clear", Request{SessionID: "p", Source: "clear", Title: "Zed"}},
+		{"untitled compact", Request{SessionID: "p", Source: "compact"}},
+		{"titled compact", Request{SessionID: "p", Source: "compact", Title: "Zed"}},
+		{"sub-agent", Request{SessionID: "p", Source: "startup", AgentID: "agent-1"}},
+		{"no session id", Request{Source: "startup"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			m := newMachine(t)
+			req := c.req
+			req.Root = bad
+			out := Start(m.at(m.launch(100)), req)
+			read := slices.ContainsFunc(out.Notes, func(n string) bool { return strings.Contains(n, PersonasRel) })
+			if got := Acts(c.req); got != read {
+				t.Fatalf("Acts = %v, but the start read the persona list: %v (%+v)", got, read, out)
+			}
+		})
+	}
+
+	m := newMachine(t)
+	out := Start(m.at(m.launch(100)), Request{SessionID: "z", Source: "startup", Title: "Zed"})
+	if out.Name != "" || len(out.Notes) != 0 {
+		t.Fatalf("titled startup with no root: %+v, want nothing", out)
+	}
+	if reg := m.register(); !bytes.Contains(reg, []byte(`"z": ""`)) {
+		t.Fatalf("titled startup with no root: the register does not record z as the person's:\n%s", reg)
+	}
+}
+
 // TestStartNamesNoSubAgent is C12: a payload carrying an agent id is a
 // sub-agent's, and no name is handed out for it.
 func TestStartNamesNoSubAgent(t *testing.T) {

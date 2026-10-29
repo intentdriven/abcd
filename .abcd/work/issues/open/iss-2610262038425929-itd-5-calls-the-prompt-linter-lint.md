@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 813 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-5-prompt-quality-additions.md:23"
-remedy: "none (filed automatically)"
+remedy: "In itd-5's rule text, Add 1 and Add 4, rename lint_prompts to agent_contract (the shipped record-lint rule) and state that set-membership of task_classes against a closed enum, the PQ005 block-list code and the task_classes.json enum are staged (iss-265); the shipped check only requires the field to be non-empty"
 related_intents: [itd-5]
 finding_ref: cfk-ab4940e4499b0676
 ---

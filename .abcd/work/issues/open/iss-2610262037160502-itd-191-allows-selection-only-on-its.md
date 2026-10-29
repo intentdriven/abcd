@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 711 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-191-the-selection-criteria-are-a-declared.md:18"
-remedy: "none (filed automatically)"
+remedy: "In itd-191 scope the rule to the comparative reading's selection among conjectures and say the build pick (34-build.md: a readiness score with a computed grounds entry) is a different selection under its own recorded rule."
 related_intents: [itd-191]
 finding_ref: cfk-147390af5a44ab66
 ---

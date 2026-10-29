@@ -150,9 +150,10 @@ func raceStagePreflight(pid int, age time.Duration) ([]Proc, map[int][]string) {
 }
 
 // TestQueueReadsAPreflightAtItsRaceGateAsInItsTests: a preflight whose waiter
-// is the race gate's has passed its first gate and is in its test stages, so
-// it is busy, and its race waiter is not in the first gate's queue: at one
-// slot the gate stays shut on it, as it did before the race gate existed.
+// is the race gate's has passed its first gate, so it is in Busy, and its race
+// waiter is not in the first gate's queue: at one slot the gate stays shut on
+// it, as it did before the race gate existed. Above one it takes no slot
+// while its race waiter is queued (TestARaceGateWaiterTakesNoSlot).
 func TestQueueReadsAPreflightAtItsRaceGateAsInItsTests(t *testing.T) {
 	procs, args := ownPreflightWaiter()
 	// This waiter started after the race waiter.
@@ -392,10 +393,11 @@ func TestJustOpenedReadsOneGate(t *testing.T) {
 	}
 }
 
-// TestGoTestParallelismSharesTheMachineBetweenSlots: with two preflights
-// admitted at once, each test stage's -p is at most half the cores, so two
-// concurrent stages do not each take the whole machine; with one slot it is
-// what it always was.
+// TestGoTestParallelismSharesTheMachineBetweenSlots: with n preflights
+// admitted at once, each test stage's -p is at most the cores divided by n,
+// so concurrent stages do not each take the whole machine, and at four slots
+// on 16 cores that share meets the quarter-of-the-cores floor; with one slot
+// it is what it always was. A small machine still gets one each.
 func TestGoTestParallelismSharesTheMachineBetweenSlots(t *testing.T) {
 	for _, c := range []struct {
 		load    float64
@@ -408,10 +410,16 @@ func TestGoTestParallelismSharesTheMachineBetweenSlots(t *testing.T) {
 		{16, 2, 8, "two slots while the other stage loads the machine: still half"},
 		{28, 2, 4, "two slots on a loaded machine: the floor"},
 		{2, 0, 16, "an unset slot count reads as one"},
+		{2, 3, 5, "three slots, an idle machine: a third of the cores each"},
+		{2, 4, 4, "four slots, an idle machine: a quarter each, the floor"},
+		{28, 4, 4, "four slots on a loaded machine: still the floor"},
 	} {
 		snap := Snapshot{Load1: c.load, HasLoad: true, Cores: 16}
 		if got := GoTestParallelism(snap, c.slots); got != c.want {
 			t.Errorf("%s: GoTestParallelism(load %v on 16, %d slots) = %d, want %d", c.comment, c.load, c.slots, got, c.want)
 		}
+	}
+	if got := GoTestParallelism(Snapshot{Load1: 1, HasLoad: true, Cores: 4}, 4); got != 1 {
+		t.Errorf("four slots on four cores: GoTestParallelism = %d, want 1", got)
 	}
 }

@@ -38,6 +38,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -219,7 +220,7 @@ func checkAsk(a question.Ask, verbs []string) (question.Ask, error) {
 
 // readReceipt reads and checks the receipt rel under the turn's directory.
 func (w *Written) readReceipt(root *os.Root, rel string) (receipt, error) {
-	data, err := fsutil.ReadGuardedInRoot(root, rel, MaxReceiptBytes)
+	data, err := localtier.ReadInRoot(root, rel, MaxReceiptBytes)
 	if err != nil {
 		return receipt{}, fmt.Errorf("the receipt could not be read: %w", err)
 	}

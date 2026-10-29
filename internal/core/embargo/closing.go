@@ -78,6 +78,9 @@ func (s Store) readDraft(ghsa string) (string, error) {
 	if err != nil || !fi.Mode().IsRegular() || fsutil.CallersAlone(p, fi) != nil {
 		return "", refuse("the closing draft is not a regular file this account alone can write", "record its verdict again with `abcd embargo triage` to redraft it")
 	}
+	if err := untracked(s.Root, DraftDirRel+"/"+ghsa+".md", "the closing draft"); err != nil {
+		return "", err
+	}
 	data, err := fsutil.ReadGuarded(p, maxDraftBytes)
 	if err != nil {
 		return "", refuse("the closing draft could not be read within its size limit", "record its verdict again with `abcd embargo triage` to redraft it")

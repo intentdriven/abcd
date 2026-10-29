@@ -507,6 +507,9 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 			"restore the branch to that head, then run `abcd implement step` again")
 	}
 	rcp, err := landing.Receipt(c.RepoRoot, lane.HeadSHA)
+	if rf := tierRefusal(string(StageLand), lane.ID, err); rf != nil {
+		return Outcome{}, rf
+	}
 	if err != nil {
 		return Outcome{}, err
 	}

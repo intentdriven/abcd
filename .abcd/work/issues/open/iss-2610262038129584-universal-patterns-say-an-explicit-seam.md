@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 779 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/04-universal-patterns.md:181"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-universal-patterns.md section 7 (Backend resolution bullets): mark the `<seam>.backend` selectors as staged and say no shipped code reads spec.backend, run.backend or history.backend (03-configuration staged keys); oracle.backend only records a choice."
 finding_ref: cfk-9965d16dfeac77eb
 ---
 

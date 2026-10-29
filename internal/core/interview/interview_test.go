@@ -224,3 +224,55 @@ func TestWriteSanitisesTheNote(t *testing.T) {
 		t.Fatalf("the note was recorded as %q", n)
 	}
 }
+
+// TestParseAnswersRefusalsNameTheAnswerNotItsText holds each ParseAnswers
+// refusal to naming the answer by its ordinal, or the line a parse stopped at,
+// and the problem, without repeating the id, value or key the file carries.
+func TestParseAnswersRefusalsNameTheAnswerNotItsText(t *testing.T) {
+	const m = "zqanswersmarkerq"
+	const digits = "987654321"
+	cases := []struct {
+		name, doc, hide string
+		names           []string
+	}{
+		{"id answered twice",
+			`{"schema_version":1,"interview":"setup","answers":[{"id":"` + m + `","value":"a"},{"id":"` + m + `","value":"b"}]}`,
+			m, []string{"answer 2", "earlier answer"}},
+		{"no value",
+			`{"schema_version":1,"interview":"setup","answers":[{"id":"x","value":"a"},{"id":"` + m + `","value":" "}]}`,
+			m, []string{"answer 2", "no value"}},
+		{"answered_in",
+			`{"schema_version":1,"interview":"setup","answers":[{"id":"` + m + `","value":"a","answered_in":"` + m + `"}]}`,
+			m, []string{"answer 1", "answered_in", Terminal, ClaudeCode}},
+		{"another interview",
+			`{"schema_version":1,"interview":"` + m + `","answers":[]}`,
+			m, []string{"another interview", `"setup"`}},
+		{"unknown key",
+			`{"schema_version":1,"interview":"setup","answers":[],"` + m + `":1}`,
+			m, []string{"does not define", "answered_in"}},
+		{"repeated key",
+			`{"schema_version":1,"interview":"setup","answers":[{"id":"x","` + m + `":"a","` + m + `":"b"}]}`,
+			m, []string{"repeated"}},
+		{"wrong type",
+			"{\"schema_version\":1,\n\"interview\":" + digits + ",\"answers\":[]}",
+			digits, []string{"interview", "line 2", "wrong type"}},
+		{"not JSON",
+			"{\"schema_version\":1,\n\"interview\":\"setup\",\n" + m + "}",
+			m, []string{"line 3", "not valid JSON"}},
+	}
+	for _, c := range cases {
+		_, err := ParseAnswers([]byte(c.doc), "setup")
+		if err == nil {
+			t.Errorf("%s: accepted", c.name)
+			continue
+		}
+		if strings.Contains(err.Error(), c.hide) {
+			t.Errorf("%s: the refusal repeats the file's text: %v", c.name, err)
+		}
+		for _, want := range c.names {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: the refusal does not name %q: %v", c.name, want, err)
+			}
+		}
+	}
+}

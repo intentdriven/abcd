@@ -24,6 +24,7 @@ import (
 	"os"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // QuestionOpenRelPath is the marker, repo-relative and slash-separated. Its
@@ -84,7 +85,7 @@ func QuestionOpenForTest(repoRoot string) (bool, error) {
 }
 
 func markerIn(root *os.Root) (bool, error) {
-	_, err := root.Lstat(QuestionOpenRelPath)
+	_, err := localtier.LstatInRoot(root, QuestionOpenRelPath)
 	switch {
 	case err == nil:
 		return true, nil
@@ -115,7 +116,9 @@ func ResetOnAnswer(repoRoot string) (bool, error) {
 		return false, fmt.Errorf("opening the checkout to reset %s: %w", StoreName, err)
 	}
 	defer root.Close()
-	fi, err := root.Lstat(QuestionOpenRelPath)
+	// A marker git tracks came with a commit, not from a question asked here,
+	// and resets nothing.
+	fi, err := localtier.LstatInRoot(root, QuestionOpenRelPath)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return false, nil
