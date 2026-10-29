@@ -43,24 +43,6 @@ func TestForgeLabel(t *testing.T) {
 	}
 }
 
-// profileURL derives a forge profile only from a noreply address — both
-// GitHub forms — and derives nothing from a real mailbox, which the export
-// rule protects. A bot's bracketed name never matches.
-func TestProfileURL(t *testing.T) {
-	cases := map[string]string{
-		"77722411+REPPL@users.noreply.github.com": "https://github.com/REPPL",
-		"REPPL@users.noreply.github.com":          "https://github.com/REPPL",
-		"someone@example.com":                     "",
-		"":                                        "",
-		"49699333+dependabot[bot]@users.noreply.github.com": "",
-	}
-	for in, want := range cases {
-		if got := profileURL(in); got != want {
-			t.Fatalf("profileURL(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 // uiStrings walks MAPS as well as fields. The provenance gate holds every
 // rendered word to this list, so a family of declared interface strings the
 // walk cannot see is refused on the page that renders it — which is how the

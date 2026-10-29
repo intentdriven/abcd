@@ -125,6 +125,26 @@ type Result struct {
 	// not be read (GeneratedUnreadLine), so every shared path was judged an
 	// overlap; "" when it was read, there is none, or no overlap was judged.
 	GeneratedUnread string
+	// Withdrew is each merge a release reserved anew withdrew from origin's
+	// default branch and recorded (withdraw.go), a partial withdrawal among
+	// them; Withdrawals is every withdrawal the commit pushed records.
+	Withdrew    []Withdrawal
+	Withdrawals []Withdrawal
+	// ForgeFailures is each pull request a withdrawal, re-arm or its record
+	// failed on, and ForgeUnchecked why the merges armed could not be listed
+	// or withdrawn at all; "" when they were, or the act withdraws none.
+	ForgeFailures  []ForgeFailure
+	ForgeUnchecked string
+	// Admitted is the pull request an --admit re-armed and recorded
+	// admitted; nil for every other act.
+	Admitted *Withdrawal
+	// Stranded is each withdrawal of another person's the commit pushed
+	// carries, which this copy never re-arms (dcn-2610222219297651).
+	Stranded []Withdrawal
+	// Settles is each release whose withdrawals this act re-armed or
+	// skipped: its own on a release's --release, and any ended release of
+	// the same person's it found on its fetch.
+	Settles []Settle
 	// Directories is each path of the footprint the request named that is a
 	// directory git tracks (iss-2610230016544142), with the tracked files
 	// beneath it: the act is made all the same, and a surface tells the
@@ -134,6 +154,37 @@ type Result struct {
 	// renewal, which names no footprint and keeps the tip's, and for a
 	// footprint of files alone.
 	Directories []DirectoryFootprint
+	// Dropped is each path of the footprint of this person's own live tip
+	// that a reserve renewing it, or taking it over from their other copy,
+	// leaves out (iss-2610290507512835), in the tip's order: the act wrote
+	// its own footprint in place of the tip's, so none of them is held now
+	// (DroppedLine). nil when it keeps every path, over a lapsed tip, which
+	// held nothing, and for every other act.
+	Dropped []string
+}
+
+// DroppedLine is how a person is told the paths their reserve stopped
+// holding (Result.Dropped), the same words wherever it is shown.
+func DroppedLine(paths []string) string {
+	quoted := make([]string, len(paths))
+	for i, p := range paths {
+		quoted[i] = echo(p)
+	}
+	return fmt.Sprintf("the footprint leaves out %s, which the reservation it replaced held, so this reservation no longer holds them; name each again with --footprint to keep it",
+		strings.Join(quoted, ", "))
+}
+
+// droppedPaths is each path of held that footprint leaves out, in held's
+// order: one neither named again nor beneath a directory it names (within);
+// nil when it keeps them all.
+func droppedPaths(held, footprint []string) []string {
+	var out []string
+	for _, p := range held {
+		if !within([]string{p}, footprint) && !slices.Contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // beforePush, when a test sets it, runs between the judgement and the push:
@@ -196,7 +247,22 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		return Result{}, err
 	}
 	p.derivedGap = gap
-	if isRelease(p.id) && !p.req.Release && !p.req.Renew {
+	// Every act first settles each ended release whose withdrawals are this
+	// person's and not yet re-armed (withdrawact.go): its own subject only
+	// once tagged, since the act itself settles it otherwise.
+	skip := ""
+	if isRelease(p.id) {
+		if tagged, err := taggedOnOrigin(root, p.id); err == nil && !tagged {
+			skip = p.id
+		}
+	}
+	settles, settled := sweepEnded(p.actor(), tree, skip)
+	if settled {
+		if p.derivedGap, err = fetch(root, p.now, noReservation, reservations); err != nil {
+			return Result{}, err
+		}
+	}
+	if isRelease(p.id) && !p.req.Release && !p.req.Renew && p.req.Admit == 0 {
 		// A release already tagged has no cut left to hold.
 		tagged, err := taggedOnOrigin(root, p.id)
 		if err != nil {
@@ -205,17 +271,73 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		if tagged {
 			return Result{}, refuse("%s is already tagged on %s, so there is no cut to hold; %s", releaseTag(p.id), Remote, nothingPushed)
 		}
+		// One release is cut at a time: a second would withdraw the merges
+		// the first admitted, and neither cut could tell.
+		if err := otherLiveRelease(root, p.id, p.now); err != nil {
+			return Result{}, err
+		}
 	}
 	j, err := judge(p, tree)
 	if err != nil {
 		return Result{}, err
 	}
+	// A release is judged, and this person's withdrawals read, as their own
+	// newest push and the release's holder's record it (ownRelease).
+	own, err := p.ownRelease(tree, &j)
+	if err != nil {
+		return Result{}, err
+	}
+	own.shownOnce(root, p.id, j.Commit)()
+	if own.said() {
+		settles = append(settles, own)
+	}
 	res, m, parent, err := decide(p, j)
 	if err != nil || res.Act == ActAlreadyReleased {
 		if err == nil {
 			res.DerivedUnchecked = p.derivedGap
+			if isRelease(p.id) && p.req.Release {
+				// A release already ended by its tombstone settles what that
+				// tombstone left withdrawn.
+				if s, ok := settleEnded(p.actor(), tree, p.id, true); ok {
+					settles = append(settles, s)
+				}
+			}
+			res.Settles = settles
 		}
 		return res, err
+	}
+	// What the act does with the release's withdrawals, before its push.
+	settleOwn := false
+	var admitting Withdrawal
+	admitState := ""
+	switch {
+	case !isRelease(p.id) || !j.present || j.Unreadable != "":
+	case p.req.Release:
+		// The cutting copy ends its reservation: the tombstone carries every
+		// withdrawal as it stands, and once it has landed every one of this
+		// person's is re-armed and a second tombstone records each state.
+		m.Withdrawn = j.Withdrawn
+		if slices.ContainsFunc(j.Withdrawn, func(w Withdrawal) bool { return w.unsettled() && sameHolder(w.By, p.holder) }) {
+			if why, definite := loginMismatch(root, p.holder); definite {
+				return Result{}, refuse("%s was not released: %s; %s", p.id, why, nothingPushed)
+			}
+			settleOwn = true
+		}
+		res.Stranded = stranded(j.Withdrawn, p.holder)
+	case p.req.Admit != 0:
+		// The admission is recorded before the forge re-arms it, so a push
+		// that loses leaves nothing armed.
+		admitting, _ = withdrawalOf(j.Withdrawn, p.req.Admit)
+		if admitState, err = p.admitCheck(admitting); err != nil {
+			return Result{}, err
+		}
+		m.Withdrawn = withWithdrawal(m.Withdrawn, Withdrawal{Number: admitting.Number, ID: admitting.ID, Form: admitting.Form,
+			Head: admitting.Head, By: admitting.By, State: WithdrawnAdmitted})
+	default:
+		// A reservation keeps what its record still has withdrawn: its own
+		// admissions too while it is this person's reservation.
+		m.Withdrawn = carried(j.Withdrawn, j.mine && !j.message.released() && !j.derived)
+		res.Stranded = stranded(m.Withdrawn, p.holder)
 	}
 	if !p.req.Release {
 		if err := crowding(p, j, &res); err != nil {
@@ -230,7 +352,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	// makes it the drain's hold, which a lane opens on, so it asks as a fresh
 	// one does (spc-2610161044461448 step 10; the review of steps 1 to 18).
 	forkUnchecked, forkAllowed := "", ""
-	if !p.req.Release && (res.Act != ActRenewed || p.req.Drain && !res.RenewedLive) {
+	if !p.req.Release && p.req.Admit == 0 && (res.Act != ActRenewed || p.req.Drain && !res.RenewedLive) {
 		if forkUnchecked, forkAllowed, err = checkFork(root, p.now, o.home()); err != nil {
 			return Result{}, err
 		}
@@ -268,6 +390,41 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	res.DerivedUnchecked = p.derivedGap
 	res.ForkUnchecked = forkUnchecked
 	res.ForkAllowed = forkAllowed
+	if settleOwn {
+		s, final, ws := p.settleOwnRelease(tree, sha, m.Withdrawn)
+		settles = append(settles, s)
+		res.Commit, m.Withdrawn = final, ws
+	}
+	if isRelease(p.id) && !p.req.Release && p.req.Admit == 0 {
+		// A release reserved anew withdraws the merges already armed, now
+		// that its own push holds every other session's arming, recording
+		// them on a renewal of the reservation it just pushed before it
+		// touches the forge. A live renewal withdraws again only what it
+		// already records as this person's, withdrawn or kept (a withdrawal
+		// the forge refused), that the forge has armed: its record is read
+		// from this person's own newest push, so each such entry is theirs.
+		commit, recorded, made, fails, unchecked := p.withdrawArmed(tree, sha, m, res.Act == ActRenewed && res.RenewedLive)
+		res.ForgeFailures, res.ForgeUnchecked, res.Withdrew = fails, unchecked, made
+		res.Commit, m = commit, recorded
+	}
+	if p.req.Admit != 0 {
+		commit, err := p.admitAfter(tree, sha, m, admitting, admitState)
+		if err != nil {
+			return Result{}, err
+		}
+		res.Commit = commit
+		w, _ := withdrawalOf(m.Withdrawn, p.req.Admit)
+		res.Admitted = &w
+		// An admission recorded already, admitted again, changes no state,
+		// so only the first is commented on.
+		if admitting.State != WithdrawnAdmitted {
+			if f := releaseForge.comment(root, p.id, w, p.holder, false); f != nil {
+				res.ForgeFailures = append(res.ForgeFailures, *f)
+			}
+		}
+	}
+	res.Withdrawals = m.Withdrawn
+	res.Settles = settles
 	return res, nil
 }
 
@@ -359,6 +516,9 @@ func decide(p *prepared, j judged) (Result, message, string, error) {
 	if p.req.Renew {
 		return decideRenew(p, j)
 	}
+	if p.req.Admit != 0 {
+		return decideAdmit(p, j)
+	}
 	res, m, parent, err := decideReserve(p, j)
 	// A drain's take-over or renewal of a reservation made over a standing
 	// hand-back backs off it, as a drain's reservation over the hand-back's
@@ -414,6 +574,11 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 		return res, m, j.Commit, nil
 	case j.mine && j.thisCopy:
 		res.Act, res.RenewedLive = ActRenewed, j.verdict.Live
+		if j.verdict.Live {
+			// A lapsed tip held nothing while it lapsed, so reviving it
+			// drops nothing.
+			res.Dropped = droppedPaths(j.Footprint, m.Footprint)
+		}
 		if p.req.Drain && j.verdict.Live {
 			// A drain's re-reserve that renews its own live hold, reached
 			// when a build started the lane's run during the drain's move, is
@@ -438,6 +603,9 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 		res.Act = ActTakenOver
 		res.Replaced = &Replaced{Holder: j.Holder, Copy: CopyAnother, YourCopy: yourCopyAt(siblingCopy(p.root, j.Copy)),
 			Commit: j.Commit, EffectiveExpiry: exp}
+		if j.verdict.Live {
+			res.Dropped = droppedPaths(j.Footprint, m.Footprint)
+		}
 		return res, m, j.Commit, nil
 	}
 	switch {
@@ -551,6 +719,68 @@ func releasedAlready(p *prepared, j judged) (Result, message, string, error) {
 	}
 	return Result{Act: ActReleased, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
 		ExpiresAt: m.ExpiresAt}, m, j.Commit, nil
+}
+
+// decideAdmit is an --admit's row of the push table: only the cutting copy,
+// this person's live release reservation from this copy, admits, and only a
+// pull request the reservation withdrew and has not admitted yet, and that
+// this person withdrew. Its renewal
+// keeps every withdrawal and marks that one admitted once the forge has
+// re-armed it (admitOne); every other tip is refused, and nothing is pushed.
+func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
+	n := p.req.Admit
+	switch {
+	case !j.present:
+		return Result{}, message{}, "", refuse("%s holds no reservation on %s to admit #%d into; %s", p.id, Remote, n, nothingPushed)
+	case j.derived:
+		return Result{}, message{}, "", refuse("%s, so the cut has ended and admits nothing; %s", derivedWhy(p.id), nothingPushed)
+	case j.Unreadable != "":
+		return Result{}, message{}, "", refuse("the reservation on %s is unreadable (%s); %s", p.id, j.Unreadable, nothingPushed)
+	case j.message.released():
+		return Result{}, message{}, "", refuse("the reservation on %s was released at %s, so the cut has ended and admits nothing; %s",
+			p.id, stamp(j.ReleasedAt), nothingPushed)
+	case !j.mine:
+		if w, ok := withdrawalOf(j.Withdrawn, n); ok && w.unsettled() && sameHolder(w.By, p.holder) {
+			return Result{}, message{}, "", refuse("%s is reserved by %s, not by you: only the copy cutting a release admits a pull request into it, so %s takes the release back with --take-over and admits it; %s",
+				p.id, j.Holder, p.holder, nothingPushed)
+		}
+		return Result{}, message{}, "", refuse("%s is reserved by %s, not by you: only the copy cutting a release admits a pull request into it; %s",
+			p.id, j.Holder, nothingPushed)
+	case !j.thisCopy:
+		return Result{}, message{}, "", refuse("%s is held by your copy on another computer: only the copy cutting a release admits a pull request into it, so admit it there; %s",
+			p.id, nothingPushed)
+	case !j.verdict.Live:
+		return Result{}, message{}, "", refuse("your reservation on %s lapsed at %s; reserve it again first; %s",
+			p.id, stamp(j.verdict.EffectiveExpiry), nothingPushed)
+	}
+	i := slices.IndexFunc(j.Withdrawn, func(w Withdrawal) bool { return w.Number == n })
+	switch {
+	case i < 0:
+		listed := "none"
+		if len(j.Withdrawn) > 0 {
+			listed = strings.Join(numbers(j.Withdrawn), ", ")
+		}
+		return Result{}, message{}, "", refuse("#%d is not among the pull requests %s withdrew (%s), so there is nothing to admit: only a merge the reservation withdrew is admitted, and one armed since stays armed; %s",
+			n, p.id, listed, nothingPushed)
+	case !j.Withdrawn[i].unsettled():
+		return Result{}, message{}, "", refuse("#%d is recorded %s on %s, so there is nothing to admit; %s", n, j.Withdrawn[i].State, p.id, nothingPushed)
+	case !sameHolder(j.Withdrawn[i].By, p.holder):
+		// Another person's copy never re-arms a withdrawal
+		// (dcn-2610222219297651), and an admission arms one under this
+		// person's account: only its withdrawer admits it
+		// (dcn-2610230833367984).
+		by := j.Withdrawn[i].By
+		return Result{}, message{}, "", refuse("#%d was withdrawn by %s, not by you, and only its withdrawer admits it, since an admission arms it under the admitter's account: "+
+			"%s takes the release back with --take-over and admits it; %s", n, by, by, nothingPushed)
+	}
+	// An admission already recorded is admitted again: the forge is read
+	// once more, and the pull request armed when it is not, so an --admit
+	// cut off between its record and its arming is finished by running it
+	// again.
+	m := p.reservation()
+	m.Withdrawn = carried(j.Withdrawn, true)
+	return Result{Act: ActAdmitted, Record: p.id, Holder: p.holder, ClaimedAt: m.ClaimedAt, ExpiresAt: m.ExpiresAt, RenewedLive: true},
+		m, j.Commit, nil
 }
 
 // decideRenew is a renewal's row of the push table: this person's own
