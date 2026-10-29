@@ -37,9 +37,16 @@
 # Usage:
 #   preflight-receipt.sh state          print "<HEAD> clean|dirty|hidden" for this
 #                                       tree (hidden: an index flag hides edits)
-#   preflight-receipt.sh mint "<state>" mint a receipt for HEAD if the tree was
+#   preflight-receipt.sh mint "<state>" [records-only]
+#                                       mint a receipt for HEAD if the tree was
 #                                       clean at <state> and is clean at the same
-#                                       HEAD now; otherwise say why none is minted
+#                                       HEAD now; otherwise say why none is minted.
+#                                       The receipt names its scope: full, or
+#                                       records-only (the unit and race stages
+#                                       skipped, iss-2610251555094324), which
+#                                       scripts/records-only.sh must confirm again
+#                                       here, and whose receipt carries that
+#                                       verdict and the merge base it was taken at
 #   preflight-receipt.sh check <commit> exit 0 when a receipt for <commit> exists
 #                                       in any worktree of this repository
 #
@@ -79,7 +86,7 @@ state() {
 }
 
 mint() {
-	local began="$1" began_head began_tree now now_head now_tree
+	local began="$1" scope="$2" began_head began_tree now now_head now_tree verdict base
 	began_head="${began%% *}"
 	began_tree="${began##* }"
 	now="$(state)"
@@ -113,14 +120,38 @@ mint() {
 		echo "           so no single commit is what these gates read. Run \`make preflight\` again."
 		return 0
 	fi
+	if [ "$scope" = records-only ]; then
+		# The classifier's line has its control bytes dropped already, and a
+		# records-only line names the merge base as a full commit id.
+		if ! verdict="$(scripts/records-only.sh)"; then
+			echo "preflight: no push receipt minted — the change no longer reads as records-only ($verdict),"
+			echo "           and its unit and race stages did not run. Run \`make preflight\` again."
+			return 0
+		fi
+		base="$(sed -n 's/.*, \([0-9a-f]\{40,64\}\), are in the record tiers.*/\1/p' <<<"$verdict")"
+		if [ -z "$base" ]; then
+			echo "preflight: no push receipt minted — the records-only verdict names no merge base ($verdict)."
+			return 0
+		fi
+	fi
 	mkdir -p "$receipts_rel"
-	printf 'commit %s\nminted %s\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$receipts_rel/$now_head"
+	if [ "$scope" = records-only ]; then
+		printf 'commit %s\nminted %s\nscope records-only\nverdict %s\nbase %s\n' \
+			"$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$verdict" "$base" >"$receipts_rel/$now_head"
+	else
+		printf 'commit %s\nminted %s\nscope full\n' "$now_head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$receipts_rel/$now_head"
+	fi
 	# Keep the newest $keep receipts. The names are full commit ids, so a plain
 	# listing is safe to word-split.
 	# shellcheck disable=SC2012
 	ls -t "$receipts_rel" | tail -n +"$((keep + 1))" | while IFS= read -r old; do
 		rm -f "${receipts_rel:?}/$old"
 	done
+	if [ "$scope" = records-only ]; then
+		echo "preflight: push receipt minted for ${now_head:0:12}, records-only (the unit and race stages were skipped)"
+		echo "           — a push of that commit passes the pre-push gate."
+		return 0
+	fi
 	echo "preflight: push receipt minted for ${now_head:0:12} — a push of that commit passes the pre-push gate."
 }
 
@@ -180,15 +211,18 @@ state)
 	state
 	;;
 mint)
-	[ $# -eq 2 ] || exit 2
-	mint "$2"
+	case "$#:${3:-}" in
+	2: | 3:records-only) ;;
+	*) exit 2 ;;
+	esac
+	mint "$2" "${3:-full}"
 	;;
 check)
 	[ $# -eq 2 ] || exit 2
 	check "$2"
 	;;
 *)
-	echo "usage: preflight-receipt.sh state | mint \"<state>\" | check <commit>" >&2
+	echo "usage: preflight-receipt.sh state | mint \"<state>\" [records-only] | check <commit>" >&2
 	exit 2
 	;;
 esac
