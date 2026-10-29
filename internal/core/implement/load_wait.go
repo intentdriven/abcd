@@ -143,7 +143,7 @@ const (
 	// WaitOnLoad: the one-minute load average is not below the wait limit.
 	WaitOnLoad = "load"
 	// WaitOnRaceRun: another go test -race run is live (at the first gate,
-	// only while one preflight at a time may be in its test stages).
+	// only while one preflight runs at a time).
 	WaitOnRaceRun = "race-run"
 	// WaitOnLock: another waiter's hold is in force.
 	WaitOnLock = "lock"
@@ -515,7 +515,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		res.Slots, res.SlotsSource, res.SlotsNote = n, src, note
 		if req.Race && n <= 1 {
 			res.Status = WaitOpen
-			res.Reason = "one preflight at a time may be in its test stages, so the race stage follows its tests at once"
+			res.Reason = "one preflight runs at a time, so the race stage follows its tests at once"
 			// An open gate names nothing that held it shut; what an earlier
 			// look found is WaitedOn's.
 			res.Still, res.RaceRuns, res.Holder = nil, []int{}, nil
@@ -794,10 +794,10 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 		}
 	} else {
 		// A live race run shuts the race gate always, and the first gate
-		// only while one preflight at a time may be in its test stages, or
-		// for a waiter whose own command is a race run: with more, the race
-		// gate is what keeps race stages apart, and the load limit what keeps
-		// the machine from saturating.
+		// only while one preflight runs at a time, or for a waiter whose own
+		// command is a race run: with more, the race gate is what keeps race
+		// stages apart, and the load limit what keeps the machine from
+		// saturating.
 		if len(racing) > 0 && (req.Race || res.Slots <= 1 || raceCmd) {
 			shut = append(shut, WaitOnRaceRun)
 			res.RaceRuns = racing

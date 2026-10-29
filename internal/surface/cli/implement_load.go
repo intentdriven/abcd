@@ -147,7 +147,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"whatever another account set, and a checkout older than the gate runs its race\n" +
 			"stage ungated, so set more than 1 only once no such checkout runs a preflight. A\n" +
 			"first gate's waiter never queues behind a race waiter. A preflight whose race\n" +
-			"waiter is queued runs nothing: at 1 it still counts as in its test stages, and\n" +
+			"waiter is queued runs nothing: at 1 it still takes its slot, and\n" +
 			"above 1 it takes no slot until its race run starts, which the race gate keeps\n" +
 			"to one at a time. A waiter that has opened stands back only from a waiter that\n" +
 			"opened in the same moment at its own gate, never from one at the other gate.\n\n" +

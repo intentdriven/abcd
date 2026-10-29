@@ -136,7 +136,7 @@ func TestImplementLoadWaitRaceGate(t *testing.T) {
 func TestImplementLoadRaceGateOpensAtOnceWithOneSlot(t *testing.T) {
 	waitFixture(t, machine(40, 40, 40, liveRace))
 	code, out, errOut := implementCLI(t, "implement", "load", "--race-gate", "--timeout", "1m")
-	want := "race gate open at once: one preflight at a time may be in its test stages, so the race stage follows its tests at once\n"
+	want := "race gate open at once: one preflight runs at a time, so the race stage follows its tests at once\n"
 	if code != 0 || out != want {
 		t.Fatalf("exit %d, want 0 and exactly %q:\n%s%s", code, want, out, errOut)
 	}

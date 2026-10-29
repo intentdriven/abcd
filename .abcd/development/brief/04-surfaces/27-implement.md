@@ -337,7 +337,7 @@ takes no last look, so across accounts two openers whose re-checks fall in one
 moment can both open into the last free slot, one more running
 than the setting. A first gate's waiter never queues
 there, and a race waiter never queues at the first gate. A preflight whose
-race waiter is queued runs nothing: at one it counts as in its test stages, and
+race waiter is queued runs nothing: at one it still takes its slot, and
 above one it takes no slot until its race run starts (iss-2610282016250805),
 since the race gate, not the slot count, keeps race runs to one at a time. Each gate keeps its
 own hold record and is shut only by it: a first gate's command hold lasts

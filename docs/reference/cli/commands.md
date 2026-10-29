@@ -2545,7 +2545,7 @@ past its 5m0s cap). An account at one opens its race gate at once
 whatever another account set, and a checkout older than the gate runs its race
 stage ungated, so set more than 1 only once no such checkout runs a preflight. A
 first gate's waiter never queues behind a race waiter. A preflight whose race
-waiter is queued runs nothing: at 1 it still counts as in its test stages, and
+waiter is queued runs nothing: at 1 it still takes its slot, and
 above 1 it takes no slot until its race run starts, which the race gate keeps
 to one at a time. A waiter that has opened stands back only from a waiter that
 opened in the same moment at its own gate, never from one at the other gate.

@@ -870,11 +870,13 @@ is at the wait limit, or the race gate's own hold is in force (another race
 waiter of the account opened within two minutes), so race stages are kept
 apart whatever the first gate admits: one at a time within an account, and
 across accounts all but the narrow windows below. Each gate is shut only by its own gate's
-hold: the first gate of `make preflight` holds its gate until the preflight
-starts its race run, and were that to shut the race gate too, an
+hold: at one preflight at a time the first gate of `make preflight` takes the
+command hold, which lasts until the preflight starts its race run (an hour at
+most; above one it takes the two-minute settle hold), and were that to shut
+the race gate too, an
 earlier preflight's race stage would wait on it while the holder's own race
 waiter queued behind that earlier one, and neither would move. A preflight waiting there has passed its first gate and
-runs nothing: at one preflight at a time it counts as in its test stages, and
+runs nothing: at one preflight at a time it still takes its slot, and
 above one it takes no slot at the first gate until its race run starts, so the
 machine is not left idle while it waits for another preflight's race run
 (iss-2610282016250805). A waiter that has opened stands back only from a
