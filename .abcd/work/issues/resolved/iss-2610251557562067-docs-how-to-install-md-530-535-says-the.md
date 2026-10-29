@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "docs/how-to/install.md"
 remedy: "Name the script's --bin-dir option and its PATH line beside the release-mark at docs/how-to/install.md:530-535."
-resolution: "the install guide carries one command block, tested against the released installer"
+resolution: "the install guide now documents the released installer itself rather than a separate one-liner, so the comparison is gone: it names --bin-dir beside the command and says the installer prints the PATH line when the install directory is not on PATH"
 impact: fix
 ---
 

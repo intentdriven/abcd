@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "README.md"
 remedy: "Make the documented one-liner a short fetch of the install.sh abcdev.app already serves (which does the same checksum and gh attestation steps), move the remaining one-liner-only behaviour (the path-entry record) into that script, and keep the long form only as the by-hand audit path in docs/how-to/install.md."
-resolution: "README and the install guide document the short command that fetches install.sh from the latest release, hardened to https only"
+resolution: "README and the install guide document one short command that pipes the latest release's install.sh into sh, the installer doing the checksum, attestation and path-entry steps itself; the guide offers a hardened form of the same fetch beneath it and explains each flag, and keeps the by-hand download as the audit path"
 impact: fix
 ---
 
