@@ -109,16 +109,23 @@ const (
 // the two cannot drift.
 const preflightGateWait = 12 * time.Hour
 
+// preflightRaceGateWait is how long an admitted run's race stage may wait at
+// the race gate: the --timeout preflight-stages gives `implement load
+// --race-gate`, which TestGateTimeoutOutlastsTheWholeRunWait reads too. Above
+// one slot an admitted run can spend it all.
+const preflightRaceGateWait = 2 * time.Hour
+
 // preflightRunBound is how long a whole preflight run may take once the gate
 // admits it, on a loaded machine: the gates, the eval lanes, build, vet, and
 // the unit and race stages, each of those two under a 40-minute package
 // budget.
 const preflightRunBound = 4 * time.Hour
 
-// gateTimeout bounds one `make preflight`: its wait at the load gate and then
-// the whole run it admits, so land never kills a preflight still waiting its
-// turn or partway through its run. A var so a test can shorten it.
-var gateTimeout = preflightGateWait + preflightRunBound
+// gateTimeout bounds one `make preflight`: its wait at the load gate, the
+// whole run it admits and its race stage's wait at the race gate inside that
+// run, so land never kills a preflight still waiting its turn or partway
+// through its run. A var so a test can shorten it.
+var gateTimeout = preflightGateWait + preflightRaceGateWait + preflightRunBound
 
 // gateWaitDelay bounds the wait for the preflight's output once it has exited
 // or been killed (procgroup.Bound).

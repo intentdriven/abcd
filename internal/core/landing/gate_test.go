@@ -61,24 +61,29 @@ const minPreflightRun = 4 * time.Hour
 
 // TestGateTimeoutOutlastsTheWholeRunWait: `make preflight` waits at the load
 // gate as one whole run, for up to the --timeout its recipe gives the gate,
-// and only then runs its stages. Land's bound on the preflight must outlast
-// that wait and a run's length, or land kills a preflight that is still
-// waiting its turn or partway through it. The wait is read from the Makefile,
-// so the two cannot drift.
+// and only then runs its stages, whose race stage may wait at the race gate
+// for up to that gate's own --timeout. Land's bound on the preflight must
+// outlast both waits and a run's length, or land kills a preflight that is
+// still waiting its turn or partway through it. Both waits are read from the
+// Makefile, so they cannot drift.
 func TestGateTimeoutOutlastsTheWholeRunWait(t *testing.T) {
-	wait := makefileGateWait(t)
+	wait := makefileGateTimeout(t, "preflight", "implement load --wait")
 	if wait != preflightGateWait {
 		t.Errorf("the Makefile's preflight gate waits up to %s, and preflightGateWait says %s", wait, preflightGateWait)
 	}
-	if gateTimeout < wait+minPreflightRun {
-		t.Fatalf("gateTimeout is %s; the Makefile's gate waits up to %s before a run of at least %s, so want at least %s",
-			gateTimeout, wait, minPreflightRun, wait+minPreflightRun)
+	race := makefileGateTimeout(t, "preflight-stages", "implement load --race-gate")
+	if race != preflightRaceGateWait {
+		t.Errorf("the Makefile's race gate waits up to %s, and preflightRaceGateWait says %s", race, preflightRaceGateWait)
+	}
+	if want := wait + race + minPreflightRun; gateTimeout < want {
+		t.Fatalf("gateTimeout is %s; the Makefile's gate waits up to %s and its race gate up to %s around a run of at least %s, so want at least %s",
+			gateTimeout, wait, race, minPreflightRun, want)
 	}
 }
 
-// makefileGateWait is the --timeout of the load gate the Makefile's preflight
-// recipe runs its whole run behind.
-func makefileGateWait(t *testing.T) time.Duration {
+// makefileGateTimeout is the --timeout of the load gate that the recipe of the
+// Makefile's target runs, found by marker, its spelling of the gate.
+func makefileGateTimeout(t *testing.T, target, marker string) time.Duration {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "Makefile"))
 	if err != nil {
@@ -86,14 +91,14 @@ func makefileGateWait(t *testing.T) time.Duration {
 	}
 	in := false
 	for _, l := range strings.Split(string(raw), "\n") {
-		if l == "preflight:" {
+		if l == target+":" || strings.HasPrefix(l, target+": ") {
 			in = true
 			continue
 		}
 		if in && !strings.HasPrefix(l, "\t") {
 			break
 		}
-		if !in || !strings.Contains(l, "implement load --wait") {
+		if !in || !strings.Contains(l, marker) {
 			continue
 		}
 		f := strings.Fields(l)
@@ -107,6 +112,6 @@ func makefileGateWait(t *testing.T) time.Duration {
 			}
 		}
 	}
-	t.Fatal("the Makefile's preflight recipe runs no `implement load --wait --timeout <d>`")
+	t.Fatalf("the Makefile's %s recipe runs no `%s --timeout <d>`", target, marker)
 	return 0
 }
