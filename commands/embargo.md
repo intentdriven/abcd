@@ -117,10 +117,13 @@ again. With the approval abcd closes the advisory, reads it back to confirm it
 is closed with that text, and records `closed_at`. A read-back that does not
 confirm it exits 1 naming which half did not hold. An advisory GitHub already
 reports closed (a close whose read-back or record failed, or one closed by
-hand) is not sent anything: `closed_at` is recorded from GitHub,
-`reconciled` is true, and `text_held` says whether its description begins
-with the drafted text; one GitHub reports published is refused, and its
-`published_at` recorded.
+hand) is not sent anything: `closed_at` is recorded from GitHub's own
+timestamp, `reconciled` is true, and `text_held` says whether its description
+begins with the drafted text; one GitHub reports published is refused, and its
+`published_at` recorded from GitHub's own timestamp. One GitHub reports closed
+or published with no time for it, a time abcd cannot read, or one more than
+five minutes later than this machine's clock, is refused with nothing sent or
+recorded, never stamped with the clock's time.
 
 ## Check
 
@@ -134,8 +137,9 @@ changelog section, a release page, a record. It reads each commit's message
 and the lines it adds (a merge's against its first parent), and each text, and
 refuses every advisory not yet published by its id, a CVE id reserved for it,
 its title (not once the advisory is closed, since its reporter chose it and
-nothing will publish it; its id and CVE id stay refused), and the store's
-location on this machine; any other advisory id is
+nothing will publish it, nor once its verdict is `public-track`, since its
+issue goes into the public ledger; its id and CVE id stay refused), and the
+store's location on this machine; any other advisory id is
 refused too unless `--allow <GHSA-id>` names it as another project's, already
 public. Each finding names its `kind`, `source`, `where` and `line` and never
 repeats the match. Text is folded before it is matched: fullwidth and other

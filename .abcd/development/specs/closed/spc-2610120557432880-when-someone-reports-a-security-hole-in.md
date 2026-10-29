@@ -329,53 +329,65 @@ never supplies it on its own.
    - needs: none
    - moves runGH, limitedWriter, githubHost and parseGitHubRemote out of ahoy/remote.go with no behaviour change
    - tests: ahoy's remote tests pass unchanged; TestRunnerNamesHostExplicitly (fake gh on PATH records argv); TestRunnerCapsOutput; TestRunnerRefusesWithoutGh; TestParseRemoteRefusesNonGitHub
+   - landed: d41392a2b
 2. The `security-advisory` source
    - packages: internal/core/issueschema, the issue JSON schema, record-lint's mirror
    - needs: none
    - tests: TestCaptureAcceptsSecurityAdvisorySource; record-lint accepts a record with it; an unknown source still refused
+   - landed: d41392a2b
 3. The embargo store and its state
    - packages: new internal/core/embargo (store.go, state.go)
    - needs: none
    - the state carries `closed_at` beside `published_at`, so step 6 adds no schema change
    - tests: TestStoreCreatedDetachedOnce (second open reuses it); TestVerifyStoreRefusesBranchHead; TestVerifyStoreRefusesTrackedRecord; TestVerifyStoreRefusesStoreInsideCheckout; TestStateRoundTrip; TestStateRefusesUnknownKey; TestStateWrittenOwnerOnly
+   - landed: d41392a2b
 4. Intake
    - packages: internal/core/embargo (intake.go)
    - needs: 1, 2, 3
    - tests (fake gh serving fixture JSON with reserved example ids, per examples-use-reserved-identifiers): TestSeverityMapping (table: critical, high, medium, low, null); TestIntakeMintsPrivateRecordInStore; TestIntakeLeavesPublicLedgerUntouched (the checkout's tree and index identical before and after); TestIntakeIsIdempotent; TestIntakeListsNullSeverityAndMintsNothing; TestIntakePaginates (two pages)
+   - landed: d41392a2b
 5. Triage
    - packages: internal/core/embargo (triage.go, closing.go)
    - needs: 3
    - tests (state seeded directly, so the step runs without intake): TestTriageEachVerdict; TestTriageRefusesUnknownVerdictWritingNothing; TestTriageRefusesMissingBy; TestNotAbcdsNeedsBothHalves; TestClosingDraftNamesBothHalves; TestRetriageAppendsHistory; TestPublicTrackPrintsCaptureCommand
+   - landed: d41392a2b
 6. Closing an advisory on GitHub
    - packages: internal/core/embargo (close.go)
    - needs: 1, 3
    - posts the approved closing text with one REST PATCH of the advisory, `{"state":"closed","description":"<approved text>, separator, the reporter's original description"}`; refuses, sending nothing, without `--approve` or with a digest that is not the one over exactly the text shown (and the description as read); then re-reads the advisory and requires `state=closed` with the description beginning with exactly that text
    - tests (fake gh recording each call; state and draft seeded directly): TestCloseWithoutApproveSendsOnlyGet; TestCloseWrongDigestSendsNothing; TestCloseEditedDraftInvalidatesApproval; TestCloseAdvisoryChangedOnGitHubInvalidatesApproval; TestClosePatchesStateClosedWithApprovedText; TestCloseKeepsReporterDescriptionBelowSeparator; TestCloseReadsBackAndReportsMismatch; TestCloseStampsClosedAt; TestCloseRefusesVulnerabilityOrUntriagedVerdict; TestCloseRefusesAlreadyClosedOrPublished; TestCloseScanFindingRefusesShowAndClose
+   - landed: d41392a2b
 7. The outbound check
    - packages: internal/core/embargo (check.go)
    - needs: 3
    - tests: TestCheckRefusesUnpublishedGHSA; TestCheckRefusesClosedUnpublishedGHSA; TestCheckPassesPublishedGHSA; TestCheckRefusesReservedCVE; TestCheckRefusesTitleCaseInsensitive; TestCheckRefusesStorePathForms; TestCheckRefusesUnknownGHSAUnlessAllowed; TestCheckReadsRangeMessagesAndAddedLines; TestCheckRunsNoRepoDiffDriver (a configured textconv must not run); TestCheckMasksSpan; TestCheckNoStorePasses
+   - landed: d41392a2b
 8. The publication plan
    - packages: internal/core/embargo (plan.go, versions.go)
    - needs: 1, 3
    - before writing versions.go, read one already-published advisory of this repository (GET with `state=published`) and pin the version form (with or without `v`) in one constant whose comment names that observation; TestPatchedVersionForm asserts it
    - tests: TestFirstReleaseTagContainingFix (repo fixture with v0.9.0 and v0.10.0, fix in v0.9.0, patched 0.9.0); TestPrereleaseTagsIgnored; TestFixInNoTagLeftOut; TestUnresolvedRecordLeftOut; TestMissingPackageLeftOut; TestRangeKeepsLowerBound; TestRangeGrammarValidated; TestScanFindingLeavesAdvisoryOut; TestPlanSendsOnlyGets; TestDigestStable
+   - landed: d41392a2b
 9. Approved publication
    - packages: internal/core/embargo (publish.go)
    - needs: 8
    - tests (fake gh recording each call): TestPublishWithoutApproveSendsNoPatch; TestPublishWrongDigestSendsNoPatch; TestCanaryFirstThenRest (call order); TestCanaryMismatchStops (no further PATCH); TestTriageStateAcceptedToDraftFirst; TestPartialRunReportsAndReplans; TestNoDraftLeftConfirmed; TestPublishedAtStamped
+   - landed: d41392a2b
 10. The CLI surface
    - packages: internal/surface/cli (embargo.go), helpgroups.go placement (release group, people block), internal/core/surface sentences.go, `go generate ./internal/surface/cli` to refresh .abcd/development/release/surface.json and docs/reference/cli/commands.md, `embargo` added to the DOGFOODING verb list in .abcd/rules.json
    - needs: 4, 5, 6, 7, 8, 9
    - --json on every sub-verb; text renders through termsafe; refusals exit 2 with the remedy
    - peers: `abcd peers` skips the embargo store worktree and says so in one line, so a private record's title never reaches its listing
    - tests: TestEmbargoSurfaceRefusals (each sub-verb); TestEmbargoJSONShapes; the sentence test; TestPeersSkipsEmbargoStore
+   - landed: d41392a2b
 11. The command page and the live run
    - packages: commands/embargo.md (`block:` frontmatter matching step 10's placement)
    - needs: 10
    - the page: the five sub-verbs; the approval rule for hosts, one approval per act for `close` and for `publish`; that the closing explanation is posted at the head of the advisory's description because GitHub offers no comment; what stays the person's act in this rung (fixing and landing, requesting a CVE, restoring redacted records); the check's paraphrase-and-count limit
    - live run on this repository, per evaluate-at-the-user-surface: intake into the store, triage one advisory, `close` without `--approve` on an advisory with a closing verdict (posting only with the person's approval in that session), check over the held batch range, publish plan without `--approve`; output kept in the local tier, never in the change
    - tests: the command-page gates (TestCommandPagesDeclareTheirBlock, TestCommandPagesMatchTheMenu, TestPluginPersonListEqualsTheCLIs) and `go run ./cmd/abcd lint docs`
+   - live run: met by live use, recorded in dcn-2610282341088544
+   - landed: d41392a2b
 
 ## Delivery
 
