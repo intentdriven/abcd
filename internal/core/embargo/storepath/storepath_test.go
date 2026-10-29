@@ -142,10 +142,7 @@ func TestLocateNoStoreIsUnderTheOldestRoot(t *testing.T) {
 // registered there is found as the store.
 func TestLocateKeysASHA256RepositoryOnItsFullRootName(t *testing.T) {
 	home := t.TempDir()
-	r, root := newRepoFormat(t, "sha256", "2020-01-01T00:00:00Z")
-	if len(root) != 64 {
-		t.Fatalf("root %q is %d digits; the fixture is no SHA-256 repository", root, len(root))
-	}
+	r, root := newRepoIn(t, "sha256")
 	want := abcdhome.Path(home, "worktrees", root, storepath.Name)
 	loc, err := storepath.Locate(home, r.Root())
 	if err != nil || loc.Registered || loc.Path != want {
@@ -379,19 +376,24 @@ func TestLocatePassesOverAnotherRepositorysStore(t *testing.T) {
 
 // TestLocateHasNoFreePlaceBesideAnotherCheckoutsStore: a second clone of a
 // repository, whose one root keys a store the first clone holds, has no
-// store and no free place.
+// store and no free place, in a SHA-256 repository too, where the place's
+// sixty-four-digit key is the root it is matched against.
 func TestLocateHasNoFreePlaceBesideAnotherCheckoutsStore(t *testing.T) {
-	home := t.TempDir()
-	first, root := newRepo(t, "2020-01-01T00:00:00Z")
-	addStore(t, first, home, root)
-	second := filepath.Join(t.TempDir(), "second")
-	cmd := exec.Command("git", "clone", "-q", first.Root(), second)
-	cmd.Env = first.Env()
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("clone: %v\n%s", err, out)
-	}
-	if loc, err := storepath.Locate(home, second); !errors.Is(err, storepath.ErrNoFreePlace) || !errors.Is(err, storepath.ErrPlaceHeldByAClone) {
-		t.Fatalf("Locate = %+v, %v; want ErrNoFreePlace, held by a clone", loc, err)
+	for _, format := range objectFormats {
+		t.Run(formatName(format), func(t *testing.T) {
+			home := t.TempDir()
+			first, root := newRepoIn(t, format)
+			addStore(t, first, home, root)
+			second := filepath.Join(t.TempDir(), "second")
+			cmd := exec.Command("git", "clone", "-q", first.Root(), second)
+			cmd.Env = first.Env()
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("clone: %v\n%s", err, out)
+			}
+			if loc, err := storepath.Locate(home, second); !errors.Is(err, storepath.ErrNoFreePlace) || !errors.Is(err, storepath.ErrPlaceHeldByAClone) {
+				t.Fatalf("Locate = %+v, %v; want ErrNoFreePlace, held by a clone", loc, err)
+			}
+		})
 	}
 }
 
