@@ -63,9 +63,9 @@ import (
 func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 
-	recipe, ok := makeRecipe(readRepoFile(t, root, "Makefile"), "preflight")
+	recipe, ok := makeRecipe(readRepoFile(t, root, "Makefile"), preflightStages)
 	if !ok {
-		t.Fatal("Makefile declares no `preflight:` recipe")
+		t.Fatalf("Makefile declares no `%s:` recipe", preflightStages)
 	}
 	local := raceTimeout(t, "Makefile preflight", recipe)
 	localPkgs := racePackages(t, "Makefile preflight", recipe)

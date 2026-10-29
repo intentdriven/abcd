@@ -77,7 +77,11 @@ const (
 // PreflightSlots resolves how many preflights may be in their test stages at
 // once, where that came from, and a note when the machine's config.json was
 // read past (machineConfigNote), for the account whose home is home. It reads
-// getenv and the machine's config.json, and no repository file.
+// getenv and the machine's config.json, and no repository file. It is the one
+// reader of the count: WaitLoad calls it at every look, its race-gate shortcut
+// included, and cmd/test-parallelism calls it before it divides the cores by
+// the count (PreflightParallelism, machineload.GoTestParallelism), so the gate
+// and a stage's -p never judge by different values.
 func PreflightSlots(getenv func(string) string, home string) (int, string, string, error) {
 	if v := strings.TrimSpace(getenv(PreflightSlotsEnv)); v != "" {
 		n, err := strconv.Atoi(v)

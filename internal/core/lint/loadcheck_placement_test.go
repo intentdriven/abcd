@@ -8,8 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The load check (itd-2609231434459890, spc-2609231542463113) runs once at the
@@ -24,9 +26,10 @@ const (
 )
 
 // TestLoadCheckIsPreflightsFirstPrerequisite: the check is the first thing
-// preflight runs, its failure to build is ignored (a broken build is the build
-// gate's to fail), and the marker the eval harness reads is exported to the
-// prerequisites from a line after the prerequisite line.
+// preflight runs once the load gate admits it, its failure to build is ignored
+// (a broken build is the build gate's to fail), and the marker the eval
+// harness reads is exported from a line after the stages' prerequisite line:
+// set on `preflight`, it reaches the stages' make through the environment.
 func TestLoadCheckIsPreflightsFirstPrerequisite(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	prereqs := preflightPrereqs(t, root)
@@ -41,7 +44,7 @@ func TestLoadCheckIsPreflightsFirstPrerequisite(t *testing.T) {
 	lines := strings.Split(makefile, "\n")
 	prereqLine, markerLine := -1, -1
 	for i, l := range lines {
-		if prereqLine < 0 && strings.HasPrefix(l, "preflight:") {
+		if prereqLine < 0 && strings.HasPrefix(l, preflightStages+":") {
 			prereqLine = i
 		}
 		if l == loadCheckMarker {
@@ -215,44 +218,86 @@ func TestHarnessJobsRunOnHostedRunners(t *testing.T) {
 	}
 }
 
-// loadGateCall is the load gate make preflight runs its test stages behind
-// (iss-2610102020442624, iss-2610140638074587).
+// loadGateCall is the load gate make preflight waits at as one whole run
+// (iss-2610102020442624, iss-2610140638074587, itd-2610262127138979).
 const loadGateCall = "go run ./cmd/abcd implement load --wait"
 
 // parallelismCall derives each test stage's go test -p.
 const parallelismCall = `p=$$(go run ./cmd/test-parallelism) && \`
 
-// TestPreflightGatesItsTestStages: make preflight waits at the load gate
-// before its first go test, and each go test stage takes the -p derived as it
-// starts, so overlapping sessions' preflights queue instead of overlapping and
-// one run cannot saturate the machine. CI never runs make preflight
-// (harnessJobs refuses a workflow that does), and the gate opens at once on a
-// runner.
-func TestPreflightGatesItsTestStages(t *testing.T) {
-	recipe, ok := makeRecipe(readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile"), "preflight")
+// wholeRunTimeout is the least the whole run's gate may wait: the queue on a
+// shared machine has run hours deep, and a gate that gives up first fails a
+// preflight that did nothing wrong.
+const wholeRunTimeout = 12 * time.Hour
+
+// TestPreflightWaitsAsOneWholeRun: `make preflight` has no prerequisite and
+// runs nothing before the load gate's command form, which runs every stage
+// (preflightStages) as its command, so a queued preflight does no lint, eval,
+// build, vet or test work and its turn holds until the run ends; the only
+// other line mints the receipt once the run has passed. CI never runs make
+// preflight (harnessJobs refuses a workflow that does), and the gate opens at
+// once on a runner.
+func TestPreflightWaitsAsOneWholeRun(t *testing.T) {
+	makefile := readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile")
+	for _, l := range strings.Split(makefile, "\n") {
+		if rest, ok := strings.CutPrefix(l, "preflight:"); ok && !strings.HasPrefix(strings.TrimSpace(rest), "export ") && strings.TrimSpace(rest) != "" {
+			t.Errorf("preflight declares prerequisites %q; each would run before the load gate admits the run", strings.TrimSpace(rest))
+		}
+	}
+	recipe, ok := makeRecipe(makefile, "preflight")
 	if !ok {
 		t.Fatal("Makefile declares no `preflight:` recipe")
 	}
+	var lines []string
+	for _, l := range strings.Split(recipe, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) != 2 || !strings.HasPrefix(lines[1], "@scripts/preflight-receipt.sh mint ") {
+		t.Fatalf("preflight's recipe is %q; want the gate's command form, then the receipt's mint, and nothing else", lines)
+	}
+	gate := strings.Fields(lines[0])
+	cmd := slices.Index(gate, "--")
+	if !strings.HasPrefix(lines[0], loadGateCall+" ") || cmd < 0 || !slices.Equal(gate[cmd+1:], []string{"$(MAKE)", "--no-print-directory", preflightStages}) {
+		t.Fatalf("preflight's first line is %q; want %s ... -- $(MAKE) --no-print-directory %s", lines[0], loadGateCall, preflightStages)
+	}
+	at := slices.Index(gate[:cmd], "--timeout")
+	if at < 0 || at+1 >= cmd {
+		t.Fatalf("preflight's gate %q sets no --timeout; the default gives up after half an hour", lines[0])
+	}
+	if d, err := time.ParseDuration(gate[at+1]); err != nil || d < wholeRunTimeout {
+		t.Fatalf("preflight's gate waits at most %s (%v); want at least %s", gate[at+1], err, wholeRunTimeout)
+	}
+}
+
+// TestPreflightStagesHaveNoGateOfTheirOwn: the stages run inside the whole
+// run's turn, so they wait at no first gate: a second waiter inside a held
+// turn could deadlock against a run queued meanwhile, each shut by the other
+// until its timeout. Each go test stage takes the -p derived as it starts, so
+// one run cannot saturate the machine.
+func TestPreflightStagesHaveNoGateOfTheirOwn(t *testing.T) {
+	recipe, ok := makeRecipe(readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile"), preflightStages)
+	if !ok {
+		t.Fatalf("Makefile declares no `%s:` recipe", preflightStages)
+	}
 	lines := strings.Split(recipe, "\n")
-	gate, tests := -1, 0
+	tests := 0
 	for i, l := range lines {
 		l = strings.TrimSpace(l)
-		if strings.HasPrefix(l, loadGateCall) && gate < 0 {
-			gate = i
+		if strings.HasPrefix(l, loadGateCall) {
+			t.Errorf("%s waits at the first gate (%q) inside the whole run's turn", preflightStages, l)
 		}
 		if !strings.HasPrefix(l, "go test ") {
 			continue
 		}
 		tests++
-		if gate < 0 || gate > i {
-			t.Errorf("preflight runs %q before the load gate %q", l, loadGateCall)
-		}
 		if i == 0 || strings.TrimSpace(lines[i-1]) != parallelismCall || !strings.Contains(l, ` -p "$$p" `) {
-			t.Errorf("preflight's %q does not take the -p derived as it starts (%s)", l, parallelismCall)
+			t.Errorf("%s's %q does not take the -p derived as it starts (%s)", preflightStages, l, parallelismCall)
 		}
 	}
-	if gate < 0 || tests != 2 {
-		t.Fatalf("preflight's recipe has the gate at line %d and %d go test stages, want the gate and 2:\n%s", gate, tests, recipe)
+	if tests != 2 {
+		t.Fatalf("%s's recipe has %d go test stages, want 2:\n%s", preflightStages, tests, recipe)
 	}
 }
 
@@ -263,11 +308,12 @@ const raceGateCall = "go run ./cmd/abcd implement load --race-gate"
 
 // TestPreflightGatesItsRaceStage: the race stage waits at the race gate after
 // the unit stage and before it derives its -p, so the -p reflects the load as
-// the race stage starts.
+// the race stage starts. It stays inside the whole run: above one slot it is
+// what keeps race stages apart.
 func TestPreflightGatesItsRaceStage(t *testing.T) {
-	recipe, ok := makeRecipe(readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile"), "preflight")
+	recipe, ok := makeRecipe(readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile"), preflightStages)
 	if !ok {
-		t.Fatal("Makefile declares no `preflight:` recipe")
+		t.Fatalf("Makefile declares no `%s:` recipe", preflightStages)
 	}
 	lines := strings.Split(recipe, "\n")
 	unit, gate, race := -1, -1, -1

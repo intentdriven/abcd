@@ -221,34 +221,38 @@ func baseIsLoadWaiter(args []string) bool {
 }
 
 // preflightGateArgs returns the arguments abcd gets from each `go run
-// ./cmd/abcd implement load` line of the Makefile's preflight recipe: the
-// first gate's, before the unit stage, and the race gate's, before the race
-// stage.
+// ./cmd/abcd implement load` line of the Makefile's preflight: the first
+// gate's, which `preflight` runs its whole run behind, and the race gate's,
+// which its stages (`preflight-stages`) run before the race stage.
 func preflightGateArgs(t *testing.T) (first, race []string) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "Makefile"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	const call = "go run ./cmd/abcd "
-	var gates [][]string
-	in := false
-	for _, l := range strings.Split(string(raw), "\n") {
-		if strings.HasPrefix(l, "preflight:") {
-			in = true
-			continue
+	gates := func(target string) [][]string {
+		const call = "go run ./cmd/abcd "
+		var out [][]string
+		in := false
+		for _, l := range strings.Split(string(raw), "\n") {
+			if strings.HasPrefix(l, target+":") && !strings.Contains(l, ": export ") {
+				in = true
+				continue
+			}
+			if in && !strings.HasPrefix(l, "\t") {
+				break
+			}
+			if l = strings.TrimSpace(l); in && strings.HasPrefix(l, call+"implement load ") {
+				out = append(out, strings.Fields(strings.TrimPrefix(l, call)))
+			}
 		}
-		if in && !strings.HasPrefix(l, "\t") {
-			break
-		}
-		if l = strings.TrimSpace(l); in && strings.HasPrefix(l, call+"implement load ") {
-			gates = append(gates, strings.Fields(strings.TrimPrefix(l, call)))
-		}
+		return out
 	}
-	if len(gates) != 2 {
-		t.Fatalf("the preflight recipe runs %d load gates, want 2 (the first gate and the race gate): %q", len(gates), gates)
+	whole, stages := gates("preflight"), gates("preflight-stages")
+	if len(whole) != 1 || len(stages) != 1 {
+		t.Fatalf("preflight runs %d load gates and its stages %d, want 1 each (the first gate and the race gate): %q, %q", len(whole), len(stages), whole, stages)
 	}
-	return gates[0], gates[1]
+	return whole[0], stages[0]
 }
 
 // TestARaceGateIsNotAFirstGateWaiterToAnOlderAbcd: an abcd released before

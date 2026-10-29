@@ -146,7 +146,9 @@ Start with the plan and the design record:
 Run from the repo root.
 
 ```bash
-make preflight      # the pre-push gate: the load check first (load-check,
+make preflight      # the pre-push gate: waits its turn at the load gate as
+                    # one whole run (nothing runs while it is queued), then
+                    # the load check first (load-check,
                     # a warning, never a failure), then fmt-check +
                     # lint-reviews +
                     # lint-issues + record-lint +

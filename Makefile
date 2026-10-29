@@ -16,7 +16,7 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 # Go step `preflight` makes, below.
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
-.PHONY: build test vet clean preflight precheck load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
+.PHONY: build test vet clean preflight preflight-stages precheck load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
 	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
@@ -264,7 +264,8 @@ asking-sync-check:
 	@go run ./cmd/asking-sync -check
 
 # Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
-# receipt the last step mints, below): the load check first (a
+# receipt the last step mints, below). It waits at the load gate as one whole
+# run, then runs its stages (preflight-stages): the load check first (a
 # warning, never a failure: load-check), then the format gate (fmt-check), the
 # six lint gates
 # (lint-reviews, lint-issues, record-lint, issue-drift,
@@ -291,26 +292,33 @@ asking-sync-check:
 # which is the split CI's two jobs cover. Under a minute each in CI, and
 # several on a loaded machine, hence EVAL_TIMEOUT above.
 #
-# The test stages wait their turn on the machine (iss-2610102020442624,
-# iss-2610140638074587). Before them the load gate (`abcd implement load
-# --wait`) stays shut while the load is at the wait limit, another go test
+# A preflight waits for its turn as one whole run (itd-2610262127138979,
+# iss-2610241537197997): `preflight` runs nothing but the load gate's command
+# form (`abcd implement load --wait -- $(MAKE) preflight-stages`), so a queued
+# preflight does no lint, eval, build, vet or test work, and the waiter is the
+# parent of the whole run, its turn held until the run ends. Its prerequisites
+# ran before the old gate, which stood only before the test stages, so thirty
+# queued runs once kept a 10-core machine overloaded while they waited, and a
+# gate inside the run waited out its two hours behind a run queued meanwhile.
+# The gate stays shut while the load is at the wait limit, another go test
 # -race run is live, another make preflight is running, or another waiter is
 # queued ahead or running its command, under any account: it reads all of that
 # from the process table, which shows every account's processes, never from a
 # file another account could write. Once clear it waits 15 to 60 seconds and
-# checks again, so two preflights in one quiet minute do not start together; a
-# preflight whose own gate is waiting takes that waiter's place in the queue.
-# It gives up after two hours, failing the preflight and naming what it still
-# waited on, and on a CI runner it opens at once. How many preflights may be in
-# their test stages at once is the person's own machine setting, never the
-# checkout's: load.preflights in ~/.abcd.noindex/config.json, or
-# ABCD_LOAD_PREFLIGHTS in the environment for a trial, one by default and two
-# at most until a measured trial supports more (iss-2610161639025702). The race
-# stage waits at its own gate (`--race-gate`, spelt without --wait so an older
-# abcd never reads a preflight there as queued at its first gate). At one, the
-# race gate opens at once, so the preflight runs exactly as before. Above one,
-# the first gate admits a preflight while fewer than that many others are in
-# their test stages, a live race run does not shut it by itself, and a waiter
+# checks again, so two preflights in one quiet minute do not start together. It
+# gives up after twelve hours, failing the preflight and naming what it still
+# waited on, and on a CI runner it opens at once. Wrapping `make preflight` in
+# the command form as well is harmless: the inner waiter is part of the outer
+# one's turn and opens at once. How many preflights may run at once is the
+# person's own machine setting, never the checkout's: load.preflights in
+# ~/.abcd.noindex/config.json, or ABCD_LOAD_PREFLIGHTS in the environment for a
+# trial, one by default and two at most until a measured trial supports more
+# (iss-2610161639025702), read again at every look of the wait, so a change
+# reaches the runs already queued. The race stage waits at its own gate
+# (`--race-gate`, spelt without --wait so an older abcd never reads a preflight
+# there as queued at its first gate). At one, the race gate opens at once.
+# Above one, the first gate admits a preflight while fewer than that many
+# others are running, a live race run does not shut it by itself, and a waiter
 # queued ahead still does; and the race gate is shut while another go test
 # -race run or race waiter ahead is live, the load is at the limit or the race
 # gate's own hold is in force. That keeps race stages apart among checkouts
@@ -330,16 +338,25 @@ asking-sync-check:
 # test hung, and on 2026-10-25 claim, implement/loop and surface/cli each
 # outran 20 minutes on a 10-core Mac at a load of 5 to 7, with no test hung
 # (iss-2610250007404944).
-preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
+preflight:
+	go run ./cmd/abcd implement load --wait --timeout 12h -- $(MAKE) --no-print-directory preflight-stages
+	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
+
+# preflight's stages: its gates as prerequisites, then build, vet and the two
+# test stages. It is `preflight`'s command, run inside the turn the load gate
+# gave the whole run, so it waits at no first gate of its own: a second waiter
+# inside a held turn waited out its two hours behind a run queued meanwhile,
+# each shut by the other (TestPreflightStagesHaveNoGateOfTheirOwn). Run alone it
+# is ungated and mints no receipt; run `make preflight`. The variables exported
+# for `preflight` below reach it through the environment.
+preflight-stages: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
-	go run ./cmd/abcd implement load --wait --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	go test -p "$$p" -timeout 40m ./...
 	go run ./cmd/abcd implement load --race-gate --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	go test -race -p "$$p" -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
-	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
 # The precheck (iss-2610230016523625): the minutes-long pass a lane runs before
 # it queues a preflight, so a test that reads the whole tree fails before the
@@ -375,7 +392,8 @@ precheck: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
 # The starting state is read while this Makefile is PARSED, which is before any
 # prerequisite runs; a recipe line or a prerequisite would run after, or in parallel
 # with, the gates. It is read only when `preflight` is named on the command line, so
-# no other target pays for a git status.
+# no other target pays for a git status. It is read before the load gate's wait, so
+# a tree changed while the run is queued mints no receipt.
 ifneq ($(filter preflight,$(MAKECMDGOALS)),)
 PREFLIGHT_BEGAN := $(shell scripts/preflight-receipt.sh state)
 endif
@@ -384,7 +402,8 @@ endif
 # under `smoke` and `evals-cold-reading`) that the preflight's check already
 # warned on the terminal, so one preflight shows one warning. A target-specific
 # exported variable reaches the target's prerequisites and recipe, and not a
-# prerequisite run on its own.
+# prerequisite run on its own; this one and the ones below reach preflight's
+# stages through the environment of the make the load gate starts.
 preflight: export ABCD_LOAD_CHECKED := preflight
 
 # The three longest packages (internal/core/implement/loop, internal/core/claim
