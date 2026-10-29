@@ -180,24 +180,18 @@ no receipt. The sequence is: commit everything, `make preflight`, then a plain
 the remote already holds (a tag on a merged commit) needs none.
 
 **In a source checkout of abcd, every abcd invocation is `scripts/abcd
-<verb>` from the repo root** (by the script's path from anywhere else; the verb
-runs where you stand) — never the plugin-root binary and never an `abcd` on
-PATH. Both
-are whatever version was last published, and in this repository
+<verb>` from the repo root** — never the plugin-root binary and never an `abcd`
+on PATH. Both are whatever version was last published, and in this repository
 that is the thing being developed, so they are stale by construction and fall
 further behind with every commit: a verb, flag, schema field or refusal added
 since the last release is unknown to them. The failure is not always a
 refusal. `launch ship` refuses on its surface guard, loudly and correctly, but
 `changelog --json` returned an empty cut against a tree holding 181 shipped
 records, and `capture` would have written records through a schema the record
-gates no longer accept — a plausible wrong answer, not an error.
-`scripts/abcd` builds this tree to `.abcd/.work.local/bin/abcd`, unstamped as
-`go run` built it and relinking only when an input changed, and runs that
-binary, so its exit code reaches the caller: `go run ./cmd/abcd` turns every
-nonzero exit into 1, and exit 2 (a usage error, a guard that could not judge)
-and exit 3 (`reserve`: back off) arrived as the 1 a guard block also exits with
-(iss-2610241240133009). The plugin
-command pages document a resolution ladder that reaches the plugin-root binary
+gates no longer accept — a plausible wrong answer, not an error. The script
+builds this tree and runs it, so exit 2 and exit 3 reach you as themselves;
+`go run ./cmd/abcd` turns every nonzero exit into 1. The plugin command pages
+document a resolution ladder that reaches the plugin-root binary
 first and falls through to `go run` only when nothing earlier resolves; in this
 checkout the first rung exists and answers, so the fallback written for exactly
 this case is never reached by following the ladder literally
