@@ -19,6 +19,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // StoreName is the store's folder under the repository's level of the
@@ -80,6 +81,30 @@ func (e *RefusalError) Error() string {
 }
 
 func refuse(reason, remedy string) error { return &RefusalError{Reason: reason, Remedy: remedy} }
+
+// untracked refuses the store file at rel, under the store worktree root, when
+// git tracks it, or cannot say it does not: the store is a worktree at the
+// default branch's tip, so a file a commit carries there was written by
+// whoever made the commit, not by this account's abcd (localtier.Untracked).
+func untracked(root, rel, what string) error {
+	err := localtier.Untracked(root, rel)
+	var r *localtier.Refused
+	if errors.As(err, &r) {
+		return refuse(what+" is refused: "+r.Reason(), r.Remedy())
+	}
+	return err
+}
+
+// trackedThere reports whether git tracks the store file at rel under the
+// store worktree root. Another store is read for the ids it holds back, so
+// one git cannot answer for (its checkout deleted, say) is read as before:
+// refusing it would hold none of them back. What that accepts is a state a
+// commit replaced being read while git cannot answer for its store, which
+// nothing in a commit can bring about.
+func trackedThere(root, rel string) bool {
+	var r *localtier.Refused
+	return errors.As(localtier.Untracked(root, rel), &r) && r.Cause == nil
+}
 
 // Store is the embargo store of one repository: Root is the store worktree,
 // Checkout the working-tree root of the checkout it belongs to.
@@ -214,6 +239,8 @@ func readOtherStore(root string) (State, error) {
 		return emptyState(), nil
 	case err != nil:
 		return State{}, bad("it could not be examined")
+	case trackedThere(root, StateRel):
+		return State{}, bad("git tracks it, so a commit carried it there")
 	case !fi.Mode().IsRegular():
 		return State{}, bad("it is not a regular file")
 	case fsutil.CallersAlone(filepath.Join(root, filepath.FromSlash(StateRel)), fi) != nil:

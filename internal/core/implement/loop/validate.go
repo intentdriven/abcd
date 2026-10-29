@@ -76,6 +76,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -629,9 +630,12 @@ func readReturn(repoRoot, rel, laneID string) ([]byte, error) {
 		return nil, fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
-	data, err := fsutil.ReadGuardedInRoot(root, rel, maxReturnBytes)
+	data, err := localtier.ReadInRoot(root, rel, maxReturnBytes)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, refuse("receipt", "", laneID, "no return at "+rel, "the validator writes it there; hand it back once it exists")
+	}
+	if rf := tierRefusal("receipt", laneID, err); rf != nil {
+		return nil, rf
 	}
 	if err != nil {
 		return nil, refuse("receipt", "", laneID, fmt.Sprintf("%s cannot be read as a return: %v", rel, err),
@@ -735,7 +739,10 @@ func reportsCarryNoVerdict(c Context, lane Lane) error {
 			continue
 		}
 		report := laneDir + "/" + rc.Report
-		data, err := fsutil.ReadGuardedInRoot(root, report, maxReportBytes)
+		data, err := localtier.ReadInRoot(root, report, maxReportBytes)
+		if rf := tierRefusal(string(StageValidate), lane.ID, err); rf != nil {
+			return rf
+		}
 		if err != nil {
 			return refuse(string(StageValidate), "", lane.ID, fmt.Sprintf("%s, the report %s names, cannot be read: %v", report, rel, errCause(err)),
 				"restore the report the verified receipt named")
@@ -1151,7 +1158,7 @@ func removePlaced(repoRoot, runID, rel string) (bool, error) {
 		return false, fmt.Errorf("the route's return still stands at %s: opening the checkout: %w", rel, err)
 	}
 	defer root.Close()
-	b, err := fsutil.ReadGuardedInRoot(root, rel, maxReturnBytes)
+	b, err := localtier.ReadInRoot(root, rel, maxReturnBytes)
 	switch {
 	case errors.Is(err, fs.ErrNotExist), errors.Is(err, fsutil.ErrNotRegular), errors.Is(err, fsutil.ErrTooBig):
 		// Nothing there, or nothing the route placed: an answer is a regular
@@ -1402,7 +1409,7 @@ func reviewRequest(repoRoot, runID, laneID string, aw Await, agentPrompt func(st
 		return "", fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
-	brief, err := fsutil.ReadGuardedInRoot(root, lane.Brief, maxRecordBytes)
+	brief, err := localtier.ReadInRoot(root, lane.Brief, maxRecordBytes)
 	if err != nil {
 		return "", fmt.Errorf("the lane's brief %s: %w", lane.Brief, errCause(err))
 	}
@@ -1476,7 +1483,7 @@ func reportOf(repoRoot string, root *os.Root, runID, laneID, receiptRel string) 
 	if err != nil {
 		return "", err
 	}
-	data, err := fsutil.ReadGuardedInRoot(root, dir+"/"+rc.Report, maxReportBytes)
+	data, err := localtier.ReadInRoot(root, dir+"/"+rc.Report, maxReportBytes)
 	if err != nil {
 		return "", fmt.Errorf("the report %s names: %w", receiptRel, errCause(err))
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -173,6 +174,14 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 // tip, and origin's default branch only when a record is there to derive.
 func viewOf(root string, now time.Time, derive bool, only func(subject string) bool) (Snapshot, error) {
 	now = now.UTC().Truncate(time.Second)
+	// The fetch stamp says when this copy last read origin; one git tracks
+	// came with a commit and says nothing of this copy. Asked only of a stamp
+	// there is.
+	if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(reservations.stampRel()))); err == nil {
+		if err := localtier.Untracked(root, reservations.stampRel()); err != nil {
+			return Snapshot{}, err
+		}
+	}
 	snap := Snapshot{FetchedAt: lastFetched(root, reservations), Reservations: []Reservation{}}
 	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", TrackingPrefix)
 	if err != nil {
@@ -435,7 +444,7 @@ func ownCopyKey(root string) string {
 		return ""
 	}
 	defer r.Close()
-	data, err := fsutil.ReadGuardedInRoot(r, copyKeyRel, 256)
+	data, err := localtier.ReadInRoot(r, copyKeyRel, 256)
 	if err != nil {
 		return ""
 	}

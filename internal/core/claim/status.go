@@ -21,6 +21,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -285,6 +286,10 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 	if !ok {
 		return StatusFetch{}, ErrNoOrigin
 	}
+	// Asked once, before any kept state is read, as ReadStatus asks.
+	if err := localtier.Untracked(root, statusBranches.stateDir); err != nil {
+		return StatusFetch{}, err
+	}
 	names, skipped, past, err := listStatusBranches(root, "")
 	if err != nil {
 		noteFetchFailure(root, statusBranches, now, redacted(err))
@@ -405,6 +410,12 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	}
 	if !ok {
 		return StatusView{}, nil
+	}
+	// What this copy kept of the status branches and its fetches is its own,
+	// so a file git tracks there came with a commit and is never judged as
+	// this copy's reading: asked once, before any of it is read.
+	if err := localtier.UntrackedEach(ctx, root, statusBranches.stateDir, reservations.stampRel(), reservations.stateDir+"/"+failedRel); err != nil {
+		return StatusView{}, err
 	}
 	v := StatusView{Origin: true, FetchedAt: lastFetched(root, statusBranches), NoTier: tierPresent(root) != nil}
 	v.Unread = unreadOf(root, statusBranches)

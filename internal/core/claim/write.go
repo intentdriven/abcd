@@ -12,6 +12,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // writeCommit writes one reservation act's commit: writeEmptyCommit, as the
@@ -186,7 +187,7 @@ func keptFetch(root, commit string, at time.Time, keep bool) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	defer r.Close()
-	data, err := fsutil.ReadGuardedInRoot(r, undatedRelDir+"/"+commit, 64)
+	data, err := localtier.ReadInRoot(r, undatedRelDir+"/"+commit, 64)
 	if err != nil {
 		return time.Time{}, false
 	}

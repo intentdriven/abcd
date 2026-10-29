@@ -19,6 +19,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // StaleWindow bounds ownership through the reflog or a recorded creation: such
@@ -373,6 +374,22 @@ func (r *owedReader) readLanes() {
 	defer rt.Close()
 	entries, err := fs.ReadDir(rt.FS(), runRelDir)
 	if err != nil {
+		return
+	}
+	// A run git tracks anything in came with a commit, so none of its lanes
+	// is this copy's to owe: asked once for every run listed, inside the
+	// budget, never once a run.
+	var runs []string
+	for _, e := range entries {
+		if e.IsDir() && runIDRe.MatchString(e.Name()) {
+			runs = append(runs, runRelDir+"/"+e.Name())
+		}
+	}
+	if err := localtier.UntrackedEach(r.ctx, r.root, runs...); err != nil {
+		if r.expired() {
+			r.cut = true
+		}
+		r.note("the runs' lanes were not read: %v", err)
 		return
 	}
 	for _, e := range entries {
