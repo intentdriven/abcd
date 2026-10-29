@@ -495,9 +495,12 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 		// The order matters: skipKeyedRoute is judged before skipUnlistedRoute,
 		// so a keyed provider's list is never consulted on a repository's
 		// behalf, and its route is skipped as one that would spend a key
-		// whatever model it names.
+		// whatever model it names. A judgement type's route that turns the
+		// type on is the person's own to set (skipTurnedOnRoute), so one
+		// from any other layer is skipped last, after the reasons above.
 		for len(found) > 0 && (c.skipMalformedRoute(key, name, found[0]) || c.skipKeyedRoute(key, name, found[0]) ||
-			c.skipUnconfiguredRoute(key, name, found) || c.skipUnlistedRoute(key, name, found[0])) {
+			c.skipUnconfiguredRoute(key, name, found) || c.skipUnlistedRoute(key, name, found[0]) ||
+			c.skipTurnedOnRoute(key, name, found[0])) {
 			found = found[1:]
 		}
 		if len(found) == 0 {
@@ -514,6 +517,7 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 		if err != nil {
 			return fmt.Errorf("oracle adapter: %s: %w", where, err)
 		}
+		spelled := text
 		text, mode := routeValue(key, text)
 		if mode == JudgementHost {
 			// The winning layer keeps the type on the host: no route, and
@@ -522,7 +526,11 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 		}
 		provider, model, ok := strings.Cut(text, "/")
 		if !ok || provider == "" || model == "" {
-			return fmt.Errorf("oracle adapter: %s is %q; a route is <provider>/<model>", where, layered.BoundKey(text))
+			forms := "a route is <provider>/<model>"
+			if key == judgementsKey {
+				forms = "a judgement type's route is host, shadow:<provider>/<model> or <provider>/<model>"
+			}
+			return fmt.Errorf("oracle adapter: %s is %q; %s", where, layered.BoundKey(spelled), forms)
 		}
 		if _, configured := c.providers[provider]; !configured {
 			c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("oracle adapter: %s points at provider %q, which is not configured on this machine; "+
@@ -653,6 +661,43 @@ func (c *APIConfig) skipUnconfiguredRoute(key, name string, found []layered.Foun
 		"configure the provider in %s, or remove the route from %s",
 		fd.Origin, fd.Layer, key, name, quoteUntrusted(provider), layered.Config.MachineOrigin(), key, name,
 		layered.Config.MachineOrigin(), fd.Origin))
+	return true
+}
+
+// skipTurnedOnRoute reports whether one layer's route to name is a judgement
+// type's route that turns the type on, from a layer that is not the person's
+// own, and says so in a diagnostic when it is. A type turned on hands its
+// decision to the adapter, and only the person's own configuration may do
+// that: the machine's file under their home, or their own flag for one run,
+// the layers runner.personal names for a role handed to a runner (rulings RN2
+// and OC2 of 2026-10-02). The rule is restated here rather than shared,
+// because runner imports this package. Skipping the route lets the next
+// layer's route to the type apply, the machine's in its own mode, or the
+// host when the machine sets none, so a repository never turns a machine's
+// shadow into on. A repository's host and shadow are not skipped here: host
+// keeps work on the host, and in shadow the host still decides. A route the
+// denylist matches is left to the refusal below, which no layer softens.
+func (c *APIConfig) skipTurnedOnRoute(key, name string, fd layered.Found) bool {
+	if key != judgementsKey || fd.Layer == layered.Machine || fd.Layer == layered.Flag {
+		return false
+	}
+	text, err := layered.Decode[string](fd.Raw)
+	if err != nil {
+		return false
+	}
+	target, mode := routeValue(key, text)
+	if mode != JudgementOn {
+		return false
+	}
+	_, model, _ := strings.Cut(target, "/")
+	if _, denied := Denied(c.denylist, model); denied {
+		return false
+	}
+	c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("oracle adapter: %s (%s layer): %s.%s is %s, which turns the type on; "+
+		"only the person's own configuration (%s) turns a judgement type on, so this route is skipped and the route %s sets "+
+		"for the type, or the host, applies in its place: set it in %s, or spell it %s to run the adapter beside the host",
+		fd.Origin, fd.Layer, key, name, quoteUntrusted(text), layered.Config.MachineOrigin(), layered.Config.MachineOrigin(),
+		layered.Config.MachineOrigin(), quoteUntrusted(shadowPrefix+target)))
 	return true
 }
 

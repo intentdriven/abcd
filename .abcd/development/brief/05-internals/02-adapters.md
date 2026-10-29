@@ -269,7 +269,10 @@ a type moves. With `host`, or nothing set, the host decides. With
 recorded beside it, as a pair in the newest lab home's `pairs.jsonl`, never in
 the repository. A state larger than the model's 32K window is recorded as
 skipped with its size. With a bare `<provider>/<model>`, the adapter decides,
-and the run record names the route and the model the provider reported. An
+and the run record names the route and the model the provider reported; only
+the person's own `~/.abcd.noindex/config.json` turns a type on, and the same
+route in a repository's file is skipped so the machine's route, or the host,
+applies ([`03-configuration.md`](03-configuration.md)). An
 adapter that cannot answer leaves the decision to the host, with a fallback
 receipt saying why. The allowlist refusal of adr-2609221009491186 happens when
 the configuration is read, before any call. `abcd lab harvest` turns the pairs

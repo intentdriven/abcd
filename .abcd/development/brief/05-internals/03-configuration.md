@@ -340,7 +340,16 @@ rather than skipped:
   `oracle.judgements.<type>` value is `host`, `shadow:<provider>/<model>` or
   `<provider>/<model>`. `host`, or no route, keeps the type on the host. A
   repository's `host` holds against the machine's route to the same name,
-  since it only keeps work on the host. In **shadow** the host still decides.
+  since it only keeps work on the host. Only the person's own configuration
+  turns a type on: a bare `<provider>/<model>` is honoured from
+  `~/.abcd.noindex/config.json`, the rule a role handed to a runner follows
+  (`runner.personal`). The same route
+  in a repository's `.abcd/config.json` is skipped with one diagnostic naming
+  the file and the route, and the machine's own route to the type applies in
+  its place, in its own mode, or the host when the machine sets none; so a
+  repository never turns a machine's shadow into on. A repository may still
+  set `host`, or `shadow:<provider>/<model>`, which decides nothing. In
+  **shadow** the host still decides.
   The decision adapter is asked the same typed question over the same state
   beside it and decides nothing. Each pair (the host's answer, the adapter's
   answer and probability, the state's SHA-256 and size) is appended to
@@ -393,7 +402,9 @@ rather than skipped:
   provider holds a key when its block names `key`, judged from the block and
   never by reading the credential store. A repository's route to a provider
   whose block names no key (a local server) is admitted and wins over the
-  machine's per name, and a `--route` the person types is unaffected.
+  machine's per name, except a judgement type's route that turns the type on,
+  which only the machine's file may set (above), and a `--route` the person
+  types is unaffected.
 - **A call that spends a key takes no repository settings unless the person typed its route.** A
   provider leg sends the connection's defaults, then the winning routing row's
   settings, then the `--route`'s. On a leg to a provider that holds a key and
