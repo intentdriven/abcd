@@ -1308,8 +1308,8 @@ mismatch is advisory: no command of abcd's changes a repository's visibility.
 Only checks that every pull request reports are required. A workflow that runs
 only when some paths change, one whose base-branch filter leaves the default
 branch out, one whose `types:` filter leaves out a pull request's opening or a
-push to it, one whose trigger is written as an inline `{...}` mapping abcd does
-not read, and, under a merge queue, one that does not run on the queue, are
+push to it, one whose trigger is written as an inline `{...}` mapping or an
+alias abcd does not read, and, under a merge queue, one that does not run on the queue, are
 left out and named. A required check that no workflow is known to report is
 named too, because a pull request waits on it until it reports. A repository
 with no CI is given no required check.
@@ -1323,8 +1323,8 @@ steps it does not read, hold both at advisory, named in the note.
 
 These three are read from this checkout's workflow files but apply to the
 default branch, so abcd first compares the files with the default branch's on
-GitHub, file by file. Where any differ (a feature branch, or an uncommitted
-edit), the required checks, SHA pinning and the workflow token are advisory,
+GitHub, file by file (a checkout with CRLF line endings matches its LF
+blob). Where any differ (a feature branch, or an uncommitted edit), the required checks, SHA pinning and the workflow token are advisory,
 naming the files, and the apply sets none of them: a check only a feature
 branch reports would hold every pull request into the default branch. Checks
 the repository names in `github.required_checks` are its own and are not held.
@@ -1366,9 +1366,14 @@ abcd finds them again by name among the repository's own rulesets, never one
 inherited from the organization, and never edits a ruleset of another name. None
 of them is created with a bypass actor. Updating one adds what the baseline asks
 for to what it already holds and removes nothing: its other rules, parameters,
-refs and bypass actors stay, so an update never loosens it. A ruleset whose
-answer carries no bypass list is not updated, and a repository with a hundred
-rulesets or more is refused, because abcd reads one page of them. Rules from several rulesets add up on GitHub, so a ruleset the repository
+refs and bypass actors stay, so an update never loosens it. A ruleset abcd
+cannot read whole (its bypass list, rules or conditions missing or malformed),
+one whose target is not the one abcd's ruleset of that name has, and one that
+excludes refs are not updated, and nothing of them changes. A repository with a
+hundred rulesets or more is refused, because abcd reads one page of them.
+Push protection waits for secret scanning, and Dependabot security updates for
+Dependabot alerts: while the first stays off, kept or not offered, the second
+is advisory, because GitHub refuses it. Rules from several rulesets add up on GitHub, so a ruleset the repository
 already has keeps working beside abcd's.
 
 After every step succeeds, the apply writes two mirrors. The desired state goes

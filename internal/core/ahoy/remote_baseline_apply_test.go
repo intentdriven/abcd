@@ -304,7 +304,8 @@ func TestRemoteApplyWritesNoLoginIntoAnyFile(t *testing.T) {
 	routes["GET repos/"+userRepo+"/rules/branches/main"] = ghRoute{Body: `[]`}
 	routes["GET user"] = ghRoute{Body: `{"login":"` + login + `","plan":{"name":"free"}}`}
 	routes["GET repos/"+userRepo+"/rulesets?per_page=100&includes_parents=false"] = ghRoute{Body: `[{"id":5,"name":"abcd: default branch"}]`}
-	routes["GET repos/"+userRepo+"/rulesets/5"] = ghRoute{Body: `{"id":5,"name":"abcd: default branch",
+	routes["GET repos/"+userRepo+"/rulesets/5"] = ghRoute{Body: `{"id":5,"name":"abcd: default branch","target":"branch",
+"conditions":{"ref_name":{"include":["~DEFAULT_BRANCH"],"exclude":[]}},"rules":[{"type":"deletion"}],
 "bypass_actors":[{"actor_id":4242,"actor_type":"Integration","bypass_mode":"always"}]}`}
 	logPath, _ := ghRoutedFake(t, routes)
 	repo := managedRepoWithOrigin(t, "https://github.com/"+userRepo)
@@ -528,5 +529,45 @@ func TestRemoteApplySanitisesTheConfirmationItAsks(t *testing.T) {
 	}
 	if strings.ContainsRune(asked[0], 0x1b) {
 		t.Errorf("the confirmation carries an escape sequence: %q", asked[0])
+	}
+}
+
+// TestRemoteApplyRefusesToMergeIntoARulesetItCannotReadWhole pins that the
+// merge fails closed: an existing ruleset whose answer abcd cannot read whole
+// (rules or conditions malformed or missing, a bypass actor or a check list
+// of the wrong shape), whose target is not the one abcd's ruleset of that
+// name has, or whose excludes may still leave the target out, is not updated,
+// because a merge over what was not read would drop it.
+func TestRemoteApplyRefusesToMergeIntoARulesetItCannotReadWhole(t *testing.T) {
+	cases := map[string][2]string{
+		"rules not a list":       {`"rules":[`, `"rules":{"x":[`},
+		"no conditions":          {`"conditions":{"ref_name":{"include":["~DEFAULT_BRANCH","refs/heads/release/*"],"exclude":[]}},`, ``},
+		"bypass not an object":   {`"bypass_actors":[]`, `"bypass_actors":[1]`},
+		"checks not a list":      {`"required_status_checks":[{"context":"check","integration_id":15368},{"context":"extra"}]}`, `"required_status_checks":"check"}`},
+		"another target":         {`"target":"branch"`, `"target":"tag"`},
+		"an exclude still there": {`"exclude":[]`, `"exclude":["refs/heads/main"]`},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			setupHermetic(t)
+			body := strictDefaultBranchRuleset
+			if !strings.Contains(body, c[0]) {
+				t.Fatalf("fixture has no %q", c[0])
+			}
+			body = strings.Replace(body, c[0], c[1], 1)
+			if name == "rules not a list" {
+				body = strings.TrimSuffix(strings.TrimSpace(body), "}") + "}}"
+			}
+			logPath, _ := ghRoutedFake(t, strictDefaultBranchRoutes(body))
+			repo := dessauRepo(t)
+
+			res, _ := RemoteApply(repo, confirmingPrompter{}, nil)
+			if puts := callsTo(t, logPath, "PUT", "rulesets/5"); len(puts) != 0 {
+				t.Errorf("the ruleset was rewritten from an answer abcd could not read whole:\n%s", strings.Join(puts, "\n"))
+			}
+			if !strings.Contains(strings.Join(res.Notes, "\n"), "nothing of it was changed") {
+				t.Errorf("the refusal is not reported: %v", res.Notes)
+			}
+		})
 	}
 }

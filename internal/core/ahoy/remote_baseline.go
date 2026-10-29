@@ -322,7 +322,34 @@ func auditSettings(in auditInput) *SettingsAudit {
 		add(ghOrgActions(in.root, in.owner))
 	}
 	holdWorkflowSettings(a, in)
+	holdUnmetPrerequisites(a)
 	return a
+}
+
+// holdUnmetPrerequisites turns a setting GitHub accepts only on top of another
+// from differs to advisory while that other will stay off (kept, owed,
+// unknown or advisory): push protection needs secret scanning, and Dependabot
+// security updates need Dependabot alerts. GitHub would refuse the write, and
+// the refusal would stop the apply before the rest of the baseline lands.
+func holdUnmetPrerequisites(a *SettingsAudit) {
+	state := map[string]string{}
+	for _, f := range a.Findings {
+		state[f.Setting] = f.State
+	}
+	for i, f := range a.Findings {
+		need := ""
+		switch f.Setting {
+		case settingPushProtection:
+			need = settingSecretScanning
+		case settingDependabotFixes:
+			need = settingDependabotAlerts
+		}
+		if need == "" || f.State != findingDiffers || state[need] == findingOK || state[need] == findingDiffers {
+			continue
+		}
+		a.Findings[i].State = findingAdvisory
+		a.Findings[i].Note = "GitHub sets it only once " + need + " is on, and " + need + " is " + state[need] + " here"
+	}
 }
 
 // holdWorkflowSettings turns each setting drawn from this checkout's

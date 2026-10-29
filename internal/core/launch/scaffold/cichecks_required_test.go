@@ -237,3 +237,80 @@ jobs:
 		}
 	}
 }
+
+// TestRequiredChecksLeavesOutAnInlineStrategy pins that a job whose strategy
+// is written inline (`strategy: {matrix: …}`) is read as a matrix whose names
+// only the run knows, never as the bare job id: GitHub reports one check per
+// matrix entry, so requiring the bare id would wait for ever.
+func TestRequiredChecksLeavesOutAnInlineStrategy(t *testing.T) {
+	repo := writeWorkflows(t, map[string]string{
+		"ci.yml": `on:
+  pull_request:
+jobs:
+  build:
+    strategy: {matrix: {os: [a, b]}}
+    runs-on: ubuntu-latest
+  lint:
+    runs-on: ubuntu-latest
+`,
+	})
+	checks, notes := RequiredChecks(repo, "main", false)
+	if !reflect.DeepEqual(checks, []string{"lint"}) {
+		t.Errorf("checks = %v, want [lint]", checks)
+	}
+	if !strings.Contains(strings.Join(notes, "\n"), "job build") {
+		t.Errorf("the inline-strategy job is not named: %v", notes)
+	}
+}
+
+// TestRequiredChecksReadsOnlyTheEventsOnNamesAtItsTopLevel pins that a key or
+// list item named pull_request deeper inside `on:` (a dispatch input, a path
+// filter) is not the trigger: a workflow that never runs on a pull request is
+// never required.
+func TestRequiredChecksReadsOnlyTheEventsOnNamesAtItsTopLevel(t *testing.T) {
+	repo := writeWorkflows(t, map[string]string{
+		"dispatch.yml": `on:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: PR number
+jobs:
+  manual:
+    runs-on: ubuntu-latest
+`,
+		"push.yml": `on:
+  push:
+    paths:
+      - '.github/workflows/pull_request.yml'
+jobs:
+  on-push:
+    runs-on: ubuntu-latest
+`,
+		"ci.yml": `on:
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+`,
+	})
+	checks, _ := RequiredChecks(repo, "main", false)
+	if !reflect.DeepEqual(checks, []string{"build"}) {
+		t.Errorf("checks = %v, want [build]", checks)
+	}
+}
+
+// TestRequiredChecksSeesTheFiltersInEveryForm pins the filter spellings the
+// reader must not miss: a quoted filter key, a flow mapping on the line after
+// the event, and an alias, each of which would otherwise read as unfiltered.
+func TestRequiredChecksSeesTheFiltersInEveryForm(t *testing.T) {
+	repo := writeWorkflows(t, map[string]string{
+		"quoted.yml":    "on:\n  pull_request:\n    \"paths\": [\"docs/**\"]\njobs:\n  docs:\n    runs-on: x\n",
+		"next-line.yml": "on:\n  pull_request:\n    {paths: [docs/**]}\njobs:\n  docs2:\n    runs-on: x\n",
+		"alias.yml":     "on:\n  pull_request: *pr\njobs:\n  aliased:\n    runs-on: x\n",
+		"ci.yml":        "on:\n  pull_request:\njobs:\n  build:\n    runs-on: x\n",
+	})
+	checks, notes := RequiredChecks(repo, "main", false)
+	if !reflect.DeepEqual(checks, []string{"build"}) {
+		t.Errorf("checks = %v, want [build]; notes %v", checks, notes)
+	}
+}

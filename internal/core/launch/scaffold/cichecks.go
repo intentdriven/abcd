@@ -133,8 +133,8 @@ func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, no
 		}
 		why := ""
 		switch {
-		case flowMapping(on, "pull_request") || flowMapping(on, "pull_request_target"):
-			why = "writes its pull-request trigger as a flow mapping, whose filters abcd does not read"
+		case flowMapping(on, "pull_request") || flowMapping(on, "pull_request_target") || flowBody(prBody):
+			why = "writes its pull-request trigger as a flow mapping or an alias, whose filters abcd does not read"
 		case blockHasKey(prBody, "paths") || blockHasKey(prBody, "paths-ignore"):
 			why = "runs only when some paths change"
 		case blockHasKey(prBody, "branches-ignore"):
@@ -165,8 +165,9 @@ func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, no
 }
 
 // flowMapping reports whether the `on:` block, or event's own entry in it, is
-// written as a flow mapping (`{...}`). Its filters are inline, where the line
-// reader cannot see them, so such a trigger is never read as unfiltered.
+// written as a flow mapping (`{...}`) or an alias (`*name`). Its filters are
+// then inline or elsewhere, where the line reader cannot see them, so such a
+// trigger is never read as unfiltered.
 func flowMapping(on []string, event string) bool {
 	re := eventRe(event)
 	for _, l := range on {
@@ -177,10 +178,24 @@ func flowMapping(on []string, event string) bool {
 		if strings.HasPrefix(t, "{") && re.MatchString(t) {
 			return true
 		}
-		if k, v, ok := strings.Cut(t, ":"); ok && strings.Trim(strings.TrimSpace(k), `"'`) == event &&
-			strings.HasPrefix(strings.TrimSpace(v), "{") {
-			return true
+		if k, v, ok := strings.Cut(t, ":"); ok && strings.Trim(strings.TrimSpace(k), `"'`) == event {
+			if v = strings.TrimSpace(v); strings.HasPrefix(v, "{") || strings.HasPrefix(v, "*") {
+				return true
+			}
 		}
+	}
+	return false
+}
+
+// flowBody reports whether an event's body opens with a flow mapping on the
+// line after its key.
+func flowBody(body []string) bool {
+	for _, l := range body {
+		t := strings.TrimSpace(l)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		return strings.HasPrefix(t, "{")
 	}
 	return false
 }
@@ -205,7 +220,12 @@ func eventRe(event string) *regexp.Regexp {
 // (`on: event`, `on: [a, event]`, a list item, or a mapping key).
 func hasEvent(on []string, event string) bool {
 	re := eventRe(event)
+	level := onLevel(on)
 	for _, l := range on {
+		if ind := indentOf(l); ind != 0 && ind != level {
+			// Deeper than the event names: a filter or an input, never a trigger.
+			continue
+		}
 		t := strings.TrimSpace(l)
 		if strings.HasPrefix(t, "#") {
 			continue
@@ -234,6 +254,7 @@ func eventBlock(on []string, event string) (body []string, present bool) {
 		return nil, false
 	}
 	keyIndent := -1
+	level := onLevel(on)
 	for _, l := range on {
 		t := strings.TrimSpace(l)
 		if t == "" || strings.HasPrefix(t, "#") {
@@ -247,6 +268,9 @@ func eventBlock(on []string, event string) (body []string, present bool) {
 			body = append(body, l)
 			continue
 		}
+		if ind != 0 && ind != level {
+			continue
+		}
 		if k, _, ok := strings.Cut(t, ":"); ok && strings.Trim(strings.TrimSpace(k), `"'`) == event {
 			keyIndent = ind
 		}
@@ -254,10 +278,31 @@ func eventBlock(on []string, event string) (body []string, present bool) {
 	return body, true
 }
 
+// onLevel is the indentation of the event names in an `on:` block: that of
+// its first indented line. The value written on the `on:` line itself is
+// held at indentation 0.
+func onLevel(on []string) int {
+	for _, l := range on {
+		t := strings.TrimSpace(l)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		if ind := indentOf(l); ind > 0 {
+			return ind
+		}
+	}
+	return 0
+}
+
+// indentOf is a line's indentation in spaces.
+func indentOf(l string) int {
+	return len(l) - len(strings.TrimLeft(l, " "))
+}
+
 // blockHasKey reports whether one of body's lines is the key key.
 func blockHasKey(body []string, key string) bool {
 	for _, l := range body {
-		if k, _, ok := strings.Cut(strings.TrimSpace(l), ":"); ok && strings.TrimSpace(k) == key {
+		if k, _, ok := strings.Cut(strings.TrimSpace(l), ":"); ok && strings.Trim(strings.TrimSpace(k), `"'`) == key {
 			return true
 		}
 	}
@@ -286,7 +331,7 @@ func blockList(body []string, key string) []string {
 			break
 		}
 		k, v, ok := strings.Cut(t, ":")
-		if !ok || strings.TrimSpace(k) != key {
+		if !ok || strings.Trim(strings.TrimSpace(k), `"'`) != key {
 			continue
 		}
 		v = scalar(v)
@@ -475,6 +520,12 @@ func splitJobs(block []string) []ciJob {
 					job.name, job.named = scalar(v), true
 				case "uses":
 					job.uses = true
+				case "strategy":
+					// An inline strategy may hold a matrix this reader cannot
+					// expand, so the job's names are the run's to decide.
+					if strings.TrimSpace(v) != "" {
+						job.matrix = true
+					}
 				}
 			} else if strings.HasPrefix(t, "matrix:") {
 				job.matrix = true

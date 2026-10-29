@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/github"
@@ -205,9 +206,13 @@ func applyRulesets(root, repo string, audit *SettingsAudit, find map[string]Find
 			// bypass someone gave a ruleset bearing abcd's name: abcd only adds.
 			cur, err := ghRulesetForUpdate(root, repo, id)
 			if err != nil {
-				return "could not read abcd's ruleset " + w.name + " before updating it, so nothing of it was changed: " + errText(err)
+				return "could not read abcd's ruleset " + w.name + " before updating it, and nothing of it was changed: " + errText(err)
 			}
-			w.body = mergeRuleset(cur, w.body)
+			merged, err := mergeRuleset(cur, w.body)
+			if err != nil {
+				return "abcd's ruleset " + w.name + " was not updated, and nothing of it was changed: " + err.Error()
+			}
+			w.body = merged
 			werr = ghWrite(root, "PUT", "repos/"+repo+"/rulesets/"+id, w.body)
 		} else {
 			werr = ghWrite(root, "POST", "repos/"+repo+"/rulesets", w.body)
@@ -275,19 +280,21 @@ func ghRulesetIDs(root, repo string) (map[string]string, error) {
 }
 
 // currentRuleset is what an existing ruleset holds that an update must keep:
-// its conditions, its rules as GitHub returned them, and its bypass actors
-// reduced to the three fields the mirror keeps (an actor is recorded by type
-// and id, never by a name or login).
+// its target, its conditions, its rules as GitHub returned them, and its
+// bypass actors reduced to the three fields the mirror keeps (an actor is
+// recorded by type and id, never by a name or login).
 type currentRuleset struct {
+	target     string
 	conditions map[string]any
 	rules      []any
 	bypass     []any
 }
 
-// ghRulesetForUpdate reads one ruleset before abcd updates it. An answer with
-// no bypass_actors list is refused, never read as "no bypass": GitHub leaves
-// the field out for a caller who may not see it, and writing back an empty
-// list would remove a bypass someone set.
+// ghRulesetForUpdate reads one ruleset before abcd updates it, and refuses an
+// answer it cannot read whole: the merge keeps only what it read, so a part
+// read as empty would be dropped by the PUT. An answer with no bypass_actors
+// list is refused, never read as "no bypass": GitHub leaves the field out for
+// a caller who may not see it.
 func ghRulesetForUpdate(root, repo, id string) (currentRuleset, error) {
 	out, err := github.API(root, nil, "repos/"+repo+"/rulesets/"+id)
 	if err != nil {
@@ -304,10 +311,52 @@ func ghRulesetForUpdate(root, repo, id string) (currentRuleset, error) {
 		return currentRuleset{}, errors.New("its answer carries no bypass_actors list, so abcd cannot keep the bypass it holds")
 	}
 	cur := currentRuleset{bypass: []any{}}
-	cur.conditions, _ = doc["conditions"].(map[string]any)
-	cur.rules, _ = doc["rules"].([]any)
+	cur.target, _ = doc["target"].(string)
+	if cur.conditions, ok = doc["conditions"].(map[string]any); !ok {
+		return currentRuleset{}, errors.New("its answer carries no conditions, so abcd cannot keep the refs it covers")
+	}
+	if refName, present := cur.conditions["ref_name"]; present {
+		m, ok := refName.(map[string]any)
+		if !ok || !refList(m["include"]) || !refList(m["exclude"]) {
+			return currentRuleset{}, errors.New("its ref conditions are not lists of refs")
+		}
+	}
+	if cur.rules, ok = doc["rules"].([]any); !ok {
+		return currentRuleset{}, errors.New("its answer carries no list of rules, so abcd cannot keep them")
+	}
+	for _, r := range cur.rules {
+		m, ok := r.(map[string]any)
+		if !ok {
+			return currentRuleset{}, errors.New("one of its rules is not an object")
+		}
+		if _, ok := m["type"].(string); !ok {
+			return currentRuleset{}, errors.New("one of its rules names no type")
+		}
+		params, present := m["parameters"]
+		if !present {
+			continue
+		}
+		pm, ok := params.(map[string]any)
+		if !ok {
+			return currentRuleset{}, errors.New("the parameters of its " + m["type"].(string) + " rule are not an object")
+		}
+		if checks, present := pm["required_status_checks"]; present {
+			list, ok := checks.([]any)
+			if !ok {
+				return currentRuleset{}, errors.New("its required checks are not a list")
+			}
+			for _, c := range list {
+				if cm, ok := c.(map[string]any); !ok || cm["context"] == nil {
+					return currentRuleset{}, errors.New("one of its required checks names no context")
+				}
+			}
+		}
+	}
 	for _, a := range actors {
-		m, _ := a.(map[string]any)
+		m, ok := a.(map[string]any)
+		if !ok {
+			return currentRuleset{}, errors.New("one of its bypass actors is not an object")
+		}
 		cur.bypass = append(cur.bypass, map[string]any{
 			"actor_id":    m["actor_id"],
 			"actor_type":  m["actor_type"],
@@ -317,14 +366,29 @@ func ghRulesetForUpdate(root, repo, id string) (currentRuleset, error) {
 	return cur, nil
 }
 
+// refList reports whether v is absent or a list of refs (strings).
+func refList(v any) bool {
+	if v == nil {
+		return true
+	}
+	_, err := stringList(v, "refs")
+	return err == nil
+}
+
 // mergeRuleset is the body that updates an existing ruleset to abcd's
 // baseline without loosening anything it holds. Every existing rule, with
 // its parameters, and every bypass actor stays; a rule type abcd wants and
 // the ruleset lacks is added; a required check abcd wants is added beside the
 // ones already required, each keeping its source; a pull-request rule gains
 // the code-owner review and keeps its other parameters; and the target ref is
-// added to the refs the ruleset already covers.
-func mergeRuleset(cur currentRuleset, want map[string]any) map[string]any {
+// added to the refs the ruleset already covers. It refuses a ruleset whose
+// target is not the one abcd's ruleset of that name has, and one that still
+// excludes refs, since abcd cannot tell whether an exclude leaves its target
+// out.
+func mergeRuleset(cur currentRuleset, want map[string]any) (map[string]any, error) {
+	if cur.target != want["target"] {
+		return nil, errors.New("its target is " + strconv.Quote(cur.target) + ", not " + strconv.Quote(want["target"].(string)))
+	}
 	out := map[string]any{
 		"name":          want["name"],
 		"target":        want["target"],
@@ -332,7 +396,11 @@ func mergeRuleset(cur currentRuleset, want map[string]any) map[string]any {
 		"bypass_actors": cur.bypass,
 	}
 	wantRef := want["conditions"].(map[string]any)["ref_name"].(map[string]any)["include"].([]any)
-	out["conditions"] = mergeConditions(cur.conditions, wantRef)
+	conditions := mergeConditions(cur.conditions, wantRef)
+	if exclude := conditions["ref_name"].(map[string]any)["exclude"].([]any); len(exclude) > 0 {
+		return nil, errors.New("it excludes refs abcd cannot match against its target, so it may not cover it")
+	}
+	out["conditions"] = conditions
 	rules := append([]any{}, cur.rules...)
 	for _, wr := range want["rules"].([]any) {
 		w := wr.(map[string]any)
@@ -341,7 +409,7 @@ func mergeRuleset(cur currentRuleset, want map[string]any) map[string]any {
 			rules = append(rules, w)
 			continue
 		}
-		have, _ := rules[i].(map[string]any)
+		have := rules[i].(map[string]any)
 		params, _ := have["parameters"].(map[string]any)
 		wantParams, _ := w["parameters"].(map[string]any)
 		switch w["type"] {
@@ -366,7 +434,7 @@ func mergeRuleset(cur currentRuleset, want map[string]any) map[string]any {
 		}
 	}
 	out["rules"] = rules
-	return out
+	return out, nil
 }
 
 // mergeConditions adds refs to the refs a ruleset already includes, and takes

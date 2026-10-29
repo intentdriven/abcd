@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -94,6 +95,10 @@ func readWorkflowFacts(root string) workflowFacts {
 				continue
 			}
 			ref := m[1]
+			if strings.HasPrefix(ref, "./.github/workflows/") && !strings.Contains(strings.TrimPrefix(ref, "./.github/workflows/"), "/") {
+				// A local reusable workflow is one of the files this walk reads.
+				continue
+			}
 			if strings.HasPrefix(ref, "./") {
 				if !local[ref] {
 					local[ref] = true
@@ -164,8 +169,13 @@ func workflowDrift(root, repo, branch string) string {
 			unread = append(unread, e.Name())
 			continue
 		}
-		sum := sha1.Sum(append([]byte("blob "+strconv.Itoa(len(data))+"\x00"), data...))
-		local[e.Name()] = hex.EncodeToString(sum[:])
+		id := blobID(data)
+		if lf := bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n")); remote[e.Name()] != id && len(lf) != len(data) {
+			// A checkout with CRLF line endings (core.autocrlf, or an eol
+			// attribute) holds the LF blob git stores.
+			id = blobID(lf)
+		}
+		local[e.Name()] = id
 	}
 	var differ []string
 	for name, id := range local {
@@ -190,4 +200,10 @@ func workflowDrift(root, repo, branch string) string {
 // isWorkflowFile reports whether name is a file GitHub runs as a workflow.
 func isWorkflowFile(name string) bool {
 	return strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")
+}
+
+// blobID is git's object id for a blob holding data.
+func blobID(data []byte) string {
+	sum := sha1.Sum(append([]byte("blob "+strconv.Itoa(len(data))+"\x00"), data...))
+	return hex.EncodeToString(sum[:])
 }
