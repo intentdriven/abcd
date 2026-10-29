@@ -1,10 +1,13 @@
 package ahoy
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -126,9 +129,22 @@ func dessauRoutes() ghRoutes {
 		"GET repos/" + auditRepo + "/rulesets?targets=tag&includes_parents=true": {Body: `[]`},
 		"GET repos/" + auditRepo + "/actions/permissions":                        {Body: `{"enabled":true,"allowed_actions":"all","sha_pinning_required":false}`},
 		"GET repos/" + auditRepo + "/actions/permissions/workflow":               {Body: `{"default_workflow_permissions":"read","can_approve_pull_request_reviews":false}`},
+		"GET repos/" + auditRepo + "/contents/.github/workflows?ref=main":        workflowsRoute(map[string]string{"ci.yml": dessauWorkflow}),
 		"GET orgs/example-org":                     {Body: `{"plan":{"name":"free"}}`},
 		"GET orgs/example-org/actions/permissions": {Exit: 1, Err: "gh: You must be an org admin or have the actions policies fine-grained permission. (HTTP 403)"},
 	}
+}
+
+// workflowsRoute is GitHub's contents answer for a default branch whose
+// .github/workflows holds exactly files, each with its git blob id.
+func workflowsRoute(files map[string]string) ghRoute {
+	var entries []string
+	for name, body := range files {
+		sum := sha1.Sum([]byte("blob " + strconv.Itoa(len(body)) + "\x00" + body))
+		entries = append(entries, `{"name":"`+name+`","path":".github/workflows/`+name+`","type":"file","sha":"`+hex.EncodeToString(sum[:])+`"}`)
+	}
+	sort.Strings(entries)
+	return ghRoute{Body: "[" + strings.Join(entries, ",") + "]"}
 }
 
 // writeTreeFile writes one file into the test repository.
@@ -376,15 +392,18 @@ func TestRemoteAuditHonoursKeepAndRefusesAnUnknownKey(t *testing.T) {
 	setupHermetic(t)
 	logPath, _ := ghRoutedFake(t, dessauRoutes())
 	repo := dessauRepo(t)
-	setConfigValue(t, repo, "github", "keep", []any{"has_wiki"})
+	setConfigValue(t, repo, "github", "keep", []any{"has_wiki", "secret_scanning_push_protection"})
 
 	res, err := RemoteRead(repo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantStates(t, findingsBySetting(t, res), map[string]string{"has_wiki": "kept", "has_projects": "differs"})
+	wantStates(t, findingsBySetting(t, res), map[string]string{
+		"has_wiki": "kept", "secret_scanning_push_protection": "kept",
+		"has_projects": "differs", "secret_scanning": "differs",
+	})
 	for _, c := range res.Changes {
-		if strings.HasPrefix(c, "has_wiki") {
+		if strings.HasPrefix(c, "has_wiki") || strings.HasPrefix(c, "secret_scanning_push_protection") {
 			t.Errorf("a kept setting is listed as a change: %s", c)
 		}
 	}
@@ -428,10 +447,13 @@ func TestRemoteAuditRequiresTheConfiguredChecks(t *testing.T) {
 // difference the apply may make.
 func TestRemoteAuditOffersSHAPinningOnlyWhenEveryActionIsPinned(t *testing.T) {
 	setupHermetic(t)
-	ghRoutedFake(t, dessauRoutes())
+	pinned := strings.Replace(dessauWorkflow,
+		"actions/checkout@v4", "actions/checkout@0123456789abcdef0123456789abcdef01234567", 1)
+	routes := dessauRoutes()
+	routes["GET repos/"+auditRepo+"/contents/.github/workflows?ref=main"] = workflowsRoute(map[string]string{"ci.yml": pinned})
+	ghRoutedFake(t, routes)
 	repo := dessauRepo(t)
-	writeTreeFile(t, repo, ".github/workflows/ci.yml", strings.Replace(dessauWorkflow,
-		"actions/checkout@v4", "actions/checkout@0123456789abcdef0123456789abcdef01234567", 1))
+	writeTreeFile(t, repo, ".github/workflows/ci.yml", pinned)
 
 	res, err := RemoteRead(repo)
 	if err != nil {
@@ -461,6 +483,139 @@ func TestRemoteAuditKeepsTheScanningTogglesOfARepoThatOptedOut(t *testing.T) {
 	for _, c := range res.Changes {
 		if strings.HasPrefix(c, "secret_scanning") {
 			t.Errorf("an opted-out toggle is listed as a change: %s", c)
+		}
+	}
+}
+
+// TestRemoteAuditHoldsTheActionsTighteningsWhenAWorkflowWentUnread pins that
+// a workflow abcd could not read, or a local action whose own steps it does
+// not read, is never counted as compliant: SHA pinning and a read-only token
+// stay advisory, naming what went unread, because requiring either over steps
+// abcd has not seen could stop a CI that works today.
+func TestRemoteAuditHoldsTheActionsTighteningsWhenAWorkflowWentUnread(t *testing.T) {
+	setupHermetic(t)
+	routes := dessauRoutes()
+	routes["GET repos/"+auditRepo+"/actions/permissions/workflow"] = ghRoute{Body: `{"default_workflow_permissions":"write","can_approve_pull_request_reviews":false}`}
+	ghRoutedFake(t, routes)
+	repo := dessauRepo(t)
+	pinned := strings.Replace(dessauWorkflow,
+		"actions/checkout@v4", "actions/checkout@0123456789abcdef0123456789abcdef01234567", 1)
+	writeTreeFile(t, repo, ".github/workflows/ci.yml", pinned)
+	writeTreeFile(t, repo, ".github/workflows/huge.yml", "on: push\n"+strings.Repeat("# padding\n", 30000))
+
+	res, err := RemoteRead(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := findingsBySetting(t, res)
+	wantStates(t, got, map[string]string{"actions_sha_pinning": "advisory", "workflow_token": "advisory"})
+	for _, s := range []string{"actions_sha_pinning", "workflow_token"} {
+		if !strings.Contains(got[s].Note, "huge.yml") {
+			t.Errorf("%s does not name the unread workflow: %q", s, got[s].Note)
+		}
+	}
+
+	writeTreeFile(t, repo, ".github/workflows/huge.yml", "on: push\npermissions: {}\njobs:\n  a:\n    steps:\n      - uses: ./.github/actions/setup\n")
+	res, err = RemoteRead(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = findingsBySetting(t, res)
+	wantStates(t, got, map[string]string{"actions_sha_pinning": "advisory"})
+	if !strings.Contains(got["actions_sha_pinning"].Note, "./.github/actions/setup") {
+		t.Errorf("the local action is not named: %q", got["actions_sha_pinning"].Note)
+	}
+}
+
+// TestRemoteAuditDoesNotReadANonAdminsAlertsAnswerAsOff pins that the 404
+// GitHub gives a sign-in that is not an admin of the repository is not taken
+// as "Dependabot alerts are off": the endpoint answers only admins, so the
+// setting is unknown, and an unknown is never applied.
+func TestRemoteAuditDoesNotReadANonAdminsAlertsAnswerAsOff(t *testing.T) {
+	setupHermetic(t)
+	routes := dessauRoutes()
+	routes["GET repos/"+auditRepo] = ghRoute{Body: strings.Replace(routes["GET repos/"+auditRepo].Body,
+		`"default_branch":"main",`, `"default_branch":"main","permissions":{"admin":false,"push":true},`, 1)}
+	ghRoutedFake(t, routes)
+	repo := dessauRepo(t)
+
+	res, err := RemoteRead(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := findingsBySetting(t, res)
+	wantStates(t, got, map[string]string{"dependabot_alerts": "unknown"})
+	if !strings.Contains(got["dependabot_alerts"].Note, "admin") {
+		t.Errorf("the note does not say the answer needs an admin: %q", got["dependabot_alerts"].Note)
+	}
+}
+
+// TestRemoteAuditLeavesTheTogglesUnknownWhenTheAnswerOmitsThem pins that a
+// public repository's answer without security_and_analysis, which GitHub
+// shows only to an admin, makes both scanning toggles unknown rather than off,
+// so the apply writes neither.
+func TestRemoteAuditLeavesTheTogglesUnknownWhenTheAnswerOmitsThem(t *testing.T) {
+	setupHermetic(t)
+	routes := dessauRoutes()
+	body := routes["GET repos/"+auditRepo].Body
+	i := strings.Index(body, `,
+"security_and_analysis"`)
+	routes["GET repos/"+auditRepo] = ghRoute{Body: body[:i] + "}"}
+	logPath, _ := ghRoutedFake(t, routes)
+	repo := dessauRepo(t)
+
+	res, err := RemoteApply(repo, confirmingPrompter{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantStates(t, findingsBySetting(t, res), map[string]string{
+		"secret_scanning": "unknown", "secret_scanning_push_protection": "unknown",
+	})
+	for _, c := range writeCalls(t, logPath) {
+		if strings.Contains(c, "secret_scanning") {
+			t.Errorf("a toggle abcd could not read was written:\n%s", c)
+		}
+	}
+}
+
+// TestRemoteAuditHoldsWorkflowSettingsWhenTheCheckoutDiffersFromTheDefaultBranch
+// pins that the settings drawn from the workflows are judged against the
+// default branch's workflows on GitHub, not the checkout's: from a feature
+// branch whose workflows differ, the required checks, SHA pinning and the
+// workflow token are advisory and name the difference, and the apply writes
+// no required check, since every pull request into the default branch would
+// wait on a check only that branch's workflows report.
+func TestRemoteAuditHoldsWorkflowSettingsWhenTheCheckoutDiffersFromTheDefaultBranch(t *testing.T) {
+	setupHermetic(t)
+	routes := dessauRoutes()
+	routes["GET repos/"+auditRepo+"/rules/branches/main"] = ghRoute{Body: `[{"type":"deletion"},{"type":"non_fast_forward"},
+{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"check"}]}}]`}
+	routes["GET repos/"+auditRepo+"/actions/permissions/workflow"] = ghRoute{Body: `{"default_workflow_permissions":"write","can_approve_pull_request_reviews":false}`}
+	routes["GET repos/"+auditRepo+"/contents/.github/workflows?ref=main"] = workflowsRoute(map[string]string{"ci.yml": "on:\n  pull_request:\njobs:\n  check:\n    runs-on: x\n"})
+	logPath, _ := ghRoutedFake(t, routes)
+	repo := dessauRepo(t)
+
+	res, err := RemoteRead(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := findingsBySetting(t, res)
+	wantStates(t, got, map[string]string{"required_status_checks": "advisory", "workflow_token": "advisory"})
+	for _, s := range []string{"required_status_checks", "workflow_token"} {
+		if !strings.Contains(got[s].Note, "ci.yml") || !strings.Contains(got[s].Note, "main") {
+			t.Errorf("%s does not name the differing workflow and the default branch: %q", s, got[s].Note)
+		}
+	}
+
+	if _, err := RemoteApply(repo, confirmingPrompter{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range writeCalls(t, logPath) {
+		if strings.Contains(stdinOf(c), "required_status_checks") {
+			t.Errorf("a required check was written from a checkout that differs from the default branch:\n%s", c)
+		}
+		if strings.Contains(c, "actions/permissions/workflow") {
+			t.Errorf("the workflow token was written from a checkout that differs from the default branch:\n%s", c)
 		}
 	}
 }

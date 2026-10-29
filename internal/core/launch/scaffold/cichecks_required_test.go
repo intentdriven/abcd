@@ -166,3 +166,74 @@ jobs:
 		}
 	}
 }
+
+// TestRequiredChecksLeavesOutAWorkflowWhoseTypesSkipAPush pins the activity
+// filter: a pull-request trigger with `types:` runs only on the activities it
+// names, so a workflow that leaves out opened, synchronize or reopened does not
+// report on every pull request and requiring its checks would hold every merge
+// on a check that never arrives. A `types:` list that keeps all three, as the
+// default does, still counts.
+func TestRequiredChecksLeavesOutAWorkflowWhoseTypesSkipAPush(t *testing.T) {
+	repo := writeWorkflows(t, map[string]string{
+		"labelled.yml": `on:
+  pull_request:
+    types: [labeled]
+jobs:
+  label-check:
+    runs-on: ubuntu-latest
+`,
+		"default-types.yml": `on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+jobs:
+  build:
+    runs-on: ubuntu-latest
+`,
+	})
+	checks, notes := RequiredChecks(repo, "main", false)
+	if !reflect.DeepEqual(checks, []string{"build"}) {
+		t.Errorf("checks = %v, want [build]", checks)
+	}
+	if !strings.Contains(strings.Join(notes, "\n"), "labelled.yml") {
+		t.Errorf("the labelled-only workflow is not named in the notes: %v", notes)
+	}
+}
+
+// TestRequiredChecksLeavesOutAFlowStyleTrigger pins that a pull-request
+// trigger written as a flow mapping, whose filters this line reader cannot
+// see, is left out and named rather than read as unfiltered: requiring a check
+// a path or branch filter skips would hold merges on it.
+func TestRequiredChecksLeavesOutAFlowStyleTrigger(t *testing.T) {
+	repo := writeWorkflows(t, map[string]string{
+		"flow-on.yml": `on: {pull_request: {paths: [docs/**]}}
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+`,
+		"flow-event.yml": `on:
+  pull_request: {branches: [release]}
+jobs:
+  release-only:
+    runs-on: ubuntu-latest
+`,
+		"list.yml": `on: [pull_request, push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+`,
+	})
+	checks, notes := RequiredChecks(repo, "main", false)
+	if !reflect.DeepEqual(checks, []string{"build"}) {
+		t.Errorf("checks = %v, want [build]", checks)
+	}
+	joined := strings.Join(notes, "\n")
+	for _, f := range []string{"flow-on.yml", "flow-event.yml"} {
+		if !strings.Contains(joined, f) {
+			t.Errorf("%s is not named in the notes: %v", f, notes)
+		}
+	}
+}

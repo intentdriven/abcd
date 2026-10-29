@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // RepoSettingsMirrorRelPath is the committed mirror of the repo-object settings
@@ -258,8 +259,10 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 	// prompt over a change that is not going to happen teaches the answerer to say
 	// yes without reading, which is exactly the reflex this gate exists to avoid.
 	// It names every setting the apply would change, and nothing else is written.
+	// The values come from the API, so the question is sanitised before a
+	// terminal shows it.
 	if pending := audit.Differences(); len(pending) > 0 {
-		if !p.Confirm("Change GitHub settings on " + res.Repo + "? (" + strings.Join(pending, "; ") + ")") {
+		if !p.Confirm(termsafe.Sanitize("Change GitHub settings on " + res.Repo + "? (" + strings.Join(pending, "; ") + ")")) {
 			res.Status = "aborted"
 			res.Notes = append(res.Notes, "the change to "+res.Repo+" was declined, so nothing was written on GitHub "+
 				"and no desired state was recorded")

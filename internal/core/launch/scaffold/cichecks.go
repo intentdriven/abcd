@@ -133,12 +133,16 @@ func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, no
 		}
 		why := ""
 		switch {
+		case flowMapping(on, "pull_request") || flowMapping(on, "pull_request_target"):
+			why = "writes its pull-request trigger as a flow mapping, whose filters abcd does not read"
 		case blockHasKey(prBody, "paths") || blockHasKey(prBody, "paths-ignore"):
 			why = "runs only when some paths change"
 		case blockHasKey(prBody, "branches-ignore"):
 			why = "has a branches-ignore filter on its pull-request trigger"
 		case blockHasKey(prBody, "branches") && !branchListMatches(blockList(prBody, "branches"), defaultBranch):
 			why = "its pull-request trigger leaves out the default branch"
+		case blockHasKey(prBody, "types") && !coversPushes(blockList(prBody, "types")):
+			why = "runs only on some pull-request activities (its types filter leaves out opened, synchronize or reopened)"
 		case mergeQueue && !hasEvent(on, "merge_group"):
 			why = "does not run on the merge queue, which is on"
 		}
@@ -158,6 +162,38 @@ func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, no
 		}
 	})
 	return sortedKeys(seen), notes
+}
+
+// flowMapping reports whether the `on:` block, or event's own entry in it, is
+// written as a flow mapping (`{...}`). Its filters are inline, where the line
+// reader cannot see them, so such a trigger is never read as unfiltered.
+func flowMapping(on []string, event string) bool {
+	re := eventRe(event)
+	for _, l := range on {
+		t := strings.TrimSpace(l)
+		if i := strings.Index(t, " #"); i >= 0 {
+			t = t[:i]
+		}
+		if strings.HasPrefix(t, "{") && re.MatchString(t) {
+			return true
+		}
+		if k, v, ok := strings.Cut(t, ":"); ok && strings.Trim(strings.TrimSpace(k), `"'`) == event &&
+			strings.HasPrefix(strings.TrimSpace(v), "{") {
+			return true
+		}
+	}
+	return false
+}
+
+// coversPushes reports whether a pull-request `types:` filter keeps the three
+// activities GitHub runs on by default, so the workflow still reports on every
+// pull request and on every push to one.
+func coversPushes(types []string) bool {
+	have := map[string]bool{}
+	for _, t := range types {
+		have[t] = true
+	}
+	return have["opened"] && have["synchronize"] && have["reopened"]
 }
 
 // eventRe matches one event name standing alone in an `on:` value.

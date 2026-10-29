@@ -155,7 +155,11 @@ func applyRulesets(root, repo string, audit *SettingsAudit, find map[string]Find
 		if !kept(settingBranchForcePush) {
 			rules, settings = append(rules, map[string]any{"type": "non_fast_forward"}), append(settings, settingBranchForcePush)
 		}
-		if !kept(settingRequiredChecks) && len(audit.RequiredChecks) > 0 {
+		// Checks are written only when the audit found them to differ: an
+		// advisory set (one that names a check no workflow reports, or drawn from
+		// workflows that are not the default branch's) is never applied alongside
+		// a branch protection.
+		if differs(settingRequiredChecks) && len(audit.RequiredChecks) > 0 {
 			contexts := make([]any, 0, len(audit.RequiredChecks))
 			for _, c := range audit.RequiredChecks {
 				contexts = append(contexts, map[string]any{"context": c})
@@ -195,13 +199,15 @@ func applyRulesets(root, repo string, audit *SettingsAudit, find map[string]Find
 	for _, w := range wants {
 		var werr error
 		if id, ok := existing[w.name]; ok {
-			// Update in place, keeping the bypass actors the ruleset has now: a
-			// bypass the technical facilitator added is theirs, not abcd's to remove.
-			bypass, err := ghRulesetBypass(root, repo, id)
+			// Update in place by merging into what the ruleset holds now. A PUT
+			// replaces a ruleset's rules wholesale, so a body built from the
+			// baseline alone would drop any stricter rule, parameter, ref or
+			// bypass someone gave a ruleset bearing abcd's name: abcd only adds.
+			cur, err := ghRulesetForUpdate(root, repo, id)
 			if err != nil {
-				return "could not read abcd's ruleset " + w.name + " before updating it: " + errText(err)
+				return "could not read abcd's ruleset " + w.name + " before updating it, so nothing of it was changed: " + errText(err)
 			}
-			w.body["bypass_actors"] = bypass
+			w.body = mergeRuleset(cur, w.body)
 			werr = ghWrite(root, "PUT", "repos/"+repo+"/rulesets/"+id, w.body)
 		} else {
 			werr = ghWrite(root, "POST", "repos/"+repo+"/rulesets", w.body)
@@ -234,22 +240,33 @@ func rulesetBody(name, target, ref string, rules []any) map[string]any {
 }
 
 // ghRulesetIDs lists the repository's own rulesets and returns abcd's, by name.
+// Rulesets inherited from the organization are left out: they are not the
+// repository's to update. A listing that fills the one page read may be cut
+// short, so it is refused rather than read as the whole list: abcd could not
+// tell whether its own ruleset is on a later page.
 func ghRulesetIDs(root, repo string) (map[string]string, error) {
-	out, err := github.API(root, nil, "repos/"+repo+"/rulesets?per_page=100")
+	out, err := github.API(root, nil, "repos/"+repo+"/rulesets?per_page=100&includes_parents=false")
 	if err != nil {
 		return nil, err
 	}
 	var list []struct {
-		ID   json.Number `json:"id"`
-		Name string      `json:"name"`
+		ID         json.Number `json:"id"`
+		Name       string      `json:"name"`
+		SourceType string      `json:"source_type"`
 	}
 	dec := json.NewDecoder(bytes.NewReader(out))
 	dec.UseNumber()
 	if dec.Decode(&list) != nil {
 		return nil, errors.New("the ruleset list could not be read as JSON")
 	}
+	if len(list) >= 100 {
+		return nil, errors.New("the repository holds 100 rulesets or more, more than the one page abcd reads, so it cannot tell whether its own are among them")
+	}
 	ids := map[string]string{}
 	for _, rs := range list {
+		if rs.SourceType != "" && rs.SourceType != "Repository" {
+			continue
+		}
 		if _, ours := rulesetMirrorName[rs.Name]; ours && rulesetIDRe.MatchString(rs.ID.String()) {
 			ids[rs.Name] = rs.ID.String()
 		}
@@ -257,37 +274,154 @@ func ghRulesetIDs(root, repo string) (map[string]string, error) {
 	return ids, nil
 }
 
-// ghRulesetBypass reads one ruleset's bypass actors, reduced to the three
-// fields the mirror keeps: an actor is recorded by type and id, never by a
-// name or login.
-func ghRulesetBypass(root, repo, id string) ([]any, error) {
+// currentRuleset is what an existing ruleset holds that an update must keep:
+// its conditions, its rules as GitHub returned them, and its bypass actors
+// reduced to the three fields the mirror keeps (an actor is recorded by type
+// and id, never by a name or login).
+type currentRuleset struct {
+	conditions map[string]any
+	rules      []any
+	bypass     []any
+}
+
+// ghRulesetForUpdate reads one ruleset before abcd updates it. An answer with
+// no bypass_actors list is refused, never read as "no bypass": GitHub leaves
+// the field out for a caller who may not see it, and writing back an empty
+// list would remove a bypass someone set.
+func ghRulesetForUpdate(root, repo, id string) (currentRuleset, error) {
 	out, err := github.API(root, nil, "repos/"+repo+"/rulesets/"+id)
 	if err != nil {
-		return nil, err
+		return currentRuleset{}, err
 	}
-	var doc struct {
-		Bypass []struct {
-			ActorID    *json.Number `json:"actor_id"`
-			ActorType  string       `json:"actor_type"`
-			BypassMode string       `json:"bypass_mode"`
-		} `json:"bypass_actors"`
-	}
+	var doc map[string]any
 	dec := json.NewDecoder(bytes.NewReader(out))
 	dec.UseNumber()
 	if dec.Decode(&doc) != nil {
-		return nil, errors.New("the ruleset could not be read as JSON")
+		return currentRuleset{}, errors.New("the ruleset could not be read as JSON")
 	}
-	bypass := []any{}
-	for _, b := range doc.Bypass {
-		entry := map[string]any{"actor_type": b.ActorType, "bypass_mode": b.BypassMode}
-		if b.ActorID != nil {
-			entry["actor_id"] = *b.ActorID
-		} else {
-			entry["actor_id"] = nil
+	actors, ok := doc["bypass_actors"].([]any)
+	if !ok {
+		return currentRuleset{}, errors.New("its answer carries no bypass_actors list, so abcd cannot keep the bypass it holds")
+	}
+	cur := currentRuleset{bypass: []any{}}
+	cur.conditions, _ = doc["conditions"].(map[string]any)
+	cur.rules, _ = doc["rules"].([]any)
+	for _, a := range actors {
+		m, _ := a.(map[string]any)
+		cur.bypass = append(cur.bypass, map[string]any{
+			"actor_id":    m["actor_id"],
+			"actor_type":  m["actor_type"],
+			"bypass_mode": m["bypass_mode"],
+		})
+	}
+	return cur, nil
+}
+
+// mergeRuleset is the body that updates an existing ruleset to abcd's
+// baseline without loosening anything it holds. Every existing rule, with
+// its parameters, and every bypass actor stays; a rule type abcd wants and
+// the ruleset lacks is added; a required check abcd wants is added beside the
+// ones already required, each keeping its source; a pull-request rule gains
+// the code-owner review and keeps its other parameters; and the target ref is
+// added to the refs the ruleset already covers.
+func mergeRuleset(cur currentRuleset, want map[string]any) map[string]any {
+	out := map[string]any{
+		"name":          want["name"],
+		"target":        want["target"],
+		"enforcement":   "active",
+		"bypass_actors": cur.bypass,
+	}
+	wantRef := want["conditions"].(map[string]any)["ref_name"].(map[string]any)["include"].([]any)
+	out["conditions"] = mergeConditions(cur.conditions, wantRef)
+	rules := append([]any{}, cur.rules...)
+	for _, wr := range want["rules"].([]any) {
+		w := wr.(map[string]any)
+		i := ruleIndex(rules, w["type"])
+		if i < 0 {
+			rules = append(rules, w)
+			continue
 		}
-		bypass = append(bypass, entry)
+		have, _ := rules[i].(map[string]any)
+		params, _ := have["parameters"].(map[string]any)
+		wantParams, _ := w["parameters"].(map[string]any)
+		switch w["type"] {
+		case "required_status_checks":
+			if params == nil {
+				have["parameters"] = wantParams
+				continue
+			}
+			checks, _ := params["required_status_checks"].([]any)
+			for _, c := range wantParams["required_status_checks"].([]any) {
+				if !hasCheck(checks, c.(map[string]any)["context"]) {
+					checks = append(checks, c)
+				}
+			}
+			params["required_status_checks"] = checks
+		case "pull_request":
+			if params == nil {
+				have["parameters"] = wantParams
+				continue
+			}
+			params["require_code_owner_review"] = true
+		}
 	}
-	return bypass, nil
+	out["rules"] = rules
+	return out
+}
+
+// mergeConditions adds refs to the refs a ruleset already includes, and takes
+// them out of its excludes, keeping every other condition it has.
+func mergeConditions(cur map[string]any, refs []any) map[string]any {
+	out := map[string]any{}
+	for k, v := range cur {
+		out[k] = v
+	}
+	refName, _ := out["ref_name"].(map[string]any)
+	include, _ := refName["include"].([]any)
+	exclude, _ := refName["exclude"].([]any)
+	for _, r := range refs {
+		if !containsValue(include, r) {
+			include = append(include, r)
+		}
+	}
+	kept := []any{}
+	for _, e := range exclude {
+		if !containsValue(refs, e) {
+			kept = append(kept, e)
+		}
+	}
+	if include == nil {
+		include = []any{}
+	}
+	out["ref_name"] = map[string]any{"include": include, "exclude": kept}
+	return out
+}
+
+func ruleIndex(rules []any, typ any) int {
+	for i, r := range rules {
+		if m, ok := r.(map[string]any); ok && m["type"] == typ {
+			return i
+		}
+	}
+	return -1
+}
+
+func hasCheck(checks []any, context any) bool {
+	for _, c := range checks {
+		if m, ok := c.(map[string]any); ok && m["context"] == context {
+			return true
+		}
+	}
+	return false
+}
+
+func containsValue(list []any, v any) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 // ghWrite sends one JSON body to GitHub, on stdin, as ghEnable does.

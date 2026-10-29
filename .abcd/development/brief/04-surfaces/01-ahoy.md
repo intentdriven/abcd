@@ -98,9 +98,12 @@ flags.
   and the owner's plan where the sign-in can see it. It requires only the checks
   every pull request's workflows report, and names a required check no workflow
   is known to report. A tightening that could break a working CI is advisory
-  until the workflows comply. The organization's Actions policy is read and
+  until the workflows comply, and so is one over a workflow or local action it
+  could not read, or drawn from workflow files that differ from the default
+  branch's on GitHub. The organization's Actions policy is read and
   never written, and a missing scope is named. A missing CODEOWNERS is advisory
-  until who it must name is defined (iss-2610290755587946).
+  until it is decided whether a managed repository keeps one
+  (iss-2610290755587946).
   The same request also reads the repository's merge hygiene, and a second
   reads its fork pull-request approval policy (whose pull-request workflows
   wait for the technical facilitator's approval before they run, one of the
@@ -142,9 +145,11 @@ because GitHub refuses push protection on a repository whose secret scanning
 is off, and Dependabot alerts before security updates. Then come the
 repository's flags in one request, abcd's own rulesets, the Actions policy and
 the workflow token. abcd creates and updates only its own three rulesets,
-found by name: `abcd: default branch`, `abcd: code-owner review` and
-`abcd: release tags`. None has a bypass actor, and a bypass the technical facilitator
-added to one is kept. No request body names the repository's visibility. It then
+found by name among the repository's own: `abcd: default branch`,
+`abcd: code-owner review` and `abcd: release tags`. None is created with a
+bypass actor. An update adds what the baseline asks for to what the ruleset
+holds and removes nothing, so a rule, parameter, ref or bypass someone added
+stays, and a ruleset whose bypass list cannot be read is not updated. No request body names the repository's visibility. It then
 mirrors the result into the repo's committed settings mirror, which has three
 blocks:
 

@@ -220,6 +220,11 @@ type repoObject struct {
 	Owner               struct {
 		Type string `json:"type"`
 	} `json:"owner"`
+	// Permissions is what the sign-in may do here; GitHub sends it to an
+	// authenticated caller.
+	Permissions struct {
+		Admin *bool `json:"admin"`
+	} `json:"permissions"`
 	SecurityAndAnalysis map[string]struct {
 		Status string `json:"status"`
 	} `json:"security_and_analysis"`
@@ -280,13 +285,23 @@ func auditSettings(in auditInput) *SettingsAudit {
 			f.State = findingOK
 		case status == "" && priv:
 			f.State, f.Note = findingOwed, owedNote
+		case status == "":
+			// GitHub shows security_and_analysis only to an admin, so an answer
+			// without it says nothing about the toggle, and an unknown is
+			// never applied.
+			f.State, f.Note = findingUnknown, "GitHub's answer did not carry it; it shows these toggles only to an admin of the repository"
 		default:
 			f.State = findingDiffers
 		}
-		a.Findings = append(a.Findings, f)
+		if in.optedOut {
+			// The opt-out's own reason is the one worth reading.
+			a.Findings = append(a.Findings, f)
+			continue
+		}
+		add(f)
 	}
 
-	add(ghDependabotAlerts(in.root, in.repo))
+	add(ghDependabotAlerts(in.root, in.repo, in.obj.Permissions.Admin))
 	add(statusFinding(settingDependabotFixes, in.obj.SecurityAndAnalysis[settingDependabotFixes].Status))
 	add(boolFinding(settingDeleteBranch, in.obj.DeleteBranchOnMerge, true))
 	add(boolFinding(settingWiki, in.obj.HasWiki, false))
@@ -306,7 +321,32 @@ func auditSettings(in auditInput) *SettingsAudit {
 	if in.obj.Owner.Type == "Organization" {
 		add(ghOrgActions(in.root, in.owner))
 	}
+	holdWorkflowSettings(a, in)
 	return a
+}
+
+// holdWorkflowSettings turns each setting drawn from this checkout's
+// workflows from differs to advisory when those workflows are not the default
+// branch's on GitHub (workflowDrift). Checks the repository declares in
+// github.required_checks are its own statement, not drawn from the workflows,
+// and are not held.
+func holdWorkflowSettings(a *SettingsAudit, in auditInput) {
+	drift := ""
+	checked := false
+	for i, f := range a.Findings {
+		drawn := f.Setting == settingSHAPinning || f.Setting == settingWorkflowToken ||
+			(f.Setting == settingRequiredChecks && !in.ov.requiredSet)
+		if !drawn || f.State != findingDiffers {
+			continue
+		}
+		if !checked {
+			drift, checked = workflowDrift(in.root, in.repo, in.obj.DefaultBranch), true
+		}
+		if drift == "" {
+			return
+		}
+		a.Findings[i].State, a.Findings[i].Note = findingAdvisory, drift
+	}
 }
 
 // visibilityFinding compares the declared and the real visibility. A mismatch
@@ -424,12 +464,17 @@ func ghPlan(root, owner, ownerType string) string {
 
 // ghDependabotAlerts reads whether Dependabot alerts are on: GitHub answers
 // 204 when they are and 404 when they are not.
-func ghDependabotAlerts(root, repo string) Finding {
+func ghDependabotAlerts(root, repo string, admin *bool) Finding {
 	f := Finding{Setting: settingDependabotAlerts, Target: statusEnabled}
 	_, err := github.API(root, nil, "repos/"+repo+"/vulnerability-alerts")
 	switch {
 	case err == nil:
 		f.Current, f.State = statusEnabled, findingOK
+	case isHTTP(err, 404) && admin != nil && !*admin:
+		// The endpoint answers only an admin of the repository, so a
+		// non-admin's 404 says nothing about whether alerts are on.
+		f.Current, f.State, f.Note = "unknown", findingUnknown,
+			"GitHub answers whether Dependabot alerts are on only to an admin of the repository, and this sign-in is not one"
 	case isHTTP(err, 404):
 		f.Current, f.State = "disabled", findingDiffers
 	default:
@@ -730,7 +775,7 @@ func codeownersFinding(root string) Finding {
 			break
 		}
 	}
-	const later = "; abcd does not write it yet, because who it must name is not yet defined (iss-2610290755587946)"
+	const later = "; abcd does not write it, because whether a managed repository keeps one is not yet decided (iss-2610290755587946)"
 	if data == nil {
 		f.Current, f.State, f.Note = "absent", findingAdvisory, "add a CODEOWNERS file covering these paths"+later
 		return f
@@ -834,6 +879,10 @@ func ghSHAPinning(root, repo string, facts workflowFacts) Finding {
 		f.Current, f.State = "allow-list ("+doc.AllowedActions+")", findingOK
 	case doc.SHAPinningRequired == nil:
 		f.Current, f.State, f.Note = "any action", findingUnknown, "GitHub's answer did not say whether SHA pinning is required"
+	case len(facts.Unread) > 0:
+		f.Current, f.State = "any action, by any ref", findingAdvisory
+		f.Note = "abcd could not read " + strings.Join(facts.Unread, ", ") + ", so it cannot tell whether every " +
+			"action is pinned; the apply does not require pinning over steps it has not seen"
 	case facts.Unpinned == 0:
 		f.Current, f.State = "any action, by any ref", findingDiffers
 	default:
@@ -874,6 +923,9 @@ func ghWorkflowToken(root, repo string, facts workflowFacts) Finding {
 	switch {
 	case doc.Default == "read" && !*doc.CanApprove:
 		f.State = findingOK
+	case doc.Default != "read" && len(facts.Unread) > 0:
+		f.State, f.Note = findingAdvisory, "write is the default and abcd could not read "+strings.Join(facts.Unread, ", ")+
+			", so a read-only default could stop steps it has not seen"
 	case doc.Default == "read" || len(facts.NoPermissions) == 0:
 		f.State = findingDiffers
 	default:

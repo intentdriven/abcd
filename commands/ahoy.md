@@ -1307,7 +1307,9 @@ mismatch is advisory: no command of abcd's changes a repository's visibility.
 
 Only checks that every pull request reports are required. A workflow that runs
 only when some paths change, one whose base-branch filter leaves the default
-branch out, and, under a merge queue, one that does not run on the queue, are
+branch out, one whose `types:` filter leaves out a pull request's opening or a
+push to it, one whose trigger is written as an inline `{...}` mapping abcd does
+not read, and, under a merge queue, one that does not run on the queue, are
 left out and named. A required check that no workflow is known to report is
 named too, because a pull request waits on it until it reports. A repository
 with no CI is given no required check.
@@ -1315,11 +1317,21 @@ with no CI is given no required check.
 Requiring SHA pinning is offered only when every `uses:` in the workflows is
 already pinned to a commit. Making the workflow token read-only is offered only
 when the token is already read-only or every workflow declares its own
-`permissions:`. Otherwise each is advisory and says what to change first.
+`permissions:`. Otherwise each is advisory and says what to change first. A
+workflow file abcd could not read, and a local action (`uses: ./…`) whose own
+steps it does not read, hold both at advisory, named in the note.
+
+These three are read from this checkout's workflow files but apply to the
+default branch, so abcd first compares the files with the default branch's on
+GitHub, file by file. Where any differ (a feature branch, or an uncommitted
+edit), the required checks, SHA pinning and the workflow token are advisory,
+naming the files, and the apply sets none of them: a check only a feature
+branch reports would hold every pull request into the default branch. Checks
+the repository names in `github.required_checks` are its own and are not held.
 The organization's Actions policy is read where the sign-in can read it, which
 needs an org owner with the `admin:org` scope, and is never written. A missing
-CODEOWNERS file is advisory, and abcd does not write it: who it must name is
-not yet defined.
+CODEOWNERS file is advisory, and abcd does not write it: whether a managed
+repository keeps one is not yet decided.
 
 A repository sets its own exceptions in `.abcd/config.json`, reviewed like the
 rest of that file:
@@ -1350,9 +1362,13 @@ GitHub requires: secret scanning before push protection, and Dependabot alerts
 before security updates. Then come the repository's flags, abcd's own rulesets,
 the Actions policy and the workflow token. The rulesets are
 `abcd: default branch`, `abcd: code-owner review` and `abcd: release tags`.
-abcd finds them again by name, and never edits a ruleset it did not create. None
-of them has a bypass actor, and an existing bypass on one of them is kept as it
-is. Rules from several rulesets add up on GitHub, so a ruleset the repository
+abcd finds them again by name among the repository's own rulesets, never one
+inherited from the organization, and never edits a ruleset of another name. None
+of them is created with a bypass actor. Updating one adds what the baseline asks
+for to what it already holds and removes nothing: its other rules, parameters,
+refs and bypass actors stay, so an update never loosens it. A ruleset whose
+answer carries no bypass list is not updated, and a repository with a hundred
+rulesets or more is refused, because abcd reads one page of them. Rules from several rulesets add up on GitHub, so a ruleset the repository
 already has keeps working beside abcd's.
 
 After every step succeeds, the apply writes two mirrors. The desired state goes
@@ -1362,7 +1378,7 @@ tree rather than from a web console. The settings mirror has three blocks:
 
 - `managed`: what abcd holds the repository to;
 - `observed`: the merge settings it only records;
-- `owed`: the settings that wait for the repository to go public.
+- `owed`: the settings the plan or the visibility does not offer yet.
 
 No file the apply writes names a person. A repository owned by a person is
 recorded by its name alone, and a bypass actor by its type and id.

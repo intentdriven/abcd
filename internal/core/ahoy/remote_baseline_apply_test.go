@@ -2,6 +2,7 @@ package ahoy
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,7 +65,7 @@ func postApplyDessauRoutes() ghRoutes {
 	r["GET repos/"+auditRepo+"/rulesets?targets=tag&includes_parents=true"] = ghRoute{Body: `[{"id":7,"name":"abcd: release tags","target":"tag","enforcement":"active"}]`}
 	r["GET repos/"+auditRepo+"/rulesets/7?includes_parents=true"] = ghRoute{Body: `{"conditions":{"ref_name":{"include":["refs/tags/v*"],"exclude":[]}},
 "rules":[{"type":"deletion"},{"type":"update"},{"type":"non_fast_forward"}]}`}
-	r["GET repos/"+auditRepo+"/rulesets?per_page=100"] = ghRoute{Body: `[{"id":5,"name":"abcd: default branch"},{"id":6,"name":"abcd: code-owner review"},{"id":7,"name":"abcd: release tags"}]`}
+	r["GET repos/"+auditRepo+"/rulesets?per_page=100&includes_parents=false"] = ghRoute{Body: `[{"id":5,"name":"abcd: default branch"},{"id":6,"name":"abcd: code-owner review"},{"id":7,"name":"abcd: release tags"}]`}
 	return r
 }
 
@@ -76,7 +77,7 @@ func postApplyDessauRoutes() ghRoutes {
 func TestRemoteApplyAppliesTheDifferencesThenAuditsClean(t *testing.T) {
 	setupHermetic(t)
 	routes := dessauRoutes()
-	routes["GET repos/"+auditRepo+"/rulesets?per_page=100"] = ghRoute{Body: `[]`}
+	routes["GET repos/"+auditRepo+"/rulesets?per_page=100&includes_parents=false"] = ghRoute{Body: `[]`}
 	logPath, setRoutes := ghRoutedFake(t, routes)
 	repo := dessauRepo(t)
 
@@ -215,12 +216,18 @@ func TestRemoteApplyRequiresExactlyTheChecksEveryPullRequestRuns(t *testing.T) {
 	setupHermetic(t)
 	routes := dessauRoutes()
 	routes["GET repos/"+auditRepo+"/rules/branches/main"] = ghRoute{Body: `[{"type":"merge_queue"}]`}
-	routes["GET repos/"+auditRepo+"/rulesets?per_page=100"] = ghRoute{Body: `[]`}
+	routes["GET repos/"+auditRepo+"/rulesets?per_page=100&includes_parents=false"] = ghRoute{Body: `[]`}
+	workflows := map[string]string{
+		"ci.yml":   "on:\n  pull_request:\n  merge_group:\npermissions: {}\njobs:\n  build:\n    runs-on: x\n  lint:\n    runs-on: x\n",
+		"docs.yml": "on:\n  pull_request:\n    paths: [docs/**]\n  merge_group:\njobs:\n  docs:\n    runs-on: x\n",
+		"pr.yml":   "on: [pull_request]\njobs:\n  pr-only:\n    runs-on: x\n",
+	}
+	routes["GET repos/"+auditRepo+"/contents/.github/workflows?ref=main"] = workflowsRoute(workflows)
 	logPath, _ := ghRoutedFake(t, routes)
 	repo := dessauRepo(t)
-	writeTreeFile(t, repo, ".github/workflows/ci.yml", "on:\n  pull_request:\n  merge_group:\npermissions: {}\njobs:\n  build:\n    runs-on: x\n  lint:\n    runs-on: x\n")
-	writeTreeFile(t, repo, ".github/workflows/docs.yml", "on:\n  pull_request:\n    paths: [docs/**]\n  merge_group:\njobs:\n  docs:\n    runs-on: x\n")
-	writeTreeFile(t, repo, ".github/workflows/pr.yml", "on: [pull_request]\njobs:\n  pr-only:\n    runs-on: x\n")
+	for name, body := range workflows {
+		writeTreeFile(t, repo, ".github/workflows/"+name, body)
+	}
 
 	if _, err := RemoteApply(repo, confirmingPrompter{}, nil); err != nil {
 		t.Fatal(err)
@@ -260,7 +267,7 @@ func TestRemoteApplyRequiresExactlyTheChecksEveryPullRequestRuns(t *testing.T) {
 func TestRemoteApplyLeavesAKeptSettingAlone(t *testing.T) {
 	setupHermetic(t)
 	routes := dessauRoutes()
-	routes["GET repos/"+auditRepo+"/rulesets?per_page=100"] = ghRoute{Body: `[]`}
+	routes["GET repos/"+auditRepo+"/rulesets?per_page=100&includes_parents=false"] = ghRoute{Body: `[]`}
 	logPath, _ := ghRoutedFake(t, routes)
 	repo := dessauRepo(t)
 	setConfigValue(t, repo, "github", "keep", []any{"has_wiki", "release_tags"})
@@ -296,7 +303,7 @@ func TestRemoteApplyWritesNoLoginIntoAnyFile(t *testing.T) {
 		`"owner":{"type":"Organization","login":"example-org"}`, `"owner":{"type":"User","login":"`+login+`"}`, 1)}
 	routes["GET repos/"+userRepo+"/rules/branches/main"] = ghRoute{Body: `[]`}
 	routes["GET user"] = ghRoute{Body: `{"login":"` + login + `","plan":{"name":"free"}}`}
-	routes["GET repos/"+userRepo+"/rulesets?per_page=100"] = ghRoute{Body: `[{"id":5,"name":"abcd: default branch"}]`}
+	routes["GET repos/"+userRepo+"/rulesets?per_page=100&includes_parents=false"] = ghRoute{Body: `[{"id":5,"name":"abcd: default branch"}]`}
 	routes["GET repos/"+userRepo+"/rulesets/5"] = ghRoute{Body: `{"id":5,"name":"abcd: default branch",
 "bypass_actors":[{"actor_id":4242,"actor_type":"Integration","bypass_mode":"always"}]}`}
 	logPath, _ := ghRoutedFake(t, routes)
@@ -330,5 +337,196 @@ func TestRemoteApplyWritesNoLoginIntoAnyFile(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `"actor_id": 4242`) || !strings.Contains(string(data), `"actor_type": "Integration"`) {
 		t.Errorf("the kept bypass actor is not mirrored by type and id:\n%s", data)
+	}
+}
+
+// strictDefaultBranchRoutes serves a repository whose own "abcd: default
+// branch" ruleset (id 5) is stricter than abcd's baseline in every way an
+// update could lose: an extra rule, a pinned check source, a strict policy, a
+// second ref and a check no workflow reports. Only gitleaks is missing, so the
+// required checks differ and the apply updates that ruleset.
+func strictDefaultBranchRoutes(ruleset string) ghRoutes {
+	r := dessauRoutes()
+	r["GET repos/"+auditRepo+"/rules/branches/main"] = ghRoute{Body: `[{"type":"deletion"},{"type":"non_fast_forward"},
+{"type":"required_signatures"},
+{"type":"pull_request","parameters":{"require_code_owner_review":true,"required_approving_review_count":0}},
+{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"check","integration_id":15368},{"context":"extra"}]}}]`}
+	r["GET repos/"+auditRepo+"/rulesets?per_page=100&includes_parents=false"] = ghRoute{Body: `[{"id":5,"name":"abcd: default branch","source_type":"Repository"}]`}
+	r["GET repos/"+auditRepo+"/rulesets/5"] = ghRoute{Body: ruleset}
+	return r
+}
+
+const strictDefaultBranchRuleset = `{"id":5,"name":"abcd: default branch","target":"branch","enforcement":"active",
+"conditions":{"ref_name":{"include":["~DEFAULT_BRANCH","refs/heads/release/*"],"exclude":[]}},
+"bypass_actors":[],
+"rules":[{"type":"deletion"},{"type":"non_fast_forward"},{"type":"required_signatures"},
+{"type":"required_status_checks","parameters":{"do_not_enforce_on_create":false,"strict_required_status_checks_policy":true,
+"required_status_checks":[{"context":"check","integration_id":15368},{"context":"extra"}]}}]}`
+
+// TestRemoteApplyMergesIntoAStricterRulesetOfItsOwnName pins that an update of
+// a ruleset bearing abcd's name never leaves the repository less protected: a
+// PUT replaces a ruleset's rules wholesale, so abcd starts from what the
+// ruleset holds and only adds. Every existing rule, the pinned check source,
+// the strict policy, the extra ref and the stale check all survive; a kept
+// setting's existing rule is not stripped; and gitleaks is added.
+func TestRemoteApplyMergesIntoAStricterRulesetOfItsOwnName(t *testing.T) {
+	setupHermetic(t)
+	logPath, _ := ghRoutedFake(t, strictDefaultBranchRoutes(strictDefaultBranchRuleset))
+	repo := dessauRepo(t)
+	setConfigValue(t, repo, "github", "keep", []any{"default_branch_force_push"})
+
+	if _, err := RemoteApply(repo, confirmingPrompter{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	puts := callsTo(t, logPath, "PUT", "repos/"+auditRepo+"/rulesets/5")
+	if len(puts) != 1 {
+		t.Fatalf("abcd's ruleset was not updated once:\n%s", strings.Join(writeCalls(t, logPath), "\n"))
+	}
+	var body struct {
+		Enforcement string `json:"enforcement"`
+		Conditions  struct {
+			RefName struct {
+				Include []string `json:"include"`
+			} `json:"ref_name"`
+		} `json:"conditions"`
+		Rules []struct {
+			Type       string `json:"type"`
+			Parameters struct {
+				Strict *bool `json:"strict_required_status_checks_policy"`
+				Checks []struct {
+					Context       string `json:"context"`
+					IntegrationID *int   `json:"integration_id"`
+				} `json:"required_status_checks"`
+			} `json:"parameters"`
+		} `json:"rules"`
+	}
+	if err := json.Unmarshal([]byte(stdinOf(puts[0])), &body); err != nil {
+		t.Fatalf("PUT body: %v\n%s", err, stdinOf(puts[0]))
+	}
+	types := map[string]bool{}
+	checks := map[string]*int{}
+	strict := false
+	for _, r := range body.Rules {
+		types[r.Type] = true
+		if r.Type == "required_status_checks" {
+			strict = r.Parameters.Strict != nil && *r.Parameters.Strict
+			for _, c := range r.Parameters.Checks {
+				checks[c.Context] = c.IntegrationID
+			}
+		}
+	}
+	for _, want := range []string{"deletion", "non_fast_forward", "required_signatures", "required_status_checks"} {
+		if !types[want] {
+			t.Errorf("the update dropped the %s rule: %s", want, stdinOf(puts[0]))
+		}
+	}
+	for _, want := range []string{"check", "extra", "gitleaks"} {
+		if _, ok := checks[want]; !ok {
+			t.Errorf("the update does not require %s: %s", want, stdinOf(puts[0]))
+		}
+	}
+	if id := checks["check"]; id == nil || *id != 15368 {
+		t.Errorf("the update dropped check's pinned source: %s", stdinOf(puts[0]))
+	}
+	if !strict {
+		t.Errorf("the update relaxed the strict policy: %s", stdinOf(puts[0]))
+	}
+	if inc := strings.Join(body.Conditions.RefName.Include, ","); !strings.Contains(inc, "refs/heads/release/*") || !strings.Contains(inc, "~DEFAULT_BRANCH") {
+		t.Errorf("the update narrowed the refs to %q", inc)
+	}
+	if body.Enforcement != "active" {
+		t.Errorf("enforcement %q, want active", body.Enforcement)
+	}
+}
+
+// TestRemoteApplyRefusesToUpdateARulesetWhoseBypassItCannotRead pins that a
+// ruleset answer with no bypass_actors key (the field GitHub leaves out for a
+// caller who may not see it) is never read as "no bypass" and written back as
+// one: the update refuses and changes nothing of that ruleset.
+func TestRemoteApplyRefusesToUpdateARulesetWhoseBypassItCannotRead(t *testing.T) {
+	setupHermetic(t)
+	noBypass := strings.Replace(strictDefaultBranchRuleset, `"bypass_actors":[],`, "", 1)
+	logPath, _ := ghRoutedFake(t, strictDefaultBranchRoutes(noBypass))
+	repo := dessauRepo(t)
+
+	res, err := RemoteApply(repo, confirmingPrompter{}, nil)
+	if puts := callsTo(t, logPath, "PUT", "rulesets/5"); len(puts) != 0 {
+		t.Errorf("the ruleset was rewritten without its bypass list:\n%s", strings.Join(puts, "\n"))
+	}
+	if !strings.Contains(fmt.Sprint(err, res.Notes), "bypass") {
+		t.Errorf("the refusal does not say the bypass list was missing: %v %v", err, res.Notes)
+	}
+}
+
+// TestRemoteApplyUpdatesOnlyARulesetTheRepositoryItselfHolds pins that a
+// ruleset of abcd's name inherited from the organization is not abcd's to
+// update through the repository: it is skipped, and abcd's own is created.
+func TestRemoteApplyUpdatesOnlyARulesetTheRepositoryItselfHolds(t *testing.T) {
+	setupHermetic(t)
+	routes := strictDefaultBranchRoutes(strictDefaultBranchRuleset)
+	routes["GET repos/"+auditRepo+"/rulesets?per_page=100&includes_parents=false"] = ghRoute{Body: `[{"id":5,"name":"abcd: default branch","source_type":"Organization"}]`}
+	logPath, _ := ghRoutedFake(t, routes)
+	repo := dessauRepo(t)
+
+	if _, err := RemoteApply(repo, confirmingPrompter{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if puts := callsTo(t, logPath, "PUT", "rulesets/5"); len(puts) != 0 {
+		t.Errorf("an organization's ruleset was updated:\n%s", strings.Join(puts, "\n"))
+	}
+	if posts := callsTo(t, logPath, "POST", "repos/"+auditRepo+"/rulesets"); len(posts) == 0 {
+		t.Error("abcd's own default-branch ruleset was not created")
+	}
+}
+
+// TestRemoteApplyRefusesWhenTheRulesetListMayBeCutShort pins that a listing
+// that fills the one page abcd reads is not taken as the whole list: abcd
+// could not tell whether its own ruleset is on a later page, and creating it
+// again would leave two.
+func TestRemoteApplyRefusesWhenTheRulesetListMayBeCutShort(t *testing.T) {
+	setupHermetic(t)
+	routes := dessauRoutes()
+	var list []string
+	for i := 1; i <= 100; i++ {
+		list = append(list, fmt.Sprintf(`{"id":%d,"name":"other %d","source_type":"Repository"}`, 1000+i, i))
+	}
+	routes["GET repos/"+auditRepo+"/rulesets?per_page=100&includes_parents=false"] = ghRoute{Body: "[" + strings.Join(list, ",") + "]"}
+	logPath, _ := ghRoutedFake(t, routes)
+	repo := dessauRepo(t)
+
+	res, _ := RemoteApply(repo, confirmingPrompter{}, nil)
+	if posts := callsTo(t, logPath, "POST", "rulesets"); len(posts) != 0 {
+		t.Errorf("a ruleset was created from a list that may be cut short:\n%s", strings.Join(posts, "\n"))
+	}
+	if !strings.Contains(strings.Join(res.Notes, "\n"), "100") {
+		t.Errorf("the refusal does not say the list may be cut short: %v", res.Notes)
+	}
+}
+
+// questionRecorder records the confirmation it is asked, and declines.
+type questionRecorder struct{ asked *[]string }
+
+func (q questionRecorder) Confirm(text string) bool                     { *q.asked = append(*q.asked, text); return false }
+func (questionRecorder) Prompt(_ string, _ []string, def string) string { return def }
+
+// TestRemoteApplySanitisesTheConfirmationItAsks pins that the question put to
+// the person carries no terminal control sequence from what the API answered:
+// a required-check context is text a ruleset's author chose.
+func TestRemoteApplySanitisesTheConfirmationItAsks(t *testing.T) {
+	setupHermetic(t)
+	routes := dessauRoutes()
+	routes["GET repos/"+auditRepo+"/rules/branches/main"] = ghRoute{Body: `[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"check\u001b[2J"}]}}]`}
+	ghRoutedFake(t, routes)
+	repo := dessauRepo(t)
+	var asked []string
+
+	if _, err := RemoteApply(repo, questionRecorder{&asked}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(asked) != 1 {
+		t.Fatalf("asked %d questions, want 1", len(asked))
+	}
+	if strings.ContainsRune(asked[0], 0x1b) {
+		t.Errorf("the confirmation carries an escape sequence: %q", asked[0])
 	}
 }
