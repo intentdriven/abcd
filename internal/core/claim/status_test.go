@@ -604,24 +604,17 @@ func TestAHoldTheBlockShowedIsFollowedByItsLapse(t *testing.T) {
 	if again := pat.notes(); strings.Contains(again, "lapsed") {
 		t.Fatalf("the next prompt shows %q; want the lapse shown once", again)
 	}
-	// Past the shown markers' life the lapse is not shown again: it is no
-	// news, though the spent branch is still on origin. The markers carry
-	// the real clock's mtime, so they are aged to the lapse for the prune to
-	// drop them; only the lapse's own age then keeps the line back.
-	shown := filepath.Join(pat.dir, filepath.FromSlash(statusBranches.stateDir), shownDir)
-	marks, err := os.ReadDir(shown)
-	if err != nil || len(marks) == 0 {
-		t.Fatalf("the shown markers: %v, %d", err, len(marks))
-	}
-	for _, m := range marks {
-		if err := os.Chtimes(filepath.Join(shown, m.Name()), t0.Add(lease.Max+time.Hour), t0.Add(lease.Max+time.Hour)); err != nil {
-			t.Fatal(err)
-		}
-	}
+	// A week on, the lapse is no news: a session that first reads the block
+	// then (no shown marker of its own) is not told of it, though the spent
+	// branch is still on origin and the read still lists it.
 	w.set(t0.Add(lease.Max + time.Hour + shownKeep + 24*time.Hour))
-	pat.status(nil)
-	if later := pat.notes(); strings.Contains(later, "lapsed") {
-		t.Fatalf("a prompt a week on shows %q; want an old lapse not shown again", later)
+	late := w.clone("7+quinn@users.noreply.github.com", "")
+	late.status(nil)
+	if lv := late.read(); len(lv.Lapsed) != 1 {
+		t.Fatalf("a week on, lapsed = %+v; want the spent cut still read", lv.Lapsed)
+	}
+	if later := late.notes(); strings.Contains(later, "lapsed") {
+		t.Fatalf("a session first reading the block a week on is shown %q; want an old lapse not shown", later)
 	}
 }
 
