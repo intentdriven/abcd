@@ -298,3 +298,55 @@ func Check(home, root string, readTable func() (sessionname.Table, error)) error
 	}
 	return &SharedError{Sessions: len(ids)}
 }
+
+// TreeOf returns the working-tree top a file at path would be written into:
+// the nearest ancestor of path holding a .git entry, a directory at a main
+// working tree's top and a file at a linked one's. The deepest part of path
+// that exists has its symlinks resolved first, so a write through a link is
+// judged by the tree it lands in. It runs no git subprocess, so the hook on
+// the host's file tools stays cheap on every write (iss-2610280051498465).
+// ok is false for a relative path and for one in no checkout.
+func TreeOf(path string) (root string, ok bool) {
+	if !filepath.IsAbs(path) {
+		return "", false
+	}
+	dir := resolveExisting(filepath.Clean(path))
+	for {
+		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", false
+		}
+		dir = parent
+	}
+}
+
+// resolveExisting resolves the symlinks of path's deepest existing ancestor,
+// path itself included, and appends the part not yet made.
+func resolveExisting(path string) string {
+	rest := ""
+	for p := path; ; {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(real, rest)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return path
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+		p = parent
+	}
+}
+
+// CheckPath is Check on the working tree a file at path would be written
+// into, for a writer that names a file rather than a checkout: the hook on
+// the host's own file tools. A path in no checkout is nil.
+func CheckPath(home, path string, readTable func() (sessionname.Table, error)) error {
+	root, ok := TreeOf(path)
+	if !ok {
+		return nil
+	}
+	return Check(home, root, readTable)
+}

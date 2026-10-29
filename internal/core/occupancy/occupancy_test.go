@@ -249,3 +249,73 @@ func TestCheckRefusesOnlyASharedMainWorkingTree(t *testing.T) {
 		t.Errorf("a linked worktree must never be refused; got %v", err)
 	}
 }
+
+// TestTreeOfWalksUpToTheNearestGit: a file's working tree is found by
+// walking up to the nearest .git, directory or file, with no git
+// subprocess, so the file tools' hook stays cheap. A file not yet written,
+// in a folder not yet made, still names the tree it would land in; a path
+// in no checkout names none.
+func TestTreeOfWalksUpToTheNearestGit(t *testing.T) {
+	base := t.TempDir()
+	main := filepath.Join(base, "main")
+	linked := filepath.Join(base, "linked")
+	for _, d := range []string{filepath.Join(main, ".git"), filepath.Join(main, "a", "b"), linked, filepath.Join(base, "loose")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(linked, ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path, want string
+		ok         bool
+	}{
+		{filepath.Join(main, "a", "b", "file.go"), main, true},
+		{filepath.Join(main, "new", "deeper", "file.md"), main, true},
+		{filepath.Join(main, ".git", "config"), main, true},
+		{filepath.Join(linked, "file.go"), linked, true},
+		{filepath.Join(base, "loose", "file.go"), "", false},
+	} {
+		got, ok := TreeOf(tc.path)
+		if ok != tc.ok || got != tc.want {
+			t.Errorf("TreeOf(%s) = %q, %v; want %q, %v", tc.path, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+// TestCheckPathJudgesTheTreeAFileLandsIn: CheckPath is Check on the working
+// tree a file would be written into (iss-2610280051498465): refused in a
+// main checkout two live sessions share, not in a linked worktree of it, and
+// not outside any checkout.
+func TestCheckPathJudgesTheTreeAFileLandsIn(t *testing.T) {
+	home := t.TempDir()
+	base := t.TempDir()
+	main := filepath.Join(base, "main")
+	linked := filepath.Join(base, "linked")
+	for _, d := range []string{filepath.Join(main, ".git"), linked} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(linked, ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	tab := table(now, 101, 102)
+	for id, pid := range map[string]int{"s1": 101, "s2": 102} {
+		if err := Note(home, id, main, hostOf(tab, pid), tab); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var shared *SharedError
+	if err := CheckPath(home, filepath.Join(main, "x", "f.go"), read(tab)); !errors.As(err, &shared) || shared.Sessions != 2 {
+		t.Errorf("a file in a shared main checkout: want a SharedError for 2 sessions, got %v", err)
+	}
+	if err := CheckPath(home, filepath.Join(linked, "f.go"), read(tab)); err != nil {
+		t.Errorf("a file in a linked worktree must not be refused: %v", err)
+	}
+	if err := CheckPath(home, filepath.Join(base, "f.go"), read(tab)); err != nil {
+		t.Errorf("a file in no checkout must not be refused: %v", err)
+	}
+}

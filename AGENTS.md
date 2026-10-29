@@ -307,8 +307,9 @@ with `*CONCURRENCY` to force it).
   `decide` and `spec close`, and the index generator (`go generate
   ./internal/surface/cli`), refuses (exit 3 for a verb) in a main checkout two
   or more live sessions started in, and names the worktree store. The
-  session-start hook records which checkout each session starts in. A file an
-  agent edits there with its own tools is not yet refused.
+  session-start hook records which checkout each session starts in, and the
+  guard hook denies the host's own file tools (`Write`, `Edit`, `MultiEdit`,
+  `NotebookEdit`) a file that lands there.
 - **That worktree goes in the machine-scoped store, and nowhere else:**
   `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, keyed on the full object name
   of the repository's root commit. Never beside the checkout, in the directory
