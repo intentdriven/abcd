@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 474 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-37-modification-grammar.md:62"
-remedy: "none (filed automatically)"
+remedy: "Add a delivered-state paragraph to itd-37, modelled on itd-84's 'Delivered rung' paragraph, saying the principle-distiller curator role and the spec-completion extraction into memory pages are not built, and mark lines 25-30, 62-64 and the extraction acceptance criterion as designed (07-library.md 'Not built'; verification matrix 'staged' row)"
 related_intents: [itd-37]
 finding_ref: cfk-1944c3bf6903bbe7
 ---

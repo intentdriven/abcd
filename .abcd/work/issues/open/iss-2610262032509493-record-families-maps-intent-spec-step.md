@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 324 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/03-embark.md:201"
-remedy: "none (filed automatically)"
+remedy: "In glossary/core/record-families.md add rows for the ADR and the release retrospective, the two families embark counts that have no row, or narrow the page's definition so 'record family' in 03-embark.md does not name a different set."
 finding_ref: cfk-42abf5288ffdc283
 ---
 

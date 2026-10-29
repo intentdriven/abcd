@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 303 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/04-launch.md:890"
-remedy: "none (filed automatically)"
+remedy: "In 01-agents.md (design roster row at line 95, and the references at 06-lint.md lines 70-83) rename the unbuilt agent or add a line saying it is not the launch gate row documentation-auditor (the docs-lint engine); the shipped gate id is wire format and stays."
 finding_ref: cfk-ea76a5241abd3c58
 ---
 

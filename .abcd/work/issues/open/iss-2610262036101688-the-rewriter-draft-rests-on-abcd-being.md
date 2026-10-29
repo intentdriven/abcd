@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 628 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-2610100627454580-an-agent-in-an-abcd-managed-repository.md:61"
-remedy: "none (filed automatically)"
+remedy: "Add a decision line (do not rewrite the 2026-10-10 review entry) saying abcd does start agents through a routed runner or provider (the implement loop, the drain judge), so 'run automatically' may also mean a routed run; reopen the rule-and-gate-only choice at planning."
 related_intents: [itd-2610100627454580]
 finding_ref: cfk-b18f3dccfce3561e
 ---

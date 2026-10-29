@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 281 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:427"
-remedy: "none (filed automatically)"
+remedy: "In 34-build.md (the runner paragraph near line 499 and the record paragraph near line 850) say 'the transcript store' (the history verb's store under the transcripts folder) instead of 'abcd's history store', which ahoy and the configuration chapter reserve for the registry; make the same swap in 27-implement.md and 32-scribe.md."
 finding_ref: cfk-7181fa116679321c
 ---
 

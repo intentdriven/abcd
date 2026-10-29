@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 91 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:103"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (vocabulary-drift bullet): cite 02-constraints/04-naming.md, where VR001 is reserved, and drop the link to 05-internals/06-lint.md for the code."
 finding_ref: cfk-cb9d86b370657f57
 ---
 

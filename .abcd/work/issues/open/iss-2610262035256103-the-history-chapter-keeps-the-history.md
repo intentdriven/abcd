@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 570 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/11-history.md:15"
-remedy: "none (filed automatically)"
+remedy: "In 34-build.md:500 (and the same wording at 34-build.md:850, 27-implement.md:420, 32-scribe.md:68, 01-ahoy.md:1340 and 03-embark.md:264/271) say 'transcript store' for the store under the user-level transcripts directory (adr-2610031751066232); the history directory is ahoy's registry only."
 finding_ref: cfk-dca7a4690ca08b74
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 325 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/03-embark.md:251"
-remedy: "none (filed automatically)"
+remedy: "In glossary/core/voyage.md say the log records every disembark run and that the embark/ subtree is staged (nothing writes it), as 03-embark.md and 02-constraints/04-naming.md already say."
 finding_ref: cfk-b58173cf71021357
 ---
 

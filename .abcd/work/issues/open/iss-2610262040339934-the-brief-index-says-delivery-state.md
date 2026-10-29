@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 939 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/README.md:13"
-remedy: "none (filed automatically)"
+remedy: "Replace 'roadmap dashboard' with the status board's Now / Next / Later block and the site's Status page (adr-2609212115255771); roadmap/README.md still carries the retired phase text."
 finding_ref: cfk-f432529522008485
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 822 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-37-modification-grammar.md:56"
-remedy: "none (filed automatically)"
+remedy: "Rewrite itd-37's concreteness lint as named record-lint rules instead of MG001-MG004 numbered codes, and say they are designed, not built (06-lint.md: rules are named, not numbered)"
 related_intents: [itd-37]
 finding_ref: cfk-71e74d6553bf2bd5
 ---

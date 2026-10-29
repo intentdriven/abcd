@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1124 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-115-abcd-managed-repos-merge-prs-without-the.md:29"
-remedy: "none (filed automatically)"
+remedy: "itd-115 line 29: change 'said Carol, a facilitator' to 'said Nia, a facilitator'"
 related_intents: [itd-115, itd-120]
 finding_ref: cfk-e87b36002a8c58fd
 refines: [iss-371]

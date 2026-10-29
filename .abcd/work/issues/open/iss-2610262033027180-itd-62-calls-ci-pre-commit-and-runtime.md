@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 352 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-62-pluggable-safety-gate.md:40"
-remedy: "none (filed automatically)"
+remedy: "In itd-62 drop 'the same three-tier model abcd uses elsewhere' and name the three invocation points plainly (CI, pre-commit, runtime hooks); in the brief 'three-tier' names the .abcd/ record layout."
 related_intents: [itd-62]
 finding_ref: cfk-78ea07a08d31217d
 ---

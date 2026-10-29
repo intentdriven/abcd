@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 365 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/04-launch.md:526"
-remedy: "none (filed automatically)"
+remedy: "Reword itd-24's seed clause (and the comment above BuildSeed in internal/core/reflect/seed.go) to say reflect keeps its own rule, the cut's window plus the shipped_in stamp, or switch the seed to the cut's own shipped_in reader so a mistyped stamp cannot drop a record silently; 09-reflect.md already states reflect's rule without the equivalence claim."
 related_intents: [itd-24]
 finding_ref: cfk-e01be210324dc27e
 ---

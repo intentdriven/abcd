@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 727 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609201916151817-one-verb-takes-a-single-intent-from.md:62"
-remedy: "none (filed automatically)"
+remedy: "In the build intent amend decision 3 with 'amended 2026-09-30 by ruling AM1 (dcn-2609300000000025): auto-merge is armed only where a queue gates the branch and a ruleset requires a person's approval, otherwise the pull request is left open; the merge gate decides it'."
 related_intents: [itd-2609201916151817]
 finding_ref: cfk-053d456c2b6e64fd
 ---

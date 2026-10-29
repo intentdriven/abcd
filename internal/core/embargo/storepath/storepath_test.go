@@ -23,7 +23,14 @@ var (
 // its root.
 func newRepo(t *testing.T, date string) (*gittest.Repo, string) {
 	t.Helper()
-	r := gittest.NewRepo(t)
+	return newRepoFormat(t, "", date)
+}
+
+// newRepoFormat is newRepo with git's object format named ("sha1" or
+// "sha256"; "" is git's default).
+func newRepoFormat(t *testing.T, format, date string) (*gittest.Repo, string) {
+	t.Helper()
+	r := gittest.NewRepoFormat(t, format)
 	r.Write("README.md", "a project\n")
 	r.Git("add", "-A")
 	cmd := exec.Command("git", "-C", r.Root(), "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture",
@@ -102,6 +109,28 @@ func TestLocateNoStoreIsUnderTheOldestRoot(t *testing.T) {
 	want := abcdhome.Path(home, "worktrees", root, storepath.Name)
 	if err != nil || loc.Registered || loc.Path != want {
 		t.Fatalf("Locate = %+v, %v; want %s, not registered", loc, err, want)
+	}
+}
+
+// TestLocateKeysASHA256RepositoryOnItsFullRootName: in a repository of
+// SHA-256 object names, the store is to be made under the root commit's
+// full sixty-four-digit name, never a forty-digit cut of it, and a store
+// registered there is found as the store.
+func TestLocateKeysASHA256RepositoryOnItsFullRootName(t *testing.T) {
+	home := t.TempDir()
+	r, root := newRepoFormat(t, "sha256", "2020-01-01T00:00:00Z")
+	if len(root) != 64 {
+		t.Fatalf("root %q is %d digits; the fixture is no SHA-256 repository", root, len(root))
+	}
+	want := abcdhome.Path(home, "worktrees", root, storepath.Name)
+	loc, err := storepath.Locate(home, r.Root())
+	if err != nil || loc.Registered || loc.Path != want {
+		t.Fatalf("Locate = %+v, %v; want %s, not registered", loc, err, want)
+	}
+	p := addStore(t, r, home, root)
+	loc, err = storepath.Locate(home, r.Root())
+	if err != nil || !loc.Registered || loc.Path != want || p != want {
+		t.Fatalf("Locate after the store was made = %+v, %v; want %s, registered", loc, err, want)
 	}
 }
 

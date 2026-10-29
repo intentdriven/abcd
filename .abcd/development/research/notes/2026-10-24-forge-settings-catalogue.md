@@ -481,45 +481,46 @@ Settings are named forge-neutrally, and each name has its GitHub object in brack
 
 ## 12. Release deploy environment (GitHub: environment `release`)
 
-- **What it is for:** A person approves before a release publishes, and only `main` or a `v*` tag may run the job (`.github/workflows/release.yml` line 326, iss-2610150812471577 resolution: "the release environment accepts main and v* tags only").
-- **Expected value:** Required reviewer present, branch policy `main` (branch) and `v*` (tag), no secrets.
-- **Current state: MATCHES.**
-  - Required reviewer User `REPPL`, `prevent_self_review: false`.
-  - Policies: `main` (branch) and `v*` (tag).
+- **What it is for:** Only `main` may run the job (the `release` job's `environment:` binding in `.github/workflows/release.yml`; the release path reaches it from `main` through auto-release's call). No person approves before a release publishes: adr-2610281718537125 partly supersedes adr-43 point 2.
+- **Expected value:** No required reviewer, branch policy `main` (branch) only, no secrets.
+- **Current state: DIFFERS** until the reviewer is removed after adr-2610281718537125 lands.
+  - Required reviewer User `REPPL`, `prevent_self_review: false`, as read on 2026-10-24.
+  - Policies: `main` (branch) only, as read on 2026-10-28.
   - `can_admins_bypass: true`, which the repository does not discuss.
   - No environment secrets.
 - **Direct URL:** https://github.com/intentdriven/abcd/settings/environments (unconfirmed)
 - **Docs:** https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments
-- **Verified steps:** "Creating an environment" step 6:
+- **Verified steps:** "Creating an environment" step 6, the step left out here, so no reviewer is set:
   > 6. Optionally, specify people or teams that must approve workflow jobs that use this environment. …
   >    1. Select **Required reviewers**.
   >    2. Enter up to 6 people or teams. Only one of the required reviewers needs to approve the job for it to proceed.
   >    3. Optionally, to prevent users from approving workflows runs that they triggered, select **Prevent self-review**.
   >    4. Click **Save protection rules**.
 
-  Then step 10 from section 8, with one Branch rule `main` and one Tag rule `v*`.
+  Then step 10 from section 8, with one Branch rule `main` and no tag rule.
+  On the existing environment, the reviewer is removed from the environment's own settings page by clearing **Required reviewers** and saving the protection rules (unconfirmed).
 - **Read:**
   ```sh
   gh api repos/intentdriven/abcd/environments/release
   gh api repos/intentdriven/abcd/environments/release/deployment-branch-policies
   ```
-- **Set:**
+- **Set (unconfirmed):** The PUT replaces the environment's whole protection set, so it carries the deployment branch policy with it. The REST reference types `reviewers` as an array or null and does not say which clears the list, so re-run both reads afterwards and confirm no reviewer and exactly the `main` branch policy.
   ```sh
-  gh api -X PUT repos/intentdriven/abcd/environments/release --input - <<<'{"reviewers":[{"type":"User","id":<REPPL user id>}],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+  gh api -X PUT repos/intentdriven/abcd/environments/release --input - <<<'{"reviewers":[],"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
   ```
-  Then `POST …/deployment-branch-policies` with `name=main type=branch` and `name=v* type=tag`.
+  Only when the environment is created anew: `POST …/deployment-branch-policies` with `name=main type=branch`. On the existing environment the policies are already there, and the POST is refused as a duplicate.
 - **GitLab pointer (unverified):** A protected environment with deployment approvals.
 
 ## 13. Site deploy environments and their Cloudflare secrets (GitHub: environments `site`, `site-render`, `site-preview`)
 
 - **What it is for:** These are the production deploy, the gated render job and the unprotected preview. Each has separately named Cloudflare secrets ("THE ENVIRONMENT CONTRACT" header in `.github/workflows/site.yml`, adr-48).
 - **Expected value:**
-  - `site-render`: policy branch `main` and tag `v*`, no secrets.
+  - `site-render`: policy branch `main` only, no secrets.
   - `site`: the same policy, no required reviewer, secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
   - `site-preview`: unprotected, secrets `CLOUDFLARE_PREVIEW_API_TOKEN` and `CLOUDFLARE_PREVIEW_ACCOUNT_ID`.
   - No repository-level secrets with those names.
 - **Current state: MATCHES.**
-  - `site` and `site-render` each have exactly `main` (branch) and `v*` (tag), and no reviewers.
+  - `site` and `site-render` each have exactly `main` (branch), and no reviewers, since the `v*` tag policies were removed on 2026-10-28.
   - `site` holds its two secrets, updated 2026-08-23.
   - `site-render` has no secrets.
   - `site-preview` has `deployment_branch_policy: null`, no protection rules, and its two preview secrets.
@@ -702,6 +703,7 @@ Settings are named forge-neutrally, and each name has its GitHub object in brack
 2. **Default-branch review rule (`main review`, 21045110).** The live ruleset has **no bypass actors**. The mirror and README claim an admin `RepositoryRole 5` bypass, which was removed on 2026-08-24. The live rule also carries `require_extra_approval_for_unattributed_changes: true`, which the mirror lacks; it is harmless at 0 approvals. A person must rule on which side is correct.
 3. **Dependency re-author app and secrets.** Not set up: there are no Dependabot secrets, no App is installed, and the owner fields in the `.conf` file are empty. This is the ADR's documented pre-setup state, so it is a DIFFERS only against the fully set-up design.
 4. **Mirror only, not the live ruleset: `reservations-protection.json`.** It still holds the placeholder `RESERVATION_SWEEP_APP_ID`. The live ruleset correctly names 5456387. Refresh the mirror.
+5. **Release deploy environment (section 12).** The live environment still carries the required reviewer `REPPL`, which adr-2610281718537125 removes. The setting is changed after that record lands.
 
 **Not verified:**
 - Whether installation 174852039 includes `abcd`. This needs a personal access token or an App JWT.

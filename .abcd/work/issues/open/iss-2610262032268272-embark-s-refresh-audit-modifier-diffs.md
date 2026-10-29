@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 269 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/03-embark.md:248"
-remedy: "none (filed automatically)"
+remedy: "In 03-embark.md (the refresh-audit modifier near line 248 and the probe's 'runs no product audit' near line 56) say 'lifeboat review' and drift against the review verdict recorded at pack time, as itd-125 renamed the judgement."
 finding_ref: cfk-b138d608193740e6
 ---
 

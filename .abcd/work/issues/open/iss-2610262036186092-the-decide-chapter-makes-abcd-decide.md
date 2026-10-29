@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 638 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/24-decide.md:16"
-remedy: "none (filed automatically)"
+remedy: "In itd-44 (lines 120-126) route a confirmed decision verdict through abcd decide --adr instead of a second ADR-writing path in capture, so the decide mint stays the store's one minting verb; embark remains the restore writer."
 related_intents: [itd-44]
 finding_ref: cfk-f182f4fbc29c6252
 ---

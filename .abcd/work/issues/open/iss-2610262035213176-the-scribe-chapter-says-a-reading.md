@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 566 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/32-scribe.md:6"
-remedy: "none (filed automatically)"
+remedy: "In 32-scribe.md state the reading assembler's no-ledger rule with its one positional exception: at the comparative position the assembler hands two body fields of one derived widening run (adr-2609021016272867)."
 finding_ref: cfk-95a407deafc6e442
 ---
 

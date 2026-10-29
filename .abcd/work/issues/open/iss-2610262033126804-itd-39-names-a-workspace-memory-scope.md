@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 374 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:547"
-remedy: "none (filed automatically)"
+remedy: "In itd-39 replace the 'workspace' scope with the repo scope (repo narrower than user) in the press release, scope bullets and acceptance criteria; 07-memory.md section 0 already uses repo and user."
 related_intents: [itd-39]
 finding_ref: cfk-f010b01c44681ada
 ---

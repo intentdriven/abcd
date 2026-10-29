@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 611 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/README.md:13"
-remedy: "none (filed automatically)"
+remedy: "Reword 'delivery state lives in the roadmap dashboard, never in brief prose': what exists is stated in the brief and machine-checked (each surface chapter's shipped or staged table, the matrix), while what is scheduled or in flight is the status board's Now / Next / Later block."
 finding_ref: cfk-ce90d36fc9a3e643
 ---
 

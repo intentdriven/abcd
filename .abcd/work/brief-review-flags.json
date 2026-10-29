@@ -28,15 +28,15 @@
     {
       "chapter": "05-intent.md",
       "sentence": "disciplines follow. The seven written since (itd-190 onwards) head the rule",
-      "replacement": "disciplines follow. The nine written since (itd-190 onwards) head the rule",
-      "evidence": ".abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention.md:1",
+      "replacement": "disciplines follow. The ten written since (itd-190 onwards) head the rule",
+      "evidence": ".abcd/development/intents/disciplines/itd-2610271130017437-a-finding-with-a-safe-fix-is-fixed-where.md:1",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"
     },
     {
       "chapter": "05-intent.md",
       "sentence": "**The first trigger has fired, and the enum has not been drawn.** Fourteen",
-      "replacement": "**The first trigger has fired, and the enum has not been drawn.** Sixteen",
+      "replacement": "**The first trigger has fired, and the enum has not been drawn.** Seventeen",
       "evidence": ".abcd/development/intents/disciplines/README.md:1",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"
@@ -52,8 +52,8 @@
     {
       "chapter": "05-intent.md",
       "sentence": "four bench drafts and seven of the fourteen disciplines carry no section",
-      "replacement": "four bench drafts and nine of the sixteen disciplines carry no section",
-      "evidence": ".abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention.md:1",
+      "replacement": "four bench drafts and ten of the seventeen disciplines carry no section",
+      "evidence": ".abcd/development/intents/disciplines/itd-2610271130017437-a-finding-with-a-safe-fix-is-fixed-where.md:1",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"
     },
@@ -208,6 +208,150 @@
       "evidence": ".abcd/work/decisions/ (538 records) against .abcd/development/decisions/adrs/ (92 files)",
       "commit": "2a692195fd82fec4229e064a2fb0f15b34c80172",
       "applied": "2026-10-16T05:32:44Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "to GitHub is the spec's later step.",
+      "replacement": "to GitHub is the page's own: it sends a session's changes as one pull request or pre-filled issues (see Sending).",
+      "evidence": "internal/surface/session/web/session.js:2646",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "the forwarded address is trusted only behind a declared proxy.",
+      "replacement": "the forwarded address is trusted only behind a declared proxy, or, on a relay bound to loopback, as Tailscale Serve forwards a tailnet address from a loopback peer.",
+      "evidence": "internal/surface/session/server.go:446",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "The blueprint is `.abcd/relay/render.yaml`, one free Render web service with",
+      "replacement": "The blueprint is `render.yaml` at the repository's root (or `.abcd/relay/render.yaml` beside a root `render.yaml` the team wrote), one free Render web service with",
+      "evidence": "internal/core/session/blueprint.go:521",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "redeploy ends every open session) and the sign-in app's two variables",
+      "replacement": "redeploy ends every open session) and the sign-in app's secret, with its client id until setup has recorded the app,",
+      "evidence": "internal/core/session/blueprint.go:402",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "HTML names its own files three levels up, so a base path works too.",
+      "replacement": "HTML names its own files from the site's root, or from under the base path the page is built for, so a base path works too.",
+      "evidence": "internal/surface/session/web/web.go:62",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "QR code of the page's address with the relay and code in the fragment",
+      "replacement": "QR code of the page's address with the code in the fragment, and the relay too only where a guest's page could not find it alone",
+      "evidence": "internal/surface/session/web/session.js:1837",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "`0` done; `1` a failure after the relay started, or while the page was being",
+      "replacement": "`0` done; `1` a failure after the relay started, when no app is recorded (stopped, the hour ran out, GitHub's conversion failed three times, or the app came back owned by another account than the organisation), or while the page or the blueprint was being",
+      "evidence": "internal/surface/cli/session.go:838",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "22-site.md",
+      "sentence": "Without one, the stage stops and says what remains: store the credential through the credential",
+      "replacement": "Without one, the stage stops and says what remains (the `github-pages` provider needs none: it acts through the forge as the person running the verb): store the credential through the credential",
+      "evidence": "internal/core/site/setup.go:970",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "22-site.md",
+      "sentence": "The lint's site target runs seven independent gates over a rendered tree and reports",
+      "replacement": "The lint's site target runs eight independent gates over a rendered tree and reports",
+      "evidence": "internal/core/site/check.go:158",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "22-site.md",
+      "sentence": "loop-figure labels. The seven are named once in the code that runs them, and the",
+      "replacement": "loop-figure labels, and the base path of every root-absolute link. The eight are named once in the code that runs them, and the",
+      "evidence": "internal/core/site/check.go:158",
+      "commit": "80211ee7f3290487dfc4c53d8da8e46300fad20e",
+      "applied": "2026-10-23T05:30:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "started or written, but for a blueprint that cannot be written once the app is recorded, which exits 2 with the app and the answer kept.",
+      "replacement": "started or written, but for the live brief session question a person at a terminal answers first, whose answer is kept, and a blueprint that cannot be written once the app is recorded, which exits 2 with the app and the answer kept.",
+      "evidence": "internal/surface/cli/session.go:523",
+      "commit": "86c5e203040f34917cf2c3f91fafd950d515f916",
+      "applied": "2026-10-23T05:42:34Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "of joining until the window passes; an IPv6 visitor is counted by its /48, and",
+      "replacement": "of joining until the window passes; an IPv6 visitor is counted by its /48 (a tailnet address by itself, since a tailnet's devices share one /48), and",
+      "evidence": "internal/core/session/codes.go:103",
+      "commit": "86c5e203040f34917cf2c3f91fafd950d515f916",
+      "applied": "2026-10-23T05:42:34Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "it, or else the first relay the file names; where the file cannot be read",
+      "replacement": "it (a relay the file does not name is refused: the page says the link does not lead to this project's own session), or else, with no relay in the link, the first relay the file names; where GitHub answers that there is no file to read",
+      "evidence": "internal/surface/session/web/session.js:1573",
+      "commit": "7c7fcdb2f6df785f2e640851c9f9064ce7834b02",
+      "applied": "2026-10-23T05:52:31Z"
+    },
+    {
+      "chapter": "37-session.md",
+      "sentence": "link; that answer holds in that tab, for at most twelve hours. With none, it says live sessions are not set up yet and to ask the",
+      "replacement": "link; that answer holds in that tab, for at most twelve hours. With none, where the file names no relay it says live sessions are not set up yet, and where there is no file it says it found no live session and to ask the host for the invite link; either way it says to ask the",
+      "evidence": "internal/surface/session/web/session.js:3609",
+      "commit": "7c7fcdb2f6df785f2e640851c9f9064ce7834b02",
+      "applied": "2026-10-23T05:52:31Z"
+    },
+    {
+      "chapter": "22-site.md",
+      "sentence": "setup whose files are written or already current (a declined, refused or switched-off run carries no such note), since it asks the network nothing to learn which release is latest.",
+      "replacement": "setup whose files are written or already current (a run declined at the switch, refused before anything is written, or switched off carries no such note), since it asks the network nothing to learn which release is latest.",
+      "evidence": "internal/core/site/setup.go:512",
+      "commit": "fd4f4538ee4ca75cf3c346ab4679ed94571d99c0",
+      "applied": "2026-10-23T05:54:23Z"
+    },
+    {
+      "chapter": "01-ahoy.md",
+      "sentence": "nothing resolves it today)",
+      "replacement": "the prompt router's recall reads them, read only)",
+      "evidence": "internal/core/memory/recallpages.go:80",
+      "commit": "332aa6a2dfd2bdd4a4631188b528cd1002a8729f",
+      "applied": "2026-10-23T06:27:37Z"
+    },
+    {
+      "chapter": "07-library.md",
+      "sentence": "reports, user-scope memory outside the repo, and the automatic extraction of a",
+      "replacement": "reports, any verb that writes user-scope memory outside the repo (the prompt recall only reads `~/.abcd.noindex/memory/`), and the automatic extraction of a",
+      "evidence": "internal/core/recall/pages.go:56",
+      "commit": "332aa6a2dfd2bdd4a4631188b528cd1002a8729f",
+      "applied": "2026-10-23T06:27:37Z"
+    },
+    {
+      "chapter": "37-memory.md",
+      "sentence": "spec's later step; this chapter covers the store and the verb.",
+      "replacement": "spec's steps 2 to 4, shipped: a matching note or page comes back under `## MEMORY`, ranked by BM25F, and the rules verb can show why for a given prompt; this chapter covers the store and the verb.",
+      "evidence": "internal/surface/cli/rules_prompt.go:51",
+      "commit": "332aa6a2dfd2bdd4a4631188b528cd1002a8729f",
+      "applied": "2026-10-23T06:27:37Z"
     }
   ]
 }

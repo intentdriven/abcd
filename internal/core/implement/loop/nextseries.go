@@ -29,6 +29,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // NextSeriesRel is the series' state file, beside the runs. Its name is not a
@@ -380,9 +381,12 @@ func readSeries(repoRoot string) (NextSeries, bool, error) {
 		return NextSeries{}, false, fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
-	data, err := fsutil.ReadGuardedInRoot(root, NextSeriesRel, maxNextSeriesBytes)
+	data, err := localtier.ReadInRoot(root, NextSeriesRel, maxNextSeriesBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		return NextSeries{}, false, nil
+	}
+	if rf := tierRefusal(StagePick, "", err); rf != nil {
+		return NextSeries{}, false, rf
 	}
 	if err != nil {
 		return NextSeries{}, false, refuse(StagePick, "", "", fmt.Sprintf("%s cannot be read as the series' state: %v", NextSeriesRel, err),

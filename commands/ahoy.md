@@ -465,8 +465,8 @@ it can, each on one line
    cancel, or deciding later, writes nothing. For a repository abcd does not
    manage yet, proceed and customise also adopt it, so the plan is the one
    question that adopts.
-3. **The questions only a person can answer.** The abcd download, the shell
-   settings, the commit checks (`core.hooksPath` in this clone's
+3. **The questions only a person can answer.** The live brief session
+   question, the abcd download, the shell settings, the commit checks (`core.hooksPath` in this clone's
    `.git/config`), the status line (one entry in the assistant's settings),
    the commit identity and each tool abcd offers to install are each their own
    question, naming the value and where it is written, whatever the answer to
@@ -757,8 +757,10 @@ unattended agent may change in the repository. When the result carries `optional
 offer the `yes |` form above as the way to apply it, except
 `git_identity.unrecorded`, `git_identity.repo_pin`, `drain_rule.offered` and
 `conventions.retire_offered`, which only a person at a terminal is asked,
-and `readme.offered`, which this page relays as the README question pair
-below and answers with `--readme-parts`.
+`readme.offered`, which this page relays as the README question pair
+below and answers with `--readme-parts`, and `sessions.offered`, which it
+relays as the live brief session questions below and answers with
+`--live-sessions`.
 
 **Each person's commit identity is their own, kept on their own machine.**
 Nothing in a repository names who may commit to it. The person's record lives
@@ -949,6 +951,34 @@ edited by hand, or a mark that is duplicated or unclosed, is left and named in
 the `notes` with its line; relay those notes as they stand. A project with no
 `README.md` gets one holding only the chosen parts. Committing the result is
 the owner's act.
+
+**The live brief session questions.** Setup asks "Set up live brief
+sessions?" (`yes`, `no`, then deciding later) and, on a yes, "Where may
+sessions run?" (`local`, `cloud`, `both`, then deciding later). The answer is
+stored as `sessions.live` in `.abcd/config.json`: where sessions may run, or
+`none` for a no, which is never asked again. Deciding later stores nothing,
+so the next setup run asks again, and so do `abcd session start` and
+`abcd session blueprint` at a terminal. At a terminal, in a run without
+`--yes`, the install asks them itself, after the README pair; off a terminal,
+and under `--yes`, they are never asked, and the result lists
+`sessions.offered` under `optional_skipped`.
+
+Through this page, while the question is open, the bare detection
+(`ahoy --json`) carries `sessions` and `sessions_tool`, the two questions as
+your question tool's input, built from the words the terminal shows. Ask
+`sessions_tool[0]` alone, exactly as given: never reworded, never with a
+preview, never with an option marked. On a yes, ask `sessions_tool[1]`. Then
+pass the answer:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --live-sessions local|cloud|both|none --json
+```
+
+A no to the first question is `none`. A `Decide later` at either is no
+answer: pass no flag. Any other value is refused with exit 2 before anything
+is written. Recording the answer sets nothing up: the steps are
+`abcd session setup` (see `/abcd:session`), which waits on the person in a
+browser, so tell the user to run it in a Terminal of their own.
 
 **The artefact kind.** A repository with no `.abcd/config/artefact.json` carries
 an `artefact.missing` gap: the launch verbs choose what to preview, check and
@@ -1553,12 +1583,23 @@ prompt in a fresh session, and writes nothing. `domains` lists each rule
 domain the prompt matches, with the recall words that hit (`hits`, or
 `*NAME` for a star activation); `notes` lists each memory note it recalls
 from `~/.abcd.noindex/memory.json` or the project's `.abcd/memory.json`, with
-its `layer` (`machine` or `project`) and the recall words that hit. Each
-carries a `form`: `full`, or `over-budget` when it would not fit the
-per-turn budget and would come back on a later prompt instead. `disabled`
-is true under the kill switch, and then nothing comes back; `unreadable`
-names a `memory.json` that could not be read, and why. Use it when someone
-asks why a rule or a note did, or did not, come back on a prompt. A
+its `layer` (`machine` or `project`) and the recall words that hit; `pages`
+lists each memory page it recalls from the project's `.abcd/memory/` or
+`~/.abcd.noindex/memory/`, by its `key` (`page:<filename>`, the name the
+hook's envelope gives it), with its `filename`, `title`, `layer` and the
+recall words that hit. A page comes back only when its frontmatter declares
+a `recall:` list, and a page in the project's store suppresses the machine's
+page of the same name. Notes and pages share one ranked order: each carries
+its `rank` (1 first), its BM25F relevance `score`, and `terms`, each matched
+term with how often it was found in the item's `recall` words, `title` and
+`body` and its `contribution` to the score; the ranking decides which items
+fit the budget. Each carries a `form`: `full`, `over-budget` when
+it would not fit the per-turn budget and would come back on a later prompt
+instead, or `too-large` when it is larger than the whole per-turn budget and
+no prompt brings it back in full. `disabled` is true under the kill switch, and then nothing comes
+back; `unreadable` names a `memory.json`, page store or page that could not
+be read, why, and its `kind` (`note` or `page`). Use it when someone asks why
+a rule, a note or a page did, or did not, come back on a prompt. A
 positional DOMAIN with `--prompt` is refused, exit 2: `rules <DOMAIN>`
 renders one domain's rules instead.
 
@@ -1578,6 +1619,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

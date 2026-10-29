@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 767 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/38-announce.md:116"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does the Now / Next / Later view keep the word status now that /abcd:status names a different verb? Answer A: keep the word and add a disambiguating note to the record-families row and the status chapter (recommended: the status object in the board's JSON is a shipped surface, so renaming is breaking). Answer B: rename the view."
 related_intents: [itd-2609211913453478]
 finding_ref: cfk-4a22f2628632543f
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 129 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/00-meta.md:11"
-remedy: "none (filed automatically)"
+remedy: "Narrow the sentence at brief/README.md:13 to say per-intent and per-spec delivery progress lives in the roadmap dashboard, while brief prose says only whether a described mechanism is shipped or staged, as 00-meta's truth rule requires."
 finding_ref: cfk-713dc8a409d0cb26
 ---
 

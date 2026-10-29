@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 608 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/03-out-of-scope.md:67"
-remedy: "none (filed automatically)"
+remedy: "The out-of-scope list is generated from drafts/, so fix the cause: supersede itd-85 by shipped itd-124 (the conformance verb is abcd lint) with abcd intent reclassify, and have 16-lint.md cite itd-124 instead of the draft; the list then drops it."
 finding_ref: cfk-62a7f061e192d168
 ---
 

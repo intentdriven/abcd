@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 493 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-87-recurrence-escalation-in-capture.md:31"
-remedy: "none (filed automatically)"
+remedy: "Rewrite itd-87's premise and scope against the shipped matcher (itd-2609212137116617): capture already compares open and resolved issue bodies and writes duplicates: or refines: links, never folding or dropping a capture. State the remaining delta only: wontfix records (not candidates today, per internal/core/capture/match.go) and a recurrence marker on the link."
 related_intents: [itd-87]
 finding_ref: cfk-518c8d5b111d4cbb
 ---

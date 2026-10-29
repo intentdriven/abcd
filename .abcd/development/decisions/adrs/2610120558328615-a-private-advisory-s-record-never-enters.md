@@ -20,10 +20,10 @@ into it discloses the hole before its fix exists; and every outward artefact a
 release makes (commit messages, pull-request bodies, the changelog, the release
 page, records made public) is a place an advisory can be named by accident.
 The product thinker ruled on 2026-10-09
-([iss-2610090703514921](../../../work/issues/open/iss-2610090703514921-a-drain-reads-only-the-issue-ledger-so.md))
+([iss-2610090703514921](../../../work/issues/resolved/iss-2610090703514921-a-drain-reads-only-the-issue-ledger-so.md))
 that an advisory's record stays out of the public ledger until its fix lands,
 and on 2026-10-12 adopted `abcd embargo`
-([itd-2610112239022766](../../intents/planned/itd-2610112239022766-when-someone-reports-a-security-hole-in.md),
+([itd-2610112239022766](../../intents/shipped/itd-2610112239022766-when-someone-reports-a-security-hole-in.md),
 refining [itd-149](../../intents/drafts/itd-149-abcd-handles-inbound-security-advisories.md))
 as the first rung that does it in code, including closing an advisory on GitHub
 on the person's approval.

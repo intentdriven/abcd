@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1258 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-50-loop-toward-acceptance.md:63"
-remedy: "none (filed automatically)"
+remedy: "In itd-50's Out of Scope, replace the boundary drainer substrate with itd-53's one bounded command run once by the autonomous run's batch 0, and say the loop is build's last stage."
 related_intents: [itd-50, itd-53]
 finding_ref: cfk-f8d39777074e221a
 ---

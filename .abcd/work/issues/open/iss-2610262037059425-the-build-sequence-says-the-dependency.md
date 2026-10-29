@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 696 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/01-build-sequence.md:123"
-remedy: "none (filed automatically)"
+remedy: "In section 4 narrow the design target to a dependency graph over specs, and say each spec step's needs line is shipped and sequences the build loop's lanes (34-build.md) and an intent carries blocked_by; apply the same narrowing to the Native spec store row of 02-verification-matrix.md."
 finding_ref: cfk-e71c7ec81e46e25d
 ---
 

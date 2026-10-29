@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 74 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:100"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does the ban on `<verb> show` apply by name, or only to a show that takes no operand? Answers: (a) by name, so `inbox show` and `history show` are gaps to rename; (b) only operand-less renders, so `show <id>` conforms and the sentence is narrowed. Recommend (b): the register's own earn-your-place test admits a sub-verb that takes a positional, and `inbox show` takes a report id while bare `abcd inbox` already lists."
 finding_ref: cfk-77c1a868d2dff291
 ---
 

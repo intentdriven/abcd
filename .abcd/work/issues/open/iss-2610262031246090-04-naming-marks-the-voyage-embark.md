@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 126 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:231"
-remedy: "none (filed automatically)"
+remedy: "In glossary/core/voyage.md say the voyage records every disembark pack today and mark the `embark/provenance.json` and `embark/from/` paths and the 'every ... embark run' phrase as staged, as 04-naming.md and the verification matrix do."
 finding_ref: cfk-4eda3c233b34e988
 ---
 

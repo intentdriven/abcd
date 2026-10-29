@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 714 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-2609301020001595-a-dependabot-bump-of-a-pinned-action-in.md:73"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): What trailer does a commit whose message a non-abcd workflow computed (no model involved, the owner as author) carry? Answer 1: `Assisted-by: None`, as adr-2609292116133348 item 1 rules and scripts/dependency-reauthor.sh writes, with 34-build's 'human-only None' clause narrowed to the commits abcd composes under its own label. Answer 2: a new fourth form the attribution gate accepts for workflow-composed text, reversing the ADR's 'gate unchanged'. Recommend answer 1: it is shipped and ruled, the gate has no fourth form, and the owner is author of record under the rule they signed."
 related_intents: [itd-2609301020001595]
 finding_ref: cfk-74124b83a7988f46
 ---

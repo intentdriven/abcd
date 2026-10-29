@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 580 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/10-docs.md:223"
-remedy: "none (filed automatically)"
+remedy: "In 10-docs.md:223 reword 'The release gate runs both' to say the gate runs the currency lint and checks the receipt of the docs-currency-reviewer, which the operator runs (01-agents.md:45)."
 finding_ref: cfk-36660cb300dfd052
 ---
 

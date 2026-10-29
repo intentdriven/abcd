@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 998 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-39-scope-aware-memory-retrieval.md:33"
-remedy: "none (filed automatically)"
+remedy: "In the rules-loader dedup row of the verification matrix, replace 'Nothing counts prompts' with: the primary refresh is event-driven, and a large backstop counter (rules.force_refresh_every_n, default 15) also clears the ledger."
 related_intents: [itd-39]
 finding_ref: cfk-512c962647190769
 ---

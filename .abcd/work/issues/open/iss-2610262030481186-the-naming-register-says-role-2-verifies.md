@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 48 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:155"
-remedy: "none (filed automatically)"
+remedy: "Reword 04-naming.md line 155: registration is held by review today (the VR001 check is unbuilt) and `abcd intent consistency` reports terminology drift on demand; nothing runs it at plan-review."
 finding_ref: cfk-876673ffc1c8a109
 ---
 

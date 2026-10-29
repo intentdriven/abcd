@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 568 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/19-identity.md:89"
-remedy: "none (filed automatically)"
+remedy: "Reword 19-identity.md:89: the identity-positioning rule runs under bare abcd lint, which no gate invokes today (16-lint.md:144), so a blocker severity gates nothing until a gate wires it; keep the identity report's exit 0."
 finding_ref: cfk-12a2d39634113eea
 ---
 

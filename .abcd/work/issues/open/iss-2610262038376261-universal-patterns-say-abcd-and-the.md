@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 807 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/04-universal-patterns.md:73"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-universal-patterns.md section 3 (MCP bullet): mark abcd's MCP server as a design target and say today abcd and a peer interoperate over shared on-disk conventions only."
 finding_ref: cfk-8afab655f6b6daf2
 ---
 

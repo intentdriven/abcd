@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 71 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:56"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md line 56: per-step lanes are shipped (itd-2609212103565953); `abcd build` lands each spec step as one lane."
 finding_ref: cfk-54edb2c78e9b16ce
 ---
 

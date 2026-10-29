@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 818 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-14-prompt-registry-versioning.md:29"
-remedy: "none (filed automatically)"
+remedy: "Re-scope itd-14: drop the `## Prompt Version: X.Y` body field, since its own acceptance criteria already say `prompt_version: X.Y.Z` frontmatter and agent_contract already requires a semver `prompt_version` on every prompt; keep the changelog, diff-on-update and revert as the remainder, and close its open question on where the version lives."
 related_intents: [itd-14]
 finding_ref: cfk-424f102ee6423667
 ---

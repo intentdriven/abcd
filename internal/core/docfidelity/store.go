@@ -24,6 +24,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 const (
@@ -123,6 +124,12 @@ func (s SavedReview) Review() Review {
 		if named := newestOtherReview(s.Root, s.Commit); named != "" {
 			r.Status, r.Named = ReviewStale, named
 		}
+		return r
+	}
+	// A review a commit carries was saved by whoever made the commit, not by
+	// this checkout's reviewer, so it is refused before it is judged.
+	if err := localtier.Untracked(s.Root, filepath.ToSlash(rel)); err != nil {
+		r.Status, r.Problems = ReviewInvalid, []string{err.Error()}
 		return r
 	}
 	got, err := lint.CheckGateReceipt(s.Root, ReceiptsDir, s.Commit, GateName)

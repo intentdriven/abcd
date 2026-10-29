@@ -7,7 +7,7 @@ supersedes: null
 superseded_by: null
 related_intents: [itd-2610091016262335, itd-2610052000411162, itd-2610040740122709, itd-2610040740135705]
 related_rfcs: []
-related_adrs: [adr-2610032150581128]
+related_adrs: [adr-2610032150581128, adr-2610161400542916]
 ---
 
 # ADR-2610091016270711: Who may change an abcd-managed project's design on abcdesign.app, and how a change lands
@@ -43,6 +43,14 @@ Decided by the product thinker's rulings of 2026-10-14, recorded verbatim in itd
 3. **A change lands only through GitHub, as a proposal the team decides on.** The team chooses, per session, between each edit as its own pre-filled GitHub issue (credited to its author or approver) and the whole session as one pull request (authored by the submitter, with a co-author line per credited team member). abcd never writes into the repository itself. The team's own agent session picks these up at its start, the way the inbox surfaces reports; a GitHub Action on the project's own key is a later addition.
 4. **Scope of the first release:** the brief only, public and private repositories alike, with no product thinker / technical facilitator toggle. abcdev.app is read-only and offers no editing.
 
+### Amendment of 2026-10-16: no token is pasted, and the page finds its relay itself
+
+Amended by adr-2610161400542916, from the product thinker's rulings of 2026-10-16 (itd-2610091016262335's Decisions). In decision 2, the fallback of pasting a personal access token is withdrawn: the page has no token field, and the relay takes only a GitHub App user access token. A team member signs in with GitHub through the team's own GitHub App, in one of two ways:
+- the web flow, through the team's cloud relay, which holds the app's secret;
+- GitHub's device flow, for a session on the host's own computer, which holds no secret.
+
+Decision 1's two ways to host stand. On the host's own computer, that computer also serves the page, so nothing goes to abcdesign.app.
+
 ## Alternatives Considered
 
 - **A relay abcd runs.** Rejected: abcd never runs a server holding or serving project content ("not us. never.").
@@ -57,4 +65,5 @@ Decided by the product thinker's rulings of 2026-10-14, recorded verbatim in itd
 - Each team does a one-off setup: deploying the relay or joining the host's Tailscale network, and registering its own GitHub sign-in app. Keeping that relay and its secret safe is the team's responsibility, not abcd's.
 - Anyone the host gives the code to sees the brief, a private one included; admission of guests is the host's call.
 - The session needs per-person change tracking and a suggestion mode for guests.
-- abcd adds no network surface of its own: its only network surface stays the local dashboard (adr-2610032150581128), and the hosted page at abcdesign.app is static.
+- The page is served from a static host, which cannot send `frame-ancestors` or `X-Frame-Options`, and a `<meta>` Content-Security-Policy cannot carry `frame-ancestors`. This is accepted (security review 2, finding 11b, 2026-10-15), with mitigations: the page refuses to run in a frame and shows only a link to open it in its own tab, so its relay confirmation and sign-in are never drawn where another page could overlay them; the sign-in itself is on github.com, which refuses to be framed; and sign-in goes through a GitHub App alone, whose token reaches only the repositories the app is installed on.
+- abcd runs no network surface of its own anywhere. The relay is a verb in the abcd binary that the team starts on its own machine or deploys to its own account, admitted as the second listener by the 2026-10-14 amendment of adr-2610032150581128. The hosted page at abcdesign.app is static.

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 340 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-12-work-adapter-weighting.md:15"
-remedy: "none (filed automatically)"
+remedy: "Re-scope itd-12 to the inputs the shipped principle-distiller reads (ADRs, intents, resolved issues and graveyard findings in a packed lifeboat), or record that it is blocked on the pack carrying notes, reviews and memory and on dev-sync (staged); today .abcd/work/notes/ does not exist"
 related_intents: [itd-12]
 finding_ref: cfk-d20d64374dcf128f
 ---

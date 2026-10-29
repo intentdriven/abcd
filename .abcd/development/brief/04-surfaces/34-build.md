@@ -296,7 +296,9 @@ writes version 15 refuses a version-16 file as a newer abcd's. A route
 record's `override` (iss-2610161801358637), the step verb's per-invocation
 route override verbatim on the verified receipt or validator return a runner
 ran under it, is version 16's too: a file of version 15 or lower carrying it
-is refused. Version 15
+is refused. So is a validation round's `routes` (spc-2609251028149555): the
+tier each role of the round ran at, the tier a failed round moved it up from,
+and the failing gate output behind the switch. Version 15
 added the run's review set (itd-2610240922461281): the run's `review`, each
 role's reviewers at their model classes, the judge and the ceiling, with the
 layer of each. Version 14 is its strict subset, read as a run started before
@@ -593,8 +595,10 @@ configuration sets. An
 interrupt or a termination kills the runner's process group. The status and
 record verbs count the fallbacks per runner and per role. A host session
 always drives this: the no-host path, where a host-routed role goes to the
-machine's `runner.fallback_host`, is the process driver's reversal of the
-host-delegated boundary, and waits on the ADR decision 6 of the intent owes.
+machine's `runner.fallback_host`, is the reversal of the host-delegated
+boundary that adr-2610222222326104 records; `abcd drain` builds it first
+(itd-2610222215485265), and `abcd build` adopts it after that, in step 12 of
+spc-2609202134338445.
 
 **The reviewer route** (itd-6, spc-2609211950427074). A build lane's ruthless
 and security reviews can go to RepoPrompt over MCP instead of the host's own
@@ -787,6 +791,41 @@ lane: every later step is refused at the `handed-back` stage naming the
 hand-back, and building the intent again resumes the run and says the same.
 Moving the intent to `drafts/` with its replan reason (itd-50, criterion 3) is
 not made by this build.
+
+**The tier each round asks for** (itd-2609170822093401, Decision 1 and
+criterion 10; spc-2609251028149555). Each validator a round hands out is asked
+for the model tier its routing row names (the tables the delegating verbs
+resolve), and the round records every role it hands out, its validators and the
+fresh implementer its findings go to, in the state as the round's `routes`, one
+record per role, with its `tier` where its route names one; the implementer has
+no routing row, so its record carries none (Decision 6). A round that does not pass moves each role's tier for the next
+round one step up the ladder `local`, `economy`, `frontier`, from the tier the
+role ran at in that round, never two steps at once; `frontier` and
+`host-decides` do not move. The record names the tier the role moved from
+(`escalated_from`) and the failed round's gate output (`gate_output`: its
+verdicts, the returns that did not pass and the criteria the audit judged not
+met or undecided, held to 2 KiB and masked as the state's other free text is).
+The run record says the switch, the step's result names the tier as `tier` and
+in the line saying what to do next, and the role's brief carries the request block's routing section,
+naming the escalated tier as the tier asked. A round that passes moves nothing,
+up or down: a fresh round after it (a sync) keeps the tier the lane reached,
+and a role new to the lane (the auditor on the closing lane) starts at its own
+row's tier. A route that names no tier does not move: a role the step hands to
+a runner (a machine route, or the per-invocation override naming a runner and
+its model), a
+review the reviewer route takes, a role whose `oracle.roles.<role>` points at a
+provider, a row at `host-decides`, and the implementer, which has no routing
+row. Each is recorded with the failed round's gate output and a note saying
+why it does not move, and none is swapped for another route. An escalated tier
+is resolved through the same legs and the same allowlist as any other, so it
+refuses the step at the `validate` stage, naming the provider, only where a
+connection serves the escalated tier and its allowlist does not admit the
+route. No connection serves a tier today (a provider is reached only by a role
+pointed at it), so an escalated tier goes to the host, named in the brief.
+A routing table or provider configuration `step` cannot read is refused at the
+`routing` stage before anything moves, and their non-fatal reports are said on
+stderr, as a delegating verb says them. A round's `routes` is state schema
+version 16's, so a file of version 15 or lower carrying it is refused.
 
 **The landing** (piece 9; criterion 6). The land stage takes the lane to the
 default branch one step per invocation, each recorded in the lane's `landing`

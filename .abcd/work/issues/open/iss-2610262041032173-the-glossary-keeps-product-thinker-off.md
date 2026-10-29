@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 974 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/product-thinker.md:46"
-remedy: "none (filed automatically)"
+remedy: "In product-thinker.md replace 'its role hint is an outside job title' with a statement that a persona such as Iris may carry 'product thinker' among its role hints (as .abcd/development/personas.json does), while the persona stays a modelled archetype and not the role abcd addresses."
 related_intents: [itd-2609291923559186]
 finding_ref: cfk-41a25c09f3066484
 ---

@@ -37,7 +37,7 @@ import (
 // after a first spell at 45 from 2026-10-17 (dcn-2610171803056931) and 30
 // between (iss-2610171803053186); the job declares that as one matrix
 // expression, which checkLegTimeouts reads leg by leg. The queue's cap is 90
-// minutes since 2026-10-11 and the macOS leg's is 70 since 2026-10-18, below
+// minutes since 2026-10-11 and the macOS leg's is 85 since 2026-10-28, below
 // it, so on that leg the job's own ceiling is the binding one. The step's -timeout still earns its place under that cap: it lifts the
 // ten-minute per-package default, so a slow package fails on the job's clock
 // rather than at ten minutes. Raising the queue's cap is an admin act on the
@@ -127,7 +127,7 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 			}
 			if leg.os == "macos-latest" && leg.minutes != checkMacOSCeilingMinutes*time.Minute {
 				t.Errorf("%s: the macos-latest leg's timeout-minutes is %s; want %dm, the ceiling "+
-					"set on 2026-10-18 (dcn-2610181756328249)", where, leg.minutes, checkMacOSCeilingMinutes)
+					"set on 2026-10-28 (dcn-2610282036219503)", where, leg.minutes, checkMacOSCeilingMinutes)
 			}
 			// Ruling Z raised the macOS leg; every other leg carries 45 since
 			// 2026-10-28 (dcn-2610280635092222).
@@ -156,11 +156,13 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 
 // checkMacOSCeilingMinutes is the macOS leg's timeout-minutes in ci.yml's check
 // job: 45 under ruling Z (2026-09-28); 60 from 2026-10-15, when merge-queue
-// macOS runs had grown from 31-35 to 34-40 minutes; 70 since 2026-10-18, when
+// macOS runs had grown from 31-35 to 34-40 minutes; 70 from 2026-10-18, when
 // ten merge-group runs took 35.1 to 49.3 minutes on a leg whose race pass keeps
-// its three test slots full (dcn-2610181756328249). It stays below the merge
+// its three test slots full (dcn-2610181756328249); 85 since 2026-10-28, when
+// passing merge-group runs took 46 to 68 minutes and run 40752008734 was
+// cancelled at the cap after 71 (dcn-2610282036219503). It stays below the merge
 // queue's check response timeout, which the budget test reads from the mirror.
-const checkMacOSCeilingMinutes = 70
+const checkMacOSCeilingMinutes = 85
 
 // checkUbuntuCeilingMinutes is the check job's ceiling on every leg but
 // macOS: 30 under ruling Z; 45 from 2026-10-17, when the drain bundle

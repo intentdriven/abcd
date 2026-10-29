@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 620 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-142-the-brief-creation-interview-abcd.md:60"
-remedy: "none (filed automatically)"
+remedy: "In itd-142 rename 'question regimes' to 'question kinds' (or similar): `regime` is the glossary's term for a reading's licence (generative, explicative, evaluative, registrative), and 'entailment' there is a position, so the two uses collide."
 related_intents: [itd-142]
 finding_ref: cfk-6d91d5f979534594
 ---

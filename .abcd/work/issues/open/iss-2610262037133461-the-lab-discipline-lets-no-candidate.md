@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 707 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/31-lab.md:103"
-remedy: "none (filed automatically)"
+remedy: "In the lab discipline, say the harvest verb lists an unrefuted candidate flagged 'refutation owed' and that no candidate is filed, and no review round ends, until a refutation is recorded; stage 4 and the findings rule then match the verb."
 related_intents: [itd-2609251624540864]
 finding_ref: cfk-1ef617386e86c7e1
 ---

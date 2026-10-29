@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 640 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/22-site.md:86"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does the Pages route of itd-2610091010348892 replace setup's host stage (the provider adapter and custom domain) for the record site, or does the hosting-provider route stay as a second way to publish? Answer 1: replace it, retiring the host stage when the intent ships. Answer 2: keep both with the Pages route the default. Recommend answer 1: the intent says abcd runs nothing and moves abcd's own record to the same route, so two routes would double the publication surface."
 related_intents: [itd-2610091010348892]
 finding_ref: cfk-555a57fb626ab99f
 ---
