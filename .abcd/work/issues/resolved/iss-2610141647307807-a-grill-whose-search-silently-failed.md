@@ -11,6 +11,12 @@ production_mode: hand-written
 found_at: "internal/core/ideate/ideate.go"
 remedy: "Deliver itd-2610141646454347: the grill leg records each search (terms, paths, hit counts), and an empty grill without that trace is refused."
 related_intents: [itd-2610141646454347]
+resolution: "the grill leg records each search as terms, places and count, and a grill with no hits and no searches is refused"
+impact: breaking
+resolved_by:
+  intent: "itd-2610141646454347"
+  spec: "spc-2610142138047122"
+  commit: "81baf3f6a"
 ---
 
 A grill whose search silently failed writes the same ideate record as an honest empty grill: a search loop that zsh did not word-split returned zero hits for every term (90 files mention one of them), and the verdict schema carries hits only, with nothing saying what was searched or where (lab finding F-4).
