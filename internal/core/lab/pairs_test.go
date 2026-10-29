@@ -148,3 +148,61 @@ func TestHarvestWithNoPairsHasNoAgreement(t *testing.T) {
 		t.Fatal("harvest.md carries an agreement section with no pairs recorded")
 	}
 }
+
+// TestHarvestReadsAPairsFilePastTheDocumentBound: a busy lab's pairs.jsonl
+// grows past the bound one document read holds, and the harvest still reads
+// every pair, a line at a time; a line longer than a pair may be is counted as
+// one that did not parse, and the harvest goes on past it.
+func TestHarvestReadsAPairsFilePastTheDocumentBound(t *testing.T) {
+	r, home := fixture(t)
+	notAbcd(t)
+	m := mint(t, r)
+	line, err := json.Marshal(Pair{At: "2026-10-29T06:00:00Z", Type: "eligibility-residual", Kind: "choose",
+		StateSHA256: strings.Repeat("d", 64), StateTokens: 300, Host: "no", Adapter: "no", Probability: prob(0.93),
+		Target: "openrouter/typesafe/jev-1.13", ModelReported: "typesafe/jev-1.13-0901"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line = append(line, '\n')
+	n := maxDocBytes/len(line) + 1000
+	var b strings.Builder
+	for i := range n {
+		if i == n/2 {
+			b.WriteString(strings.Repeat("x", maxPairBytes+10) + "\n")
+		}
+		b.Write(line)
+	}
+	path := filepath.Join(labDir(home, m), "pairs.jsonl")
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Size() <= maxDocBytes {
+		t.Fatalf("the fixture is %v bytes, %v; want more than %d", fi, err, maxDocBytes)
+	}
+	res, err := Harvest(r.Root(), m.ID)
+	if err != nil {
+		t.Fatalf("Harvest over a pairs file past the bound: %v", err)
+	}
+	a := res.Agreement
+	if a == nil || a.Pairs != n || a.Unreadable != 1 || len(a.Types) != 1 || a.Types[0].Agreed != n {
+		t.Fatalf("agreement = %+v, want %d pairs, all agreed, and one unreadable line", a, n)
+	}
+}
+
+// TestHarvestRefusesALinkedPairsFile: the harvest reads pairs.jsonl only as a
+// regular file in the lab home, never through a link to one elsewhere.
+func TestHarvestRefusesALinkedPairsFile(t *testing.T) {
+	r, home := fixture(t)
+	notAbcd(t)
+	m := mint(t, r)
+	elsewhere := filepath.Join(t.TempDir(), "pairs.jsonl")
+	if err := os.WriteFile(elsewhere, []byte(`{"type":"remedy-read","kind":"choose","host":"yes"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(labDir(home, m), "pairs.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Harvest(r.Root(), m.ID); err == nil || !strings.Contains(err.Error(), "pairs.jsonl") {
+		t.Fatalf("Harvest through a linked pairs file = %v, want a refusal naming it", err)
+	}
+}

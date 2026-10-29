@@ -19,9 +19,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -159,58 +161,46 @@ var bands = []struct {
 }{{"0.00-0.50", 0, 0.5}, {"0.50-0.70", 0.5, 0.7}, {"0.70-0.90", 0.7, 0.9}, {"0.90-1.00", 0.9, 1.0000001}}
 
 // agreement reads the lab's pairs.jsonl; nil when the lab recorded none.
+//
+// The file is read a line at a time, each line bounded by maxPairBytes, and
+// never whole: RecordPair appends to it for as long as a type runs in shadow,
+// so a busy lab's file outgrows any bound one document read could hold, and
+// the harvest still counts every pair. A line longer than a pair may be is
+// counted as one that did not parse, and the read goes on past it.
 func (l *lab) agreement() (*Agreement, error) {
-	data, err := fsutil.ReadGuardedInRoot(l.root, pairsName, maxDocBytes)
+	f, err := l.openPairs()
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("cannot read %s: %v", l.display(pairsName), redact(err, l.store.home))
 	}
+	defer f.Close()
 	a := &Agreement{LabHome: l.store.display(l.entry.ID), Types: []TypeAgreement{}}
 	by := map[string]*TypeAgreement{}
-	sc := bufio.NewScanner(bytes.NewReader(data))
-	sc.Buffer(make([]byte, 0, maxPairBytes), maxPairBytes)
-	for sc.Scan() {
-		line := bytes.TrimSpace(sc.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-		var p Pair
-		if json.Unmarshal(line, &p) != nil || p.Type == "" || p.Host == "" {
+	rd := bufio.NewReaderSize(f, maxPairBytes)
+	for {
+		raw, rerr := rd.ReadSlice('\n')
+		if errors.Is(rerr, bufio.ErrBufferFull) {
 			a.Unreadable++
+			for errors.Is(rerr, bufio.ErrBufferFull) {
+				_, rerr = rd.ReadSlice('\n')
+			}
+			if rerr == io.EOF {
+				break
+			}
+			if rerr != nil {
+				return nil, fmt.Errorf("cannot read %s: %v", l.display(pairsName), redact(rerr, l.store.home))
+			}
 			continue
 		}
-		a.Pairs++
-		t := by[p.Type]
-		if t == nil {
-			t = &TypeAgreement{Type: p.Type, Bands: make([]Band, len(bands))}
-			for i, b := range bands {
-				t.Bands[i].Band = b.name
-			}
-			by[p.Type] = t
+		if rerr != nil && rerr != io.EOF {
+			return nil, fmt.Errorf("cannot read %s: %v", l.display(pairsName), redact(rerr, l.store.home))
 		}
-		t.Pairs++
-		if p.Skipped != "" || p.Adapter == "" || p.Probability == nil {
-			t.Skipped++
-			continue
+		a.count(by, bytes.TrimSpace(raw))
+		if rerr == io.EOF {
+			break
 		}
-		t.Compared++
-		agreed := p.Adapter == p.Host
-		if agreed {
-			t.Agreed++
-		}
-		for i, b := range bands {
-			if *p.Probability >= b.lo && *p.Probability < b.hi {
-				t.Bands[i].Compared++
-				if agreed {
-					t.Bands[i].Agreed++
-				}
-			}
-		}
-	}
-	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read %s: %v", l.display(pairsName), err)
 	}
 	names := make([]string, 0, len(by))
 	for n := range by {
@@ -229,6 +219,68 @@ func (l *lab) agreement() (*Agreement, error) {
 	a.Note = fmt.Sprintf("Shadow agreement from the lab home %s: %d pairs (%d compared) over %d judgement type(s), harvested %s.",
 		a.LabHome, a.Pairs, compared, len(a.Types), stamp())
 	return a, nil
+}
+
+// count adds one line of pairs.jsonl to a: a pair to its type's counts and
+// bands, a blank line to nothing, and anything else as unreadable.
+func (a *Agreement) count(by map[string]*TypeAgreement, line []byte) {
+	if len(line) == 0 {
+		return
+	}
+	var p Pair
+	if json.Unmarshal(line, &p) != nil || p.Type == "" || p.Host == "" {
+		a.Unreadable++
+		return
+	}
+	a.Pairs++
+	t := by[p.Type]
+	if t == nil {
+		t = &TypeAgreement{Type: p.Type, Bands: make([]Band, len(bands))}
+		for i, b := range bands {
+			t.Bands[i].Band = b.name
+		}
+		by[p.Type] = t
+	}
+	t.Pairs++
+	if p.Skipped != "" || p.Adapter == "" || p.Probability == nil {
+		t.Skipped++
+		return
+	}
+	t.Compared++
+	agreed := p.Adapter == p.Host
+	if agreed {
+		t.Agreed++
+	}
+	for i, b := range bands {
+		if *p.Probability >= b.lo && *p.Probability < b.hi {
+			t.Bands[i].Compared++
+			if agreed {
+				t.Bands[i].Agreed++
+			}
+		}
+	}
+}
+
+// openPairs opens the lab's pairs.jsonl to read: a regular file in the lab
+// home, never a link or anything else, and the file the check vetted, not one
+// put in its place since; os.ErrNotExist when the lab recorded none.
+func (l *lab) openPairs() (*os.File, error) {
+	fi, err := l.root.Lstat(pairsName)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fsutil.ErrNotRegular
+	}
+	f, err := l.root.OpenFile(pairsName, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	if st, err := f.Stat(); err != nil || !os.SameFile(fi, st) || !st.Mode().IsRegular() {
+		f.Close()
+		return nil, fsutil.ErrNotRegular
+	}
+	return f, nil
 }
 
 // agreementDoc renders the harvest's agreement section.
