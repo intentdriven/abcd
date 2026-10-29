@@ -2572,7 +2572,8 @@ build cache (`go env GOCACHE`) or the one holding the worktree store
 (`~/.abcd.noindex/worktrees`) has less free space than the disk floor: 4 GiB for each
 preflight the first gate admits at once (`load.preflights`), and 8 GiB at least, so
 8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts
-and again just before it opens, and refuses at either look. The refusal names
+and again just before it opens (the race gate at one preflight at a time reads
+it once, as it starts), and refuses at either look. The refusal names
 each low volume, its free space and the floor, and, when the cache's own volume
 is low, the cache's size and a command that deletes its build entries unused for
 two days. A disk it cannot read, in whole or in part, is never refused: one line
@@ -2615,7 +2616,7 @@ child as its command: gate make or go, never git or gh itself.
 **Flags:**
 
 ```
-      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold
+      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold
       --site string        where the check runs: preflight | eval-harness
       --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 30m0s)
       --wait               wait until the load is below the wait limit and no other go test -race run is live

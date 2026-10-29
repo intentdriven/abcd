@@ -172,7 +172,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"(`" + abcdhome.Display("worktrees") + "`) has less free space than the disk floor: 4 GiB for each\n" +
 			"preflight the first gate admits at once (`" + implement.PreflightSlotsKey + "`), and 8 GiB at least, so\n" +
 			"8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts\n" +
-			"and again just before it opens, and refuses at either look. The refusal names\n" +
+			"and again just before it opens (the race gate at one preflight at a time reads\n" +
+			"it once, as it starts), and refuses at either look. The refusal names\n" +
 			"each low volume, its free space and the floor, and, when the cache's own volume\n" +
 			"is low, the cache's size and a command that deletes its build entries unused for\n" +
 			"two days. A disk it cannot read, in whole or in part, is never refused: one line\n" +
@@ -263,7 +264,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&site, "site", "", "where the check runs: "+enumHelp(implement.LoadSites()))
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the load is below the wait limit and no other go test -race run is live")
-	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold")
+	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold")
 	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait or --race-gate, give up after this long and exit 1")
 	return cmd
 }

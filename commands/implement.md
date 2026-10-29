@@ -865,7 +865,8 @@ space than the disk floor: 4 GiB for each preflight the first gate admits to
 its test stages at once (`load.preflights`, below), and 8 GiB at least, so 8
 GiB at the default of one and 16 GiB at four. One cold preflight of this module
 writes about 4 GiB of build cache and test binaries. The waiter reads the disk
-as it starts and again just before it opens, since other work fills the disk
+as it starts and again just before it opens (the race gate at one preflight at
+a time reads it once, as it starts), since other work fills the disk
 while it waits, and refuses at either look rather than wait, since nothing
 frees disk while it sleeps. The refusal names each low volume, its free space
 and the floor, and, when the cache's own volume is low, the cache's path and

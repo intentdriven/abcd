@@ -361,7 +361,7 @@ func (d DiskCheck) describe() string {
 			if d.goCacheHome {
 				why = "is the home directory or holds it"
 			}
-			fmt.Fprintf(&b, " %s %s, so no command deleting files in it is offered. To empty the cache, so the next build rebuilds everything:\n    go clean -cache\n", d.GoCache, why)
+			fmt.Fprintf(&b, " %s %s, so no trim of it is offered. go clean -cache empties a Go build cache, but it deletes from whatever GOCACHE names, so check that it names one first:\n    go clean -cache\n", d.GoCache, why)
 		}
 	}
 	if storeLow {
