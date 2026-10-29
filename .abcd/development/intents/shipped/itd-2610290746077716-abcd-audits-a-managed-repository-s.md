@@ -11,7 +11,6 @@ refines: [iss-2610121535283764]
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
-target_release: next
 ---
 
 # abcd audits and applies a repository's GitHub settings
@@ -63,13 +62,12 @@ Path taken: 3, bespoke on the GitHub API through the person's own `gh` sign-in. 
   - repository: branches deleted after merge; wiki and projects off.
   - default branch: no deletion, no force-push, and the checks the workflows run. A pull-request rule requires a code owner's review, with an approval count of 0. No ruleset abcd writes has a bypass actor. Sources: Scorecard's Branch-Protection and Code-Review checks, and GitHub's "About rulesets".
   - release tags `v*`: no deletion, no update, no force-move.
-  - CODEOWNERS covering the publish surface that exists in the tree: `.github/`, `.githooks/`, `.abcd/` config, build files. The owners are the repository's maintainers, never one person picked by abcd.
+  - CODEOWNERS covering the publish surface that exists in the tree: `.github/`, `.githooks/`, `.abcd/` config, build files, reported as advisory only, and never one person picked by abcd. Whether a managed repository keeps the file at all is settled by the maintainer-gate record (see below).
   - Actions: SHA pinning required, or an allow-list. The default workflow token is read-only and cannot approve pull requests. Sources: GitHub's "Security hardening for GitHub Actions", and Scorecard's Pinned-Dependencies and Token-Permissions checks.
   (Technical facilitator on delegation, 29 October 2026.)
 - Branch deletion after merge, the wiki and projects are now set on a yes, where the ahoy brief said merge hygiene is mirrored and never set. The managed repository's report asks for them, and `github.keep` leaves any of them alone. The merge methods stay mirrored and are never set. (Technical facilitator on delegation, 29 October 2026.)
 - The code-owner review rule has no bypass, because a solo owner does not need one, as checked on abcd's own repository on 29 October 2026. Its live "main review" ruleset (id 21045110) has no bypass actors, and the API reports that its owner can never bypass it. Yet the fifteen most recent merged pull requests that change owned paths (`hooks/`, `commands/`, `.github/`, `Makefile`) merged with no review at all. A pull request whose author is the only code owner of what it changes needs no code-owner approval. A bypass would be a weaker rule than abcd's own. A second writer's pull request does need the owner's approval, which is what the rule is for. (Technical facilitator on delegation, 29 October 2026; checked at the coordinator's request.)
-- The CODEOWNERS file names the repository's maintainers, the people holding GitHub's Maintain role on it; GitHub's organization Owner role plays no part. CODEOWNERS can name only users and teams, so the maintainers are held in a team and abcd checks that team's members against the Maintain-role holders. The team's handle is read, never hard-coded. The full definition belongs to iss-2610290730539347, not here. Until that definition can be read, the audit reports a missing or partial CODEOWNERS as advisory and names the paths it should cover, and the apply does not write the file; the write is iss-2610290755587946. Maintainers' own pull requests merge without approval, and anyone else's needs a maintainer's, so the code-owner rule keeps no bypass. (Product thinker, 29 October 2026, through the coordinator.) <!-- record-lint: forward-looking -->
-- Unconfirmed: whether a pull request authored by a member of a code-owner team satisfies that team's code-owner rule without another member's approval. The single-owner case was checked on abcd's own repository (above); GitHub's documentation, as read on 29 October 2026, does not settle the team case. It is to be checked on a live repository before the CODEOWNERS write is built. (Technical facilitator, 29 October 2026.)
+- A maintainer is anyone with Write, Maintain or Admin access to the repository, admins included; Read and Triage are contributors. GitHub counts a pull-request approval only from Write access and above, so a required approval is already a maintainer's, and no team has to be kept for it. Whether a managed repository keeps a CODEOWNERS file at all belongs to iss-2610290730539347, not here. Until that is settled the audit reports a missing or partial CODEOWNERS as advisory and names the paths it should cover, and the apply does not write the file (iss-2610290755587946). The code-owner rule abcd applies keeps no bypass, as above. (Product thinker, 29 October 2026, through the coordinator; this supersedes the Maintain-role reading given earlier the same day.) <!-- record-lint: forward-looking -->
 - abcd never edits a ruleset it did not create. It creates and updates its own rulesets, found by name, and rules from several rulesets add up on GitHub, so a person's own ruleset keeps working beside abcd's. (Technical facilitator on delegation, 29 October 2026.)
 - SHA pinning and the read-only workflow token are applied only when the workflows already comply: every `uses:` is pinned to a commit, and every workflow declares its `permissions:`. Otherwise the apply would break a working CI, so both are reported as advisory. (Technical facilitator on delegation, 29 October 2026.)
 - A repository with no CI gets no required check. The audit says that no workflow reports a check, so nothing blocks a merge. Proposing a starter workflow is outside this intent and is its own record, iss-2610290748300390. (Technical facilitator on delegation, 29 October 2026; agreed by the coordinator as a scope call.)
@@ -80,7 +78,9 @@ _None recorded yet._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-6083de2cef52 -->
+Fidelity review OWED (receipt rcp-6083de2cef52).
+<!-- abcd-review-end receipt=rcp-6083de2cef52 -->
 
 ## Grounds
 
