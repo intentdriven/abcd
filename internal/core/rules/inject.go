@@ -4,13 +4,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -275,39 +278,69 @@ func budgetCause(fresh []ResolvedDomain, rulesFrom map[string]string) string {
 	return "A bloated or hostile " + strings.Join(files, " or ") + " is the likely cause — inspect it with `abcd rules`."
 }
 
-// stateDir is the machine-local directory holding per-session ledgers. It is
-// overridable via ABCD_RULES_STATE_DIR (used by tests and by operators who want
-// the state elsewhere). The default is the per-user cache dir, NOT the
-// world-writable shared temp dir: a predictable path under a shared /tmp lets a
-// local co-tenant pre-create or poison the session-state file and suppress rule
-// injection fail-open. The uid-qualified temp fallback (only if the user cache
-// dir is unavailable — a degraded env with no HOME/XDG_CACHE_HOME) still lives
-// under the shared temp dir and is best-effort only: it avoids a cross-user
-// collision, not co-tenant pre-creation. State is fail-open advisory dedup, so a
-// poisoned fallback at worst re-injects; it never blocks or corrupts.
-func stateDir() string {
+// ErrNoStateHome is SaveState's answer when the account has no home folder:
+// no ledger is kept, so every prompt re-injects each domain it matches. It is
+// returned, not swallowed, so the caller can say why on its diagnostic stream.
+var ErrNoStateHome = errors.New("no home folder to keep the session ledger in, so every prompt re-injects what it matches")
+
+// stateRel is where per-session ledgers are kept, relative to the account's
+// home: a folder of abcd's own home store.
+var stateRel = abcdhome.Rel("rules-state")
+
+// stateFolder opens the folder holding per-session ledgers, creating it when
+// create is set, and returns it with the home and the folder relative to it
+// that a read names the file by. ABCD_RULES_STATE_DIR overrides it (tests, and
+// operators who want the state elsewhere). Otherwise it is the account's own
+// home store, walked by the guarded helpers: never a predictable name under
+// the shared temporary folder, where another account can make the folder
+// first and plant a ledger that silences every rule a session matches. With
+// no home there is no private place for it, so ErrNoStateHome is returned and
+// no ledger is kept: each prompt then starts fresh, which re-injects what it
+// matches and never silences anything. Reads walk with OpenHomeDeclarationScope,
+// which refuses a folder another account owns or can write.
+func stateFolder(create bool) (dir *os.Root, home, rel string, err error) {
 	if d := os.Getenv("ABCD_RULES_STATE_DIR"); d != "" {
-		return d
+		if create {
+			if err := os.MkdirAll(d, 0o700); err != nil {
+				return nil, "", "", err
+			}
+		}
+		dir, err := os.OpenRoot(d)
+		return dir, d, ".", err
 	}
-	if cache, err := os.UserCacheDir(); err == nil {
-		return filepath.Join(cache, "abcd-rules-state")
+	home, err = os.UserHomeDir()
+	if err != nil || !filepath.IsAbs(home) {
+		return nil, "", "", ErrNoStateHome
 	}
-	return filepath.Join(os.TempDir(), fmt.Sprintf("abcd-rules-state-%d", os.Getuid()))
+	if create {
+		dir, err = fsutil.EnsureHomeScope(home, stateRel, abcdhome.DirMode)
+	} else {
+		dir, err = fsutil.OpenHomeDeclarationScope(home, stateRel)
+	}
+	return dir, home, stateRel, err
 }
 
-// sessionFile maps a session id to a state file. The id is hashed, so an
-// attacker-supplied session id can never traverse out of the state dir.
-func sessionFile(session string) string {
+// sessionLeaf maps a session id to its ledger's file name. The id is hashed,
+// so an attacker-supplied session id can never name a path.
+func sessionLeaf(session string) string {
 	sum := sha256.Sum256([]byte(session))
-	return filepath.Join(stateDir(), hex.EncodeToString(sum[:])+".json")
+	return hex.EncodeToString(sum[:]) + ".json"
 }
 
 // LoadState reads the ledger for a session. A missing, oversized, or malformed
 // file yields the zero state (a fresh session), never an error — dedup is a
-// best-effort optimisation, not a correctness gate.
+// best-effort optimisation, not a correctness gate. So does a file this
+// account does not own, one others can write, one reached through a link, and
+// one in a folder another account owns or can write: none is this account's
+// word, and a fresh session only re-injects.
 func LoadState(session string) SessionState {
-	data, err := readGuarded(sessionFile(session), maxStateFileBytes)
+	dir, home, rel, err := stateFolder(false)
 	if err != nil {
+		return SessionState{}
+	}
+	defer dir.Close()
+	data, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(dir, home, path.Join(rel, sessionLeaf(session)), maxStateFileBytes, 0o022)
+	if err != nil || refusal != fsutil.DeclarationOK {
 		return SessionState{}
 	}
 	var st SessionState
@@ -321,19 +354,22 @@ func LoadState(session string) SessionState {
 }
 
 // SaveState durably persists the ledger for a session through the canonical
-// fsutil.WriteFileAtomic (temp-write, fsync, rename, parent-dir fsync), so the
-// write is crash-safe and a reader sees either the old file or the complete new
-// one. The state dir is pre-created 0700 (WriteFileAtomic's own MkdirAll is a
-// no-op once it exists); the session file is 0600.
+// fsutil.WriteFileAtomicInRoot (temp-write, fsync, rename, parent-dir fsync)
+// into the folder stateFolder opened, so the write is crash-safe, a reader
+// sees either the old file or the complete new one, and it never follows a
+// link out of that folder. The folder is made 0700 and the file 0600. With no
+// home it keeps nothing and returns ErrNoStateHome.
 func SaveState(session string, st SessionState) error {
-	if err := os.MkdirAll(stateDir(), 0o700); err != nil {
+	dir, _, _, err := stateFolder(true)
+	if err != nil {
 		return err
 	}
+	defer dir.Close()
 	data, err := json.Marshal(st)
 	if err != nil {
 		return err
 	}
-	return fsutil.WriteFileAtomic(sessionFile(session), data, 0o600)
+	return fsutil.WriteFileAtomicInRoot(dir, sessionLeaf(session), data, 0o600)
 }
 
 // LoadBackstop reads rules.force_refresh_every_n from <repoRoot>/.abcd/config.json
@@ -358,9 +394,15 @@ func LoadBackstop(repoRoot string) int {
 }
 
 // ResetState clears a session's ledger (the event-driven refresh: the next
-// prompt re-injects every matching domain). A missing file is not an error.
+// prompt re-injects every matching domain). A missing file or folder is not an
+// error.
 func ResetState(session string) error {
-	err := os.Remove(sessionFile(session))
+	dir, _, _, err := stateFolder(false)
+	if err != nil {
+		return nil
+	}
+	defer dir.Close()
+	err = dir.Remove(sessionLeaf(session))
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -368,10 +410,20 @@ func ResetState(session string) error {
 }
 
 // PruneState removes session-state files older than maxAge, bounding the growth
-// of the temp state dir across many sessions. Best-effort housekeeping: a
-// missing dir or a per-entry error is ignored.
+// of the state folder across many sessions. Best-effort housekeeping: a
+// missing folder or a per-entry error is ignored.
 func PruneState(maxAge time.Duration) {
-	entries, err := os.ReadDir(stateDir())
+	dir, _, _, err := stateFolder(false)
+	if err != nil {
+		return
+	}
+	defer dir.Close()
+	f, err := dir.Open(".")
+	if err != nil {
+		return
+	}
+	entries, err := f.ReadDir(-1)
+	f.Close()
 	if err != nil {
 		return
 	}
@@ -385,7 +437,7 @@ func PruneState(maxAge time.Duration) {
 			continue
 		}
 		if info.ModTime().Before(cutoff) {
-			_ = os.Remove(filepath.Join(stateDir(), e.Name()))
+			_ = dir.Remove(e.Name())
 		}
 	}
 }
