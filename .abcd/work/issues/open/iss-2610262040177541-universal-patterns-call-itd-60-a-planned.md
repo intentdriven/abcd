@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 921 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/04-universal-patterns.md:144"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-universal-patterns.md section 6: rewrite the doc-fidelity entry and the forward-doc-sync marker paragraph as shipped (itd-60 is in shipped/ and internal/core/docfidelity exists), checking the layout against the code."
 related_intents: [itd-60]
 finding_ref: cfk-1f8b21e2377b8586
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 713 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-107-autonomous-routines-assemble-from-one.md:145"
-remedy: "none (filed automatically)"
+remedy: "Reword itd-107 lines 143-146: drop 'the binary acquires no platform CLI dependency' as the reason; abcd build and land already open pull requests, arm merges and re-read bodies through the forge client (gh); state the routine's platform steps as either calling abcd land or being host-executed for another stated reason"
 related_intents: [itd-107]
 finding_ref: cfk-74f8ccee9ac5dcf6
 ---

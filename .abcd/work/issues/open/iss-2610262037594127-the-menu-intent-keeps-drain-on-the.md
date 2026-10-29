@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 763 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/35-drain.md:3"
-remedy: "none (filed automatically)"
+remedy: "In 35-drain.md open by calling /abcd:drain an agents' verb that joins the person's list when itd-82 ships, instead of the verb a person types."
 related_intents: [itd-2610090831227812]
 finding_ref: cfk-4d7a290f9e361962
 ---

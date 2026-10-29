@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 59 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/00-meta.md:7"
-remedy: "none (filed automatically)"
+remedy: "Delete the six-section board design target ('The board itself is not built' and the sections that follow) from 08-abcd.md and keep 'What ships today'; itd-20 is superseded by shipped itd-121 and no spec builds it. Related open records name the same section: iss-2610262030511283 and iss-2610262033526755."
 finding_ref: cfk-4e08cd88034dd244
 ---
 

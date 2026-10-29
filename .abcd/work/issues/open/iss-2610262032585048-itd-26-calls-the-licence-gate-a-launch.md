@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 343 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-26-loot-oss-vendor.md:70"
-remedy: "none (filed automatically)"
+remedy: "Edit itd-26 line 70: remove 'launch-gate-licence-gate' from the machinery loot reuses; say loot's refusal is its own `loot.acceptable_licences` check built on the substrate's licence detection, and that the substrate's restrictive-licence publish gate belongs to the lifeboat (adr-28), inert at launch. This edit also covers the sibling record about the unbuilt refusing gate."
 related_intents: [itd-26]
 finding_ref: cfk-b8e6ef50824453be
 ---

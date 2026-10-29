@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1179 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-78-intent-dependency-graph.md:17"
-remedy: "none (filed automatically)"
+remedy: "In itd-78 delete the phase-scoping lint ('a phase that scopes an intent before its blocker's phase') and the sentence that phase docs' Scope sections stay the sequencing authority (adr-9); replace with shelf-based checks such as a planned intent whose blocker is still a draft."
 related_intents: [itd-78, itd-24]
 finding_ref: cfk-55b233d7677a57da
 ---

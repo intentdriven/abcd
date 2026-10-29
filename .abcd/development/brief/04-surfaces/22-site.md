@@ -84,7 +84,7 @@ any secret step.
 
 **The host.** With a hosting credential on this machine, the provider adapter
 creates the host, routes the custom domain to it and reports the live address.
-Without one, the stage stops and says what remains: store the credential through the credential
+Without one, the stage stops and says what remains (the `github-pages` provider needs none: it acts through the forge as the person running the verb): store the credential through the credential
 walkthrough at `ahoy`, which verifies it with the provider's own account read
 before it keeps it, and re-run, or create the host in the
 provider's console.
@@ -95,8 +95,62 @@ set by abcd, because the value would pass through it: the verb reads which
 secret names are present and prints the exact command for each one that is not.
 The credential is read by name through the credential store and never written
 into the repository or the report, which names only the credential's name. A second run over an unchanged repository and host
-writes nothing and says so. One provider ships, behind an adapter seam
+writes nothing and says so. Two providers ship, behind an adapter seam
 ([`05-internals/02-adapters.md`](../05-internals/02-adapters.md#hosting-providers)).
+
+## A project's own site
+
+The second provider publishes a managed repository's site on the project's own
+GitHub Pages, built by the project's own workflow at each release
+(itd-2610091010348892). Such a site renders only what abcd already writes to the
+repository, as its single source, as the product thinker ruled on 2026-10-15. A
+project's hand-written documentation is read on GitHub, and nothing is written
+for the website.
+
+So setting one up writes two files and no more: the site's settings, holding
+the publish switch and no composition, and the workflow. The interface words,
+styles, scripts and headers policy ship in the binary, and the workflow builds
+and gates with the project flag, so the repository carries no site sources.
+The landing page is an about page derived in code, from four parts in this
+order, each rendered only where the repository holds it: the identity block,
+the brief's opening (the first section of the brief skeleton,
+`01-product/01-press-release.md`), the press releases of the newest shipped
+intents whose audit was met, newest id first (a timestamped id carries when
+abcd minted it, and an ordinal one sorts before every timestamped one), and the
+release list in `CHANGELOG.md`. Without an
+identity block the page is headed and titled by the repository's name on
+GitHub. A repository holding none of the four is refused at setup and at build,
+since its site would be empty. The repository's address and name come from the
+origin remote alone, never from the package manifest, which is a person's file.
+The record pages are built exactly as for any site, from the record's lint
+configuration or, where a managed repository carries none, from abcd's standard
+layout under `.abcd/development/`. The issue ledger is always read, so an
+intent's typed link to an issue resolves, and an issue is published only where
+the settings opt in with `"record": {"issue_ledger": true}`. The references
+page and every picture are left out, because each comes from a person's own
+files rather than from what abcd writes (pictures are a later intent,
+iss-2610150529485165).
+
+A project site shows nothing read from git history either, and its build does
+not read it. Who wrote a commit, what model it declared, how many commits there
+are and when any of them landed are git's record, not abcd's, so the
+contributors page, the timeline, the health page's authorship checks and
+record.json's authorship, history and per-record git dates are all left out,
+and a record is dated by its own frontmatter alone. Whether a project site
+should show any of it is to be revisited.
+
+The project route depends on abcd's own releases: the workflow downloads abcd's
+latest release to build with, so a project site cannot build until a release of
+abcd carries the project flag. Setup states this in a note on every project
+setup whose files are written or already current (a run declined at the switch, refused before anything is written, or switched off carries no such note), since it asks the network nothing to learn which release is latest.
+
+The gate holds the line: on a project site, a rendered span whose source file
+abcd does not write fails the site's gate, on every page, the record's own
+included, and so does a site with no title.
+Files under `.abcd/` (but the local tier) and `CHANGELOG.md` are abcd's; `docs/`,
+`README.md` and every other file are not. The build and the gate name the route
+explicitly, and refuse settings of the other shape. abcd's own composed site is
+not a project site: it renders its documentation and stays as it is.
 
 ## The page set
 
@@ -212,11 +266,11 @@ entry and no links.
 
 ## The gates
 
-The lint's site target runs seven independent gates over a rendered tree and reports
+The lint's site target runs eight independent gates over a rendered tree and reports
 every failure rather than the first: provenance, hero drift against the identity
 block, banned tokens over composed text, `abcd …` snippets against the generated
 CLI reference, the unresolved-reference ratchet, the static mobile checks, and the
-loop-figure labels. The seven are named once in the code that runs them, and the
+loop-figure labels, and the base path of every root-absolute link. The eight are named once in the code that runs them, and the
 check's report prints each name as it runs it, passing or failing.
 
 Scope follows adr-47 decision 3 exactly. Composed surfaces are the landing page and
@@ -310,10 +364,12 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--base-path` | string |
 | `--commit` | string |
 | `--date` | string |
 | `--out` | string |
 | `--preview` | bool |
+| `--project` | bool |
 | `--version` | string |
 
 ### `abcd site setup`
@@ -325,6 +381,8 @@ Sub-verbs: none.
 | `--confirm` | bool |
 | `--domain` | string |
 | `--name` | string |
+| `--provider` | string |
+| `--replace-existing` | bool |
 | `--yes` | bool |
 
 <!-- surface-appendix:end -->

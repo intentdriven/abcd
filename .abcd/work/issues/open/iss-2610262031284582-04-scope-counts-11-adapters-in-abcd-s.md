@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 133 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/04-scope.md:32"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-scope.md line 32: drop the hand-kept '11 adapters' and point at 05-internals/02-adapters.md and internal/README.md for the roster."
 finding_ref: cfk-efda7bffde7eed24
 ---
 

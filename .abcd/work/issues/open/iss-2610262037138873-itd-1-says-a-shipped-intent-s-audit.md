@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 708 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-1-acceptance-gates.md:45"
-remedy: "none (filed automatically)"
+remedy: "In itd-1 line 45 replace the deferral and 'populated only when /abcd:intent audit is run by hand' with the shipped flow: a spec close that ships an intent parks an owed review marker and emits the request, the build loop audits and ingests, and a provider-routed close sends and ingests it (commands/intent.md, 34-build.md)."
 related_intents: [itd-1]
 finding_ref: cfk-0a121e9d2d4adede
 ---

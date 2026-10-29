@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 723 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-59-autonomous-worker-transcript-capture.md:19"
-remedy: "none (filed automatically)"
+remedy: "Re-scope itd-59 to the unattended passes not yet routed through capture: the runner already stores each delegated role's transcript through history.Capture (internal/core/runner/transcript.go), as the build chapter says; state what the draft adds beyond that, and name the planned loop intent as owner of the loop's own capture, or retire the draft."
 related_intents: [itd-59]
 finding_ref: cfk-fb6d9b2b499ad6f8
 ---

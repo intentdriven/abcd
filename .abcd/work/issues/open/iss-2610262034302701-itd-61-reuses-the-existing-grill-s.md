@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 501 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-61-brief-change-derivation.md:40"
-remedy: "none (filed automatically)"
+remedy: "In itd-61 point the reuse clause (and 'grill-style', 'the grill' in the press release and why-it-matters) at the planning interview machinery (`abcd intent interview`, `abcd intent prepass`) or drop the reuse; no grill sub-verb ships."
 related_intents: [itd-61]
 finding_ref: cfk-8aefee6c83b24da4
 ---

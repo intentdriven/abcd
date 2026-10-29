@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 280 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/04-launch.md:35"
-remedy: "none (filed automatically)"
+remedy: "In 04-launch.md line 35 replace 'reserves the release-rendered site's opt-in, read and not yet acted on' with the present state: the key is read and validated and nothing consumes it, because the release-rendered site is set up by the site verb (22-site.md); decide separately whether to retire the key (internal/core/launch/artefact.go)."
 finding_ref: cfk-574e18fe83dc9685
 ---
 

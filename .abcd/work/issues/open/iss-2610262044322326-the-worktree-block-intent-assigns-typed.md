@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1213 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-148-every-change-starts-in-its-own-worktree.md:101"
-remedy: "none (filed automatically)"
+remedy: "In itd-148 replace 'typed claims, take or yield or escalate remains itd-33's' with the shipped reservation (itd-2609091034175565, which supersedes itd-33), and review the other itd-33 mentions in the same scope bullet."
 related_intents: [itd-148, itd-2609091034175565]
 finding_ref: cfk-7c49c784bda5c8b4
 ---

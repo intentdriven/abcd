@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 338 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-11-pass-b-pitfall-mitigation.md:15"
-remedy: "none (filed automatically)"
+remedy: "In itd-11 (press release, scope item and acceptance criterion 3) replace 'lifeboat-oracle's audit' with lifeboat-reviewer's review (disembark review), the agent and the word itd-125 settled"
 related_intents: [itd-11]
 finding_ref: cfk-de28ee82b65f569c
 ---

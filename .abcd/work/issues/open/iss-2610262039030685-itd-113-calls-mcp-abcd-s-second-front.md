@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 836 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-113-abcd-s-core-verbs-are-reachable-over-mcp.md:16"
-remedy: "none (filed automatically)"
+remedy: "Drop the ordinal in itd-113 ('second front door' becomes 'the MCP front door') and in 03-configuration.md say an mcp door is one of the later doors adr-23 names, not 'adr-23's third'"
 related_intents: [itd-113]
 finding_ref: cfk-5ef4898f3187c41e
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 486 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-44-fourth-intent-kind-decision.md:142"
-remedy: "none (filed automatically)"
+remedy: "Rewrite itd-44's 'Plan/reclassify refusal guard' against the shipped Go verbs `abcd intent plan` and `abcd intent reclassify`, which never read `suggested_kind`; drop `_choose_candidate_kind`, `plan_single` and `_PLAN_CANDIDATE_KINDS` (predecessor names absent from the tree) and say where a `decision` value would be refused."
 related_intents: [itd-44]
 finding_ref: cfk-441541c42aff8417
 ---

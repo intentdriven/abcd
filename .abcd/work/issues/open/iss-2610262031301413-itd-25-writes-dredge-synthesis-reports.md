@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 139 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-25-dredge-cross-corpus-synthesist.md:35"
-remedy: "none (filed automatically)"
+remedy: "In itd-25 replace `.abcd/logbook/dredge/<timestamp>/` (scope, boundary with itd-36 and acceptance criteria) with `.abcd/.work.local/logs/dredge/<ts>/`, the location 07-memory.md and 04-universal-patterns.md give dredge's per-run report."
 related_intents: [itd-25]
 finding_ref: cfk-3335d3ec7aaafa4c
 ---

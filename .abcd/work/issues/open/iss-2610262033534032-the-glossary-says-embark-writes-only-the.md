@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 446 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/record.md:66"
-remedy: "none (filed automatically)"
+remedy: "In record.md replace 'the four record families embark writes' (the senses row and the example) with the five embark writes: ADRs, issues, intents, specs and release retrospectives."
 finding_ref: cfk-1f1d1935dae770b2
 ---
 

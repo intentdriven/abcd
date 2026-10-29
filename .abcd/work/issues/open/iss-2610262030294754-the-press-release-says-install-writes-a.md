@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 7 of .abcd/work/reviews/2026-10-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:25"
-remedy: "none (filed automatically)"
+remedy: "Reword the ahoy sentence in the press release (line 25) to what a default install does: scaffolds .abcd/ configuration and rules, applies the visibility-driven gitignore, writes the marker block only where --docs-target agents_md names it, and verifies (never writes) the hook manifest."
 finding_ref: cfk-8dac513f145098ee
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 103 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/04-scope.md:40"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-scope.md line 40: closing the last open spec that names an intent is what ships it (`spec close`), and a `--remainder` close leaves it planned."
 finding_ref: cfk-39a0b99324326451
 refines: [iss-2609100508566552]
 ---

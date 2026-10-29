@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 125 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:27"
-remedy: "none (filed automatically)"
+remedy: "Reword 'a host-delegated LLM with opt-in oracle adapters' (line 27) to 'a host-delegated oracle with opt-in oracle adapters (adr-25)'; the same phrase stands in 05-internals/02-adapters.md:22 and 05-internals/04-universal-patterns.md:175 and wants the same edit."
 finding_ref: cfk-d4fb06f64b604c1c
 ---
 

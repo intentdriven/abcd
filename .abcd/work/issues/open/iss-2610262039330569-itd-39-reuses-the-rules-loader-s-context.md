@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 868 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-39-scope-aware-memory-retrieval.md:75"
-remedy: "none (filed automatically)"
+remedy: "In itd-39's decision of 2026-10-11 'Share the brackets' and the Context brackets bullet, say the bundle builds the context brackets once in the loader; itd-3's loader has none."
 related_intents: [itd-39]
 finding_ref: cfk-23fff70b6d6ce91c
 ---

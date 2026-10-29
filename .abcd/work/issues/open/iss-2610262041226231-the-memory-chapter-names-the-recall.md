@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 996 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/07-memory.md:197"
-remedy: "none (filed automatically)"
+remedy: "Edit 07-memory.md section 9 (Diagnostic paragraph): replace the `recall [keyword]` sub-verb of `abcd library` with `abcd rules --prompt` on the rules verb, shipped per itd-39's 2026-10-11 decision."
 related_intents: [itd-39]
 finding_ref: cfk-87ed88b5278103c3
 ---

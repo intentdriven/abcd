@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 358 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609170822093401-the-oracle-choice-is-one-repo-wide-value.md:101"
-remedy: "none (filed automatically)"
+remedy: "In the routing intent's scope bullet and press release say the install states the proposal in counts in one question and writes the full table, readable and editable row by row, on consent, as 01-ahoy.md and commands/ahoy.md describe."
 related_intents: [itd-2609170822093401]
 finding_ref: cfk-c14c99b8068308e9
 ---

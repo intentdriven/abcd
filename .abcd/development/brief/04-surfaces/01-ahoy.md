@@ -32,6 +32,10 @@ repo whose stamp says it is current.
 | `remote` | — | shipped |
 | `remote apply` | gate | shipped |
 | `uninstall` | — | shipped |
+| `worktree` | — | shipped |
+| `worktree add` | — | shipped |
+| `worktree list` | — | shipped |
+| `worktree prune` | — | shipped |
 
 
 Bare `/abcd:ahoy` shows read-only status and mutates nothing. Four read-only
@@ -1459,7 +1463,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd ahoy`
 
-Sub-verbs: `abcd ahoy connect`, `abcd ahoy credential`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
+Sub-verbs: `abcd ahoy connect`, `abcd ahoy credential`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`, `abcd ahoy worktree`.
 
 | Flag | Type |
 |---|---|
@@ -1519,6 +1523,7 @@ Sub-verbs: none.
 | `--dev` | bool |
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |
+| `--live-sessions` | string |
 | `--only-waiting` | bool |
 | `--oracle-backend` | string |
 | `--outbound` | bool |
@@ -1549,5 +1554,36 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--bin-dir` | string |
+
+### `abcd ahoy worktree`
+
+Sub-verbs: `abcd ahoy worktree add`, `abcd ahoy worktree list`, `abcd ahoy worktree prune`.
+
+Flags: none.
+
+### `abcd ahoy worktree add`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--branch` | string |
+
+### `abcd ahoy worktree list`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--all` | bool |
+
+### `abcd ahoy worktree prune`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--dry-run` | bool |
+| `--yes` | stringArray |
 
 <!-- surface-appendix:end -->

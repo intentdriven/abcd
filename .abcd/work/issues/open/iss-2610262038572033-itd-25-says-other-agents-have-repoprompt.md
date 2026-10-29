@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 830 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-25-dredge-cross-corpus-synthesist.md:43"
-remedy: "none (filed automatically)"
+remedy: "In itd-25 replace 'oracle backend chain (same as other agents)' with the shipped routing: an agent is host-delegated by default and routes per role through `roles.<role>.runner` or a provider connection (02-adapters.md, itd-2609201916056194, itd-2609170822093401); there is no Codex CLI adapter, and RepoPrompt routes only a build lane's two reviews."
 related_intents: [itd-25]
 finding_ref: cfk-2580fbf91e3bc973
 ---

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 347 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/disposition.md:25"
-remedy: "none (filed automatically)"
+remedy: "Add a Senses note to ledger/disposition.md (or a distribution-context entry) naming the release-receipt sense (fixed, invalid, deferred: itd-2610141956319695) and the drain summary's per-issue outcome as separate senses kept apart by context; the receipt word stays."
 finding_ref: cfk-2031e21b3947f005
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 792 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/README.md:393"
-remedy: "none (filed automatically)"
+remedy: "Replace the register's paragraph on grill's design target with a sentence saying itd-27 was superseded by itd-94 and the grilling is the planning interview (abcd intent interview), as 01-build-sequence.md says."
 finding_ref: cfk-79d9ffc3e6c4601e
 ---
 

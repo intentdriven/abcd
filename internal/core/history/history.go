@@ -169,6 +169,85 @@ func (e *RedactionResidualError) Error() string {
 		len(e.Residual), strings.Join(kinds, ", "))
 }
 
+// Redacted is one text through the store's redaction pass.
+type Redacted struct {
+	// Text is the redacted text, the only form a caller may keep.
+	Text string
+	// Findings are what stage one found, their Matched fields masked.
+	Findings []scanner.Finding
+	// ScanGap names coverage the repository asked for and did not get, as
+	// CaptureResult.ScanGap does; empty when there is none.
+	ScanGap string
+}
+
+// Redact is the store's two-stage, fail-closed redaction pass over text, the
+// one Capture runs on a transcript and the worktree store's notes archive
+// runs on every file and manifest field it keeps, so there is one redaction
+// path, not two: refuse a degraded scanner; scan with repoRoot's merged
+// scanner and its armed gitleaks augmenter; redact; sweep the caller's home
+// and refuse a survivor; then re-scan and refuse any blocking residual. A
+// refusal on a residual is a *RedactionResidualError. label names the text in
+// the scanner's findings.
+func Redact(repoRoot, text, label string) (Redacted, error) {
+	// Stage one — sanitise on write, using the per-repo merged scanner.
+	sc, err := scanner.New(repoRoot)
+	if err != nil {
+		return Redacted{}, fmt.Errorf("history: scanner init: %w", err)
+	}
+	// Fail closed on a degraded scanner. ScanText/Redact cannot signal the
+	// unavailable state in-band (only ScanBundle does), so without this guard a
+	// broken per-repo pii.json would silently redact with a weakened pattern set
+	// and still report the write as clean — the exact fail-open this store forbids.
+	if unavail, reason := sc.Unavailable(); unavail {
+		return Redacted{}, fmt.Errorf("history: refusing to redact with a degraded scanner: %s", reason)
+	}
+	// The scanner carries the repository's opt-in gitleaks augmenter (wired at
+	// the composition root), so findings are the native ones plus gitleaks',
+	// deduplicated. A run that failed degrades the scanner, and the pass
+	// refuses exactly as on a degraded pii.json; a binary the repository armed
+	// and nobody installed is a gap, which the caller records and does not
+	// refuse on.
+	findings := sc.ScanText(text, label)
+	if unavail, reason := sc.Unavailable(); unavail {
+		return Redacted{}, fmt.Errorf("history: refusing to redact with a degraded scanner: %s", reason)
+	}
+	scanGap := ""
+	if gap := sc.AugmenterGap(); gap != "" {
+		scanGap = tools.Missing(errors.New(gap), "gitleaks", tools.TranscriptScanArmed).Error()
+	}
+
+	redacted, _ := scanner.Redact(text, findings)
+
+	// Stage one-and-a-half — deterministic literal home-path backstop, wholly
+	// INDEPENDENT of the scanner heuristic (defence in depth on this trust
+	// boundary). The scanner's stage-two re-scan below uses the same detector
+	// that produced `findings`, so a span that detector's trailing-boundary
+	// heuristic dropped would slip through both stages. This literal sweep
+	// collapses every remaining occurrence of the resolved $HOME to "~", then
+	// fails closed if any absolute path still reveals the caller's own home.
+	if home := scanner.CallerHome(); home != "" {
+		redacted = scanner.SweepCallerHome(redacted, home)
+		var resid []scanner.Finding
+		redacted, resid = scanner.SurvivingCallerHome(redacted, home)
+		if len(resid) > 0 {
+			return Redacted{}, &RedactionResidualError{Residual: resid}
+		}
+	}
+
+	// Stage two — verify. Re-scan the redacted text; a surviving finding that
+	// carries a leak blocks the write (fail-closed). The native re-scan cannot
+	// see an augmented span — a different detector found it — so every
+	// augmented finding is verified by its bytes instead, and a survivor blocks
+	// the write the same way: verification is symmetric with detection
+	// (GHSA-j7v5-q7x6-v3rp).
+	residual := scanner.BlockingResidual(sc.ScanTextNative(redacted, label))
+	residual = append(residual, scanner.UnsealedAugmented(redacted, findings)...)
+	if len(residual) > 0 {
+		return Redacted{}, &RedactionResidualError{Residual: residual}
+	}
+	return Redacted{Text: redacted, Findings: findings, ScanGap: scanGap}, nil
+}
+
 // Capture reads a raw session transcript, redacts it through the scanner
 // (two-stage, fail-closed), and writes a record into this repo's lane of the
 // store — ~/.abcd.noindex/transcripts/<rootSHA>/records/ by default.
@@ -245,18 +324,6 @@ func captureLocked(repoRoot, rootSHA, tdir string, raw []byte, meta CaptureMeta,
 		}
 	}
 
-	// Stage one — sanitise on write, using the per-repo merged scanner.
-	sc, err := scanner.New(repoRoot)
-	if err != nil {
-		return CaptureResult{}, fmt.Errorf("history: scanner init: %w", err)
-	}
-	// Fail closed on a degraded scanner. ScanText/Redact cannot signal the
-	// unavailable state in-band (only ScanBundle does), so without this guard a
-	// broken per-repo pii.json would silently redact with a weakened pattern set
-	// and still report the write as clean — the exact fail-open this store forbids.
-	if unavail, reason := sc.Unavailable(); unavail {
-		return CaptureResult{}, fmt.Errorf("history: refusing to capture with a degraded scanner: %s", reason)
-	}
 	// The lineage scalars are scanned WITH the body. Every one of them is
 	// externally supplied and every one of them lands in frontmatter, which has
 	// never been scanned — so writing them straight through would open a
@@ -269,50 +336,17 @@ func captureLocked(repoRoot, rootSHA, tdir string, raw []byte, meta CaptureMeta,
 	if err != nil {
 		return CaptureResult{}, err
 	}
-	// The scanner carries the repository's opt-in gitleaks augmenter (wired at
-	// the composition root), so findings are the native ones plus gitleaks',
-	// deduplicated. A run that failed degrades the scanner, and the capture
-	// refuses exactly as on a degraded pii.json; a binary the repository armed
-	// and nobody installed is a gap, which the capture records and does not
-	// refuse on.
-	findings := sc.ScanText(text, "transcript")
-	if unavail, reason := sc.Unavailable(); unavail {
-		return CaptureResult{}, fmt.Errorf("history: refusing to capture with a degraded scanner: %s", reason)
+	// The two-stage pass is Redact's, the one the worktree store's notes
+	// archive runs too.
+	red, err := Redact(repoRoot, text, "transcript")
+	var resid *RedactionResidualError
+	if errors.As(err, &resid) {
+		return CaptureResult{Residual: resid.Residual}, err
 	}
-	scanGap := ""
-	if gap := sc.AugmenterGap(); gap != "" {
-		scanGap = tools.Missing(errors.New(gap), "gitleaks", tools.TranscriptScanArmed).Error()
+	if err != nil {
+		return CaptureResult{}, err
 	}
-
-	redacted, _ := scanner.Redact(text, findings)
-
-	// Stage one-and-a-half — deterministic literal home-path backstop, wholly
-	// INDEPENDENT of the scanner heuristic (defence in depth on this trust
-	// boundary). The scanner's stage-two re-scan below uses the same detector
-	// that produced `findings`, so a span that detector's trailing-boundary
-	// heuristic dropped would slip through both stages. This literal sweep
-	// collapses every remaining occurrence of the resolved $HOME to "~", then
-	// fails closed if any absolute path still reveals the caller's own home.
-	if home := scanner.CallerHome(); home != "" {
-		redacted = scanner.SweepCallerHome(redacted, home)
-		var resid []scanner.Finding
-		redacted, resid = scanner.SurvivingCallerHome(redacted, home)
-		if len(resid) > 0 {
-			return CaptureResult{Residual: resid}, &RedactionResidualError{Residual: resid}
-		}
-	}
-
-	// Stage two — verify. Re-scan the redacted text; a surviving finding that
-	// carries a leak blocks the write (fail-closed). The native re-scan cannot
-	// see an augmented span — a different detector found it — so every
-	// augmented finding is verified by its bytes instead, and a survivor blocks
-	// the write the same way: verification is symmetric with detection
-	// (GHSA-j7v5-q7x6-v3rp).
-	residual := scanner.BlockingResidual(sc.ScanTextNative(redacted, "transcript"))
-	residual = append(residual, scanner.UnsealedAugmented(redacted, findings)...)
-	if len(residual) > 0 {
-		return CaptureResult{Residual: residual}, &RedactionResidualError{Residual: residual}
-	}
+	findings, redacted, scanGap := red.Findings, red.Text, red.ScanGap
 
 	// Split the redacted scalars back off the redacted body. A frame that did not
 	// survive intact is refused rather than guessed at: what would land otherwise

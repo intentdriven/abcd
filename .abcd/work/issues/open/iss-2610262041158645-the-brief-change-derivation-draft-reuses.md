@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 988 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/02-verification-matrix.md:78"
-remedy: "none (filed automatically)"
+remedy: "Point itd-61's reuse at the planning interview machinery (abcd intent interview) or drop the reuse clause; no grill ships."
 related_intents: [itd-61]
 finding_ref: cfk-8f7f62201922c906
 ---

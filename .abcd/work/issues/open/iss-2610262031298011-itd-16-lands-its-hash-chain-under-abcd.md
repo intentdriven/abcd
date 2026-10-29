@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 137 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-16-hash-chain-merkle-audit.md:23"
-remedy: "none (filed automatically)"
+remedy: "In itd-16 replace every `.abcd/logbook/audit/chain-<ts>/` (press release, scope, acceptance criteria) with `.abcd/.work.local/logs/audit/chain-<ts>/`, the location 05-intent.md already gives `/abcd:audit chain`, and settle at planning where the chain segments a lifeboat carries live, since that tier is gitignored."
 related_intents: [itd-16]
 finding_ref: cfk-84c919f8a578d022
 ---

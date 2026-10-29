@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 170 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/02-dependencies.md:41"
-remedy: "none (filed automatically)"
+remedy: "In itd-44, reword or drop the out-of-scope bullet that names Python 3.12, flow-next, the lint orchestrator and the Codex backend as existing plumbing, and the Python-internal names in its scope (`_choose_candidate_kind`, `_PLAN_CANDIDATE_KINDS`); they are predecessor-era (adr-21, adr-26). Make it in the same edit as iss-2610262031430108."
 related_intents: [itd-44]
 finding_ref: cfk-b9885c4edb54d4a1
 ---

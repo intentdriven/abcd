@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 623 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-16-hash-chain-merkle-audit.md:65"
-remedy: "none (filed automatically)"
+remedy: "In itd-16 drop 'schema audit' and 'prompt-quality audit' as applications that register under `/abcd:audit` (out-of-scope bullet and the header comment): under adr-40 a check of form is a lint and an `abcd lint` target; keep the umbrella open only to audits in adr-40's sense, a reality-against-commitment comparison such as the lifeboat integrity check."
 related_intents: [itd-16]
 finding_ref: cfk-376c55f7b4e7c2ca
 ---

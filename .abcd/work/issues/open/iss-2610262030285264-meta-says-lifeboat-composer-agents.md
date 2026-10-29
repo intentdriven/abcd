@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 4 of .abcd/work/reviews/2026-10-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/00-meta.md:41"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the /abcd:disembark bullet in 00-meta.md (line 41): pack uses the skeleton's shape as the layout of the lifeboat's brief/ tree, each section grounded deterministically per internal/core/lifeboat/mapping.go; drop 'lifeboat-composer agents must produce'."
 finding_ref: cfk-918b2100ea9b1784
 ---
 

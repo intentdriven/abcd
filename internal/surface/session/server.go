@@ -1,0 +1,1029 @@
+// Package session is the brief session relay's front door
+// (itd-2610091016262335, spc-2610141709430146 step 1): the HTTP handler
+// `abcd session serve` listens with. It serves these routes and nothing else:
+//
+//   - /session, the WebSocket every participant's page holds, handed frame by
+//     frame to the transport-agnostic relay in internal/core/session;
+//   - /auth/callback, the web sign-in's callback the team's GitHub App
+//     registers: GitHub returns the person here, and the relay sends them on
+//     to the session page, naming itself (callback.go);
+//   - /auth/token, the sign-in exchange: the page posts GitHub's code and its
+//     PKCE verifier, and the relay adds the sign-in app's secret and asks
+//     GitHub for the token (the token-mediating backend of the IETF's
+//     browser-based-apps guidance), for a code given for its own callback
+//     alone;
+//   - /auth/device, /auth/device/token and /auth/device/cancel, the device
+//     sign-in of a local session (device.go);
+//   - /config, the sign-in app's public client id: always a GitHub App's;
+//   - /healthz, for the host's health check.
+//
+// It is abcd's second listener, admitted by adr-2610032150581128's amendment
+// of 2026-10-14: started on purpose, on loopback unless an address is chosen,
+// and reached on a person's machine through Tailscale Serve only. It writes
+// nothing to disk and logs nothing: no token, no secret, no brief text.
+package session
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/netip"
+	"net/url"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/coder/websocket"
+	core "github.com/intentdriven/abcd/internal/core/session"
+	"github.com/intentdriven/abcd/internal/core/site"
+	"github.com/intentdriven/abcd/internal/surface/session/web"
+)
+
+// DefaultOrigin is the page's own origin. With loopback pages, for a page run
+// locally, it is the default allowlist, which Config.Origins replaces.
+const DefaultOrigin = "https://abcdesign.app"
+
+// AppTypeGitHubApp is the one kind of GitHub sign-in app the relay takes. A
+// GitHub App's user access token holds only the permissions both the app and
+// the person have, on the repositories the app is installed on, and its
+// authorization takes no scope: "GitHub Apps do not request scopes during
+// authorization to decide which resources the resulting token can access"
+// (https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app).
+// An OAuth app's repo scope reaches every repository the person can, so a
+// relay named by a stranger's repository could collect a token for all of
+// them; GitHub recommends Apps over OAuth apps for the same reason
+// (https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps).
+const AppTypeGitHubApp = "github-app"
+
+// The GitHub endpoints the relay talks to unless a test names others.
+const (
+	DefaultGitHubAPI = "https://api.github.com"
+	DefaultGitHubWeb = "https://github.com"
+)
+
+// The server's own bounds.
+const (
+	maxAuthBody   = 8 << 10
+	githubTimeout = 15 * time.Second
+	writeTimeout  = 10 * time.Second
+	// sendQueue is how many items one connection in a session may have
+	// waiting, a log replay counting as one; a connection that falls further
+	// behind is dropped. preRoomQueue is the bound before it enters a
+	// session, when nothing but answers to its own messages is sent to it.
+	sendQueue    = 1024
+	preRoomQueue = 64
+	// SweepInterval is how often the relay looks for idle sessions.
+	SweepInterval = time.Minute
+	// pingEvery and pingWait keep a WebSocket honest: a connection that does
+	// not answer a ping in time is dropped, so a vanished device does not
+	// hold a participant's place.
+	pingEvery = 30 * time.Second
+	pingWait  = 20 * time.Second
+	// httpWait bounds the reading and writing of a plain request; the
+	// WebSocket is bounded by its pings instead, since a deadline on the
+	// server would outlive the upgrade.
+	httpWait = 30 * time.Second
+	// DefaultCloseGrace is how long a connection the relay closed may take
+	// to end before its socket is torn down: its close may wait behind
+	// frames a page is slow to read, and the connection is counted until it
+	// ends.
+	DefaultCloseGrace = 5 * time.Second
+	// DefaultReplayWithin bounds one log replay: 8 MiB, the most a log
+	// holds, in a minute is about 1.1 Mbit/s.
+	DefaultReplayWithin = 60 * time.Second
+)
+
+// Config is what the front door needs.
+type Config struct {
+	// Origins, each an exact scheme://host[:port], replace the default
+	// allowlist (DefaultOrigin and any loopback page) when given: a relay
+	// serving a page from its own origin admits nothing else. An entry may
+	// go on to name the page's base path, as `abcd session page --base-path`
+	// writes it (https://host/abcdesign/): the web sign-in's callback then
+	// forwards only to a session page under exactly that path on that origin.
+	// An entry without one, and every default, is the page at the root.
+	Origins []string
+	// BehindProxy trusts the last X-Forwarded-For entry as the client's
+	// address, which is right only behind a proxy that sets it.
+	BehindProxy bool
+	// LoopbackOnly says the listener is bound to loopback alone: the host's
+	// own machine, reached through Tailscale Serve. Then, and only for a
+	// loopback peer, the tailnet address Serve forwards is the client's.
+	LoopbackOnly bool
+	// Repos (owner/name) and Owners are the repositories the relay serves
+	// sessions for (core.Options). A relay that is not LoopbackOnly must be
+	// given at least one: otherwise anyone signed in to GitHub could hold
+	// its sessions with a repository of their own.
+	Repos  []string
+	Owners []string
+	// ClientID is the team's GitHub sign-in app's public id.
+	ClientID string
+	// ClientSecret is that app's secret, read from the environment by the
+	// caller. It never leaves the relay but in the exchange with GitHub. The
+	// app is a GitHub App: the relay takes no other kind.
+	ClientSecret string
+	// GitHubAPI and GitHubWeb default to GitHub's own.
+	GitHubAPI string
+	GitHubWeb string
+	// HTTPClient talks to GitHub; nil is a client with a timeout.
+	HTTPClient *http.Client
+	Limits     core.Limits
+	Now        func() time.Time
+	Rand       io.Reader
+	// CloseGrace is how long a connection the relay closed may take to end:
+	// past it the socket is torn down, whatever it was still writing. Zero
+	// is DefaultCloseGrace.
+	CloseGrace time.Duration
+	// ReplayWithin bounds one log replay: a connection that has not taken
+	// the whole log within it is ended. Zero is DefaultReplayWithin.
+	ReplayWithin time.Duration
+	// ServePage serves the session page from the relay itself: a local
+	// session (`abcd session start`), where nothing goes to abcdesign.app.
+	ServePage bool
+	// Hosts, when given, are the only Host headers the relay answers, each a
+	// host or host:port; any other is refused with 421 before anything is
+	// read. A local session names its tailnet name and its loopback address.
+	Hosts []string
+}
+
+// maxDeviceLogins bounds the device sign-ins one relay holds at once, and
+// maxDeviceLoginsPerAddr those one client address holds (counted as the
+// exchange limit counts it): fewer than the exchange limit lets an address
+// start, so a few addresses cannot take every place.
+const (
+	maxDeviceLogins        = 64
+	maxDeviceLoginsPerAddr = 4
+)
+
+// Server is the relay's HTTP handler.
+type Server struct {
+	cfg     Config
+	origins map[string]bool // the given origins; nil admits the default list
+	// bases are the base paths each given origin's session page is served
+	// under, each as site.NormaliseBasePath returns it ("/" is the root).
+	bases  map[string][]string
+	relay  *core.Relay
+	client *http.Client
+	// hosts are the Host headers answered; nil answers any.
+	hosts map[string]bool
+	// page is the session page as the relay serves it, when ServePage.
+	page map[string][]byte
+	// peers is every live connection's queue, for queuedBytes; devices is
+	// every device sign-in under way, by handle. mu guards both.
+	mu      sync.Mutex
+	peers   map[*peer]struct{}
+	devices map[string]*deviceLogin
+}
+
+// ErrNoRepositories is New's refusal of a relay beyond loopback that names
+// no repository to serve.
+var ErrNoRepositories = errors.New("a relay listening beyond this computer serves only the repositories it is given; name at least one")
+
+// New builds the handler, refusing an origin that is not an exact
+// scheme://host[:port] over http or https, a repository that is not
+// owner/name, an owner that is not a GitHub name, and a relay beyond
+// loopback with neither.
+func New(cfg Config) (*Server, error) {
+	for _, r := range cfg.Repos {
+		if !core.ValidRepo(r) {
+			return nil, fmt.Errorf("%q is not a repository: give owner/name", r)
+		}
+	}
+	for _, o := range cfg.Owners {
+		if !core.ValidOwner(o) {
+			return nil, fmt.Errorf("%q is not a GitHub owner", o)
+		}
+	}
+	if !cfg.LoopbackOnly && len(cfg.Repos) == 0 && len(cfg.Owners) == 0 {
+		return nil, ErrNoRepositories
+	}
+	var origins map[string]bool
+	var bases map[string][]string
+	for _, o := range cfg.Origins {
+		if origins == nil {
+			origins, bases = map[string]bool{}, map[string][]string{}
+		}
+		n, base, ok := normalizePageEntry(o)
+		if !ok {
+			return nil, fmt.Errorf("%q is not an origin: give scheme://host[:port], over http or https, with no wildcard, then the page's base path if it has one, as plain path segments", o)
+		}
+		origins[n] = true
+		if !slices.Contains(bases[n], base) {
+			bases[n] = append(bases[n], base)
+		}
+	}
+	if cfg.GitHubAPI == "" {
+		cfg.GitHubAPI = DefaultGitHubAPI
+	}
+	if cfg.GitHubWeb == "" {
+		cfg.GitHubWeb = DefaultGitHubWeb
+	}
+	client := cfg.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: githubTimeout}
+	}
+	// A redirect would carry the request somewhere GitHub did not answer
+	// from; the relay follows none.
+	c := *client
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	if c.Timeout == 0 {
+		c.Timeout = githubTimeout
+	}
+	if cfg.CloseGrace <= 0 {
+		cfg.CloseGrace = DefaultCloseGrace
+	}
+	if cfg.ReplayWithin <= 0 {
+		cfg.ReplayWithin = DefaultReplayWithin
+	}
+	var hosts map[string]bool
+	for _, h := range cfg.Hosts {
+		if hosts == nil {
+			hosts = map[string]bool{}
+		}
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h == "" || strings.ContainsAny(h, "/*?#@ ") {
+			return nil, fmt.Errorf("%q is not a host name", h)
+		}
+		hosts[h] = true
+	}
+	s := &Server{cfg: cfg, origins: origins, bases: bases, hosts: hosts, client: &c, peers: map[*peer]struct{}{}, devices: map[string]*deviceLogin{}}
+	if cfg.ServePage {
+		s.page = web.RelayFiles()
+	}
+	s.relay = core.New(core.Options{
+		Limits:   cfg.Limits,
+		Verifier: GitHub{API: cfg.GitHubAPI, Client: &c},
+		Now:      cfg.Now,
+		Rand:     cfg.Rand,
+		Repos:    cfg.Repos,
+		Owners:   cfg.Owners,
+	})
+	return s, nil
+}
+
+// Relay is the relay the handler feeds.
+func (s *Server) Relay() *core.Relay { return s.relay }
+
+// Sweep purges idle sessions every interval until ctx ends.
+func (s *Server) Sweep(ctx context.Context, interval time.Duration) {
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			s.relay.Sweep()
+		}
+	}
+}
+
+// ServeHTTP is the fixed route table.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h := w.Header()
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Cache-Control", "no-store")
+	h.Set("Referrer-Policy", "no-referrer")
+	if r.URL.Path != "/session" {
+		rc := http.NewResponseController(w)
+		_ = rc.SetReadDeadline(time.Now().Add(httpWait))
+		_ = rc.SetWriteDeadline(time.Now().Add(httpWait))
+	}
+	// A relay that names its hosts answers no other, before anything is
+	// read: a page on another name that resolves to this computer (DNS
+	// rebinding) gets nothing.
+	if !s.hostAllowed(r.Host) {
+		http.Error(w, "misdirected request", http.StatusMisdirectedRequest)
+		return
+	}
+	switch r.URL.Path {
+	case "/session":
+		s.serveSession(w, r)
+	case "/auth/token":
+		s.serveToken(w, r)
+	case CallbackPath:
+		s.serveCallback(w, r)
+	case "/auth/device":
+		s.serveDeviceStart(w, r)
+	case "/auth/device/token":
+		s.serveDevicePoll(w, r)
+	case "/auth/device/cancel":
+		s.serveDeviceCancel(w, r)
+	case "/config":
+		s.serveConfig(w, r)
+	case "/healthz":
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		h.Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = io.WriteString(w, "ok\n")
+	default:
+		if !s.servePage(w, r) {
+			http.NotFound(w, r)
+		}
+	}
+}
+
+// normalizeOrigin reads s as an exact origin: http or https, a host, an
+// optional port, and nothing else. The scheme's default port (443 for https,
+// 80 for http) is dropped, as a browser's origin drops it
+// (https://url.spec.whatwg.org/#origin), so an entry naming it admits the
+// Origin a browser sends.
+func normalizeOrigin(s string) (string, bool) {
+	u, err := url.Parse(s)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+		u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" ||
+		u.Hostname() == "" || strings.ContainsAny(u.Hostname(), "*?[]") {
+		return "", false
+	}
+	host := strings.ToLower(u.Host)
+	if def := map[string]string{"https": ":443", "http": ":80"}[u.Scheme]; strings.HasSuffix(host, def) {
+		host = strings.TrimSuffix(host, def)
+	}
+	return u.Scheme + "://" + host, true
+}
+
+// normalizePageEntry reads one origin entry: an exact origin, as
+// normalizeOrigin reads it, then optionally the page's base path, plain path
+// segments by the site builder's own rule (site.NormaliseBasePath, which
+// `abcd session page --base-path` applies too), with or without its trailing
+// slash. It returns the origin and the base path, "/" for none.
+func normalizePageEntry(s string) (string, string, bool) {
+	u, err := url.Parse(s)
+	if err != nil || u.RawPath != "" || u.Opaque != "" {
+		return "", "", false
+	}
+	base, err := site.NormaliseBasePath(u.Path)
+	if err != nil {
+		return "", "", false
+	}
+	u.Path = ""
+	n, ok := normalizeOrigin(u.String())
+	if !ok {
+		return "", "", false
+	}
+	return n, base, true
+}
+
+// pageBases are the base paths a session page on origin (as normalizeOrigin
+// returns it) is served under: the ones its entry names, or, with no origins
+// given, the root of every origin the default list admits.
+func (s *Server) pageBases(origin string) []string {
+	if s.origins != nil {
+		return s.bases[origin]
+	}
+	if s.originAllowed(origin) {
+		return []string{"/"}
+	}
+	return nil
+}
+
+// originAllowed judges a request's Origin: one of the given origins exactly,
+// or, when none was given, DefaultOrigin or a loopback page. A request with
+// no Origin is refused: every browser sends one on a WebSocket and on a
+// cross-origin POST.
+func (s *Server) originAllowed(origin string) bool {
+	n, ok := normalizeOrigin(origin)
+	if !ok {
+		return false
+	}
+	if s.origins != nil {
+		return s.origins[n]
+	}
+	if n == DefaultOrigin {
+		return true
+	}
+	u, _ := url.Parse(n)
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
+}
+
+// clientAddress is the address the failed-join limit counts.
+//
+//   - Behind a declared proxy (--behind-proxy, the team relay), it is the
+//     rightmost X-Forwarded-For entry, across every line of the header: the
+//     one that proxy appended, one trusted hop. Anything before it the client
+//     could have written. Render's proxy appends rather than replaces, "so a
+//     caller who sends their own copy of the header controls the leftmost
+//     entry" (https://render.com/articles/host-pocketbase-on-render), and
+//     Render's advice is to trust one hop, Express's 'trust proxy' 1, which
+//     reads the rightmost entry
+//     (https://render.com/articles/how-render-handles-ddos-attacks). An entry
+//     that is not a bare IP address reads as missing.
+//   - On the host's own machine the relay is bound to loopback alone and
+//     Tailscale Serve proxies to it, so every tailnet visitor's socket address
+//     is loopback and one visitor's wrong codes would shut out everyone. There,
+//     and only when the socket's peer is itself loopback, it is the address
+//     Serve forwards (tailnetForwarded).
+//   - Otherwise, and whenever the header is missing or malformed, it is the
+//     socket's peer.
+func clientAddress(r *http.Request, behindProxy, loopbackOnly bool) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	if behindProxy {
+		if fwd := r.Header.Values("X-Forwarded-For"); len(fwd) > 0 {
+			parts := strings.Split(fwd[len(fwd)-1], ",")
+			if a, err := netip.ParseAddr(strings.TrimSpace(parts[len(parts)-1])); err == nil {
+				return a.Unmap().WithZone("").String()
+			}
+		}
+		return host
+	}
+	if loopbackOnly {
+		if peer, err := netip.ParseAddr(host); err == nil && peer.Unmap().IsLoopback() {
+			if fwd, ok := tailnetForwarded(r); ok {
+				return fwd
+			}
+		}
+	}
+	return host
+}
+
+// tailnetForwarded reads the visitor's address as Tailscale Serve forwards
+// it. Serve's reverse proxy sets X-Forwarded-For to the tailnet address of the
+// device that connected, replacing whatever the device sent, alongside
+// X-Forwarded-Host, X-Forwarded-Proto (https) and, for a device that is not
+// tagged, the Tailscale-User-Login, Tailscale-User-Name and
+// Tailscale-User-Profile-Pic identity headers, which it strips from the
+// incoming request first:
+// https://tailscale.com/kb/1312/serve (the identity headers) and
+// https://github.com/tailscale/tailscale/blob/main/ipn/ipnlocal/serve.go
+// (addProxyForwardedHeaders, which sets X-Forwarded-For). So the header is
+// accepted only in the shape Serve writes it: one line holding one address
+// in Tailscale's ranges. Anything else is not Serve's, and reads as missing.
+func tailnetForwarded(r *http.Request) (string, bool) {
+	fwd := r.Header.Values("X-Forwarded-For")
+	if len(fwd) != 1 {
+		return "", false
+	}
+	a, err := netip.ParseAddr(strings.TrimSpace(fwd[0]))
+	if err != nil || a.Zone() != "" || !core.IsTailnetAddr(a) {
+		return "", false
+	}
+	return a.Unmap().String(), true
+}
+
+// serveSession upgrades to the session's WebSocket and runs one connection.
+// Past the relay's connection caps the upgrade is refused with 503, before
+// anything is allocated for it and without touching another connection.
+func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
+	if !s.originAllowed(r.Header.Get("Origin")) {
+		http.Error(w, "origin not allowed", http.StatusForbidden)
+		return
+	}
+	// The request's context ends when the server shuts down (Run's
+	// BaseContext), which ends every session connection with it.
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	p := newPeer(cancel, preRoomQueue, s.relay.Limits().MaxQueuedBytes)
+	p.grace, p.replayWithin = s.cfg.CloseGrace, s.cfg.ReplayWithin
+	conn, err := s.relay.Connect(p, clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly))
+	if err != nil {
+		http.Error(w, "the relay is busy; try again later", http.StatusServiceUnavailable)
+		return
+	}
+	s.mu.Lock()
+	s.peers[p] = struct{}{}
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.peers, p)
+		s.mu.Unlock()
+	}()
+	// The origin was judged above against the relay's own allowlist, which
+	// the library's same-host rule would widen.
+	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{InsecureSkipVerify: true})
+	if err != nil {
+		conn.Leave()
+		return
+	}
+	ws.SetReadLimit(int64(s.relay.Limits().MaxMessageBytes))
+	p.mu.Lock()
+	p.ws = ws
+	p.mu.Unlock()
+	expire := time.AfterFunc(s.relay.Limits().AdmitWithin, conn.Expire)
+	defer expire.Stop()
+	done := make(chan struct{})
+	go func() { p.writeLoop(ctx); close(done) }()
+	go p.pingLoop(ctx)
+	for {
+		typ, data, err := ws.Read(ctx)
+		if err != nil {
+			break
+		}
+		conn.Receive(ctx, core.Frame{Binary: typ == websocket.MessageBinary, Data: data})
+	}
+	cancel()
+	<-done
+	_ = ws.CloseNow()
+	p.stopGrace()
+	// The socket is gone: only now does the connection give its place in
+	// the relay's caps back. A connection the relay closed earlier stayed
+	// counted while it finished writing.
+	conn.Leave()
+}
+
+// outFrame is one queued item: a frame, a session's log replay, or the close
+// that ends the queue. size is what it is charged against the byte cap.
+type outFrame struct {
+	frame  core.Frame
+	log    [][]byte
+	close  bool
+	status websocket.StatusCode
+	reason string
+	size   int
+}
+
+// peer is the relay's handle on one WebSocket: a queue its writer drains in
+// order, so a close the relay asks for follows every item queued before it;
+// but a close asked for during a log replay stops the replay at the next
+// entry and is written at once, dropping what was queued after the replay,
+// and whatever is still waiting, the socket ends within its close grace.
+// The queue holds at most limit items and maxBytes bytes of frames; a log
+// replay is one item however long the log, written frame by frame as the
+// connection takes them, and is charged no bytes: its entries are the
+// session's own, held whether or not they wait here.
+type peer struct {
+	ws       *websocket.Conn
+	cancel   context.CancelFunc
+	wake     chan struct{} // holds one token while items wait
+	mu       sync.Mutex
+	queue    []outFrame
+	limit    int
+	bytes    int // the frames' bytes waiting
+	maxBytes int
+	closed   bool
+	// closing is the close the relay asked for, once it has.
+	closing outFrame
+	// grace is how long a closed connection may take to end, and
+	// graceTimer tears it down when that has passed.
+	grace      time.Duration
+	graceTimer *time.Timer
+	// replayWithin bounds one log replay.
+	replayWithin time.Duration
+}
+
+func newPeer(cancel context.CancelFunc, limit, maxBytes int) *peer {
+	return &peer{cancel: cancel, wake: make(chan struct{}, 1), limit: limit, maxBytes: maxBytes,
+		grace: DefaultCloseGrace, replayWithin: DefaultReplayWithin}
+}
+
+// queuedBytes is what the peer's queue holds now, in bytes.
+func (p *peer) queuedBytes() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.bytes
+}
+
+// queuedBytes is what every live connection's queue holds together.
+func (s *Server) queuedBytes() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for p := range s.peers {
+		n += p.queuedBytes()
+	}
+	return n
+}
+
+// push queues one item under the lock, or reports that the queue is full:
+// past its items or its bytes. A full queue is dropped at once and the
+// connection ended, so a peer that stopped reading holds nothing more while
+// the relay lets it go.
+func (p *peer) push(f outFrame) bool {
+	if len(p.queue) >= p.limit || p.bytes+f.size > p.maxBytes {
+		for i := range p.queue {
+			p.queue[i] = outFrame{}
+		}
+		p.queue, p.bytes = nil, 0
+		p.cancel()
+		return false
+	}
+	p.bytes += f.size
+	p.queue = append(p.queue, f)
+	select {
+	case p.wake <- struct{}{}:
+	default:
+	}
+	return true
+}
+
+func (p *peer) Send(f core.Frame) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return true
+	}
+	return p.push(outFrame{frame: f, size: len(f.Data)})
+}
+
+func (p *peer) SendLog(entries [][]byte) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return true
+	}
+	return p.push(outFrame{log: entries})
+}
+
+// Entered lets a connection that is in a session have the full queue.
+func (p *peer) Entered() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.limit = sendQueue
+}
+
+func (p *peer) Close(policy bool, reason string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return
+	}
+	p.closed = true
+	status := websocket.StatusNormalClosure
+	if policy {
+		status = websocket.StatusPolicyViolation
+	}
+	p.closing = outFrame{close: true, status: status, reason: reason}
+	p.push(p.closing)
+	// Whatever it is still writing, the connection ends within its grace.
+	p.graceTimer = time.AfterFunc(p.grace, p.abort)
+}
+
+// abort tears the connection down at once: the context its reads and writes
+// run under ends, and so does the socket.
+func (p *peer) abort() {
+	p.cancel()
+	p.mu.Lock()
+	ws := p.ws
+	p.mu.Unlock()
+	if ws != nil {
+		_ = ws.CloseNow()
+	}
+}
+
+// stopGrace stops the close grace's timer once the connection has ended.
+func (p *peer) stopGrace() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.graceTimer != nil {
+		p.graceTimer.Stop()
+	}
+}
+
+// closeAsked returns the close the relay asked for, if it has.
+func (p *peer) closeAsked() (outFrame, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.closing, p.closed
+}
+
+// next takes the oldest queued item, waiting for one until ctx ends.
+func (p *peer) next(ctx context.Context) (outFrame, bool) {
+	for {
+		p.mu.Lock()
+		if len(p.queue) > 0 {
+			f := p.queue[0]
+			p.queue[0] = outFrame{}
+			p.queue = p.queue[1:]
+			p.bytes -= f.size
+			p.mu.Unlock()
+			return f, true
+		}
+		p.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return outFrame{}, false
+		case <-p.wake:
+		}
+	}
+}
+
+// pingLoop pings the connection until ctx ends, and ends the connection when
+// a ping goes unanswered.
+func (p *peer) pingLoop(ctx context.Context) {
+	t := time.NewTicker(pingEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			pctx, cancel := context.WithTimeout(ctx, pingWait)
+			err := p.ws.Ping(pctx)
+			cancel()
+			if err != nil {
+				p.cancel()
+				return
+			}
+		}
+	}
+}
+
+func (p *peer) writeLoop(ctx context.Context) {
+	for {
+		f, ok := p.next(ctx)
+		if !ok {
+			return
+		}
+		if f.close {
+			_ = p.ws.Close(f.status, f.reason)
+			p.cancel()
+			return
+		}
+		if f.log != nil {
+			if !p.replay(ctx, f.log) {
+				return
+			}
+			continue
+		}
+		if !p.write(ctx, f.frame, time.Time{}) {
+			return
+		}
+	}
+}
+
+// replay writes a log replay entry by entry, within the peer's replay bound.
+// A close the relay asks for meanwhile stops it at the next entry: the rest
+// of the log, and everything queued after it, is dropped and the close is
+// written at once. A replay past its bound ends the connection. It reports
+// whether the connection carries on.
+func (p *peer) replay(ctx context.Context, log [][]byte) bool {
+	deadline := time.Now().Add(p.replayWithin)
+	for _, entry := range log {
+		if c, closed := p.closeAsked(); closed {
+			_ = p.ws.Close(c.status, c.reason)
+			p.cancel()
+			return false
+		}
+		if !time.Now().Before(deadline) {
+			p.cancel()
+			return false
+		}
+		if !p.write(ctx, core.Frame{Binary: true, Data: entry}, deadline) {
+			return false
+		}
+	}
+	return true
+}
+
+// write writes one frame, by deadline when one is given and within
+// writeTimeout in any case, ending the connection when it cannot.
+func (p *peer) write(ctx context.Context, f core.Frame, deadline time.Time) bool {
+	typ := websocket.MessageText
+	if f.Binary {
+		typ = websocket.MessageBinary
+	}
+	by := time.Now().Add(writeTimeout)
+	if !deadline.IsZero() && deadline.Before(by) {
+		by = deadline
+	}
+	wctx, cancel := context.WithDeadline(ctx, by)
+	err := p.ws.Write(wctx, typ, f.Data)
+	cancel()
+	if err != nil {
+		p.cancel()
+		return false
+	}
+	return true
+}
+
+// writeJSON answers with a JSON body.
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// cors answers a request from an allowed origin with the headers a browser
+// needs to read the answer, and reports whether the origin is allowed.
+func (s *Server) cors(w http.ResponseWriter, r *http.Request) bool {
+	w.Header().Add("Vary", "Origin")
+	origin := r.Header.Get("Origin")
+	if !s.originAllowed(origin) {
+		return false
+	}
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	return true
+}
+
+// serveConfig names the sign-in app's public client id, whether sign-in is
+// set up at all, and which flow it takes; with a client id, its kind is always
+// a GitHub App's, since the relay takes no other. It never names the secret. The authorize
+// URL is bare: it carries no scope, which a GitHub App does not use, and the
+// page adds the request's own parameters.
+func (s *Server) serveConfig(w http.ResponseWriter, r *http.Request) {
+	s.cors(w, r)
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	// With the app's secret, GitHub's web flow through /auth/token; in a
+	// local session, which serves its own page, with the client id alone,
+	// the device flow through /auth/device. A relay that serves no page and
+	// holds no secret offers no sign-in.
+	signIn := s.cfg.ClientID != "" && (s.cfg.ClientSecret != "" || s.deviceOffered())
+	cfg := map[string]any{
+		"client_id":     s.cfg.ClientID,
+		"sign_in":       signIn,
+		"authorize_url": s.cfg.GitHubWeb + "/login/oauth/authorize",
+	}
+	if s.cfg.ClientID != "" {
+		cfg["app_type"] = AppTypeGitHubApp
+	}
+	if signIn {
+		cfg["flow"] = "web"
+		if s.deviceOffered() {
+			cfg["flow"] = "device"
+		}
+	}
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+// pkceVerifierRe is RFC 7636's code_verifier: 43 to 128 unreserved characters.
+var pkceVerifierRe = regexp.MustCompile(`^[A-Za-z0-9._~-]{43,128}$`)
+
+// oauthCodeRe bounds GitHub's authorization code.
+var oauthCodeRe = regexp.MustCompile(`^[A-Za-z0-9._~-]{1,256}$`)
+
+// githubErrorRe is the shape of an OAuth error code; anything else GitHub
+// says is not passed on.
+var githubErrorRe = regexp.MustCompile(`^[a-z_]{1,64}$`)
+
+// serveToken is the sign-in exchange.
+func (s *Server) serveToken(w http.ResponseWriter, r *http.Request) {
+	if !s.postFrom(w, r) {
+		return
+	}
+	if s.cfg.ClientID == "" || s.cfg.ClientSecret == "" {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "sign-in-not-configured"})
+		return
+	}
+	// Each address may try the exchange a few times in a window, counted as
+	// wrong join codes are, so the relay cannot be used to hammer GitHub
+	// with codes; a refused try asks nothing of GitHub.
+	if !s.relay.AllowExchange(clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly)) {
+		w.Header().Set("Retry-After", strconv.Itoa(int(s.relay.Limits().ExchangeWindow/time.Second)))
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate-limited"})
+		return
+	}
+	var req struct {
+		Code         string `json:"code"`
+		CodeVerifier string `json:"code_verifier"`
+		RedirectURI  string `json:"redirect_uri"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAuthBody))
+	if err := dec.Decode(&req); err != nil || !oauthCodeRe.MatchString(req.Code) || !pkceVerifierRe.MatchString(req.CodeVerifier) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad-request"})
+		return
+	}
+	// Only a code GitHub gave for this relay's own callback is exchanged:
+	// GitHub sends a code only to a callback the team's app registers, so a
+	// code reaches the relay the person was returned to, and no other relay
+	// can pass one on here (callback.go).
+	if req.RedirectURI != callbackURL(r) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad-redirect"})
+		return
+	}
+	form := url.Values{
+		"client_id":     {s.cfg.ClientID},
+		"client_secret": {s.cfg.ClientSecret},
+		"code":          {req.Code},
+		"code_verifier": {req.CodeVerifier},
+		"redirect_uri":  {req.RedirectURI},
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), githubTimeout)
+	defer cancel()
+	greq, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.GitHubWeb+"/login/oauth/access_token", strings.NewReader(form.Encode()))
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "exchange-failed"})
+		return
+	}
+	greq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	greq.Header.Set("Accept", "application/json")
+	resp, err := s.client.Do(greq)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "exchange-failed"})
+		return
+	}
+	defer resp.Body.Close()
+	var got struct {
+		AccessToken string `json:"access_token"`
+		TokenType   string `json:"token_type"`
+		Scope       string `json:"scope"`
+		Error       string `json:"error"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&got) != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "exchange-failed"})
+		return
+	}
+	// Only named fields pass, and none that carries the secret.
+	for _, v := range []string{got.AccessToken, got.TokenType, got.Scope, got.Error} {
+		if strings.Contains(v, s.cfg.ClientSecret) {
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "exchange-failed"})
+			return
+		}
+	}
+	if got.AccessToken == "" {
+		code := "exchange-failed"
+		if githubErrorRe.MatchString(got.Error) {
+			code = got.Error
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": code})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"access_token": got.AccessToken, "token_type": got.TokenType, "scope": got.Scope})
+}
+
+// GitHub is the relay's Verifier: it asks GitHub's API who a token belongs to
+// and whether that login may push to the repository.
+type GitHub struct {
+	API    string
+	Client *http.Client
+}
+
+// errVerify is the one error a failed verify reports; it never carries the
+// token or what GitHub said.
+var errVerify = errors.New("GitHub did not accept the token")
+
+// userTokenPrefix is the prefix GitHub gives a GitHub App's user access
+// token, and no other kind: "ghu_ for GitHub user-to-server tokens", beside
+// ghp_ for a personal access token, gho_ for an OAuth app's and ghs_ for an
+// installation's
+// (https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github#githubs-token-formats).
+const userTokenPrefix = "ghu_"
+
+// Verify answers the login and the repository's permissions.push. A
+// repository GitHub hides from the token (404) is no push, not an error.
+//
+// It takes only a GitHub App's user access token, refusing any other before
+// GitHub is asked: nobody pastes a token (adr-2610161400542916), and a GitHub
+// App's token reaches only the repositories the app is installed on.
+func (g GitHub) Verify(ctx context.Context, token, repo string) (string, bool, error) {
+	if !core.ValidRepo(repo) {
+		return "", false, errors.New("not an owner/name repository")
+	}
+	if !strings.HasPrefix(token, userTokenPrefix) || len(token) > 255 {
+		return "", false, errVerify
+	}
+	var user struct {
+		Login string `json:"login"`
+	}
+	status, err := g.get(ctx, token, "/user", &user)
+	if err != nil || status != http.StatusOK || user.Login == "" {
+		return "", false, errVerify
+	}
+	var rp struct {
+		Permissions struct {
+			Push bool `json:"push"`
+		} `json:"permissions"`
+	}
+	status, err = g.get(ctx, token, "/repos/"+repo, &rp)
+	if err != nil {
+		return "", false, errVerify
+	}
+	if status != http.StatusOK {
+		return user.Login, false, nil
+	}
+	return user.Login, rp.Permissions.Push, nil
+}
+
+func (g GitHub) get(ctx context.Context, token, path string, into any) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, githubTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.API+path, nil)
+	if err != nil {
+		return 0, errVerify
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	client := g.Client
+	if client == nil {
+		client = &http.Client{Timeout: githubTimeout}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, errVerify
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(into) != nil {
+			return 0, errVerify
+		}
+	}
+	return resp.StatusCode, nil
+}

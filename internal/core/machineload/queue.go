@@ -27,7 +27,8 @@ import (
 //
 // That is with one slot, the default (Ahead.Shut): above one, the running
 // preflights and the waiters running their commands shut it only once they
-// take every slot. A race waiter (`--race-gate`) is in a queue of its own
+// take every slot, and a preflight queued at its race gate takes none
+// (Ahead.TakingSlots). A race waiter (`--race-gate`) is in a queue of its own
 // (RaceAhead), and never in the first gate's.
 //
 // Every waiter reads the same table and orders the queue the same way, by when
@@ -216,6 +217,32 @@ type Ahead struct {
 	// implement.WaitLoad stops counting crossed waiters once they alone have
 	// held the gate shut for implement.WaitCrossedCap (Uncrossed).
 	Crossed []int
+	// AtRaceGate is the preflights in Preflights and the units in Busy with a
+	// race waiter queued beneath them, not running its command: their tests
+	// are done and their race stage has not started, so they run nothing.
+	// Above one slot they take none (TakingSlots, iss-2610282016250805).
+	AtRaceGate []int
+}
+
+// TakingSlots is a as the first gate counts it against slots units of work
+// in their test stages at once (the load.preflights setting; zero or less
+// reads as one). Above one slot the units at their race gate (AtRaceGate)
+// are dropped from Preflights, Busy and Waiters: each is idle until its race
+// run starts, and then it is busy again, beneath its make or as its race
+// waiter running its command. Race runs are kept apart by the race gate
+// (RaceAhead, RaceRuns and the race gate's hold), never by this count, and
+// the load limit still judges the machine as a whole. With one slot the race
+// gate opens at once, so a preflight at it is about to start its race stage,
+// and a stays as it is: the gate reads as it did before slots existed.
+func (a Ahead) TakingSlots(slots int) Ahead {
+	if slots <= 1 || len(a.AtRaceGate) == 0 {
+		return a
+	}
+	drop := func(pids []int) []int {
+		return slices.DeleteFunc(slices.Clone(pids), func(pid int) bool { return slices.Contains(a.AtRaceGate, pid) })
+	}
+	a.Preflights, a.Busy, a.Waiters = drop(a.Preflights), drop(a.Busy), drop(a.Waiters)
+	return a
 }
 
 // Uncrossed is a without its crossed waiters: what is ahead once a wait no
@@ -236,8 +263,9 @@ func (a Ahead) Uncrossed() Ahead {
 // it whatever slots is, so a free slot never lets a waiter jump the queue.
 // With one slot this is the gate as it read before slots existed: any running
 // preflight shuts it on preflight, and any waiter ahead or running its command
-// on waiter.
+// on waiter. Above one, a unit at its race gate takes no slot (TakingSlots).
 func (a Ahead) Shut(slots int) (preflight, waiter bool) {
+	a = a.TakingSlots(slots)
 	full := len(a.Busy) >= max(slots, 1)
 	running := len(a.Waiters) > len(a.Queued)
 	return full && len(a.Preflights) > 0, len(a.Queued) > 0 || (full && running)
@@ -251,7 +279,9 @@ func (a Ahead) Shut(slots int) (preflight, waiter bool) {
 // waiter beneath a waiter running its command takes that ancestor's place,
 // ahead of every queued waiter. A race waiter (isRaceWaiter) is never in this
 // queue: it waits at the race gate (RaceAhead), and a preflight whose waiter
-// is one has passed its first gate and is in its test stages.
+// is one has passed its first gate. It stays in Preflights and Busy, and while
+// its race waiter is queued it is in AtRaceGate too: idle, so above one slot
+// it takes none (TakingSlots).
 func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 	var out Ahead
 	if !snap.HasProcs {
@@ -306,6 +336,21 @@ func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 		}
 	}
 	sort.Ints(out.Busy)
+	// A preflight, or a unit, with a race waiter queued beneath it is at its
+	// race gate: a race waiter running its command is running its race run.
+	_, raceWaiting := t.waiters(args, true)
+	for _, pid := range append(append([]int(nil), out.Preflights...), out.Busy...) {
+		if slices.Contains(out.AtRaceGate, pid) {
+			continue
+		}
+		for _, w := range raceWaiting {
+			if Descends(snap.Procs, w, pid) {
+				out.AtRaceGate = append(out.AtRaceGate, pid)
+				break
+			}
+		}
+	}
+	sort.Ints(out.AtRaceGate)
 	return out
 }
 
@@ -529,11 +574,15 @@ func queueOrder(ws []Proc) []int {
 // never more than the cores divided among the slots preflights may be in
 // their test stages at once (load.preflights; zero or less reads as one, and
 // one is go's own default of the cores) and never fewer than a quarter of the
-// cores, or one, so a run on a loaded machine still makes progress. With two
-// slots, two concurrent stages each take at most half the cores: the load a
-// second stage starts under lags the first stage's real demand by up to a
-// minute, so the load alone would give each the whole machine. An unreadable
-// load leaves the cores divided among the slots.
+// cores, or one, so a run on a loaded machine still makes progress. With n
+// slots, n concurrent stages each take at most the cores divided by n (half
+// at two, a quarter at four, where on most machines the share and the floor
+// meet): the load a later stage starts under lags the earlier stages' real
+// demand by up to a minute, so the load alone would give each the whole
+// machine. A race stage may run beside n unit stages, since a preflight at
+// its race gate takes no slot (Ahead.TakingSlots), so the load limit is what
+// bounds that one extra stage. An unreadable load leaves the cores divided
+// among the slots.
 func GoTestParallelism(snap Snapshot, slots int) int {
 	cores := snap.Cores
 	if cores < 1 {

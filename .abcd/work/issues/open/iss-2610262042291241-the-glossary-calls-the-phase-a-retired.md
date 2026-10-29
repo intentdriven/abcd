@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1073 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/ledger/position.md:25"
-remedy: "none (filed automatically)"
+remedy: "In itd-196 rewrite rungs 2 and 3 over the release (what the release can deliver so far; one full run at the release cut) instead of the phase, per adr-2609212115255771 ('the derived release as the checkpoint') and itd-24's reading of a phase id as the release tag."
 related_intents: [itd-196]
 finding_ref: cfk-23b9bc79ca1fe3f2
 ---

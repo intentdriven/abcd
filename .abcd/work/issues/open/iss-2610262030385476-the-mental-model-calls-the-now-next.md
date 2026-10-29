@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 25 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:3"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md line 3: itd-2609212103568351 is shipped; the bare `abcd` board and the site Status page render the Now / Next / Later block."
 finding_ref: cfk-e61cfb0d8aaf58c5
 ---
 

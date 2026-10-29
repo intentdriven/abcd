@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 147 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-26-loot-oss-vendor.md:70"
-remedy: "none (filed automatically)"
+remedy: "Edit itd-26 line 70: name `/abcd:library ingest` (not `/abcd:memory ingest`) as the knowledge consumer of the shared substrate, as 09-provenance-substrate and the library page do; one edit also closes the sibling records of this cluster, and the registry sentence should say the `consumers` map, as 09-provenance-substrate does, not a `consumer` field."
 related_intents: [itd-26]
 finding_ref: cfk-0afc06e6222389b6
 ---
