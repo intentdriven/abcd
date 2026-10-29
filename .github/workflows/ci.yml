@@ -472,7 +472,7 @@ jobs:
       # ABCD_TEST_SHARDS runs each package that opts in through
       # internal/testshard (internal/core/implement/loop, internal/core/claim
       # and internal/surface/cli) as that many test processes, each with its
-      # share of the tests under the same -timeout, as make preflight does
+      # share of the tests under the same -timeout, as the preflight recipe does
       # (iss-2610290720087336). As one process implement/loop took 2244s of the
       # macOS pass's 40 minutes on a passing run, and a queue entry timed out on
       # it with no test hung. This step and the macOS pass below carry the same
