@@ -38,6 +38,10 @@ func (p *participant) keptHolderID() string {
 	return id
 }
 
+// self is whose holds are p's own, read as a render reads them: never
+// minting an id.
+func (p *participant) self() Self { return ReaderSelf(p.dir, p.opts()) }
+
 // holderIDOf is the holder id kept in the home email's clones share.
 func (w *world) holderIDOf(email string) string {
 	w.t.Helper()

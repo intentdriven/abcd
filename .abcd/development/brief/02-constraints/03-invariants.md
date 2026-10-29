@@ -100,10 +100,13 @@ The following are non-negotiable invariants — any architectural choice that vi
    `origin`, one per person; a branch made before the holder id is named by a
    username) are fetched and pushed only by verbs whose
    documented meaning says so: `announce`, whose meaning is one listing of
-   the status branches on origin (`git ls-remote`), then one fetch of each
-   status branch whose name is a holder id or a lower-case GitHub username and origin's
-   default branch (and a second, of those status branches alone, when the
-   default branch cannot be read), then one push to the sender's own status
+   the status branches on origin (`git ls-remote`), then one fetch of the
+   first 500 status branches whose names are holder ids or lower-case GitHub
+   usernames, those past the 500 counted and not fetched, the sender's own
+   wherever it sorts, and origin's default branch (and a second, of those
+   status branches alone, when the default branch cannot be read), preceded,
+   for a record item in a clone that names no default branch of origin, by one
+   `git ls-remote --symref origin HEAD`, which writes nothing, then one push to the sender's own status
    branch, with one more listing and fetch after each push origin refuses, to tell a push that landed anyway and a lost race from another
    refusal, and one more push for each of at most three retries after a push
    that lost a race, and, as a reservation act may, one call to the forge's
@@ -114,11 +117,25 @@ The following are non-negotiable invariants — any architectural choice that vi
    origin does not hold yet fails. The embargo check an announcement passes reads only this machine's
    store. `status`, whose meaning is one listing of the status branches on
    `origin` (`git ls-remote`), then one fetch of the reservations with their
-   release tags, of each status branch whose name is a holder id or a GitHub
-   username in lower case, each by its own refspec so a case-colliding name is never
+   release tags, of the first 500 status branches whose names are holder ids
+   or GitHub usernames in lower case, those past the 500 counted and not
+   fetched, each by its own refspec so a case-colliding name is never
    fetched, and of origin's default branch, then one read of the forge's
    record of who pushed (`gh api`, the repository's activity record) for each
-   status branch holding a standing announcement it has not asked about. The
+   status branch holding a standing announcement it has not asked about.
+   abcd's own pushes for an item announce first, by `announce`'s own code
+   (iss-2610161645224876, dcn-2610170655202547): `land`, whose meaning
+   includes, after its release-hold fetch and before its push, `announce`'s
+   listing, fetch and push of `merging <item>` for each issue, intent or pull
+   request its branch's own commits name in a `Refs:`, `Resolves:` or
+   `Delivers:` trailer, with the user-endpoint call `announce` may make, and
+   no push to the branch until each has reached `origin`; and `implement
+   step`, the step `build` and `drain` drive, whose meaning includes the same
+   for a lane's own record before the landing pushes the lane's branch. An
+   item the sender's own status branch, as that fetch brought it, already
+   announces is read from disk and not sent again. A push a person types with
+   `git push` posts no announcement, and the pre-push hook neither fetches nor
+   pushes a status branch. The
    prompt hook shows the announcements, the doubts and the release holds from
    the last completed fetch, from disk alone, and asks the network nothing.
    The away mode (itd-2610180912189125) is the person's word that sessions

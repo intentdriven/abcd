@@ -61,10 +61,13 @@ shown as claimed, never as verified (`abcd status`, C17). Only a branch named
 by a username, made before the holder id, can still show its sender as
 verified.
 
-The verb first lists the status branches on origin (`git ls-remote`), then
-fetches the first 500 whose names are holder ids or lower-case GitHub
-usernames, in
-origin's order and with the sender's own among them, each by its own refspec, with origin's default branch in one fetch, and the status branches
+When the item is a record and this clone names no default branch of origin,
+the verb first asks origin which branch is its default (`git ls-remote
+--symref origin HEAD`, which writes nothing). It then lists the status
+branches on origin (`git ls-remote`), then fetches the first 500 whose names
+are holder ids or lower-case GitHub usernames, in origin's order and with the
+sender's own among them, those past the 500 counted and not fetched, each by
+its own refspec, with origin's default branch in one fetch, and the status branches
 alone in a second when the default branch cannot be read. It never fetches the
 namespace by a glob: a branch whose name differs from another only in case
 (`abcd-status/Octo` beside `abcd-status/octo`) would break such a fetch on a
@@ -117,6 +120,30 @@ not a refusal: exit 2 says a refused push may still have reached origin.
   and the identity git had appears in no output, commit, trailer or ref. The
   working copy and the remote named `origin` are checked first, so a checkout
   refused on its own facts never asks GitHub.
+
+## abcd's own pushes announce first
+
+The pushes abcd makes for an item post an announcement before they push, so a
+colleague's session sees `merging <item>` before the work is on `origin`
+(iss-2610161645224876, dcn-2610161645360719, dcn-2610170655202547): `abcd land`
+for each issue, intent or pull request its branch's own commits name in a
+`Refs:`, `Resolves:` or `Delivers:` trailer (dcn-2610170704191129), and the
+landing of a build or drain lane (the implement loop's land stage, which
+`abcd build` and `abcd drain` drive) for the lane's own record. Each goes through
+`claim.AnnounceBeforePush`, which calls `Announce` with the kind `merging`:
+the same checks, the same fetch and the same push, and the push it was made
+for waits until it has reached `origin`. One the person already sent, of
+that kind and item and standing a minute more, is not sent again when it is
+the sender's newest announcement of that item (read from the sender's own
+status branch as just fetched, at most its newest 100 commits, and read again
+after a lost race); under a newer one of the item, `merged` say, it no longer
+stands, since a reader shows only the newest, and `merging` is sent anew. A
+record not yet on the default branch is not announced and the
+verb says so; any other failure refuses that push, nothing pushed
+(dcn-2610170704189712). When a branch names several items and a later one
+fails, the announcements already sent for the earlier ones stay standing, and
+a re-run resumes without sending them again while they stand. A push a person types by hand with `git push` posts
+no announcement, and no hook posts one: the pre-push hook is unchanged.
 
 ## Exits
 

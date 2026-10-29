@@ -32,12 +32,18 @@ package landing
 //     Then the release hold (releasehold.go), judged from the checkout land
 //     runs in: nothing is pushed, armed or queued while another session cuts
 //     a release, or when it cannot be read.
-//  5. push (land.push): a plain `git push --porcelain origin
+//  5. announce (with land.push on, announce.go): "merging <item>" on the
+//     person's status branch for each issue, intent or pull request the
+//     branch's own commits name in a Refs:, Resolves: or Delivers: trailer,
+//     through claim.AnnounceBeforePush, the code `abcd announce` runs; the
+//     push waits until each is on origin, and one that cannot be published
+//     refuses the landing, nothing pushed.
+//  6. push (land.push): a plain `git push --porcelain origin
 //     <head>:refs/heads/B` from the branch's checkout, so the commit pushed is
 //     the one the gate checked whatever the branch names by then, the
 //     repository's hooks running, never forced, never the default branch.
 //     Off, it prints the command and names the layer that turned it off.
-//  6. enqueue (land.enqueue): the open pull request for the branch, armed by
+//  7. enqueue (land.enqueue): the open pull request for the branch, armed by
 //     the merge gate (mergeGate), pinned to the head, and confirmed in the
 //     merge queue (PRStateQuery, asked of the repository the forge client
 //     named when origin was checked); with no pull request it prints the
@@ -74,6 +80,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -135,6 +142,11 @@ type Options struct {
 	// Sleep pauses between the forge readings that wait for land's own push
 	// to show; nil is time.Sleep.
 	Sleep func(time.Duration)
+	// Announce is the options the announcements before the push are made
+	// with (announce.go): its Home "" is Roots.Home, its Embargo nil the
+	// check `abcd announce` uses, its ForgeUser nil the forge's user
+	// endpoint, asked only when git's identity does not name the sender.
+	Announce claim.Options
 }
 
 // Step is what one step of the landing did.
@@ -310,6 +322,9 @@ func Land(cwd string, o Options) (Result, error) {
 		res.Notices = append(res.Notices, notice)
 	}
 	if err != nil {
+		return res, err
+	}
+	if err := announceStep(&res, o, root, dir, tracking); err != nil {
 		return res, err
 	}
 	moved, err := push(&res, o, dir)

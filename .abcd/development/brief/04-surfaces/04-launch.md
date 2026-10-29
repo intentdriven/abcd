@@ -317,6 +317,25 @@ The **hard-fail** gates refuse the release:
   writes skips it, because by then the cut's own output is on disk. Skipping is
   a render caller's stated choice: a render that states no policy runs the gate
   and refuses a dirty tree.
+- **The merge hold** (iss-2610222014550692): every open pull request into
+  origin's default branch with auto-merge on or in the merge queue, listed
+  through `gh`, refuses the cut unless this copy's live release reservation
+  admitted it at the head it now has, an admission the forge's record of
+  pushes says the reader pushed (`37-reserve.md`, "Withdrawn merges"); the
+  release pull request opened from the checked-out branch is the cut and is not
+  judged. A release reservation of this copy's whose lease lapsed before the
+  release ended, still holding pull requests withdrawn or admitted, refuses
+  the cut too: it holds no merge, and five minutes after the lapse its
+  holder's next act ends it and re-arms what it withdrew
+  (dcn-2610271926369425, superseding Q1 of dcn-2610230328220298). One that lapsed holding nothing is abandoned, and is
+  not named. Withdrawals a later commit on a recent
+  release branch dropped are a warning row, `merge-hold-lost`
+  (dcn-2610230328242929). A listing
+  the forge does not give refuses too, since an armed merge it cannot see may
+  be there. The row is `not_armed` where origin is not one repository on
+  github.com. The reading is the reservation package's, which the launch
+  package cannot import, so the front door registers it; a path with none
+  registered reports the row `not_armed`.
 - **The installability smoke** at its light tier, and at its deep tier on the
   cut and on a preview that asks for it (below).
 - **The payload parity diff**, which refuses only when its baseline cannot be
@@ -767,13 +786,18 @@ of a slow cut; without a renewal nothing holds past a day from its claim, or
 from a copy's first fetch of one claimed ahead of that copy's clock. A cut
 abandoned before its tag is released by its holder, or lapses within the day.
 
-The hold stops a merge from being armed; it does not stop a merge armed, or
-queued, before the release was reserved: a pull request with auto-merge
-already on, or already in the merge queue, lands when its checks pass. So the
-cut's runbook (`commands/launch.md`, "Before step 1") has the cutting session
-check for pull requests with auto-merge on and for merge-queue entries once it
-has reserved, and again just before it merges the release pull request, and
-still tell people working in the repository by hand to hold.
+The hold stops a merge from being armed, and the reservation withdraws every
+merge armed or queued before it, recording each, so the cut starts from a
+frozen branch; the cutting copy admits one through the reserve verb, and the rest are re-armed in their own form, pinned to their
+withdrawn heads, once the release ends: on its holder's release, or its tag on
+origin, or five minutes after its lease lapsed, by its own person's next act
+(`37-reserve.md`, "Withdrawn merges"). The
+hold comments on each pull request it withdraws, admits and re-arms, or leaves
+for its owner, one fixed sentence naming the release (dcn-2610230833367984).
+The merge-hold gate (§ 1) refuses the cut while any merge the reservation does not
+account for is armed, so the cut's runbook (`commands/launch.md`) has the
+cutting session run the preview again just before it merges the release pull
+request, and tell people working in the repository by hand to hold.
 
 ## 4. Reports
 

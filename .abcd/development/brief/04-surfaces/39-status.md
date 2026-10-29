@@ -138,10 +138,11 @@ not switch the status off.
 
 ## Exits
 
-Exit 0 when the fetch succeeded, and in a checkout with no remote named
-`origin`; exit 1 when the fetch failed, when what it fetched could not be
-read, or in a checkout with `origin` but without its local tier, the failure
-named on stderr; exit 2 outside a git checkout or with an operand.
+Exit 0 when the fetch succeeded and what it fetched was read, and in a
+checkout with no remote named `origin`; exit 1 when the fetch failed, when
+what it fetched could not be read, or in a checkout with `origin` but without
+its local tier, the failure named on stderr; exit 2 outside a git checkout or
+with an operand.
 
 ## Where this sits
 
