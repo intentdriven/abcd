@@ -338,7 +338,12 @@ asking-sync-check:
 # on a loaded development machine (2026-10-17) and timed out at 10m with no
 # test hung, and on 2026-10-25 claim, implement/loop and surface/cli each
 # outran 20 minutes on a 10-core Mac at a load of 5 to 7, with no test hung
-# (iss-2610250007404944).
+# (iss-2610250007404944). Each stage scales that budget with the one-minute
+# load per online core as it starts, up to twice the 40 minutes
+# (`cmd/test-parallelism -timeout`), since a package on a loaded machine runs
+# slower in proportion: three packages hit the timeout at a load of 17.8 on ten
+# cores, with no test hung (iss-2610241911052191). On a CI runner the budget is
+# the 40 minutes CI's own steps declare.
 preflight:
 	go run ./cmd/abcd implement load --wait --timeout 12h -- $(PREFLIGHT_STAGES_MAKE)
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
@@ -364,10 +369,12 @@ preflight-stages: load-check fmt-check lint-reviews lint-issues record-lint issu
 	go build ./...
 	go vet ./...
 	p=$$(go run ./cmd/test-parallelism) && \
-	go test -p "$$p" -timeout 40m ./...
+	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
+	go test -p "$$p" -timeout "$$t" ./...
 	go run ./cmd/abcd implement load --race-gate --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
-	go test -race -p "$$p" -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+	t=$$(go run ./cmd/test-parallelism -timeout 40m) && \
+	go test -race -p "$$p" -timeout "$$t" ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
 # The precheck (iss-2610230016523625): the minutes-long pass a lane runs before
 # it queues a preflight, so a test that reads the whole tree fails before the
