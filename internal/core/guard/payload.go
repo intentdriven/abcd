@@ -2005,8 +2005,10 @@ func guessedEvalPayload(args []string) (string, bool) {
 // bash an O too) whose option name is not the rest of the word takes the next
 // word before the command string does (`bash -co errexit '<payload>'`), and
 // bash reads its long options after one dash, so `-rcfile` and its value come
-// before its `-c` (`bash -rcfile f -c '<payload>'`). Every reading the shell's
-// name allows is walked.
+// before its `-c` (`bash -rcfile f -c '<payload>'`), but only before its first
+// single-letter option, after which the same word is letters, and a c among
+// them is the -c; behind a word the line does not fix, it is read both ways.
+// Every reading the shell's name allows is walked.
 func shellCPayloads(tokens []string, sites []int) (values []string, unresolved bool) {
 	var starts []int
 	scanned := -1 // the words up to here were read from an earlier site
@@ -2017,18 +2019,28 @@ func shellCPayloads(tokens []string, sites []int) (values []string, unresolved b
 		scanned = len(tokens)
 		dialects := cStringDialects(tokens[site])
 		bash := slices.Contains(dialects, dialectBash)
+		// longs is whether bash still reads its long options after one dash:
+		// every word so far was one, and maybe whether an unknown word was.
+		longs, maybe := true, false
 		for i := site + 1; i < len(tokens); i++ {
 			a := tokens[i]
-			if bash && !isUnknown(a) && len(a) > 2 && a[0] == '-' && a[1] != '-' && bashLongOptions[a[1:]] {
-				// bash's long option; a shell that reads it as letters is
-				// read as before.
-				if len(dialects) > 1 && clusterCouldCarry(a, 'c') {
+			if bash && !isUnknown(a) && bashLongOption(a, longs) {
+				// bash's long option; a shell that reads it as letters, and
+				// bash itself behind an unknown word that may have been a
+				// letter option, read it as before.
+				if (len(dialects) > 1 || maybe) && clusterCouldCarry(a, 'c') {
 					starts = appendStarts(starts, cStringStarts(a, i, dialects))
 				}
 				if a[1:] == "rcfile" || a[1:] == "init-file" {
 					i++
 				}
 				continue
+			}
+			switch {
+			case isUnknown(a):
+				maybe = maybe || longs
+			case !strings.HasPrefix(a, "--"):
+				longs, maybe = false, false
 			}
 			if !clusterCouldCarry(a, 'c') {
 				continue
@@ -2107,11 +2119,12 @@ var shellValueOptions = []string{"-o", "-O", "+o", "+O"}
 
 // shellOperands walks a shell's tokens after the `-c` cluster — from each
 // index in starts, one walk for all of them — and returns the words that can
-// be its first non-option operand — the command string. Boolean
-// option clusters (`-x`, `-e`) are stepped over and a bare `--` ends options so
-// the next token is the operand. An option that appears to consume a following
-// argument (`-o pipefail`, `-O extglob`), an unrecognised option, or the absence
-// of any operand means the command string cannot be confidently located:
+// be its first non-option operand — the command string. Boolean option
+// clusters (`-x`, `-e`) are stepped over, a bare `--` or `-` ends options so
+// the next token is the operand, and so does zsh's lone `+`. An option that
+// appears to consume a following argument (`-o pipefail`, `-O extglob`), an
+// unrecognised option, or the absence of any operand means the command string
+// cannot be confidently located:
 // unresolved routes to a loud WARN, never a guess-and-allow. An unknown word is
 // read every way readWord reads it — a boolean, an option taking a value, the
 // operand itself, or no word — and every operand a reading reaches is returned.
@@ -2138,11 +2151,21 @@ func shellOperands(rest []string, starts []int) (values []string, unresolved boo
 		}
 		tok := rest[i]
 		switch {
-		case tok == "--":
+		case tok == "--" || tok == "-":
 			if i+1 < len(rest) {
 				values = append(values, rest[i+1]) // end of options: next token is the operand
 			} else {
 				unresolved = true // `-c --` with no operand
+			}
+		case tok == "+":
+			// zsh ends its options at a lone `+`, and bash, dash and ksh step
+			// over it as a cluster of no letters: the next word is the
+			// operand, or, read on, the operand is after it.
+			if i+1 < len(rest) {
+				values = append(values, rest[i+1])
+				stack = append(stack, i+1)
+			} else {
+				unresolved = true
 			}
 		case isUnknown(tok):
 			r := readWord(tok, shellValueOptions)
@@ -2322,18 +2345,26 @@ func shellReadsStream(dialects []shellDialect, args []string, stdin bool, carrie
 	return false
 }
 
-// shellReadsStreamAs is shellReadsStream for a shell of dialect d.
+// shellReadsStreamAs is shellReadsStream for a shell of dialect d. Each place
+// the walk reaches carries whether bash still reads its long options after one
+// dash there (bashLongOption): an unknown word may have been a letter option or
+// not, so the walk goes on past it both ways.
 func shellReadsStreamAs(d shellDialect, args []string, stdin bool, carried func(int) bool, fetched func(string) bool) bool {
-	seen := map[int]bool{}
-	stack := []int{0}
+	type at struct {
+		i     int
+		longs bool
+	}
+	seen := map[at]bool{}
+	stack := []at{{0, true}}
 	for len(stack) > 0 {
-		i := stack[len(stack)-1]
+		st := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		if seen[i] {
+		if seen[st] {
 			continue
 		}
-		seen[i] = true
+		seen[st] = true
 		tally(1)
+		i := st.i
 		if i >= len(args) {
 			if stdin {
 				return true // no script operand: the script is standard input
@@ -2341,11 +2372,12 @@ func shellReadsStreamAs(d shellDialect, args []string, stdin bool, carried func(
 			continue
 		}
 		a := args[i]
-		if d == dialectBash && !isUnknown(a) && len(a) > 2 && a[0] == '-' && a[1] != '-' && bashLongOptions[a[1:]] {
+		if d == dialectBash && !isUnknown(a) && bashLongOption(a, st.longs) {
 			a = "-" + a // bash reads its long options after one dash as after two
 		}
+		longs := st.longs && strings.HasPrefix(a, "--")
 		switch {
-		case a == "--" || a == "-":
+		case a == "--" || a == "-" || (a == "+" && d == dialectZsh):
 			if i+1 >= len(args) {
 				if stdin {
 					return true
@@ -2353,22 +2385,27 @@ func shellReadsStreamAs(d shellDialect, args []string, stdin bool, carried func(
 			} else if !carried(i+1) && scriptIsStream(args[i+1], stdin) || fetched(args[i+1]) {
 				return true
 			}
+		case a == "+":
+			// bash, dash and ksh read a lone `+` as a cluster of no letters.
+			stack = append(stack, at{i + 1, false})
 		case a == "--version" || a == "--help":
 		case strings.HasPrefix(a, "<<<"):
 			// A here-string is the stream itself, kept as words by the
 			// tokenizer: the operator, and its text when not glued to it.
 			if a == "<<<" {
-				stack = append(stack, i+2)
+				stack = append(stack, at{i + 2, st.longs})
 			} else {
-				stack = append(stack, i+1)
+				stack = append(stack, at{i + 1, st.longs})
 			}
 		case isUnknown(a):
 			r := readWord(a, shellStreamValueOptions)
-			if r.vanish || r.flag {
-				stack = append(stack, i+1)
-			}
-			if r.takes {
-				stack = append(stack, i+2)
+			for _, next := range []bool{false, st.longs} {
+				if r.vanish || r.flag {
+					stack = append(stack, at{i + 1, next})
+				}
+				if r.takes {
+					stack = append(stack, at{i + 2, next})
+				}
 			}
 			if (r.flag || r.takes) && clusterCouldCarry(a, 's') && stdin {
 				return true
@@ -2380,7 +2417,7 @@ func shellReadsStreamAs(d shellDialect, args []string, stdin bool, carried func(
 			if i+1 < len(args) && fetched(args[i+1]) {
 				return true
 			}
-			stack = append(stack, i+2)
+			stack = append(stack, at{i + 2, longs})
 		case d == dialectKsh && strings.HasPrefix(a, "---"):
 			// ksh93 runs a word of three dashes or more as its script.
 			if fetched(a) {
@@ -2389,7 +2426,7 @@ func shellReadsStreamAs(d shellDialect, args []string, stdin bool, carried func(
 		case strings.HasPrefix(a, "--") || (d == dialectZsh && strings.HasPrefix(a, "+-")):
 			// --norc, --noprofile, --posix, --login, and a zsh option unset
 			// by `+-`: no value.
-			stack = append(stack, i+1)
+			stack = append(stack, at{i + 1, longs})
 		case len(a) >= 2 && (a[0] == '-' || a[0] == '+'):
 			switch letters, takes := shellClusterReads(d, a); {
 			case a[0] == '-' && strings.ContainsRune(letters, 'c'):
@@ -2399,7 +2436,7 @@ func shellReadsStreamAs(d shellDialect, args []string, stdin bool, carried func(
 			case a[0] == '-' && strings.ContainsRune(letters, 's'):
 				// the script is standard input, which is no stream here
 			default:
-				stack = append(stack, i+1+takes)
+				stack = append(stack, at{i + 1 + takes, false})
 			}
 		default:
 			if scriptIsStream(a, stdin) || fetched(a) {

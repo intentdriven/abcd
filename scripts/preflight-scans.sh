@@ -81,26 +81,22 @@ vuln_ids() {
 }
 
 # scan_tree is the fork point's tree while ids_not_at scans it, removed however
-# the script ends: an interrupted scan leaves no copy of the module behind.
+# the script ends: an interrupted scan leaves no copy of the module behind. It is
+# made and removed by vulncheck itself, never inside the command substitution
+# ids_not_at runs in: a subshell's variables never reach this EXIT trap, and an
+# interrupt ends the subshell before its own cleanup runs.
 scan_tree=""
 trap '[ -z "$scan_tree" ] || rm -rf "$scan_tree"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
 # ids_not_at prints the ids report $3 names that the same scan of commit $1's
-# tree, at govulncheck $2, does not; it fails when that scan cannot run, with
-# the scan's last lines on stderr.
+# tree, extracted into the empty directory $4, at govulncheck $2, does not; it
+# fails when that scan cannot run, with the scan's last lines on stderr.
 ids_not_at() {
-	local commit="$1" version="$2" report="$3" rc=0 out
-	scan_tree="$(mktemp -d "${TMPDIR:-/tmp}/preflight-scans.XXXXXX")" || return 1
-	if ! git archive "$commit" | tar -x -C "$scan_tree"; then
-		rm -rf "$scan_tree"
-		scan_tree=""
-		return 1
-	fi
-	out="$(cd "$scan_tree" && go run "golang.org/x/vuln/cmd/govulncheck@$version" ./... 2>&1)" || rc=$?
-	rm -rf "$scan_tree"
-	scan_tree=""
+	local commit="$1" version="$2" report="$3" tree="$4" rc=0 out
+	git archive "$commit" | tar -x -C "$tree" || return 1
+	out="$(cd "$tree" && go run "golang.org/x/vuln/cmd/govulncheck@$version" ./... 2>&1)" || rc=$?
 	case "$rc" in
 	0 | 3) ;;
 	*)
@@ -141,10 +137,16 @@ vulncheck() {
 	def="$(default_ref)"
 	if [ -n "$def" ] && base="$(git merge-base HEAD "$def" 2>/dev/null)" &&
 		git diff --quiet "$base" HEAD -- go.mod go.sum; then
-		local added
+		local added="" scanned=0
+		if [ -n "$(vuln_ids "$out")" ] &&
+			scan_tree="$(mktemp -d "${TMPDIR:-/tmp}/preflight-scans.XXXXXX")"; then
+			added="$(ids_not_at "$base" "$version" "$out" "$scan_tree")" && scanned=1
+			rm -rf "$scan_tree"
+			scan_tree=""
+		fi
 		if [ -z "$(vuln_ids "$out")" ]; then
 			say "The report names no vulnerability id this script can read, so whether $def carries the finding too cannot be told."
-		elif ! added="$(ids_not_at "$base" "$version" "$out")"; then
+		elif [ "$scanned" -ne 1 ]; then
 			say "The fork point with $def could not be scanned, so whether this branch brought the finding in cannot be told."
 		elif [ -z "$added" ]; then
 			say "WARNING — govulncheck $version found a known vulnerability the module's code reaches; this branch changes neither go.mod nor go.sum"

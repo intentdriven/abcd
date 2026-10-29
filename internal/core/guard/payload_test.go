@@ -55,6 +55,14 @@ func TestExecuteStringFamilyInspected(t *testing.T) {
 		{"bash -restricted is no -c", "bash -restricted -c 'git push --force origin main'", VerdictBlock, "git-push-force"},
 		{"zsh -o with a name holding c is no -c", "zsh -ocshnullglob -c 'git push --force origin main'", VerdictBlock, "git-push-force"},
 		{"bash -co a harmless echo", "bash -co errexit 'echo hi'", VerdictAllow, ""},
+		// bash reads a long option only before its first letter option; after
+		// one it is letters, and a c among them is -c.
+		{"bash long option after a letter is letters", "bash -x -rcfile 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		// A lone - ends the options as -- does, and zsh ends them at a lone +
+		// too; bash steps over a lone + as an empty cluster.
+		{"bash -c - ends the options", "bash -c - 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"zsh -c + ends the options", "zsh -c + 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		{"bash -c + is an empty cluster", "bash -c + 'git push --force origin main'", VerdictBlock, "git-push-force"},
 
 		{"env -S a harmless command", "env -S ls", VerdictAllow, ""},
 		{"env -S a harmless build", "env -S 'make build'", VerdictAllow, ""},

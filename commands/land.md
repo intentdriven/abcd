@@ -154,9 +154,10 @@ that name with none at this head, since the proof may lie past the bound.
    commit, and a file already at that name is kept as it is, never rewritten,
    so a body edited before posting survives running land again; the note says
    so, the kept text is what land judges, and deleting the file has the next
-   run compose it afresh. Where git does not ignore the local tier, or the
-   checkout has none (land makes none), land writes no file and the command
-   is the bare `gh pr create`.
+   run compose it afresh. A new head gets a file of its own, and land removes
+   no earlier one, since it may hold an edit. Where git does not ignore the
+   local tier, or the checkout has none (land makes none), land writes no
+   file and the command is the bare `gh pr create`.
 
 The payload carries `branch`, `head`, `checkout` (home-relative),
 `default_branch`, `push` and `enqueue` (each `key`, `on`, and the `layer` and

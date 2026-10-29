@@ -130,6 +130,7 @@ var wordReaders = map[string]string{
 	"targetsOf":      "commandSites and isUnknown: no file is read for a program name the line does not fix",
 	"parseShellCall": "isUnknown on every word: an argument the line does not fix leaves the rest of the call unread",
 	"optionName":     "exempt: folds the known long-option name parseShellCall hands it, after parseShellCall read the word by the rule",
+	"bashLongOption": "exempt: each caller (parseShellCall, shellReadsStreamAs, shellCPayloads) hands it only a word isUnknown cleared",
 	"isEvalCarrier":  "commandSites and nameCouldBe",
 	"segChangesDir":  "commandSites and nameCouldBeAny",
 	"lastSite":       "commandSites",

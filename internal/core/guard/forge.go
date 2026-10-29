@@ -221,12 +221,17 @@ func forgeWord(s segment, i int) (text string, fixed, ok bool) {
 	return lit.text, false, true
 }
 
+// ghRepoFlags are gh's options that take the next word as their value
+// wherever they stand, before the command group as after it: `gh -R o/r pr
+// create` is `gh pr create` on o/r.
+var ghRepoFlags = []string{"-R", "--repo"}
+
 // forgePostsOf returns the posting commands segment s runs.
 func forgePostsOf(s segment, seg int) []forgePost {
 	var out []forgePost
 	for _, a := range sitesNamed(s, "gh") {
 		args := s.tokens[a.idx+1:]
-		readings, _ := operandReadings(args, nil, 2)
+		readings, _ := operandReadings(args, ghRepoFlags, 2)
 		for _, idx := range readings {
 			if len(idx) < 2 {
 				continue

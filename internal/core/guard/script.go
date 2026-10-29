@@ -2229,12 +2229,15 @@ type shellDialect int
 
 const (
 	// dialectBash reads its long options after one dash as after two
-	// (`-login` is `--login`), and -o and -O each take the next word.
+	// (`-login` is `--login`), but only before its first single-letter
+	// option, after which such a word is letters; -o and -O each take the
+	// next word, and a lone `+` is an empty cluster.
 	dialectBash shellDialect = iota
 	// dialectDash has no long options, and -o takes the next word.
 	dialectDash
 	// dialectZsh has GNU-style long options, unset by `+-`; -o takes the
-	// rest of its word or the next one, and -O takes nothing.
+	// rest of its word or the next one, -O takes nothing, and a lone `+`
+	// ends the options as `-` does.
 	dialectZsh
 	// dialectKsh takes -o's value from the rest of its word or the next one,
 	// and ksh93 runs a word of three dashes or more as its script.
@@ -2273,7 +2276,8 @@ func shellCalls(name string, args []string) []shellCall {
 
 // bashLongOptions are the long options bash 3.2 to 5.2 read, after one dash
 // as after two; only `-` plus one of these is a long option in bash, so
-// `-login` is `--login` and `-lx` is still a cluster of letters.
+// `-login` is `--login` and `-lx` is still a cluster of letters. bash reads
+// them only before its first single-letter option (bashLongOption).
 var bashLongOptions = map[string]bool{
 	"debug": true, "debugger": true, "dump-po-strings": true, "dump-strings": true, "help": true,
 	"init-file": true, "login": true, "noediting": true, "noprofile": true, "norc": true,
@@ -2295,11 +2299,19 @@ type shellOptionValue struct {
 	attached bool
 }
 
+// bashLongOption reports whether bash reads the word a as a long option
+// after one dash: a name bashLongOptions holds, read only while longs holds,
+// that is before bash's first single-letter option.
+func bashLongOption(a string, longs bool) bool {
+	return longs && len(a) > 2 && a[0] == '-' && a[1] != '-' && bashLongOptions[a[1:]]
+}
+
 // parseShellCall walks a shell's arguments the way a shell of dialect d reads
 // them. An argument the line does not fix leaves the rest unread
 // (unresolved).
 func parseShellCall(d shellDialect, args []string) shellCall {
 	c := shellCall{script: -1, rcfile: -1}
+	longs := true // bash still reads its long options after one dash
 	i := 0
 	for i < len(args) {
 		a := args[i]
@@ -2307,12 +2319,13 @@ func parseShellCall(d shellDialect, args []string) shellCall {
 			c.unresolved = true
 			return c
 		}
-		if d == dialectBash && len(a) > 2 && a[0] == '-' && a[1] != '-' && bashLongOptions[a[1:]] {
+		if d == dialectBash && bashLongOption(a, longs) {
 			a = "-" + a
 		}
+		longs = longs && strings.HasPrefix(a, "--")
 		switch {
-		case a == "--" || a == "-":
-			// Either ends the options, and the word after it is the script.
+		case a == "--" || a == "-" || (a == "+" && d == dialectZsh):
+			// Each ends the options, and the word after it is the script.
 			if !c.cmdString && !c.stdin && i+1 < len(args) {
 				c.script = i + 1
 			} else if i+1 >= len(args) && !c.cmdString {
@@ -2353,7 +2366,10 @@ func parseShellCall(d shellDialect, args []string) shellCall {
 			// for an option's name. Only noexec itself keeps a syntax check:
 			// any other long option may turn execution back on (`--exec`, a
 			// `no` inversion), so after it the script is judged.
-			c.noexec = optionName(a[2:]) == "noexec" && a[0] == '-'
+			// dash has no long options, so none grants it a syntax check.
+			c.noexec = d != dialectDash && optionName(a[2:]) == "noexec" && a[0] == '-'
+		case a == "+":
+			// bash, dash and ksh read a lone `+` as a cluster of no letters.
 		case len(a) >= 2 && (a[0] == '-' || a[0] == '+'):
 			set := a[0] == '-'
 			var values []shellOptionValue

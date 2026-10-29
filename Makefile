@@ -171,7 +171,8 @@ check-attribution:
 # every vulnerability it names, was not brought in by the branch
 # (iss-2610261151481013, iss-2610262259078996), and govulncheck is not a
 # required check, so it warns and does not stop the run; any other finding
-# stops it, and so does a gitleaks that runs and cannot scan.
+# stops it, and so does a gitleaks that runs and cannot scan. The comparison is
+# by id, so a branch newly reaching an id the fork point reaches is warned of.
 secrets-check:
 	@bash scripts/preflight-scans.sh secrets
 

@@ -113,6 +113,28 @@ func TestEachShellReadsItsOwnOptions(t *testing.T) {
 	})
 }
 
+// bash reads its long options only before its first single-letter option;
+// after one, a word such as `-help` is a cluster of letters, and the script
+// that follows it still runs. zsh ends its options at a lone `+` as at `-`,
+// and bash and dash read a lone `+` as an empty cluster, so the word after
+// it is the script in each. dash has no long options, so `--noexec` grants
+// it no syntax check.
+func TestEachShellEndsItsOptionsWhereItDoes(t *testing.T) {
+	dir := scriptTree(t, map[string]string{"s.sh": hazardLine})
+	runScriptCases(t, dir, []scriptCase{
+		{`bash -x -help {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`bash -o errexit -help {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`zsh + {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`bash + {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`dash + {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`sh + {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`dash --noexec {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		// At the front a long option is still one option.
+		{`bash -login -help`, VerdictAllow, ""},
+		{`bash -login -n {d}/s.sh`, VerdictAllow, ""},
+	})
+}
+
 // The site bound holds before any lookup: a line naming thousands of bare
 // names makes at most a bounded number of filesystem lookups.
 func TestScriptSiteBoundHoldsBeforeLookups(t *testing.T) {

@@ -680,8 +680,9 @@ A script file a shell runs is **read and judged** before the command is: a
 shell's script operand (`bash build.sh`; not under `-n` or `-o noexec`, a
 syntax check that runs none of it, unless `-i` makes the shell interactive,
 which ignores the option; each shell's options are read as that shell reads
-them, so bash's `-login` is `--login`, zsh's and ksh's `-oerrexit` is one
-option, and a lone `-` ends the options as `--` does, while a name that is
+them, so bash's `-login` is `--login` before its first single-letter option
+and letters after one, zsh's and ksh's `-oerrexit` is one option, a lone `-`
+ends the options as `--` does, and so does zsh's lone `+`, while a name that is
 more than one shell, `sh` among them, is read every way it can be and any
 script one of the ways runs is judged; the same reading finds a `-c` string
 behind options that take a value, `bash -co errexit '…'`), a `source` or `.` operand (searched on
@@ -1074,6 +1075,7 @@ replace a tool footer with the repository's own disclosure trailer
 (`Assisted-by: <Vendor>:<model-version>`). It reads `--title`/`-t`,
 `--body`/`-b` and `--body-file`/`-F` in every spelling (`--body x`,
 `--body=x`, `-b x`, `-bx`, `-b=x`, and each behind gh's boolean shorthands, `-db x`),
+with `-R`/`--repo` and its repository read wherever they stand (`gh -R o/r pr create`),
 a value written out in full on the line, and
 a `"$(cat <<'EOF' … EOF)"` body, read as the document it prints. A body file is
 read through the guard's guarded read, from the directory the command runs in:

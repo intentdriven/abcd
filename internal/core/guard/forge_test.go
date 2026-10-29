@@ -85,6 +85,16 @@ func TestForgeTextBlocksAPostingCommandCarryingALeak(t *testing.T) {
 		`gh issue new --body "` + url + `"`,
 		`gh issue edit 7 --title "` + url + `"`,
 		`gh issue comment 7 -b "` + url + `"`,
+		// -R and --repo take the next word as the repository, wherever they
+		// stand, so the group and verb after them are still read.
+		`gh -R o/r pr create --body "` + url + `"`,
+		`gh --repo o/r pr create --body "` + url + `"`,
+		`gh --repo=o/r pr create --body "` + url + `"`,
+		`gh pr -R o/r create --body "` + url + `"`,
+		`gh pr create -R o/r --body "` + url + `"`,
+		`gh -R o/r issue create --body "` + url + `"`,
+		`gh -R o/r issue comment 7 --body "` + url + `"`,
+		`gh --repo o/r issue edit 7 --title "` + url + `"`,
 		"gh pr create --title t --body \"$(cat <<'EOF'\nSummary\n\n" + footer + "\nEOF\n)\"",
 		"cd /tmp && gh pr create --body \"" + url + "\"",
 		"sh -c 'gh pr comment 3 --body \"" + url + "\"'",
@@ -125,6 +135,9 @@ func TestForgeTextAllowsCleanAndNonPostingCommands(t *testing.T) {
 		`gh pr create --body "$BODY"`,
 		`gh pr create --body-file -`,
 		`gh pr create --fill`,
+		// A shorthand that takes a value takes the rest of its word: -a's
+		// value is "b", and no body is set.
+		`gh issue create -ab "` + url + `"`,
 	}
 	for _, cmd := range cases {
 		t.Run(cmd, func(t *testing.T) {
