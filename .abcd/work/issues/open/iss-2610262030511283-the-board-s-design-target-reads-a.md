@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 54 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:84"
-remedy: "none (filed automatically)"
+remedy: "Delete the 'Recent logbook' source (item 4, line 543) and the logbook bound (line 559) from the six-section design in 08-abcd.md, or drop that superseded design section whole; the shipped board reads no logbook."
 finding_ref: cfk-e19323c5109fc692
 ---
 

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1206 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-77-relocatable-user-home.md:17"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does abcd offer a person-chosen location for its user-level home (itd-77), or is the home fixed at the .noindex folder under the person's home directory? Answers: (a) withdraw itd-77, since the shipped rename ruling (itd-2610030720038073) fixed the name, dropped all move code and relies on the folder name for indexer exclusion, and the home resolver hard-codes the name; (b) keep it and re-scope to an explicit person-run relocation that keeps a .noindex-named folder and re-points the trust readers. Recommended (a): a relocated home loses the name the indexer exclusion rests on and the trust readers refuse a symlinked home, so the feature cannot be built without reopening a ruling made on 2026-10-03; capture afresh if still wanted."
 related_intents: [itd-77, itd-2610030720038073]
 finding_ref: cfk-4342c3d4c83679f1
 ---

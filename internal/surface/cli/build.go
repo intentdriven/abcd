@@ -936,7 +936,14 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"afresh; a round that passes completes the stage, unless a lane report states a verdict,\n" +
 			"which is refused naming the report. The audit passes only when every criterion is met: a\n" +
 			"criterion it could not decide (INCONCLUSIVE) fails the round as a not-met one does, and\n" +
-			"goes to the fresh implementer with the finding. A round that does not pass once the lane\n" +
+			"goes to the fresh implementer with the finding. Each role a round hands out is asked for\n" +
+			"the model tier its routing row names, which the result names as tier and the brief's\n" +
+			"routing section carries, and a round that does not pass asks each role of the next one\n" +
+			"tier up (local, economy, frontier; frontier and host-decides stay), recorded under the\n" +
+			"round's routes with the failing gate output; a role on a runner, a review the reviewer\n" +
+			"route takes, one pointed at a provider, a host-decides row and the implementer name no\n" +
+			"tier and do not move. A round\n" +
+			"that does not pass once the lane\n" +
 			"has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it\n" +
 			"stops as unachievable, the result and the run record name the last round's findings, and\n" +
 			"the run starts nothing further for it. Its sibling lanes finish: no new lane opens, no\n" +
@@ -1168,12 +1175,21 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				if lerr != nil {
 					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
 				}
+				// The routing tables decide the tier each round asks for, one
+				// step up after a round that did not pass (spc-2609251028149555).
+				tiers, diags, lerr := loop.LoadTiering(roots, review)
+				if lerr != nil {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
+				}
+				for _, d := range diags {
+					fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(fsutil.RedactHome(d)))
+				}
 				// An interrupt or a termination ends the context, and the runner
 				// kills the process group it started through its own handle: a
 				// harness never outlives the step that started it.
 				ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 				defer stop()
-				res, err = loop.Drive(ctx, root, id, loop.DefaultStages(), loop.Options{},
+				res, err = loop.Drive(ctx, root, id, loop.DefaultStages(), loop.Options{Tiers: tiers},
 					loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}})
 				if err == nil {
 					// A review the step handed to the host goes to the reviewer

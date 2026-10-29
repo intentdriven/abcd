@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 409 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/06-capture.md:189"
-remedy: "none (filed automatically)"
+remedy: "State in 35-drain.md line 93 that the promoted hand-back reads only the issue's related_intents, whichever end names the join, and say how that differs from 06-capture's two-ended promoted pair (or rename the hand-back kind); the audit-check filers are already set aside by the setAsidePromoted rule."
 finding_ref: cfk-0528cc238f5d5ee1
 ---
 

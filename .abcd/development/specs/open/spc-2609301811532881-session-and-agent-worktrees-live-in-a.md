@@ -115,8 +115,13 @@ whether git lists it or not. Without `--branch` it makes a new branch named
 are; a branch of that name that already exists refuses, naming `--branch <name>`
 as the way to check it out. With `--branch` naming an existing local branch it
 checks that branch out and makes no new one; a `--branch` that names no local
-branch refuses. It runs `git worktree add` through gitutil's isolated
-environment, then `chmod 0o700` on the directory git made, and prints the path
+branch refuses. It runs `git worktree add` the way the person's own git does,
+through `gitutil.WorkingTreeCommitCommand` bounded by `gitutil.CheckoutBound`,
+as the loop's lanes are: the repository's content filters and checkout hooks
+run, and a hook that waits past the bound ends `add` with a refusal and no
+lock left behind (iss-2610111729375108, iss-2610111729399920). It records the
+branch's start commit in the lane (`<lane>/.starts/<name>`), lays the new
+worktree's `.abcd/.work.local/`, then `chmod 0o700` on the directory git made, and prints the path
 home-redacted (text) and as `path` (JSON). The only directories it creates are
 the store's levels and the worktree itself, so nothing is written beside the
 checkout. Exit 0 on success, 2 on any refusal or fault.
@@ -200,10 +205,15 @@ checked in order (decision 2):
    lane's branches, through `ahoy`'s existing runner and its timeout, made by the
    caller's own identity.
 2. **By ancestry, with commits of its own.** The tip is an ancestor of the
-   default branch and is not the point the branch was created from (the oldest
-   entry of the branch's reflog). A branch cut and never committed to is not
-   merged, however clean; a branch with no reflog to prove its creation point is
-   judged by the content tests alone.
+   default branch, and the branch holds a commit of its own: a commit,
+   cherry-pick or merge entry in its reflog that the tip still holds, counted
+   only when the reflog still reaches the branch's start (its creation or copy
+   entry; a rename is read past). A branch cut and never committed to, or only
+   fast-forwarded, is not merged, however clean; a branch whose reflog no
+   longer reaches its start is judged by the content tests alone. A reflog can
+   still carry another branch's history in one shape (iss-2610231011465325), so
+   step 2 records the branch's start commit in the lane and this judgement reads
+   the branch's own commits from it (dcn-2610231011532659).
 3. **By content, commit by commit.** `git cherry <default> <branch>` lists at
    least one commit and every commit is marked equivalent (a rebase merge).
 4. **By content, as one change.** The stable patch-id of the branch's whole diff
@@ -296,8 +306,12 @@ The report names the archive path, home-redacted.
 
 An unmerged worktree in the lane is quiet when its last activity is older than
 the quiet window and no pull request for its branch is open (where a forge is
-reachable; without one the window alone decides) (decision 3). Last activity is
-the later of the branch tip's committer date and the newest modification time of
+reachable; without one the window alone decides) (decision 3). A worktree on a
+detached HEAD is never quiet: its commits may be on no branch, and a removal
+drops the HEAD reflog that is their last reference. Last activity is the latest
+of the branch tip's committer date, the modification time of the worktree's
+`.git` link file (written when the worktree is added, so a checkout added from
+an old tip is as recent as its creation), and the newest modification time of
 the files `git status` reports changed or untracked. The window is the layered
 configuration key `worktrees.quiet_days` in `.abcd/config.json`, read through
 `internal/core/layered` (the repository file, then `~/.abcd.noindex/config.json`, then
@@ -306,12 +320,16 @@ misspelt key or a value below 1 is refused naming its file, never replaced by
 the default.
 
 Prune lists each quiet candidate with a dossier, in this order: its dirty state
-first (counts of modified and untracked files, and the first paths), the
-subjects of the branch's commits not on the default branch, a diff summary
+first (counts of modified and untracked files, and the first paths), the paths
+git ignores outside the local tier (a removal deletes them, and only the tier is
+archived), the subjects of the branch's commits not on the default branch, a diff summary
 (`--shortstat` from the merge base), the record ids the subjects and changed
 paths cite, its last activity, and a recommendation ("commit or discard the
-changes, then name it", "reclaim with `prune --yes <name>`", or "open a pull
-request if the work is wanted"). A candidate is left in place unless named with
+changes, then name it", "reclaim with `prune --yes <name>`", "open a pull
+request if the work is wanted", or, when the branch's commits could not be
+read, "check its branch for work first"), which names any ignored paths that go
+with it (a wholly ignored `.abcd/` counted by its entries beside the local tier),
+or says they could not be listed when git refuses the listing. A candidate is left in place unless named with
 `--yes <name>` (repeatable); the core never prompts. A named candidate takes the
 same archive step and the same refusals as a merged worktree, a dirty tree
 included, so uncommitted work stays until the person commits or discards it.
@@ -325,7 +343,7 @@ name; an active one is not quiet).
 The `/abcd` board's `boardPeers` already runs `peers.Scan` for the checkout.
 The scan is run once and feeds two members: `peers`, unchanged, and a new
 `worktrees` member, `{"held": N, "reclaimable": M}`, rendered as one text line
-("worktrees: N in the store, M reclaimable (`abcd ahoy worktree prune`)") and
+("worktrees: N in the store, M can be cleared (`abcd ahoy worktree prune`)") and
 omitted when N is 0. `peers.Report` gains an accessor listing each linked
 worktree its scan saw, with its path and whether the scan judged it spent
 (merged by ancestry, record folders clean); the board counts those whose real
@@ -434,41 +452,49 @@ worktree rather than loses one; none changes a criterion.
 
 ## Open point
 
-_None open._ The board's "reclaimable" is the peers scan's judgement, not prune's: it can miss a squash-merged branch and can count a locked or freshly cut worktree. The product thinker ruled on 2026-09-30 that the line keeps the words "can be cleared" as an estimate, and that prune's own report is the authority on what was cleared.
+_None open._ The board's "can be cleared" count is the peers scan's judgement, not prune's: it can miss a squash-merged branch and can count a locked or freshly cut worktree, or a detached one whose HEAD is on the default branch, which prune keeps. The product thinker ruled on 2026-09-30 that the line keeps the words "can be cleared" as an estimate, and that prune's own report is the authority on what was cleared. The `--json` member keeps the field name `reclaimable`.
 
 ## Footprint
 
-- packages: internal/core/ahoy/worktree, internal/core/ahoy, internal/core/implement/loop, internal/core/peers, internal/core/history, internal/gitutil, internal/surface/cli, commands/, AGENTS.md, .abcd/development/brief/05-internals, .abcd/development/brief/04-surfaces
+- packages: internal/core/ahoy/worktree, internal/core/implement/loop/lane.go, internal/core/implement/loop/lane_test.go, internal/core/implement/loop/lane_store_test.go, internal/core/peers/read.go, internal/core/peers/peers_test.go, internal/gitutil/worktree.go, internal/gitutil/worktree_test.go, internal/gitutil/commondir.go, internal/gitutil/commondir_test.go
+- packages later: widened step by step as each step is reached (dcn-2610222227336378): internal/README.md, internal/core/ahoy/registry_labels.go, internal/core/ahoy/pull_requests.go, internal/core/implement/loop/held_worktrees.go, internal/core/implement/loop/held_worktrees_test.go, internal/core/history/history.go, internal/core/history/sanitize.go, internal/core/history/sanitize_test.go, internal/core/statusblock/statusblock_test.go, internal/surface/cli/ahoy_worktree.go, internal/surface/cli/ahoy_worktree_test.go, commands/ahoy.md, AGENTS.md, .abcd/development/brief/05-internals/03-configuration.md, .abcd/development/brief/04-surfaces/README.md, .abcd/development/brief/04-surfaces/01-ahoy.md, .abcd/development/brief/02-constraints/03-invariants.md, and, once the merge gate lands, internal/core/board/board.go, internal/core/board/board_test.go, internal/surface/cli/cli.go, internal/surface/cli/board.go
 - tests: the level maker over a symlinked, foreign-owned and group-writable level; add's path, mode, branch and name refusals; the loop's lane tests unchanged plus one proving the lane goes through the package; list over a lane of two plus a sibling; list --all over registered, unregistered, moved and abbreviated lanes; the merged judgement over ancestry, a never-committed branch, a rebase merge and a squash merge with no forge; prune's reclaim, keep reasons, exit codes and dry-run; the notes archive's redaction, manifest and failure path; quiet candidates and --yes; the board line from one scan and its absence from the site block; the worktree parser's locked and prunable fields in both forms
 
 ## Steps
 
 1. The store package and the lane primitive
    - criteria: 2, 3, 5
+   - needs: none
    - packages: internal/core/ahoy/worktree, internal/core/implement/loop, internal/core/peers, internal/gitutil
    - tests: the level maker refuses a symlinked, foreign-owned or group-writable level and makes nothing beneath it; `ParseWorktreeList` carries locked and prunable in the `-z` and newline forms; `gitutil.CommonDir` refuses a multi-line answer; the loop's existing lane tests pass unchanged and a new one proves the lane goes through the package
 2. `ahoy worktree add`
    - criteria: 1, 4, 19
+   - needs: 1
    - packages: internal/core/ahoy/worktree, internal/surface/cli
-   - tests: add makes the worktree in the lane, prints its path, leaves the checkout's parent unchanged and sets `0o700`; `../x`, `-x`, a taken name and a repository with no commits refuse and write nothing; `--branch` checks out an existing branch and makes none
+   - tests: add makes the worktree in the lane, prints its path, leaves the checkout's parent unchanged and sets `0o700`; `../x`, `-x`, a taken name, a name a sibling store holds in the lane (`embargo`, read from `internal/core/embargo/storepath.Name`, never copied; iss-2610230014564359) and a repository with no commits refuse and write nothing; `--branch` checks out an existing branch and makes none; add records the new branch's start commit in the lane, and the merged judgement reads the branch's own commits from it, not the reflog, so a copy of a created branch, force-reset and left until its reflog expires, is not merged (iss-2610231011465325)
 3. `list`, `list --all` and the merged judgement
    - criteria: 6, 7, 18
+   - needs: 1
    - packages: internal/core/ahoy/worktree, internal/core/ahoy, internal/surface/cli
-   - tests: three rows for a lane of two plus a sibling, the sibling outside; registered and unregistered lanes under their labels, a stale registry path changing nothing, a moved checkout's lane as "checkout not found", an abbreviated directory as "not a lane" naming the full key; the same lane from a moved checkout; the merged judgement over ancestry, a never-committed branch, a rebase merge and a squash merge with the forge unreachable, and a forge answer whose head is not the tip
+   - tests: three rows for a lane of two plus a sibling, the sibling outside; registered and unregistered lanes under their labels, a stale registry path changing nothing, a moved checkout's lane as "checkout not found", an abbreviated directory as "not a lane" naming the full key; the same lane from a moved checkout; the merged judgement over ancestry, a never-committed branch, a rebase merge and a squash merge with the forge unreachable, and a forge answer whose head is not the tip; the embargo store's directory listed as abcd's own sibling store, never as a lane or a candidate (iss-2610230014564359); a worktree's lock or prune reason carrying control bytes rendered escaped, in the text and JSON forms alike (from step 1's review)
 4. `prune` for merged worktrees, with the notes archive
    - criteria: 8, 9, 10, 12, 13, 14, 15, 16
+   - needs: 3
    - packages: internal/core/ahoy/worktree, internal/core/history, internal/core/implement/loop, internal/surface/cli
-   - tests: a merged clean worktree removed with its branch standing; a squash-merged one reclaimed with no forge; the tier archived redacted beside its manifest and a failed archive keeping the worktree; a store refusal exits 2; dirty, unmerged and outside kept with exit 1 and exit 0 once one is reclaimed; a directory failing the proof untouched; locked, own-cwd and loop-held kept; dry-run and `--json` matching a real run's rows; `history.Capture` still passing its suite through the lifted pass
+   - tests: a merged clean worktree removed with its branch standing; a squash-merged one reclaimed with no forge; the tier archived redacted beside its manifest and a failed archive keeping the worktree; a store refusal exits 2; dirty, unmerged and outside kept with exit 1 and exit 0 once one is reclaimed; a directory failing the proof untouched; locked, own-cwd and loop-held kept; the embargo store's directory never judged, archived or removed (iss-2610230014564359); dry-run and `--json` matching a real run's rows; `history.Capture` still passing its suite through the lifted pass
 5. Quiet candidates
    - criteria: 11
+   - needs: 4
    - packages: internal/core/ahoy/worktree, internal/surface/cli
    - tests: a 15-day-quiet unmerged worktree listed with its dossier, dirty state first, and left; `--yes <name>` removes that one only; a dirty named candidate kept; `worktrees.quiet_days` read through the layered resolver and a bad value refused; a `--yes` name not in the lane refusing the run
 6. The board line
    - criteria: 17
+   - needs: 1, 4
    - packages: internal/core/peers, internal/surface/cli
    - tests: one line with the held and reclaimable counts from one scan; absent on an empty lane; absent from the site's rendered status block
 7. The surfaces
    - criteria: 20, 21
    - brief: when the store ships, `02-constraints/03-invariants.md` gains the invariant "the store deletes only what passes its proof of belonging" (adr-2609091248200336), held by the prune refusal tests; it is not added before the code that holds it exists.
-   - packages: commands/, AGENTS.md, .abcd/development/brief/05-internals, .abcd/development/brief/04-surfaces, internal/surface/cli
+   - needs: 2, 5, 6
+   - packages: commands/, AGENTS.md, .abcd/development/brief/05-internals, .abcd/development/brief/04-surfaces, internal/surface/cli, internal/README.md (the package map gains `internal/core/ahoy/worktree`), and `05-internals/03-configuration.md`'s store section drops the deleted `WorktreeStoreRel` (both found by step 1's review)
    - tests: the plugin page carries the host-run step; `AGENTS.md` names the verb and no sibling form; the surface snapshot and command reference regenerated; docs-lint and record-lint clean

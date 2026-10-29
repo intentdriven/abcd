@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1014 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/persona.md:25"
-remedy: "none (filed automatically)"
+remedy: "In persona.md 'When to use', scope the rule to the voice of a modelled user and say a real role abcd addresses (the product thinker) may be quoted by role, unnamed, as 19 intents already do."
 related_intents: [itd-82]
 finding_ref: cfk-d066b0479b25f2cc
 ---

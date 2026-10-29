@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 577 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/10-docs.md:202"
-remedy: "none (filed automatically)"
+remedy: "In 06-lint.md:48 replace 'read git-tracked bytes' with: the gates read the working tree under each root, pruning git-ignored untracked paths (internal/core/lint), so an untracked unignored file is read and a tree outside git is read whole."
 finding_ref: cfk-dd8a1ddcc3dbfb87
 ---
 

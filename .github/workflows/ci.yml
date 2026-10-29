@@ -280,7 +280,11 @@ jobs:
     # technical facilitator (dcn-2610181756328249): ten merge-group runs took
     # 35.1 to 49.3 minutes, one within a minute of the warning, on a leg whose
     # race pass keeps its three test slots full, so its time is its total work
-    # and varies with the runner. Raising it again is the technical
+    # and varies with the runner. The coordinating session raised it to 85 on
+    # 2026-10-28, on delegation from the technical facilitator
+    # (dcn-2610282036219503): that day's passing merge-group runs took 46 to 68
+    # minutes and run 40752008734 was cancelled at the cap after 71
+    # (iss-2610282035340363). Raising it again is the technical
     # facilitator's call, and the remedy for a leg near the cap is a faster
     # suite (iss-2610181711260494). The ubuntu leg's ceiling is 45. The drain
     # bundle (spc-2610161044461448) grew the loop package's race run until the
@@ -302,7 +306,7 @@ jobs:
     # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds every leg at or below the
     # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
     # end of the job below it.
-    timeout-minutes: ${{ matrix.os == 'macos-latest' && 70 || 45 }}
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 85 || 45 }}
     strategy:
       fail-fast: false
       matrix:
@@ -580,7 +584,7 @@ jobs:
 
       # Warn before the cap cancels (ruling Z's cancel policy, 2026-09-28). A
       # check that runs past WARN_AFTER_MINUTES is ten minutes from its leg's
-      # ceiling (70 minutes on macOS, 45 on ubuntu), and a cancellation there
+      # ceiling (85 minutes on macOS, 45 on ubuntu), and a cancellation there
       # carries nothing but the cancellation. The rule for a cancelled check is
       # to rerun it once; a second cancellation for the same reason stops that
       # pull request and opens a speed lane, never another raise of the
@@ -600,8 +604,8 @@ jobs:
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
           LEG: ${{ matrix.os }}
-          WARN_AFTER_MINUTES: ${{ matrix.os == 'macos-latest' && 60 || 35 }}
-          CEILING_MINUTES: ${{ matrix.os == 'macos-latest' && 70 || 45 }}
+          WARN_AFTER_MINUTES: ${{ matrix.os == 'macos-latest' && 75 || 35 }}
+          CEILING_MINUTES: ${{ matrix.os == 'macos-latest' && 85 || 45 }}
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)

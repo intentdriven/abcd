@@ -14,7 +14,7 @@ import (
 	"os"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
-	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // Parked is one staged run as a dispatch reads it: the run, its position, the
@@ -48,7 +48,7 @@ func ReadParked(repoRoot, runID string) (Parked, error) {
 	}
 	defer root.Close()
 	dir := DefaultRunDir + "/" + runID + "/"
-	raw, err := fsutil.ReadGuardedInRoot(root, dir+ManifestFileName, MaxFileBytes)
+	raw, err := localtier.ReadInRoot(root, dir+ManifestFileName, MaxFileBytes)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Parked{}, fmt.Errorf("reading: run %s is not parked at %s; assemble the run first", runID, dir)
@@ -65,7 +65,7 @@ func ReadParked(repoRoot, runID string) (Parked, error) {
 	if _, err := ParsePosition(string(m.Position)); err != nil {
 		return Parked{}, fmt.Errorf("reading: the manifest of run %s: %w", runID, err)
 	}
-	bundle, err := fsutil.ReadGuardedInRoot(root, dir+BundleFileName, MaxFileBytes)
+	bundle, err := localtier.ReadInRoot(root, dir+BundleFileName, MaxFileBytes)
 	if err != nil {
 		return Parked{}, fmt.Errorf("reading: the bundle of run %s: %w", runID, err)
 	}

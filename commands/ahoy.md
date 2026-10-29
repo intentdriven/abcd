@@ -465,8 +465,8 @@ it can, each on one line
    cancel, or deciding later, writes nothing. For a repository abcd does not
    manage yet, proceed and customise also adopt it, so the plan is the one
    question that adopts.
-3. **The questions only a person can answer.** The abcd download, the shell
-   settings, the commit checks (`core.hooksPath` in this clone's
+3. **The questions only a person can answer.** The live brief session
+   question, the abcd download, the shell settings, the commit checks (`core.hooksPath` in this clone's
    `.git/config`), the status line (one entry in the assistant's settings),
    the commit identity and each tool abcd offers to install are each their own
    question, naming the value and where it is written, whatever the answer to
@@ -757,8 +757,10 @@ unattended agent may change in the repository. When the result carries `optional
 offer the `yes |` form above as the way to apply it, except
 `git_identity.unrecorded`, `git_identity.repo_pin`, `drain_rule.offered` and
 `conventions.retire_offered`, which only a person at a terminal is asked,
-and `readme.offered`, which this page relays as the README question pair
-below and answers with `--readme-parts`.
+`readme.offered`, which this page relays as the README question pair
+below and answers with `--readme-parts`, and `sessions.offered`, which it
+relays as the live brief session questions below and answers with
+`--live-sessions`.
 
 **Each person's commit identity is their own, kept on their own machine.**
 Nothing in a repository names who may commit to it. The person's record lives
@@ -949,6 +951,34 @@ edited by hand, or a mark that is duplicated or unclosed, is left and named in
 the `notes` with its line; relay those notes as they stand. A project with no
 `README.md` gets one holding only the chosen parts. Committing the result is
 the owner's act.
+
+**The live brief session questions.** Setup asks "Set up live brief
+sessions?" (`yes`, `no`, then deciding later) and, on a yes, "Where may
+sessions run?" (`local`, `cloud`, `both`, then deciding later). The answer is
+stored as `sessions.live` in `.abcd/config.json`: where sessions may run, or
+`none` for a no, which is never asked again. Deciding later stores nothing,
+so the next setup run asks again, and so do `abcd session start` and
+`abcd session blueprint` at a terminal. At a terminal, in a run without
+`--yes`, the install asks them itself, after the README pair; off a terminal,
+and under `--yes`, they are never asked, and the result lists
+`sessions.offered` under `optional_skipped`.
+
+Through this page, while the question is open, the bare detection
+(`ahoy --json`) carries `sessions` and `sessions_tool`, the two questions as
+your question tool's input, built from the words the terminal shows. Ask
+`sessions_tool[0]` alone, exactly as given: never reworded, never with a
+preview, never with an option marked. On a yes, ask `sessions_tool[1]`. Then
+pass the answer:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --live-sessions local|cloud|both|none --json
+```
+
+A no to the first question is `none`. A `Decide later` at either is no
+answer: pass no flag. Any other value is refused with exit 2 before anything
+is written. Recording the answer sets nothing up: the steps are
+`abcd session setup` (see `/abcd:session`), which waits on the person in a
+browser, so tell the user to run it in a Terminal of their own.
 
 **The artefact kind.** A repository with no `.abcd/config/artefact.json` carries
 an `artefact.missing` gap: the launch verbs choose what to preview, check and

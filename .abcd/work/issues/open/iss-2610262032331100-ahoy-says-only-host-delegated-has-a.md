@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 286 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:893"
-remedy: "none (filed automatically)"
+remedy: "In 01-ahoy.md (the oracle backend paragraph near line 993) say the oracle.backend question has only host-delegated wired, and that reviewer routing is set elsewhere: oracle.review (host or rp, for build lane reviews), oracle.roles and the provider blocks; stop implying no second reviewer has an adapter."
 finding_ref: cfk-289e83a7f56d74f0
 ---
 

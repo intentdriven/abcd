@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/adapter/hosting"
 	"github.com/intentdriven/abcd/internal/adapter/hosting/cloudflare"
 )
 
@@ -73,7 +74,7 @@ func TestSiteWorkflowVerifiesTheBinaryAgainstReleaseYMLOnMain(t *testing.T) {
 // repository's site renders with abcd's released binary, held to abcd's
 // release.yml on main and to the commit of the release it downloaded.
 func TestTheSetupWorkflowVerifiesAbcdAgainstReleaseYMLOnMain(t *testing.T) {
-	wf, err := renderSiteWorkflow("trunk", cloudflare.Adapter{})
+	wf, err := renderSiteWorkflow("trunk", cloudflare.Adapter{}, hosting.Site{Name: "x"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

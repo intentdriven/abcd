@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 600 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/record.md:20"
-remedy: "none (filed automatically)"
+remedy: "In record.md limit 'lifecycle is directory-as-truth' to the families that live in buckets (intents, specs, issues) and say an ADR carries its status in frontmatter."
 finding_ref: cfk-8d65c73b868db98b
 ---
 

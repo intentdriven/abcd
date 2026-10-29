@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 902 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/02-adapters.md:284"
-remedy: "none (filed automatically)"
+remedy: "In 02-adapters.md replace 'the native spec review store' (in the harvesting paragraph and the reviews-reader row) with the dated review folders and gate receipts that itd-28 made the store."
 related_intents: [itd-28]
 finding_ref: cfk-7659910dd3ea55be
 ---

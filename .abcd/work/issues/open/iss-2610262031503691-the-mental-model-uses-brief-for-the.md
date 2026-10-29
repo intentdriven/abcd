@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 184 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:3"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does 'brief' name two things (the project brief and a lane's brief, kept apart in the glossary) or does the implementer's file get its own word? Recommended: keep both and record 'lane brief' in the glossary, because the shipped build chapter, the lane stage names and the loop code already say brief and lane brief, and a rename would touch code."
 related_intents: [itd-2609201916151817]
 finding_ref: cfk-065f03756dd5e916
 ---

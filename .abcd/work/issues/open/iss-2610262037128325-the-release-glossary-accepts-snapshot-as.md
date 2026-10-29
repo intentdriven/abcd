@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 706 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/distribution/release.md:5"
-remedy: "none (filed automatically)"
+remedy: "Remove the bare 'snapshot' alias from release.md (keep 'published snapshot'), so snapshot is not an accepted name for both a release and a lab's pinned clone."
 finding_ref: cfk-51df57a6afc4f748
 ---
 

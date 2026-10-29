@@ -126,6 +126,9 @@ func (r *InstallResult) composeReport() {
 		if id == ReadmeOfferGapID && r.readmeAwaitsConfig {
 			it = readmeAwaitsConfigHelp
 		}
+		if id == SessionsOfferGapID && r.sessionsAwaitsConfig {
+			it = sessionsAwaitsConfigHelp
+		}
 		add(it.Action, it.What)
 	}
 	if len(r.needs) == 0 && slices.ContainsFunc(r.Remaining, func(id string) bool { return id != UnverifiedCopyGapID }) {

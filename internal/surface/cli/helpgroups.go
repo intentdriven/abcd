@@ -111,6 +111,7 @@ var helpPlacements = map[string]helpPlacement{
 	// The person's groups.
 	"ahoy":      {group: groupSetUp},
 	"dashboard": {group: groupSetUp},
+	"session":   {group: groupSetUp},
 	"update":    {group: groupSetUp},
 	"build":     {group: groupRecords},
 	"capture":   {group: groupRecords},

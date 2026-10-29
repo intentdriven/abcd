@@ -41,6 +41,7 @@ import (
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // StageConfig is the refusal stage of a step the run tripwire stopped.
@@ -492,9 +493,12 @@ func nameChanges(repoRoot string, changed []string) []string {
 // with no salt) is refused rather than replaced.
 func readFingerprint(root *os.Root, runID string) (configFingerprint, bool, error) {
 	rel := fingerprintRel(runID)
-	data, err := fsutil.ReadGuardedInRoot(root, rel, maxFingerprintBytes)
+	data, err := localtier.ReadInRoot(root, rel, maxFingerprintBytes)
 	if errors.Is(err, fs.ErrNotExist) {
 		return configFingerprint{}, false, nil
+	}
+	if rf := tierRefusal(StageConfig, "", err); rf != nil {
+		return configFingerprint{}, false, rf
 	}
 	remedy := "the loop is the file's only writer; restore it, or remove it and the run's next step records the configuration as it then stands"
 	if err != nil {

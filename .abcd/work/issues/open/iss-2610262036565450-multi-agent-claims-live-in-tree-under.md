@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 686 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/04-universal-patterns.md:139"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-universal-patterns.md section 6: remove the multi-agent claims (itd-33) from the .abcd/coordination/ note and the coordination/audit and active-work.json sibling bullet; point to the reservation branch (itd-2609091034175565) and the run store (27-implement.md); keep only shape.lock if still designed."
 finding_ref: cfk-ad09e984cb3b7cba
 ---
 

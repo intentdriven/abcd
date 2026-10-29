@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 667 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-2609151138388536-append-only-logs-conflict-on-every-merge.md:28"
-remedy: "none (filed automatically)"
+remedy: "In 22-site.md (the paragraph at line 199) say two inputs reach into the working tier, the issue ledger and the decision records (record.decisions), each off unless the composition asks for it, as 10-site.md already says."
 related_intents: [itd-2609151138388536]
 finding_ref: cfk-f236e5bb797ea55c
 ---

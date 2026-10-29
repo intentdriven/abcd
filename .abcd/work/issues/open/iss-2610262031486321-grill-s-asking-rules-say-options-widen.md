@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 179 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md:221"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does the rule that options never recommend bind the proposals the facilitator modes hand a product thinker, or only questions put through the question tool? Answers: (a) it binds both, so itd-97 and itd-99 drop the recommendation (given only when asked); (b) it binds only questions, so a proposal carries its recommendation as prose and the GRILL sentence is scoped. Recommend (b): a proposal is a hand-over document at a stop, not a question, and the mode's contract is itself the person's request for one."
 related_intents: [itd-97]
 finding_ref: cfk-245d87d510ef5a38
 ---

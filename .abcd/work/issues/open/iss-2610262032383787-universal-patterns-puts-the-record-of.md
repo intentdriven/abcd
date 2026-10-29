@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 296 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/04-universal-patterns.md:101"
-remedy: "none (filed automatically)"
+remedy: "Edit 04-universal-patterns.md section 6 layout tree: drop the ahoy prompts.json line (or note that setup answers are recorded in .abcd/.work.local/interviews/ and the machine tier's interviews/)."
 finding_ref: cfk-22c3f84ba8c2dfd4
 ---
 

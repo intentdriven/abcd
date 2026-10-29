@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 158 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-195-a-claim-about-how-the-code-behaves-is.md:23"
-remedy: "none (filed automatically)"
+remedy: "In invariant 17 replace the sentence stating what each of the three readers now does with one that names the test that establishes it (internal/core/lint/multispec_test.go and speclinks_test.go exist), or delete the enumeration."
 related_intents: [itd-195]
 finding_ref: cfk-d7bcc3479e0374b8
 ---

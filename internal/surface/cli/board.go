@@ -41,6 +41,11 @@ type boardOutput struct {
 	// Peers is present only when a live peer holds a record that differs here
 	// (itd-2609091416295622); omitted, not null, otherwise.
 	Peers *boardPeersLine `json:"peers,omitempty"`
+	// Worktrees counts the worktrees this repository's lane in the worktree
+	// store holds and the ones it could reclaim (spc-2609301811532881),
+	// from the peers scan above; omitted while the lane holds none. It is
+	// the board's alone: the status block the site renders does not carry it.
+	Worktrees *boardWorktreesLine `json:"worktrees,omitempty"`
 	// Oracle is the model-tier routing, one row per agent, present only once a
 	// routing table is accepted (itd-2609170822093401); omitted otherwise.
 	Oracle []oracle.BoardRow `json:"oracle,omitempty"`

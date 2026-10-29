@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 40 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:93"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (Naurian gap paragraph): say the extraction of a spec's modification grammar into memory by principle-distiller at spec completion is not built (07-library lists it so); only the disembark principles sub-verb uses the agent today."
 finding_ref: cfk-c1923850bc1e67ad
 ---
 

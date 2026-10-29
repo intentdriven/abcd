@@ -35,6 +35,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -333,7 +334,10 @@ func takeJudgement(repoRoot, path string, st DrainState, live bool, plan capture
 		return DrainJudgement{}, fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
-	data, err := fsutil.ReadGuardedInRoot(root, j.Answer, maxJudgementBytes)
+	data, err := localtier.ReadInRoot(root, j.Answer, maxJudgementBytes)
+	if rf := tierRefusal(StageDrain, "", err); rf != nil {
+		return DrainJudgement{}, rf
+	}
 	if err != nil {
 		return DrainJudgement{}, refuse(StageDrain, "", "", fmt.Sprintf("%s cannot be read as the judgement's answer: %v", j.Answer, err),
 			"write the answer as a regular file of at most "+fmt.Sprint(maxJudgementBytes)+" bytes, then run `abcd drain --judgement "+j.Answer+"`")

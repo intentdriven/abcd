@@ -357,7 +357,8 @@ func NewRootCommand() *cobra.Command {
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			ver := core.NewVersion()
-			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd)}
+			peersLine, worktreesLine := boardScan(cwd, cmd.ErrOrStderr())
+			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: peersLine, Worktrees: worktreesLine, Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd)}
 			// One renderer draws both views in both forms; the surface reads
 			// the window, the colour rung and the locale and hands them in
 			// (spc-2610031844142274). In a pipe the board is drawn at Mono and
@@ -418,6 +419,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newMemoryCommand(&asJSON))
 	root.AddCommand(newInboxCommand(&asJSON))
 	root.AddCommand(newDashboardCommand(&asJSON))
+	root.AddCommand(newSessionCommand(&asJSON))
 	root.AddCommand(newStatuslineCommand(&asJSON))
 
 	root.AddCommand(newAhoyCommand(&asJSON))
@@ -1987,110 +1989,7 @@ envelope carries it as system_message.`,
 		Use:   "session-end",
 		Short: "SessionEnd: stage the raw transcript for the next session to redact and store",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			started := time.Now()
-			// Diagnostics go to stderr, out of band; stdout stays empty, since a
-			// Stop hook's stdout is not a place to speak to the model — unless
-			// the caller asked for --json, when it carries one result line on
-			// every path (hook_result.go, iss-2608261550596333).
-			// The result names the session it lost, as subagent-stop's does
-			// (iss-2609260221577624): in is read below, and warn names whatever
-			// of it was parsed — nothing, for a payload that did not parse.
-			var in hookInput
-			warn := func(format string, a ...any) error {
-				msg := diagnosticLine(cmd.ErrOrStderr(), "abcd history: "+format, a...)
-				emitHookResult(cmd, hookStageResult{Hook: "session-end", Outcome: hookOutcomeNotCaptured,
-					SessionID: termsafe.Sanitize(in.SessionID), Reason: strings.TrimPrefix(msg, "abcd history: ")})
-				return nil // never non-zero: a Stop hook must not wedge the session
-			}
-
-			parsed, err := readHookInput(cmd)
-			if err != nil {
-				return warn("unreadable Stop payload (%v); capturing nothing", err)
-			}
-			in = parsed
-			// The session no longer works in its checkout: one file remove, so it
-			// fits the hook's short budget (hook_occupancy.go).
-			forgetOccupancy(in)
-			if in.TranscriptPath == "" {
-				return warn("Stop payload carries no transcript_path; capturing nothing")
-			}
-			cwd := in.Cwd
-			if cwd == "" {
-				if wd, err := os.Getwd(); err == nil {
-					cwd = wd
-				}
-			}
-			detectStart := time.Now()
-			det, err := ahoy.Detect(cwd)
-			detectCost := time.Since(detectStart)
-			if err == nil && det.RootSHA == "" && det.RepoIdentity.RootErr() != nil {
-				// git failing once on a loaded machine is not a directory
-				// outside any repository: ask again before giving the session
-				// up, as the sub-agent hook does (iss-2610051434156079).
-				det, err = retryDetect(cmd.ErrOrStderr(), sessionEndResolveWaits, started.Add(sessionEndRetryBudget), detectCost, cwd, det)
-			}
-			if err == nil && det.RootSHA == "" {
-				if rerr := det.RepoIdentity.RootErr(); rerr != nil {
-					return warn("git gave no root commit for %q (%s); capturing nothing", cwd, fsutil.RedactHome(rerr.Error()))
-				}
-			}
-			if err != nil || det.RootSHA == "" {
-				return warn("cannot resolve the repo's root-commit SHA from %q; capturing nothing", cwd)
-			}
-			raw, err := readTranscript(in.TranscriptPath)
-			if err != nil {
-				return warn("%v; capturing nothing", err)
-			}
-			// Stage, do NOT capture. Redaction costs ~0.7s/MB and the host cancels
-			// a shutdown hook rather than wait, so capturing here dropped every
-			// transcript past a couple of MB — silently, and precisely the long,
-			// dense sessions most worth keeping (iss-2608230817034768). Staging is
-			// one write, so this hook's cost no longer scales with the transcript;
-			// the next SessionStart drains it through the same fail-closed Capture.
-			// Resolve first, so the store's own diagnostics — a corpus migrated
-			// off the legacy location, an opt-in declaration that was not
-			// honoured — reach stderr rather than being discarded inside Stage.
-			if st, err := history.Resolve(captureRoot(cwd), det.RootSHA); err == nil {
-				for _, n := range st.Notes {
-					fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
-				}
-			}
-			res, err := stageWithRetry(cmd.ErrOrStderr(), 0, captureRoot(cwd), det.RootSHA, history.StageMeta{
-				Lineage:    history.CaptureMeta{SessionID: in.SessionID, Kind: "native", LineageSource: "hook"},
-				SourcePath: in.TranscriptPath,
-			}, raw)
-			if err != nil {
-				// The marker is where the person sees the loss: this hook exits
-				// 0, and its stderr reaches only the host's debug log.
-				if nerr := history.NoteStageMiss(captureRoot(cwd), det.RootSHA, "session "+in.SessionID, err.Error()); nerr != nil {
-					diagnosticLine(cmd.ErrOrStderr(), "abcd history: the missed stage could not be recorded either (%v)", nerr)
-				}
-				return warn("staging failed (%v); this session was not captured, and `abcd history staged` reports it", err)
-			}
-			staged := hookStageResult{Hook: "session-end", Captured: true, SessionID: res.Staged.SessionID, Bytes: res.Staged.Bytes}
-			if !res.Wrote {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: session %s already staged with identical bytes (no-op)\n", res.Staged.SessionID)
-				staged.Outcome = hookOutcomeAlreadyStaged
-				emitHookResult(cmd, staged)
-				return nil
-			}
-			if res.Replaced {
-				// Different bytes for an already-staged session: the later
-				// snapshot replaced the earlier one, and this says so rather
-				// than reporting a no-op that would hide a replaced transcript.
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: re-staged %s (%d bytes), replacing %d stale bytes; the next session redacts and stores it\n",
-					res.Staged.SessionID, res.Staged.Bytes, res.ReplacedBytes)
-				staged.Outcome, staged.ReplacedBytes = hookOutcomeRestaged, res.ReplacedBytes
-				emitHookResult(cmd, staged)
-				return nil
-			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: staged %s (%d bytes); the next session redacts and stores it\n",
-				res.Staged.SessionID, res.Staged.Bytes)
-			staged.Outcome = hookOutcomeStaged
-			emitHookResult(cmd, staged)
-			return nil
-		},
+		RunE:  runHookSessionEnd, // hook_session_end.go
 	})
 
 	// session-start — SessionStart: warn, visibly, when the transcript store is
@@ -2153,6 +2052,10 @@ envelope carries it as system_message.`,
 			// otherwise redact all of it before the user's first prompt. Whatever
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
+			// The transcripts session-end left pending go to their stores
+			// first, so this repository's drain below stores its own
+			// (iss-2610241519088123).
+			notices = append(notices, placePendingNotices()...)
 			det, detErr := ahoy.Detect(cwd)
 			if rerr := det.RepoIdentity.RootErr(); detErr == nil && rerr != nil {
 				// git did not answer for this repository: nothing is
@@ -2238,6 +2141,18 @@ envelope carries it as system_message.`,
 			// whatever the repo detection above could answer (itd-105).
 			if n := binarySkewNotice(); n != "" {
 				notices = append(notices, n)
+			}
+			// Committed hooks git does not run in this clone
+			// (iss-2610241133284600): commits and pushes pass unchecked, and
+			// until this notice nothing said so before a gate failed afterwards.
+			hooksOff := false
+			if detErr == nil {
+				if n := ahoy.HooksUnrunNotice(det.Gaps); n != "" {
+					notices = append(notices, n)
+				}
+				// Only the certain case reaches the session's context: a hooks
+				// path set elsewhere may still run the checks.
+				hooksOff = ahoy.HooksUnarmed(det.Gaps)
 			}
 			// The harness's user settings (iss-2610050556323779): a hook there
 			// that runs abcd, or an abcd status line that is gone or fails the
@@ -2332,6 +2247,13 @@ envelope carries it as system_message.`,
 				"abcd: %d session-start notice(s) on this hook's stderr; "+
 					"run `abcd history staged` for transcript backlog or `abcd ahoy` for install state.\n",
 				len(notices))
+			// The one notice the session itself must act on before it commits,
+			// so its gist reaches the context too. A constant, like the line
+			// above: the notice's own words stay on stderr.
+			if hooksOff {
+				fmt.Fprintln(cmd.OutOrStdout(),
+					"abcd: git does not run this repository's committed commit checks in this clone, so no commit made here is checked; `abcd ahoy` names the fix.")
+			}
 			return nil
 		},
 	})
@@ -4062,6 +3984,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					out.ReadmeTool = append(out.ReadmeTool, hostCall(a))
 				}
 			}
+			if res.Sessions != nil {
+				for _, a := range res.Sessions.Asks {
+					out.SessionsTool = append(out.SessionsTool, hostCall(a))
+				}
+			}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy — %s\n", res.FolderKind)
 				fmt.Fprintf(w, "  plugin root: %s\n", res.PluginRootStatus)
@@ -4177,6 +4104,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		answersPath   string
 		answeredIn    string
 		readmeParts   string
+		liveSessions  string
 		details       bool
 	)
 	installCmd := &cobra.Command{
@@ -4198,6 +4126,14 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					return &exitError{Code: 2, Msg: "abcd ahoy install: " + perr.Error() + "; nothing was written"}
 				}
 				opts.ReadmeParts = readmeParts
+			}
+			// The live brief session answer (spc-2610141709430146 step 6):
+			// refused, naming the answers, before anything is written.
+			if cmd.Flags().Changed("live-sessions") {
+				if perr := ahoy.ParseLiveSessions(liveSessions); perr != nil {
+					return &exitError{Code: 2, Msg: "abcd ahoy install: " + perr.Error() + "; nothing was written"}
+				}
+				opts.LiveSessions = liveSessions
 			}
 			opts.Outbound = outbound
 			opts.OnlyWaiting = onlyWaiting(cmd)
@@ -4341,6 +4277,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					default:
 						fmt.Fprint(w, "    the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
 					}
+					switch {
+					case !slices.Contains(res.OptionalSkipped, ahoy.SessionsOfferGapID):
+					case res.SessionsAwaitsConfig():
+						fmt.Fprint(w, "    the live brief session answer is kept in .abcd/config.json, which does not exist yet: answer y to creating abcd's starter files first, then answer the question at a terminal, or answer it with --live-sessions "+ahoy.LiveSessionsChoices+"\n")
+					default:
+						fmt.Fprint(w, "    the live brief session question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --live-sessions "+ahoy.LiveSessionsChoices+"\n")
+					}
 				}
 			}); rerr != nil {
 				return rerr
@@ -4376,6 +4319,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
 	installCmd.Flags().StringVar(&answersPath, "answers", "", "answer the setup questions from this answers file (JSON: schema_version, interview \"setup\", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key")
 	installCmd.Flags().StringVar(&readmeParts, "readme-parts", "", "answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included")
+	installCmd.Flags().StringVar(&liveSessions, "live-sessions", "", "answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up")
 	installCmd.Flags().StringVar(&answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
 	addOnlyWaitingFlag(installCmd)
 	ahoyCmd.AddCommand(installCmd)
@@ -4450,6 +4394,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoyWorktreeCommand(asJSON))
 
 	return ahoyCmd
 }
@@ -4604,8 +4549,17 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 				if res.Status == "refused" {
 					code = 2
 				}
+				// A refusal can come AFTER a toggle landed (a later step failed, or
+				// the mirror could not be written), and then "nothing was changed"
+				// is false: name what landed instead (iss-2610072347230409). The
+				// change lines quote GitHub's own status words, so they are sanitised.
+				outcome := " — nothing was changed"
+				if len(res.Changes) > 0 {
+					outcome = " — already changed on GitHub before it stopped: " +
+						termsafe.Sanitize(strings.Join(res.Changes, "; "))
+				}
 				return &exitError{Code: code, Msg: "abcd ahoy remote apply: " + res.Status +
-					" — nothing was changed (the reason is in the result's notes above)"}
+					outcome + " (the reason is in the result's notes above)"}
 			}
 			return nil
 		},
@@ -4748,6 +4702,8 @@ func optionalSkipReason(id string) string {
 		return "an agent tool's own conventions file that only repeats AGENTS.md is removed from the project only against a prompt answered at a terminal"
 	case ahoy.ReadmeOfferGapID:
 		return "which parts of README.md abcd keeps current is the owner's choice, so abcd writes none until --readme-parts or the README question answers it"
+	case ahoy.SessionsOfferGapID:
+		return "whether the team edits its brief live, and where sessions may run, is the owner's choice, so abcd records nothing until --live-sessions or the question answers it"
 	case ahoy.HooksArmGapID:
 		return "core.hooksPath chooses every hook git runs in this clone, so it is only set against a prompt answered at a terminal; or run " + ahoy.ArmHooksCommand
 	}

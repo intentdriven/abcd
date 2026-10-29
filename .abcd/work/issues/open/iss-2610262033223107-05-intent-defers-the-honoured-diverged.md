@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 397 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md:553"
-remedy: "none (filed automatically)"
+remedy: "In 05-intent.md (line 553 and the Role 1 text) say the honoured / diverged / missing gap audit ships in the audit verdict and its ingest (internal/core/intent/audit.go writes the three buckets into Audit Notes); keep only MG004 and the other prose and terminology outputs as deferred."
 finding_ref: cfk-272747155f5b21ec
 ---
 

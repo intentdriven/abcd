@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 31 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/03-invariants.md:171"
-remedy: "none (filed automatically)"
+remedy: "In 05-intent.md, intent kinds table, change the standalone row's 'One spec (1:1)' to one spec at a time with a remainder spec attachable (1:n, adr-2609151513118583), keeping the bundle row's N:1."
 finding_ref: cfk-a5143d198ac1dfdc
 ---
 

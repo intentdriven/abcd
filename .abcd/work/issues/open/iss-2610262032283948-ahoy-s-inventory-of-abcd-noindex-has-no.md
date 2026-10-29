@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 273 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:420"
-remedy: "none (filed automatically)"
+remedy: "Add the ideas/ store (private ideate verdicts, owner-only, one folder per root-commit SHA) to the user-scope tree in 01-ahoy.md and to the mirrored inventory prose in 05-internals/03-configuration.md."
 finding_ref: cfk-4a2c40fd04a21936
 ---
 

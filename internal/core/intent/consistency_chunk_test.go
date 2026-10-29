@@ -896,6 +896,13 @@ func TestKeptConsistencyAnswersReuseOnlyAValidAnswer(t *testing.T) {
 	if !ok || err != nil || string(payload) != string(good) || string(route) != `{"agent":"intent-auditor"}` {
 		t.Fatalf("a valid kept answer: ok %t, err %v", ok, err)
 	}
+	// The same answer, once a commit carries it, was kept by whoever made the
+	// commit, so it is refused, not reused.
+	r.Git("add", "-f", "--", ConsistencyAnswerPath(ch0.ReceiptID))
+	if _, _, ok, err := NewKeptConsistencyAnswers(root).Get(ch0.ReceiptID); ok || err == nil || !strings.Contains(err.Error(), "git tracks") {
+		t.Fatalf("a kept answer a commit carries: ok %t, err %v; want it refused as tracked", ok, err)
+	}
+	r.Git("rm", "-q", "--cached", "--", ConsistencyAnswerPath(ch0.ReceiptID))
 	// Chunk 0's answer kept under chunk 1's receipt answers the wrong chunk.
 	if _, err := KeepConsistencyAnswer(root, ch1.ReceiptID, good, []byte(`{}`)); err != nil {
 		t.Fatal(err)

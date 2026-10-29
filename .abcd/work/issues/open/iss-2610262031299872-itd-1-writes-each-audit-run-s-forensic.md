@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 136 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-1-acceptance-gates.md:45"
-remedy: "none (filed automatically)"
+remedy: "In itd-1 line 45 drop the .abcd/logbook/audit/review path and say a run's forensic copy goes to the local ephemeral tier (or delete the sentence)."
 related_intents: [itd-1]
 finding_ref: cfk-d3156ba0ed9c474f
 ---
