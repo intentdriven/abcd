@@ -882,8 +882,10 @@ func (c *checker) generatorWords() generatorWords {
 }
 
 // attributionWords is the vocabulary the attribution surface prints: every
-// contributor's name and every declared `Assisted-by:` value, read out of git
-// by the same pass the page renders from.
+// bot or tool author's name and every declared `Assisted-by:` value, read out
+// of git by the same pass the page renders from. No person's name is in it: the
+// page counts people and names none (adr-2610291037481588), so a person's name
+// on that page is untraceable text like any other.
 //
 // This is adr-47 decision 3's carve-out — "the contributors page prints model
 // names under the declared attribution escape" — implemented as a VERIFICATION
@@ -902,9 +904,6 @@ func (c *checker) attributionWords() map[string]bool {
 		if s = strings.TrimSpace(s); s != "" {
 			out[strings.ToLower(s)] = true
 		}
-	}
-	for _, a := range auth.Humans {
-		add(a.Name)
 	}
 	for _, a := range auth.Bots {
 		add(a.Name)

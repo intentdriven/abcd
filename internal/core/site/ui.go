@@ -197,8 +197,11 @@ type HealthUI struct {
 	Unresolved string `json:"unresolved"`
 	// Isolated is a record nothing links to and which links to nothing.
 	Isolated string `json:"isolated"`
-	// SameAuthor is a candidate duplicate identity: two author names that the
-	// mailmap has not folded but which the evidence says are one person.
+	// SameAuthor headed the retired panel that paired two author names taken
+	// for one person. No page renders it: the panel named people, and the site
+	// names none (adr-2610291037481588). The key stays declared because the
+	// file is decoded with unknown fields refused, and a managed repository's
+	// ui.json that declares it must still build.
 	SameAuthor string `json:"same_author"`
 	// Undeclared is an authored commit carrying no `Assisted-by:` trailer.
 	Undeclared string `json:"undeclared"`
@@ -214,7 +217,9 @@ type HealthUI struct {
 	SupersedesLead string `json:"supersedes_lead"`
 	// Clean is what the page says when a family has nothing to report.
 	Clean string `json:"clean"`
-	// Suggestion prefixes the line a finding proposes a human confirm.
+	// Suggestion prefixed the `.mailmap` line the retired same-author panel
+	// proposed. No page renders it; it stays declared for the reason SameAuthor
+	// does.
 	Suggestion string `json:"suggestion"`
 }
 

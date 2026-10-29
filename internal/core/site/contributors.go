@@ -4,7 +4,10 @@ package site
 //
 // Two facts are published and they are different facts. WHO wrote the code is
 // `git shortlog` folded through `.mailmap` — the authors of record, humans
-// responsible for the work. WHAT assisted is the `Assisted-by:` trailer, which
+// responsible for the work — published as a COUNT of people and of their
+// commits, never as a list: the site names no person (adr-2610291037481588,
+// superseding the naming part of adr-47). WHAT assisted is the `Assisted-by:`
+// trailer, which
 // this repository requires on every AI-assisted commit and requires as an
 // explicit `None` on every human-only one, so that silence is never mistaken for
 // a declaration; a commit abcd composes from record facts declares
@@ -73,34 +76,41 @@ var (
 // its one Go home and the place it is tied to the gate.
 func chartableModel(v string) string { return assistedby.ModelHead(v) }
 
-// Author is one authorship line.
+// Author is one row of the bots-and-tools column: a forge bot or a tool that
+// authored commits, named because a tool's name is credit, not a person's.
 //
 // The address is deliberately absent. `git shortlog -sne` yields it and the
 // mailmap folds it, so it is read — but the site is published, and republishing
-// a contributor's address on a web page is a harvesting surface the record
-// never asked for. The name is the attribution; the address stays in git.
+// an address on a web page is a harvesting surface the record never asked for.
+// No profile link is derived either: the row names the tool and stops there.
+//
+// Human authors never become an Author. They are counted as they are read
+// (Authorship.HumanAuthors, HumanCommits) and nothing about any one of them is
+// kept, so no later change to a page or to the JSON can publish a name that is
+// no longer there to publish.
 type Author struct {
 	Name    string `json:"name"`
 	Commits int    `json:"commits"`
-	// Profile is the author's forge profile URL, derived only from a forge
-	// noreply address — which carries no real mailbox, only the public
-	// username — so exporting it republishes nothing the rule above protects.
-	// An author whose address is not a noreply simply has none.
-	Profile string `json:"profile,omitempty"`
-	// email is read so identities fold correctly and sort stably, and is never
-	// exported.
+	// email is read so the column sorts stably, and is never exported.
 	email string
 }
 
-// profileURL is the forge profile a noreply address names, or "". The
-// address's two forms are spelled once, in the reservation's holder reader
-// (claim.NoReplyUsername), which reads the same username.
-func profileURL(email string) string {
-	u := claim.NoReplyUsername(email)
-	if u == "" {
-		return ""
+// humanKey is the identity a human author is counted under, so one person who
+// commits under two names or two spellings of one address counts once.
+//
+// It is the address, case-folded, because an address is what an identity IS in
+// git and the case of a mailbox is not something a person chooses twice. A
+// forge privacy address is keyed on the login it carries instead, so its two
+// forms (`1234+name@…` and `name@…`) fold to one person, compared without
+// regard to case as the forge compares logins. A name is never a key: two
+// people may share one, and a count that merged them would be wrong in the
+// other direction. Anything finer is the repository's `.mailmap`, which
+// shortlog has already applied.
+func humanKey(email string) string {
+	if u := claim.NoReplyUsername(email); u != "" {
+		return "login:" + strings.ToLower(u)
 	}
-	return "https://github.com/" + u
+	return "email:" + strings.ToLower(strings.TrimSpace(email))
 }
 
 // ModelTally is one distinct `Assisted-by:` value and how often it appears.
@@ -121,8 +131,13 @@ type Authorship struct {
 	// quietly subtracted, because a denominator that changed without saying so
 	// is how the rate went wrong in the first place.
 	Merges int `json:"merges"`
-	// Humans are the authors of record, mailmap-folded, most commits first.
-	Humans []Author `json:"humans"`
+	// HumanAuthors is how many people authored the history: the authors of
+	// record, mailmap-folded and then folded once more by humanKey. It is a
+	// count and never a list, so the export names no person.
+	HumanAuthors int `json:"human_authors"`
+	// HumanCommits is how many commits on HEAD those people authored, as
+	// shortlog counts them (merges they made included).
+	HumanCommits int `json:"human_commits"`
 	// Bots are the forge bots and tool-authored commits, kept in a separate row
 	// so a reader never has to guess which lines are people.
 	Bots []Author `json:"bots"`
@@ -179,7 +194,7 @@ const noneDeclaration = "None"
 func LoadAuthorship(repoRoot string) (Authorship, error) {
 	// Empty rather than absent: a page that renders "no bots" from an empty list
 	// and nothing at all from a null is a page with two ways to say one thing.
-	a := Authorship{Humans: []Author{}, Bots: []Author{}, ByModel: []ModelTally{}}
+	a := Authorship{Bots: []Author{}, ByModel: []ModelTally{}}
 	if !gitutil.InRepo(repoRoot) {
 		return a, nil
 	}
@@ -273,6 +288,7 @@ func LoadAuthorship(repoRoot string) (Authorship, error) {
 	if err != nil {
 		return Authorship{}, err
 	}
+	people := map[string]bool{}
 	for _, line := range strings.Split(shortlog, "\n") {
 		m := shortlogRe.FindStringSubmatch(line)
 		if m == nil {
@@ -282,15 +298,16 @@ func LoadAuthorship(repoRoot string) (Authorship, error) {
 		if err != nil {
 			continue
 		}
-		au := Author{Name: m[2], Commits: n, Profile: profileURL(m[3]), email: m[3]}
-		if identity.IsMachineName(au.Name) ||
-			(vendors[au.Name] && identity.IsMachineAddress(identity.RoleAuthor, au.email)) {
-			a.Bots = append(a.Bots, au)
+		name, email := m[2], m[3]
+		if identity.IsMachineName(name) ||
+			(vendors[name] && identity.IsMachineAddress(identity.RoleAuthor, email)) {
+			a.Bots = append(a.Bots, Author{Name: name, Commits: n, email: email})
 			continue
 		}
-		a.Humans = append(a.Humans, au)
+		people[humanKey(email)] = true
+		a.HumanCommits += n
 	}
-	sortAuthors(a.Humans)
+	a.HumanAuthors = len(people)
 	sortAuthors(a.Bots)
 	return a, nil
 }

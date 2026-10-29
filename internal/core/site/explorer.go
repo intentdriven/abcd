@@ -773,7 +773,7 @@ func (e *explorer) foundationsPage() (string, error) {
 // assisted.
 //
 // The two are different facts and the page keeps them apart. Humans are the
-// authors of record. The `Assisted-by:` tallies are DISCLOSURE, presented next
+// authors of record, published as a count that names no person. The `Assisted-by:` tallies are DISCLOSURE, presented next
 // to the policy that requires them — and this page is the one place on the site
 // where a model name may appear, under the declared attribution escape
 // (adr-47 decision 3).
@@ -785,34 +785,40 @@ func (e *explorer) contributorsPage() (string, error) {
 
 	// The page carries two things and nothing else: who authored the history,
 	// and what assisted. The stat tiles that stood above them repeated numbers
-	// the two panels already hold — the authors table has the commit counts, the
+	// the two panels already hold — the authors panel has the commit counts, the
 	// trailers figure has its own total — and the disclosure rate belongs with
 	// the other findings, on the health page.
-	if len(a.Humans) > 0 || len(a.Bots) > 0 {
-		var rows strings.Builder
-		rows.WriteString(`<thead><tr><th>` + escapeText(ui.Contributors.Authors) + `</th><th class="tnum">` +
-			escapeText(ui.Tiles.Commits) + `</th></tr></thead><tbody>`)
-		for _, h := range a.Humans {
-			name := escapeText(h.Name)
-			// A noreply-derived profile links the author's own page; an author
-			// without one stays plain text (itd-140: graceful absence).
-			if h.Profile != "" {
-				name = `<a href="` + escapeAttr(h.Profile) + `">` + name + `</a>`
+	if a.HumanAuthors > 0 || len(a.Bots) > 0 {
+		// The people are a COUNT: how many authored the history and how many
+		// commits they made. No person is named, linked or listed
+		// (adr-2610291037481588). Each number is its own element, so a figure
+		// and the interface string beside it are never one composed phrase.
+		var body strings.Builder
+		if a.HumanAuthors > 0 {
+			body.WriteString(`<div class="health"><div class="hsum"><b class="tnum">` +
+				strconv.Itoa(a.HumanAuthors) + `</b> ` + escapeText(ui.Contributors.Authors) +
+				` · <b class="tnum">` + strconv.Itoa(a.HumanCommits) + `</b> ` +
+				escapeText(ui.Tiles.Commits) + `</div></div>`)
+		}
+		// The bots-and-tools row names each tool: a tool's name is credit, and
+		// no person is in it.
+		if len(a.Bots) > 0 {
+			var rows strings.Builder
+			rows.WriteString(`<thead><tr><th>` + escapeText(ui.Contributors.Authors) + `</th><th class="tnum">` +
+				escapeText(ui.Tiles.Commits) + `</th></tr></thead><tbody>`)
+			for _, t := range a.Bots {
+				rows.WriteString(`<tr class="muted"><td>` + escapeText(t.Name) + ` <span class="rel">` +
+					escapeText(ui.Contributors.Tools) + `</span></td><td class="tnum">` + strconv.Itoa(t.Commits) + `</td></tr>`)
 			}
-			rows.WriteString(`<tr><td>` + name + `</td><td class="tnum">` + strconv.Itoa(h.Commits) + `</td></tr>`)
+			rows.WriteString(`</tbody>`)
+			body.WriteString(`<div class="tablewrap"><table>` + rows.String() + `</table></div>`)
 		}
-		for _, t := range a.Bots {
-			rows.WriteString(`<tr class="muted"><td>` + escapeText(t.Name) + ` <span class="rel">` +
-				escapeText(ui.Contributors.Tools) + `</span></td><td class="tnum">` + strconv.Itoa(t.Commits) + `</td></tr>`)
-		}
-		rows.WriteString(`</tbody>`)
 		policy, err := e.policyQuote()
 		if err != nil {
 			return "", err
 		}
-		body := `<div class="tablewrap"><table>` + rows.String() + `</table></div>` + policy
 		b.WriteString(panelDisclosure("c12", ui.Contributors.Authors, "",
-			strconv.Itoa(len(a.Humans)), body))
+			strconv.Itoa(a.HumanAuthors), body.String()+policy))
 	}
 
 	if len(a.ByModel) > 0 {

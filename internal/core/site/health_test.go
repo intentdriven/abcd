@@ -5,11 +5,10 @@ package site
 //
 // The fixture already carries one of each state the page has to render: a
 // dangling supersession (a finding), a handful of records nothing links to
-// (a finding), a single author with no forge profile (a family with nothing to
-// report), one commit predating the trailer convention (a count), and no commit
-// declaring two models (a second family with nothing to report). The two cases
-// it does NOT carry — a list long enough to hit the cap, and two author names
-// the evidence folds into one — are built on top of it here.
+// (a finding), one commit predating the trailer convention (a count), and no
+// commit declaring two models (a family with nothing to report). The cases it
+// does NOT carry — a list long enough to hit the cap, and one person under two
+// identities, whom the page must not name — are built on top of it here.
 
 import (
 	"encoding/json"
@@ -20,7 +19,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lint"
 )
 
-// TestHealthPageRendersEveryFamily is the page's contract: five panels, each
+// TestHealthPageRendersEveryFamily is the page's contract: one panel per family, each
 // headed by its own interface label and noted with its own count, and every
 // family present whether or not it has anything to report.
 func TestHealthPageRendersEveryFamily(t *testing.T) {
@@ -33,7 +32,6 @@ func TestHealthPageRendersEveryFamily(t *testing.T) {
 	for _, family := range []string{
 		"References a record the tree does not hold",
 		"Linked to nothing, and nothing links to it",
-		"Two author names, one contributor",
 		"Authored commits declaring nothing",
 		"Commits declaring more than one model",
 	} {
@@ -74,25 +72,20 @@ func TestHealthUnresolvedListsTheDanglingReference(t *testing.T) {
 
 // TestHealthCleanFamiliesSaySo is why an empty family is rendered at all: a
 // reader must be able to tell a check that found nothing from a check that
-// never ran. The fixture has one author with no forge profile and no commit
-// declaring two models, so both of those families are clean.
+// never ran. The fixture has no commit declaring two models, so that family is
+// clean.
 func TestHealthCleanFamiliesSaySo(t *testing.T) {
 	f := newFixture(t)
 	out := t.TempDir()
 	buildFixture(t, f, out)
 
 	page := outFile(t, out, "record/health/index.html")
-	// The identity-candidate panel: headed, noted zero, and saying so.
-	if !strings.Contains(page, `<summary><h3>Two author names, one contributor<span>0</span></h3></summary>`+
-		`<div class="health"><div class="hsum">Nothing to report</div></div>`) {
-		t.Error("the identity-candidate family does not render its clean state")
-	}
 	// The multi-trailer panel is clean AND says it is not a fault either way.
 	if !strings.Contains(page, "Not a fault: it is why the trailer count and the commit count differ") {
 		t.Error("the multi-trailer panel does not say that the family is not a fault")
 	}
-	if strings.Count(page, "Nothing to report") != 2 {
-		t.Errorf("the fixture has exactly two clean families; the page says %d",
+	if strings.Count(page, "Nothing to report") != 1 {
+		t.Errorf("the fixture has exactly one clean family; the page says %d",
 			strings.Count(page, "Nothing to report"))
 	}
 }
@@ -183,70 +176,42 @@ func TestHealthIsolatedCapStatesTheTrueTotal(t *testing.T) {
 	}
 }
 
-// TestHealthSameAuthorSuggestsTheMailmapLine is the identity family with
-// something to report. Two commit identities resolving to one forge profile are
-// raised as a CANDIDATE, with the exact `.mailmap` line that would fold them —
-// and that line names a forge noreply address only, because the export withholds
-// a contributor's real address on purpose.
-func TestHealthSameAuthorSuggestsTheMailmapLine(t *testing.T) {
+// TestHealthRaisesNoAuthorPair: the page once paired two author names it took
+// for one person and suggested the line that would fold them, which named both.
+// The fold is applied where people are counted now, and the page names no one.
+func TestHealthRaisesNoAuthorPair(t *testing.T) {
 	f := newFixture(t)
-
-	// Two names, one forge profile. The invented username is the second name,
-	// so this pair trips BOTH signals at once: the identical derived profile,
-	// and one author's name standing as the other's profile username.
-	const canonical = "Fixture Alias <77+fixturealias@users.noreply.github.com>"
-	const alias = "fixturealias <fixturealias@users.noreply.github.com>"
-	f.commitBy("2026-03-08T09:00:00+00:00", "docs: one", canonical)
-	f.commitBy("2026-03-08T10:00:00+00:00", "docs: two", canonical)
-	f.commitBy("2026-03-08T11:00:00+00:00", "docs: three", alias)
+	f.commitBy("2026-03-08T09:00:00+00:00", "docs: one", "Alice <77+alice@users.noreply.github.com>")
+	f.commitBy("2026-03-08T10:00:00+00:00", "docs: two", "alice <alice@users.noreply.github.com>")
 
 	out := t.TempDir()
 	buildFixture(t, f, out)
 	page := outFile(t, out, "record/health/index.html")
-
-	if !strings.Contains(page, "Two author names, one contributor<span>1</span>") {
-		t.Error("the identity family does not raise the fixture's one candidate")
-	}
-	// The pair, each side linked to the profile the evidence derived.
-	for _, want := range []string{
-		`<a href="https://github.com/fixturealias">Fixture Alias</a>`,
-		`<a href="https://github.com/fixturealias">fixturealias</a>`,
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("the candidate pair does not carry %q", want)
+	for _, gone := range []string{"Two author names, one contributor", "Suggested", "alice", "Alice"} {
+		if strings.Contains(page, gone) {
+			t.Errorf("the health page carries %q", gone)
 		}
-	}
-	// The suggestion: the canonical name against the alias's commit address.
-	want := `Suggested <code>Fixture Alias &lt;fixturealias@users.noreply.github.com&gt;</code>`
-	if !strings.Contains(page, want) {
-		t.Errorf("the candidate does not propose the mailmap line: want %q", want)
 	}
 }
 
-// TestSameContributorReadsBothSignals covers the pairing rule directly, so the
-// two signals are pinned apart from everything the build does around them.
-func TestSameContributorReadsBothSignals(t *testing.T) {
-	profiled := Author{Name: "A Contributor", Profile: "https://github.com/acontributor"}
-	sameProfile := Author{Name: "acontributor2", Profile: "https://github.com/acontributor"}
-	byName := Author{Name: "ACONTRIBUTOR"}
-	unrelated := Author{Name: "Somebody Else", Profile: "https://github.com/somebodyelse"}
-
+// TestHumanKeyFoldsOnePersonsIdentities pins the counting key directly: both
+// forms of a forge privacy address are one login, a mailbox is one person in
+// any case, and a name never enters the key.
+func TestHumanKeyFoldsOnePersonsIdentities(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		a, b Author
-		want bool
+		a, b string
+		same bool
 	}{
-		{"the same derived profile", profiled, sameProfile, true},
-		{"a name that is the other's username", profiled, byName, true},
-		{"two different profiles", profiled, unrelated, false},
-		{"two names and no profile at all", byName, Author{Name: "Nobody"}, false},
+		{"both privacy-address forms", "77+alice@users.noreply.github.com", "alice@users.noreply.github.com", true},
+		{"a login in two cases", "77+Alice@users.noreply.github.com", "alice@users.noreply.github.com", true},
+		{"a mailbox in two cases", "bob@example.com", "Bob@Example.COM", true},
+		{"two mailboxes", "carol@example.org", "carol@example.net", false},
+		{"a mailbox and a privacy address", "dave@example.com", "dave@users.noreply.github.com", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := sameContributor(tc.a, tc.b); got != tc.want {
-				t.Errorf("sameContributor = %v, want %v", got, tc.want)
-			}
-			if got := sameContributor(tc.b, tc.a); got != tc.want {
-				t.Errorf("sameContributor (reversed) = %v, want %v", got, tc.want)
+			if got := humanKey(tc.a) == humanKey(tc.b); got != tc.same {
+				t.Errorf("humanKey(%q) == humanKey(%q) is %v, want %v", tc.a, tc.b, got, tc.same)
 			}
 		})
 	}
