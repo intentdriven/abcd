@@ -17,20 +17,32 @@ import (
 // started, not git alone, while leaving git where the person's own git runs:
 // in abcd's process group, so a signing prompt or a hook that asks on the
 // terminal reads it as it would on the person's own commit, and an interrupt
-// at the terminal reaches git as it would there. Its Cancel reads the process
-// table and collects git's descendants (a hook, the programs that hook
-// started, a signing program git ran), then sends SIGTERM to git (on which it
-// removes its lock files) and to each of them. The sweep it returns, run once
+// at the terminal reaches git as it would there. Since git is not in a group
+// of its own, no one signal reaches the whole tree, so its Cancel freezes the
+// tree before it signals it: it sends SIGSTOP to git, so git starts nothing
+// more, then reads the process table and sends SIGSTOP to each of git's
+// descendants as it finds them (a hook, the programs that hook started, a
+// signing program git ran), reading the table again until a read finds none
+// it had not stopped, since a descendant can start a process between a read
+// and its own stop. It then sends SIGTERM to git (on which it removes its
+// lock files) and to each of them, and SIGCONT to each process it stopped, on
+// every path, so each acts on the SIGTERM. So a hook git would start, or a
+// program a hook would start, while the stop is under way is never started,
+// rather than escaping the stop and holding git's output for the whole
+// WaitDelay (iss-2610292307181518). The sweep it returns, run once
 // Wait has returned, waits until stopGrace has passed since the stop
 // and then sends SIGKILL to each that is still running, with any process one
 // of them started since; it returns at once when none is left, and does
 // nothing when the deadline was not reached: a program a hook leaves running
 // behind a git that finished in time is the repository's, and is left alone.
 //
-// A process is known by its pid and its start time together, so a pid the
-// system has handed to another program since is never signalled. Out of
+// The sweep knows a process by its pid and its start time together, so a pid
+// the system has handed to another program since is never killed; the stop
+// signals by pid, in the moment after a read, while the processes it signals
+// are stopped and cannot exit. Out of
 // reach: a hook's child that detaches (its parent exits and it is reparented
-// to init) before the stop, since nothing then ties it to git; a process a
+// to init) before the stop begins, since nothing then ties it to git; a
+// process a descendant starts after the last of stopRounds reads; a process a
 // hook asks another to start (a gpg-agent's pinentry); and every descendant
 // where the process table cannot be read, when git alone is stopped, as
 // before.
@@ -39,7 +51,23 @@ func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 	var stopped time.Time
 	var tree []procEntry
 	cmd.Cancel = func() error {
-		desc := descendantsOf(readProcTable(), []int{cmd.Process.Pid})
+		// A git already reaped refuses the SIGSTOP and is not continued; one
+		// that has exited and not been reaped takes it, and the SIGCONT, as a
+		// no-op.
+		gitStopped := cmd.Process.Signal(syscall.SIGSTOP) == nil
+		var desc []procEntry
+		defer func() {
+			for _, p := range desc {
+				_ = syscall.Kill(p.pid, syscall.SIGCONT)
+			}
+			if gitStopped {
+				_ = cmd.Process.Signal(syscall.SIGCONT)
+			}
+		}()
+		desc = stopDescendants(cmd.Process.Pid)
+		if afterSnapshot != nil {
+			afterSnapshot()
+		}
 		mu.Lock()
 		stopped, tree = time.Now(), desc
 		mu.Unlock()
@@ -75,6 +103,38 @@ func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 		}
 	}
 }
+
+// stopRounds caps the process-table reads stopDescendants makes.
+const stopRounds = 4
+
+// stopDescendants is every descendant of root the process table shows, each
+// sent SIGSTOP as it is found, the table read again until a read finds none
+// not already stopped, at most stopRounds times. It is nil where the table
+// cannot be read.
+func stopDescendants(root int) []procEntry {
+	seen := map[int]bool{}
+	var out []procEntry
+	for range stopRounds {
+		fresh := false
+		for _, p := range descendantsOf(readProcTable(), []int{root}) {
+			if seen[p.pid] {
+				continue
+			}
+			seen[p.pid] = true
+			_ = syscall.Kill(p.pid, syscall.SIGSTOP)
+			out = append(out, p)
+			fresh = true
+		}
+		if !fresh {
+			break
+		}
+	}
+	return out
+}
+
+// afterSnapshot, when set, runs in the stop between the reads of git's
+// descendants and the signals, so a test can hold the stop open there.
+var afterSnapshot func()
 
 // procEntry is one live process of the table: its pid, its parent's, and its
 // start time as ps prints it, which with the pid names the process.
