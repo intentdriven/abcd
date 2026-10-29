@@ -250,6 +250,10 @@ session's forge token, asked whose account it is. When git's identity is not a
 person's, the token's account sends and authors the announcement, and the
 identity git had is shown nowhere.
 
+abcd's own pushes announce first through this same code: abcd land, and a
+build or drain lane's landing, post "merging <item>" and push only once it is
+on origin. A push typed by hand with git push posts no announcement.
+
 Exit 0 when the announcement reached origin; exit 2 on every refusal, when it
 was not sent, and when a push was made but whether it landed cannot be told.
 Nothing is pushed on a refusal except "not sent", which follows pushes origin
@@ -3740,10 +3744,18 @@ credentials, so run it only on a branch whose content you trust.
      `make preflight` runs in the branch's checkout, its output on stderr, and the
      head must be unchanged, a receipt present and origin's URLs as checked after
      it. A repository whose make file declares no preflight target gets no push.
-  4. Push (land.push): a plain push of the gated commit to the branch's name on
+  4. Announce (with land.push on): before the push, "merging <item>" is posted on
+     your status branch, as abcd announce posts it, for each issue, intent or pull
+     request the branch's own commits name in a Refs:, Resolves: or Delivers:
+     trailer, and the push waits until each is on origin. One you already
+     announced, standing a minute more, is not sent again; a record not yet on
+     the default branch is not announced, and the step says so. One that cannot
+     be published refuses the landing, nothing pushed. A push typed by hand with
+     git push posts no announcement.
+  5. Push (land.push): a plain push of the gated commit to the branch's name on
      origin, with the repository's hooks running, never forced, never the default
      branch.
-  5. Enqueue (land.enqueue): the branch's open pull request, armed for the merge
+  6. Enqueue (land.enqueue): the branch's open pull request, armed for the merge
      queue where the merge gate allows it (today: only where a merge queue gates the
      default branch and a ruleset requires a person's approval), pinned to the
      head, then confirmed in the queue. An arming someone else made is left as it
@@ -3773,7 +3785,8 @@ line on stderr names it.
 
 Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,
 which names what was done before it; reservations that cannot be fetched are
-one, made before anything is pushed. Exit 3 when a release being cut holds the
+one, and so is an announcement that cannot be published, each made before
+anything is pushed. Exit 3 when a release being cut holds the
 landing: it names the release, its holder and until when.
 
 --record-review records the review pair's verdicts for the branch's head and
