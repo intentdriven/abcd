@@ -298,7 +298,8 @@ One limit is not among those states, because it is never false: the guard's
 reach. The manifest's pre-tool-use matcher hands the hook the shell tool, the
 question tool and the host's file-writing tools (`Write`, `Edit`, `MultiEdit`,
 `NotebookEdit`) and nothing else. A file those tools write is judged only by
-where it lands: in a main checkout two or more live sessions started in, it is
+where it lands: in a main checkout two or more live sessions started in, outside
+that checkout's own local tier (`.abcd/.work.local/`, which git ignores), it is
 denied with the record verbs' refusal (`occupancy.CheckPath`, which walks up to
 the file's `.git` with no git subprocess; iss-2610280051498465), and anywhere
 else it is written unchecked. A call through any other tool never reaches the

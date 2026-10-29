@@ -141,6 +141,9 @@ func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string)
 			base = wd
 		}
 		path = filepath.Join(base, path)
+		if !filepath.IsAbs(path) {
+			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names a relative path and a session directory that is not absolute", termsafe.Sanitize(tool))
+		}
 	}
 	m, ok := sessionNameMachine()
 	if !ok || m.Home == "" {

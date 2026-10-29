@@ -2045,9 +2045,11 @@ A file one of those tools writes is not held to the registry: it is denied
 with the host's deny when it lands in a main checkout two or more live
 sessions started in, with the refusal the record verbs give, naming the
 worktree store. The file's working tree is found by walking up to its .git,
-so a linked worktree, a checkout one session or none works in, and a path
-in no checkout are written silently. A file call naming no path, or a count
-that cannot be made, lets the write run and warns loudly. A call through
+so a linked worktree, a checkout one session or none works in, a path in no
+checkout, and a file in a checkout's own local tier (.abcd/.work.local/,
+which git ignores) are written silently. A file call naming no path, a
+relative path with no absolute session directory, or a count that cannot
+be made, lets the write run and warns loudly. A call through
 any other tool never reaches the guard: a command a tool from another
 extension runs is neither checked nor warned about. That is the guard's
 standing scope, not a degradation, and the guard: line of abcd ahoy does

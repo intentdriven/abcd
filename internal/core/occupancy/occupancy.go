@@ -39,6 +39,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // dirLeaf is the markers' folder under abcd's home.
@@ -342,10 +343,18 @@ func resolveExisting(path string) string {
 
 // CheckPath is Check on the working tree a file at path would be written
 // into, for a writer that names a file rather than a checkout: the hook on
-// the host's own file tools. A path in no checkout is nil.
+// the host's own file tools. A path in no checkout is nil, and so is one in
+// that tree's local tier: it is ignored and kept for that checkout alone, so
+// a file written there lands in no peer's index, and the SCRATCH rule sends
+// a linked worktree's handovers and helper scripts to the main checkout's.
 func CheckPath(home, path string, readTable func() (sessionname.Table, error)) error {
 	root, ok := TreeOf(path)
 	if !ok {
+		return nil
+	}
+	tier := filepath.FromSlash(localtier.RelDir)
+	if rel, err := filepath.Rel(root, resolveExisting(filepath.Clean(path))); err == nil &&
+		(rel == tier || strings.HasPrefix(rel, tier+string(filepath.Separator))) {
 		return nil
 	}
 	return Check(home, root, readTable)

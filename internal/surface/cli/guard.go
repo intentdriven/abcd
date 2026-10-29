@@ -248,9 +248,11 @@ func newGuardHookCommand() *cobra.Command {
 			"with the host's deny when it lands in a main checkout two or more live\n" +
 			"sessions started in, with the refusal the record verbs give, naming the\n" +
 			"worktree store. The file's working tree is found by walking up to its .git,\n" +
-			"so a linked worktree, a checkout one session or none works in, and a path\n" +
-			"in no checkout are written silently. A file call naming no path, or a count\n" +
-			"that cannot be made, lets the write run and warns loudly. A call through\n" +
+			"so a linked worktree, a checkout one session or none works in, a path in no\n" +
+			"checkout, and a file in a checkout's own local tier (.abcd/.work.local/,\n" +
+			"which git ignores) are written silently. A file call naming no path, a\n" +
+			"relative path with no absolute session directory, or a count that cannot\n" +
+			"be made, lets the write run and warns loudly. A call through\n" +
 			"any other tool never reaches the guard: a command a tool from another\n" +
 			"extension runs is neither checked nor warned about. That is the guard's\n" +
 			"standing scope, not a degradation, and the guard: line of abcd ahoy does\n" +

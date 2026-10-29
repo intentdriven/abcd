@@ -260,6 +260,7 @@ func TestGuardHookAllowsAFileWriteWhereNoPeerShares(t *testing.T) {
 	}
 	allow("linked worktree", fileToolPayload(t, "Write", repo, filepath.Join(wt, "f.go")))
 	allow("no checkout", fileToolPayload(t, "Edit", repo, filepath.Join(t.TempDir(), "f.go")))
+	allow("the shared checkout's local tier", fileToolPayload(t, "Write", wt, filepath.Join(repo, ".abcd", ".work.local", "scratch", "handover.md")))
 	if err := occupancy.Forget(f.home, "s-two"); err != nil {
 		t.Fatal(err)
 	}
@@ -275,6 +276,7 @@ func TestGuardHookFailsOpenLoudOnAnUnreadableFileToolPayload(t *testing.T) {
 	for name, payload := range map[string]string{
 		"unreadable": `{"tool_name":"Write","tool_input":{"file_path":`,
 		"no path":    `{"tool_name":"Edit","tool_input":{"old_string":"a"}}`,
+		"relative":   `{"tool_name":"Write","cwd":"some/dir","tool_input":{"file_path":"f.go"}}`,
 	} {
 		stdout, stderr, code := runGuard(payload, "guard", "hook")
 		if code != 1 || stdout != "" {

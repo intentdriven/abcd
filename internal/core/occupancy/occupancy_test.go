@@ -318,4 +318,15 @@ func TestCheckPathJudgesTheTreeAFileLandsIn(t *testing.T) {
 	if err := CheckPath(home, filepath.Join(base, "f.go"), read(tab)); err != nil {
 		t.Errorf("a file in no checkout must not be refused: %v", err)
 	}
+	// The local tier is ignored and kept for this checkout alone, so a file
+	// written there lands in no peer's index; the SCRATCH rule sends a linked
+	// worktree's handovers and helper scripts there.
+	for _, rel := range []string{".abcd/.work.local/scratch/handover.md", ".abcd/.work.local/new/deeper/x.sh"} {
+		if err := CheckPath(home, filepath.Join(main, filepath.FromSlash(rel)), read(tab)); err != nil {
+			t.Errorf("a file in the shared checkout's local tier (%s) must not be refused: %v", rel, err)
+		}
+	}
+	if err := CheckPath(home, filepath.Join(main, ".abcd", "work", "x.md"), read(tab)); !errors.As(err, &shared) {
+		t.Errorf("a file in the shared checkout's committed tier must still be refused, got %v", err)
+	}
 }
