@@ -31,6 +31,7 @@ func TestGitLongOptionAbbreviationsMatch(t *testing.T) {
 		{`git branch --del --force feat/x`, VerdictWarn, "git-branch-delete-force"},
 		{`git branch --delete --forc feat/x`, VerdictWarn, "git-branch-delete-force"},
 		{`git push --dele origin feat/x`, VerdictWarn, "git-push-delete"},
+		{`git reset --har origin/main`, VerdictWarn, "git-reset-hard"},
 
 		{`git push --no-verb origin main`, VerdictAllow, ""},
 		{`git push --no-ver origin main`, VerdictAllow, ""},

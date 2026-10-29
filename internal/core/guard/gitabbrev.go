@@ -9,7 +9,7 @@ import "strings"
 // (iss-2609251640354925).
 //
 // gitLongOptions is the long-option table of each git subcommand a bundled
-// blocker constrains by flag, taken from `git <subcommand>
+// blocking or warning entry constrains by flag, taken from `git <subcommand>
 // --git-completion-helper-all` on git 2.52: the options, their `--no-`
 // negations, and the negations git accepts for a `no-` option (`--verify`).
 // A `=` suffix is dropped. The table is what makes a prefix decidable: a prefix
@@ -40,16 +40,16 @@ var gitLongOptions = map[string][]string{
 		"--no-follow-tags", "--no-signed", "--no-atomic", "--no-push-option",
 	},
 	"branch": {
-		"--verbose", "--quiet", "--track", "--set-upstream", "--set-upstream-to", "--unset-upstream",
-		"--color", "--remotes", "--contains", "--abbrev", "--all", "--delete", "--create-reflog",
-		"--edit-description", "--force", "--move", "--copy", "--column", "--sort", "--merged",
-		"--points-at", "--format", "--list", "--show-current", "--ignore-case", "--omit-empty",
-		"--recurse-submodules",
-		"--no-verbose", "--no-quiet", "--no-track", "--no-color", "--no-remotes", "--no-contains",
-		"--no-abbrev", "--no-all", "--no-delete", "--no-create-reflog", "--no-force", "--no-move",
-		"--no-copy", "--no-column", "--no-sort", "--no-merged", "--no-points-at", "--no-format",
-		"--no-list", "--no-show-current", "--no-ignore-case", "--no-omit-empty",
-		"--no-recurse-submodules",
+		"--verbose", "--quiet", "--track", "--set-upstream", "--set-upstream-to",
+		"--unset-upstream", "--color", "--remotes", "--contains", "--with", "--without",
+		"--abbrev", "--all", "--delete", "--create-reflog", "--edit-description", "--force",
+		"--move", "--copy", "--column", "--sort", "--merged", "--points-at", "--format", "--list",
+		"--show-current", "--ignore-case", "--omit-empty", "--recurse-submodules",
+		"--no-verbose", "--no-quiet", "--no-track", "--no-set-upstream", "--no-set-upstream-to",
+		"--no-unset-upstream", "--no-color", "--no-contains", "--no-abbrev", "--no-delete",
+		"--no-create-reflog", "--no-edit-description", "--no-force", "--no-move", "--no-copy",
+		"--no-column", "--no-sort", "--no-merged", "--no-points-at", "--no-format", "--no-list",
+		"--no-show-current", "--no-ignore-case", "--no-omit-empty", "--no-recurse-submodules",
 	},
 	"commit": {
 		"--quiet", "--verbose", "--file", "--author", "--date", "--message", "--reedit-message",
@@ -66,6 +66,13 @@ var gitLongOptions = map[string][]string{
 		"--no-short", "--no-branch", "--no-ahead-behind", "--no-porcelain", "--no-long", "--no-null",
 		"--no-amend", "--no-untracked-files", "--no-pathspec-from-file", "--no-pathspec-file-nul",
 		"--no-allow-empty", "--no-allow-empty-message",
+	},
+	"reset": {
+		"--quiet", "--no-refresh", "--mixed", "--soft", "--hard", "--merge", "--keep",
+		"--recurse-submodules", "--patch", "--unified", "--inter-hunk-context", "--intent-to-add",
+		"--pathspec-from-file", "--pathspec-file-nul", "--refresh",
+		"--no-quiet", "--no-recurse-submodules", "--no-patch", "--no-intent-to-add",
+		"--no-pathspec-from-file", "--no-pathspec-file-nul",
 	},
 }
 

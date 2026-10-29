@@ -461,7 +461,7 @@
         "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
         "flags": ["-D"]
       },
-      "why": "`git branch -D` deletes a local branch whether or not it is merged, and a commit only that branch held is then reachable from the reflog alone, which expires.",
+      "why": "`git branch -D` deletes a local branch whether or not it is merged, and a commit only that branch held loses its name with it: the branch's own reflog goes too, so only HEAD's reflog can still find the commit, and only if the branch was checked out here.",
       "successor": "Delete with `git branch -d <branch>`, which refuses a branch that is not merged; where it refuses, see what the branch holds (`git log origin/main..<branch>`) before deleting anything.",
       "fixtures": {
         "known_bad": [
@@ -488,7 +488,7 @@
         "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
         "flags": ["--delete|-d", "--force|-f"]
       },
-      "why": "`git branch --delete --force` is `git branch -D` spelled in two flags: it deletes a local branch whether or not it is merged, and a commit only that branch held is then reachable from the reflog alone, which expires.",
+      "why": "`git branch --delete --force` is `git branch -D` spelled in two flags: it deletes a local branch whether or not it is merged, and a commit only that branch held loses its name with it: the branch's own reflog goes too, so only HEAD's reflog can still find the commit, and only if the branch was checked out here.",
       "successor": "Delete with `git branch -d <branch>`, which refuses a branch that is not merged; where it refuses, see what the branch holds (`git log origin/main..<branch>`) before deleting anything.",
       "fixtures": {
         "known_bad": [
