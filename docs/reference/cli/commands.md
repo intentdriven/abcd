@@ -55,7 +55,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
       --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
       --identity    check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)
       --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
-      --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
+      --remote      audit this repository's GitHub settings against abcd's baseline, one line per setting, and say what the remote apply sub-verb would change
 ```
 
 #### `abcd ahoy connect`
