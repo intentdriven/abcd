@@ -86,13 +86,19 @@ So a path that forgets to ask is still stopped.
   their permission on the repository as the forge reports it. Write,
   Maintain and Admin are maintainers; Read and Triage are contributors. A
   custom role counts as the role it is based on, and an author with no
-  permission on the repository, or one the forge does not report, is a
-  contributor.
-- **Who approves.** A contributor's pull request is armed only after a
-  maintainer other than its author has approved its head commit, in either
-  mode. A maintainer's pull request is armed at once in `auto`; in `human`
-  it is armed only after the technical facilitator has approved its head
-  commit, and until then abcd says the facilitator's approval is needed.
+  permission on the repository (the forge answers that it knows none) is a
+  contributor. A permission that cannot be read at all is neither: abcd
+  says the author's role is unverified and arms nothing.
+- **Who approves.** An approval of a pull request's head commit is either a
+  forge review by a maintainer other than its author, or the technical
+  facilitator's approval recorded through abcd's own approval act, which a
+  person runs and the shell guard refuses to an agent. The second exists
+  because the facilitator usually authors the pull requests abcd opens, and
+  the forge refuses an author's approval of their own. A contributor's pull
+  request is armed only after such an approval, in either mode. A
+  maintainer's pull request is armed at once in `auto`; in `human` it is
+  armed only after such an approval, and until then abcd says the
+  facilitator's approval is needed.
   The product thinker never approves a merge. abcd enforces this itself,
   since the forge lets a pull request merge with no approval, and it adds no
   approval rule or code-owner file to the forge.
@@ -141,8 +147,16 @@ So a path that forgets to ask is still stopped.
 - **Given** an approval of an earlier commit and none of the head, **when**
   the merge gate reads the approvals, **then** it counts none.
 - **Given** an author with a custom repository role, **when** the seam reads
-  their permission, **then** they count as the role it is based on, and as a
-  contributor when that base cannot be read.
+  their permission, **then** they count as the role it is based on.
+- **Given** an author's permission the forge cannot be asked for, or a
+  custom role whose base cannot be read, **when** the merge gate reaches the
+  pull request, **then** it arms nothing, whatever approvals there are, and
+  says the author's role is unverified.
+- **Given** the mode is `human` and a maintainer's pull request authored
+  from the technical facilitator's own account, **when** the facilitator
+  records their approval of its head through abcd's approval act, **then**
+  the next land arms it; **when** an agent runs that act through a host with
+  the guard hook, **then** the guard refuses it.
 - **Given** `facilitator.mode: auto` in `.abcd/config.json` and a merge queue
   gating the default branch, **when** `abcd land` reaches a passing branch with
   an open pull request, **then** the pull request is in the queue when land
@@ -227,7 +241,16 @@ _None recorded yet._
   counts only an approval of the head commit by a maintainer other than the
   author. `auto` keeps its review-receipt condition. A custom role is judged
   by its base role, and an author the forge reports no role for is a
-  contributor, so an unreadable answer never lets a merge through.
+  contributor.
+- 2026-10-29, the technical facilitator on the product thinker's delegation
+  (agreed with the maintainer-gate intent's author): a permission that
+  cannot be read is not a contributor's, since a token that reads reviews
+  but not permissions would then arm on an approval; it arms nothing and is
+  called unverified. In `human` the facilitator's approval is also an act
+  abcd records for the head commit, run by a person and refused to an agent
+  by the guard, because the facilitator authors most pull requests and the
+  forge refuses an author's own approval; a second maintainer is not
+  required.
 - 2026-10-29, the technical facilitator on the product thinker's delegation
   (records): the status line shows the mode only while it is `auto`, since
   `human` is every fresh install's default and an element there would say

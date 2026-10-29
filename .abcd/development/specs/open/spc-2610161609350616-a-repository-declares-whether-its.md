@@ -80,11 +80,18 @@ refuses.
    - Who is a maintainer is one seam: the pull request author's permission
      on the repository as the forge reports it (`role_name`). Write,
      Maintain and Admin are maintainers; Read and Triage are contributors; a
-     custom role counts as its base role; a 404, no role, or a base that
-     cannot be read is a contributor. Pin the fields in `internal/ghcontract`
-     after a live read-only call.
+     custom role counts as its base role; a 404 or no role is a
+     contributor. A permission that cannot be read, or a custom role whose
+     base cannot be read, is unverified: the gate arms nothing and says so.
+     Pin the fields in `internal/ghcontract` after a live read-only call.
    - An approval counts only when it is the latest review of a maintainer
-     other than the author and approves the head commit. AM1 is retired as
+     other than the author and approves the head commit, or when the
+     technical facilitator has recorded their approval of the head commit
+     through abcd's approval act. That act is a front door to decide and
+     record in this step (a sub-verb or a flag of `abcd land`), wired to the
+     CLI and the plugin page, writing a record for the full head sha in the
+     local tier beside the review receipts; the shell guard refuses it to an
+     agent (step 5). AM1 is retired as
      the stand-in, but this reading of approvals is kept for the two cases
      below.
    - A contributor's pull request arms nothing, in either mode, until a
@@ -118,6 +125,8 @@ refuses.
      `gh pr merge` aimed at a queue, and a GraphQL `enqueuePullRequest`.
    - It reads the mode through the same resolver.
    - It names the setting that would allow each command.
+   - In any mode it refuses the approval act of step 4 when an agent runs
+     it: approving is the person's act.
 6. abcd's own repository and the docs
    - packages: .abcd/config.json, commands/land.md, .abcd/development/brief/04-surfaces/38-land.md
    - tests: internal/surface/cli
