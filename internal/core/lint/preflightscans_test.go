@@ -137,10 +137,17 @@ func (r *scanRepo) run(mode string) (int, string) {
 	if err != nil {
 		r.t.Skip("git unavailable")
 	}
+	// git gets a directory of its own rather than its install directory on
+	// PATH: a package manager's bin (/opt/homebrew/bin) also holds gitleaks,
+	// which would turn the no-gitleaks case into a real scan.
+	gitDir := r.t.TempDir()
+	if err := os.WriteFile(filepath.Join(gitDir, "git"), []byte("#!/bin/sh\nexec '"+gitPath+"' \"$@\"\n"), 0o755); err != nil {
+		r.t.Fatal(err)
+	}
 	cmd := exec.Command("bash", filepath.Join(root, "scripts", "preflight-scans.sh"), mode)
 	cmd.Dir = r.dir
 	cmd.Env = []string{
-		"PATH=" + r.stubs + ":" + filepath.Dir(gitPath) + ":/usr/bin:/bin",
+		"PATH=" + r.stubs + ":" + gitDir + ":/usr/bin:/bin",
 		"HOME=" + r.t.TempDir(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
 	}
 	out, err := cmd.CombinedOutput()
