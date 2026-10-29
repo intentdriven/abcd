@@ -161,11 +161,11 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"once), a waiter queued ahead still shuts it, and a live race run does not shut\n" +
 			"it by itself; the load limit still does, and the race gate keeps race stages\n" +
 			"apart, so one race stage may run beside that many unit stages. A value it\n" +
-			"cannot use refuses the wait, naming where it was set. A\n" +
-			"`" + abcdhome.Display("config.json") + "` that cannot be read for it (writable by others,\n" +
-			"not valid JSON, or a `load` that is not an object) is read past instead: one\n" +
-			"preflight at a time applies, and one line on stderr names the file, the cause\n" +
-			"and how to fix it; so does a key under `load` that nothing reads.\n\n" +
+			"cannot use refuses the wait, naming where it was set. A `" + abcdhome.Display("config.json") + "`\n" +
+			"that cannot be read for it (writable by others, not valid JSON, or a `load`\n" +
+			"that is not an object) is read past instead: one preflight at a time applies,\n" +
+			"and one line on stderr names the file, the cause and how to fix it; so does a\n" +
+			"key under `load` that nothing reads.\n\n" +
 			"Within one account the waiter that opens also takes a hold,\n" +
 			"`" + abcdhome.Display(implement.WaitHoldFileName) + "` at the first gate and `" + abcdhome.Display(implement.WaitRaceHoldFileName) + "` at\n" +
 			"the race gate, and every other waiter of that account at the same gate stays\n" +

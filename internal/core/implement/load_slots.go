@@ -11,8 +11,8 @@ import (
 // How many preflights the first gate admits to their test stages at once
 // (iss-2610161639025702), one race stage able to run beside them
 // (iss-2610282016250805), is a setting of the person's own machine, never of
-// a checkout: a repository
-// that could raise it could raise the machine's load for every account on it.
+// a checkout: a repository that could raise it could raise the machine's load
+// for every account on it.
 // So it is read from two places only, the first that holds it winning:
 //
 //   - ABCD_LOAD_PREFLIGHTS in the waiter's own environment, so a measured
@@ -80,9 +80,10 @@ const (
 )
 
 // PreflightSlots resolves how many preflights the first gate admits to their
-// test stages at once, where that came from, and a note when the machine's config.json was
-// read past (machineConfigNote), for the account whose home is home. It reads
-// getenv and the machine's config.json, and no repository file.
+// test stages at once, where that came from, and a note when the machine's
+// config.json was read past (machineConfigNote), for the account whose home
+// is home. It reads getenv and the machine's config.json, and no repository
+// file.
 func PreflightSlots(getenv func(string) string, home string) (int, string, string, error) {
 	if v := strings.TrimSpace(getenv(PreflightSlotsEnv)); v != "" {
 		n, err := strconv.Atoi(v)

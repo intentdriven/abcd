@@ -571,8 +571,8 @@ func queueOrder(ws []Proc) []int {
 // run cannot saturate the machine (iss-2610102020442624): the cores the
 // machine can still give, which is twice the online cores (the waiter's
 // default limit, DefaultWaitFactor) less the one-minute load rounded up,
-// never more than the cores divided among the slots preflights may be in
-// their test stages at once (load.preflights; zero or less reads as one, and
+// never more than the cores divided among the preflights the first gate
+// admits to their test stages at once (load.preflights; zero or less reads as one, and
 // one is go's own default of the cores) and never fewer than a quarter of the
 // cores, or one, so a run on a loaded machine still makes progress. With n
 // slots, n concurrent stages each take at most the cores divided by n (half

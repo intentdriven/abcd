@@ -34,8 +34,8 @@ import (
 // machineload.QueueAhead). It never signals anything.
 //
 // That is the first gate with one slot, the default. How many preflights the
-// first gate admits to their test stages at once is the person's own setting (PreflightSlots,
-// load_slots.go); above one, the first gate opens while fewer than that many
+// first gate admits to their test stages at once is the person's own setting
+// (PreflightSlots, load_slots.go); above one, the first gate opens while fewer than that many
 // other units of work are in their test stages (machineload.Ahead.Shut), a
 // waiter queued ahead still shuts it, a live race run does not shut it by
 // itself, and a preflight queued at its race gate, running nothing, takes no
