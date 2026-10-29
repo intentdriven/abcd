@@ -45,15 +45,18 @@ const PreflightSlotsEnv = "ABCD_LOAD_PREFLIGHTS"
 const PreflightSlotsKey = "load.preflights"
 
 // MaxPreflightSlots bounds the count. The product thinker approved a measured
-// trial of two preflights at once (dcn-2610161814279204), so two is the most
-// either place may set until a measured trial supports more; a larger value
-// is refused saying so (slotsRangeError).
-const MaxPreflightSlots = 2
+// trial of two preflights at once (dcn-2610161814279204), and on 2026-10-28
+// asked for the machine's capacity to be used, so four is the most either
+// place may set: one race run at a time (the race gate) and the load limit
+// stay the bounds, each stage's -p is the cores divided among the slots
+// (machineload.GoTestParallelism), and the count is the person's own setting.
+// A larger value is refused saying so (slotsRangeError).
+const MaxPreflightSlots = 4
 
 // slotsRangeError is the refusal of a count outside one to MaxPreflightSlots.
 func slotsRangeError(n int) error {
 	if n > MaxPreflightSlots {
-		return fmt.Errorf("at most %d preflights may be in their test stages at once for now; the limit rises once a measured trial supports it (want a whole number from 1 to %d)",
+		return fmt.Errorf("at most %d preflights may be in their test stages at once (want a whole number from 1 to %d)",
 			MaxPreflightSlots, MaxPreflightSlots)
 	}
 	return fmt.Errorf("want a whole number from 1 to %d", MaxPreflightSlots)
