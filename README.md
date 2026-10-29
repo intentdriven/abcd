@@ -102,9 +102,12 @@ Later, `/plugin update abcd` takes the latest cut release: the marketplace names
 
 Outside a plugin session, `abcd` runs from a terminal in any repository, with no harness involved. One command provisions it, no administrator rights required. It runs the installer published with the latest release, which checks the download against the release's `checksums.txt` and, when the GitHub CLI `gh` is installed and signed in, against the signed build record with `gh attestation verify`, held to this repository's release workflow on `main` and to the commit the latest release's tag names, installing nothing if either check fails:
 
+<!-- BEGIN GENERATED: install-command -->
+<!-- Written by `go test ./internal/core/site -run TestReadmeInstallBlockIsRendered -update` from site-src/install.sh.tmpl; edit the template, never this block. -->
 ```sh
 curl -fsSL https://github.com/intentdriven/abcd/releases/latest/download/install.sh | sh
 ```
+<!-- END GENERATED: install-command -->
 
 Without `gh`, the download is checked only against the `checksums.txt` published beside it on the same release page, not against the signed build record, and the installer prints a warning saying so, with the `gh attestation verify` command that checks the installed binary by hand.
 

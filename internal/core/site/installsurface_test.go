@@ -1,6 +1,7 @@
 package site
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -586,21 +587,138 @@ func TestInstallSurfacesRefuseASymlinkedAbcdHome(t *testing.T) {
 	}
 }
 
-// documentedInstallCommand is the one install command the README and the
-// install guide document (iss-2610240827243654): the release's own installer,
-// piped into sh. The installer is attested with the release, so the command
-// a reader pastes is one line they can read. The person ruled on 2026-10-28
-// that the documented command is curl's plain form.
-const documentedInstallCommand = "curl -fsSL " +
-	"https://github.com/intentdriven/abcd/releases/latest/download/" + installScriptName + " | sh"
+// The documented install forms are rendered from site-src/install.sh.tmpl,
+// the one source (iss-2609261423214723): the release-download prefix and the
+// curl hardening flags are read off the template's own checksums.txt fetch,
+// so a template that moves either moves every documented form with it. The
+// person ruled on 2026-10-28 that README and the install guide show curl's
+// plain form, and that the guide offers the hardened form as an option.
+//
+// installerFetch matches that fetch: its flags before -fsSLO, and the
+// release-download prefix before checksums.txt.
+var installerFetch = regexp.MustCompile(`curl ((?:-[^\s]+ (?:'[^']*' )?)+)-fsSLO "(https://[^"\s]+/releases/latest/download/)` +
+	regexp.QuoteMeta(checksumsAsset) + `"`)
 
-// hardenedInstallCommand is the install guide's second form of the same
-// command, offered as an option beside it: the fetch that brings the script is
-// hardened as the installer's own are (TestInstallSurfacesHardenCurl), with no
-// curlrc, HTTPS only on every hop, TLS 1.2 or later, and no proxy the
-// environment names, since that one fetch decides what runs.
-const hardenedInstallCommand = "curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 --noproxy '*' -fsSL " +
-	"https://github.com/intentdriven/abcd/releases/latest/download/" + installScriptName + " | sh"
+// installForms returns the documented command and its hardened form, rendered
+// from the template's text: the plain form fetches the release's installer
+// with curl's -fsSL and pipes it into sh; the hardened form adds the
+// template's own fetch flags and --noproxy '*', which stands for the proxy
+// variables the template unsets before it fetches anything.
+func installForms(t *testing.T, tmpl string) (plain, hardened string) {
+	t.Helper()
+	m := installerFetch.FindStringSubmatch(tmpl)
+	if m == nil {
+		t.Fatalf("site-src/install.sh.tmpl has no curl fetch of %s to render the documented install command from", checksumsAsset)
+	}
+	url := m[2] + installScriptName
+	return "curl -fsSL " + url + " | sh",
+		"curl " + m[1] + "--noproxy '*' -fsSL " + url + " | sh"
+}
+
+// templateInstallForms renders the documented forms from this repository's
+// template.
+func templateInstallForms(t *testing.T) (plain, hardened string) {
+	t.Helper()
+	return installForms(t, readFile(t, filepath.Join(repoRoot(), "site-src", "install.sh.tmpl")))
+}
+
+// The README's install block sits between these markers and is the rendering
+// of renderReadmeInstallBlock, byte for byte, so a hand edit fails
+// TestReadmeInstallBlockIsRendered.
+const (
+	installBlockBegin = "<!-- BEGIN GENERATED: install-command -->"
+	installBlockEnd   = "<!-- END GENERATED: install-command -->"
+)
+
+// renderReadmeInstallBlock is what the README carries between the markers.
+func renderReadmeInstallBlock(plain string) string {
+	return "\n<!-- Written by `go test ./internal/core/site -run TestReadmeInstallBlockIsRendered -update` " +
+		"from site-src/install.sh.tmpl; edit the template, never this block. -->\n" +
+		"```sh\n" + plain + "\n```\n"
+}
+
+// spliceInstallBlock returns readme with its one install block rendered from
+// plain, every byte outside the block kept. A README with no block, an
+// unclosed one, or more than one is an error: the gate never guesses where
+// the block belongs.
+func spliceInstallBlock(readme, plain string) (string, error) {
+	switch n := strings.Count(readme, installBlockBegin); n {
+	case 0:
+		return "", fmt.Errorf("README.md carries no %s marker", installBlockBegin)
+	case 1:
+	default:
+		return "", fmt.Errorf("README.md carries %d %s markers; it must carry one", n, installBlockBegin)
+	}
+	start := strings.Index(readme, installBlockBegin) + len(installBlockBegin)
+	stop := strings.Index(readme[start:], installBlockEnd)
+	if stop < 0 {
+		return "", fmt.Errorf("README.md opens %s and never closes it with %s", installBlockBegin, installBlockEnd)
+	}
+	return readme[:start] + renderReadmeInstallBlock(plain) + readme[start+stop:], nil
+}
+
+// checkInstallBlock is the gate: nil when readme carries exactly the block the
+// template renders, and an error naming the drift otherwise.
+func checkInstallBlock(readme, plain string) error {
+	want, err := spliceInstallBlock(readme, plain)
+	if err != nil {
+		return err
+	}
+	if want != readme {
+		return fmt.Errorf("README.md's install block is not the rendering of site-src/install.sh.tmpl; " +
+			"run `go test ./internal/core/site -run TestReadmeInstallBlockIsRendered -update`")
+	}
+	return nil
+}
+
+// TestReadmeInstallBlockIsRendered holds the README's install block to the
+// rendering of the template (iss-2609261423214723). With -update it rewrites
+// the block instead of failing.
+func TestReadmeInstallBlockIsRendered(t *testing.T) {
+	path := filepath.Join(repoRoot(), "README.md")
+	readme := readFile(t, path)
+	plain, _ := templateInstallForms(t)
+	err := checkInstallBlock(readme, plain)
+	if err == nil {
+		return
+	}
+	if *update {
+		synced, serr := spliceInstallBlock(readme, plain)
+		if serr != nil {
+			t.Fatal(serr)
+		}
+		if werr := os.WriteFile(path, []byte(synced), 0o644); werr != nil {
+			t.Fatal(werr)
+		}
+		t.Log("rewrote README.md's install block from site-src/install.sh.tmpl")
+		return
+	}
+	t.Error(err)
+}
+
+// TestHandEditedInstallBlockIsRefused proves the gate refuses what it exists
+// to refuse: a block edited by hand, a block whose markers are gone, and a
+// second block.
+func TestHandEditedInstallBlockIsRefused(t *testing.T) {
+	plain, _ := templateInstallForms(t)
+	rendered := "intro\n" + installBlockBegin + renderReadmeInstallBlock(plain) + installBlockEnd + "\noutro\n"
+	if err := checkInstallBlock(rendered, plain); err != nil {
+		t.Fatalf("the rendered block must pass the gate: %v", err)
+	}
+	for name, readme := range map[string]string{
+		"hand-edited command": strings.Replace(rendered, " | sh", " | bash", 1),
+		"hand-edited note":    strings.Replace(rendered, "never this block", "this block", 1),
+		"markers removed":     strings.NewReplacer(installBlockBegin, "", installBlockEnd, "").Replace(rendered),
+		"end marker removed":  strings.Replace(rendered, installBlockEnd, "", 1),
+		"block twice":         rendered + rendered,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := checkInstallBlock(readme, plain); err == nil {
+				t.Errorf("the gate passed a README whose install block was %s", name)
+			}
+		})
+	}
+}
 
 // installBlocks returns every block that downloads from the release, in page
 // order.
@@ -614,23 +732,25 @@ func installBlocks(blocks []fencedBlock) []string {
 	return found
 }
 
-// documentedInstallForms are the install commands each page documents, in
-// page order: the README shows the command alone, and the install guide shows
-// it and then its hardened form.
-var documentedInstallForms = map[string][]string{
-	"README.md": {documentedInstallCommand},
-	filepath.Join("docs", "how-to", "install.md"): {documentedInstallCommand, hardenedInstallCommand},
-}
-
 // TestDocumentedInstallCommandFetchesTheReleasedInstaller holds the README and
-// the install guide to exactly the forms they document, and each form to the
-// same release-download prefix the installer itself downloads from.
+// the install guide to exactly the forms they document, in page order (the
+// README shows the command alone, the guide shows it and then its hardened
+// form), each byte for byte the template's rendering, and each form to the
+// release-download prefix go.mod names.
 func TestDocumentedInstallCommandFetchesTheReleasedInstaller(t *testing.T) {
-	for _, c := range []string{documentedInstallCommand, hardenedInstallCommand} {
+	plain, hardened := templateInstallForms(t)
+	for _, c := range []string{plain, hardened} {
 		if !strings.Contains(c, " "+releaseDownloadPrefix(t)+installScriptName+" ") {
 			t.Fatalf("the documented command %q does not fetch from the installer's release-download prefix %q",
 				c, releaseDownloadPrefix(t))
 		}
+	}
+	if !strings.HasPrefix(hardened, "curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 --noproxy '*' ") {
+		t.Errorf("the hardened form %q does not carry the template's fetch flags and --noproxy '*'", hardened)
+	}
+	documentedInstallForms := map[string][]string{
+		"README.md": {plain},
+		filepath.Join("docs", "how-to", "install.md"): {plain, hardened},
 	}
 	for doc, want := range documentedInstallForms {
 		t.Run(doc, func(t *testing.T) {
