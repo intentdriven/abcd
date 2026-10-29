@@ -107,9 +107,15 @@ func lateChildAlive(t *testing.T, pidFile string) (int, bool) {
 // SIGKILL would leave behind.
 func TestAStopThatCannotReadTheTableStillContinuesGit(t *testing.T) {
 	dir, _ := lateChildRepo(t)
-	if err := os.WriteFile(filepath.Join(dir, ".git", "hooks", "pre-commit"), []byte("#!/bin/sh\nexec sleep 60\n"), 0o755); err != nil {
+	hookPid := filepath.Join(t.TempDir(), "pre-commit.pid")
+	if err := os.WriteFile(filepath.Join(dir, ".git", "hooks", "pre-commit"), []byte("#!/bin/sh\necho $$ > '"+hookPid+"'\nexec sleep 60\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if pid, ok := lateChildAlive(t, hookPid); ok {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
 	was := psPaths
 	psPaths = []string{filepath.Join(t.TempDir(), "no-ps")}
 	t.Cleanup(func() { psPaths = was })
@@ -121,6 +127,28 @@ func TestAStopThatCannotReadTheTableStillContinuesGit(t *testing.T) {
 	}
 	if _, err := os.Lstat(filepath.Join(dir, ".git", "index.lock")); err == nil {
 		t.Fatal("index.lock was left behind: git was not continued after the SIGTERM")
+	}
+}
+
+// TestAStopFreezesGitItself: with no process table nothing below git is
+// stopped, so pre-commit runs on and ends while the stop is held open, and
+// only git's own SIGSTOP keeps it from starting prepare-commit-msg, the
+// window a deadline that lands between two hooks leaves.
+func TestAStopFreezesGitItself(t *testing.T) {
+	dir, pidFile := lateChildRepo(t)
+	was := psPaths
+	psPaths = []string{filepath.Join(t.TempDir(), "no-ps")}
+	t.Cleanup(func() { psPaths = was })
+	afterSnapshot = func() { time.Sleep(2 * time.Second) }
+	t.Cleanup(func() { afterSnapshot = nil })
+	stalled := errors.New("did not finish")
+
+	_, err := RunCommitCommandBounded(dir, 500*time.Millisecond, stalled, "commit", "-q", "-m", "late", "--", "a.md")
+	if !errors.Is(err, stalled) {
+		t.Fatalf("the stopped commit was not refused as stalled: %v", err)
+	}
+	if _, err := os.Stat(pidFile); err == nil {
+		t.Fatal("git started prepare-commit-msg while the stop was under way")
 	}
 }
 

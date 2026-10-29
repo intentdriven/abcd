@@ -29,10 +29,12 @@ import (
 // every path, so each acts on the SIGTERM. So a hook git would start, or a
 // program a hook would start, while the stop is under way is never started,
 // rather than escaping the stop and holding git's output for the whole
-// WaitDelay (iss-2610292307181518). The sweep it returns, run once
-// Wait has returned, waits until stopGrace has passed since the stop
-// and then sends SIGKILL to each that is still running, with any process one
-// of them started since; it returns at once when none is left, and does
+// WaitDelay (iss-2610292307181518). The reads share one read's time limit, so
+// the stop takes no longer than it did with one. The sweep it returns, run
+// once Wait has returned, waits until stopGrace has passed since the stop and
+// then stops each process that is still running, with any process one of them
+// started since, the same way, and sends each SIGKILL; it returns at once
+// when none is left, and does
 // nothing when the deadline was not reached: a program a hook leaves running
 // behind a git that finished in time is the repository's, and is left alone.
 //
@@ -41,11 +43,17 @@ import (
 // signals by pid, in the moment after a read, while the processes it signals
 // are stopped and cannot exit. Out of
 // reach: a hook's child that detaches (its parent exits and it is reparented
-// to init) before the stop begins, since nothing then ties it to git; a
-// process a descendant starts after the last of stopRounds reads; a process a
-// hook asks another to start (a gpg-agent's pinentry); and every descendant
-// where the process table cannot be read, when git alone is stopped, as
-// before.
+// to init) before it is stopped, since nothing then ties it to git; a process
+// a descendant starts after the last of the reads; a process a hook asks
+// another to start (a gpg-agent's pinentry); and every descendant where the
+// process table cannot be read, when git alone is stopped and continued.
+//
+// A tree stopped when abcd itself dies, before the SIGCONT, is continued only
+// where abcd's death leaves its process group orphaned, when the system sends
+// each stopped member SIGHUP and then SIGCONT. A process in the group whose
+// parent is the shell (the other end of a pipe from abcd) keeps the group from
+// being orphaned, and the tree then stays stopped until something continues
+// it.
 func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 	var mu sync.Mutex
 	var stopped time.Time
@@ -64,7 +72,7 @@ func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 				_ = cmd.Process.Signal(syscall.SIGCONT)
 			}
 		}()
-		desc = stopDescendants(cmd.Process.Pid)
+		stopDescendants(&desc, cmd.Process.Pid)
 		if afterSnapshot != nil {
 			afterSnapshot()
 		}
@@ -94,6 +102,12 @@ func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 				return
 			}
 			if !time.Now().Before(deadline) {
+				pids := make([]int, 0, len(alive))
+				for _, p := range alive {
+					_ = syscall.Kill(p.pid, syscall.SIGSTOP)
+					pids = append(pids, p.pid)
+				}
+				stopDescendants(&alive, pids...)
 				for _, p := range alive {
 					_ = syscall.Kill(p.pid, syscall.SIGKILL)
 				}
@@ -107,29 +121,36 @@ func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 // stopRounds caps the process-table reads stopDescendants makes.
 const stopRounds = 4
 
-// stopDescendants is every descendant of root the process table shows, each
-// sent SIGSTOP as it is found, the table read again until a read finds none
-// not already stopped, at most stopRounds times. It is nil where the table
-// cannot be read.
-func stopDescendants(root int) []procEntry {
+// stopDescendants sends SIGSTOP to every descendant of roots the process
+// table shows that stopped does not already hold, appending each to stopped
+// as it is stopped, so a caller continuing them on every path continues each
+// one stopped so far. It reads the table again until a read finds none new,
+// at most stopRounds times, all within procTableTimeout, and adds nothing
+// where the table cannot be read.
+func stopDescendants(stopped *[]procEntry, roots ...int) {
 	seen := map[int]bool{}
-	var out []procEntry
+	for _, p := range *stopped {
+		seen[p.pid] = true
+	}
+	by := time.Now().Add(procTableTimeout)
 	for range stopRounds {
+		if !time.Now().Before(by) {
+			return
+		}
 		fresh := false
-		for _, p := range descendantsOf(readProcTable(), []int{root}) {
+		for _, p := range descendantsOf(readProcTableBy(by), roots) {
 			if seen[p.pid] {
 				continue
 			}
 			seen[p.pid] = true
 			_ = syscall.Kill(p.pid, syscall.SIGSTOP)
-			out = append(out, p)
+			*stopped = append(*stopped, p)
 			fresh = true
 		}
 		if !fresh {
-			break
+			return
 		}
 	}
-	return out
 }
 
 // afterSnapshot, when set, runs in the stop between the reads of git's
@@ -147,9 +168,17 @@ type procEntry struct {
 // environment does not choose but abcd need not trust either.
 var psPaths = []string{"/bin/ps", "/usr/bin/ps"}
 
+// procTableTimeout bounds one read of the process table.
+const procTableTimeout = 5 * time.Second
+
 // readProcTable is every live process, zombies left out; nil when ps cannot
-// be run or read.
+// be run or read within procTableTimeout.
 func readProcTable() []procEntry {
+	return readProcTableBy(time.Now().Add(procTableTimeout))
+}
+
+// readProcTableBy is readProcTable with the read bounded by deadline.
+func readProcTableBy(deadline time.Time) []procEntry {
 	ps := ""
 	for _, p := range psPaths {
 		if _, err := exec.LookPath(p); err == nil {
@@ -160,7 +189,7 @@ func readProcTable() []procEntry {
 	if ps == "" {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	c := exec.CommandContext(ctx, ps, "-A", "-o", "pid=", "-o", "ppid=", "-o", "stat=", "-o", "lstart=")
 	c.Env = []string{"LC_ALL=C", "PATH=/usr/bin:/bin"}
