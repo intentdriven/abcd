@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The shapes below are the live receipt's (2026-10-05, Tailscale 1.102.4 on
@@ -335,5 +336,22 @@ func TestCommandEnvCarriesATerminal(t *testing.T) {
 	empty := commandEnv([]string{"PATH=/usr/bin", "TERM="})
 	if !reflect.DeepEqual(empty, []string{"PATH=/usr/bin", "TERM=dumb"}) {
 		t.Fatalf("an empty TERM: commandEnv = %q, want it replaced by TERM=dumb", empty)
+	}
+}
+
+// TestExecRunReadsAnAnswerWhoseOutputClosesLate: tailscale answers and exits
+// 0, and a process it left keeps the pipe open for a while: the answer is
+// read once the pipe closes, never refused as a wait that ran out
+// (iss-2610272041031418).
+func TestExecRunReadsAnAnswerWhoseOutputClosesLate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "tailscale")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\necho answer\nsleep 2 &\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := execRun(ctx, path, "status")
+	if err != nil || string(out) != "answer\n" {
+		t.Fatalf("execRun = %q, %v; want %q, nil", out, err, "answer\n")
 	}
 }

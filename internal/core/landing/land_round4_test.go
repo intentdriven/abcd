@@ -64,3 +64,21 @@ func TestAQueueStateAnswerWithErrorsIsRefused(t *testing.T) {
 		t.Fatalf("forge calls %v, result %+v: want nothing armed", f.forge.calls, res)
 	}
 }
+
+// TestGHReadsAnAnswerWhoseOutputClosesLate: the forge client answers and
+// exits 0, and a process it left keeps the pipe open for a while: the answer
+// is read once the pipe closes, never refused as a wait that ran out
+// (iss-2610272041031418).
+func TestGHReadsAnAnswerWhoseOutputClosesLate(t *testing.T) {
+	// A home of its own, so no gh abcd recorded there is chosen over the stub.
+	t.Setenv("HOME", t.TempDir())
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte("#!/bin/sh\necho answer\nsleep 2 &\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	out, err := GH(t.TempDir(), "pr", "list")
+	if err != nil || out != "answer\n" {
+		t.Fatalf("GH = %q, %v; want %q, nil", out, err, "answer\n")
+	}
+}
