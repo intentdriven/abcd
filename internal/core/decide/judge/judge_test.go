@@ -262,7 +262,7 @@ func TestOneInterfaceSwitchesATypeWithoutTheCallerChanging(t *testing.T) {
 func TestTheRegistryIsClosedAndAQuestionIsChecked(t *testing.T) {
 	rt := router(oracle.JudgementOn, &fake{value: "x"}, &pairs{})
 	host := &fake{value: "none"}
-	if _, _, err := rt.Decide(context.Background(), State{Text: "s"}, Question{Type: "lesson-ranking", Kind: KindChoose, Ask: "?", Options: []string{"a"}}, host); err == nil {
+	if _, _, err := rt.Decide(context.Background(), State{Text: "s"}, Question{Type: "lesson-polish", Kind: KindChoose, Ask: "?", Options: []string{"a"}}, host); err == nil {
 		t.Fatal("a type outside the registry was asked")
 	}
 	if _, _, err := rt.Decide(context.Background(), State{Text: "s"}, Question{Type: DuplicateMatch, Kind: KindChoose, Ask: "?"}, host); err == nil {
@@ -276,8 +276,10 @@ func TestTheRegistryIsClosedAndAQuestionIsChecked(t *testing.T) {
 			t.Errorf("%s is listed but not known", ty)
 		}
 	}
-	if known("embark-lesson-ranking") {
-		t.Error("embark's lesson ranking is a term-overlap computation, not a judgement (iss-2610262033055327)")
+	// Embark's lesson ranking is a judgement routed through the adapter in
+	// place of its term-overlap ordering (iss-2610262033055327).
+	if !known(string(EmbarkLessonRanking)) || EmbarkLessonRanking != "embark-lesson-ranking" {
+		t.Error("embark's lesson ranking is not in the registry")
 	}
 }
 
@@ -378,7 +380,7 @@ func TestLoadRefusesAnUnlistedModelBeforeAnyCall(t *testing.T) {
 		t.Fatalf("Load = %v, want the allowlist refusal", err)
 	}
 	write(`{"oracle":{` + block + `,"judgements":{"duplicate-match":"shadow:openrouter/typesafe/jev-1.13",
-		"remedy-read":"openrouter/typesafe/jev-1.13","lesson-ranking":"openrouter/typesafe/jev-1.13"}}}`)
+		"remedy-read":"openrouter/typesafe/jev-1.13","lesson-polish":"openrouter/typesafe/jev-1.13"}}}`)
 	rt, err := Load(roots, roots.Repo)
 	if err != nil {
 		t.Fatal(err)
@@ -386,7 +388,7 @@ func TestLoadRefusesAnUnlistedModelBeforeAnyCall(t *testing.T) {
 	if rt.Mode(DuplicateMatch) != oracle.JudgementShadow || rt.Mode(RemedyRead) != oracle.JudgementOn || rt.Mode(MemoryCheck) != oracle.JudgementHost {
 		t.Fatalf("modes: %s %s %s", rt.Mode(DuplicateMatch), rt.Mode(RemedyRead), rt.Mode(MemoryCheck))
 	}
-	if len(rt.Diagnostics) != 1 || !strings.Contains(rt.Diagnostics[0], "lesson-ranking") {
+	if len(rt.Diagnostics) != 1 || !strings.Contains(rt.Diagnostics[0], "lesson-polish") {
 		t.Fatalf("diagnostics = %q, want the unknown type named", rt.Diagnostics)
 	}
 }

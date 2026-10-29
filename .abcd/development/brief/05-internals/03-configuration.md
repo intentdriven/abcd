@@ -359,7 +359,8 @@ rather than skipped:
   The types are a closed registry: `remedy-read`, `duplicate-match`,
   `unmeetable-criteria`, `eligibility-residual`, `source-classification`,
   `source-selection`, `memory-check`, `ledger-category`, `ledger-severity`,
-  `prepass-overlap`, `present-tense-advisory`. A route naming anything else is
+  `prepass-overlap`, `present-tense-advisory`, `embark-lesson-ranking`. A
+  route naming anything else is
   a diagnostic and is skipped. The drain's judgement before a lane opens is
   meant to run as `eligibility-residual`, a choice of `no`, `user-visible` or
   `trust-rule`. Its routing is built (`loop/drain_decide.go`). In shadow, the
