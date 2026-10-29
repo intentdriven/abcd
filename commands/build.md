@@ -86,7 +86,11 @@ spec's `- packages:` line to the files the work changes. A step's own
   the view as last fetched already shows it, names `abcd build <itd-N>
   --take-over`, the form `build next`'s exclusion takes too); pass
   `--take-over` only when the person means to move the work to this copy. It
-  never moves another person's.
+  never moves another person's. Whose a reservation is goes by holder id: a
+  hosted session that restarted with a fresh home and no `ABCD_HOLDER_ID`
+  minted a new one, so the reservations its earlier sessions made read as
+  another person's, not as your other copy's, until they lapse, and the cap
+  counts them apart (`/abcd:reserve` says how to keep one id).
 - Any other refusal of the reservation (no username, no local tier, `origin`
   not answering) is exit 2, naming it, and starts nothing.
 

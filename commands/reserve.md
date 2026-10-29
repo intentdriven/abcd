@@ -20,7 +20,8 @@ writes one commit to the branch `abcd-reserved/<record-id>` on the remote named
 `origin`, and to nothing else. The commit changes no file (its tree is the
 empty tree); its trailers name the record, the holder (by an opaque holder id,
 never the user's GitHub login), this working copy, the footprint and the
-lease. The push is a plain fast-forward with the
+lease. The commit's author and committer fields carry the user's git identity,
+as every commit does. The push is a plain fast-forward with the
 repository's hooks running, never forced and never with `--no-verify`, and it
 touches no HEAD, index or working tree here. When git's identity does not name
 the holder (below), it also makes one read-only call to GitHub's user endpoint,
@@ -119,7 +120,9 @@ queued before it (**Withdrawn merges** below). The hold binds sessions, not
 people, so the cutting session tells people working in the repository by hand
 to hold.
 `/abcd:peers` shows the line "release
-v0.16.0 being cut by @octo: merges are held", by the same rule the hold
+v0.16.0 being cut by h_0123456789abcdef0123456789abcdef: merges are held" (the holder's full id, here
+an invented one; a release reserved before the holder id shows its holder's
+username, `@octo`), by the same rule the hold
 counts with: in the cutting copy it shows "you are cutting release v0.16.0
 from this copy: every other session's merges are held", and a release dated
 more than five minutes ahead whose first sighting this checkout cannot keep
@@ -473,15 +476,32 @@ machines that reserve on network time.
 
 **The holder** is named by the user's holder id: `h_` and 32 random lower-case
 hex characters, minted the first time one is needed into
-`~/.abcd.noindex/holder-id` (owner-only) and kept, so nothing a reservation
-pushes, in its text or its branch names, carries the user's GitHub login. A
-holder-id file another account owns or could write, or one that holds no id,
-is refused, never replaced, and under a HOME inside a git working tree that is
-not the account's own no holder id is read or kept, so the act refuses. The ids
-of the user's other machines and accounts
-(each prints its own with `--holder`) can be listed in
+`~/.abcd.noindex/holder-id` (owner-only) and kept. No trailer and no branch
+name a reservation pushes carries the user's GitHub login; the commit's author
+and committer fields still carry the user's git identity, and holds already
+pushed under a login are not rewritten. The act that mints an id says so once,
+on stderr, naming the id and the file: holds made under an earlier id of the
+user's read as someone else's until they lapse, and the cap counts them apart.
+Relay it. A holder-id file another account owns or could write, one that holds
+no id, and a `~/.abcd.noindex` another account can write are each refused,
+never replaced or minted into, and under a HOME inside a git working tree that
+is not the account's own no holder id is read or kept, so the act refuses. A
+file left empty is most likely another run minting at that moment: retry, and
+look at the file only if it is still empty. The ids of the user's other
+machines and accounts (each prints its own with `--holder`) can be listed in
 `~/.abcd.noindex/holder-ids`, one per line with `#` comments; a reservation
 under one of them is the user's own, from another copy.
+
+**A hosted or ephemeral session** starts with a fresh home, so it would mint a
+new id every time. Set `ABCD_HOLDER_ID` to the user's id in that environment's
+own settings (its environment variables, not a file in the repository): copy
+the value `abcd reserve --holder` prints on a machine whose id the user wants
+to keep, never invent one. Set, it is the holder id, read before
+`~/.abcd.noindex/holder-id` and never written to it; set to anything but one
+id, every act that needs the id refuses and nothing is minted in its place.
+Without it, each such session mints a new id, its earlier sessions' holds read
+as another holder's until they lapse (a take-over of them is refused as
+another person's), and the cap counts each session's holds separately.
 
 abcd still works out the user's GitHub username, locally, from the first of
 these that names it: `git config user.email` when it is a GitHub no-reply
@@ -504,16 +524,20 @@ To learn the holder without reserving anything:
 "${CLAUDE_PLUGIN_ROOT}/abcd" reserve --holder --json
 ```
 
-It prints `{"login", "id", "noreply", "source", "holder_id",
+It prints `{"login", "id", "noreply", "source", "holder_id", "holder_id_from",
 "holder_id_file", "declared_holder_ids", "declared_holder_ids_file"}`
-(`source` is `git`, `config` or `token`; `id` and `noreply` when known), or as
-text `would reserve as <login> (from <source>)`, then `holder id: <id> (kept in
-~/.abcd.noindex/holder-id)` and, when any are declared, `also yours: <ids>`.
+(`source` is `git`, `config` or `token`; `id` and `noreply` when known;
+`holder_id_from` is `ABCD_HOLDER_ID` or the file), or as text `would reserve as
+<login> (from <source>)`, then `holder id: <id> (kept in
+~/.abcd.noindex/holder-id)`, or `(from ABCD_HOLDER_ID)`, with what the id does
+and does not keep out of what is pushed, and, when any are declared, `also
+yours: <ids>`. This is how to print the id to copy into `ABCD_HOLDER_ID`.
 None of it is pushed. It may make that one user-endpoint call in two cases:
 git's identity is a person's but carries neither a no-reply address nor a
 machine key; or git's identity is not a person's (unset, or a machine's), when
 the machine key is skipped. It takes no record id and no other flag, reserves
-and pushes nothing, and writes only the holder id, when none is kept yet. Exit
+and pushes nothing, and writes only the holder id, when none is kept yet and
+`ABCD_HOLDER_ID` is not set. Exit
 0 when the account and the holder id are known, 2 when not. Its `noreply` is the account's address; a person's own git identity still
 authors their commits.
 

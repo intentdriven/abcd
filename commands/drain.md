@@ -303,7 +303,10 @@ what it did in `next`:
   move's one; one the push itself finds held is passed over the same way. When
   the holder is the user's own other copy (a hosted session that restarted
   loses its local tier, so its new copy reads its own reservations as another
-  copy's), the reason says so and names `abcd drain --take-over`: run that,
+  copy's, provided `ABCD_HOLDER_ID` keeps its holder id across sessions: a
+  restart loses its home too, and without the variable it mints a new id, so
+  its earlier reservations read as another person's, which no take-over
+  moves, until they lapse), the reason says so and names `abcd drain --take-over`: run that,
   with the user's say-so, and the move reserves the issue for this copy,
   taking the reservation over, as `abcd build --take-over` does. The flag is
   given per move and never moves another person's reservation. An

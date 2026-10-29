@@ -58,7 +58,15 @@ lists the reservations. The flags are in the appendix below.
 What a reservation pushes names its holder by the person's holder id
 (iss-2610290809526033): `h_` and 32 lower-case hex characters, 128 random bits
 minted once, on first need, into `~/.abcd.noindex/holder-id` with an exclusive
-create at mode 0600, so two racing first needs keep one id. It is no hash of
+create at mode 0600, so two racing first needs keep one id. The mint judges
+each folder it makes or finds as the read below judges it, so a
+`~/.abcd.noindex` another account can write refuses before anything is minted
+or pushed. A first need that loses the race and still finds the file empty
+after a short wait refuses with a retry, and never advises removing the file:
+the winner may already have pushed under the id it is writing. The act that
+mints says so once, on stderr, naming the id and the file: holds made under an
+earlier id of the person's read as someone else's until they lapse, and the
+cap counts them apart; the next act, which reads the id kept, says nothing. It is no hash of
 anything, so it says nothing of the account; the underscore cannot occur in a
 GitHub username, so it never collides with the login an older reservation
 names; and lower case keeps a status branch named by it apart from every other
@@ -68,8 +76,25 @@ guard every home declaration is read through; a file that fails that, or holds
 no id, refuses the act and is never replaced. A HOME inside a git working tree
 that is not the account's own is judged as the machine layer is: no holder id
 is read from it or minted into it, so an act there refuses before anything is
-pushed and a render names no hold as the reader's. Nothing abcd pushes, in its
-text or its ref names, carries the person's login.
+pushed, and a render reads neither an id nor a login there (the login may come
+from that home's machine configuration), so it names no hold as the reader's,
+a login-named hold made before the id included. No trailer and no ref name
+abcd pushes carries the person's login. The commit author and committer fields
+still carry the person's git identity, or, when that is not a person's, the
+token's account (below), by ruling; and holds already pushed under a login are
+not rewritten.
+
+The id is read first from the environment variable `ABCD_HOLDER_ID`, then from
+`~/.abcd.noindex/holder-id`, and only then minted. The variable is for a
+session whose home is not kept, a hosted or ephemeral one: set in that
+environment's own settings to the id the holder query prints on a machine
+whose id the person keeps, it is the id, and it is never written to the file.
+Set to anything but one id (`h_` and exactly 32 lower-case hex characters), it
+refuses every act that needs the id, naming the variable and never its value,
+and neither the file nor a mint stands in for it; a render reads no id from it.
+A hosted session that does not set it mints a new id at each fresh home: the
+holds its earlier sessions made read as another holder's until they lapse (no
+take-over moves them), and the cap counts each session's holds separately.
 
 A hold is the person's own when its holder is their kept id, an id listed in
 `~/.abcd.noindex/holder-ids` (one per line, `#` comments, under the same
@@ -80,7 +105,18 @@ the login the resolver below yields, compared without regard to case. Every
 reservation, the other-copy back-off and warning, the cap's count, the
 ceiling, the land fence's own-release check and the renders that say "you".
 A renewal or release of an old reservation of the person's writes the holder
-id; no commit carries the login beside it, not even for one release.
+id; no commit carries the login beside it, not even for one release. The
+listing of each holder's hand-backs of the last day (`abcd peers`) goes by the
+name each tombstone carries, not by person, since it knows no one else's ids:
+one person's hand-back made before the holder id and one made after list as
+two holders. That is accepted as the change's cost: no tombstone is named by a
+login any more, so it lasts at most the day's window after the update. The
+release hold's withdrawals are the person's own by the same judgement, and a
+release branch is still held to the forge's record of who pushed each commit:
+a commit is read as its pusher's when it names them by username, or names a
+holder id, which no record of pushes can be matched against; the reader's own
+ids are held to the reader's own login, so a commit another login pushed naming
+the reader's id is not read as the reader's.
 
 Across versions the change fails safe. A copy on an older release reads the
 new holds as held until it updates: its reader takes a holder to be a GitHub
@@ -126,16 +162,21 @@ could name the reader they treat the reader as unknown.
 
 The holder query prints `would reserve as <login> (from <source>)`, the
 source being `git`, `config` or `token`, then `holder id: <id> (kept in
-~/.abcd.noindex/holder-id)` and, when any are declared, `also yours: <ids>`;
-or as JSON the document `{"login", "id", "noreply", "source", "holder_id",
-"holder_id_file", "declared_holder_ids", "declared_holder_ids_file"}` (`id`
-and `noreply` when known). None of it is pushed. It may
+~/.abcd.noindex/holder-id)`, or `(from ABCD_HOLDER_ID)`, with the same
+statement of what the id keeps out of what is pushed (no trailer or branch
+name carries the login; the author and committer still carry the git
+identity; holds already pushed are not rewritten), and, when any are
+declared, `also yours: <ids>`; or as JSON the document `{"login", "id",
+"noreply", "source", "holder_id", "holder_id_from", "holder_id_file",
+"declared_holder_ids", "declared_holder_ids_file"}` (`id` and `noreply` when
+known). It is how a person prints the id to copy into `ABCD_HOLDER_ID`. None of it is pushed. It may
 make that one user-endpoint call in the same two cases as a reservation: when
 git's identity is a person's but neither its address nor the machine layer
 names the holder, and when git's identity is not a person's, whatever the
 machine layer says. It takes no record id and no other flag, reserves and
-pushes nothing, and writes only the holder id, minted when none is kept. It
-exits 0 when the account and the holder id are known and 2 when not.
+pushes nothing, and writes only the holder id, minted when none is kept and
+the variable is not set. It exits 0 when the account and the holder id are
+known and 2 when not.
 
 ## What it writes
 
@@ -377,7 +418,8 @@ branch `abcd-reserved/rel-vX.Y.Z` (itd-2609151838312703 C7 and C8,
 spc-2610150728396006 step 4, resolving iss-2609091037191879). While it is live,
 every other session's land step refuses to arm its merge, naming the holder and
 the release, and leaves the pull request open; `abcd peers` shows the line
-"release v0.16.0 being cut by @maya: merges are held", judged by the merge
+"release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef: merges are held" (the holder's full
+id; one reserved before the holder id shows `@maya`), judged by the merge
 hold's own rule (`claim.JudgedHolds`, iss-2610160415393242): the cutting
 copy's own release is shown as "you are cutting release v0.16.0 from this
 copy: every other session's merges are held", and a release dated ahead whose
@@ -502,8 +544,9 @@ withdrawing nothing, and an admission or a release is refused.
   tip, six fields separated by one space: its number, its node id, the form it
   was armed in (`queue` for a merge-queue entry, which is also the form of one
   both armed and queued; `auto:merge`, `auto:squash` or `auto:rebase` for
-  auto-merge with its method), its head when withdrawn, the GitHub username
-  whose reservation withdrew it, and its state: `withdrawn` (still to settle),
+  auto-merge with its method), its head when withdrawn, the holder whose
+  reservation withdrew it (their holder id; the GitHub username on a
+  withdrawal recorded before the id), and its state: `withdrawn` (still to settle),
   `admitted`, `rearmed`, `armed` (found armed or queued again, counted done),
   `moved`, `closed`, `merged`, `mismatch`, `manual` or `refused` (skipped for
   its owner), or `kept` (the forge refused its withdrawal, so it was left
@@ -514,18 +557,20 @@ withdrawing nothing, and an admission or a release is refused.
   40, one on a record's reservation, or a settled state on a reservation that
   is not released makes the tip unreadable, as a bad hand-back does. Whether a
   withdrawal fits is measured on the tombstone any holder would write (the
-  longest login and label), never the cutter's own. Every commit on the
+  longest holder name, a 39-character username, which is longer than any
+  holder id, and the longest label), never the cutter's own. Every commit on the
   release carries forward what its tip still has to settle: this person's own
   reservation keeps its withdrawn, admitted and kept ones, and any other
   commit (a tombstone, a take-over of another person's lapsed one) the
   withdrawn ones.
-- **Whose a withdrawal is.** The username on a withdrawal, and a commit's
+- **Whose a withdrawal is.** The holder on a withdrawal, and a commit's
   holder, are the writer's data, so every act on a withdrawal (the tag sweep,
   the tombstone sweep, the holder's release, an admission, a renewal's
   withdrawal again) reads a person's withdrawals on a release only from that
   person's own newest push to its branch (dcn-2610231033516293): the newest
   commit the forge's activity record of pushes to the branch (the record
-  `abcd status` holds announcements to, C17) shows that username pushed,
+  `abcd status` holds announcements to, C17) shows that person's login pushed
+  (the login the holder resolver yields, compared there and never pushed),
   walking the first-parent line from the tip, at most 64 commits. The record
   must place every push it holds on that line, run unbroken down to the push
   that made the branch, and end at the tip read (the activity record passes
@@ -579,7 +624,13 @@ withdrawing nothing, and an admission or a release is refused.
   origin, or on a tombstone of the holder's that is the holder's own newest
   push to the branch, as the forge's record of pushes says, the holder being
   the login whose own push made the newest reservation on it (another
-  person's after a take-over and a release of theirs included). A tombstone its holder did not
+  person's after a take-over and a release of theirs included). A
+  reservation is that login's own when it names them by username or names a
+  holder id: the record of pushes names accounts, and no id can be matched
+  against one, so an id stands for whoever pushed it, except one of the
+  reader's own ids, which counts only when the reader's own login pushed it.
+  A commit another login pushes naming someone else's id can do no more than
+  one naming themselves already could. A tombstone its holder did not
   push ends nothing (dcn-2610230833367984): it is named once for its tip
   (`not_ended`), nothing is acted on, and `abcd peers` lists none of its
   withdrawals as due. A lapsed lease ends the cut for its own person alone
@@ -639,9 +690,11 @@ withdrawing nothing, and an admission or a release is refused.
   superseding dcn-2610230328230097; the sentences dcn-2610230833367984). abcd
   posts one fixed sentence naming the release's tag, through `gh`'s
   `addComment` (pinned in ghcontract's `graphql-fields.txt`), on a pull
-  request it withdraws whole ("the merge of #N is withdrawn by LOGIN while
+  request it withdraws whole ("the merge of #N is withdrawn by HOLDER while
   release vX is cut, and is re-armed after it."), admits ("is admitted into
-  release vX by LOGIN.", the admitter, who is the withdrawer), re-arms ("is
+  release vX by HOLDER.", the admitter, who is the withdrawer; HOLDER is
+  their holder id, and the comment's author, as on any comment, is the
+  account gh posts it as), re-arms ("is
   re-armed; the hold for release vX has ended."), finds armed already ("is
   armed; the hold for release vX has ended.") or leaves for its owner ("is not
   re-armed; the hold for release vX has ended." and one clause from a closed
@@ -650,7 +703,7 @@ withdrawing nothing, and an admission or a release is refused.
   renewal's withdrawal again included; nothing is posted for a refused (`kept`)
   or partial withdrawal, a `mismatch`, any other state, an admission run
   again, or a second copy whose settle does not land. Every value in it is
-  validated data, the login carries no at-sign, so it mentions no one (every
+  validated data, the holder carries no at-sign, so it mentions no one (every
   subscriber of the pull request is notified, as by any comment), and the body
   is judged by the outbound policy before it is posted, a refused one never
   posted. The comment is read back from the forge by the id it answered with;

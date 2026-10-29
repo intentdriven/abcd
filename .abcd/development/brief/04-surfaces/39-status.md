@@ -102,7 +102,8 @@ named.
 
 The text form lists the announcements newest first, by when this checkout
 first fetched each, then by the time it carries, each by the line the prompt
-hook shows it by, `h_0123…cdef (claimed): merging #1012, for 30 min` (a sender
+hook shows it by, `h_0123456789abcdef0123456789abcdef (claimed): merging #1012, for 30 min`
+(the full id, here an invented one; a sender
 named by a username, on a branch made before the holder id, shows as
 `@maya (verified): …`), with the time sent; then each doubtful branch; then the reservations block `/abcd:peers`
 lists, release holds, a live drain lane's stage and each holder's hand-backs
@@ -121,7 +122,8 @@ reservations block's own fields, with `senders_unchecked`, `not_dropped`,
 
 The prompt hook appends a `## STATUS` block to the text it injects
 when this checkout holds something it has not shown: a failed fetch per
-namespace, a release being cut ("release v0.16.0 being cut by @maya: merges
+namespace, a release being cut ("release v0.16.0 being cut by
+h_0123456789abcdef0123456789abcdef: merges
 are held", C8), then the newest announcement per item, then the doubts,
 at most two one by one and otherwise one line that sums them up and always
 keeps its place, at most ten lines in all, then a count of the rest and the

@@ -118,9 +118,10 @@ Reserve the release before anything else, from the copy that will cut it:
 
 While that reservation is live, every other session's land step (an
 `implement step` arming a merge, or `abcd land`, under any account, on any
-computer) refuses to arm, names you and the release, and leaves its pull
+computer) refuses to arm, names your holder id and the release, and leaves its pull
 request open for you to merge or hold; `/abcd:peers` shows other sessions
-"release vX.Y.Z being cut by @you: merges are held", and shows this copy "you
+"release vX.Y.Z being cut by <your holder id>: merges are held" (the
+`h_…` id `abcd reserve --holder` prints), and shows this copy "you
 are cutting release vX.Y.Z from this copy: every other session's merges are
 held". It takes no footprint and holds for a day. If the cut runs longer,
 run the same command again from the same copy to renew it for another day. It
