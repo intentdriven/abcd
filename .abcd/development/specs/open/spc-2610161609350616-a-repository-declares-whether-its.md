@@ -15,19 +15,25 @@ default and `human` from any layer winning. The bare `abcd` board names the
 mode and its layer. The merge gate (`mergeGate` in `internal/core/landing`,
 today ruling AM1 as a stand-in) reads the mode for `abcd land` and the build
 loop alike:
-- `human` arms nothing, and a person merges;
-- `auto` arms at once by the ruleset mirror's method, but only a head that a
-  review receipt names.
+- a contributor's pull request (its author has Read or Triage, or no,
+  permission on the repository) arms only once a maintainer's approval of
+  its head counts, in either mode;
+- `human` arms a maintainer's pull request only once the technical
+  facilitator has approved its head, and says the approval is needed until
+  then;
+- `auto` arms a maintainer's pull request at once by the ruleset mirror's
+  method, but only a head that a review receipt names.
 
-While the mode is `human`, the shell guard refuses the merge commands. abcd's
-own repository sets `auto`. Every behaviour is test-first, and each forge call
+While the mode is `human`, the shell guard refuses the merge commands. While
+it is `auto`, the status line says merging is autonomous. abcd's own
+repository sets `auto`. Every behaviour is test-first, and each forge call
 is checked live and read-only before it is relied on: the forge's fields are
 pinned in `internal/ghcontract`, and the fake forges refuse what the real one
 refuses.
 
 ## Footprint
 
-- packages: internal/core/landing/config.go, internal/core/landing/config_test.go, internal/core/layered/layered.go, internal/core/layered/layered_test.go, internal/core/landing/facilitator.go, internal/core/landing/facilitator_test.go, internal/core/landing/review.go, internal/core/landing/review_test.go, internal/core/landing/primitives.go, internal/core/landing/land.go, internal/core/board/board.go, internal/core/board/board_test.go, internal/core/guard/merge.go, internal/core/guard/merge_test.go, internal/core/guard/guard.go, internal/surface/cli/board.go, internal/surface/cli/board_status.go, internal/surface/cli/board_status_test.go, internal/surface/cli/land.go, internal/surface/cli/land_surface_test.go, internal/surface/cli/receipts.go, internal/surface/cli/guard.go, .abcd/config.json, commands/land.md, commands/guard.md, .abcd/development/brief/04-surfaces/38-land.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/brief/04-surfaces/39-status.md, commands/abcd.md
+- packages: internal/core/landing/config.go, internal/core/landing/config_test.go, internal/core/layered/layered.go, internal/core/layered/layered_test.go, internal/core/landing/facilitator.go, internal/core/landing/facilitator_test.go, internal/core/landing/review.go, internal/core/landing/review_test.go, internal/core/landing/primitives.go, internal/core/landing/land.go, internal/core/board/board.go, internal/core/board/board_test.go, internal/core/guard/merge.go, internal/core/guard/merge_test.go, internal/core/guard/guard.go, internal/surface/cli/board.go, internal/surface/cli/board_status.go, internal/surface/cli/board_status_test.go, internal/surface/cli/land.go, internal/surface/cli/land_surface_test.go, internal/surface/cli/receipts.go, internal/surface/cli/guard.go, .abcd/config.json, commands/land.md, commands/guard.md, .abcd/development/brief/04-surfaces/38-land.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/brief/04-surfaces/39-status.md, commands/abcd.md, internal/surface/cli/statusline.go, internal/surface/cli/statusline_test.go, .abcd/development/brief/04-surfaces/26-mode.md
 - tests: internal/core/landing, internal/core/implement/loop, internal/core/board, internal/core/guard, internal/surface/cli
 - The packages line names the files the steps change, not their directories,
   so the reservation does not hold unrelated work in the same packages.
@@ -71,14 +77,28 @@ refuses.
    - needs: 1, 3
    - `mergeGate` becomes the one function `abcd land` and the loop's
      `landArm` ask.
-   - `human` arms nothing and says the pull request waits for the
-     facilitator.
+   - Who is a maintainer is one seam: the pull request author's permission
+     on the repository as the forge reports it (`role_name`). Write,
+     Maintain and Admin are maintainers; Read and Triage are contributors; a
+     custom role counts as its base role; a 404, no role, or a base that
+     cannot be read is a contributor. Pin the fields in `internal/ghcontract`
+     after a live read-only call.
+   - An approval counts only when it is the latest review of a maintainer
+     other than the author and approves the head commit. AM1 is retired as
+     the stand-in, but this reading of approvals is kept for the two cases
+     below.
+   - A contributor's pull request arms nothing, in either mode, until a
+     maintainer's approval counts, and says a maintainer's approval is
+     needed.
+   - `human` arms a maintainer's pull request by the mirror's method once
+     the technical facilitator's approval counts, and until then arms
+     nothing and says the pull request waits for that approval.
    - `auto` arms by the mirror's method when a review receipt names the head,
      and otherwise arms nothing and names the commit with no recorded review
      pair.
-   - With no queue gating the default branch, `auto` arms auto-merge, and
-     where the forge refuses that, it says so.
-   - AM1's approval reading is retired.
+   - With no queue gating the default branch, an armed merge is auto-merge,
+     and where the forge refuses that, it says so.
+   - abcd adds no forge approval rule or code-owner file.
    - The mode is read from the default branch's committed
      `.abcd/config.json` and the machine layer, never from the checkout of
      the branch being landed, so a branch that commits `auto`, or deletes a
@@ -104,4 +124,16 @@ refuses.
    - needs: 4, 5
    - Set `facilitator.mode: auto` in abcd's committed config, in the same
      change as step 4, so its sessions keep queueing.
-   - Make the docs say exactly what each mode does.
+   - Make the docs say exactly what each mode does, and who approves.
+7. The status line
+   - packages: internal/surface/cli/statusline.go, internal/surface/cli/statusline_test.go, commands/abcd.md, .abcd/development/brief/04-surfaces/26-mode.md
+   - tests: internal/surface/cli
+   - needs: 1
+   - While the mode is `auto`, abcd's status-line row says merging is
+     autonomous; under `human` the row has no such element. It is switchable
+     in `statusline.json` like the row's other elements.
+   - It reads the mode through the same resolver, asks the network nothing
+     and stays inside the status line's time budget; a refusal drops the
+     element and is said on stderr, as the row's other elements do.
+   - It reaches the host only through the status line the person consented
+     to; nothing else in the host's settings calls abcd.

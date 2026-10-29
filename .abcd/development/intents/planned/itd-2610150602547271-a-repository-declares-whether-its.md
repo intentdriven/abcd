@@ -18,11 +18,14 @@ production_mode: hand-written
 
 > **A repository says who merges, and abcd keeps to it.** A repository
 > declares whether its technical facilitator is a person or abcd. With a
-> person, a ready pull request waits for them: abcd never queues it or arms
-> auto-merge on it, whoever asks. With abcd, a pull request that has passed
-> its gates goes straight into the merge queue, or has auto-merge armed where
-> the forge has no queue, with no one asked. A fresh install starts with a
-> person, so installing abcd changes nothing about who merges.
+> person, a maintainer's ready pull request waits for the facilitator's
+> approval: abcd says that approval is needed, and arms the merge only once it
+> is given, whoever asks. With abcd, a maintainer's pull request that has
+> passed its gates and its review pair goes straight into the merge queue, or
+> has auto-merge armed where the forge has no queue, with no one asked, and
+> the status line says merging is autonomous. A contributor's pull request
+> waits for a maintainer's approval in either mode. A fresh install starts
+> with a person, so installing abcd changes nothing about who merges.
 >
 > "I run my repository alone, so I told abcd it is the facilitator," said
 > Alice, a solo founder. "Now every branch that passes its checks and its
@@ -76,13 +79,31 @@ So a path that forgets to ask is still stopped.
   (This is the same off-wins rule as `land.push` and `land.enqueue`, and the
   rules loader's kill switch.)
 - **Shown.** The bare `abcd` status board names the mode and the layer that
-  set it.
+  set it. While the mode is `auto`, abcd's row in the host's status line
+  says merging is autonomous, through the status line the person consented
+  to and nothing else.
+- **Who is a maintainer.** One seam answers it for a pull request's author:
+  their permission on the repository as the forge reports it. Write,
+  Maintain and Admin are maintainers; Read and Triage are contributors. A
+  custom role counts as the role it is based on, and an author with no
+  permission on the repository, or one the forge does not report, is a
+  contributor.
+- **Who approves.** A contributor's pull request is armed only after a
+  maintainer other than its author has approved its head commit, in either
+  mode. A maintainer's pull request is armed at once in `auto`; in `human`
+  it is armed only after the technical facilitator has approved its head
+  commit, and until then abcd says the facilitator's approval is needed.
+  The product thinker never approves a merge. abcd enforces this itself,
+  since the forge lets a pull request merge with no approval, and it adds no
+  approval rule or code-owner file to the forge.
 - **The merge gate.** `mergeGate`, the one function `abcd land` and the build
   loop ask before arming a merge (introduced by iss-2610150524246898 with AM1
   as its stand-in), reads the mode. `auto`: queue or arm at once by the
   ruleset mirror's method. With no queue gating the default branch, arm
-  auto-merge, and where the forge refuses that, say so. `human`: arm nothing,
-  and say the pull request waits for the facilitator.
+  auto-merge, and where the forge refuses that, say so. `human`: arm only a
+  head the technical facilitator has approved, and otherwise say the pull
+  request waits for the facilitator's approval. Either mode applies the
+  approvals above first.
 - **The hard rule.** While the mode is `human`, `abcd guard` refuses
   `gh pr merge --auto`, `gh pr merge` aimed at a queue, and the GraphQL
   `enqueuePullRequest` mutation, whoever runs them. It reads the mode through
@@ -103,9 +124,25 @@ So a path that forgets to ask is still stopped.
 
 ## Acceptance Criteria
 
-- **Given** a repository with no `facilitator.mode` in any layer, **when**
-  `abcd land` reaches a passing branch with an open pull request, **then** it
-  arms nothing, and says the pull request waits for the facilitator and why.
+- **Given** a repository with no `facilitator.mode` in any layer and a
+  maintainer's open pull request with no approval of its head, **when**
+  `abcd land` reaches the passing branch, **then** it arms nothing, and says
+  the pull request waits for the technical facilitator's approval and why.
+- **Given** the mode is `human` and a maintainer other than the author has
+  approved the head commit of a maintainer's pull request, **when** `abcd
+  land` reaches the passing branch, **then** it arms the merge by the ruleset
+  mirror's method.
+- **Given** either mode and a pull request whose author has Read or Triage
+  permission, or none, on the repository, **when** `abcd land` or the build
+  loop reaches it with no maintainer's approval of its head commit, **then**
+  it arms nothing and says a maintainer's approval is needed; **when** a
+  maintainer other than the author has approved that head, **then** the
+  mode decides as for a maintainer's pull request.
+- **Given** an approval of an earlier commit and none of the head, **when**
+  the merge gate reads the approvals, **then** it counts none.
+- **Given** an author with a custom repository role, **when** the seam reads
+  their permission, **then** they count as the role it is based on, and as a
+  contributor when that base cannot be read.
 - **Given** `facilitator.mode: auto` in `.abcd/config.json` and a merge queue
   gating the default branch, **when** `abcd land` reaches a passing branch with
   an open pull request, **then** the pull request is in the queue when land
@@ -125,6 +162,11 @@ So a path that forgets to ask is still stopped.
   it arms by `mergeGate` exactly as `abcd land` does, through one code path.
 - **Given** either mode, **when** the bare `abcd` board renders, **then** it
   names the facilitator mode and its layer.
+- **Given** the mode is `auto` in a managed checkout with abcd's status line
+  installed, **when** the host refreshes the status line, **then** abcd's row
+  says merging is autonomous; **given** `human`, **then** the row has no such
+  element. The read asks the network nothing and stays inside the status
+  line's time budget.
 - **Given** a value other than `human` or `auto` in any layer, **when** the
   mode resolves, **then** the read is refused loudly, naming the file, and
   nothing is armed.
@@ -165,10 +207,37 @@ _None recorded yet._
   requires; a person merges.
 - 2026-10-16, the product thinker: this intent moves to planned.
 
+- 2026-10-29, the product thinker: approving a merge is the technical
+  facilitator's act, never the product thinker's, whose part is to try the
+  outcome and judge it. In `auto` nothing waits for an approval; in `human`
+  abcd tells the facilitator their approval is needed and arms once it is
+  given. This supersedes the 2026-10-16 ruling that `human` refuses arming
+  outright. No forge approval rule or code-owner file is added for it, and
+  the autonomous mode shows in the status line as well as on the board.
+- 2026-10-29, the product thinker (refining the same day): a maintainer is
+  anyone with Write, Maintain or Admin permission on the repository, and a
+  contributor anyone with Read or Triage. A contributor's pull request needs
+  a maintainer's approval in either mode; a maintainer's goes through in
+  `auto` and waits for the facilitator's approval in `human`. Who is a
+  maintainer is read from the repository permission level. The contributor
+  rules are carried on by itd-2610290858115394, which builds on this intent. <!-- record-lint: forward-looking -->
+- 2026-10-29, the technical facilitator on the product thinker's delegation
+  (records): AM1 is retired as the merge gate's stand-in, but its reading of
+  approvals is kept for a contributor's pull request and for `human`, and it
+  counts only an approval of the head commit by a maintainer other than the
+  author. `auto` keeps its review-receipt condition. A custom role is judged
+  by its base role, and an author the forge reports no role for is a
+  contributor, so an unreadable answer never lets a merge through.
+- 2026-10-29, the technical facilitator on the product thinker's delegation
+  (records): the status line shows the mode only while it is `auto`, since
+  `human` is every fresh install's default and an element there would say
+  nothing new; it goes through the consented status line alone, as nothing
+  else in the host's settings calls abcd.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
 
 ## Grounds
 
-- pursued: one declared facilitator mode, one merge gate every merging path asks, and a guard on the merge commands keep merges where a repository's owners want them; shown wrong if a merge abcd starts happens while the mode is human, or if auto arms a head no review receipt names
+- pursued: one declared facilitator mode, one merge gate every merging path asks, and a guard on the merge commands keep merges where a repository's owners want them; shown wrong if a merge abcd starts happens while the mode is human with no approval of the head by the facilitator, if a contributor's pull request merges with no maintainer's approval of its head, or if auto arms a head no review receipt names
