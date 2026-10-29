@@ -1416,10 +1416,12 @@ reservation a person made over it, lapsed or not. A yes whose reservation has
 moved on (renewed, reserved again or taken over since, or released by a person),
 or that took none because you held the issue live, publishes nothing yet: the
 drain keeps the hand-back pending (pending_hand_backs in --json) and publishes it
-over the issue's next release on origin. A record changed or finished on origin's
-default branch since, one origin holds in no one file, or a tombstone the hand-back
-would take past its cap drops it, and the move says it was dropped and why; a
-default branch that could not be read keeps it pending. A promotion
+over the issue's next release on origin, or, once the sweep has deleted that
+release, as the first commit of a branch no one has made again since. A record
+changed or finished on origin's default branch since, one origin holds in no one
+file, or a tombstone the hand-back would take past its cap drops it, and the move
+says it was dropped and why; a default branch that could not be read keeps it
+pending. A promotion
 this checkout cannot make, not holding the record as origin does, is left to a
 checkout that can. The reservation is taken once per request: one unanswered when it lapses is
 dropped and the issue asked again only after the drain's other eligible work. The
@@ -4856,9 +4858,11 @@ push leaves no reservation and nothing in the checkout.
 
 --sweep lists the spent reservation branches on origin and, with --apply, deletes
 them, each with a lease on the exact tip it judged, so a branch re-reserved
-meanwhile survives. A branch is spent when its tip has been untouched, its lease
-past the five-minute margin included, for --older-than days (default 7, at
-least 1), and either its record is resolved, won't-fixed, shipped or superseded
+meanwhile survives. A branch is spent when its tip has settled, its lease past
+the five-minute margin included (a plain release, or a hand-back on a finished
+record, at once, at the next sweep; any other tip only once untouched for
+--older-than days, default 7, at least 1),
+and either its record is resolved, won't-fixed, shipped or superseded
 on origin's default branch, or every commit on it is a reservation or a plain
 release, whether or not any is a release, since a lapsed lease already lets any
 session take the record over. A hand-back on a record still open, a commit of
@@ -4878,7 +4882,7 @@ exit 2 when it could not run or origin refused a deletion.
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
       --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
       --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
-      --older-than int          with --sweep, the days a branch must have been untouched past its lease (at least 1) (default 7)
+      --older-than int          with --sweep, the days a tip other than a release must have been untouched past its lease (at least 1) (default 7)
       --release                 release your reservation from this copy by pushing a tombstone
       --sweep                   list the spent reservation branches on origin, which --apply deletes; a dry run without it
       --take-over               move your own live reservation from another copy to this one

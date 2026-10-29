@@ -484,39 +484,60 @@ type released struct {
 // blob when it is not "" (claim.Request.HandBackBlob). The clause quotes a
 // refusal and a holder, both derived from the remote, so it is returned
 // terminal-safe and home-redacted for every caller.
-func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) (out released) {
+func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) released {
+	return releaseWith(repoRoot, claim.Request{Record: id, Release: true, Tip: tip, HandBack: kind, HandBackBlob: blob}, now)
+}
+
+// releaseOverAbsent publishes the hand-back kind, judged over blob, on a
+// branch origin no longer holds, as its first commit
+// (claim.Request.OverAbsent), and reads the outcome as releaseAt does.
+func releaseOverAbsent(repoRoot, id, kind, blob string, now time.Time) released {
+	return releaseWith(repoRoot, claim.Request{Record: id, Release: true, HandBack: kind, HandBackBlob: blob, OverAbsent: true}, now)
+}
+
+// releaseWith makes the release req asks for and says what it came to.
+func releaseWith(repoRoot string, req claim.Request, now time.Time) (out released) {
+	id, kind := req.Record, req.HandBack
 	defer func() {
 		out.clause = termsafe.Sanitize(fsutil.RedactHome(out.clause))
 		out.pending = termsafe.Sanitize(fsutil.RedactHome(out.pending))
 	}()
-	res, err := claimReserve(repoRoot, claim.Request{Record: id, Release: true, Tip: tip, HandBack: kind, HandBackBlob: blob}, claimOptions(now))
+	res, err := claimReserve(repoRoot, req, claimOptions(now))
+	// A release over an absent branch finds no reservation to release: it
+	// pushes a tombstone to the branch, or nothing.
+	already, tombstone := "the reservation on "+id+" was already released", "released the reservation on "+id+" with a tombstone"
+	if req.OverAbsent {
+		already, tombstone = "nothing was pushed to "+id+"'s branch", "pushed a tombstone to "+id+"'s branch"
+	}
 	var nh *claim.NotHeld
 	switch {
 	case err == nil && res.Act == claim.ActAlreadyReleased && kind != "" && res.HandBackUnpublished != "":
-		out = released{clause: "the reservation on " + id + " was already released; " + res.HandBackUnpublished}
+		out = released{clause: already + "; " + res.HandBackUnpublished}
 		if res.HandBackUnread {
 			out.pending = out.clause
 		}
 		return out
 	case err == nil && res.Act == claim.ActAlreadyReleased:
-		return released{clause: "the reservation on " + id + " was already released"}
+		return released{clause: already}
 	case err == nil && kind != "" && res.HandBackUnpublished != "":
-		out = released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished}
+		out = released{clause: tombstone + " (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished}
 		if res.HandBackUnread {
 			out.pending = out.clause
 		}
 		return out
 	case err == nil && kind != "":
-		return released{published: true, clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
+		return released{published: true, clause: tombstone + " (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
 			", so no drain takes it again until its record changes on " + claim.Remote + "'s default branch"}
 	case err == nil && res.HandBackKept != nil:
-		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackKept.KeptNote(id)}
+		return released{clause: tombstone + " (" + shortSHA(res.Commit) + "); " + res.HandBackKept.KeptNote(id)}
 	case err == nil:
-		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ")"}
+		return released{clause: tombstone + " (" + shortSHA(res.Commit) + ")"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherPerson:
 		out = released{clause: "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherCopy:
 		out = released{clause: "left the reservation on " + id + " as it stands: " + nh.YourCopy + " holds it"}
+	case errors.As(err, &nh) && nh.Why == claim.NotHeldMoved && req.OverAbsent:
+		out = released{clause: "left the reservation on " + id + " as it stands: it was reserved again since its branch was found absent"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldMoved:
 		out = released{clause: "left the reservation on " + id + " as it stands: it was renewed or reserved again since the drain took it"}
 	case errors.Is(err, claim.ErrRefused) && !isPushFailure(err):
