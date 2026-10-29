@@ -67,9 +67,12 @@ spec's `- packages:` line to the files the work changes. A step's own
   <itd-N> with; fill its packages line, then run abcd build again; nothing was
   started`. An issue whose `found_at` names no repository-relative path is
   refused the same way. Report the refusal as it stands: the footprint is the spec's to name, never one invented here.
-- Each entry of that line is read as its path alone: a trailing parenthetical
-  note is dropped (`internal/core/x (new)` reserves `internal/core/x`), and a
-  comma inside one does not split the entry. An entry that is still prose
+- Each entry of that line is read as its path alone. An entry that names
+  something in the tree as written is reserved as written; otherwise a
+  trailing parenthetical note set off by a space is dropped
+  (`internal/core/x (new)` reserves `internal/core/x`, while
+  `app/(marketing)` stays whole), and a comma inside a note does not split
+  the entry. An entry that is still prose
   once its note is dropped, holding a space and naming nothing in the tree,
   is refused at the `reservation` stage, exit 2, starting nothing: `<spc-N>'s
   packages entry "<entry>" under ## Footprint names no path; write it as its

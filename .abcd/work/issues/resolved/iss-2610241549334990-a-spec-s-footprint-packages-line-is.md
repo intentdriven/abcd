@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/implement/loop/reservation.go"
 remedy: "In specPackages in internal/core/implement/loop/reservation.go, read each packages entry as its leading path alone. Split on commas only outside parentheses, drop a trailing parenthetical note, and refuse to reserve an entry that still holds whitespace and names nothing in the tree, naming the spec and the entry. Test it with a packages line carrying internal/core/x (new), a parenthetical with a comma inside it, and a prose entry."
-resolution: "A build now reserves each packages entry by its leading path: a trailing parenthetical note is dropped and a comma inside one no longer splits the entry. An entry still prose once its note is dropped refuses the start, naming the spec and the entry, and build next excludes its intent at the footprint check. The two open specs that carried such entries now name their paths alone."
+resolution: "A build now reserves each packages entry by its leading path: a trailing parenthetical note is dropped and a comma inside one no longer splits the entry. An entry still prose once its note is dropped refuses the start, naming the spec and the entry, and build next excludes its intent at the footprint check. Two of the three open specs that carried such entries now name their paths alone; the third, spc-2609221011151661, is left to the lane rewriting it, and its build is refused naming the entry until then."
 impact: fix
 ---
 

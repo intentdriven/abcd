@@ -40,8 +40,9 @@ const StagePick = "pick"
 const CheckRun = "run"
 
 // CheckFootprint is the exclusion of a planned intent whose spec names no
-// footprint packages to reserve it with, in a checkout with a remote named
-// origin: its start would be refused at the reservation.
+// footprint packages to reserve it with, or names one by prose rather than by
+// its path, in a checkout with a remote named origin: its start would be
+// refused at the reservation.
 const CheckFootprint = "footprint"
 
 // Excluded is a planned intent the pick did not consider, with the first

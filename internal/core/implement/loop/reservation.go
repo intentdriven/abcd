@@ -908,8 +908,9 @@ func noFootprint(specID, key string) string {
 const maxSpecBytes = 1 << 20
 
 // specPackages is the packages specID's `## Footprint` section names, each
-// read as its leading path alone, a trailing parenthetical note dropped, and
-// cleaned (a trailing slash dropped), in the order written; empty when the
+// read as written when that names something in the tree and otherwise as its
+// leading path alone, a trailing parenthetical note dropped, and cleaned (a
+// trailing slash dropped), in the order written; empty when the
 // spec has no such section or it names none. An entry that is still prose,
 // holding whitespace and naming nothing in the tree, is a
 // *footprintEntryError rather than a path that shares nothing with the
@@ -929,7 +930,10 @@ func specPackages(repoRoot, specID string) ([]string, error) {
 	}
 	var out []string
 	for _, entry := range spec.ReadFootprint(string(data)).Packages {
-		p := leadingPath(entry)
+		p := strings.TrimSpace(entry)
+		if !inTree(repoRoot, p) {
+			p = leadingPath(p)
+		}
 		if strings.ContainsFunc(p, unicode.IsSpace) && !inTree(repoRoot, p) {
 			return nil, &footprintEntryError{Spec: specID, Entry: entry}
 		}
@@ -940,9 +944,10 @@ func specPackages(repoRoot, specID string) ([]string, error) {
 	return out, nil
 }
 
-// leadingPath is a packages entry less a trailing parenthetical note:
-// `internal/core/x (new)` is internal/core/x. An entry that is all
-// parenthetical is left as it is.
+// leadingPath is a packages entry less a trailing parenthetical note, one
+// set off from the path by whitespace: `internal/core/x (new)` is
+// internal/core/x, while `app/(marketing)` is a path and stays whole. An
+// entry that is all parenthetical is left as it is.
 func leadingPath(entry string) string {
 	e := strings.TrimSpace(entry)
 	if !strings.HasSuffix(e, ")") {
@@ -955,7 +960,10 @@ func leadingPath(entry string) string {
 			depth++
 		case '(':
 			if depth--; depth == 0 {
-				return strings.TrimSpace(e[:i])
+				if lead := strings.TrimRightFunc(e[:i], unicode.IsSpace); len(lead) < i {
+					return lead
+				}
+				return e
 			}
 		}
 	}

@@ -80,6 +80,25 @@ func TestAFootprintEntryWithASpaceThatNamesAFileIsKept(t *testing.T) {
 	}
 }
 
+// TestAPathEndingInAParenthesisIsNotANote: a parenthesis that is part of the
+// path, as written in the tree (`docs/Archive (2019)`) or joined to its
+// segment (`app/(marketing)`, a route group), is reserved whole; cutting it
+// back would reserve another path, wider or narrower than the one meant.
+func TestAPathEndingInAParenthesisIsNotANote(t *testing.T) {
+	parens := specWithSteps("") + "\n## Footprint\n\n- packages: docs/Archive (2019), app/(marketing)\n- tests: the widget\n"
+	repo := loopRepo(t, readyIntent("", settledQuestions), parens)
+	if err := os.MkdirAll(filepath.Join(repo.Root(), "docs", "Archive (2019)"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := specPackages(repo.Root(), "spc-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"docs/Archive (2019)", "app/(marketing)"}; !slices.Equal(got, want) {
+		t.Fatalf("specPackages = %q, want %q", got, want)
+	}
+}
+
 // TestBuildNextExcludesAnIntentWhoseFootprintIsProse: the pick does not
 // abort on one spec's prose entry; it excludes that intent at the check
 // `footprint`, naming the entry, and moves on.
