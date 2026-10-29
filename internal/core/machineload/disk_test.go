@@ -14,11 +14,11 @@ import (
 // its nearest existing ancestor.
 func TestNearestExisting(t *testing.T) {
 	dir := t.TempDir()
-	if got := NearestExisting(filepath.Join(dir, "worktrees", "abc", "lane")); got != dir {
-		t.Fatalf("NearestExisting = %q, want %q", got, dir)
+	if got := nearestExisting(filepath.Join(dir, "worktrees", "abc", "lane")); got != dir {
+		t.Fatalf("nearestExisting = %q, want %q", got, dir)
 	}
-	if got := NearestExisting(dir); got != dir {
-		t.Fatalf("NearestExisting(existing) = %q, want %q", got, dir)
+	if got := nearestExisting(dir); got != dir {
+		t.Fatalf("nearestExisting(existing) = %q, want %q", got, dir)
 	}
 }
 

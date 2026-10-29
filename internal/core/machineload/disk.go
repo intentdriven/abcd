@@ -23,7 +23,7 @@ import (
 // Volume is one reading of the volume holding a path.
 type Volume struct {
 	// Path is the path read: the one asked for, or, when it does not exist,
-	// its nearest existing ancestor (NearestExisting).
+	// its nearest existing ancestor (nearestExisting).
 	Path string
 	// Free is the bytes an unprivileged writer can still use on the volume
 	// (the blocks available to a non-root user times the size they are
@@ -44,7 +44,7 @@ type Volume struct {
 // the volume holding its nearest existing ancestor. On a platform other than
 // macOS and Linux it reports ErrUnsupported.
 func ReadVolume(path string) (Volume, error) {
-	p := NearestExisting(path)
+	p := nearestExisting(path)
 	v, err := statVolume(p)
 	v.Path = p
 	return v, err
@@ -75,11 +75,11 @@ func blockBytes(blocks uint64, frsize, bsize int64) uint64 {
 	return blocks * uint64(unit)
 }
 
-// NearestExisting is path itself when it exists, else its nearest ancestor
+// nearestExisting is path itself when it exists, else its nearest ancestor
 // that does: the volume a directory not yet created will be written to. A
 // path whose every ancestor is missing (only a relative path can be) is
 // returned cleaned, for the read to fail on.
-func NearestExisting(path string) string {
+func nearestExisting(path string) string {
 	p := filepath.Clean(path)
 	for {
 		if _, err := os.Stat(p); err == nil || !errors.Is(err, fs.ErrNotExist) {

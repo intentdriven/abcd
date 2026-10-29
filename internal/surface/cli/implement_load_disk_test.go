@@ -20,7 +20,7 @@ func init() {
 // (iss-2610281502581386).
 func TestLoadCheckRendersTheLowDiskWarning(t *testing.T) {
 	res := implement.LoadResult{Status: implement.LoadOK, Site: implement.SitePreflight, Load: &implement.LoadAverages{One: 3}, Cores: 16,
-		Disk: &implement.DiskCheck{Status: implement.DiskLow, FloorBytes: implement.DiskFloorFor(1), Volumes: []implement.DiskVolume{{
+		Disk: &implement.DiskCheck{Status: implement.DiskLow, FloorBytes: implement.DiskFloorMin, Volumes: []implement.DiskVolume{{
 			Holds: []string{implement.DiskHoldsWorktreeStore}, Paths: []string{"~/x"}, FreeBytes: 1 << 30, Low: true}}}}
 	var b bytes.Buffer
 	renderLoad(&b, res)

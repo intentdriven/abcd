@@ -433,7 +433,7 @@ type WaitResult struct {
 // refusal before any wait (a home it cannot resolve, a home inside a git
 // working tree that is not the account's own, a symlinked ~/.abcd.noindex, a
 // load.preflights it cannot use, a volume holding the Go build cache or the
-// worktree store below the disk floor (DiskFloorFor), or a hold lock that is
+// worktree store below the disk floor (diskFloorFor), or a hold lock that is
 // not a regular file), a refusal at the last look before it opens when such
 // a volume has fallen below the floor while it waited, or a hold it could not
 // give up when standing back after a wait. A disk it cannot read, in whole or
@@ -501,7 +501,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	}
 	// The disk is read before anything is waited for, and again just before
 	// the gate opens (below): other work fills the disk while this waits.
-	floor := DiskFloorFor(res.Slots)
+	floor := diskFloorFor(res.Slots)
 	disk := ReadDisk(home, floor)
 	res.DiskNote = disk.Note()
 	if err := disk.Refusal(); err != nil {

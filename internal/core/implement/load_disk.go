@@ -26,7 +26,7 @@ import (
 // So the waiter (WaitLoad) refuses to admit a test stage, at either gate,
 // while the volume holding the Go build cache (`go env GOCACHE`) or the one
 // holding the worktree store (~/.abcd.noindex/worktrees, or its nearest
-// existing ancestor) has less than the floor free (DiskFloorFor), and the
+// existing ancestor) has less than the floor free (diskFloorFor), and the
 // load check (CheckLoad) reports the same finding as a warning, never
 // failing. The waiter reads the disk when it starts and again just before it
 // opens, since other work fills the disk while it waits; it refuses rather
@@ -52,13 +52,13 @@ const DiskPerPreflight uint64 = 4 << 30
 // volume while it runs.
 const DiskFloorMin uint64 = 8 << 30
 
-// DiskFloorFor is the free space, in bytes, below which the load gate admits
+// diskFloorFor is the free space, in bytes, below which the load gate admits
 // no test stage, for a gate admitting slots preflights to their test stages
 // at once (load.preflights, PreflightSlots): DiskPerPreflight for each, and
 // DiskFloorMin at least. So 8 GiB at the default of one and 16 GiB at four.
 // It follows only the person's own load.preflights (or its environment
 // variable), never a repository file, so no checkout can lower it.
-func DiskFloorFor(slots int) uint64 {
+func diskFloorFor(slots int) uint64 {
 	return max(uint64(max(slots, 0))*DiskPerPreflight, DiskFloorMin)
 }
 
@@ -69,7 +69,7 @@ func diskFloorAt(getenv func(string) string, home string) uint64 {
 	if home == "" {
 		h, err := os.UserHomeDir()
 		if err != nil || h == "" {
-			return DiskFloorFor(1)
+			return diskFloorFor(1)
 		}
 		home = h
 	}
@@ -77,7 +77,7 @@ func diskFloorAt(getenv func(string) string, home string) uint64 {
 	if err != nil {
 		slots = 1
 	}
-	return DiskFloorFor(slots)
+	return diskFloorFor(slots)
 }
 
 // The disk statuses.
@@ -142,7 +142,7 @@ type DiskCheck struct {
 }
 
 // ReadDisk judges the free space for the account whose home is home ("" is
-// this process's) against floor (DiskFloorFor). It is a variable only so
+// this process's) against floor (diskFloorFor). It is a variable only so
 // tests replace it: the core's own tests by default (load_disk_test.go), so
 // none reads the real disk unless it asks.
 var ReadDisk = func(home string, floor uint64) DiskCheck { return checkDisk(home, realDiskProbe(floor)) }
@@ -155,7 +155,7 @@ type diskProbe struct {
 	volume func(string) (machineload.Volume, error)
 	// cacheSize measures the cache (machineload.GoCacheSize).
 	cacheSize func(string) (machineload.CacheSize, error)
-	// floor is the floor judged against (DiskFloorFor).
+	// floor is the floor judged against (diskFloorFor).
 	floor uint64
 }
 

@@ -81,7 +81,7 @@ func fakeDisk(home string, cacheGiB uint64, vols map[string]machineload.Volume) 
 			measured = append(measured, dir)
 			return machineload.CacheSize{Bytes: cacheGiB << 30, Sampled: 12, Subdirs: 256}, nil
 		},
-		floor: DiskFloorFor(1),
+		floor: diskFloorFor(1),
 	}, &measured
 }
 
@@ -148,7 +148,7 @@ func TestWaitRefusesAtOnceOnALowDisk(t *testing.T) {
 // as before.
 func TestWaitAdmitsAtTheFloor(t *testing.T) {
 	home := t.TempDir()
-	p, measured := fakeDisk(home, 177, dataVolume(home, DiskFloorFor(1)))
+	p, measured := fakeDisk(home, 177, dataVolume(home, diskFloorFor(1)))
 	withDisk(t, p)
 	clock := &fakeClock{now: waitT0}
 	res, err := WaitLoad(waitReq(home, 51000, clock, poll{load: 1}))
@@ -378,8 +378,8 @@ func TestDiskVolumesWithoutAnIDAreApart(t *testing.T) {
 // admits at once, and 8 GiB at least; the waiter judges at its own slots.
 func TestDiskFloorFollowsTheSlots(t *testing.T) {
 	for slots, want := range map[int]uint64{1: 8 * gib, 2: 8 * gib, 3: 12 * gib, 4: 16 * gib} {
-		if got := DiskFloorFor(slots); got != want {
-			t.Errorf("DiskFloorFor(%d) = %s, want %s", slots, bytesText(got), bytesText(want))
+		if got := diskFloorFor(slots); got != want {
+			t.Errorf("diskFloorFor(%d) = %s, want %s", slots, bytesText(got), bytesText(want))
 		}
 	}
 	for env, want := range map[string]uint64{"": 8 * gib, "4": 16 * gib} {
@@ -408,7 +408,7 @@ func TestDiskFloorFollowsTheSlots(t *testing.T) {
 	// At the default of one, 10 GiB free is room enough.
 	home := t.TempDir()
 	p, _ := fakeDisk(home, 1, dataVolume(home, 10*gib))
-	p.floor = DiskFloorFor(1)
+	p.floor = diskFloorFor(1)
 	if d := checkDisk(home, p); d.Status != DiskOK {
 		t.Fatalf("10 GiB at one slot = %+v", d)
 	}
@@ -422,7 +422,7 @@ func TestRealReadDiskCarriesTheFloor(t *testing.T) {
 		t.Skip("free space is read on macOS and Linux only")
 	}
 	home := t.TempDir()
-	floor := DiskFloorFor(4)
+	floor := diskFloorFor(4)
 	d := productionReadDisk(home, floor)
 	if d.FloorBytes != floor {
 		t.Fatalf("FloorBytes = %d, want %d", d.FloorBytes, floor)
