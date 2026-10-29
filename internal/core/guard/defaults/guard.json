@@ -793,6 +793,28 @@
         ]
       }
     },
+    "abcd-guard-allow": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "abcd",
+        "subcommand": "guard",
+        "subcommand2": "allow"
+      },
+      "why": "Allowing a delete the guard could not prove safe is the person's own act: the allow lets one exact command through that may take work with it, so an allow an agent grants itself is one no person decided.",
+      "successor": "Leave this one to the person: tell them the exact command, what the guard could not prove and why you believe it is safe, and let them run `abcd guard allow --once --command '<the command>'` themselves.",
+      "fixtures": {
+        "known_bad": [
+          "abcd guard allow --once --command 'git branch -D feat/x'",
+          "abcd guard allow --command 'git push origin --delete feat/x' --once",
+          "go run ./cmd/abcd guard allow --once --command 'git worktree remove ../wt'"
+        ],
+        "known_good": [
+          "abcd guard check --command 'git branch -D feat/x'",
+          "abcd guard approve",
+          "abcd capture \"an agent ran abcd guard allow --once\""
+        ]
+      }
+    },
     "abcd-source-ledger-flip-retired": {
       "tier": "blocker",
       "pattern": {

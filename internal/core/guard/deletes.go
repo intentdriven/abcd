@@ -165,6 +165,25 @@ func (r Registry) deleteSignal(v verdicts) (payloadSignal, bool) {
 	return deleteRefusal(failed, settle), true
 }
 
+// onlyDeleteBlocks reports whether the delete refusal is the line's only
+// block: no registry blocker fired, and no other signal blocks.
+func onlyDeleteBlocks(v verdicts) bool {
+	if len(v.blockers) > 0 || len(v.unnamedBlockers) > 0 {
+		return false
+	}
+	found := false
+	for _, s := range v.signals {
+		if s.verdict != VerdictBlock {
+			continue
+		}
+		if s.id != deleteEntryID {
+			return false
+		}
+		found = true
+	}
+	return found
+}
+
 // matchedDelete reports whether a delete entry fired on the line itself, and
 // whether one fired on a script the line runs.
 func matchedDelete(v verdicts) (line, script bool) {

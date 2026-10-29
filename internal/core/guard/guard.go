@@ -253,6 +253,11 @@ type Decision struct {
 	// the command runs that does not exist, so there was nothing to read
 	// (script.go). They ride on any verdict, an allow included.
 	Diagnostics []string `json:"diagnostics,omitempty"`
+	// AllowableOnce marks a block whose only cause is a delete the guard could
+	// not prove safe (deletes.go): a person's one-shot allow of the exact line
+	// lets it through the hook (allowonce.go). Any other blocker leaves it
+	// false, and no allow can pass it.
+	AllowableOnce bool `json:"allowable_once,omitempty"`
 }
 
 //go:embed defaults/guard.json
@@ -545,6 +550,9 @@ func (r Registry) check(command string) (Decision, error) {
 	var rc *readCtx
 	if r.files != nil {
 		rc = newReadCtx(r.files)
+		// A line that names the allow store has its writes read, as the
+		// approver reads every line's (allowonce.go).
+		rc.record = strings.Contains(command, allowStoreLeaf)
 	}
 	v, err := r.judge(command, rc, nil)
 	if err != nil {
@@ -553,7 +561,11 @@ func (r Registry) check(command string) (Decision, error) {
 	if sig, ok := r.deleteSignal(v); ok {
 		v.signals = append(v.signals, sig)
 	}
+	if sig, ok := r.allowStoreSignal(command, rc, v); ok {
+		v.signals = append(v.signals, sig)
+	}
 	d := r.decide(v)
+	d.AllowableOnce = d.Verdict == VerdictBlock && onlyDeleteBlocks(v)
 	if rc != nil {
 		d.Diagnostics = rc.notes
 	}
