@@ -330,3 +330,76 @@ func TestCheckPathJudgesTheTreeAFileLandsIn(t *testing.T) {
 		t.Errorf("a file in the shared checkout's committed tier must still be refused, got %v", err)
 	}
 }
+
+// TestCheckPathJudgesWhereAWriteLandsNotHowItIsSpelt: the local tier's
+// exemption and the tree a file lands in are judged by where the write lands,
+// never by the path's spelling. A ".." after a symlink is resolved as the
+// kernel resolves it, a symlink whose target is not yet made by where writing
+// through it creates the file, a nested or differently cased tier is not the
+// main checkout's tier, and a checkout root spelt in another case on a
+// case-insensitive filesystem is the same checkout.
+func TestCheckPathJudgesWhereAWriteLandsNotHowItIsSpelt(t *testing.T) {
+	home := t.TempDir()
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(base, "main")
+	linked := filepath.Join(base, "linked")
+	tier := filepath.Join(main, ".abcd", ".work.local")
+	for _, d := range []string{filepath.Join(main, ".git"), filepath.Join(main, "internal"), tier, linked} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(linked, ".git"), []byte("gitdir: elsewhere\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for link, target := range map[string]string{
+		filepath.Join(tier, "into"):     filepath.Join(main, "internal"),
+		filepath.Join(tier, "dangling"): filepath.Join(main, "internal", "new.go"),
+		filepath.Join(tier, "rel"):      "../../internal",
+		filepath.Join(linked, "into"):   filepath.Join(main, "internal"),
+	} {
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now()
+	tab := table(now, 101, 102)
+	for id, pid := range map[string]int{"s1": 101, "s2": 102} {
+		if err := Note(home, id, main, hostOf(tab, pid), tab); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sep := string(filepath.Separator)
+	denied := []string{
+		tier + sep + ".." + sep + ".." + sep + "internal" + sep + "x.go",
+		tier + sep + "into" + sep + "x.go",
+		tier + sep + "into" + sep + ".." + sep + "x.go",
+		tier + sep + "rel" + sep + "x.go",
+		tier + sep + "dangling",
+		linked + sep + "into" + sep + ".." + sep + "x.go",
+		main + sep + ".abcd" + sep + ".WORK.LOCAL" + sep + "x.md",
+		main + sep + "sub" + sep + ".abcd" + sep + ".work.local" + sep + "x.md",
+	}
+	if other := filepath.Join(base, "MAIN"); other != main {
+		if fi, err := os.Stat(other); err == nil && fi.IsDir() {
+			denied = append(denied, other+sep+"x.go") // a case-insensitive filesystem
+		}
+	}
+	for _, p := range denied {
+		var shared *SharedError
+		if err := CheckPath(home, p, read(tab)); !errors.As(err, &shared) {
+			t.Errorf("CheckPath(%s): the write lands in the shared checkout's tree, want a SharedError, got %v", p, err)
+		}
+	}
+	for _, p := range []string{
+		tier + sep + "scratch" + sep + "x.md",
+		tier + sep + "a" + sep + ".." + sep + "b.md",
+	} {
+		if err := CheckPath(home, p, read(tab)); err != nil {
+			t.Errorf("CheckPath(%s): the write lands in the local tier, want nil, got %v", p, err)
+		}
+	}
+}
