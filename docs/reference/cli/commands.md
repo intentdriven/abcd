@@ -55,7 +55,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
       --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
       --identity    check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)
       --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
-      --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
+      --remote      audit this repository's GitHub settings against abcd's baseline, one line per setting, and say what the remote apply sub-verb would change
 ```
 
 #### `abcd ahoy connect`
@@ -249,6 +249,10 @@ then reservation.github_username in the machine configuration, then the
 session's forge token, asked whose account it is. When git's identity is not a
 person's, the token's account sends and authors the announcement, and the
 identity git had is shown nowhere.
+
+abcd's own pushes announce first through this same code: abcd land, and a
+build or drain lane's landing, post "merging <item>" and push only once it is
+on origin. A push typed by hand with git push posts no announcement.
 
 Exit 0 when the announcement reached origin; exit 2 on every refusal, when it
 was not sent, and when a push was made but whether it landed cannot be told.
@@ -1331,7 +1335,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [flags]`
+**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1412,10 +1416,12 @@ reservation a person made over it, lapsed or not. A yes whose reservation has
 moved on (renewed, reserved again or taken over since, or released by a person),
 or that took none because you held the issue live, publishes nothing yet: the
 drain keeps the hand-back pending (pending_hand_backs in --json) and publishes it
-over the issue's next release on origin. A record changed or finished on origin's
-default branch since, one origin holds in no one file, or a tombstone the hand-back
-would take past its cap drops it, and the move says it was dropped and why; a
-default branch that could not be read keeps it pending. A promotion
+over the issue's next release on origin, or, once the sweep has deleted that
+release, as the first commit of a branch no one has made again since. A record
+changed or finished on origin's default branch since, one origin holds in no one
+file, or a tombstone the hand-back would take past its cap drops it, and the move
+says it was dropped and why; a default branch that could not be read keeps it
+pending. A promotion
 this checkout cannot make, not holding the record as origin does, is left to a
 checkout that can. The reservation is taken once per request: one unanswered when it lapses is
 dropped and the issue asked again only after the drain's other eligible work. The
@@ -1489,6 +1495,13 @@ lost connection (`abcd implement outage`), the drain opens nothing and ends with
 stopped "outage", naming the services down, since when, the probes and the lanes it
 opened; the next `abcd drain`, once the outage is cleared, begins a new one.
 
+--skip <iss-N|path> --reason <why> holds one issue, or every issue whose found_at
+lies in that path, back for now: the move adds it to the drain's skip list (beginning
+a drain when none is in progress) and every move passes it over before anything is
+pushed or asked, named in passed with check "skipped" and the reason. --skip may be
+given more than once, all with the one --reason; --unskip takes an entry off. The
+list clears when the drain ends.
+
 Without the repository's record, the dry run and the run both refuse (exit 2),
 naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or
 merges nothing exits 0 and says why. Exit 2 on a refusal, exit 3 when another
@@ -1497,13 +1510,16 @@ drain or run holds the state lock.
 **Flags:**
 
 ```
-      --dry-run             show every open issue's disposition and the order a drain takes them; writes nothing
-      --fix-rounds string   the fix rounds a lane may take before it is handed back; wins over every configured layer
-      --judgement string    the host's answer to the judgement the drain awaits, at the path its request names
-      --max int             cap the lanes this drain opens; the default is all
-      --pace string         the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
-      --sub-agents string   the ceiling on lanes and validators alive at once; wins over every configured layer
-      --take-over           move your own live reservation of each issue this move reaches from another copy to this one; never another person's
+      --dry-run              show every open issue's disposition and the order a drain takes them; writes nothing
+      --fix-rounds string    the fix rounds a lane may take before it is handed back; wins over every configured layer
+      --judgement string     the host's answer to the judgement the drain awaits, at the path its request names
+      --max int              cap the lanes this drain opens; the default is all
+      --pace string          the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
+      --reason string        why --skip holds its issues back, shown in each pass-over
+      --skip stringArray     hold an issue (iss-N), or every issue whose found_at lies in a path, back for now; needs --reason; cleared when the drain ends
+      --sub-agents string    the ceiling on lanes and validators alive at once; wins over every configured layer
+      --take-over            move your own live reservation of each issue this move reaches from another copy to this one; never another person's
+      --unskip stringArray   take an issue or path off the drain's skip list
 ```
 
 **Example:**
@@ -1545,11 +1561,13 @@ Check a commit range or texts for what would disclose an advisory under embargo:
 
 The outbound embargo check: before anything is made public, read a commit
 range (--range <a>..<b>: each commit's message and the lines it adds, a
-merge's against its first parent) and any texts (--file <path>, repeatable;
-- reads stdin), and refuse every unpublished advisory's id, a CVE id
-reserved for one, its title, the store's location on this machine, and any
-other advisory id --allow does not name. A finding names where the match is
-and never repeats it.
+merge's being those it adds against every parent) and any texts (--file
+<path>, repeatable; - reads stdin), and refuse every unpublished advisory's
+id, a CVE id reserved for one, its title, the store's location on this
+machine, and any other advisory id --allow does not name and GitHub does
+not list among this repository's published advisories (asked only when
+such an id is found). A finding names where the match is and never repeats
+it.
 
 Limits: a title shorter than 12 characters is not matched on its own (its
 id still is); a paraphrase or a count ("fixes several private reports") is
@@ -3740,10 +3758,18 @@ credentials, so run it only on a branch whose content you trust.
      `make preflight` runs in the branch's checkout, its output on stderr, and the
      head must be unchanged, a receipt present and origin's URLs as checked after
      it. A repository whose make file declares no preflight target gets no push.
-  4. Push (land.push): a plain push of the gated commit to the branch's name on
+  4. Announce (with land.push on): before the push, "merging <item>" is posted on
+     your status branch, as abcd announce posts it, for each issue, intent or pull
+     request the branch's own commits name in a Refs:, Resolves: or Delivers:
+     trailer, and the push waits until each is on origin. One you already
+     announced, standing a minute more, is not sent again; a record not yet on
+     the default branch is not announced, and the step says so. One that cannot
+     be published refuses the landing, nothing pushed. A push typed by hand with
+     git push posts no announcement.
+  5. Push (land.push): a plain push of the gated commit to the branch's name on
      origin, with the repository's hooks running, never forced, never the default
      branch.
-  5. Enqueue (land.enqueue): the branch's open pull request, armed for the merge
+  6. Enqueue (land.enqueue): the branch's open pull request, armed for the merge
      queue where the merge gate allows it (today: only where a merge queue gates the
      default branch and a ruleset requires a person's approval), pinned to the
      head, then confirmed in the queue. An arming someone else made is left as it
@@ -3773,7 +3799,8 @@ line on stderr names it.
 
 Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,
 which names what was done before it; reservations that cannot be fetched are
-one, made before anything is pushed. Exit 3 when a release being cut holds the
+one, and so is an announcement that cannot be published, each made before
+anything is pushed. Exit 3 when a release being cut holds the
 landing: it names the release, its holder and until when.
 
 --record-review records the review pair's verdicts for the branch's head and
@@ -4432,7 +4459,7 @@ abcd mode queue "approve the embargo close for the example advisory"
 
 ### `abcd peers`
 
-List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.
+List what peers hold that this checkout lacks, and the reservations: Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout.
 
 **Usage:** `abcd peers`
 
@@ -4466,12 +4493,27 @@ rel-vX.Y.Z reservation, which holds every other session's merge until its
 tag is on origin). Then each holder's hand-backs of the last day, from the
 same view: the record and kind of each released tip marking one, newest
 first, the newest ten shown and the rest counted; one dated more than five
-minutes ahead of this computer's clock is not shown. The fetch is the only
-network act, and it reads origin's release tags with the reservations; it
-updates the remote-tracking reservation branches and the release tags abcd
-keeps under refs/abcd/release-tags/, stamps when it ran in the local tier,
-with when it first fetched each reservation dated ahead of this computer's
-clock or undated, and nothing else is written. The release-tag refs are ordinary
+minutes ahead of this computer's clock is not shown. Then each release's
+withdrawn pull requests (release_withdrawals): those a live release holds or
+admitted, a lease that lapsed before the release ended (ended by its own
+person's next act five minutes after), those an ended one has still to re-arm
+(yours, or another person's, named
+with whose), and those its tombstone skipped for their owners; and those a
+later commit on a recent release's branch dropped (lost_withdrawals). The fetch
+reads origin's release tags with the reservations; it updates the
+remote-tracking reservation branches and the release tags abcd keeps under
+refs/abcd/release-tags/, stamps when it ran in the local tier, with when it
+first fetched each reservation dated ahead of this computer's clock or
+undated, and keeps there each verdict of the forge's record of pushes that
+never changes. One more act follows it, only when a release has ended (its tag on
+origin, or a tombstone its holder pushed) with pull requests you withdrew for
+it not yet re-armed: a tombstone is pushed first, then each one the forge's
+record of pushes says you recorded is re-armed through gh in the form you
+recorded, pinned to its withdrawn head, or skipped when its head
+moved, it was closed or merged, or it can only be merged by hand, and a second
+tombstone records every state (settled). Each pull request re-armed, found
+armed or skipped for its owner then gets one fixed comment, and a comment
+that fails is named in settled.failures. Nothing else is written or posted. The release-tag refs are ordinary
 refs of this checkout, so git log --all lists the commits they name and
 git push --mirror would push them. A checkout with no remote named origin
 lists no reservations.
@@ -4704,6 +4746,7 @@ Reserve an issue, intent or release on the shared remote, or release it: Writes 
 **Usage:** `abcd reserve <record-id> [flags]`
 
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
+abcd reserve rel-vX.Y.Z --admit <pr>
 abcd reserve <record-id> --release
 abcd reserve --holder
 abcd reserve --sweep [--apply] [--older-than <days>]
@@ -4720,6 +4763,30 @@ footprint: while it is live every other session's land step holds its merge.
 It holds for 24h unless --lease names less, sits outside the per-person cap,
 and ends when the tag vX.Y.Z is on origin or its holder releases it; running
 the same command again from the same copy renews it.
+
+A release reserved anew (not renewed from the same copy while live) also withdraws
+every pull request into origin's default branch that has auto-merge on or sits in
+the merge queue, but the release pull request from this checkout's branch,
+through gh under your own identity (refused when gh acts as another account),
+and records each on the reservation first, with the form it was armed in and its
+head (withdrew in --json). A withdrawal the forge refuses is named and the
+reservation stands (forge_failures); the launch check then refuses the cut while
+that pull request is armed. One release is cut at a time: another release live
+backs this one off. --admit <pr>, from the copy cutting the release, records one
+withdrawn pull request admitted, then re-arms it in its recorded form, pinned to
+its withdrawn head. --release from that copy pushes the tombstone, then re-arms
+every other one the same way; once the tag is on origin, any act of a copy of
+the same person that fetches the reservations does so, and so does one five
+minutes after the lease lapsed with no tag, for the cut's own person alone; a cut
+still going on renews it by reserving again. One
+whose head moved, that was closed or merged, or that can only be merged by hand
+(no merge queue), is skipped and named for its owner; every state is recorded on
+the tombstone (settles in --json), so no copy acts twice, a copy of another
+person never re-arms (stranded in --json). A person's withdrawals are read only
+from their own newest push to the release's branch, as the forge's record of
+pushes shows it: commits others pushed above it are counted and never read
+(not_read in settles), and when that push cannot be found or placed nothing is
+acted on for that person (unplaced in settles).
 
 Every act fetches the reservations from origin, judges the tip, writes one
 commit and makes one plain fast-forward push, with the repository's hooks
@@ -4749,11 +4816,15 @@ is named on a shared: line for whoever lands second to regenerate after
 merging (generated_shared in --json); a directory never is. When that
 declaration cannot be read nothing is shared, and the act says why
 (generated_unread in --json). Your own reservation sharing a path with yours
-from another copy is made, and warns on stderr (own_overlap in --json). Name
-files, not directories: a directory holds off every reservation of a file
-inside it. A footprint path naming a directory git tracks is reserved all the
-same, and warns on stderr, naming it and how many tracked files it covers on
-origin's default branch, or HEAD (directory_footprint in --json).
+from another copy is made, and warns on stderr, naming that copy (own_overlap
+in --json). Name files, not directories: a directory holds off every
+reservation of a file inside it. A footprint path naming a directory git
+tracks is reserved all the same, and warns on stderr, naming it and how many
+tracked files it covers on origin's default branch, or HEAD
+(directory_footprint in --json). A path named twice is written once. A reserve
+of a record you already hold writes its footprint in place of the one held,
+and warns on stderr, naming each held path it leaves out (dropped_footprint in
+--json): name them again to keep holding them.
 
 A reservation, a renewal and a take-over consult the embargo store on this
 machine before anything is pushed, as an announcement does: a record the store
@@ -4787,9 +4858,11 @@ push leaves no reservation and nothing in the checkout.
 
 --sweep lists the spent reservation branches on origin and, with --apply, deletes
 them, each with a lease on the exact tip it judged, so a branch re-reserved
-meanwhile survives. A branch is spent when its tip has been untouched, its lease
-past the five-minute margin included, for --older-than days (default 7, at
-least 1), and either its record is resolved, won't-fixed, shipped or superseded
+meanwhile survives. A branch is spent when its tip has settled, its lease past
+the five-minute margin included (a plain release, or a hand-back on a finished
+record, at once, at the next sweep; any other tip only once untouched for
+--older-than days, default 7, at least 1),
+and either its record is resolved, won't-fixed, shipped or superseded
 on origin's default branch, or every commit on it is a reservation or a plain
 release, whether or not any is a release, since a lapsed lease already lets any
 session take the record over. A hand-back on a record still open, a commit of
@@ -4804,11 +4877,12 @@ exit 2 when it could not run or origin refused a deletion.
 **Flags:**
 
 ```
+      --admit int               on a release reservation, from the copy cutting it: re-arm this withdrawn pull request and record it admitted
       --apply                   with --sweep, delete the spent branches, each only while its tip is the one judged
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
       --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
       --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
-      --older-than int          with --sweep, the days a branch must have been untouched past its lease (at least 1) (default 7)
+      --older-than int          with --sweep, the days a tip other than a release must have been untouched past its lease (at least 1) (default 7)
       --release                 release your reservation from this copy by pushing a tombstone
       --sweep                   list the spent reservation branches on origin, which --apply deletes; a dry run without it
       --take-over               move your own live reservation from another copy to this one

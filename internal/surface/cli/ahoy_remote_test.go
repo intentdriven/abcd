@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -135,5 +136,51 @@ func TestAhoyRemoteApplyRefusalAfterAToggleDoesNotSayNothingChanged(t *testing.T
 	}
 	if !strings.Contains(string(out), "change:   secret_scanning: disabled -> enabled") {
 		t.Errorf("the landed change is not rendered:\n%s", out)
+	}
+}
+
+// TestRenderRemoteResultPrintsOneLinePerSettingThatIsNotOK pins the audit's
+// text form (itd-2610290746077716): one line per setting that is not at its
+// target, naming the setting, its current value and its target, its state and
+// why; the settings already at their target as one count; the visibility and
+// the plan; and every value sanitised, since GitHub's answers are input.
+func TestRenderRemoteResultPrintsOneLinePerSettingThatIsNotOK(t *testing.T) {
+	res := ahoy.RemoteResult{
+		Repo:   "example-org/example-repo",
+		Status: "pending",
+		Audit: &ahoy.SettingsAudit{
+			Visibility: "public", DeclaredVisibility: "public", Plan: "free",
+			RequiredChecks: []string{"build", "lint"},
+			Findings: []ahoy.Finding{
+				{Setting: "has_wiki", Current: "true", Target: "false", State: "differs"},
+				{Setting: "release_tags", Current: "unknown", Target: "protected", State: "owed", Note: "owed until public"},
+				{Setting: "org_actions_policy", Current: "unknown", Target: "pinned", State: "unknown", Note: "needs admin:org\x1b[31m"},
+				{Setting: "default_branch_deletion", Current: "blocked", Target: "blocked", State: "ok"},
+				{Setting: "default_branch_force_push", Current: "blocked", Target: "blocked", State: "ok"},
+			},
+		},
+	}
+	var b strings.Builder
+	renderRemoteResult(&b, "abcd ahoy --remote", res)
+	out := b.String()
+	for _, want := range []string{
+		"has_wiki: true -> false",
+		"[differs]",
+		"release_tags: unknown -> protected",
+		"[owed] owed until public",
+		"needs admin:org",
+		"2 settings at their target",
+		"visibility: public (declared public), plan free",
+		"required checks: build, lint",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "default_branch_deletion") {
+		t.Errorf("a setting at its target got a line of its own:\n%s", out)
+	}
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("an escape sequence from GitHub's answer reached the terminal:\n%q", out)
 	}
 }

@@ -70,7 +70,7 @@ func TestSynthPrinciplesDeterministicEmpty(t *testing.T) {
 	dir := synthLifeboat(t, map[string]string{
 		"docs/adrs/0001-thin.md": "# 1. Thin\n\n## Context\n\nNo decision section here.\n",
 	})
-	res, err := SynthesizePrinciples(dir, nil)
+	res, err := SynthesizePrinciples(dir, nil, okScan)
 	if err != nil {
 		t.Fatalf("SynthesizePrinciples: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestSynthPrinciplesDeterministicEmpty(t *testing.T) {
 
 func TestSynthPrinciplesDeterministicFromADRs(t *testing.T) {
 	dir := adrLifeboat(t)
-	res, err := SynthesizePrinciples(dir, nil)
+	res, err := SynthesizePrinciples(dir, nil, okScan)
 	if err != nil {
 		t.Fatalf("SynthesizePrinciples: %v", err)
 	}
@@ -138,12 +138,12 @@ func TestSynthPrinciplesDeterministicFromADRs(t *testing.T) {
 
 func TestSynthPrinciplesDeterministicByteIdentical(t *testing.T) {
 	dir := adrLifeboat(t)
-	if _, err := SynthesizePrinciples(dir, nil); err != nil {
+	if _, err := SynthesizePrinciples(dir, nil, okScan); err != nil {
 		t.Fatal(err)
 	}
 	json1, _ := os.ReadFile(filepath.Join(dir, "principles.json"))
 	md1, _ := os.ReadFile(filepath.Join(dir, "principles.md"))
-	if _, err := SynthesizePrinciples(dir, nil); err != nil {
+	if _, err := SynthesizePrinciples(dir, nil, okScan); err != nil {
 		t.Fatal(err)
 	}
 	json2, _ := os.ReadFile(filepath.Join(dir, "principles.json"))
@@ -161,14 +161,14 @@ func TestSynthPrinciplesDeterministicByteIdentical(t *testing.T) {
 func TestSynthPrinciplesDelegatedSurvivors(t *testing.T) {
 	dir := adrLifeboat(t)
 	// Seed a prior deterministic file, then assert delegated fully replaces it.
-	if _, err := SynthesizePrinciples(dir, nil); err != nil {
+	if _, err := SynthesizePrinciples(dir, nil, okScan); err != nil {
 		t.Fatal(err)
 	}
 	pay := principlesPayload(t, "0.1.0",
 		Principle{ID: "prn-alpha", Principle: "Alpha holds.", Confidence: ConfidenceHigh, Evidence: []string{"adr-24"}},
 		Principle{ID: "prn-beta", Principle: "Beta holds.", Confidence: ConfidenceMedium, Evidence: []string{"docs/adrs/0031-single-binary.md"}},
 	)
-	res, err := SynthesizePrinciples(dir, pay)
+	res, err := SynthesizePrinciples(dir, pay, okScan)
 	if err != nil {
 		t.Fatalf("SynthesizePrinciples delegated: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestSynthPrinciplesDelegatedCiteOrDropped(t *testing.T) {
 		Principle{ID: "prn-dead", Principle: "Cites a dead id.", Confidence: ConfidenceHigh, Evidence: []string{"adr-999", "les-nope"}},
 		Principle{ID: "prn-live", Principle: "Cites a real adr.", Confidence: ConfidenceHigh, Evidence: []string{"adr-31"}},
 	)
-	res, err := SynthesizePrinciples(dir, pay)
+	res, err := SynthesizePrinciples(dir, pay, okScan)
 	if err != nil {
 		t.Fatalf("must be exit 0 on drops: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestSynthPrinciplesDelegatedAllDrop(t *testing.T) {
 	pay := principlesPayload(t, "0.1.0",
 		Principle{ID: "prn-x", Principle: "Uncitable.", Confidence: ConfidenceHigh, Evidence: []string{"adr-999"}},
 	)
-	res, err := SynthesizePrinciples(dir, pay)
+	res, err := SynthesizePrinciples(dir, pay, okScan)
 	if err != nil {
 		t.Fatalf("all-drop must be exit 0: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestSynthPrinciplesGuardedReaderBattery(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := SynthesizePrinciples(dir, tc.raw); err == nil {
+			if _, err := SynthesizePrinciples(dir, tc.raw, okScan); err == nil {
 				t.Fatalf("%s must be a structural error (exit 2)", tc.name)
 			}
 		})
@@ -263,7 +263,7 @@ func TestSynthPrinciplesCanaryPayload(t *testing.T) {
 	pay := principlesPayload(t, "0.1.0",
 		Principle{ID: "prn-canary", Principle: hostile, Confidence: ConfidenceHigh, Evidence: []string{"adr-24"}},
 	)
-	res, err := SynthesizePrinciples(dir, pay)
+	res, err := SynthesizePrinciples(dir, pay, okScan)
 	if err != nil {
 		t.Fatalf("canary payload must be ingested as inert data: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestSynthPrinciplesIDTraversalDropped(t *testing.T) {
 		Principle{ID: "prn-../../etc", Principle: "traversal", Confidence: ConfidenceHigh, Evidence: []string{"adr-24"}},
 		Principle{ID: long, Principle: "too long", Confidence: ConfidenceHigh, Evidence: []string{"adr-24"}},
 	)
-	res, err := SynthesizePrinciples(dir, pay)
+	res, err := SynthesizePrinciples(dir, pay, okScan)
 	if err != nil {
 		t.Fatalf("malformed ids drop, not fatal: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestSynthPrinciplesIDTraversalDropped(t *testing.T) {
 
 func TestSynthPrinciplesNotALifeboat(t *testing.T) {
 	dir := t.TempDir() // no _provenance.json
-	if _, err := SynthesizePrinciples(dir, nil); err == nil {
+	if _, err := SynthesizePrinciples(dir, nil, okScan); err == nil {
 		t.Fatal("a plain dir is not an abcd lifeboat; want an error (exit 2)")
 	}
 }
@@ -318,7 +318,7 @@ func TestSynthPrinciplesProseDecisionBulletedConsequences(t *testing.T) {
 			"## Alternatives Considered\n\n- something else\n\n" +
 			"## Consequences\n\n- the durable lesson worth distilling\n",
 	})
-	res, err := SynthesizePrinciples(dir, nil)
+	res, err := SynthesizePrinciples(dir, nil, okScan)
 	if err != nil {
 		t.Fatalf("SynthesizePrinciples: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestSynthPrinciplesDeterministicDuplicateADRIDAnnouncesDrop(t *testing.T) {
 		"docs/adr/20200926-first.md":  fmt.Sprintf(body, "the first durable lesson"),
 		"docs/adr/20200926-second.md": fmt.Sprintf(body, "the second durable lesson"),
 	})
-	res, err := SynthesizePrinciples(dir, nil)
+	res, err := SynthesizePrinciples(dir, nil, okScan)
 	if err != nil {
 		t.Fatalf("SynthesizePrinciples: %v", err)
 	}
@@ -367,7 +367,7 @@ func TestSynthPrinciplesDeterministicDuplicateIDNoBulletsNotDropped(t *testing.T
 		"docs/adr/20200926-first.md":  "# adr\n\n## Consequences\n\n- the only durable lesson\n",
 		"docs/adr/20200926-second.md": "# adr\n\n## Context\n\nNo decision section here.\n",
 	})
-	res, err := SynthesizePrinciples(dir, nil)
+	res, err := SynthesizePrinciples(dir, nil, okScan)
 	if err != nil {
 		t.Fatalf("SynthesizePrinciples: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestSynthCitationSetExcludesOwnArtifacts(t *testing.T) {
 		Evidence: []string{"principles.json"},
 	})
 
-	first, err := SynthesizePrinciples(dir, payload)
+	first, err := SynthesizePrinciples(dir, payload, okScan)
 	if err != nil {
 		t.Fatalf("first delegated run: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestSynthCitationSetExcludesOwnArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	second, err := SynthesizePrinciples(dir, payload)
+	second, err := SynthesizePrinciples(dir, payload, okScan)
 	if err != nil {
 		t.Fatalf("second delegated run: %v", err)
 	}

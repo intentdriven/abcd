@@ -36,7 +36,7 @@ func rawEntries(t *testing.T, dir string) []map[string]json.RawMessage {
 // the reference — and declines the claim type and the comparison with null.
 func TestDeterministicPrinciplesCarryTheFourKeys(t *testing.T) {
 	dir := adrLifeboat(t)
-	if _, err := SynthesizePrinciples(dir, nil); err != nil {
+	if _, err := SynthesizePrinciples(dir, nil, okScan); err != nil {
 		t.Fatal(err)
 	}
 	pf := readPrinciplesFile(t, dir)
@@ -71,7 +71,7 @@ func TestDelegatedPrincipleWithoutAKeyIsDropped(t *testing.T) {
 	  {"id": "prn-short", "principle": "One binary.", "confidence": "high",
 	   "claim_type": "context", "reference": "adr-31", "evidence": ["adr-31"]}
 	]}`
-	res, err := SynthesizePrinciples(dir, []byte(payload))
+	res, err := SynthesizePrinciples(dir, []byte(payload), okScan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestDelegatedPrincipleWithoutAKeyIsDropped(t *testing.T) {
 // by the version, and a payload at the previous one is refused.
 func TestSchemaVersionOneIsRefused(t *testing.T) {
 	dir := adrLifeboat(t)
-	_, err := SynthesizePrinciples(dir, []byte(`{"schema_version": 1, "mode": "delegated", "prompt_version": "0.1.0", "principles": []}`))
+	_, err := SynthesizePrinciples(dir, []byte(`{"schema_version": 1, "mode": "delegated", "prompt_version": "0.1.0", "principles": []}`), okScan)
 	if err == nil || !strings.Contains(err.Error(), "unsupported principles schema_version 1") {
 		t.Fatalf("a version 1 payload was not refused as unsupported: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestNullKeyIsCarriedNotDropped(t *testing.T) {
 		ID: "prn-declined", Principle: "The cascade is fixed.", Confidence: ConfidenceHigh,
 		Evidence: []string{"adr-24"},
 	})
-	res, err := SynthesizePrinciples(dir, payload)
+	res, err := SynthesizePrinciples(dir, payload, okScan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestDelegatedMechanismIsWrittenAsCausal(t *testing.T) {
 		ID: "prn-fourth", Principle: "One binary.", Confidence: ConfidenceHigh,
 		ClaimType: strp("normative"), Evidence: []string{"adr-31"},
 	})
-	res, err := SynthesizePrinciples(dir, payload)
+	res, err := SynthesizePrinciples(dir, payload, okScan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestPrinciplesMarkdownRendersTheKeys(t *testing.T) {
 		ID: "prn-whole", Principle: "The cascade is fixed.", Confidence: ConfidenceHigh,
 		ClaimType: strp("causal"), Reference: strp("adr-24"), Evidence: []string{"adr-24"},
 	})
-	if _, err := SynthesizePrinciples(dir, payload); err != nil {
+	if _, err := SynthesizePrinciples(dir, payload, okScan); err != nil {
 		t.Fatal(err)
 	}
 	md, err := os.ReadFile(filepath.Join(dir, "principles.md"))
@@ -168,7 +168,7 @@ func TestEvidenceCarriesPackedIDsOnly(t *testing.T) {
 		ID: "prn-mixed", Principle: "The cascade is fixed.", Confidence: ConfidenceHigh,
 		Evidence: []string{"adr-24", "rdi-2609020000000009", "cond-2608311949582375", "prn-other"},
 	})
-	if _, err := SynthesizePrinciples(dir, payload); err != nil {
+	if _, err := SynthesizePrinciples(dir, payload, okScan); err != nil {
 		t.Fatal(err)
 	}
 	pf := readPrinciplesFile(t, dir)

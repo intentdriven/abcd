@@ -53,6 +53,18 @@ type reservationsBlock struct {
 	// HandBacksByHolder is each holder's hand-back tombstones of the last day,
 	// newest first and bounded (spc-2610161044461448 step 18).
 	HandBacksByHolder []handBackHolder `json:"hand_backs_by_holder"`
+	// ReleaseWithdrawals is each release whose tip records withdrawn pull
+	// requests worth naming (iss-2610222014550692): those it holds, those
+	// still to re-arm (this person's, due on their next act, or another
+	// person's, stranded for them) and those skipped for their owners.
+	ReleaseWithdrawals []claim.ReleaseWithdrawals `json:"release_withdrawals,omitempty"`
+	// LostWithdrawals is each recent release whose branch history records
+	// withdrawals a later commit dropped (an older abcd's renewal), which
+	// nothing re-arms (dcn-2610230328242929).
+	LostWithdrawals []claim.LostWithdrawals `json:"lost_withdrawals,omitempty"`
+	// Settled is each ended release whose withdrawals of this person's the
+	// listing re-armed or skipped after its fetch (`abcd peers` only).
+	Settled []claim.Settle `json:"settled,omitempty"`
 	// Ceiling is the reader's live reservations against this machine's cap,
 	// by copy, with its warning (iss-2610231004140527); absent when the
 	// reader's login cannot be named or the cap cannot be read.
@@ -181,12 +193,27 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"tag is on origin). Then each holder's hand-backs of the last day, from the\n" +
 			"same view: the record and kind of each released tip marking one, newest\n" +
 			"first, the newest ten shown and the rest counted; one dated more than five\n" +
-			"minutes ahead of this computer's clock is not shown. The fetch is the only\n" +
-			"network act, and it reads origin's release tags with the reservations; it\n" +
-			"updates the remote-tracking reservation branches and the release tags abcd\n" +
-			"keeps under refs/abcd/release-tags/, stamps when it ran in the local tier,\n" +
-			"with when it first fetched each reservation dated ahead of this computer's\n" +
-			"clock or undated, and nothing else is written. The release-tag refs are ordinary\n" +
+			"minutes ahead of this computer's clock is not shown. Then each release's\n" +
+			"withdrawn pull requests (release_withdrawals): those a live release holds or\n" +
+			"admitted, a lease that lapsed before the release ended (ended by its own\n" +
+			"person's next act five minutes after), those an ended one has still to re-arm\n" +
+			"(yours, or another person's, named\n" +
+			"with whose), and those its tombstone skipped for their owners; and those a\n" +
+			"later commit on a recent release's branch dropped (lost_withdrawals). The fetch\n" +
+			"reads origin's release tags with the reservations; it updates the\n" +
+			"remote-tracking reservation branches and the release tags abcd keeps under\n" +
+			"refs/abcd/release-tags/, stamps when it ran in the local tier, with when it\n" +
+			"first fetched each reservation dated ahead of this computer's clock or\n" +
+			"undated, and keeps there each verdict of the forge's record of pushes that\n" +
+			"never changes. One more act follows it, only when a release has ended (its tag on\n" +
+			"origin, or a tombstone its holder pushed) with pull requests you withdrew for\n" +
+			"it not yet re-armed: a tombstone is pushed first, then each one the forge's\n" +
+			"record of pushes says you recorded is re-armed through gh in the form you\n" +
+			"recorded, pinned to its withdrawn head, or skipped when its head\n" +
+			"moved, it was closed or merged, or it can only be merged by hand, and a second\n" +
+			"tombstone records every state (settled). Each pull request re-armed, found\n" +
+			"armed or skipped for its owner then gets one fixed comment, and a comment\n" +
+			"that fails is named in settled.failures. Nothing else is written or posted. The release-tag refs are ordinary\n" +
 			"refs of this checkout, so git log --all lists the commits they name and\n" +
 			"git push --mirror would push them. A checkout with no remote named origin\n" +
 			"lists no reservations.\n" +
@@ -421,7 +448,26 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 // (the view is then the last one fetched) or the view could not be read, and
 // "" otherwise. A checkout with no remote named origin lists none.
 func addReservations(root string, out *peersOutput, now time.Time) (failed string) {
-	gap, err := claim.Fetch(root, claim.Options{Now: func() time.Time { return now }})
+	o := claim.Options{Now: func() time.Time { return now }}
+	gap, err := claim.Fetch(root, o)
+	if err == nil {
+		// The fallback re-arm (dcn-2610222219297651): a copy of the person
+		// whose release has ended re-arms what it withdrew, once, and
+		// records it; another person's copy only names it below. The
+		// listing then reads the reservations as they now stand.
+		if settled, serr := claim.SettleEndedReleases(root, o); serr == nil && len(settled) > 0 {
+			for i := range settled {
+				settled[i].Failed = termsafe.Sanitize(fsutil.RedactHome(settled[i].Failed))
+				for j := range settled[i].Failures {
+					settled[i].Failures[j].Reason = termsafe.Sanitize(fsutil.RedactHome(settled[i].Failures[j].Reason))
+				}
+			}
+			out.Settled = settled
+			if g, ferr := claim.Fetch(root, o); ferr == nil {
+				gap = g
+			}
+		}
+	}
 	return out.fill(root, now, gap, err)
 }
 
@@ -493,6 +539,8 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 		out.Reservations = append(out.Reservations, row)
 	}
 	out.LiveByHolder = snap.LiveByHolder()
+	out.ReleaseWithdrawals = snap.ReleaseWithdrawals(root, claim.ReaderHolder(root, claim.Options{Now: func() time.Time { return now }}), now)
+	out.LostWithdrawals = claim.LostReleaseWithdrawals(root, now)
 	for _, l := range snap.Lapsed(now) {
 		out.LapsedReleases = append(out.LapsedReleases, lapsedRow{Release: l.Release, Subject: l.Subject,
 			Holder: termsafe.Sanitize(l.Holder), Copy: l.Copy, RenewedAt: rfc3339(l.RenewedAt), LapsedAt: rfc3339(l.LapsedAt),
@@ -588,6 +636,31 @@ func renderReservations(w io.Writer, out reservationsBlock) {
 	}
 	for _, h := range out.ReleaseHolds {
 		fmt.Fprintln(w, "  "+h.Text)
+	}
+	for _, st := range out.Settled {
+		for _, wd := range st.Settled {
+			// A skip is named below, from the tombstone that records it.
+			if wd.State == claim.WithdrawnRearmed || wd.State == claim.WithdrawnFoundArmed {
+				fmt.Fprintln(w, "  "+claim.SettledLine(st.Subject, wd))
+			}
+		}
+		for _, f := range st.Failures {
+			fmt.Fprintln(w, "  "+f.Line())
+		}
+		if st.Failed != "" {
+			fmt.Fprintln(w, "  "+st.Failed)
+		}
+		for _, line := range st.Notes() {
+			fmt.Fprintln(w, "  "+line)
+		}
+	}
+	for _, rw := range out.ReleaseWithdrawals {
+		for _, line := range rw.Lines() {
+			fmt.Fprintln(w, "  "+line)
+		}
+	}
+	for _, l := range out.LostWithdrawals {
+		fmt.Fprintln(w, "  "+l.Line())
 	}
 	for _, l := range out.LapsedReleases {
 		fmt.Fprintln(w, "  "+l.Text)

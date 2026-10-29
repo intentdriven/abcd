@@ -10,6 +10,12 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "abcd ahoy (proposed: abcd ahoy github / --apply)"
 remedy: "Extend abcd ahoy --remote / remote apply (today it covers only secret scanning and push protection) into a read-only audit of a managed repository's GitHub settings against a declared baseline (security features, repository hygiene, default-branch and tag rulesets, CODEOWNERS, Actions policy, declared vs real visibility and plan), with an opt-in, idempotent apply that never changes visibility, requires only checks the repository's workflows actually run, records plan-unavailable settings as owed, takes per-repository overrides from .abcd config and mirrors what it applied; plan it as an intent under the security standard rule (never change how a repository works without a yes)"
+resolution: "abcd ahoy --remote audits the GitHub settings baseline read-only, and abcd ahoy remote apply applies the differences on a yes and mirrors them"
+impact: additive
+resolved_by:
+  intent: "itd-2610290746077716"
+  spec: "spc-2610290749113317"
+  commit: "2bb0530796bef1833b1064b9af2e04477fb6249c"
 ---
 
 abcd should audit and apply GitHub security settings for every repository it manages

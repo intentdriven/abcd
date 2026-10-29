@@ -7,7 +7,7 @@ supersedes: null
 superseded_by: null
 related_intents: [itd-135, itd-136, itd-137, itd-138, itd-139, itd-140]
 related_rfcs: []
-related_adrs: [adr-48, adr-37, adr-30, adr-28, adr-32]
+related_adrs: [adr-48, adr-37, adr-30, adr-28, adr-32, adr-2610291037481588]
 ---
 
 # ADR-47: abcdev.app is rendered from this repository alone
@@ -55,7 +55,11 @@ build can depend on neither MkDocs extension points nor runtime API calls.
    legitimately contains change-narration and tool names, and rewriting it
    to look better on the site is exactly what this ADR forbids), and the
    contributors page prints model names under the declared attribution
-   escape.
+   escape. The naming of human authors on that page, which itd-136 delivered
+   under this decision, is superseded by
+   [ADR-2610291037481588](2610291037481588-the-contributors-page-counts-people-and.md)
+   (2026-10-29): the page counts people and names none, and the escape for
+   model names stands.
 4. **SSG-agnostic by construction.** MkDocs Material keeps rendering `/docs/`
    for now; the generator writes plain files and depends on no MkDocs plugin
    or hook, so the SSG is replaceable by a later ADR (due before Material's

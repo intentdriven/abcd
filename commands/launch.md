@@ -132,22 +132,60 @@ workflow, not by abcd, and the ship steps run many times in one cut. The hold
 binds abcd's own land steps, the implement loop's and `abcd land`; a person merging by hand on the forge is not
 stopped by it, which is why step 3 still says to tell people.
 
-The hold stops a merge from being armed. It does not stop a merge armed, or
-queued, before you reserved: a pull request whose auto-merge was already on,
-or that already sits in the merge queue, still merges when its checks pass.
-So once the reservation is in place, check for them, and check again just
-before you merge the release PR in step 3:
+The reservation also takes care of the merges armed before it. Reserving the
+release withdraws every pull request into the default branch that has
+auto-merge on or sits in the merge queue, the release pull request from this
+checkout's branch excepted: it records each on the reservation with the form
+it was armed in and its head, then turns the auto-merge off and takes the
+entry out of the queue (`withdrew` in `--json`, a `withdrew:` line in the
+text). The cut starts from a frozen branch. Each withdrawal is made through
+`gh` under its token's account, and none is made when that account is not
+yours as the reservation names you. One release is cut at a time: a second
+release reserved while this one is still being cut backs off, whether its
+lease is live or lapsed with pull requests still withdrawn or admitted. A
+tombstone over it that its holder did not push ends nothing, so the second
+release still backs off; and while the forge's record of pushes cannot settle
+whether a tombstone ends it, it is read as still being cut, and the back-off
+says why, until the record settles it or this copy has failed to settle it
+for 14 days. To let one of them into the
+cut, admit it from the same copy:
 
 ```bash
-gh pr list --state open --json number,title,autoMergeRequest \
-  --jq '.[] | select(.autoMergeRequest != null) | "#\(.number) \(.title)"'
+"${CLAUDE_PLUGIN_ROOT}/abcd" reserve rel-vX.Y.Z --admit 1234 --json
 ```
 
-lists the open pull requests with auto-merge on, and the repository's merge
-queue page on the forge (`https://github.com/<owner>/<repo>/queue/<default
-branch>`) lists what is queued. Ask the author of each one that is not the
-release to hold it, or turn its auto-merge off or take it out of the queue,
-before you go on.
+which records it admitted, then re-arms that pull request in its recorded
+form, pinned to the head it had when withdrawn; one whose head moved since is
+refused, for its owner to re-arm, and the launch check passes an admitted one
+only at the head it was admitted at, and only as your own newest push to the
+release's branch records it. Every other withdrawn pull request is
+re-armed the same way when the release ends. It ends on `--release` from
+this copy, on a tombstone that is its holder's own newest push to its branch
+(as the forge's record of pushes says), or with its tag on `origin`; after a tag or a
+tombstone another copy pushed, the next abcd act of any copy of
+yours that fetches the reservations (a reserve, a build or drain start,
+`abcd peers`) re-arms them. **A lapsed lease ends the cut five minutes later.**
+The reservation holds for 24 hours and nothing renews it by itself: past that,
+while it still holds pull requests withdrawn or admitted, the launch check
+refuses the cut and `abcd peers` reports the lapse; five minutes after it
+lapsed, the next act of any copy of yours ends it and re-arms what it withdrew
+(dcn-2610271926369425). To go on with the cut, renew it first by reserving the
+release again from this copy. A lapsed release that holds
+nothing is abandoned: it is neither reported nor a reason to refuse, and the
+check judges the merges armed as for a copy holding no release. One whose head moved,
+that was closed or merged meanwhile, or that can merge now with no merge
+queue to put it in (abcd never merges it for its owner), is skipped and named
+for its owner. A copy of another person never re-arms your withdrawals: it
+names them instead. The hold also comments on each pull request it
+withdraws, admits, re-arms or leaves for its owner, one fixed sentence naming
+the release (see `/abcd:reserve`), so its owner sees why it stopped and when
+the hold ended.
+
+A withdrawal the forge refuses (no permission, no network) is named by number
+and reason (`forge_failures`, and a `warning:` line on stderr) and the
+reservation stands, recording it `kept`: reserving the release again from this
+copy tries the withdrawal again. Pass every such line on to the user. The launch check
+below then refuses the cut while that pull request is still armed.
 
 ### Step 3 — merging, and the one hazard
 
@@ -159,11 +197,13 @@ release day with a trap in it. The release workflow works out which commit the
 reviewers actually read by walking back from the merge, so another PR landing in
 the gap makes it read the wrong commit, and the receipts you just recorded no
 longer match. The window is a minute or two. The release reservation you took
-before step 1 holds every other session's land step until the tag exists, but
-it does not stop a merge armed or queued before you reserved: check once more
-for pull requests with auto-merge on and for merge-queue entries (the command
-and the queue page in "Before step 1") right before you merge the release PR.
-Tell anyone else working in the repository by hand to hold too.
+before step 1 holds every other session's land step until the tag exists, and
+withdrew every merge armed or queued before it. Right before you merge the
+release PR, run the preview once more (`"${CLAUDE_PLUGIN_ROOT}/abcd" launch
+--dry-run --json`): its `merge-hold` row refuses while any pull request into
+the default branch is armed or queued and the reservation has not admitted
+it, such as one a person armed by hand on the forge since, naming each. Tell
+anyone else working in the repository by hand to hold too.
 
 ### Step 5 — the approval gate, when there is one
 
@@ -234,7 +274,7 @@ binary is already in place, so it needs the plugin update to fetch a new one.
 
 ### When it goes wrong
 
-Six failures are worth recognising, because each looks like something else.
+Seven failures are worth recognising, because each looks like something else.
 
 - **The run says `Waiting` for a long time and nothing happens.** With a
   reviewer on the `release` environment, that is the approval gate, not a
@@ -297,6 +337,23 @@ Six failures are worth recognising, because each looks like something else.
   came blocks every later one. Cancel
   the stale run from its page (**Cancel workflow**), and the queued one starts.
   Cancel it *after* your release PR has merged, never before.
+- **Other people's pull requests stay disarmed after a cut, or the
+  `merge-hold` row refuses on a lapsed reservation.** The release reservation
+  withdrew them, and nothing re-arms them until the release ends: its tag on
+  `origin`, `--release`, or a tombstone on its branch its holder pushed (one
+  they did not push ends nothing, and is named), or five minutes after its
+  lease lapsed, at your next act from any copy while the cut's tip is your own
+  newest push. To finish the cut, renew it
+  from the cutting copy first (`abcd reserve rel-vX.Y.Z`); to abandon it, end
+  it with `abcd reserve rel-vX.Y.Z --release`. When the
+  cutting copy is gone (a crash, a deleted worktree), end it from another copy
+  of yours: `abcd reserve rel-vX.Y.Z --take-over`, then `--release`. An
+  `--admit` cut off before it armed its pull request is finished by running
+  the same `--admit` again, or by the release's settle. A release named
+  `unplaced` is one where the forge's record of pushes could not place your
+  own newest push to its branch, so nothing of yours was acted on: the next
+  abcd act of a copy of yours asks again, and when an app pushed above it,
+  re-arm yours by hand (`/abcd:reserve` says more).
 
 ## Preview (`dry-run`)
 
@@ -430,8 +487,19 @@ Then summarise the JSON for the user:
   audit without a `.abcd/docs-lint.json`; `not_implemented`; `host-run`), a
   one-line `detail`, a `tier` (`hard-fail` refuses, `warn` surfaces) and its
   located `findings`. The pre-flight suite's rows are `marker-block`,
-  `change-narration`, `dirty-tree` (hard-fail) and `documentation-auditor`,
-  `hook-compliance` (warn). `semantic-receipts` (`host-run`) reports which
+  `change-narration`, `dirty-tree`, `merge-hold` (hard-fail) and
+  `documentation-auditor`, `hook-compliance` (warn). `merge-hold` lists every
+  open pull request into origin's default branch with auto-merge on or in the
+  merge queue, through `gh`, and refuses on each that this copy's release
+  reservation has not admitted at its current head, the release pull request
+  opened from the checked-out branch excepted, on an admission your own
+  newest push to the release's branch does not record, or when that push
+  cannot be found or placed in the forge's record of pushes, and on this copy's release
+  reservation when its lease lapsed before the release ended while it still
+  holds pull requests withdrawn or admitted; a listing the forge does not give
+  refuses too. A `merge-hold-lost` row (warn) appears only
+  when a recent release's branch dropped the record of withdrawn pull requests.
+  It is `not_armed` where origin is not one repository on github.com. `semantic-receipts` (`host-run`) reports which
   semantic receipts are recorded for the candidate commit. That row is the one a
   release fails on most expensively, so never omit it.
 - `would_publish` — **always `false`** in a dry-run: this command previews and
@@ -790,7 +858,8 @@ only a completed cut has a version to stamp.
 given `--payload-dir`, or the repository publishes its plugin archive — runs
 the same gate suite the preview reports, before anything is written: the
 secret/PII scan, marker-block sanity, change narration in the shipped docs, the
-dirty tree, the installability smoke at both tiers (the deep tier always runs in
+dirty tree, the merge hold (no armed or queued merge the release reservation
+has not admitted), the installability smoke at both tiers (the deep tier always runs in
 the cut), the parity diff against the anchor tag, and the warn-tier rows. A file the bundler
 rejected stops it at once; otherwise it refuses with every finding from every
 gate together (exit 2). It writes its pre-flight report whatever the verdict; the refusal names where it landed, and `--json` carries it as

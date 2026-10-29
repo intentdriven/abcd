@@ -307,6 +307,12 @@ with `*CONCURRENCY` to force it).
 - **The checkout is the unit of isolation, not the branch.** A second
   concurrent agent session works in its own `git worktree`: a branch switch
   swaps the working tree, HEAD and index under whoever else is using them.
+  The record writers enforce it: every write through `capture`, `intent`,
+  `decide` and `spec close`, and the index generator (`go generate
+  ./internal/surface/cli`), refuses (exit 3 for a verb) in a main checkout two
+  or more live sessions started in, and names the worktree store. The
+  session-start hook records which checkout each session starts in. A file an
+  agent edits there with its own tools is not yet refused.
 - **That worktree goes in the machine-scoped store, and nowhere else:**
   `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, keyed on the full object name
   of the repository's root commit. Never beside the checkout, in the directory

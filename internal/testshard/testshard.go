@@ -24,7 +24,8 @@
 // without the variable. Each shard runs the TestMain again, as a shard, and
 // so makes the set-up its share needs.
 //
-// make preflight exports the variable; CI does not, so its runs are unchanged.
+// make preflight exports the variable, and so do CI's race passes (ci.yml), with
+// the same count (iss-2610290720087336).
 // The merged test log names the variable, so go test's cache keys a sharded
 // result to the shard count and never replays it for a run as one process,
 // which could hide a test that passes only after another in the same process.
