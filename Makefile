@@ -338,10 +338,11 @@ asking-sync-check:
 # on a loaded development machine (2026-10-17) and timed out at 10m with no
 # test hung, and on 2026-10-25 claim, implement/loop and surface/cli each
 # outran 20 minutes on a 10-core Mac at a load of 5 to 7, with no test hung
-# (iss-2610250007404944). Each stage scales that budget with the one-minute
-# load per online core as it starts, up to twice the 40 minutes
+# (iss-2610250007404944). Each stage doubles that budget when the one-minute
+# load passes one runnable per online core as it starts
 # (`cmd/test-parallelism -timeout`), since a package on a loaded machine runs
-# slower in proportion: three packages hit the timeout at a load of 17.8 on ten
+# slower in proportion, and takes no value between, since go test's cache key
+# holds the timeout: three packages hit the timeout at a load of 17.8 on ten
 # cores, with no test hung (iss-2610241911052191). On a CI runner the budget is
 # the 40 minutes CI's own steps declare.
 preflight:

@@ -10,8 +10,8 @@
 // machine cannot be read, it prints go's own default, GOMAXPROCS.
 //
 // Given -timeout and a stage's base package budget, it prints that budget
-// scaled with the one-minute load per online core instead, between one and
-// two times the base and rounded up to a whole minute, so a package slowed by
+// instead, or twice it when the one-minute load passes one runnable per online
+// core, so a package slowed by
 // the load is not killed with no test hung (iss-2610241911052191,
 // implement.PreflightTimeout, machineload.GoTestTimeout). On a CI runner, or
 // where the machine cannot be read, it prints the base.

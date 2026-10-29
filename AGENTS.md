@@ -354,8 +354,8 @@ with `*CONCURRENCY` to force it).
   `check-attribution`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test -timeout 40m ./...`, and
-  `go test -race -timeout 40m ./internal/...` (each 40m scaled with the load
-  per core as the stage starts, up to twice that), under `ABCD_TEST_SHARDS=3`,
+  `go test -race -timeout 40m ./internal/...` (each 40m, or twice that when
+  the load passes one per core as the stage starts), under `ABCD_TEST_SHARDS=3`,
   which runs the three longest packages as three test processes each
   (`internal/testshard`). The load
   check runs first (`load-check`, a warning, never a failure) and is not a gate:

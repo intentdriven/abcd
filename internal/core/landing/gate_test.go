@@ -119,8 +119,8 @@ func makefileGateTimeout(t *testing.T, target, marker string) time.Duration {
 }
 
 // TestRunBoundHoldsBothStagesAtTheTimeoutCap: each of preflight's two test
-// stages takes its base package budget scaled with the load as it starts, up
-// to machineload.TestTimeoutMaxFactor times the base (iss-2610241911052191),
+// stages takes its base package budget, or machineload.TestTimeoutMaxFactor
+// times it when the load is past one per core as it starts (iss-2610241911052191),
 // so land's bound on the run admits both stages at that cap.
 func TestRunBoundHoldsBothStagesAtTheTimeoutCap(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "Makefile"))

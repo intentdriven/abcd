@@ -6,10 +6,11 @@ import (
 )
 
 // TestGoTestTimeoutScalesWithTheLoad: a test stage started on a loaded
-// machine gives each package more time, in proportion to the one-minute load
-// per online core, between one and TestTimeoutMaxFactor times the base and
-// rounded up to a whole minute (iss-2610241911052191: three packages hit
-// their timeout at load 17.8 on ten cores, with no test hung).
+// machine gives each package TestTimeoutMaxFactor times the base once the
+// one-minute load passes one runnable per online core, and the base until it
+// does, so go test's cache key, which hashes -timeout, takes two values only
+// (iss-2610241911052191: three packages hit their timeout at load 17.8 on ten
+// cores, with no test hung).
 func TestGoTestTimeoutScalesWithTheLoad(t *testing.T) {
 	base := 40 * time.Minute
 	for _, c := range []struct {
@@ -21,7 +22,8 @@ func TestGoTestTimeoutScalesWithTheLoad(t *testing.T) {
 	}{
 		{2, true, 16, 40 * time.Minute, "an idle machine: the base"},
 		{16, true, 16, 40 * time.Minute, "one runnable per core: the base"},
-		{17.8, true, 10, 72 * time.Minute, "the issue's load: 1.78 times, rounded up to the minute"},
+		{16.1, true, 16, 80 * time.Minute, "just past one per core: the cap, not a proportion"},
+		{17.8, true, 10, 80 * time.Minute, "the issue's load: the cap"},
 		{20, true, 10, 80 * time.Minute, "twice the cores: twice the base"},
 		{300, true, 16, 80 * time.Minute, "never past the cap"},
 		{0, false, 16, 40 * time.Minute, "an unreadable load: the base"},

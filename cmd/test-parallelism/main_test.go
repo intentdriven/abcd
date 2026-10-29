@@ -110,8 +110,8 @@ func TestTimeoutPrintsTheScaledPackageBudget(t *testing.T) {
 	code := runArgs([]string{"-timeout", "40m"}, &out, &errOut, func(string) string { return "" }, func() (machineload.Snapshot, error) {
 		return machineload.Snapshot{Load1: 24, HasLoad: true, Cores: 16}, nil
 	}, t.TempDir())
-	if got := out.String(); code != 0 || got != "1h0m0s\n" || errOut.Len() != 0 {
-		t.Fatalf("exit %d, printed %q (stderr %q), want 0 and %q", code, got, errOut.String(), "1h0m0s\n")
+	if got := out.String(); code != 0 || got != "1h20m0s\n" || errOut.Len() != 0 {
+		t.Fatalf("exit %d, printed %q (stderr %q), want 0 and %q", code, got, errOut.String(), "1h20m0s\n")
 	}
 }
 

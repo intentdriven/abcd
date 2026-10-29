@@ -675,8 +675,8 @@ func TestPreflightTimeout(t *testing.T) {
 	read := func() (machineload.Snapshot, error) {
 		return machineload.Snapshot{Load1: 24, HasLoad: true, Cores: 16}, nil
 	}
-	if got := PreflightTimeout(noEnv, read, base); got != time.Hour {
-		t.Fatalf("timeout at load 24 on 16 cores = %s, want 1h0m0s", got)
+	if got := PreflightTimeout(noEnv, read, base); got != 80*time.Minute {
+		t.Fatalf("timeout at load 24 on 16 cores = %s, want 1h20m0s", got)
 	}
 	ci := func(k string) string {
 		if k == "CI" {
