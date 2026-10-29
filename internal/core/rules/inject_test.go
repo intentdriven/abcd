@@ -144,6 +144,47 @@ func TestStateIgnoresALedgerSomeoneElseCouldHaveWritten(t *testing.T) {
 	}
 }
 
+// TestStateRefusesAFolderSomeoneElseCouldWrite: a save or a reset in a ledger
+// folder another account could write fails out loud, rather than writing a
+// ledger every later read ignores or reporting a reset it did not make. Once
+// the folder is the account's alone, both succeed; with no home, a reset has
+// nothing to clear and is not an error.
+func TestStateRefusesAFolderSomeoneElseCouldWrite(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ABCD_RULES_STATE_DIR", "")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", "")
+	if err := ResetState("s1"); err != nil {
+		t.Fatalf("ResetState with no ledger folder yet: %v", err)
+	}
+	if err := SaveState("s1", SessionState{Count: 1}); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(home, filepath.FromSlash(abcdhome.Rel("rules-state")))
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveState("s1", SessionState{Count: 2}); err == nil {
+		t.Error("SaveState wrote into a folder every account can write")
+	}
+	if err := ResetState("s1"); err == nil {
+		t.Error("ResetState reported a reset in a folder every account can write")
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveState("s1", SessionState{Count: 3}); err != nil {
+		t.Errorf("SaveState in the account's own folder: %v", err)
+	}
+	if err := ResetState("s1"); err != nil {
+		t.Errorf("ResetState in the account's own folder: %v", err)
+	}
+	t.Setenv("HOME", "")
+	if err := ResetState("s1"); err != nil {
+		t.Errorf("ResetState with no home: %v", err)
+	}
+}
+
 func TestInjectFirstTurnRenders(t *testing.T) {
 	rs := Defaults()
 	res := Inject(rs, "commit and push", SessionState{}, 0)

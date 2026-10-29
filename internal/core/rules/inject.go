@@ -296,8 +296,10 @@ var stateRel = abcdhome.Rel("rules-state")
 // first and plant a ledger that silences every rule a session matches. With
 // no home there is no private place for it, so ErrNoStateHome is returned and
 // no ledger is kept: each prompt then starts fresh, which re-injects what it
-// matches and never silences anything. Reads walk with OpenHomeDeclarationScope,
-// which refuses a folder another account owns or can write.
+// matches and never silences anything. Reads and writes alike open the folder with
+// OpenHomeDeclarationScope, which refuses one another account owns or can
+// write, so a save into such a folder fails out loud rather than writing a
+// ledger every later read ignores.
 func stateFolder(create bool) (dir *os.Root, home, rel string, err error) {
 	if d := os.Getenv("ABCD_RULES_STATE_DIR"); d != "" {
 		if create {
@@ -313,10 +315,13 @@ func stateFolder(create bool) (dir *os.Root, home, rel string, err error) {
 		return nil, "", "", ErrNoStateHome
 	}
 	if create {
-		dir, err = fsutil.EnsureHomeScope(home, stateRel, abcdhome.DirMode)
-	} else {
-		dir, err = fsutil.OpenHomeDeclarationScope(home, stateRel)
+		made, err := fsutil.EnsureHomeScope(home, stateRel, abcdhome.DirMode)
+		if err != nil {
+			return nil, "", "", err
+		}
+		made.Close()
 	}
+	dir, err = fsutil.OpenHomeDeclarationScope(home, stateRel)
 	return dir, home, stateRel, err
 }
 
@@ -394,12 +399,16 @@ func LoadBackstop(repoRoot string) int {
 }
 
 // ResetState clears a session's ledger (the event-driven refresh: the next
-// prompt re-injects every matching domain). A missing file or folder is not an
-// error.
+// prompt re-injects every matching domain). A missing file or folder, or no
+// home, is not an error; a folder stateFolder refuses is, so the hook never
+// reports a reset it did not make.
 func ResetState(session string) error {
 	dir, _, _, err := stateFolder(false)
-	if err != nil {
+	if errors.Is(err, ErrNoStateHome) || os.IsNotExist(err) {
 		return nil
+	}
+	if err != nil {
+		return err
 	}
 	defer dir.Close()
 	err = dir.Remove(sessionLeaf(session))

@@ -1368,9 +1368,15 @@ func lifeboatSecretScan(root string) (lifeboat.SecretScan, error) {
 // built when the core first scans rather than up front, so the core's own
 // lifeboat gate (not a directory, not a lifeboat) still answers first for an
 // operand that is not one, and the scanner is built over a directory proved to
-// be a lifeboat.
+// be a lifeboat. A lifeboat carries no scanner settings of its own, so abcd's
+// built-in rules judge: a source repository's extra patterns and augmenter
+// apply at pack, where that repository is read. A call that would write
+// nothing has nothing to scan, and no scanner is built for it.
 func deferredLifeboatSecretScan(dirAbs string) lifeboat.SecretScan {
 	return func(files []lifeboat.PlannedFile) error {
+		if len(files) == 0 {
+			return nil
+		}
 		scan, err := lifeboatSecretScan(dirAbs)
 		if err != nil {
 			return err
