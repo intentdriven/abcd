@@ -240,19 +240,21 @@ func Check(req CheckRequest) (CheckResult, error) {
 	res.IntakeAt = oldestIntake(stores)
 	res.IntakeStale = res.IntakeAt == nil || now.Sub(*res.IntakeAt) > staleIntake
 
-	res.Findings = ds.scanInputs(commits, texts)
+	commitFindings, textFindings := ds.scanInputs(commits, texts)
 	// An id the stores do not hold may be one of this repository's own
 	// advisories, already published: GitHub is asked for those once, and
 	// only when the inputs name such an id. An answer that cannot be had
 	// leaves each refused, never passed.
-	if slices.ContainsFunc(res.Findings, func(f CheckFinding) bool { return f.Kind == KindUnlistedAdvisoryID }) {
+	unlisted := func(f CheckFinding) bool { return f.Kind == KindUnlistedAdvisoryID }
+	if slices.ContainsFunc(commitFindings, unlisted) || slices.ContainsFunc(textFindings, unlisted) {
 		if pub, ok := publishedOnGitHub(top); ok {
 			ds.ownPub = pub
-			res.Findings = ds.scanInputs(commits, texts)
+			commitFindings, textFindings = ds.scanInputs(commits, texts)
 		} else {
 			res.Note = joinNotes(res.Note, unaskedNote)
 		}
 	}
+	res.Findings = append(res.Findings, commitFindings...)
 	// A record is named by its place among those asked, never by its id: the
 	// caller holds the id, and a finding repeats nothing it matched. It is
 	// under embargo when any store read links it to an unpublished advisory.
@@ -261,6 +263,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 			res.Findings = append(res.Findings, CheckFinding{Kind: KindEmbargoedRecord, Source: "record " + strconv.Itoa(i+1)})
 		}
 	}
+	res.Findings = append(res.Findings, textFindings...)
 	return res, nil
 }
 
@@ -300,8 +303,8 @@ func publishedOnGitHub(top string) (map[string]bool, bool) {
 }
 
 // scanInputs scans each commit's message, added lines and file names, and
-// each text, in that order.
-func (ds denySet) scanInputs(commits []commitText, texts []checkText) []CheckFinding {
+// each text.
+func (ds denySet) scanInputs(commits []commitText, texts []checkText) (commitFindings, textFindings []CheckFinding) {
 	findings := []CheckFinding{}
 	for _, c := range commits {
 		findings = append(findings, ds.scan(c.message, "commit "+c.sha, "message", 1)...)
@@ -317,6 +320,7 @@ func (ds denySet) scanInputs(commits []commitText, texts []checkText) []CheckFin
 			findings = append(findings, named...)
 		}
 	}
+	commitFindings, findings = findings, []CheckFinding{}
 	for i, t := range texts {
 		src := "stdin"
 		if t.name != "-" {
@@ -324,7 +328,7 @@ func (ds denySet) scanInputs(commits []commitText, texts []checkText) []CheckFin
 		}
 		findings = append(findings, ds.scan(t.body, src, "", 1)...)
 	}
-	return findings
+	return commitFindings, findings
 }
 
 // embargoedRecord reports whether a store's state links id to an advisory not yet
@@ -437,8 +441,8 @@ type addedRun struct {
 // parents (mergeAdds), so a line the merge itself adds (a conflict
 // resolution, an evil merge) is read, and a line it brings in from a parent
 // is not: one from a parent in the range is read in the commit of the range
-// that added it, and one from a parent behind the range's start is already
-// behind it, as the default branch is when a branch merges it.
+// that added it, and one from a parent reachable from the range's start is
+// taken as already out, as the default branch is when a branch merges it.
 func readRange(top, rng string) ([]commitText, error) {
 	rng = strings.TrimSpace(rng)
 	if rng == "" {
@@ -478,7 +482,9 @@ func readRange(top, rng string) ([]commitText, error) {
 		}
 		var added []fileAdds
 		if len(ps) < 2 {
-			added, err = commitAdds(top, "log", "-1", "--no-show-signature", "--format=", "-p", sha)
+			// --root reads a commit with no parent whatever log.showRoot
+			// says: a merge leaves a line from that parent to it.
+			added, err = commitAdds(top, "log", "-1", "--no-show-signature", "--format=", "-p", "--root", sha)
 		} else {
 			added, err = mergeAdds(top, sha, ps)
 		}
@@ -603,6 +609,7 @@ func parseAddedLines(patch []byte) ([]fileAdds, error) {
 			removed, added := count(m[1]), count(m[3])
 			start, _ := strconv.Atoi(m[2])
 			var b strings.Builder
+			first := true
 			for removed+added > 0 {
 				if !sc.Scan() {
 					return nil, bad
@@ -613,16 +620,19 @@ func parseAddedLines(patch []byte) ([]fileAdds, error) {
 				case strings.HasPrefix(body, "-") && removed > 0:
 					removed--
 				case strings.HasPrefix(body, "+") && added > 0:
-					if b.Len() > 0 {
+					// An empty added line is kept, a leading one too, so the
+					// run's lines stay at their place in the file.
+					if !first {
 						b.WriteByte('\n')
 					}
+					first = false
 					b.WriteString(body[1:])
 					added--
 				default:
 					return nil, bad
 				}
 			}
-			if b.Len() > 0 || count(m[3]) > 0 {
+			if count(m[3]) > 0 {
 				out[cur].runs = append(out[cur].runs, addedRun{line: start, text: b.String()})
 			}
 		}
