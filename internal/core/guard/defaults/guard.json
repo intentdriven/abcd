@@ -428,10 +428,11 @@
         "command": "git",
         "subcommand": "push",
         "value_flags": ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--super-prefix", "--config-env", "--attr-source", "--shallow-file"],
-        "arg_prefixes": [":"]
+        "arg_prefixes": [":"],
+        "arg_prefixes_literal": true
       },
       "why": "A refspec with nothing before its colon (`:feat/x`) pushes nothing onto the remote ref, which deletes it: a remote branch deletion spelled without the flag anyone reviews for.",
-      "successor": "Before deleting a remote branch, show that it is merged (`git merge-base --is-ancestor origin/<branch> origin/main`), that no pull request is open on it (`gh pr list --head <branch> --state open`) and that no reservation holds it (`abcd peers`), and delete only a branch you have shown all three for. Spell the deletion `git push origin --delete <branch>`, so it reads as one.",
+      "successor": "Delete a remote branch only once it is merged (`git merge-base --is-ancestor origin/<branch> origin/main`), no pull request is open on it (`gh pr list --head <branch>`) and no reservation holds it (`abcd peers`), and spell it `git push origin --delete <branch>`.",
       "fixtures": {
         "known_bad": [
           "git push origin :feat/x",
@@ -442,7 +443,9 @@
           "git push origin main:main",
           "git push origin HEAD:refs/heads/feat/x",
           "git push --porcelain origin 9f2c41d07be35a6c80e1f4b2a7d39c559f2c41d0:refs/heads/abcd-reserved/iss-2609020716570699",
-          "abcd capture \"an agent ran git push origin :feat/x\""
+          "abcd capture \"an agent ran git push origin :feat/x\"",
+          "git push origin \"$(git branch --show-current)\":main",
+          "git push origin \"$(x)\":refs/heads/y"
         ]
       }
     },

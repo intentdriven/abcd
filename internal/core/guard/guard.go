@@ -78,6 +78,16 @@ type Pattern struct {
 	// leading `+` on the refspec is a force push by another name and Flags has
 	// nothing to look at.
 	ArgPrefixes []string `json:"arg_prefixes,omitempty"`
+	// ArgPrefixesLiteral, when true, requires each arg_prefixes prefix to be
+	// the operand's own text before its first substitution, as typed. By
+	// default a substitution is read as printing nothing, so `"$(x)"+main:main`
+	// carries `+`, which is the safe reading for a refusal. A warning about a
+	// prefix that ordinary spellings place after a substitution
+	// (`"$(git branch --show-current)":main` is a push, not a delete) sets it,
+	// so the text a substitution prints is never read as the prefix's
+	// absence. It is a pointer, as AfterCD is, so a per-repo override can
+	// lift it as well as set it.
+	ArgPrefixesLiteral *bool `json:"arg_prefixes_literal,omitempty"`
 	// ArgValues constrain an OPERAND to one exact word: some non-flag argument
 	// must be one of the listed words, compared by its known text. It is what
 	// separates `rm -rf /` and `rm -rf ~`, which destroy the machine or the
@@ -399,6 +409,11 @@ func validatePattern(id string, p Pattern) error {
 	// An empty argument prefix is carried by every operand, so the entry
 	// would fire on anything that reached it: the over-blocking twin of the
 	// empty flag group, and as invisible in the file.
+	// A literal reading of no prefix constrains nothing: the field says the
+	// entry reads a prefix it does not have.
+	if p.ArgPrefixesLiteral != nil && *p.ArgPrefixesLiteral && len(p.ArgPrefixes) == 0 {
+		return fmt.Errorf("%w: entry %s sets arg_prefixes_literal without any arg_prefixes", ErrInvalidEntry, id)
+	}
 	for i, prefix := range p.ArgPrefixes {
 		if strings.TrimSpace(prefix) == "" {
 			return fmt.Errorf("%w: entry %s argument prefix %d is empty and would match every argument", ErrInvalidEntry, id, i)
@@ -990,6 +1005,10 @@ func clonePattern(p Pattern) Pattern {
 	out.FlagValues = cloneFlagValues(p.FlagValues)
 	out.ArgsFrom = clonePatterns(p.ArgsFrom)
 	out.Env = append([]string(nil), p.Env...)
+	if p.ArgPrefixesLiteral != nil {
+		v := *p.ArgPrefixesLiteral
+		out.ArgPrefixesLiteral = &v
+	}
 	if p.AfterCD != nil {
 		v := *p.AfterCD
 		out.AfterCD = &v

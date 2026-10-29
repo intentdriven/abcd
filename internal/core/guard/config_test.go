@@ -225,6 +225,13 @@ func TestLoadRejectsBadConfig(t *testing.T) {
 			want: ErrInvalidEntry,
 		},
 		{
+			// A literal reading of the prefixes on an entry that has none
+			// constrains nothing, so the field would read as a guard it is not.
+			name: "literal prefix reading without a prefix",
+			body: `{"schema_version":1,"entries":{"git-push-force":{"pattern":{"arg_prefixes_literal":true}}}}`,
+			want: ErrInvalidEntry,
+		},
+		{
 			// A root is compared against the FIRST segment of a path split on
 			// "/", so a root carrying a slash could never be one.
 			name: "path root that could never match",

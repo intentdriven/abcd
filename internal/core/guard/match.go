@@ -923,6 +923,7 @@ func newEntryMatcher(p Pattern, tokens []string, spelled map[int][]string, varLe
 	want := operandWant{
 		sub: p.Subcommand, sub2: p.Subcommand2, min: p.MinOperands,
 		prefixes: p.ArgPrefixes, paths: p.ArgPaths, values: p.ArgValues, shapes: p.ArgShapes,
+		prefixLiteral: p.ArgPrefixesLiteral != nil && *p.ArgPrefixesLiteral,
 	}
 	m := entryMatcher{accept: operandAcceptance(tokens, spelled, varLead, p.ValueFlags, want, glob), nextStop: make([]int, n+1)}
 	m.nextStop[n] = n
