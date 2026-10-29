@@ -82,8 +82,13 @@ type reserveOutput struct {
 	// reservation is made all the same, and the text form warns of each on
 	// stderr.
 	DirectoryFootprint []reserveDirectory `json:"directory_footprint,omitempty"`
-	note               string
-	warnings           []string
+	// DroppedFootprint is each path the reservation this act replaced, this
+	// person's own, held and its footprint leaves out
+	// (iss-2610290507512835): none is held now, and the text form warns of
+	// them on stderr.
+	DroppedFootprint []string `json:"dropped_footprint,omitempty"`
+	note             string
+	warnings         []string
 }
 
 // reserveDirectory is a footprint path naming a directory: the tracked files
@@ -101,6 +106,11 @@ type reserveOwnOverlap struct {
 	Path            string `json:"path"`
 	Record          string `json:"record"`
 	EffectiveExpiry string `json:"effective_expiry"`
+	// Copy names the copy the other reservation was made from, as the
+	// warning does (iss-2610290507526253), and CopyUnread why the worktrees
+	// could not be listed when that left it "your other copy".
+	Copy       string `json:"copy"`
+	CopyUnread string `json:"copy_unread,omitempty"`
 }
 
 // reserveGeneratedShare is a generated file shared with another record's
@@ -188,11 +198,15 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"merging (generated_shared in --json); a directory never is. When that\n" +
 			"declaration cannot be read nothing is shared, and the act says why\n" +
 			"(generated_unread in --json). Your own reservation sharing a path with yours\n" +
-			"from another copy is made, and warns on stderr (own_overlap in --json). Name\n" +
-			"files, not directories: a directory holds off every reservation of a file\n" +
-			"inside it. A footprint path naming a directory git tracks is reserved all the\n" +
-			"same, and warns on stderr, naming it and how many tracked files it covers on\n" +
-			"origin's default branch, or HEAD (directory_footprint in --json).\n\n" +
+			"from another copy is made, and warns on stderr, naming that copy (own_overlap\n" +
+			"in --json). Name files, not directories: a directory holds off every\n" +
+			"reservation of a file inside it. A footprint path naming a directory git\n" +
+			"tracks is reserved all the same, and warns on stderr, naming it and how many\n" +
+			"tracked files it covers on origin's default branch, or HEAD\n" +
+			"(directory_footprint in --json). A path named twice is written once. A reserve\n" +
+			"of a record you already hold writes its footprint in place of the one held,\n" +
+			"and warns on stderr, naming each held path it leaves out (dropped_footprint in\n" +
+			"--json): name them again to keep holding them.\n\n" +
 			"A reservation, a renewal and a take-over consult the embargo store on this\n" +
 			"machine before anything is pushed, as an announcement does: a record the store\n" +
 			"holds, or a footprint naming something under embargo, is refused (exit 2) with\n" +
@@ -379,7 +393,7 @@ func reserveView(res claim.Result) reserveOutput {
 	out.GeneratedUnread = termsafe.Sanitize(fsutil.RedactHome(res.GeneratedUnread))
 	for _, o := range res.OwnOverlap {
 		out.OwnOverlap = append(out.OwnOverlap, reserveOwnOverlap{Path: termsafe.Sanitize(o.Path), Record: termsafe.Sanitize(o.Record),
-			EffectiveExpiry: rfc3339(o.Expiry)})
+			EffectiveExpiry: rfc3339(o.Expiry), Copy: termsafe.Sanitize(o.Copy), CopyUnread: termsafe.Sanitize(o.CopyUnread)})
 		out.warnings = append(out.warnings, o.Warning())
 	}
 	for _, g := range res.GeneratedShared {
@@ -389,6 +403,12 @@ func reserveView(res claim.Result) reserveOutput {
 		out.DirectoryFootprint = append(out.DirectoryFootprint, reserveDirectory{Path: termsafe.Sanitize(d.Path),
 			TrackedFiles: d.Files, On: termsafe.Sanitize(d.On)})
 		out.warnings = append(out.warnings, d.Warning())
+	}
+	for _, p := range res.Dropped {
+		out.DroppedFootprint = append(out.DroppedFootprint, termsafe.Sanitize(p))
+	}
+	if len(res.Dropped) > 0 {
+		out.warnings = append(out.warnings, claim.DroppedLine(res.Dropped))
 	}
 	return out
 }

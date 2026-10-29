@@ -41,9 +41,15 @@ with how many tracked files lie beneath it and the branch they were counted on
 (origin's default branch as last fetched, or the checkout's own head for a
 directory only it holds), telling the person to name the files instead
 (`directory_footprint`, a warning on stderr in the text form). A path neither
-holds as a directory, such as a file the work will add, draws nothing. Its
-lease is from one minute to 24 hours, two hours by default. A release takes no
-footprint, take-over or lease.
+holds as a directory, such as a file the work will add, draws nothing. A path
+named twice is one path, written once where it was first named
+(iss-2610290507514841). A reserve that renews this copy's own reservation, or
+takes over the person's own from another copy, writes its footprint in place
+of the one held, and, when that reservation was live, names each held path it
+leaves out, neither named again nor beneath a directory it names, which no
+longer holds anything off (`dropped_footprint`, a warning on stderr in the text form,
+iss-2610290507512835). Its lease is from one minute to 24 hours, two hours by
+default. A release takes no footprint, take-over or lease.
 Bare `abcd reserve` refuses as a usage error and points at `abcd peers`, which
 lists the reservations. The flags are in the appendix below.
 
@@ -206,8 +212,11 @@ ASCII, with no quoting, macros or checkout conversion (`ident`,
 `working-tree-encoding`), and otherwise warns and shares none. A byte-order
 mark counts as outside ASCII, even before a comment. A shared path with a
 live reservation the same person holds from another copy does not refuse a
-person's own act: it is made, and names each such path, the other record and
-its expiry (`own_overlap`, a warning on stderr in the text form). Only the
+person's own act: it is made, and names each such path, the other record, its
+expiry and the copy it is held from, a worktree of this repository on this
+machine by its path or a copy on another computer, or the person's other copy
+with why the worktrees could not be listed when they could not (`own_overlap`,
+a warning on stderr in the text form, iss-2610290507526253). Only the
 verb asks for this (the request's `WarnOwnOverlap`): a build's and a drain's
 reservations are automated and still back off it, as the drain's pass-over
 does, so two automated lanes never edit the same files. A renewal the verb makes names
@@ -418,8 +427,10 @@ that stands, which the text form prints as a `note:` line, `hand_back_kept`
 (the same three) for a release whose tombstone kept that hand-back, also a
 `note:` line, and `hand_back_unpublished` for a release whose tombstone marks
 no hand-back it would otherwise have marked, a `no hand-back:` line,
-`own_overlap` (`path`, `record`, `effective_expiry`) for each path shared with
-the same person's reservation from another copy, a `warning:` line on stderr,
+`own_overlap` (`path`, `record`, `effective_expiry`, `copy`, `copy_unread`)
+for each path shared with the same person's reservation from another copy, a
+`warning:` line on stderr, `dropped_footprint` for each path the person's own replaced
+reservation held that the footprint leaves out, a `warning:` line on stderr,
 and `generated_unread` when generated files were not recognised, a `not
 recognised:` line.
 

@@ -27,6 +27,24 @@ type OwnOverlap struct {
 	Record string
 	// Expiry is when the other reservation stops holding.
 	Expiry time.Time
+	// Copy names the copy the other reservation was made from
+	// (iss-2610290507526253), as yourCopyAt words it: "your worktree <path>
+	// on this machine" or "your copy on another computer", or "your other
+	// copy" when the worktrees could not be listed and it is in none listed,
+	// with CopyUnread saying why.
+	Copy       string
+	CopyUnread string
+}
+
+// ownCopyIn is how an own overlap names the copy holding key, among the
+// sibling worktrees sibs, whose listing failed for unread when it is not "":
+// that copy's words, and why the worktrees could not be listed when that
+// leaves the copy unknown.
+func ownCopyIn(sibs map[string]siblingAt, unread, key string) (copy, whyUnread string) {
+	if at := sibs[key].Path; at != "" || unread == "" {
+		return yourCopyAt(at), ""
+	}
+	return "your other copy", unread
 }
 
 // GeneratedShare is a path a reservation shares with the live reservation of
@@ -108,6 +126,17 @@ func crowding(p *prepared, j judged, res *Result) error {
 	}
 	res.GeneratedUnread = snap.GeneratedUnread
 	var own []OwnOverlap
+	// The worktrees are listed only for an own overlap's words, once.
+	var sibs map[string]siblingAt
+	var sibsUnread string
+	sibsListed := false
+	ownCopy := func(r Reservation) (string, string) {
+		if !sibsListed {
+			sibs, sibsUnread = siblingCopies(p.root, ownCopyKey(p.root))
+			sibsListed = true
+		}
+		return ownCopyIn(sibs, sibsUnread, r.key)
+	}
 	for _, r := range others {
 		mine := sameHolder(r.Holder, p.holder)
 		// This copy's own reservations on other records are no overlap: the
@@ -132,6 +161,7 @@ func crowding(p *prepared, j judged, res *Result) error {
 					// goes ahead and is told; an automated one (a build's, a
 					// drain's) backs off below.
 					o := OwnOverlap{Path: shared, Record: r.Record, Expiry: r.EffectiveExpiry}
+					o.Copy, o.CopyUnread = ownCopy(r)
 					if !slices.Contains(own, o) {
 						own = append(own, o)
 					}
@@ -186,10 +216,19 @@ func GeneratedUnreadLine(why string) string {
 }
 
 // Warning is how a person is told their reservation shares a path with their
-// own from another copy, the same words wherever it is shown.
+// own from another copy, naming that copy, the same words wherever it is
+// shown.
 func (o OwnOverlap) Warning() string {
-	return fmt.Sprintf("%s is also in the footprint of %s, which you hold from your other copy until %s; reserved anyway, since both are yours",
-		echo(o.Path), o.Record, stamp(o.Expiry))
+	where := o.Copy
+	if where == "" {
+		where = "your other copy"
+	}
+	line := fmt.Sprintf("%s is also in the footprint of %s, which you hold from %s until %s; reserved anyway, since both are yours",
+		echo(o.Path), o.Record, where, stamp(o.Expiry))
+	if o.CopyUnread != "" {
+		line += " (" + o.CopyUnread + ")"
+	}
+	return line
 }
 
 // addsOne reports whether an act on the judged tip adds a live reservation to

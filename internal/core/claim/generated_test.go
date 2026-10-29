@@ -169,14 +169,14 @@ func TestOnesOwnReserveOverlappingOnesOtherCopyWarns(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, err := laptop.do(Request{Record: "iss-5", Footprint: []string{"internal/core/claim/view.go", "x.go"}, WarnOwnOverlap: true})
-	want := []OwnOverlap{{Path: "internal/core/claim/view.go", Record: "iss-1", Expiry: t0.Add(2 * time.Hour)}}
+	want := []OwnOverlap{{Path: "internal/core/claim/view.go", Record: "iss-1", Expiry: t0.Add(2 * time.Hour), Copy: "your copy on another computer"}}
 	if err != nil || res.Act != ActReserved || !slices.Equal(res.OwnOverlap, want) {
 		t.Fatalf("one's own reserve over one's other copy = %+v, %v; want it reserved, naming %+v", res, err, want)
 	}
 	if w.remoteTip("iss-5") == "" {
 		t.Fatal("the reservation that warned did not reach origin")
 	}
-	if got := res.OwnOverlap[0].Warning(); got != `"internal/core/claim/view.go" is also in the footprint of iss-1, which you hold from your other copy until 2026-10-03T16:00:00Z; reserved anyway, since both are yours` {
+	if got := res.OwnOverlap[0].Warning(); got != `"internal/core/claim/view.go" is also in the footprint of iss-1, which you hold from your copy on another computer until 2026-10-03T16:00:00Z; reserved anyway, since both are yours` {
 		t.Fatalf("the warning = %q", got)
 	}
 	_, err = laptop.do(Request{Record: "iss-6", Footprint: []string{"internal/core/claim/claim.go"}, Drain: true})
