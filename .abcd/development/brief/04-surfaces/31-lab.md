@@ -136,7 +136,10 @@ the host decides and the adapter answers beside it. Each pair is appended to
 `pairs.jsonl` in the newest lab home minted for the repository: the host's
 answer, the adapter's answer, the adapter's probability, the state's SHA-256 and
 size, and the model that answered, or why it did not. That is the only file the
-adapter writes, and it is never written into the repository. Here the harvest
+adapter writes, and it is never written into the repository. No step calls
+the router yet, so every type stays on the host and no pair is kept until that
+call is added ([`03-configuration.md`](../05-internals/03-configuration.md)).
+Here the harvest
 computes something rather than only assembling prose: from `pairs.jsonl` it
 counts, for each judgement type, the pairs, the pairs compared (the adapter
 answered), the pairs that agreed and the pairs skipped (the state was larger
