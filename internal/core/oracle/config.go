@@ -26,6 +26,12 @@ package oracle
 //     a route the person sets on their own machine may spend their paid key
 //     (the product thinker's ruling AA(b) of 2026-09-29, which reverses the
 //     route half of itd-2609081951381895 Decision 8).
+//   - A judgement type's route carries a mode (itd-2609221009495079): `host`
+//     keeps the type on the host and points it nowhere, `shadow:<provider>/
+//     <model>` runs the decision adapter beside the host, which still decides,
+//     and a bare `<provider>/<model>` turns the type over to the adapter. A
+//     shadow route is judged exactly as one turned on: the same skips, the same
+//     allowlist and the same denylist, before any call. A role takes no mode.
 //
 // Every route is checked here, before any call: a repository route to a
 // provider that holds a key is skipped with a diagnostic naming the machine's
@@ -134,10 +140,52 @@ type Target struct {
 	Model    string `json:"model"`
 	// Origin names the file the route came from.
 	Origin string `json:"origin"`
+	// Mode is a judgement type's mode, JudgementShadow or JudgementOn; ""
+	// on a role's target.
+	Mode string `json:"mode,omitempty"`
 }
 
-// String is the route as the configuration spells it.
+// The modes a judgement type's route carries (itd-2609221009495079). A role's
+// target carries none.
+const (
+	// JudgementHost keeps the type on the host: the route points nowhere.
+	JudgementHost = "host"
+	// JudgementShadow runs the adapter beside the host, which decides.
+	JudgementShadow = "shadow"
+	// JudgementOn turns the type over to the adapter.
+	JudgementOn = "on"
+)
+
+// shadowPrefix spells a shadow route in the configuration.
+const shadowPrefix = JudgementShadow + ":"
+
+// String is the target as <provider>/<model>, whatever its mode.
 func (t Target) String() string { return t.Provider + "/" + t.Model }
+
+// Route is the route as the configuration spells it: a shadow judgement's with
+// its shadow: prefix.
+func (t Target) Route() string {
+	if t.Mode == JudgementShadow {
+		return shadowPrefix + t.String()
+	}
+	return t.String()
+}
+
+// routeValue splits a route's mode from its <provider>/<model> text. Only a
+// judgement type's route has a mode: host (target ""), shadow (the prefix
+// cut) or on; a role's text is returned whole, with no mode.
+func routeValue(key, text string) (target, mode string) {
+	if key != judgementsKey {
+		return text, ""
+	}
+	if text == JudgementHost {
+		return "", JudgementHost
+	}
+	if t, ok := strings.CutPrefix(text, shadowPrefix); ok {
+		return t, JudgementShadow
+	}
+	return text, JudgementOn
+}
 
 // DenyEntry is one denylist entry and the layer that added it.
 type DenyEntry struct {
@@ -466,6 +514,12 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 		if err != nil {
 			return fmt.Errorf("oracle adapter: %s: %w", where, err)
 		}
+		text, mode := routeValue(key, text)
+		if mode == JudgementHost {
+			// The winning layer keeps the type on the host: no route, and
+			// the lower layers' routes to it do not apply.
+			continue
+		}
 		provider, model, ok := strings.Cut(text, "/")
 		if !ok || provider == "" || model == "" {
 			return fmt.Errorf("oracle adapter: %s is %q; a route is <provider>/<model>", where, layered.BoundKey(text))
@@ -478,7 +532,7 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 		if err := c.Admit(provider, model); err != nil {
 			return fmt.Errorf("oracle adapter: %s points at %s, %w", where, layered.BoundKey(text), err)
 		}
-		into[name] = Target{Provider: provider, Model: model, Origin: win.Origin}
+		into[name] = Target{Provider: provider, Model: model, Origin: win.Origin, Mode: mode}
 	}
 	return nil
 }
@@ -507,7 +561,11 @@ func (c *APIConfig) skipMalformedRoute(key, name string, fd layered.Found) bool 
 	}
 	what := "is not a string"
 	if text, err := layered.Decode[string](fd.Raw); err == nil {
-		provider, model, ok := strings.Cut(text, "/")
+		target, mode := routeValue(key, text)
+		if mode == JudgementHost {
+			return false
+		}
+		provider, model, ok := strings.Cut(target, "/")
 		if ok && provider != "" && model != "" {
 			return false
 		}
@@ -536,6 +594,7 @@ func (c *APIConfig) skipKeyedRoute(key, name string, fd layered.Found) bool {
 	if err != nil {
 		return false
 	}
+	text, _ = routeValue(key, text)
 	provider, model, ok := strings.Cut(text, "/")
 	if !ok || provider == "" || model == "" {
 		return false
@@ -581,6 +640,7 @@ func (c *APIConfig) skipUnconfiguredRoute(key, name string, found []layered.Foun
 	if err != nil {
 		return false
 	}
+	text, _ = routeValue(key, text)
 	provider, _, ok := strings.Cut(text, "/")
 	if !ok || provider == "" {
 		return false
@@ -616,6 +676,7 @@ func (c *APIConfig) skipUnlistedRoute(key, name string, fd layered.Found) bool {
 	if err != nil {
 		return false
 	}
+	text, _ = routeValue(key, text)
 	provider, model, ok := strings.Cut(text, "/")
 	if !ok || provider == "" || model == "" {
 		return false
