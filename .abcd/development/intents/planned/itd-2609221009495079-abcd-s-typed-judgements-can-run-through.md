@@ -25,7 +25,7 @@ related_adrs: [adr-2609221009491186]
 
 ## Why This Matters
 
-The research pass of 2026-09-22 found Jev (TypeSafe AI) to be a typed-decision model, not a text model and not a router: choose one of N, score against a rubric, yes or no, each with a calibrated probability, in under a second at $0.042 per million tokens, 32K context, and unable to abstain. Independent evidence is one forty-case test; the vendor's numbers are vendor-graded. abcd's judgement-shaped steps are many: the remedy read, duplicate matching, unmeetable criteria, the eligibility residual, source classification and selection in the library, memory checks, ledger category and severity, the pre-pass's overlap, the docs lint's present-tense advisory. Ruled: an adapter behind one interface, the host as default, shadow mode as an abcd lab, a research note as the evidence a ruling turns a judgement type on with.
+The research pass of 2026-09-22 found Jev (TypeSafe AI) to be a typed-decision model, not a text model and not a router: choose one of N, score against a rubric, yes or no, each with a calibrated probability, in under a second at $0.042 per million tokens, 32K context, and unable to abstain. Independent evidence is one forty-case test; the vendor's numbers are vendor-graded. abcd's judgement-shaped steps are many: the remedy read, duplicate matching, unmeetable criteria, the eligibility residual, source classification and selection in the library, memory checks, ledger category and severity, the pre-pass's overlap, the docs lint's present-tense advisory, embark's lesson ranking. Ruled: an adapter behind one interface, the host as default, shadow mode as an abcd lab, a research note as the evidence a ruling turns a judgement type on with.
 
 ## Mechanism
 
@@ -40,7 +40,7 @@ We expect calibrated typed answers to agree with the host on closed-option judge
 ## What's In Scope
 
 - **One interface**: `(state, typed question) → (value, probability)` with three question kinds (choose, score, yes/no); the host's own judgement implements it too and stays the default.
-- **The judgement types** it may be configured for: the remedy read, duplicate matching, unmeetable criteria, the eligibility residual, source classification and selection over a shortlist, the memory checks, ledger category and severity, the pre-pass's overlap, the docs lint's present-tense advisory. Embark's lesson ranking is not one: the embark page ranks lessons by term overlap against the new voyage's brief, a computation with no host answer to pair (iss-2610262033055327).
+- **The judgement types** it may be configured for: the remedy read, duplicate matching, unmeetable criteria, the eligibility residual, source classification and selection over a shortlist, the memory checks, ledger category and severity, the pre-pass's overlap, the docs lint's present-tense advisory, embark's lesson ranking.
 - **Shadow mode as a lab**: `abcd lab mint` opens a lab home; the adapter runs beside the host on the configured types, decides nothing, and each pair (host's answer, adapter's answer, probability, the state's hash) is recorded under the lab home in the machine-scoped store, never the repository.
 - **The evidence**: `abcd lab harvest` produces agreement rates per type with counts and probability bands; the research note filed from it (dated, under the record's research notes) is the evidence a ruling turns a type on with.
 - **Turning on**: per judgement type in configuration; unreachable falls back to the host with a receipt; the run record names which route judged.
