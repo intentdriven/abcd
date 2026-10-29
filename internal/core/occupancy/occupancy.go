@@ -313,21 +313,23 @@ func Check(home, root string, readTable func() (sessionname.Table, error)) error
 	return &SharedError{Sessions: len(ids)}
 }
 
-// TreeOf returns the working-tree top a file at path would be written into:
-// the nearest ancestor of path holding a .git entry, a directory at a main
-// working tree's top and a file at a linked one's. The path is cleaned and
-// its symlinks resolved first, so a write through a link is judged by the
-// tree it lands in. It runs no git subprocess, so the hook on the host's file
-// tools stays cheap on every write (iss-2610280051498465). ok is false for a
-// relative path and for one in no checkout.
-func TreeOf(path string) (root string, ok bool) {
+// treeOf returns the working-tree top a file at path would be written into
+// on its cleaned reading: the nearest ancestor of path holding a .git entry,
+// a directory at a main working tree's top and a file at a linked one's. The
+// path is cleaned and its symlinks resolved first, so a write through a link
+// is judged by the tree it lands in; a ".." after a link can land elsewhere
+// on the raw reading, which CheckPath judges too. It runs no git subprocess,
+// so the hook on the host's file tools stays cheap on every write
+// (iss-2610280051498465). ok is false for a relative path and for one in no
+// checkout.
+func treeOf(path string) (root string, ok bool) {
 	if !filepath.IsAbs(path) {
 		return "", false
 	}
 	return treeAt(landing(filepath.Clean(path)))
 }
 
-// treeAt is TreeOf's walk up from a path already resolved.
+// treeAt is treeOf's walk up from a path already resolved.
 func treeAt(dir string) (string, bool) {
 	for {
 		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {

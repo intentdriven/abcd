@@ -140,7 +140,9 @@ func fileWriteGate(cmd *cobra.Command, tool, cwd, filePath, notebookPath string)
 			}
 			base = wd
 		}
-		path = filepath.Join(base, path)
+		// Joined as written, not cleaned, so the raw reading of a ".." after
+		// a link is still there for CheckPath to judge.
+		path = base + string(filepath.Separator) + path
 		if !filepath.IsAbs(path) {
 			return fileWriteFailOpen(cmd.ErrOrStderr(), "the %s call names a relative path and a session directory that is not absolute", termsafe.Sanitize(tool))
 		}

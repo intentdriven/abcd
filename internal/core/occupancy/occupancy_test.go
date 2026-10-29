@@ -256,7 +256,12 @@ func TestCheckRefusesOnlyASharedMainWorkingTree(t *testing.T) {
 // in a folder not yet made, still names the tree it would land in; a path
 // in no checkout names none.
 func TestTreeOfWalksUpToTheNearestGit(t *testing.T) {
-	base := t.TempDir()
+	// The temporary folder may sit behind a link (/var on macOS), which the
+	// walk resolves, so the expected roots are spelt resolved.
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	main := filepath.Join(base, "main")
 	linked := filepath.Join(base, "linked")
 	for _, d := range []string{filepath.Join(main, ".git"), filepath.Join(main, "a", "b"), linked, filepath.Join(base, "loose")} {
@@ -277,9 +282,9 @@ func TestTreeOfWalksUpToTheNearestGit(t *testing.T) {
 		{filepath.Join(linked, "file.go"), linked, true},
 		{filepath.Join(base, "loose", "file.go"), "", false},
 	} {
-		got, ok := TreeOf(tc.path)
+		got, ok := treeOf(tc.path)
 		if ok != tc.ok || got != tc.want {
-			t.Errorf("TreeOf(%s) = %q, %v; want %q, %v", tc.path, got, ok, tc.want, tc.ok)
+			t.Errorf("treeOf(%s) = %q, %v; want %q, %v", tc.path, got, ok, tc.want, tc.ok)
 		}
 	}
 }
