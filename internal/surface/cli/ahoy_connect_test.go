@@ -386,3 +386,28 @@ func TestAhoyConnectTakesStreamUsage(t *testing.T) {
 		t.Fatalf("config.json:\n%s", raw)
 	}
 }
+
+// TestAhoyProvidersSpellsAShadowJudgementRoute: the text board spells a
+// judgement route as the configuration does, so a shadow route reads as
+// shadow and never as the bare <provider>/<model> that turns a type on.
+func TestAhoyProvidersSpellsAShadowJudgementRoute(t *testing.T) {
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+	cfg := abcdhome.Path(os.Getenv("HOME"), "config.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte(`{"oracle":{"api":{"local":{"base_url":"http://localhost:11434/v1","models":["m"]}},`+
+		`"judgements":{"remedy-read":"shadow:local/m","duplicate-match":"local/m"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCLIErr(t, "ahoy", "--providers")
+	if err != nil {
+		t.Fatalf("ahoy --providers: %v\n%s", err, out)
+	}
+	for _, want := range []string{"judgement remedy-read -> shadow:local/m (", "judgement duplicate-match -> local/m ("} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("the board does not say %q:\n%s", want, out)
+		}
+	}
+}

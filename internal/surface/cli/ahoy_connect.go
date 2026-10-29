@@ -134,8 +134,10 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 		} else {
 			line("denylist (oracle.denylist), which refuses a model even when a provider lists it: " + strings.Join(deny, ", "))
 		}
+		// Route spells a judgement route as the configuration does, so a
+		// shadow route never reads as the bare form that turns a type on.
 		for _, r := range b.Routes {
-			line(fmt.Sprintf("%s %s -> %s (%s)", r.Kind, r.Name, r.Target, r.Target.Origin))
+			line(fmt.Sprintf("%s %s -> %s (%s)", r.Kind, r.Name, r.Target.Route(), r.Target.Origin))
 		}
 		for _, d := range b.Diagnostics {
 			line(d)
