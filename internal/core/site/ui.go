@@ -84,6 +84,11 @@ type UI struct {
 	// looks like a rendering fault, and one reading "v0.6.1" would be a lie.
 	Unreleased string `json:"unreleased"`
 	Beta       string `json:"beta"`
+	// ManagedRecord is the line every page opens with: the site is the record
+	// of an abcd-managed repository, and the line links that repository
+	// (itd-2610091010348892). It says who the content belongs to, because the
+	// repository is where every word on the page comes from.
+	ManagedRecord string `json:"managed_record"`
 }
 
 // RecordNav labels the explorer's sub-navigation.
@@ -300,6 +305,13 @@ func LoadUI(repoRoot, rel string) (UI, error) {
 	if err != nil {
 		return UI{}, err
 	}
+	return decodeUI(data, rel)
+}
+
+// decodeUI decodes an interface-string allowlist against the closed struct,
+// unknown keys refused and every declared string required. rel names the file
+// in a refusal.
+func decodeUI(data []byte, rel string) (UI, error) {
 	var ui UI
 	dec := json.NewDecoder(strings.NewReader(string(data)))
 	dec.DisallowUnknownFields()

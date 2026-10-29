@@ -71,7 +71,7 @@ func (e *explorer) decisionLogPage() (string, error) {
 			if err != nil {
 				return "", err
 			}
-			l.WriteString(`<li><span class="id"><a href="/` + escapeAttr(RecordRoute(n)) + `">` +
+			l.WriteString(`<li><span class="id"><a href="` + escapeAttr(e.c.at("/"+RecordRoute(n))) + `">` +
 				escapeText(n.ID) + `</a>`)
 			if n.Date != "" {
 				l.WriteString(`<span class="d">` + escapeText(n.Date) + `</span>`)

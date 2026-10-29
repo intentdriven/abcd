@@ -897,3 +897,57 @@ func TestRestoreCommandQuoting(t *testing.T) {
 		})
 	}
 }
+
+// TestPlanScansEveryAffectedPackageField: a secret, another
+// account's home path or another advisory still under embargo in an affected
+// package's name or vulnerable functions leaves the advisory out, as one in
+// its description does, naming the field and never the finding.
+func TestPlanScansEveryAffectedPackageField(t *testing.T) {
+	token := "gh" + "p_" + strings.Repeat("D", 36) // synthetic, split so no secret scanner reads it as one
+	at := fixedNow
+	other := Advisory{GHSAID: ghsaClosed, IssueID: "iss-2610120000000003", Title: titleClosed, Severity: "minor",
+		ForgeState: "closed", Verdict: strp(VerdictNotAVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at, Reason: strp("documented"), ClosedAt: &at}
+	for name, tc := range map[string]struct {
+		pkg   string
+		fns   []string
+		field string
+	}{
+		"token in a function":      {examplePackage, []string{"parser.Parse", "reproduce with " + token}, "vulnerable functions"},
+		"other home in a function": {examplePackage, []string{"/Users/zed-example/project/x.go"}, "vulnerable functions"},
+		"other id in a function":   {examplePackage, []string{"see " + ghsaClosed}, "vulnerable functions"},
+		"token in the package":     {"example.com/" + token, nil, "package's name"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			pf := newPlanFixture(t)
+			pf.seed(t, vulnAdvisory(ghsaOpen, issA), other)
+			fix := pf.commit("parser.go", "package parser\n", "fix")
+			pf.resolve(issA, fix)
+			pf.tag("v0.9.0")
+			v := vulnJSON(tc.pkg, "")
+			if tc.fns != nil {
+				v["vulnerable_functions"] = tc.fns
+			}
+			pf.remote(t, ghsaOpen, "draft", "the report", v)
+			p := pf.plan(t, "")
+			if len(p.Entries) != 0 {
+				t.Fatalf("plan %+v; want the advisory left out", p)
+			}
+			r := leftOutReason(t, p, ghsaOpen)
+			if !strings.Contains(r, tc.field) || strings.Contains(r, token) || strings.Contains(r, "zed-example") ||
+				strings.Contains(strings.ToLower(r), strings.ToLower(ghsaClosed)) {
+				t.Fatalf("reason %q; want it to name the %s and repeat nothing it found", r, tc.field)
+			}
+		})
+	}
+	pf := newPlanFixture(t)
+	pf.seed(t, vulnAdvisory(ghsaOpen, issA))
+	fix := pf.commit("parser.go", "package parser\n", "fix")
+	pf.resolve(issA, fix)
+	pf.tag("v0.9.0")
+	v := vulnJSON(examplePackage, "")
+	v["vulnerable_functions"] = []string{"parser.Parse"}
+	pf.remote(t, ghsaOpen, "draft", "the report", v)
+	if p := pf.plan(t, ""); len(p.Entries) != 1 {
+		t.Fatalf("plan %+v; want a plain function name planned", p)
+	}
+}

@@ -37,8 +37,10 @@ import (
 // be in their test stages at once is the person's own setting (PreflightSlots,
 // load_slots.go); above one, the first gate opens while fewer than that many
 // other units of work are in their test stages (machineload.Ahead.Shut), a
-// waiter queued ahead still shuts it, and a live race run does not shut it
-// by itself. The race gate (WaitRequest.Race, `--race-gate`), which `make
+// waiter queued ahead still shuts it, a live race run does not shut it by
+// itself, and a preflight queued at its race gate, running nothing, takes no
+// slot until its race run starts (machineload.Ahead.TakingSlots,
+// iss-2610282016250805). The race gate (WaitRequest.Race, `--race-gate`), which `make
 // preflight` runs before its race stage, opens at once with one slot, so a
 // preflight's race stage follows its tests exactly as before; above one it is
 // shut only by another race run, a race waiter ahead (machineload.RaceAhead),
@@ -779,11 +781,11 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			preflight, waiter := ahead.Shut(res.Slots)
 			if preflight {
 				shut = append(shut, WaitOnPreflight)
-				res.Preflights = ahead.Preflights
+				res.Preflights = ahead.TakingSlots(res.Slots).Preflights
 			}
 			if waiter {
 				shut = append(shut, WaitOnWaiter)
-				res.Waiters = ahead.Waiters
+				res.Waiters = ahead.TakingSlots(res.Slots).Waiters
 				_, without := ahead.Uncrossed().Shut(res.Slots)
 				crossedShut = !without
 			}

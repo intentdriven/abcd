@@ -116,6 +116,30 @@ func hooksUnrun(gaps []Gap) bool {
 	return hasGapID(gaps, HooksArmGapID) || hasGapID(gaps, HooksElsewhereGapID)
 }
 
+// HooksUnrunNotice is the session-start line for a clone whose committed
+// hooks git may not run, or "" when gaps say they run (iss-2610241133284600).
+// A clone with no hooks path set runs none of them, so no commit there passes
+// a check and nothing else says so until a gate fails afterwards. A clone
+// whose own config names another directory may still run them, chained from
+// that directory's hooks, so that line says so rather than claiming they never
+// run. The text is a constant: nothing in it is read from the repository.
+func HooksUnrunNotice(gaps []Gap) string {
+	switch {
+	case HooksUnarmed(gaps):
+		return "abcd: git does not run this repository's commit checks (" + guardHooksDirRelPath +
+			") in this clone, so no commit made here is checked. " + hooksArmAction + "."
+	case hasGapID(gaps, HooksElsewhereGapID):
+		return "abcd: this clone's core.hooksPath names another directory, so the commit checks committed in " +
+			guardHooksDirRelPath + " run only if that directory's hooks call them; abcd does not replace a value you set."
+	}
+	return ""
+}
+
+// HooksUnarmed reports whether gaps say no hooks path is set in a clone that
+// commits abcd's checks: the one state in which the checks certainly do not
+// run.
+func HooksUnarmed(gaps []Gap) bool { return hasGapID(gaps, HooksArmGapID) }
+
 // armOffered reports whether this run puts the question: abcd's guard is, or
 // is about to be, committed, and no hooks path is set at any scope. The plan
 // lists it from the same judgement (personOnlyAsks).
