@@ -54,44 +54,259 @@ var jobKeyRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_-]*):\s*(#.*)?$`)
 // absent workflows directory yields nil: the runbook then says no merge gate
 // was found.
 func DeriveCIChecks(repoRoot string) []string {
+	seen := map[string]bool{}
+	forEachWorkflow(repoRoot, func(_, src string) {
+		for _, check := range workflowChecks(src) {
+			seen[check] = true
+		}
+	})
+	return sortedKeys(seen)
+}
+
+// forEachWorkflow calls fn with the name and contents of each of repoRoot's
+// own CI workflow files, in directory order, bounded by maxWorkflowFiles. The
+// scaffold's own workflows (the release pair and the dependency re-authoring)
+// are never passed: the re-authoring workflow runs on pull requests but judges
+// none, and counting it would change the release rendering the moment a
+// repository opted in. A file that cannot be read is skipped.
+func forEachWorkflow(repoRoot string, fn func(name, src string)) {
 	dir := filepath.Join(repoRoot, filepath.FromSlash(workflowsDir))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil
+		return
 	}
-	seen := map[string]bool{}
 	files := 0
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !(strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")) {
 			continue
 		}
-		// The re-authoring workflow runs on pull requests but judges none: it is
-		// the scaffold's own, and counting it would change the release rendering
-		// the moment a repository opted in.
 		if rel := workflowsDir + "/" + name; rel == ReleaseYMLPath || rel == AutoReleaseYMLPath || rel == ReauthorYMLPath {
 			continue
 		}
 		if files++; files > maxWorkflowFiles {
-			break
+			return
 		}
 		data, err := fsutil.ReadGuarded(filepath.Join(dir, name), maxWorkflowBytes)
 		if err != nil {
 			continue
 		}
-		for _, check := range workflowChecks(string(data)) {
-			seen[check] = true
-		}
+		fn(name, string(data))
 	}
-	if len(seen) == 0 {
+}
+
+// sortedKeys returns a set's members sorted, or nil for an empty set.
+func sortedKeys(set map[string]bool) []string {
+	if len(set) == 0 {
 		return nil
 	}
-	out := make([]string, 0, len(seen))
-	for c := range seen {
+	out := make([]string, 0, len(set))
+	for c := range set {
 		out = append(out, c)
 	}
 	sort.Strings(out)
 	return out
+}
+
+// RequiredChecks returns the check names a ruleset may require on
+// defaultBranch without blocking a merge (itd-2610290746077716): the checks
+// EVERY pull request into it reports. Stricter than DeriveCIChecks, which
+// lists what a pull request may report, because a required check that never
+// reports holds the merge for ever. A workflow is counted only when it runs on
+// `pull_request` or `pull_request_target` with no `paths`/`paths-ignore`
+// filter, no `branches-ignore` filter, and a `branches` filter (if any) that
+// matches defaultBranch; and, when mergeQueue is set, also on `merge_group`,
+// since a queue entry waits on the same contexts. Each workflow or job left
+// out is named in notes, so a person can see why a check is not required.
+// Fails toward omission, like DeriveCIChecks: an empty answer requires nothing.
+func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, notes []string) {
+	seen := map[string]bool{}
+	forEachWorkflow(repoRoot, func(name, src string) {
+		lines := strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n")
+		on := topLevelBlock(lines, "on")
+		prBody, pr := eventBlock(on, "pull_request")
+		if !pr {
+			prBody, pr = eventBlock(on, "pull_request_target")
+		}
+		if !pr {
+			return
+		}
+		why := ""
+		switch {
+		case blockHasKey(prBody, "paths") || blockHasKey(prBody, "paths-ignore"):
+			why = "runs only when some paths change"
+		case blockHasKey(prBody, "branches-ignore"):
+			why = "has a branches-ignore filter on its pull-request trigger"
+		case blockHasKey(prBody, "branches") && !branchListMatches(blockList(prBody, "branches"), defaultBranch):
+			why = "its pull-request trigger leaves out the default branch"
+		case mergeQueue && !hasEvent(on, "merge_group"):
+			why = "does not run on the merge queue, which is on"
+		}
+		if why != "" {
+			notes = append(notes, name+" "+why+", so its checks are not required")
+			return
+		}
+		for _, job := range splitJobs(topLevelBlock(lines, "jobs")) {
+			if cs, ok := job.checkNames(); ok {
+				for _, c := range cs {
+					seen[c] = true
+				}
+				continue
+			}
+			notes = append(notes, name+": job "+job.id+" reports a name only the run knows "+
+				"(a matrix, an expression or a reusable workflow), so it is not required")
+		}
+	})
+	return sortedKeys(seen), notes
+}
+
+// eventRe matches one event name standing alone in an `on:` value.
+func eventRe(event string) *regexp.Regexp {
+	return regexp.MustCompile(`(^|[^A-Za-z_])` + regexp.QuoteMeta(event) + `([^A-Za-z_]|$)`)
+}
+
+// hasEvent reports whether an `on:` block names event, in any of its forms
+// (`on: event`, `on: [a, event]`, a list item, or a mapping key).
+func hasEvent(on []string, event string) bool {
+	re := eventRe(event)
+	for _, l := range on {
+		t := strings.TrimSpace(l)
+		if strings.HasPrefix(t, "#") {
+			continue
+		}
+		if i := strings.Index(t, " #"); i >= 0 {
+			t = t[:i]
+		}
+		if k, _, ok := strings.Cut(t, ":"); ok && !strings.HasPrefix(t, "[") && !strings.HasPrefix(t, "-") {
+			// A mapping line names only its key; its value is a filter.
+			if re.MatchString(strings.Trim(strings.TrimSpace(k), `"'`)) {
+				return true
+			}
+			continue
+		}
+		if re.MatchString(t) {
+			return true
+		}
+	}
+	return false
+}
+
+// eventBlock returns whether an `on:` block names event and, when event is a
+// mapping key there, the lines indented beneath it (its filters).
+func eventBlock(on []string, event string) (body []string, present bool) {
+	if !hasEvent(on, event) {
+		return nil, false
+	}
+	keyIndent := -1
+	for _, l := range on {
+		t := strings.TrimSpace(l)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		ind := len(l) - len(strings.TrimLeft(l, " "))
+		if keyIndent >= 0 {
+			if ind <= keyIndent {
+				break
+			}
+			body = append(body, l)
+			continue
+		}
+		if k, _, ok := strings.Cut(t, ":"); ok && strings.Trim(strings.TrimSpace(k), `"'`) == event {
+			keyIndent = ind
+		}
+	}
+	return body, true
+}
+
+// blockHasKey reports whether one of body's lines is the key key.
+func blockHasKey(body []string, key string) bool {
+	for _, l := range body {
+		if k, _, ok := strings.Cut(strings.TrimSpace(l), ":"); ok && strings.TrimSpace(k) == key {
+			return true
+		}
+	}
+	return false
+}
+
+// blockList returns the items of key's list in body: an inline flow sequence
+// (`key: [a, 'b']`) or the `- item` lines indented beneath it.
+func blockList(body []string, key string) []string {
+	var out []string
+	keyIndent := -1
+	for _, l := range body {
+		t := strings.TrimSpace(l)
+		if t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		ind := len(l) - len(strings.TrimLeft(l, " "))
+		if keyIndent >= 0 {
+			if ind <= keyIndent && !strings.HasPrefix(t, "-") || ind < keyIndent {
+				break
+			}
+			if strings.HasPrefix(t, "-") {
+				out = append(out, scalar(strings.TrimPrefix(t, "-")))
+				continue
+			}
+			break
+		}
+		k, v, ok := strings.Cut(t, ":")
+		if !ok || strings.TrimSpace(k) != key {
+			continue
+		}
+		v = scalar(v)
+		if strings.HasPrefix(v, "[") && strings.HasSuffix(v, "]") {
+			for _, item := range strings.Split(v[1:len(v)-1], ",") {
+				if item = scalar(item); item != "" {
+					out = append(out, item)
+				}
+			}
+			return out
+		}
+		if v != "" {
+			return append(out, v)
+		}
+		keyIndent = ind
+	}
+	return out
+}
+
+// branchListMatches reports whether a `branches` filter covers branch, by
+// GitHub's filter globs: `**` matches any run of characters, `*` any run but
+// `/`, and `?` one character. A negated pattern (`!x`) is not interpreted, so a
+// list holding one is treated as not matching, the direction that requires
+// nothing.
+func branchListMatches(patterns []string, branch string) bool {
+	matched := false
+	for _, p := range patterns {
+		if strings.HasPrefix(p, "!") {
+			return false
+		}
+		if branchGlob(p).MatchString(branch) {
+			matched = true
+		}
+	}
+	return matched
+}
+
+// branchGlob compiles one filter glob into an anchored regular expression.
+func branchGlob(p string) *regexp.Regexp {
+	var b strings.Builder
+	b.WriteString("^")
+	for i := 0; i < len(p); i++ {
+		switch {
+		case strings.HasPrefix(p[i:], "**"):
+			b.WriteString(".*")
+			i++
+		case p[i] == '*':
+			b.WriteString("[^/]*")
+		case p[i] == '?':
+			b.WriteString(".")
+		default:
+			b.WriteString(regexp.QuoteMeta(p[i : i+1]))
+		}
+	}
+	b.WriteString("$")
+	return regexp.MustCompile(b.String())
 }
 
 // workflowChecks returns the check names one workflow file reports, or nil
@@ -174,6 +389,8 @@ type ciJob struct {
 	named  bool
 	matrix bool
 	uses   bool
+	// matrixLines are the lines indented beneath the job's `matrix:` key.
+	matrixLines []string
 }
 
 // splitJobs reads the jobs block into its jobs, recording each job's own
@@ -183,6 +400,7 @@ type ciJob struct {
 func splitJobs(block []string) []ciJob {
 	jobIndent := -1
 	keyIndent := -1
+	matrixIndent := -1
 	var jobs []ciJob
 	for _, l := range block {
 		t := strings.TrimSpace(l)
@@ -190,6 +408,13 @@ func splitJobs(block []string) []ciJob {
 			continue
 		}
 		ind := len(l) - len(strings.TrimLeft(l, " "))
+		if matrixIndent >= 0 {
+			if ind > matrixIndent {
+				jobs[len(jobs)-1].matrixLines = append(jobs[len(jobs)-1].matrixLines, l)
+				continue
+			}
+			matrixIndent = -1
+		}
 		if jobIndent < 0 {
 			jobIndent = ind
 		}
@@ -217,6 +442,7 @@ func splitJobs(block []string) []ciJob {
 				}
 			} else if strings.HasPrefix(t, "matrix:") {
 				job.matrix = true
+				matrixIndent = ind
 			}
 		}
 	}
@@ -239,6 +465,45 @@ func (j ciJob) checkName() (string, bool) {
 		return "", false
 	}
 	return name, true
+}
+
+// checkNames is checkName with one matrix shape expanded: a single key whose
+// values are listed inline (`os: [a, b]`), with no include or exclude, which
+// GitHub reports as one check per value, `<name> (<value>)`. Any other matrix
+// still reports names only the run knows.
+func (j ciJob) checkNames() ([]string, bool) {
+	if !j.matrix {
+		if n, ok := j.checkName(); ok {
+			return []string{n}, true
+		}
+		return nil, false
+	}
+	if j.uses || len(j.matrixLines) != 1 {
+		return nil, false
+	}
+	k, v, ok := strings.Cut(strings.TrimSpace(j.matrixLines[0]), ":")
+	k = strings.TrimSpace(k)
+	v = strings.TrimSpace(v)
+	if i := strings.Index(v, " #"); i >= 0 {
+		v = strings.TrimSpace(v[:i])
+	}
+	if !ok || k == "include" || k == "exclude" || !strings.HasPrefix(v, "[") || !strings.HasSuffix(v, "]") {
+		return nil, false
+	}
+	base := j.id
+	if j.named {
+		base = j.name
+	}
+	var out []string
+	for _, item := range strings.Split(v[1:len(v)-1], ",") {
+		item = scalar(item)
+		name := base + " (" + item + ")"
+		if item == "" || strings.Contains(item, "${{") || !checkNameRe.MatchString(name) {
+			return nil, false
+		}
+		out = append(out, name)
+	}
+	return out, len(out) > 0
 }
 
 // scalar reads a plain or quoted YAML scalar from the text after a key's colon,
