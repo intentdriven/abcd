@@ -15,8 +15,8 @@ keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 (how many live reservations one person may hold across all of their sessions:
 1 to 100 and 10 by default), read from the machine layer alone
 (`internal/core/claim/maxlive.go`), the load gate's `load.preflights`, read
-from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 or
-2 and 1 by default, never from a repository
+from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 to
+4 and 1 by default, never from a repository
 (`internal/core/implement/load_slots.go`), and the runner routes under `roles` and
 `runner` (`internal/core/runner/config.go`). Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
