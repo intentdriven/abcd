@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".github/workflows/ci.yml"
 remedy: "Give the plain unit step the same declared -timeout make preflight's unit stage uses, and have the step's pinning test hold the two to one budget"
-resolution: "CI's plain unit step now runs under -timeout 40m, the base make preflight's unit stage scales from, and TestPlainTestStepRunsTheWholeModule holds the two to one budget. The test failed before the change. The growth in the loop package's time is iss-2610302058287983"
+resolution: "CI's plain unit step now shards the longest packages as make preflight does (ABCD_TEST_SHARDS, held to preflight's count by TestCIRacePassesShardLikePreflight) and runs under -timeout 40m, the base make preflight's unit stage scales from, which TestPlainTestStepRunsTheWholeModule holds it to. Both tests failed before the change. The growth in the loop package's time is iss-2610302058287983"
 impact: internal
 ---
 

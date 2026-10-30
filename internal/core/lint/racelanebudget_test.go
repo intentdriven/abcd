@@ -614,6 +614,8 @@ func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
 		case w == "-timeout" && i+1 < len(words):
 			i++
 			timeout = words[i]
+		case w == "-p":
+			i++ // its value is the next word
 		case strings.HasPrefix(w, "-timeout="):
 			timeout = strings.TrimPrefix(w, "-timeout=")
 		case strings.HasPrefix(w, "-"):
@@ -634,14 +636,14 @@ func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
 	if timeout == "" {
 		t.Fatalf("%s step Test: `%s` sets no -timeout, so each package inherits go test's 10m "+
 			"default, which internal/core/implement/loop has already crossed; make preflight's "+
-			"unit stage uses %s", where, cmds[0], local)
+			"unit stage scales from %s", where, cmds[0], local)
 	}
 	d, err := time.ParseDuration(timeout)
 	if err != nil {
 		t.Fatalf("%s step Test: -timeout %q: %v", where, timeout, err)
 	}
 	if d != local {
-		t.Errorf("%s step Test runs under -timeout %s but make preflight's unit stage uses %s; "+
+		t.Errorf("%s step Test runs under -timeout %s but make preflight's unit stage scales from %s; "+
 			"local and CI must judge the module against one budget", where, d, local)
 	}
 }
