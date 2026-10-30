@@ -169,19 +169,20 @@ func claimedName(holder string, claimed bool) string {
 }
 
 // ByHandLine is the sentence naming the entries under preIDMarker on
-// subject, which no copy re-arms: their authors re-arm them by hand once the
-// release ends. It names the pull requests alone, never a holder; "" when ws
-// is empty.
+// subject, which no copy re-arms: their authors re-arm them by hand. It is
+// printed while the release is still being cut and after it has ended alike,
+// so it names no time. It names the pull requests alone, never a holder; ""
+// when ws is empty.
 func ByHandLine(subject string, ws []Withdrawal) string {
 	switch len(ws) {
 	case 0:
 		return ""
 	case 1:
 		return fmt.Sprintf("%s was withdrawn for %s by a holder from before the holder id, whom nothing abcd pushes may name, so no copy re-arms it: "+
-			"once the release ends, its author re-arms it by hand", numbers(ws)[0], subject)
+			"its author re-arms it by hand", numbers(ws)[0], subject)
 	}
 	return fmt.Sprintf("%s were withdrawn for %s by holders from before the holder id, whom nothing abcd pushes may name, so no copy re-arms them: "+
-		"once the release ends, each one's author re-arms it by hand", strings.Join(numbers(ws), ", "), subject)
+		"each one's author re-arms it by hand", strings.Join(numbers(ws), ", "), subject)
 }
 
 // SettledLine is the sentence naming one settled withdrawal.
