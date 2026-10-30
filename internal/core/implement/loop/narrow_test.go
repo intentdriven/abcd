@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -493,6 +494,124 @@ func TestALaneSentBackFromItsLandingJudgesItsOtherCopyAgain(t *testing.T) {
 	}
 	if l := currentLane(t, f.repo, f.runID); l.Stage != StageValidate || len(l.Syncs) != 1 {
 		t.Fatalf("the retry's sync sends the lane to a fresh round: stage %s, syncs %d", l.Stage, len(l.Syncs))
+	}
+}
+
+// dropNetworkAfter lets the checkout's next n fetches from origin through and
+// fails every one after with what git prints when the network is gone,
+// through an upload-pack program the person accepts (configwatch.go), so a
+// test's git never leaves this computer.
+func (f *narrowFixture) dropNetworkAfter(t *testing.T, n int) {
+	t.Helper()
+	dir := t.TempDir()
+	script, count := filepath.Join(dir, "upload-pack.sh"), filepath.Join(dir, "count")
+	body := "n=$(cat '" + count + "' 2>/dev/null || echo 0)\n" +
+		"echo $((n + 1)) > '" + count + "'\n" +
+		"if [ \"$n\" -ge " + strconv.Itoa(n) + " ]; then\n" +
+		"\techo \"fatal: unable to access 'https://origin.invalid/': Could not resolve host: origin.invalid\" >&2\n" +
+		"\texit 128\n" +
+		"fi\n" +
+		"exec git upload-pack \"$@\"\n"
+	if err := os.WriteFile(script, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.Git("config", "remote.origin.uploadpack", "sh "+script)
+	if accepted, err := AcceptConfigChange(f.repo.Root(), f.runID, Options{}); err != nil ||
+		!slices.Equal(accepted, []string{"remote.origin.uploadpack (added)"}) {
+		t.Fatalf("the accept names the upload-pack program: %q %v", accepted, err)
+	}
+}
+
+// leftAtLand fails t unless the lane is still at its landing as judged, with
+// nothing of the moved default branch merged into its worktree and nothing of
+// it pushed.
+func (f *narrowFixture) leftAtLand(t *testing.T, judged Lane) {
+	t.Helper()
+	l := currentLane(t, f.repo, f.runID)
+	if l.Stage != StageLand || l.HeadSHA != judged.HeadSHA || len(l.Syncs) != 0 {
+		t.Fatalf("the lane stays at its landing as it was: stage %s, head %s, syncs %d", l.Stage, shortSHA(l.HeadSHA), len(l.Syncs))
+	}
+	if _, err := os.Stat(filepath.Join(judged.Worktree, "other.txt")); !os.IsNotExist(err) {
+		t.Fatalf("nothing of the default branch is merged into the worktree: %v", err)
+	}
+	if out := gitIn(t, f.bare, "for-each-ref", "--format=%(refname)", "refs/heads/"+BranchPrefix); out != "" {
+		t.Fatalf("nothing of the lane is pushed: %s", out)
+	}
+}
+
+// TestALaneLeavingItsLandingWaitsOutALostNetworkAtTheReservations
+// (iss-2610261837062463, dcn-2610300615451659): the landing's sync fetched
+// origin's moved default branch and would send the lane back to a fresh
+// round, but the network is gone by the time the reservations are fetched to
+// judge the same person's other copy again. The step waits on the shared
+// network probe, as a lost fetch of the default branch does, rather than
+// judging the view it last fetched or refusing for a person: nothing is
+// merged or pushed and the lane stays at its landing.
+func TestALaneLeavingItsLandingWaitsOutALostNetworkAtTheReservations(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.implement(t, Options{}, "docs/page.md")
+	f.toLand(t)
+	f.moveDefault(t, "other.txt")
+	judged := currentLane(t, f.repo, f.runID)
+	f.dropNetworkAfter(t, 1)
+
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	r, ok := AsRefusal(err)
+	if !ok || !r.Contention || !waitByDesign(r) {
+		t.Fatalf("the step waits out the lost network: %v", err)
+	}
+	if !strings.Contains(r.Reason, "lost the network at git fetch the reservations") || !strings.Contains(r.Reason, "Could not resolve host") {
+		t.Fatalf("the wait names the reservations' fetch the network failed: %s", r.Reason)
+	}
+	f.leftAtLand(t, judged)
+}
+
+// TestALaneLeavingItsLandingIsRefusedWhenTheFetchedReservationsCannotBeRead
+// (dcn-2610300615451659): the reservations were fetched to judge the same
+// person's other copy again as the lane leaves its landing, but the view of
+// them cannot be read. The step is refused for a person, naming what failed,
+// never judged on the view it read before the fetch: nothing is merged or
+// pushed and the lane stays at its landing.
+func TestALaneLeavingItsLandingIsRefusedWhenTheFetchedReservationsCannotBeRead(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.implement(t, Options{}, "docs/page.md")
+	f.toLand(t)
+	f.moveDefault(t, "other.txt")
+	judged := currentLane(t, f.repo, f.runID)
+	leavingView = func(string, time.Time) (claim.Snapshot, error) {
+		return claim.Snapshot{}, errors.New("reading the reservations: a test's unreadable ref")
+	}
+	t.Cleanup(func() { leavingView = claim.View })
+
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	r, ok := AsRefusal(err)
+	if !ok || r.Contention || waitByDesign(r) {
+		t.Fatalf("the step is refused for a person: %v", err)
+	}
+	if !strings.Contains(r.Reason, "cannot be read") || !strings.Contains(r.Reason, "a test's unreadable ref") {
+		t.Fatalf("the refusal names the view it could not read: %s", r.Reason)
+	}
+	f.leftAtLand(t, judged)
+}
+
+// TestALaneHeldAtItsLandingIsNotJudgedAgainstItsOtherCopy
+// (dcn-2610300422481486): a hold after a sibling's hand-back is no fresh
+// round, so a lane held at its landing is not judged again against the same
+// person's other copy, though that copy now holds a path of the intent run's
+// footprint: the step holds the lane.
+func TestALaneHeldAtItsLandingIsNotJudgedAgainstItsOtherCopy(t *testing.T) {
+	f := armedSibling(t, false)
+	bare := strings.TrimSpace(f.repo.Git("remote", "get-url", "origin"))
+	reserveRun(t, f.repo, f.runID, "itd-10", f.now, "pkg")
+	f.handedBack(t)
+	(&narrowFixture{bare: bare}).reserveAs(t, "iss-77", "octo", "pkg/widget.go", f.now)
+
+	res, err := advance(f.repo.Root(), f.runID, f.stages, f.opts())
+	if err != nil {
+		t.Fatalf("the hold is not judged against the other copy's reservation: %v", err)
+	}
+	if l := f.lane(t, "lane-2"); res.Lane != "lane-2" || l.Stage != StageHeld || l.Hold == nil {
+		t.Fatalf("the lane is held at its landing: %+v %+v", res, l)
 	}
 }
 

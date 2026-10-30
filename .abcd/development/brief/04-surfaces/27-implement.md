@@ -442,15 +442,22 @@ lanes changed, read as the narrowing reads them; while any lane is in any
 other state, held included, or at validate even awaiting its reviewers alone
 (an implementer's edits are not on its branch until its receipt, and one
 verdict hands a fix implementer any file of the footprint), or a step is
-pending, or when the files cannot be read, the whole footprint is judged. It
-keeps its whole footprint, and another person's reservation still refuses it
-on any path of it. A lane that later leaves land for a fresh round has a
-reservation needing no widening (an intent run's, or an issue run's still
-naming its whole found_at) judged again against this person's other copy on
-its whole footprint, the reservations fetched first, and an overlap refuses
-the step for a person with the lane left at land, as a refused widening does
-(iss-2610261837062463, dcn-2610291352512058, dcn-2610291925508286,
-dcn-2610292238191496, dcn-2610300422481486). Before
+pending, or when the files cannot be read, the whole footprint is judged. An
+issue run's revival at land narrows to its lane's changed files as the
+landing's renewal does; an intent run's keeps its whole footprint, its record
+line naming the other copy's reservation it went ahead past; and another
+person's reservation still refuses either on any path of the footprint it
+renews. A lane that later leaves land for a fresh round (a hold is not one)
+has a reservation needing no widening (an intent run's, or an issue run's
+still naming its whole found_at) judged again against this person's other
+copy on its whole footprint, the reservations fetched first. An overlap, a
+fetch that fails for any reason but a lost network, or a view that cannot be
+read after the fetch refuses the step for a person, as a refused widening
+does; a lost network is waited out on the shared network probe, as a lost
+fetch of the default branch is; either way the lane is left at land with
+nothing merged and nothing pushed (iss-2610261837062463, dcn-2610291352512058,
+dcn-2610291925508286, dcn-2610292238191496, dcn-2610300422481486,
+dcn-2610300615451659). Before
 the landing's merge rule decides, the land fence fetches the reservation and
 arms nothing unless it is still this person's, from this copy, and live,
 naming the other person, the other copy or the release, as contention; when it

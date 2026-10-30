@@ -642,13 +642,19 @@ state, a held lane included, or at validate even awaiting its reviewers alone
 (one verdict from them hands a fix implementer any file of the footprint), or
 a step is still to be opened, or when the files cannot be read, the whole
 footprint is judged, since two automated lanes never edit one file.
-It keeps its whole footprint, and the record's line names your other copy's
-reservation it went ahead past, a file none of the lanes' commits changed.
-When a lane later leaves its landing for a fresh round, a reservation that
-needs no widening, an intent run's or an issue run's still naming its whole
-`found_at`, is judged again against your other copy on its whole footprint,
-the reservations fetched first: one that shares a path with it, or a fetch that
-fails, refuses the step for a person, naming what it met, and the lane stays at
+An issue run's revival at its landing narrows to the files its lane changed,
+as the landing's renewal does, so your other copy's reservation of any other
+file is outside it. An intent run's keeps its whole footprint, and the
+record's line names your other copy's reservation it went ahead past, a file
+none of the lanes' commits changed.
+When a lane later leaves its landing for a fresh round (a hold is not one), a
+reservation that needs no widening, an intent run's or an issue run's still
+naming its whole `found_at`, is judged again against your other copy on its
+whole footprint, the reservations fetched first. One that shares a path with
+it refuses the step for a person, naming it, and so does a fetch that fails
+for any reason but a lost network, or a view of the reservations that cannot
+be read after the fetch; a lost network is waited out on the shared network
+probe, as a lost fetch of the default branch is. Either way the lane stays at
 its landing with nothing merged and nothing pushed. At step 5, before
 the merge rule decides, the **land fence** fetches the reservation and arms
 nothing unless it is still this person's, from this copy, and live: it names

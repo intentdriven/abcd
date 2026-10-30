@@ -83,7 +83,9 @@ func claimOptions(now time.Time) claim.Options {
 // iss-2610261837062463, dcn-2610291352512058, dcn-2610291925508286,
 // dcn-2610292238191496), so that copy holding a file the lanes never touched
 // stops nothing; the renewal's note names each such reservation it went ahead
-// past. While any lane may yet hold uncommitted work, or where those files
+// past. An issue run's revival at its landing narrows as its renewal there
+// does (narrowedFootprint), so such a file lies outside it; only an intent
+// run's keeps its whole footprint (dcn-2610300615451659). While any lane may yet hold uncommitted work, or where those files
 // cannot be read, the whole footprint is judged, as before.
 func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Snapshot) string {
 	if st.ReservedAt == nil {
@@ -845,9 +847,12 @@ func widenReservation(repoRoot, key string, fp []string, takeOver bool, own clai
 // dcn-2610300422481486): a lapsed revival with every lane past editing was
 // judged against that copy only on the files the lanes had changed
 // (revivalChangedFiles), and the fresh round's implementer may change any
-// other. The reservations are fetched first; an overlap, or a fetch that
-// fails, refuses the step as a widening's refusal does, and the lane stays
-// at its landing.
+// other. A hold is no fresh round and is not judged. The reservations are
+// fetched first; an overlap, a fetch that fails but for a lost network, or a
+// view that cannot be read after the fetch refuses the step as a widening's
+// refusal does, a lost network waits on the shared outage probe as the
+// default branch's fetch does (dcn-2610300615451659), and either way the lane
+// stays at its landing.
 func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now time.Time) (note string, err error) {
 	if st.ReservedAt == nil {
 		return "", nil
@@ -887,25 +892,47 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 		return "", nil
 	}
 	// The step fetched no reservation unless a renewal was due, so the other
-	// copy's are fetched now, as every act fetches before it judges.
-	if _, err := claim.Fetch(repoRoot, claimOptions(now)); errors.Is(err, claim.ErrNoOrigin) {
+	// copy's are fetched now, as every act fetches before it judges. A lost
+	// network is waited out on the shared probe, as the default branch's
+	// fetch is (fetchRefusal); any other failed fetch, or a view that cannot
+	// be read after a good one, refuses the step for a person. Either way the
+	// lane stays at its landing with nothing merged and nothing pushed.
+	if _, ferr := claim.Fetch(repoRoot, claimOptions(now)); errors.Is(ferr, claim.ErrNoOrigin) {
 		return "", nil
-	} else if err == nil {
-		snap, err = claim.View(repoRoot, now)
-	}
-	if err != nil {
+	} else if ferr != nil {
+		reason := ferr.Error()
+		if fe := (*claim.FetchError)(nil); errors.As(ferr, &fe) {
+			reason = fe.Reason
+		}
+		if r := netFailure(StageLand, lane.ID, "git fetch the reservations", errors.New(reason)); r != nil {
+			return "", r
+		}
 		return "", refuse(string(StageLand), "", lane.ID,
-			"the lane leaves its landing for a fresh round, and the reservations cannot be fetched to judge "+st.Key+"'s again against your other copy: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
+			"the lane leaves its landing for a fresh round, and the reservations cannot be fetched to judge "+st.Key+"'s again against your other copy: "+fsutil.RedactHome(reason)+"; the lane stays at its landing and nothing is pushed",
+			"settle what it names, then run `abcd implement step` again")
+	}
+	if snap, err = leavingView(repoRoot, now); err != nil {
+		return "", refuse(string(StageLand), "", lane.ID,
+			"the lane leaves its landing for a fresh round, and the reservations, fetched, cannot be read to judge "+st.Key+"'s again against your other copy: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
 			"settle what it names, then run `abcd implement step` again")
 	}
 	if o, ok := snap.OtherCopyOverlap(st.Key, own.Footprint, own.Holder); ok {
+		// Only an issue run's lane can be handed back here, to be built again.
+		remedy := "wait for that reservation to end, or release it from your other copy, then run `abcd implement step` again"
+		if issue {
+			remedy += "; or hand the lane back so the issue is built again"
+		}
 		return "", refuse(string(StageLand), "", lane.ID,
 			fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's footprint, but %s is also in the footprint of %s, which you hold from your other copy until %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
 				st.Key, termsafe.Sanitize(o.Path), o.Record, stamp(o.Expiry), shortSHA(lane.HeadSHA)),
-			"wait for that reservation to end, or release it from your other copy, then run `abcd implement step` again; or hand the lane back")
+			remedy)
 	}
 	return "", nil
 }
+
+// leavingView reads the reservations reserveOnLeavingLand has just fetched;
+// a test replaces it to fail that read after a good fetch.
+var leavingView = claim.View
 
 // covers reports whether every path of fp lies within held: equal to one of
 // its paths or beneath one, segment by segment, the sense in which two

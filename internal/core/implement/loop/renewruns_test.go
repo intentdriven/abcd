@@ -134,7 +134,8 @@ func TestALapsedRevivalAtValidateAwaitingItsReviewersIsJudgedWhole(t *testing.T)
 // reserved a file in it since. The revival is judged on the files the lane's
 // branch changed: it backs off that copy's reservation of a changed file,
 // logging the failed renewal, and once that copy holds only a file the lane
-// did not change, it goes ahead.
+// did not change, it goes ahead, narrowed to the lane's changed file as the
+// landing's renewal narrows (narrowedFootprint), so that file is outside it.
 func TestALapsedRevivalAtLandIsJudgedOnTheLanesChangedFiles(t *testing.T) {
 	f := newNarrowFixture(t)
 	f.implement(t, Options{}, "docs/page.md")
@@ -169,6 +170,57 @@ func TestALapsedRevivalAtLandIsJudgedOnTheLanesChangedFiles(t *testing.T) {
 		t.Fatalf("a revival past one's other copy's hold of an unchanged file = %+v; want it renewed", got)
 	}
 	f.renewedAt(t, before, at)
+	// An issue run's revival at its landing narrows as the landing's renewal
+	// does (dcn-2610300615451659), so the other copy's file is outside it and
+	// nothing was gone ahead past.
+	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs/page.md"}) {
+		t.Fatalf("the revival narrows the reservation to the lane's changed file: %q", fp)
+	}
+	note := recordNote(t, f.repo, f.runID, StageReservationRenewed)
+	if !strings.Contains(note, "its footprint narrowed from docs to the files its branch changed: docs/page.md") ||
+		strings.Contains(note, "revived past") {
+		t.Fatalf("the run record logs the narrowing and no other copy gone past: %q", note)
+	}
+}
+
+// TestALapsedIntentRevivalAtLandGoesPastItsOtherCopyOnAnUnchangedFile
+// (dcn-2610292238191496, dcn-2610300615451659): an intent run's reservation of
+// the directory docs and one.txt lapsed with its one lane at its landing,
+// having changed one.txt alone, and the same person's other copy reserved
+// docs/guide.md since. An intent run never narrows, so the revival is judged
+// against that copy on the lane's changed files only: it goes ahead past
+// docs/guide.md, keeps its whole footprint, and the run record names the
+// reservation it went past. Judged on the whole footprint, it would back off.
+func TestALapsedIntentRevivalAtLandGoesPastItsOtherCopyOnAnUnchangedFile(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	f.validated(t)
+	reserveRun(t, f.repo, f.runID, "itd-10", time.Now().UTC().Truncate(time.Second), "docs", "one.txt")
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := revivalChangedFiles(f.repo.Root(), st); !slices.Equal(got, []string{"one.txt"}) {
+		t.Fatalf("a revival with its lane at land is judged on %q; want the lane's changed one.txt", got)
+	}
+	ref := claim.RefPrefix + "itd-10"
+	before := originReservation(t, f.bare, ref)
+	lapsed := before.expires.Add(time.Minute)
+	(&narrowFixture{bare: f.bare}).reserveAs(t, "iss-77", "octo", "docs/guide.md", lapsed)
+
+	at := lapsed.Add(time.Minute)
+	got := RenewRuns(f.repo.Root(), at)
+	if len(got) != 1 || !got[0].Renewed {
+		t.Fatalf("an intent run's revival past its other copy's hold of an unchanged file = %+v; want it renewed", got)
+	}
+	if tip := originReservation(t, f.bare, ref); tip.parent != before.commit || !tip.claimed.Equal(at) {
+		t.Fatalf("the revival is pushed over the lapsed tip at %s: before %+v, after %+v", stamp(at), before, tip)
+	}
+	if fp := originFootprint(t, f.bare, "itd-10"); !slices.Equal(fp, []string{"docs", "one.txt"}) {
+		t.Fatalf("an intent run's revival keeps its whole footprint: %q", fp)
+	}
+	if note := recordNote(t, f.repo, f.runID, StageReservationRenewed); !strings.Contains(note, "revived past your other copy's reservation of docs/guide.md (iss-77)") {
+		t.Fatalf("the run record names the other copy's reservation the revival went past: %q", note)
+	}
 }
 
 // TestALapsedRevivalWhileTheImplementerWorksIsJudgedWhole: the run's
