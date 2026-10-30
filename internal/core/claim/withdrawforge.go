@@ -686,7 +686,7 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 			continue
 		}
 		tip := r.Commit
-		r, _, _ = asCut(root, r, now)
+		r, _, _ = asCut(root, r, now, reader)
 		if r.Copy != CopyThis || !reader.Owns(r.Holder) || !stillBeingCut(r) {
 			continue
 		}
@@ -695,7 +695,7 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 			continue
 		}
 		a.Release = r.Record
-		own := readerRecord(root, r.Record, tip, reader.Login)
+		own := readerRecord(root, r.Record, tip, reader)
 		if own.why != "" {
 			for _, w := range r.Withdrawn {
 				if w.State == WithdrawnAdmitted {

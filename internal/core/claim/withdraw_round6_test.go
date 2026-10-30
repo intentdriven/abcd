@@ -477,32 +477,32 @@ func TestTheHoldReadsAnEndItCannotSettleAsNotEnded(t *testing.T) {
 	if r.Commit != tomb || r.ReleasedBy != ReleasedByTombstone {
 		t.Fatalf("reservation = %+v; want octo's tombstone", r)
 	}
-	if _, notEnded, why := asCut(octo.dir, r, w.clock()); notEnded || why != "" {
+	if _, notEnded, why := asCut(octo.dir, r, w.clock(), octo.self()); notEnded || why != "" {
 		t.Fatalf("octo's own tombstone: notEnded %v, why %q; want ended", notEnded, why)
 	}
 	nowhere := filepath.Join(t.TempDir(), "none")
 	if err := os.MkdirAll(nowhere, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, notEnded, why := asCut(nowhere, r, w.clock()); !notEnded || !strings.Contains(why, "whether v0.16.0 is on origin could not be read") {
+	if _, notEnded, why := asCut(nowhere, r, w.clock(), octo.self()); !notEnded || !strings.Contains(why, "whether v0.16.0 is on origin could not be read") {
 		t.Fatalf("tags not read: notEnded %v, why %q; want not ended, why named", notEnded, why)
 	}
 	bogus := r
 	bogus.Commit = strings.Repeat("e", 40)
-	if _, notEnded, why := asCut(octo.dir, bogus, w.clock()); !notEnded || !strings.Contains(why, "the history of its branch could not be read") {
+	if _, notEnded, why := asCut(octo.dir, bogus, w.clock(), octo.self()); !notEnded || !strings.Contains(why, "the history of its branch could not be read") {
 		t.Fatalf("branch not read: notEnded %v, why %q; want not ended, why named", notEnded, why)
 	}
 	for _, gate := range []Reservation{func() Reservation { x := r; x.Record = "iss-8"; return x }(), func() Reservation { x := r; x.State = StateLive; return x }()} {
-		if got, notEnded, why := asCut(octo.dir, gate, w.clock()); notEnded || why != "" || got.Commit != gate.Commit {
+		if got, notEnded, why := asCut(octo.dir, gate, w.clock(), octo.self()); notEnded || why != "" || got.Commit != gate.Commit {
 			t.Fatalf("gate %+v: notEnded %v, why %q; want it read as listed", gate, notEnded, why)
 		}
 	}
 	f.pushersErr = errors.New("HTTP 502")
 	_ = os.RemoveAll(filepath.Join(octo.dir, filepath.FromSlash(tipCacheDirRel)))
-	if _, notEnded, why := asCut(octo.dir, r, w.clock()); !notEnded || !strings.Contains(why, "HTTP 502") {
+	if _, notEnded, why := asCut(octo.dir, r, w.clock(), octo.self()); !notEnded || !strings.Contains(why, "HTTP 502") {
 		t.Fatalf("record not read: notEnded %v, why %q; want not ended, why named", notEnded, why)
 	}
-	if _, notEnded, why := asCut(octo.dir, r, w.clock().Add(lostWindow+time.Hour)); notEnded || why != "" {
+	if _, notEnded, why := asCut(octo.dir, r, w.clock().Add(lostWindow+time.Hour), octo.self()); notEnded || why != "" {
 		t.Fatalf("record not read for longer than lostWindow: notEnded %v, why %q; want it read as ended", notEnded, why)
 	}
 }

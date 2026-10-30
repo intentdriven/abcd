@@ -515,7 +515,7 @@ func TestTheRecordOfPushesIsReadOnlyAsTheForgeAnswersIt(t *testing.T) {
 func TestAFailedReadingOfTheBranchListsNothingDue(t *testing.T) {
 	_, _, octo := releasedWithNothingArmed(t)
 	for name, root := range map[string]string{"no checkout": filepath.Join(t.TempDir(), "none"), "no such commit": octo.dir} {
-		if o := readerRecord(root, "rel-v0.16.0", strings.Repeat("e", 40), "octo"); o.found || !strings.Contains(o.why, "could not be read") {
+		if o := readerRecord(root, "rel-v0.16.0", strings.Repeat("e", 40), Self{Login: "octo"}); o.found || !strings.Contains(o.why, "could not be read") {
 			t.Errorf("%s: %+v; want no record and why named", name, o)
 		}
 	}

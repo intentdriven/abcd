@@ -1,7 +1,9 @@
 package claim
 
 import (
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,12 +57,11 @@ func TestACommitAnotherLoginPushedNamingTheReadersHolderIDIsNeverReArmed(t *test
 	}
 }
 
-// TestAReservationAndTombstoneAnotherLoginPushedNamingTheHoldersIDEndNothingForThem:
-// over octo's live cut, mal pushes a reservation naming octo's holder id and
-// a tombstone over it. To octo, neither is octo's push, so the release is not
-// ended for octo and nothing octo withdrew is re-armed; octo's own --release
-// still ends it.
-func TestAReservationAndTombstoneAnotherLoginPushedNamingTheHoldersIDEndNothingForThem(t *testing.T) {
+// malEndedOctosCutNamingOctosID is octo's live cut of rel-v0.16.0, which
+// withdrew #11, #12 and #13, with a reservation naming octo's holder id and a
+// tombstone over it that the forge's record says mal pushed.
+func malEndedOctosCutNamingOctosID(t *testing.T) (*world, *fakeForge, *participant) {
+	t.Helper()
 	w := newWorld(t)
 	f := armedForge(t)
 	octo := w.clone("1234+octo@users.noreply.github.com", "")
@@ -78,7 +79,16 @@ func TestAReservationAndTombstoneAnotherLoginPushedNamingTheHoldersIDEndNothingF
 	w.pushAs(f, "rel-v0.16.0", "mal", tomb.text())
 	w.set(t0.Add(time.Minute))
 	f.reset()
+	return w, f, octo
+}
 
+// TestAReservationAndTombstoneAnotherLoginPushedNamingTheHoldersIDEndNothingForThem:
+// over octo's live cut, mal pushes a reservation naming octo's holder id and
+// a tombstone over it. To octo, neither is octo's push, so the release is not
+// ended for octo and nothing octo withdrew is re-armed; octo's own --release
+// still ends it.
+func TestAReservationAndTombstoneAnotherLoginPushedNamingTheHoldersIDEndNothingForThem(t *testing.T) {
+	_, f, octo := malEndedOctosCutNamingOctosID(t)
 	res, err := octo.reserve("iss-8", "o.go")
 	if err != nil {
 		t.Fatal(err)
@@ -96,5 +106,34 @@ func TestAReservationAndTombstoneAnotherLoginPushedNamingTheHoldersIDEndNothingF
 	}
 	if got := f.mutations(); len(got) == 0 {
 		t.Fatal("octo's own --release re-armed nothing")
+	}
+}
+
+// TestOctosReadingsOfACutMalEndedNamingOctosIDReadItLive: the readings hold
+// octo's id to octo's login as the acts do. Over mal's reservation and
+// tombstone naming octo's id, octo's listing shows the cut not ended, holding
+// #11-#13 and nothing due; octo's launch reading names it as octo's live cut;
+// and a second release octo reserves backs off while it is cut.
+func TestOctosReadingsOfACutMalEndedNamingOctosIDReadItLive(t *testing.T) {
+	w, f, octo := malEndedOctosCutNamingOctosID(t)
+	id := octo.keptHolderID()
+	rw := listingOf(t, w, octo, "rel-v0.16.0")
+	if rw.Ended || len(rw.Due) != 0 || !slices.Equal(numbers(rw.Held), []string{"#11", "#12", "#13"}) || rw.NotEnded != id {
+		t.Fatalf("octo's listing = %+v; want the cut not ended, holding #11-#13, nothing due, its tombstone named as not octo's", rw)
+	}
+	a, err := ArmedMergesForCut(octo.dir, octo.opts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Release != "rel-v0.16.0" {
+		t.Fatalf("octo's launch reading names %q as octo's cut; want rel-v0.16.0, still live", a.Release)
+	}
+	tip := w.remoteTip("rel-v0.17.0")
+	_, err = octo.do(Request{Record: "rel-v0.17.0"})
+	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "rel-v0.16.0 is being cut by "+id) {
+		t.Fatalf("octo's second release = %v; want a back-off naming the live cut", err)
+	}
+	if w.remoteTip("rel-v0.17.0") != tip || len(f.mutations()) != 0 {
+		t.Fatalf("the second release moved its branch or the forge: %v", f.mutations())
 	}
 }

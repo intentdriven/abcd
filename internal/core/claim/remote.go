@@ -273,7 +273,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		}
 		// One release is cut at a time: a second would withdraw the merges
 		// the first admitted, and neither cut could tell.
-		if err := otherLiveRelease(root, p.id, p.now); err != nil {
+		if err := otherLiveRelease(root, p.id, p.now, p.self); err != nil {
 			return Result{}, err
 		}
 	}

@@ -163,7 +163,12 @@ payload adds:
   tombstone ends the release only when it is its holder's own newest push,
   another person's after a take-over and a release of theirs included; one
   its holder did not push ends nothing, so none of yours on it is `due`, and
-  `not_ended` names that holder. `lapsed` is set only while the release still holds
+  `not_ended` names that holder. A reader whose GitHub username is not known
+  has no newest push to read, so their own on an ended release are listed as
+  `stranded`, never `due`. `holder_claimed` is true when `holder` is a holder
+  id that is not yours: an id names no account the forge's record of pushes
+  could vouch for, so the text shows it as "(claimed)", as `abcd status`
+  shows a sender named by a holder id. `lapsed` is set only while the release still holds
   pull requests withdrawn or admitted. Tell the user about
   any `lapsed` release, and any `stranded` or `skipped` pull request: its
   owner has to act on it.
@@ -178,7 +183,8 @@ payload adds:
   `failures` naming each pull request the forge refused or whose comment was
   not posted as sent (act `comment`), `not_ended` naming the holder of a
   reservation whose tombstone they did not push (it ends nothing, and nothing
-  is re-armed), `not_read` counting the commits other accounts pushed above
+  is re-armed; `not_ended_claimed` is true when that holder is a holder id
+  that is not yours), `not_read` counting the commits other accounts pushed above
   your newest push (never read), and `unplaced` saying why your newest push
   cannot be found or placed (nothing of yours is acted on; a later act asks
   again), each named once for each tip.

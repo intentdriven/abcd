@@ -88,7 +88,7 @@ func TestATombstoneTheRecordDoesNotPlaceBlocksASecondReleaseNamingWhy(t *testing
 // reservations that fails refuses the second release, naming the failure,
 // rather than skipping the check.
 func TestASecondReleaseIsRefusedWhenTheReservationsDoNotRead(t *testing.T) {
-	err := otherLiveRelease(t.TempDir(), "rel-v0.17.0", t0)
+	err := otherLiveRelease(t.TempDir(), "rel-v0.17.0", t0, Self{})
 	if err == nil || !strings.Contains(err.Error(), "reading the reservations") {
 		t.Fatalf("otherLiveRelease over no checkout = %v; want a refusal naming the failed reading", err)
 	}

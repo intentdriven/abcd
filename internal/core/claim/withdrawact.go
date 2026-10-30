@@ -98,6 +98,10 @@ type Settle struct {
 	NotRead  []PushCount `json:"not_read,omitempty"`
 	Unplaced string      `json:"unplaced,omitempty"`
 	NotEnded string      `json:"not_ended,omitempty"`
+	// NotEndedClaimed is true when NotEnded is a holder id that is not the
+	// person's own, which the reading only has the trailer's word for
+	// (holderClaimed).
+	NotEndedClaimed bool `json:"not_ended_claimed,omitempty"`
 	// LapsedAt, when set, is when the release's lease lapsed: the settle
 	// ended a cut that lapsed with no tag on origin (dcn-2610271926369425).
 	LapsedAt *time.Time `json:"lapsed_at,omitempty"`
@@ -107,7 +111,7 @@ type Settle struct {
 // lapse it ended a cut on.
 func (s Settle) Notes() []string {
 	var out []string
-	for _, l := range []string{lapsedEndLine(s.Subject, s.LapsedAt), notEndedLine(s.Subject, s.NotEnded), unplacedLine(s.Subject, s.Person, s.Unplaced), notReadLine(s.Subject, s.Person, s.NotRead)} {
+	for _, l := range []string{lapsedEndLine(s.Subject, s.LapsedAt), notEndedLine(s.Subject, s.NotEnded, s.NotEndedClaimed), unplacedLine(s.Subject, s.Person, s.Unplaced), notReadLine(s.Subject, s.Person, s.NotRead)} {
 		if l != "" {
 			out = append(out, l)
 		}
@@ -131,13 +135,31 @@ func lapsedEndLine(subject string, at *time.Time) string {
 }
 
 // notEndedLine is the sentence naming a release whose tip is a tombstone its
-// holder's own newest push is not.
-func notEndedLine(subject, holder string) string {
+// holder's own newest push is not; claimed marks a holder the reader has only
+// the trailer's word for (holderClaimed).
+func notEndedLine(subject, holder string, claimed bool) string {
 	if holder == "" {
 		return ""
 	}
 	return fmt.Sprintf("%s's tip is a tombstone %s did not push, as the forge's record of pushes says, over %s's reservation, so it ends nothing "+
-		"and no withdrawal is re-armed: the release ends with %s's --release, or when its tag is on %s", subject, holder, holder, holder, Remote)
+		"and no withdrawal is re-armed: the release ends with %s's --release, or when its tag is on %s", subject, claimedName(holder, claimed), holder, holder, Remote)
+}
+
+// holderClaimed reports whether holder, a release's holder as a reading of
+// reader's names it, is only claimed to reader: a holder id that is not
+// theirs names no account the forge's record of pushes could vouch for, so
+// whose it is only the trailer says, as `abcd status` shows a sender a
+// branch named by a holder id names (SenderClaimed). Local renders only.
+func holderClaimed(holder string, reader Self) bool {
+	return validHolderID(holder) && !reader.Owns(holder)
+}
+
+// claimedName is holder as a render names it: marked claimed when claimed.
+func claimedName(holder string, claimed bool) string {
+	if claimed {
+		return holder + " (" + SenderClaimed + ")"
+	}
+	return holder
 }
 
 // SettledLine is the sentence naming one settled withdrawal.
@@ -667,7 +689,7 @@ func (s *Settle) shownOnce(root, id, commit string) (shown func()) {
 		data, rerr := fsutil.ReadGuardedInRoot(r, shownDirRel+"/"+id, 128)
 		r.Close()
 		if rerr == nil && strings.TrimSpace(string(data)) == commit {
-			s.NotRead, s.Unplaced, s.NotEnded = nil, "", ""
+			s.NotRead, s.Unplaced, s.NotEnded, s.NotEndedClaimed = nil, "", "", false
 			return shown
 		}
 	}
@@ -788,7 +810,7 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 			k.cache().markFailed(a.holder, a.now)
 			s.Unplaced = why
 		case !ended && holder != "":
-			s.NotEnded = holder
+			s.NotEnded, s.NotEndedClaimed = holder, holderClaimed(holder, a.self)
 		}
 		if !ended {
 			s.shownOnce(a.root, id, t.Commit)()
@@ -1037,7 +1059,11 @@ func stillBeingCut(r Reservation) bool {
 // take nothing from a cut that holds nothing withdrawn or admitted, and the
 // record is not asked. Anything else is r as listed. What the record placed
 // on each commit is read from the cache kept for the tip, when it holds it.
-func asCut(root string, r Reservation, now time.Time) (cut Reservation, notEnded bool, why string) {
+// reader is whose holds the reading is made for (ReaderSelf): one of their
+// own holder ids names a push of theirs only when their login pushed it
+// (asker.namesPusher), as it does for their acts, so another account's
+// reservation and tombstone naming the reader's id end nothing for them.
+func asCut(root string, r Reservation, now time.Time, reader Self) (cut Reservation, notEnded bool, why string) {
 	if !isRelease(r.Record) || r.State != StateReleased || r.ReleasedBy != ReleasedByTombstone {
 		return r, false, ""
 	}
@@ -1059,7 +1085,7 @@ func asCut(root string, r Reservation, now time.Time) (cut Reservation, notEnded
 	if complete && !slices.ContainsFunc(links, func(l chainLink) bool { return slices.ContainsFunc(l.m.Withdrawn, Withdrawal.unsettled) }) {
 		return r, false, ""
 	}
-	k := &asker{c: pushCheck{root, r.Record, []string{r.Commit}}, links: links, complete: complete, reading: true}
+	k := &asker{c: pushCheck{root, r.Record, []string{r.Commit}}, links: links, complete: complete, reading: true, self: reader}
 	defer k.save()
 	ended, holder, h, why := k.ended()
 	switch {
@@ -1094,8 +1120,9 @@ func asCut(root string, r Reservation, now time.Time) (cut Reservation, notEnded
 // second would withdraw the merges the first admitted. A tombstone whose end
 // the forge's record of pushes does not settle is read as ending nothing, and
 // the back-off says why. A view of the reservations that does not read
-// refuses: without it no other release can be ruled out.
-func otherLiveRelease(root, id string, now time.Time) error {
+// refuses: without it no other release can be ruled out. self is the person
+// reserving, whose own holder ids the reading holds to their login (asCut).
+func otherLiveRelease(root, id string, now time.Time, self Self) error {
 	snap, err := viewOf(root, now, true, isRelease)
 	if err != nil {
 		return refuse("could not tell whether another release is being cut: %s; %s", err.Error(), nothingPushed)
@@ -1104,7 +1131,7 @@ func otherLiveRelease(root, id string, now time.Time) error {
 		if r.Record == id {
 			continue
 		}
-		r, notEnded, why := asCut(root, r, now)
+		r, notEnded, why := asCut(root, r, now, self)
 		if why != "" {
 			return backOff("%s's tip is a tombstone, and whether it ends the release is not settled: %s; one release is cut at a time, so it is read as still being cut: "+
 				"wait for it to end (its tag on %s, or its holder's --release); %s", r.Record, why, Remote, nothingPushed)
@@ -1118,7 +1145,7 @@ func otherLiveRelease(root, id string, now time.Time) error {
 		}
 		if r.State == StateLive {
 			return backOff("%s is being cut by %s until %s%s, and one release is cut at a time: a second reservation would withdraw the merges the first admitted; "+
-				"wait for it to end (its tag on %s, or its holder's --release); %s", r.Record, r.Holder, stamp(r.EffectiveExpiry), over, Remote, nothingPushed)
+				"wait for it to end (its tag on %s, or its holder's --release); %s", r.Record, claimedName(r.Holder, holderClaimed(r.Holder, self)), stamp(r.EffectiveExpiry), over, Remote, nothingPushed)
 		}
 		lapseEnds := ""
 		if !notEnded {
@@ -1126,7 +1153,7 @@ func otherLiveRelease(root, id string, now time.Time) error {
 		}
 		return backOff("%s is still being cut by %s: its lease lapsed at %s%s, but it still holds merges withdrawn or admitted, and one release is cut at a time; "+
 			"it ends when %s renews it (abcd reserve %s) and finishes the cut, or ends it (abcd reserve %s --release)%s; %s",
-			r.Record, r.Holder, stamp(r.EffectiveExpiry), over, r.Holder, r.Record, r.Record, lapseEnds, nothingPushed)
+			r.Record, claimedName(r.Holder, holderClaimed(r.Holder, self)), stamp(r.EffectiveExpiry), over, r.Holder, r.Record, r.Record, lapseEnds, nothingPushed)
 	}
 	return nil
 }
@@ -1173,18 +1200,24 @@ func validPRNumber(n int) bool { return n > 0 && n <= 999999999 }
 // pushes shows it (dcn-2610231033516293): NotRead counts the commits above it
 // other logins pushed, which are not read, and Unplaced, when set, is why
 // that push (or whether the release has ended) could not be read, and none of
-// the reader's is listed. A merged one is not listed: it needs nothing more.
+// the reader's is listed; a reader whose login is not known has no newest
+// push to read, so a withdrawal naming their id is listed as stranded, never
+// due. A merged one is not listed: it needs nothing more.
 type ReleaseWithdrawals struct {
-	Subject  string       `json:"subject"`
-	Ended    bool         `json:"ended"`
-	Lapsed   bool         `json:"lapsed,omitempty"`
-	LapsedAt time.Time    `json:"lapsed_at,omitempty"`
-	Holder   string       `json:"holder,omitempty"`
-	Held     []Withdrawal `json:"held,omitempty"`
-	Admitted []Withdrawal `json:"admitted,omitempty"`
-	Due      []Withdrawal `json:"due,omitempty"`
-	Stranded []Withdrawal `json:"stranded,omitempty"`
-	Skipped  []Withdrawal `json:"skipped,omitempty"`
+	Subject  string    `json:"subject"`
+	Ended    bool      `json:"ended"`
+	Lapsed   bool      `json:"lapsed,omitempty"`
+	LapsedAt time.Time `json:"lapsed_at,omitempty"`
+	Holder   string    `json:"holder,omitempty"`
+	// HolderClaimed is true when Holder is a holder id that is not the
+	// reader's, which the listing only has the trailer's word for
+	// (holderClaimed).
+	HolderClaimed bool         `json:"holder_claimed,omitempty"`
+	Held          []Withdrawal `json:"held,omitempty"`
+	Admitted      []Withdrawal `json:"admitted,omitempty"`
+	Due           []Withdrawal `json:"due,omitempty"`
+	Stranded      []Withdrawal `json:"stranded,omitempty"`
+	Skipped       []Withdrawal `json:"skipped,omitempty"`
 	// Reader is whose record NotRead and Unplaced speak of.
 	Reader   string      `json:"reader,omitempty"`
 	NotRead  []PushCount `json:"not_read,omitempty"`
@@ -1202,11 +1235,11 @@ func (r ReleaseWithdrawals) Lines() []string {
 	case r.Lapsed && r.NotEnded != "":
 		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended, beneath a tombstone %s did not push: it holds no merge now, and nothing re-arms "+
 			"what it withdrew until %s ends it (abcd reserve %s --release, after --take-over from another copy of theirs) or its tag is on %s",
-			r.Subject, stamp(r.LapsedAt), r.NotEnded, r.NotEnded, r.Subject, Remote))
+			r.Subject, stamp(r.LapsedAt), claimedName(r.NotEnded, r.HolderClaimed), r.NotEnded, r.Subject, Remote))
 	case r.Lapsed:
 		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended: it holds no merge now, and from %s the next act of a copy of %s's "+
 			"ends it and re-arms what it withdrew, while the cut's tip is their own newest push (else their --release ends it); %s renews it from the cutting copy first (abcd reserve %s) if the cut goes on",
-			r.Subject, stamp(r.LapsedAt), stamp(r.LapsedAt.Add(TakeoverMargin)), r.Holder, r.Holder, r.Subject))
+			r.Subject, stamp(r.LapsedAt), stamp(r.LapsedAt.Add(TakeoverMargin)), claimedName(r.Holder, r.HolderClaimed), r.Holder, r.Subject))
 	}
 	if len(r.Held) > 0 {
 		out = append(out, fmt.Sprintf("%s holds %s withdrawn until it ends: the cutting copy admits one with --admit <pr>",
@@ -1216,7 +1249,7 @@ func (r ReleaseWithdrawals) Lines() []string {
 		out = append(out, fmt.Sprintf("%s admitted %s", r.Subject, strings.Join(numbers(r.Admitted), ", ")))
 	}
 	if r.NotEnded != "" {
-		out = append(out, notEndedLine(r.Subject, r.NotEnded))
+		out = append(out, notEndedLine(r.Subject, r.NotEnded, r.HolderClaimed))
 	}
 	for _, l := range []string{unplacedLine(r.Subject, r.Reader, r.Unplaced), notReadLine(r.Subject, r.Reader, r.NotRead)} {
 		if l != "" {
@@ -1257,9 +1290,9 @@ func (s Snapshot) ReleaseWithdrawals(root string, reader Self, now time.Time) []
 			continue
 		}
 		tip := r.Commit
-		cut, notEnded, why := asCut(root, r, now)
+		cut, notEnded, why := asCut(root, r, now, reader)
 		r = cut
-		rw := ReleaseWithdrawals{Subject: r.Record, Holder: r.Holder, Ended: r.State == StateReleased && !notEnded}
+		rw := ReleaseWithdrawals{Subject: r.Record, Holder: r.Holder, HolderClaimed: holderClaimed(r.Holder, reader), Ended: r.State == StateReleased && !notEnded}
 		if notEnded {
 			if why == "" {
 				rw.NotEnded = r.Holder
@@ -1269,7 +1302,7 @@ func (s Snapshot) ReleaseWithdrawals(root string, reader Self, now time.Time) []
 		}
 		ws := r.Withdrawn
 		if reader.Login != "" && why == "" && (len(ws) == 0 || r.State == StateUnreadable || slices.ContainsFunc(ws, Withdrawal.unsettled)) {
-			own := readerRecord(root, r.Record, tip, reader.Login)
+			own := readerRecord(root, r.Record, tip, reader)
 			rw.Reader, rw.NotRead, rw.Unplaced = reader.Name(), own.above, own.why
 			if own.why != "" {
 				ws = slices.DeleteFunc(slices.Clone(ws), func(w Withdrawal) bool { return reader.Owns(w.By) })
@@ -1287,7 +1320,10 @@ func (s Snapshot) ReleaseWithdrawals(root string, reader Self, now time.Time) []
 			case !w.Pending():
 			case !rw.Ended:
 				rw.Held = append(rw.Held, w)
-			case reader.Owns(w.By):
+			case reader.Owns(w.By) && reader.Login != "":
+				// Due only when the reader's own newest push was read
+				// for it: with their login unknown it cannot be, and no
+				// act of theirs re-arms it from here.
 				rw.Due = append(rw.Due, w)
 			default:
 				rw.Stranded = append(rw.Stranded, w)
@@ -1326,8 +1362,8 @@ func holdsUnsettledOf(root, id, tip string, reader Self) bool {
 // readerRecord is the record on id's release branch at tip of the person the
 // forge's record of pushes names by login (asker.newest), read as a listing
 // reads it: what the record placed on each commit taken from the cache kept
-// for the tip when it holds it.
-func readerRecord(root, id, tip, login string) ownRecord {
+// for the tip when it holds it, for reader, by their login.
+func readerRecord(root, id, tip string, reader Self) ownRecord {
 	tree, err := emptyTree(root)
 	if err != nil {
 		return ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err) + ")"}
@@ -1336,7 +1372,7 @@ func readerRecord(root, id, tip, login string) ownRecord {
 	if err != nil {
 		return ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err) + ")"}
 	}
-	k := &asker{c: pushCheck{root, id, []string{tip}}, links: links, complete: complete, reading: true}
+	k := &asker{c: pushCheck{root, id, []string{tip}}, links: links, complete: complete, reading: true, self: reader}
 	defer k.save()
-	return k.newest(login)
+	return k.newest(reader.Login)
 }
