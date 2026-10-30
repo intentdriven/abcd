@@ -116,7 +116,9 @@ the publish switch and no composition, and the workflow. The interface words,
 styles, scripts and headers policy ship in the binary, and the workflow builds
 and gates with the project flag, so the repository carries no site sources.
 The landing page is an about page derived in code, from four parts in this
-order, each rendered only where the repository holds it: the identity block,
+order, each rendered only where the repository holds it: the identity block
+(only when abcd writes the file it lives in: one under `.abcd/`, outside the
+local tier),
 the brief's opening (the first section of the brief skeleton,
 `01-product/01-press-release.md`), the press releases of the newest shipped
 intents whose audit was met, newest id first (a timestamped id carries when

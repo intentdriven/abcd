@@ -85,8 +85,9 @@ account's alone. `abcd peers` skips the store, counting it without its path.
 - **check** is the outbound check: over a commit range (messages and added
   lines, a merge's being those it adds against every parent) and texts, it
   refuses an unpublished advisory's id, its reserved CVE id, its title (12
-  characters or more) and the store's location on this machine, naming where
-  and never repeating the match. A paraphrase or a count is beyond it and
+  characters or more, unless the advisory is closed or its verdict is the
+  public track) and the store's location on this machine, naming where and
+  never repeating the match. A paraphrase or a count is beyond it and
   stays the author's to avoid.
 - **publish** shows the plan with each patched version taken from the first
   published release containing the fix, leaving out, with the reason, an

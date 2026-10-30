@@ -154,8 +154,8 @@ stays. A ruleset abcd cannot read whole, of another target, or excluding refs
 is not updated. A setting GitHub accepts only on top of another that is off and stays off
 (push protection without secret scanning, security updates without alerts) is
 advisory. No request body names the repository's visibility. It then
-mirrors the result into the repo's committed settings mirror, which has three
-blocks:
+mirrors the result into the repo's committed settings mirror, which has a
+managed and an observed block, and an owed block while anything is owed:
 
 - a managed block holding what abcd holds the repository to;
 - an owed block naming what the plan or the visibility does not offer yet;
