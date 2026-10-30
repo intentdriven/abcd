@@ -574,7 +574,14 @@ withdrawing nothing, and an admission or a release is refused.
   between the record and the forge, an arming made by hand since, or a
   withdrawal the forge refused before), read from this person's own newest
   push (see "Whose a withdrawal is"); what another account pushed above it is
-  counted and never read.
+  counted and never read. A copy never withdraws a pull request whose entry
+  under its own id it did not first record: where the record its push is
+  written over holds an entry for an armed pull request under the reader's
+  kept or declared id that this copy does not act on (see "What a copy acts
+  on"), that withdrawal is refused (a `withdraw` failure) with the forge left
+  as it is and nothing recorded, so the pull request stays armed, the launch
+  check keeps naming it, and the refusal names the one step left: withdraw it
+  from the merge path by hand.
 - **The record.** One `Abcd-Withdrawn` trailer a pull request, at most 40 on a
   tip, six fields separated by one space: its number, its node id, the form it
   was armed in (`queue` for a merge-queue entry, which is also the form of one
@@ -703,9 +710,10 @@ withdrawing nothing, and an admission or a release is refused.
   claims the end with a tombstone pushed over that lapsed tip, so a renewal
   that lands first wins and the cut keeps its hold, and re-arms only what the
   cut recorded withdrawn, each with one comment saying the cut lapsed. That
-  act ends the cut whatever it holds: an entry under `pre_id` is settled as
-  `manual`, and another holder's entry is carried unchanged on the tombstone,
-  for that holder's own copy to settle as a release that has ended. Another
+  act ends the cut whatever it still holds withdrawn or admitted: an entry
+  under `pre_id` is settled as `manual`, and another holder's entry is
+  carried unchanged on the tombstone, for that holder's own copy to settle as
+  a release that has ended. Another
   person's act ends nothing of it. Nothing renews a release lease by itself,
   so a cut still going on renews it; until the margin passes the lapse is
   reported (`abcd peers`, and the launch check refuses the cut).
@@ -829,7 +837,8 @@ withdrawing nothing, and an admission or a release is refused.
   and prints one line naming its pull requests to be re-armed by hand by their
   authors, naming no login; `abcd peers` names them so too (`by_hand`, on the
   settle and the release) once the release has ended, and the take-over that
-  writes one names it so among the stranded. An older release reads no marker
+  writes one names it so among the stranded, to be re-armed by hand once the
+  release ends. An older release reads no marker
   entry as anyone's: abcd v0.15.x passes the withdrawal trailer over as a key
   it does not know, and the default branch before the holder id reads every
   commit naming a holder id, which every commit carrying the marker is, as

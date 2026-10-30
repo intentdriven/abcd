@@ -157,8 +157,13 @@ by hand since), and only one your own newest push to the release's branch
 records as yours (see "Your record is your own newest push" below); what
 another account pushed above it is counted in `settles` and never read. A pull request the forge refused to withdraw stays
 on the record as `kept`, carried by your renewals, and the next live renewal
-tries the withdrawal again, so reserving the release again is the remedy. Tell
-the user what was withdrawn.
+tries the withdrawal again, so reserving the release again is the remedy. A
+copy never withdraws a pull request whose entry under your holder id it did
+not first record: one the release already records under your id in a commit
+another login pushed is left armed, with the forge untouched and nothing
+recorded, and named in `forge_failures`; the launch check keeps naming it, so
+tell the user to withdraw it from the merge path by hand. Tell the user what
+was withdrawn.
 
 One release is cut at a time: reserving a release while another release is
 still being cut backs off (exit 3), naming the release and its holder. A
@@ -237,7 +242,10 @@ recorded withdrawn, each with one comment saying the cut lapsed. It does so
 only while the cut's tip is that person's own newest push, as the forge's
 record of pushes places it; under a commit another login pushed, only their
 `--release` or the tag ends it. Another person's act ends nothing of it
-(dcn-2610271926369425). Nothing renews a
+(dcn-2610271926369425). It also ends a cut holding only `pre_id` entries or
+another holder's, settling each `pre_id` one as `manual` and carrying the
+other holder's entries unchanged on the tombstone, for that holder's own copy
+to settle. Nothing renews a
 release lease by itself, so a cut still going on renews it by reserving the
 release again from the cutting copy; until then the lapse is reported
 (`/abcd:peers`, and the launch check refuses the cut).
@@ -297,9 +305,13 @@ carries, so a reservation over it writes it under the marker `pre_id` (a
 holder from before the holder id): it is no one's, no copy re-arms or admits
 it, and the act that ends the release settles it as `manual` and prints a line
 naming its pull requests for their authors to re-arm by hand (`by_hand` on the
-settle); tell the user. The holder who recorded it still re-arms it from their
+settle), and a reservation that writes one while the release is still being
+cut names it so among the stranded, to be re-armed by hand once the release
+ends; tell the user. The holder who recorded it still re-arms it from their
 own newest push, which keeps their own entry over the marker one. A release
-holds one entry for each pull request, and abcd never writes one twice. A
+holds one entry for each pull request, and abcd never writes one twice. Where
+two entries name one pull request, your own, as your own newest push records
+it, is always the one kept: another login's entry never displaces it. A
 withdrawal recorded on an earlier commit of the branch and missing from a
 later one, with the tip not carrying it either, is reported lost
 (`lost_withdrawals` on `/abcd:peers`, and a warning in the launch check): an
