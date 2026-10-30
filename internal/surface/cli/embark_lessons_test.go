@@ -289,7 +289,7 @@ func TestEmbarkLessonsSaysWhenTheHomeIsNotRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(stderr, "HOME lies inside the git working tree") != 1 {
+	if strings.Count(stderr, "HOME lies inside the git working tree") != 1 || !strings.Contains(stderr, "abcd: HOME lies inside the git working tree") {
 		t.Fatalf("stderr does not say the home was not read:\n%s", stderr)
 	}
 	if v := readLessonsView(t, []byte(stdout)); v.Judgement == nil || v.Judgement.Mode != "host" || len(v.Questions) != 5 {

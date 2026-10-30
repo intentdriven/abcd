@@ -37,11 +37,12 @@ const maxEmbarkBriefBytes = 256 * 1024
 // at targetAbs: the repository it lies in, or the target itself, is where a
 // shadow pair's lab is looked for. What resolving the layers refused (a
 // foreign-owned root, a HOME inside a working tree) goes to stderr, one line
-// each, as every front door that reads the layers says it. Tests replace it.
+// each under the abcd: prefix the router's diagnostics carry, as every front
+// door that reads the layers says it. Tests replace it.
 var loadLessonsRouter = func(stderr io.Writer, targetAbs string) (*judge.Router, error) {
 	roots, notes := layered.RootsFor(targetAbs)
 	for _, n := range notes {
-		fmt.Fprintln(stderr, termsafe.Sanitize(fsutil.RedactHome(n)))
+		fmt.Fprintf(stderr, "abcd: %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
 	}
 	repo := roots.Repo
 	if repo == "" {
