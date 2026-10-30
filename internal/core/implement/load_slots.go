@@ -71,6 +71,15 @@ const (
 	SlotsEnv     = "env"
 )
 
+// slotsSetting is the setting a count from src was read from, as a message
+// names it.
+func slotsSetting(src string) string {
+	if src == SlotsEnv {
+		return PreflightSlotsEnv
+	}
+	return PreflightSlotsKey
+}
+
 // The two gates a waiter waits at.
 const (
 	// GateTests is the first gate, before a preflight's test stages.
@@ -83,7 +92,11 @@ const (
 // test stages at once, where that came from, and a note when the machine's
 // config.json was read past (machineConfigNote), for the account whose home
 // is home. It reads getenv and the machine's config.json, and no repository
-// file.
+// file. It is the one reader of the count: WaitLoad calls it at every look,
+// its race-gate shortcut included, and cmd/test-parallelism calls it before it
+// divides the cores by the count (PreflightParallelism,
+// machineload.GoTestParallelism), so the gate and a stage's -p never judge by
+// different values.
 func PreflightSlots(getenv func(string) string, home string) (int, string, string, error) {
 	if v := strings.TrimSpace(getenv(PreflightSlotsEnv)); v != "" {
 		n, err := strconv.Atoi(v)

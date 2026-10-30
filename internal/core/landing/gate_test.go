@@ -53,3 +53,65 @@ func TestAPreflightPastItsBoundIsKilledWithItsGroup(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 }
+
+// minPreflightRun is the least a whole preflight run takes once the load gate
+// admits it, on a loaded machine: its unit and race stages each run under a
+// 40-minute package budget, after the gates, the eval lanes, build and vet.
+const minPreflightRun = 4 * time.Hour
+
+// TestGateTimeoutOutlastsTheWholeRunWait: `make preflight` waits at the load
+// gate as one whole run, for up to the --timeout its recipe gives the gate,
+// and only then runs its stages, whose race stage may wait at the race gate
+// for up to that gate's own --timeout. Land's bound on the preflight must
+// outlast both waits and a run's length, or land kills a preflight that is
+// still waiting its turn or partway through it. Both waits are read from the
+// Makefile, so they cannot drift.
+func TestGateTimeoutOutlastsTheWholeRunWait(t *testing.T) {
+	wait := makefileGateTimeout(t, "preflight", "implement load --wait")
+	if wait != preflightGateWait {
+		t.Errorf("the Makefile's preflight gate waits up to %s, and preflightGateWait says %s", wait, preflightGateWait)
+	}
+	race := makefileGateTimeout(t, "preflight-stages", "implement load --race-gate")
+	if race != preflightRaceGateWait {
+		t.Errorf("the Makefile's race gate waits up to %s, and preflightRaceGateWait says %s", race, preflightRaceGateWait)
+	}
+	if want := wait + race + minPreflightRun; gateTimeout < want {
+		t.Fatalf("gateTimeout is %s; the Makefile's gate waits up to %s and its race gate up to %s around a run of at least %s, so want at least %s",
+			gateTimeout, wait, race, minPreflightRun, want)
+	}
+}
+
+// makefileGateTimeout is the --timeout of the load gate that the recipe of the
+// Makefile's target runs, found by marker, its spelling of the gate.
+func makefileGateTimeout(t *testing.T, target, marker string) time.Duration {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := false
+	for _, l := range strings.Split(string(raw), "\n") {
+		if l == target+":" || strings.HasPrefix(l, target+": ") {
+			in = true
+			continue
+		}
+		if in && !strings.HasPrefix(l, "\t") {
+			break
+		}
+		if !in || !strings.Contains(l, marker) {
+			continue
+		}
+		f := strings.Fields(l)
+		for i := 0; i+1 < len(f) && f[i] != "--"; i++ {
+			if f[i] == "--timeout" {
+				d, err := time.ParseDuration(f[i+1])
+				if err != nil {
+					t.Fatalf("the preflight gate's --timeout %q: %v", f[i+1], err)
+				}
+				return d
+			}
+		}
+	}
+	t.Fatalf("the Makefile's %s recipe runs no `%s --timeout <d>`", target, marker)
+	return 0
+}

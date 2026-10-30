@@ -487,7 +487,10 @@ func TestPrePushStillRefusesADirectPushToMain(t *testing.T) {
 
 // `make preflight` is what mints the receipt, so its recipe must record the tree's
 // state before any gate runs and mint after the last one. Read through `make -n`,
-// which prints the recipe the real target would run without running it.
+// which prints the recipe the real target would run without running it. The
+// full rule waits at the load gate as one whole run, whose command is the make
+// of preflight-stages (itd-2610262127138979), so the mint follows that line,
+// and the race-enabled tests are the stages' last step.
 func TestMakePreflightMintsTheReceiptAfterItsLastGate(t *testing.T) {
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skip("make unavailable")
@@ -498,32 +501,41 @@ func TestMakePreflightMintsTheReceiptAfterItsLastGate(t *testing.T) {
 	if err != nil {
 		t.Skip("not in a git checkout")
 	}
+	dryRun := func(args ...string) []string {
+		t.Helper()
+		cmd := exec.Command("make", append([]string{"-n"}, args...)...)
+		cmd.Dir = strings.TrimSpace(string(out))
+		cmd.Env = gittest.Env(t)
+		dry, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("make -n %s: %v\n%s", strings.Join(args, " "), err, dry)
+		}
+		return strings.Split(strings.TrimSpace(string(dry)), "\n")
+	}
 	// The full rule whatever this checkout's change is: a records-only one would
 	// read the second rule, which the lint package pins.
-	cmd := exec.Command("make", "-n", "preflight", "PREFLIGHT_RECORDS_ONLY=")
-	cmd.Dir = strings.TrimSpace(string(out))
-	cmd.Env = gittest.Env(t)
-	dry, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("make -n preflight: %v\n%s", err, dry)
-	}
-	lines := strings.Split(strings.TrimSpace(string(dry)), "\n")
+	lines := dryRun("preflight", "PREFLIGHT_RECORDS_ONLY=")
 	last := lines[len(lines)-1]
 	mint := regexp.MustCompile(`^scripts/preflight-receipt\.sh mint "[0-9a-f]{40} (clean|dirty|hidden)"$`)
 	if !mint.MatchString(last) {
 		t.Fatalf("the preflight recipe's last step is %q; want the receipt minted from the state recorded "+
-			"before the first gate ran\n%s", last, dry)
+			"before the first gate ran\n%s", last, strings.Join(lines, "\n"))
 	}
-	raceAt, mintAt := -1, len(lines)-1
-	for i, l := range lines {
+	gate := regexp.MustCompile(`^go run \./cmd/abcd implement load --wait --timeout \S+ -- \S*make --no-print-directory preflight-stages$`)
+	if len(lines) < 2 || !gate.MatchString(lines[len(lines)-2]) {
+		t.Errorf("the receipt is not minted straight after the whole run the load gate admits\n%s", strings.Join(lines, "\n"))
+	}
+	stages := dryRun("preflight-stages")
+	raceAt := -1
+	for i, l := range stages {
 		// The race stage is the continuation of the line that derives its -p,
 		// so make -n prints it indented.
 		if strings.HasPrefix(strings.TrimSpace(l), "go test -race") {
 			raceAt = i
 		}
 	}
-	if raceAt < 0 || raceAt > mintAt {
-		t.Errorf("the receipt is not minted after the race-enabled tests\n%s", dry)
+	if raceAt != len(stages)-1 {
+		t.Errorf("the race-enabled tests are not the whole run's last stage\n%s", strings.Join(stages, "\n"))
 	}
 }
 
@@ -596,7 +608,9 @@ func TestPreflightReceiptRefusesARecordsOnlyRunOverACodeChange(t *testing.T) {
 // TestMakePreflightTakesTheRecordsRuleOnlyForARecordsChange runs the
 // committed Makefile, dry, in a clone whose change is records alone, then the
 // same change with a code file mixed in: the first takes the records-only rule
-// (no race stage, a records-only receipt) and the second the full one.
+// (no load gate, no race stage, a records-only receipt) and the second the
+// full one, the whole run behind the load gate, whose stages end in the race
+// stage.
 func TestMakePreflightTakesTheRecordsRuleOnlyForARecordsChange(t *testing.T) {
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skip("make unavailable")
@@ -614,21 +628,27 @@ func TestMakePreflightTakesTheRecordsRuleOnlyForARecordsChange(t *testing.T) {
 	c.git("add", "-A")
 	c.git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "the committed Makefile")
 	c.git("update-ref", "refs/remotes/origin/main", "HEAD")
-	dry := func() string {
+	dry := func(target string) string {
 		t.Helper()
-		out, err := c.run(c.dir, "make", "-n", "preflight")
+		out, err := c.run(c.dir, "make", "-n", target)
 		if err != nil {
-			t.Fatalf("make -n preflight: %v\n%s", err, out)
+			t.Fatalf("make -n %s: %v\n%s", target, err, out)
 		}
 		return out
 	}
+	const wholeRun = "implement load --wait --timeout 12h -- "
 	c.commit(".abcd/work/issues/open/iss-1.md", "one\n")
-	if out := dry(); strings.Contains(out, "go test -race") || !strings.Contains(out, "\nscripts/records-only.sh\n") ||
+	if out := dry("preflight"); strings.Contains(out, "go test -race") || strings.Contains(out, wholeRun) ||
+		!strings.Contains(out, "\nscripts/records-only.sh\n") ||
 		!regexp.MustCompile(`(?m)^scripts/preflight-receipt\.sh mint "[0-9a-f]{40} clean" records-only$`).MatchString(out) {
 		t.Fatalf("a records change did not take the records-only rule:\n%s", out)
 	}
 	c.commit("feature.go", "package feature\n")
-	if out := dry(); !strings.Contains(out, "go test -race") || strings.Contains(out, "records-only") {
+	if out := dry("preflight"); !strings.Contains(out, wholeRun) || !strings.Contains(out, "preflight-stages") ||
+		strings.Contains(out, "records-only") {
 		t.Fatalf("a code change mixed into a records change did not take the full rule:\n%s", out)
+	}
+	if out := dry("preflight-stages"); !strings.Contains(out, "go test -race") || strings.Contains(out, "records-only") {
+		t.Fatalf("the full rule's stages do not end in the race stage:\n%s", out)
 	}
 }

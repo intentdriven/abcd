@@ -906,7 +906,11 @@ across accounts all but the narrow windows below. Each gate is shut only by its 
 hold: a first gate's `--wait -- make preflight` holds its gate until its
 preflight starts its race run, and were that to shut the race gate too, an
 earlier preflight's race stage would wait on it while the holder's own race
-waiter queued behind that earlier one, and neither would move. A preflight waiting there has passed its first gate and
+waiter queued behind that earlier one, and neither would move. That command
+hold is taken at one preflight at a time; a waiter that reads more than one,
+unless its own command is a race run, judges it as the two-minute settle hold,
+so raising `load.preflights` reaches a preflight already queued behind it,
+and the preflights running still count against the setting. A preflight waiting there has passed its first gate and
 runs nothing: at one preflight at a time it counts as in its test stages, and
 above one it takes no slot at the first gate until its race run starts, so the
 machine is not left idle while it waits for another preflight's race run

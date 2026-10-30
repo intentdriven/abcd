@@ -313,13 +313,20 @@ func workflowJobBlock(workflow, job string) (string, bool) {
 	return strings.Join(lines[at:end], "\n"), true
 }
 
-// preflightPrereqs reads the prerequisites off the `preflight:` recipe line.
-// Hand-parsed for the same reason the workflow contracts beside it are: this
-// repository carries no Makefile parser and adds none for one line.
+// preflightStages is the target that holds preflight's stages: `preflight`
+// itself only runs it through the load gate's command form, so a preflight
+// waits for its turn as one whole run (itd-2610262127138979), and its gates,
+// build, vet and test stages are this target's prerequisites and recipe.
+const preflightStages = "preflight-stages"
+
+// preflightPrereqs reads the prerequisites off the recipe line of preflight's
+// stages (preflightStages), which are preflight's gates. Hand-parsed for the
+// same reason the workflow contracts beside it are: this repository carries no
+// Makefile parser and adds none for one line.
 func preflightPrereqs(t *testing.T, root string) []string {
 	t.Helper()
 	for _, line := range strings.Split(readRepoFile(t, root, "Makefile"), "\n") {
-		rest, ok := strings.CutPrefix(line, "preflight:")
+		rest, ok := strings.CutPrefix(line, preflightStages+":")
 		if !ok {
 			continue
 		}
@@ -333,7 +340,7 @@ func preflightPrereqs(t *testing.T, root string) []string {
 		}
 		return out
 	}
-	t.Fatal("Makefile declares no `preflight:` recipe")
+	t.Fatalf("Makefile declares no `%s:` recipe", preflightStages)
 	return nil
 }
 
