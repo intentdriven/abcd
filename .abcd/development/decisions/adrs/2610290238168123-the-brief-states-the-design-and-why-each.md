@@ -41,8 +41,9 @@ end.
 The product thinker ruled on 2026-10-27 (dcn-2610271112331508,
 dcn-2610271112339516, dcn-2610271112330235):
 
-1. **Always a single source of truth.** Every fact, rule, behaviour and list has
-   one home; every other place points to it.
+1. **Every claim has one home**, as the principle
+   [every claim has one home](../../principles/every-claim-has-one-home.md)
+   states.
 2. **A command's behaviour lives in its command page.** The page under
    `commands/` is the one home of what the command does: its refusals, its
    output, its steps and its exit codes. The documentation-fidelity check moves
