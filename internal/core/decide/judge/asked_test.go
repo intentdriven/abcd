@@ -1,6 +1,7 @@
 package judge
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -15,7 +16,9 @@ import (
 // asked is pinned to the steps that ask through the router: every judgement
 // type a file outside this package names, and only those, is in it. A step
 // wired to the router without its type added to asked, or a type left in
-// asked after its step stopped asking, fails here.
+// asked after its step stopped asking, fails here. A file that dot-imports
+// the package fails it too: its unqualified names cannot be read as the
+// package's, so the pin fails closed rather than miss them.
 func TestAskedIsTheTypesTheCallersName(t *testing.T) {
 	consts := map[string]Type{}
 	fset := token.NewFileSet()
@@ -72,6 +75,10 @@ func TestAskedIsTheTypesTheCallersName(t *testing.T) {
 					local = im.Name.Name
 				}
 			}
+		}
+		if local == "." {
+			return fmt.Errorf("%s dot-imports the judge package, so the judgement types it names cannot be told apart from "+
+				"its own identifiers and this pin of asked would miss them; import the package by name", path)
 		}
 		if local == "" {
 			return nil
