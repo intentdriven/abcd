@@ -718,12 +718,14 @@ func ghCheckApps(root, repo, branch string, checks []string) (map[string]CheckAp
 		}
 	}
 	apps := map[string]CheckApp{}
-	var unseen, mixed []string
+	var unseen, mixed, statusOnly []string
 	for _, c := range checks {
 		by := reporters[c]
 		switch {
 		case len(by) > 1 || (len(by) == 1 && byStatus[c]):
 			mixed = append(mixed, c)
+		case byStatus[c]:
+			statusOnly = append(statusOnly, c)
 		case len(by) == 1:
 			for id, slug := range by {
 				if id > 0 {
@@ -739,6 +741,9 @@ func ghCheckApps(root, repo, branch string, checks []string) (map[string]CheckAp
 	var notes []string
 	if len(mixed) > 0 {
 		notes = append(notes, "reported by more than one source, so required from any source: "+strings.Join(mixed, ", "))
+	}
+	if len(statusOnly) > 0 {
+		notes = append(notes, "reported by a commit status, which names no app, so required from any source: "+strings.Join(statusOnly, ", "))
 	}
 	if len(unseen) > 0 {
 		notes = append(notes, "no recent run reported it, so required from any source: "+strings.Join(unseen, ", "))

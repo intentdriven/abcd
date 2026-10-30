@@ -112,6 +112,11 @@ func TestRemoteAuditLeavesAnUnclearSourceOnAnySource(t *testing.T) {
 			statuses:   []string{"check"},
 			note:       []string{"check", "more than one source"},
 		},
+		"a commit status alone": {
+			commitRuns: []string{run("gitleaks", 15368, "github-actions")},
+			statuses:   []string{"check"},
+			note:       []string{"check", "commit status"},
+		},
 		"no recent run": {
 			commitRuns: []string{run("gitleaks", 15368, "github-actions")},
 			note:       []string{"check", "no recent run"},
