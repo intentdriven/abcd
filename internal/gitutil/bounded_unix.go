@@ -30,7 +30,7 @@ import (
 // program a hook would start, while the stop is under way is never started,
 // rather than escaping the stop and holding git's output for the whole
 // WaitDelay (iss-2610292307181518). The reads share twice one read's time
-// limit, so a read after the first always has at least one read's time, and
+// limit, so the second read always has at least one read's time, and
 // a read that fails ends them. The sweep it returns, run
 // once Wait has returned, waits until stopGrace has passed since the stop and
 // then stops each process that is still running, with any process one of them
@@ -105,8 +105,8 @@ func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 				return
 			}
 			if !time.Now().Before(deadline) {
-				if beforeSweepKill != nil {
-					beforeSweepKill(alive)
+				if beforeSweepStop != nil {
+					beforeSweepStop()
 				}
 				pids := make([]int, 0, len(alive))
 				for _, p := range alive {
@@ -114,6 +114,9 @@ func stopWithDescendants(cmd *exec.Cmd) (sweep func()) {
 					pids = append(pids, p.pid)
 				}
 				stopDescendants(&alive, procTableTimeout, pids...)
+				if beforeSweepKill != nil {
+					beforeSweepKill()
+				}
 				for _, p := range alive {
 					_ = syscall.Kill(p.pid, syscall.SIGKILL)
 				}
@@ -173,9 +176,10 @@ func stopDescendants(stopped *[]procEntry, budget time.Duration, roots ...int) {
 // descendants and the signals, so a test can hold the stop open there.
 var afterSnapshot func()
 
-// beforeSweepKill, when set, runs in the sweep between its read of the
-// processes still running and their stop, so a test can act in that gap.
-var beforeSweepKill func(alive []procEntry)
+// beforeSweepStop and beforeSweepKill, when set, run in the sweep: the first
+// between its read of the processes still running and their stop, the second
+// between their stop and the SIGKILL, so a test can act in either gap.
+var beforeSweepStop, beforeSweepKill func()
 
 // procEntry is one live process of the table: its pid, its parent's, and its
 // start time as ps prints it, which with the pid names the process.

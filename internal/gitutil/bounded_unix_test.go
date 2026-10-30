@@ -168,13 +168,16 @@ func TestAStopFreezesGitItself(t *testing.T) {
 }
 
 // TestTheSweepStopsASurvivorBeforeKillingIt: a process that outlives the
-// stop's SIGTERM and starts a child between the sweep's read and its SIGKILL
-// is stopped first, and the child, found by a read made once it is stopped,
-// is killed with it rather than left running.
+// stop's SIGTERM is stopped before the sweep's SIGKILL, so it starts nothing
+// between the two, and a child it started before its stop is found by a read
+// made once it is stopped and killed with it. The survivor starts a child on
+// each SIGUSR1: one is sent before the sweep stops it, and one after. It
+// waits with the wait builtin, which a trapped signal interrupts, so a
+// stopped child of its own does not hold its trap back.
 func TestTheSweepStopsASurvivorBeforeKillingIt(t *testing.T) {
 	tmp := t.TempDir()
-	survivorPid, childPid := filepath.Join(tmp, "survivor.pid"), filepath.Join(tmp, "child.pid")
-	script := "trap '' TERM; trap 'sleep 60 & echo $! > \"" + childPid + "\"' USR1; echo $$ > '" + survivorPid + "'; while :; do sleep 0.1; done"
+	survivorPid, children := filepath.Join(tmp, "survivor.pid"), filepath.Join(tmp, "children")
+	script := "trap '' TERM; trap 'sleep 60 & echo $! >> \"" + children + "\"' USR1; echo $$ > '" + survivorPid + "'; while :; do sleep 0.1 & wait $!; done"
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", "/bin/sh -c '"+strings.ReplaceAll(script, "'", `'\''`)+"' & wait")
@@ -184,27 +187,59 @@ func TestTheSweepStopsASurvivorBeforeKillingIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		for _, f := range []string{childPid, survivorPid} {
-			if pid, ok := readPid(f); ok {
-				_ = syscall.Kill(pid, syscall.SIGKILL)
-			}
+		for _, pid := range childPids(children) {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+		if pid, ok := readPid(survivorPid); ok {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
 		}
 	})
 	survivor := waitPid(t, survivorPid)
-	beforeSweepKill = func([]procEntry) {
+	var beforeStop, beforeKill bool
+	beforeSweepStop = func() {
+		beforeStop = true
 		_ = syscall.Kill(survivor, syscall.SIGUSR1)
-		waitPid(t, childPid)
+		for deadline := time.Now().Add(5 * time.Second); len(childPids(children)) == 0; time.Sleep(20 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatal("the survivor started no child before its stop")
+			}
+		}
 	}
-	t.Cleanup(func() { beforeSweepKill = nil })
+	beforeSweepKill = func() {
+		beforeKill = true
+		_ = syscall.Kill(survivor, syscall.SIGUSR1)
+		time.Sleep(500 * time.Millisecond)
+	}
+	t.Cleanup(func() { beforeSweepStop, beforeSweepKill = nil, nil })
 
 	cancel()
 	_ = cmd.Wait()
 	sweep()
-	child, _ := readPid(childPid)
-	time.Sleep(300 * time.Millisecond)
-	if state := procState(t, child); state != "" && !strings.HasPrefix(state, "Z") {
-		t.Errorf("the child the survivor started before the SIGKILL (pid %d) is still running, in state %q", child, state)
+	if !beforeStop || !beforeKill {
+		t.Fatalf("the sweep did not reach its kill (before the stop: %v, before the kill: %v)", beforeStop, beforeKill)
 	}
+	time.Sleep(300 * time.Millisecond)
+	pids := childPids(children)
+	if len(pids) != 1 {
+		t.Errorf("the survivor started %d children, want only the one before its stop", len(pids))
+	}
+	for _, pid := range pids {
+		if state := procState(t, pid); state != "" && !strings.HasPrefix(state, "Z") {
+			t.Errorf("the survivor's child (pid %d) is still running, in state %q", pid, state)
+		}
+	}
+}
+
+// childPids is every pid written to path, one a line.
+func childPids(path string) []int {
+	raw, _ := os.ReadFile(path)
+	var pids []int
+	for _, f := range strings.Fields(string(raw)) {
+		if pid, err := strconv.Atoi(f); err == nil && pid > 1 {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
 }
 
 // waitPid is the pid written to path, waiting up to five seconds for it.
