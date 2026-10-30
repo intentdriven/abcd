@@ -165,7 +165,7 @@ func TestTheHolderIDIsMintedOnceAndKept(t *testing.T) {
 
 // TestARacingMintKeepsTheFirstID: mints racing on one home all come back
 // with one id, and a mint that finds the file already made reads it rather
-// than replacing it.
+// than replacing it; only the mint that wrote the file tells it.
 func TestARacingMintKeepsTheFirstID(t *testing.T) {
 	home := t.TempDir()
 	first, err := mintHolderID(home)
@@ -177,6 +177,7 @@ func TestARacingMintKeepsTheFirstID(t *testing.T) {
 	}
 
 	home = t.TempDir()
+	notices := captureMintNotices(t)
 	const n = 8
 	ids := make([]string, n)
 	errs := make([]error, n)
@@ -193,6 +194,9 @@ func TestARacingMintKeepsTheFirstID(t *testing.T) {
 		if errs[i] != nil || ids[i] != ids[0] || !validHolderID(ids[i]) {
 			t.Fatalf("racing mints gave %v, %v; want one id", ids, errs)
 		}
+	}
+	if got := notices(); len(got) != 1 || got[0] != MintNoticeLine(ids[0]) {
+		t.Fatalf("racing mints told %q; want the one mint that wrote the file told once", got)
 	}
 }
 
