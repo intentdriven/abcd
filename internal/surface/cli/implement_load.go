@@ -46,6 +46,9 @@ var (
 	loadRenew      = func(root string) ([]claim.Renewal, error) { return claim.RenewDue(root, claim.Options{}) }
 	loadRenewEvery = 5 * time.Minute
 	loadRenewRound func()
+	// loadQuietEvery is how often a command hold's holder looks at its own
+	// tree while its command runs (implement.HoldWatch).
+	loadQuietEvery = implement.HoldWatchEvery
 	// loadRenewRuns renews the due reservations of the runs the waiter's
 	// checkout serves (loop.RenewRuns), in each round beside loadRenew.
 	loadRenewRuns = func(root string) []loop.RunRenewal { return loop.RenewRuns(root, time.Now()) }
@@ -214,7 +217,30 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"gates: above one preflight at a time it stays shut while another race run is\n" +
 			"live, judges and takes the race gate's hold as well as its own, and from the\n" +
 			"moment it opens every race gate and every other such command counts it as a\n" +
-			"race run, so a second one waits for the first. A\n" +
+			"race run, so a second one waits for the first. A command that is not a race run\n" +
+			"takes the command hold only at one preflight at a time; above one its hold lasts\n" +
+			implement.WaitSettle.String() + ", as without a command, and the process table counts it in its slot.\n" +
+			"A command hold lasts until its command exits, starts its own race run or has run\n" +
+			implement.WaitCommandCap.String() + ", so once\n" +
+			"the holder's whole process tree has used no more than\n" +
+			shareText(implement.QuietShare) + " of a core for " + implement.QuietSpan.String() + ", each waiter behind it says so in one more\n" +
+			"`waiting for capacity:` line naming its pid, its checkout and how long it has held\n" +
+			"the slot, and the holder says so on its own standard error while others queue.\n" +
+			"Little CPU is a fact, not a verdict: a slow run waiting on its subprocesses uses\n" +
+			"little too. The hold stays in force and nothing is signalled; a tree with a\n" +
+			"waiter of its own queued at a gate is not counted quiet; only your own\n" +
+			"account's hold is said quiet. Every waiting line also names each holder ahead,\n" +
+			"of any account, after `holding:`, with its age and its tree's CPU over the last\n" +
+			implement.QuietSpan.String() + ", or `not yet measured` until this waiter has watched it that long, and\n" +
+			"marks one `quiet:` in place of `using` once that CPU is no more than " + shareText(implement.QuietShare) + "\n" +
+			"of a core and no waiter of its own is queued at a gate, whatever hold it is\n" +
+			"under, so a stalled run above one preflight at a time, which no notice names,\n" +
+			"still reads as one. The line is said again every " + implement.QuietSpan.String() + " while the gate\n" +
+			"stays shut. A child that starts\n" +
+			"and exits between two looks is never seen, so a tree of short children (git)\n" +
+			"reads low, and counts as working: neither the notice nor the mark calls it\n" +
+			"quiet; a waiter's own reads of the table and its renewals' git and gh in the\n" +
+			"tree are not counted. A\n" +
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
 			"While it waits, and while its command runs, in a checkout, the waiter keeps\n" +
 			"your own reservations from lapsing: at once and then every five minutes it\n" +
@@ -308,8 +334,17 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 		Now: loadNow, Sleep: loadSleep, Timeout: timeout, Command: len(command) > 0, Race: race, Jitter: loadJitter,
 		Mark: loadMark, RaceCommand: machineload.IsRaceCommand(command),
 	}
+	// The hold names the checkout it was taken in, so a waiter behind a
+	// quiet holder can say where it runs.
+	if cwd, err := os.Getwd(); err == nil {
+		req.Dir = cwd
+		if root, err := gitutil.CheckoutRoot(cwd, "the hold"); err == nil {
+			req.Dir = root
+		}
+	}
 	if !asJSON {
 		req.OnWait = func(r implement.WaitResult) { fmt.Fprintf(out, "waiting for capacity: %s\n", waitConditions(r)) }
+		req.OnQuiet = func(r implement.WaitResult) { fmt.Fprintf(out, "waiting for capacity: %s\n", waitConditions(r)) }
 		req.OnSettle = func(j time.Duration) {
 			fmt.Fprintf(out, "load gate: the machine looks free; checking everything again in %s before opening, so two starters in one quiet minute do not start together\n",
 				j.Round(time.Second))
@@ -354,6 +389,10 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	if res.Unmark != nil {
 		unmark = res.Unmark
 	}
+	stopWatch := func() {}
+	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
+		stopWatch = startQuietWatch(errOut, *res.Hold, res.HoldGates)
+	}
 	code, runErr := runGated(cmd, command, errOut, unmark)
 	unmark()
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
@@ -363,6 +402,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 				abcdhome.Display(implement.HoldFileName(res.Hold.Gate)), err)
 		}
 	}
+	// The watch is stopped only after the hold is released: a look in flight
+	// can take a slow ps run, and the slot is not kept for it.
+	stopWatch()
 	if runErr != nil {
 		return &exitError{Code: 127, Msg: "abcd implement load --wait: the command could not be started: " + runErr.Error()}
 	}
@@ -505,6 +547,71 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 	}
 }
 
+// startQuietWatch looks at the holder's own process tree every
+// loadQuietEvery while its command runs (implement.HoldWatch), and says on w,
+// once each time it goes quiet, when the tree has used little CPU for
+// implement.QuietSpan while others queue at any gate it holds, so the command's owner
+// sees it beside the command's output and can judge whether it is still
+// working. It never stops the command: that is the owner's to do.
+func startQuietWatch(w io.Writer, h implement.WaitHolder, gates []string) (stop func()) {
+	if len(gates) == 0 {
+		gates = []string{h.Gate}
+	}
+	hw := &implement.HoldWatch{Read: loadReader, ReadArgs: loadArgsReader, Now: loadNow,
+		Self: machineload.Self{PID: h.PID, UID: uint32(os.Geteuid())}, Gates: gates}
+	done := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		tick := time.NewTicker(loadQuietEvery)
+		defer tick.Stop()
+		said := false
+		for {
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+			}
+			quiet, waiting := hw.Look()
+			tell := quiet > 0 && len(waiting) > 0
+			if tell && !said {
+				fmt.Fprintf(w, "abcd implement load --wait: this command (pid %d%s) has held the %s for %s using little CPU (under %s of a core for the last %s) while %s for it; if it is stuck, stop it by its own pid: the load gate never stops it\n",
+					h.PID, inCheckout(termsafe.Sanitize(h.Dir)), slotName(h.Gate), loadNow().Sub(h.Opened).Round(time.Minute), shareText(implement.QuietShare),
+					quiet.Round(time.Minute), pidsText(waiting, "another waiter queues", "waiters queue"))
+			}
+			said = tell
+		}
+	}()
+	return func() {
+		close(done)
+		<-finished
+	}
+}
+
+// slotName names the slot a hold at gate takes.
+func slotName(gate string) string {
+	if gate == implement.GateRace {
+		return "race slot"
+	}
+	return "test slot"
+}
+
+// inCheckout is ", <dir>" after a pid, or nothing when dir is unknown.
+func inCheckout(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	return ", " + dir
+}
+
+// seconds is a count of seconds as a duration.
+func seconds(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }
+
+// shareText is a share of one core as a percentage.
+func shareText(share float64) string {
+	return strconv.FormatFloat(share*100, 'f', -1, 64) + "%"
+}
+
 // sharedStderr is the waiter's standard error as the gated command and the
 // renewal's messages share it while the command runs. A file is passed to the
 // command as it is, so the command writes to it directly, a terminal staying
@@ -645,7 +752,12 @@ func waitConditions(res implement.WaitResult) string {
 				"waiters are ahead in the queue or running their commands"))
 		case implement.WaitOnLock:
 			if h := res.Holder; h != nil {
-				parts = append(parts, fmt.Sprintf("another waiter holds the gate (pid %d, until %s at the latest)", h.PID, h.Until.Local().Format("15:04:05")))
+				part := fmt.Sprintf("another waiter holds the gate (pid %d, until %s at the latest)", h.PID, h.Until.Local().Format("15:04:05"))
+				if q := res.Quiet; q != nil && q.PID == h.PID {
+					part += fmt.Sprintf("; the holder (pid %d%s) has held the %s for %s using little CPU (under %s of a core for the last %s); if it is yours and stuck, stop it by its own pid",
+						q.PID, inCheckout(q.Checkout), slotName(h.Gate), seconds(q.HeldS).Round(time.Minute), shareText(implement.QuietShare), seconds(q.QuietS).Round(time.Minute))
+				}
+				parts = append(parts, part)
 			} else {
 				parts = append(parts, "another waiter is taking the gate")
 			}
@@ -657,7 +769,31 @@ func waitConditions(res implement.WaitResult) string {
 			parts = append(parts, why)
 		}
 	}
+	if len(parts) > 0 && len(res.Holders) > 0 {
+		parts = append(parts, "holding: "+holdersText(res.Holders))
+	}
 	return strings.Join(parts, "; ")
+}
+
+// holdersText names each holder ahead with its age and its tree's CPU over
+// the last span, or that this waiter has not watched it a span yet. A holder
+// marked quiet (implement.GateHolder.Quiet) says so in place of `using`, so a
+// stalled run reads as one whatever form its hold takes: above one slot a
+// run that is not a race run holds its slot under the settle hold, and the
+// quiet notice, which speaks of a command hold, never comes for it.
+func holdersText(hs []implement.GateHolder) string {
+	list := make([]string, len(hs))
+	for i, h := range hs {
+		cpu := "not yet measured"
+		switch {
+		case h.Measured && h.Quiet:
+			cpu = fmt.Sprintf("quiet: %.0f%% of a core over the last %s", h.CPU*100, implement.QuietSpan)
+		case h.Measured:
+			cpu = fmt.Sprintf("using %.0f%% of a core over the last %s", h.CPU*100, implement.QuietSpan)
+		}
+		list[i] = fmt.Sprintf("pid %d for %s, %s", h.PID, seconds(h.AgeS).Round(time.Second), cpu)
+	}
+	return strings.Join(list, "; ")
 }
 
 // pidsText names pids after one or, for several, a count and many.

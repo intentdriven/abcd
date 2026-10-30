@@ -304,6 +304,10 @@ func TestWaitRaceGateOpensOnceTheCountFallsToOne(t *testing.T) {
 	if len(res.RaceRuns) != 0 || len(res.Waiters) != 0 || len(res.Preflights) != 0 || res.Holder != nil || len(res.Still) != 0 {
 		t.Fatalf("%+v; want the open result to carry no race runs, waiters, preflights, holder or still", res)
 	}
+	// Nor the holders its shut look named, or their quiet and gates.
+	if len(res.Holders) != 0 || res.Quiet != nil || len(res.HoldGates) != 0 {
+		t.Fatalf("%+v; want the open result to carry no holders, quiet or hold gates from its shut look", res)
+	}
 }
 
 // TestWaitDiskFloorFollowsTheCountReadAtEachLook: the disk is judged against

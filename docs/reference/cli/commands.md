@@ -2663,7 +2663,30 @@ command that is a race run (go, then `test` with -race) is gated as one for both
 gates: above one preflight at a time it stays shut while another race run is
 live, judges and takes the race gate's hold as well as its own, and from the
 moment it opens every race gate and every other such command counts it as a
-race run, so a second one waits for the first. A
+race run, so a second one waits for the first. A command that is not a race run
+takes the command hold only at one preflight at a time; above one its hold lasts
+2m0s, as without a command, and the process table counts it in its slot.
+A command hold lasts until its command exits, starts its own race run or has run
+1h0m0s, so once
+the holder's whole process tree has used no more than
+10% of a core for 10m0s, each waiter behind it says so in one more
+`waiting for capacity:` line naming its pid, its checkout and how long it has held
+the slot, and the holder says so on its own standard error while others queue.
+Little CPU is a fact, not a verdict: a slow run waiting on its subprocesses uses
+little too. The hold stays in force and nothing is signalled; a tree with a
+waiter of its own queued at a gate is not counted quiet; only your own
+account's hold is said quiet. Every waiting line also names each holder ahead,
+of any account, after `holding:`, with its age and its tree's CPU over the last
+10m0s, or `not yet measured` until this waiter has watched it that long, and
+marks one `quiet:` in place of `using` once that CPU is no more than 10%
+of a core and no waiter of its own is queued at a gate, whatever hold it is
+under, so a stalled run above one preflight at a time, which no notice names,
+still reads as one. The line is said again every 10m0s while the gate
+stays shut. A child that starts
+and exits between two looks is never seen, so a tree of short children (git)
+reads low, and counts as working: neither the notice nor the mark calls it
+quiet; a waiter's own reads of the table and its renewals' git and gh in the
+tree are not counted. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 While it waits, and while its command runs, in a checkout, the waiter keeps
