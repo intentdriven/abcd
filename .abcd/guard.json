@@ -23,7 +23,7 @@
           "--no-verify|-n"
         ]
       },
-      "why": "`--no-verify` (and `-n`, which means the same on `git am`) skips the checks the repository installed as commit hooks, so each patch is recorded as a commit without ever being looked at.",
+      "why": "`--no-verify` (and `-n`, which means the same on `git am`) skips the pre-applypatch and applypatch-msg hooks, so each patch is recorded as a commit without the checks a repository installs for applied patches.",
       "successor": "Apply the patches without the flag and fix whatever the hooks report; if a hook is wrong, fix the hook.",
       "fixtures": {
         "known_bad": [
@@ -127,7 +127,7 @@
           "--no-verify"
         ]
       },
-      "why": "`--no-verify` skips the repository's pre-rebase hook, so the history is rewritten without the check the repository installed for it.",
+      "why": "`--no-verify` skips any pre-rebase hook the repository installs, so the history is rewritten without the check that hook makes.",
       "successor": "Rebase without the flag and fix whatever the hook reports; if a hook is wrong, fix the hook.",
       "fixtures": {
         "known_bad": [

@@ -3,6 +3,7 @@ package guard
 import (
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 )
 
@@ -70,6 +71,20 @@ func TestRepoGuardEntriesPassAdmissionGate(t *testing.T) {
 			if e.Tier != TierBlocker || e.Why == "" || e.Successor == "" {
 				t.Fatalf("entry %s: tier %q, why %q, successor %q; it must be a blocker that explains itself", id, e.Tier, e.Why, e.Successor)
 			}
+			// git reads an unambiguous prefix of a long option as the option,
+			// and only a verb's option table lets the matcher see one, so each
+			// long alternative an entry blocks must be in its verb's table.
+			opts, ok := gitLongOptions[e.Pattern.Subcommand]
+			if !ok {
+				t.Fatalf("entry %s blocks flags of git %s, which has no option table", id, e.Pattern.Subcommand)
+			}
+			for _, group := range e.Pattern.Flags {
+				for _, alt := range strings.Split(group, "|") {
+					if strings.HasPrefix(alt, "--") && !containsString(opts, alt) {
+						t.Errorf("entry %s blocks %s, which the git %s option table does not hold", id, alt, e.Pattern.Subcommand)
+					}
+				}
+			}
 			for _, cmd := range e.Fixtures.KnownBad {
 				d, err := r.Check(cmd)
 				if err != nil {
@@ -94,7 +109,8 @@ func TestRepoGuardEntriesPassAdmissionGate(t *testing.T) {
 
 // TestRepoGuardRefusesEveryHookSkip pins the verdicts themselves, apart from
 // the fixtures the file ships, so the file cannot pass by weakening its own
-// corpus: each verb that takes --no-verify is refused with it, the bundled
+// corpus: each verb that takes --no-verify is refused with it, as git spells
+// it or abbreviates it, the bundled
 // commit and push entries still answer for those two verbs, and each -n that
 // means something else, and the flag's name inside text, is allowed.
 func TestRepoGuardRefusesEveryHookSkip(t *testing.T) {
@@ -106,7 +122,9 @@ func TestRepoGuardRefusesEveryHookSkip(t *testing.T) {
 		{"git merge --no-verify origin/main", "git-merge-no-verify"},
 		{"git -C ../other merge --no-verify topic", "git-merge-no-verify"},
 		{"git rebase --no-verify origin/main", "git-rebase-no-verify"},
+		{"git rebase --no-veri origin/main", "git-rebase-no-verify"},
 		{"git am --no-verify 0001-fix.patch", "git-am-no-verify"},
+		{"git am --no-v 0001-fix.patch", "git-am-no-verify"},
 		{"git am -n 0001-fix.patch", "git-am-no-verify"},
 		{"git pull --no-verify origin main", "git-pull-no-verify"},
 		{"git commit --no-verify -m wip", "git-commit-no-verify"},
@@ -115,6 +133,7 @@ func TestRepoGuardRefusesEveryHookSkip(t *testing.T) {
 
 		{"git merge -n origin/main", ""},
 		{"git merge --no-verify-signatures origin/main", ""},
+		{"git merge --no-verif topic", ""}, // git refuses it as ambiguous with --no-verify-signatures
 		{"git rebase -n origin/main", ""},
 		{"git pull -n origin main", ""},
 		{"git push -n origin main", ""},
