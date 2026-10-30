@@ -890,24 +890,22 @@ func (k *asker) preferred(a, b Withdrawal, mine []Withdrawal) bool {
 	if a.unsettled() != b.unsettled() {
 		return a.unsettled()
 	}
-	if va, vb := k.vouches(a, mine), k.vouches(b, mine); va != vb {
+	if va, vb := k.vouches(a), k.vouches(b); va != vb {
 		return va
 	}
 	return k.recordedAt(a) > k.recordedAt(b)
 }
 
-// vouches reports whether w's holder's own push vouches for it: one of mine,
-// self's own as their own newest push records it; one naming an id self only
-// declares, as vouched reads it; one naming another holder by their login,
-// when that login pushed the reservation that first recorded it; and one
-// naming a holder id that is not self's, which stands for whoever pushed it
-// (namesPusher), when one login's push placed the reservation that first
-// recorded it. One under preIDMarker, and one naming self's kept id that is
-// not of mine, never does.
-func (k *asker) vouches(w Withdrawal, mine []Withdrawal) bool {
+// vouches reports whether w's holder's own push vouches for it, an entry
+// that is not of mine (preferred weighs one of mine first): one naming an id
+// self only declares, as vouched reads it; one naming another holder by their
+// login, when that login pushed the reservation that first recorded it; and
+// one naming a holder id that is not self's, which stands for whoever pushed
+// it (namesPusher), when one login's push placed the reservation that first
+// recorded it. One under preIDMarker, and one naming self's kept id, never
+// does.
+func (k *asker) vouches(w Withdrawal) bool {
 	switch {
-	case slices.Contains(mine, w):
-		return true
 	case k == nil || w.preID() || w.By == k.self.ID:
 		return false
 	case k.self.declaredOnly(w.By):
