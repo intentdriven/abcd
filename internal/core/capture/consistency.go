@@ -106,6 +106,12 @@ func IngestConsistencyChunks(repoRoot string, payloads [][]byte, date string, mc
 		if err != nil {
 			return err
 		}
+		// Capture holds the body to the site renderer at the write; asking it
+		// here, before the first finding is filed, keeps a refusal from
+		// stopping the filing part-way.
+		if err := refuseUnrenderableBody(LedgerRelPath+"/"+statusDirName[StateOpen]+"/pending.md", text); err != nil {
+			return fmt.Errorf("consistency finding %d: %w", f.Number, err)
+		}
 		return refuseUnresolvedCitations(repoRoot, LedgerRelPath+"/"+statusDirName[StateOpen],
 			[]citedPart{{what: fmt.Sprintf("consistency finding %d", f.Number), text: text}})
 	}

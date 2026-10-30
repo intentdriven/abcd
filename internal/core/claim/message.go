@@ -49,7 +49,7 @@ type family struct {
 // working copy for a lease, validated by validateReservation.
 var reservationFamily = &family{
 	name:    "reservation",
-	keys:    []string{keyReservation, keyHolder, keyCopy, keyFootprint, keyClaimedAt, keyExpiresAt, keyReleasedAt, keyHandedBack, keyRecordBlob, keyStage, keyAssistedBy},
+	keys:    []string{keyReservation, keyHolder, keyCopy, keyFootprint, keyClaimedAt, keyExpiresAt, keyReleasedAt, keyHandedBack, keyRecordBlob, keyStage, keyWithdrawn, keyAssistedBy},
 	shorten: "name fewer or shorter footprint paths",
 }
 
@@ -84,6 +84,9 @@ type message struct {
 	// Stage is a drain lane's renewal's stage, one of LaneStages, "" for
 	// every other commit; never on a tombstone.
 	Stage string
+	// Withdrawn is a release subject's withdrawn pull requests, one
+	// Abcd-Withdrawn trailer each (withdraw.go); none on a record's.
+	Withdrawn []Withdrawal
 	// AssistedBy is the `Assisted-by:` value, abcd's composed label: commit-tree
 	// runs no prepare-commit-msg hook, so the writer names it.
 	AssistedBy string
@@ -127,6 +130,9 @@ func (m message) text() string {
 	if m.HandedBack != "" {
 		line(keyHandedBack, m.HandedBack)
 		line(keyRecordBlob, m.RecordBlob)
+	}
+	for _, w := range m.Withdrawn {
+		line(keyWithdrawn, w.trailer())
 	}
 	if m.AssistedBy != "" {
 		line(keyAssistedBy, m.AssistedBy)
@@ -417,6 +423,9 @@ func validateReservation(record string, t trailers) (message, string) {
 		return message{}, why
 	}
 	if why := validateStage(&m, t); why != "" {
+		return message{}, why
+	}
+	if why := validateWithdrawn(&m, t); why != "" {
 		return message{}, why
 	}
 	if v, ok := t.one(keyAssistedBy); ok {

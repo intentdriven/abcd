@@ -3,8 +3,6 @@ package gitutil_test
 import (
 	"context"
 	"errors"
-	"os/exec"
-	"strings"
 	"testing"
 	"time"
 
@@ -26,11 +24,14 @@ func committedRepo(t *testing.T) (repo *gittest.Repo, root, top string) {
 	return repo, root, top
 }
 
-// A git can answer and still have its output open when exec's WaitDelay runs
-// out: on a heavily loaded machine the copy of the answer misses the delay,
-// and here gittest.SlowPipeGit makes that happen without load, by leaving a
-// process holding git's pipe. Both lookups once read the miss as an answer —
-// "git cannot name its root", and an empty root commit (iss-2610100846469473).
+// A git can answer and still have its output open: a process it started
+// holds the pipe, or, on a heavily loaded machine, the copy of its answer has
+// not yet been read. exec's WaitDelay once timed that copy from git's exit,
+// and both lookups read the miss as an answer — "git cannot name its root",
+// and an empty root commit (iss-2610100846469473) — and then, under a
+// deadline, as git not answering (iss-2610272041031418). gittest.SlowPipeGit
+// makes the output close late without load, by leaving a process holding
+// git's pipe for a second after git exits.
 
 // TestRootCommitWaitsOutAGitThatHoldsItsPipe: RootCommit has no deadline, so
 // it waits for git's answer rather than reading a held pipe as a repository
@@ -56,12 +57,12 @@ func TestToplevelWaitsOutAGitThatHoldsItsPipe(t *testing.T) {
 	}
 }
 
-// TestRootCommitContextRetriesAGitThatMissedItsWaitDelay: under a deadline
-// the WaitDelay stays (it bounds a killed git's pipes), so a miss is asked once
-// more, and the second answer is the root commit.
-func TestRootCommitContextRetriesAGitThatMissedItsWaitDelay(t *testing.T) {
+// TestRootCommitContextReadsAGitWhoseOutputClosesLate: under a deadline the
+// answer git gave is read once its output closes, however long after git
+// exited, and git is asked once (iss-2610272041031418).
+func TestRootCommitContextReadsAGitWhoseOutputClosesLate(t *testing.T) {
 	repo, want, _ := committedRepo(t)
-	calls := gittest.SlowPipeGit(t, "--max-parents=0", 1)
+	calls := gittest.SlowPipeGit(t, "--max-parents=0", -1)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
@@ -69,40 +70,36 @@ func TestRootCommitContextRetriesAGitThatMissedItsWaitDelay(t *testing.T) {
 	if got != want || err != nil {
 		t.Errorf("RootCommitContext = %q, %v; want %q, nil", got, err, want)
 	}
-	if n := calls(); n != 2 {
-		t.Errorf("git was asked %d times; want 2 (the miss and one retry)", n)
+	if n := calls(); n != 1 {
+		t.Errorf("git was asked %d times; want once", n)
 	}
 }
 
-// TestRootCommitContextNamesAPersistentWaitDelayMissATimeout: a miss on the
-// retry too is reported as git not answering in time (gitutil.ErrGitTimedOut),
-// never as the empty answer a repository with no root commit gives.
-func TestRootCommitContextNamesAPersistentWaitDelayMissATimeout(t *testing.T) {
+// TestRootCommitContextEndsAtItsDeadlineWhileTheOutputStaysOpen: a process
+// git left holding its output cannot hold the caller past its deadline; the
+// lookup answers the deadline, never the empty answer a repository with no
+// root commit gives.
+func TestRootCommitContextEndsAtItsDeadlineWhileTheOutputStaysOpen(t *testing.T) {
 	repo, _, _ := committedRepo(t)
-	calls := gittest.SlowPipeGit(t, "--max-parents=0", -1)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	gittest.SlowPipeGit(t, "--max-parents=0", -1)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
+	start := time.Now()
 	got, err := gitutil.RootCommitContext(ctx, repo.Root())
-	if got != "" || !errors.Is(err, gitutil.ErrGitTimedOut) {
-		t.Fatalf("RootCommitContext = %q, %v; want \"\" and ErrGitTimedOut", got, err)
+	if took := time.Since(start); took > 5*time.Second {
+		t.Errorf("returned after %s; the deadline was 200ms", took)
 	}
-	if !errors.Is(err, exec.ErrWaitDelay) {
-		t.Errorf("the timeout lost the exec error it came from: %v", err)
-	}
-	if !strings.Contains(err.Error(), "did not answer in time") {
-		t.Errorf("the error does not say git did not answer in time: %v", err)
-	}
-	if n := calls(); n != 2 {
-		t.Errorf("git was asked %d times; want 2 (one retry, no more)", n)
+	if got != "" || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("RootCommitContext = %q, %v; want \"\" and context.DeadlineExceeded", got, err)
 	}
 }
 
-// TestToplevelContextRetriesAGitThatMissedItsWaitDelay: the same retry on the
+// TestToplevelContextReadsAGitWhoseOutputClosesLate: the same read on the
 // toplevel question under a deadline.
-func TestToplevelContextRetriesAGitThatMissedItsWaitDelay(t *testing.T) {
+func TestToplevelContextReadsAGitWhoseOutputClosesLate(t *testing.T) {
 	repo, _, want := committedRepo(t)
-	calls := gittest.SlowPipeGit(t, "--show-toplevel", 1)
+	calls := gittest.SlowPipeGit(t, "--show-toplevel", -1)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
@@ -110,7 +107,7 @@ func TestToplevelContextRetriesAGitThatMissedItsWaitDelay(t *testing.T) {
 	if got != want || err != nil {
 		t.Errorf("ToplevelContext = %q, %v; want %q, nil", got, err, want)
 	}
-	if n := calls(); n != 2 {
-		t.Errorf("git was asked %d times; want 2", n)
+	if n := calls(); n != 1 {
+		t.Errorf("git was asked %d times; want once", n)
 	}
 }

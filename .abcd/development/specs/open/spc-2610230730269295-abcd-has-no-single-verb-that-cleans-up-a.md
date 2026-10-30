@@ -154,7 +154,7 @@ An entry in the store lane that is neither a worktree nor a directory failing th
 
 ## Footprint
 
-- packages: internal/core/sweep/sweep.go, internal/core/sweep/rows.go, internal/core/sweep/liveness.go, internal/core/sweep/salvage.go, internal/core/sweep/branches.go, internal/core/sweep/remote.go, internal/core/sweep/reservations.go, internal/core/sweep/inbox.go, internal/surface/cli/sweep.go, internal/surface/cli/helpgroups.go, internal/surface/cli/barerender.go, internal/surface/cli/cli.go, commands/sweep.md, docs/reference/cli/commands.md, .abcd/development/release/surface.json, .abcd/development/brief/04-surfaces/40-sweep.md
+- packages: internal/core/sweep/sweep.go, internal/core/sweep/rows.go, internal/core/sweep/liveness.go, internal/core/sweep/salvage.go, internal/core/sweep/branches.go, internal/core/sweep/remote.go, internal/core/sweep/reservations.go, internal/core/sweep/inbox.go, internal/surface/cli/sweep.go, internal/surface/cli/helpgroups.go, internal/surface/cli/barerender.go, internal/surface/cli/cli.go, internal/core/guard/deletes.go, commands/sweep.md, docs/reference/cli/commands.md, .abcd/development/release/surface.json, .abcd/development/brief/04-surfaces/40-sweep.md
 - tests: internal/core/sweep/*_test.go, internal/surface/cli/sweep_test.go
 
 ## Steps
@@ -177,5 +177,5 @@ An entry in the store lane that is neither a worktree nor a directory failing th
    - tests: the reservation workflow dispatched and its run reported; the fallback to the next scheduled time with no gh; every waiting report promoted with the automatic filer's remedy and named. Waits on iss-2610142200389875's sweep being on main.
 5. The surfaces
    - criteria: 1, 11
-   - packages: internal/surface/cli/sweep.go, internal/surface/cli/helpgroups.go, internal/surface/cli/barerender.go, internal/surface/cli/cli.go, commands/sweep.md, docs/reference/cli/commands.md, .abcd/development/release/surface.json, .abcd/development/brief/04-surfaces/40-sweep.md
-   - tests: internal/surface/cli/sweep_test.go: the verb's rows, `--json` and exit codes through the front door; the reference and surface baseline regenerated.
+   - packages: internal/surface/cli/sweep.go, internal/surface/cli/helpgroups.go, internal/surface/cli/barerender.go, internal/surface/cli/cli.go, internal/core/guard/deletes.go, commands/sweep.md, docs/reference/cli/commands.md, .abcd/development/release/surface.json, .abcd/development/brief/04-surfaces/40-sweep.md
+   - tests: internal/surface/cli/sweep_test.go: the verb's rows, `--json` and exit codes through the front door; the reference and surface baseline regenerated; once this step wires `abcd sweep`, the shell guard's refusal of a delete it cannot prove safe (`git-delete-unproven`, iss-2610241239492159) names it as what settles a spent branch or worktree, which until then it never does.

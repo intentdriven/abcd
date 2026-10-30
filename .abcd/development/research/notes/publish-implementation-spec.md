@@ -266,9 +266,9 @@ precedent). publish.py automates that contract. To migrate:
 
 1. **Build publish.py** per this spec (test against abcdDev → abcd).
 2. **Run `--dry-run`** to confirm the same files would be copied (compare
-   against Path A's commit `9c90e2f` in REPPL/abcd).
+   against Path A's commit `9c90e2f` in <personal account>/abcd).
 3. **Run live publish** for v0.0.2 (or whatever the next bump is).
-4. **Verify** the resulting commit + tag in REPPL/abcd matches expectation.
+4. **Verify** the resulting commit + tag in <personal account>/abcd matches expectation.
 5. **Document** the migration in this file (mark Path A complete + link to
    the publish.py-driven release commit).
 
@@ -318,7 +318,7 @@ Specifically:
 - **Given** abcdDev with a manifest file that's been edited but not
   committed, **when** `python3 scripts/publish.py` runs, **then** preflight
   hard-fails at `dev_clean_for_manifest` and prints the dirty file path.
-- **Given** abcdDev clean and tag `v0.0.2` already in REPPL/abcd, **when**
+- **Given** abcdDev clean and tag `v0.0.2` already in <personal account>/abcd, **when**
   `python3 scripts/publish.py` (auto-incrementing to v0.0.2), **then**
   preflight hard-fails at `tag_unique` with a hint to use `--version`.
 - **Given** abcdDev with a deliberate PII fixture (e.g., a real email in

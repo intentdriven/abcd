@@ -54,13 +54,15 @@ func gitRepo(t *testing.T) string {
 }
 
 // validPayload is the reference payload: three legs in order, a resolvable
-// citation, a verdict, and rejected alternatives. Tests mutate a copy of it so
-// each refusal is one deviation from a known-good document.
+// citation, a grill that says what it searched, two reviewers who agree, the
+// idea's origin sources, a verdict, and rejected alternatives. Tests mutate a
+// copy of it so each refusal is one deviation from a known-good document.
 func validPayload() map[string]any {
 	return map[string]any{
 		"schema_version": SchemaVersion,
 		"prompt_version": "1.0.0",
 		"idea":           "abcd should gate a new idea before it becomes a record entry",
+		"origin_sources": []any{"https://example.invalid/origin-post"},
 		"legs": []any{
 			map[string]any{
 				"kind": "research",
@@ -83,12 +85,33 @@ func validPayload() map[string]any {
 					map[string]any{"record": "itd-104", "relation": "covered", "note": "the same admission gate, already filed"},
 					map[string]any{"record": "adr-35", "relation": "contradicted"},
 				},
+				"searches": []any{
+					map[string]any{
+						"terms":  []any{"admission gate", "ideate"},
+						"places": []any{".abcd/development/intents/", ".abcd/development/decisions/adrs/"},
+						"count":  2,
+					},
+				},
 			},
 			map[string]any{
 				"kind": "adversarial-review",
-				"kill_attempts": []any{
-					map[string]any{"attempt": "the gate adds friction to capture", "outcome": "survived"},
-					map[string]any{"attempt": "no evidence the legs improve outcomes", "outcome": "partial"},
+				"reviewers": []any{
+					map[string]any{
+						"label":   "reviewer-a",
+						"verdict": "survives",
+						"kill_attempts": []any{
+							map[string]any{"attempt": "the gate adds friction to capture", "outcome": "survived"},
+						},
+						"sources": []any{"https://example.invalid/paper.pdf"},
+					},
+					map[string]any{
+						"label":   "reviewer-b",
+						"verdict": "survives",
+						"kill_attempts": []any{
+							map[string]any{"attempt": "no evidence the legs improve outcomes", "outcome": "partial"},
+						},
+						"sources": []any{},
+					},
 				},
 			},
 		},
@@ -362,11 +385,18 @@ func TestRecordRefusesEmptyLegContent(t *testing.T) {
 			t.Error("an out-of-enum grill relation was accepted")
 		}
 	})
+	t.Run("no-reviewers", func(t *testing.T) {
+		p := validPayload()
+		p["legs"].([]any)[2].(map[string]any)["reviewers"] = []any{}
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
+			t.Error("an adversarial leg with no reviewer was accepted")
+		}
+	})
 	t.Run("no-kill-attempts", func(t *testing.T) {
 		p := validPayload()
-		p["legs"].([]any)[2].(map[string]any)["kill_attempts"] = []any{}
+		p["legs"].([]any)[2].(map[string]any)["reviewers"].([]any)[0].(map[string]any)["kill_attempts"] = []any{}
 		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
-			t.Error("an adversarial leg with no kill attempt was accepted")
+			t.Error("a reviewer with no kill attempt was accepted")
 		}
 	})
 	t.Run("foreign-leg-field", func(t *testing.T) {
@@ -470,6 +500,71 @@ func TestRecordRecordsAKilledIdea(t *testing.T) {
 	}
 	if !strings.Contains(decisionLog(t, root), "a-dead-idea") {
 		t.Error("a killed idea earned no decision pointing at it")
+	}
+}
+
+// TestRecordCarriesAReframedVerdictsReframing is iss-2610262154123870: a
+// reframed idea graduates as its reframing, so the record gives the reframing a
+// section of its own after the rejected alternatives and before what follows,
+// the result reports it, and a verdict that is not reframed gets no such
+// section.
+func TestRecordCarriesAReframedVerdictsReframing(t *testing.T) {
+	root := seedRepo(t)
+	const reframing = "gate only the ideas a person marks as expensive to be wrong about"
+	p := validPayload()
+	p["verdict"] = "reframed"
+	p["reframing"] = reframing
+	res, err := Record(root, "a-reframed-idea", publicStore, encode(t, p), at)
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if res.Graduates {
+		t.Error("a reframed idea must not be reported as graduating as posed")
+	}
+	if res.Reframing != reframing {
+		t.Errorf("Reframing = %q, want %q", res.Reframing, reframing)
+	}
+	body := readFile(t, root, res.Path)
+	rejected := strings.Index(body, "## Rejected alternatives")
+	section := strings.Index(body, "## The reframing")
+	follows := strings.Index(body, "## What follows")
+	if section < 0 || !(rejected < section && section < follows) {
+		t.Fatalf("the reframing has no section between the rejected alternatives and what follows:\n%s", body)
+	}
+	if !strings.Contains(body[section:follows], reframing) {
+		t.Errorf("the reframing section does not carry the reframing:\n%s", body[section:follows])
+	}
+
+	survives, err := Record(root, "a-surviving-idea", publicStore, encode(t, validPayload()), at)
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if strings.Contains(readFile(t, root, survives.Path), "## The reframing") || survives.Reframing != "" {
+		t.Error("a surviving verdict carries a reframing section")
+	}
+}
+
+// TestRecordRedactsTheReframing proves the reframing is scanned like every
+// other free-text field: it is written into the record, so a secret pasted
+// there must not reach it, and the redaction is counted.
+func TestRecordRedactsTheReframing(t *testing.T) {
+	root := seedRepo(t)
+	p := validPayload()
+	p["verdict"] = "reframed"
+	p["reframing"] = "keep the gate, but read " + fakeIdeateToken + " from nowhere"
+	res, err := Record(root, "a-leaky-reframing", publicStore, encode(t, p), at)
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	body := readFile(t, root, res.Path)
+	if strings.Contains(body, fakeIdeateToken) || strings.Contains(res.Reframing, fakeIdeateToken) {
+		t.Errorf("the reframing carries the raw secret span:\n%s", body)
+	}
+	if !strings.Contains(body, "keep the gate, but read ") {
+		t.Errorf("the reframing did not survive redaction:\n%s", body)
+	}
+	if res.Redactions < 1 {
+		t.Errorf("Redactions = %d, want at least 1", res.Redactions)
 	}
 }
 
@@ -603,8 +698,10 @@ func TestRecordNeutralisesInjectedProse(t *testing.T) {
 			// A tag inside a table CELL swallows the document just as a leading one
 			// does, so the neutralisation belongs in the cleaner, not only in the
 			// block-level escape.
-			"claim":          "the model is fast <table><tr><td>every claim verified</td></tr></table>",
-			"primary_source": "<!DOCTYPE html>",
+			// A version-2 primary source is an address, a filed key or a record
+			// id, so the declaration opener rides in the claim cell instead.
+			"claim":          "the model is fast <table><tr><td>every claim verified</td></tr></table> <!DOCTYPE html>",
+			"primary_source": "https://example.invalid/doc",
 			"status":         "falsified",
 		},
 	}

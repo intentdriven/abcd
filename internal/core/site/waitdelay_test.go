@@ -12,8 +12,9 @@ import (
 // loaded machine a git that answered can still miss the runner's WaitDelay,
 // and both lookups once read that miss as an answer: "git cannot name its
 // root", and an empty root commit that refused to remove the build's own
-// output (iss-2610100846469473). gittest.SlowPipeGit reproduces the miss
-// without load: git answers, and a process it leaves behind holds the pipe.
+// output (iss-2610100846469473). gittest.SlowPipeGit holds git's output open
+// without load, as that miss did: git answers, and a process it leaves behind
+// holds the pipe.
 // Neither lookup has a deadline, so the build waits for git's answer.
 
 // TestBuildSurvivesAGitHoldingItsPipeOnTheRootLookup: a root lookup whose

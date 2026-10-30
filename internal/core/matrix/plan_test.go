@@ -250,6 +250,25 @@ func TestACellRouteTheRunnerConfigRefusesIsRefused(t *testing.T) {
 	}
 }
 
+// TestARefusedCellRouteIsNamedAsDeclared: the route parser names a typed
+// --route by its position and a part it does not know by its length; a cell's
+// route is the declaration's own text, so its refusal quotes it as written.
+func TestARefusedCellRouteIsNamedAsDeclared(t *testing.T) {
+	for _, route := range []string{"builder=strong-tier", "builder=runner:opencode@notamodel"} {
+		_, err := plan(t, planDecl(`{"id":"cell","route":"`+route+`"}`, ``, ``), usd25)
+		if err == nil || !strings.Contains(err.Error(), `the declared route "`+route+`"`) {
+			t.Errorf("%s: err = %v; want the refusal to name the declared route as written", route, err)
+		}
+	}
+	decl := planDecl(`{"id":"or-cheap","route":"builder=runner:opencode@openrouter/vendor/model"}`, ``, ``)
+	_, err := buildPlan(PlanInputs{Lab: "lab-1", FrozenCommit: strings.Repeat("a", 40), Declaration: decl,
+		API: planAPI(t, "https://api.example.com/v1"), Cap: usd25, Cores: 16,
+		CheckRoute: func(oracle.FlagRoute) error { return errors.New("runner opencode is not enabled on this machine") }})
+	if err == nil || !strings.Contains(err.Error(), `the declared route "builder=runner:opencode@openrouter/vendor/model"`) {
+		t.Fatalf("err = %v; want the runner config's refusal to name the declared route", err)
+	}
+}
+
 func TestBuildingThePlanMakesNoNetworkCall(t *testing.T) {
 	var calls atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls.Add(1) }))

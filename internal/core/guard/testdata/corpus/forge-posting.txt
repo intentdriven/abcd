@@ -7,17 +7,23 @@
 # session or a tool in prose, and a body file that exists and is clean. A
 # block or warn on any line here is a false positive the sweep counts, and a
 # forge-text verdict on any of them fails the sweep outright.
+#
+# A pull request's body carries its Assisted-by line on a line of its own, as
+# the disclosure check asks (forge-text-disclosure), and a corpus line holds no
+# newline: so a pull-request line here posts that line as its whole body, the
+# summary in its title, and the body file is forge-body.txt. The bodies that
+# check refuses are forge_attribution_test.go's.
 
-gh pr create --title "fix: the walk skips a record family" --body "Closes #31. Assisted-by: Claude:claude-opus-5-5"
-gh pr create -t "feat: an opt-in outbound gate" -b "Summary of the change, and the tests that prove it."
-gh pr create --title="chore: capture two findings" --body="Records only; no code changes."
-gh pr create -t"docs: say what the guard does not see" -b"One paragraph in commands/guard.md."
-gh pr create --draft --base main --head feat/x --title "wip: the reader" --body "Draft while the review runs."
+gh pr create --title "fix: the walk skips a record family" --body "Assisted-by: Claude:claude-opus-5-5"
+gh pr create -t "feat: an opt-in outbound gate" -b "Assisted-by: Claude:claude-opus-5-5"
+gh pr create --title="chore: capture two findings" --body="Assisted-by: None"
+gh pr create -t"docs: say what the guard does not see" -b"Assisted-by: Claude:claude-opus-5-5"
+gh pr create --draft --base main --head feat/x --title "wip: the reader" --body "Assisted-by: Claude:claude-opus-5-5"
 gh pr create --fill
 gh pr create --fill --label security --assignee @me
-gh pr new --title "fix: a typo" --body "One word."
+gh pr new --title "fix: a typo" --body "Assisted-by: None"
 gh pr edit 1012 --title "fix: count an exit 1 as a refusal only beside the verdict"
-gh pr edit 1012 --body "Updated after review: the session store is now keyed on the root commit."
+gh pr edit 1012 --body "Assisted-by: Claude:claude-opus-5-5"
 gh pr edit 1012 --add-label needs-review --remove-label wip
 gh pr comment 1012 --body "Re-ran the targeted tests; all pass. The session URL problem is fixed in the next commit."
 gh pr comment 1012 -b "LGTM once CI is green."
@@ -29,7 +35,7 @@ gh issue edit 77 --title "renamed: the store is per machine"
 gh issue edit 77 --body "See https://github.com/intentdriven/abcd/pull/1012 for the fix."
 gh issue comment 77 --body "Fixed in #1012."
 gh issue comment 77 -b "Closing: duplicate of #75."
-gh pr create --title t --body-file testdata/corpus/forge-posting.txt
+gh pr create --title t --body-file testdata/corpus/forge-body.txt
 gh issue comment 77 -F testdata/corpus/forge-posting.txt
 gh pr view 1012 --json title,body
 gh pr list --state open --search "session"

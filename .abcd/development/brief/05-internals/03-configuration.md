@@ -4,8 +4,8 @@ Almost nothing here is a decision anyone has to make. Installing abcd asks
 four questions and, at a terminal, a fifth about the README, records the
 answers and whether it created the README, and gets on with it; `ahoy install
 --attribution` writes one more key and `ahoy install --outbound` two more, and
-seven further keys can be hand-set and are read but never written. Beyond those
-sixteen, the binary reads only keys a person opts into: the provider adapter's
+nine further keys can be hand-set and are read but never written. Beyond those
+eighteen, the binary reads only keys a person opts into: the provider adapter's
 `oracle` keys (the reviewer route's `oracle.review` among them) and the
 interview's list style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
@@ -15,8 +15,8 @@ keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 (how many live reservations one person may hold across all of their sessions:
 1 to 100 and 10 by default), read from the machine layer alone
 (`internal/core/claim/maxlive.go`), the load gate's `load.preflights`, read
-from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 or
-2 and 1 by default, never from a repository
+from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 to
+4 and 1 by default, never from a repository
 (`internal/core/implement/load_slots.go`), and the runner routes under `roles` and
 `runner` (`internal/core/runner/config.go`). Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
@@ -30,7 +30,7 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Sixteen keys plus a `meta` block. Install asks about visibility, the docs target,
+Eighteen keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and the README question (only of a person
 at a terminal, in a run without the approve-everything flag, once
@@ -43,12 +43,15 @@ file is gone. `attribution.hook` is written by `ahoy install --attribution`, and
 one outbound switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
 absent, while a key set to `false` is the repository's choice and is left as it
-is. The remaining seven —
+is. The remaining ten —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, the filing-time match's threshold and compared fields,
-whether `abcd land` pushes and queues, and whether a reservation may be made on
-an origin GitHub names a fork — are hand-set: the binary reads them and never
-writes them.
+whether `abcd land` pushes and queues, whether a reservation may be made on
+an origin GitHub names a fork, the GitHub settings the remote apply keeps
+and the checks it requires, and whether the shell guard also holds a pull
+request's title and body to RS004 (`outbound.declare_mentions`, a rule a
+repository adopts, so no install sets it) — are hand-set: the binary reads them
+and never writes them.
 
 ```json
 {
@@ -75,8 +78,17 @@ writes them.
   "scan": {
     "deep": false,                      // the native secret/PII scan is the default; deep adds an opt-in
                                         //   external backend, asked only when it is available
-    "native_secret_scanning": true      // an explicit false opts the repo out of abcd enabling the forge's
-                                        //   own secret scanning through `ahoy remote apply`
+    "native_secret_scanning": true      // an explicit false keeps the forge's own secret-scanning toggles
+                                        //   as they are in `ahoy remote apply`; the rest of the settings
+                                        //   baseline is still audited and applied
+  },
+  "github": {                           // the settings baseline of `ahoy --remote` and `ahoy remote apply`
+                                        //   (itd-2610290746077716); a key or a setting it does not know
+                                        //   refuses the run, naming it
+    "keep": ["has_wiki"],               // settings abcd leaves exactly as they are, by the keys the audit
+                                        //   prints; absent keeps nothing
+    "required_checks": ["build"]        // replaces the checks taken from the workflows; absent takes them
+                                        //   from the workflows every pull request runs
   },
   "attribution": {
     "hook": true                        // the committed prepare-commit-msg prompt asking each commit to
@@ -86,8 +98,13 @@ writes them.
     "hook": true,                       // the committed commit-msg gate refusing a session URL or a tool
                                         //   footer; runs only the abcd `git config --local abcd.binary` names,
                                         //   which --outbound sets, clone-local, to the copy it verified
-    "forge": true                       // the shell guard refuses a posting gh pr/issue command whose title,
-                                        //   body or body file carries either shape (forge-text-outbound)
+    "forge": true,                      // the shell guard refuses a posting gh pr/issue command whose title,
+                                        //   body or body file carries either shape (forge-text-outbound), and
+                                        //   a gh pr create/new/edit whose body has no Assisted-by line in an
+                                        //   accepted form (forge-text-disclosure)
+    "declare_mentions": true            // beside forge only: the shell guard refuses a gh pr create/new/edit
+                                        //   whose title and body name an iss-N with no Resolves:/Refs: line
+                                        //   declaring it (forge-text-mention, RS004 before the push)
   },
   "rules": {
     "force_refresh_every_n": 15         // prompt-router refresh backstop (itd-3). The primary refresh is
@@ -156,7 +173,7 @@ origin's push URLs a fork, so a malformed value (neither `"refuse"` nor one
 plain owner and one plain name), or a misspelt key under `reservation`, refuses
 a reservation on a fork naming the file and never stops one anywhere else. The machine layer's `reservation.github_username`
 (04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
-layer alone and is not one of the sixteen. The holder lookup reads the
+layer alone and is not one of the eighteen. The holder lookup reads the
 machine's own file whatever origin is, so a misspelt key under `reservation`
 there refuses every reservation that reaches that lookup, on a fork or not.
 
@@ -210,7 +227,8 @@ rather than skipped:
     },
     "denylist": ["openai/*"],            // optional, none bundled; repo or machine
     "roles": { "scribe": "openrouter/typesafe/jev-1.13" },            // an agent in the roster; a keyed
-    "judgements": { "duplicate-match": "openrouter/typesafe/jev-1.13" } //   provider's routes: machine only
+    "judgements": { "duplicate-match": "shadow:openrouter/typesafe/jev-1.13" } // provider's routes: machine only;
+                                         //   host | shadow:<provider>/<model> | <provider>/<model>
   }
 }
 ```
@@ -335,6 +353,57 @@ rather than skipped:
   one, applies in its place (ruling CD2 of 2026-09-29). The same fault in
   `~/.abcd.noindex/config.json` is refused, because that file is the person's own and a
   route they set is never dropped silently.
+- **A judgement type's route has a mode** (itd-2609221009495079). An
+  `oracle.judgements.<type>` value is `host`, `shadow:<provider>/<model>` or
+  `<provider>/<model>`. `host`, or no route, keeps the type on the host. A
+  repository's `host` holds against the machine's route to the same name,
+  since it only keeps work on the host. Only the person's own configuration
+  turns a type on: a bare `<provider>/<model>` is honoured from
+  `~/.abcd.noindex/config.json`, the rule a role handed to a runner follows
+  (`runner.personal`). The same route
+  in a repository's `.abcd/config.json` is skipped with one diagnostic naming
+  the file and the route, and the machine's own route to the type applies in
+  its place, in its own mode, or the host when the machine sets none; so a
+  repository never turns a machine's shadow into on. A repository may still
+  set `host`, or `shadow:<provider>/<model>`, which decides nothing. In
+  **shadow** the host still decides.
+  The decision adapter is asked the same typed question over the same state
+  beside it and decides nothing. Each pair (the host's answer, the adapter's
+  answer and probability, the state's SHA-256 and size) is appended to
+  `pairs.jsonl` in the newest lab home the repository's lane of
+  `~/.abcd.noindex/lab/` holds, so `abcd lab mint` comes first. A state larger
+  than the model's window (32K tokens, counted high at three bytes a token) is
+  never sent: its pair is recorded as skipped with the size. With no lab
+  minted, the host still decides and no pair is kept. A bare
+  `<provider>/<model>` **turns the type on**: the adapter decides, and the run
+  record names the route and the model that answered. If the adapter cannot
+  answer (unreachable, failed, an answer outside the question's choices, a
+  state over its window), the host decides instead, with a receipt saying
+  why. A shadow route passes every rule a route turned on does (the
+  allowlist, the denylist, the keyed-provider skip, the malformed-route skip)
+  when the configuration is read and before any call. A role takes no mode.
+  The types are a closed registry: `remedy-read`, `duplicate-match`,
+  `unmeetable-criteria`, `eligibility-residual`, `source-classification`,
+  `source-selection`, `memory-check`, `ledger-category`, `ledger-severity`,
+  `prepass-overlap`, `present-tense-advisory`, `embark-lesson-ranking`. A
+  route naming anything else is
+  a diagnostic and is skipped. The drain's judgement before a lane opens runs
+  as `eligibility-residual`, a choice of `no`, `user-visible` or
+  `trust-rule`, and the drain's move calls the router for it
+  (`loop/drain_decide.go`). On the host, the default, the drain moves as it
+  always did. In shadow, the move records a pair once the host's or the
+  routed judge's answer is taken, and changes nothing else. Turned on, the
+  move asks the adapter once the host's request is written, before any runner
+  the drain's judge is routed to, and takes the answer the way a routed
+  judge's is taken, with the route named `decision-adapter <provider>/<model>`
+  in the drain's record. If the adapter cannot answer, the host's request
+  stands, with a fallback receipt in the drain's state beside the routed
+  judge's, and the adapter is not asked again for that request. No other
+  type's step calls the router yet. Those judgements are made in the host's
+  command pages, which hand nothing back to the binary, so they stay on the
+  host whatever their route says until their step calls the router. `abcd lab harvest` reports the agreement per type, and
+  the research note filed from it is the evidence a ruling turns a type on
+  with.
 - **A route to a provider that holds a key sits on the machine alone.** Only a
   route the person set up on their own machine may spend their paid key (the
   product thinker's ruling AA(b) of 2026-09-29), so a repository's
@@ -352,7 +421,9 @@ rather than skipped:
   provider holds a key when its block names `key`, judged from the block and
   never by reading the credential store. A repository's route to a provider
   whose block names no key (a local server) is admitted and wins over the
-  machine's per name, and a `--route` the person types is unaffected.
+  machine's per name, except a judgement type's route that turns the type on,
+  which only the machine's file may set (above), and a `--route` the person
+  types is unaffected.
 - **A call that spends a key takes no repository settings unless the person typed its route.** A
   provider leg sends the connection's defaults, then the winning routing row's
   settings, then the `--route`'s. On a leg to a provider that holds a key and

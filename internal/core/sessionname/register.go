@@ -834,7 +834,7 @@ func (m Machine) update(fn func(reg *register, tab Table, host Host) (bool, erro
 	if err != nil {
 		return fmt.Errorf("the process table could not be read (%v), so a running session cannot be told from an ended one", err)
 	}
-	host, err := findHost(tab, m.From)
+	host, err := FindHost(tab, m.From)
 	if err != nil {
 		return err
 	}

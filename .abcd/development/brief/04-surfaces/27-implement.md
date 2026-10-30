@@ -264,7 +264,8 @@ as it was printed; the run's hand-written load samples share the name and carry
 no `triggers`. Without its wait flag the check exits 0 on every status: it never
 refuses, waits or signals anything. With its wait flag it is the one waiter
 concurrent sessions gate a preflight or a race run with, and `make preflight`
-waits at it once, as one whole run: it blocks until the one-minute load is
+waits at it once, as one whole run (a records-only change takes a shorter
+rule that waits at no gate): it blocks until the one-minute load is
 below the wait limit, no other `go test -race` run is live, no other
 `make preflight` is running and no other waiter is ahead of it in the queue (one
 that started earlier, whatever its pid, or within two seconds of it with the
@@ -314,8 +315,14 @@ refused together): every abcd released before the race gate reads any load
 check carrying the wait flag as a first gate's waiter, so it would read a
 preflight at a race gate spelt with it as queued, not in its test stages, and
 open beside it. At one preflight at a
-time the race gate opens at once, with no look at the machine, no hold, no
-jitter and no settle, so the preflight runs exactly as before. Above one it is
+time the race gate opens at once once the disk check passes, without reading
+the load or the process table, taking a hold, or waiting a jitter or a settle,
+so the race stage follows the tests as it did before the gate existed. Both
+gates refuse, exiting 1 without waiting, while the volume holding the Go build
+cache or the worktree store has less free space than the disk floor: 4 GiB for
+each preflight the first gate admits at once, and 8 GiB at least; a disk that
+falls below the floor while a gate waits is refused before the gate
+opens. Above one the race gate is
 shut only by another live `go test -race` run, a race waiter queued ahead of
 it by the same rule (started earlier, or within two seconds of it with the
 lower pid) or running its command, the load limit and
@@ -343,7 +350,11 @@ since the race gate, not the slot count, keeps race runs to one at a time. Each 
 own hold record and is shut only by it: a first gate's command hold lasts
 until its preflight starts its race run, so were it to shut the race gate, an
 earlier preflight's race waiter would wait on it while the holder's own race
-waiter queued behind that earlier one, and neither would move. How many preflights
+waiter queued behind that earlier one, and neither would move. That command
+hold is taken at one slot; a look that reads more than one, for a waiter whose
+own command is not a race run, judges it as the settle hold
+(dcn-2610300618371321), so a raised count reaches a run already queued behind
+it, and the running preflights are still counted against the slots. How many preflights
 the first gate admits at once, each a whole run, is the person's own machine
 setting (iss-2610161639025702): `load.preflights` in <!-- record-lint: forward-looking -->
 `~/.abcd.noindex/config.json`, read through the layered configuration with the

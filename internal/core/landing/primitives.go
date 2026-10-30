@@ -25,6 +25,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/localtier"
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // TierRelDir is the local-ephemeral tier of a checkout, repo-relative and
@@ -83,10 +84,9 @@ func findReceipt(repoRoot, rel, sha string) (string, error) {
 // runCapped runs cmd, returning its stdout within MaxOutput and, on a failure,
 // an error naming what and carrying its bounded stderr, scrubbed of
 // credential URLs (gitutil.ScrubURLCredentials) before it is cut.
-func runCapped(cmd *exec.Cmd, what string) (string, error) {
+func runCapped(ctx context.Context, cmd *exec.Cmd, what string) (string, error) {
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
+	if err := procgroup.RunToEOF(ctx, cmd, &stdout, &stderr); err != nil {
 		// Scrubbed BEFORE the cut, as gitutil's runners do: a cut across a
 		// credential URL leaves a fragment the scrubber no longer recognises.
 		msg := gitutil.ScrubURLCredentials(strings.TrimSpace(stderr.String()))
@@ -116,8 +116,10 @@ func GH(dir string, args ...string) (string, error) {
 }
 
 // GHContext is GH bound to ctx as well as to ForgeTimeout: the client is
-// killed at whichever ends first, and a process it started that still holds
-// its output open is waited for at most a second more, so a caller's own
+// killed at whichever ends first, and its output is read to EOF before it is
+// waited for (procgroup.RunToEOF), so a client that answered is read whole
+// however late its output closes, and a process it started that still holds
+// that output open holds the call no further than the bound: a caller's own
 // deadline (the away mode's stop check, which lists the forge under ten
 // seconds) holds.
 func GHContext(parent context.Context, dir string, args ...string) (string, error) {
@@ -133,7 +135,7 @@ func GHContext(parent context.Context, dir string, args ...string) (string, erro
 	cmd.Dir = dir
 	cmd.Env = append(gitutil.ScrubbedEnv(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1")
 	cmd.WaitDelay = time.Second
-	return runCapped(cmd, "gh "+strings.Join(args[:min(2, len(args))], " "))
+	return runCapped(ctx, cmd, "gh "+strings.Join(args[:min(2, len(args))], " "))
 }
 
 // GitFunc runs one networked git command (a fetch or a push) from dir:

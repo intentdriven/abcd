@@ -41,7 +41,7 @@ func TestRunnerRouteRefusals(t *testing.T) {
 		{"model without provider", "implementer=runner:opencode@qwen3-coder", "<provider>/<model>"},
 		{"model with empty name", "implementer=runner:opencode@local/", "<provider>/<model>"},
 		{"settings", "implementer=runner:opencode@local/qwen3-coder?seed=1", "takes no settings"},
-		{"tier route", "implementer=frontier", "runs implementer on the host or a runner"},
+		{"tier route", "implementer=frontier", "runs its roles on the host or a runner"},
 		{"tier route with connection", "implementer=economy@openrouter", "names a tier"},
 		{"no route", "implementer", RunnerRouteSyntax},
 	}

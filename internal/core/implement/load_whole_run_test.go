@@ -306,6 +306,84 @@ func TestWaitRaceGateOpensOnceTheCountFallsToOne(t *testing.T) {
 	}
 }
 
+// TestWaitDiskFloorFollowsTheCountReadAtEachLook: the disk is judged against
+// the floor the count read at that same look sizes (diskFloorFor), so a count
+// raised while a waiter waits raises the floor its open look reads the disk
+// at, and a race waiter whose count falls to one reads the disk before its
+// shortcut opens, refusing there on a disk that filled while it waited.
+func TestWaitDiskFloorFollowsTheCountReadAtEachLook(t *testing.T) {
+	t.Run("first gate", func(t *testing.T) {
+		var floors []uint64
+		withReadDisk(t, func(_ string, floor uint64) DiskCheck {
+			floors = append(floors, floor)
+			return DiskCheck{Status: DiskOK, FloorBytes: floor, Volumes: []DiskVolume{}}
+		})
+		clock := &fakeClock{now: waitT0}
+		tb := &runTable{clock: clock, at: func(time.Time) ([]machineload.Proc, map[int][]string) {
+			return joinRuns(wholeRunOf(80000, 502, 10*time.Minute, true), wholeRunOf(90000, 501, time.Minute, false))
+		}}
+		req := wholeRunReq(t, t.TempDir(), 90000, 501, clock, tb)
+		slots := "1"
+		req.Getenv = func(k string) string {
+			if k == PreflightSlotsEnv {
+				return slots
+			}
+			return ""
+		}
+		req.Sleep = func(d time.Duration) { clock.Sleep(d); slots = "4" }
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Status != WaitOpen || res.Slots != 4 {
+			t.Fatalf("%+v; want shut with one slot, then open with 4", res)
+		}
+		if want := []uint64{diskFloorFor(1), diskFloorFor(4)}; !slices.Equal(floors, want) {
+			t.Fatalf("the disk was judged against %v; want %v, the first look's floor and then the open look's", floors, want)
+		}
+	})
+	t.Run("race shortcut", func(t *testing.T) {
+		for _, low := range []bool{false, true} {
+			home := t.TempDir()
+			var floors []uint64
+			withReadDisk(t, func(h string, floor uint64) DiskCheck {
+				floors = append(floors, floor)
+				free := 200 * gib
+				if low && len(floors) > 1 {
+					free = 3 * gib
+				}
+				p, _ := fakeDisk(h, 1, dataVolume(h, free))
+				p.floor = floor
+				return checkDisk(h, p)
+			})
+			clock := &fakeClock{now: waitT0}
+			req := waitReq(home, 60000, clock, poll{load: 3, procs: []machineload.Proc{raceRun(70000, 1)}})
+			req.Race = true
+			slots := "4"
+			req.Getenv = func(k string) string {
+				if k == PreflightSlotsEnv {
+					return slots
+				}
+				return ""
+			}
+			req.Sleep = func(d time.Duration) { clock.Sleep(d); slots = "1" }
+			res, err := WaitLoad(req)
+			if want := []uint64{diskFloorFor(4), diskFloorFor(1)}; !slices.Equal(floors, want) {
+				t.Fatalf("low=%v: the disk was judged against %v; want %v, the first look's floor and then the shortcut's", low, floors, want)
+			}
+			if !low {
+				if err != nil || res.Status != WaitOpen || res.Slots != 1 {
+					t.Fatalf("%+v, %v; want the race gate open once the count is one", res, err)
+				}
+				continue
+			}
+			if err == nil || !strings.Contains(err.Error(), "fell below the floor while this waited") || res.Status == WaitOpen {
+				t.Fatalf("%+v, %v; want the shortcut refused on the disk that filled while it waited", res, err)
+			}
+		}
+	})
+}
+
 // TestWaitWholeRunWithTwoSlotsHoldsOnlyToSettle: above one slot a whole run's
 // waiter takes the settle hold, as the plain first gate inside a preflight
 // did, not the command hold, which would keep the account's second slot shut
@@ -443,4 +521,105 @@ func TestWaitIgnoresARepositorysSlotCount(t *testing.T) {
 	if res.Status != WaitTimedOut || res.Slots != 1 || res.SlotsSource != SlotsDefault || !slices.Contains(res.Still, WaitOnPreflight) {
 		t.Fatalf("%+v; want shut on the running preflight with one slot from the default, the repository's 2 ignored", res)
 	}
+}
+
+// TestWaitRaisedCountReachesARunQueuedBehindACommandHold: a whole run admitted
+// at one slot takes the command hold, kept until its race run starts. A run of
+// the same account queued behind it, once the count it reads is above one and
+// its own command is not a race run, judges that hold as the settle hold
+// (dcn-2610300618371321), so a raised count reaches it as iss-2610241414124940's
+// resolution says. The running preflights are still counted against the
+// slots, and a race command's waiter still waits on the hold.
+func TestWaitRaisedCountReachesARunQueuedBehindACommandHold(t *testing.T) {
+	// heldHome is a home where the first run, admitted at one slot, holds the
+	// first gate with the command hold.
+	heldHome := func(t *testing.T) string {
+		home := t.TempDir()
+		clock := &fakeClock{now: waitT0}
+		tb := &runTable{clock: clock, at: func(time.Time) ([]machineload.Proc, map[int][]string) {
+			return wholeRun(70000, 501, time.Minute, false)
+		}}
+		a, err := WaitLoad(wholeRunReq(t, home, 70000, 501, clock, tb))
+		if err != nil || a.Status != WaitOpen || a.Hold == nil || a.Hold.Form != HoldCommand {
+			t.Fatalf("first run at one slot: %+v, %v; want open with the command hold", a, err)
+		}
+		return home
+	}
+	// Past the settle time, long before the command hold's cap: the first run
+	// is alive in its test stages, its race run not started.
+	later := waitT0.Add(10 * time.Minute)
+	queuedB := func(more ...func() ([]machineload.Proc, map[int][]string)) *runTable {
+		c := &fakeClock{now: later}
+		parts := append([]func() ([]machineload.Proc, map[int][]string){wholeRunOf(70000, 501, time.Minute, true), wholeRunOf(80000, 501, 0, false)}, more...)
+		return &runTable{clock: c, at: func(time.Time) ([]machineload.Proc, map[int][]string) { return joinRuns(parts...) }}
+	}
+
+	t.Run("raised count reaches the queued run", func(t *testing.T) {
+		tb := queuedB()
+		req := wholeRunReq(t, heldHome(t), 80000, 501, tb.clock, tb)
+		req.Timeout = 30 * time.Minute
+		slots := "1"
+		req.Getenv = func(k string) string {
+			if k == PreflightSlotsEnv {
+				return slots
+			}
+			return ""
+		}
+		req.Sleep = func(d time.Duration) { tb.clock.Sleep(d); slots = "2" }
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Status != WaitOpen || res.Slots != 2 || !slices.Contains(res.WaitedOn, WaitOnPreflight) {
+			t.Fatalf("%+v (holder %+v); want shut on the running preflight at one slot, then open at 2 despite its command hold", res, res.Holder)
+		}
+	})
+
+	// Judged as the settle hold, not dropped: inside the two minutes after the
+	// first run opened, the queued run still waits on it.
+	t.Run("a look inside the settle window waits on the hold", func(t *testing.T) {
+		c := &fakeClock{now: waitT0.Add(time.Minute)}
+		tb := &runTable{clock: c, at: func(time.Time) ([]machineload.Proc, map[int][]string) {
+			return joinRuns(wholeRunOf(70000, 501, time.Minute, true), wholeRunOf(80000, 501, 0, false))
+		}}
+		req := wholeRunReq(t, heldHome(t), 80000, 501, tb.clock, tb)
+		req.Timeout = 30 * time.Second
+		req.Getenv = slotsEnv("2")
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Status != WaitTimedOut || !slices.Contains(res.Still, WaitOnLock) {
+			t.Fatalf("%+v; want shut on the first run's hold inside its settle window", res)
+		}
+	})
+
+	t.Run("still shut while two preflights run", func(t *testing.T) {
+		tb := queuedB(wholeRunOf(75000, 502, 2*time.Minute, true))
+		req := wholeRunReq(t, heldHome(t), 80000, 501, tb.clock, tb)
+		req.Timeout = 5 * time.Minute
+		req.Getenv = slotsEnv("2")
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Status != WaitTimedOut || !slices.Contains(res.Still, WaitOnPreflight) || slices.Contains(res.Still, WaitOnLock) {
+			t.Fatalf("%+v; want shut on the two running preflights at 2 slots, not on the settled hold", res)
+		}
+	})
+
+	t.Run("a race command still waits on the hold", func(t *testing.T) {
+		tb := queuedB()
+		req := wholeRunReq(t, heldHome(t), 80000, 501, tb.clock, tb)
+		req.Timeout = 5 * time.Minute
+		req.RaceCommand = true
+		req.Getenv = slotsEnv("2")
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Status != WaitTimedOut || !slices.Contains(res.Still, WaitOnLock) {
+			t.Fatalf("%+v; want a race command shut on the first run's command hold", res)
+		}
+	})
 }

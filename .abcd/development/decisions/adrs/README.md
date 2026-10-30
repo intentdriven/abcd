@@ -188,7 +188,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2609212115255771](2609212115255771-phases-and-milestones-are-retired.md) | Phases and milestones are retired: sequencing is dependencies rendered as status, the checkpoint is the derived release (supersedes adr-9; superseded by adr-2609292012006845) | superseded | 2026-09-21 |
 | [adr-2609221009491186](2609221009491186-a-provider-adapter-serves-only-the.md) | A provider adapter serves only the models it lists, under a vendor denylist no listing overrides; everything else runs on the host (superseded by adr-2609300107513982) | superseded | 2026-09-22 |
 | [adr-2609221017021499](2609221017021499-every-external-credential-abcd-holds-is.md) | Every external credential abcd holds is named in configuration and kept in one store the person chose; never the harness, never the repository | accepted | 2026-09-22 |
-| [adr-2609231028044006](2609231028044006-surface-chapter-shape-claims-are-derived.md) | Shape claims in the brief's surface chapters are derived, never hand-authored | accepted | 2026-09-23 |
+| [adr-2609231028044006](2609231028044006-surface-chapter-shape-claims-are-derived.md) | Shape claims in the brief's surface chapters are derived, never hand-authored (superseded by adr-2610290238168123) | superseded | 2026-09-23 |
 | [adr-2609231048308186](2609231048308186-the-catalog-pins-the-latest-release-s.md) | The catalog pins the latest release's plugin archive | accepted | 2026-09-23 |
 | [adr-2609291342092738](2609291342092738-a-drain-takes-an-issue-alone-only-when.md) | A drain takes an issue alone only when its fields say it needs no decision | accepted | 2026-09-29 |
 | [adr-2609292012006845](2609292012006845-now-next-and-later-list-an-intent-in-a.md) | Now, Next and Later list an intent in a lane under Now only; phases stay retired (supersedes adr-2609212115255771) | accepted | 2026-09-29 |
@@ -232,4 +232,6 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610241057124151](2610241057124151-abcd-installs-the-tools-it-needs-from.md) | abcd installs the tools it needs from downloads pinned in its own release | accepted | 2026-10-24 |
 | [adr-2610241101463288](2610241101463288-setup-asks-short-questions-and-lists-its.md) | Setup asks short questions and lists its defaults on one plan | accepted | 2026-10-24 |
 | [adr-2610281718537125](2610281718537125-a-release-publishes-with-no-approval.md) | A release publishes with no approval step | accepted | 2026-10-28 |
+| [adr-2610290238168123](2610290238168123-the-brief-states-the-design-and-why-each.md) | The brief states the design and why; each command's page states what abcd does, once, and is the copy checked against the code (supersedes adr-2609231028044006) | accepted | 2026-10-29 |
+| [adr-2610291037481588](2610291037481588-the-contributors-page-counts-people-and.md) | The contributors page counts people and names none | accepted | 2026-10-29 |
 <!-- /index -->

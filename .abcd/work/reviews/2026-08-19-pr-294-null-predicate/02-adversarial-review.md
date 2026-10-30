@@ -161,7 +161,7 @@ into `origin/main@7a1e1c7` is **clean** (auto-merging `CHANGELOG.md` and
 value.
 
 One real staleness fact sits behind it: the PR branches from `d419c46`, where
-the module path was still `module github.com/REPPL/abcd-cli`; `main` has since
+the module path was still `module github.com/<personal account>/abcd-cli`; `main` has since
 renamed it to `github.com/Partnermedia/abcd`. The contributor's "`go test ./...`
 green" was therefore run against the old module path. It merges and passes
 anyway — the rename touches none of the six files — but the verification claim

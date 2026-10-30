@@ -340,3 +340,32 @@ func TestTheGatesRenderLeavesTheUIAlone(t *testing.T) {
 		t.Error("the gate's render wrote the repository's ui.json")
 	}
 }
+
+// The two labels of the withdrawn same-author panel (adr-2610291037481588) are
+// tolerated and never required: a file that carries them still loads, a file
+// without them loads too, and completing a file never adds them back.
+func TestRetiredLabelsAreToleratedNotRequired(t *testing.T) {
+	full := bundledUI(t)
+	without := cut(t, full, "    \"same_author\": \"Two author names, one contributor\",\n")
+	without = cut(t, without, "    \"suggestion\": \"Suggested\",\n")
+	root := writeUI(t, without)
+
+	if _, err := LoadUI(root, "site-src/ui.json"); err != nil {
+		t.Fatalf("a ui.json without the retired labels does not load: %v", err)
+	}
+	added, err := addMissingLabels(root, "site-src/ui.json")
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if len(added) != 0 {
+		t.Errorf("completing the file added %v, want nothing", added)
+	}
+	for _, m := range (UI{}).missing() {
+		if m == "health.same_author" || m == "health.suggestion" {
+			t.Errorf("missing() requires the retired label %q", m)
+		}
+	}
+	if _, err := LoadUI(writeUI(t, full), "site-src/ui.json"); err != nil {
+		t.Errorf("a ui.json that still carries the retired labels does not load: %v", err)
+	}
+}

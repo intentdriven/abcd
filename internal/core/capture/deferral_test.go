@@ -91,6 +91,7 @@ func TestDeferRefusesWhatTheCutWouldNotHonour(t *testing.T) {
 		{"no reason", major, "v0.1.0", "   ", "reason is empty"},
 		{"a minor record", minor, "v0.1.0", "a reason that is long enough", "only a major or critical"},
 		{"a resolved record", resolved.ID, "v0.1.0", "a reason that is long enough", "not open"},
+		{"a reason the renderer refuses", major, "v0.1.0", "waits on the <input> rewrite", "site renderer refuses"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			before := readRaw(t, ir, c.id)

@@ -758,3 +758,68 @@ func TestDrainListsTakeOverInItsHelpAndTheReference(t *testing.T) {
 		t.Fatalf("the reference's drain section lists --take-over:\n%s", section)
 	}
 }
+
+// TestDrainSkipHoldsAnIssueBackWithItsReason (spc-2609212015054359 step 4;
+// iss-2610090642385898): a bare drain given --skip and --reason passes the
+// issue over with check "skipped" and the reason, in text and --json; --skip
+// without --reason, and any skip flag on the dry run, exit 2.
+func TestDrainSkipHoldsAnIssueBackWithItsReason(t *testing.T) {
+	repo := drainRuleRepo(t, drainrule.ProposalFrontmatter())
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", t.TempDir())
+	// The held issue's category comes first in the drain order, so the move
+	// reaches it before the other's judgement whatever the ids' random tails:
+	// two captures in one second would otherwise order by those alone.
+	held := captureWithRemedy(t, "a nil map is written before it is made", "--category", "tech-debt", "--remedy", "make the map first")
+	other := captureWithRemedy(t, "the page names the flag twice", "--category", "bug", "--remedy", "name it once")
+
+	for _, args := range [][]string{
+		{"drain", "--skip", held},
+		{"drain", "--reason", "why"},
+		{"drain", "--dry-run", "--skip", held, "--reason", "why"},
+		{"drain", "--dry-run", "--unskip", held},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := Run(args, &stdout, &stderr); code != 2 {
+			t.Errorf("%v exited %d, want 2:\n%s%s", args, code, stdout.String(), stderr.String())
+		}
+	}
+	if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(loop.DrainStateRel))); err == nil {
+		t.Fatal("a refused skip writes no drain state")
+	}
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"drain", "--skip", held, "--reason", "a peer's fix is in flight"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("drain --skip exited %d:\n%s%s", code, stdout.String(), stderr.String())
+	}
+	for _, want := range []string{"held back: " + held, "passed: " + held + " (skipped)", "a peer's fix is in flight", "awaiting the host judgement on " + other} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("the move does not carry %q:\n%s", want, stdout.String())
+		}
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"drain", "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("drain --json exited %d:\n%s%s", code, stdout.String(), stderr.String())
+	}
+	var res struct {
+		Passed []struct {
+			ID     string `json:"id"`
+			Check  string `json:"check"`
+			Reason string `json:"reason"`
+		} `json:"passed"`
+		Skips []struct {
+			Target string `json:"target"`
+			Reason string `json:"reason"`
+		} `json:"skips"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatalf("--json is not JSON: %v\n%s", err, stdout.String())
+	}
+	if len(res.Skips) != 1 || res.Skips[0].Target != held || len(res.Passed) != 1 || res.Passed[0].ID != held ||
+		res.Passed[0].Check != loop.CheckSkipped || !strings.Contains(res.Passed[0].Reason, "a peer's fix is in flight") {
+		t.Fatalf("--json carries the skip list and the pass-over: %+v", res)
+	}
+}

@@ -96,8 +96,11 @@ do*; the id form answers *what is this, and what is my next move* (spc-26,
 itd-121). For a shipped intent the move is its fidelity-review state, read by
 the intent store's one reader of the review marker (itd-2609150819445595): an
 owed review names its receipt and the re-emit command; a shipped intent with no
-marker owes one too, and the re-emit mints its receipt; a dead-lettered review
-is reported unreviewed with its reason; an ingested one leaves nothing to do.
+marker owes one too, and the re-emit mints its receipt, unless its Audit Notes
+read as a hand-written audit (they name the acceptance criteria and give a
+verdict on them), when the move reports it audited by hand and owes nothing; a
+dead-lettered review is reported unreviewed with its reason; an ingested one
+leaves nothing to do.
 For a ready planned intent, and for its open spec, the move is closing the spec,
 and it says that the close ships the intent when no open spec still names it. A
 positional on the namespace root is not a `show` sub-verb, so the form stays
@@ -277,7 +280,21 @@ dcn-2610161040394970). The JSON form adds `reservations` (each live one with
 `stage` when it carries one), `live_by_holder`, `release_holds` (one per
 release being cut), `lapsed_releases` (one per release whose cut lapsed with
 no tag on origin, holding no merge), `hand_backs_by_holder` (`holder`,
-`hand_backs` of `record`, `kind` and `released_at`, and `more`) and `view`
+`hand_backs` of `record`, `kind` and `released_at`, and `more`),
+`release_withdrawals` (each release's withdrawn pull requests by state: held,
+admitted, due (read from the reader's own newest push to the branch, as the
+forge's record of pushes shows it, as an act's settle reads them, so one
+nothing re-arms is never due), stranded for another person, skipped, with
+`reader`, `not_read` (the commits other accounts pushed above the reader's
+newest push, counted by pusher, never read) and `unplaced` (why that push
+cannot be found or placed, when none of the reader's is listed), `lapsed`
+when its lease lapsed before it ended still holding some, which its own
+person's next act ends five minutes later, and `not_ended` naming the holder whose tombstone the forge's record
+does not show they pushed, which ends nothing either), `lost_withdrawals` (each recent release's withdrawals a later
+commit dropped), `settled` (each ended release of the reader's whose
+withdrawals the listing re-armed or skipped, with `not_read`, `unplaced` and
+`not_ended`, each once for each tip, and `failures`, a comment not
+posted as sent among them, iss-2610222014550692) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and
 exits 1; the peer rows are unchanged. A checkout with no remote named

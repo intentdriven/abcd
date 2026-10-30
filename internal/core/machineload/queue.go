@@ -321,7 +321,7 @@ func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 			out.Preflights = append(out.Preflights, pid)
 		}
 	}
-	// Each unit of work in its test stages once: a preflight or a waiter
+	// Each unit of work running past the gate once: a preflight or a waiter
 	// running its command, unless it runs beneath another of them.
 	units := append(append([]int(nil), out.Preflights...), runningW...)
 	for _, pid := range units {

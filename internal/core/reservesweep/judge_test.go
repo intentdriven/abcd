@@ -44,16 +44,17 @@ func root(chain ...commitInfo) []commitInfo {
 	return chain
 }
 
-func TestAPlainReleaseIsSpentOnlyOnceItIsOlderThanTheAge(t *testing.T) {
+func TestAPlainReleaseIsSpentAtTheNextSweepWithoutTheAge(t *testing.T) {
 	f := facts{Chain: root(plainAt(t0), reservationAt(t0.Add(-time.Hour))), ChainWhole: true, EffectiveExpiry: t0}
 	// The tombstone's effective expiry is its release, so the take-over margin
-	// counts past it too.
+	// counts past it; past that, a release is spent at the next sweep, whatever
+	// the age (the product thinker's ruling of 2026-10-28, iss-2610281719275461).
 	settled := t0.Add(claim.TakeoverMargin)
-	if v := judge(f, settled.Add(week-time.Second), week); v.Spent || v.Reason != KeptRecent {
-		t.Fatalf("a second before the age = %+v; want kept as recent", v)
+	if v := judge(f, settled.Add(-time.Second), week); v.Spent || v.Reason != KeptRecent {
+		t.Fatalf("a second inside the take-over margin = %+v; want kept as recent", v)
 	}
-	if v := judge(f, settled.Add(week), week); !v.Spent || v.Reason != SpentReleased {
-		t.Fatalf("at the age = %+v; want spent as released", v)
+	if v := judge(f, settled, week); !v.Spent || v.Reason != SpentReleased {
+		t.Fatalf("once the margin has passed, a week short of the age = %+v; want spent as released", v)
 	}
 }
 
@@ -93,12 +94,10 @@ func TestATipDatedAheadOfTheReaderIsKept(t *testing.T) {
 	}
 }
 
-func TestATerminalRecordIsSpentWhateverItsTipOnceOlderThanTheAge(t *testing.T) {
+func TestATerminalRecordIsSpentWhateverItsTip(t *testing.T) {
 	exp := t0.Add(2 * time.Hour)
 	for name, chain := range map[string][]commitInfo{
 		"a lapsed reservation never released": root(reservationAt(t0)),
-		"a hand-back":                         root(handBackAt(t0), reservationAt(t0.Add(-time.Hour))),
-		"a plain release":                     root(plainAt(t0)),
 	} {
 		f := facts{Chain: chain, ChainWhole: true, EffectiveExpiry: exp, Terminal: true}
 		settled := latest(chain[0].CommittedAt, chain[0].ReleasedAt, exp.Add(claim.TakeoverMargin))
@@ -107,6 +106,22 @@ func TestATerminalRecordIsSpentWhateverItsTipOnceOlderThanTheAge(t *testing.T) {
 		}
 		if v := judge(f, settled.Add(week), week); !v.Spent || v.Reason != SpentTerminal {
 			t.Fatalf("%s, terminal, at the age = %+v; want spent as terminal", name, v)
+		}
+	}
+	// A release of either kind on a terminal record is spent at the next
+	// sweep: the release is the holder's own act and the task is finished, so
+	// a hand-back has nobody left to hand the record to.
+	for name, chain := range map[string][]commitInfo{
+		"a plain release": root(plainAt(t0)),
+		"a hand-back":     root(handBackAt(t0), reservationAt(t0.Add(-time.Hour))),
+	} {
+		f := facts{Chain: chain, ChainWhole: true, EffectiveExpiry: t0, Terminal: true}
+		settled := t0.Add(claim.TakeoverMargin)
+		if v := judge(f, settled.Add(-time.Second), week); v.Spent {
+			t.Fatalf("%s, terminal, inside the margin = %+v; want kept", name, v)
+		}
+		if v := judge(f, settled, week); !v.Spent || v.Reason != SpentTerminal {
+			t.Fatalf("%s, terminal, past the margin = %+v; want spent as terminal", name, v)
 		}
 	}
 }
