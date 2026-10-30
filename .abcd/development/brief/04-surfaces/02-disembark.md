@@ -245,8 +245,9 @@ exemptions where a feature genuinely does not apply. *The corpus manifest
   destination. *(The fingerprint is asserted for the probe, the plan and the pack,
   which are the three sub-verbs that open the source at all. The review also takes
   a source repo, but only to check that it is a real directory, to take its name
-  for the attestation and to read its scanner settings: the content is never
-  read, so there is nothing for a fingerprint to catch.)*
+  for the attestation and to read its scanner settings and git identity for the
+  secret scan: nothing else is read and nothing is written, so there is nothing
+  for a fingerprint to catch.)*
 - **Given** a corpus repo with an intent corpus, ADRs, and a memory backend
   present, **when** a full pack runs to completion, **then** the destination
   contains all sections in [§ 5](#5-output-shape) and the review returns a

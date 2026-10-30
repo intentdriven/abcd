@@ -239,9 +239,10 @@ lifeboat path), write it to a file, then:
 ```
 
 The `<source-repo>` argument is **required**; the review reads none of its
-content — the binary gates it as a real directory and reads only its scanner
-settings for the secret scan above, so the review stays deterministic and safe
-even when the source is gone. The binary always **stamps the attestation
+content — the binary gates it as a real directory, and the secret scan above
+reads only its scanner settings and git identity (and runs gitleaks where the
+source opted in), so the review stays deterministic and safe even when the
+source is gone. The binary always **stamps the attestation
 fields itself** (source name, manifest hash, manifest-verified flag, coverage
 summary) — they are never taken from the agent's payload.
 
