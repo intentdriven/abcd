@@ -110,7 +110,7 @@ route set on such a type), and a lab with no pairs has no `agreement`.
 For each type, `agreement` gives `pairs`, `compared` (the adapter answered),
 `agreed`, `skipped` (the state was over the model's window, or the call
 failed), `rate`, and the compared and agreed counts in four probability
-`bands`. It ends with the `note` line, naming the lab home and the count. Show
+`bands`, which the text prints on the line under the type's. It ends with the `note` line, naming the lab home and the count. Show
 the user the rates and the note: a research note filed from it is the evidence
 a ruling turns a type on with (`<provider>/<model>`, no `shadow:`), and turning
 a type on is the user's decision, never yours.

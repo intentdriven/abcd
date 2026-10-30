@@ -174,7 +174,8 @@ func TestLabHarvestPrintsTheShadowAgreement(t *testing.T) {
 	}
 	code, out, _ = runLab(t, "lab", "harvest", m.ID)
 	if code != 0 || !strings.Contains(out, "agreement eligibility-residual: 1/2 compared agree (50%), 0 skipped") ||
-		!strings.Contains(out, "2 pairs (2 compared)") || !strings.Contains(out, m.ID) {
+		!strings.Contains(out, "2 pairs (2 compared)") || !strings.Contains(out, m.ID) ||
+		!strings.Contains(out, "by the adapter's probability (agreed/compared): 0.00-0.50: 0/0, 0.50-0.70: 0/0, 0.70-0.90: 0/0, 0.90-1.00: 1/2") {
 		t.Fatalf("harvest (exit %d):\n%s", code, out)
 	}
 	code, out, _ = runLab(t, "lab", "--json", "harvest", m.ID)
