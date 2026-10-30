@@ -2309,7 +2309,7 @@ verb requires it, and skipping it is never warned about.
 
 #### `abcd ideate record`
 
-Validate a host-composed gauntlet verdict: Writes the dated record to the private store, or the public one on --public; refuses without an idea slug or --verdict-json.
+Validate a host-composed gauntlet verdict: Writes the dated record, private unless --public; refuses without an idea slug or --verdict-json.
 
 **Usage:** `abcd ideate record <idea-slug> [--private | --public] --verdict-json <file|-> [flags]`
 
