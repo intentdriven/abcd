@@ -209,7 +209,10 @@ func TestTheApprovalActIsThePersons(t *testing.T) {
 			{`gh api graphql -F query=@review.graphql -F event=APPROVE`, approveForgeEntryID},
 		} {
 			d, err := reg.Check(c.cmd)
-			if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
+			// go run of cmd/abcd arrives at a program the walk names abcd,
+			// so the registry entry may refuse it before the guard's own.
+			goRunAbcd := strings.Contains(c.cmd, "cmd/abcd") && d.EntryID == "abcd-land-approve"
+			if err != nil || d.Verdict != VerdictBlock || (d.EntryID != c.entry && !goRunAbcd) {
 				t.Fatalf("human %v: Check(%q) = %q via %q, %v; want a block via %q", human, c.cmd, d.Verdict, d.EntryID, err, c.entry)
 			}
 		}
