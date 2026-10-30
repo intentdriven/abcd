@@ -382,7 +382,7 @@ preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
 else
-preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
+preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	@scripts/records-only.sh
 	@echo "preflight: a records-only change, so the unit and race stages are skipped and precheck's tests run in their place; CI's unit lane still runs every test"
 	go build ./...
