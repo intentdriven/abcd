@@ -340,12 +340,10 @@ status kept apart from the grant, irreversible acts outside every level).
     itd-2610222029228127, which the question put to the product thinker
     wrongly counted in.
 
-Ruled by the product thinker on 2026-10-30, in the planning interview of
-itd-2610301750162657: **this draft is bundled with that one**, the spot-check
-of what abcd decided alone. This draft's report lists every act a session took
-under the grant, and the spot-check draws a few of the same acts and checks
-them against specs and intents; the spot-check joins the bundle this record
-plans (decision 22 above) and ships in the same cut.
+The product thinker bundled the spot-check of itd-2610301750162657 with this
+draft on 2026-10-30 and took it out again the same evening, so that the
+spot-check could be planned before this bundle is ready; it draws from abcd's
+record of how each change landed instead of this draft's report.
 
 ## Open Questions
 
