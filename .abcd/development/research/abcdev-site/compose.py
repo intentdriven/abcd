@@ -311,7 +311,7 @@ rsecs = sections(rec_md); rtitle = rsecs[0]['title']
 
 footer = f'''
 <footer class="site-foot"><div class="wrap">
-  <span>© 2026 REPPL · MIT</span>
+  <span>© 2026 the product thinker · MIT</span>
   <a href="https://github.com/Partnermedia/abcd">GitHub</a>
   <a href="https://github.com/Partnermedia/abcd/blob/main/SECURITY.md">SECURITY.md</a>
   <a href="https://github.com/Partnermedia/abcd/blob/main/ACKNOWLEDGEMENTS.md">ACKNOWLEDGEMENTS.md</a>

@@ -633,6 +633,19 @@ func IsRealDir(path string) bool {
 	return err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0
 }
 
+// SameFile reports whether paths a and b both exist and name one file. It
+// follows symlinks and compares the files themselves (os.SameFile), not their
+// spellings, so a symlinked path, or a letter case that a case-insensitive file
+// system ignores, still matches.
+func SameFile(a, b string) bool {
+	fa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	fb, err := os.Stat(b)
+	return err == nil && os.SameFile(fa, fb)
+}
+
 // ErrNotRealDir is the directory-validation sentinel: the path exists, and it is
 // a symlink or a non-directory rather than a real directory. Callers map it onto
 // their own typed refusal with errors.Is.

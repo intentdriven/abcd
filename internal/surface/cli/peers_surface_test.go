@@ -259,7 +259,8 @@ func TestThePeerHeldRefusalSanitisesThePeersBranchAndPath(t *testing.T) {
 
 // Criterion 13: AGENTS.md's scan-before-mutating step names the peer listing
 // beside the harness's session listing, so the convention points at a surface
-// abcd renders rather than at nothing.
+// abcd renders rather than at nothing. The checkout runs abcd through
+// scripts/abcd.sh, so that is how the step names it.
 func TestTheScanBeforeMutatingConventionNamesThePeerListing(t *testing.T) {
 	root, err := fsutil.ModuleRoot(".")
 	if err != nil {
@@ -274,7 +275,7 @@ func TestTheScanBeforeMutatingConventionNamesThePeerListing(t *testing.T) {
 		t.Fatal("AGENTS.md has no scan-before-mutating step")
 	}
 	step, _, _ = strings.Cut(step, "\n- **")
-	for _, want := range []string{"session listing", "abcd peers"} {
+	for _, want := range []string{"session listing", "scripts/abcd.sh peers"} {
 		if !strings.Contains(step, want) {
 			t.Errorf("the scan-before-mutating step does not name %q:\n%s", want, step)
 		}

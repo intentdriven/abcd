@@ -39,9 +39,9 @@ The brief skeleton is, deliberately, the same shape as a populated lifeboat (see
 
 - **`/abcd:ahoy`** scaffolds a managed repo's config (`.abcd/config.json` + `.abcd/rules.json` — see [`04-surfaces/01-ahoy.md`](04-surfaces/01-ahoy.md)), never this skeleton. The **design target** (staged, not shipped) for a fresh repo is the **all-blank coverage state**: every section of this skeleton present as a blank to be filled deliberately, measured by the same three-valued coverage accounting a lifeboat reports (`grounded` / `partial` / `blank`) — not a copied file tree.
 - **`/abcd:disembark`** uses this skeleton's *shape* as a target schema for what lifeboat-composer agents must produce.
-- **`/abcd:embark`** reads a lifeboat (which is structurally a populated brief + audit/provenance extras) and writes a new repo's brief by walking the brief↔lifeboat mapping in reverse — the amended press release becomes the new repo's initial brief.
+- **`/abcd:embark`** reads a lifeboat (which is structurally a populated brief + audit/provenance extras) and writes its record families into the target repo. The lifeboat's `brief/` sections only inform embark's report: it never writes them into the target (`internal/core/lifeboat/embark_types.go`, report-only). Whether embark should ever write a new repository's brief, and how, is undecided, and is registered as [an open question](03-evidence/03-open-questions.md#does-embark-write-a-new-repositorys-brief).
 
-There is one canonical skeleton, used three ways. The mapping table below is that contract; round-trip tests catch divergence.
+There is one canonical skeleton: disembark packs to it today, and ahoy is designed to. The mapping table below is that contract, and its tests catch divergence: every brief section must have a row, and this document must carry the table the code renders.
 
 ## The brief ↔ lifeboat mapping
 

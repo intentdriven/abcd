@@ -146,17 +146,12 @@ Start with the plan and the design record:
 Run from the repo root.
 
 ```bash
-make preflight      # the pre-push gate: waits its turn at the load gate as
-                    # one whole run (nothing runs while it is queued), then
-                    # the load check first (load-check,
-                    # a warning, never a failure), then fmt-check +
-                    # lint-reviews +
-                    # lint-issues + record-lint +
-                    # issue-drift + docs-lint + check-attribution +
-                    # site-render +
-                    # smoke + evals-cold-reading,
-                    # then build + vet +
-                    # test + race (internal), all on the go.mod toolchain
+make preflight      # the pre-push gate: load-check (a warning, never a
+                    # failure), then fmt-check + lint-reviews + lint-issues +
+                    # record-lint + issue-drift + docs-lint + check-attribution
+                    # + secrets-check + vulncheck + site-render + smoke +
+                    # evals-cold-reading, then build + vet + test + race
+                    # (internal), all on the go.mod toolchain
 make precheck       # minutes, no queue: preflight's gates, build, vet, the
                     # record, page and agent audit packages, and the command
                     # and site audit tests chosen by name; no unit or race
@@ -181,7 +176,7 @@ no receipt. The sequence is: commit everything, `make preflight`, then a plain
 `git push`. A receipt minted in any worktree of the checkout counts, and a commit
 the remote already holds (a tag on a merged commit) needs none.
 
-**In a source checkout of abcd, every abcd invocation is `go run ./cmd/abcd
+**In a source checkout of abcd, every abcd invocation is `scripts/abcd.sh
 <verb>` from the repo root** — never the plugin-root binary and never an `abcd`
 on PATH. Both are whatever version was last published, and in this repository
 that is the thing being developed, so they are stale by construction and fall
@@ -190,17 +185,18 @@ since the last release is unknown to them. The failure is not always a
 refusal. `launch ship` refuses on its surface guard, loudly and correctly, but
 `changelog --json` returned an empty cut against a tree holding 181 shipped
 records, and `capture` would have written records through a schema the record
-gates no longer accept — a plausible wrong answer, not an error. The plugin
-command pages document a resolution ladder that reaches the plugin-root binary
-first and falls through to `go run` only when nothing earlier resolves; in this
-checkout the first rung exists and answers, so the fallback written for exactly
-this case is never reached by following the ladder literally
-(iss-2608230943088357 holds the surface half). The loader's `DOGFOODING` domain
+gates no longer accept — a plausible wrong answer, not an error.
+`scripts/abcd.sh` runs this tree's build and keeps exits 2 and 3, which `go run`
+turns into 1. The plugin command pages document a resolution ladder that
+reaches the plugin-root binary first and falls through to `go run` only when
+nothing earlier resolves; here the first rung answers, so the fallback written
+for this case is never reached by following the ladder literally
+(iss-2610070547057816 holds the surface half). The loader's `DOGFOODING` domain
 in `.abcd/rules.json` injects this rule on a prompt that names `abcd` or any of
-its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`).
+its top-level verbs (the `Available Commands` list of `scripts/abcd.sh --help`).
 
 **The hooks run the latest reviewed default branch where the person opts in.**
-The hooks run the installed release, which `go run` cannot reach. A checkout
+The hooks run the installed release, which `scripts/abcd.sh` cannot reach. A checkout
 listed in `~/.abcd.noindex/dogfood-roots` (its path, a tab, the `https://` or
 ssh URL of a remote no agent can move, optionally a tab and the branch) runs, in
 every hook, a build of that branch's tip as the declared remote reports it;
@@ -305,6 +301,12 @@ with `*CONCURRENCY` to force it).
 - **The checkout is the unit of isolation, not the branch.** A second
   concurrent agent session works in its own `git worktree`: a branch switch
   swaps the working tree, HEAD and index under whoever else is using them.
+  The record writers enforce it: every write through `capture`, `intent`,
+  `decide` and `spec close`, and the index generator (`go generate
+  ./internal/surface/cli`), refuses (exit 3 for a verb) in a main checkout two
+  or more live sessions started in, and names the worktree store; the guard
+  hook denies the host's own file tools a write there outside
+  `.abcd/.work.local/`.
 - **That worktree goes in the machine-scoped store, and nowhere else:**
   `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, keyed on the full object name
   of the repository's root commit. Never beside the checkout, in the directory
@@ -314,14 +316,14 @@ with `*CONCURRENCY` to force it).
   retire it with `git worktree remove`.
 - **Scan before mutating anything a peer reads or runs.** Check the harness's
   session listing and announce the mutation to any peer found; before
-  capturing, resolving or picking a record, also run `go run ./cmd/abcd peers`,
+  capturing, resolving or picking a record, also run `scripts/abcd.sh peers`,
   which also fetches and lists every reservation on `origin`.
 - **Reserve a record before starting it.** Another person, computer or hosted
   session sees only what reaches `origin`: before working an issue or an
-  intent, reserve it with `go run ./cmd/abcd reserve <id> --footprint <path>`
+  intent, reserve it with `scripts/abcd.sh reserve <id> --footprint <path>`
   (once per path the work will change), back off on exit 3, and release it
   with `--release` when done. A build and a drain reserve as they start:
-  `go run ./cmd/abcd build <id>` reserves with the spec's footprint (an
+  `scripts/abcd.sh build <id>` reserves with the spec's footprint (an
   issue's `found_at`), `drain` each issue as its lane opens, and the run
   renews, fences and releases it; reserve by hand only for work neither
   starts. Each worktree is its own copy: two builds in sibling worktrees
@@ -349,9 +351,9 @@ with `*CONCURRENCY` to force it).
 
 ## Definition of done
 
-- `make preflight` is clean — the eight gates (`fmt-check`, `lint-reviews`,
+- `make preflight` is clean — the ten gates (`fmt-check`, `lint-reviews`,
   `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
-  `check-attribution`, `site-render`), both tagged eval
+  `check-attribution`, `secrets-check`, `vulncheck`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test -timeout 40m ./...`, and
   `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,
@@ -398,7 +400,7 @@ with `*CONCURRENCY` to force it).
   commit itself moved in; a "This reverts commit" line over a commit that moves
   no record, or naming a commit that never moved that record, withdraws nothing.
 - **A change that delivers a planned intent closes its spec in the same
-  change**: `go run ./cmd/abcd spec close <spc-N>` moves the spec to `closed/`
+  change**: `scripts/abcd.sh spec close <spc-N>` moves the spec to `closed/`
   and, as its close-hook, the intent from `planned/` to `shipped/`. Nothing
   runs it for you, and without a declaration the omission is silent: `launch
   ship` composes the changelog from terminal folders only, so an intent whose
@@ -418,7 +420,7 @@ with `*CONCURRENCY` to force it).
   that happens after the merge is the one that gets forgotten. A close that
   ships an intent (one without `--remainder`) also passes the doc-fidelity
   gate, and so does `launch ship` for every intent shipped since the last tag:
-  each refuses until `go run ./cmd/abcd docs fidelity record` has saved a docs
+  each refuses until `scripts/abcd.sh docs fidelity record` has saved a docs
   review for HEAD (`commands/docs.md` says how to run one). The review is
   labelled with the commit it read and kept in the checkout's local tier, so a
   cut made on `main` needs a review recorded there for the merge commit: the

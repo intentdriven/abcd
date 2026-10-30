@@ -471,7 +471,7 @@ func (c *composer) footer() string {
 	var b strings.Builder
 	b.WriteString(`<footer class="site-foot"><div class="wrap">`)
 	// The year comes from the build stamp, which a repository with no releases
-	// and no injected date cannot supply. "© <nothing> REPPL · MIT" is worse
+	// and no injected date cannot supply. "© <nothing> <copyright holder> · MIT" is worse
 	// than no line, so the span is omitted rather than rendered half-empty.
 	year := c.stamp.GeneratedAt
 	if len(year) >= 4 {

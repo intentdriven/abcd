@@ -37,10 +37,13 @@ const linearWorkBar = 6.0
 // (spc-2610100613109045, step 5), about 27.6 with the two stop-by-holder
 // entries of ruling AS, about 28.6 once kill-port took one
 // (iss-2610112232319827), and about 35 once the seven entries for starting
-// another agent harness with its permission checks off took theirs. The bar
-// sits at 40, which keeps that shape under it with room for a few more
-// entries and stays far below the hundred a dropped bound costs.
-const workPerByteBar = 40.0
+// another agent harness with its permission checks off took theirs. A line of
+// substitutions at the walk's bound followed by plain words measured 40.0
+// once the five branch- and worktree-deletion entries of iss-2610241239492159
+// took theirs. The bar sits at 48, which keeps those shapes under it with room
+// for a few more entries and stays far below the hundred a dropped bound
+// costs.
+const workPerByteBar = 48.0
 
 // checkWork runs one check over line against the bundled registry and returns
 // the work the guard counted doing it (tally in work.go): bytes tokenized, bytes

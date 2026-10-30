@@ -42,6 +42,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The configuration keys, as every refusal names them.
@@ -210,6 +211,15 @@ func (c *Config) modelled(rc RunnerConfig, model string) RunnerConfig {
 	return rc
 }
 
+// providerConfigured reports whether the machine configures provider.
+func (c *Config) providerConfigured(provider string) bool {
+	if c.api == nil {
+		return false
+	}
+	_, ok := c.api.Provider(provider)
+	return ok
+}
+
 // admitModel is the allowlist check a model route passes when it is read and
 // again before a runner is launched.
 func (c *Config) admitModel(route string) error {
@@ -369,26 +379,36 @@ func (c *Config) Override(routes []oracle.FlagRoute) error {
 	for _, a := range oracle.Roster() {
 		known[a] = true
 	}
-	for _, fr := range routes {
-		shown := layered.BoundKey(fr.Text)
+	// A refusal names the route by its position among the --route values, and
+	// any part of it the machine does not know by its length, never by its text:
+	// the build loop's step carries it into its --json refusal document, which
+	// the error boundary's pass does not read. A part named in full is one the
+	// machine knows: a roster agent, a runner this build ships, a provider it
+	// configures or a model a provider lists.
+	for i, fr := range routes {
+		shown := oracle.RoutePosition(i)
 		switch {
 		case fr.Runner == "":
 			return fmt.Errorf("runner: --route %s names no runner; want %s", shown, oracle.RunnerRouteSyntax)
 		case !known[fr.Agent]:
-			return fmt.Errorf("runner: --route %s names %q, which is neither an agent in the roster nor the implementer",
-				shown, layered.BoundKey(fr.Agent))
+			return fmt.Errorf("runner: --route %s names an agent (%s) that is neither an agent in the roster nor the implementer",
+				shown, termsafe.DescribeRefused(fr.Agent))
 		case !isRunnerName(fr.Runner):
-			return fmt.Errorf("runner: --route %s names runner %q, which this build does not ship; a role runs on one of the runners %s",
-				shown, layered.BoundKey(fr.Runner), strings.Join(runnerNames, ", "))
+			return fmt.Errorf("runner: --route %s names a runner (%s) this build does not ship; a role runs on one of the runners %s",
+				shown, termsafe.DescribeRefused(fr.Runner), strings.Join(runnerNames, ", "))
 		}
 		if _, ok := c.runners[fr.Runner]; !ok {
 			return fmt.Errorf("runner: --route %s names %s, which is not enabled on this machine; enable it under %s.%s in %s, "+
 				"or name a runner it enables (%s)", shown, fr.Runner, runnerKey, fr.Runner, layered.Config.MachineOrigin(), c.enabled())
 		}
 		if fr.Model != "" {
+			if provider, _, _ := strings.Cut(fr.Model, "/"); !c.providerConfigured(provider) {
+				return fmt.Errorf("runner: --route %s asks %s for a model whose provider (%s) is not configured on this machine; "+
+					"name a provider configured in %s", shown, fr.Runner, termsafe.DescribeRefused(provider), layered.Config.MachineOrigin())
+			}
 			if err := c.admitModel(fr.Model); err != nil {
-				return fmt.Errorf("runner: --route %s asks %s for %q, %w; name a model its provider lists, or add it to that "+
-					"provider's models in %s", shown, fr.Runner, layered.BoundKey(fr.Model), err, layered.Config.MachineOrigin())
+				return fmt.Errorf("runner: --route %s asks %s for a model (%s), %w; name a model its provider lists, or add it to that "+
+					"provider's models in %s", shown, fr.Runner, termsafe.DescribeRefused(fr.Model), err, layered.Config.MachineOrigin())
 			}
 		}
 		// Only opencode holds a pin. A route the person names to another

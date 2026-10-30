@@ -37,6 +37,28 @@ func captureLedgerRepo(t *testing.T) string {
 	return repo
 }
 
+// lockBody hand-edits a captured record's prose to open an HTML comment that
+// nothing closes: the shape capture refuses (iss-2610261616580903) and a hand
+// edit can still leave.
+func lockBody(t *testing.T, repo, id string) {
+	t.Helper()
+	paths, err := filepath.Glob(filepath.Join(repo, ".abcd", "work", "issues", "open", id+"-*.md"))
+	if err != nil || len(paths) != 1 {
+		t.Fatalf("record %s: %v %v", id, paths, err)
+	}
+	b, err := os.ReadFile(paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	locked := strings.Replace(string(b), "the abcd-review marker", "the <!-- abcd-review marker", 1)
+	if locked == string(b) {
+		t.Fatalf("record %s carries no marker phrase to lock:\n%s", id, b)
+	}
+	if err := os.WriteFile(paths[0], []byte(locked), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // ledgerIssueCount walks a repo tree and counts written ledger issue files.
 func ledgerIssueCount(t *testing.T, root string) int {
 	t.Helper()
@@ -466,7 +488,7 @@ func TestCaptureEmptyTextNeverWrites(t *testing.T) {
 }
 
 // TestCaptureDerivedSlugNeverCarriesHomePathUsername is the regression for
-// GH #485 (reported by @jogrun): `abcd capture <text>` derived the issue slug
+// GH #485 (reported by a contributor): `abcd capture <text>` derived the issue slug
 // from the RAW text before redaction ran, so a /Users/<name>/… home path in the abcd-audit:allow
 // capture text put the caller's username into the committed issue filename even
 // though the body was redacted. deriveSlug kebab-cased the path first, so nothing
@@ -1549,7 +1571,7 @@ func TestCaptureEnumRefusalNamesTheFlagAndItsSet(t *testing.T) {
 // comment open, which is refused on the 2026-08-31 ruling. Each is the caller's
 // to fix with nothing written, so each exits 2, never the fault's 1.
 func TestCaptureGroundsAndBodyRefusalsExit2(t *testing.T) {
-	_ = captureLedgerRepo(t)
+	repo := captureLedgerRepo(t)
 	var plain, locked struct {
 		ID string `json:"id"`
 	}
@@ -1569,18 +1591,20 @@ func TestCaptureGroundsAndBodyRefusalsExit2(t *testing.T) {
 			}
 		}
 	}
-	if err := json.Unmarshal(runCLI(t, "capture", "the loader drops rules when the <!-- abcd-review marker is stale", "--json"), &locked); err != nil || locked.ID == "" {
+	if err := json.Unmarshal(runCLI(t, "capture", "the loader drops rules when the abcd-review marker is stale", "--json"), &locked); err != nil || locked.ID == "" {
 		t.Fatalf("capture envelope unreadable: %v", err)
 	}
+	lockBody(t, repo, locked.ID)
 	if _, err := runCLIErr(t, "capture", "wontfix", locked.ID, "superseded by the loader rewrite"); exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "HTML comment") {
 		t.Errorf("wontfix over a locked body: exit = %d (%v), want 2 naming the open comment", exitCodeOf(err), err)
 	}
 }
 
 // TestCaptureWontfixRefusesALockedBody is the surface half of
-// iss-2608301908270888 as the 2026-08-31 ruling settled it. Ordinary prose can
-// carry a `<!--` nothing closes, and capture writes it verbatim into the body,
-// where it masks every line below it. Wontfix derives a `declined:` entry that
+// iss-2608301908270888 as the 2026-08-31 ruling settled it. A record's prose can
+// carry a `<!--` nothing closes, where it masks every line below it. Capture
+// refuses such text now (iss-2610261616580903), so the test leaves it the way a
+// hand edit still can. Wontfix derives a `declined:` entry that
 // could not read back there, so it refuses, moves nothing, and tells the
 // operator which construct and line to fix and how: the hand edit is the repair.
 func TestCaptureWontfixRefusesALockedBody(t *testing.T) {
@@ -1588,9 +1612,10 @@ func TestCaptureWontfixRefusesALockedBody(t *testing.T) {
 	var m struct {
 		ID string `json:"id"`
 	}
-	if err := json.Unmarshal(runCLI(t, "capture", "the loader drops rules when the <!-- abcd-review marker is stale", "--json"), &m); err != nil || m.ID == "" {
+	if err := json.Unmarshal(runCLI(t, "capture", "the loader drops rules when the abcd-review marker is stale", "--json"), &m); err != nil || m.ID == "" {
 		t.Fatalf("capture envelope unreadable: %v", err)
 	}
+	lockBody(t, repo, m.ID)
 	_, _, err := runCLISplit(t, "capture", "wontfix", m.ID, "superseded by the loader rewrite")
 	if err == nil {
 		t.Fatal("wontfix over a locked body acted, want a refusal")

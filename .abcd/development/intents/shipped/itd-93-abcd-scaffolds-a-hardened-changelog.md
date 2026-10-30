@@ -44,7 +44,7 @@ construction**: it armed against the tagged commit and read the reviewer
 receipts from that commit's own tree, but a receipt names the commit its
 reviewer read and can only live in a *later* commit, so a receipt naming the
 tagged commit can never sit in the tagged commit's tree. The fix
-([PR #99](https://github.com/REPPL/abcd-cli/pull/99), recorded in
+([PR #99](https://github.com/intentdriven/abcd/pull/99), recorded in
 [iss-108]) was to arm against the reviewed *content* commit (`HEAD^2^` on the
 auto-release merge path, `HEAD^` on a direct tag) and to structure the release
 branch as two commits — the changelog roll, then the receipts naming it.

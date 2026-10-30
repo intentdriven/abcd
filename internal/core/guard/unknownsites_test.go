@@ -38,7 +38,16 @@ var wordReaders = map[string]string{
 
 	// branchacts.go: the away mode's created-branch recorder, which records
 	// and refuses nothing.
-	"branchActsIn":      "isUnknown on every word: a command with a word nothing fixes is read as no branch act",
+	"branchActsIn": "isUnknown on every word: a command with a word nothing fixes is read as no branch act",
+	// deletes.go: the delete proof's reading. Each refuses the line on any
+	// word isUnknown reports, so a word nothing fixes is never read as a
+	// literal target, option or command name.
+	"deleteTargets":     "reads only cd/pushd/popd and GIT_ words; a git site comes from sitesNamed",
+	"deletesIn":         "isUnknown on the -C value and the subcommand, and mayDelete refuses an unknown word",
+	"pushDeletes":       "isUnknown on every word before it is read",
+	"branchDeletes":     "isUnknown on every word before it is read",
+	"branchOperand":     "reads a word pushDeletes or branchDeletes has already found fixed",
+	"worktreeRemoves":   "isUnknown on every word before it is read",
 	"branchCommandActs": "exempt: reads only words branchActsIn found known",
 	"createFlagActs":    "exempt: reads only words branchActsIn found known",
 	"flagValue":         "exempt: reads only words branchActsIn found known",
@@ -78,11 +87,12 @@ var wordReaders = map[string]string{
 	"mapfileCallbacks":       "clusterCouldCarry on every unknown dash-word",
 	"exportedFunctionBodies": "exempt: reads only known words (isWrapperAssignment refuses an unknown one, which ends the scan); the walk to command position (walkToCommand) reads the same operands through the rule",
 	"shellCPayloads":         "clusterCouldCarry on every word",
+	"cStringDialects":        "isUnknown: a shell name the line does not fix is read every way a shell may read its options",
 	"shellOperands":          "readWord on every unknown word",
 	"pipesIntoInterpreter":   "commandSites and nameCouldBeAny",
 	"deletesFromVariables":   "commandSites and nameCouldBeAny",
 	"readsScriptStream":      "commandSites and nameCouldBeAny",
-	"shellReadsStream":       "readWord and clusterCouldCarry on every unknown word",
+	"shellReadsStreamAs":     "readWord and clusterCouldCarry on every unknown word",
 	"sourceReadsStream":      "exempt: reads source's literal `--`; its operand goes through scriptIsStream, which reads wordCouldBe",
 	"isPlainCommand":         "refuses unknownMark outright",
 	"isSplitStringLong":      "exempt: reads the known option name scanEnvSplits hands it after reading the word by the rule",
@@ -119,6 +129,8 @@ var wordReaders = map[string]string{
 	"after":          "commandSites and nameCouldBeAny: a name a substitution prints that can be cd leaves the directory unknown",
 	"targetsOf":      "commandSites and isUnknown: no file is read for a program name the line does not fix",
 	"parseShellCall": "isUnknown on every word: an argument the line does not fix leaves the rest of the call unread",
+	"optionName":     "exempt: folds the known long-option name parseShellCall hands it, after parseShellCall read the word by the rule",
+	"bashLongOption": "exempt: each caller (parseShellCall, shellReadsStreamAs, shellCPayloads) hands it only a word isUnknown cleared",
 	"isEvalCarrier":  "commandSites and nameCouldBe",
 	"segChangesDir":  "commandSites and nameCouldBeAny",
 	"lastSite":       "commandSites",

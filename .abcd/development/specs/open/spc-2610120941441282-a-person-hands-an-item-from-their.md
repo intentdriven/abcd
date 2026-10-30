@@ -60,7 +60,7 @@ What a person does once it is built:
 
 ## Footprint
 
-- packages: scripts/cloud (new), scripts/cloud/connectors/claude (new, the host connector), .claude/settings.json (new, the connector's file at the host's fixed path), scripts/gate-tools.tsv (new), scripts/check-wip-source.sh and scripts/check-wip-source-cases.sh (new), .githooks/pre-push, .github/workflows/ci.yml, .abcd/work/rulesets/main-protection.json, internal/core/lint (static tests), internal/cloudscripts (executed-script fixture tests), internal/surface/cli (the pre-push hook's fixture tests), internal/gittest (the once-per-package abcd build the fixtures share)
+- packages: scripts/cloud, scripts/cloud/connectors/claude, .claude/settings.json, scripts/gate-tools.tsv, scripts/check-wip-source.sh, scripts/check-wip-source-cases.sh, .githooks/pre-push, .github/workflows/ci.yml, .abcd/work/rulesets/main-protection.json, internal/core/lint, internal/cloudscripts, internal/surface/cli, internal/gittest
 - tests: per step below. Every script is exercised in a throwaway clone with a bare repository as its remote, as `internal/surface/cli/githook_prepush_test.go` does for the hook, and every host or forge call against a fake `claude` or `gh` on PATH that records its argv and serves fixture output. No test needs the network, a hosted session, root or gitleaks.
 
 ## Design

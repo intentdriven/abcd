@@ -119,7 +119,7 @@ func defaultUI() (UI, error) {
 // planLabels walks one object against its struct, recording an edit for the
 // declared labels the object lacks. A declared block the file lacks is added
 // whole; a map (forge_names) is never required, so never added; `_purpose` is
-// never rendered, so never added.
+// never rendered, so never added; nor is a retired label (retiredLabel).
 func planLabels(src []byte, obj *jsonObject, t reflect.Type, def reflect.Value, prefix, unit string, parentMultiline bool, added *[]string, edits *[]uiEdit) {
 	var members []string
 	indent := memberIndent(src, obj)
@@ -134,7 +134,7 @@ func planLabels(src []byte, obj *jsonObject, t reflect.Type, def reflect.Value, 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 		key := strings.Split(f.Tag.Get("json"), ",")[0]
-		if key == "_purpose" || f.Type.Kind() == reflect.Map {
+		if key == "_purpose" || f.Type.Kind() == reflect.Map || retiredLabel(f) {
 			continue
 		}
 		path := prefix + key
@@ -189,6 +189,9 @@ func renderBlock(t reflect.Type, def reflect.Value, prefix, indent, unit string,
 	inner := indent + unit
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
+		if retiredLabel(f) {
+			continue
+		}
 		key := strings.Split(f.Tag.Get("json"), ",")[0]
 		var val string
 		switch f.Type.Kind() {

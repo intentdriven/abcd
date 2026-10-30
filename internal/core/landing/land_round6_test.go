@@ -81,7 +81,7 @@ func TestTheRound6AnswersParse(t *testing.T) {
 // required check, so the time the pull request sat CLEAN is what is timed.
 // Checks that take 25 minutes leave a re-run at arming+31 inside the grace.
 func TestTheGraceRunsFromTheLastRequiredCheckNotTheArming(t *testing.T) {
-	slow := both(unqueued("CLEAN", "REPPL", armedAt), completed("check (ubuntu-latest)", "2026-10-15T13:17:16Z"))
+	slow := both(unqueued("CLEAN", "alice", armedAt), completed("check (ubuntu-latest)", "2026-10-15T13:17:16Z"))
 
 	at(t, "13:23:16") // arming+31, CLEAN+6
 	f := newFixture(t, queueRuleset)
@@ -121,7 +121,7 @@ func TestTheRealTimelineIsNotToggledThirtyMinutesAfterTheArming(t *testing.T) {
 	at(t, "13:22:30")
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
-	f.forge.answers = []string{timed1018(t, unqueued("CLEAN", "REPPL", armedAt))}
+	f.forge.answers = []string{timed1018(t, unqueued("CLEAN", "alice", armedAt))}
 	res, err := f.land(f.options())
 	if err != nil {
 		t.Fatal(err)
@@ -140,7 +140,7 @@ func TestOnlyRequiredChecksMoveTheGrace(t *testing.T) {
 	at(t, "13:30:00")
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
-	late := both(unqueued("CLEAN", "REPPL", armedAt), completed("dependency-review", "2026-10-15T13:20:00Z"))
+	late := both(unqueued("CLEAN", "alice", armedAt), completed("dependency-review", "2026-10-15T13:20:00Z"))
 	f.forge.answers = []string{timed1018(t, late), pr1018(t, nil)}
 	if _, err := f.land(f.options()); err != nil {
 		t.Fatal(err)
@@ -155,7 +155,7 @@ func TestOnlyRequiredChecksMoveTheGrace(t *testing.T) {
 	}
 	f = newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
-	f.forge.answers = []string{timed1018(t, both(unqueued("CLEAN", "REPPL", armedAt), status))}
+	f.forge.answers = []string{timed1018(t, both(unqueued("CLEAN", "alice", armedAt), status))}
 	if _, err := f.land(f.options()); err != nil {
 		t.Fatal(err)
 	}
@@ -167,8 +167,8 @@ func TestOnlyRequiredChecksMoveTheGrace(t *testing.T) {
 // S5: a time from the forge later than the local clock never toggles.
 func TestAFutureTimeFromTheForgeNeverToggles(t *testing.T) {
 	for _, edit := range []func(pr map[string]any){
-		unqueued("CLEAN", "REPPL", "2026-10-15T15:00:00Z"),
-		both(unqueued("CLEAN", "REPPL", armedAt), completed("check (ubuntu-latest)", "2026-10-15T15:00:00Z")),
+		unqueued("CLEAN", "alice", "2026-10-15T15:00:00Z"),
+		both(unqueued("CLEAN", "alice", armedAt), completed("check (ubuntu-latest)", "2026-10-15T15:00:00Z")),
 	} {
 		at(t, "14:00:00")
 		f := newFixture(t, queueRuleset)
@@ -198,7 +198,7 @@ func TestAPendingRollupWithNoListedRequiredCheckIsStillAHolder(t *testing.T) {
 		}
 		f.forge.answers = []string{
 			recorded(t, "pr-state-1020-pending.json", empty),
-			recorded(t, "pr-state-1020-pending.json", both(unqueued("BEHIND", "REPPL", "2026-10-15T14:12:20Z"), empty)),
+			recorded(t, "pr-state-1020-pending.json", both(unqueued("BEHIND", "alice", "2026-10-15T14:12:20Z"), empty)),
 		}
 		res, err := f.land(f.options())
 		if err != nil {
@@ -218,7 +218,7 @@ func TestTheLivePendingAnswerNamesItsRunningRequiredChecks(t *testing.T) {
 	f.forge.prs = f.prFor(f.head())
 	f.forge.answers = []string{
 		recorded(t, "pr-state-1020-pending.json", nil),
-		recorded(t, "pr-state-1020-pending.json", unqueued("BEHIND", "REPPL", "2026-10-15T14:12:20Z")),
+		recorded(t, "pr-state-1020-pending.json", unqueued("BEHIND", "alice", "2026-10-15T14:12:20Z")),
 	}
 	res, err := f.land(f.options())
 	if err != nil {
@@ -244,7 +244,7 @@ func TestAListingWithMorePagesSaysSo(t *testing.T) {
 	}
 	f.forge.answers = []string{
 		timed1018(t, both(unqueued("BEHIND", "", ""), more)),
-		timed1018(t, both(unqueued("BEHIND", "REPPL", "2026-10-15T14:12:20Z"), more)),
+		timed1018(t, both(unqueued("BEHIND", "alice", "2026-10-15T14:12:20Z"), more)),
 	}
 	res, err := f.land(f.options())
 	if err != nil {
@@ -263,7 +263,7 @@ func TestAnOwnArmingOnAnotherHeadIsRefused(t *testing.T) {
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
 	other := strings.Repeat("b", 40)
-	f.forge.answers = []string{timed1018(t, both(unqueued("CLEAN", "REPPL", armedAt), func(pr map[string]any) { pr["headRefOid"] = other }))}
+	f.forge.answers = []string{timed1018(t, both(unqueued("CLEAN", "alice", armedAt), func(pr map[string]any) { pr["headRefOid"] = other }))}
 	_, err := f.land(f.options())
 	wantRefusal(t, err, short(other))
 	wantRefusal(t, err, short(f.head()))
@@ -288,7 +288,7 @@ func TestACleanPullRequestIsNotCalledHeldByAPendingRollup(t *testing.T) {
 	}
 	f.forge.answers = []string{
 		recorded(t, "pr-state-1020-pending.json", empty),
-		recorded(t, "pr-state-1020-pending.json", both(unqueued("CLEAN", "REPPL", "2026-10-15T14:12:20Z"), empty)),
+		recorded(t, "pr-state-1020-pending.json", both(unqueued("CLEAN", "alice", "2026-10-15T14:12:20Z"), empty)),
 	}
 	res, err := f.land(f.options())
 	if err != nil {

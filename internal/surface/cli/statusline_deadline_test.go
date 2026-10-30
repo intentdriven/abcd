@@ -473,3 +473,23 @@ func TestStatuslineHelpStatesItWritesNothingAndIsBounded(t *testing.T) {
 		}
 	}
 }
+
+// TestStatuslinePreviousCommandWhoseOutputClosesLateIsRead: outside a managed
+// checkout the recorded previous command prints its row and exits 0, and a
+// child it left keeps the pipe open for a moment: the row is printed and the
+// verb exits 0, never reporting the command as not run because the wait for
+// its output was timed from its exit (iss-2610272041031418).
+func TestStatuslinePreviousCommandWhoseOutputClosesLateIsRead(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv(statuslineFallbackEnv, "")
+	repo := t.TempDir()
+	gitInitAt(t, repo)
+	t.Chdir(repo)
+	widenBudgets(t)
+	writeUserSettings(t, `{"schema_version":1,"previous_command":"cat >/dev/null; printf row; sleep 0.5 &"}`)
+
+	stdout, stderr, code, _ := statuslineWithin(t, strings.NewReader("{}"))
+	if code != 0 || stdout != "row" || stderr != "" {
+		t.Errorf("exit %d stdout %q stderr %q; want the row, nothing on stderr, and exit 0", code, stdout, stderr)
+	}
+}

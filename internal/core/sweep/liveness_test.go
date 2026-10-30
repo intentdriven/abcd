@@ -671,17 +671,30 @@ func TestTheLsofProbeRunsUnderAUTF8LocaleAndKeepsAnEscapedNamesPrefix(t *testing
 	}
 }
 
+// TestTheLsofProbeReadsAListWhoseOutputClosesLate: lsof prints its list and
+// exits 0, and a child it left keeps the pipe open for a while: the list is
+// read once the pipe closes, never refused as a wait that ran out
+// (iss-2610272041031418).
+func TestTheLsofProbeReadsAListWhoseOutputClosesLate(t *testing.T) {
+	cmd := lsofCommand{path: script(t, `sleep 2 & printf 'p1\nfcwd\nn/\n'; exit 0`), timeout: 30 * time.Second, limit: 1 << 20}
+	got, err := cmd.list(context.Background())
+	if err != nil || !slices.Equal(dirs(got), []string{"/"}) {
+		t.Fatalf("list() = %v, %v; want [/]", got, err)
+	}
+}
+
 func TestTheLsofProbeFailsClosedOnAChildHoldingItsOutput(t *testing.T) {
-	// lsof exits at once, but a child it left keeps the pipe open: WaitDelay
-	// ends the wait, and the check fails closed rather than reading a part.
-	cmd := lsofCommand{path: script(t, `sleep 4 & printf 'p1\nfcwd\nn/\n'; exit 0`), timeout: 10 * time.Second, limit: 1 << 20}
+	// lsof exits at once, but a child it left keeps the pipe open past the
+	// deadline: the deadline ends the wait, and the check fails closed rather
+	// than reading a part.
+	cmd := lsofCommand{path: script(t, `sleep 5 & printf 'p1\nfcwd\nn/\n'; exit 0`), timeout: time.Second, limit: 1 << 20}
 	start := time.Now()
 	p := probe(ProbeOptions{Processes: cmd.list, Now: stale()})
-	if took := time.Since(start); took > 3*time.Second {
-		t.Fatalf("the probe took %s; want WaitDelay to bound it", took)
+	if took := time.Since(start); took > 5*time.Second {
+		t.Fatalf("the probe took %s; want the deadline to bound it", took)
 	}
-	if why := p.ProcessCheckUnavailable(); !strings.Contains(why, "holding its output") {
-		t.Fatalf("ProcessCheckUnavailable() = %q; want a child holding lsof's output named", why)
+	if why := p.ProcessCheckUnavailable(); !strings.Contains(why, "timed out") {
+		t.Fatalf("ProcessCheckUnavailable() = %q; want the deadline named", why)
 	}
 }
 

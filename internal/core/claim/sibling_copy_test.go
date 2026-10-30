@@ -86,7 +86,7 @@ func TestASiblingWorktreesCutIsNamedAsThatWorktreeInTheMergeHold(t *testing.T) {
 	}
 	reason := "release v0.16.0 is being cut by your worktree " + shown + " on this machine, until 2026-10-03T15:00:00Z" +
 		", and a session cutting a release has the final say on what merges before its tag"
-	wait := "merge it from " + shown + ", the worktree cutting v0.16.0, or wait until v0.16.0 is tagged or that copy releases rel-v0.16.0"
+	wait := "merge it from " + shown + ", the worktree cutting v0.16.0, or wait until v0.16.0 is tagged, that copy releases rel-v0.16.0 or the hold lapses at 2026-10-03T15:00:00Z unrenewed, when nothing holds the merge"
 	if !m.Held() || m.Reason() != reason || m.Waits() != wait {
 		t.Fatalf("held %v, reason %q, waits %q; want reason %q, waits %q", m.Held(), m.Reason(), m.Waits(), reason, wait)
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // RepoSettingsMirrorRelPath is the committed mirror of the repo-object settings
@@ -43,9 +44,11 @@ type RemoteSecurity struct {
 }
 
 // RemoteMergeHygiene is the repo-object settings that gate MERGE behaviour. abcd
-// mirrors them and does not set them: they encode a maintainer's workflow, not a
-// security posture, and a verb that drove them would be changing how the project
-// merges on the strength of a default nobody chose.
+// mirrors them. Of them it sets only delete_branch_on_merge, as part of the
+// settings baseline and on a yes (itd-2610290746077716); the merge methods
+// encode a maintainer's workflow, not a security posture, and a verb that drove
+// them would be changing how the project merges on the strength of a default
+// nobody chose.
 //
 // They are here because they had no source of truth in the tree at all
 // (iss-2608270512210664): the branch-ruleset mirror beside this one covers
@@ -79,8 +82,9 @@ type RemoteResult struct {
 	// the ONLY repository it acts on. It is reported so a caller can see which
 	// repository a write reached before believing the rest of the result.
 	Repo string `json:"repo"`
-	// Status is one of: already_up_to_date | clean | pending | aborted | opted_out |
-	// refused. "aborted" is a confirmation the caller declined; "refused" is a gate
+	// Status is one of: already_up_to_date | clean | pending | aborted | refused.
+	// A repo that opted out of native scanning has its two toggles reported as
+	// kept (itd-2610290746077716) and the rest of its baseline audited. "aborted" is a confirmation the caller declined; "refused" is a gate
 	// abcd itself closed. They are reported apart because only one of them is a
 	// decision the caller can revisit by answering differently.
 	Status string `json:"status"`
@@ -99,6 +103,9 @@ type RemoteResult struct {
 	// up only as an unchanged toggle reads as a silent failure, so the reason
 	// travels with the result.
 	Notes []string `json:"notes,omitempty"`
+	// Audit is the whole settings baseline as the read found it
+	// (itd-2610290746077716); nil when a gate refused before anything was read.
+	Audit *SettingsAudit `json:"audit,omitempty"`
 }
 
 // nativeScanningOptedOut reports an explicit `false` at scan.native_secret_scanning
@@ -163,11 +170,12 @@ func resolveGitHubRepo(cwd string) (string, error) {
 // tree — so the bare invocation of the verb it backs holds abcd's convention that
 // looking is never acting.
 func RemoteRead(cwd string) (RemoteResult, error) {
-	res, abs, done := remotePrepare(cwd)
+	res, prep, done := remotePrepare(cwd)
 	if done {
 		return res, nil
 	}
-	observed, merge, forkErr, err := ghSecurityState(abs, res.Repo)
+	abs := prep.root
+	observed, merge, obj, forkErr, err := ghSecurityState(abs, res.Repo)
 	if err != nil {
 		res = refuseRemote(res, "could not read "+res.Repo+"'s security settings, so nothing is known about what would change: "+errText(err))
 		// The read installs nothing (looking is never acting); it names the
@@ -182,7 +190,10 @@ func RemoteRead(cwd string) (RemoteResult, error) {
 	if forkErr != nil {
 		res.Notes = append(res.Notes, "the fork pull-request approval policy could not be read, so it is not reported: "+errText(forkErr))
 	}
-	res.Changes = pendingChanges(observed)
+	in := prep.audit
+	in.repo, in.obj = res.Repo, obj
+	res.Audit = auditSettings(in)
+	res.Changes = res.Audit.Differences()
 	res.Status = "already_up_to_date"
 	if len(res.Changes) > 0 {
 		res.Status = "pending"
@@ -210,10 +221,11 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 	if p == nil {
 		p = RefusingPrompter{}
 	}
-	res, abs, done := remotePrepare(cwd)
+	res, prep, done := remotePrepare(cwd)
 	if done {
 		return res, nil
 	}
+	abs := prep.root
 	// The gh offer comes after the gates, so a verb that would refuse anyway
 	// never asks to install anything, and before the read, which needs gh.
 	offer, ok := OfferGH(abs, confirmTool)
@@ -223,7 +235,7 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 		return res, nil
 	}
 	res.Notes = append(res.Notes, offer...)
-	observed, merge, forkErr, err := ghSecurityState(abs, res.Repo)
+	observed, merge, obj, forkErr, err := ghSecurityState(abs, res.Repo)
 	if err != nil {
 		return refuseRemote(res, "could not read "+res.Repo+"'s security settings; nothing was changed, because a write over an unknown state is a guess: "+errText(err)), nil
 	}
@@ -238,12 +250,19 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 		res.Notes = append(res.Notes, "the fork pull-request approval policy could not be read, so the mirror is not changed for it ("+kept+"): "+errText(forkErr))
 	}
 	res.Observed, res.Merge = observed, merge
+	in := prep.audit
+	in.repo, in.obj = res.Repo, obj
+	audit := auditSettings(in)
+	res.Audit = audit
 
 	// The confirmation, asked ONLY when a remote write would actually follow: a
 	// prompt over a change that is not going to happen teaches the answerer to say
 	// yes without reading, which is exactly the reflex this gate exists to avoid.
-	if pending := pendingChanges(observed); len(pending) > 0 {
-		if !p.Confirm("Change GitHub settings on " + res.Repo + "? (" + strings.Join(pending, "; ") + ")") {
+	// It names every setting the apply would change, and nothing else is written.
+	// The values come from the API, so the question is sanitised before a
+	// terminal shows it.
+	if pending := audit.Differences(); len(pending) > 0 {
+		if !p.Confirm(termsafe.Sanitize("Change GitHub settings on " + res.Repo + "? (" + strings.Join(pending, "; ") + ")")) {
 			res.Status = "aborted"
 			res.Notes = append(res.Notes, "the change to "+res.Repo+" was declined, so nothing was written on GitHub "+
 				"and no desired state was recorded")
@@ -251,31 +270,40 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 		}
 	}
 
-	// ORDERED, and the order is the contract: GitHub refuses push protection on a
-	// repository whose secret scanning is disabled, so the reverse order enables
-	// nothing and reports a failure the operator cannot act on. A failed step stops
-	// the sequence for the same reason.
-	for _, step := range []struct{ key, have string }{
-		{secretScanningKey, observed.SecretScanning},
-		{pushProtectionKey, observed.PushProtection},
-	} {
-		if step.have == statusEnabled {
-			continue
-		}
-		if err := ghEnable(abs, res.Repo, step.key); err != nil {
-			return refuseRemote(res, "could not enable "+step.key+" on "+res.Repo+": "+errText(err)+
-				"; the remaining steps were not attempted and no desired state was recorded"+
-				landedBeforeRefusal(res.Changes)), nil
-		}
-		res.Changes = append(res.Changes, step.key+": "+displayStatus(step.have)+" -> "+statusEnabled)
+	// ORDERED, and a failed step stops the sequence (applyDifferences): GitHub
+	// refuses push protection on a repository whose secret scanning is off, so the
+	// reverse order enables nothing and reports a failure the operator cannot act
+	// on.
+	ran, failure := applyDifferences(abs, res.Repo, audit)
+	res.Changes = ran.changes
+	if failure != "" {
+		return refuseRemote(res, failure+"; the remaining steps were not attempted and no desired state was recorded"+
+			landedBeforeRefusal(res.Changes)), nil
 	}
 
-	// The mirror is written only once every enable step this run needed RETURNED
-	// SUCCESS — never over a partial apply, whose failed step returns above. It is
-	// not a re-read: the claim it records is "abcd drove these toggles and GitHub
-	// accepted", which is what a later verify diffs the live state against, and a
-	// confirming GET here would only move the same trust one request along.
-	wrote, err := writeRepoSettingsMirror(abs, res.Repo, merge)
+	// The mirrors are written only once every step this run needed RETURNED
+	// SUCCESS — never over a partial apply, whose failed step returns above. They
+	// are not a re-read: the claim they record is "abcd drove these settings and
+	// GitHub accepted", which is what a later verify diffs the live state against,
+	// and a confirming GET here would only move the same trust one request along.
+	// The observed block records what GitHub holds after the run, so a setting
+	// this run changed is recorded at its new value, not as it was read before.
+	for _, c := range ran.changes {
+		if strings.HasPrefix(c, settingDeleteBranch+":") {
+			on := true
+			merge.DeleteBranchOnMerge = &on
+			res.Merge = merge
+		}
+	}
+	rulesetWrites, err := writeRulesetMirrors(abs, ran.rulesets)
+	res.Writes = append(res.Writes, rulesetWrites...)
+	if err != nil {
+		res.Status = "refused"
+		res.Notes = append(res.Notes, "the remote state is correct but a ruleset mirror could not be written ("+
+			rulesetMirrorDir+"): "+errText(err)+"; nothing in the tree records it"+landedBeforeRefusal(res.Changes))
+		return res, nil
+	}
+	wrote, err := writeRepoSettingsMirror(abs, mirrorRepoName(res.Repo, obj.Owner.Type), managedSettings(audit, ran), owedSettings(audit), merge)
 	if err != nil {
 		res.Status = "refused"
 		res.Notes = append(res.Notes, "the remote state is correct but the desired-state mirror could not be written ("+
@@ -286,7 +314,7 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 		res.Writes = append(res.Writes, RepoSettingsMirrorRelPath)
 	}
 	res.Status = "already_up_to_date"
-	if len(res.Changes) > 0 || wrote {
+	if len(res.Changes) > 0 || len(res.Writes) > 0 {
 		res.Status = "clean"
 	}
 	return res, nil
@@ -321,14 +349,25 @@ func OfferGH(guard string, confirm tools.Confirm) (notes []string, ok bool) {
 	return notes, false
 }
 
-// remotePrepare runs the three gates both verbs share and returns done=true when
-// one of them settled the outcome. The gates are the adr-44 boundary: after this
-// returns done=false, and only then, may a request leave the machine.
-func remotePrepare(cwd string) (res RemoteResult, abs string, done bool) {
+// remotePrep is what the gates settled, for the verb that passed them.
+type remotePrep struct {
+	// root is the working-tree root every question was answered about.
+	root string
+	// audit carries the gates' answers the settings audit reads: the opt-out,
+	// the github overrides and the declared visibility.
+	audit auditInput
+}
+
+// remotePrepare runs the gates both verbs share and returns done=true when one
+// of them settled the outcome. The gates are the adr-44 boundary: after this
+// returns done=false, and only then, may a request leave the machine. The
+// native-scanning opt-out is a gate no longer: it keeps the two toggles it
+// names, and the caller decides what that means for it.
+func remotePrepare(cwd string) (res RemoteResult, prep remotePrep, done bool) {
 	res = RemoteResult{Desired: RemoteSecurity{SecretScanning: statusEnabled, PushProtection: statusEnabled}}
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
-		return refuseRemote(res, "could not resolve this directory: "+errText(err)), "", true
+		return refuseRemote(res, "could not resolve this directory: "+errText(err)), prep, true
 	}
 	// Anchor EVERYTHING that follows at the working-tree root, before the first
 	// question is asked. Run from a subdirectory, git answers the identity questions
@@ -338,39 +377,45 @@ func remotePrepare(cwd string) (res RemoteResult, abs string, done bool) {
 	top, ok := worktreeRoot(abs)
 	if !ok {
 		return refuseRemote(res, "could not resolve this repository's working-tree root, so abcd cannot tell "+
-			"which repository it would be acting on"), "", true
+			"which repository it would be acting on"), prep, true
 	}
 	abs = top
 	det, err := Detect(abs)
 	if err != nil {
-		return refuseRemote(res, "could not classify this folder, so abcd will not act on a repository it cannot identify: "+errText(err)), "", true
+		return refuseRemote(res, "could not classify this folder, so abcd will not act on a repository it cannot identify: "+errText(err)), prep, true
 	}
 	if rerr := det.RepoIdentity.RootErr(); det.RootSHA == "" && rerr != nil {
 		// git not answering is not a folder outside abcd: say which it was,
 		// and still make no remote write (iss-2610051434156079).
-		return refuseRemote(res, "git gave no root commit for this repository, so abcd cannot tell whether it manages it: "+errText(rerr)), "", true
+		return refuseRemote(res, "git gave no root commit for this repository, so abcd cannot tell whether it manages it: "+errText(rerr)), prep, true
 	}
 	if det.FolderKind != ManagedRepo {
 		return refuseRemote(res, "this is not a repo abcd manages ("+string(det.FolderKind)+
-			"); a remote write is never made on a folder that did not adopt abcd (run `abcd ahoy install` first)"), "", true
+			"); a remote write is never made on a folder that did not adopt abcd (run `abcd ahoy install` first)"), prep, true
 	}
 	optedOut, answerable := nativeScanningOptedOut(abs)
 	if !answerable {
 		return refuseRemote(res, "this repo's .abcd/config.json is absent or cannot be read, so the opt-out cannot "+
-			"be checked — and a config that does not answer is not consent"), "", true
+			"be checked — and a config that does not answer is not consent"), prep, true
 	}
-	if optedOut {
-		res.Status = "opted_out"
-		res.Notes = append(res.Notes, "this repo sets scan.native_secret_scanning to false, so abcd left GitHub's "+
-			"secret-scanning toggles exactly as they are and contacted nothing")
-		return res, "", true
+	cfg, err := readConfig(abs)
+	if err != nil {
+		return refuseRemote(res, "this repo's .abcd/config.json cannot be read: "+errText(err)), prep, true
+	}
+	ov, err := readGitHubOverrides(cfg)
+	if err != nil {
+		return refuseRemote(res, "this repo's .abcd/config.json has a github block abcd will not guess at: "+errText(err)), prep, true
 	}
 	repo, err := resolveGitHubRepo(abs)
 	if err != nil {
-		return refuseRemote(res, "could not resolve which GitHub repository this checkout belongs to: "+errText(err)), "", true
+		return refuseRemote(res, "could not resolve which GitHub repository this checkout belongs to: "+errText(err)), prep, true
 	}
 	res.Repo = repo
-	return res, abs, false
+	declared, _ := stringVal(subMap(cfg, "repo"), "visibility")
+	owner, _, _ := strings.Cut(repo, "/")
+	prep.root = abs
+	prep.audit = auditInput{root: abs, owner: owner, ov: ov, optedOut: optedOut, declared: declared}
+	return res, prep, false
 }
 
 // refuseRemote records a loud refusal on the result. Every failure path in this
@@ -394,20 +439,6 @@ func landedBeforeRefusal(changes []string) string {
 	return "; this run had already landed on GitHub, and left in place: " + strings.Join(changes, "; ")
 }
 
-// pendingChanges names the toggles that are not yet in the desired state.
-func pendingChanges(observed RemoteSecurity) []string {
-	var out []string
-	for _, step := range []struct{ key, have string }{
-		{secretScanningKey, observed.SecretScanning},
-		{pushProtectionKey, observed.PushProtection},
-	} {
-		if step.have != statusEnabled {
-			out = append(out, step.key+": "+displayStatus(step.have)+" -> "+statusEnabled)
-		}
-	}
-	return out
-}
-
 // displayStatus words a toggle GitHub did not report. "unknown" and "disabled" are
 // different facts, and a report that flattened them would claim knowledge it has not
 // got.
@@ -426,34 +457,25 @@ func displayStatus(s string) string {
 //
 // The fork pull-request approval policy is a second request, so it can fail
 // on its own: forkErr says why it was left unread, and the rest stands.
-func ghSecurityState(cwd, repo string) (sec RemoteSecurity, merge RemoteMergeHygiene, forkErr, err error) {
+func ghSecurityState(cwd, repo string) (sec RemoteSecurity, merge RemoteMergeHygiene, obj repoObject, forkErr, err error) {
 	out, err := github.API(cwd, nil, "-H", "Accept: application/vnd.github+json", "repos/"+repo)
 	if err != nil {
-		return RemoteSecurity{}, RemoteMergeHygiene{}, nil, err
+		return RemoteSecurity{}, RemoteMergeHygiene{}, repoObject{}, nil, err
 	}
-	var doc struct {
-		SecurityAndAnalysis map[string]struct {
-			Status string `json:"status"`
-		} `json:"security_and_analysis"`
-		DeleteBranchOnMerge *bool `json:"delete_branch_on_merge"`
-		AllowMergeCommit    *bool `json:"allow_merge_commit"`
-		AllowSquashMerge    *bool `json:"allow_squash_merge"`
-		AllowRebaseMerge    *bool `json:"allow_rebase_merge"`
-	}
-	if err := json.Unmarshal(out, &doc); err != nil {
-		return RemoteSecurity{}, RemoteMergeHygiene{}, nil, fmt.Errorf("the API response could not be read as JSON")
+	if err := json.Unmarshal(out, &obj); err != nil {
+		return RemoteSecurity{}, RemoteMergeHygiene{}, repoObject{}, nil, fmt.Errorf("the API response could not be read as JSON")
 	}
 	policy, forkErr := ghForkPRApproval(cwd, repo)
 	return RemoteSecurity{
-			SecretScanning: doc.SecurityAndAnalysis[secretScanningKey].Status,
-			PushProtection: doc.SecurityAndAnalysis[pushProtectionKey].Status,
+			SecretScanning: obj.SecurityAndAnalysis[secretScanningKey].Status,
+			PushProtection: obj.SecurityAndAnalysis[pushProtectionKey].Status,
 		}, RemoteMergeHygiene{
-			DeleteBranchOnMerge:       doc.DeleteBranchOnMerge,
-			AllowMergeCommit:          doc.AllowMergeCommit,
-			AllowSquashMerge:          doc.AllowSquashMerge,
-			AllowRebaseMerge:          doc.AllowRebaseMerge,
+			DeleteBranchOnMerge:       obj.DeleteBranchOnMerge,
+			AllowMergeCommit:          obj.AllowMergeCommit,
+			AllowSquashMerge:          obj.AllowSquashMerge,
+			AllowRebaseMerge:          obj.AllowRebaseMerge,
 			ForkPRContributorApproval: policy,
-		}, forkErr, nil
+		}, obj, forkErr, nil
 }
 
 // ghForkPRApproval reads the repository's fork pull-request approval policy
@@ -522,20 +544,20 @@ func ghEnable(cwd, repo, key string) error {
 // normalised, with no volatile ids or timestamps, so a re-run of an unchanged
 // repository produces an identical file and a real change produces a reviewable
 // diff. The same shape the branch-ruleset mirror beside it already holds to.
-func repoSettingsMirror(repo string, merge RemoteMergeHygiene) []byte {
+func repoSettingsMirror(repo string, managed map[string]any, owed []string, merge RemoteMergeHygiene) []byte {
 	doc := map[string]any{
 		"repo": repo,
-		// What abcd drives, and holds this repo to.
-		"managed": map[string]any{
-			"security_and_analysis": map[string]any{
-				secretScanningKey: map[string]string{"status": statusEnabled},
-				pushProtectionKey: map[string]string{"status": statusEnabled},
-			},
-		},
+		// What abcd drives, and holds this repo to (managedSettings).
+		"managed": managed,
 		// What abcd only records. Separated from "managed" so a reader can tell a
 		// setting abcd will restore from one it merely saw: collapsing the two would
 		// make the file read as a promise about settings nothing enforces.
 		"observed": merge,
+	}
+	// What the plan or the visibility does not offer yet, so it applies once the
+	// repository is public.
+	if len(owed) > 0 {
+		doc["owed"] = owed
 	}
 	// Indented and sorted (encoding/json sorts map keys), then newline-terminated:
 	// this file is reviewed in a diff, not parsed by a human.
@@ -554,8 +576,8 @@ func repoSettingsMirror(repo string, merge RemoteMergeHygiene) []byte {
 // The write is CONTAINED — resolved through an os.Root opened at the repo — so a
 // committed `.abcd` symlink cannot land the mirror outside the working tree while
 // every surface reports the in-repo path.
-func writeRepoSettingsMirror(cwd, repo string, merge RemoteMergeHygiene) (bool, error) {
-	want := repoSettingsMirror(repo, merge)
+func writeRepoSettingsMirror(cwd, repo string, managed map[string]any, owed []string, merge RemoteMergeHygiene) (bool, error) {
+	want := repoSettingsMirror(repo, managed, owed, merge)
 	if len(want) == 0 {
 		return false, errors.New("the mirror could not be rendered")
 	}

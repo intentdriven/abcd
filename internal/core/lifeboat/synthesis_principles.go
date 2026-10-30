@@ -46,8 +46,13 @@ import (
 // it returns a PrinciplesResult and never prints. Structural faults fail closed
 // (an error, nothing written); per-entry faults drop that entry (recorded), never
 // the batch. The file is always written on success — an all-drop ingest writes
-// "principles": [] and reports the drops, exit 0.
-func SynthesizePrinciples(lifeboatDir string, raw []byte) (PrinciplesResult, error) {
+// "principles": [] and reports the drops, exit 0. Both files are secret-scanned
+// before either is written, as pack's planned bytes are; a non-nil error from
+// scan refuses the whole call, and a nil scan fails closed.
+func SynthesizePrinciples(lifeboatDir string, raw []byte, scan SecretScan) (PrinciplesResult, error) {
+	if scan == nil {
+		return PrinciplesResult{}, errors.New("principles: a secret scan is required")
+	}
 	abs, _, err := gateSynthLifeboat(lifeboatDir)
 	if err != nil {
 		return PrinciplesResult{}, err
@@ -100,6 +105,13 @@ func SynthesizePrinciples(lifeboatDir string, raw []byte) (PrinciplesResult, err
 	if err != nil {
 		return PrinciplesResult{}, err
 	}
+	planned := []PlannedFile{
+		plannedFile("principles.json", data),
+		plannedFile("principles.md", []byte(renderPrinciplesMarkdown(file))),
+	}
+	if err := scan(planned); err != nil {
+		return PrinciplesResult{}, err
+	}
 
 	root, err := os.OpenRoot(abs)
 	if err != nil {
@@ -109,10 +121,7 @@ func SynthesizePrinciples(lifeboatDir string, raw []byte) (PrinciplesResult, err
 
 	// Full replacement: a single-file artifact, so the atomic overwrite IS the
 	// replacement — no accretion across runs, no stale twin.
-	if err := writeIntoLifeboat(root, abs, "principles.json", data); err != nil {
-		return PrinciplesResult{}, err
-	}
-	if err := writeIntoLifeboat(root, abs, "principles.md", []byte(renderPrinciplesMarkdown(file))); err != nil {
+	if err := writePlanned(root, abs, planned); err != nil {
 		return PrinciplesResult{}, err
 	}
 

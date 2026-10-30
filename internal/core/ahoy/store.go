@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"strings"
@@ -149,9 +150,17 @@ func ResolvePluginRoot() (string, bool) { return resolvePluginRoot() }
 // directory holding path and its ancestors, at most six of them, stopping at the
 // filesystem root. resolvePluginRoot and PluginRootContaining both walk it, so
 // the depth bound and the canonicalisation are stated once.
+// The build scripts/abcd.sh makes in a source checkout's local tier walks nothing:
+// the checkout above it has the plugin layout but is no plugin's root, holding
+// no plugin binary, so it is placed in no root, as the go run build it stands
+// in for never was (iss-2610241240133009).
 func ancestorCandidates(path string) []string {
+	resolved := resolvePath(path)
+	if strings.HasSuffix(filepath.ToSlash(resolved), "/"+abcdrepo.CheckoutBuildRel) {
+		return nil
+	}
 	var dirs []string
-	dir := filepath.Dir(resolvePath(path))
+	dir := filepath.Dir(resolved)
 	for i := 0; i < 6 && dir != "/" && dir != "."; i++ {
 		dirs = append(dirs, dir)
 		dir = filepath.Dir(dir)

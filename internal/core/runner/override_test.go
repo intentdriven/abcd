@@ -58,13 +58,13 @@ func TestOverrideRefusals(t *testing.T) {
 		want                 []string
 	}{
 		{"unknown runner", overrideMachine, "implementer=runner:aider",
-			[]string{`"aider"`, "claude, opencode"}},
+			[]string{"a runner (a 5-byte value, not quoted) this build does not ship", "claude, opencode"}},
 		{"runner not enabled", `{` + twoModels + `,"runner":{"claude":{}}}`, "implementer=runner:opencode@local/devstral",
 			[]string{"not enabled", "runner.opencode", abcdhome.Display("config.json"), "claude"}},
 		{"model off the allowlist", overrideMachine, "implementer=runner:opencode@local/llama-9000",
-			[]string{"llama-9000", "local's list", "qwen3-coder, devstral", abcdhome.Display("config.json")}},
+			[]string{"a model (a 16-byte value, not quoted)", "local's list", "qwen3-coder, devstral", abcdhome.Display("config.json")}},
 		{"provider not configured", overrideMachine, "implementer=runner:opencode@openrouter/qwen/qwen3-coder",
-			[]string{`provider "openrouter" is not configured`}},
+			[]string{"provider (a 10-byte value, not quoted) is not configured", abcdhome.Display("config.json")}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -116,7 +116,10 @@ reservations block's own fields, with `senders_unchecked`, `not_dropped`,
 The prompt hook appends a `## STATUS` block to the text it injects
 when this checkout holds something it has not shown: a failed fetch per
 namespace, a release being cut ("release v0.16.0 being cut by @maya: merges
-are held", C8), then the newest announcement per item, then the doubts,
+are held; the hold lapses at <time> unless the cut renews it", C8), each
+release cut that lapsed within the last week ("release v0.16.0: the cut by
+@maya lapsed at …; no merge is held", iss-2610241107191205), then the newest
+announcement per item, then the doubts,
 at most two one by one and otherwise one line that sums them up and always
 keeps its place, at most ten lines in all, then a count of the rest and the
 command that lists them all (C18). Each line is shown once, kept by commit or by what it says, and the
@@ -132,10 +135,11 @@ not switch the status off.
 
 ## Exits
 
-Exit 0 when the fetch succeeded, and in a checkout with no remote named
-`origin`; exit 1 when the fetch failed, when what it fetched could not be
-read, or in a checkout with `origin` but without its local tier, the failure
-named on stderr; exit 2 outside a git checkout or with an operand.
+Exit 0 when the fetch succeeded and what it fetched was read, and in a
+checkout with no remote named `origin`; exit 1 when the fetch failed, when
+what it fetched could not be read, or in a checkout with `origin` but without
+its local tier, the failure named on stderr; exit 2 outside a git checkout or
+with an operand.
 
 ## Where this sits
 

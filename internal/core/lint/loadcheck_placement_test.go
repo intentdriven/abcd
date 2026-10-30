@@ -243,10 +243,18 @@ const stagesMakeVar = "PREFLIGHT_STAGES_MAKE"
 // once on a runner.
 func TestPreflightWaitsAsOneWholeRun(t *testing.T) {
 	makefile := readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile")
+	// The first `preflight:` rule is the full run's; the records-only rule,
+	// the else branch after it, waits at no gate and runs the same gates as
+	// prerequisites (TestPreflightRecordsRuleRunsPrechecksTests).
 	for _, l := range strings.Split(makefile, "\n") {
-		if rest, ok := strings.CutPrefix(l, "preflight:"); ok && !strings.HasPrefix(strings.TrimSpace(rest), "export ") && strings.TrimSpace(rest) != "" {
+		rest, ok := strings.CutPrefix(l, "preflight:")
+		if !ok || strings.HasPrefix(strings.TrimSpace(rest), "export ") {
+			continue
+		}
+		if strings.TrimSpace(rest) != "" {
 			t.Errorf("preflight declares prerequisites %q; each would run before the load gate admits the run", strings.TrimSpace(rest))
 		}
+		break
 	}
 	recipe, ok := makeRecipe(makefile, "preflight")
 	if !ok {
