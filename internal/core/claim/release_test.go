@@ -97,6 +97,10 @@ func TestAReleaseSitsOutsideTheLiveCap(t *testing.T) {
 			t.Fatalf("reservation %d beside a release: %v", i+1, err)
 		}
 	}
+	// One release is cut at a time: the first ends before the next is held.
+	if _, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := p.do(Request{Record: "rel-v0.17.0"}); err != nil {
 		t.Fatalf("a release past ten live reservations: %v", err)
 	}
@@ -135,7 +139,8 @@ func TestAReleaseHoldIsShownAndEndsAtItsTag(t *testing.T) {
 	if h.Release != "v0.16.0" || h.Subject != "rel-v0.16.0" || h.Holder != "octo" || h.Own || !h.EffectiveExpiry.Equal(t0.Add(lease.Max)) {
 		t.Fatalf("hold = %+v; want v0.16.0 held by octo, not Q's own, until %s", h, t0.Add(lease.Max))
 	}
-	if want := "release v0.16.0 being cut by @octo: merges are held"; h.Text() != want {
+	if want := "release v0.16.0 being cut by @octo: merges are held; the hold lapses at " + stamp(t0.Add(lease.Max)) +
+		" unless the cut renews it"; h.Text() != want {
 		t.Fatalf("the hold line = %q; want %q", h.Text(), want)
 	}
 

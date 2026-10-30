@@ -45,10 +45,14 @@ import (
 // unrecognised-launcher twice, its command line and the file whole, exactly
 // as that one already did. Raised to 35 when the PermissionRequest hook's
 // shim landed (hooks/permission-request.sh, iss-2610171110154902), for the
-// same two warns.
+// same two warns. Raised to 37 when the checkout's own abcd landed
+// (scripts/abcd.sh, iss-2610241240133009): it runs the binary it has just
+// built with exec "$bin" "$@", which warns as program-name-unknown twice, its
+// command line and the file whole, as the other exec "$BIN" "$@" launchers
+// already do.
 const (
 	maxSweepBlocks = 26
-	maxSweepWarns  = 35
+	maxSweepWarns  = 37
 )
 
 func TestFalsePositiveSweepCeiling(t *testing.T) {
@@ -150,7 +154,8 @@ func sweepPass(t *testing.T, r Registry, inputs []string) {
 		if len(shown) > 160 {
 			shown = shown[:160] + "…"
 		}
-		if contains(d.Matches, forgeTextEntryID) || contains(d.Matches, forgeUnreadEntryID) {
+		if contains(d.Matches, forgeTextEntryID) || contains(d.Matches, forgeUnreadEntryID) ||
+			contains(d.Matches, forgeDisclosureEntryID) || contains(d.Matches, forgeMentionEntryID) {
 			forge++
 			t.Errorf("a forge-text verdict on ordinary work: %s %q", d.EntryID, shown)
 		}

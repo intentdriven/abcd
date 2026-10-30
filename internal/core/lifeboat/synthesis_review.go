@@ -10,9 +10,10 @@ package lifeboat
 //
 //   - DETERMINISTIC (raw == nil): the verdict is a mechanical, pure mapping over
 //     verifyManifest + the packed coverage summary — no model, no wall-clock, and
-//     the source repo's CONTENT is never read (it is gated as a real dir only, so
-//     the audit stays deterministic and safe even when the source is gone). The
-//     inputs are the lifeboat's own sealed files.
+//     the source repo's CONTENT is never read (the core gates it as a real dir
+//     only, so the audit stays deterministic and safe even when the source is
+//     gone; a front door's scan may read its scanner settings). The inputs are
+//     the lifeboat's own sealed files.
 //   - DELEGATED (raw != nil): untrusted host/model JSON is validated behind the
 //     same guards as an intent verdict — DisallowUnknownFields, a three-branch
 //     schema gate, a mode gate, a semver prompt_version, an enum-membership verdict
@@ -82,20 +83,27 @@ func removeLegacyReviewArtefact(root *os.Root, manifest12 string) {
 // raw is nil it runs the deterministic mapping; when raw carries a payload it
 // validates the delegated audit. It is transport-agnostic (returns an ReviewResult,
 // never prints) and fails closed on structural problems; a manifest failure is a
-// verdict input, not an error. The audit is ALWAYS written on success.
-func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte) (ReviewResult, error) {
+// verdict input, not an error. The audit is ALWAYS written on success. Both
+// audit files are secret-scanned before either is written, as pack's planned
+// bytes are; a non-nil error from scan refuses the whole call (nothing written,
+// nothing removed), and a nil scan fails closed.
+func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte, scan SecretScan) (ReviewResult, error) {
+	if scan == nil {
+		return ReviewResult{}, errors.New("review: a secret scan is required")
+	}
 	// 1. Gate the lifeboat (real dir + parseable header + schema) and read the
 	//    immutable provenance header — needed to name the audit file.
 	abs, prov, err := gateSynthLifeboat(lifeboatDir)
 	if err != nil {
 		return ReviewResult{}, err
 	}
-	// Gate the source repo as a real dir. Its CONTENT is never read — this keeps the
-	// audit deterministic and safe when the source is gone. A symlinked or absent
-	// source is structural (mirrors embark's target gate). It is the one operand
-	// not proved against a symlinked ancestor (proveOperand): nothing under it is
-	// read or written and only its base name reaches the audit, so an ancestor
-	// link redirects nothing (iss-2609261232464351).
+	// Gate the source repo as a real dir. The core never reads its CONTENT — this
+	// keeps the audit deterministic and safe when the source is gone. A symlinked
+	// or absent source is structural (mirrors embark's target gate). It is the one
+	// operand not proved against a symlinked ancestor (proveOperand): nothing under
+	// it is written and only its base name reaches the audit. A front door's scan
+	// may read its scanner settings, but beside a scan that does not, so an
+	// ancestor link redirects nothing that clears a hit (iss-2609261232464351).
 	srcAbs, err := filepath.Abs(sourceRepo)
 	if err != nil {
 		return ReviewResult{}, err
@@ -159,18 +167,22 @@ func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte) (ReviewResult, e
 	if err != nil {
 		return ReviewResult{}, err
 	}
+	jsonRel := path.Join(reviewArtefactDir, "review-"+manifest12+".json")
+	mdRel := path.Join(reviewArtefactDir, "review-"+manifest12+".md")
+	planned := []PlannedFile{
+		plannedFile(jsonRel, data),
+		plannedFile(mdRel, []byte(renderReviewMD(audit))),
+	}
+	if err := scan(planned); err != nil {
+		return ReviewResult{}, err
+	}
+
 	root, err := os.OpenRoot(abs)
 	if err != nil {
 		return ReviewResult{}, err
 	}
 	defer root.Close()
-
-	jsonRel := path.Join(reviewArtefactDir, "review-"+manifest12+".json")
-	mdRel := path.Join(reviewArtefactDir, "review-"+manifest12+".md")
-	if err := writeIntoLifeboat(root, abs, jsonRel, data); err != nil {
-		return ReviewResult{}, err
-	}
-	if err := writeIntoLifeboat(root, abs, mdRel, []byte(renderReviewMD(audit))); err != nil {
+	if err := writePlanned(root, abs, planned); err != nil {
 		return ReviewResult{}, err
 	}
 	// Clean replacement across the spc-30 rename: a lifeboat reviewed before it

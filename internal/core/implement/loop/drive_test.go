@@ -41,6 +41,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/testshard"
 )
 
@@ -53,12 +54,21 @@ func TestMain(m *testing.M) {
 	if mode := os.Getenv(loopFakeEnv); mode != "" {
 		os.Exit(loopFakeHarness(mode))
 	}
+	announceBeforePush = noAnnouncement
 	// The package is too long for one test process under the preflight's
 	// package budget (iss-2610251004378066).
 	if code, ok := testshard.Shard(); ok {
 		os.Exit(code)
 	}
-	os.Exit(m.Run())
+	// Nor does a test reach the machine's own GitHub login, which CI lacks.
+	cleanup, err := gittest.HideGHLogin()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "loop tests: cannot hide the machine's gh login:", err)
+		os.Exit(1)
+	}
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
 }
 
 // loopFakeHarness plays the harness its launch names: opencode's argv starts

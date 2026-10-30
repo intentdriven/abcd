@@ -115,6 +115,15 @@ redacted into the artefact. In a source repository that armed gitleaks in
 gitleaks whose binary is not installed refuses the pack (exit 2), as it refuses
 a launch. Relay the refusal message so the user knows what to fix.
 
+The later verbs that write a host payload into the lifeboat (`graveyard`,
+`principles`, `press-release` and `review`) secret-scan the bytes they would
+write before any write, and a hard-fail secret refuses the whole call (exit 2),
+leaving the lifeboat as it was. A packed lifeboat carries no scanner settings
+of its own, so abcd's built-in rules judge. `review` is handed the source
+repository, so it also scans with that repository's settings, as `pack` does:
+its own extra patterns and its gitleaks opt-in. It refuses what either scan
+refuses, so nothing the source declares can clear a hit the built-in rules make.
+
 ## Graveyard interpretation (layer 3)
 
 A packed lifeboat carries a **graveyard** of what the project tried and left
@@ -146,9 +155,10 @@ Report the result to the user: `written` (into `lessons.json`), `low_confidence`
 (routed aside), and `dropped` (with the reason for each). The verb **exits 0 even
 when every lesson was dropped** — an honest "nothing cited" is a valid outcome.
 It exits non-zero only on a structural fault: the directory is not an abcd
-lifeboat, its graveyard files are unreadable, or the lesson payload is
-unreadable, oversize, or malformed. The lesson files are a later, mutable
-interpretation and are **not** part of the lifeboat's `manifest_sha256`.
+lifeboat, its graveyard files are unreadable, the lesson payload is
+unreadable, oversize, or malformed, or it carries a hard-fail secret. The lesson
+files are a later, mutable interpretation and are **not** part of the
+lifeboat's `manifest_sha256`.
 
 ## Principles (distilled from the record)
 
@@ -183,9 +193,10 @@ by id) and rendered to `principles.md`; a delegated ingest **fully replaces** th
 prior file. Report `written` and each `dropped` (with its reason). The verb
 **exits 0 even when every principle was dropped** — the file is written with an
 empty list, an honest "nothing distilled". It exits non-zero only on a structural
-fault (not an abcd lifeboat, or a payload that is unreadable, oversize, or
-malformed). `principles.json`/`.md` are a later, mutable synthesis layer and are
-**not** part of the lifeboat's `manifest_sha256`.
+fault (not an abcd lifeboat, or a payload that is unreadable, oversize,
+malformed, or carries a hard-fail secret). `principles.json`/`.md` are a later,
+mutable synthesis layer and are **not** part of the lifeboat's
+`manifest_sha256`.
 
 ## Press release (the embark interview contract)
 
@@ -210,8 +221,9 @@ whole-document: its `evidence` must carry at least one ref resolving to `brief/*
 resolvable is refused** — the verb exits non-zero and leaves the previously derived
 press release untouched (there is no per-entry granularity to drop). Report the
 result: `mode` and `evidence_refs`. It also exits non-zero on a structural fault
-(not a lifeboat, or an unreadable/oversize/malformed payload). The press-release
-files are a mutable synthesis layer and are **not** part of `manifest_sha256`.
+(not a lifeboat, or an unreadable/oversize/malformed payload, or one carrying a
+hard-fail secret). The press-release files are a mutable synthesis layer and
+are **not** part of `manifest_sha256`.
 
 ## Review (content fidelity + verdict)
 
@@ -226,9 +238,11 @@ lifeboat path), write it to a file, then:
 "${CLAUDE_PLUGIN_ROOT}/abcd" disembark review <lifeboat-dir> <source-repo> --review-json <path>   # or - for stdin
 ```
 
-The `<source-repo>` argument is **required**; its content is never read — the
-binary gates it as a real directory only, so the review stays deterministic and
-safe even when the source is gone. The binary always **stamps the attestation
+The `<source-repo>` argument is **required**; the review reads none of its
+content — the binary gates it as a real directory, and the secret scan above
+reads only its scanner settings and git identity (and runs gitleaks where the
+source opted in), so the review stays deterministic and safe even when the
+source is gone. The binary always **stamps the attestation
 fields itself** (source name, manifest hash, manifest-verified flag, coverage
 summary) — they are never taken from the agent's payload.
 
@@ -248,8 +262,8 @@ file — a clean replacement, no stale twin. Report the `verdict`, `written`
 findings, and each `dropped` (with its reason); the verb exits 0 even when every
 finding was dropped. It exits non-zero only on a structural fault (not a lifeboat,
 a `<source-repo>` that is not a real directory, or an unreadable/oversize/malformed
-payload). The audit files are a mutable synthesis layer and are **not** part of
-`manifest_sha256`.
+payload, or one carrying a hard-fail secret). The audit files are a mutable
+synthesis layer and are **not** part of `manifest_sha256`.
 
 **Model-tier routing.** Each delegated ingest (`graveyard`, and `principles`,
 `press-release` and `review` given their payload flag) dispatches its agent, and

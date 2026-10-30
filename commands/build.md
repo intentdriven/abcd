@@ -643,7 +643,9 @@ A lane's stages run in order:
    until then the lane is waiting for its full check (since the time the wait
    began) while the other lanes carry on; run `make preflight` in the lane's
    worktree, then `step` again; never push, skip a hook or mint a receipt by
-   hand. It opens the pull request through `gh`, with a body built from the
+   hand. Before the push it announces `merging <the lane's record>`
+   (`/abcd:implement` says how) and pushes only once that is on `origin`; a
+   push typed by hand would post no announcement. It opens the pull request through `gh`, with a body built from the
    run's records and passed through the outbound scrub, ending with
    `Assisted-by: abcd:<version>` and then one `Assisted-by:` per model the
    lane's receipts reported, re-reads the body the forge holds and strips a
@@ -666,7 +668,8 @@ A lane's stages run in order:
    computer"), and the pull request stays open and unarmed, since a session
    cutting a release has the final say on what merges before its tag. Tell the
    user who is cutting which release, and step again once the release is
-   tagged or its holder released it; never merge around the hold. The copy
+   tagged, its holder released it or the hold lapsed at the time the refusal
+   names, which needs no one's leave; never merge around a live hold. The copy
    cutting the release is not held. A fetch `origin` does not answer arms
    nothing either. Then `step` exits 3 until the
    pushed head is an ancestor of the default branch on `origin`; stop driving

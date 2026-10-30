@@ -41,6 +41,8 @@ var examples = map[string]string{
 
 	"abcd decide": `abcd decide "Decisions are one flat file each"`,
 
+	"abcd guard allow": "abcd guard allow --once --command 'git branch -D feat/done'",
+
 	"abcd guard approve": "abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567",
 
 	"abcd reserve": "abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go",

@@ -110,7 +110,7 @@ func RunCappedBytesContext(ctx context.Context, root string, maxBytes int, args 
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
-	out, overflowed, err := runBoundedCmd(isolatedGitContext(ctx, root, args...), maxBytes)
+	out, overflowed, err := runBoundedCmd(ctx, isolatedGitContext(ctx, root, args...), maxBytes)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
 	}

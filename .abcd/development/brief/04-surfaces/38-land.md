@@ -61,14 +61,41 @@ bound: the refusal says so and gives the push to run by hand.
    no `preflight` target has no gate that mints a receipt, and gets no push.
    The receipt is a convenience check, not a security boundary: CI re-runs
    every gate on the pushed commit.
-2. **Push** (`land.push`). A plain `git push --porcelain origin
+2. **Announce** (with `land.push` on, after the release hold). Before the
+   push, the verb posts `merging <item>` on the person's status branch for
+   each issue, intent or pull request the branch's own commits (those not on
+   `origin`'s default branch as just fetched) name in a `Refs:`, `Resolves:`
+   or `Delivers:` trailer (a pull request written `#N`: a bare number is a
+   word of the trailer's text, as in `Refs: spc-9 step 3`), each once,
+   through `claim.AnnounceBeforePush`, the
+   code `abcd announce` runs, and the push waits until each announcement has
+   reached `origin` (iss-2610161645224876, dcn-2610170655202547,
+   dcn-2610170704191129). So a colleague's next `abcd status` shows the
+   announcement before the branch is on `origin`. An item the person already
+   announced `merging`, standing a minute more, is not announced again, so a
+   re-run posts nothing new, unless the person's newest announcement of it is
+   now another (`merged`, say), which a reader shows instead, and then
+   `merging` is sent anew. A record not yet on the default branch is not
+   announced, since an announcement names only a public record, and the step
+   says so; a branch whose commits name no item announces nothing, and the
+   step says that too (status `skipped`). An announcement that cannot be
+   published (an embargo store that cannot be checked or holds the record,
+   no username to send as, `origin` refusing the push or not answering)
+   refuses the landing with the reason, and nothing is pushed
+   (dcn-2610170704189712): run the verb again once it is settled. When the
+   branch names several items and a later one fails, the announcements already
+   sent for the earlier ones stay standing, and the re-run resumes without
+   sending them again while they stand. A push a
+   person types by hand with `git push` posts no announcement; no hook
+   announces.
+3. **Push** (`land.push`). A plain `git push --porcelain origin
    <head>:refs/heads/<branch>` from the branch's checkout, through the
    networked git runner, with the repository's hooks running: never forced,
    never `--no-verify`, never the default branch. The source is the commit the
    gate checked, never the branch's ref and never its configured upstream, so a
    branch that moves after the gate cannot change what is pushed. The push of a branch other
    than the default is not a merge, so it does not wait on the facilitator.
-3. **Enqueue** (`land.enqueue`). The branch's one open pull request from this
+4. **Enqueue** (`land.enqueue`). The branch's one open pull request from this
    repository is armed where the merge gate (below) allows, pinned to the head
    (`--match-head-commit`), and, where a queue gates the default branch,
    confirmed in the merge queue at that head, through the forge's GraphQL API (the forge client's pull-request
@@ -113,7 +140,11 @@ bound: the refusal says so and gives the push to run by hand.
    says the pull request is now disarmed and gives the command that arms it.
    With no
    pull request the step stops with the `gh pr create` command; the verb never opens one (ruling R2), and the next run
-   queues it.
+   queues it. The command names a body land composed from the branch's commits (iss-220): each subject, then their
+   `Refs:`, `Resolves:` and `Delivers:` lines once each, then abcd's own `Assisted-by: abcd:<version>` label and the
+   models the commits' `Assisted-by:` lines name (ruling R4), written to the checkout's local tier (land makes none) and
+   judged with the shell guard's checks of a posted body, the failing check named in the stop's note, so the body
+   the hosted checks read was checked before it was posted.
 
 ## The merge gate
 
@@ -244,7 +275,8 @@ file that turned it off.
 
 Exit 0 when every step did its act or said why it stopped or left the merge
 to a person. Exit 2 on a refusal, which names the steps done before it,
-reservations that cannot be fetched before the push included. The
+reservations that cannot be fetched before the push and an announcement that
+cannot be published before it included. The
 JSON document carries `branch`, `head`, `checkout`, `default_branch`, `push`
 and `enqueue` (each `key`, `on`, `layer`, `origin`), `pull_request` and
 `pull_request_url` when one was found (or the forge proved the head merged,
@@ -252,7 +284,9 @@ the merged pull request's),
 `pushed` when the push sent a commit, `landed` when the head had already
 landed, and `steps`, each
 with `name`, `status` (`done`, `skipped`, `off`, `stopped`, `left` or
-`landed`), `note` and an optional `command`; and `notices` when there are
+`landed`; the steps are `origin` when it reports a stale default, `gate`,
+`announce`, `push` and `enqueue`, or `land` alone), `note` and an optional
+`command`; and `notices` when there are
 lines to show beside the steps (a release dated ahead that the hold did not
 count).
 
@@ -295,6 +329,9 @@ cannot keep a sighting.
   through.
 - The release hold: `internal/core/claim` (`FetchMergeHold`), shared with the
   implement loop's land fence.
+- The announcement before the push: `internal/core/claim`
+  (`AnnounceBeforePush`), shared with the implement loop's landing and the
+  code [`abcd announce`](38-announce.md) runs.
 - The plugin surface: `commands/land.md`.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

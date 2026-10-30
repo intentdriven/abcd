@@ -2,66 +2,49 @@ package statusline
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The merging element (itd-2610150602547271, spc-2610161609350616 step 7).
 // While the repository's facilitator.mode is auto, the row says merging is
 // autonomous; under human, or where the mode cannot be read, it says nothing.
-// The mode is read as the merge gate reads it: the default branch's committed
-// .abcd/config.json and the machine layer, never the working tree's copy.
+// The mode is read through MergingMode, which the front door sets to
+// landing.AutonomousMerging: this package cannot import landing, so the
+// reading itself — the default branch's committed .abcd/config.json and the
+// machine layer, never the working tree's copy — is proved in landing's tests.
+// What is proved here is the element's wiring: what the row does with the
+// reader's answer, with no reader, and with the element switched off.
 
-// mergingRepo is a checkout whose default branch, main, commits config as its
-// .abcd/config.json ("" commits none), with HOME sandboxed so the machine
-// layer is the test's own.
-func mergingRepo(t *testing.T, config string) string {
+// withMergingMode sets MergingMode to read for the rest of the test, and
+// restores whatever was there after it.
+func withMergingMode(t *testing.T, read func(ctx context.Context, root string) (bool, string)) {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
-	root := composeRepo(t)
-	if config != "" {
-		writeRepoConfig(t, root, config)
-		git(t, root, "add", ".abcd/config.json")
-	}
-	git(t, root, "commit", "--allow-empty", "-m", "root")
-	return root
+	prev := MergingMode
+	MergingMode = read
+	t.Cleanup(func() { MergingMode = prev })
 }
 
-func writeRepoConfig(t *testing.T, root, config string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Join(root, ".abcd"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".abcd", "config.json"), []byte(config), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func writeMachineConfig(t *testing.T, config string) {
-	t.Helper()
-	dir := abcdhome.Path(os.Getenv("HOME"))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(config), 0o600); err != nil {
-		t.Fatal(err)
+// mergingAnswer is a reader that gives auto and note whatever it is asked,
+// and counts the roots it was asked about.
+func mergingAnswer(auto bool, note string, asked *[]string) func(context.Context, string) (bool, string) {
+	return func(_ context.Context, root string) (bool, string) {
+		if asked != nil {
+			*asked = append(*asked, root)
+		}
+		return auto, note
 	}
 }
-
-const (
-	autoConfig  = `{"facilitator": {"mode": "auto"}}`
-	humanConfig = `{"facilitator": {"mode": "human"}}`
-)
 
 func TestTheRowSaysMergingIsAutonomousUnderAuto(t *testing.T) {
-	root := mergingRepo(t, autoConfig)
+	root := composeRepo(t)
+	var asked []string
+	withMergingMode(t, mergingAnswer(true, "", &asked))
 	res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(asked) != 1 || asked[0] != root {
+		t.Errorf("the reader was asked about %q, want once about %q", asked, root)
 	}
 	if got := plainOf(t, res.Row, KeyMerging); got != "autonomous merging" {
 		t.Errorf("merging element = %q, want %q", got, "autonomous merging")
@@ -84,47 +67,47 @@ func TestTheRowSaysMergingIsAutonomousUnderAuto(t *testing.T) {
 }
 
 func TestTheRowSaysNothingOfMergingOtherwise(t *testing.T) {
-	cases := map[string]func(t *testing.T) string{
-		"human committed":  func(t *testing.T) string { return mergingRepo(t, humanConfig) },
-		"no mode anywhere": func(t *testing.T) string { return mergingRepo(t, "") },
-		"auto only in the working tree": func(t *testing.T) string {
-			root := mergingRepo(t, humanConfig)
-			writeRepoConfig(t, root, autoConfig)
-			return root
-		},
-		"human in the machine layer": func(t *testing.T) string {
-			root := mergingRepo(t, autoConfig)
-			writeMachineConfig(t, humanConfig)
-			return root
-		},
-		"no default branch yet": func(t *testing.T) string {
-			t.Setenv("HOME", t.TempDir())
-			root := composeRepo(t)
-			writeRepoConfig(t, root, autoConfig)
-			return root
-		},
+	root := composeRepo(t)
+	withMergingMode(t, mergingAnswer(false, "", nil))
+	res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
+	if err != nil {
+		t.Fatal(err)
 	}
-	for name, setup := range cases {
-		t.Run(name, func(t *testing.T) {
-			root := setup(t)
-			res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if el, ok := res.Row.Element(KeyMerging); ok {
-				t.Errorf("the row says %q: %q", el.Plain, res.Row.Plain())
-			}
-			if len(res.Notes) != 0 {
-				t.Errorf("notes = %q, want none", res.Notes)
-			}
-		})
+	if el, ok := res.Row.Element(KeyMerging); ok {
+		t.Errorf("the row says %q: %q", el.Plain, res.Row.Plain())
+	}
+	if len(res.Notes) != 0 {
+		t.Errorf("notes = %q, want none", res.Notes)
+	}
+}
+
+// TestWithNoMergingReaderTheElementDropsSilently: a composition no front door
+// handed a reader has nothing it failed to read, so the element drops with no
+// note.
+func TestWithNoMergingReaderTheElementDropsSilently(t *testing.T) {
+	root := composeRepo(t)
+	withMergingMode(t, nil)
+	res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if el, ok := res.Row.Element(KeyMerging); ok {
+		t.Errorf("the row says %q with no reader: %q", el.Plain, res.Row.Plain())
+	}
+	if _, ok := res.Row.Element(KeyPresence); !ok {
+		t.Errorf("the badge dropped: %q", res.Row.Plain())
+	}
+	if len(res.Notes) != 0 {
+		t.Errorf("notes = %q, want none", res.Notes)
 	}
 }
 
 func TestTheMergingElementIsSwitchable(t *testing.T) {
 	// A mode that does not read would be a note: switched off, the mode is
 	// not read at all, so there is none.
-	root := mergingRepo(t, `{"facilitator": {"mode": "sometimes"}}`)
+	root := composeRepo(t)
+	var asked []string
+	withMergingMode(t, mergingAnswer(false, "statusline: DROPPED the merging element — facilitator.mode could not be read (x)", &asked))
 	set := Defaults()
 	if !set.Enabled(KeyMerging) {
 		t.Fatal("the merging element is off by default")
@@ -141,7 +124,7 @@ func TestTheMergingElementIsSwitchable(t *testing.T) {
 		t.Errorf("notes = %q, want none: a switched-off element reads nothing", res.Notes)
 	}
 
-	root = mergingRepo(t, autoConfig)
+	withMergingMode(t, mergingAnswer(true, "", &asked))
 	res, err = ComposeContext(context.Background(), root, Payload{}, set)
 	if err != nil {
 		t.Fatal(err)
@@ -149,55 +132,29 @@ func TestTheMergingElementIsSwitchable(t *testing.T) {
 	if _, ok := res.Row.Element(KeyMerging); ok {
 		t.Errorf("a switched-off element rendered under auto: %q", res.Row.Plain())
 	}
-}
-
-func TestAnUnreadableModeDropsTheMergingElementAndSaysSo(t *testing.T) {
-	cases := map[string]string{
-		"a value that is not a mode": `{"facilitator": {"mode": "sometimes"}}`,
-		"a hostile key":              `{"facilitator": {"mode": "auto", "mo\u001b[31mde": "auto"}}`,
-	}
-	for name, config := range cases {
-		t.Run(name, func(t *testing.T) {
-			root := mergingRepo(t, config)
-			res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if el, ok := res.Row.Element(KeyMerging); ok {
-				t.Errorf("the row says %q over a mode that does not read", el.Plain)
-			}
-			if _, ok := res.Row.Element(KeyPresence); !ok {
-				t.Errorf("the badge dropped: %q", res.Row.Plain())
-			}
-			if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], "DROPPED the merging element") ||
-				!strings.Contains(res.Notes[0], "facilitator.mode") {
-				t.Fatalf("notes = %q, want one note dropping the merging element over facilitator.mode", res.Notes)
-			}
-			if strings.ContainsRune(res.Notes[0], 0x1b) {
-				t.Errorf("the note carries a raw escape byte: %q", res.Notes[0])
-			}
-			if home := os.Getenv("HOME"); strings.Contains(res.Notes[0], home) || strings.Contains(res.Notes[0], root) {
-				t.Errorf("the note carries a local path: %q", res.Notes[0])
-			}
-		})
+	if len(asked) != 0 {
+		t.Errorf("a switched-off element asked its reader about %q", asked)
 	}
 }
 
-// TestTheMergingElementDropsWhenGitRunsOut: the mode is read with git's
-// questions bounded by the row's own deadline; with that time spent the
-// element drops and says why, and the row still renders.
-func TestTheMergingElementDropsWhenGitRunsOut(t *testing.T) {
-	root := mergingRepo(t, autoConfig)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	res, err := ComposeContext(ctx, root, Payload{}, Defaults())
+// TestAReaderNoteDropsTheMergingElementAndIsPassedOn: a reader that could not
+// read the mode returns a note; the row drops the element, keeps the rest,
+// and hands the note on, as it is, for the front door's stderr.
+func TestAReaderNoteDropsTheMergingElementAndIsPassedOn(t *testing.T) {
+	root := composeRepo(t)
+	const note = "statusline: DROPPED the merging element — facilitator.mode could not be read (a value that is not a mode)"
+	withMergingMode(t, mergingAnswer(false, note, nil))
+	res, err := ComposeContext(context.Background(), root, Payload{}, Defaults())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := res.Row.Element(KeyMerging); ok {
-		t.Errorf("the merging element rendered with git's time spent: %q", res.Row.Plain())
+	if el, ok := res.Row.Element(KeyMerging); ok {
+		t.Errorf("the row says %q over a mode that does not read", el.Plain)
 	}
-	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], "DROPPED the merging element") {
-		t.Errorf("notes = %q, want the drop named", res.Notes)
+	if _, ok := res.Row.Element(KeyPresence); !ok {
+		t.Errorf("the badge dropped: %q", res.Row.Plain())
+	}
+	if len(res.Notes) != 1 || res.Notes[0] != note {
+		t.Fatalf("notes = %q, want exactly the reader's note", res.Notes)
 	}
 }

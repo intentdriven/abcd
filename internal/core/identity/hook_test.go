@@ -110,19 +110,19 @@ func TestPreCommitHook_IdentityGate(t *testing.T) {
 		wantSay   string
 	}{
 		{name: "no record passes a human", gitName: "Whoever", gitEmail: "who@ever.com"},
-		{name: "match passes", record: `{"name":"Alex","email":"a@b.com"}`, gitName: "Alex", gitEmail: "a@b.com"},
-		{name: "mismatch blocks, naming the record and how to change it", record: `{"name":"Alex","email":"a@b.com"}`, gitName: "Alex", gitEmail: "typo@b.com", wantBlock: true, wantSay: abcdhome.Display("identity.json") + ", or remove it"},
-		{name: "pretty-printed match passes", record: "{\n  \"name\": \"Alex\",\n  \"email\": \"a@b.com\"\n}\n", gitName: "Alex", gitEmail: "a@b.com"},
-		{name: "non-canonical key blocks (fail closed)", record: `{"NAME":"Alex","email":"a@b.com"}`, gitName: "Alex", gitEmail: "a@b.com", wantBlock: true},
-		{name: "empty value blocks (fail closed)", record: `{"name":"","email":""}`, gitName: "Alex", gitEmail: "a@b.com", wantBlock: true},
-		{name: "malformed blocks (fail closed)", record: `{garbage`, gitName: "Alex", gitEmail: "a@b.com", wantBlock: true},
+		{name: "match passes", record: `{"name":"Alice","email":"a@b.com"}`, gitName: "Alice", gitEmail: "a@b.com"},
+		{name: "mismatch blocks, naming the record and how to change it", record: `{"name":"Alice","email":"a@b.com"}`, gitName: "Alice", gitEmail: "typo@b.com", wantBlock: true, wantSay: abcdhome.Display("identity.json") + ", or remove it"},
+		{name: "pretty-printed match passes", record: "{\n  \"name\": \"Alice\",\n  \"email\": \"a@b.com\"\n}\n", gitName: "Alice", gitEmail: "a@b.com"},
+		{name: "non-canonical key blocks (fail closed)", record: `{"NAME":"Alice","email":"a@b.com"}`, gitName: "Alice", gitEmail: "a@b.com", wantBlock: true},
+		{name: "empty value blocks (fail closed)", record: `{"name":"","email":""}`, gitName: "Alice", gitEmail: "a@b.com", wantBlock: true},
+		{name: "malformed blocks (fail closed)", record: `{garbage`, gitName: "Alice", gitEmail: "a@b.com", wantBlock: true},
 		// Criterion 2: a committed pin naming someone else decides nothing.
 		{name: "a committed pin of the maintainer does not refuse a contributor", pin: `{"name":"A Maintainer","email":"m@example.com"}`, gitName: "Second Contributor", gitEmail: "second@example.com"},
 		// Criterion 5: no record, and a machine identity, is never committed.
 		{name: "an AI tool's identity blocks with no record", gitName: "Claude", gitEmail: "noreply@anthropic.com", wantBlock: true, wantSay: "machine identity"},
 		{name: "a bot's identity blocks with no record", gitName: "dependabot[bot]", gitEmail: "49699333+dependabot[bot]@users.noreply.github.com", wantBlock: true},
 		{name: "a machine identity blocks even when recorded", record: `{"name":"Claude","email":"noreply@anthropic.com"}`, gitName: "Claude", gitEmail: "noreply@anthropic.com", wantBlock: true},
-		{name: "a person's forge privacy address passes", gitName: "Alex", gitEmail: "1234+alex@users.noreply.github.com"},
+		{name: "a person's forge privacy address passes", gitName: "Alice", gitEmail: "1234+alice@users.noreply.github.com"},
 		// Not covered: a repository with no identity configured anywhere.
 		// git then invents one from the account name and the host name and
 		// exports it into the hook's environment, where it is
@@ -159,7 +159,7 @@ func TestPreCommitHook_IdentityGate(t *testing.T) {
 // ~/.abcd.noindex with no record in it reads as absent.
 func TestPreCommitHook_RefusesAnUntrustedRecord(t *testing.T) {
 	hook := locateHook(t)
-	const rec = `{"name":"Alex","email":"a@b.com"}`
+	const rec = `{"name":"Alice","email":"a@b.com"}`
 	cases := map[string]struct {
 		setup     func(t *testing.T, home string)
 		wantBlock bool
@@ -207,13 +207,13 @@ func TestPreCommitHook_RefusesAnUntrustedRecord(t *testing.T) {
 			}
 		}},
 		"oversized record": {setup: func(t *testing.T, home string) {
-			writeHomeFile(t, MachineRecordRef().Rel, `{"name":"Alex","email":"a@b.com","pad":"`+strings.Repeat("x", 5000)+`"}`)
+			writeHomeFile(t, MachineRecordRef().Rel, `{"name":"Alice","email":"a@b.com","pad":"`+strings.Repeat("x", 5000)+`"}`)
 		}, wantBlock: true},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			env := hookEnv(t)
-			dir := hookRepo(t, hook, env, "Alex", "a@b.com")
+			dir := hookRepo(t, hook, env, "Alice", "a@b.com")
 			tc.setup(t, os.Getenv("HOME"))
 			if blocked, out := commitThroughHook(t, dir, env); blocked != tc.wantBlock {
 				t.Fatalf("blocked=%v, want %v\n%s", blocked, tc.wantBlock, out)
@@ -232,15 +232,15 @@ func TestPreCommitHook_RepoRecordOutranksTheMachineRecord(t *testing.T) {
 		repoRec   string
 		wantBlock bool
 	}{
-		{name: "the repository's record matches", repoRec: `{"name":"Alex at Work","email":"alex@work.example"}`},
-		{name: "the repository's record differs", repoRec: `{"name":"Alex at Work","email":"other@work.example"}`, wantBlock: true},
+		{name: "the repository's record matches", repoRec: `{"name":"Alice at Work","email":"alice@work.example"}`},
+		{name: "the repository's record differs", repoRec: `{"name":"Alice at Work","email":"other@work.example"}`, wantBlock: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			env := hookEnv(t)
-			dir := hookRepo(t, hook, env, "Alex at Work", "alex@work.example")
+			dir := hookRepo(t, hook, env, "Alice at Work", "alice@work.example")
 			hookGit(t, dir, env, "commit", "--no-verify", "-m", "root")
 			sha := gittest.RootCommit(t, dir)
-			writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+			writePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 			ref, err := repoRecordRef(sha)
 			if err != nil {
 				t.Fatal(err)
@@ -264,19 +264,19 @@ func TestPreCommitHook_RepoRecordOutranksTheMachineRecord(t *testing.T) {
 func TestPreCommitHook_ACopyWithNoListStillChecksTheRecord(t *testing.T) {
 	hook := locateHook(t)
 	env := hookEnv(t)
-	dir := hookRepo(t, hook, env, "Alex", "typo@b.com")
+	dir := hookRepo(t, hook, env, "Alice", "typo@b.com")
 	list := filepath.Join(dir, "internal", "core", "identity", toolIdentitiesFile)
 	if err := os.Remove(list); err != nil {
 		t.Fatal(err)
 	}
 	hookGit(t, dir, env, "add", "-A")
-	writePin(t, dir, `{"name":"Alex","email":"a@b.com"}`)
+	writePin(t, dir, `{"name":"Alice","email":"a@b.com"}`)
 	blocked, out := commitThroughHook(t, dir, env)
 	if !blocked || !strings.Contains(out, "no machine-identity list") {
 		t.Fatalf("want a one-line warning and the record still checked; blocked=%v\n%s", blocked, out)
 	}
 	env = hookEnv(t)
-	dir = hookRepo(t, hook, env, "Alex", "a@b.com")
+	dir = hookRepo(t, hook, env, "Alice", "a@b.com")
 	if err := os.WriteFile(filepath.Join(dir, "internal", "core", "identity", toolIdentitiesFile), []byte("ai_name=x\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -296,11 +296,11 @@ func TestPreCommitHook_AuthorRoleConfigBlocks(t *testing.T) {
 	for _, key := range []string{"author.name", "author.email", "committer.name", "committer.email"} {
 		t.Run(key, func(t *testing.T) {
 			env := hookEnv(t)
-			dir := hookRepo(t, hook, env, "Alex", "a@b.com")
-			writePin(t, dir, `{"name":"Alex","email":"a@b.com"}`)
+			dir := hookRepo(t, hook, env, "Alice", "a@b.com")
+			writePin(t, dir, `{"name":"Alice","email":"a@b.com"}`)
 			hookGit(t, dir, env, "config", key, "Test User")
 			if blocked, _ := commitThroughHook(t, dir, env); !blocked {
-				t.Fatalf("the hook let %s = Test User make a commit under a record of Alex", key)
+				t.Fatalf("the hook let %s = Test User make a commit under a record of Alice", key)
 			}
 		})
 	}
@@ -339,7 +339,7 @@ func hookEnv(t *testing.T) []string {
 // the hook's environment, so those shapes are held by the same reading.
 func TestPreCommitHook_IdentityEnvOutranksConfig(t *testing.T) {
 	hook := locateHook(t)
-	pinnedEnv := []string{"GIT_AUTHOR_NAME=Alex", "GIT_AUTHOR_EMAIL=a@b.com", "GIT_COMMITTER_NAME=Alex", "GIT_COMMITTER_EMAIL=a@b.com"}
+	pinnedEnv := []string{"GIT_AUTHOR_NAME=Alice", "GIT_AUTHOR_EMAIL=a@b.com", "GIT_COMMITTER_NAME=Alice", "GIT_COMMITTER_EMAIL=a@b.com"}
 	cases := []struct {
 		name      string
 		user      [2]string // the repository's user.name, user.email
@@ -348,20 +348,20 @@ func TestPreCommitHook_IdentityEnvOutranksConfig(t *testing.T) {
 		flags     []string  // placed after "commit"
 		wantBlock bool
 	}{
-		{name: "GIT_AUTHOR_NAME blocks", user: [2]string{"Alex", "a@b.com"}, env: []string{"GIT_AUTHOR_NAME=Claude"}, wantBlock: true},
-		{name: "GIT_AUTHOR_EMAIL blocks", user: [2]string{"Alex", "a@b.com"}, env: []string{"GIT_AUTHOR_EMAIL=noreply@anthropic.com"}, wantBlock: true},
-		{name: "GIT_COMMITTER_NAME blocks", user: [2]string{"Alex", "a@b.com"}, env: []string{"GIT_COMMITTER_NAME=Claude"}, wantBlock: true},
-		{name: "GIT_COMMITTER_EMAIL blocks", user: [2]string{"Alex", "a@b.com"}, env: []string{"GIT_COMMITTER_EMAIL=noreply@anthropic.com"}, wantBlock: true},
-		{name: "--author blocks", user: [2]string{"Alex", "a@b.com"}, flags: []string{"--author", "Claude <noreply@anthropic.com>"}, wantBlock: true},
-		{name: "-c author.name blocks", user: [2]string{"Alex", "a@b.com"}, args: []string{"-c", "author.name=Claude"}, wantBlock: true},
-		{name: "-c committer.email blocks", user: [2]string{"Alex", "a@b.com"}, args: []string{"-c", "committer.email=noreply@anthropic.com"}, wantBlock: true},
+		{name: "GIT_AUTHOR_NAME blocks", user: [2]string{"Alice", "a@b.com"}, env: []string{"GIT_AUTHOR_NAME=Claude"}, wantBlock: true},
+		{name: "GIT_AUTHOR_EMAIL blocks", user: [2]string{"Alice", "a@b.com"}, env: []string{"GIT_AUTHOR_EMAIL=noreply@anthropic.com"}, wantBlock: true},
+		{name: "GIT_COMMITTER_NAME blocks", user: [2]string{"Alice", "a@b.com"}, env: []string{"GIT_COMMITTER_NAME=Claude"}, wantBlock: true},
+		{name: "GIT_COMMITTER_EMAIL blocks", user: [2]string{"Alice", "a@b.com"}, env: []string{"GIT_COMMITTER_EMAIL=noreply@anthropic.com"}, wantBlock: true},
+		{name: "--author blocks", user: [2]string{"Alice", "a@b.com"}, flags: []string{"--author", "Claude <noreply@anthropic.com>"}, wantBlock: true},
+		{name: "-c author.name blocks", user: [2]string{"Alice", "a@b.com"}, args: []string{"-c", "author.name=Claude"}, wantBlock: true},
+		{name: "-c committer.email blocks", user: [2]string{"Alice", "a@b.com"}, args: []string{"-c", "committer.email=noreply@anthropic.com"}, wantBlock: true},
 		{name: "recorded identity in the environment passes over a different user.*", user: [2]string{"Other", "o@example.com"}, env: pinnedEnv, wantBlock: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			env := hookEnv(t)
 			dir := hookRepo(t, hook, env, tc.user[0], tc.user[1])
-			writePin(t, dir, `{"name":"Alex","email":"a@b.com"}`)
+			writePin(t, dir, `{"name":"Alice","email":"a@b.com"}`)
 			args := append(append(append([]string{}, tc.args...), "commit", "-m", "t"), tc.flags...)
 			cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 			cmd.Env = append(append([]string{}, env...), tc.env...)

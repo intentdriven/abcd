@@ -140,7 +140,7 @@ STEP 1 — RECORD THE WORK (no code yet)
         6 Nov 2025 (12 months of security fixes "at least"); MkDocs 2.0 removes
         plugins — an SSG decision is due before ~Nov 2026
       - the Claude project description and the July landing-page asset point at
-        REPPL/abcd and at docs paths that no longer exist
+        <personal account>/abcd and at docs paths that no longer exist
       - the brief's own press release tells the lifeboat story, not the
         product-thinker story README tells — the brief records this as open
     Do not resolve any of them in this step.

@@ -208,7 +208,7 @@ contrib = {
     'commits': 1188,
     'first_commit': '2026-07-06',
     'humans': [
-        {'name': 'Alex Reppel', 'handle': 'REPPL', 'commits': 1185},
+        {'name': 'The product thinker', 'handle': 'product-thinker', 'commits': 1185},
     ],
     'bots': [
         {'name': 'dependabot[bot]', 'commits': 2},

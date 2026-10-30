@@ -31,6 +31,7 @@ runs".
 | `check` | gate | shipped |
 | `hook` | — | shipped |
 | `approve` | — | shipped |
+| `allow` | — | shipped |
 
 The check takes the candidate as the value of its command flag or on stdin, and
 stdin is the one to prefer for a command line you did not type: the shell
@@ -49,9 +50,9 @@ Three verdicts, and they are the same decision reported two ways:
 
 | Verdict | Asked by a person or a script | Asked by the host hook |
 |---|---|---|
-| `allow` | exit 0 | exit 0, silent |
-| `warn` | exit 0, warning rendered | exit 1, warning on stderr |
-| `block` | exit 1, why + successor rendered | exit 0, the host's deny on stdout, why + successor as its reason |
+| allow | exit 0 | exit 0, silent |
+| warn | exit 0, warning rendered | exit 1, warning on stderr |
+| block | exit 1, why + successor rendered | exit 0, the host's deny on stdout, why + successor as its reason |
 
 A block names the entry, says in plain language what the command destroys, and
 gives the safe command to run instead. That successor is what makes the guard
@@ -101,8 +102,14 @@ a checkout with more than one worktree), `interpreter-reads-stream` (a shell
 handed its script through a pipe, as in `cat x | sh`) or `forge-text-outbound`
 (a posting `gh pr` or `gh issue` command whose title or body carries a live
 agent-session URL or a tool attribution footer, in a repository that opted into
-the forge-text check, iss-2610142210511831) or the merge rule below, is
-enforced but not taught; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
+the forge-text check, iss-2610142210511831), its two pull-request checks,
+`forge-text-disclosure` (a `gh pr create`, `new` or `edit` whose body carries no
+`Assisted-by:` line in an accepted form, judged as the attribution gate's body
+arm judges it, iss-2609061525437969) and `forge-text-mention` (a pull request
+whose title and body name an issue id no `Resolves:` or `Refs:` line declares,
+RS004 before the push, in a repository that also sets
+`outbound.declare_mentions`, iss-2610261152125261), and the merge rule below,
+are enforced but not taught; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
 script that deletes, which the guard refuses as `shell-c-variable-delete`
 (iss-2610161612200864), are taught by two rules the generator adds after the
 entries', each written beside the code that reads it. The registry taught is the one the guard
@@ -243,7 +250,8 @@ nothing. Where the badge does not show, the mode is neither read nor set. A
 state file or marker the gate cannot read or write, a read-only tier among
 them, is not a decision: the question runs and the hook says so on exit 1, the
 same fail-open-loud contract below. The manifest's pre-tool-use matcher names the
-shell tool and the question tool, and nothing else.
+shell tool, the question tool and the host's file-writing tools, and nothing
+else.
 
 **While the person is away** (spc-2610180914469489, "The question reroute";
 dcn-2610180937177502, dcn-2610181003477194), the gate reads the away record
@@ -331,11 +339,16 @@ no registry at all — are decided once, in the core, and every caller formats
 the same answer.
 
 One limit is not among those states, because it is never false: the guard's
-reach. The manifest's pre-tool-use matcher hands the hook the shell tool and
-the question tool and nothing else, so a call through any other tool never
-reaches the guard — a file the host's own tools write or edit, a command a tool
-from another extension runs — and nothing warns about it, since nothing
-failed. It is the guard's standing scope, not a degradation, and the `guard:`
+reach. The manifest's pre-tool-use matcher hands the hook the shell tool, the
+question tool and the host's file-writing tools (`Write`, `Edit`, `MultiEdit`,
+`NotebookEdit`) and nothing else. A file those tools write is judged only by
+where it lands: in a main checkout two or more live sessions started in, outside
+that checkout's own local tier (`.abcd/.work.local/`, which git ignores), it is
+denied with the record verbs' refusal (`occupancy.CheckPath`, which walks up to
+the file's `.git` with no git subprocess; iss-2610280051498465), and anywhere
+else it is written unchecked. A call through any other tool never reaches the
+guard — a command a tool from another extension runs — and nothing warns about
+it, since nothing failed. It is the guard's standing scope, not a degradation, and the `guard:`
 line does not report it. Whether the guard should adjudicate more than the
 shell is a separate question with a real cost: every further tool class needs
 its own hazard vocabulary, and a guard that refuses a tool it cannot reason
@@ -583,6 +596,36 @@ settings are never written, and a session the person drives never starts the
 approver. A launch whose contract grants no shell refuses every prompt unasked,
 as before; the opencode runner has no per-launch prompt answerer, so its
 launches keep the permissions opencode's own configuration sets.
+
+## A delete it cannot prove safe
+
+A branch delete, local or on origin, and a worktree removal lose work when the
+target holds any that is kept nowhere else, and whether it does is a fact about
+the repository rather than about the command's words (iss-2610241239492159).
+So the registry's delete entries only warn, and in a repository the check and
+the hook refuse every such delete whose target is not proven safe: merged into
+origin's default branch as last fetched (by ancestry, by patch id for a
+rebased or squashed branch as the worktree store judges it, or by a pull
+request merged at the tip),
+with no open pull request, checked out in no worktree, held by no reservation,
+and, for a worktree, clean, unlocked and in use by nothing. A local branch
+delete is judged offline; only a delete that touches origin asks the network
+and the forge. Every check refuses when it cannot answer, and so does a line
+whose targets the guard cannot read. The refusal names the check that failed
+and what settles it, and the teaching plane carries the same words as one rule
+beside the entries'.
+
+The person's way past is theirs alone: a one-shot allow of the one exact line,
+recorded in their home folder, read only as their own (the rule the rules
+loader applies to the machine's rules file), used once within ten minutes by
+the hook and logged with the line and both times but never who. It lets past
+nothing else a line trips, and the check and the headless approver never use
+it. The guard refuses the allow when an agent runs it and refuses a shell write
+into its store. As with every hazard here, the trust model is a careless agent,
+not a hostile one: a file tool writing into the store is not a shell command
+and goes unseen, a push that deletes as a side effect (pruning, mirroring) is
+not judged, and an allow is keyed on the line, not on the directory it runs in.
+A pushed delete of a tag is outside the proof and keeps its warning.
 
 ## What an allow means
 
@@ -875,9 +918,18 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd guard`
 
-Sub-verbs: `abcd guard approve`, `abcd guard check`, `abcd guard hook`.
+Sub-verbs: `abcd guard allow`, `abcd guard approve`, `abcd guard check`, `abcd guard hook`.
 
 Flags: none.
+
+### `abcd guard allow`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--command` | string |
+| `--once` | bool |
 
 ### `abcd guard approve`
 

@@ -54,15 +54,27 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"     `make preflight` runs in the branch's checkout, its output on stderr, and the\n" +
 			"     head must be unchanged, a receipt present and origin's URLs as checked after\n" +
 			"     it. A repository whose make file declares no preflight target gets no push.\n" +
-			"  4. Push (land.push): a plain push of the gated commit to the branch's name on\n" +
+			"  4. Announce (with land.push on): before the push, \"merging <item>\" is posted on\n" +
+			"     your status branch, as abcd announce posts it, for each issue, intent or pull\n" +
+			"     request the branch's own commits name in a Refs:, Resolves: or Delivers:\n" +
+			"     trailer, and the push waits until each is on origin. One you already\n" +
+			"     announced, standing a minute more, is not sent again; a record not yet on\n" +
+			"     the default branch is not announced, and the step says so. One that cannot\n" +
+			"     be published refuses the landing, nothing pushed. A push typed by hand with\n" +
+			"     git push posts no announcement.\n" +
+			"  5. Push (land.push): a plain push of the gated commit to the branch's name on\n" +
 			"     origin, with the repository's hooks running, never forced, never the default\n" +
 			"     branch.\n" +
-			"  5. Enqueue (land.enqueue): the branch's open pull request, armed where the merge\n" +
+			"  6. Enqueue (land.enqueue): the branch's open pull request, armed where the merge\n" +
 			"     gate allows it, pinned to the head: into the merge queue by its method where\n" +
 			"     one gates the default branch (then confirmed in the queue), otherwise as the\n" +
 			"     forge's auto-merge (a merge commit; a forge that refuses it is said). An\n" +
-			"     arming someone else made is left as it is. With no pull request it prints\n" +
-			"     the `gh pr create` command and stops; it never opens one.\n\n" +
+			"     arming someone else made is left as it is. With no pull request it composes\n" +
+			"     the body from the branch's commits (each subject, their Refs:, Resolves: and\n" +
+			"     Delivers: lines, abcd's own Assisted-by label and the models their\n" +
+			"     Assisted-by: lines name) into the checkout's .abcd/.work.local/ where it has\n" +
+			"     one, judges it as the shell guard judges a posted body, prints the `gh pr\n" +
+			"     create` command naming it with --body-file, and stops; it never opens one.\n\n" +
 			"The merge gate reads facilitator.mode from the default branch's committed\n" +
 			".abcd/config.json and " + abcdhome.Display("config.json") + " (human from either wins;\n" +
 			"human by default), never from the branch being landed. A pull request whose\n" +
@@ -95,7 +107,8 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"line on stderr names it.\n\n" +
 			"Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,\n" +
 			"which names what was done before it; reservations that cannot be fetched are\n" +
-			"one, made before anything is pushed. Exit 3 when a release being cut holds the\n" +
+			"one, and so is an announcement that cannot be published, each made before\n" +
+			"anything is pushed. Exit 3 when a release being cut holds the\n" +
 			"landing: it names the release, its holder and until when.\n\n" +
 			"--record-review records the review pair's verdicts for the branch's head and\n" +
 			"lands nothing: given once per reviewer's return (at least two, no two the\n" +

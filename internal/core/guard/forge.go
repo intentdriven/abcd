@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/assistedby"
+	"github.com/intentdriven/abcd/internal/core/issuemention"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -39,6 +41,20 @@ import (
 // out in full on the line, a `$(cat <<'EOF' … EOF)` the tokenizer reads as the
 // document it prints, and a body file read through the guard's guarded read.
 // What it does not see is named in commands/guard.md.
+//
+// Two checks a hosted run made after the push are made here too, on a pull
+// request's own text (`gh pr create|new|edit`), because a failure either found
+// in CI cost a push and a run to learn what the text on the line already said:
+//
+//   - the disclosure (iss-2609061525437969): a body carries an Assisted-by line
+//     in one of the three accepted forms, judged as the attribution gate's
+//     body arm judges it (assistedby.JudgeBody), under the same opt-in, since
+//     the bundled COMMITTING rule holds a pull request's body to it as it holds
+//     a commit;
+//   - the mentions (iss-2610261152125261): every issue id the title and body
+//     name is declared by a `Resolves:` or `Refs:` line (RS004, through
+//     issuemention), under an opt-in of its own, `outbound.declare_mentions`,
+//     since RS004 is a rule a repository adopts, not one abcd bundles.
 
 const (
 	// forgeTextEntryID is the reserved id a posting command whose text breaks
@@ -49,6 +65,16 @@ const (
 	// judge: a body file it cannot read or place, or a scanner configuration
 	// that does not load. A warn, never a block and never a silent pass.
 	forgeUnreadEntryID = "forge-text-unread"
+
+	// forgeDisclosureEntryID is the reserved id a pull request's body is
+	// blocked under when it carries no Assisted-by line in an accepted form
+	// (iss-2609061525437969).
+	forgeDisclosureEntryID = "forge-text-disclosure"
+
+	// forgeMentionEntryID is the reserved id a pull request's title and body
+	// are blocked under when they name an issue id without declaring their
+	// relation to it (iss-2610261152125261).
+	forgeMentionEntryID = "forge-text-mention"
 
 	familyForge = "forge text"
 
@@ -78,49 +104,79 @@ const (
 // .abcd or config.json, a value that is not true — is not opted in. It is the
 // one reader of the key; `abcd ahoy` asks it too.
 func ForgeTextOptedIn(repoRoot string) bool {
+	forge, _ := forgeOptIns(repoRoot)
+	return forge
+}
+
+// ForgeMentionsOptedIn reports whether the repository at repoRoot also opted
+// into the mention check: `outbound.declare_mentions: true` beside
+// `outbound.forge: true`. `abcd land` asks it before it judges the body it
+// composes, so a body is held to the rules the guard would hold it to.
+func ForgeMentionsOptedIn(repoRoot string) bool {
+	_, mentions := forgeOptIns(repoRoot)
+	return mentions
+}
+
+// forgeOptIns reads both of the check's keys from `.abcd/config.json`:
+// `outbound.forge` and `outbound.declare_mentions`, each on only as the JSON
+// boolean true, and the second only beside the first.
+func forgeOptIns(repoRoot string) (forge, mentions bool) {
 	if repoRoot == "" {
-		return false
+		return false, false
 	}
 	if di, err := os.Lstat(filepath.Join(repoRoot, ".abcd")); err != nil || di.Mode()&os.ModeSymlink != 0 {
-		return false
+		return false, false
 	}
 	data, err := fsutil.ReadGuarded(filepath.Join(repoRoot, ".abcd", "config.json"), maxForgeConfigBytes)
 	if err != nil {
-		return false
+		return false, false
 	}
 	var cfg struct {
 		Outbound struct {
-			Forge bool `json:"forge"`
+			Forge           bool `json:"forge"`
+			DeclareMentions bool `json:"declare_mentions"`
 		} `json:"outbound"`
 	}
 	if json.Unmarshal(data, &cfg) != nil {
-		return false
+		return false, false
 	}
-	return cfg.Outbound.Forge
+	return cfg.Outbound.Forge, cfg.Outbound.Forge && cfg.Outbound.DeclareMentions
 }
 
 // forgeGate is the opt-in of the repository a registry was loaded for, read
 // the first time a posting command asks, so a line with no gh in it costs no
 // file read.
 type forgeGate struct {
-	root  string
-	once  sync.Once
-	armed bool
+	root     string
+	once     sync.Once
+	armed    bool
+	mentions bool
 }
 
 func newForgeGate(root string) *forgeGate { return &forgeGate{root: root} }
 
+func (g *forgeGate) read() { g.once.Do(func() { g.armed, g.mentions = forgeOptIns(g.root) }) }
+
 func (g *forgeGate) on() bool {
-	g.once.Do(func() { g.armed = ForgeTextOptedIn(g.root) })
+	g.read()
 	return g.armed
+}
+
+// mentionsOn reports whether the mention check runs too.
+func (g *forgeGate) mentionsOn() bool {
+	g.read()
+	return g.mentions
 }
 
 // forgePost is one posting command on the line: the segment it stands in, the
 // command as `gh <group> <verb>`, and the text values it hands the forge.
+// opaque reports a text flag whose value the line does not fix (`--body
+// "$BODY"`), which no check reads but which may hold what a check looks for.
 type forgePost struct {
 	seg     int
 	command string
 	values  []forgeValue
+	opaque  bool
 }
 
 // forgeValue is one value of --title, --body or --body-file. tok is the token
@@ -165,12 +221,20 @@ func forgeWord(s segment, i int) (text string, fixed, ok bool) {
 	return lit.text, false, true
 }
 
-// forgePostsOf returns the posting commands segment s runs.
-func forgePostsOf(s segment, seg int) []forgePost {
-	var out []forgePost
+// ghRepoFlags are gh's options that take the next word as their value
+// wherever they stand, before the command group as after it: `gh -R o/r pr
+// create` is `gh pr create` on o/r.
+var ghRepoFlags = []string{"-R", "--repo"}
+
+// forgePostsOf returns the posting commands segment s runs. complete is false
+// when a gh site's words had more readings than the guard follows, so a
+// posting command among them may not have been found.
+func forgePostsOf(s segment, seg int) (out []forgePost, complete bool) {
+	complete = true
 	for _, a := range sitesNamed(s, "gh") {
 		args := s.tokens[a.idx+1:]
-		readings, _ := operandReadings(args, nil, 2)
+		readings, all := operandReadings(args, ghRepoFlags, 2)
+		complete = complete && all
 		for _, idx := range readings {
 			if len(idx) < 2 {
 				continue
@@ -180,12 +244,12 @@ func forgePostsOf(s segment, seg int) []forgePost {
 			if !ok1 || !ok2 || !forgePosting(group, verb) {
 				continue
 			}
-			out = append(out, forgePost{seg: seg, command: "gh " + group + " " + verb,
-				values: forgeValues(s, a.idx+1+idx[1]+1)})
+			values, opaque := forgeValues(s, a.idx+1+idx[1]+1)
+			out = append(out, forgePost{seg: seg, command: "gh " + group + " " + verb, values: values, opaque: opaque})
 			break
 		}
 	}
-	return out
+	return out, complete
 }
 
 // The text flags, by what each hands the forge.
@@ -195,9 +259,15 @@ const (
 	forgeBodyFile = "body file"
 )
 
+// ghBoolShorts are the boolean shorthands of gh's posting commands (--draft,
+// --editor, --fill, --web, --help), the ones pflag lets a text flag follow in
+// one word: `-db x` is --draft then --body x.
+const ghBoolShorts = "defwh"
+
 // forgeFlag names the text flag a word sets (forgeTitle, forgeBody,
 // forgeBodyFile), and the value attached to it, if any: `--body`, `--body=x`,
-// `-b`, `-bx` and `-b=x`.
+// `-b`, `-bx`, `-b=x`, and each of those behind boolean shorthands (`-db x`,
+// `-dbx`). Any other shorthand takes the rest of the word as its own value.
 func forgeFlag(w string) (name, val string, attached bool) {
 	longs := map[string]string{"--title": forgeTitle, "--body": forgeBody, "--body-file": forgeBodyFile}
 	if strings.HasPrefix(w, "--") {
@@ -211,22 +281,31 @@ func forgeFlag(w string) (name, val string, attached bool) {
 		return "", "", false
 	}
 	shorts := map[byte]string{'t': forgeTitle, 'b': forgeBody, 'F': forgeBodyFile}
-	l, ok := shorts[w[1]]
-	if !ok {
-		return "", "", false
+	for i := 1; i < len(w); i++ {
+		if l, ok := shorts[w[i]]; ok {
+			if i+1 == len(w) {
+				return l, "", false
+			}
+			return l, strings.TrimPrefix(w[i+1:], "="), true
+		}
+		if !strings.ContainsRune(ghBoolShorts, rune(w[i])) {
+			break
+		}
 	}
-	if len(w) == 2 {
-		return l, "", false
-	}
-	return l, strings.TrimPrefix(w[2:], "="), true
+	return "", "", false
 }
 
 // forgeValues reads the text flags in the words from start on, up to `--`.
-func forgeValues(s segment, start int) []forgeValue {
-	var out []forgeValue
+// opaque reports a text flag the line sets to a value it does not fix.
+func forgeValues(s segment, start int) (out []forgeValue, opaque bool) {
 	for j := start; j < len(s.tokens); j++ {
 		w, fixed, ok := forgeWord(s, j)
 		if !ok {
+			// `--body="$BODY"` is one word the line does not fix; its flag is
+			// still read from the word's head.
+			if name, _, _ := forgeFlag(s.tokens[j]); name != "" {
+				opaque = true
+			}
 			continue
 		}
 		if w == "--" {
@@ -247,11 +326,30 @@ func forgeValues(s segment, start int) []forgeValue {
 		v, vfixed, vok := forgeWord(s, j)
 		if !vok {
 			// A value the line does not fix (`--body "$BODY"`) is not seen.
+			opaque = true
 			continue
 		}
 		out = append(out, forgeValue{flag: name, text: v, tok: j, fixed: vfixed})
 	}
-	return out
+	return out, opaque
+}
+
+// forgeSeen gathers the texts of one posting command the guard read in full,
+// for the check that judges a pull request's title and body together. opaque
+// is set by any text of it the guard did not read in full.
+type forgeSeen struct {
+	titles, bodies []string
+	opaque         bool
+}
+
+// forgeHoldsPR reports whether command posts a pull request's own title and
+// body, the text the disclosure and mention checks hold.
+func forgeHoldsPR(command string) bool {
+	switch command {
+	case "gh pr create", "gh pr new", "gh pr edit":
+		return true
+	}
+	return false
 }
 
 // forgeText is the check over one reading of a command line: every posting
@@ -262,10 +360,13 @@ func (r Registry) forgeText(rc *readCtx, segs []segment, recs []scriptSeg) []pay
 		return nil
 	}
 	var posts []forgePost
+	complete := true
 	for i, s := range segs {
-		posts = append(posts, forgePostsOf(s, i)...)
+		p, all := forgePostsOf(s, i)
+		posts = append(posts, p...)
+		complete = complete && all
 	}
-	if len(posts) == 0 || !r.forge.on() {
+	if (len(posts) == 0 && complete) || !r.forge.on() {
 		return nil
 	}
 	var out []payloadSignal
@@ -274,8 +375,19 @@ func (r Registry) forgeText(rc *readCtx, segs []segment, recs []scriptSeg) []pay
 			out = append(out, sig)
 		}
 	}
+	if !complete {
+		add(payloadSignal{
+			id: forgeUnreadEntryID, verdict: VerdictWarn, family: familyForge,
+			reason: "This line's gh words can be read more ways than the guard follows, so it could not tell which gh " +
+				"command runs and has not checked any text it hands the forge for a live agent-session URL or a tool " +
+				"attribution footer.",
+			successor: "Write the gh command out in full, with no word left to a substitution or a variable, so the guard " +
+				"checks what is posted.",
+		})
+	}
 	judged, readBytes := 0, 0
 	for _, p := range posts {
+		seen := &forgeSeen{opaque: p.opaque}
 		for _, v := range p.values {
 			if judged >= maxForgeTexts {
 				add(payloadSignal{
@@ -288,11 +400,12 @@ func (r Registry) forgeText(rc *readCtx, segs []segment, recs []scriptSeg) []pay
 			}
 			judged++
 			if v.flag == forgeBodyFile {
-				r.forgeFile(rc, segs, recs, p, v, &readBytes, add)
+				r.forgeFile(rc, segs, recs, p, v, &readBytes, add, seen)
 				continue
 			}
-			r.forgeJudge(p.command, v.flag, v.text, add)
+			r.forgeJudge(p.command, v.flag, v.text, add, seen)
 		}
+		r.forgeMentions(p.command, seen, add)
 	}
 	return out
 }
@@ -304,12 +417,16 @@ func (r Registry) forgeText(rc *readCtx, segs []segment, recs []scriptSeg) []pay
 //
 // readBytes is the bytes this check has read for body files so far, on their
 // own budget (maxForgeReadBytes), never the scripts'.
-func (r Registry) forgeFile(rc *readCtx, segs []segment, recs []scriptSeg, p forgePost, v forgeValue, readBytes *int, add func(payloadSignal)) {
+//
+// Every way the file goes unjudged marks seen opaque.
+func (r Registry) forgeFile(rc *readCtx, segs []segment, recs []scriptSeg, p forgePost, v forgeValue, readBytes *int, add func(payloadSignal), seen *forgeSeen) {
 	if v.text == "-" || !v.fixed || strings.TrimSpace(v.text) == "" {
+		seen.opaque = true
 		return
 	}
 	s := segs[p.seg]
 	if v.tok >= 0 && s.globAt(v.tok) {
+		seen.opaque = true
 		return
 	}
 	var paths []string
@@ -331,9 +448,11 @@ func (r Registry) forgeFile(rc *readCtx, segs []segment, recs []scriptSeg, p for
 		}
 	}
 	if unplaced {
+		seen.opaque = true
 		add(forgeUnreadSignal(p.command, "is relative to a directory this line leaves unknown"))
 	}
 	if len(paths) == 0 {
+		seen.opaque = true
 		return
 	}
 	var before []writeTarget
@@ -346,11 +465,13 @@ func (r Registry) forgeFile(rc *readCtx, segs []segment, recs []scriptSeg, p for
 	}
 	for _, pth := range paths {
 		if written, _ := writtenBefore(pth, before); written {
+			seen.opaque = true
 			add(forgeUnreadSignal(p.command, "is written earlier on this line, so the file the guard could read now is not the one gh will post"))
 			continue
 		}
 		real, err := filepath.EvalSymlinks(pth)
 		if err != nil {
+			seen.opaque = true
 			if errors.Is(err, os.ErrNotExist) {
 				add(forgeUnreadSignal(p.command, "does not exist"))
 			} else {
@@ -359,6 +480,7 @@ func (r Registry) forgeFile(rc *readCtx, segs []segment, recs []scriptSeg, p for
 			continue
 		}
 		if *readBytes >= maxForgeReadBytes {
+			seen.opaque = true
 			add(forgeUnreadSignal(p.command, fmt.Sprintf("is past the %d KiB of body files one check reads", maxForgeReadBytes>>10)))
 			continue
 		}
@@ -367,36 +489,132 @@ func (r Registry) forgeFile(rc *readCtx, segs []segment, recs []scriptSeg, p for
 		tally(len(fr.data))
 		switch {
 		case fr.err != nil:
+			seen.opaque = true
 			add(forgeUnreadSignal(p.command, "cannot be read as a regular file (a pipe, a directory, or a file this account may not read)"))
 		case fr.tooBig:
+			seen.opaque = true
 			add(forgeUnreadSignal(p.command, fmt.Sprintf("is over the %d KiB the guard reads", maxScriptBytes>>10)))
 		default:
-			r.forgeJudge(p.command, forgeBodyFile, string(fr.data), add)
+			r.forgeJudge(p.command, forgeBodyFile, string(fr.data), add, seen)
 		}
 	}
 }
 
-// forgeJudge runs the outbound check over one text. The text is never carried
-// into the verdict: only the kind and the line of what was found.
-func (r Registry) forgeJudge(command, what, text string, add func(payloadSignal)) {
+// forgeJudge runs the outbound check over one text, and over a pull request's
+// body the disclosure check, and gathers it into seen. The text is never
+// carried into the verdict: only the kind and the line of what was found.
+//
+// A text holding output the line does not fix (an unquoted document's
+// variable) is judged for the outbound policy on the part it does fix, and
+// marks seen opaque: the part it does not fix may hold the very line the
+// disclosure and mention checks look for.
+func (r Registry) forgeJudge(command, what, text string, add func(payloadSignal), seen *forgeSeen) {
+	whole := !strings.Contains(text, unknownText) && !strings.ContainsRune(text, varMark)
 	text = strings.NewReplacer(unknownText, "", string(varMark), "").Replace(text)
-	if strings.TrimSpace(text) == "" {
+	switch {
+	case !whole:
+		seen.opaque = true
+	case what == forgeTitle:
+		seen.titles = append(seen.titles, text)
+	default:
+		seen.bodies = append(seen.bodies, text)
+	}
+	if strings.TrimSpace(text) != "" {
+		findings, err := scanner.CheckOutbound(r.forge.root, text, "the "+what+" of "+command)
+		if len(findings) > 0 {
+			// One refusal per text: the leak is the one that cannot be taken back.
+			add(forgeLeakSignal(command, what, findings))
+			return
+		}
+		if err != nil {
+			add(forgeConfigSignal(command, what))
+		}
+	}
+	if whole && what != forgeTitle && forgeHoldsPR(command) {
+		if fault := assistedby.JudgeBody(text); fault != assistedby.BodyClean {
+			add(forgeDisclosureSignal(command, what, fault))
+		}
+	}
+}
+
+// forgeMentions is the mention check over one posting command, run once its
+// texts are read: the ids the title and each body name, against the
+// declarations the two carry. It judges only a body the guard read in full,
+// with every title the line gives, and nothing when any text was opaque,
+// since the part not read may be the declaration.
+func (r Registry) forgeMentions(command string, seen *forgeSeen, add func(payloadSignal)) {
+	if !forgeHoldsPR(command) || seen.opaque || len(seen.bodies) == 0 || !r.forge.mentionsOn() {
 		return
 	}
-	findings, err := scanner.CheckOutbound(r.forge.root, text, "the "+what+" of "+command)
-	if len(findings) > 0 {
-		add(forgeLeakSignal(command, what, findings))
-		return
+	titles := seen.titles
+	if len(titles) == 0 {
+		titles = []string{""}
 	}
-	if err != nil {
-		add(payloadSignal{
-			id: forgeUnreadEntryID, verdict: VerdictWarn, family: familyForge,
-			reason: "The guard could not judge the " + what + " this `" + command + "` hands the forge: the repository's scanner " +
-				"configuration (.abcd/config/pii.json) does not load, and judging with fewer detectors than it declares would " +
-				"be a clearance nobody earned.",
-			successor: "Repair .abcd/config/pii.json, or remove any session URL and tool attribution footer from the text yourself " +
-				"before posting.",
-		})
+	var ids []string
+	for _, t := range titles {
+		for _, b := range seen.bodies {
+			for _, id := range issuemention.Undeclared(t, b) {
+				if !containsString(ids, id) {
+					ids = append(ids, id)
+				}
+			}
+		}
+	}
+	if len(ids) > 0 {
+		add(forgeMentionSignal(command, ids))
+	}
+}
+
+// forgeConfigSignal is the warn for a text the guard could not judge because
+// the scanner's configuration does not load.
+func forgeConfigSignal(command, what string) payloadSignal {
+	return payloadSignal{
+		id: forgeUnreadEntryID, verdict: VerdictWarn, family: familyForge,
+		reason: "The guard could not judge the " + what + " this `" + command + "` hands the forge: the repository's scanner " +
+			"configuration (.abcd/config/pii.json) does not load, and judging with fewer detectors than it declares would " +
+			"be a clearance nobody earned.",
+		successor: "Repair .abcd/config/pii.json, or remove any session URL and tool attribution footer from the text yourself " +
+			"before posting.",
+	}
+}
+
+// forgeDisclosureSignal is the block for a pull request's body the
+// attribution gate's body arm would refuse. It names the fault, never the text.
+func forgeDisclosureSignal(command, what string, fault assistedby.BodyFault) payloadSignal {
+	fix := "Add a line of its own, outside any fenced block, in one of the three accepted forms: " +
+		"Assisted-by: <Vendor>:<model-version> where a model assisted (Assisted-by: Claude:claude-opus-5-5), " +
+		"Assisted-by: None where none did, or the Assisted-by: abcd:<version> label abcd itself writes; then run the same command again."
+	switch fault {
+	case assistedby.BodyCoAuthor:
+		fix = "Remove the Co-authored-by line and disclose assistance with Assisted-by: <Vendor>:<model-version> on a line of its own instead, " +
+			"then run the same command again."
+	case assistedby.BodyGeneratedFooter:
+		fix = "Replace the footer with Assisted-by: <Vendor>:<model-version> on a line of its own, then run the same command again."
+	case assistedby.BodyMalformedLabel:
+		fix = "Write the abcd label exactly as abcd writes it (Assisted-by: abcd:dev or Assisted-by: abcd:v1.2.3), or replace it with " +
+			"Assisted-by: <Vendor>:<model-version> where a model wrote the text, then run the same command again."
+	}
+	return payloadSignal{
+		id: forgeDisclosureEntryID, verdict: VerdictBlock, family: familyForge,
+		reason: "The " + what + " this `" + command + "` hands the forge carries " + fault.String() + ". This repository checks " +
+			"the text it posts (outbound.forge in .abcd/config.json), and a pull request's body discloses assistance as its " +
+			"commits do, judged as abcd's attribution gate judges a pull request's body.",
+		successor: fix,
+	}
+}
+
+// forgeMentionSignal is the block for a pull request whose title and body
+// name issue ids without declaring them. The ids are record ids, not secrets,
+// so the refusal names them.
+func forgeMentionSignal(command string, ids []string) payloadSignal {
+	return payloadSignal{
+		id: forgeMentionEntryID, verdict: VerdictBlock, family: familyForge,
+		reason: "The title and body this `" + command + "` hands the forge name " + strings.Join(ids, ", ") + " without declaring " +
+			"their relation to it. This repository holds a pull request to the rule its commits follow (RS004; " +
+			"outbound.declare_mentions in .abcd/config.json), and the hosted check refuses it after the push.",
+		successor: "Add a line of its own to the body for each: Resolves: " + ids[0] + " if this change fixes it, or Refs: " + ids[0] +
+			" if it is touched but not fixed. One line may list several issue ids, comma-separated, and issue ids only: " +
+			"an intent or ADR id on the same line makes it no declaration. Then run the same command again.",
 	}
 }
 

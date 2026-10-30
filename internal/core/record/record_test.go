@@ -891,6 +891,15 @@ func TestDescribeShippedIntentReviewMoves(t *testing.T) {
 			want:  []string{"fidelity review owed", "no receipt", "mints", "`abcd intent audit itd-4`"},
 		},
 		{
+			// No marker, but the section names the criteria and gives a
+			// verdict on them (intent.HandAudited, iss-2610241431221889).
+			name: "a hand-written audit owes nothing and claims no receipt",
+			notes: "Audited by hand on 2026-07-01 against the merged code: criteria 1 and 2\n" +
+				"are MET, and criterion 3 is NOT_MET because the refusal names no tag.",
+			want:  []string{"none", "audited by hand"},
+			never: []string{"owed", "ingested", "receipt", "intent audit itd-4"},
+		},
+		{
 			name:  "ingested owes nothing",
 			notes: "<!-- abcd-review: INGESTED receipt=rcp-0000000000b2 -->\nFidelity review — receipt rcp-0000000000b2.",
 			want:  []string{"none", "ingested", "rcp-0000000000b2"},

@@ -62,14 +62,14 @@ func establishCtx(dir string, p Prompter, gaps ...string) *applyCtx {
 	}
 }
 
-const pinAlex = `{"name":"Alex Reppel","email":"alex@example.com"}`
+const pinAlice = `{"name":"Alice","email":"alice@example.com"}`
 
 // TestDetectGitIdentity_CommitterDiverges: the committer gap is raised beside
 // the author statuses — here the author matches the pin, so it is the only gap.
 func TestDetectGitIdentity_CommitterDiverges(t *testing.T) {
 	clearIdentityEnv(t)
-	dir := idGitRepo(t, "Alex Reppel", "alex@example.com")
-	idWritePin(t, dir, pinAlex)
+	dir := idGitRepo(t, "Alice", "alice@example.com")
+	idWritePin(t, dir, pinAlice)
 	t.Setenv("GIT_COMMITTER_NAME", "Test User")
 	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
 	gaps := detectGitIdentity(dir)
@@ -86,7 +86,7 @@ func TestDetectGitIdentity_CommitterDiverges(t *testing.T) {
 // required work.
 func TestDetectGitIdentity_CommitterUnpinnedIsAdvisory(t *testing.T) {
 	clearIdentityEnv(t)
-	dir := idGitRepo(t, "Alex Reppel", "alex@example.com")
+	dir := idGitRepo(t, "Alice", "alice@example.com")
 	t.Setenv("GIT_AUTHOR_NAME", "Test User")
 	gaps := detectGitIdentity(dir)
 	var got *Gap
@@ -125,7 +125,7 @@ func TestDetectGitIdentity_ToolIdentity(t *testing.T) {
 // gate's role asymmetry: the forge's own committer stamp is not flagged.
 func TestDetectGitIdentity_ForgeCommitterIsNotATool(t *testing.T) {
 	clearIdentityEnv(t)
-	dir := idGitRepo(t, "Alex Reppel", "alex@example.com")
+	dir := idGitRepo(t, "Alice", "alice@example.com")
 	t.Setenv("GIT_COMMITTER_NAME", "GitHub")
 	t.Setenv("GIT_COMMITTER_EMAIL", "noreply@github.com")
 	for _, g := range detectGitIdentity(dir) {
@@ -142,7 +142,7 @@ func TestDetectGitIdentity_ForgeCommitterIsNotATool(t *testing.T) {
 func TestStepGitIdentity_ProposesPinAndWritesOnlyOnConfirm(t *testing.T) {
 	clearIdentityEnv(t)
 	dir := idGitRepo(t, "Test User", "test@example.com")
-	idWritePin(t, dir, pinAlex)
+	idWritePin(t, dir, pinAlice)
 	p := &identityPrompter{terminal: true, answer: true}
 	p.onAsk = func(string) {
 		if got := localConfig(t, dir, "user.name"); got != "Test User" {
@@ -151,10 +151,10 @@ func TestStepGitIdentity_ProposesPinAndWritesOnlyOnConfirm(t *testing.T) {
 	}
 	a := establishCtx(dir, p, MismatchGapID)
 	a.stepGitIdentity()
-	if len(p.asked) != 1 || !strings.Contains(p.asked[0], "Alex Reppel <alex@example.com>") {
+	if len(p.asked) != 1 || !strings.Contains(p.asked[0], "Alice <alice@example.com>") {
 		t.Fatalf("want one question proposing the pinned identity, got %q", p.asked)
 	}
-	if n, e := localConfig(t, dir, "user.name"), localConfig(t, dir, "user.email"); n != "Alex Reppel" || e != "alex@example.com" {
+	if n, e := localConfig(t, dir, "user.name"), localConfig(t, dir, "user.email"); n != "Alice" || e != "alice@example.com" {
 		t.Fatalf("confirmed proposal not written: %q <%s>", n, e)
 	}
 	if res, err := identity.Check(dir); err != nil || res.Status != identity.StatusOK {
@@ -169,7 +169,7 @@ func TestStepGitIdentity_ProposesPinAndWritesOnlyOnConfirm(t *testing.T) {
 func TestStepGitIdentity_DeclineWritesNothing(t *testing.T) {
 	clearIdentityEnv(t)
 	dir := idGitRepo(t, "Test User", "test@example.com")
-	idWritePin(t, dir, pinAlex)
+	idWritePin(t, dir, pinAlice)
 	before, _ := os.ReadFile(filepath.Join(dir, ".git", "config"))
 	p := &identityPrompter{terminal: true, answer: false}
 	a := establishCtx(dir, p, MismatchGapID)
@@ -189,7 +189,7 @@ func TestStepGitIdentity_DeclineWritesNothing(t *testing.T) {
 func TestStepGitIdentity_NoTerminalFailsClosed(t *testing.T) {
 	clearIdentityEnv(t)
 	dir := idGitRepo(t, "Test User", "test@example.com")
-	idWritePin(t, dir, pinAlex)
+	idWritePin(t, dir, pinAlice)
 	before, _ := os.ReadFile(filepath.Join(dir, ".git", "config"))
 	for _, p := range []Prompter{&identityPrompter{terminal: false, answer: true}, RefusingPrompter{}} {
 		a := establishCtx(dir, p, MismatchGapID)
@@ -212,7 +212,7 @@ func TestStepGitIdentity_NoTerminalFailsClosed(t *testing.T) {
 func TestStepGitIdentity_NeverUnderYes(t *testing.T) {
 	clearIdentityEnv(t)
 	dir := idGitRepo(t, "Test User", "test@example.com")
-	idWritePin(t, dir, pinAlex)
+	idWritePin(t, dir, pinAlice)
 	p := &identityPrompter{terminal: true, answer: true}
 	a := establishCtx(dir, p, MismatchGapID)
 	a.autoYes = true
@@ -247,8 +247,8 @@ func TestStepGitIdentity_ProposesGlobalWhenUnpinned(t *testing.T) {
 // step says so and neither asks nor writes.
 func TestStepGitIdentity_EnvOverrideIsNotRewritten(t *testing.T) {
 	clearIdentityEnv(t)
-	dir := idGitRepo(t, "Alex Reppel", "alex@example.com")
-	idWritePin(t, dir, pinAlex)
+	dir := idGitRepo(t, "Alice", "alice@example.com")
+	idWritePin(t, dir, pinAlice)
 	t.Setenv("GIT_COMMITTER_NAME", "Test User")
 	p := &identityPrompter{terminal: true, answer: true}
 	a := establishCtx(dir, p, CommitterGapID)

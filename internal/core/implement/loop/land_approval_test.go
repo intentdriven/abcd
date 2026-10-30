@@ -188,17 +188,26 @@ func TestAutoArmsOnlyAHeadAReviewReceiptNames(t *testing.T) {
 // TestThisRepositorysOwnMirrorAndConfigArm: this repository's committed
 // mirror and .abcd/config.json, with the head approved and a review receipt
 // naming it, arm by the queue's method, so the merge gate keeps this
-// project's landings queueing in either mode.
+// project's landings queueing in either mode. It reads every CODEOWNERS path
+// the forge reads, so one restored shows up here.
 func TestThisRepositorysOwnMirrorAndConfigArm(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	top := filepath.Join("..", "..", "..", "..")
 	files := map[string]string{}
-	for _, rel := range []string{".abcd/work/rulesets/main-protection.json", ".abcd/work/rulesets/main-review.json", ".github/CODEOWNERS", ".abcd/config.json"} {
+	for _, rel := range []string{".abcd/work/rulesets/main-protection.json", ".abcd/work/rulesets/main-review.json", ".abcd/config.json"} {
 		b, err := os.ReadFile(filepath.Join(top, filepath.FromSlash(rel)))
 		if err != nil {
 			t.Fatalf("reading this repository's %s: %v", rel, err)
 		}
 		files[rel] = string(b)
+	}
+	for _, rel := range []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} {
+		b, err := os.ReadFile(filepath.Join(top, filepath.FromSlash(rel)))
+		if err == nil {
+			files[rel] = string(b)
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("reading this repository's %s: %v", rel, err)
+		}
 	}
 	f := newLandFixtureWith(t, files)
 	f.approve(t)

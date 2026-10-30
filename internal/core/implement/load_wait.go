@@ -416,6 +416,10 @@ type WaitResult struct {
 	// count, when it was (PreflightSlots); the front door prints it once per
 	// waiter, so a preflight, which waits at both gates, shows it twice.
 	SlotsNote string `json:"slots_note,omitempty"`
+	// DiskNote says the disk went unchecked, in whole or in part, and why
+	// (DiskCheck.Note); "" when every volume was read. The front door prints
+	// it on stderr.
+	DiskNote string `json:"disk_note,omitempty"`
 	// Backoffs is how many times the waiter stood back from another that opened
 	// in the same moment (machineload.StandBackFrom).
 	Backoffs int `json:"backoffs,omitempty"`
@@ -427,10 +431,14 @@ type WaitResult struct {
 
 // WaitLoad waits until the gate opens or the timeout passes. Its error is a
 // refusal before any wait (a home it cannot resolve, a home inside a git
-// working tree that is not the account's own, a symlinked ~/.abcd.noindex, or
-// a hold lock that is not a regular file), or a hold it
-// could not give up when standing back after a wait. A timeout is a status,
-// not an error.
+// working tree that is not the account's own, a symlinked ~/.abcd.noindex, a
+// load.preflights it cannot use, a volume holding the Go build cache or the
+// worktree store below the disk floor (diskFloorFor), or a hold lock that is
+// not a regular file), a refusal at the last look before it opens when such
+// a volume has fallen below the floor while it waited, or a hold it could not
+// give up when standing back after a wait. A disk it cannot read, in whole or
+// in part, is never refused; WaitResult.DiskNote says so. A timeout is a
+// status, not an error.
 func WaitLoad(req WaitRequest) (WaitResult, error) {
 	getenv := req.Getenv
 	if getenv == nil {
@@ -490,6 +498,14 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	defer root.Close()
 	if res.Slots, res.SlotsSource, res.SlotsNote, err = PreflightSlots(getenv, home); err != nil {
 		return res, fmt.Errorf("nothing was waited for: %w", err)
+	}
+	// The disk is read before anything is waited for, and again just before
+	// the gate opens (below): other work fills the disk while this waits.
+	floor := diskFloorFor(res.Slots)
+	disk := ReadDisk(home, floor)
+	res.DiskNote = disk.Note()
+	if err := disk.Refusal(); err != nil {
+		return res, err
 	}
 	if req.Race && res.Slots <= 1 {
 		// One preflight at a time: the first gate admitted this preflight's
@@ -564,6 +580,15 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 				}
 			}
 			sleep(j)
+			// The disk as it is now, not as it was when this waiter came:
+			// the waits behind other preflights are when it fills. No hold
+			// is taken yet, so a refusal here leaves nothing behind.
+			disk := ReadDisk(home, floor)
+			res.DiskNote = disk.Note()
+			if err := disk.RefusalAtOpen(); err != nil {
+				res.WaitedS = now().Sub(start).Seconds()
+				return res, err
+			}
 			res.Polls++
 			shut, done, only, err = waitLook(req, root, home, &res, now, true, pastCap())
 			if err != nil {

@@ -1,7 +1,7 @@
 ---
 name: guard
 description: "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb."
-argument-hint: "[check [--command <command>] | hook | approve --dir <dir>]"
+argument-hint: "[check [--command <command>] | hook | approve --dir <dir> | allow --once --command <line>]"
 block: agents
 user-invocable: false
 ---
@@ -173,11 +173,20 @@ line ends holds the body back until the line after it closes, and its own
 lines are read as commands, as the shell runs them.
 
 The hook judges only what the host hands it, and the plugin's hook manifest
-hands it the shell tool and the question tool and nothing else. A call through
-any other tool never reaches the guard: a file the host's own tools write or
-edit, or a command a tool from another extension runs, is neither checked nor
-warned about. That is the guard's standing scope, not a degradation, and the
-`guard:` line of `abcd ahoy` does not report it.
+hands it the shell tool, the question tool and the host's file-writing tools
+(`Write`, `Edit`, `MultiEdit`, `NotebookEdit`) and nothing else. A file one of
+those tools writes is not held to the registry: it is **denied** when it lands
+in a main checkout two or more live sessions started in, with the refusal the
+record verbs give, naming the worktree store (iss-2610280051498465). The file's
+working tree is found by walking up to its `.git`, with no git subprocess, so a
+linked worktree, a checkout one session or none works in, a path in no checkout,
+and a file in a checkout's own local tier (`.abcd/.work.local/`, which git
+ignores) are written silently. A file call naming no path, a relative path with
+no absolute session directory, or a count that cannot be made, lets the write
+run and warns loudly. A call through any other
+tool never reaches the guard: a command a tool from another extension runs is
+neither checked nor warned about. That is the guard's standing scope, not a
+degradation, and the `guard:` line of `abcd ahoy` does not report it.
 
 A host whose shell tool takes a per-call working directory passes it beside the
 command as `tool_input.workdir`. The adapter resolves it against the session
@@ -398,6 +407,76 @@ The abcd binary that answers the prompts is not among the paths it protects.
 Bounding those writes is the OS sandbox for launched agents
 (spc-2610161751056096), not the approver.
 
+## Branch deletes and worktree removals — proved, or refused
+
+In a repository, a delete of a branch or a worktree runs only when the guard can
+prove the target safe (iss-2610241239492159). That covers `git push --delete`
+and a `:<branch>` refspec, `git branch -D` (and `-d` with `--force`) and
+`git worktree remove`. Their registry entries are warnings, and a delete
+proven safe still carries that warning; `check` and `hook` refuse every one
+whose target they cannot prove (`git-delete-unproven`), which outside a git
+checkout is every one.
+
+A target is safe when every check holds, and each check refuses when it cannot
+answer:
+
+- **Merged** into origin's default branch as last fetched: its tip is an
+  ancestor of it, or, for a rebased or squashed branch, its patches are there
+  (the worktree store's own judgement), or a pull request merged at that tip.
+- **No open pull request**, asked of the forge, for a branch on origin. A local
+  `git branch -D` is judged offline against `origin/<default>` as last
+  fetched; only a delete that touches origin asks the network, and a tip origin
+  holds that this checkout has not fetched is refused until it is.
+- **In no worktree**: a branch checked out anywhere is refused.
+- **No live reservation**: an `abcd-reserved/` or `abcd-status/` branch is never
+  deleted by hand (`abcd reserve --sweep --apply` clears the spent ones), and a
+  worktree a live reservation, a running loop or a process holds is refused, as
+  is every worktree removal in a checkout that has never fetched the
+  reservations (`abcd peers` fetches them).
+- **For a worktree, clean**: nothing staged, unstaged, untracked or ignored, not
+  locked, not the main working tree, and on a branch (a detached HEAD is
+  refused).
+
+A line whose targets the guard cannot read (a variable, a glob, a name git
+resolves from its history such as `@{-1}`, a `{}` placeholder or a delete
+`xargs` hands its operands, a `git branch` name starting `refs/`, a `cd` or a
+`GIT_` variable before the delete, an option it does not know) is refused too. A
+pushed delete of a tag or another non-branch ref (`:refs/tags/v1`) is outside
+the proof and keeps its warning. The refusal names the check that failed and
+what settles it: merge the branch, close the pull request, fetch, or remove the
+worktree first.
+
+### `allow` — the person's one-shot way past
+
+When the person decides a refused delete is safe anyway, they run, themselves,
+in their own terminal, `abcd guard allow --once --command '<the exact command>'`.
+That lets the one exact line (byte for byte) through the hook once, within ten
+minutes, and lets past nothing else: a line any other hazard blocks stays
+blocked, and the allow is left unused. The hook admits the line with a note
+saying the person allowed it and when (exit 0, so no second judge re-reads it
+with the allow already used). `guard check` never uses an allow, and
+neither does the approver for a headless agent.
+
+**Never run `allow` yourself.** The guard refuses it when an agent runs it, in
+either spelling (`abcd …`, or `go run ./cmd/abcd …` in a source checkout), and refuses a shell write
+into its store. Tell the person the exact command and why it is safe, and let
+them decide.
+
+The allow is recorded under `~/.abcd.noindex/guard-allow/<root-commit>/`, one
+file per line, and read only when this account owns it and no one else can
+write it or its folders, as the rules loader reads `~/.abcd.noindex/rules.json`.
+It is removed as it is used. The folder's `log.jsonl` records each exact line,
+when it was allowed and when it was used, and never who.
+
+The trust model is a careless agent, not a hostile one, as for the guard's
+other hazards. What it does not cover, plainly: a file tool writing into the
+store is not a shell command, so the shell guard does not see it; `git push
+--prune` and `--mirror`, which delete as a side effect, are not judged here; an
+allow is keyed on the line, not the directory, so a relative worktree path
+allowed in one directory of the repository is honoured from another; and a
+local branch pushed to origin but not yet merged is refused like any other
+unmerged branch.
+
 ## Registry and overrides
 
 The bundled hazards ship inside the binary. A repo overrides them in one file in
@@ -590,13 +669,23 @@ shell's script or standard input, a `source` or `.` operand, or a path
 sh i.sh`, `curl -O …/i.sh && ./i.sh`): the file is one curl's `-o` or `-O`,
 wget's `-O` or saved name, a `tee` a fetch feeds or a redirection of what a
 fetch printed writes, matched by the name the line writes it under, and a
-name the line does not fix can be any file. Download it in one command, read
-it, and run it in the next. A command
+name the line does not fix can be any file. The shell's options before the
+script are read as the script reading below reads them, so `bash -login
+<(curl …)` and `zsh -oerrexit <(curl …)` block too. Download it in one
+command, read it, and run it in the next. A command
 line longer than 64 KiB is a **block** (`command-too-long`), because the guard
 does not read it.
 
 A script file a shell runs is **read and judged** before the command is: a
-shell's script operand (`bash build.sh`), a `source` or `.` operand (searched on
+shell's script operand (`bash build.sh`; not under `-n` or `-o noexec`, a
+syntax check that runs none of it, unless `-i` makes the shell interactive,
+which ignores the option; each shell's options are read as that shell reads
+them, so bash's `-login` is `--login` before its first single-letter option
+and letters after one, zsh's and ksh's `-oerrexit` is one option, a lone `-`
+ends the options as `--` does, and so do zsh's lone `+` and its `-b`, while a name that is
+more than one shell, `sh` among them, is read every way it can be and any
+script one of the ways runs is judged; the same reading finds a `-c` string
+behind options that take a value, `bash -co errexit '…'`), a `source` or `.` operand (searched on
 `PATH` and then in the working directory when it has no slash, as bash does,
 while zsh's `source` looks in the working directory first and its `.` only on
 `PATH`; a `PATH=` prefix
@@ -1009,7 +1098,9 @@ teaches the safe form: remove the session URL, and
 replace a tool footer with the repository's own disclosure trailer
 (`Assisted-by: <Vendor>:<model-version>`). It reads `--title`/`-t`,
 `--body`/`-b` and `--body-file`/`-F` in every spelling (`--body x`,
-`--body=x`, `-b x`, `-bx`, `-b=x`), a value written out in full on the line, and
+`--body=x`, `-b x`, `-bx`, `-b=x`, and each behind gh's boolean shorthands, `-db x`),
+with `-R`/`--repo` and its repository read wherever they stand (`gh -R o/r pr create`),
+a value written out in full on the line, and
 a `"$(cat <<'EOF' … EOF)"` body, read as the document it prints. A body file is
 read through the guard's guarded read, from the directory the command runs in:
 regular files only, no symlinked leaf (a symlink to a file is followed first),
@@ -1019,14 +1110,36 @@ command runs: one that does not exist, is a pipe, a directory or a file this
 account may not read, is over 256 KiB, sits relative to a directory the line
 leaves unknown, or is written earlier on the same line (the file the guard could
 read is not the one gh will post). So is a `.abcd/config/pii.json` that does not
-load, and a line handing the forge more than sixteen texts. A warn never stops a
+load, a line handing the forge more than sixteen texts, and a gh line whose
+words can be read more ways than the guard follows. A warn never stops a
 command, and it never passes one in silence.
+
+A pull request's own text is held to two more checks before it is posted,
+each of which the hosted checks would otherwise make only after the push. A
+`gh pr create`, `gh pr new` or `gh pr edit` whose body or body file carries no
+`Assisted-by:` line in one of the three accepted forms
+(`Assisted-by: <Vendor>:<model-version>`, `Assisted-by: None`, or the
+`Assisted-by: abcd:<version>` label abcd writes) is a **block**
+(`forge-text-disclosure`). So is one carrying a `Co-authored-by:` line, a
+tool's "Generated with" footer, or an `abcd:` label in a form abcd never writes.
+The body is judged as the attribution gate's body arm judges it: fenced blocks
+are stripped first, since the forge renders them as examples, carriage returns
+are dropped, and the line must stand alone, so a trailer in the middle of a
+sentence does not count. A title, a comment and an issue are not held to it. In
+a repository that also sets `outbound.declare_mentions: true`, a pull request
+whose title and body name an issue id (`iss-N`) without a `Resolves: iss-N` or
+`Refs: iss-N` line declaring it is a **block** too (`forge-text-mention`): the
+rule CI's issue-resolution gate applies to the pull request (RS004), read from
+both halves together, since a title has no room for a trailer. Neither check
+judges a body the line does not fix or the guard could not read, and the mention
+check judges nothing when any of the pull request's text is hidden from it (a
+variable title, a body on standard input): the hidden part may hold the
+declaration.
 
 It does not see: a body or a path the line does not fix (`--body "$BODY"`,
 `--body-file "$F"`, a substitution other than the `cat` document above), a body
 on standard input (`--body-file -`), a flag spelled by a substitution
-(`--$(echo body)`), a short flag bundled behind another (`-db x`), text typed
-into an editor or a browser (`--editor`, `--web`), text gh takes from the
+(`--$(echo body)`), text typed into an editor or a browser (`--editor`, `--web`), text gh takes from the
 commits (`--fill`) or a template (`--template`), a posting command inside a
 script the line runs, and every other posting path: `gh api`, `gh pr review`,
 `gh release`, `gh pr merge --body`, `gh pr close --comment`,
@@ -1034,7 +1147,9 @@ script the line runs, and every other posting path: `gh api`, `gh pr review`,
 after posting stays the control for those.
 
 Nothing changes in a repository that did not opt in. The opt-in is read from
-the working tree on each check. `--outbound` is one switch for this check and
+the working tree on each check, and `outbound.declare_mentions` counts only
+beside `outbound.forge`: RS004 is a rule a repository adopts, so `ahoy install`
+never sets it. `--outbound` is one switch for this check and
 the commit-message hook together, so to turn it off remove both
 `outbound.forge` and `outbound.hook` from `.abcd/config.json` (or set both to
 `false`): a later `ahoy install` leaves both off as they are, but completes a

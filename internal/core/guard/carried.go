@@ -893,7 +893,7 @@ func runsFetchedFile(s segment, isFetched func(string) bool) bool {
 		args := s.tokens[a.idx+1:]
 		carried := func(i int) bool { return variableCarried(s, a.idx+1+i) }
 		switch {
-		case nameCouldBeAny(tok, shellFamily) && shellReadsStream(args, stdin, carried, isFetched):
+		case nameCouldBeAny(tok, shellFamily) && shellReadsStream(cStringDialects(tok), args, stdin, carried, isFetched):
 			return true
 		case nameCouldBeAny(tok, sourceBuiltins) && sourceReadsStream(args, stdin, carried, isFetched):
 			return true

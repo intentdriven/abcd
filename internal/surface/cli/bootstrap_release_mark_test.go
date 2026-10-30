@@ -100,6 +100,53 @@ func TestBootstrapRefusesAnOlderCachedRelease(t *testing.T) {
 	}
 }
 
+// TestBootstrapRefusesACachedBuildOfAnotherRelease: the cache records the
+// latest release, but its bytes are another release's build, as a cache seeded
+// from a plugin root's earlier binary, or filled before the download's claim
+// check, can hold. Whether the published manifest lists those bytes (online)
+// or nothing can be checked (offline), nothing is installed and the mark stays
+// where it was; a cached build claiming its own release still installs.
+func TestBootstrapRefusesACachedBuildOfAnotherRelease(t *testing.T) {
+	for _, offline := range []bool{false, true} {
+		root := bootstrapRoot(t)
+		data := t.TempDir()
+		home := t.TempDir()
+		seedReleaseMark(t, home, "v9.9.8")
+		cached := claimingBody("v0.13.4")
+		seedBootstrapCache(t, data, bootstrapTag, cached)
+		fx := bootstrapServer(t, cached, bootstrapManifest(cached))
+		if offline {
+			atomic.StoreInt32(fx.failLatest, 1)
+		}
+
+		out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+		if code == 0 {
+			t.Fatalf("offline=%v: another release's cached build was promoted (output %q)", offline, out)
+		}
+		if !strings.Contains(out, "names release v0.13.4") || !strings.Contains(out, "recorded as release "+bootstrapTag) {
+			t.Errorf("offline=%v: the refusal must name both releases:\n%s", offline, out)
+		}
+		assertNothingInstalled(t, root, out)
+		if got := releaseMarkTag(t, home); got != "v9.9.8" {
+			t.Errorf("offline=%v: the refusal moved the mark to %q", offline, got)
+		}
+	}
+
+	root := bootstrapRoot(t)
+	data := t.TempDir()
+	home := t.TempDir()
+	cached := claimingBody(bootstrapTag)
+	seedBootstrapCache(t, data, bootstrapTag, cached)
+	fx := bootstrapServer(t, []byte("never served"), bootstrapManifest(cached))
+	out, code := runBootstrapWithDataHome(t, root, data, home, fx, "")
+	if code != 0 {
+		t.Fatalf("a cached build claiming its own release must install, got %d (output %q)", code, out)
+	}
+	if got := releaseMarkTag(t, home); got != bootstrapTag {
+		t.Errorf("the mark = %q after a manifest-verified cache hit at %s", got, bootstrapTag)
+	}
+}
+
 // TestBootstrapUpgradeRaisesTheMarkAndNamesTheRelease: a normal upgrade from
 // the recorded v9.9.8 to v9.9.9 installs, raises the mark, and the attestation
 // names the release it attested.

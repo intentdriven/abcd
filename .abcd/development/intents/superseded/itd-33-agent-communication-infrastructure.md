@@ -27,7 +27,7 @@ superseded_by: itd-2609091034175565
 
 abcd is on a trajectory to host **multiple concurrent agents in the same repo**:
 
-1. **Same human, multiple terminals** — alex opens Claude Code in terminal 1, walks away, opens terminal 2 and reruns the same command. The most common collision pattern in practice.
+1. **Same human, multiple terminals** — eve opens Claude Code in terminal 1, walks away, opens terminal 2 and reruns the same command. The most common collision pattern in practice.
 2. **Autonomous runs** (the pluggable run seam, contextualised by itd-29) — long-running agents that the user kicks off and walks away from. They share a working tree with whatever the user does next.
 3. **Multiple harnesses** — Claude Code today, opencode (itd-22); the same project may be opened by a user in one harness while another agent runs in another.
 4. **In-session subagent dispatch** (itd-2) — the parent session spawns subagents whose work is *part of* the parent's progress, not a parallel actor (subagents inherit the parent's `agent_id`; they do not hold their own claims).

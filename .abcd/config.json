@@ -15,6 +15,7 @@
     "backend": "host-delegated"
   },
   "outbound": {
+    "declare_mentions": true,
     "forge": true,
     "hook": true
   },

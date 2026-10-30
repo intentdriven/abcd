@@ -34,8 +34,12 @@ import (
 //
 // staleUsageNote adds one sentence to that error, derived only from what the
 // binary can prove on disk (adr-38: no network on any path the user did not
-// ask to reach the network). Three sources, in order of strength:
+// ask to reach the network). Its sources, in order of strength:
 //
+//  0. A build scripts/abcd.sh left in a checkout's local tier and ran directly is
+//     judged first by that checkout's own command pages: one documenting what
+//     the binary refused proves it is behind the tree, and it is sent to the
+//     script.
 //  1. The command surface beside the plugin root documents the very verb (or
 //     flag) the binary refused. That is direct evidence the surface is newer
 //     than the binary, and the remedy follows where the binary sits: a source
@@ -54,6 +58,10 @@ import (
 // osExecutable is os.Executable, overridable so a test can place the running
 // binary inside or outside a plugin root without re-execing itself.
 var osExecutable = os.Executable
+
+// checkoutMark is vintage.CheckoutMark, overridable so a test can say whether
+// scripts/abcd.sh started the running binary.
+var checkoutMark = vintage.CheckoutMark
 
 // unknownCommandRe matches cobra's unknown-command line: the token and the
 // command path, both rendered with %q.
@@ -141,8 +149,17 @@ func staleUsageNote(root *cobra.Command, args []string, msg string) string {
 			return hint
 		}
 	}
+	// A build scripts/abcd.sh left in a checkout's local tier and ran directly is
+	// judged by that checkout's own pages, whichever plugin root resolves (in
+	// a plain terminal none may): it is the tree as it stood at the script's
+	// last run, so a page the tree has since gained is proof it is behind.
+	if checkout, left := leftCheckoutBuild(); left {
+		if what, documented := surfaceDocuments(checkout, skew); documented {
+			return fmt.Sprintf("this checkout's command surface documents %s, which is not in this build — a build scripts/abcd.sh left in the checkout's local tier, run directly, so it is the tree as it stood when the script last ran; run it through the checkout's `scripts/abcd.sh`, which rebuilds it first", what)
+		}
+	}
 	pluginRoot, rootOK := ahoy.ResolvePluginRoot()
-	inRoot := rootOK && executableUnder(pluginRoot)
+	inRoot := rootOK && executableUnder(pluginRoot) && !executableIsCheckoutBuild(pluginRoot)
 	if rootOK {
 		if what, documented := surfaceDocuments(pluginRoot, skew); documented {
 			switch {
@@ -428,6 +445,38 @@ func executableUnder(root string) bool {
 	dir, base := filepath.Split(exe)
 	exe = filepath.Join(canonicalPath(dir), base)
 	return strings.HasPrefix(exe, canonicalPath(root)+string(filepath.Separator))
+}
+
+// executableIsCheckoutBuild reports whether the running binary is the build
+// scripts/abcd.sh makes in root's local tier (abcdrepo.CheckoutBuildRel). It sits
+// inside the checkout, but it is the tree as it stood when the script ran it,
+// not an artefact `make build` refreshes, so a page documenting what it lacks
+// gets a dev build's note, never the rebuild remedy (iss-2610241240133009).
+func executableIsCheckoutBuild(root string) bool {
+	exe, err := osExecutable()
+	if err != nil {
+		return false
+	}
+	dir, base := filepath.Split(exe)
+	return filepath.Join(canonicalPath(dir), base) == filepath.Join(canonicalPath(root), filepath.FromSlash(abcdrepo.CheckoutBuildRel))
+}
+
+// leftCheckoutBuild reports the checkout whose local tier the running binary
+// sits in (abcdrepo.CheckoutBuildRel) when it is not the build scripts/abcd.sh has
+// just made and started: a copy left there and run directly, which is as old
+// as the script's last run, whatever the tree has become since.
+func leftCheckoutBuild() (checkout string, ok bool) {
+	exe, err := osExecutable()
+	if err != nil {
+		return "", false
+	}
+	dir, base := filepath.Split(exe)
+	exe = filepath.Join(canonicalPath(dir), base)
+	checkout, ok = strings.CutSuffix(filepath.ToSlash(exe), "/"+abcdrepo.CheckoutBuildRel)
+	if !ok || fsutil.SameFile(exe, checkoutMark()) {
+		return "", false
+	}
+	return filepath.FromSlash(checkout), true
 }
 
 func canonicalPath(p string) string {

@@ -9,6 +9,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The landing's configuration keys, in .abcd/config.json and
@@ -314,4 +315,34 @@ func ReadDefaultFacilitatorContext(ctx context.Context, cwd string) (Facilitator
 // deadlineErr is the read's error when git did not answer before ctx ended.
 func deadlineErr(err error) error {
 	return fmt.Errorf("git did not answer in time to read the default branch's %s: %w", KeyFacilitatorMode, err)
+}
+
+// AutonomousMerging is the status line's merging element, read: it reports
+// whether the repository's facilitator.mode is auto, read through the merge
+// gate's own resolver (ReadDefaultFacilitatorContext): the default branch's
+// committed .abcd/config.json and the machine layer, never the working tree's
+// copy, so the row and the gate cannot disagree about who merges. Its git
+// questions are bounded by ctx, the row's git share, and ask the network
+// nothing. A repository with no default branch yet says nothing and notes
+// nothing: there is nothing to merge into. Any other failure drops the element
+// and returns the note saying why, masked, for the front door's stderr.
+//
+// It lives here rather than in core/statusline because statusline cannot
+// import this package: landing reaches ahoy (through embargo, capture and
+// site), and ahoy reads statusline, so the import would close a cycle. The
+// front door hands it to statusline as statusline.MergingMode.
+func AutonomousMerging(ctx context.Context, root string) (bool, string) {
+	f, err := ReadDefaultFacilitatorContext(ctx, root)
+	switch {
+	case errors.Is(err, ErrNoDefaultBranch):
+		return false, ""
+	case err != nil:
+		msg := fsutil.RedactHome(err.Error())
+		if root != "" {
+			msg = strings.ReplaceAll(msg, root, ".")
+		}
+		return false, "statusline: DROPPED the merging element — " + KeyFacilitatorMode +
+			" could not be read (" + termsafe.CleanProseLine(msg, 300) + ")"
+	}
+	return f.Mode == ModeAuto, ""
 }
