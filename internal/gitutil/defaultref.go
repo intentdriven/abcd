@@ -1,6 +1,9 @@
 package gitutil
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 // DefaultRef is the full ref name of the repository's default branch as last
 // fetched, with no network: origin/HEAD's target, then the conventional names
@@ -11,11 +14,32 @@ import "strings"
 // reviews board counts the commits it has moved since a review's pin. Two
 // readers of one repository asking the same question must get one answer.
 func DefaultRef(root string) string {
-	if ref := TrackedDefaultBranch(root, "origin"); ref != "" {
+	return defaultRef(func(args ...string) (string, error) { return Run(root, args...) })
+}
+
+// DefaultRefContext is DefaultRef with every git question bounded by ctx
+// (RunLimitedContext): a git still running when ctx ends is killed, and the
+// answer is "". A caller that must tell "no default branch" from "git did not
+// answer in time" checks ctx.Err() after it.
+func DefaultRefContext(ctx context.Context, root string) string {
+	return defaultRef(func(args ...string) (string, error) {
+		out, err := RunLimitedContext(ctx, root, refAnswerCap, args...)
+		return strings.TrimSpace(out), err
+	})
+}
+
+// refAnswerCap bounds one ref question's answer: a ref name or an object name.
+const refAnswerCap = 4096
+
+// gitAsk is one read-only git question, its answer trimmed.
+type gitAsk func(args ...string) (string, error)
+
+func defaultRef(ask gitAsk) string {
+	if ref := trackedDefaultBranch(ask, "origin"); ref != "" {
 		return ref
 	}
 	for _, n := range defaultNames {
-		if commitRefExists(root, "refs/heads/"+n) {
+		if commitRefExists(ask, "refs/heads/"+n) {
 			return "refs/heads/" + n
 		}
 	}
@@ -37,12 +61,16 @@ var defaultNames = []string{"main", "master", "trunk", "develop"}
 // it must never decide an act on the remote, such as which branch a push may
 // target, which asks the remote itself.
 func TrackedDefaultBranch(root, remote string) string {
+	return trackedDefaultBranch(func(args ...string) (string, error) { return Run(root, args...) }, remote)
+}
+
+func trackedDefaultBranch(ask gitAsk, remote string) string {
 	prefix := "refs/remotes/" + remote + "/"
-	if out, err := Run(root, "symbolic-ref", "--quiet", prefix+"HEAD"); err == nil && strings.HasPrefix(out, prefix) && commitRefExists(root, out) {
+	if out, err := ask("symbolic-ref", "--quiet", prefix+"HEAD"); err == nil && strings.HasPrefix(out, prefix) && commitRefExists(ask, out) {
 		return out
 	}
 	for _, n := range defaultNames {
-		if commitRefExists(root, prefix+n) {
+		if commitRefExists(ask, prefix+n) {
 			return prefix + n
 		}
 	}
@@ -58,7 +86,7 @@ func ShortRef(ref string) string {
 	return strings.TrimPrefix(ref, "refs/heads/")
 }
 
-func commitRefExists(root, ref string) bool {
-	_, err := Run(root, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+func commitRefExists(ask gitAsk, ref string) bool {
+	_, err := ask("rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
 	return err == nil
 }

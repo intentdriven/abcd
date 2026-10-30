@@ -49,6 +49,7 @@ package layered
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -199,6 +200,18 @@ func RootsFor(cwd string) (Roots, []string) {
 	return r, notes
 }
 
+// HomeRoots is RootsFor without the repository: the machine layer of the
+// caller's own home, judged by MachineRoots, and the note it made. It asks git
+// nothing, so a reader that names its repository itself (ReadFacilitatorAt's
+// callers) and runs under a deadline resolves its home with no unbounded git.
+func HomeRoots() (Roots, string) {
+	home, err := userHomeDir()
+	if err != nil {
+		home = ""
+	}
+	return MachineRoots(home)
+}
+
 // MachineRoots is the Roots of a reader of the machine layer alone (Repo is
 // ""), the one way such a reader resolves the home it was given: judged by
 // the rule RootsFor applies (gitutil.HomeInsideWorkingTree), so a home inside
@@ -255,6 +268,14 @@ type Stack struct {
 // Load reads the repo and machine layers of f. The flag layer starts empty and
 // is filled with SetFlag.
 func Load(f File, r Roots) (*Stack, error) {
+	return LoadContext(context.Background(), f, r)
+}
+
+// LoadContext is Load with the git questions a repository layer read at a
+// commit asks (r.RepoAt) bounded by ctx: a git still running when ctx ends is
+// killed, and the load fails with ctx's error wrapped. The status line reads
+// facilitator.mode this way, inside its own deadline.
+func LoadContext(ctx context.Context, f File, r Roots) (*Stack, error) {
 	if !f.valid() {
 		return nil, fmt.Errorf("layered: file family %q / %q is not a pair of clean relative paths", f.RepoRel, f.MachineRel)
 	}
@@ -271,7 +292,7 @@ func Load(f File, r Roots) (*Stack, error) {
 		read := func() ([]byte, error) { return readRepo(r.Repo, f.RepoRel) }
 		if r.RepoAt != "" {
 			s.repo.origin = f.RepoOrigin() + " at " + r.RepoAtName
-			read = func() ([]byte, error) { return readRepoAt(r.Repo, r.RepoAt, f.RepoRel) }
+			read = func() ([]byte, error) { return readRepoAt(ctx, r.Repo, r.RepoAt, f.RepoRel) }
 		}
 		raw, err := read()
 		if err != nil {
@@ -335,11 +356,11 @@ func readRepo(repoRoot, rel string) ([]byte, error) {
 // symlink, a submodule or a tree at the path is refused, as readRepo refuses
 // one in the working tree, and a commit with nothing at the path returns
 // (nil, nil).
-func readRepoAt(repoRoot, at, rel string) ([]byte, error) {
+func readRepoAt(ctx context.Context, repoRoot, at, rel string) ([]byte, error) {
 	if !gitutil.IsFullSHA(at) {
 		return nil, fmt.Errorf("the commit %q to read it at is not a full object name", at)
 	}
-	entry, err := gitutil.RunCappedBytes(repoRoot, 4096, "ls-tree", "-z", at, "--", rel)
+	entry, err := gitutil.RunCappedBytesContext(ctx, repoRoot, 4096, "ls-tree", "-z", at, "--", rel)
 	if err != nil {
 		return nil, fmt.Errorf("it could not be listed at the commit: %w", err)
 	}
@@ -355,7 +376,7 @@ func readRepoAt(repoRoot, at, rel string) ([]byte, error) {
 	if fields[1] != "blob" || (fields[0] != "100644" && fields[0] != "100755") {
 		return nil, errors.New("it is not a regular file at the commit (a symlink, a directory or a submodule), so it is refused rather than followed")
 	}
-	raw, err := gitutil.RunCappedBytes(repoRoot, MaxFileBytes, "cat-file", "blob", fields[2])
+	raw, err := gitutil.RunCappedBytesContext(ctx, repoRoot, MaxFileBytes, "cat-file", "blob", fields[2])
 	if err != nil {
 		return nil, fmt.Errorf("it could not be read at the commit: %w", err)
 	}

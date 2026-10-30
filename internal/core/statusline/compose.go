@@ -36,6 +36,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -104,6 +105,13 @@ func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (
 
 	set = clone(set)
 	var notes []string
+	if set.Enabled(KeyMerging) {
+		auto, note := autonomousMerging(ctx, root)
+		in.AutonomousMerging = auto
+		if note != "" {
+			notes = append(notes, note)
+		}
+	}
 	if fsutil.IsRealDir(filepath.Join(root, filepath.FromSlash(RecordRelDir))) {
 		if n, err := openIssues(root); err != nil {
 			set.Elements[KeyIssues] = false
@@ -123,6 +131,31 @@ func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (
 	}
 
 	return Result{State: state, Row: renderRow(in, set), Notes: notes}, nil
+}
+
+// autonomousMerging reports whether the repository's facilitator.mode is auto,
+// read through the merge gate's own resolver (landing's
+// ReadDefaultFacilitatorContext): the default branch's committed
+// .abcd/config.json and the machine layer, never the working tree's copy, so
+// the row and the gate cannot disagree about who merges. Its git questions are
+// bounded by ctx, the row's git share, and ask the network nothing. A
+// repository with no default branch yet says nothing and notes nothing: there
+// is nothing to merge into. Any other failure drops the element and returns
+// the note saying why, masked, for the front door's stderr.
+func autonomousMerging(ctx context.Context, root string) (bool, string) {
+	f, err := landing.ReadDefaultFacilitatorContext(ctx, root)
+	switch {
+	case errors.Is(err, landing.ErrNoDefaultBranch):
+		return false, ""
+	case err != nil:
+		msg := fsutil.RedactHome(err.Error())
+		if root != "" {
+			msg = strings.ReplaceAll(msg, root, ".")
+		}
+		return false, "statusline: DROPPED the merging element — " + landing.KeyFacilitatorMode +
+			" could not be read (" + termsafe.CleanProseLine(msg, 300) + ")"
+	}
+	return f.Mode == landing.ModeAuto, ""
 }
 
 // branch is the checkout's branch name, the short sha when HEAD is detached,

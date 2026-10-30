@@ -1,6 +1,8 @@
 package landing
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -213,7 +215,13 @@ func ReadFacilitator(cwd string) (Facilitator, []string, error) {
 // the bundled default human does. A home RootsFor refused hides the machine
 // layer, and with it any machine-wide human, so the mode reads as human.
 func readMode(r layered.Roots) (Facilitator, error) {
-	s, err := layered.Load(layered.Config, r)
+	return readModeContext(context.Background(), r)
+}
+
+// readModeContext is readMode with the git questions of a repository layer
+// read at a commit bounded by ctx (layered.LoadContext).
+func readModeContext(ctx context.Context, r layered.Roots) (Facilitator, error) {
+	s, err := layered.LoadContext(ctx, layered.Config, r)
 	if err != nil {
 		return Facilitator{}, err
 	}
@@ -253,21 +261,57 @@ func ReadFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator
 
 // ReadDefaultFacilitator resolves facilitator.mode for the repository holding
 // cwd as the merge gate does (ReadFacilitatorAt), at the tip of the default
-// branch git tracks for it (gitutil.DefaultRef), with the machine layer
-// RootsFor resolves for cwd. The shell guard reads the mode through it. A
-// repository with no default branch to read is an error: a caller that cannot
-// read the mode takes it as human.
+// branch git tracks for it (gitutil.DefaultRef), with the machine layer of the
+// caller's home (layered.HomeRoots, as RootsFor resolves it). The shell guard
+// reads the mode through it. A repository with no default branch to read is
+// an error (ErrNoDefaultBranch): a caller that cannot read the mode takes it
+// as human.
 func ReadDefaultFacilitator(cwd string) (Facilitator, error) {
-	r, _ := layered.RootsFor(cwd)
-	root, err := gitutil.Toplevel(cwd)
+	return ReadDefaultFacilitatorContext(context.Background(), cwd)
+}
+
+// ErrNoDefaultBranch is ReadDefaultFacilitator's answer for a repository with
+// no default branch to read facilitator.mode at: one with no commit yet, say.
+// It is not a refusal of anything a file declares, so a caller that only
+// shows the mode (the status line) may stay quiet over it.
+var ErrNoDefaultBranch = errors.New("the repository has no default branch to read " + KeyFacilitatorMode + " at")
+
+// ReadDefaultFacilitatorContext is ReadDefaultFacilitator with every git
+// question bounded by ctx: a git still running when ctx ends is killed and the
+// read fails with ctx's error wrapped, never with ErrNoDefaultBranch. It asks
+// the network nothing: the default branch is the one last fetched, and its
+// configuration is read from the local object store. The status line reads
+// the mode through it, inside its own deadline.
+func ReadDefaultFacilitatorContext(ctx context.Context, cwd string) (Facilitator, error) {
+	r, _ := layered.HomeRoots()
+	root, err := gitutil.ToplevelContext(ctx, cwd)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return Facilitator{}, deadlineErr(ctxErr)
+	}
+	if errors.Is(err, gitutil.ErrGitTimedOut) {
+		return Facilitator{}, deadlineErr(err)
+	}
 	if err != nil {
 		return Facilitator{}, fmt.Errorf("%s is not inside a git checkout, so the default branch's %s cannot be read", fsutil.RedactHome(cwd), KeyFacilitatorMode)
 	}
-	ref := gitutil.DefaultRef(root)
-	tip, err := gitutil.Run(root, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+	ref := gitutil.DefaultRefContext(ctx, root)
+	var tip string
+	if ref != "" {
+		tip, err = gitutil.RunLimitedContext(ctx, root, 4096, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--")
+		tip = strings.TrimSpace(tip)
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return Facilitator{}, deadlineErr(ctxErr)
+	}
 	if ref == "" || err != nil || !gitutil.IsFullSHA(tip) {
-		return Facilitator{}, fmt.Errorf("the repository has no default branch to read %s at", KeyFacilitatorMode)
+		return Facilitator{}, ErrNoDefaultBranch
 	}
 	name := strings.TrimPrefix(strings.TrimPrefix(ref, "refs/remotes/"), "refs/heads/")
-	return ReadFacilitatorAt(r, root, tip, name)
+	r.Repo, r.RepoAt, r.RepoAtName = root, tip, name
+	return readModeContext(ctx, r)
+}
+
+// deadlineErr is the read's error when git did not answer before ctx ended.
+func deadlineErr(err error) error {
+	return fmt.Errorf("git did not answer in time to read the default branch's %s: %w", KeyFacilitatorMode, err)
 }

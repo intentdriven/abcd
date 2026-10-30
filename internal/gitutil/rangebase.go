@@ -1,6 +1,7 @@
 package gitutil
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -99,6 +100,26 @@ func RequireFullHistory(root string) error {
 // from the committed one.
 func RunCappedBytes(root string, maxBytes int, args ...string) ([]byte, error) {
 	out, overflowed, err := runBoundedBytes(root, maxBytes, args...)
+	return judgeCapped(out, overflowed, err, maxBytes, args)
+}
+
+// RunCappedBytesContext is RunCappedBytes bound to ctx, as RunLimitedContext
+// binds RunLimited: when ctx ends before git answers, git is killed
+// (isolatedGitContext) and the error wraps ctx's own.
+func RunCappedBytesContext(ctx context.Context, root string, maxBytes int, args ...string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	out, overflowed, err := runBoundedCmd(isolatedGitContext(ctx, root, args...), maxBytes)
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
+	}
+	return judgeCapped(out, overflowed, err, maxBytes, args)
+}
+
+// judgeCapped is RunCappedBytes' judgement of one bounded run: its error, a
+// refusal when the output overflowed the cap, or the output.
+func judgeCapped(out []byte, overflowed bool, err error, maxBytes int, args []string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}

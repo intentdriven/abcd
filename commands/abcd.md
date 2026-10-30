@@ -96,7 +96,10 @@ In a repository abcd manages the board also carries one line of presence — the
 shows, in plain words: the badge first (`abcd-managed`, `waiting on the
 technical facilitator` or `waiting on the product thinker`, from the state
 `/abcd:mode` stores), then the
-repository, the branch and the record's counts. Relay the `plain` text when the
+repository, the branch, `autonomous merging` while the repository's
+`facilitator.mode` is `auto` (read as the merge gate reads it, from the default
+branch's committed `.abcd/config.json` and the machine layer; absent under
+`human`), and the record's counts. Relay the `plain` text when the
 state is not `managed`: it says whose answer the loop is waiting on. The field
 is omitted in a repository abcd does not manage. The board reads the state and
 never changes it; `/abcd:mode` is the writer.
@@ -112,7 +115,10 @@ prints abcd's row; anywhere else it runs the status command that was recorded
 at install time and passes its output through unchanged, so the user's own line
 is untouched. It writes nothing, and it is time-bounded: abcd's own work stops
 at 500ms and the recorded command at 5s, and at either bound it prints what it
-has and exits 0. `/abcd:ahoy install` offers and wires it, after a yes and only
+has and exits 0. Each element after the session name is switchable in
+`~/.abcd.noindex/statusline.json` (`merging` is the autonomous-merging
+element's switch); an element that cannot be read drops and is named on
+stderr. `/abcd:ahoy install` offers and wires it, after a yes and only
 to the trusted PATH install abcd recorded, never to the plugin's own copy;
 nothing here invokes it.
 
