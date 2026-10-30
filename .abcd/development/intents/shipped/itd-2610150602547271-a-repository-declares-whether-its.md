@@ -52,6 +52,12 @@ the declaration, the place it is shown, and the one gate that obeys it, the
 merge. The rest of itd-97 (scheduling, self-firing reviews, triage) composes
 later behind the same declaration.
 
+Built on by itd-2610301750162657 (a person spot-checks what abcd's agents
+changed alone): it samples the pull requests this mode merges with no person
+asked, and checks a drawn few of them against their specs. Built on by
+itd-2610301850454860 (abcd records how each change landed): it records which
+changes this mode merged with no person asked.
+
 ## Mechanism
 
 We expect this to keep merges where the repository's owners want them,

@@ -2728,3 +2728,20 @@ The proposal: "SOTA other verbs (e.g. explain) to make it easier for agents to a
 Verdict at filing: FILE-AS-IS (one draft). Both pre-interview reviews said SPLIT; the interview first kept every part in one intent, then the product thinker ruled SPLIT three ways after it. Typed links: refines itd-2609212113220149, itd-2610090831227812, itd-111 and itd-121; the second builds on the first. Advisory reversal flag: raised and lapsed unconfirmed, the product thinker choosing code-first derivation after a second state-of-the-art pass rejected a hand-edited JSON source.
 
 Grade: the first routing did not survive. Filing four promises as one intent was the miss both reviewers named, the same bundling miss as the 2026-10-24 and 2026-10-26 entries; the reversal flag was right and decided the pages' form.
+
+## 2026-10-30: a person spot-checks what abcd's agents changed alone (product thinker, routing confirmed)
+
+The proposal: after an ideate run reframed an outside idea, keep only a spot-check of what merged with no person reading it, with state-of-the-art research as its evidence.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| a draw no agent can steer, across taken, handed-back and auto-merged work, read by a person, each finding filed against the rule | capability | itd-2610301750162657 |
+| the rule changes only by a person's decision, never by the findings tuning it | trust rule | already standing in adr-2609291342092738; cited, no new ADR |
+| a count of hand-backs per pull request as a review-load proxy | capability | an open question on itd-2610301750162657, to route at planning |
+| an orchestration layer and a review-hours gate before widening autonomy | capability | not filed: the ideate reviewers found the first a relabelling of the drain and the second unmeasurable |
+
+Verdict at filing: FILE-AS-IS, the product thinker naming the spot-check as the intent. Typed link: builds on itd-82. Advisory reversal flags: none.
+
+Grade: the routing survived. The ideate pass had already done the splitting: of the proposal's four parts, one became the intent, one was already a standing rule, one waits as an open question, and one was declined with its reasons.
+
+At the planning interview the same evening the routing moved twice, both times at the product thinker's ruling after the two pre-interview reviewers (design and feasibility; record discipline) found that abcd keeps no lasting record of how a change landed: that record became its own draft, itd-2610301850454860, which the spot-check waits for; and the spot-check joined the autonomy grant's bundle (itd-2610240850336695), whose report lists the acts it draws from. The hand-back count, routed as an open question at filing, stayed in the intent. The product thinker also reframed who reads: no person reads code, so a model other than the writer reviews every change, and people check outcomes against specs and intents. Grade at planning: the first routing did not survive; it missed a plumbing prerequisite (the landing record) that only the feasibility review surfaced, the third time a capability was filed whose data did not yet exist.
