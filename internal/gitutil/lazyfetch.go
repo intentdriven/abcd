@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // The lazy-fetch floor (iss-2610090821527948). In a partial clone git answers
@@ -223,8 +225,7 @@ func probeGitVersion(ctx context.Context) (string, error) {
 	cmd.WaitDelay = time.Second
 	cmd.Env = gitEnv()
 	w := &capWriter{remaining: 4096}
-	cmd.Stdout = w
-	if err := cmd.Run(); err != nil {
+	if err := procgroup.RunToEOF(ctx, cmd, w, nil); err != nil {
 		return "", err
 	}
 	return string(w.buf), nil
@@ -433,8 +434,7 @@ func readFloorConfig(ctx context.Context, root string) (floorConfig, error) {
 	}
 	w := &capWriter{remaining: 64 << 10}
 	e := &capWriter{remaining: 4096}
-	cmd.Stdout, cmd.Stderr = w, e
-	if err := cmd.Run(); err != nil {
+	if err := procgroup.RunToEOF(ctx, cmd, w, e); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return floorConfig{}, fmt.Errorf("reading the repository's promisor config before an object read: %w", ctxErr)
 		}

@@ -164,7 +164,8 @@ func TestARepositoryRouteToAnUnlistedModelIsSkipped(t *testing.T) {
 			f.machineConfig(`{"oracle":{"api":{` + localBlock + `}` + tc.machine + `}}`)
 			other := `"roles":{"scribe":"local/qwen/qwen3-8b"}`
 			if tc.family == rolesKey {
-				other = `"judgements":{"duplicate-match":"local/qwen/qwen3-8b"}`
+				// In shadow: only the person's own file turns a type on.
+				other = `"judgements":{"duplicate-match":"shadow:local/qwen/qwen3-8b"}`
 			}
 			f.repoConfig(`{"oracle":{` + tc.repo + `,` + other + `}}`)
 			c, err := LoadAPI(f.roots)
@@ -280,7 +281,8 @@ func TestARepositoryRouteToAKeyedProviderIsSkipped(t *testing.T) {
 			// A keyless route beside the refused one: the skip costs nothing else.
 			other := `"roles":{"scribe":"local/qwen/qwen3-8b"}`
 			if tc.family == rolesKey {
-				other = `"judgements":{"duplicate-match":"local/qwen/qwen3-8b"}`
+				// In shadow: only the person's own file turns a type on.
+				other = `"judgements":{"duplicate-match":"shadow:local/qwen/qwen3-8b"}`
 			}
 			f.repoConfig(`{"oracle":{` + tc.repo + `,` + other + `}}`)
 			c, err := LoadAPI(f.roots)
@@ -479,16 +481,18 @@ func TestAMachineRouteToAKeyedProviderIsAdmitted(t *testing.T) {
 
 // TestARepositoryRouteToAKeylessProviderIsAdmitted: a provider whose block
 // names no key spends no key, so the repository may point at it, and its route
-// wins over the machine's as every repository route does.
+// wins over the machine's as every repository route does; a judgement type's
+// route in shadow, since only the person's own file turns a type on
+// (TestOnlyThePersonsOwnConfigurationTurnsAJudgementTypeOn).
 func TestARepositoryRouteToAKeylessProviderIsAdmitted(t *testing.T) {
 	f := newFx(t)
 	f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `,` + localBlock + `},"roles":{"scribe":"openrouter/typesafe/jev-1.13"}}}`)
-	f.repoConfig(`{"oracle":{"roles":{"scribe":"local/qwen/qwen3-8b"},"judgements":{"duplicate-match":"local/qwen/qwen3-8b"}}}`)
+	f.repoConfig(`{"oracle":{"roles":{"scribe":"local/qwen/qwen3-8b"},"judgements":{"duplicate-match":"shadow:local/qwen/qwen3-8b"}}}`)
 	c := f.loadAPI()
 	if tgt, ok := c.Role("scribe"); !ok || tgt.Provider != "local" || tgt.Origin != ".abcd/config.json" {
 		t.Fatalf("role = %+v, %v", tgt, ok)
 	}
-	if tgt, ok := c.Judgement("duplicate-match"); !ok || tgt.Provider != "local" {
+	if tgt, ok := c.Judgement("duplicate-match"); !ok || tgt.Provider != "local" || tgt.Mode != JudgementShadow {
 		t.Fatalf("judgement = %+v, %v", tgt, ok)
 	}
 }

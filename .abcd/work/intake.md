@@ -21,17 +21,17 @@ never convert "could not tell" into "fine".
 
 ## S2 — fence
 
-The publish-surface list is `.github/CODEOWNERS` — one canonical list, never a
-second copy:
+The publish-surface list is `.abcd/work/publish-surface.txt` — one canonical list,
+never a second copy:
 
 ```sh
 gh pr diff <n> --name-only \
-  | grep -Ff <(grep -v '^#' .github/CODEOWNERS | awk '{print $1}' | sed 's|^/||') \
+  | grep -Ff <(grep -v '^#' .abcd/work/publish-surface.txt | sed 's|^/||') \
   && exit 1 || exit 0
 ```
 
-A hit is not a refusal of the *work* — it means the change needs the
-code-owner path, and S1 says so explicitly.
+A hit is not a refusal of the *work* — it means the change touches the publish
+surface, and S1 says so explicitly.
 
 ## S4 — review runs contained, never bare
 

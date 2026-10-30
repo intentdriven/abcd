@@ -13,7 +13,7 @@ import (
 )
 
 // identityGateRepo is a hermetic, real git repo whose user.* config is the
-// given identity, for a person who recorded Alex Reppel as who they commit as
+// given identity, for a person who recorded Alice as who they commit as
 // on this machine, with every identity environment override cleared so a case
 // sets only what it means to.
 func identityGateRepo(t *testing.T, name, email string) string {
@@ -23,7 +23,7 @@ func identityGateRepo(t *testing.T, name, email string) string {
 	}
 	repo := hermeticRepo(t)
 	gitRepoWithIdentity(t, repo, name, email)
-	writeOwnRecord(t, `{"name":"Alex Reppel","email":"alex@example.com"}`+"\n")
+	writeOwnRecord(t, `{"name":"Alice","email":"alice@example.com"}`+"\n")
 	return repo
 }
 
@@ -44,7 +44,7 @@ func writeOwnRecord(t *testing.T, body string) {
 // fails closed on a committer that differs from the pin, and names it, even
 // though the author matches (itd-131 criterion 2 at the front door).
 func TestAhoyIdentityRefusesADivergentCommitter(t *testing.T) {
-	identityGateRepo(t, "Alex Reppel", "alex@example.com")
+	identityGateRepo(t, "Alice", "alice@example.com")
 	t.Setenv("GIT_COMMITTER_NAME", "Test User")
 	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
 	out, err := runCLIErr(t, "ahoy", "--identity")

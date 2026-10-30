@@ -1751,6 +1751,10 @@ type operandWant struct {
 	paths     []PathArg
 	values    []string
 	shapes    []string
+	// prefixLiteral reads each prefix from the operand's text before its
+	// first substitution (knownLead) instead of its known text
+	// (Pattern.ArgPrefixesLiteral).
+	prefixLiteral bool
 }
 
 // operandAcceptance returns, for each index i of tokens, whether some reading
@@ -1791,7 +1795,8 @@ func operandAcceptance(tokens []string, spelled map[int][]string, varLead map[in
 		hits := 0
 		if r.operand {
 			for j, prefix := range want.prefixes {
-				if argPrefixMatches(prefix, []string{a}) {
+				if want.prefixLiteral && strings.HasPrefix(knownLead(a), prefix) ||
+					!want.prefixLiteral && argPrefixMatches(prefix, []string{a}) {
 					hits |= 1 << j
 				}
 			}

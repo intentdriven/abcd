@@ -3,8 +3,8 @@
   "name": "abcd",
   "description": "For people who know what they want to build and need help shipping it. A single Go binary that carries the why from idea to shipped reality, usable as a plugin in compatible agent harnesses.",
   "author": {
-    "name": "REPPL",
-    "url": "https://github.com/REPPL"
+    "name": "intentdriven",
+    "url": "https://github.com/intentdriven"
   },
   "homepage": "https://github.com/intentdriven/abcd",
   "repository": "https://github.com/intentdriven/abcd",

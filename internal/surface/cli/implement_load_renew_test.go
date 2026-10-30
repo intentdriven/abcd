@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -93,6 +94,29 @@ func TestImplementLoadWaitRenewsTheCallersHoldsWhileItWaits(t *testing.T) {
 	defer mu.Unlock()
 	if len(roots) < 2 || roots[0] == "" {
 		t.Fatalf("the renewal ran %d times, at %q; want at least two rounds in the checkout", len(roots), roots)
+	}
+}
+
+// TestImplementLoadWaitSaysABusyRenewalAsItself (iss-2610270659564789): a
+// round that renewed nothing because a sibling pass in the copy held the
+// renewal lock says so, once while it stands, and never as a view that could
+// not be read.
+func TestImplementLoadWaitSaysABusyRenewalAsItself(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3, liveRace), machine(3, 3, 3, liveRace), machine(3, 3, 3))
+	rounds := renewFixture(t, func(string) ([]claim.Renewal, error) {
+		return nil, fmt.Errorf("%w for over 2m0s", claim.ErrRenewalBusy)
+	})
+	gateReads(t, rounds, 2)
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+	busy := "abcd implement load --wait: renewed nothing this round, since another renewal pass in this copy has held its lock for over 2m0s; the wait goes on\n"
+	if n := strings.Count(errOut, busy); n != 1 {
+		t.Errorf("the busy round is said %d times, want once while it stands:\n%s", n, errOut)
+	}
+	if strings.Contains(errOut, "could not read the reservations") {
+		t.Errorf("a busy round reads as a view that could not be read:\n%s", errOut)
 	}
 }
 

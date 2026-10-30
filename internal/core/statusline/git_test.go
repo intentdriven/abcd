@@ -41,21 +41,23 @@ func TestCheckoutRootReportsAnEndedContextAsItself(t *testing.T) {
 	}
 }
 
-// TestCheckoutRootReportsARepeatedWaitDelayMissAsATimeout: a git whose
-// output misses the runner's WaitDelay on its retry too (a loaded machine;
-// here, a process holding git's pipe) is git not answering in time, returned
-// as gitutil.ErrGitTimedOut and never as ErrNoCheckout, so the verb blanks
-// the row rather than running the person's previous command over a checkout
-// abcd manages (iss-2610100846469473).
-func TestCheckoutRootReportsARepeatedWaitDelayMissAsATimeout(t *testing.T) {
+// TestCheckoutRootReadsAGitWhoseOutputClosesLate: a git that answered while
+// a process it left holds its output open is read once the output closes, not
+// taken for git not answering (a loaded machine's late copy of the answer
+// once was, iss-2610272041031418), and never as ErrNoCheckout, which would run
+// the person's previous command over a checkout abcd manages.
+func TestCheckoutRootReadsAGitWhoseOutputClosesLate(t *testing.T) {
 	root := composeRepo(t)
+	want, err := gitutil.Toplevel(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	gittest.SlowPipeGit(t, "--show-toplevel", -1)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 
-	_, err := CheckoutRoot(ctx, root)
-	if !errors.Is(err, gitutil.ErrGitTimedOut) || errors.Is(err, ErrNoCheckout) {
-		t.Errorf("err = %v, want gitutil.ErrGitTimedOut and not ErrNoCheckout", err)
+	if got, err := CheckoutRoot(ctx, root); got != want || err != nil {
+		t.Errorf("CheckoutRoot = %q, %v; want %q, nil", got, err, want)
 	}
 }
 

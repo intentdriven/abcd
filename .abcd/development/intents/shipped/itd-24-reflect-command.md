@@ -108,139 +108,137 @@ _Superseded by decisions 4 and 5: the seed is the per-intent audit notes, which 
 Fidelity review — receipt rcp-2215987d5eb7 (verifier abcd:intent-auditor claude-opus-5-5).
 
 Provenance: abcd:intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:c908ff4a28ec3e93638b483a19765fd18fca15012986840f45674a7aa7f6e489
-Input attestations: diff:5346ff97bdf7b0b69d89e9147cf3cc781bb0a7c0..62cb45d843d93c1fd9ae99aea1ff7e71a1753ca2@sha256:2a71ea3be77b21b8963580770b5a04b677435966bf065c442b3048b94f54fcba; merge:0ebf2fe492279aadb875b1ec698c564d3f609078@-; repository:2e03c61e454bf09ecda8cee0ae2f377157b522f7@-; intent:.abcd/development/intents/shipped/itd-24-reflect-command.md@sha256:47e96f2f08b7c13849617e7585a1da1e5229c27cd11df6aeee1042a14ffb0072; spec:.abcd/development/specs/closed/spc-2609211751376504-reflect-command.md@sha256:a8834c5bae6bf8e0b54509a2757556e66ba827c144889dc4db1cd918ed575699; retrospective:.abcd/development/retrospectives/v0.12.0/README.md@sha256:65af7cf68b9a2a0bd704f63d406f1e0c62d5a15e0d25bc12ba9449ab4de614a7; request:.abcd/.work.local/reviews/rcp-2215987d5eb7.request.md@sha256:7b36a525f63a5ae7820d4566aba12ba8776448dfb96948a603fc21aa32de0ac0;
+Input attestations: repository:4f05055572ada95ccedb28a2c49418f4d5d3b6f5@-; diff:c8ddafcaa508868a0685adf0f0e4fa26bfd82dd5^..63c9969e39aee422aed67be8f6e3d7f9f9356857@-; intent:.abcd/development/intents/shipped/itd-24-reflect-command.md@sha256:43c33152de401e4f8b470678484097aeab694c55c4c789bf208594d8cb6011e8; spec:.abcd/development/specs/closed/spc-2609211751376504-reflect-command.md@sha256:a8834c5bae6bf8e0b54509a2757556e66ba827c144889dc4db1cd918ed575699; request:.abcd/.work.local/reviews/rcp-2215987d5eb7.request.md@sha256:7b36a525f63a5ae7820d4566aba12ba8776448dfb96948a603fc21aa32de0ac0;
 
-Acceptance rollup: MET 3 · MET_WITH_CONCERNS 3 · NOT_MET 2 · INCONCLUSIVE 0
-
-Audit owed (receipt rcp-2215987d5eb7): ac-2 NOT_MET · ac-7 NOT_MET. Remedy: fix, then re-run the audit. Carried by iss-2610241431221889.
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 4 · NOT_MET 0 · INCONCLUSIVE 0
 
 Per-criterion verdicts:
-- ac-1 — MET_WITH_CONCERNS: BuildSeed reads the intents the tag shipped, read the way the cut reads membership, with each one's impact and audit counts and the changelog section; the host page dispatches the reflection-composer with that seed; render writes four answered sections plus computed metrics, and blank answers are refused. The v0.12.0 retrospective in the record shows the whole path working. Concerns: that real seed counted six intents whose fidelity reviews were OWED as audited, so the record's audited list and its '11 with audit notes, 0 without' line are wrong (see ac-2). Also, since the product thinker's placement of 2026-10-09, /abcd:reflect is an agents' page hidden from the person's menu, so the persona reaches it through an agent.
-  evidence: internal/core/reflect/seed.go:128 — "func BuildSeed(root, tag string) (Seed, error) {"
+- ac-1 — MET_WITH_CONCERNS: BuildSeed reads the intents the tag shipped the way the cut reads membership, with each one's impact, audit counts and the changelog section. The host page dispatches the reflection-composer with that seed, and the writer renders the four asked sections plus computed metrics; the test asserts all five. Concerns: since the placement of 2026-10-09 the /abcd:reflect page is hidden from the person's menu, so the persona reaches it through an agent. The only real retrospective (v0.12.0) was written by the old audit reader, still carries its miscount, and cannot be regenerated because a second run on a tag refuses.
+  evidence: internal/core/reflect/seed.go:131 — "func BuildSeed(root, tag string) (Seed, error) {"
   evidence: commands/reflect.md:55 — "Dispatch the `reflection-composer` agent with the seed."
+  evidence: internal/core/reflect/sections.go:17 — "var AskedSections = []Section{WentWell, CouldImprove, Lessons, Decisions}"
   evidence: internal/core/reflect/write.go:233 — "sec.Heading(), strings.TrimSpace(ans.Text))"
+  evidence: internal/core/reflect/write.go:241 — "- Intents shipped: %d (%d with audit notes, %d without)"
   evidence: internal/core/reflect/write_test.go:29 — "func TestWriteProducesTheRetrospectiveWithFiveSections(t *testing.T) {"
-  evidence: .abcd/development/retrospectives/v0.12.0/README.md:11 — "# Retrospective for v0.12.0"
-  evidence: .abcd/development/retrospectives/v0.12.0/README.md:56 — "- Intents shipped: 11 (11 with audit notes, 0 without)"
   evidence: commands/reflect.md:6 — "user-invocable: false"
-- ac-2 — NOT_MET: The seed offers 'abcd intent audit < itd-N>' for each intent it reads as unaudited, the host page names each one before the interview, and the fixtures (a placeholder, an OWED marker alone, no notes) pass. But readAuditNotes counts any other prose in the section as an audit, and the brief's own rule says an owed review is not audit notes. Promised: every shipped intent with no notes from the auditor is named and offered the audit before the retrospective continues. Exists: an intent whose review is OWED but whose Audit Notes section carries an amendment note is read as audited, so it is neither named nor offered. In the only real run, v0.12.0, six of its eleven intents (itd-24 among them) were in that state: the record says 'unaudited: []' and lists five receipts, and its own text concedes 3 features shipped before their after-delivery audit. The plain-Terminal interview, added later, shows no offer before the first question either.
-  evidence: internal/core/reflect/seed.go:169 — "s.Unaudited = append(s.Unaudited, AuditOffer{IntentID: it.ID"
+  evidence: .abcd/development/brief/04-surfaces/09-reflect.md:41 — "hidden from a person's `/abcd:` menu (the product thinker's placement of"
+  evidence: .abcd/development/retrospectives/v0.12.0/README.md:56 — "- Intents shipped: 11 (11 with audit notes, 0 without)"
+- ac-2 — MET_WITH_CONCERNS: The prior failure is fixed. The review marker is read first: an OWED review is never audit notes, and a section with no marker counts only if it names criteria with verdicts (HandAudited, the owed listing's own rule). Each unaudited intent is offered 'abcd intent audit < itd-N>', and the host page names each one before the interview. Tests cover an owed review beside an amendment note and a stray note. Concerns: (a) a DEAD_LETTER review's quarantine line is not skipped, so it counts as audit notes, although owed.go calls a dead-lettered review unreviewed; (b) the plain-Terminal 'abcd reflect interview' still names no unaudited intent and offers no audit before the first question; (c) the v0.12.0 record still says 'unaudited: []'.
+  evidence: internal/core/reflect/audit.go:44 — "case intent.ReviewOwed:"
+  evidence: internal/core/reflect/audit.go:47 — "it.Audited = intent.HandAudited(text)"
+  evidence: internal/core/reflect/seed.go:172 — "s.Unaudited = append(s.Unaudited, AuditOffer{IntentID: it.ID, Command: "abcd intent audit " + it.ID})"
   evidence: commands/reflect.md:44 — "- **Intents without audit notes** (`unaudited[]`): name each one to the product thinker"
-  evidence: internal/core/reflect/seed_test.go:85 — "func TestSeedNamesEachIntentWithoutAuditNotesAndOffersTheAudit(t *testing.T) {"
-  evidence: internal/core/reflect/audit.go:55 — "prose = true"
-  evidence: internal/core/reflect/audit.go:81 — "it.Audited = true"
-  evidence: .abcd/development/brief/04-surfaces/09-reflect.md:55 — "A placeholder, an owed review and an absent section are not audit"
-  evidence: .abcd/development/intents/shipped/itd-24-reflect-command.md:108 — "Fidelity review OWED (receipt rcp-2215987d5eb7)."
-  evidence: .abcd/development/intents/shipped/itd-24-reflect-command.md:111 — "- 2026-09-30: the press release, scope item 1 and criterion 1 read release membership"
-  evidence: .abcd/development/retrospectives/v0.12.0/README.md:6 — "audited: [itd-24, itd-42,"
+  evidence: internal/surface/cli/reflect.go:351 — "no audit notes on %d intent(s); offer the audit first, then continue either way:"
+  evidence: internal/core/reflect/seed_owed_test.go:37 — "func TestSeedOffersTheAuditToAnOwedReviewBesideAnAmendmentNote(t *testing.T) {"
+  evidence: internal/core/reflect/seed_owed_test.go:65 — "func TestSeedJudgesAnUnmarkedSectionByTheOwedListingsRule(t *testing.T) {"
+  evidence: internal/core/reflect/audit.go:71 — "strings.HasPrefix(t, "Fidelity review OWED")"
+  evidence: internal/core/reflect/audit.go:99 — "if prose {"
+  evidence: internal/core/intent/audit.go:1877 — ""Fidelity review DEAD_LETTER (receipt %s): %s. Raw payload retained at %s. "+"
+  evidence: internal/core/intent/owed.go:61 — "dead-lettered review is unreviewed but not owed"
+  evidence: internal/surface/cli/reflect.go:205 — "w := &interview.Written{"
+  evidence: internal/core/interview/tasks.go:12 — "(an intent with a NOT_MET verdict, an intent shipped with no audit, an intent that missed the release)"
   evidence: .abcd/development/retrospectives/v0.12.0/README.md:7 — "unaudited: []"
-  evidence: .abcd/development/retrospectives/v0.12.0/README.md:8 — "audit_receipts: [rcp-e6bcb27c8050, rcp-7a2c62ab0228, rcp-121c23aff688, rcp-12ccf7627aac, rcp-ebf7d171b544]"
-  evidence: .abcd/development/retrospectives/v0.12.0/README.md:37 — "Checks running too late: 3 features shipped before their after-delivery audit"
-  evidence: internal/core/interview/tasks.go:12 — "an intent shipped with no audit"
-- ac-3 — MET: NothingShippedError's text is the criterion's own wording. BuildSeed returns it before anything is created, the CLI exits 1 with it for both the seed render and the write, and the tests assert the exact text and that no retrospectives store appears.
-  evidence: internal/core/reflect/reflect.go:67 — "no intent shipped in `%s` — nothing shipped to reflect on"
-  evidence: internal/core/reflect/seed.go:155 — "return Seed{}, &NothingShippedError{Tag: tag}"
+- ac-3 — MET: NothingShippedError's message is the criterion's exact wording. BuildSeed returns it before anything is created, Write rebuilds the seed and so refuses the same way, and the CLI and core tests assert the exact text and that nothing is written.
+  evidence: internal/core/reflect/reflect.go:67 — "return fmt.Sprintf("no intent shipped in `%s` — nothing shipped to reflect on", e.Tag)"
+  evidence: internal/core/reflect/seed.go:158 — "return Seed{}, &NothingShippedError{Tag: tag}"
   evidence: internal/surface/cli/reflect_cli_test.go:148 — "func TestReflectRefusesAReleaseThatShippedNothing(t *testing.T) {"
   evidence: internal/surface/cli/reflect_cli_test.go:158 — "no intent shipped in `v0.3.0` — nothing shipped to reflect on"
   evidence: internal/core/reflect/write_test.go:140 — "func TestWriteRefusesAReleaseThatShippedNoIntentAndWritesNothing(t *testing.T) {"
-- ac-4 — MET_WITH_CONCERNS: underFloor marks 'it worked' thin: fewer than two clauses of at least three words. Write then refuses, writing nothing, until every thin section has a follow-up, and returns that section's question, which the reflection-composer asks. Concerns: the thin original is still written verbatim above the follow-up reply (v0.12.0's 'What went well' opens with 'How we worked.'), and the reply is not held to the floor, so a thin answer can still be committed after one question, although the agent page says a thin answer is not committed.
+- ac-4 — MET_WITH_CONCERNS: underFloor marks 'it worked' as thin. Write refuses, writing nothing, until every thin section has a follow-up, and returns that section's question for the reflection-composer to ask. Concerns: the thin original is still written verbatim above the follow-up reply (v0.12.0 'What went well' opens 'How we worked.'), and the reply is not held to the floor. So a thin answer can still be committed after one question, while the agent page says a thin answer is not committed.
   evidence: internal/core/reflect/thin.go:33 — "func underFloor(s Section, text string) (bool, string) {"
-  evidence: internal/core/reflect/write.go:105 — "if !isThin || strings.TrimSpace(a.FollowUp) !="
+  evidence: internal/core/reflect/write.go:105 — "if !isThin || strings.TrimSpace(a.FollowUp) != "" {"
   evidence: internal/surface/cli/reflect_cli_test.go:276 — "func TestReflectWriteMeetsAThinAnswerWithAQuestion(t *testing.T) {"
-  evidence: internal/core/reflect/write.go:234 — "if f := strings.TrimSpace(ans.FollowUp); f !="
+  evidence: internal/core/reflect/write.go:234 — "if f := strings.TrimSpace(ans.FollowUp); f != "" {"
   evidence: internal/core/reflect/write_test.go:109 — "func TestWriteTakesAThinAnswerOnceItsFollowUpIsAnswered(t *testing.T) {"
-  evidence: .abcd/development/retrospectives/v0.12.0/README.md:31 — "How we worked."
   evidence: agents/reflection-composer.md:82 — "A thin answer is **not** committed."
-- ac-5 — MET: Plan copies every < release-tag>/README.md under .abcd/development/retrospectives into the lifeboat as retrospectives/< tag>/README.md, a record-derived family sealed by the record manifest. The core and CLI tests pack two retrospectives verbatim, leave out files under the store that are not retrospectives, and write the two back on embark.
+  evidence: agents/reflection-composer.md:92 — "if the reply is still thin, say so to the person and let them decide"
+  evidence: .abcd/development/retrospectives/v0.12.0/README.md:31 — "How we worked."
+- ac-5 — MET: The lifeboat plan copies every < release-tag>/README.md under the retrospectives store into the lifeboat as a record family sealed by the manifest. The core and CLI tests pack two retrospectives verbatim and write them back on embark.
   evidence: internal/core/lifeboat/plan.go:288 — "if ctx.IsDir(corereflect.RetrospectivesRelDir) {"
   evidence: internal/core/lifeboat/plan.go:299 — "pb.copyRecord(ctx, src, path.Join(retrospectivesLifeboatDir, tag, retrospectiveLeaf))"
-  evidence: internal/core/lifeboat/embark_types.go:327 — "// The release retrospectives (itd-24): retrospectives/< release-tag>/README.md,"
   evidence: internal/core/lifeboat/retrospectives_test.go:50 — "func TestPlanPacksEveryRetrospective(t *testing.T) {"
   evidence: internal/surface/cli/reflect_lifeboat_cli_test.go:45 — "func TestDisembarkPackCarriesEveryRetrospectiveAndEmbarkWritesThemBack(t *testing.T) {"
-- ac-6 — MET_WITH_CONCERNS: embark from writes the retrospectives back. embark lessons verifies the manifest, ranks every lesson by term overlap against the target's framing chapter or a --brief file, and shows the top three, then the rest as a list, with 'which of these apply?'; the embark page has the host ask that one question. Concerns: embark from runs no press-release interview (the verification matrix marks that interview staged), so the lessons are a separate step the page has the host take. And embark never writes the brief, so on a freshly embarked target without --brief the lessons come back unranked, yet the first three are still headed 'most like this voyage'.
-  evidence: internal/surface/cli/cli.go:1437 — "lessonsCmd := &cobra.Command{"
+  evidence: internal/core/lifeboat/retrospectives_test.go:102 — "func TestEmbarkFromWritesRetrospectivesBack(t *testing.T) {"
+- ac-6 — MET_WITH_CONCERNS: Main today: 'embark lessons' verifies the manifest and ranks every lesson by deterministic lexical term overlap (record/match) against the target's framing chapter or a --brief file. It shows the top three, then the rest as a list, with 'which of these apply?', and the embark page has the host ask that one question. This is the term-overlap method the spec names. Concerns: (a) the ranking is a lexical heuristic; the judgement-based ranking through the decision adapter is planned in itd-2609221009495079 and not on main; (b) 'embark from' runs no press-release interview (the matrix marks it staged), so the lessons are a separate step; (c) with no framing chapter and no --brief the lessons come back unranked but are still headed 'most like this voyage'.
+  evidence: internal/surface/cli/cli.go:1479 — "lessonsCmd := &cobra.Command{"
+  evidence: internal/surface/cli/cli.go:1515 — "const embarkFramingRel = ".abcd/development/brief/01-product/06-framing.md""
   evidence: internal/core/reflect/lessons.go:15 — "const TopLessons = 3"
+  evidence: internal/core/reflect/lessons.go:100 — "fwd, _, shared := match.Overlap(terms[i], framingTerms, w)"
   evidence: internal/core/lifeboat/retrospectives.go:54 — "func PredecessorLessons(lifeboatDir, framing string) (LessonsView, error) {"
   evidence: internal/surface/cli/reflect_lifeboat_cli_test.go:77 — "func TestEmbarkLessonsShowsTheFewMostLikeTheBrief(t *testing.T) {"
   evidence: commands/embark.md:83 — "Show the product thinker the `top` few (three), each with the release it came from, and"
+  evidence: .abcd/development/specs/closed/spc-2609211751376504-reflect-command.md:60 — "whole; `embark` ranks the packed retrospectives' lessons against the new"
+  evidence: .abcd/development/intents/planned/itd-2609221009495079-abcd-s-typed-judgements-can-run-through.md:43 — "embark's lesson ranking"
   evidence: .abcd/development/brief/06-delivery/02-verification-matrix.md:62 — "| Embark press-release interview | **(staged)**"
   evidence: commands/embark.md:59 — "`from` runs the same planner as `probe`, then writes each `create` file into the"
-  evidence: .abcd/development/brief/04-surfaces/03-embark.md:104 — "The five record families — ADRs, issues, intents,"
-  evidence: internal/surface/cli/cli.go:1473 — "const embarkFramingRel ="
-  evidence: internal/core/lifeboat/retrospectives.go:122 — "strings.TrimSpace(framing) =="
+  evidence: internal/core/lifeboat/retrospectives.go:122 — "strings.TrimSpace(framing) == """
   evidence: internal/core/lifeboat/retrospectives.go:151 — "most like this voyage — which of these apply?"
-- ac-7 — NOT_MET: The seed lists planned intents whose live target_release equals the tag, the CLI prints a WARNING listing them, the host page asks, and Write refuses until --proceed; the fixtures pass because they create a tag without running a cut. But launch ship's ingest rewrites every target the cut passes to next (launch.MissedTargets, then intent.PlanTargetMoves) in the commit that rolls the changelog, before the tag exists. So for a release cut by launch ship no intent's target_release names the tag by the time reflect can run. Promised: reflect warns about, lists, and asks to confirm past the intents targeted at the release that did not ship. Exists: it can find none. CHANGELOG.md records itd-2610112239022766 as targeted and not shipped in v0.14.2, v0.15.0 and v0.15.1; that record now reads target_release: next, and reflect on any of those tags would not name it.
-  evidence: internal/core/reflect/seed.go:173 — "if it.Bucket == intent.BucketPlanned && it.TargetRelease == tag {"
-  evidence: internal/surface/cli/reflect.go:357 — "WARNING: %d intent(s) targeted at %s have not shipped"
+- ac-7 — MET: The prior failure is fixed. unshippedTargets now lists the planned intents whose target_release names the tag, plus the still-planned intents that the release's own changelog section names in the cut's target-move note. The note's lead is spelled once for its writer and this reader, so targets launch ship rewrote to 'next' before tagging are found again. The CLI prints a WARNING listing them, the host page asks, Write and the plain-Terminal interview refuse without --proceed, and a test cuts a release with moved targets and checks only the still-unshipped one is listed.
+  evidence: internal/core/reflect/seed.go:200 — "func unshippedTargets(corpus intent.Corpus, tag string, cl ChangelogSection) []TargetedIntent {"
+  evidence: internal/core/reflect/seed.go:216 — "if it.Bucket == intent.BucketPlanned && it.TargetRelease == tag {"
+  evidence: internal/core/reflect/seed.go:221 — "if !changelog.IsTargetMoveNote(ln) {"
+  evidence: internal/core/changelog/targetmove.go:22 — "const targetMoveLead = "Targeted and not shipped in this release, so each targets the next release (`next`): ""
+  evidence: internal/surface/cli/reflect.go:357 — "WARNING: %d intent(s) targeted at %s have not shipped; ask before proceeding (reflect write --proceed):"
   evidence: commands/reflect.md:49 — "(`unshipped_targets[]`): warn the product thinker, list them, and ask whether to"
+  evidence: internal/core/reflect/write.go:98 — "if len(seed.Unshipped) > 0 && !req.ProceedDespiteUnshipped {"
+  evidence: internal/surface/cli/reflect.go:192 — "if len(seed.Unshipped) > 0 && !proceed {"
+  evidence: internal/core/reflect/seed_owed_test.go:109 — "func TestSeedListsTheTargetsTheCutMovedPastTheRelease(t *testing.T) {"
   evidence: internal/core/reflect/write_test.go:153 — "func TestWriteAsksBeforeProceedingPastUnshippedTargets(t *testing.T) {"
-  evidence: internal/core/reflect/fixture_test.go:55 — "planned with `target_release: v0.2.0` and never shipped"
-  evidence: internal/core/release/emit.go:346 — "cut.Moves = launch.MissedTargets(cut.Targets, cut.NextTag)"
-  evidence: internal/core/release/ingest.go:455 — "rewrites, err := intent.PlanTargetMoves(root, moves)"
-  evidence: internal/core/launch/target.go:85 — "func MissedTargets(targets []TargetedIntent, nextTag string) []TargetMove {"
-  evidence: CHANGELOG.md:23 — "Targeted and not shipped in this release, so each targets the next release (`next`): itd-2610112239022766 (targeted `next`)."
-  evidence: .abcd/development/intents/planned/itd-2610112239022766-when-someone-reports-a-security-hole-in.md:14 — "target_release: next"
-- ac-8 — MET: launch ship sets retrospective_owed to reflect.Nudge(tag) only when the cut is written, and prints it as the run's last line. release.Ingest, which writes the cut, has no other caller, and no other surface mentions an owed retrospective. The test asserts the word appears exactly once, at the end, and not at all on an emit that writes nothing.
-  evidence: internal/core/reflect/nudge.go:10 — "A retrospective for %s is owed: run /abcd:reflect %s when you are ready."
+- ac-8 — MET: launch ship sets retrospective_owed to reflect.Nudge(tag) only when the cut is written and prints it as the run's last line. The CLI is the only non-test caller of release.Ingest, and no other non-test surface mentions an owed retrospective. The test asserts one mention, at the end, and none on an emit that writes nothing.
+  evidence: internal/core/reflect/nudge.go:10 — "return fmt.Sprintf("A retrospective for %s is owed: run /abcd:reflect %s when you are ready.", tag, tag)"
   evidence: internal/surface/cli/ship.go:677 — "res.RetrospectiveOwed = reflect.Nudge(ingested.Cut.NextTag)"
+  evidence: internal/surface/cli/ship.go:48 — "return release.Ingest(repoRoot, current, raw, at)"
   evidence: internal/surface/cli/reflect_cli_test.go:363 — "func TestLaunchShipSaysOnceThatARetrospectiveIsOwed(t *testing.T) {"
-  evidence: internal/surface/cli/reflect_cli_test.go:371 — "strings.Count(string(out),"
+  evidence: internal/surface/cli/reflect_cli_test.go:371 — "if n := strings.Count(string(out), "retrospective"); n != 1 {"
 
 Gap audit:
 - honoured:
-  - The interview opens from what the release shipped: the intents the tag shipped, read the way the release cut reads membership, each with its impact and audit counts, plus the changelog section the cut composed.
-    evidence: internal/core/reflect/seed.go:277 — "func shippedBy(root, tag, prev string, corpus intent.Corpus) ([]member, error) {"
+  - The interview opens from what the release shipped: the intents the tag shipped, read the way the cut reads membership, each with impact and audit counts, plus the changelog section the cut composed.
+    evidence: internal/core/reflect/seed.go:319 — "func shippedBy(root, tag, prev string, corpus intent.Corpus) ([]member, error) {"
     evidence: internal/core/reflect/seed_test.go:22 — "func TestSeedIsTheIntentsTheTagShipped(t *testing.T) {"
-  - The output is a structured five-section README in the durable record tier that links to the changelog section and to each intent's audit notes rather than copying them, and one is already in the permanent record (v0.12.0).
-    evidence: internal/core/reflect/write.go:216 — "Each intent's audit notes stay on the intent and are linked here, not repeated."
-    evidence: internal/core/reflect/write_test.go:83 — "RATIONALE-NEVER-COPIED"
-    evidence: .abcd/development/retrospectives/v0.12.0/README.md:11 — "# Retrospective for v0.12.0"
-  - Metrics are simple counts and dates computed from the seed, never asked.
-    evidence: internal/core/reflect/write.go:241 — "- Intents shipped: %d (%d with audit notes, %d without)"
+  - A shipped intent whose review is owed is named and offered the audit, by the same rule the list of reviews owed uses.
+    evidence: internal/core/reflect/audit.go:44 — "case intent.ReviewOwed:"
+    evidence: internal/core/reflect/seed_owed_test.go:65 — "func TestSeedJudgesAnUnmarkedSectionByTheOwedListingsRule(t *testing.T) {"
+  - Intents targeted at the release that did not ship are warned about and confirmed past, including those a cut moved to next.
+    evidence: internal/core/reflect/seed.go:221 — "if !changelog.IsTargetMoveNote(ln) {"
+    evidence: internal/core/reflect/seed_owed_test.go:109 — "func TestSeedListsTheTargetsTheCutMovedPastTheRelease(t *testing.T) {"
+  - The output is a five-section README in the durable record tier that links to the changelog section and each intent's audit notes rather than copying them; metrics are computed, never asked.
+    evidence: internal/core/reflect/write.go:216 — "b.WriteString(" Each intent's audit notes stay on the intent and are linked here, not repeated.\n\n")"
     evidence: internal/core/reflect/sections.go:17 — "var AskedSections = []Section{WentWell, CouldImprove, Lessons, Decisions}"
-  - A release that shipped no intent is refused in the criterion's words, and nothing is written.
-    evidence: internal/core/reflect/reflect.go:67 — "no intent shipped in `%s` — nothing shipped to reflect on"
-    evidence: internal/surface/cli/reflect_cli_test.go:148 — "func TestReflectRefusesAReleaseThatShippedNothing(t *testing.T) {"
-  - The release is the only grain: an intent id is refused, and the refusal names the intent audit.
-    evidence: internal/surface/cli/reflect.go:271 — "is an intent; reflect takes a release tag"
-    evidence: internal/surface/cli/reflect_cli_test.go:190 — "func TestReflectRefusesAnIntentID(t *testing.T) {"
-  - Future lifeboats carry the retrospectives forward: disembark packs every one, and embark writes them back verbatim.
+  - An empty release is refused in the criterion's words, and the release is the only grain (an intent id is refused).
+    evidence: internal/core/reflect/reflect.go:67 — "return fmt.Sprintf("no intent shipped in `%s` — nothing shipped to reflect on", e.Tag)"
+    evidence: internal/surface/cli/reflect.go:271 — ""abcd reflect: %s is an intent; reflect takes a release tag (such as v0.11.0). Per-intent reflection is the intent audit: abcd intent audit %s","
+  - Future lifeboats carry every retrospective forward, and embark writes them back.
     evidence: internal/core/lifeboat/plan.go:299 — "pb.copyRecord(ctx, src, path.Join(retrospectivesLifeboatDir, tag, retrospectiveLeaf))"
     evidence: internal/core/lifeboat/retrospectives_test.go:102 — "func TestEmbarkFromWritesRetrospectivesBack(t *testing.T) {"
-  - Reflection has a single nudge: a written cut ends with one line saying a retrospective is owed, and nothing repeats it or waits on it.
+  - Reflection has a single nudge at the written cut, and nothing repeats it or gates on it.
     evidence: internal/surface/cli/ship.go:677 — "res.RetrospectiveOwed = reflect.Nudge(ingested.Cut.NextTag)"
     evidence: internal/surface/cli/reflect_cli_test.go:363 — "func TestLaunchShipSaysOnceThatARetrospectiveIsOwed(t *testing.T) {"
-  - The reflection-composer agent runs the interview and asks the section's follow-up question when an answer falls under the floor.
-    evidence: commands/reflect.md:55 — "Dispatch the `reflection-composer` agent with the seed."
-    evidence: internal/core/reflect/thin.go:33 — "func underFloor(s Section, text string) (bool, string) {"
 - diverged:
-  - Each intent comes with the audit notes the intent auditor wrote: delivered as a prose test, under which an owed review that carries an amendment note reads as audited. The seed, the record's audited list and its metrics therefore overstate the audits; v0.12.0 lists all eleven intents as audited against five receipts, and this applies to six shipped intents at HEAD.
-    evidence: internal/core/reflect/audit.go:81 — "it.Audited = true"
-    evidence: .abcd/development/retrospectives/v0.12.0/README.md:7 — "unaudited: []"
-    evidence: .abcd/development/intents/shipped/itd-24-reflect-command.md:108 — "Fidelity review OWED (receipt rcp-2215987d5eb7)."
-  - Clarifying questions for thin answers add to the thin answer rather than replace it: the thin original is committed verbatim beside the follow-up reply, and the reply is not held to the floor.
-    evidence: internal/core/reflect/write.go:234 — "if f := strings.TrimSpace(ans.FollowUp); f !="
+  - Clarifying questions for thin answers add to the thin answer instead of replacing it: the thin original is committed beside the follow-up, and the reply is not held to the floor.
+    evidence: internal/core/reflect/write.go:234 — "if f := strings.TrimSpace(ans.FollowUp); f != "" {"
     evidence: .abcd/development/retrospectives/v0.12.0/README.md:31 — "How we worked."
-  - Embark surfaces predecessor retrospectives during the press-release interview: delivered as a separate embark lessons step, because the press-release interview embark from would run is staged. With no framing chapter and no --brief, the lessons are unranked but still headed 'most like this voyage'.
+  - Embark surfaces predecessor lessons during the press-release interview: delivered as a separate 'embark lessons' step ranked by lexical term overlap. The interview embark would run is staged, the judgement-based ranking awaits the decision adapter, and unranked lessons are still headed 'most like this voyage'.
     evidence: .abcd/development/brief/06-delivery/02-verification-matrix.md:62 — "| Embark press-release interview | **(staged)**"
+    evidence: .abcd/development/intents/planned/itd-2609221009495079-abcd-s-typed-judgements-can-run-through.md:43 — "embark's lesson ranking"
     evidence: internal/core/lifeboat/retrospectives.go:151 — "most like this voyage — which of these apply?"
-  - Reflection becomes a first-class abcd primitive run as /abcd:reflect: since the product thinker's placement of 2026-10-09 it is an agents' page hidden from the person's /abcd: menu, while the cut's nudge still tells the person to run /abcd:reflect < tag>.
+  - Reflection is a first-class command the persona runs as /abcd:reflect: the page is hidden from the person's menu, while the cut's nudge still tells the person to run /abcd:reflect < tag>.
     evidence: commands/reflect.md:6 — "user-invocable: false"
-    evidence: .abcd/development/brief/04-surfaces/09-reflect.md:41 — "hidden from a person's `/abcd:` menu (the product thinker's placement of"
-    evidence: internal/core/reflect/nudge.go:10 — "A retrospective for %s is owed: run /abcd:reflect %s when you are ready."
-  - The interview also runs in a plain Terminal (abcd reflect interview, added after delivery). There the verb shows no audit offer before the first question, and the role is told only to use an unaudited intent to sharpen a question.
-    evidence: internal/surface/cli/reflect.go:166 — "func newReflectInterviewCommand(asJSON *bool) *cobra.Command {"
-    evidence: internal/core/interview/tasks.go:12 — "an intent shipped with no audit"
+    evidence: internal/core/reflect/nudge.go:10 — "return fmt.Sprintf("A retrospective for %s is owed: run /abcd:reflect %s when you are ready.", tag, tag)"
+  - Every shipped intent without audit notes is named and offered the audit: a DEAD_LETTER quarantine line is counted as audit notes, and the plain-Terminal interview makes no offer before its first question.
+    evidence: internal/core/reflect/audit.go:71 — "strings.HasPrefix(t, "Fidelity review OWED")"
+    evidence: internal/core/intent/owed.go:61 — "dead-lettered review is unreviewed but not owed"
+    evidence: internal/core/interview/tasks.go:12 — "(an intent with a NOT_MET verdict, an intent shipped with no audit, an intent that missed the release)"
+  - The one retrospective in the record (v0.12.0) was written under the old audit reader and still overstates its audits; a second run on a tag refuses, so it is not regenerated.
+    evidence: .abcd/development/retrospectives/v0.12.0/README.md:7 — "unaudited: []"
+    evidence: .abcd/development/retrospectives/v0.12.0/README.md:56 — "- Intents shipped: 11 (11 with audit notes, 0 without)"
 - missing:
-  - The warning about intents targeted at the release that did not ship, for any release cut by launch ship: the cut has already rewritten those targets to next, and the seed does not read the cut's record of the move.
-    evidence: internal/core/release/ingest.go:455 — "rewrites, err := intent.PlanTargetMoves(root, moves)"
-    evidence: internal/core/reflect/seed.go:173 — "if it.Bucket == intent.BucketPlanned && it.TargetRelease == tag {"
-    evidence: CHANGELOG.md:23 — "Targeted and not shipped in this release, so each targets the next release (`next`): itd-2610112239022766 (targeted `next`)."
-    evidence: .abcd/development/intents/planned/itd-2610112239022766-when-someone-reports-a-security-hole-in.md:14 — "target_release: next"
-  - Future intents reference past lessons: nothing on the intent side reads the retrospective store. Lessons are read only by embark's lifeboat view.
+  - Future intents reference past lessons: nothing on the intent side reads the retrospective store; lessons are read only by embark's lifeboat view.
     evidence: internal/core/reflect/lessons.go:28 — "func ReadLessons(readme []byte) []Lesson {"
-    evidence: internal/core/lifeboat/retrospectives.go:54 — "func PredecessorLessons(lifeboatDir, framing string) (LessonsView, error) {"
+    evidence: internal/core/lifeboat/retrospectives.go:107 — "for _, l := range corereflect.ReadLessons(data) {"
 <!-- abcd-review-end receipt=rcp-2215987d5eb7 -->
+
+Audit owed flag cleared 2026-10-29 (receipt rcp-2215987d5eb7): a re-run of the audit judged no criterion NOT_MET or INCONCLUSIVE, and iss-2610241431221889 is resolved.
 
 - 2026-09-30: the press release, scope item 1 and criterion 1 read release membership the way the release cut reads it, under ruling AD, as spec scope 1 does since its amendment of the same date; `shipped_in` moves a record between releases and does not define membership.
 

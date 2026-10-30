@@ -92,6 +92,38 @@ func TestLoadOverridesPatternPerField(t *testing.T) {
 	}
 }
 
+// TestLoadOverridesTheLiteralPrefixReading: arg_prefixes_literal is merged per
+// field like after_cd, so a repository can turn the literal reading off and
+// have a refspec whose source is a substitution read as a delete again, and
+// one that names nothing keeps the bundled reading.
+func TestLoadOverridesTheLiteralPrefixReading(t *testing.T) {
+	const cmd = `git push origin "$(git branch --show-current)":main`
+	for _, c := range []struct {
+		name, body string
+		want       Verdict
+	}{
+		// Read as a delete, the line is refused: a registry loaded for a
+		// repository proves its deletes (deletes.go), and this one has no
+		// prover, as a front door would attach.
+		{"turned off", `{"schema_version":1,"entries":{"git-push-delete-refspec":{"pattern":{"arg_prefixes_literal":false}}}}`, VerdictBlock},
+		{"inherited", `{"schema_version":1,"entries":{"git-push-delete-refspec":{"tier":"warn"}}}`, VerdictAllow},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r, err := Load(writeCommittedOverride(t, c.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			d, err := r.Check(cmd)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.Verdict != c.want {
+				t.Fatalf("%s: verdict = %q via %q, want %q", c.name, d.Verdict, d.EntryID, c.want)
+			}
+		})
+	}
+}
+
 func TestLoadAddsRepoEntry(t *testing.T) {
 	root := writeOverride(t, `{"schema_version":1,"entries":{"drop-database":{
 		"tier":"blocker",
@@ -222,6 +254,13 @@ func TestLoadRejectsBadConfig(t *testing.T) {
 			// be — the same silent defang as an empty flag group, one field along.
 			name: "argument prefix that could never match",
 			body: `{"schema_version":1,"entries":{"git-push-force":{"pattern":{"arg_prefixes":["-f"]}}}}`,
+			want: ErrInvalidEntry,
+		},
+		{
+			// A literal reading of the prefixes on an entry that has none
+			// constrains nothing, so the field would read as a guard it is not.
+			name: "literal prefix reading without a prefix",
+			body: `{"schema_version":1,"entries":{"git-push-force":{"pattern":{"arg_prefixes_literal":true}}}}`,
 			want: ErrInvalidEntry,
 		},
 		{

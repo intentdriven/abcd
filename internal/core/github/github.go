@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/tools"
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // Host is the API host every request names EXPLICITLY. Without it `gh api`
@@ -191,16 +192,18 @@ func runContext(parent context.Context, cwd string, stdin []byte, args ...string
 	ctx, cancel := context.WithTimeout(parent, Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
-	// Once gh is killed, a process it started that still holds its output
-	// open is waited for at most this long, so the deadline holds.
+	// Once gh is killed, it is waited for at most this long to exit. Its
+	// output is read to EOF first (procgroup.RunToEOF), so an answer gh gave
+	// is read whole however late it closes, and a process gh started that
+	// holds it open holds the call no further than the deadline.
 	cmd.WaitDelay = time.Second
 	cmd.Dir = cwd
 	cmd.Env = os.Environ()
 	cmd.Stdin = bytes.NewReader(stdin)
 	var out, errBuf bytes.Buffer
-	cmd.Stdout = &limitedWriter{w: &out, remaining: MaxOutputBytes}
-	cmd.Stderr = &limitedWriter{w: &errBuf, remaining: MaxOutputBytes}
-	if err := cmd.Run(); err != nil {
+	stdout := &limitedWriter{w: &out, remaining: MaxOutputBytes}
+	stderr := &limitedWriter{w: &errBuf, remaining: MaxOutputBytes}
+	if err := procgroup.RunToEOF(ctx, cmd, stdout, stderr); err != nil {
 		if parent.Err() != nil {
 			return nil, fmt.Errorf("%w before its caller's deadline", ErrTimeout)
 		}

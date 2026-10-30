@@ -34,6 +34,9 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 	if err != nil {
 		return err
 	}
+	if err := refuseSharedMainCheckout(cmd, "abcd intent audit --owed", repoRoot); err != nil {
+		return err
+	}
 	route, err := auditRoute.resolve(cmd, "abcd intent audit --owed", auditAgent)
 	if err != nil {
 		return err

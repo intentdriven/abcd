@@ -89,6 +89,9 @@ func mintADR(cmd *cobra.Command, asJSON bool, title string) error {
 	if err != nil {
 		return err
 	}
+	if err := refuseSharedMainCheckout(cmd, "abcd decide --adr", repoRoot); err != nil {
+		return err
+	}
 	d, err := decide.Create(repoRoot, title)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "decide: " + scrubPaths(err)}
@@ -103,6 +106,9 @@ func mintADR(cmd *cobra.Command, asJSON bool, title string) error {
 func recordDecision(cmd *cobra.Command, asJSON bool, text string) error {
 	repoRoot, err := decideStoreRoot(cmd, decisions.RelDir, "decisions folder")
 	if err != nil {
+		return err
+	}
+	if err := refuseSharedMainCheckout(cmd, "abcd decide", repoRoot); err != nil {
 		return err
 	}
 	d, err := decisions.Record(repoRoot, text)

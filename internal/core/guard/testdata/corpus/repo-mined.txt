@@ -32,7 +32,7 @@ go test -race ./internal/...
 rm -rf $(BINDIR)
 abcd intent "<one-line idea>"
 abcd capture "<whatever crossed your mind>"
-sh -c 'set -eu; cd "$(mktemp -d)"; os=$(uname -s | tr "[:upper:]" "[:lower:]"); arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-$os-$arch"; curl -fsSLO "https://github.com/REPPL/abcd-cli/releases/latest/download/$b"; curl -fsSLO "https://github.com/REPPL/abcd-cli/releases/latest/download/checksums.txt"; grep " $b$" checksums.txt | if command -v sha256sum >/dev/null; then sha256sum -c -; else shasum -a 256 -c -; fi; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; "$HOME/.local/bin/abcd" version'
+sh -c 'set -eu; cd "$(mktemp -d)"; os=$(uname -s | tr "[:upper:]" "[:lower:]"); arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-$os-$arch"; curl -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; grep " $b$" checksums.txt | if command -v sha256sum >/dev/null; then sha256sum -c -; else shasum -a 256 -c -; fi; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; "$HOME/.local/bin/abcd" version'
 export PATH="$HOME/.local/bin:$PATH"
 make preflight   # the pre-push gate: lint-reviews, record-lint and docs-lint,
 go run ./cmd/abcd            # bare status board for the current directory
@@ -476,16 +476,16 @@ if (cd "$repo" && bash "$SCRIPT_ABS" commits "$base" HEAD >/dev/null 2>&1); then
 git -C "$repo" reset -q --hard "$base"
 commit_as <author-name> <author-email> <committer-name> <committer-email> <msg>
 git -C "$repo" commit -q --allow-empty -m "$5"
-commit_as REPPL human@example.invalid REPPL human@example.invalid "$MSG_OK"
+commit_as Alice human@example.invalid Alice human@example.invalid "$MSG_OK"
 commits_case accept "human identity, compliant message"
 The bf68242 case: identity is the AI, message is fully compliant.
 commit_as Claude noreply@anthropic.com Claude noreply@anthropic.com "$MSG_OK"
 commits_case reject "AI author and committer, compliant message"
-commit_as REPPL human@example.invalid Claude noreply@anthropic.com "$MSG_OK"
+commit_as Alice human@example.invalid Claude noreply@anthropic.com "$MSG_OK"
 commits_case reject "AI committer only, compliant message"
-commit_as Claude claude@example.invalid REPPL human@example.invalid "$MSG_OK"
+commit_as Claude claude@example.invalid Alice human@example.invalid "$MSG_OK"
 commits_case reject "AI author by name alone, compliant message"
-commit_as ChatGPT bot@openai.com REPPL human@example.invalid "$MSG_OK"
+commit_as ChatGPT bot@openai.com Alice human@example.invalid "$MSG_OK"
 commits_case reject "another vendor's AI author, compliant message"
 A human whose name merely CONTAINS an AI name is not an AI identity.
 commit_as 'Claudette Martin' claudette@example.invalid 'Claudette Martin' claudette@example.invalid "$MSG_OK"

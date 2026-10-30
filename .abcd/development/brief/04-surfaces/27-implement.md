@@ -314,8 +314,12 @@ refused together): every abcd released before the race gate reads any load
 check carrying the wait flag as a first gate's waiter, so it would read a
 preflight at a race gate spelt with it as queued, not in its test stages, and
 open beside it. At one preflight at a
-time the race gate opens at once, with no look at the machine, no hold, no
-jitter and no settle, so the preflight runs exactly as before. Above one it is
+time the race gate opens at once once the disk check passes, without reading
+the load or the process table, taking a hold, or waiting a jitter or a settle,
+so the race stage follows the tests as it did before the gate existed. Both
+gates refuse, exiting 1 without waiting, while the volume holding the Go build
+cache or the worktree store has less free space than the disk floor: 4 GiB for
+each preflight the first gate admits at once, and 8 GiB at least. Above one it is
 shut only by another live `go test -race` run, a race waiter queued ahead of
 it by the same rule (started earlier, or within two seconds of it with the
 lower pid) or running its command, the load limit and

@@ -198,14 +198,14 @@ func firstParent(root, commit string) (string, error) {
 
 // handBackUnfit is why m, a tombstone marking a hand-back, may not be written
 // with it: past the message cap, or refused by the outbound policy. "" when it
-// may.
+// may. The caller says what came of the release instead.
 func handBackUnfit(root string, m message) string {
 	text := m.text()
 	if n := len(text); n > MaxMessageBytes {
-		return fmt.Sprintf("the tombstone marking the hand-back would be %d bytes, over the %d-byte cap, so a plain tombstone released it", n, MaxMessageBytes)
+		return fmt.Sprintf("the tombstone marking the hand-back would be %d bytes, over the %d-byte cap", n, MaxMessageBytes)
 	}
 	if err := checkMessage(root, text); err != nil {
-		return "the tombstone marking the hand-back could not be written (" + err.Error() + "), so a plain tombstone released it"
+		return "the tombstone marking the hand-back could not be written (" + err.Error() + ")"
 	}
 	return ""
 }

@@ -2642,6 +2642,35 @@ Verdict at filing: SPLIT, confirmed by the product thinker. The initial routing 
 
 Grade: the first routing was right at the level of intent versus issue, and wrong at the level of how many intents one setup rethink holds; both reviewers caught it independently.
 
+## 2026-10-26: private repos land checked work without renting CI (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| how a managed repository's changes are checked and landed: results reused across worktrees, one check per landing, the local landing queue, the result posted as a status, the route chosen from the plan with its price | capability | itd-2610261025516272 (draft) |
+| a self-reported local result may replace duplicate hosted work and gate a landing only for the person's and their agents' changes, never an outside contribution, and a release cut never reuses a result | trust rule | proposed ADR and brief invariant at planning; not filed |
+| each check runs once, where it is cheapest to trust | stance | proposed principle at planning; not filed |
+| the gate list's schema, the receipt's fields, `-trimpath`, the declared tests whose inputs the cache cannot see | plumbing | the spec and the brief |
+
+Verdict: SPLIT, confirmed. The routing was the agent's, put to the product
+thinker as a recommendation with its reasons, and accepted with a plain yes
+on the same day, unchanged; the initial routing survived confirmation.
+
+Typed links, as confirmed: supersedes itd-115 (its no-wait landing want is met on
+every plan, and the local queue replaces its poll-and-update fallback);
+refines itd-106; builds on itd-2610161647248332. itd-2610110940216682 stays
+the hosted-CI shape for a repository whose default branch a queue gates, a
+sibling with no typed link. Advisory reversal flags: none; the strict
+up-to-date setting stays on wherever the plan allows it, so iss-172's
+invariant holds. One refinement is flagged rather than reversed: the draft's
+pull-request criterion tightens itd-2610110940216682's first criterion.
+
+The routing moved once, at filing. The drafting missed itd-2610110940216682;
+the create command's near-miss list surfaced it (score 0.297, below the
+threshold). The draft was then scoped to the repositories without a queue,
+plus the local half for every repository, and the sibling keeps the hosted
+shape. A lexical near-miss at 0.3 was the only thing that found a draft with
+the same title idea, which is worth a look by the automated rung.
+
 ## 2026-10-26: abcd sizes its own test admission from what it measures (product thinker, routing confirmed)
 
 The proposal: "is there a way to autonomously adjust the number of preflights depending on load?", with the earlier ask that `load.preflights` be adjusted up or down as more evidence comes in.
@@ -2656,3 +2685,17 @@ The proposal: "is there a way to autonomously adjust the number of preflights de
 Verdict at filing: FILE-AS-IS, confirmed by the product thinker ("yes, file it"). Verdict at planning: SPLIT, confirmed by the product thinker the same evening, after both pre-interview reviewers (design and feasibility; record discipline) returned SPLIT independently: itd-2610262127138979 became the first piece (a preflight waits for its turn as one whole run, a fix), with itd-2610262140595217 (the run record) and itd-2610262141001890 (the automatic count) after it; idle-slot release went to iss-2610262155232329 and the short-run lane stayed iss-2610260845422800. Typed links: the first piece builds on itd-2609231434459890 and itd-2609201925079472, and each later piece builds on and is blocked by the one before. Advisory reversal flag, confirmed by the product thinker: the count is adjusted automatically and never by hand, reversing the rule that the person writes it (the LOAD rules, dcn-2610161814279204), carried to itd-2610262141001890.
 
 Grade: the first routing did not survive. It was right that the capability is an intent, and wrong that it was one: it held two major fixes, a measurement primitive and a trust decision, the same miss as the 2026-10-24 setup entry, caught again by both reviewers. It moved once before filing, from "an intent already exists" (the person's recollection) to a new one: the nearest draft, itd-2610100704270254, budgets sub-agents by model class and does not touch preflights or load.
+
+## 2026-10-28: the status line says what each session is working on (product thinker, routing confirmed)
+
+The proposal: put the task in each session's title beside its name (for example "Henry working on <task>") rather than the name alone.
+
+| Part | Type | Home |
+| --- | --- | --- |
+| the status line shows the work a session holds, beside its name | capability | itd-2610281253044600 |
+| the session's title stays its bare name, because the host uses the title as the name peers message | trust rule | already standing in itd-2610111707085098 (a name stays put so it can be addressed); cited, no new rule |
+| the task shown in the host's session list | capability | not filed: the product thinker accepted that the session list keeps names alone |
+
+Verdict at filing: FILE-AS-IS, confirmed by the product thinker, who chose the status line approach. Typed link: builds on itd-2610111707085098. Advisory reversal flags: none; the title form asked for would have reversed the naming intent's stable address, and was declined in favour of the status line.
+
+Grade: the routing survived. The first reading took the request at its word, a change to the title, and the check that the title is also the host's messaging address moved the part to the status line before anything was filed.

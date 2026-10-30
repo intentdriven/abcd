@@ -3,11 +3,11 @@ old_sha	new_sha	subject
 862485494be1f03cee6c1baa41fd7dcb36e7363c	27b600b1468fb6af337d1b80338644790545f14f	feat: scaffold abcd-cli — Go rebuild foundation
 70f795dce5dee68695fea7ab693fb6f7794cc69b	5a0aa2c69a95e245c6f9e592e063747ac8ed6032	ci: run gitleaks and zizmor as pinned CLI steps
 091dbcaa9a7339c4e39cf0abef4ed294b20e3e76	6ceb39ac2d98df3e3b7701c98853616a4827ed5d	ci: pin zizmor image by digest
-246ce00398a2f76561b89b780fe15e4e741abfa6	9cd59304f10cf2bd5d40800f2d4d21dd1ea729ee	Merge pull request #1 from REPPL/chore/phase-0-scaffold
+246ce00398a2f76561b89b780fe15e4e741abfa6	9cd59304f10cf2bd5d40800f2d4d21dd1ea729ee	Merge pull request #1 from <personal account>/chore/phase-0-scaffold
 20e15ea2e22c7e84c91ae40e8972dcc7b4fa3914	157e3ac1f76a4dc57e053bcd9406bb53fd2d91a7	refactor: restructure design record into flat artefact-type folders
-4defad67bf6928930a7a0c45d371f90435dad05b	2ceab9cbe1273c95afa034b2ef7ad43592154cf9	Merge pull request #2 from REPPL/refactor/phase-0.5a-record-structure
+4defad67bf6928930a7a0c45d371f90435dad05b	2ceab9cbe1273c95afa034b2ef7ad43592154cf9	Merge pull request #2 from <personal account>/refactor/phase-0.5a-record-structure
 29a7f7880adbf0e3200accbcd6f4cd9c45ed5b25	ad25573e3717686bca8ec7829e58d32bc0b0db34	chore: add local branch-protection guard to pre-push hook
-aedd123e0fb9b272194c4d2514a8b720e9db6ec3	3fa9acf47077ea0054b9ef7e33fe75128d6096b1	Merge pull request #3 from REPPL/chore/pre-push-branch-protection
+aedd123e0fb9b272194c4d2514a8b720e9db6ec3	3fa9acf47077ea0054b9ef7e33fe75128d6096b1	Merge pull request #3 from <personal account>/chore/pre-push-branch-protection
 9b4e1e5c41f0649278e99fbecaac232e50ff1d12	1fa14ded45371923f7af87763bebb3057c4ad621	docs(reviews): add plan-consistency review of .abcd/ and docs/
 737c02788c39c64da612e957917509f41606458d	7eb30b035f55a38e1fb226b824dd63e7df9e3c5b	refactor: rename ADRs to 4-digit NNNN filenames
 ca564f1c7dab16ca2d80cb6eafe35d5cfc8345e4	e54e4947e128b5310361eb91261fc2575dd93608	docs: reconcile decision record to the Go rebuild
@@ -16,9 +16,9 @@ ca564f1c7dab16ca2d80cb6eafe35d5cfc8345e4	e54e4947e128b5310361eb91261fc2575dd9360
 87c81fc14d6a2e6ed35d22264c497bc3cb2c0311	5ae72d5847ff5076d8fc725559cc6498e9bc8d14	docs: reconcile roadmap to the Go rebuild
 3ebf7dc119bfa05a078afa8af62143cc23c25e27	1451cc7e73d7d92f366dbe2c064c134268778a18	docs: promote Go-rebuild plan and record-IA SOTA note
 c2e2a375afe0e09c8d747b22b9a0844cafbe9948	97fba95018c2f9e9c367291de2ec72f90aa24279	docs: resolve ADR cross-links to relocated intents
-ae42e1ea52c6ea229c62a0e595c5ccdaa537d5a3	2dc4272d6f138077c261b0ead36ff2fff66e192f	Merge pull request #4 from REPPL/refactor/phase-0.5b-record-reconciliation
+ae42e1ea52c6ea229c62a0e595c5ccdaa537d5a3	2dc4272d6f138077c261b0ead36ff2fff66e192f	Merge pull request #4 from <personal account>/refactor/phase-0.5b-record-reconciliation
 9461ae184834c143784ce7f8290738418d3e541f	ea0dc9b85618f61dd87519e37b5b46fe165f9a5b	feat: enforce the reviews-folder charter deterministically (RD001-RD003)
-87b42edd245ac5fa96cbafcd05446664e521aed8	ec03a65191ffe00d5f373759a490f16325412734	Merge pull request #5 from REPPL/feat/review-charter-lint
+87b42edd245ac5fa96cbafcd05446664e521aed8	ec03a65191ffe00d5f373759a490f16325412734	Merge pull request #5 from <personal account>/feat/review-charter-lint
 dcfd6799c9593ce354d6c72310a830542daa5acd	945d366103545f9498248f64fbb7b341805307ef	docs: Phase 0.5 mechanical record hygiene (frontmatter, paths, dead links) (#6)
 e0473032dab24ec367ff9e030518a56e5aa8aae6	50a3e2a9c44ea23f2a9bd1c503bd1808c0fbad2e	docs: reconcile 12 surviving brief contradictions (F1–F12) (#7)
 1751cf57eed2dd7c28b62ff4120e783a4e21bb94	221e7e291860724406ffd6195c58ce112ee78a8c	docs: add READMEs for 16 uncovered record directories (#8)
@@ -38,9 +38,9 @@ f4450334a3d53c5a510f29f6be853219479ff8ee	3474bcdc56a76826738435cc3363229419098ca
 d77e69a5b3468b4eb29fd12ffec70af89f5eff3a	a00f489643f40fe269f85625f1fa9eeb0b00946a	Update README to remove plugin references (#23)
 4bfc162f29260e15bc7f2d9396463a07a7e95e7d	bebc422420333221149f53139ba5541062685903	docs: generalise host references to keep the surface harness-agnostic (#24)
 c5772930346f6c04e594e3361c8021b0a0650262	b0a8dbbc32f8aa357d64e9b582ea8148ec3a41bf	feat: harness-name prevention gate + name-banlist intent (itd-74)
-4f067a6f923a1854e0e81d030a36a2c2f6c42acc	5fe371140193d9db67456264401910bf0067a5ef	Merge pull request #1 from REPPL/feat/harness-name-prevention-gate
+4f067a6f923a1854e0e81d030a36a2c2f6c42acc	5fe371140193d9db67456264401910bf0067a5ef	Merge pull request #1 from <personal account>/feat/harness-name-prevention-gate
 df70c609c2b9249b839526266c54722b040d70bf	ba4f5ea5ceb41bbb4cdbac86e2e60efddb9dd17c	feat: self-discovering CLI smoke harness (evals/) + eval intent (itd-75)
-38b89466a9bd389bd4cc3357f8d6517c84bfdac0	bf9cce11ff9c6b20b407bb3f25cbd999cea18fed	Merge pull request #2 from REPPL/feat/smoke-harness
+38b89466a9bd389bd4cc3357f8d6517c84bfdac0	bf9cce11ff9c6b20b407bb3f25cbd999cea18fed	Merge pull request #2 from <personal account>/feat/smoke-harness
 b62859fd85d43c758622f8dd9bb1ed8a235bbe85	b4d63d900713e85b0f28e171f3d72f03ea1d224a	docs: acknowledgements, AI-attribution policy, badge fix (#3)
 4c4bf7f3994ecbcecbcf91653f49dfa9312aead3	20fa17f2b3abec949f8f321a7bbb08724e09a7c6	feat: dependency-aware capture ledger in the work tier (ADR-32) (#4)
 be8ca371c991eca3842ac33d1f2f231ad85bee08	4fe330a73e2e9976d7da72261b459e97ebe437cf	docs: drain the roadmap-consistency triage backlog (iss-1..iss-15) (#5)
@@ -110,11 +110,11 @@ e22a6c51e457beceef391a6200e398cd1d60bca1	26359beffb12fe4ba0eebc79015f2399d6333c2
 1f173b10bcb26bd09c4ebe509aa4eb5151c21dce	5d639f061cc46529dc42d1bce2f6603c0ff04c6d	fix: itd-3 wire force_refresh_every_n + address review findings
 982988aac9ba98b99d963c1b3143aa9761003c78	a0cc55ac21a1cacc6a48939b24131bc70d96b828	docs: itd-3 rules-loader build learnings note
 53e251fa050581e342a88447e39674142a44e0f8	a3d6bc60b7bab626bc7550edcfafd2c90d44271a	feat: itd-3 implement deferred follow-ups (stemming, prune, .abcd guard)
-052595793fedb064c82b646a8be5978aa132bc29	d399cb464d498ca28311205b3781e480fcc4b191	Merge pull request #18 from REPPL/auto/itd-3-rules-loader-design
+052595793fedb064c82b646a8be5978aa132bc29	d399cb464d498ca28311205b3781e480fcc4b191	Merge pull request #18 from <personal account>/auto/itd-3-rules-loader-design
 b5f476d82050ebaad406767ba921da70eec56c6f	e5fdf97c2762f570c031c2b5afe7ad5fceb761fe	docs: ship itd-3 (manual fidelity audit + planned->shipped)
-c395004033fd5c65b7e51b07f68d92e41054e6ea	31db06c853d51c03db9b68c244e81507b709b297	Merge pull request #19 from REPPL/auto/ship-itd-3
+c395004033fd5c65b7e51b07f68d92e41054e6ea	31db06c853d51c03db9b68c244e81507b709b297	Merge pull request #19 from <personal account>/auto/ship-itd-3
 3931dcf8979aa98cc6e5dfe81a6480c054253437	60519bac0ea6089b38a210405a7214dd545d8b27	docs: intent-lifecycle SOTA design plan + rules-seam follow-up (iss-64)
-95964547642480c555d4a8177aab3a9a4482ba2c	aaf183bafbfc69343cfea61a7d005e00d5693e10	Merge pull request #20 from REPPL/auto/intent-lifecycle-plan
+95964547642480c555d4a8177aab3a9a4482ba2c	aaf183bafbfc69343cfea61a7d005e00d5693e10	Merge pull request #20 from <personal account>/auto/intent-lifecycle-plan
 3551a96a8d8cba720a384dde0f026bd4092321e5	89c443ca9608e1da90cd29973318d54c424c3074	docs: add sota-per-intent principle (#21)
 9bc05874dc0af42a501bc279274e16723d07aeaa	b70a40f2909c9a9f3b5bc183f9cdeec36e1343a5	feat: itd-80 intent-lifecycle slice 1 — native spec store + abcd intent/spec verbs (#22)
 530e584b768f9aa0fbd3184baf4b746651a894d9	dfa39b15bbaf01478861d158a0dda2c19f3d651f	docs: itd-80 SOTA declaration (dogfoods sota-per-intent) + run-learnings note (#23)
@@ -136,106 +136,106 @@ f0f7f63c0fa2de4e023f15e9d95a125cb2a61e75	c83b2a1ced50a31343244aa7a557b40cbfddae1
 26c116c6220e734fc3081a69284ed13f502acf9f	11b57fd509e26219e6faaf0af80102ab2892f970	docs: design /abcd:run autonomous-run loop
 b3c4e6a826979b3f69cacec4536e952e39f49d45	642463c9200295f56b8869aca541b55c77d2f8a2	docs: add /abcd:run protocol and abcd-cli ledger-drain run-plan
 09cb28adcb2255928a4448d68f49d6b2dc9f7524	d9536f88d265d4c82e0cecefb8ed817522f79b60	docs: add local plugin dogfooding runbook
-9c9aa694366ebd4af3f41056b5c4e27115f38d00	7eac07852ce2598f12418cd9b005110afc01af87	Merge pull request #39 from REPPL/feat/abcd-run
+9c9aa694366ebd4af3f41056b5c4e27115f38d00	7eac07852ce2598f12418cd9b005110afc01af87	Merge pull request #39 from <personal account>/feat/abcd-run
 0c7a82cb7d99e938626cb8783ba6fe433640cee6	a79e793d7e38330ed35fb37a51688f73b261e821	chore: capture dogfooding-surfaced abcd defects (iss-73/74/75)
 c4ebffb5b52060f76d029f57287614edb3f90bd3	9969643982f72bae695665abbb18b24dc0cffadf	docs: add principle — workaround records the defect
-247a5b859d0e20338e87dfc697d687849b654a07	acd3646c95db29423facc02a1f659f3586e7183e	Merge pull request #40 from REPPL/docs/workaround-records-defect
+247a5b859d0e20338e87dfc697d687849b654a07	acd3646c95db29423facc02a1f659f3586e7183e	Merge pull request #40 from <personal account>/docs/workaround-records-defect
 3a801d6616213d196b6e0dc529e59f909be3137a	1aee84e6aab8e545e0a1f8fa5cd79d5bd70c07e9	refactor: extract cli.Run for testable error rendering
 5c4542d894560799f00cabd2b6e0a535b6203288	77cbaed3fabe80f0aaf6adfb78d62bcec2b34b81	fix: fail-closed capture surface (iss-29)
 effa17c51eaee552dd258441cbd945aba6dcb799	e3f10da48a44958d477ffdfd3061163bb371b821	chore: capture iss-76 (json error surface leaks absolute paths)
-4c30b4e6e950c8fdd9c96a3e5a6f7b37b7ac073a	a0b00a2aed61504bb68510a55d0150ada48228f1	Merge pull request #41 from REPPL/fix/iss-29-fail-closed-capture-surface
+4c30b4e6e950c8fdd9c96a3e5a6f7b37b7ac073a	a0b00a2aed61504bb68510a55d0150ada48228f1	Merge pull request #41 from <personal account>/fix/iss-29-fail-closed-capture-surface
 61d779460520ad496f085c73b5d271468781e7a0	0d9e4f8f37165715d44a85906816746460d2d0f0	fix: memory-ingest partial-failure reporting + CRLF parity (iss-30)
-03188c28c6e285abbd8b276fce734fff75cfe29b	e36a4b7420bbddd670caf99ae39750203ed5aff0	Merge pull request #42 from REPPL/fix/iss-30-keep-original-partial-failure
+03188c28c6e285abbd8b276fce734fff75cfe29b	e36a4b7420bbddd670caf99ae39750203ed5aff0	Merge pull request #42 from <personal account>/fix/iss-30-keep-original-partial-failure
 d549311b16bf19a8282ec41931b4ce90954d4fe2	755ecc9af627e4c2c3e64acea1be48b97976d973	docs: judge-calibration discipline (itd-81), amending itd-5
 b3811ee8d2170c16be33089b30854e1021f4ba8b	20d6e288b5010e155836373af8347b89de529ebc	feat: ship four reviewer agents with the plugin
 cd8e13655de07c8514bd8de0d84e9b3a7421adf6	143c4c21253b6c7637b8cca2c655fa72e0f03f05	fix: launch identity false-positive + resolver race (iss-31)
 0bccb40171e1a2f3b9778926ffff878add595045	b83f1bdb346a577115525706661e9c9e4e8baaac	chore: capture iss-77/78 (launch dogfood-gate follow-ups)
-32b6aecb66318fd117b9ebefe709f5269874a82b	385702e82cb6d035ecd529210fb3783cace95993	Merge pull request #43 from REPPL/fix/iss-31-launch-dogfood-gate
+32b6aecb66318fd117b9ebefe709f5269874a82b	385702e82cb6d035ecd529210fb3783cace95993	Merge pull request #43 from <personal account>/fix/iss-31-launch-dogfood-gate
 d73402fbf2eb9ea2c6ee02a4e19bb85796f3d578	0f18dc7115b40838c565411c9e0e42457fd22a95	refactor: consolidate atomic-write primitives onto fsutil (iss-32)
-54fef5f3aed88b57ce396107c6aa426cc690301f	5bbff87a660f8ff50da0d3986de332a3095a57c2	Merge pull request #44 from REPPL/fix/iss-32-atomic-write-consolidation
+54fef5f3aed88b57ce396107c6aa426cc690301f	5bbff87a660f8ff50da0d3986de332a3095a57c2	Merge pull request #44 from <personal account>/fix/iss-32-atomic-write-consolidation
 be86b00011d1d761ddd9e3a38a10eff82cec5d46	4e150c5afab2e2fdb2104ef8aabee812d777c68a	Merge remote-tracking branch 'origin/main'
-cc01af7db15df63ec6f9ce870fdf80623d971f46	664e0e8fc0f973bac9f51a9010ab00e8061189e2	Merge pull request #45 from REPPL/feat/reviewer-agents-itd-81
+cc01af7db15df63ec6f9ce870fdf80623d971f46	664e0e8fc0f973bac9f51a9010ab00e8061189e2	Merge pull request #45 from <personal account>/feat/reviewer-agents-itd-81
 5c022981bfdb953b782383d717205dcf8de22853	4ba46ce2b225f5546c95ff845b47441c658c2cc8	docs: add itd-82 (abcd drain — ledger triage) + drain #2 run plan
-c5ba73a90d3c0a3e9990a8789b474b8f58a8c53e	2ff4253a349715eb2f9c6fa5b134c729c9850e09	Merge pull request #46 from REPPL/docs/itd-82-drain-triage
+c5ba73a90d3c0a3e9990a8789b474b8f58a8c53e	2ff4253a349715eb2f9c6fa5b134c729c9850e09	Merge pull request #46 from <personal account>/docs/itd-82-drain-triage
 1047de34bb651bbdf22caaad6542245254c19a37	47a82a75880fa429280611cee53c8613bd49fd38	docs: capture itd-82 — wire the review bar into the rules loader
-137f8de25522d765a73d93086d1b055b9339db5f	14514dc63371a9149dba7c63b6b361c422b2747e	Merge pull request #47 from REPPL/feat/itd-82-review-wiring
+137f8de25522d765a73d93086d1b055b9339db5f	14514dc63371a9149dba7c63b6b361c422b2747e	Merge pull request #47 from <personal account>/feat/itd-82-review-wiring
 1f833fcef4085ddd5b56ca93c9229e3b1a260a2a	07d986ba07caff5628b108015868c53435f85dd4	fix: block duplicate intent ids in intent_lifecycle
 4f88f349bc14571fcbd92f013dca5494504bff93	dd8a27251f556e5a10c780ac75e1b6c23fcf9d71	docs: resolve the itd-82 collision (renumber to itd-83) + capture iss-80
-9b441cba59b7aa72507b9070e093a1d4fb5d590b	ed3f6663f37c4f69f1af42bebf5113406dcdc865	Merge pull request #48 from REPPL/fix/duplicate-intent-id-lint
+9b441cba59b7aa72507b9070e093a1d4fb5d590b	ed3f6663f37c4f69f1af42bebf5113406dcdc865	Merge pull request #48 from <personal account>/fix/duplicate-intent-id-lint
 dab363e5edf76d3e788802f1cc9f006a8e27f25b	97c131a4ae67d257f929643e1da176e996f0e5e2	docs: add iss-73 to drain #2 scope (adjudication landed)
 315ea5e08e43bab0b9d0dd5823f1a190f40873cd	61a76b1916b8ac4776f7139196b9e2b3304b738f	chore: capture iss-80 (run protocol missing-plan-file precondition)
-e9ab51384eaa85dec47e06751e90d89568850c75	dea64dbaaaccd57bfd34f3dd7abc388a9d99c849	Merge pull request #49 from REPPL/docs/drain-2-scope-iss-73
+e9ab51384eaa85dec47e06751e90d89568850c75	dea64dbaaaccd57bfd34f3dd7abc388a9d99c849	Merge pull request #49 from <personal account>/docs/drain-2-scope-iss-73
 459e576acfb631c45a20f59a7ed9ca4f66051e87	6b7adf7df5da661744214433ccc8f00d8c8432a8	fix: strip local-identity paths from the cli.Run error envelope (iss-76)
 62ba1d0ef54f693fa7b06f718c481d1c59d79385	1326c99894d11a72fcb02131ec4591e150d47d0b	chore(ledger): resolve iss-76; file iss-81 (review residual)
-b604c625ff3256fd5b0e50e7fe0feaf671ebec12	fccd921b04799f1543f28bb3fc0209499d310684	Merge pull request #50 from REPPL/fix/iss-76-json-error-abspath-leak
+b604c625ff3256fd5b0e50e7fe0feaf671ebec12	fccd921b04799f1543f28bb3fc0209499d310684	Merge pull request #50 from <personal account>/fix/iss-76-json-error-abspath-leak
 688a0de302633dbe19dc1f1d35ab310ea9461ef7	e40df8d449f99fc9e5cc9413ff5632508dc37002	refactor: route storeOriginal through fsutil.WriteFileAtomic (iss-79)
 9a33a2ffb67ca34be97da602641df1b5efe3b8ec	1c14e1a06ad710c826852f1e467498143ff54778	chore(ledger): resolve iss-79; file iss-82 (review finding)
-1075bf245dc30cb240229471b1d344ba7fee83f8	91df94f4bb5352bd4138f07228fb9c2f7c9447e1	Merge pull request #51 from REPPL/fix/iss-79-storeoriginal-inline-atomic-write
+1075bf245dc30cb240229471b1d344ba7fee83f8	91df94f4bb5352bd4138f07228fb9c2f7c9447e1	Merge pull request #51 from <personal account>/fix/iss-79-storeoriginal-inline-atomic-write
 1979bf64f0435ccf974f935ceb5f1659d03420e7	1f040fb6179092caffc75f8430b6454c2511c4b3	fix: relocate memory-lint + scanner runtime output out of .abcd/logbook (iss-73)
 2c3d32fa2645bcb98574c59980a2e6692d0e1e7c	663853c1a3a925f7cd7686af852feaa9b7f8e735	chore(ledger): resolve iss-73 (logbook relocation)
-069e62e477c9ea644fe3f6a5767655562d827b48	6ea2d02898af0f6b4c1d7658851e153ba85689c9	Merge pull request #52 from REPPL/fix/iss-73-relocate-logbook-output
+069e62e477c9ea644fe3f6a5767655562d827b48	6ea2d02898af0f6b4c1d7658851e153ba85689c9	Merge pull request #52 from <personal account>/fix/iss-73-relocate-logbook-output
 bad7c9c5bb1b870d45d57f0f080b71d7b53d78ae	c902a0c7bf32b142e4a8795f680f661211fc1da3	docs: add facilitator-default-thinker-optional principle
 cc055c9a997909a683be997d97a3aaf710802f30	35f7da36d285c5b192f8001ae8f638b52d420192	docs: record the scoped auto-merge decision + link it from itd-29
-f5c80fe69188336700e246a4a19d56016b512c14	949f26927b4e55ee9a4d9639d87a0ea10f9af56a	Merge pull request #53 from REPPL/docs/auto-merge-record-groundwork
+f5c80fe69188336700e246a4a19d56016b512c14	949f26927b4e55ee9a4d9639d87a0ea10f9af56a	Merge pull request #53 from <personal account>/docs/auto-merge-record-groundwork
 00b934aca037052551f4d0972d69acafa8459eab	7ce354ed78d32f80528f082ef48d25c380d7b9dc	docs: capture itd-84 (intent-decomposition discipline, draft) + SOTA note
-4dff7706bf5929d9aa1e7742facc35aeb3f22aa5	09684b7582ac9c8eb0967680be29a9cf7448f271	Merge pull request #54 from REPPL/docs/itd-84-intent-decomposition
+4dff7706bf5929d9aa1e7742facc35aeb3f22aa5	09684b7582ac9c8eb0967680be29a9cf7448f271	Merge pull request #54 from <personal account>/docs/itd-84-intent-decomposition
 546371f82a89e43b35b908e4e2da13e9d5080d55	76a798e168a2e155d8b0b4329735fbd4aed7667d	chore(ledger): renumber duplicate iss-80 -> iss-83
 af807113410c59533373005fd274653425988322	bed1d3aa37f22ef1101b6b5ef6e5fac11fcab0c3	chore(ledger): renumber duplicate iss-56 and iss-57
-1f23b8ddd78425af9a957527bf05c00dccab1302	b38678810fd6c4cc25adeed887ce12c81126868d	Merge pull request #55 from REPPL/chore/renumber-dup-iss-80
+1f23b8ddd78425af9a957527bf05c00dccab1302	b38678810fd6c4cc25adeed887ce12c81126868d	Merge pull request #55 from <personal account>/chore/renumber-dup-iss-80
 de044a98dd6e8750affe1f719d9443c9aa631400	a6fdcedcd5b4a0825c1609c2de289130f8fd0a06	docs: de-stale intent row and scope-note spec/rules surfaces
-b1290b5be738161a54caf1fd90b93e4c2c3e4338	ef89066ee15b69983a5ad823b548ca0aca63dded	Merge pull request #56 from REPPL/docs/brief-surface-scope-notes
+b1290b5be738161a54caf1fd90b93e4c2c3e4338	ef89066ee15b69983a5ad823b548ca0aca63dded	Merge pull request #56 from <personal account>/docs/brief-surface-scope-notes
 35e1a57678491ecce89994d243e3d9fd88b4cce1	efa927e950981ce04ab5662276154b836f8884e1	chore(ledger): capture seven onboarding findings from Manuscripts dogfood
-e70a16d2567e6244724c5526241fd192dcb724a6	4c1a332254f3b6621e4ceccb24b89daa45dc71c8	Merge pull request #57 from REPPL/chore/capture-manuscripts-dogfood
+e70a16d2567e6244724c5526241fd192dcb724a6	4c1a332254f3b6621e4ceccb24b89daa45dc71c8	Merge pull request #57 from <personal account>/chore/capture-manuscripts-dogfood
 26fe20240e656cc43b66033bad222fe6c3b47203	50f378eb8be3ac20480d535276c787fb79a056c6	docs: plan and formalise the abcd audit verb (itd-85, iss-86)
-19ecf4396d4bddd6c6cb688bbe03f065720472c5	4970fdce434175085596240c437c185f9fe9405a	Merge pull request #58 from REPPL/plan/abcd-audit-verb
+19ecf4396d4bddd6c6cb688bbe03f065720472c5	4970fdce434175085596240c437c185f9fe9405a	Merge pull request #58 from <personal account>/plan/abcd-audit-verb
 4eed8dc84b04209424469c15971b4b5a07aca649	75f190b58460b89024e54f03fec5a5cf21e804e8	feat: add path-presence and gitignore primitives for abcd audit
 78c69c81825b9f32d7578e97fdfadbe1ad4b0abe	4805c479697d770614b67b2f3bedcc2b6f73fce0	refactor: route launch and lint through the shared path primitives
 a532aa1b31f2f7ce88973d74cd4c4ace4c54a39e	e4217d2bf689de2be1213f2261609c6f3b4bea28	chore(record): M1 decisions + journal for itd-85 path primitives
-5da4d29221dc593bfc858fd86228e82f1f53ce32	28cf71276b57c72dfad141c934cd018818de5f7c	Merge pull request #59 from REPPL/feat/itd-85-path-primitives
+5da4d29221dc593bfc858fd86228e82f1f53ce32	28cf71276b57c72dfad141c934cd018818de5f7c	Merge pull request #59 from <personal account>/feat/itd-85-path-primitives
 6ee690142104817c23b58b90acc1cf0d4664d8ea	64f7876c164039ba483836bca8a647a6463a226f	feat: rule engine + serializer seam for abcd audit (itd-85 M2)
 be7190b4d9f5ca163e4292c073c81ec48ea809c0	cc3992eb8ef73fca71bf790f9ec9a48f2df30bf4	fix: fail closed on a finding with an unrecognised severity
 922b6ae16eafc131d712cedb13cf60905b85cf78	2b8652a7bd78f5c02884dd3749d47e16f54eea19	chore(record): M2 decisions + journal for itd-85 rule engine
-3684df69e6bf2d8236ffe66c1a5d805f18bd8079	b6ef2caca7d31826851fb000abab6afa44f9397a	Merge pull request #60 from REPPL/feat/itd-85-rule-engine
+3684df69e6bf2d8236ffe66c1a5d805f18bd8079	b6ef2caca7d31826851fb000abab6afa44f9397a	Merge pull request #60 from <personal account>/feat/itd-85-rule-engine
 6719c36cec22070b9fbd2d199546a01b256a9399	6b8f5c18c65316caf5d6e5fcd5dbaa3e86e4b01c	feat: add InRepo and TrackedFiles git helpers for audit rules
 5982feecc6f3ba1e86cb9ad7b818890d0e5954f3	ebde2ec3582975bd1c0878bbee928e08eae944af	feat: the five v1 conformance rules for abcd audit (itd-85 M3)
 7dcd78a89dd7ad68f064759e82ee0bc9b29e45f3	83c59600b825ebfceb01091d6b11d9fb524402a8	fix: contain privacy-hygiene file reads to the repo root
 d75beb248257bb850b2254d53d74c0364d3c30a4	1414f6140f2fea840da4a602acb26099ba0f1325	chore(record): M3 decisions + journal for itd-85 v1 rules
-6135e70d7eda6fcede59e922f27a097db98aff21	8d819e340828dbdfc2469f56abe5624cccefb772	Merge pull request #61 from REPPL/feat/itd-85-v1-rules
+6135e70d7eda6fcede59e922f27a097db98aff21	8d819e340828dbdfc2469f56abe5624cccefb772	Merge pull request #61 from <personal account>/feat/itd-85-v1-rules
 3097485337d2973fcf4ff8451be7d511711480cb	7d6510e74625476daf3377abf855422bdbdf8128	feat: wire the read-only `abcd audit` CLI verb (itd-85 M4)
-71b702276782d7a018467430cb8b7a1ab77862b8	26f732c255428b34041c6ff1f8c92516f88d4cf3	Merge pull request #62 from REPPL/feat/itd-85-cli-verb
+71b702276782d7a018467430cb8b7a1ab77862b8	26f732c255428b34041c6ff1f8c92516f88d4cf3	Merge pull request #62 from <personal account>/feat/itd-85-cli-verb
 909afe22a3bbcc12c72d221f56218d35cde1c0a1	6947945e10a60b54467df1ce9117ca7d363beea1	feat: ship the /abcd:audit plugin surface + registry row (itd-85 M5)
-5574a72d4ce29b16ad9dd54d036cb9d8a5de9a3b	8bb0c44f99d0fce9ca932359dec0e72decb4aa32	Merge pull request #63 from REPPL/feat/itd-85-plugin-surface
+5574a72d4ce29b16ad9dd54d036cb9d8a5de9a3b	8bb0c44f99d0fce9ca932359dec0e72decb4aa32	Merge pull request #63 from <personal account>/feat/itd-85-plugin-surface
 2f1b78b8ef3577bd895d09bc9f4ee179f8154fd2	d7e6f8aea492ccef8160b2eadb8725fb89185e20	feat: wire prepare-this-repo onboarding to abcd audit (itd-85 M6)
 61d7ede6752d5d690e902b19c80d8f205e2a5243	808c9bdd14143243799fa79773af5cece7be8979	docs: genericise the example path in isSystemPathSegment's comment
-f5367cdec985c8eedb6aa796766832b3a2c54e06	719972f8efea9d08e0c5cd3a534435176b1979e8	Merge pull request #64 from REPPL/feat/itd-85-onboarding-wiring
+f5367cdec985c8eedb6aa796766832b3a2c54e06	719972f8efea9d08e0c5cd3a534435176b1979e8	Merge pull request #64 from <personal account>/feat/itd-85-onboarding-wiring
 d89aba474af587b522efb318af80184fe5af1534	ac2ce2e1c0d68ebf6600cedc7c70c5efa15b9e4f	docs: record the abcd audit verb (itd-85 M7)
-514467babc664dcd5ac60577ccf4d8a0c9c02570	a009a506b43ed01ef6f9ad7197c73b0dca21b5e3	Merge pull request #65 from REPPL/feat/itd-85-record
+514467babc664dcd5ac60577ccf4d8a0c9c02570	a009a506b43ed01ef6f9ad7197c73b0dca21b5e3	Merge pull request #65 from <personal account>/feat/itd-85-record
 038a5834bb0d73ee8a8bcd5c5011f6c62861ab1c	b8aeae7c5fb1272bfea1961b6c58d174125fe18c	fix: tighten three audit rules flagged by RepoPrompt review (itd-85)
 7d4149520ed17011f5008e4feeb89783467231d0	3d6c47e54eec6fa0db425d5162c84299bb1fda52	fix: treat a path under a non-directory as absent in fsutil
-a9b58cd13556a7515bd6dbd3b5b22412cb1acc42	80a44355f9707cb5a7b2a01a089229cb56cde3f2	Merge pull request #66 from REPPL/fix/itd-85-audit-review
+a9b58cd13556a7515bd6dbd3b5b22412cb1acc42	80a44355f9707cb5a7b2a01a089229cb56cde3f2	Merge pull request #66 from <personal account>/fix/itd-85-audit-review
 77357a954e7ae74b300e0225338c9019d1db8773	e7393893fc048f36a5fda180ef37ce2b6adb51e1	chore(record): the ABCD sensemaking method, its principle, and itd-86/87
-61cf985ae5197916282a79a8d7fcce479c2059c9	6f17fba5f3ea2ada1630f8eb699f28f6412279c2	Merge pull request #67 from REPPL/record/abcd-sensemaking-method
+61cf985ae5197916282a79a8d7fcce479c2059c9	6f17fba5f3ea2ada1630f8eb699f28f6412279c2	Merge pull request #67 from <personal account>/record/abcd-sensemaking-method
 38eeb2a0c80f76d77ed27f7ec935759a17f1bd72	1ac0691c85ed942e2aa43527ee92fcfc955001a0	feat(record): the lifeboat becomes a coverage experiment (adr-35, itd-88/spc-3)
-50c35c267dc2c1b8ba0d16e74805539b593c8657	792c3d9bf3294118d65f0bff5f377d7163fb9a53	Merge pull request #68 from REPPL/auto/itd-88-lifeboat-coverage-m0
+50c35c267dc2c1b8ba0d16e74805539b593c8657	792c3d9bf3294118d65f0bff5f377d7163fb9a53	Merge pull request #68 from <personal account>/auto/itd-88-lifeboat-coverage-m0
 007664cb0de8f0ea16f4891c3d659aa0e7918a9b	6670b643f664445ab49863aa5bbeb81c9d4df260	feat: capture session transcripts on SessionEnd (itd-89/spc-4, M1)
 5459bd947d3c5b41ed4207c61d76422eb7d127ed	d6b8c8106a78e60ace5afbd436db6db7ea89b1c4	chore(record): iss-95 maintainer decision — make the not-installed case loud
-192fb54be54a372978899faab69eabd2a70248de	655f523117ee55fb71e784924c2fb3a4cd655e1a	Merge pull request #69 from REPPL/auto/hook-session-end
+192fb54be54a372978899faab69eabd2a70248de	655f523117ee55fb71e784924c2fb3a4cd655e1a	Merge pull request #69 from <personal account>/auto/hook-session-end
 e045b70da6d8e8e48dcbd15d2718c17cb92533e1	148571d2eca395ec2cf78165f962179349aa357d	feat: warn on session start when the transcript store is unbootstrapped (iss-95)
 7d579d9fc5b701f664081b1e6215ff689dcca520	2dc811dc21a41af6c3ce15095feb71acd97839a8	chore(record): iss-97 — Detect's marker/config reads are unbounded (security review follow-up)
-664ee8ff2e1f2af7c0ff4068e93d03289a3c5d6b	da626d4ced1f66ed2f916f87453293772dd346db	Merge pull request #70 from REPPL/auto/iss-95-session-start-notice
+664ee8ff2e1f2af7c0ff4068e93d03289a3c5d6b	da626d4ced1f66ed2f916f87453293772dd346db	Merge pull request #70 from <personal account>/auto/iss-95-session-start-notice
 443f33e63d8276be777e6c8e807ba9f2d239a2fa	1c1c5fccde3f69a6768efe1396dfceb677ee52b3	feat(disembark): coverage-probe scaffolding — schema, orchestrator, verbs (itd-88/spc-3, M2)
 d20701a57edaee13140ca3a23feb57cb9d17c577	56c468c6d51a16e2bea473913fe9bc6d1b4f988c	feat(disembark): tiered source adapters ground the coverage probe (itd-88/spc-3, M2)
 c3c4a333ecf55230f6f64ae58133a18ab962c960	d22846a9f2d906b151ae4ef3e34fdd9c03184ab4	harden(disembark): fixes from the M2 adversarial review
 981660b2258ae104ea9151e0558e92c3831398a6	2aecc1f7d182c971ac1e72ebfa510bfa636621dc	test(disembark): don't assert git-history grounding on the ambient repo
-00c1d510d94239accba660d55da5d7596981f615	5270bea91813431d1cb071a90a0da0ad99f40598	Merge pull request #71 from REPPL/auto/itd-88-m2-probe-coverage
+00c1d510d94239accba660d55da5d7596981f615	5270bea91813431d1cb071a90a0da0ad99f40598	Merge pull request #71 from <personal account>/auto/itd-88-m2-probe-coverage
 d57155808b5c5abee8f3c42f23e7e25c58a3dceb	5ed2aec9cc633b696fca5ee5919baf914ea4ce32	feat(disembark): widen dependency-manifest detection; record the M2 gate outcome
-b1bbc4ec526d57bec221bd591b3aa2bf86d0a742	d682c854207f6ed2476adb828e5bb13098406239	Merge pull request #72 from REPPL/auto/itd-88-adapter-gaps
+b1bbc4ec526d57bec221bd591b3aa2bf86d0a742	d682c854207f6ed2476adb828e5bb13098406239	Merge pull request #72 from <personal account>/auto/itd-88-adapter-gaps
 a5131fbd14fd3cba534a804f7bff7915ca0a78ef	88d2234984fe9aaf65e28a0b4eced20cf59e05de	harden(scanner): close secret-detection and redaction gaps from bug hunt
 3c87eec0c2774f7eee63da19c44f21be31e1183e	4524b2f95b25d65aef25e0315fa9e1f2b9a59e82	harden(launch): close symlink bundle leaks from bug hunt
 f0c5edd5c31f95b65e88054f3f3db9819d337bbc	c3f4c4f508366716ecf399da13e0ee7a67bf9f88	fix(ahoy): don't delete user .gitignore content on an orphan ABCD fence
 1e00c59059edd29053b2ae02e9d34077aecf1b6a	8977536a788b62aafa8641609aba52249a6c06be	harden(cli): stop $HOME/username leaks in command-error output
 3ca222808356a9e661fc5c5c696e1c137ac1edba	017f5314769e171027418dbfcaa54107062d1f17	docs(changelog): record the bug-hunt security and correctness fixes
-d9580c7e863d8a9c22a3cf96aaa4c04f8f733404	98b47e19fca8ebc5fdc580d70449f6753576fc2d	Merge pull request #73 from REPPL/fix/bughunt-a54cecb5
+d9580c7e863d8a9c22a3cf96aaa4c04f8f733404	98b47e19fca8ebc5fdc580d70449f6753576fc2d	Merge pull request #73 from <personal account>/fix/bughunt-a54cecb5
 481f27212b7c90ecbf0c00eaaaae52e8a738aebb	f2139896bd578a3176f8b13251cffb008b70274f	harden(gitutil): fix ignore inversion, env isolation, and error-swallowing
 e7b1cec78143047e626b73e6e66d4ca666464ee1	778aed3b71ee00a5a1c7f57cc55bef8a3627969e	harden(scanner,fsutil,identity): masking, atomic-write and identity-gate fixes
 58a37620cd9c4207816825548b5a2406d586b6fc	1c7242ed76db6e92af460f40daead45cb7b252a7	harden(launch): fail-closed gitignore probe, no-panic globs and pointers
@@ -246,17 +246,17 @@ f75ca075824008d4dea89497f011c043370acbf4	6cf0df8a16e92bc50d349be0c9406d2d270b190
 12d0a696ca15609c77739087a6224933064935c2	6f0c17d25286f27a556d8497ad3f8db6dbec7135	fix(lint,audit,spec,history,lifeboat): false positives, fail-closed, id minting
 033102acbe1451561c8ad62924cc561f432c9f80	b226e2624c37f341ccc322bf57b380ea00653d83	fix(cli): repo-root pii config, exit codes, and input validation
 a35dfcef49c14d5ae10d180662c823bdfcb6e51c	5f3b072cd49377dfc23008bf4e7d3deef602fcf4	docs(changelog): record bug-hunt batch 2 (security + correctness fixes)
-d2d87f0a9b8c4da5fa37aa73356e33865f7e2d47	3c6c60c77470597f9ff169464f141aac5d0ed033	Merge pull request #74 from REPPL/fix/bughunt-a54cecb5-part2
+d2d87f0a9b8c4da5fa37aa73356e33865f7e2d47	3c6c60c77470597f9ff169464f141aac5d0ed033	Merge pull request #74 from <personal account>/fix/bughunt-a54cecb5-part2
 9395a0ea63c0d686108519555293ac7c64818e25	f60c77a5255e10af05872170f6198f5dcf663948	record(issues): three deferred bug-hunt findings (iss-101..103)
-cb7295b70442e8d79a6baa3c203b9fa5d5d18ba7	88b5d50e18034360a1be0a2f6de2a468763a1001	Merge pull request #76 from REPPL/record/deferred-bughunt-issues
+cb7295b70442e8d79a6baa3c203b9fa5d5d18ba7	88b5d50e18034360a1be0a2f6de2a468763a1001	Merge pull request #76 from <personal account>/record/deferred-bughunt-issues
 97df0c19e329fa46b163284a40a48994c1678755	7f4542d0688047d18ce0e51b55f7e44f4987247a	record(lifeboat): adr-36 + itd-90 — coverage blanks are a fillable lifecycle
-51535107fc29f02a49a01de06dda3426774520f6	f9d392ace502f624af5478dd873c049534cbbdf3	Merge pull request #75 from REPPL/auto/itd-88-interview-lifecycle
+51535107fc29f02a49a01de06dda3426774520f6	f9d392ace502f624af5478dd873c049534cbbdf3	Merge pull request #75 from <personal account>/auto/itd-88-interview-lifecycle
 0e9a6b7a42e65648936a727699fd61ccfaed8d30	4b5c523bd6b1d650abaac1f5b32bc20dfaf27e1b	feat(lifeboat): read-only plan spine + dry-run verb (itd-88 M3a)
-e7884fd3805f5a2b69ea0102a5d3bec32f896062	4f84bc02917769d261c7cc587f20b87298c38f7b	Merge pull request #77 from REPPL/auto/itd-88-m3a-plan-spine
+e7884fd3805f5a2b69ea0102a5d3bec32f896062	4f84bc02917769d261c7cc587f20b87298c38f7b	Merge pull request #77 from <personal account>/auto/itd-88-m3a-plan-spine
 ec67bad0bbdf4e865c58d9273a520221c10fff61	6ca1ecf07e0d7dfd91809e276018975957fc260d	feat(lifeboat): disembark write path + /abcd:disembark surface (itd-88 M3b)
-23bb11913eccd142e1cba7439222343d4c863a13	e15b9a49dd576acd6a0f03b4cbe635e0e2d41590	Merge pull request #78 from REPPL/auto/itd-88-m3b-write-path
+23bb11913eccd142e1cba7439222343d4c863a13	e15b9a49dd576acd6a0f03b4cbe635e0e2d41590	Merge pull request #78 from <personal account>/auto/itd-88-m3b-write-path
 281a2c80f15d5af5d97a422710c1f9c4db391be7	ace92074cff84a55054a081dee3619c22d67a055	docs(intent): AI-attribution preference selector at project setup (itd-91 draft)
-3b7233d5096975bdb5c51b22a49a0b1b6786ff47	f67aede5b54bbdefed64e0cef8dfdbba16749ffe	Merge pull request #79 from REPPL/auto/itd-91-ai-attribution-preference
+3b7233d5096975bdb5c51b22a49a0b1b6786ff47	f67aede5b54bbdefed64e0cef8dfdbba16749ffe	Merge pull request #79 from <personal account>/auto/itd-91-ai-attribution-preference
 6f7d98edd91b53195e926bc0a0ed89be652c6630	390497c8e8fc4e5a009649105dee9263f7bd6736	feat(lifeboat): graveyard shared vocabulary — types, id grammar, tunables (itd-88 M4)
 92ea86699900f115f9bfd0674a1d158fa1c720f9	7688fc171c1fa32b6d8f7b71b7c621552f3eb853	docs(record): spc-3 graveyard approach, CHANGELOG entry, surface-registry prose (itd-88 M4)
 282fa22a4d5b1a1ea11e700d404825e268a0a0fe	459fcdad124d987f350773d4b6695f56da8ba627	feat(lifeboat): graveyard layer 2 — recorded abandonment (itd-88 M4)
@@ -270,7 +270,7 @@ bdccffb765a431709f4d364cbe067603e49259bc	eee54c21b4440ea65d4e419899ac3d61fcd6c13
 762a299753de5f1539f8ab483cc9e22a74a09fab	6af83ed14de970a5c68a46e6ec09ff0361d0de5f	fix(lifeboat): seven adversarial-review findings — fan-out bounds, seen-id ordering, locale pinning (itd-88 M4)
 a0f767959ce96abf66c375a8f29d2f55f83ae5c6	b967f9bc6f472b8365bcaf922175e058e074dc61	fix(gitutil,test): git errors carry stderr; settle the cap-test object store (itd-88 M4)
 dc0bbac43c2cade32ed3f38e964444ec18167f29	1c2ce90d348e01020beb2a34e159a3dc2744ca08	test(lifeboat): build the cap-test history with one git fast-import stream (itd-88 M4)
-53affa238c30d3bbcf1fbaa7617a95585a935ee9	432989778f9c1db72a3f48b10da63317b6e64624	Merge pull request #80 from REPPL/auto/itd-88-m4-graveyard
+53affa238c30d3bbcf1fbaa7617a95585a935ee9	432989778f9c1db72a3f48b10da63317b6e64624	Merge pull request #80 from <personal account>/auto/itd-88-m4-graveyard
 89b29808dafe4bcb4a46d13f98715f444d788b2c	c914e7940f4e494b1f9a9ba17b2ac1fe9dd33a67	feat(lifeboat): embark shared vocabulary — conflicts, plan/result shapes, family tables (itd-88 M5)
 6311afba5cbbe245322448b59cc1cbd6caf6b0b0	ac351a7c2889089483fbb36ac119375a3234fbe0	feat(lifeboat): pack carries specs; record-derived sub-manifest hash (itd-88 M5)
 bba4cffbe88556ac60cdc7578d763a36e3b0a968	03c9f516ee1495f0c84fffd5df367ef47cf78240	docs(record): spc-3 embark approach, closure re-scope decision, CHANGELOG (itd-88 M5)
@@ -279,7 +279,7 @@ b594011eb6095a08eeb5049adeadfa45a9d2add6	558485eee9b249935094bceee42381745a88125
 be0031633722707c56a64b7c5d573dd252807c9e	d50caea31ebd0afa9ccb4b2ee5b25d8b1ab01207	feat(cli): abcd embark probe/from + /abcd:embark surface (itd-88 M5)
 bc4b1a165d5d2f83baf2a226f39def70b70ce717	ad1933fd5df0d48e7ebdc4261e0cf5a1ee5a9f0f	merge(cli): abcd embark probe/from + /abcd:embark surface (itd-88 M5)
 96e00f35819c8d86a521359f439db84af0867810	a0cf78fc34c5713818f1526e9c79146b3dd0e162	fix(lifeboat): two adversarial-review findings — provenance-hash sanitisation, duplicate-target conflicts (itd-88 M5)
-a099d5fc4319483da6be4b1e848be56309a1b86d	bd59dce1f2f09aa8a9031303fff72afdbc4adbe8	Merge pull request #81 from REPPL/auto/itd-88-m5-embark
+a099d5fc4319483da6be4b1e848be56309a1b86d	bd59dce1f2f09aa8a9031303fff72afdbc4adbe8	Merge pull request #81 from <personal account>/auto/itd-88-m5-embark
 23275b52756c51ab3f1d3e8c8dcee8a9769516cc	8ff95e5f64ec5d0e20f3917cfd2e54261c3e3dff	feat(lifeboat): synthesis shared vocabulary — schemas, citation grammar, oracle verdict enum (itd-88 M6)
 efce3e413f5067d16b35748f4b0bfd21d80a6626	d9d33287fb8c9800c8944599f776b720688b7c4c	docs(agents): itd-5 prompt infrastructure for the four synthesis agents (itd-88 M6)
 deb08d8924395fb00363949fbfc3011bac4ab2b9	002821cafbb9d4f01200e468b6bbd0e17b21585a	merge(agents): itd-5 prompt infrastructure for the four synthesis agents (itd-88 M6)
@@ -293,28 +293,28 @@ daddb6fae4a6c00049b62663c70ba8e5d95b34d6	3804799bf6a021d47fb335a78bc762b1e0e36b5
 f750a1c29e2e885a2046aae9f6ced5fffafaa2ad	b32119a0ac6bb8893d2085e22033534ee48141cb	feat(cli): disembark principles/press-release/oracle + orchestration surface (itd-88 M6)
 b5ad7df28b1827e185277989985159a72f1bc24d	1e19318d127ecf867ccffe38beb4e8f60fd4e214	merge(cli): disembark principles/press-release/oracle + orchestration surface (itd-88 M6)
 06455f57194556c0a390c1902daf0be106e1b6f2	a5ef64d5634464f3a08136523d1ec92544a12079	fix(lifeboat): two adversarial-review findings — prose-Decision ADRs, self-referential citations (itd-88 M6)
-ce4d552e55206dfdacedc655acde408befab00b6	3968f2f867df2577dd34cd661d17a6c6236d8dcc	Merge pull request #82 from REPPL/auto/itd-88-m6-synthesis
+ce4d552e55206dfdacedc655acde408befab00b6	3968f2f867df2577dd34cd661d17a6c6236d8dcc	Merge pull request #82 from <personal account>/auto/itd-88-m6-synthesis
 846a939172baa82dfc4730ed8beee56e04f63dcc	ed235d72c5c6f5eb335c28875d86ede8f39bdbf5	test: close the session-end AC coverage gaps (FIFO, cap, residual, stderr)
 c3aeab7b08d0e8b9154bf47d70411f281ac5c72e	9d81ce5eac7f2392d5e439bdaa60649add74626f	docs: author the spc-4 body (approach, deviation, AC map)
 8ade1cca0a7edbbab19b51ffb91416624affcf2f	9bae505ad24773a51484cf43e1c2d3281782b17d	docs: close spc-4 and ship itd-89 with an ingested 7/7 fidelity verdict
-2194a924496887ef2bff9748537c31cabebe1773	910001a494544a5080a3bc6e077f1302284eb9cf	Merge pull request #83 from REPPL/auto/itd-89-spc4-closure
+2194a924496887ef2bff9748537c31cabebe1773	910001a494544a5080a3bc6e077f1302284eb9cf	Merge pull request #83 from <personal account>/auto/itd-89-spc4-closure
 e5066fe50a341cf869f48af5f295a1cc1665a73f	5a2da05ed346bfece457f51d1973b9f7f01d6bdc	docs: land the planned-intent-drain run plan and burst-1 findings in the record
 7933dc25ca501b9935b9fd22135894f47aea8ae8	78559754f76e3a2b93b3c6251e1cd1865364227f	feat: name the next step in the bare-ahoy folder report
 4e44eec22dee3cb4ca2ab65ec37362f78fa822bf	3e6d936c0af502d69906ce53a88f3dd2a6427fae	docs: mint and close spc-5, shipping itd-40 with the verified AC record
 18535915d6fe0a067e9a8388d0b10ad3e0a3898e	0d34711844d41963fef726e9bc6ec25f6cc5cccd	docs: record burst-2 findings F9-F13 and the delegation decisions
 8c9057939d5d36722640129c13a33e25eb247202	029f3d42b44e9e457ae107a2601b57e8cc791240	docs: ingest the 5/5 fidelity verdict for itd-40 (receipt rcp-a3791f7dde2e)
 4d98519d26af9937e1b6a8ff1f14b5ca6167ea30	9f4e7768258073f2091e7a4425a8055f5a537a41	docs: close the burst-2 M2 delegation log with the review outcomes
-83344af7fdbeed61c1c9feb51aa332112affa959	24bc1211c4a67dfbfb287c9d19285ccb17db4c55	Merge pull request #84 from REPPL/auto/itd-40-folder-classification
+83344af7fdbeed61c1c9feb51aa332112affa959	24bc1211c4a67dfbfb287c9d19285ccb17db4c55	Merge pull request #84 from <personal account>/auto/itd-40-folder-classification
 6876718575aa6c02f60e71bb610e9579e8a9647d	db51b217386260cb91d2e04e356a6cd58bd80502	test: characterize capture list --open issue-field shape
 d85a402f3feb72dbab6110ea85b81113afa32b2d	0b17ef884ae227115c2151765bd4ed2402a42abb	security: complete the trust-boundary hardening sweeps and record the bug-hunt playbook
 0eb418c1acb376579f5c631c0c19ee0308320aa0	c3fd7f98757dc958996e79f351bbef1f9ea3e9e4	security: finish the env-inheritance sweep and guard the embark/pack reads (ultracode)
 c87e848f82c587b31965b9824d6b680583504941	1f8aca9704c7a73faa639cd34cd90a02557379ef	Merge main into bug-hunt (resolve the run-findings add/add; keep main's superset)
 69f76724e3b2003fc38bfcedd1b8dea3de532e0a	16a55ac2870a55efa16560a562e7d156022cf4ba	fix: give the retention test's setup commit a committer identity
-aa692bcbef7972b4ccfbeb348cc16684f1d9e6ee	22c2f529ee26a78118363a2a3cd0f949889996dc	Merge pull request #85 from REPPL/bug-hunt
+aa692bcbef7972b4ccfbeb348cc16684f1d9e6ee	22c2f529ee26a78118363a2a3cd0f949889996dc	Merge pull request #85 from <personal account>/bug-hunt
 1e4123f211ce35dcec3b7e5b665f9498fc305710	a16be304d33d053a2a48cdad638dfb762e976c7f	Merge main into auto/itd-4-issue-capture (post-#85 base; no conflicts expected — worker was guarded off the touched capture functions)
 67cd7e70878eb1e855999e7f0e739c7d92e27abc	8f443590f23d9489cbcdf4c38b27ba39bbe4f9e5	docs: mint spc-6 for itd-4 — record catch-up with the AC3 gap held open
 89b7060bcd552530c47c369ff993a80e55853254	be4e33d32dd1b5938b2494bc991fd3fc7b4191b0	docs: correct the spc-6 ledger count (103, not 104)
-d1747aa5b3f58daabd91821f7eae813c9c254328	b295c5974d006aa7c526291813f062d54c33b58b	Merge pull request #86 from REPPL/auto/itd-4-issue-capture
+d1747aa5b3f58daabd91821f7eae813c9c254328	b295c5974d006aa7c526291813f062d54c33b58b	Merge pull request #86 from <personal account>/auto/itd-4-issue-capture
 23c0e862bc3b1fffabbf5babb4eb7d89bcc2e6b4	38dfd25d7f663efaededb9717dc4cf9c9b761c7a	feat: add the GL002 forbidden-synonym lint gate
 2a6e9cd16e1afbb93db971e2e98b128971c78f23	ebeb134aebbcd6c56c36a1cdfccfcf81a6a0f685	docs: sweep the residual epic noun to spec behind GL002
 6c1a88a27cd96b9f77d8950c6a2b158e1c19d945	75ee052fcaec3ec6ae9280080bd081470015c7c0	docs: changelog the GL002 forbidden-synonym gate
@@ -325,42 +325,42 @@ c3d4d0a5a75c35ae0bcfc6b73487de8c157bfd81	8b611992d0447f9b6b7ab2f1784647d3b7dda83
 7dc46e6346a7e51105cde09dd9e9b83f507a274c	77e6812efc9d45c55e57eac3c5e0fd142684a128	docs: mint and close spc-7, shipping itd-46 with its adjudications on record
 45c5cf79b16e390d90af8f89760723051dfc3ccf	5883376f2369d4e8c97c3518e00eb9923585c6c2	docs: ingest the 4-MET/1-CONCERN fidelity verdict for itd-46 (receipt rcp-69589b8b5103)
 0a5123ee3285eeb0eda46f731f9a3bfc45652def	7bfc93a658116d079def70c6834d879cc9d71ba1	fix: repoint the three inbound itd-46 links broken by the shipped move
-507b16ae4e18988b1dc4f15fd90b1a8cd4cfafa3	db5f3bcf6f97d0cf7b9fbd8900a4f6dabd3d2203	Merge pull request #87 from REPPL/auto/itd-46-intent-quoted-text-create
+507b16ae4e18988b1dc4f15fd90b1a8cd4cfafa3	db5f3bcf6f97d0cf7b9fbd8900a4f6dabd3d2203	Merge pull request #87 from <personal account>/auto/itd-46-intent-quoted-text-create
 027f929260b8fb315ac5b913ac2fd5e6bf4cae00	efb89bf7d7611306081048abf00fcf7f671d89b2	Merge main into auto/itd-43-epic-to-spec (post-#87 base)
 3165ca9cac6a0fc521a3fb176c527f1638c26267	37d0fab672f607be600fee0e1d77072b5cb9bacc	docs: mint spc-8 for itd-43 — GL002 detector-first record, AC3 held open
 1aa53ae96011fad069244a84ef6acc51c5b86d8b	04b0d99deb691f21e4a45776cfa23f01d25d54f6	docs: ledger the GL002 inline-code masking false-positive edge (iss-106)
-306c9d5742464d8c9d0bdfa3902f6119bfdb918f	f79752f6f860d5e32bc6deaf7c1da6dddc95e898	Merge pull request #88 from REPPL/auto/itd-43-epic-to-spec
+306c9d5742464d8c9d0bdfa3902f6119bfdb918f	f79752f6f860d5e32bc6deaf7c1da6dddc95e898	Merge pull request #88 from <personal account>/auto/itd-43-epic-to-spec
 859a397efa4696788b9ef65f26b6c68b7eb6f242	d60b7b593db32250e4fa33248d8db4e4e7c7a311	feat: adopt changelog-driven releases and roll v0.2.0 (adr-37)
-ae5e70391e855bbe7b3b43e6d9b2ae02530ef63b	23ac0c1f1fe14f65f99e3cc431fd8e821012d146	Merge pull request #89 from REPPL/auto/release-v0.2.0
+ae5e70391e855bbe7b3b43e6d9b2ae02530ef63b	23ac0c1f1fe14f65f99e3cc431fd8e821012d146	Merge pull request #89 from <personal account>/auto/release-v0.2.0
 338575195cb8bbc9b11ae4b20e538f6739cabbe6	2979e65d21ee01e266e33b936fbf03c9ac3e4353	docs: ledger the ahoy install visibility-flag silent no-op (iss-107)
 43721e74402d02e663c16db966b916eef1eabf4c	2366aae01c53ca7ce9c599308e4aad1d15f97a2a	docs: close run test B — the release automation verified live (F18)
-dbce1d8f292e701b29f43b2cc6b44b9f38621892	8ab4b4217002f52d2fb6a0f9b82b6ec32679f94f	Merge pull request #90 from REPPL/auto/run-close-ledger
+dbce1d8f292e701b29f43b2cc6b44b9f38621892	8ab4b4217002f52d2fb6a0f9b82b6ec32679f94f	Merge pull request #90 from <personal account>/auto/run-close-ledger
 73428b6e8e672fc1d0fde07de4770d00f020a8ce	af86d51395a3d174baf6c6a1e8e21b22669ee564	manual: Revise README with new badges and project details
 a939f8e9b3e1506c8b12e85f2f17c57e349e82f1	a9f60386b4c0f08e6354069dfce0fdeb69ed4791	docs: add the one-line checksum-verified installer to the README
 054d2680af26e7cc4bbdcb268cb6787a8ed1ad56	74a6632cabbf0acf4c6cb26e656a47505a5928cc	fix: repair the README badges and align it with the shipped surface
 b56082c915693bf204fc6602f09d6d772efa99a2	4b12aa5e93bc2e2c6d4d0916037971e0982568f7	manual: Update last commit badge in README.md
 03294b04b5a418e72713ee28b89b70d08f0f9fbb	ae76577c972d31b823e90669ac42160b4c7999a9	Merge main into auto/readme-curl-installer (badge fixes landed on main manually)
-8deb45fda2227ef83c918677a878f85fcb6bba1c	81fad6eb1a0aadda6047b5c0bf5730c6cc55af52	Merge pull request #91 from REPPL/auto/readme-curl-installer
+8deb45fda2227ef83c918677a878f85fcb6bba1c	81fad6eb1a0aadda6047b5c0bf5730c6cc55af52	Merge pull request #91 from <personal account>/auto/readme-curl-installer
 42555c7851474665bee2c767e339be82b2b63ea3	c3a6bfebb3a88574e5e560aab64f417a29efb37e	docs: capture itd-92 — branch-protection assurance for managed repos
-467e1933518f505a330dcb7871f6a36787383729	29c86a1195ab7cdb6d0dce165ec15b09d6c2b61d	Merge pull request #92 from REPPL/auto/intent-branch-protection
+467e1933518f505a330dcb7871f6a36787383729	29c86a1195ab7cdb6d0dce165ec15b09d6c2b61d	Merge pull request #92 from <personal account>/auto/intent-branch-protection
 aba4ed52a1191e3facc0227fad650eef9608644c	fc707b97c47b958553344a08aabb1050c0a38c53	harden: stop secrets surviving a trailing-underscore in the redaction scanner
 77be937244e7b7c14cd788cd5fc5e48670e39916	33f5bb229c751c3c281012510a79035b5b69b6ad	docs: changelog the redaction trailing-underscore fix
 76a62386c1d9f324ff02dcb5dcf956961af2a8cd	4997baf88496f67ba6c3dedbf3bd92e194b81689	chore: drop a stray empty CHANGELOG.md.tmp accidentally staged
 4ba4926eee3329df610f6d56d798b7841c398ae8	13cae8c1aa32b9f9e29565340254fe1a9cd28736	harden: extend the trailing-\b redaction fix to the mixed-class patterns
 56df5602db19368a71fbf596775cec632925f4b0	78ad2172705f3c94a32adc38fdf0ca47ab6d4f45	style: gofmt trailing_boundary_test.go
 cd3b257078f99bd7d762e0d6e6cfd7b77bd618ac	ad8602cf8f407f7f46f6f3b1edc900cd0d95bda6	harden: classify the symlinked sources-index refusal, close two frontiers
-cf42412de7cf4f57d4c23a55fd1cb0eecd9b560e	3c35849cbf68e33277d21509dd36e41835dfab5d	Merge pull request #93 from REPPL/fix/registry-symlink-classification
+cf42412de7cf4f57d4c23a55fd1cb0eecd9b560e	3c35849cbf68e33277d21509dd36e41835dfab5d	Merge pull request #93 from <personal account>/fix/registry-symlink-classification
 e4d54473ba05110f793f46cc502b60544e238833	d4f6c75206c67d996a50adcad4f75670ba291482	harden: close the graveyard-read lstat->read TOCTOU with the guarded primitive
-d95cfe9865924b20770b58abf65e231a4151cbe3	d7395c9664e4c347f5f67892920316eff7141283	Merge pull request #94 from REPPL/fix/graveyard-toctou-guarded-read
+d95cfe9865924b20770b58abf65e231a4151cbe3	d7395c9664e4c347f5f67892920316eff7141283	Merge pull request #94 from <personal account>/fix/graveyard-toctou-guarded-read
 e922a138ff86f6fa9c2e7d8faee9619d197b521c	7c7a18c58a527bdf7f0aea605cbe576e64bed72d	harden: guard the untrusted CLI JSON-operand reads (readSource, disembark coverage)
 5aafc89563adba1f7be43f14f5a823026d7747a5	99b5167d5229982cd8f2f40b4ad5d522e1f33db7	harden: route the last CLI operand reads through the guarded primitive
-2d2f7c380cfc17618e8e8fb4b6766ce58e8f45c5	0bdaca632a91b349dae1ec3caa470c4a785e698c	Merge pull request #95 from REPPL/fix/operand-read-guards
+2d2f7c380cfc17618e8e8fb4b6766ce58e8f45c5	0bdaca632a91b349dae1ec3caa470c4a785e698c	Merge pull request #95 from <personal account>/fix/operand-read-guards
 46704d922cdccecebaf708668a50943abbf9d8de	aadab1f83a9edcf5f37677dcb4359cd8f1b2d943	Merge main into fix/redaction-trailing-boundary (post #93-95 merges)
-5804363148b42ffdfd38118ccd1c1765dbb5df4c	aa5f88c76a70431093f34f7f8b30376f5dbb09b3	Merge pull request #96 from REPPL/fix/redaction-trailing-boundary
+5804363148b42ffdfd38118ccd1c1765dbb5df4c	aa5f88c76a70431093f34f7f8b30376f5dbb09b3	Merge pull request #96 from <personal account>/fix/redaction-trailing-boundary
 59533b2b39388a03099a605f38d7d484cc89a53d	b36af2dffb08d2659da5b2fc93fb35c8f43e2e55	test: disable async git background ops in lifeboat tests (fix .git-cleanup flake)
-53d0e2ad085d4fd003a7539f4d7e7a981f225084	5f5dacfe2bd54b9a01c9995f42428fc170b294e6	Merge pull request #97 from REPPL/fix/lifeboat-test-git-async
+53d0e2ad085d4fd003a7539f4d7e7a981f225084	5f5dacfe2bd54b9a01c9995f42428fc170b294e6	Merge pull request #97 from <personal account>/fix/lifeboat-test-git-async
 1875666f5dc402a59e8135902f0e630d408b8a42	075f59fe2b1760d691e086d59ef868161894e2c4	release: roll the changelog for v0.3.0
-be8e07d29f821745d669e81aa540d2a9c3ca4660	fb5a667ac50603604d5750f8bf5faa09a5ae913d	Merge pull request #98 from REPPL/auto/release-v0.3.0
+be8e07d29f821745d669e81aa540d2a9c3ca4660	fb5a667ac50603604d5750f8bf5faa09a5ae913d	Merge pull request #98 from <personal account>/auto/release-v0.3.0
 46d41795dc6c5edfe578831e890860db5e0ef2b8	6165e6c59fa56c5636d03747cf77355859b93325	fix: make the semantic release gate satisfiable under changelog-driven auto-release
 af70fa6be789f5463a80b5bc624808e17dba59be	75c6c86e9c5f5bf5437274fc35c88f6e1e1925fa	docs: reconcile the brief surface prose + README with the shipped binary
 f9adcefb05204511569a0af4d6c0c3fac95c3355	02516fb2a38e8e232c1d7f35969f185b5173c4b2	docs: reconcile disembark/embark/ahoy surface prose + drop broken README image (round 2)
@@ -370,30 +370,30 @@ f9adcefb05204511569a0af4d6c0c3fac95c3355	02516fb2a38e8e232c1d7f35969f185b5173c4b
 bf89984b66ef9bb5785a8f60f8cbe8fae2da968d	221ae0a34cd3608471a886d9519fdd0bf8bacdda	docs: correct the unknown-token exit code and the commands/ enumeration (round 5)
 8e8abb88ba70c11272141d914a7f6f7ceb81aa84	3b32d8586a1d4392c0b73eabd5d5f339449a2638	fix: exempt sha-keyed semantic-gate receipt dirs from the reviews charter
 7d5422b0dd6a77d6b726ab55dcbb14b35702aed3	0098f5e3da50503ead2285e1d98941ea4173969f	release: land the v0.3.0 semantic-gate PROMOTE receipts
-cbd66de321390c77e1ff682c44aefe66e2c503d3	c9ff833eff63620b8db4c1685078e5e30e590000	Merge pull request #99 from REPPL/fix/semantic-gate-commit-binding
+cbd66de321390c77e1ff682c44aefe66e2c503d3	c9ff833eff63620b8db4c1685078e5e30e590000	Merge pull request #99 from <personal account>/fix/semantic-gate-commit-binding
 0532b4cbf702a463d9d93e12c406b30fad8a0ff2	018341e52bd59984f2b077a6dc1d6d071783cd34	docs: record and resolve iss-108 (release-gate self-reference, not systemic)
-af7ec462a2803c8d7396805196e2da10c6b03e3e	0743ad5d5519323c26c665261bddf5c83463ba83	Merge pull request #100 from REPPL/fix/iss108-release-gate-record
+af7ec462a2803c8d7396805196e2da10c6b03e3e	0743ad5d5519323c26c665261bddf5c83463ba83	Merge pull request #100 from <personal account>/fix/iss108-release-gate-record
 bd459d37b946869837a5d739d707160905b6c5b1	c2efe2960ffa6ce0bf0aaddf7a15346ec8de54cd	docs: capture itd-93 — abcd scaffolds a hardened release gate for managed repos
-f766b4f693cd9657fe4a7e2cf9aba63e246bf2d8	3622542885c1f147bda0bab2a3bd021f63e8785d	Merge pull request #101 from REPPL/auto/intent-release-scaffolding
+f766b4f693cd9657fe4a7e2cf9aba63e246bf2d8	3622542885c1f147bda0bab2a3bd021f63e8785d	Merge pull request #101 from <personal account>/auto/intent-release-scaffolding
 2fcca173d57e81d136b2ddf53d77429870ed34cf	92e0e79af866bd5405c17c27ceae722d7c74c725	docs: queue itd-93 for the next drain run (with readiness gates)
-971a8ad8158f1288a6747728c5535065c8bddd37	0f02e6e699487ce15b37680e3b1633b9d6419381	Merge pull request #102 from REPPL/docs/next-drain-run-queue
+971a8ad8158f1288a6747728c5535065c8bddd37	0f02e6e699487ce15b37680e3b1633b9d6419381	Merge pull request #102 from <personal account>/docs/next-drain-run-queue
 e5cc145cb53552d844a8e006281c9b04906b5c06	911989ee333628cfc5759af6da5ffe8a945a1021	docs: capture and plan itd-94 — the implement-readiness gate
 a87dfb9892243e9e069249d512912c63081937a8	0a99a2021c79347b5517e3a79b0d0735e1c396a3	feat: add abcd intent ready — an unplanned intent cannot be implemented (itd-94)
-3b42d4e3dbc707844b32da87b9ebb5a4188cf608	4da7b1b13406c53b6a273741e92989ec0b87a444	Merge pull request #103 from REPPL/feat/intent-ready-gate
+3b42d4e3dbc707844b32da87b9ebb5a4188cf608	4da7b1b13406c53b6a273741e92989ec0b87a444	Merge pull request #103 from <personal account>/feat/intent-ready-gate
 383eb6bac0247ce3f73aa48b9a4e598a0cf537e3	5e31b9749fc755c9c08d283ee0c18f104f0f636a	docs: graft class-sweep framing into fix-the-detector principle
 2998e39e2b9438532c413a4c225ee4ba5f9ae9b8	a1369158789e9fd3ca312454f641b79c1f95337e	fix: route rules.SaveState through fsutil.WriteFileAtomic (iss-82)
-372849cf45ac5a9d2ec2a70244e5f0c1f73da0d1	3234f51877782faebc765877fce3245e953fa2f2	Merge pull request #104 from REPPL/fix/iss-82-savestate-atomic-write
+372849cf45ac5a9d2ec2a70244e5f0c1f73da0d1	3234f51877782faebc765877fce3245e953fa2f2	Merge pull request #104 from <personal account>/fix/iss-82-savestate-atomic-write
 c5bff4047113833efeb785422c45191116e7a3fe	51566371708f28d3801542ebf457f6455b50ab05	fix: guard ahoy.Detect marker/config reads against FIFO and huge files (iss-97)
-d2b22728a42bfeecb73c4800cd3ca02e5e1911f9	94fac3ef968256d17575c74e4e6ac5a5e5e74146	Merge pull request #105 from REPPL/fix/iss-97-ahoy-guarded-reads
+d2b22728a42bfeecb73c4800cd3ca02e5e1911f9	94fac3ef968256d17575c74e4e6ac5a5e5e74146	Merge pull request #105 from <personal account>/fix/iss-97-ahoy-guarded-reads
 12ee583108e8817c41f9e2c4608b06ec42b2f8b8	8997875596c8bb363d83b6a2dbcff84ba4cafd86	docs: promote iss-99 and iss-100 to intent drafts (itd-95, itd-96)
-84a8eb4376600a9e41a3bd8e7536f5a1439f6898	f5d0b0ea276cd49a4935a1344dd6f47512a83cd7	Merge pull request #106 from REPPL/docs/promote-iss99-iss100-intents
+84a8eb4376600a9e41a3bd8e7536f5a1439f6898	f5d0b0ea276cd49a4935a1344dd6f47512a83cd7	Merge pull request #106 from <personal account>/docs/promote-iss99-iss100-intents
 74d0cc3cf2fb06f0dae561195e93b7fe15fc48c6	cc7143bdd8d9e23aeaaba487946cd18aefe0e557	fix: name the real verb in the history-store bootstrap error (iss-58)
 646669c9cd79def55eed9307ed7bc9f6dcf428b5	26d13f3ceef52142589cd5d666c9c3a7036f2c32	fix: guard the intent quoted-text create path against typoed subcommands (iss-104)
 9037d1ef8f9060366cfbcc1990f8ddb8dbccf870	07fdd83eab05a61a2ac05a2791bca69c32dab19c	docs: add CHANGELOG entry for the intent typo guard (iss-104)
-a60401841f702b52be555738b01d1951819d21c7	9cd8221a353907c2131d9a66c8dde62022dbaeb9	Merge pull request #107 from REPPL/fix/iss-104-intent-typo-guard
+a60401841f702b52be555738b01d1951819d21c7	9cd8221a353907c2131d9a66c8dde62022dbaeb9	Merge pull request #107 from <personal account>/fix/iss-104-intent-typo-guard
 32a7227129c1eebce2b6227983eb46e915a9ee6b	2abbb784f5ce303fa2cb37be682d2db23b9ca1fe	chore: union-merge CHANGELOG.md to end parallel-PR conflicts
 bea94a5ae4ab0e0ce4491bffdfac79f9fcf02a25	4735b1ca9e721192e145f61c94169807a1e2373f	Merge remote-tracking branch 'origin/main' into fix/iss-58-history-bootstrap-verb
-eeff5eda1a6a3d51aad2bdc0f6250ade402984e0	855dbbe09a80e2e5f345fa7065d8c70ff49a0273	Merge pull request #108 from REPPL/fix/iss-58-history-bootstrap-verb
+eeff5eda1a6a3d51aad2bdc0f6250ade402984e0	855dbbe09a80e2e5f345fa7065d8c70ff49a0273	Merge pull request #108 from <personal account>/fix/iss-58-history-bootstrap-verb
 3719ca9e5fad94fa5af70cbc727b24b09a8ab5f0	bb103aa5934ec113f32f917c82d55c0700a2271d	fix: stray .abcd/ no longer classifies as managed-repo (iss-88)
 98be999bd3944d531f717a3bb348b0537dbccf62	b8f289b2f91e3ef3ed70d5e10bf304de1e780fe6	Merge remote-tracking branch 'origin/main' into fix/iss-88-stray-abcd-classify
 b858cdd305b295466031ee4f89c08d40fd479039	21e4740cc1d894b10ba9fb58f0ba4865b62a75a3	Merge branch 'fix/iss-88-stray-abcd-classify'
@@ -432,9 +432,9 @@ cafa9a8558c903516e796e0a5ab5a9b36ab6c2b9	cfadd341be8cdf21e857941fdb59d6d6f5e7fb8
 7ee1cfd7fdf772468320e21facd5be1a7f5c970a	2e33ae168d8294d6ab2da4c51f4fabc58e98976f	Merge branch 'fix/iss-51-successor-ban-schema'
 ab620bb697a662d89bdc300b999a306044c9ec1b	0dc8d271027b5411ab5a03ee44b096c509c9ddd0	docs: plan derived versioning + auto-generated changelog + plugin distribution
 5ee2579a5025493bc87ae96f6a2c85d227caa139	b37591a3121670b9634cfb3acf7546f2fd85d7d5	docs: fold grilling outcomes into the derived-changelog plan
-69577f6a90c2c70ea9b7c1e7a7de873a9f56ee49	13a0dacabafa755fdde073b4eba2264f58a87b62	Merge pull request #121 from REPPL/docs/derived-version-changelog-plan
+69577f6a90c2c70ea9b7c1e7a7de873a9f56ee49	13a0dacabafa755fdde073b4eba2264f58a87b62	Merge pull request #121 from <personal account>/docs/derived-version-changelog-plan
 e73d7f97a79f7aee84eaa34a7ab2310a863b53ac	612e6d08397ea3ffce5cedd44c06813c58fa7aa7	docs: fold adversarial-review fixes into the derived-changelog plan
-82f62b637260542d94369472b86d5521b1ba6338	c821ea6936e7b10a046585d880f0d45cc305a7ed	Merge pull request #122 from REPPL/docs/plan-adversarial-fixes
+82f62b637260542d94369472b86d5521b1ba6338	c821ea6936e7b10a046585d880f0d45cc305a7ed	Merge pull request #122 from <personal account>/docs/plan-adversarial-fixes
 e98d7a095cab974b07e5c8ed410f2ff63e297c2b	b3fde47ea13030e851999c8316a46fc298e8f39b	docs: plan itd-73, spec itd-67, record the itd-66 deferral
 0db4eb1a44f0701e7487c2e57a4510e6d06b1d35	7e2006c0934cb615dd5a1c72a35099e4e493143f	feat: derive the version from each record's declared impact
 09a25e7ca739098debd3d9e312305d4188d9335a	402c0601406e82e291e41d5d31759c5c1ffa8f3d	fix: skip the real-repo derivation test when the checkout has no tags
@@ -447,112 +447,112 @@ e58e3f240443add2329bd3ce6e4a690b76650ba4	9d3bf0179432a6d964c6ab005f4e489c7fde737
 a52888bd603fe72c3c47fad5bebc359cf79551e7	ff0dc3fc3f989fbca8c59ff972a28be0cb0097ed	Merge the walk-hardening fix from the itd-95 branch
 c9e1f7deaf211a7bfcabea3599c0b3faa4a82020	000fb71853863b04397cc1217d978c9eba1823aa	chore: resolve iss-113, fixed with the walk-bounding change
 30628d1cfe136d899cf02ec777a617c746a9f985	d8ddedd5e86c8e0a9bccb021499d0143910d5091	docs: record the tier-ceiling and walk-bounds decisions
-66be7be0ffb42b667e9d438e7898a8103063c2d8	701ead2785ae8dd6f2278bca747e8eecc6739e7d	Merge pull request #126 from REPPL/feat/itd-96-naming-internals-adapters
-e0a30b6c360c0d5d48a033ff5d9d4e96b89ace23	7e5c6bad890b6275b35bd42d5e08ad6cb05c9868	Merge pull request #124 from REPPL/feat/itd-95-open-questions-adapter
+66be7be0ffb42b667e9d438e7898a8103063c2d8	701ead2785ae8dd6f2278bca747e8eecc6739e7d	Merge pull request #126 from <personal account>/feat/itd-96-naming-internals-adapters
+e0a30b6c360c0d5d48a033ff5d9d4e96b89ace23	7e5c6bad890b6275b35bd42d5e08ad6cb05c9868	Merge pull request #124 from <personal account>/feat/itd-95-open-questions-adapter
 62f1165a7841135a38326f77913d4ae954961cb4	42f929855176e778b769955d5c07078fdb781ee1	fix: renumber this programme's specs to spc-12 and spc-13
-f20eddcc45ebec93cfa4a89fe2eb4d325d1fda24	98c7043789ed4da179f42623a596e4ef039c35a6	Merge pull request #123 from REPPL/feat/itd-73-p0-plan-intents
+f20eddcc45ebec93cfa4a89fe2eb4d325d1fda24	98c7043789ed4da179f42623a596e4ef039c35a6	Merge pull request #123 from <personal account>/feat/itd-73-p0-plan-intents
 da5e5c68f2047c1a1cbb470bc42b9e434ca546b6	9f50485020b68cdf1b4682d272ac8effc44226f3	Merge remote-tracking branch 'origin/main' into feat/itd-95-96-conventions-adapters
 35f13a5d165c7446e2d8c95911aa7e18827c386b	61b756683f6b8f3276121067810f5d27e6afd36b	fix: renumber the walk-skip-set issue to iss-116
-655db3421e96d01d2d8d9177a47b7041c25a170e	c5057a87a075f0c9affc43662bb4479a7a576970	Merge pull request #128 from REPPL/feat/itd-95-96-conventions-adapters
+655db3421e96d01d2d8d9177a47b7041c25a170e	c5057a87a075f0c9affc43662bb4479a7a576970	Merge pull request #128 from <personal account>/feat/itd-95-96-conventions-adapters
 ad3fc38fa482984fad68e53e1b96f680bb9de044	8a0495084d20cf27c8327cb117ffddbd5ab4f965	Merge origin/main into feat/itd-73-p1-impact-derivation
-2a8cd6d6fc59e4f0f1c1896430a9131c3950c4ff	e258538e7b500a34121c01cd6685d55354bf9e8b	Merge pull request #125 from REPPL/feat/itd-73-p1-impact-derivation
+2a8cd6d6fc59e4f0f1c1896430a9131c3950c4ff	e258538e7b500a34121c01cd6685d55354bf9e8b	Merge pull request #125 from <personal account>/feat/itd-73-p1-impact-derivation
 2ab1a4d67aaa0c1046beffa8ae3dda44b12e1159	3279cc579bd78efeb0c4d6876bf5b9dfd72657c5	chore: capture the impact write-path gap as iss-111
 5a379b287721643a660640153bdde66430d515c5	3dfad5567a3a9f85f998a5c90af6b1637cf3c2a7	feat: gate the release on a structural surface diff
 6afbada210849e04e720f426eb00f05ddc39108e	69c4812086d71ca39df7f42b0106f2626a1f1a1a	Merge branch 'feat/itd-73-p1-impact-derivation' into feat/itd-73-p2-surface-guardrail
-939f254b5a94abe2e0864817feee380bad010b2d	dce924d2c398ecb482454398dfb0924b834de620	Merge pull request #127 from REPPL/feat/itd-73-p2-surface-guardrail
+939f254b5a94abe2e0864817feee380bad010b2d	dce924d2c398ecb482454398dfb0924b834de620	Merge pull request #127 from <personal account>/feat/itd-73-p2-surface-guardrail
 6268da990640d9109d45741c610e2d2f9333fbb2	47b4a0e66be1a1bee1dfa7da14d689ea20a7ff78	feat: cut a release with abcd launch ship and a derived changelog
 0fdf38ea3e0fa0931bd48b3665703835d0ba56d4	d422ed0506321e06497a6b15cbac74fb9f349db6	Merge branch 'feat/itd-73-p2-surface-guardrail' into feat/itd-67-p3-launch-ship-changelog
-91b8917ea3b798bb64e7b3cdc4c66455cdfafa24	1c4f1ab75d551556a16dd5d3b31e5dd42f482b85	Merge pull request #129 from REPPL/feat/itd-67-p3-launch-ship-changelog
+91b8917ea3b798bb64e7b3cdc4c66455cdfafa24	1c4f1ab75d551556a16dd5d3b31e5dd42f482b85	Merge pull request #129 from <personal account>/feat/itd-67-p3-launch-ship-changelog
 ee1508573a3795e0c92ab10d7ced030e5c598607	62137634f7880c7340c7bc48286764d487bad4e8	feat: stamp the version into the release payload and smoke-test it
-aa77013d9bb8360a04b5aba7ae223429c35878fe	80692b498324d1e67d3d3e6f55013e6826fd07ee	Merge pull request #130 from REPPL/feat/itd-67-p4-manifest-install-smoke
+aa77013d9bb8360a04b5aba7ae223429c35878fe	80692b498324d1e67d3d3e6f55013e6826fd07ee	Merge pull request #130 from <personal account>/feat/itd-67-p4-manifest-install-smoke
 0df923a56f4dab3e0d1615a3097fff531ffd0e06	d7356cc63752d5a14bceabb72756321645ebd228	fix: renumber the impact-flag-surface issue to iss-117
 3dc464ebc264fce4270c180c026d1f3b79c03e5c	a47534d3688cef2ce07fec3c66426f494bb506f1	docs: distil the one-writer-per-file principle
 94e1276b07fb3cf8281912725a1bbea98fb87c42	93b01dba23e2acc97ef42270f21226f11af496e2	docs: capture the merge-retro findings as iss-118..120
 d5243fe795482967367002f821d6b62642e962e8	9e2858832bd869d60a0c988ce699df616d50507b	chore: roll v0.4.0 — the clean-cutover release
-68ce24001a5d773a31ef44561e557863d4d53871	c761979df99f33d9200e28d0f8761896d8293428	Merge pull request #131 from REPPL/chore/roll-v0.4.0
+68ce24001a5d773a31ef44561e557863d4d53871	c761979df99f33d9200e28d0f8761896d8293428	Merge pull request #131 from <personal account>/chore/roll-v0.4.0
 5108dd99bfc888cae7a6bd8405a0fb04a3ea9fa4	4d9a1630c7b908e586ed4e2a9dc02a200afd319a	docs: reconcile the brief's surface chapters with the shipped binary
 f0fa344a9acb88e47e3ce0b4439eb5f81dfffcec	d6f07ef79910b30a885a9162b0532061ed03a784	docs: sweep the remaining brief-surface discrepancies (round 2)
 0135d02f0f6c49934558f702bd4291d853efc88f	fe4b5a906ca56d47e385c8e4825e3d2e3ed6d22b	docs: disambiguate predecessor spec citations and finish the surface sweep (round 3)
 45fb46828f1429e62a160a5a3c86ed33a76ac3ff	ba658eef2a6a3ccc289cf6062c72c418abae36fb	docs: fix the nine round-4 residue findings
-fa795d5497028210762bc331177c02c075929055	ced06211602e624d93eb595b88a3d4ed6c2ae4a9	Merge pull request #132 from REPPL/docs/iss-121-brief-surface-reconciliation
+fa795d5497028210762bc331177c02c075929055	ced06211602e624d93eb595b88a3d4ed6c2ae4a9	Merge pull request #132 from <personal account>/docs/iss-121-brief-surface-reconciliation
 495137594b45ac0d603c15e9fef85defa5bf681c	101b66a1837c1b8e8ea3c2b3d1bf3eb97a347c03	docs: record the v0.4.0 semantic-gate receipts
 3fb1ef9fdd31528efb5e478f7cbf5553941e4df4	ed6421396298ababe1788acf39e4454eb5af8fa9	docs: restructure the README's how-it-works into Roles, Artefacts, Process
 79ad41c0c74a32bb6efc94cc6e021da2d9df2980	62e5063ff1475cdc913ca4958ac7ffca0398db22	docs: fold the draft's subsection pass into the how-it-works section
-87cd9b39aa98261899047120913244964a74d76d	3246eda81de041c2a79d04289b0b7eddfc5d3830	Merge pull request #133 from REPPL/docs/readme-roles-artefacts-process
+87cd9b39aa98261899047120913244964a74d76d	3246eda81de041c2a79d04289b0b7eddfc5d3830	Merge pull request #133 from <personal account>/docs/readme-roles-artefacts-process
 3d0db162f49b2b92bf2fa5dbfb05f594598c95c2	b53e8487ef296d9481454eb8e8b2b9d2f2f30944	docs: record grill decisions and the 2026-07-24 next-run queue
-31a309275332a825b76ad1d1a3526f4265722355	d2606b4aa0c39bec25334c5f8172141261535006	Merge pull request #134 from REPPL/docs/grill-decisions-next-run-queue
+31a309275332a825b76ad1d1a3526f4265722355	d2606b4aa0c39bec25334c5f8172141261535006	Merge pull request #134 from <personal account>/docs/grill-decisions-next-run-queue
 e9a10e60f959b596936da56c47b4798c97a1d4f2	a2b9643a66085108c9d5cd654c550d78aa53f93f	docs: file future-direction drafts, review captures, and fix the run queue
-11ad3f8ecd26a0bd9edf985cc51823aebe6ee245	41588bad0032fa2cd51d4dc40e709fcbc0eb1ced	Merge pull request #135 from REPPL/docs/future-drafts-captures-queue-amendment
+11ad3f8ecd26a0bd9edf985cc51823aebe6ee245	41588bad0032fa2cd51d4dc40e709fcbc0eb1ced	Merge pull request #135 from <personal account>/docs/future-drafts-captures-queue-amendment
 38ced153630856d4da11757a691d471895d5b099	509387c20131f438c7fbda30a03dbf12e8bca07e	fix: let capture resolve and intent seed stamp a valid impact
 510f63c1bde9f72f75dca7315e056f2088462bb1	13fe957d00b83a7879aecbe21f8ec1c49d666321	chore: resolve ledger iss-117 via the fixed resolve verb
 cdb1c96828900e6d10dd0fb5321a17e53759213f	d6741c87f717cef4c63bd87ac12bf6612d7c2ddc	chore: capture iss-126, the intent ship-path impact gap
 1f23b37c088379ffd7613b54f327daf7bf62940b	af97c42e178346f1a334ae4da957ae34d42587cc	fix: bound, speed, and widen the probe's recursive file walk
 347f78a764c7924771322b20a604775df8e9cdba	00262a823295115ea8771623f5ffbd9632f2d38a	chore: resolve iss-112, iss-114, iss-116 in the ledger
-418b7808e9f4086e6136a16124d903268833316a	f7caced13ccbdd44271996ea77c9aa711b62f4d4	Merge pull request #136 from REPPL/fix/iss-117-impact-write-paths
+418b7808e9f4086e6136a16124d903268833316a	f7caced13ccbdd44271996ea77c9aa711b62f4d4	Merge pull request #136 from <personal account>/fix/iss-117-impact-write-paths
 f2e56db204bcec984b570642b3c07bdf7c73023d	b62de3f181e2516ff75229b94657294f55b40cdd	fix: mint record ids across git refs and add a spec-id uniqueness lint
 adc81ad5d427fa1d2042f996b96baf8ac327c352	78d461d6dd0e3cf0a10d299a75f5963777bae153	chore: resolve iss-115 and iss-120 (record-id allocator class)
 22f50312232b7716fe6baec5b46d5d1763e50b76	c63b6e1159353dd99ebd673ee89afb95e93016fb	fix: guard itd/spc id minting against integer-ceiling overflow
-f1210bd3256ea8f0a5ad13733b7d11309d2b7e6f	3d350fdbb87fad7b59f04a4e8331fa8765defc26	Merge pull request #137 from REPPL/fix/iss-115-120-id-allocator-class
+f1210bd3256ea8f0a5ad13733b7d11309d2b7e6f	3d350fdbb87fad7b59f04a4e8331fa8765defc26	Merge pull request #137 from <personal account>/fix/iss-115-120-id-allocator-class
 df74ccee6e979d1a4647bcb97f53b41fa898c245	39dea874171f1034f1316e13c4be6b182abd31a7	fix: serialize capture orphan sweep and commit write on the ledger lock
 2b2a7d3858eb220529703750ebbce9d4a1f53a13	9d78089f166c92e68abeff7e9109bb14546727dd	fix: lock the history-index load-modify-write across concurrent installs
 edc4bb865ec30ecbf3588b1bd86297bf4b2084ad	78cbcf83f95a04f8ffa0cee3732d4208df7aee28	chore: resolve iss-101 and iss-102 in the ledger
 853878a92ea3664f86b07f81081bf9d1804ab231	774758c34eb247076f90fe40255b6a6ba29f22ae	chore: capture iss-127, the repo-local LMW residue
 0576929ad2191c05f2a678d3dd10e482375bbe35	15b898a925d564c73d8b52e02b0ec561d580a2b6	chore: capture iss-128 and iss-129 from the lock-class reviews
 a532da23123f0a9c42f8acc2a66d372765bf646b	a8215332e915af260f1d5a7f746dd63ed0ddbf56	docs: correct bootstrap-seed comments to describe write-then-link
-1ae055f3bedf9da19ed310d6d8b9fc59dec1794d	6f09ef20181dfcd5ff2205d696eb3023fa1fdc63	Merge pull request #138 from REPPL/fix/iss-101-102-lockless-lmw-class
+1ae055f3bedf9da19ed310d6d8b9fc59dec1794d	6f09ef20181dfcd5ff2205d696eb3023fa1fdc63	Merge pull request #138 from <personal account>/fix/iss-101-102-lockless-lmw-class
 92602d4e0b674d1f736840520c1f26d40ee425ce	59ab328e21ad81c54fc92d5dddea18127b68458a	feat: add track-latest dev install mode to ahoy install
 a744cf39f66ba9acadee8ee55849bc687ca7827f	ad63880bbe74d4f0e044538cf0569dff50b8cbca	chore: resolve iss-75 in the ledger
 f613fc594b2f070f736d6b02f48f169dc3bb0349	f6e221bda40621cf684465fa8ff45e36fbafb3e9	fix: honour declined ConfigChange approval on a fresh --dev install
-a792429e183dea25a1603d210193f4da50a96c48	80a89f1b8efd10b6f3cce9a54e4e67e46b3d3a00	Merge pull request #139 from REPPL/feat/iss-75-dev-install-mode
+a792429e183dea25a1603d210193f4da50a96c48	80a89f1b8efd10b6f3cce9a54e4e67e46b3d3a00	Merge pull request #139 from <personal account>/feat/iss-75-dev-install-mode
 8d76603a51201b0d76f448b0b71ba219e218eb93	fffaec3e6d26e59417e27dc776eb49ab5624403f	chore: resolve iss-35, the brief-surface reconciliation
-c98a32935212465ec857ee6c21d4f25f1b2fd6b2	347baebb7d9fde33ef6c311c2730aebc5c9ab841	Merge pull request #140 from REPPL/chore/iss-35-ledger-resolve
+c98a32935212465ec857ee6c21d4f25f1b2fd6b2	347baebb7d9fde33ef6c311c2730aebc5c9ab841	Merge pull request #140 from <personal account>/chore/iss-35-ledger-resolve
 99719184036dd4e2a1fe5dadc0ec9444248a6e9d	c0e68dbbf9f1d22899f97acf634a0be71d1e846f	feat: pin the iss-35 crosscheck gate's scope and depth
 0c3567449b31cd95f1dcdde59c620da26e8fa812	52e87e614c69a17c0dea2149857697d06a67bd4e	chore: resolve iss-122 in the ledger
 3b11b2301b7a671c8ffcea61ff6e083f8424fe8d	fe8009ca1304591831351587dbdea217c1f2740b	chore: capture iss-130, the manifest-deletion disarm residue
 216e8b231b6bc3526ea53115d4a93c46c2041778	727fbb349e9b070836bbdd0a00c0a6df4b605a65	chore: capture iss-131, receipt-gate hardening nitpicks
-3ddd6108576f07aa1a57eb8d4032f8367cbfc6dd	62f6c3f3bf706d108c972134a96a96c15539507f	Merge pull request #141 from REPPL/feat/iss-122-pinned-crosscheck-gate
+3ddd6108576f07aa1a57eb8d4032f8367cbfc6dd	62f6c3f3bf706d108c972134a96a96c15539507f	Merge pull request #141 from <personal account>/feat/iss-122-pinned-crosscheck-gate
 0b73cb5c6377ec0f1ae325025a767a5a10e76fd5	e497553baf364b17331cbe95bd6582751cf8b2d4	docs: amend and promote itd-93 to planned
-5640c5dba119c777a7c042f37a04854a95392fa4	31db2c1d4bc680e21e2df70009c60e8a74fc0529	Merge pull request #142 from REPPL/docs/itd-93-amend-and-promote
+5640c5dba119c777a7c042f37a04854a95392fa4	31db2c1d4bc680e21e2df70009c60e8a74fc0529	Merge pull request #142 from <personal account>/docs/itd-93-amend-and-promote
 60f027b6795f62bd130d69852b5c35872c8ceb37	d19bfc2f01b71f2deaf002b122a3b78c38d79583	docs: ship itd-94 and close spc-9 behind its fidelity review
-7b0a72bfdacf2c115386d5809d7f825444621239	8cf01c4c5eec9ab8a32d61ddacb7759b2338671d	Merge pull request #143 from REPPL/docs/itd-94-record-catchup
+7b0a72bfdacf2c115386d5809d7f825444621239	8cf01c4c5eec9ab8a32d61ddacb7759b2338671d	Merge pull request #143 from <personal account>/docs/itd-94-record-catchup
 d89207f7aef4d6e24df2be1acddf63f40bf6ac23	9a6a8e11cd2645f9f1d5b658490f184e1459d9cd	Merge remote-tracking branch 'origin/main' into fix/iss-112-114-116-walkfiles-class
 b261719b3231373bc2bd0a6f4cf87207a78dbc46	24d115ef95052c516c0d65277c3bb2237f50466a	fix: require a delimiter for bare TODO/FIXME markers (iss-111)
 fdb4d2a689c2b98634727c7fc78d28b4d8ee334e	763fa120b8b113ee35182b4c57fdc7f735800c65	chore: resolve iss-111 with fix impact
 e4158bd797ee7c6646edbbb9822bdf8122a36b0d	39728c2d8b02ab34d0fead853a14f46a375487b6	docs: correct iss-111 FP figure and de-self-match the pattern comments
 e448270b642c2c43d90753323f6ea58517236d67	c134c051271ec33ce9c14018e00e8b29c313111e	Merge remote-tracking branch 'origin/main' into fix/iss-111-marker-false-positives
-6d303dd138f8773bc73690b0fa741ba870bf9d55	9665ae9ad4e6a6886efe4fa08947059b3645c30b	Merge pull request #144 from REPPL/fix/iss-111-marker-false-positives
+6d303dd138f8773bc73690b0fa741ba870bf9d55	9665ae9ad4e6a6886efe4fa08947059b3645c30b	Merge pull request #144 from <personal account>/fix/iss-111-marker-false-positives
 ef96cf3420188a72555cf6927b8647fde563e515	79d70c0df1c616fac608f69791162270f9ef5c23	Merge remote-tracking branch 'origin/main' into fix/iss-112-114-116-walkfiles-class
-49b28e06d1ff824edc09ae956eb36c233ed11b11	8ad095e9e6387144e0dd87a44cdc1aa604837fe5	Merge pull request #145 from REPPL/fix/iss-112-114-116-walkfiles-class
+49b28e06d1ff824edc09ae956eb36c233ed11b11	8ad095e9e6387144e0dd87a44cdc1aa604837fe5	Merge pull request #145 from <personal account>/fix/iss-112-114-116-walkfiles-class
 194a706eed78f7d4fad640f1a79d57bcd5bf696c	2468ea19daa458d6fb347550b7d11130a6c133c4	docs: record the itd-88 lifeboat coverage experiment
 7b24b98befbd20440b335a96d0154bd33cbcec6e	9f6ae4cbe92b2b358cd30b3652a4d6c3d98ca35b	docs: ship itd-88 and close spc-3 behind the coverage experiment
 85fb9e9e406521de8ec5410972cb2e0faecd58e4	c009aeb6c829e5ffa9edaf6d074df8f3a7d6a796	docs: ingest itd-88's fidelity verdict into its Audit Notes
-d2a4217f9c6dd98c08040f9c3b7065e4cd089b35	82559fcaf9704c3ad937760bc8f7248c6d8636fa	Merge pull request #146 from REPPL/docs/itd-88-coverage-experiment
+d2a4217f9c6dd98c08040f9c3b7065e4cd089b35	82559fcaf9704c3ad937760bc8f7248c6d8636fa	Merge pull request #146 from <personal account>/docs/itd-88-coverage-experiment
 0c8d758197d17b5a27b1dbd605a08f97202300ac	f72daaba22d5328431796b0905d13f35feef3015	docs: append the merge-window evidence to iss-24
 32963871394da062a56f8883827dfe59af2577d8	985ab5d5add85191b82c5239e773620dd72f2dc1	chore: capture the run's six deferred review residuals
-3f0ff9b084ab52a975ffbe56635f0b4469ab3662	8ed92df8840118ea7893007791a28fe944bd5edd	Merge pull request #147 from REPPL/chore/iss-24-evidence-and-run-captures
+3f0ff9b084ab52a975ffbe56635f0b4469ab3662	8ed92df8840118ea7893007791a28fe944bd5edd	Merge pull request #147 from <personal account>/chore/iss-24-evidence-and-run-captures
 1640986ab293a58f2f8097ca5465f934034853c8	32dd28ce2a4d806c3ea70f2684d612ee4d39fc1b	docs: plan itd-100 and write spc-15, the terminology-crosswalk design record
 5e69d19b08dc3610e2bd64c18a14235042ca6a97	67a649980df2ab4d8fd24e26a323115b41356c78	chore: capture the crosswalk watch items and a brief contradiction
 7a74b0d6a5e76e980b6cce9f7b309fdd4a420bc3	9ad27b9314b5f0229a77b9fe1d1f60727dd9657f	docs: add the terminology crosswalk (itd-100)
 f6d8b22b312f411a4e1a6b9a7c34242cf8cb53cd	213a549b368ebfdea3021050ed104d68fe55f0a8	docs: correct citation drift found by the validation sweep
-29984022dccaddd32520c7287bf7d75bbe1ab883	f4506ad8a9132a07205d33fb6f04082545e9e9ea	Merge pull request #148 from REPPL/docs/itd-100-terminology-crosswalk
+29984022dccaddd32520c7287bf7d75bbe1ab883	f4506ad8a9132a07205d33fb6f04082545e9e9ea	Merge pull request #148 from <personal account>/docs/itd-100-terminology-crosswalk
 d324f18502f73900fa39da64558798fac228b6ed	3c0ca94663dfc63d709f35d3bd6b7ab71b6d8e2c	docs: file itd-101, the deterministic citation gate
 8a754011f6985a5cc39fb14049f2ca3403a707e3	a8045b47ce83857947027be7d49490f70b29b2c6	chore: capture the tagline three-variant drift (iss-143)
 352b8d54e692a271d6b4d04b4f1f535d7d6361d2	181cea780d9f91f68efdd3f061f90980aee2e658	docs: file itd-102, recorded repo identity with a positioning check
-16f15508a580760d8ea3c6c6a8d1294def405c30	e7108fdcce52db7aaf3bdcfeb481912d148caf9f	Merge pull request #149 from REPPL/docs/itd-101-citation-gate
+16f15508a580760d8ea3c6c6a8d1294def405c30	e7108fdcce52db7aaf3bdcfeb481912d148caf9f	Merge pull request #149 from <personal account>/docs/itd-101-citation-gate
 d4d629a9034ce31046342ce9200af9d4f314dd8d	17b217dd8f653b36685cbb06fac6b528b04b82b8	chore: capture the shell-hazard incident (iss-144)
 e1b27e1f39613a6762c1fbb4dc7a6830a4ca618d	9d52ab5ed436c2db0994280da6bdb545581a2e74	docs: file itd-103, the shell-hazard registry (teach + enforce)
-516e2e3f596d296335bd66e9a3835db601da7fcd	44dd794727145a58f5967530b357e4a9ecfa75a9	Merge pull request #150 from REPPL/docs/itd-103-shell-hazard
+516e2e3f596d296335bd66e9a3835db601da7fcd	44dd794727145a58f5967530b357e4a9ecfa75a9	Merge pull request #150 from <personal account>/docs/itd-103-shell-hazard
 1cd6aee7a225a19cf343772cb466446e35c4286c	81e34b7eb8f8a3f0b07eaedcfe2d01941407dd79	docs: salvage the 2026-07-13/14 ideation-session record
 3f9f5880aebb67ca77fd02ac55726cde1eb408a0	c65cbd6920cbe27d96826c2c7ef5956fcc60e0f8	docs: default unhomed artefacts to the local tier (AGENTS.md)
 982ac103c0dcaae514a1070548e3d2e69cb1923d	317d09fdb2e5d73784407ffd0a7f3f109c9c7cad	docs: file itd-104, the ideate admission gate
-ab8876a8ade93d290eafc4522fadc2d0dfd6d5d2	8b5c1efe71fdbb2da6c107b6e0418344ca5d70b6	Merge pull request #151 from REPPL/docs/salvage-ideation-session
+ab8876a8ade93d290eafc4522fadc2d0dfd6d5d2	8b5c1efe71fdbb2da6c107b6e0418344ca5d70b6	Merge pull request #151 from <personal account>/docs/salvage-ideation-session
 567d4ada76bf820682df10f66d9d660613960531	9424936a6018c1b4bfe6f77ab8a36f1875cd9978	docs: ship itd-100 behind its fidelity review (spc-15 closed)
-f301e4ac08ff1664733249301c0a1353b7864b1b	d4dc3cc06fa49593d89afbded59b5f3b15c80b0a	Merge pull request #152 from REPPL/docs/itd-100-ship
+f301e4ac08ff1664733249301c0a1353b7864b1b	d4dc3cc06fa49593d89afbded59b5f3b15c80b0a	Merge pull request #152 from <personal account>/docs/itd-100-ship
 b26fc551bea30a9d5fc843052bbd0f77b092e885	c94be775a41a2425bc6c7c2e418fb42fa9a3b304	docs: settle the itd-101–104 grills into the intents
 e946cbcf5869345c6b27814e526d116c0d101465	db5ce05f0c34a058b180a973f51a6ad2116cbe9c	chore: capture receipts-cannot-gate-maintainability (iss-145)
 48a35247ca222957cd407e70ba60a428e2cbb1b3	2063154d94c895f000f7d1a5a25023a6c4d3a864	docs: adopt the canonical tagline and consolidate the three surfaces
 131a2e00f43b31b57b7ac96c5ad98e24848b4f4e	d46fbbaa5d71992c164e6dfab7dfcef3b3d45df6	Merge remote-tracking branch 'origin/main' into docs/iss-143-tagline-consolidation
-d084b7355739f39539e1b2fffe62f59da6e78506	0591e2fbe8e836892f2c5efe4fe6b3ee940dbbba	Merge pull request #153 from REPPL/docs/iss-143-tagline-consolidation
+d084b7355739f39539e1b2fffe62f59da6e78506	0591e2fbe8e836892f2c5efe4fe6b3ee940dbbba	Merge pull request #153 from <personal account>/docs/iss-143-tagline-consolidation
 3b5917d1eccee4ce7852c3d4267502f666d60b81	afd1eb062120669e039c673250fafc5a98062383	Merge remote-tracking branch 'origin/main' into docs/itd-101-104-grill-settlements
 8a7caf4d1fee6674836e333b0fc905e9e5774520	baf508790ff4139a1e894c4080da41beb32c65dd	docs: record itd-93 Branch-A parity decision
 46fd4bcb43fd7eb4e7c22bef3acff0ddbde92186	c878f965524fc22a7f9d0d5fc7684fd6bd69b12a	feat: scaffold template + self-scaffold parity for the release gate
@@ -561,9 +561,9 @@ da7ff1621a874a8f97a12fa3caca6e5688463db2	fdf03eaad8892383e804baeeb9572baab4f0613
 ccd103662deab8d802c26b01cefd8620d5fa0f27	d5568e1fcf6b9ff2ff772dbfa89a149d6f14a644	fix: scaffold report must not claim an unwritten file was written
 effdac70d49963b63aec6e84692c9852c0728ec9	3e1f29170462831a4efb96e9b3c2cbffc40fcbbc	Merge remote-tracking branch 'origin/main' into feat/itd-93-launch-scaffold
 d1f3cf7dc51e906ab2257bb44c5370dd61757588	ff44c6c897ae207843a13ae824127e4ef7ef5acb	Merge remote-tracking branch 'origin/main' into feat/itd-93-launch-scaffold
-f06de9dab9fa261e620c2c7eac02eaf24e00f415	c28f4b60917b96e50b78e59a91e6ffbc21ab7f39	Merge pull request #154 from REPPL/feat/itd-93-launch-scaffold
+f06de9dab9fa261e620c2c7eac02eaf24e00f415	c28f4b60917b96e50b78e59a91e6ffbc21ab7f39	Merge pull request #154 from <personal account>/feat/itd-93-launch-scaffold
 3aee1e456db2158d16dfff29d7a945cb58229eb7	9de26df92b4f40f1e2330d528e38324a86a1c9f2	Merge remote-tracking branch 'origin/main' into docs/itd-101-104-grill-settlements
-6e1e1e4f33e12c7ff18dabbbfe27d2a66e761d55	f331bef5ee2b15370a62fcc2f70740112466e1eb	Merge pull request #155 from REPPL/docs/itd-101-104-grill-settlements
+6e1e1e4f33e12c7ff18dabbbfe27d2a66e761d55	f331bef5ee2b15370a62fcc2f70740112466e1eb	Merge pull request #155 from <personal account>/docs/itd-101-104-grill-settlements
 7e9e85e4268e32cd3cf1fb94d2cc8573f44506b6	29c617575babff896dda111f3afebc0d8a7e3e7f	docs: plan itd-101 and write spc-17 citation-gate spec
 aa4c491fc388bfc61ac1e7a796378f90665ff091	846948eb146a7eec427b8720303311abf7d71cdb	feat: add the committed citation baseline schema
 8e187c0de168b8963695279ac0f405538bb1a44d	cb2c88a7247268b42256145b2092d4cbf911fe7a	feat: add the zero-network citations lint family
@@ -621,50 +621,50 @@ d4dd46c2e14d954324e1bee3bdd02181cf22867b	71fd2243b67931cbcbdad02164839feacc6353c
 6698f69951f76b71e0ee195c370c643a635e3ebc	4f2632207d7774832a6c255c0f463dedbb94f22f	fix: stop the guard report asserting what it never checked
 c6333d4773b2021b054743f1fc4fe39671626730	395fd69591850b17d0ef1dd98cd555f18276fe73	fix: close the two silent ways past the guard, and stop overclaiming coverage
 4288532cb91b457ada0293e5d84b3197e0681546	ddbf597b20124c8b2f775d98f4f92f54db571f7e	fix: refuse to answer from a switched-off registry, and correct four claims
-49cffa05e6216d9cbb29dc601961464781e6541d	fe10e9d408fe6d87291977d661283ffbfcf46ccb	Merge pull request #156 from REPPL/feat/itd-103-shell-hazard-registry
+49cffa05e6216d9cbb29dc601961464781e6541d	fe10e9d408fe6d87291977d661283ffbfcf46ccb	Merge pull request #156 from <personal account>/feat/itd-103-shell-hazard-registry
 e05a58ef44b970f7d8db65d7502675bf9a46c3d9	a793f9e1b6d68d5bb09fe73e0bf89b93246b2638	Merge remote-tracking branch 'origin/main' into feat/itd-104-ideate
-3bd32f7986f15f90aac977a2c1d02a7161d73e01	d416645842380653471484b86c3e674a61876dd7	Merge pull request #157 from REPPL/feat/itd-104-ideate
+3bd32f7986f15f90aac977a2c1d02a7161d73e01	d416645842380653471484b86c3e674a61876dd7	Merge pull request #157 from <personal account>/feat/itd-104-ideate
 ca1459805dd4cc3d48adc39433bbd34b098736dd	3c2608f897a79bed6a9a5c5e4a9f04748fa4cc17	Merge remote-tracking branch 'origin/main' into feat/itd-102-repo-identity
-3036c197ab0a9d71b3b82b0e50de3b907ed3af83	6342d48dd2975d9b2432566d4a11314ec9942971	Merge pull request #158 from REPPL/feat/itd-102-repo-identity
+3036c197ab0a9d71b3b82b0e50de3b907ed3af83	6342d48dd2975d9b2432566d4a11314ec9942971	Merge pull request #158 from <personal account>/feat/itd-102-repo-identity
 5c467fc051b23283b8c14c4540b2c9ee2273416d	04336f2bddc729c9f3894c3370339c82381b8aca	chore(deps): bump checkout, setup-go, attest in workflows and templates
-91d52c44c23e88dd01ea98ee9b69a31e357317d0	8c52fb57027fa166a3de5044262fda752497f955	Merge pull request #162 from REPPL/chore/bump-github-actions
+91d52c44c23e88dd01ea98ee9b69a31e357317d0	8c52fb57027fa166a3de5044262fda752497f955	Merge pull request #162 from <personal account>/chore/bump-github-actions
 4a0694e138037b19eb65d359e695650eb5ef7f2d	7333e48e68043caadca02f74581484a00703616c	chore: ship itd-102/103/104 — close spc-16/18/19
 1d915554de44bf6376c7769a43f6ab7c8f1eab28	816d0f80d8427aa6cf003e93b1f9078c7c4828fe	chore: cut v0.4.1 — date the changelog, fix surface links post-ship
 b1dbe01902d4a5658cd4269a7e933f46306fa68b	5cc421d0ee613c4ea1a637c49f06620376889f03	chore: ingest fidelity verdicts for itd-102/103/104; capture iss-151
-63424a6cb217c2d77872a0d2fe2ccd26ce9f04fa	2855f3715c081733d67d387e946d6488a4546180	Merge pull request #163 from REPPL/chore/release-cut
+63424a6cb217c2d77872a0d2fe2ccd26ce9f04fa	2855f3715c081733d67d387e946d6488a4546180	Merge pull request #163 from <personal account>/chore/release-cut
 e195757c15a5efdaa2967b74cf3be722a3432027	b07bb7414edb0888f73be6d258ba90207fc82150	Merge remote-tracking branch 'origin/main' into feat/itd-101-citation-gate
-5abe5b37b389a08c0145d494ff5472e028878a2c	9baa5454fcb089895f8e7e632534800716dbaea7	Merge pull request #164 from REPPL/feat/itd-101-citation-gate
+5abe5b37b389a08c0145d494ff5472e028878a2c	9baa5454fcb089895f8e7e632534800716dbaea7	Merge pull request #164 from <personal account>/feat/itd-101-citation-gate
 ba5e701f75976b38180d25d1c0ae990379eaf77a	155758080e722d72bdf33b30283976679303ec69	docs: bring the brief surface docs current with the shipped v0.4.1 surface
 62f40808312d59c435649453a7bff9e8b9d5ac67	5b670955a8191ead71405ddc6cd220bf680af025	docs: list launch scaffold in the brief's shipped-surface enumeration
 9f759c1f54a62fc204f75d2f3102e71af2a95cfc	056f6f683090ac98c9359691905a005ca11fc45d	docs: the CLI reference is generated and drift-tested, not planned
 9349f17fb17d685b8c7e9bc03210d0b498523eb5	ca04b50014c90b35efebea7b05abdcbdaa7be693	chore: track brief-currency residual (iss-152) from the v0.4.1 release gate
-46891641c857e780e815db87176789c123a5aa91	f71f1c24e95cce7007b062d3b0a83facc5eb69fc	Merge pull request #165 from REPPL/docs/brief-currency-v0.4.1-followup
+46891641c857e780e815db87176789c123a5aa91	f71f1c24e95cce7007b062d3b0a83facc5eb69fc	Merge pull request #165 from <personal account>/docs/brief-currency-v0.4.1-followup
 26b4e640f911055b496cb61b8df5b2f2daee0e16	b28f4e8140f3e24d8dbf53906a62fd07f28faabc	chore: record the v0.5.0 security-and-consistency cycle
 b633d304bdda65e2b6960c02e9c2381b6eb04a78	8e4d2eb5402f4732baea5956fcee76159d99461b	chore: record the docs-currency HOLD capture for 3de5148
 90d606c6e1af7a8cf0de6b6e883518b18f7773e3	3078cc736585fa466e16b7da118d0d5f1f9893bc	chore: repoint itd-74 links after the drafts -> planned promotion
-9dd28072f3d507b963664167322cdb48bd41ea96	8db8540cb3690eb30f684d46da8b63b900de758e	Merge pull request #166 from REPPL/chore/v0.5.0-cycle-records
+9dd28072f3d507b963664167322cdb48bd41ea96	8db8540cb3690eb30f684d46da8b63b900de758e	Merge pull request #166 from <personal account>/chore/v0.5.0-cycle-records
 cf265dd91ffaa8ec42bd06ef69c7c9ca83891414	62d735d693b60bac7f6c0e8f1ca17bcbf5cd4aed	chore: draft itd-105 — plugin hook binary survives install and update
 906e2d59eac7de88bf49060a90694b8f5e7742d7	9eaf750dbd77d4e572edb7c16f5eb867100b2a31	chore: capture iss-160 — spurious /abcd:README command in plugin surface
 c055c30cd748c698da26e2d60653f98852f5b4fb	7be6249fc14643283395832f5486e71a8ab6ea2b	chore: capture iss-161 — /abcd:abcd:<verb> double namespace in plugin surface
 a8b415297573c263f3c3bdff9ca39f7854f4c5d5	eda50b9254182f313303477047edbc6efde194b0	chore: capture iss-162 — surface guidance references unregistered /abcd:ahoy
 7394ee90e096f492fddc599912bc155be973dfc6	41427f18621b2db5d564b368008de81bc799f675	chore: capture iss-163 — install prompts carry no per-choice help text
 0529edd85cbb86f697ebc8e8b65127acb06cfb76	0d8e65d724fef95bf560f7de4d38e3ee8f61b2d6	chore: capture iss-164 — install summary speaks implementer jargon, not persona language
-8089ab5be4d878096a287ec1e1393908beae1bb2	8809e79c37ee6a3f04550df6b707ac87c01958cd	Merge pull request #167 from REPPL/chore/plugin-install-findings
+8089ab5be4d878096a287ec1e1393908beae1bb2	8809e79c37ee6a3f04550df6b707ac87c01958cd	Merge pull request #167 from <personal account>/chore/plugin-install-findings
 51a401f4af5370471a11520dfe07d4249561e2fd	56ce1ecfe35e60d2a8a869d1066c57e9b900e2ba	chore: grill itd-105 to ready — decisions recorded, planned, spc-21 written
 bf556f7c94811bb7d77fdfa65a926873587e746b	ab7674c38a158fdd02fba90e19f78ece3bc66799	chore: capture iss-165..iss-168 from the grill and second-repo install
 9fec5cfc19aec3cdd7a7277335c40b6a928de3c2	4223d02e79130ae26d433bfa919888e3d3657807	chore: capture iss-169 — installed .gitignore fence contradicts the tier convention
-666cf2a95a27af88df0da485dbbe545b37fb8e56	5283df5df784aacdf2e76fb26a6735aafab2ad41	Merge pull request #168 from REPPL/chore/itd-105-grilled-ready
+666cf2a95a27af88df0da485dbbe545b37fb8e56	5283df5df784aacdf2e76fb26a6735aafab2ad41	Merge pull request #168 from <personal account>/chore/itd-105-grilled-ready
 a4a6c5f0cf91aae4186c72cf1bed463dedd3b654	ef047fe1e3286e5585879dff961593c597c54c84	chore: draft the explainability follow-up run queue
 4be6fcd562ea23d9a88c3ce1e9080e2400be50b3	ca5accf74c9d9c52cdc18c24a73fda8e41de0802	chore: pull iss-171 into the explainability cycle as Workstream B item 6
 897ff720ca096a60845f2ca49b0c9baece11903c	e70ebc6b353d8bee7977ffeb0313fbdf0d233a99	chore: pull the 2026-07-29 install findings into the v0.5.0 run queue
 42862e5f8af922cd7af7357bdb69f6ddd0083c6b	2f5b2bb10294906bd2dc5f034ea9c0edaf22fe66	chore: capture iss-170 and add it to Workstream C — symlink-blind plugin-root resolver
-a3ec434c17ee40d17a0b68019784b6157f929420	686f6d5e2974306252a0a7b47e4bb3942209036b	Merge pull request #169 from REPPL/chore/v0.5.0-plan-install-findings
+a3ec434c17ee40d17a0b68019784b6157f929420	686f6d5e2974306252a0a7b47e4bb3942209036b	Merge pull request #169 from <personal account>/chore/v0.5.0-plan-install-findings
 b85696937ff23b0d3c4f68946ca9f32aaf5bf637	ad09bfe8473e7974c88f8d00141aa581c5f12d48	chore: capture iss-171 — PATH-install detector assumes one blessed layout
-85fe10b1a04f9c18f9c8dfac38173f8903fe2482	aea8fb2498e1605d4e562ea078c0c364472b07f5	Merge pull request #171 from REPPL/chore/iss-171-bin-target-capture
+85fe10b1a04f9c18f9c8dfac38173f8903fe2482	aea8fb2498e1605d4e562ea078c0c364472b07f5	Merge pull request #171 from <personal account>/chore/iss-171-bin-target-capture
 46a0a28986cf454f1520f06805cc86d76d212c3a	a86f8daec0b713cdf4d3516ab63de360d1e8b719	Merge branch 'main' into chore/explainability-follow-up-plan
-fe6bace23d801727ac0d6eeb9288a5ea9e03c35f	455bdd9fe63316c5803b39f22c0033a62600f484	Merge pull request #170 from REPPL/chore/explainability-follow-up-plan
+fe6bace23d801727ac0d6eeb9288a5ea9e03c35f	455bdd9fe63316c5803b39f22c0033a62600f484	Merge pull request #170 from <personal account>/chore/explainability-follow-up-plan
 1865f71b6304da7639a1265e258de96f777d08da	96eebba912c36aee5f4f8d816e7398325a7a28d1	chore: capture iss-172 and add PR-queue hygiene to the v0.5.0 run contract
-52ba9e014b52f098989ebd6d6393516225f6d4ad	1f87ec41119363440e1f06159f0a85a3615fbf5d	Merge pull request #172 from REPPL/chore/pr-queue-hygiene
+52ba9e014b52f098989ebd6d6393516225f6d4ad	1f87ec41119363440e1f06159f0a85a3615fbf5d	Merge pull request #172 from <personal account>/chore/pr-queue-hygiene
 5226b292121d75095277a85a59a3e8b4b7800a28	a167d336125445fd8cbf66f579a7065085aba389	feat: detect network identifiers outside the reserved documentation ranges (#175)
 2be7a58e5c106d328eb58deb34703f2559bfc6b2	c46983c39cb772a9710f167d309e63a1d9882086	feat: three-tier-layout flags local-tier artefacts in committed tiers (iss-155) (#176)
 5927c89835abd56e844ca990d1225218933f4588	a8b5bc78e632fc2b19796bc19d505ad74bb6743f	fix: PII rules domain recalls network contexts and forbids committed network identifiers (iss-156) (#177)
@@ -691,7 +691,7 @@ a8641523621efd24e996737b2936740d756b4018	5ad56426bdcbf01751aa2b85058419ef778c81b
 7d4aa90404275e29da77344a69fae74dd4a4a669	92fe3bd8c0f6b8e7f6248afaff9a07bccf436b7c	docs: iss-43 is re-scoped to its one surviving claim and resolved
 539810ae596dbfddaf700ca1a7af96603296db44	aa741a89d2a211d4055b434eb861ca997ad5d4da	docs: correct the iss-43 commit attribution and the exclusion claim
 662bf7442a065c022d42d9fed9bfbdb667348f50	5e9840e10d2fa52261a43db5191c650c8382dc6b	docs: correct the attribution split, the packaging claim, and iss-183's corpus
-aa1570225e3ba83f13e87c73583ea1094e834b5d	3261d1e2f26c655ef62fc8edadff3f4952ac076a	Merge pull request #196 from REPPL/v050/iss-43
+aa1570225e3ba83f13e87c73583ea1094e834b5d	3261d1e2f26c655ef62fc8edadff3f4952ac076a	Merge pull request #196 from <personal account>/v050/iss-43
 5345a2eff43a4e73ec051d1d7c7a368265ddf8b6	5a45612e4db79b8d035d4bde388d87523ad479e4	docs: land the iss-43 merge-gate corrections (follow-up to #196) (#198)
 49aeb8e26ab69ff25924312e144afb9776ccdfdc	1cc73ec2472c9a0ad3503c8130e98d561a618260	chore: give DECISIONS.md and ACKNOWLEDGEMENTS.md a union merge driver (iss-118)
 4e668e19371bc10669eb380f7433ee29e132240c	5b1161c7631ab62039fd488b3f6ede456b9bfd88	chore: capture four bugs verified by the bug-hunt loop (round 1)
@@ -700,27 +700,27 @@ aa1570225e3ba83f13e87c73583ea1094e834b5d	3261d1e2f26c655ef62fc8edadff3f4952ac076
 c120e527b62460cfd225ad689d68884ec7ba43ef	8bb7a0d517f109424f194a35b8eeb5f54a1e00ad	fix: a heredoc delimiter can't be adjacent to a bare paren (iss-184)
 09ab7d757f3e6009c573161d96994b9222d3dd1c	bfeb5298d4dd0a0b9092d73735ca23d2bda7f2da	docs: correct the iss-184 record to describe the real fix
 b1cb699bcdfc3a5a48a8ecf5ca4625398833ceb5	996b0a61495c4ec8634daab37a5ec373c4a1191b	Merge remote-tracking branch 'origin/main' into bugfix/iss-184-guard-heredoc-arithmetic-shift-bypass
-82fa7376835b400dfd2b389d0735b0902742abe2	0a3437e9a85104dc677b537debac82d53eb12abc	Merge pull request #199 from REPPL/bugfix/iss-184-guard-heredoc-arithmetic-shift-bypass
+82fa7376835b400dfd2b389d0735b0902742abe2	0a3437e9a85104dc677b537debac82d53eb12abc	Merge pull request #199 from <personal account>/bugfix/iss-184-guard-heredoc-arithmetic-shift-bypass
 5bdc6c0461325f3a39ae3b33eb1123454df1fc23	5ffe5de98ce547e4270afa2053d4dcc7609f525a	Merge remote-tracking branch 'origin/main' into chore/iss-118-decisions-merge-union
-95e01f6f5357925ae0815fcb40d9d4697cb40846	2ab6019338990421e42793163cd7396a1f8df4bb	Merge pull request #200 from REPPL/chore/iss-118-decisions-merge-union
+95e01f6f5357925ae0815fcb40d9d4697cb40846	2ab6019338990421e42793163cd7396a1f8df4bb	Merge pull request #200 from <personal account>/chore/iss-118-decisions-merge-union
 33d0c5b440ed2f8dea93fdc306033d66d128da71	5dca09754add8c5dfaecc7edeaf3c413464039e8	fix: the scanner detects a second secret token immediately abutting a first (iss-185)
 37f870a501dd762dc7f7d3ab24953b98f18661af	7de60dec6fe70c9fc1abbad29d9b8cfe9e01e483	fix: the scanner recovers a fixed-length secret abutting ANY pattern, not just its own (iss-185 review fix)
 734fb0f07c55deeab99504bb7f4a3b996d1367f9	4f70a491a496c4017c2afbf674ad5048ddfba1e5	chore: capture a bug found reviewing iss-185's fix (iss-188)
 23962809f33c3d77d410b421973b99b7fbe84fd9	16dfbe4c1b735e64511b4c676f3ca2903d14a84e	fix: anchor the adjacency probe so it costs O(1), not O(line length) (iss-185 review fix)
 006eeb85cd31d1000975fc2b309f3154eddd09a7	9fc04ea212e36e21edfe6d68ddeb2e8908956d0c	fix: bound the adjacency probe's window so one attempt can't cost O(line length) (iss-185 review fix)
 e78251e1d08c3954b7670b7abb939db7487748dc	55b73b43d545bf74fcffb47e2b048ce5bf57a9e1	chore: correct a comment and capture a merge-gate finding (iss-185 PR, iss-189)
-2ca3f4b92e851b143ed74b708dee0854d80c8d61	eb61acd6d00b7c6150efa86cf4cbe623ca5125b6	Merge pull request #201 from REPPL/bugfix/iss-185-scanner-adjacent-secret-boundary-bypass
+2ca3f4b92e851b143ed74b708dee0854d80c8d61	eb61acd6d00b7c6150efa86cf4cbe623ca5125b6	Merge pull request #201 from <personal account>/bugfix/iss-185-scanner-adjacent-secret-boundary-bypass
 41c62ba345768282cdd5ef4af22d50b4cdbf41b1	7966200aab9e6efa6579b5c70c5d224e43f0b869	fix: the scanner recovers a second secret an open-ended pattern's greedy quantifier swallowed (iss-188)
 d17f450c69e0794e4d181eac3a22244ed5578732	8cec9b6c3f3f6f8386140ceec3720ecb769dc3ac	fix: the junction search no longer steps over the junction it is looking for (iss-188)
-cd5c75023bee6f04ca16ac741131e335dc35634c	c7d28415a670cb7b0e205dc68a6346a0ebdc288a	Merge pull request #202 from REPPL/bugfix/iss-188-scanner-adjacency-greedy-open-ended
+cd5c75023bee6f04ca16ac741131e335dc35634c	c7d28415a670cb7b0e205dc68a6346a0ebdc288a	Merge pull request #202 from <personal account>/bugfix/iss-188-scanner-adjacency-greedy-open-ended
 abf20dadf9e200704c4a9823c089f216398d8d9a	ff8cb30c8e7b029d8bec1c49d03067201f76dfd9	fix: capture transitions roll back the destination on a failed source remove (iss-186)
 5e10f638440077c28c0f01a728150a3e8041be26	29e9f87b3e91ea3069dc6a822af7cd9454e09f85	chore: resolve iss-186 and record the round (bug-hunt loop round 4)
 8fbab11aa4c8a05865179d952ceb48a3099bfeb0	0b2631977e6da00c946a6b6a6957c7fe6e112653	docs: drop eight Unreleased entries already published under 0.4.1
 60ecc36015435b9efc54c0193385b2aef377e892	f32e19891e3b59c7a4d7fb959618120a8c6dbcc3	chore: pre-release doc sweep — waive two stress fixtures, name the shell-hazard guard
 33779807b9f0311a4a2bb2281d65e1c5b5c7cfb1	049079562c03c3af315d1c851e0aa9e91d4cc3e2	chore: cut v0.4.2 — date the changelog
 532d967712d78a690e8afbb9e98cd3ae3c3641ae	992cf19f16594b7a3ddc32a77044eafc721c1f3b	chore: record the v0.4.2 semantic-gate receipts (PROMOTE x2, full tier)
-22d1cdc1b76e4c95970c9bfae4751e51fc830215	b562f62d8ea2c42750e0ab6aad33e83287923a3e	Merge pull request #204 from REPPL/chore/release-cut
+22d1cdc1b76e4c95970c9bfae4751e51fc830215	b562f62d8ea2c42750e0ab6aad33e83287923a3e	Merge pull request #204 from <personal account>/chore/release-cut
 7b5e150b48889d54c20af41cbeb32dc37f068865	04ea6d4527e187a20454c1aab797cc71978b1920	Merge remote-tracking branch 'origin/main' into bugfix/iss-186-capture-transition-remove-rollback
 f71f5d7d6a3f7a3b38262249b39ae58e23a7a53e	1ad1ff8c2764bb8ebb3fd448a0ba7252192b62d0	fix: keep the iss-186 CHANGELOG entry under Unreleased after the v0.4.2 merge
-4c56802ffb11528867499e60d27ee91c84d295c1	e2f8c6bb8e64a7071bd7818f8959eae24cf829b8	Merge pull request #203 from REPPL/bugfix/iss-186-capture-transition-remove-rollback
+4c56802ffb11528867499e60d27ee91c84d295c1	e2f8c6bb8e64a7071bd7818f8959eae24cf829b8	Merge pull request #203 from <personal account>/bugfix/iss-186-capture-transition-remove-rollback
 c133c058f3645f22d8607f468c1ff4477b2bd72c	5c0af532dcf464ee4a6557e8076519c72245aa5a	fix: rules.Merge no longer panics when the base declares no domains (iss-187)

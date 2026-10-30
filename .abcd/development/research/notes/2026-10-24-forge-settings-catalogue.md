@@ -4,7 +4,7 @@ Repository: `intentdriven/abcd`. Read on 2026-10-24.
 
 **How this was checked**
 
-- **Current state.** Read with `gh api` GET calls only, as REPPL. The token has `repo`, `read:org`, `gist` and `admin:public_key` scopes and admin rights on the repository. Secrets were listed by name only.
+- **Current state.** Read with `gh api` GET calls only, as the product thinker. The token has `repo`, `read:org`, `gist` and `admin:public_key` scopes and admin rights on the repository. Secrets were listed by name only.
 - **Docs quotes.** Steps are quoted word for word from GitHub's own Markdown for each page, fetched through `https://docs.github.com/api/article/body?pathname=<path>` on 2026-10-24. Inline SVG icons are shown as `[<label> icon]`, and screenshot lines are left out. The text is otherwise unchanged, including GitHub's own inconsistencies, which are flagged where they occur.
 - **URLs.** A URL marked **(confirmed)** was returned by the API (`html_url` or `_links.html`) or answered HTTP 200. A URL marked **(unconfirmed)** follows a familiar pattern but could not be proven. Settings pages need a login, and when signed out, `github.com` returns 404 for a made-up settings path too, so a probe proves nothing.
 - **Status words.** MATCHES, DIFFERS or UNVERIFIABLE. Each compares the live state with what the repository's own files expect.
@@ -81,10 +81,10 @@ Settings are named forge-neutrally, and each name has its GitHub object in brack
   - `bypass_actors: [{actor_id: 5, actor_type: RepositoryRole, bypass_mode: always}]`, which is the admin role.
   - A `pull_request` rule with `required_approving_review_count: 0`, `require_code_owner_review: true` and `allowed_merge_methods: [merge, squash, rebase]`. All other options are false.
 - **Current state: DIFFERS.**
-  - **The live bypass list is empty.** `current_user_can_bypass` is `"never"` for REPPL, an admin.
+  - **The live bypass list is empty.** `current_user_can_bypass` is `"never"` for the product thinker, an admin.
   - Ruleset history shows the admin bypass in version 46981267 (2026-08-19) and gone from version 47485551 (2026-08-24).
   - The mirror and the README have described a bypass that has not existed since 2026-08-24. The fix for iss-2610180913341869 (resolved after 2026-10-18) went on to describe it again.
-  - Observed: PR #1119, authored by REPPL, changed `Makefile` and `commands/`, which are owned paths, and merged with no review. So the owner's pull requests do still pass. The cause is not the bypass, and I did not determine what it is.
+  - Observed: PR #1119, authored by the product thinker, changed `Makefile` and `commands/`, which are owned paths, and merged with no review. So the owner's pull requests do still pass. The cause is not the bypass, and I did not determine what it is.
   - The live rule also has `require_extra_approval_for_unattributed_changes: true`, which the mirror lacks. The docs say this setting "is enabled by default, for both new and existing rulesets" and "has no effect if the ruleset requires zero approvals", so it is harmless at count 0. The mirror is stale here.
 - **Direct URL:**
   - View: https://github.com/intentdriven/abcd/rules/21045110 (confirmed)
@@ -484,7 +484,7 @@ Settings are named forge-neutrally, and each name has its GitHub object in brack
 - **What it is for:** Only `main` may run the job (the `release` job's `environment:` binding in `.github/workflows/release.yml`; the release path reaches it from `main` through auto-release's call). No person approves before a release publishes: adr-2610281718537125 partly supersedes adr-43 point 2.
 - **Expected value:** No required reviewer, branch policy `main` (branch) only, no secrets.
 - **Current state: DIFFERS** until the reviewer is removed after adr-2610281718537125 lands.
-  - Required reviewer User `REPPL`, `prevent_self_review: false`, as read on 2026-10-24.
+  - Required reviewer: the product thinker's user account, `prevent_self_review: false`, as read on 2026-10-24.
   - Policies: `main` (branch) only, as read on 2026-10-28.
   - `can_admins_bypass: true`, which the repository does not discuss.
   - No environment secrets.
@@ -703,7 +703,7 @@ Settings are named forge-neutrally, and each name has its GitHub object in brack
 2. **Default-branch review rule (`main review`, 21045110).** The live ruleset has **no bypass actors**. The mirror and README claim an admin `RepositoryRole 5` bypass, which was removed on 2026-08-24. The live rule also carries `require_extra_approval_for_unattributed_changes: true`, which the mirror lacks; it is harmless at 0 approvals. A person must rule on which side is correct.
 3. **Dependency re-author app and secrets.** Not set up: there are no Dependabot secrets, no App is installed, and the owner fields in the `.conf` file are empty. This is the ADR's documented pre-setup state, so it is a DIFFERS only against the fully set-up design.
 4. **Mirror only, not the live ruleset: `reservations-protection.json`.** It still holds the placeholder `RESERVATION_SWEEP_APP_ID`. The live ruleset correctly names 5456387. Refresh the mirror.
-5. **Release deploy environment (section 12).** The live environment still carries the required reviewer `REPPL`, which adr-2610281718537125 removes. The setting is changed after that record lands.
+5. **Release deploy environment (section 12).** The live environment still carries the required reviewer (the product thinker's account), which adr-2610281718537125 removes. The setting is changed after that record lands.
 
 **Not verified:**
 - Whether installation 174852039 includes `abcd`. This needs a personal access token or an App JWT.

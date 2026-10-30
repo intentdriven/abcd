@@ -84,7 +84,7 @@ type RepoIdentity struct {
 	Github  string `json:"github"`
 	RootSHA string `json:"root_sha"`
 	// rootErr is why RootSHA is "" when git did not answer for a repository
-	// (gitutil.ErrNoRootAnswer, gitutil.ErrGitTimedOut): nil when RootSHA is
+	// (gitutil.ErrNoRootAnswer): nil when RootSHA is
 	// the answer, "" included. Unexported, so the JSON envelope is unchanged.
 	rootErr error
 }

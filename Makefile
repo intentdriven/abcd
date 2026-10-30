@@ -17,7 +17,7 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
 .PHONY: build test vet clean preflight precheck load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
-	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
+	evals-cold-reading check-attribution secrets-check vulncheck scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
 # Pass VERSION=vX.Y.Z to stamp the version (release builds); omit for a dev build.
@@ -160,6 +160,25 @@ check-attribution:
 		go build -o "$$tmp/abcd" ./cmd/abcd && \
 		ABCD_OUTBOUND_BIN="$$tmp/abcd" bash scripts/check-attribution.sh commits origin/main HEAD
 
+# The two scans CI runs on every pull request (iss-2610261151381604), as
+# preflight prerequisites so a finding stops the run before its test stages wait
+# at the load gate: gitleaks over the branch's own commits (origin's default
+# branch..HEAD) and govulncheck over the module, each at the version ci.yml pins,
+# read from ci.yml. A scan that cannot run here (no gitleaks on PATH, or no
+# network for govulncheck's database) is skipped loudly, never passed in
+# silence, and CI's scan still runs. A govulncheck finding on a branch that
+# changes neither go.mod nor go.sum, when the fork point's own tree reports
+# every vulnerability it names, was not brought in by the branch
+# (iss-2610261151481013, iss-2610262259078996), and govulncheck is not a
+# required check, so it warns and does not stop the run; any other finding
+# stops it, and so does a gitleaks that runs and cannot scan. The comparison is
+# by id, so a branch newly reaching an id the fork point reaches is warned of.
+secrets-check:
+	@bash scripts/preflight-scans.sh secrets
+
+vulncheck:
+	@bash scripts/preflight-scans.sh vulncheck
+
 # Deterministic drift gate for the .abcd/development design record (first slice
 # of internal/core/lint). Blocking: any record drift (stale tool names, dropped
 # concepts, lifecycle or reference breakage) fails preflight and CI.
@@ -263,12 +282,34 @@ asking-sync:
 asking-sync-check:
 	@go run ./cmd/asking-sync -check
 
+# A records-only change (iss-2610251555094324) takes a shorter preflight: when
+# every path HEAD changes against the merge base with origin's default branch
+# lies in .abcd/development/ or .abcd/work/, no test names one of them (by its
+# path, its file name or its record id), and the
+# tree matches HEAD, scripts/records-only.sh says so and the second preflight
+# rule below runs in place of the first. It runs the same gates, build and vet,
+# then precheck's test lines in place of the unit and race stages, and says so
+# before its tests and in the receipt it mints. Anything else, a failed check included,
+# is the full rule. The verdict is read while this Makefile is parsed, as the
+# starting state is, and only yes or nothing reaches make: the reason can name a
+# changed path, so it is printed by the script itself, never placed in a recipe
+# line. The records rule's first step and its mint each run the classifier
+# again, so a verdict that no longer holds fails the run rather than skipping
+# its tests. `make preflight PREFLIGHT_RECORDS_ONLY=` takes the full rule
+# whatever the change. TestPreflightRecordsRuleRunsPrechecksTests holds the
+# second rule's gates to the first's and its test lines to precheck's.
+ifneq ($(filter preflight,$(MAKECMDGOALS)),)
+PREFLIGHT_RECORDS_ONLY := $(shell scripts/records-only.sh >/dev/null 2>&1 && echo yes)
+endif
+
+ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
 # receipt the last step mints, below): the load check first (a
 # warning, never a failure: load-check), then the format gate (fmt-check), the
 # six lint gates
 # (lint-reviews, lint-issues, record-lint, issue-drift,
-# docs-lint, and check-attribution over the branch's commits), the
+# docs-lint, and check-attribution over the branch's commits), the two scans
+# CI runs on every pull request (secrets-check and vulncheck), the
 # site-render gate and both tagged eval lanes (smoke, evals-cold-reading) as
 # prerequisites, then build, vet, test,
 # and race-enabled internal tests natively — every Go step on the toolchain
@@ -309,7 +350,7 @@ asking-sync-check:
 # (iss-2610161639025702, iss-2610282016250805). The race
 # stage waits at its own gate (`--race-gate`, spelt without --wait so an older
 # abcd never reads a preflight there as queued at its first gate). At one, the
-# race gate opens at once, so the preflight runs exactly as before. Above one,
+# race gate opens at once once the disk check passes. Above one,
 # the first gate admits a preflight while fewer than that many others are in
 # their test stages (one queued at its race gate runs nothing and takes no
 # slot), a live race run does not shut it by itself, and a waiter queued ahead
@@ -332,7 +373,7 @@ asking-sync-check:
 # test hung, and on 2026-10-25 claim, implement/loop and surface/cli each
 # outran 20 minutes on a 10-core Mac at a load of 5 to 7, with no test hung
 # (iss-2610250007404944).
-preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
+preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go run ./cmd/abcd implement load --wait --timeout 2h
@@ -343,11 +384,25 @@ preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift
 	go test -race -p "$$p" -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
+else
+preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
+	@scripts/records-only.sh
+	@echo "preflight: a records-only change, so the unit and race stages are skipped and precheck's tests run in their place; CI's unit lane still runs every test"
+	go build ./...
+	go vet ./...
+	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat
+	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site
+	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)" records-only
+endif
+
 # The precheck (iss-2610230016523625): the minutes-long pass a lane runs before
 # it queues a preflight, so a test that reads the whole tree fails before the
 # queue rather than after it. It runs preflight's gates (all but the load check,
 # which reads the machine and only warns), build and vet, the packages whose
 # tests audit the record, the generated pages and the agent definitions, in full,
+# and the packages whose tests read the committed record tree whole (record ids
+# and slugs, the changelog derivation, intents, release pages, decisions, the
+# brief's lifeboat table),
 # and the command and site packages' audit tests, chosen by name: a test in those
 # two packages that reads the committed tree carries one of the PRECHECK_AUDIT_TESTS
 # words in its name, which is how a new one joins without a list to keep. It skips
@@ -357,10 +412,10 @@ preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift
 # and TestPrecheckRunsTheAuditTests its test lines to what this says.
 PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Appendices|Paragraph|Vocabulary|Scope|Relay|Chapter|Baseline|Domain|Definitions|Committed|Docs|Identity
 
-precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
+precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
-	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading
+	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat
 	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site
 
 precheck: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)

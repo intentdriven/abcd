@@ -164,8 +164,8 @@ as the PLAN records it" instead of hard-coding one mechanism.
 
 ### F13 — Delegated commits need an identity check · protocol gap
 
-The Opus worker's commit arrived authored "Alex Reppel <...>" although the
-repo's `git config user.name` is `REPPL` — the worker (or its sub-shell)
+The Opus worker's commit arrived authored "<full name> <...>" although the
+repo's `git config user.name` is `<login>` — the worker (or its sub-shell)
 resolved identity from somewhere other than the repo config, and nothing in
 the flow would have caught it before push. The orchestrator caught it by
 inspection and amended the unpushed commit's author. **For `/abcd:run`:** when

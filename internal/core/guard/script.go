@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 
@@ -2215,16 +2216,102 @@ func searchPath(rc *readCtx, st *shellState, pv varVal, set bool, name string, t
 type shellCall struct {
 	cmdString, stdin, versionOnly, unresolved  bool
 	interactive, login, norc, noprofile, norcs bool
+	// noexec is `-n` or `-o noexec`: a non-interactive shell reads its
+	// commands and runs none of them, a syntax check (iss-2610262219309883).
+	noexec bool
 	// script and rcfile index the arguments: the script operand and the
 	// --rcfile/--init-file value, -1 for none.
 	script, rcfile int
 }
 
-// parseShellCall walks a shell's arguments the way its own parser reads them.
-// An argument the line does not fix leaves the rest unread (unresolved).
-func parseShellCall(name string, args []string) shellCall {
+// shellDialect is one way shell-family shells read their arguments.
+type shellDialect int
+
+const (
+	// dialectBash reads its long options after one dash as after two
+	// (`-login` is `--login`), but only before its first single-letter
+	// option, after which such a word is letters; -o and -O each take the
+	// next word, and a lone `+` is an empty cluster.
+	dialectBash shellDialect = iota
+	// dialectDash has no long options, and -o takes the next word.
+	dialectDash
+	// dialectZsh has GNU-style long options, unset by `+-`; -o takes the
+	// rest of its word or the next one, -O takes nothing, and a lone `+`
+	// ends the options as `-` does.
+	dialectZsh
+	// dialectKsh takes -o's value from the rest of its word or the next one,
+	// and ksh93 runs a word of three dashes or more as its script.
+	dialectKsh
+)
+
+// shellDialects is every way the shell called name may read its arguments.
+// sh is bash on one system, dash on another and a ksh on a third, and a
+// member whose reading the guard does not model is read every way: a file
+// any reading runs is judged (shellTargets).
+func shellDialects(name string) []shellDialect {
+	switch name {
+	case "bash", "rbash":
+		return []shellDialect{dialectBash}
+	case "dash", "ash":
+		return []shellDialect{dialectDash}
+	case "zsh":
+		return []shellDialect{dialectZsh}
+	case "ksh", "mksh":
+		return []shellDialect{dialectKsh}
+	case "sh":
+		return []shellDialect{dialectBash, dialectDash, dialectKsh}
+	}
+	return []shellDialect{dialectBash, dialectDash, dialectZsh, dialectKsh}
+}
+
+// shellCalls reads a shell's arguments every way the shell called name may
+// read them.
+func shellCalls(name string, args []string) []shellCall {
+	var out []shellCall
+	for _, d := range shellDialects(name) {
+		out = append(out, parseShellCall(d, args))
+	}
+	return out
+}
+
+// bashLongOptions are the long options bash 3.2 to 5.2 read, after one dash
+// as after two; only `-` plus one of these is a long option in bash, so
+// `-login` is `--login` and `-lx` is still a cluster of letters. bash reads
+// them only before its first single-letter option (bashLongOption).
+var bashLongOptions = map[string]bool{
+	"debug": true, "debugger": true, "dump-po-strings": true, "dump-strings": true, "help": true,
+	"init-file": true, "login": true, "noediting": true, "noprofile": true, "norc": true,
+	"posix": true, "pretty-print": true, "protected": true, "rcfile": true, "restricted": true,
+	"verbose": true, "version": true, "wordexp": true,
+}
+
+// optionName is a shell option's name as zsh and ksh compare it: case and
+// every `_` and `-` ignored.
+func optionName(s string) string {
+	return strings.ToLower(strings.NewReplacer("_", "", "-", "").Replace(s))
+}
+
+// shellOptionValue is the option name an o takes: the rest of its word
+// (attached), or the next word.
+type shellOptionValue struct {
+	on       bool
+	text     string
+	attached bool
+}
+
+// bashLongOption reports whether bash reads the word a as a long option
+// after one dash: a name bashLongOptions holds, read only while longs holds,
+// that is before bash's first single-letter option.
+func bashLongOption(a string, longs bool) bool {
+	return longs && len(a) > 2 && a[0] == '-' && a[1] != '-' && bashLongOptions[a[1:]]
+}
+
+// parseShellCall walks a shell's arguments the way a shell of dialect d reads
+// them. An argument the line does not fix leaves the rest unread
+// (unresolved).
+func parseShellCall(d shellDialect, args []string) shellCall {
 	c := shellCall{script: -1, rcfile: -1}
-	zsh := name == "zsh"
+	longs := true // bash still reads its long options after one dash
 	i := 0
 	for i < len(args) {
 		a := args[i]
@@ -2232,16 +2319,16 @@ func parseShellCall(name string, args []string) shellCall {
 			c.unresolved = true
 			return c
 		}
+		if d == dialectBash && bashLongOption(a, longs) {
+			a = "-" + a
+		}
+		longs = longs && strings.HasPrefix(a, "--")
 		switch {
-		case a == "--":
+		case a == "--" || a == "-" || (a == "+" && d == dialectZsh):
+			// Each ends the options, and the word after it is the script.
 			if !c.cmdString && !c.stdin && i+1 < len(args) {
 				c.script = i + 1
 			} else if i+1 >= len(args) && !c.cmdString {
-				c.stdin = true
-			}
-			return c
-		case a == "-":
-			if !c.cmdString {
 				c.stdin = true
 			}
 			return c
@@ -2267,10 +2354,28 @@ func parseShellCall(name string, args []string) shellCall {
 		case a == "--emulate":
 			i += 2
 			continue
-		case strings.HasPrefix(a, "--"):
+		case d == dialectKsh && strings.HasPrefix(a, "---"):
+			// ksh93 runs a word of three dashes or more as its script.
+			if !c.cmdString && !c.stdin {
+				c.script = i
+			}
+			return c
+		case strings.HasPrefix(a, "--") || (d == dialectZsh && strings.HasPrefix(a, "+-")):
+			// A long option, set by `--` and, in zsh, unset by `+-`; read as a
+			// cluster of letters, a `+-` option's `o` would take the script
+			// for an option's name. Only noexec itself keeps a syntax check:
+			// any other long option may turn execution back on (`--exec`, a
+			// `no` inversion), so after it the script is judged.
+			// dash has no long options, so none grants it a syntax check.
+			c.noexec = d != dialectDash && optionName(a[2:]) == "noexec" && a[0] == '-'
+		case a == "+":
+			// bash, dash and ksh read a lone `+` as a cluster of no letters.
 		case len(a) >= 2 && (a[0] == '-' || a[0] == '+'):
 			set := a[0] == '-'
-			var values []bool // for each o/O in the cluster: its sign
+			var values []shellOptionValue
+			next := 0     // the words after this one that values take
+			ends := false // zsh's -b (or +b): the options end after this word
+		cluster:
 			for k := 1; k < len(a); k++ {
 				switch a[k] {
 				case 'c':
@@ -2281,28 +2386,62 @@ func parseShellCall(name string, args []string) shellCall {
 					c.interactive = c.interactive || set
 				case 'l':
 					c.login = c.login || set
+				case 'n':
+					c.noexec = set
 				case 'f':
-					if zsh && set {
+					if d == dialectZsh && set {
 						c.norcs = true
 					}
+				case 'b':
+					ends = ends || d == dialectZsh
 				case 'o', 'O':
-					values = append(values, set)
+					if a[k] == 'O' && d != dialectBash {
+						// zsh's -O is a flag of its own, and dash and ksh refuse it.
+						continue
+					}
+					if (d == dialectZsh || d == dialectKsh) && k+1 < len(a) {
+						values = append(values, shellOptionValue{on: set, text: a[k+1:], attached: true})
+						break cluster
+					}
+					values = append(values, shellOptionValue{on: set})
+					next++
 				}
 			}
-			for k, on := range values {
-				if i+1+k >= len(args) {
-					break
+			taken := 0
+			for _, val := range values {
+				text := val.text
+				if !val.attached {
+					if i+1+taken >= len(args) {
+						break
+					}
+					text = args[i+1+taken]
+					taken++
 				}
-				switch v := strings.ToLower(strings.ReplaceAll(args[i+1+k], "_", "")); {
-				case v == "login" && on:
+				switch v := strings.ToLower(strings.ReplaceAll(text, "_", "")); {
+				case v == "login" && val.on:
 					c.login = true
-				case v == "interactive" && on:
+				case v == "interactive" && val.on:
 					c.interactive = true
-				case (v == "norcs" && on) || (v == "rcs" && !on):
+				case (v == "norcs" && val.on) || (v == "rcs" && !val.on):
 					c.norcs = true
+				case v == "noexec":
+					c.noexec = val.on
+				case strings.Contains(v, "exec"):
+					// `exec`, or a `no` inversion of noexec: the script may
+					// run, so it is judged.
+					c.noexec = false
 				}
 			}
-			i += 1 + len(values)
+			i += 1 + next
+			if ends {
+				// As after `--`, the word after it is the script.
+				if !c.cmdString && !c.stdin && i < len(args) {
+					c.script = i
+				} else if i >= len(args) && !c.cmdString {
+					c.stdin = true
+				}
+				return c
+			}
 			continue
 		default:
 			if !c.cmdString && !c.stdin {
@@ -2322,9 +2461,33 @@ func parseShellCall(name string, args []string) shellCall {
 // commands, and the stream verdict on a startup file handed a stream.
 func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string, env map[string]varVal) ([]readTarget, []payloadSignal) {
 	args := s.tokens[site+1:]
-	c := parseShellCall(name, args)
-	if c.versionOnly {
+	// Every reading the shell's name allows, and what any of them reads is
+	// judged: the readings that fix their arguments and run something, and
+	// c, what they read together. A startup file any of them reads is read,
+	// and one is skipped only where every reading skips it.
+	var calls []shellCall
+	versionOnly := true
+	c := shellCall{norc: true, noprofile: true, norcs: true, rcfile: -1}
+	for _, r := range shellCalls(name, args) {
+		versionOnly = versionOnly && r.versionOnly
+		if r.versionOnly || r.unresolved {
+			continue
+		}
+		calls = append(calls, r)
+		c.interactive = c.interactive || r.interactive
+		c.login = c.login || r.login
+		c.norc, c.noprofile, c.norcs = c.norc && r.norc, c.noprofile && r.noprofile, c.norcs && r.norcs
+	}
+	if versionOnly {
 		return nil, nil
+	}
+	var rcfiles []int
+	bashrc := false
+	for _, r := range calls {
+		if r.rcfile >= 0 && !slices.Contains(rcfiles, r.rcfile) {
+			rcfiles = append(rcfiles, r.rcfile)
+		}
+		bashrc = bashrc || (r.interactive && !r.norc && r.rcfile < 0)
 	}
 	var out []readTarget
 	var sigs []payloadSignal
@@ -2361,14 +2524,14 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 	if v, ok := env["BASH_ENV"]; ok && v.ok && v.text != "" {
 		startup("BASH_ENV", v.text, strings.HasPrefix(v.text, "~"))
 	}
-	if c.unresolved {
+	if len(calls) == 0 {
 		return out, sigs
 	}
 	if v, ok := env["ENV"]; ok && v.ok && v.text != "" && c.interactive {
 		startup("ENV", v.text, strings.HasPrefix(v.text, "~"))
 	}
-	if c.rcfile >= 0 {
-		idx := site + 1 + c.rcfile
+	for _, rcfile := range rcfiles {
+		idx := site + 1 + rcfile
 		w := s.tokens[idx]
 		if wordCouldBe(w, procSubOperand) && !variableCarried(s, idx) {
 			sigs = append(sigs, interpreterStreamSignal())
@@ -2421,7 +2584,7 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 					out = append(out, child(p, "the startup file "+p, targetStartup))
 				}
 			}
-			if c.interactive && !c.norc && c.rcfile < 0 {
+			if bashrc {
 				if p, ok := st.resolve(rc, filepath.Join(home.text, ".bashrc"), tilde); ok {
 					out = append(out, child(p, "the startup file "+p, targetStartup))
 				}
@@ -2456,8 +2619,24 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 			}
 		}
 	}
-	if c.script >= 0 {
-		idx := site + 1 + c.script
+	// Each reading's own script, or its standard input, once however many
+	// readings run it.
+	var scripts []int
+	readsStdin := false
+	for _, r := range calls {
+		// Under noexec a non-interactive shell reads its script and runs none
+		// of it, so the script is no run to judge; an interactive shell
+		// ignores the option. The startup files above are still judged.
+		if r.noexec && !r.interactive {
+			continue
+		}
+		if r.script >= 0 && !slices.Contains(scripts, r.script) {
+			scripts = append(scripts, r.script)
+		}
+		readsStdin = readsStdin || (r.script < 0 && r.stdin && !r.cmdString)
+	}
+	for _, sc := range scripts {
+		idx := site + 1 + sc
 		w := s.tokens[idx]
 		switch {
 		case variableCarried(s, idx) || scriptIsStream(w, s.stdinStream):
@@ -2488,7 +2667,8 @@ func shellTargets(rc *readCtx, s segment, st *shellState, site int, name string,
 				out = append(out, t)
 			}
 		}
-	} else if c.stdin && !c.cmdString {
+	}
+	if readsStdin {
 		if f, ok := st.stdinOf(rc, s); ok && f.ok {
 			out = append(out, child(f.path, "its standard input ("+f.path+")", targetScript))
 		} else if ok && f.rel != "" {
