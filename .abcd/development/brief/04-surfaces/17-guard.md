@@ -134,8 +134,12 @@ branch's committed `.abcd/config.json` and `~/.abcd.noindex/config.json`, a
 `human` in either winning, never the working tree's copy. It reads the default
 branch as origin names it and only after fetching it, never from the refs this
 checkout holds, which an agent can move (`git remote set-head`,
-`git update-ref`). A mode that cannot be read, an origin that cannot be reached
-included, counts as `human`. The guard cannot import that resolver (it sits above
+`git update-ref`), within 15 seconds. A mode that cannot be read, an origin
+that cannot be reached or does not answer in time included, counts as `human`,
+and so does a checkout where the forge client would act on another remote than
+origin (one named `upstream` or `github`, which gh prefers, or one
+`gh repo set-default` chose). Origin's URL is taken as the checkout's
+configuration names it. The guard cannot import that resolver (it sits above
 the guard), so each front door that loads a repository's registry hands the mode
 in; a registry with no mode handed in judges no merge command.
 
@@ -161,7 +165,8 @@ that allows it:
 In `auto` all of them are allowed, and the merge gate decides what abcd arms,
 except a merge command that names its repository (`-R`, `--repo`, a `GH_REPO`
 prefix, or a REST route spelling owner and name rather than gh's
-placeholders): the mode read is this checkout's, which does not answer for
+placeholders, or one the line does not fix), or that runs after the line
+changed directory or set `GH_REPO`: the mode read is this checkout's, which does not answer for
 another repository, so such a command is refused under the same id, with no
 setting offered, since none here would allow it.
 
@@ -174,13 +179,19 @@ program name it is refused in code as `abcd-land-approve-any-program`: the
 guard reads the words the program is handed (the land verb, then `--approve`),
 not what the program is called, so `go run` of the module or of `.`, a
 cross-compiled build and a renamed copy are all refused. A flag word a
-substitution prints is not read. The five merge ids
-and `abcd-land-approve-any-program` are reserved, so a repository's
-`.abcd/guard.json` cannot declare an entry under them.
+substitution prints is not read. An approving review posted on the forge,
+which the gate also counts as an approval, is refused the same way in every
+mode, as `forge-review-approve`: `gh pr review --approve`, and a `gh api` call
+to the REST review route or carrying the `addPullRequestReview` or
+`submitPullRequestReview` mutation with `APPROVE` among its words. A review
+that comments or requests changes is not refused. The five merge ids,
+`abcd-land-approve-any-program` and `forge-review-approve` are reserved, so a
+repository's `.abcd/guard.json` cannot declare an entry under them.
 
-The guard holds against an agent merging by mistake, not against a determined
-one: an agent runs with the person's own credentials and can reach the forge
-by routes no command line shows.
+The guard holds against an agent merging or approving by mistake, not against
+a determined one: an agent runs with the person's own credentials, can point
+origin at another repository, and can reach the forge by routes no command line
+shows.
 
 ## The question gate
 

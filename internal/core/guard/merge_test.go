@@ -55,6 +55,11 @@ func TestHumanModeRefusesTheMergeCommands(t *testing.T) {
 		{`gh api --hostname h.example graphql -F query=@q.graphql`, mergeUnreadEntryID},
 		{`gh api --method POST graphql --input body.json`, mergeUnreadEntryID},
 		{`gh api "$EP" -f query='mutation{mergePullRequest(input:{pullRequestId:"X"}){clientMutationId}}'`, mergeEnqueueEntryID},
+		{`gh api /graphql -f query='mutation{mergePullRequest(input:{pullRequestId:"X"}){clientMutationId}}'`, mergeEnqueueEntryID},
+		{`gh api -f query='mutation{enqueuePullRequest(input:{pullRequestId:"X"}){clientMutationId}}' graphql`, mergeEnqueueEntryID},
+		{`gh api graphql -F=query=@q.graphql`, mergeUnreadEntryID},
+		{`gh api -X=PUT repos/{owner}/{repo}/pulls/123/merge`, mergeRESTEntryID},
+		{`gh api -X PUT repos/:owner/:repo/pulls/123/merge`, mergeRESTEntryID},
 	} {
 		t.Run(c.cmd, func(t *testing.T) {
 			reads := 0
@@ -119,6 +124,11 @@ func TestAMergeNamingItsRepositoryCountsAsHuman(t *testing.T) {
 		{`GH_REPO=o/r gh pr merge 123 --auto`, mergeAutoEntryID},
 		{`gh api -X PUT repos/o/r/pulls/123/merge`, mergeRESTEntryID},
 		{`gh api -X PUT "repos/$REPO/pulls/$N/merge"`, mergeRESTEntryID},
+		{`GH_REPO="$R" gh pr merge 1 --auto`, mergeAutoEntryID},
+		{`gh pr merge 1 --repo="$R" --auto`, mergeAutoEntryID},
+		{`gh pr merge 1 -R"$R" --auto`, mergeAutoEntryID},
+		{`export GH_REPO=o/r; gh pr merge 1 --auto`, mergeAutoEntryID},
+		{`cd ../other && gh pr merge 1 --auto`, mergeAutoEntryID},
 	} {
 		reads := 0
 		d, err := Defaults().WithMergeMode(modeOf(false, &reads)).Check(c.cmd)
@@ -127,8 +137,14 @@ func TestAMergeNamingItsRepositoryCountsAsHuman(t *testing.T) {
 		}
 	}
 	reads := 0
-	if d, err := Defaults().WithMergeMode(modeOf(false, &reads)).Check(`gh api -X PUT repos/{owner}/{repo}/pulls/123/merge`); err != nil || d.Verdict == VerdictBlock {
-		t.Fatalf("in auto, the placeholder REST route = %+v, %v; want it allowed", d, err)
+	for _, cmd := range []string{
+		`gh api -X PUT repos/{owner}/{repo}/pulls/123/merge`,
+		`gh api -X PUT repos/:owner/:repo/pulls/123/merge`,
+		`gh pr merge 123 --auto`,
+	} {
+		if d, err := Defaults().WithMergeMode(modeOf(false, &reads)).Check(cmd); err != nil || d.Verdict == VerdictBlock {
+			t.Fatalf("in auto, Check(%q) = %+v, %v; want it allowed", cmd, d, err)
+		}
 	}
 }
 
@@ -136,7 +152,9 @@ func TestAMergeNamingItsRepositoryCountsAsHuman(t *testing.T) {
 // approval is refused to an agent in any mode, through the binary (the
 // registry entry) and under any other program name (the guard's own): go run
 // of the module or of `.`, a cross-compiled build, a copy renamed, a program
-// a variable names. Every other land spelling is allowed.
+// a variable names, the flag before the verb. An approving review posted on
+// the forge is refused the same way; a review that comments or requests
+// changes is not. Every other land spelling is allowed.
 func TestTheApprovalActIsThePersons(t *testing.T) {
 	for _, human := range []bool{true, false} {
 		reads := 0
@@ -156,6 +174,14 @@ func TestTheApprovalActIsThePersons(t *testing.T) {
 			{`/tmp/x land --approve`, approveAnyEntryID},
 			{`"$B" land feat/x --approve`, approveAnyEntryID},
 			{`env FOO=1 ./tool land --approve`, approveAnyEntryID},
+			{`./tool --approve land`, approveAnyEntryID},
+			{`bin/x --approve=true land feat/x`, approveAnyEntryID},
+			{`gh pr review 12 --approve`, approveForgeEntryID},
+			{`gh pr review -a 12 -b ok`, approveForgeEntryID},
+			{`gh -R o/r pr review 12 --approve=true`, approveForgeEntryID},
+			{`gh api repos/{owner}/{repo}/pulls/12/reviews -f event=APPROVE`, approveForgeEntryID},
+			{`gh api -X POST "repos/$R/pulls/$N/reviews/$ID/events" -f event=APPROVE`, approveForgeEntryID},
+			{`gh api graphql -f query='mutation{addPullRequestReview(input:{pullRequestId:"X",event:APPROVE}){clientMutationId}}'`, approveForgeEntryID},
 		} {
 			d, err := reg.Check(c.cmd)
 			if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
@@ -171,14 +197,19 @@ func TestTheApprovalActIsThePersons(t *testing.T) {
 			`bin/abcd-darwin-arm64 land`,
 			`bin/abcd-darwin-arm64 land --approve=false`,
 			`bin/abcd-darwin-arm64 capture "land --approve"`,
-			`./tool --approve land`,
+			`gh pr review 12 --comment -b looks-fine`,
+			`gh pr review 12 --request-changes -b "see the approve path"`,
+			`gh api repos/{owner}/{repo}/pulls/12/reviews`,
+			`gh api repos/{owner}/{repo}/pulls/12/reviews -f event=COMMENT -f body=ok`,
 		} {
 			if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
 				t.Fatalf("human %v: Check(%q) = %+v, %v; want it allowed", human, cmd, d, err)
 			}
 		}
 	}
-	if d, err := Defaults().Check(`go run ./cmd/abcd land --approve`); err != nil || d.Verdict != VerdictBlock {
-		t.Fatalf("the approval act is refused with no mode handed in too: %+v, %v", d, err)
+	for _, cmd := range []string{`go run ./cmd/abcd land --approve`, `gh pr review 12 --approve`} {
+		if d, err := Defaults().Check(cmd); err != nil || d.Verdict != VerdictBlock {
+			t.Fatalf("the approval act %q is refused with no mode handed in too: %+v, %v", cmd, d, err)
+		}
 	}
 }

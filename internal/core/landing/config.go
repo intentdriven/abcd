@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -263,56 +264,118 @@ func ReadFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator
 // ReadDefaultFacilitator resolves facilitator.mode for the repository holding
 // cwd as the merge gate does (ReadFacilitatorAt), at the tip of the default
 // branch git tracks for it (gitutil.DefaultRef), with the machine layer of the
-// caller's home (layered.HomeRoots, as RootsFor resolves it). The shell guard
-// reads the mode through it. A repository with no default branch to read is
+// caller's home (layered.HomeRoots, as RootsFor resolves it). The board reads
+// the mode through it; the shell guard reads ReadFetchedFacilitator. A repository with no default branch to read is
 // an error (ErrNoDefaultBranch): a caller that cannot read the mode takes it
 // as human.
 func ReadDefaultFacilitator(cwd string) (Facilitator, error) {
 	return ReadDefaultFacilitatorContext(context.Background(), cwd)
 }
 
+// FetchedReadTimeout bounds ReadFetchedFacilitator as a whole: the shell
+// guard asks it inside a host's hook, which may give up on a slow hook and
+// run the command anyway, so a slow origin must end the read first, as human.
+const FetchedReadTimeout = 15 * time.Second
+
 // ReadFetchedFacilitator is ReadDefaultFacilitator for a caller that judges
 // an act by the mode and so must not take it from refs an agent can move
 // (`git remote set-head`, `git update-ref` on a remote-tracking ref): the
 // shell guard, deciding a merge command. It asks Remote which branch is its
-// default (gitutil.RemoteHeadBranch) and at which commit (git ls-remote),
-// fetches that branch, and reads the mode at the commit Remote named, from
-// the local object store. A remote that cannot be asked, a fetch that fails,
-// and a branch that moved between the two are errors, which the caller counts
-// as human: it never falls back to the checkout's last fetch. The fetch
+// default and at which commit (git ls-remote --symref), fetches that branch,
+// and reads the mode at the commit Remote named, from the local object store,
+// all within FetchedReadTimeout. A remote that cannot be asked, a fetch that
+// fails or runs out of time, and a tip the fetch did not bring are errors,
+// which the caller counts as human: it never falls back to the checkout's
+// last fetch. So is a checkout where the forge client would act on another
+// remote than Remote (one named upstream or github, which gh prefers, or one
+// gh repo set-default chose), whose mode this read would not be. The fetch
 // writes what any fetch of the branch writes (its remote-tracking ref), never
-// origin/HEAD and never FETCH_HEAD.
+// origin/HEAD and never FETCH_HEAD, and starts no maintenance.
+//
+// It trusts Remote's URL as the checkout's configuration names it: an agent
+// that rewrites the URL is out of its reach, as the guard's limit says.
 func ReadFetchedFacilitator(cwd string) (Facilitator, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), FetchedReadTimeout)
+	defer cancel()
+	return readFetchedFacilitator(ctx, cwd)
+}
+
+func readFetchedFacilitator(ctx context.Context, cwd string) (Facilitator, error) {
 	r, _ := layered.HomeRoots()
-	root, err := gitutil.Toplevel(cwd)
+	fresh := func(what string, err error) error {
+		why := ""
+		if err != nil {
+			why = ": " + fsutil.RedactHome(err.Error())
+		}
+		return fmt.Errorf("%s, so the default branch's %s cannot be read as just fetched%s", what, KeyFacilitatorMode, why)
+	}
+	root, err := gitutil.ToplevelContext(ctx, cwd)
 	if err != nil {
 		return Facilitator{}, fmt.Errorf("%s is not inside a git checkout, so the default branch's %s cannot be read", fsutil.RedactHome(cwd), KeyFacilitatorMode)
 	}
-	def, err := gitutil.RemoteHeadBranch(root, Remote)
-	if err != nil {
-		return Facilitator{}, fmt.Errorf("%s could not say which branch is its default, so its %s cannot be read as just fetched: %s", Remote, KeyFacilitatorMode, fsutil.RedactHome(err.Error()))
+	if other, err := forgeRemote(ctx, root); err != nil {
+		return Facilitator{}, fresh("this checkout's remotes cannot be read", err)
+	} else if other != "" {
+		return Facilitator{}, fresh("the forge client would act on the remote "+other+" here, not on "+Remote, nil)
 	}
-	ref := "refs/heads/" + def
-	out, err := gitutil.Net(root, "ls-remote", Remote, ref)
+	out, err := gitutil.RunLimitedNetContext(ctx, root, 4096, "ls-remote", "--symref", Remote, "HEAD")
 	if err != nil {
-		return Facilitator{}, fmt.Errorf("%s could not say where %s is, so its %s cannot be read as just fetched: %s", Remote, def, KeyFacilitatorMode, fsutil.RedactHome(err.Error()))
+		return Facilitator{}, fresh(Remote+" could not say which branch is its default", err)
 	}
-	tip := ""
+	def, tip := "", ""
 	for _, line := range strings.Split(out, "\n") {
-		if sha, name, ok := strings.Cut(line, "\t"); ok && name == ref {
+		if rest, ok := strings.CutPrefix(line, "ref: "); ok {
+			if target, name, ok := strings.Cut(rest, "\t"); ok && name == "HEAD" {
+				def, _ = strings.CutPrefix(target, "refs/heads/")
+			}
+		} else if sha, name, ok := strings.Cut(line, "\t"); ok && name == "HEAD" {
 			tip = sha
 		}
 	}
-	if !gitutil.IsFullSHA(tip) {
-		return Facilitator{}, fmt.Errorf("%s did not name %s's tip, so its %s cannot be read as just fetched", Remote, def, KeyFacilitatorMode)
+	if def == "" || def == "HEAD" || !gitutil.IsFullSHA(tip) {
+		return Facilitator{}, fresh(Remote+" did not name a default branch and its tip", nil)
 	}
-	if _, err := gitutil.Net(root, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", Remote, ref); err != nil {
-		return Facilitator{}, fmt.Errorf("fetching %s's %s failed, so its %s cannot be read as just fetched: %s", Remote, def, KeyFacilitatorMode, fsutil.RedactHome(err.Error()))
+	if _, err := gitutil.RunLimitedContext(ctx, root, 4096, "check-ref-format", "refs/heads/"+def); err != nil {
+		return Facilitator{}, fresh(Remote+"'s HEAD names a branch whose name is not a valid ref", nil)
 	}
-	if _, err := gitutil.Run(root, "cat-file", "-e", tip+"^{commit}"); err != nil {
-		return Facilitator{}, fmt.Errorf("%s's %s moved while it was fetched, so its %s cannot be read as just fetched", Remote, def, KeyFacilitatorMode)
+	if _, err := gitutil.RunLimitedNetContext(ctx, root, 4096, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance", Remote, "refs/heads/"+def); err != nil {
+		return Facilitator{}, fresh("fetching "+Remote+"'s "+def+" failed", err)
+	}
+	if _, err := gitutil.RunLimitedContext(ctx, root, 4096, "cat-file", "-e", tip+"^{commit}"); err != nil {
+		return Facilitator{}, fresh(Remote+"'s "+def+" moved while it was fetched", nil)
 	}
 	return ReadFacilitatorAt(r, root, tip, Remote+"/"+def)
+}
+
+// forgeRemote names the remote the forge client would act on in the checkout
+// at root when that is not Remote, "" when it is Remote: gh takes a remote
+// gh repo set-default marked (remote.<name>.gh-resolved) first, then one
+// named upstream, then github, then origin.
+func forgeRemote(ctx context.Context, root string) (string, error) {
+	out, err := gitutil.RunLimitedContext(ctx, root, 64<<10, "config", "--get-regexp", `^remote\..*\.(url|gh-resolved)$`)
+	if err != nil && strings.TrimSpace(out) != "" {
+		return "", err
+	}
+	urls := map[string]bool{}
+	for _, line := range strings.Split(out, "\n") {
+		key, _, _ := strings.Cut(line, " ")
+		name, ok := strings.CutPrefix(key, "remote.")
+		if !ok {
+			continue
+		}
+		if n, ok := strings.CutSuffix(name, ".gh-resolved"); ok && n != Remote {
+			return n, nil
+		}
+		if n, ok := strings.CutSuffix(name, ".url"); ok {
+			urls[n] = true
+		}
+	}
+	for _, n := range []string{"upstream", "github"} {
+		if urls[n] {
+			return n, nil
+		}
+	}
+	return "", nil
 }
 
 // ErrNoDefaultBranch is ReadDefaultFacilitator's answer for a repository with

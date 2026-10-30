@@ -93,7 +93,8 @@ func TestTheGuardHookReadsTheFacilitatorMode(t *testing.T) {
 // and origin/HEAD were moved onto a commit that says auto, while origin itself
 // says nothing (human), is still refused; so is a checkout whose origin cannot
 // be reached, though its last fetch said auto, and the refusal says the mode
-// could not be read.
+// could not be read. An origin that says auto is believed over a stale local
+// ref, and a checkout where gh would act on another remote counts as human.
 func TestTheGuardReadsTheModeOnlyAsJustFetched(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	merge := strings.Join([]string{"gh", "pr", "merge", "7", "--auto", "--merge"}, " ")
@@ -122,6 +123,27 @@ func TestTheGuardReadsTheModeOnlyAsJustFetched(t *testing.T) {
 	stdout, stderr, code := runGuard(preToolUse(t, "Bash", merge, moved), "guard", "hook")
 	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "merge-auto-human") {
 		t.Fatalf("a moved origin/main that says auto does not decide the mode: %q", reason)
+	}
+
+	// An origin that says auto is believed over a local origin/main moved
+	// onto a commit that says nothing.
+	fresh := guardRepo(t)
+	commitConfig(t, fresh, `{"facilitator":{"mode":"auto"}}`+"\n")
+	withOrigin(t, fresh)
+	git(fresh, "update-ref", "refs/remotes/origin/main", git(fresh, "commit-tree", "-m", "stale", git(fresh, "mktree")))
+	stdout, _, code = runGuard(preToolUse(t, "Bash", merge, fresh), "guard", "hook")
+	if code != 0 || strings.Contains(stdout, "deny") {
+		t.Fatalf("origin's auto, just fetched, lets gh pr merge --auto through over a stale local ref: exit %d, stdout %q", code, stdout)
+	}
+
+	// A remote gh prefers over origin is one whose mode this read is not.
+	up := guardRepo(t)
+	commitConfig(t, up, `{"facilitator":{"mode":"auto"}}`+"\n")
+	withOrigin(t, up)
+	git(up, "remote", "add", "upstream", filepath.Join(t.TempDir(), "upstream.git"))
+	stdout, stderr, code = runGuard(preToolUse(t, "Bash", merge, up), "guard", "hook")
+	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "merge-auto-human") || !strings.Contains(reason, "upstream") {
+		t.Fatalf("a checkout where gh would act on upstream counts as human, naming it: %q", reason)
 	}
 
 	gone := guardRepo(t)

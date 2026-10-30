@@ -1053,8 +1053,10 @@ Merging is the technical facilitator's decision where `facilitator.mode` is
 `human`. The guard reads the mode the way `abcd land`'s merge gate does: from
 the default branch's committed `.abcd/config.json` and
 `~/.abcd.noindex/config.json`, a `human` in either winning. It reads the default
-branch as origin names it, just fetched, never this checkout's own refs, and a
-mode it cannot read, an unreachable origin included, counts as `human`. While it
+branch as origin names it, just fetched within 15 seconds, never this checkout's
+own refs, and a mode it cannot read, an unreachable or slow origin included,
+counts as `human`; so does a checkout where gh would act on another remote
+(`upstream`, `github`, or a `gh repo set-default` choice). While it
 is `human`, these commands are a **block**, each naming the setting that allows
 it (`facilitator.mode: auto` on the default branch, with no `human` in the
 machine layer): `gh pr merge --auto` (`merge-auto-human`); any other
@@ -1068,8 +1070,8 @@ line, read from a file, from `--input` or from a substitution
 `repos/{owner}/{repo}/pulls/N/merge` (`merge-rest-human`). In `auto` they are
 allowed, except a merge command that names its repository (`-R`, `--repo`, a
 `GH_REPO` prefix, a REST route spelling owner and name, or one the line does
-not fix): this checkout's mode does not answer for another repository, so that
-is refused too. The safe
+not fix, or after the line changed directory or set `GH_REPO`): this
+checkout's mode does not answer for another repository, so that is refused too. The safe
 form is to say the pull request is ready for the technical facilitator's
 approval and leave the arming to `abcd land`.
 
@@ -1079,10 +1081,15 @@ records is a false record of who approved. The binary's spelling is the registry
 entry `abcd-land-approve`; under any other program name (`go run ./cmd/abcd`,
 `go run .`, a cross-compiled or renamed build) the land verb with `--approve` is
 refused as `abcd-land-approve-any-program`, whatever the program is called. A
-flag word that a substitution prints is not read. Never run either; tell the
-person which head you believe is ready and let them run it. These blocks stop
-an agent merging by mistake; they are not a wall against a determined one,
-which holds the person's own credentials.
+flag word that a substitution prints is not read. An approving review on the
+forge is a **block** in every mode too (`forge-review-approve`):
+`gh pr review --approve`, and a `gh api` review call (the REST review route, or
+the `addPullRequestReview` or `submitPullRequestReview` mutation) with
+`APPROVE` in it; a review that comments or requests changes is allowed. Never
+run any of them; tell the person which head you believe is ready and let them
+approve it. These blocks stop an agent merging or approving by mistake; they
+are not a wall against a determined one, which holds the person's own
+credentials.
 
 A `bash -c` or `sh -c` script built from variables that runs `rm`, `rmdir`,
 `shred` or `unlink` is a **block** (`shell-c-variable-delete`): what it deletes

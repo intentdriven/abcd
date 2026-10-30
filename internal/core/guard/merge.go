@@ -14,24 +14,34 @@ import (
 //   - while facilitator.mode is human, `gh pr merge --auto`, any other
 //     `gh pr merge` that merges (into a queue where one gates the default
 //     branch, at once where none does; only `--disable-auto`, which withdraws
-//     an arming, is not one), and a `gh api graphql` whose query is the
-//     enqueuePullRequest or enablePullRequestAutoMerge mutation are refused,
-//     naming the setting that would allow each;
-//   - in any mode, the technical facilitator's approval act
-//     (`abcd land --approve`, through the binary or `go run`) is refused: an
-//     agent that records it writes a false record of who approved.
+//     an arming, is not one), a `gh api` call carrying the enqueuePullRequest,
+//     enablePullRequestAutoMerge or mergePullRequest mutation, a GraphQL call
+//     whose query is not on the line, and a PUT to the REST merge route are
+//     refused, naming the setting that would allow each; in auto, such a
+//     command that names another repository (or runs after the line changed
+//     directory or set GH_REPO) is refused too, since the mode read is this
+//     checkout's;
+//   - in any mode, the technical facilitator's approval acts are refused:
+//     `abcd land --approve` under any program name, and an approving review
+//     posted on the forge (`gh pr review --approve`, the REST and GraphQL
+//     review routes with APPROVE). An agent that makes either writes a false
+//     record of who approved.
 //
 // The mode is a fact about the repository, not about the command's words, so
 // no Pattern can say it, and the guard cannot import the resolver
 // (internal/core/landing reads it through the layered reader, and both sit
 // above this package). A front door hands it in (WithMergeMode), reading it
-// through landing.ReadDefaultFacilitator, the resolver the gate uses: the
-// default branch's committed .abcd/config.json and the machine layer. A
+// through landing.ReadFetchedFacilitator: the default branch's committed
+// .abcd/config.json, as origin has it just fetched, and the machine layer. A
 // registry with no resolver handed in (the bundled defaults on their own)
-// cannot tell the mode and judges no merge command; the approval act is
+// cannot tell the mode and judges no merge command; the approval acts are
 // refused whatever the registry knows. The `abcd` binary's own spelling of the
-// approval act is the registry entry abcd-land-approve, which also teaches it;
-// the `go run` spelling no Pattern can name is raised here.
+// land approval is the registry entry abcd-land-approve, which also teaches
+// it; every other spelling is raised here.
+//
+// It guards against an agent merging or approving by mistake, not against a
+// determined one: the agent holds the person's own credentials, and can point
+// origin elsewhere or reach the forge by routes no command line shows.
 
 const (
 	// mergeAutoEntryID, mergeNowEntryID and mergeEnqueueEntryID are the
@@ -52,6 +62,10 @@ const (
 	// in any mode, when the program running it is not one the registry entry
 	// abcd-land-approve names: `go run`, or abcd built under another name.
 	approveAnyEntryID = "abcd-land-approve-any-program"
+
+	// approveForgeEntryID is the reserved id an approving review posted on
+	// the forge is refused under, in any mode.
+	approveForgeEntryID = "forge-review-approve"
 
 	familyMerge = "merge"
 
@@ -130,12 +144,24 @@ func (r Registry) mergeSignals(segs []segment) []payloadSignal {
 				successor: "Leave this one to the person: tell them the head you believe is ready and why, and let them run `abcd land --approve` themselves.",
 			})
 		}
+		if forgeApproval(s) {
+			add(payloadSignal{
+				id: approveForgeEntryID, verdict: VerdictBlock, family: familyMerge,
+				reason:    "An approving review on the forge is the technical facilitator's own act: the merge gate counts an approval by someone with write access, so one an agent posts under the person's account is a false record of who approved, whatever facilitator.mode says.",
+				successor: "Leave this one to the person: tell them the pull request and head you believe are ready and why, and let them approve it themselves. A review that comments or requests changes is not refused.",
+			})
+		}
 	}
 	if r.merge == nil {
 		return out
 	}
+	// elsewhere is a line that, before this segment, changed directory or
+	// set GH_REPO, so gh may resolve a repository other than this checkout's.
+	elsewhere := false
 	for _, s := range segs {
-		for _, hit := range mergeCommands(s) {
+		hits := mergeCommands(s)
+		for _, hit := range hits {
+			hit.named = hit.named || elsewhere
 			human, reading := r.merge.mode()
 			if !human && !hit.named {
 				continue
@@ -170,8 +196,29 @@ func (r Registry) mergeSignals(segs []segment) []payloadSignal {
 			}
 			add(sig)
 		}
+		elsewhere = elsewhere || segChangesDir(s) || setsGHRepo(s)
 	}
 	return out
+}
+
+// setsGHRepo reports whether segment s sets GH_REPO, as a command's prefix
+// or through export, declare or env, as far as the line fixes the word's
+// start.
+func setsGHRepo(s segment) bool {
+	for _, tok := range s.tokens {
+		if strings.HasPrefix(fixedLead(tok), "GH_REPO=") {
+			return true
+		}
+	}
+	return false
+}
+
+// fixedLead is tok's text before the first part the line does not fix.
+func fixedLead(tok string) string {
+	if i := strings.IndexAny(tok, unknownText+varText); i >= 0 {
+		return tok[:i]
+	}
+	return tok
 }
 
 // mergeHit is one merge command a segment runs: the reserved id it is refused
@@ -202,8 +249,8 @@ func mergeCommands(s segment) []mergeHit {
 		args := s.tokens[a.idx+1:]
 		readings, _ := operandReadings(args, ghRepoFlags, 2)
 		envRepo := false
-		for _, w := range literalWords(s, 0)[:a.idx] {
-			envRepo = envRepo || strings.HasPrefix(w, "GH_REPO=")
+		for _, tok := range s.tokens[:a.idx] {
+			envRepo = envRepo || strings.HasPrefix(fixedLead(tok), "GH_REPO=")
 		}
 		for _, idx := range readings {
 			if len(idx) < 2 {
@@ -214,11 +261,11 @@ func mergeCommands(s segment) []mergeHit {
 			if !ok1 || !ok2 {
 				continue
 			}
-			all := literalWords(s, a.idx+1)
 			rest := literalWords(s, a.idx+1+idx[1]+1)
 			named := envRepo
-			for _, w := range all {
-				named = named || w == "-R" || w == "--repo" || strings.HasPrefix(w, "--repo=") || (strings.HasPrefix(w, "-R") && len(w) > 2)
+			for _, tok := range s.tokens[a.idx+1:] {
+				w := fixedLead(tok)
+				named = named || w == "-R" || w == "--repo" || strings.HasPrefix(w, "--repo=") || (strings.HasPrefix(w, "-R") && (len(w) > 2 || len(tok) > 2))
 			}
 			switch {
 			case group == "pr" && verb == "merge":
@@ -313,6 +360,10 @@ func fieldValue(s segment, i int) (text string, vfixed, vok, isField bool) {
 			joined += "="
 		}
 		if v, cut := strings.CutPrefix(w, joined); cut {
+			if !strings.HasPrefix(f, "--") {
+				// pflag reads `-F=query=…` as `-F query=…`.
+				v = strings.TrimPrefix(v, "=")
+			}
 			return v, true, true, true
 		}
 	}
@@ -361,7 +412,7 @@ func restMerge(s segment, from int) (put, route, spelled bool) {
 		if !unfixed(tok) {
 			if m := mergePathRe.FindStringSubmatch(tok); m != nil {
 				route = true
-				spelled = spelled || m[2] != "{owner}" || m[3] != "{repo}"
+				spelled = spelled || !placeholder(m[2], "owner") || !placeholder(m[3], "repo")
 			}
 		} else if loose := strings.NewReplacer(unknownText, "X", varText, "X").Replace(tok); strings.Trim(tok, unknownText+varText) == "" || mergeRouteLoose.MatchString(loose) {
 			route, spelled = true, true
@@ -376,7 +427,7 @@ func restMerge(s segment, from int) (put, route, spelled bool) {
 		case strings.HasPrefix(tok, "--method="):
 			m = strings.TrimPrefix(tok, "--method=")
 		case strings.HasPrefix(tok, "-X") && len(tok) > 2:
-			m = strings.TrimPrefix(tok, "-X")
+			m = strings.TrimPrefix(strings.TrimPrefix(tok, "-X"), "=")
 		default:
 			continue
 		}
@@ -385,6 +436,10 @@ func restMerge(s segment, from int) (put, route, spelled bool) {
 	return put, route, spelled
 }
 
+// placeholder reports whether w is gh api's placeholder for name, in either
+// spelling gh fills (`{owner}`, `:owner`).
+func placeholder(w, name string) bool { return w == "{"+name+"}" || w == ":"+name }
+
 // unfixed reports whether tok holds text the line does not fix: a
 // substitution's output, or a variable's value in a re-read payload.
 func unfixed(tok string) bool { return isUnknown(tok) || strings.ContainsRune(tok, varMark) }
@@ -392,7 +447,7 @@ func unfixed(tok string) bool { return isUnknown(tok) || strings.ContainsRune(to
 // approveAct reports whether segment s records the technical facilitator's
 // approval under a name the registry entry abcd-land-approve does not read:
 // any program, abcd's command built under another name, `go run` of the
-// module or of `.`, given the land verb and then --approve. What the
+// module or of `.`, given the land verb and --approve. What the
 // program is called is not read, since a build is runnable under any name;
 // the words it is handed are. A word the line does not fix reads as empty,
 // so a flag a substitution prints is not taken as --approve.
@@ -401,16 +456,69 @@ func approveAct(s segment) bool {
 		if commandNamed(s, a, "abcd") {
 			continue
 		}
+		// cobra parses the found command's flags wherever they stand, so
+		// `--approve land` sets land's --approve as `land --approve` does.
 		land, approve := false, false
 		for _, w := range literalWords(s, a.idx+1) {
-			if !land {
-				land = w == "land"
-				continue
-			}
+			land = land || w == "land"
 			approve = approve || boolFlagOn(w, "--approve")
 		}
 		if land && approve {
 			return true
+		}
+	}
+	return false
+}
+
+// reviewRouteLoose is the REST route that posts a pull request review or
+// submits a pending one, unknown parts read as one segment each.
+var reviewRouteLoose = regexp.MustCompile(`(?i)(^|/)pulls/[^/]+/reviews(/[^/]+/events)?/?([?#].*)?$`)
+
+// reviewMutations are the GraphQL mutations that post or submit a review.
+var reviewMutations = []string{"addPullRequestReview", "submitPullRequestReview"}
+
+// forgeApproval reports whether segment s posts an approving review on the
+// forge: `gh pr review` with --approve (-a), or a `gh api` call to the REST
+// review route or carrying a review mutation, with APPROVE among its words.
+// A review that comments or requests changes is not one.
+func forgeApproval(s segment) bool {
+	for _, a := range sitesNamed(s, "gh") {
+		readings, _ := operandReadings(s.tokens[a.idx+1:], ghRepoFlags, 2)
+		for _, idx := range readings {
+			if len(idx) < 1 {
+				continue
+			}
+			group, _, ok := forgeWord(s, a.idx+1+idx[0])
+			if !ok {
+				continue
+			}
+			words := literalWords(s, a.idx+1+idx[0]+1)
+			if group == "pr" && len(idx) >= 2 {
+				if verb, _, ok := forgeWord(s, a.idx+1+idx[1]); ok && verb == "review" {
+					for _, w := range words {
+						if w == "-a" || boolFlagOn(w, "--approve") {
+							return true
+						}
+					}
+				}
+			}
+			if group != "api" {
+				continue
+			}
+			route, approve := false, false
+			for i := a.idx + 1 + idx[0] + 1; i < len(s.tokens); i++ {
+				tok := s.tokens[i]
+				loose := strings.NewReplacer(unknownText, "X", varText, "X").Replace(tok)
+				route = route || reviewRouteLoose.MatchString(loose)
+				w, _, ok := forgeWord(s, i)
+				for _, m := range reviewMutations {
+					route = route || (ok && strings.Contains(w, m))
+				}
+				approve = approve || (ok && strings.Contains(w, "APPROVE"))
+			}
+			if route && approve {
+				return true
+			}
 		}
 	}
 	return false
