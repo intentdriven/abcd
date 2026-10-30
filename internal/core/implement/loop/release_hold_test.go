@@ -60,7 +60,7 @@ func TestTheFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 			if r.Reason != want {
 				t.Fatalf("the fence's reason = %q; want %q", r.Reason, want)
 			}
-			if !strings.Contains(r.Remedy, "the pull request stays open and unarmed") || !strings.Contains(r.Remedy, "held by "+heldBy(t, quinnEmail)+" from that copy") ||
+			if !strings.Contains(r.Remedy, "the pull request stays open and unarmed") || !strings.Contains(r.Remedy, "held by "+heldBy(t, quinnEmail)+" (claimed) from that copy") ||
 				strings.Contains(r.Remedy, "ask ") ||
 				!strings.Contains(r.Remedy, "v0.16.0") {
 				t.Fatalf("the remedy names the holder and the release: %q", r.Remedy)
@@ -307,7 +307,7 @@ func TestThePushFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 			if !waitByDesign(r) {
 				t.Fatalf("a release hold is a wait by design, never a refusal a drain counts: %+v", r)
 			}
-			if !strings.Contains(r.Remedy, "nothing is pushed and no pull request is opened") || !strings.Contains(r.Remedy, "held by "+heldBy(t, quinnEmail)+" from that copy") ||
+			if !strings.Contains(r.Remedy, "nothing is pushed and no pull request is opened") || !strings.Contains(r.Remedy, "held by "+heldBy(t, quinnEmail)+" (claimed) from that copy") ||
 				strings.Contains(r.Remedy, "ask ") {
 				t.Fatalf("the remedy names what stays and the holder: %q", r.Remedy)
 			}
