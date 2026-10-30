@@ -105,18 +105,46 @@ func TestTheWaiterPassesOverARunWhoseLockIsHeld(t *testing.T) {
 	}
 }
 
-// TestALapsedRevivalIsJudgedOnTheLanesChangedFiles: the run's reservation
-// of the directory docs lapsed while its reviewer judged the lane, its
-// implementer done and its work committed, and the same person's other copy
-// reserved a file in it since. A revival backs off that copy's reservation of
-// a file the lane's branch changed, logging the failed renewal; once that
-// copy holds only a file the lane did not change, the revival goes ahead,
-// keeps the whole directory, and its note says it went ahead past that copy.
-func TestALapsedRevivalIsJudgedOnTheLanesChangedFiles(t *testing.T) {
+// TestALapsedRevivalAtValidateAwaitingItsReviewersIsJudgedWhole
+// (dcn-2610300422481486): the run's reservation of the directory docs lapsed
+// while its reviewers judged the lane, its implementer done and its work
+// committed. One verdict from them hands a fix implementer any file of the
+// found_at, so the lane is not past editing: the revival is judged on the
+// whole footprint and backs off the same person's other copy's reservation
+// of docs/guide.md, a file the lane's branch did not change.
+func TestALapsedRevivalAtValidateAwaitingItsReviewersIsJudgedWhole(t *testing.T) {
 	f := newNarrowFixture(t)
 	f.implement(t, Options{}, "docs/page.md")
 	if l := f.answerUntil(t, nil, func(l Lane) bool { return l.awaitsRole(RoleRuthless) }); l.Stage != StageValidate || len(l.Awaits) != 1 {
 		t.Fatalf("the lane awaits its reviewer alone: stage %s, awaits %+v", l.Stage, l.Awaits)
+	}
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := revivalChangedFiles(f.repo.Root(), st); got != nil {
+		t.Fatalf("a revival with a lane at validate is judged on %q; want the whole footprint", got)
+	}
+	f.revivalBacksOffOnGuide(t, "at validate awaiting its reviewers")
+}
+
+// TestALapsedRevivalAtLandIsJudgedOnTheLanesChangedFiles: the run's
+// reservation of the directory docs lapsed with its lane at its landing, its
+// validators passed and no sync pending, and the same person's other copy
+// reserved a file in it since. The revival is judged on the files the lane's
+// branch changed: it backs off that copy's reservation of a changed file,
+// logging the failed renewal, and once that copy holds only a file the lane
+// did not change, it goes ahead.
+func TestALapsedRevivalAtLandIsJudgedOnTheLanesChangedFiles(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.implement(t, Options{}, "docs/page.md")
+	f.toLand(t)
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := revivalChangedFiles(f.repo.Root(), st); !slices.Equal(got, []string{"docs/page.md"}) {
+		t.Fatalf("a revival with its lane at land is judged on %q; want the lane's changed docs/page.md", got)
 	}
 	before := f.tip(t)
 	lapsed := before.expires.Add(time.Minute)
@@ -141,13 +169,6 @@ func TestALapsedRevivalIsJudgedOnTheLanesChangedFiles(t *testing.T) {
 		t.Fatalf("a revival past one's other copy's hold of an unchanged file = %+v; want it renewed", got)
 	}
 	f.renewedAt(t, before, at)
-	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs"}) {
-		t.Fatalf("the revival keeps its whole footprint: %q", fp)
-	}
-	if note := recordNote(t, f.repo, f.runID, StageReservationRenewed); !strings.Contains(note, "docs/guide.md") ||
-		!strings.Contains(note, "iss-78") || !strings.Contains(note, "other copy") {
-		t.Fatalf("the renewal's note says it went ahead past the other copy: %q", note)
-	}
 }
 
 // TestALapsedRevivalWhileTheImplementerWorksIsJudgedWhole: the run's

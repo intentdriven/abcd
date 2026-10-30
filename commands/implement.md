@@ -215,9 +215,12 @@ two flags that decide it, the pending spec steps, the run's fallbacks from a
 routed runner to the host (`fallbacks`, and in the text a count per runner and
 per role) and the run record. Before it renders, it renews the reservation of
 each run it shows that is due, as a step does (half through its lease, or
-lapsed and still this copy's), but not that of an issue lane parked at land, which the
-drain's move renews, and logs the renewal, or its failure, in the run record as
-a step logs it; it writes nothing else.
+lapsed and still this copy's), fetching the reservations from origin and
+pushing the renewal there, and logs the renewal, its failure, or a reservation
+another person or copy now holds (`reservation_lost`), in the run record as a
+step logs it. It renews no issue run whose lane is parked at land, which the
+drain's move renews, nor one whose lane was handed back, whose hand-back
+released its reservation; it writes nothing else.
 
 A spec's **steps** and a lane's **stages** are two things: each spec step lands
 as one lane, and the loop takes the lane through its stages. `step` performs the
@@ -630,17 +633,23 @@ that has lapsed is judged for overlap like a new reservation, since it held
 nothing while it lapsed: another person's live reservation of any path in its
 footprint refuses it, and so does your own from another copy. Only once no
 spec step is still to be opened and every lane is past all editing (done,
-discarded or handed back, at its landing, or at validate awaiting its
-reviewers alone, with no implementer out or due for a fix round and no sync
-conflict waiting to be resolved) does your other copy refuse it only where
-that copy holds a file the run's lanes changed (read as the narrowing reads
-them, at the lane's head or its branch's tip). An implementer's edits stay
-uncommitted until its receipt, so the branch does not show them: while any
-lane is in any other state, a held lane included, or a step is still to be
-opened, or when the files cannot be read, the whole footprint is judged, since
-two automated lanes never edit one file.
+discarded or handed back, or at its landing with no sync conflict waiting to
+be resolved) does your other copy refuse it only where that copy holds a file
+the run's lanes changed (read as the narrowing reads them, at the lane's head
+or its branch's tip). An implementer's edits stay uncommitted until its
+receipt, so the branch does not show them: while any lane is in any other
+state, a held lane included, or at validate even awaiting its reviewers alone
+(one verdict from them hands a fix implementer any file of the footprint), or
+a step is still to be opened, or when the files cannot be read, the whole
+footprint is judged, since two automated lanes never edit one file.
 It keeps its whole footprint, and the record's line names your other copy's
-reservation it went ahead past, a file none of the lanes' commits changed. At step 5, before
+reservation it went ahead past, a file none of the lanes' commits changed.
+When a lane later leaves its landing for a fresh round, a reservation that
+needs no widening, an intent run's or an issue run's still naming its whole
+`found_at`, is judged again against your other copy on its whole footprint,
+the reservations fetched first: one that shares a path with it, or a fetch that
+fails, refuses the step for a person, naming what it met, and the lane stays at
+its landing with nothing merged and nothing pushed. At step 5, before
 the merge rule decides, the **land fence** fetches the reservation and arms
 nothing unless it is still this person's, from this copy, and live: it names
 the other person and the expiry, says the reservation moved to your other copy
@@ -1019,10 +1028,12 @@ renews them. Each renewal, and each failure, is said
 on standard error, a failure once until what is said of it changes.
 
 The renewal runs beside the gate, never in it, so the gate's order and its
-open never wait on one. It stops when the gated command exits, letting a round
-already in flight finish and say what it renewed first, for at most as long as
-one networked git command may run and a minute more, so a renewal it pushed is
-never left unsaid. Since the
+open never wait on one. It stops when the waiter exits, its command done or,
+without one, its gate open, waiting at most five seconds for a round already in
+flight to finish and say what it renewed. A waiter that lingered on a slow push
+would read as queued and hold every other gate on the machine shut, so a
+renewal still pushing then may go unsaid; the next round reads the fresh
+reservation. Since the
 renewal runs through git and gh, no
 waiter counts another's git or gh child as its command, so gate make or go,
 never git or gh itself.

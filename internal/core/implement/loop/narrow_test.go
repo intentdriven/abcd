@@ -449,6 +449,53 @@ func TestALaneSentBackFromItsLandingIsRefusedWhenItsFootprintIsTaken(t *testing.
 	}
 }
 
+// TestALaneSentBackFromItsLandingJudgesItsOtherCopyAgain
+// (iss-2610261837062463, dcn-2610300422481486): the lane is at its landing,
+// its reservation the whole directory docs, and the same person's other copy
+// holds docs/guide.md, a file the lane did not change, as a lapsed revival
+// may have gone ahead past. The landing's sync would send the lane back to a
+// fresh round, whose fix round may change any file of the footprint, so the
+// other copy's overlap is judged again on the whole footprint: the step is
+// refused for a person, naming it, and the lane stays at its landing with
+// nothing merged or pushed.
+func TestALaneSentBackFromItsLandingJudgesItsOtherCopyAgain(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.implement(t, Options{}, "docs/page.md")
+	f.toLand(t)
+	f.reserveAs(t, "iss-77", "octo", "docs/guide.md", time.Now().UTC().Truncate(time.Second))
+	f.moveDefault(t, "other.txt")
+	judged := currentLane(t, f.repo, f.runID)
+
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	r, ok := AsRefusal(err)
+	if !ok || r.Contention {
+		t.Fatalf("the step is refused for a person: %v", err)
+	}
+	if !strings.Contains(r.Reason, "iss-77") || !strings.Contains(r.Reason, "docs/guide.md") || !strings.Contains(r.Reason, "other copy") {
+		t.Fatalf("the refusal names the other copy's overlap: %s", r.Reason)
+	}
+	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs"}) {
+		t.Fatalf("the reservation keeps its whole footprint: %q", fp)
+	}
+	l := currentLane(t, f.repo, f.runID)
+	if l.Stage != StageLand || l.HeadSHA != judged.HeadSHA || len(l.Syncs) != 0 {
+		t.Fatalf("the lane stays at its landing as it was: stage %s, head %s, syncs %d", l.Stage, shortSHA(l.HeadSHA), len(l.Syncs))
+	}
+	if _, err := os.Stat(filepath.Join(judged.Worktree, "other.txt")); !os.IsNotExist(err) {
+		t.Fatalf("nothing of the default branch is merged into the worktree: %v", err)
+	}
+
+	// The other copy's reservation ends; the retry syncs and sends the lane
+	// to a fresh round.
+	gitIn(t, f.bare, "update-ref", "-d", claim.RefPrefix+"iss-77")
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, Options{}); err != nil {
+		t.Fatalf("the retry, the other copy's reservation ended: %v", err)
+	}
+	if l := currentLane(t, f.repo, f.runID); l.Stage != StageValidate || len(l.Syncs) != 1 {
+		t.Fatalf("the retry's sync sends the lane to a fresh round: stage %s, syncs %d", l.Stage, len(l.Syncs))
+	}
+}
+
 // TestARefusedWideningLeavesTheLaneAsItWasThroughAMovedDefault: the narrowing
 // freed docs/guide.md and another account reserved it, and origin's default
 // branch moved, so the landing's sync would send the lane back to a fresh

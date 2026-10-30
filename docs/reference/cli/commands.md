@@ -2604,9 +2604,11 @@ which the drain renews; while another invocation holds the checkout's run
 lock the round skips that checkout's runs, and the next round renews them. Each is said
 on standard error, a failure once until what is said of it changes. The
 renewal runs beside the gate, never in it, so
-the gate's order and its open never wait on one; it stops when the gated
-command exits, letting a round in flight finish and be said first, for at most
-as long as one networked git command may run and a minute more. Since it runs through git and gh, no waiter counts another's git or gh
+the gate's order and its open never wait on one; it stops when the waiter
+exits, its command done or, without one, its gate open, waiting at most 5s
+for a round in flight to finish and be said, so a renewal still pushing then may go unsaid,
+since a waiter lingering on a slow push reads as queued and holds every other gate shut.
+Since it runs through git and gh, no waiter counts another's git or gh
 child as its command: gate make or go, never git or gh itself.
 
 **Flags:**
@@ -2937,7 +2939,7 @@ By default the run's whole log is read, every day of it; --date reads one day, a
 
 #### `abcd implement status`
 
-Render the implement loop's runs in this checkout, lane by lane: Writes only a due reservation's renewal to its run record; refuses a --run naming no run.
+Render the implement loop's runs in this checkout, lane by lane: Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.
 
 **Usage:** `abcd implement status [--run <run-id>] [flags]`
 
@@ -2946,9 +2948,12 @@ intent and spec, each lane with its spec step and next stage, what an awaiting l
 waits on, the pending spec steps, the fallbacks from a routed runner to the host counted
 per runner and per role, and the run record. Before it renders, it renews the
 reservation of each run it shows that is due, as implement step does (half
-through its lease, or lapsed and still this copy's), but not that of an
-issue lane parked at land, which the drain renews, logging the renewal or its
-failure in the run record; it writes nothing else and creates nothing.
+through its lease, or lapsed and still this copy's), fetching the reservations
+from origin and pushing the renewal there, and logs the renewal, its failure,
+or a reservation another person or copy now holds (reservation_lost), in the
+run record. It renews no issue run whose lane is parked at land, which the
+drain renews, nor one whose lane was handed back, whose hand-back released
+its reservation; it writes nothing else and creates nothing.
 Exit 2 when --run names no run.
 
 **Flags:**

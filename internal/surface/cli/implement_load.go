@@ -50,11 +50,15 @@ var (
 	// checkout serves (loop.RenewRuns), in each round beside loadRenew.
 	loadRenewRuns = func(root string) []loop.RunRenewal { return loop.RenewRuns(root, time.Now()) }
 	// loadRenewStopWait bounds how long the waiter, its command exited, waits
-	// for a renewal round in flight to finish (dcn-2610292238191496): one
-	// networked git command's own cap (gitutil.NetTimeout), so a push under
-	// way ends, pushed or failed, and a minute for the local reads and the
-	// run record's write that follow it.
-	loadRenewStopWait = gitutil.NetTimeout + time.Minute
+	// for a renewal round in flight to finish and be said
+	// (dcn-2610300422481486): a few seconds, enough for a round whose push has
+	// returned to write the run record and say it, and far inside the plain
+	// form's settle hold (implement.WaitSettle). A waiter that lingered on a
+	// slow push, its only children git and gh, would read as queued, sort
+	// ahead of every later waiter and hold every other gate on the machine
+	// shut. A renewal pushed past the bound goes unsaid, and the next round,
+	// any waiter's or step's, reads the fresh tip.
+	loadRenewStopWait = 5 * time.Second
 )
 
 // newImplementLoadCommand builds `implement load`, the load check that runs once
@@ -216,9 +220,11 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"lock the round skips that checkout's runs, and the next round renews them. Each is said\n" +
 			"on standard error, a failure once until what is said of it changes. The\n" +
 			"renewal runs beside the gate, never in it, so\n" +
-			"the gate's order and its open never wait on one; it stops when the gated\n" +
-			"command exits, letting a round in flight finish and be said first, for at most\n" +
-			"as long as one networked git command may run and a minute more. Since it runs through git and gh, no waiter counts another's git or gh\n" +
+			"the gate's order and its open never wait on one; it stops when the waiter\n" +
+			"exits, its command done or, without one, its gate open, waiting at most " + loadRenewStopWait.String() + "\n" +
+			"for a round in flight to finish and be said, so a renewal still pushing then may go unsaid,\n" +
+			"since a waiter lingering on a slow push reads as queued and holds every other gate shut.\n" +
+			"Since it runs through git and gh, no waiter counts another's git or gh\n" +
 			"child as its command: gate make or go, never git or gh itself.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -370,10 +376,11 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 //
 // It runs beside the gate, never in it: the gate's looks, its order and its
 // open neither wait on a renewal nor read one. Stop starts no further round
-// and waits, for at most loadRenewStopWait, for a round in flight to finish
-// and be said, so a renewal it pushed is not left unsaid
-// (dcn-2610292238191496); past that bound whatever the round says is
-// dropped. Stop may be called more than once. Outside a checkout there is
+// and waits, for at most loadRenewStopWait (a few seconds), for a round in
+// flight to finish and be said (dcn-2610292238191496, dcn-2610300422481486);
+// past that bound whatever the round says is dropped, a renewal it pushed
+// included, rather than keep the waiter, read as queued, holding every other
+// gate shut. Stop may be called more than once. Outside a checkout there is
 // nothing to renew.
 func startHoldRenewal(w io.Writer) (stop func()) {
 	cwd, err := os.Getwd()

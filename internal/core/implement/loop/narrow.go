@@ -112,13 +112,15 @@ func laneChangedFiles(repoRoot string, l Lane, head string) (files []string, dec
 // revivalChangedFiles is the files a lapsed revival of st's reservation is
 // judged on against the same person's other copy (claim.Request.OwnOverlapOn;
 // iss-2610261837062463, dcn-2610291352512058, dcn-2610291925508286,
-// dcn-2610292238191496): the files each lane of the run still at work
+// dcn-2610292238191496, dcn-2610300422481486): the files each lane of the run still at work
 // changed, read as laneChangedFiles reads them, at its branch's tip, which
 // holds the implementer's commits before any receipt records a head. It reads
 // them only once no spec step is pending and every lane is past all editing
-// (pastEditing): an implementer's edits stay uncommitted until its receipt, so
-// the tip of a lane that has one at work, or may hand one out next, does not
-// show them, and a lane yet to open has changed nothing it can name. Until
+// (pastEditing: done, discarded, handed back, or at its landing with no sync
+// pending; dcn-2610300422481486): an implementer's edits stay uncommitted
+// until its receipt, so the tip of a lane that has one at work, or may hand
+// one out next, does not show them, and a lane yet to open has changed
+// nothing it can name. Until
 // then nil is returned and the whole footprint is judged, since two automated
 // lanes must never edit one file. nil too when any lane's files cannot be
 // read; a non-nil empty list when no lane changed a file.
@@ -156,19 +158,21 @@ func revivalChangedFiles(repoRoot string, st State) []string {
 
 // pastEditing reports whether lane i of st can hold no edit its branch does
 // not show, now or by the run's next hand-out: an allow-list, so a stage or
-// state not named here (held, an unset stage, one still at or before its
+// state not named here (held, validate, an unset stage, one at or before its
 // implement stage) counts as editing. A lane is past editing when it is done,
-// discarded or handed back, at its landing (a landing's conflicting sync sends
-// it back to validate first), or at validate awaiting its reviewers alone: no
-// implementer out (a fix round's, or a sync conflict's), no sync conflict
-// pending, and no fix round its findings hand an implementer next.
+// discarded or handed back, or at its landing with no sync conflict pending.
+// A lane at validate is not, even awaiting its reviewers alone: one verdict
+// from them hands a fix implementer any file of the footprint
+// (dcn-2610300422481486). A lane its landing sends back to a fresh round
+// has its run's overlap with the same person's other copy judged again on
+// the whole footprint as it leaves (reserveOnLeavingLand).
 func pastEditing(st State, i int) bool {
 	l := st.Lanes[i]
 	switch l.Stage {
-	case StageDone, StageDiscarded, StageHandedBack, StageLand:
+	case StageDone, StageDiscarded, StageHandedBack:
 		return true
-	case StageValidate:
-		return !l.awaitsRole(RoleImplementer) && l.pendingSync() == nil && laneWant(st, i).role != RoleImplementer
+	case StageLand:
+		return l.pendingSync() == nil
 	}
 	return false
 }

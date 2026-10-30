@@ -359,6 +359,31 @@ func sharedPath(a, b string) (string, bool) {
 	return "", false
 }
 
+// OtherCopyOverlap is the first path of footprint that holder's live
+// reservation of a record other than id, made from another copy, shares in
+// the view s, as crowding judges an overlap (a generated file is shared), and
+// that reservation; ok is false when none does. It reads the view alone. A
+// run whose lane leaves its landing for a fresh round judges it
+// (iss-2610261837062463, dcn-2610300422481486): a lapsed revival may have
+// gone ahead past that copy on a file no lane had changed
+// (Request.OwnOverlapOn), which the fresh round's implementer may now edit,
+// and two automated lanes must never edit one file.
+func (s Snapshot) OtherCopyOverlap(id string, footprint []string, holder string) (OwnOverlap, bool) {
+	for _, r := range s.Reservations {
+		if r.State != StateLive || r.Record == id || r.Copy == CopyThis || !sameHolder(r.Holder, holder) {
+			continue
+		}
+		for _, want := range footprint {
+			for _, held := range r.Footprint {
+				if shared, ok := overlap(want, held, s.Generated); ok {
+					return OwnOverlap{Path: shared, Record: r.Record, Expiry: r.EffectiveExpiry}, true
+				}
+			}
+		}
+	}
+	return OwnOverlap{}, false
+}
+
 // Contention is why a reservation of id with footprint would back off on the
 // view s at now, as crowding and the record's own tip would judge it: id
 // reserved by another copy (live, or unreadable within its hold), or a path of

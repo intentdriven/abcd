@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 )
 
@@ -118,5 +119,40 @@ func TestImplementLoadWaitNeverWaitsOnARenewal(t *testing.T) {
 	}
 	if strings.Contains(errOut, "renew") {
 		t.Errorf("a renewal is said on standard error:\n%s", errOut)
+	}
+}
+
+// TestImplementLoadWaitExitsSoonAfterItsCommandThoughARoundIsInFlight
+// (dcn-2610300422481486): a renewal round still in flight when the gated
+// command exits, its push slow on the network, holds the waiter's exit for a
+// few seconds at most, well inside the plain form's settle hold, not for as
+// long as the push may take: a waiter lingering on it reads as queued, with
+// only git and gh children, and holds every other gate on the machine shut.
+// The renewal the round makes after that is not said.
+func TestImplementLoadWaitExitsSoonAfterItsCommandThoughARoundIsInFlight(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	if loadRenewStopWait > implement.WaitSettle/10 {
+		t.Errorf("the waiter waits up to %s for a round in flight; want a few seconds, well inside the settle hold of %s", loadRenewStopWait, implement.WaitSettle)
+	}
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	renewFixture(t, func(string) ([]claim.Renewal, error) {
+		select {
+		case <-release:
+		case <-time.After(20 * time.Second):
+		}
+		return []claim.Renewal{{Record: "iss-5", Until: time.Now()}}, nil
+	})
+	begin := time.Now()
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "true")
+	took := time.Since(begin)
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+	if took > 10*time.Second {
+		t.Fatalf("the waiter exited %s after its command, a renewal round in flight; want a few seconds at most", took.Round(time.Second))
+	}
+	if strings.Contains(errOut, "renewed your reservation") {
+		t.Errorf("the renewal finished past the bound is said:\n%s", errOut)
 	}
 }

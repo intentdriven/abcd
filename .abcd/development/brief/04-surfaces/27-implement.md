@@ -436,16 +436,21 @@ stage still runs. A renewal renews only this person's own reservation from
 this copy, never reserving a released record again or taking one over. A
 renewal of a lapsed one is judged for overlap like a new reservation, but,
 once no spec step is pending and every lane is past all editing (done,
-discarded or handed back, at land, or at validate awaiting its reviewers
-alone: no implementer awaited or due for a fix round, no sync conflict
-pending), against this person's own reservation from another copy only on the
-files the run's lanes changed, read as the narrowing reads them; while any
-lane is in any other state, held included (an implementer's edits are not on
-its branch until its receipt), or a step is pending, or when the files cannot
-be read, the whole footprint is judged. It keeps its whole footprint, and
-another person's reservation still refuses it on any path of it
+discarded or handed back, or at land with no sync conflict pending), against
+this person's own reservation from another copy only on the files the run's
+lanes changed, read as the narrowing reads them; while any lane is in any
+other state, held included, or at validate even awaiting its reviewers alone
+(an implementer's edits are not on its branch until its receipt, and one
+verdict hands a fix implementer any file of the footprint), or a step is
+pending, or when the files cannot be read, the whole footprint is judged. It
+keeps its whole footprint, and another person's reservation still refuses it
+on any path of it. A lane that later leaves land for a fresh round has a
+reservation needing no widening (an intent run's, or an issue run's still
+naming its whole found_at) judged again against this person's other copy on
+its whole footprint, the reservations fetched first, and an overlap refuses
+the step for a person with the lane left at land, as a refused widening does
 (iss-2610261837062463, dcn-2610291352512058, dcn-2610291925508286,
-dcn-2610292238191496). Before
+dcn-2610292238191496, dcn-2610300422481486). Before
 the landing's merge rule decides, the land fence fetches the reservation and
 arms nothing unless it is still this person's, from this copy, and live,
 naming the other person, the other copy or the release, as contention; when it
@@ -459,9 +464,11 @@ the load gate's waiter, while it waits and while its command runs, for each
 run in progress that lives in its checkout or has a lane whose worktree is
 that checkout, except an issue lane parked at land, which the drain's move
 renews (a round skips a checkout's runs while another invocation holds its
-run lock, and the next round renews them; when its command exits the waiter
-lets a round in flight finish and be said, for at most one networked git
-command's time and a minute more), and
+run lock, and the next round renews them; when it exits, its command done or,
+without one, its gate open, the waiter waits at most five seconds for a round
+in flight to finish and be said, and a renewal still pushing then goes
+unsaid, since a waiter lingering on a slow push reads as queued and holds
+every other gate shut), and
 each drain move for a drain lane parked at land or in progress, waiting or not
 (spc-2610161044461448 step 7). The landing checks the reservation before its
 push as the fence does before arming, renewing it with its own term, so a

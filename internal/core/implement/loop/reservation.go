@@ -830,43 +830,81 @@ func widenReservation(repoRoot, key string, fp []string, takeOver bool, own clai
 // change any file of the found_at. The sync calls it once it knows it will
 // merge and before it merges (mergeDefault; dcn-2610171009498218), so a
 // refusal leaves the branch and the worktree at the judged head; the move
-// calls it for any other way back from the landing (performMove). A tip of this copy's that already covers the found_at, an
-// intent's run, and a run holding no reservation take no act; a tip the view
-// shows lost is the land fence's to stop. The widening is the one a resume
-// makes (widenReservation), judged for overlap and against the cap; a
-// refusal of it refuses the step for a person, naming what it met, with
-// nothing merged by the step and nothing pushed, and the lane stays at its
-// landing. note is the run record's line for a widening made.
-func reserveOnLeavingLand(repoRoot string, st State, lane Lane, now time.Time) (note string, err error) {
-	if st.ReservedAt == nil || st.Issue() == "" {
+// calls it for any other way back from the landing (performMove), to is the
+// stage the lane goes to. A tip the view shows lost is the land fence's to
+// stop, and a run holding no reservation takes no act. The widening is the
+// one a resume makes (widenReservation), judged for overlap and against the
+// cap; a refusal of it refuses the step for a person, naming what it met,
+// with nothing merged by the step and nothing pushed, and the lane stays at
+// its landing. note is the run record's line for a widening made.
+//
+// A reservation that needs no widening, an intent run's or an issue run's
+// already covering its found_at, is judged again for overlap with the same
+// person's other copy on its whole footprint as the lane goes back to
+// editing (to anything but held; iss-2610261837062463,
+// dcn-2610300422481486): a lapsed revival with every lane past editing was
+// judged against that copy only on the files the lanes had changed
+// (revivalChangedFiles), and the fresh round's implementer may change any
+// other. The reservations are fetched first; an overlap, or a fetch that
+// fails, refuses the step as a widening's refusal does, and the lane stays
+// at its landing.
+func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now time.Time) (note string, err error) {
+	if st.ReservedAt == nil {
 		return "", nil
 	}
-	fp, err := runFootprint(repoRoot, st.Key, st.Spec, "the lane stays at its landing and nothing is pushed")
-	if err != nil {
-		return "", err
+	issue := st.Issue() != ""
+	var fp []string
+	if issue {
+		if fp, err = runFootprint(repoRoot, st.Key, st.Spec, "the lane stays at its landing and nothing is pushed"); err != nil {
+			return "", err
+		}
 	}
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
 		return "", refuse(string(StageLand), "", lane.ID,
-			"the lane leaves its landing for a fresh round, and its reservation on "+st.Key+" cannot be read to reserve its whole found_at again: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
+			"the lane leaves its landing for a fresh round, and its reservation on "+st.Key+" cannot be read to judge it again: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
 			"settle what it names, then run `abcd implement step` again")
 	}
 	own, ok := snap.Lookup(st.Key)
-	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) || covers(own.Footprint, fp) {
+	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) {
 		return "", nil
 	}
-	r, err := widenReservation(repoRoot, st.Key, fp, false, own, now)
-	if err != nil {
-		reason := err.Error()
-		if rf, ok := AsRefusal(err); ok {
-			reason = rf.Reason
+	if issue && !covers(own.Footprint, fp) {
+		r, err := widenReservation(repoRoot, st.Key, fp, false, own, now)
+		if err != nil {
+			reason := err.Error()
+			if rf, ok := AsRefusal(err); ok {
+				reason = rf.Reason
+			}
+			return "", refuse(string(StageLand), "", lane.ID,
+				fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's found_at, but its reservation, narrowed to %s, cannot be widened back to %s: %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
+					st.Key, strings.Join(own.Footprint, ", "), strings.Join(fp, ", "), reason, shortSHA(lane.HeadSHA)),
+				"wait for the reservation it names to end, or settle it with its holder, then run `abcd implement step` again; or hand the lane back so the issue is built again")
 		}
-		return "", refuse(string(StageLand), "", lane.ID,
-			fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's found_at, but its reservation, narrowed to %s, cannot be widened back to %s: %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
-				st.Key, strings.Join(own.Footprint, ", "), strings.Join(fp, ", "), reason, shortSHA(lane.HeadSHA)),
-			"wait for the reservation it names to end, or settle it with its holder, then run `abcd implement step` again; or hand the lane back so the issue is built again")
+		return r.note + ", widened again as the lane leaves its landing for a fresh round", nil
 	}
-	return r.note + ", widened again as the lane leaves its landing for a fresh round", nil
+	if to == StageHeld {
+		return "", nil
+	}
+	// The step fetched no reservation unless a renewal was due, so the other
+	// copy's are fetched now, as every act fetches before it judges.
+	if _, err := claim.Fetch(repoRoot, claimOptions(now)); errors.Is(err, claim.ErrNoOrigin) {
+		return "", nil
+	} else if err == nil {
+		snap, err = claim.View(repoRoot, now)
+	}
+	if err != nil {
+		return "", refuse(string(StageLand), "", lane.ID,
+			"the lane leaves its landing for a fresh round, and the reservations cannot be fetched to judge "+st.Key+"'s again against your other copy: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
+			"settle what it names, then run `abcd implement step` again")
+	}
+	if o, ok := snap.OtherCopyOverlap(st.Key, own.Footprint, own.Holder); ok {
+		return "", refuse(string(StageLand), "", lane.ID,
+			fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's footprint, but %s is also in the footprint of %s, which you hold from your other copy until %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
+				st.Key, termsafe.Sanitize(o.Path), o.Record, stamp(o.Expiry), shortSHA(lane.HeadSHA)),
+			"wait for that reservation to end, or release it from your other copy, then run `abcd implement step` again; or hand the lane back")
+	}
+	return "", nil
 }
 
 // covers reports whether every path of fp lies within held: equal to one of
