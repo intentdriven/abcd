@@ -311,6 +311,9 @@ func commitCaptureWith(lock ledgerLocker, repoRoot, issuesRoot string, req Captu
 	if err != nil {
 		return CaptureResult{}, err
 	}
+	if err := refuseUnrenderableBody(filepath.ToSlash(fsutil.RepoRel(repoRoot, placeholder)), content); err != nil {
+		return CaptureResult{}, err
+	}
 
 	// The checksum re-read + fill runs UNDER the ledger lock (iss-102): the orphan
 	// sweep (mutationPreamble) also holds this lock, so a >60s-stalled commit can no

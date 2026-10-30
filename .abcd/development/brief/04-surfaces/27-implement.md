@@ -347,7 +347,11 @@ since the race gate, not the slot count, keeps race runs to one at a time. Each 
 own hold record and is shut only by it: a first gate's command hold lasts
 until its preflight starts its race run, so were it to shut the race gate, an
 earlier preflight's race waiter would wait on it while the holder's own race
-waiter queued behind that earlier one, and neither would move. How many preflights
+waiter queued behind that earlier one, and neither would move. That command
+hold is taken at one slot; a look that reads more than one, for a waiter whose
+own command is not a race run, judges it as the settle hold
+(dcn-2610300618371321), so a raised count reaches a run already queued behind
+it, and the running preflights are still counted against the slots. How many preflights
 the first gate admits to their test stages at once is the person's own machine
 setting (iss-2610161639025702): `load.preflights` in <!-- record-lint: forward-looking -->
 `~/.abcd.noindex/config.json`, read through the layered configuration with the

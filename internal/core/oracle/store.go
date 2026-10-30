@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -143,7 +144,7 @@ func decodeRow(agent string, raw json.RawMessage) (Row, int, error) {
 	if err != nil {
 		return Row{}, 0, err
 	}
-	settings, err := checkSettings(rf.Settings)
+	settings, err := checkSettings(rf.Settings, false)
 	if err != nil {
 		return Row{}, 0, err
 	}
@@ -166,11 +167,24 @@ func decodeRow(agent string, raw json.RawMessage) (Row, int, error) {
 // CheckSettings is checkSettings for a settings map read outside a routing
 // row or a --route (a model-matrix cell's pinned settings), so every reader
 // holds settings to the one check.
-func CheckSettings(in map[string]json.RawMessage) (Settings, error) { return checkSettings(in) }
+func CheckSettings(in map[string]json.RawMessage) (Settings, error) { return checkSettings(in, false) }
 
 // checkSettings refuses a setting whose name is not parameter-shaped or whose
-// value is not a JSON scalar (a string, a number or a boolean).
-func checkSettings(in map[string]json.RawMessage) (Settings, error) {
+// value is not a JSON scalar (a string, a number or a boolean). typed marks
+// settings the caller typed in a --route: a refusal of those names a setting
+// by its name only below the length the error boundary keeps an argument at,
+// and a name or a value it refuses by its length, never by its text, since the
+// build loop's step writes the refusal into its --json refusal document, which
+// the boundary's pass does not read. A routing file's rows are named as written.
+func checkSettings(in map[string]json.RawMessage, typed bool) (Settings, error) {
+	badName := func(k string) string { return strconv.Quote(layered.BoundKey(k)) }
+	name := func(k string) string { return k }
+	value := layered.BoundKey
+	if typed {
+		badName = func(k string) string { return "(" + termsafe.DescribeRefused(k) + ")" }
+		name = typedSettingName
+		value = termsafe.DescribeRefused
+	}
 	if len(in) == 0 {
 		return nil, nil
 	}
@@ -185,26 +199,36 @@ func checkSettings(in map[string]json.RawMessage) (Settings, error) {
 	out := make(Settings, len(in))
 	for _, k := range keys {
 		if !settingKeyRe.MatchString(k) {
-			return nil, fmt.Errorf("setting %q is not a parameter name (lower case, digits and underscores, starting with a letter)", layered.BoundKey(k))
+			return nil, fmt.Errorf("setting %s is not a parameter name (lower case, digits and underscores, starting with a letter)", badName(k))
 		}
 		v := bytes.TrimSpace(in[k])
 		if !scalar(v) {
-			return nil, fmt.Errorf("setting %s is %s; a setting takes a string, a number or a boolean", k, layered.BoundKey(string(v)))
+			return nil, fmt.Errorf("setting %s is %s; a setting takes a string, a number or a boolean", name(k), value(string(v)))
 		}
 		// Bounded and clean where it is read, because it reaches the request
 		// block and the receipt as it is (review-tier1 F6): a receipt records a
 		// setting as sent, so it is refused here rather than truncated there.
 		if len(v) > MaxSettingBytes {
-			return nil, fmt.Errorf("setting %s is %d bytes; a setting's value is at most %d", k, len(v), MaxSettingBytes)
+			return nil, fmt.Errorf("setting %s is %d bytes; a setting's value is at most %d", name(k), len(v), MaxSettingBytes)
 		}
 		var str string
 		if v[0] == '"' && json.Unmarshal(v, &str) == nil && termsafe.Sanitize(str) != str {
 			return nil, fmt.Errorf("setting %s carries a control, bidirectional or zero-width character; "+
-				"a setting's value is plain text", k)
+				"a setting's value is plain text", name(k))
 		}
 		out[k] = append(json.RawMessage(nil), v...)
 	}
 	return out, nil
+}
+
+// typedSettingName names a parameter-shaped setting a --route gave: by its name
+// when it is shorter than eight bytes, the length below which the error
+// boundary keeps an argument the caller typed, and otherwise by its length.
+func typedSettingName(k string) string {
+	if len(k) < 8 {
+		return k
+	}
+	return "(a " + strconv.Itoa(len(k)) + "-byte name, not quoted)"
 }
 
 // scalar reports whether v is a JSON string, number or boolean.

@@ -621,7 +621,7 @@ The shape role below is not built by itd-48: on 2026-09-21 the product thinker r
 
 **Polymorphic on arg presence (same operation, narrowed scope):** bare = scan the whole corpus; with `<itd-N>` = scan one intent's relationship with the rest. This is *not* the forbidden hidden-state dispatch — the operation is identical; the arg just narrows scope (like `git log` vs `git log <path>`).
 
-The report lands at `.abcd/work/reviews/<date>-consistency/00-summary.md` for the corpus and at `.abcd/work/reviews/<date>-consistency-<itd-N>/00-summary.md` for one intent; the request and the assembled corpus stay under `.abcd/.work.local/reviews/`.
+The report lands at `.abcd/work/reviews/<date>-consistency/00-summary.md` for the corpus and at `.abcd/work/reviews/<date>-consistency-<itd-N>/00-summary.md` for one intent, with each finding in full in `01-findings.md` beside it when every finding would take the summary past the 1 MiB the reviews board reads; the request and the assembled corpus stay under `.abcd/.work.local/reviews/`.
 
 ### Role 3 — kind classification → `/abcd:intent shape [<itd-N>]`
 

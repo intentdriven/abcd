@@ -273,6 +273,71 @@ func TestShellPathQuotes(t *testing.T) {
 	}
 }
 
+// TestWaitAtOpenDiskRefusalSaysWhetherTheFloorRoseOrTheDiskFell: a count
+// raised while a waiter waits raises the floor its open look reads the disk
+// at. When the free space is still above the first look's floor, only the
+// floor moved, and the refusal leads with that, naming the new count and where
+// it was set (dcn-2610300618371321); when the free space fell below the first
+// look's floor too, the disk filled while it waited, and the refusal says so.
+func TestWaitAtOpenDiskRefusalSaysWhetherTheFloorRoseOrTheDiskFell(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		first, open uint64
+		env         bool
+		want, not   string
+	}{
+		{"floor rose", 12 * gib, 12 * gib, false, "the disk floor rose to 16.0 GiB while this waited, because load.preflights is now 4", "fell below the floor"},
+		{"floor rose from the environment", 12 * gib, 12 * gib, true, "the disk floor rose to 16.0 GiB while this waited, because ABCD_LOAD_PREFLIGHTS is now 4", "fell below the floor"},
+		{"disk fell", 200 * gib, 3 * gib, false, "the disk fell below the floor while this waited", "floor rose"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			reads := 0
+			withReadDisk(t, func(h string, floor uint64) DiskCheck {
+				reads++
+				free := tc.first
+				if reads > 1 {
+					free = tc.open
+				}
+				p, _ := fakeDisk(h, 1, dataVolume(h, free))
+				p.floor = floor
+				return checkDisk(h, p)
+			})
+			slots := "1"
+			getenv := func(k string) string {
+				if k == PreflightSlotsEnv {
+					return slots
+				}
+				return ""
+			}
+			if !tc.env {
+				writeMachineConfig(t, home, `{"load": {"preflights": 1}}`)
+				getenv = noEnv
+			}
+			clock := &fakeClock{now: waitT0}
+			req := waitReq(home, 51000, clock, poll{load: 1})
+			req.Getenv = getenv
+			req.Sleep = func(d time.Duration) {
+				clock.Sleep(d)
+				slots = "4"
+				if !tc.env {
+					writeMachineConfig(t, home, `{"load": {"preflights": 4}}`)
+				}
+			}
+			res, err := WaitLoad(req)
+			if reads != 2 {
+				t.Fatalf("the disk was read %d times, want 2", reads)
+			}
+			if err == nil || res.Status == WaitOpen || res.Hold != nil {
+				t.Fatalf("%+v, %v; want refused at the open look with no hold", res, err)
+			}
+			if !strings.Contains(err.Error(), tc.want) || strings.Contains(err.Error(), tc.not) {
+				t.Fatalf("the refusal does not lead with %q (or says %q):\n%v", tc.want, tc.not, err)
+			}
+		})
+	}
+}
+
 // TestWaitRefusesWhenTheDiskFillsWhileItWaits: the disk is read again just
 // before the gate opens, after the jitter, and a volume that fell below the
 // floor while the waiter waited is refused there, with no hold taken.

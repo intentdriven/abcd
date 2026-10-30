@@ -191,11 +191,11 @@ func resolveCell(c roleCell, api *oracle.APIConfig, check func(oracle.FlagRoute)
 	}
 	routes, err := oracle.ParseRunnerRoutes([]string{c.Route}, []string{string(c.role)})
 	if err != nil {
-		return PlannedCell{}, err
+		return PlannedCell{}, declaredRoute(c.Route, err)
 	}
 	fr := routes[0]
 	if err := check(fr); err != nil {
-		return PlannedCell{}, err
+		return PlannedCell{}, declaredRoute(c.Route, err)
 	}
 	pc.Runner, pc.Model = fr.Runner, fr.Model
 	if fr.Model == "" {
@@ -347,4 +347,13 @@ func (p Plan) digest() (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+// declaredRoute names the declaration's route as written before a refusal of
+// it. The route parser and the runner configuration name a route by its
+// position among an invocation's --route values and a part they do not know by
+// its length, the form a typed value takes; a matrix cell's route is the
+// declaration file's text, so the refusal says which one it is.
+func declaredRoute(route string, err error) error {
+	return fmt.Errorf("the declared route %q: %w", layered.BoundKey(route), err)
 }
