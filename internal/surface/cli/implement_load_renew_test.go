@@ -20,7 +20,14 @@ func renewFixture(t *testing.T, renew func(root string) ([]claim.Renewal, error)
 	rounds := make(chan struct{}, 64)
 	prevRenew, prevEvery, prevRound := loadRenew, loadRenewEvery, loadRenewRound
 	loadRenew, loadRenewEvery = renew, time.Millisecond
-	loadRenewRound = func() { rounds <- struct{}{} }
+	// A full channel drops the signal rather than block the round: renewal now
+	// runs for the whole command, so a test that stops reading must not wedge it.
+	loadRenewRound = func() {
+		select {
+		case rounds <- struct{}{}:
+		default:
+		}
+	}
 	t.Cleanup(func() { loadRenew, loadRenewEvery, loadRenewRound = prevRenew, prevEvery, prevRound })
 	return rounds
 }
