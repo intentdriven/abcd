@@ -1576,7 +1576,13 @@ what served each call, one extra request per call, made only because the
 person turned it on) are added to the block by hand afterwards, on an
 OpenRouter block alone, as the configuration chapter of the brief describes,
 and a configured provider's verification sends the first listed model's pin
-when it has one. A block on this machine takes a local pin there instead
+when it has one. Nor does it mark a model for scoring by log-probability:
+`logprob_models` (a list of models from the block's own `models`, none by
+default) is added by hand too, on any block, and a judgement routed to a
+model it names is asked as the decision adapter's second candidate, which
+reads each option's one-token answer by its log-probability. A model the
+block does not list, or one named twice, is refused when the configuration
+is read. A block on this machine takes a local pin there instead
 (the runtime, its version, the weights' digest, quantisation, context length
 and KV-cache type, and on llama.cpp the GGUF file's name, since llama-server
 reports no digest, iss-2610161734428291), which probes the server before the
