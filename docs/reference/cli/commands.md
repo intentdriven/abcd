@@ -139,13 +139,13 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
 
 #### `abcd ahoy remote`
 
-Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.
+Apply abcd's GitHub settings baseline: Writes nothing bare, only the settings, rulesets and their mirrors through apply; refuses an unknown sub-verb.
 
 **Usage:** `abcd ahoy remote`
 
 ##### `abcd ahoy remote apply`
 
-Enable GitHub secret scanning and push protection on this repository: Writes both settings and their mirror; refuses an unconfirmed run.
+Apply every GitHub setting the remote audit finds differing: Writes those settings, abcd's own rulesets and their mirrors; refuses an unconfirmed run.
 
 **Usage:** `abcd ahoy remote apply [flags]`
 
