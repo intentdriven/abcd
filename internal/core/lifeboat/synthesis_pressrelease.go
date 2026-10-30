@@ -48,8 +48,13 @@ var ErrPressReleaseUncited = errors.New("press release cites no resolvable evide
 // for a packed lifeboat. raw == nil composes deterministically; raw != nil
 // validates the untrusted delegated document. It is transport-agnostic. The
 // deterministic file is always written; the delegated document is written whole or
-// refused whole (ErrPressReleaseUncited), never partially.
-func ComposePressRelease(lifeboatDir string, raw []byte) (PressReleaseResult, error) {
+// refused whole (ErrPressReleaseUncited), never partially. Both files are
+// secret-scanned before either is written, as pack's planned bytes are; a
+// non-nil error from scan refuses the whole call, and a nil scan fails closed.
+func ComposePressRelease(lifeboatDir string, raw []byte, scan SecretScan) (PressReleaseResult, error) {
+	if scan == nil {
+		return PressReleaseResult{}, errors.New("press release: a secret scan is required")
+	}
 	abs, _, err := gateSynthLifeboat(lifeboatDir)
 	if err != nil {
 		return PressReleaseResult{}, err
@@ -83,10 +88,14 @@ func ComposePressRelease(lifeboatDir string, raw []byte) (PressReleaseResult, er
 	if err != nil {
 		return PressReleaseResult{}, err
 	}
-	if err := writeIntoLifeboat(root, abs, "press-release.json", data); err != nil {
+	planned := []PlannedFile{
+		plannedFile("press-release.json", data),
+		plannedFile("press-release.md", []byte(renderPressReleaseMarkdown(file))),
+	}
+	if err := scan(planned); err != nil {
 		return PressReleaseResult{}, err
 	}
-	if err := writeIntoLifeboat(root, abs, "press-release.md", []byte(renderPressReleaseMarkdown(file))); err != nil {
+	if err := writePlanned(root, abs, planned); err != nil {
 		return PressReleaseResult{}, err
 	}
 

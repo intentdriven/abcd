@@ -77,11 +77,13 @@ func runShimHome(t *testing.T, command, pluginRoot, pathDir, home string) (stder
 	return runShimPayload(t, command, pluginRoot, pathDir, home, shellPayload)
 }
 
-// shellPayload and questionPayload are the two tool calls the PreToolUse entry
-// is matched for: a shell command and a question to the human.
+// shellPayload, questionPayload and filePayload are the three kinds of tool
+// call the PreToolUse entry is matched for: a shell command, a question to the
+// human, and a file the host's own tools write.
 const (
 	shellPayload    = `{"tool_name":"Bash","tool_input":{"command":"ls"}}`
 	questionPayload = `{"tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Ship it?"}]}}`
+	filePayload     = `{"tool_name":"Edit","tool_input":{"file_path":"/x/y.go","old_string":"a","new_string":"b"}}`
 )
 
 // runShimPayload is runShimHome with the hook payload the shim reads on stdin.
@@ -150,14 +152,15 @@ func asExitError(err error, out **exec.ExitError) bool {
 
 // TestGuardHookIsInstalledForBashCalls holds the wiring itself: the guard is
 // reachable from a live session or it does not exist. The entry must be scoped to
-// the shell tool and the host's question tools (itd-2609212130146198), so the
-// guard is not asked about every unrelated tool call, and the question tools it
-// names are exactly the ones the adapter gates, so the two cannot drift.
+// the shell tool, the host's question tools (itd-2609212130146198) and its
+// file-writing tools (iss-2610280051498465), so the guard is not asked about
+// every unrelated tool call, and the tools it names are exactly the ones the
+// adapter gates, so the two cannot drift.
 func TestGuardHookIsInstalledForBashCalls(t *testing.T) {
 	matcher, command := preToolUseGuardCommand(t)
-	want := strings.Join(append([]string{"Bash"}, questionTools...), "|")
+	want := strings.Join(append(append([]string{"Bash"}, questionTools...), fileWriteTools...), "|")
 	if matcher != want {
-		t.Errorf("the guard entry must be scoped to the shell tool and the question tools; matcher = %q, want %q", matcher, want)
+		t.Errorf("the guard entry must be scoped to the shell, question and file-writing tools; matcher = %q, want %q", matcher, want)
 	}
 	if !strings.Contains(command, "CLAUDE_PLUGIN_ROOT") {
 		t.Errorf("the entry must invoke the plugin-root binary; command = %q", command)
@@ -205,6 +208,7 @@ func TestGuardShimNamesTheToolItLetThrough(t *testing.T) {
 		}{
 			{shellPayload, "shell commands run UNGUARDED", "AskUserQuestion"},
 			{questionPayload, "AskUserQuestion", "shell commands"},
+			{filePayload, "file writes through the host's own tools run UNGUARDED", "shell commands"},
 		} {
 			stderr, code := runShimPayload(t, command, fakePluginRoot(t, script), "", t.TempDir(), tc.payload)
 			if code == 2 {
@@ -225,7 +229,7 @@ func TestGuardShimNamesTheToolItLetThrough(t *testing.T) {
 func TestGuardShimHandsTheBinaryThePayload(t *testing.T) {
 	_, command := preToolUseGuardCommand(t)
 	root := fakePluginRoot(t, `cat > "${0%/abcd}/stdin"; exit 0`)
-	for _, payload := range []string{shellPayload, questionPayload} {
+	for _, payload := range []string{shellPayload, questionPayload, filePayload} {
 		if stderr, code := runShimPayload(t, command, root, "", t.TempDir(), payload); code != 0 {
 			t.Fatalf("exit %d; stderr = %q", code, stderr)
 		}
@@ -282,7 +286,7 @@ func TestGuardShimPassesADenyThrough(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "deny.json"), []byte(deny.String()), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, payload := range []string{shellPayload, questionPayload} {
+	for _, payload := range []string{shellPayload, questionPayload, filePayload} {
 		stdout, stderr, code := runShimOutput(t, command, root, "", t.TempDir(), payload)
 		if reason := mustDeny(t, stdout, stderr, code); reason != "Blocked by the abcd guard (test): it's a block." {
 			t.Errorf("the deny reached the host changed: reason %q", reason)

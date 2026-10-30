@@ -25,8 +25,15 @@ func TestReadmeCitationAgreesWithCitationCFF(t *testing.T) {
 	cff := readRepoFile(t, root, "CITATION.cff")
 	readme := readRepoFile(t, root, "README.md")
 
-	family := cffValue(t, cff, "family-names")
-	given := cffValue(t, cff, "given-names")
+	// CFF names a person by family and given names and an organisation by a
+	// single name; BibTeX spells the first "family, given" and keeps the second
+	// whole inside a second pair of braces, so it is never split into names.
+	author := ""
+	if family, ok := cffLookup(t, cff, "family-names"); ok {
+		author = "{" + family + ", " + cffValue(t, cff, "given-names") + "}"
+	} else {
+		author = "{{" + cffValue(t, cff, "name") + "}}"
+	}
 	repo := cffValue(t, cff, "repository-code")
 	license := cffValue(t, cff, "license")
 
@@ -35,9 +42,9 @@ func TestReadmeCitationAgreesWithCitationCFF(t *testing.T) {
 		want string
 	}{
 		// The BibTeX form is the only one the page prints, so it carries every
-		// fact the CFF owns: the author in BibTeX's "family, given" spelling, the
-		// repository URL, and the declared licence.
-		{"bibtex names the author", "{" + family + ", " + given + "}"},
+		// fact the CFF owns: the author in BibTeX's spelling, the repository URL,
+		// and the declared licence.
+		{"bibtex names the author", author},
 		{"bibtex names the repository", "{" + repo + "}"},
 		{"bibtex names the licence", "license = {" + license + "}"},
 	}
@@ -66,6 +73,17 @@ func readRepoFile(t *testing.T, root, rel string) string {
 // an empty expectation would make every Contains check below pass vacuously.
 func cffValue(t *testing.T, cff, key string) string {
 	t.Helper()
+	value, ok := cffLookup(t, cff, key)
+	if !ok {
+		t.Fatalf("CITATION.cff declares no %q", key)
+	}
+	return value
+}
+
+// cffLookup is cffValue for a key that may be absent: ok is false when no line
+// declares it, and a declared key with no value still fails the test.
+func cffLookup(t *testing.T, cff, key string) (string, bool) {
+	t.Helper()
 	for _, line := range strings.Split(cff, "\n") {
 		trimmed := strings.TrimSpace(line)
 		trimmed = strings.TrimPrefix(trimmed, "- ")
@@ -77,8 +95,7 @@ func cffValue(t *testing.T, cff, key string) string {
 		if value == "" {
 			t.Fatalf("CITATION.cff declares %q with no value", key)
 		}
-		return value
+		return value, true
 	}
-	t.Fatalf("CITATION.cff declares no %q", key)
-	return ""
+	return "", false
 }

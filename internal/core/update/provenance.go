@@ -41,7 +41,14 @@ import (
 // resolved to its commit through GitHub's git API, over the same pinned
 // client, and both the certificate's source-repository digest (which Fulcio
 // takes from the run's OIDC token, so no workflow step can write it) and the
-// SLSA statement's resolved source dependency must name that commit.
+// SLSA statement's resolved source dependency must name that commit. That
+// binds the bytes to a commit, not to a release: a new tag pointing at an
+// older release's commit resolves to that commit, so its genuine build would
+// pass every check here. The tag itself is bound by the bytes: Go stamps the
+// tag the release workflow built at into the build metadata, and every path
+// that takes a release binary refuses one that names another release
+// (verifyRelease, checkReleaseClaim), before anything is swapped or the
+// newest-release mark is raised.
 //
 // Releases are cut from main: auto-release calls release.yml on every push to
 // main, so the certificate the policy accepts names release.yml at

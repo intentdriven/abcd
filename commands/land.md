@@ -19,7 +19,17 @@ preflight`, run with the user's environment and credentials, so run land only
 on a branch whose content the user trusts; a branch from someone else is
 reviewed before it is landed.
 
-**What it does to the remote.** The push is a plain
+**What it does to the remote.** Before the push, land announces: it posts
+`merging <item>` on your status branch, through the code `/abcd:announce`
+runs, for each issue, intent or pull request the branch's own commits name in
+a `Refs:`, `Resolves:` or `Delivers:` trailer (a pull request written `#N`),
+and pushes only once each announcement is on `origin`. So a colleague's
+`/abcd:status` shows the announcement before the branch exists there. An item
+you announced `merging` that still stands is not sent again, unless your newest
+announcement of it is now another, `merged` say. When the branch names several
+items and a later one fails, the announcements already sent for the earlier
+ones stay standing, and running land again resumes without sending them again while they stand. A `git push` typed by hand posts
+no announcement. The push is a plain
 `git push origin <head>:refs/heads/<branch>` of the commit the gate checked,
 from the branch's own checkout, with the repository's hooks running, never
 forced and never with `--no-verify`, and never of the default branch. Arming
@@ -76,10 +86,19 @@ that name with none at this head, since the proof may lie past the bound.
    branch's own preflight could add a push URL or a `pushInsteadOf`). A
    repository whose make file declares no `preflight` target gets no push. The receipt is a convenience check, not a security
    boundary: CI re-runs every gate on the pushed commit.
-2. **push** (`land.push`): the plain push above, of the gated commit whatever
+2. **announce** (with `land.push` on, after the release hold below): the
+   announcements above. Each item is announced once: one you already
+   announced `merging`, standing a minute or more, is not announced again,
+   so a re-run posts nothing new. A record not yet on the default branch is
+   not announced (an announcement names only a public record), and the note
+   says so. A branch whose commits name no item announces nothing, and the
+   note says that (status `skipped`). It needs the local tier
+   (`.abcd/.work.local/`) and your GitHub username, worked out as
+   `/abcd:announce` works it out; a branch that names no item needs neither.
+3. **push** (`land.push`): the plain push above, of the gated commit whatever
    the branch names by then. A push git refuses carries git's own per-ref
    report.
-3. **enqueue** (`land.enqueue`): the branch's one open pull request from this
+4. **enqueue** (`land.enqueue`): the branch's one open pull request from this
    repository (a fork's pull request from a branch of the same name is set
    aside, and refused only when it is the only one), whose head on the forge
    is the pushed head. Right after a push that moved the branch the forge can
@@ -120,7 +139,20 @@ that name with none at this head, since the proof may lie past the bound.
    is now disarmed and gives the command that arms it again. With no pull
    request the step is
    `stopped` with the `gh pr create` command: relay it to the user, who opens
-   the pull request; the next `abcd land` queues it.
+   the pull request; the next `abcd land` queues it. The command carries
+   `--title` (the branch's first commit's subject) and `--body-file`, naming a
+   body land composed from the branch's commits into the checkout's
+   `.abcd/.work.local/scratch/land/`: each commit's subject as a list, then
+   their `Refs:`, `Resolves:` and `Delivers:` lines, once each, then abcd's
+   own `Assisted-by: abcd:<version>` label, since abcd composed the text, and
+   the models the commits' `Assisted-by:` lines name (a commit's `None` is not
+   carried), and no commit's prose. land judges that body as the shell guard judges a
+   posted one (the outbound policy, the disclosure line, and the issue-id
+   declarations where the repository opted into them), and a body that fails
+   one is still written, with the stop's note naming the check, so the user
+   fixes it before posting. Where git does not ignore the local tier, or the
+   checkout has none (land makes none), land writes no file and the command
+   is the bare `gh pr create`.
 
 The payload carries `branch`, `head`, `checkout` (home-relative),
 `default_branch`, `push` and `enqueue` (each `key`, `on`, and the `layer` and
@@ -185,7 +217,12 @@ refused, more than one open pull request from this repository, only a fork's
 pull request, a pull request that conflicts with the default branch, a head
 that moved on the forge after arming, an unreadable ruleset mirror,
 reservations that cannot be fetched from `origin` before the push (a hold
-land cannot see may be there, so nothing is pushed), and the
+land cannot see may be there, so nothing is pushed), an announcement that
+cannot be published before the push (an embargo store that holds the record
+or cannot be checked, no GitHub username to send as, no local tier, `origin`
+refusing the status branch's push or not answering: the branch is not pushed,
+an announcement already sent stands, and running land again once it is
+settled resumes), and the
 forge client missing while an act needs it. Relay the refusal; never retry it with `--no-verify`, a force, or a
 hand-run `gh pr merge` the merge gate did not allow.
 
@@ -193,7 +230,7 @@ hand-run `gh pr merge` the merge gate did not allow.
 reservations and `origin`'s release tags, as the implement loop's land fence
 does, and makes the same judgement. While another session holds a live
 release reservation (`rel-vX.Y.Z`, ended by the tag `vX.Y.Z` reaching
-`origin` or by its holder releasing it), or an unreadable one within its hold,
+`origin`, by its holder releasing it, or by its lapse at the time it names), or an unreadable one within its hold,
 nothing is pushed, armed or queued, and the refusal names the release, its
 holder (or "your worktree … on this machine" when another worktree of this
 checkout cut it, else "your copy on another computer") and until when. A session cutting
@@ -204,8 +241,8 @@ from the cutting checkout is not held. A checkout with no `origin` is not
 held. A release reserved with a date more than five minutes ahead of this
 clock holds from when this checkout first saw it; a checkout that cannot keep
 that sighting (no `.abcd/.work.local/`) does not count it, and prints one
-notice line naming it. Exit 3 means back off: relay who holds the release, and
-run `abcd land` again once it is tagged.
+notice line naming it. Exit 3 means back off: relay who holds the release and until when, and
+run `abcd land` again once it is tagged or the hold has lapsed.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

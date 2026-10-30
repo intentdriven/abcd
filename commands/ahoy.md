@@ -1198,7 +1198,10 @@ the flag keeps both and restores a hand-deleted hook.
   `gh issue` command (create, new, edit, comment) hands the forge are judged
   against the same outbound policy before the command runs, and a live
   agent-session URL or a tool attribution footer in them is refused
-  (`forge-text-outbound`, in `commands/guard.md`). This half writes no hook and
+  (`forge-text-outbound`, in `commands/guard.md`). A pull request's body
+  (`gh pr create`, `new` or `edit`) is also held to the disclosure the
+  bundled `COMMITTING` rule asks of it: one `Assisted-by:` line in an accepted
+  form, and no `Co-authored-by:` line (`forge-text-disclosure`). This half writes no hook and
   needs no `abcd.binary`: the guard is the abcd already running in the session,
   so there is no binary to find and none to be missing. The guard reads
   `outbound.forge` alone; remove both keys, or set them to `false`, to turn
@@ -1272,39 +1275,132 @@ Report the folder kind, the detection-gap count, and the audit-gap count, then
 the per-gap detail from the JSON. This is the sub-verb to reach for when the bare
 render says a repo is healthy and the user's experience says otherwise.
 
-## `--remote` — the repo's GitHub security settings
+## `--remote` — the repo's GitHub settings against abcd's baseline
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy --remote --json
 ```
 
-Reports GitHub's two native secret-scanning toggles on the repository this
-checkout's own origin remote names — `secret_scanning` and
-`secret_scanning_push_protection` — and the changes an apply would make. It
-writes nothing, on the remote or in the tree. A toggle it could not read is
-reported `unknown`, never `disabled`: the two need opposite responses.
+Audits the repository this checkout's own origin remote names against abcd's
+settings baseline, and says what an apply would change. It writes nothing, on
+the remote or in the tree. The baseline follows GitHub's own hardening guidance
+and the OpenSSF Scorecard checks:
+
+- security: secret scanning, push protection, Dependabot alerts and Dependabot security updates on;
+- repository: branches deleted after merge, the wiki and projects off;
+- default branch: no deletion, no force-push, the checks every pull request's workflows report, and a code owner's review;
+- release tags `v*`: no deletion, update or force-move;
+- a CODEOWNERS file covering the publish surface that exists in the tree (`.github/`, `.githooks/`, `.abcd/` config, build files);
+- Actions: actions pinned to a commit SHA, or an allow-list, and a read-only workflow token that cannot approve pull requests.
+
+Each setting is one finding with its current value, its target and a state:
+
+| State | Meaning |
+|---|---|
+| `ok` | At its target. |
+| `differs` | The apply can set it. |
+| `advisory` | Reported and never applied, with the reason: applying it could break a repository that works today, or it is not abcd's to change. |
+| `owed` | The plan or the visibility does not offer it yet. It applies once the repository is public. |
+| `kept` | The repository asked abcd to leave it alone. |
+| `unknown` | abcd could not read it. It is never reported as off, and never applied. |
+
+The audit also reports the real visibility beside the one `.abcd/config.json`
+declares, and the owner's plan where the sign-in can see it. A visibility
+mismatch is advisory: no command of abcd's changes a repository's visibility.
+
+Only checks that every pull request reports are required. A workflow that runs
+only when some paths change, one whose base-branch filter leaves the default
+branch out, one whose `types:` filter leaves out a pull request's opening or a
+push to it, one whose trigger is written in any form outside the plain YAML
+abcd reads (an inline `{...}` mapping, an alias, an anchor, a tag, a merge key,
+or a key that is not one of GitHub's five filters), and, under a merge queue,
+one that does not run on the queue, are left out and named: a form abcd does
+not read leaves a check out, never makes it required. A required check that no workflow is known to report is
+named too, because a pull request waits on it until it reports. A repository
+with no CI is given no required check.
+
+Requiring SHA pinning is offered only when every `uses:` in the workflows is
+already pinned to a commit. Making the workflow token read-only is offered only
+when the token is already read-only or every workflow declares its own
+`permissions:`. Otherwise each is advisory and says what to change first. A
+workflow file abcd could not read, and a local action (`uses: ./…`) whose own
+steps it does not read, hold both at advisory, named in the note.
+
+These three are read from this checkout's workflow files but apply to the
+default branch, so abcd first compares the files with the default branch's on
+GitHub, file by file (a checkout with CRLF line endings matches its LF
+blob). Where any differ (a feature branch, or an uncommitted edit), the required checks, SHA pinning and the workflow token are advisory,
+naming the files, and the apply sets none of them: a check only a feature
+branch reports would hold every pull request into the default branch. Checks
+the repository names in `github.required_checks` are its own and are not held.
+The organization's Actions policy is read where the sign-in can read it, which
+needs an org owner with the `admin:org` scope, and is never written. A missing
+CODEOWNERS file is advisory, and abcd does not write it: whether a managed
+repository keeps one is not yet decided.
+
+A repository sets its own exceptions in `.abcd/config.json`, reviewed like the
+rest of that file:
+
+```json
+{
+  "github": {
+    "keep": ["has_wiki"],
+    "required_checks": ["build", "lint"]
+  }
+}
+```
+
+`keep` lists the settings abcd leaves exactly as they are, by the keys the audit
+prints. `required_checks` replaces the checks taken from the workflows. A key
+abcd does not know refuses the whole run and names the key, so a typo can never
+quietly keep nothing. A repo that sets `scan.native_secret_scanning` to `false`
+has its two secret-scanning toggles kept. The rest of the baseline is still
+audited.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy remote apply --json
 ```
 
 **This writes, and it is the one abcd verb that changes state outside this
-machine.** It enables both toggles — secret scanning first, because GitHub
-refuses push protection on a repository whose secret scanning is off — and
-mirrors the desired state into `.abcd/work/rulesets/repo-settings.json`, so a
-later verify reads the same intent from the tree rather than from a web console.
-Push protection blocks a secret at push time, earlier than any CI scan, and
-secret scanning covers the default branch continuously; both are free on public
-repositories.
+machine.** It applies every `differs` finding and nothing else, in the order
+GitHub requires: secret scanning before push protection, and Dependabot alerts
+before security updates. Then come the repository's flags, abcd's own rulesets,
+the Actions policy and the workflow token. The rulesets are
+`abcd: default branch`, `abcd: code-owner review` and `abcd: release tags`.
+abcd finds them again by name among the repository's own rulesets, never one
+inherited from the organization, and never edits a ruleset of another name. None
+of them is created with a bypass actor. Updating one adds what the baseline asks
+for to what it already holds and removes nothing: its other rules, parameters,
+refs and bypass actors stay, so an update never loosens it. A ruleset abcd
+cannot read whole (its bypass list, rules or conditions missing or malformed),
+one whose target is not the one abcd's ruleset of that name has, and one that
+excludes refs are not updated, and nothing of them changes. A repository with a
+hundred rulesets or more is refused, because abcd reads one page of them.
+Push protection waits for secret scanning, and Dependabot security updates for
+Dependabot alerts: while the first is off and the apply will not turn it on
+(it is kept, owed or unknown), the second is advisory, because GitHub refuses
+it. A first setting that is on, kept or not, never holds the second. Rules from several rulesets add up on GitHub, so a ruleset the repository
+already has keeps working beside abcd's.
+
+After every step succeeds, the apply writes two mirrors. The desired state goes
+into `.abcd/work/rulesets/repo-settings.json`, and each ruleset it applied goes
+beside it as `abcd-<name>.json`. A later verify reads the same intent from the
+tree rather than from a web console. The settings mirror has three blocks:
+
+- `managed`: what abcd holds the repository to;
+- `observed`: the merge settings it only records;
+- `owed`: the settings the plan or the visibility does not offer yet.
+
+No file the apply writes names a person. A repository owned by a person is
+recorded by its name alone, and a bypass actor by its type and id.
 
 Never run it unasked. Four gates stand before any change leaves the machine, and
-each refuses rather than guesses: the folder must be a repo abcd manages, the
-repository must be the one this checkout's own origin names (no other repository
-can be addressed, and a name that is not a plain GitHub name is refused before it
-reaches an API path), the repo's config must not carry the opt-out, and the
-caller must CONFIRM the specific toggles named. A repo that sets
-`scan.native_secret_scanning` to `false` in `.abcd/config.json` is left exactly
-as it is and is not contacted at all.
+each refuses rather than guesses:
+
+- the folder must be a repo abcd manages;
+- the repository must be the one this checkout's own origin names (no other repository can be addressed, and a name that is not a plain GitHub name is refused before it reaches an API path);
+- the repo's `github` block must read cleanly;
+- the caller must CONFIRM the specific settings named.
 
 The confirmation is the fourth gate, not a formality: an unanswered run declines
 and changes nothing, so present the question and the repository it names to
@@ -1312,9 +1408,8 @@ the technical facilitator, under a `Tech` chip, before answering it.
 `--yes` says yes in advance, and it is the technical facilitator's word to give —
 never pass it on their behalf. A run that changed nothing exits NON-ZERO
 (`refused` exits 2, as a refused install does; `aborted` exits 1), so a failed
-invocation is never mistaken for a write that landed; `opted_out` is the one
-non-change that exits clean, because leaving the repo alone is what the repo
-asked for.
+invocation is never mistaken for a write that landed. A run with nothing to
+change exits clean.
 
 The API host is pinned to github.com on every request. `gh` would otherwise take
 it from `GH_HOST` or from whichever host the caller is authenticated to, which
@@ -1333,9 +1428,10 @@ Relay them; the install is the user's to run, by hand or by running the verb at
 a terminal. `ahoy --remote` never offers the install, since it writes nothing,
 and names this verb as the one that does. It is idempotent — a repository already in the desired
 state takes no write, and a re-run rewrites nothing in the tree — and it stops
-at the first failed step rather than attempting one that cannot succeed. Relay
-`status`, the resolved `repo`, every `change`, and every `note`: a note is a
-thing abcd deliberately did not do, and the reason.
+at the first failed step rather than attempting one that cannot succeed, naming
+what had already landed. Relay `status`, the resolved `repo`, every finding that
+is not `ok`, every `change`, and every `note`: a note is a thing abcd
+deliberately did not do, and the reason.
 
 ## `--providers` and `connect` — the optional model provider
 
@@ -1372,8 +1468,9 @@ adapter refuses as `oracle_api.config_refused`, naming the file and the key.
 A route the configuration read skips (a repository's route to a provider that
 holds a key, a repository's route that is not `<provider>/<model>` or whose
 name is not a plain lower-case name, a repository's route to a model a provider
-holding no key does not list, a route to a provider this machine has not
-configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
+holding no key does not list, a repository's judgement route that turns a type
+on, which only `~/.abcd.noindex/config.json` may set, a route to a provider this
+machine has not configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
 `detail` one line per skipped route; relay each line. A skipped
 repository route never displaces the machine's: where `~/.abcd.noindex/config.json`
 routes the same name, that route applies.

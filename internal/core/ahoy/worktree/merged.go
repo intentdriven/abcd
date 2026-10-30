@@ -117,23 +117,57 @@ func judge(dir, def string, wt gitutil.Worktree, start string, prs map[string][]
 	if err != nil || !gitutil.IsFullSHA(tip) {
 		return judgement{}
 	}
+	return judgeTip(dir, def, wt.Branch, branch, tip, start, prs[branch])
+}
+
+// Merged is the merged judgement for a caller outside the store: whether the
+// commit tip of the branch ref (refs/heads/<b> or refs/remotes/<r>/<b>) is
+// merged into the default branch def, read from dir, and how. prs is the
+// forge's listing of pull requests from that branch as JSON in gh's field
+// names (headRefName, headRefOid, baseRefName, isCrossRepository, state), or
+// nil when the forge was not asked; a listing that does not parse counts as
+// none. It is the one judgement the worktree store's reclaim and the shell
+// guard's delete proof share (iss-2610241239492159), erring towards unmerged
+// the same way for both.
+func Merged(dir, def, ref, tip string, prs []byte) (merged bool, by string) {
+	if def == "" || !gitutil.IsFullSHA(tip) {
+		return false, ""
+	}
+	var listed []pullRequest
+	if prs != nil && json.Unmarshal(prs, &listed) != nil {
+		listed = nil
+	}
+	branch := branchName(ref)
+	var own []pullRequest
+	for _, pr := range listed {
+		if pr.HeadRefName == branch {
+			own = append(own, pr)
+		}
+	}
+	j := judgeTip(dir, def, ref, branch, tip, "", own)
+	return j.merged, j.by
+}
+
+// judgeTip is judge past resolving the tip: ref is the branch's full ref,
+// branch its name, and prs the forge's pull requests from it.
+func judgeTip(dir, def, ref, branch, tip, start string, prs []pullRequest) judgement {
 	// The forge's answer counts only at the local tip: a branch that gained
 	// commits after its pull request merged has work the merge does not hold.
-	for _, pr := range prs[branch] {
+	for _, pr := range prs {
 		if pr.State == "MERGED" && !pr.IsCrossRepository && pr.HeadRefOid == tip && pr.BaseRefName == branchName(def) {
 			return judgement{true, byForge}
 		}
 	}
 	// The default branch, checked out in a worktree of its own, holds every
 	// commit of the default branch and none merged into it.
-	if wt.Branch == def || branch == branchName(def) {
+	if ref == def || branch == branchName(def) {
 		return judgement{}
 	}
 	if ok, err := gitutil.IsAncestor(dir, tip, def); err == nil && ok {
 		// A branch cut and never committed to is an ancestor of its base too,
 		// and so is one fast-forwarded along it since; it is merged only when
 		// it holds a commit of its own.
-		if ownCommit(dir, wt.Branch, tip, start) {
+		if ownCommit(dir, ref, tip, start) {
 			return judgement{true, byAncestry}
 		}
 	}

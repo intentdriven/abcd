@@ -1,6 +1,7 @@
 package gitutil
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -22,7 +23,7 @@ func RunWithIndex(root, index string, maxBytes int, args ...string) ([]byte, err
 	}
 	cmd := isolatedGit(root, args...)
 	cmd.Env = append(cmd.Env, "GIT_INDEX_FILE="+index)
-	out, overflowed, err := runBoundedCmd(cmd, maxBytes)
+	out, overflowed, err := runBoundedCmd(context.Background(), cmd, maxBytes)
 	if err != nil {
 		return nil, err
 	}

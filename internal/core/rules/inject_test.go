@@ -1,29 +1,187 @@
 package rules
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
-// TestStateDirNotSharedTemp (iss-66 P14) proves the default session-state dir is
-// the per-user cache dir, not the world-writable shared temp dir where a local
-// co-tenant could pre-create the predictable session-state path and suppress
-// rule injection fail-open.
-func TestStateDirNotSharedTemp(t *testing.T) {
-	t.Setenv("ABCD_RULES_STATE_DIR", "") // exercise the default
-	cache, err := os.UserCacheDir()
+// ledgerLeaf is the file name a session's ledger is kept under.
+func ledgerLeaf(session string) string {
+	sum := sha256.Sum256([]byte(session))
+	return hex.EncodeToString(sum[:]) + ".json"
+}
+
+// TestStateLivesInTheHomeStore: with no override, a session's ledger is kept
+// in the account's own home store, owner-only, and nothing is written under
+// the shared temporary folder.
+func TestStateLivesInTheHomeStore(t *testing.T) {
+	home := t.TempDir()
+	tmp := t.TempDir()
+	t.Setenv("ABCD_RULES_STATE_DIR", "")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("TMPDIR", tmp)
+	if err := SaveState("s1", SessionState{Count: 3, Ledger: map[string]string{"COMMITTING": "h"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := LoadState("s1"); got.Count != 3 || got.Ledger["COMMITTING"] != "h" {
+		t.Fatalf("LoadState after SaveState = %+v, want the saved ledger", got)
+	}
+	dir := filepath.Join(home, filepath.FromSlash(abcdhome.Rel("rules-state")))
+	fi, err := os.Stat(filepath.Join(dir, ledgerLeaf("s1")))
 	if err != nil {
-		t.Skip("user cache dir unavailable; only the degraded uid-qualified temp fallback applies")
+		t.Fatalf("the ledger is not in the home store: %v", err)
 	}
-	dir := stateDir()
-	if !strings.HasPrefix(dir, cache) {
-		t.Fatalf("default state dir should live under the user cache dir %s, got %s", cache, dir)
+	if perm := fi.Mode().Perm(); perm != 0o600 {
+		t.Errorf("ledger mode = %04o, want 0600", perm)
 	}
-	if strings.HasPrefix(dir, os.TempDir()) {
-		t.Fatalf("default state dir must not live under the shared temp dir, got %s", dir)
+	if di, err := os.Stat(dir); err != nil || di.Mode().Perm() != 0o700 {
+		t.Errorf("ledger folder = %v, %v; want mode 0700", di, err)
+	}
+	if entries, _ := os.ReadDir(tmp); len(entries) != 0 {
+		t.Errorf("the shared temporary folder holds %d entries, want none", len(entries))
+	}
+}
+
+// TestStateWithNoHomeIsKeptNowhere: with no home folder there is no private
+// place to keep a ledger, so none is kept, and one planted at a predictable
+// name under the shared temporary folder is never read: a ledger another
+// account wrote could otherwise silence every rule this session matches.
+func TestStateWithNoHomeIsKeptNowhere(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("ABCD_RULES_STATE_DIR", "")
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("TMPDIR", tmp)
+	planted := filepath.Join(tmp, fmt.Sprintf("abcd-rules-state-%d", os.Getuid()))
+	if err := os.MkdirAll(planted, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(planted, ledgerLeaf("s1")), []byte(`{"count":9,"ledger":{"COMMITTING":"h"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := LoadState("s1"); got.Count != 0 || len(got.Ledger) != 0 {
+		t.Fatalf("LoadState read a planted ledger: %+v", got)
+	}
+	if err := SaveState("s2", SessionState{Count: 1}); !errors.Is(err, ErrNoStateHome) {
+		t.Fatalf("SaveState with no home must keep nothing and say why: got %v, want ErrNoStateHome", err)
+	}
+	if _, err := os.Stat(filepath.Join(planted, ledgerLeaf("s2"))); !os.IsNotExist(err) {
+		t.Errorf("SaveState with no home wrote under the shared temporary folder: %v", err)
+	}
+	if entries, _ := os.ReadDir(tmp); len(entries) != 1 {
+		t.Errorf("the shared temporary folder holds %d entries, want only the planted one", len(entries))
+	}
+}
+
+// TestStateIgnoresALedgerSomeoneElseCouldHaveWritten: in the home store, a
+// ledger file others can write, one reached through a link, or one in a
+// folder others can write is not this account's word, so it is not read and
+// the session starts fresh. A ledger only this account can write is read.
+func TestStateIgnoresALedgerSomeoneElseCouldHaveWritten(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ABCD_RULES_STATE_DIR", "")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("TMPDIR", t.TempDir())
+	dir := filepath.Join(home, filepath.FromSlash(abcdhome.Rel("rules-state")))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Dir(dir), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, ledgerLeaf("s1"))
+	body := []byte(`{"count":7,"ledger":{"COMMITTING":"h"}}`)
+	fresh := func(what string) {
+		t.Helper()
+		if got := LoadState("s1"); got.Count != 0 || len(got.Ledger) != 0 {
+			t.Errorf("%s: LoadState read it: %+v", what, got)
+		}
+	}
+	if err := os.WriteFile(file, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(file, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	fresh("a ledger every account can write")
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	elsewhere := filepath.Join(t.TempDir(), "x.json")
+	if err := os.WriteFile(elsewhere, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, file); err != nil {
+		t.Fatal(err)
+	}
+	fresh("a ledger reached through a link")
+	if err := os.Remove(file); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	fresh("a ledger in a folder every account can write")
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := LoadState("s1"); got.Count != 7 {
+		t.Errorf("a ledger only this account can write: LoadState = %+v, want count 7", got)
+	}
+}
+
+// TestStateRefusesAFolderSomeoneElseCouldWrite: a save or a reset in a ledger
+// folder another account could write fails out loud, rather than writing a
+// ledger every later read ignores or reporting a reset it did not make. Once
+// the folder is the account's alone, both succeed; with no home, a reset has
+// nothing to clear and is not an error.
+func TestStateRefusesAFolderSomeoneElseCouldWrite(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("ABCD_RULES_STATE_DIR", "")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", "")
+	if err := ResetState("s1"); err != nil {
+		t.Fatalf("ResetState with no ledger folder yet: %v", err)
+	}
+	if err := SaveState("s1", SessionState{Count: 1}); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(home, filepath.FromSlash(abcdhome.Rel("rules-state")))
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveState("s1", SessionState{Count: 2}); err == nil {
+		t.Error("SaveState wrote into a folder every account can write")
+	}
+	if err := ResetState("s1"); err == nil {
+		t.Error("ResetState reported a reset in a folder every account can write")
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveState("s1", SessionState{Count: 3}); err != nil {
+		t.Errorf("SaveState in the account's own folder: %v", err)
+	}
+	if err := ResetState("s1"); err != nil {
+		t.Errorf("ResetState in the account's own folder: %v", err)
+	}
+	t.Setenv("HOME", "")
+	if err := ResetState("s1"); err != nil {
+		t.Errorf("ResetState with no home: %v", err)
 	}
 }
 
@@ -101,7 +259,7 @@ func TestPruneStateRemovesStaleOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Age the "old" session's file well past the TTL.
-	oldFile := sessionFile("old")
+	oldFile := filepath.Join(dir, ledgerLeaf("old"))
 	past := time.Now().Add(-StateTTL - time.Hour)
 	if err := os.Chtimes(oldFile, past, past); err != nil {
 		t.Fatal(err)
@@ -203,11 +361,18 @@ func TestSessionFileStaysInStateDir(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("ABCD_RULES_STATE_DIR", dir)
 	// A traversal-flavoured id must still hash to a file directly inside dir.
-	f := sessionFile("../../../../etc/passwd")
-	if got := strings.TrimSuffix(f[:len(dir)], "/"); got != strings.TrimSuffix(dir, "/") {
-		t.Fatalf("session file escaped state dir: %s", f)
+	id := "../../../../etc/passwd"
+	if err := SaveState(id, SessionState{Count: 1}); err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(f[len(dir):], "..") {
-		t.Fatalf("session file path contains traversal: %s", f)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != sessionLeaf(id) || !entries[0].Type().IsRegular() {
+		t.Fatalf("session file escaped state dir: %v", entries)
+	}
+	if strings.ContainsAny(sessionLeaf(id), `/\`) || strings.Contains(sessionLeaf(id), "..") {
+		t.Fatalf("session file name carries a path: %s", sessionLeaf(id))
 	}
 }

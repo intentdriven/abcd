@@ -213,7 +213,7 @@ cut. Recorded in the detail the automation needs.
 docs-lint / site-render); one consolidated adversarial security review over the
 whole integrated diff (evaluator outside the loop); trailer reconciliation
 (correct every merged fix commit's `Assisted-by` to `claude-opus-4-8` and add
-`Reported-by: @jogrun` to the four jogrun fixes — F-G/F-I); and the
+`Reported-by:` crediting the external reporter to the four fixes they reported — F-G/F-I); and the
 changelog/resolution reconciliation (the security issues' ledger records, minted
 on the unmerged backfill branch, must resolve in the cut for the derived
 changelog to describe it).
@@ -295,7 +295,7 @@ Verified against `main`, not asserted from memory:
   --merge` returns `! The merge strategy for main is set by the merge queue` and
   ignores the method flag. The queue picked **merge-commit** on all three cuts:
   #523 = 30d6a324 parents=[6961c6d1 e8ab2114], #524 = c3a65258, #525 = f3be1f47,
-  each `Merge pull request #N`. `mergedBy = REPPL` — the queue attributes the
+  each `Merge pull request #N`. `mergedBy = <the product thinker's login>` — the queue attributes the
   merge to the human who armed it, preserving author-of-record.
 - **Arm-vs-enqueue is a state gotcha.** `--auto` only ARMS while the PR is BLOCKED
   (checks pending); on an already-CLEAN PR GitHub returns `autoMergeRequest:null`
@@ -520,7 +520,7 @@ make a doc "clean".
 ### F-W — adopt an external contributor's commit; re-authoring with Reported-by is the fallback
 
 Surfaced by the second operator. The issue-sweep's default was to re-author an
-external contributor's fix and add a `Reported-by:` trailer. For @andytwoods
+external contributor's fix and add a `Reported-by:` trailer. For one external contributor
 (#496, #494), who had a working branch, that default cost them contributor-graph
 AUTHORSHIP: `Reported-by` credits the report, not the code, so the commit author
 stayed the maintainer. The better default for a contributor who has a ready
@@ -528,7 +528,7 @@ branch is to ADOPT their commit (preserving their authorship) or ask for their
 PR; re-author-with-`Reported-by` is the honest fallback only when there is no
 branch to adopt. Corollary already in play: the same-change credit convention
 means the `ACKNOWLEDGEMENTS.md` entry should ride the fix — a missing one is a
-follow-up debt (the second operator is filing @andytwoods's now).
+follow-up debt (the second operator is filing that contributor's now).
 
 ## Verdict (final — the cut shipped)
 

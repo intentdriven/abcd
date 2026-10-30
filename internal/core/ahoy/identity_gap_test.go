@@ -64,7 +64,7 @@ func idCommitPin(t *testing.T, root, body string) {
 
 func TestDetectGitIdentity_Mismatch(t *testing.T) {
 	dir := idGitRepo(t, "Test User", "test@example.com")
-	idWritePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	idWritePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	gaps := detectGitIdentity(dir)
 	if len(gaps) != 1 || gaps[0].ID != "git_identity.mismatch" || !gaps[0].Required {
 		t.Fatalf("want one required git_identity.mismatch gap, got %+v", gaps)
@@ -76,15 +76,15 @@ func TestDetectGitIdentity_Mismatch(t *testing.T) {
 }
 
 func TestDetectGitIdentity_Match(t *testing.T) {
-	dir := idGitRepo(t, "Alex Reppel", "alex@example.com")
-	idWritePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	dir := idGitRepo(t, "Alice", "alice@example.com")
+	idWritePin(t, dir, `{"name":"Alice","email":"alice@example.com"}`)
 	if gaps := detectGitIdentity(dir); len(gaps) != 0 {
 		t.Fatalf("want no gap on match, got %+v", gaps)
 	}
 }
 
 func TestDetectGitIdentity_Unrecorded(t *testing.T) {
-	dir := idGitRepo(t, "Alex Reppel", "alex@example.com")
+	dir := idGitRepo(t, "Alice", "alice@example.com")
 	gaps := detectGitIdentity(dir)
 	if len(gaps) != 1 || gaps[0].ID != UnrecordedGapID || gaps[0].Required || !gaps[0].Resolvable || gaps[0].Category != MachineIdentity {
 		t.Fatalf("want one advisory, resolvable %s gap, got %+v", UnrecordedGapID, gaps)
@@ -128,15 +128,15 @@ func TestDetectGitIdentity_OwnerIsOfferedTheMove(t *testing.T) {
 // git identity as its own question, and it is recorded on their machine only
 // on a yes.
 func TestStepIdentityRecord_RecordsOnYesAtATerminal(t *testing.T) {
-	dir := idGitRepo(t, "Alex Reppel", "alex@example.com")
+	dir := idGitRepo(t, "Alice", "alice@example.com")
 	p := &identityPrompter{terminal: true, answer: true}
 	a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{}, gapPresent: map[string]bool{UnrecordedGapID: true}, prompter: p}
 	a.stepIdentityRecord()
-	if len(p.asked) != 1 || !strings.Contains(p.asked[0], "Alex Reppel <alex@example.com>") {
+	if len(p.asked) != 1 || !strings.Contains(p.asked[0], "Alice <alice@example.com>") {
 		t.Fatalf("want one question proposing the usual identity, got %q", p.asked)
 	}
 	got, _, ok, err := identity.LoadRecordForTest(os.Getenv("HOME"), "")
-	if err != nil || !ok || got.Name != "Alex Reppel" || got.Email != "alex@example.com" {
+	if err != nil || !ok || got.Name != "Alice" || got.Email != "alice@example.com" {
 		t.Fatalf("record not written: %+v ok=%v err=%v", got, ok, err)
 	}
 	if len(a.writes) != 1 || a.writes[0] != identity.MachineRecordRef().Display {

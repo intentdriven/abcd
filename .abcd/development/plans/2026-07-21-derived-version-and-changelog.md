@@ -404,7 +404,7 @@ The manifests already exist; the remaining work is small and mechanical:
   Seed is the **current newest CHANGELOG/tag, `0.3.0`** (grilling outcome 4 —
   corrects an earlier `0.1.0` error), so the first derived cut is
   next-after-`0.3.0` (`additive`→`0.3.1`, `breaking`→`0.4.0`).
-- **README install/update path:** `/plugin marketplace add REPPL/abcd` →
+- **README install/update path:** `/plugin marketplace add <personal account>/abcd` →
   `/plugin install abcd@abcd-marketplace`; update via `/plugin update abcd`.
 - **Light installability smoke** (itd-67 AC): `marketplace.json` + `plugin.json`
   parse; `source` resolves; **every declared command/skill/agent/hook path

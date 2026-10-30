@@ -27,6 +27,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // VersionFloor is the oldest Tailscale release whose command output this
@@ -400,10 +402,11 @@ func execRun(ctx context.Context, path string, args ...string) ([]byte, error) {
 	cmd.Env = commandEnv(os.Environ())
 	out := &boundedBuffer{limit: maxOutput}
 	errOut := &boundedBuffer{limit: maxStderr}
-	cmd.Stdout = out
-	cmd.Stderr = errOut
+	// Read to EOF before tailscale is waited for (procgroup.RunToEOF): an
+	// answer it gave is read whole however late its output closes, until the
+	// deadline. Once killed, it is waited for at most a second to exit.
 	cmd.WaitDelay = time.Second
-	if err := cmd.Run(); err != nil {
+	if err := procgroup.RunToEOF(ctx, cmd, out, errOut); err != nil {
 		msg := strings.TrimSpace(errOut.buf.String())
 		if msg != "" {
 			return nil, fmt.Errorf("%v: %s", err, clip(firstLine(msg)))

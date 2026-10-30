@@ -95,7 +95,9 @@ func TestPrecheckRunsTheAuditTests(t *testing.T) {
 		"go build ./...",
 		"go vet ./...",
 		"go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord " +
-			"./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading",
+			"./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading " +
+			"./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release " +
+			"./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat",
 		"go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site",
 	} {
 		if !strings.Contains(recipe, want) {

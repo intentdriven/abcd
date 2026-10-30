@@ -32,7 +32,7 @@ impact: additive
 
 ## Press Release
 
-> **The abcd repo becomes a real Claude Code marketplace-and-plugin: it carries `.claude-plugin/marketplace.json` (source `./`) and a semver-stamped `plugin.json`, so an end-user runs `/plugin marketplace add REPPL/abcd` then `/plugin install abcd@abcd-marketplace` and gets the full `/abcd:*` command surface. Every `/abcd:launch ship` auto-selects a version bump (patch/minor/major per the brief's bump-tier rule), writes it into `plugin.json` and the marketplace entry, and tags the repo — so end-users update with `/plugin update abcd` and always pull a coherent, versioned release. The development record under `.abcd/**` is excluded from the release artifact by packaging ([adr-28](../../decisions/adrs/0028-single-repo-curated-release.md)) — one repo is both the marketplace and the workshop.** Today abcd is developed but never CONSUMED as a plugin: there is no `.claude-plugin/` marketplace manifest, `plugin.json` carries no version, and there is no install or update path. This intent makes abcd actually installable and keeps it current — the precondition for anyone (including its own maintainers) to run the `/abcd:*` surface.
+> **The abcd repo becomes a real Claude Code marketplace-and-plugin: it carries `.claude-plugin/marketplace.json` (source `./`) and a semver-stamped `plugin.json`, so an end-user runs `/plugin marketplace add <personal account>/abcd` then `/plugin install abcd@abcd-marketplace` and gets the full `/abcd:*` command surface. Every `/abcd:launch ship` auto-selects a version bump (patch/minor/major per the brief's bump-tier rule), writes it into `plugin.json` and the marketplace entry, and tags the repo — so end-users update with `/plugin update abcd` and always pull a coherent, versioned release. The development record under `.abcd/**` is excluded from the release artifact by packaging ([adr-28](../../decisions/adrs/0028-single-repo-curated-release.md)) — one repo is both the marketplace and the workshop.** Today abcd is developed but never CONSUMED as a plugin: there is no `.claude-plugin/` marketplace manifest, `plugin.json` carries no version, and there is no install or update path. This intent makes abcd actually installable and keeps it current — the precondition for anyone (including its own maintainers) to run the `/abcd:*` surface.
 
 > "I've been building abcd but I can't actually install it — the repo has no plugin manifest and no version," said Kira, the maintainer. "Before we gate a launch payload, abcd has to BE an installable, updatable plugin. Adding the marketplace should be one command, updating should be one command, and every release should carry a real version number that falls out of the work we shipped."
 
@@ -46,7 +46,7 @@ Every other launch concern is downstream of this one. The pre-flight gate suite 
 - A version field lands in `plugin.json` — the single source of the installed version; git tags on the repo are the canonical release points (per project standards, the version lives in the manifest + tags, not scattered across files).
 - `/abcd:launch ship` auto-selects the bump tier (patch/minor/major) via the brief §4 phase-completion detection, writes the new version into `plugin.json`, updates `marketplace.json` (version + changelog entry), tags the repo, and records the tier + reason in the launch report.
 - A dedicated, **auto-recorded changelog** in the repo, generated from the canonical history (git tags + commit/spec history + launch report) — never hand-curated prose. This changelog is the single home for "what changed and why it changed" (per the `abcd-cli/CLAUDE.md` docs-describe-present rule), and is the **reroute target** for [[itd-65-launch-preflight-gate-suite]]'s doc-history gate: change-narration that gate strips from a doc body is appended here.
-- The install path is documented in the repo README (`/plugin marketplace add REPPL/abcd` → `/plugin install abcd@abcd-marketplace`) and the update path (`/plugin update abcd`).
+- The install path is documented in the repo README (`/plugin marketplace add <personal account>/abcd` → `/plugin install abcd@abcd-marketplace`) and the update path (`/plugin update abcd`).
 - A smoke check that the published manifest is installable: `marketplace.json` + `plugin.json` parse, `source` resolves, and every declared command/skill/agent/hook path exists in the payload (shares the installed-surface assertion with [[itd-66-launch-payload-render-parity]]).
 
 ## What's Out of Scope
@@ -65,7 +65,7 @@ None stated.
 
 > _Given-When-Then per the itd-1 discipline._
 
-- **Given** the published abcd repo, **when** a user runs `/plugin marketplace add REPPL/abcd`, **then** the marketplace resolves and lists the `abcd` plugin from `marketplace.json`, sourced from the latest release's pinned archive (`{"source": "archive", "url": ".../releases/download/vX.Y.Z/abcd-plugin-vX.Y.Z.zip", "sha256": "<digest>"}`).
+- **Given** the published abcd repo, **when** a user runs `/plugin marketplace add <personal account>/abcd`, **then** the marketplace resolves and lists the `abcd` plugin from `marketplace.json`, sourced from the latest release's pinned archive (`{"source": "archive", "url": ".../releases/download/vX.Y.Z/abcd-plugin-vX.Y.Z.zip", "sha256": "<digest>"}`).
   _Amended 2026-09-23 (source `./` → the pinned archive), on the product thinker's rulings E1 and E2 of that day: a relative-path source installs the unversioned working tree, so no install or update could receive a version-stamped release, which is what criterion 3 promises; the host harness reads a published release only through an archive source. The decision and the alternatives weighed are [adr-2609231048308186](../../decisions/adrs/2609231048308186-the-catalog-pins-the-latest-release-s.md), which amends adr-19 and adr-20. Until the first release past v0.9.0 is cut, the committed catalog still carries `./` (that ADR's bootstrap)._
 - **Given** the added marketplace, **when** a user runs `/plugin install abcd@abcd-marketplace`, **then** the plugin installs and the full `/abcd:*` command/skill/agent/hook surface registers in a session.
 - **Given** a shipped abcd with a recorded version, **when** a new `launch ship` publishes, **then** `plugin.json.version` is bumped by the auto-selected tier (patch/minor/major per brief §4), `marketplace.json` is updated, the repo is tagged, and `/plugin update abcd` pulls the new version.
@@ -92,12 +92,12 @@ Input attestations: diff:tree at de3ba5fa (spc-11 delivered; main after PR #661)
 Acceptance rollup: MET 1 · MET_WITH_CONCERNS 3 · NOT_MET 2 · INCONCLUSIVE 0
 
 Per-criterion verdicts:
-- ac-1 — MET_WITH_CONCERNS: marketplace.json names abcd-marketplace with one plugin abcd at source ./ and the light smoke resolves it over the committed payload; the criterion's REPPL/abcd slug is stale (README documents [redacted-user]/abcd, marketplace owner url still points at REPPL) and the host-side add cannot be exercised in-tree
+- ac-1 — MET_WITH_CONCERNS: marketplace.json names abcd-marketplace with one plugin abcd at source ./ and the light smoke resolves it over the committed payload; the criterion's <personal account>/abcd slug is stale (README documents [redacted-user]/abcd, marketplace owner url still points at the personal account) and the host-side add cannot be exercised in-tree
   evidence: .claude-plugin/marketplace.json:3 — ""name": "abcd-marketplace""
   evidence: .claude-plugin/marketplace.json:11 — ""source": "./""
   evidence: internal/core/launch/smoke_test.go:13 — "func TestSmokeLightPassesOnCommittedPayload"
   evidence: README.md:83 — "/plugin marketplace add [redacted-user]/abcd"
-  evidence: .claude-plugin/marketplace.json:6 — ""url": "https://github.com/REPPL""
+  evidence: .claude-plugin/marketplace.json:6 — ""url": "https://github.com/<personal account>""
 - ac-2 — MET_WITH_CONCERNS: the light smoke asserts every declared command/agent/skill/hook path exists in the resolved bundle and passes over the committed payload; it asserts path presence only, not that the surface registers in a session (itd-66's deep tier is deferred by spc-11)
   evidence: internal/core/launch/smoke.go:110 — "for _, e := range surface.Entries {"
   evidence: internal/core/launch/smoke.go:118 — "declared %s %q is not in the payload"
@@ -152,7 +152,7 @@ Gap audit:
   - the version lives in plugin.json — delivered as the CHANGELOG dated heading in-tree and a stamped payload manifest out-of-tree
     evidence: internal/surface/cli/ship.go:99 — "func publishedVersion(repoRoot string) string {"
     evidence: internal/core/launch/render.go:365 — "func stampMarketplace"
-  - marketplace add REPPL/abcd — the README documents [redacted-user]/abcd
+  - marketplace add <personal account>/abcd — the README documents [redacted-user]/abcd
     evidence: README.md:83 — "/plugin marketplace add [redacted-user]/abcd"
 - missing:
   - a bumped plugin.json.version and updated marketplace.json that /plugin update actually pulls — the stamped payload is staged only with --payload-dir and no workflow publishes it; the marketplace source is the unversioned git tree

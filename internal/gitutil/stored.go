@@ -2,10 +2,11 @@ package gitutil
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // asStored makes an isolated command read history as stored: no
@@ -22,7 +23,7 @@ func asStored(cmd *exec.Cmd) *exec.Cmd {
 // read whose answer is a commit's parents or what a branch holds, which a
 // replace ref or a graft could otherwise change.
 func RunCappedAsStored(root string, maxBytes int, args ...string) (string, error) {
-	out, overflowed, err := runBoundedCmd(asStored(isolatedGit(root, args...)), maxBytes)
+	out, overflowed, err := runBoundedCmd(context.Background(), asStored(isolatedGit(root, args...)), maxBytes)
 	if err != nil {
 		return "", err
 	}
@@ -44,28 +45,18 @@ func RunCappedExitOneAsStored(root string, maxBytes int, args ...string) ([]byte
 // for a deadline-bound read of history as stored, a batch of objects named on
 // standard input among them. When ctx ends first, git is killed
 // (isolatedGitContext) and the error wraps ctx's own; output past maxBytes is
-// an error saying the cap was exceeded, never a truncated answer. A WaitDelay
-// miss over a git that answered is asked once more, as RunLimitedContext asks
-// it, and a second miss is ErrGitTimedOut.
+// an error saying the cap was exceeded, never a truncated answer. git's
+// output is read to EOF before Wait, as RunLimitedContext reads it, so a git
+// that answered is read whole however late its output closes, until ctx ends.
 func RunCappedBytesAsStoredContext(ctx context.Context, root, stdin string, maxBytes int, args ...string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
-	run := func() ([]byte, bool, error) {
-		cmd := asStored(isolatedGitContext(ctx, root, args...))
-		if stdin != "" {
-			cmd.Stdin = strings.NewReader(stdin)
-		}
-		return runBoundedCmd(cmd, maxBytes)
+	cmd := asStored(isolatedGitContext(ctx, root, args...))
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
 	}
-	out, overflowed, err := run()
-	if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
-		out, overflowed, err = run()
-		if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
-			return nil, fmt.Errorf("git %s: %w: its output was still open when the wait for it ran out, on a retry too (%w)",
-				strings.Join(args, " "), ErrGitTimedOut, err)
-		}
-	}
+	out, overflowed, err := runBoundedCmd(ctx, cmd, maxBytes)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
 	}
@@ -93,8 +84,7 @@ func EachAsStoredContext(ctx context.Context, root string, maxLine int, each fun
 	cmd := asStored(isolatedGitContext(ctx, root, args...))
 	w := &lineSink{max: maxLine, each: each}
 	e := &capWriter{remaining: 4096}
-	cmd.Stdout, cmd.Stderr = w, e
-	err := cmd.Run()
+	err := procgroup.RunToEOF(ctx, cmd, w, e)
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
 	}

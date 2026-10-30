@@ -109,10 +109,10 @@ var reservedEntryIDs = []string{
 	syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, substitutionEntryID,
 	gitConfigEntryID, stashEntryID, interpreterStreamEntryID, commandTooLongEntryID, unparsableEntryID,
 	unknownProgramEntryID, ifsSplitEntryID, scriptHazardEntryID, scriptWrittenEntryID, scriptUnreadEntryID,
-	forgeTextEntryID, forgeUnreadEntryID, shellCDeleteEntryID,
+	forgeTextEntryID, forgeUnreadEntryID, forgeDisclosureEntryID, forgeMentionEntryID, shellCDeleteEntryID,
 	unnamedProgramEntryID, inlineCodeEntryID, checkNoteEntryID, registryEntryID, promptToolEntryID, promptInputEntryID,
 	protectedPathEntryID, criticalRemovalEntryID, sandboxEntryID, unfixedPathEntryID, gitConfigWriteEntryID, outsideRemovalEntryID,
-	groupBrokenEntryID, nulByteEntryID, arithmeticEntryID,
+	groupBrokenEntryID, nulByteEntryID, arithmeticEntryID, deleteEntryID, allowStoreEntryID,
 }
 
 // speculate runs Tier 2 over every segment Tier 1 left unmatched, returning at

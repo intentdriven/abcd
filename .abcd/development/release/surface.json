@@ -1481,6 +1481,20 @@
           "hidden": false
         },
         {
+          "name": "reason",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "skip",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "sub-agents",
           "shorthand": "",
           "type": "string",
@@ -1491,6 +1505,13 @@
           "name": "take-over",
           "shorthand": "",
           "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "unskip",
+          "shorthand": "",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         }
@@ -1649,6 +1670,27 @@
       "block": "agents",
       "sentence": "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
       "flags": []
+    },
+    {
+      "path": "abcd guard allow",
+      "hidden": false,
+      "sentence": "Let one exact unproven delete through the hook, once: Writes one allow record in your home folder; refuses without --once, and when an agent runs it.",
+      "flags": [
+        {
+          "name": "command",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "once",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd guard approve",
@@ -3645,7 +3687,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.",
+      "sentence": "List what peers hold that this checkout lacks, and the reservations: Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout.",
       "flags": []
     },
     {
@@ -3799,6 +3841,13 @@
       "block": "agents",
       "sentence": "Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3.",
       "flags": [
+        {
+          "name": "admit",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "apply",
           "shorthand": "",

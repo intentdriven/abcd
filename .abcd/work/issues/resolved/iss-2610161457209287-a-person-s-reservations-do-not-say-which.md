@@ -14,7 +14,7 @@ resolution: "abcd peers names each reservation's copy: this copy, the other work
 impact: additive
 ---
 
-A person's reservations do not say which of their sessions or checkouts holds them. Several sessions run under one account, and every hold reads holder REPPL with an opaque copy key. On 2026-10-16 two live intent holds (the messaging and cloud-sessions intents) sat at the ten-reservation cap while no session could tell whose they were. Two peers had to ask each other in turn before one was released.
+A person's reservations do not say which of their sessions or checkouts holds them. Several sessions run under one account, and every hold reads holder <the product thinker's login> with an opaque copy key. On 2026-10-16 two live intent holds (the messaging and cloud-sessions intents) sat at the ten-reservation cap while no session could tell whose they were. Two peers had to ask each other in turn before one was released.
 
 ## Grounds
 

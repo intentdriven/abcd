@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -483,39 +484,60 @@ type released struct {
 // blob when it is not "" (claim.Request.HandBackBlob). The clause quotes a
 // refusal and a holder, both derived from the remote, so it is returned
 // terminal-safe and home-redacted for every caller.
-func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) (out released) {
+func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) released {
+	return releaseWith(repoRoot, claim.Request{Record: id, Release: true, Tip: tip, HandBack: kind, HandBackBlob: blob}, now)
+}
+
+// releaseOverAbsent publishes the hand-back kind, judged over blob, on a
+// branch origin no longer holds, as its first commit
+// (claim.Request.OverAbsent), and reads the outcome as releaseAt does.
+func releaseOverAbsent(repoRoot, id, kind, blob string, now time.Time) released {
+	return releaseWith(repoRoot, claim.Request{Record: id, Release: true, HandBack: kind, HandBackBlob: blob, OverAbsent: true}, now)
+}
+
+// releaseWith makes the release req asks for and says what it came to.
+func releaseWith(repoRoot string, req claim.Request, now time.Time) (out released) {
+	id, kind := req.Record, req.HandBack
 	defer func() {
 		out.clause = termsafe.Sanitize(fsutil.RedactHome(out.clause))
 		out.pending = termsafe.Sanitize(fsutil.RedactHome(out.pending))
 	}()
-	res, err := claimReserve(repoRoot, claim.Request{Record: id, Release: true, Tip: tip, HandBack: kind, HandBackBlob: blob}, claimOptions(now))
+	res, err := claimReserve(repoRoot, req, claimOptions(now))
+	// A release over an absent branch finds no reservation to release: it
+	// pushes a tombstone to the branch, or nothing.
+	already, tombstone := "the reservation on "+id+" was already released", "released the reservation on "+id+" with a tombstone"
+	if req.OverAbsent {
+		already, tombstone = "nothing was pushed to "+id+"'s branch", "pushed a tombstone to "+id+"'s branch"
+	}
 	var nh *claim.NotHeld
 	switch {
 	case err == nil && res.Act == claim.ActAlreadyReleased && kind != "" && res.HandBackUnpublished != "":
-		out = released{clause: "the reservation on " + id + " was already released; " + res.HandBackUnpublished}
+		out = released{clause: already + "; " + res.HandBackUnpublished}
 		if res.HandBackUnread {
 			out.pending = out.clause
 		}
 		return out
 	case err == nil && res.Act == claim.ActAlreadyReleased:
-		return released{clause: "the reservation on " + id + " was already released"}
+		return released{clause: already}
 	case err == nil && kind != "" && res.HandBackUnpublished != "":
-		out = released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished}
+		out = released{clause: tombstone + " (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished}
 		if res.HandBackUnread {
 			out.pending = out.clause
 		}
 		return out
 	case err == nil && kind != "":
-		return released{published: true, clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
+		return released{published: true, clause: tombstone + " (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
 			", so no drain takes it again until its record changes on " + claim.Remote + "'s default branch"}
 	case err == nil && res.HandBackKept != nil:
-		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackKept.KeptNote(id)}
+		return released{clause: tombstone + " (" + shortSHA(res.Commit) + "); " + res.HandBackKept.KeptNote(id)}
 	case err == nil:
-		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ")"}
+		return released{clause: tombstone + " (" + shortSHA(res.Commit) + ")"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherPerson:
 		out = released{clause: "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherCopy:
 		out = released{clause: "left the reservation on " + id + " as it stands: " + nh.YourCopy + " holds it"}
+	case errors.As(err, &nh) && nh.Why == claim.NotHeldMoved && req.OverAbsent:
+		out = released{clause: "left the reservation on " + id + " as it stands: it was reserved again since its branch was found absent"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldMoved:
 		out = released{clause: "left the reservation on " + id + " as it stands: it was renewed or reserved again since the drain took it"}
 	case errors.Is(err, claim.ErrRefused) && !isPushFailure(err):
@@ -882,6 +904,11 @@ func runFootprint(repoRoot, key, specID, outcome string) ([]string, error) {
 			"give the issue's record a found_at naming the file the fix changes, which the build reserves it with")
 	}
 	fp, err := specPackages(repoRoot, specID)
+	var entry *footprintEntryError
+	if errors.As(err, &entry) {
+		return nil, refuse(StageReservation, "", "", entry.Error()+", then run abcd build again; "+outcome,
+			"name each package on the `- packages:` line of "+specID+"'s `## Footprint` section by its path alone; the reservation names those paths for every other participant")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -902,8 +929,13 @@ func noFootprint(specID, key string) string {
 const maxSpecBytes = 1 << 20
 
 // specPackages is the packages specID's `## Footprint` section names, each
-// cleaned (a trailing slash dropped), in the order written; empty when the
-// spec has no such section or it names none.
+// read as written when that names something in the tree and otherwise as its
+// leading path alone, a trailing parenthetical note dropped, and cleaned (a
+// trailing slash dropped), in the order written; empty when the
+// spec has no such section or it names none. An entry that is still prose,
+// holding whitespace and naming nothing in the tree, is a
+// *footprintEntryError rather than a path that shares nothing with the
+// package it means (iss-2610241549334990).
 func specPackages(repoRoot, specID string) ([]string, error) {
 	store, err := spec.Load(repoRoot)
 	if err != nil {
@@ -918,12 +950,66 @@ func specPackages(repoRoot, specID string) ([]string, error) {
 		return nil, err
 	}
 	var out []string
-	for _, p := range spec.ReadFootprint(string(data)).Packages {
-		if p = path.Clean(strings.TrimSpace(p)); p != "." && !slices.Contains(out, p) {
+	for _, entry := range spec.ReadFootprint(string(data)).Packages {
+		p := strings.TrimSpace(entry)
+		if !inTree(repoRoot, p) {
+			p = leadingPath(p)
+		}
+		if strings.ContainsFunc(p, unicode.IsSpace) && !inTree(repoRoot, p) {
+			return nil, &footprintEntryError{Spec: specID, Entry: entry}
+		}
+		if p = path.Clean(p); p != "." && !slices.Contains(out, p) {
 			out = append(out, p)
 		}
 	}
 	return out, nil
+}
+
+// leadingPath is a packages entry less a trailing parenthetical note, one
+// set off from the path by whitespace: `internal/core/x (new)` is
+// internal/core/x, while `app/(marketing)` is a path and stays whole. An
+// entry that is all parenthetical is left as it is.
+func leadingPath(entry string) string {
+	e := strings.TrimSpace(entry)
+	if !strings.HasSuffix(e, ")") {
+		return e
+	}
+	depth := 0
+	for i := len(e) - 1; i > 0; i-- {
+		switch e[i] {
+		case ')':
+			depth++
+		case '(':
+			if depth--; depth == 0 {
+				if lead := strings.TrimRightFunc(e[:i], unicode.IsSpace); len(lead) < i {
+					return lead
+				}
+				return e
+			}
+		}
+	}
+	return e
+}
+
+// inTree reports whether p, a repository-relative path, names something in
+// repoRoot's working tree; a path leaving the tree names nothing in it.
+func inTree(repoRoot, p string) bool {
+	rel := filepath.FromSlash(p)
+	if !filepath.IsLocal(rel) {
+		return false
+	}
+	_, err := os.Lstat(filepath.Join(repoRoot, rel))
+	return err == nil
+}
+
+// footprintEntryError is a spec's packages entry that names no path: still
+// prose once its trailing note is dropped, and nothing in the tree by that
+// name. The start refuses at the reservation on it, and the pick excludes
+// its intent at the check `footprint`.
+type footprintEntryError struct{ Spec, Entry string }
+
+func (e *footprintEntryError) Error() string {
+	return fmt.Sprintf("%s's packages entry %q under ## Footprint names no path; write it as its path alone, any note in a trailing parenthetical", e.Spec, e.Entry)
 }
 
 // releaseKey releases a reservation a start took and then could not create

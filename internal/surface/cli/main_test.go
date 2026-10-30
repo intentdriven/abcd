@@ -80,6 +80,12 @@ func TestMain(m *testing.M) {
 		os.Exit(code)
 	}
 	pageRunnerExtraEnv = []string{cliTestAsBinaryEnv + "=1"}
+	// No test here reaches the machine's own GitHub login: one that did would
+	// pass on a developer's machine and fail on CI, which has none.
+	showGHLogin, err := gittest.HideGHLogin()
+	if err != nil {
+		panic(err)
+	}
 	// The machine's login shell never shapes a setup run here: with no shell
 	// named, the shell-settings offer (itd-2610240919030303) is not raised,
 	// and a test that wants it names one with t.Setenv.
@@ -126,6 +132,7 @@ func TestMain(m *testing.M) {
 	})
 	code := m.Run()
 	_ = os.RemoveAll(emptyHome)
+	showGHLogin()
 	builtAbcd.Remove()
 	os.Exit(code)
 }

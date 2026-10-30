@@ -869,8 +869,9 @@ func TestBuildRecordExportShape(t *testing.T) {
 		t.Errorf("commits %d != authored %d + merges %d",
 			exp.Authorship.Commits, exp.Authorship.Authored, exp.Authorship.Merges)
 	}
-	if len(exp.Authorship.Humans) != 1 || exp.Authorship.Humans[0].Name != "Fixture" {
-		t.Errorf("humans: %+v", exp.Authorship.Humans)
+	if exp.Authorship.HumanAuthors != 1 || exp.Authorship.HumanCommits != exp.Authorship.Commits {
+		t.Errorf("humans: %d authors / %d commits, want 1 / %d",
+			exp.Authorship.HumanAuthors, exp.Authorship.HumanCommits, exp.Authorship.Commits)
 	}
 	if len(exp.Authorship.Bots) != 0 {
 		t.Errorf("bots: %+v — the fixture's only author is a person", exp.Authorship.Bots)
@@ -901,7 +902,7 @@ func TestAuthorshipSeparatesToolsFromPeople(t *testing.T) {
 	f.write("human.txt", "a commit from a forge noreply address\n")
 	f.git("2026-03-05T09:00:00+00:00", "add", "-A")
 	f.git("2026-03-05T09:00:00+00:00",
-		"-c", "user.name=Casey", "-c", "user.email=1234+casey@users.noreply.github.com",
+		"-c", "user.name=Dave", "-c", "user.email=1234+dave@users.noreply.github.com",
 		"commit", "-m", "docs: a change by a person")
 
 	a, err := LoadAuthorship(f.Root())
@@ -924,21 +925,16 @@ func TestAuthorshipSeparatesToolsFromPeople(t *testing.T) {
 		t.Fatal("the fixture history has no merge, so the exclusion is untested")
 	}
 
-	// The noreply-derived profile reaches the export; every other author,
-	// whose address is a real mailbox, has none (itd-140: graceful absence).
-	profiles := map[string]string{}
-	for _, h := range a.Humans {
-		profiles[h.Name] = h.Profile
-	}
-	if profiles["Casey"] != "https://github.com/casey" {
-		t.Errorf("the noreply author's profile is %q, want the forge page", profiles["Casey"])
-	}
-	if profiles["Fixture"] != "" {
-		t.Errorf("a real mailbox derived a profile: %q", profiles["Fixture"])
+	// The fixture's author and the person at the noreply address are the
+	// people; the bot and the tool are not among them.
+	if a.HumanAuthors != 2 {
+		t.Errorf("human authors = %d, want the fixture's author and the noreply author", a.HumanAuthors)
 	}
 	names := map[string]bool{}
+	botCommits := 0
 	for _, b := range a.Bots {
 		names[b.Name] = true
+		botCommits += b.Commits
 	}
 	if !names["depbot[bot]"] {
 		t.Errorf("a forge bot is not in the bots row: %+v", a.Bots)
@@ -946,10 +942,11 @@ func TestAuthorshipSeparatesToolsFromPeople(t *testing.T) {
 	if !names["Assistant"] {
 		t.Errorf("the pre-policy tool author is not in the bots row: %+v", a.Bots)
 	}
-	for _, h := range a.Humans {
-		if names[h.Name] {
-			t.Errorf("%q is in both rows", h.Name)
-		}
+	if names["Dave"] {
+		t.Errorf("the person at a noreply address is in the bots row: %+v", a.Bots)
+	}
+	if a.HumanCommits+botCommits != a.Commits {
+		t.Errorf("human commits %d + bot commits %d != commits %d", a.HumanCommits, botCommits, a.Commits)
 	}
 }
 
@@ -1001,15 +998,12 @@ func TestAuthorshipVendorTokenDoesNotDemoteAHuman(t *testing.T) {
 		t.Fatalf("the trailer did not register the vendor at all: %+v", a.ByModel)
 	}
 
-	var human, machine int
-	for _, h := range a.Humans {
-		if h.Name == "Nordic" {
-			human++
-			if h.email != "4242+nordic@users.noreply.github.com" {
-				t.Errorf("the wrong Nordic is in the humans row: %q", h.email)
-			}
-		}
+	// The person is counted among the humans beside the fixture's author, and
+	// the bots row holds the tool alone, at its machine address.
+	if a.HumanAuthors != 2 {
+		t.Errorf("human authors = %d, want the fixture's author and the person named Nordic", a.HumanAuthors)
 	}
+	var machine int
 	for _, b := range a.Bots {
 		if b.Name == "Nordic" {
 			machine++
@@ -1018,13 +1012,8 @@ func TestAuthorshipVendorTokenDoesNotDemoteAHuman(t *testing.T) {
 			}
 		}
 	}
-	if human != 1 {
-		t.Errorf("the humans row holds %d authors named Nordic, want the person alone: humans %+v, bots %+v",
-			human, a.Humans, a.Bots)
-	}
 	if machine != 1 {
-		t.Errorf("the bots row holds %d authors named Nordic, want the tool alone: humans %+v, bots %+v",
-			machine, a.Humans, a.Bots)
+		t.Errorf("the bots row holds %d authors named Nordic, want the tool alone: bots %+v", machine, a.Bots)
 	}
 }
 

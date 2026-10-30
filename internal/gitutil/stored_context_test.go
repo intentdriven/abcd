@@ -16,8 +16,8 @@ import (
 // The deadline-bound stored read the status reader's walk and batch reads
 // run through (itd-2609151838312703 C12): a git that hangs is killed at the
 // deadline, a deadline already passed runs no git at all, and a git whose
-// output stays open after it answered is asked once more before the read
-// says it timed out.
+// output stays open after it answered is read once the output closes, or
+// ends at the deadline.
 
 // stubGit puts a `git` first on PATH that answers `git version` as a git
 // that honours GIT_NO_LAZY_FETCH, so the object-read guard asks it nothing
@@ -70,23 +70,37 @@ func TestTheStoredReadRunsNoGitPastItsDeadline(t *testing.T) {
 	}
 }
 
-// TestTheStoredReadAsksOnceMoreWhenOutputStaysOpen: a git that answers but
-// leaves a process holding its output open misses the wait for it; the read
-// asks once more, and a second miss is ErrGitTimedOut, never a hang.
-func TestTheStoredReadAsksOnceMoreWhenOutputStaysOpen(t *testing.T) {
-	runs := stubGit(t, "sleep 3 &\necho answer")
+// TestTheStoredReadReadsAnAnswerWhoseOutputClosesLate: a git that answers
+// and leaves a process holding its output open is read once the output
+// closes, its standard input fed whole, and asked once: a successful git is
+// never reported as missing a wait (iss-2610272041031418).
+func TestTheStoredReadReadsAnAnswerWhoseOutputClosesLate(t *testing.T) {
+	runs := stubGit(t, "read line\necho \"got $line\"\nsleep 1 &")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	start := time.Now()
-	_, err := gitutil.RunCappedBytesAsStoredContext(ctx, t.TempDir(), "", 1024, "for-each-ref")
-	if took := time.Since(start); took > 2*time.Second {
-		t.Fatalf("returned after %s; want the wait's own bound", took)
-	}
-	if !errors.Is(err, gitutil.ErrGitTimedOut) {
-		t.Fatalf("err = %v; want ErrGitTimedOut", err)
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, t.TempDir(), "ask\n", 1024, "cat-file", "--batch")
+	if err != nil || string(out) != "got ask\n" {
+		t.Fatalf("read = %q, %v; want %q, nil", out, err, "got ask\n")
 	}
 	data, _ := os.ReadFile(runs)
-	if n := strings.Count(string(data), "run\n"); n != 2 {
-		t.Fatalf("git ran %d times; want once and one retry", n)
+	if n := strings.Count(string(data), "run\n"); n != 1 {
+		t.Fatalf("git ran %d times; want once", n)
+	}
+}
+
+// TestTheStoredReadEndsAtItsDeadlineWhileTheOutputStaysOpen: a process git
+// left holding its output cannot hold the read past its deadline, and what
+// was read before it is never answered as git's.
+func TestTheStoredReadEndsAtItsDeadlineWhileTheOutputStaysOpen(t *testing.T) {
+	stubGit(t, "sleep 5 &\necho answer")
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	out, err := gitutil.RunCappedBytesAsStoredContext(ctx, t.TempDir(), "", 1024, "for-each-ref")
+	if took := time.Since(start); took > 3*time.Second {
+		t.Fatalf("returned after %s; the deadline was 300ms", took)
+	}
+	if out != nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("read = %q, %v; want nothing and context.DeadlineExceeded", out, err)
 	}
 }

@@ -10,13 +10,11 @@ package site
 //
 // Nothing here is a judgement. Every family is a mechanical comparison of the
 // record against itself — a reference against the tree, a record against the
-// link graph, an author against another author's own forge profile, a trailer
-// tally against a commit count — and the one family that reads as an opinion
-// (the identity candidates) is rendered as a CANDIDATE a human confirms, never
-// as an assertion the page makes.
+// link graph, a trailer tally against a commit count.
 //
-// Every visible word is a count, an id, a title, an author name git carries, or
-// an interface label from `site-src/ui.json` (adr-47 decision 2). Numbers are
+// Every visible word is a count, an id, a title, or an interface label from
+// `site-src/ui.json` (adr-47 decision 2). No person is named: the page names no
+// author (adr-2610291037481588). Numbers are
 // emitted in their own elements rather than glued into a phrase: a composed
 // string is split on decorations only, so "8 commits" is neither a number nor an
 // interface string.
@@ -77,7 +75,6 @@ func (e *explorer) healthPage() (string, error) {
 	gitFamilies := !e.c.project
 	if gitFamilies {
 		tiles = append(tiles,
-			count{len(e.sameAuthorCandidates()), ui.Health.SameAuthor},
 			count{a.Undeclared, ui.Health.Undeclared},
 			count{a.MultiTrailerCommits, ui.Health.MultiTrailer})
 	}
@@ -93,7 +90,6 @@ func (e *explorer) healthPage() (string, error) {
 	b.WriteString(e.healthUnresolved())
 	b.WriteString(e.healthIsolated())
 	if gitFamilies {
-		b.WriteString(e.healthSameAuthor())
 		b.WriteString(e.healthUndeclared())
 		b.WriteString(e.healthMultiTrailer())
 	}
@@ -229,114 +225,19 @@ func (e *explorer) healthIsolated() string {
 	return panelDisclosure("c12", ui.Health.Isolated, "", strconv.Itoa(len(iso)), b.String())
 }
 
-// --- 3. author identity candidates ----------------------------------------
-
-// authorPair is one CANDIDATE identity fold: two distinct author names that the
-// evidence says are one contributor.
+// --- 3. author identity candidates (retired) -----------------------------
 //
-// It is a candidate and never a finding of fact. The page proposes the `.mailmap`
-// line that would fold the pair and stops there: only the contributor knows
-// whether two names are one person, and a site that folded them on its own
-// evidence would be rewriting the authorship of record from a URL.
-type authorPair struct {
-	// canonical is the name the fold would keep; alias the name it would retire.
-	canonical, alias Author
-}
-
-// mailmapLine is the line that would fold the pair — gitmailmap(5)'s first form,
-// which rewrites the name recorded against one commit address.
-//
-// The address it names is always a forge NOREPLY, which carries no mailbox and
-// only the public username the profile URL is already derived from. That is what
-// keeps this line publishable: the rule the `Author` type states is that a
-// contributor's real address stays in git, and a suggestion that broke it would
-// republish the very thing the export withholds.
-func (p authorPair) mailmapLine() string {
-	return p.canonical.Name + " <" + p.alias.email + ">"
-}
-
-// sameContributor reports whether the evidence says two author names are one
-// person: they resolve to the SAME forge profile, or one author's name is the
-// username segment of the other's profile URL.
-func sameContributor(a, b Author) bool {
-	if a.Profile != "" && a.Profile == b.Profile {
-		return true
-	}
-	return nameIsProfileUser(a.Name, b.Profile) || nameIsProfileUser(b.Name, a.Profile)
-}
-
-// nameIsProfileUser reports whether a name IS the username a profile URL names.
-// The comparison is case-insensitive: a forge username is, and an author who
-// signs one commit `fixture` and another `Fixture` is one person either way.
-func nameIsProfileUser(name, profile string) bool {
-	if name == "" || profile == "" {
-		return false
-	}
-	user := profile
-	if i := strings.LastIndex(profile, "/"); i >= 0 {
-		user = profile[i+1:]
-	}
-	return user != "" && strings.EqualFold(strings.TrimSpace(name), user)
-}
-
-// sameAuthorCandidates pairs the author rows the evidence says are one person.
-//
-// `Humans` is already ordered most commits first, so the earlier row of a pair
-// is the one with the stronger claim to be the canonical name. The ALIAS side is
-// whichever of the two carries a forge noreply address, because that is the
-// address the suggested `.mailmap` line may name; where both do, the alias is
-// the row with fewer commits.
-func (e *explorer) sameAuthorCandidates() []authorPair {
-	humans := e.export.authorship().Humans
-	var out []authorPair
-	for i := range humans {
-		for j := i + 1; j < len(humans); j++ {
-			if !sameContributor(humans[i], humans[j]) {
-				continue
-			}
-			canonical, alias := humans[i], humans[j]
-			if profileURL(alias.email) == "" {
-				canonical, alias = alias, canonical
-			}
-			if profileURL(alias.email) == "" {
-				// Neither side can be named in a `.mailmap` line without
-				// publishing a real address, so there is no suggestion to make
-				// and the pair is not raised as one.
-				continue
-			}
-			out = append(out, authorPair{canonical: canonical, alias: alias})
-		}
-	}
-	return out
-}
-
-// healthAuthorName renders one side of a candidate pair, linked to the forge
-// profile where the address derived one (itd-140: graceful absence otherwise).
-func healthAuthorName(a Author) string {
-	if a.Profile == "" {
-		return escapeText(a.Name)
-	}
-	return `<a href="` + escapeAttr(a.Profile) + `">` + escapeText(a.Name) + `</a>`
-}
-
-// healthSameAuthor raises each candidate fold with the line that would apply it.
-func (e *explorer) healthSameAuthor() string {
-	ui := e.c.ui
-	pairs := e.sameAuthorCandidates()
-	if len(pairs) == 0 {
-		return panelDisclosure("c12", ui.Health.SameAuthor, "", "0", e.healthClean())
-	}
-	var b strings.Builder
-	b.WriteString(`<div class="health">`)
-	for _, p := range pairs {
-		b.WriteString(`<div class="hitem"><span class="hfact">` +
-			healthAuthorName(p.canonical) + ` · ` + healthAuthorName(p.alias) +
-			`</span><span class="hwhy">` + escapeText(ui.Health.Suggestion) + ` <code>` +
-			escapeText(p.mailmapLine()) + `</code></span></div>`)
-	}
-	b.WriteString(`</div>`)
-	return panelDisclosure("c12", ui.Health.SameAuthor, "", strconv.Itoa(len(pairs)), b.String())
-}
+// The page once raised two author names the evidence said were one person,
+// with the `.mailmap` line that would fold them. Both names, the profile each
+// linked and the forge login in the suggested line are a person named on a
+// published page, which the site no longer does (adr-2610291037481588). Part
+// of what it paired is folded where the people are counted (humanKey): two
+// identities sharing one forge login count as one person. The other half, an
+// author whose name is another identity's login, is not folded, since a name
+// is not evidence of a person; such a pair counts twice until a `.mailmap`
+// folds it. Its two interface strings are retired labels in HealthUI
+// (retiredLabel): a ui.json that declares them still builds, and nothing
+// requires, adds or renders them.
 
 // --- 4. authored commits declaring nothing --------------------------------
 

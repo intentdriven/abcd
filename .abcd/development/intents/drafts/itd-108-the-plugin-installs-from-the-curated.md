@@ -31,7 +31,7 @@ warrants_assumed:
 > between the tag and the user.
 
 > **What this deliberately does NOT do**, stated here because the obvious reading
-> is wrong: the marketplace SOURCE stays `REPPL/abcd-cli`, so adding the
+> is wrong: the marketplace SOURCE stays `<personal account>/abcd-cli`, so adding the
 > marketplace still clones the repo (~16 MB including git history and `.abcd/`).
 > The design record therefore keeps reaching users, and this intent does not stop
 > it. That is an accepted cost, taken deliberately in the grill below: the
@@ -90,7 +90,7 @@ this project currently *reports* becomes a skew it cannot *have*.
 The maintainer resolved the shape questions in a grill session; these are
 commitments, not options.
 
-- **The marketplace source stays `REPPL/abcd-cli`; only the PLUGIN source
+- **The marketplace source stays `<personal account>/abcd-cli`; only the PLUGIN source
   becomes an archive.** The install line is typed into the harness as a
   slash-command argument, where a catalog URL runs to 99 characters against 38
   for the repo form. Users are the audience and contributors are incidental, so
@@ -169,7 +169,7 @@ the Decisions above where the two disagree.
 - Publishing the curated bundle as a zip release asset from the existing release
   workflow, and extending the build-provenance attestation to cover it.
 - Repointing `.claude-plugin/marketplace.json`'s PLUGIN source at that asset. The
-  marketplace source stays `REPPL/abcd-cli` and the catalog stays committed, so
+  marketplace source stays `<personal account>/abcd-cli` and the catalog stays committed, so
   the README's `add` line does not change.
 - Amending `.abcd/config/launch-payload.json` so the declared payload is what a
   plugin needs — see the Decisions on `docs/assets`. One manifest, not two.

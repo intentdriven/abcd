@@ -76,10 +76,10 @@ All 20 ADRs plus the template. A decision record recording when the decision hap
 ### 3.2 Home-directory paths — all 9 absolute-path hits are meta-references, not real paths
 Every hit is either a regex/example describing the PII *scanner* or a prior audit's record of the same (`04-launch.md:16` scanner spec, adjudicated LEGITIMATE by the prior fn-82 audit; `related-work.md:76`; `fn-82-r10-docs-hygiene-closure.md:50,52,86`; `adr-6:108`; `itd-7:37,64`; `itd-65:42`). No violation.
 
-### 3.3 Username `REPPL` — 13 hits (GitHub org/repo references)
+### 3.3 Username (the product thinker's login) — 13 hits (GitHub org/repo references)
 - `work/DECISIONS.md:22` (module path), `research/notes/publish-implementation-spec.md:269,271,321`, `adr-6:37,38,187,188` (prior-art repo paths and relative links), `itd-28:75,102,120`, `itd-67:33,47,62` (marketplace coordinates).
 
-Judgment: functional GitHub coordinates (module path, marketplace source, prior-art citations), not gratuitous authorship attribution — legitimate-but-noteworthy. The adr-6 relative links (`../../../../REPPL/abcdZero/...`) additionally assume a specific sibling checkout layout and are broken links in any other clone.
+Judgment: functional GitHub coordinates (module path, marketplace source, prior-art citations), not gratuitous authorship attribution — legitimate-but-noteworthy. The adr-6 relative links (`../../../../<personal account>/abcdZero/...`) additionally assume a specific sibling checkout layout and are broken links in any other clone.
 
 ### 3.4 `~/`-form workspace paths — ~15 hits, letter-compliant, layout-leaking
 All use `~/` form (compliant), but hardcode a personal directory taxonomy:

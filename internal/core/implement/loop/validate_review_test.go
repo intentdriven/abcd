@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -1153,6 +1154,64 @@ func TestATakeBackRemovesOnlyTheRoutesAnswerAndNeedsNoLockToDoIt(t *testing.T) {
 				t.Fatalf("the refusal names the answer still recorded on the await: %v", err)
 			}
 		})
+	}
+}
+
+// TestKeepingAsideSweepsATemporaryFileAKilledProcessLeft: a process killed
+// between writing an answer's temporary file and linking it to its name
+// leaves a hidden .<route>-return-<hex>.tmp in the review's directory; the
+// next answer kept aside there removes it once it is older than any write
+// could take, and never a temporary file a concurrent writer may still link,
+// nor a file that only resembles one.
+func TestKeepingAsideSweepsATemporaryFileAKilledProcessLeft(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	aw := *res.Awaiting
+	dir := filepath.Join(repo.Root(), filepath.FromSlash(filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt)))))
+	old := time.Now().Add(-2 * time.Hour)
+	write := func(name string, mtime time.Time) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("part of an answer"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	staleRP := write(".rp-return-0123456789abcdef.tmp", old)
+	staleOther := write(".other-route-return-fedcba9876543210.tmp", old)
+	live := write(".rp-return-00112233445566ff.tmp", time.Now())
+	lookalikes := []string{
+		write(".rp-return-notes.tmp", old),
+		write("rp-return-0123456789abcdef.tmp", old),
+		write(".rp-return-0123456789abcdef.tmp.keep", old),
+	}
+	staleDir := filepath.Join(dir, ".rp-return-aaaaaaaaaaaaaaaa.tmp")
+	if err := os.Mkdir(staleDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(staleDir, old, old); err != nil {
+		t.Fatal(err)
+	}
+	prev := placeRouteReturn
+	placeRouteReturn = func(string, string, string, string, string) (bool, error) {
+		return false, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
+	}
+	t.Cleanup(func() { placeRouteReturn = prev })
+	_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
+	if r, ok := AsRefusal(err); !ok || !r.Contention {
+		t.Fatalf("the answer is kept aside: %v", err)
+	}
+	for _, p := range []string{staleRP, staleOther} {
+		if _, err := os.Lstat(p); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("a stale temporary file a killed process left is swept: %s %v", p, err)
+		}
+	}
+	for _, p := range append([]string{live, staleDir}, lookalikes...) {
+		if _, err := os.Lstat(p); err != nil {
+			t.Fatalf("%s is no stale temporary file and stands: %v", p, err)
+		}
 	}
 }
 

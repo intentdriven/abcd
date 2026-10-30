@@ -146,17 +146,12 @@ Start with the plan and the design record:
 Run from the repo root.
 
 ```bash
-make preflight      # the pre-push gate: waits its turn at the load gate as
-                    # one whole run (nothing runs while it is queued), then
-                    # the load check first (load-check,
-                    # a warning, never a failure), then fmt-check +
-                    # lint-reviews +
-                    # lint-issues + record-lint +
-                    # issue-drift + docs-lint + check-attribution +
-                    # site-render +
-                    # smoke + evals-cold-reading,
-                    # then build + vet +
-                    # test + race (internal), all on the go.mod toolchain
+make preflight      # the pre-push gate: load-check (a warning, never a
+                    # failure), then fmt-check + lint-reviews + lint-issues +
+                    # record-lint + issue-drift + docs-lint + check-attribution
+                    # + secrets-check + vulncheck + site-render + smoke +
+                    # evals-cold-reading, then build + vet + test + race
+                    # (internal), all on the go.mod toolchain
 make precheck       # minutes, no queue: preflight's gates, build, vet, the
                     # record, page and agent audit packages, and the command
                     # and site audit tests chosen by name; no unit or race
@@ -305,6 +300,12 @@ with `*CONCURRENCY` to force it).
 - **The checkout is the unit of isolation, not the branch.** A second
   concurrent agent session works in its own `git worktree`: a branch switch
   swaps the working tree, HEAD and index under whoever else is using them.
+  The record writers enforce it: every write through `capture`, `intent`,
+  `decide` and `spec close`, and the index generator (`go generate
+  ./internal/surface/cli`), refuses (exit 3 for a verb) in a main checkout two
+  or more live sessions started in, and names the worktree store; the guard
+  hook denies the host's own file tools a write there outside
+  `.abcd/.work.local/`.
 - **That worktree goes in the machine-scoped store, and nowhere else:**
   `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, keyed on the full object name
   of the repository's root commit. Never beside the checkout, in the directory
@@ -349,9 +350,9 @@ with `*CONCURRENCY` to force it).
 
 ## Definition of done
 
-- `make preflight` is clean — the eight gates (`fmt-check`, `lint-reviews`,
+- `make preflight` is clean — the ten gates (`fmt-check`, `lint-reviews`,
   `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
-  `check-attribution`, `site-render`), both tagged eval
+  `check-attribution`, `secrets-check`, `vulncheck`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test -timeout 40m ./...`, and
   `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,

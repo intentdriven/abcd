@@ -79,6 +79,16 @@ func (d *Dispatcher) Dispatch(ctx context.Context, req Request) (Outcome, error)
 	if err := req.check(); err != nil {
 		return Outcome{}, err
 	}
+	if req.Model != "" {
+		// A request's model is admitted here, against the provider's
+		// allowlist, as a configured route is when it is read: whoever stored
+		// it, it is never trusted for that. One refused ends the dispatch with
+		// nothing started and no fallback, since a role run on another model,
+		// the host's included, is a run nobody asked for.
+		if err := d.Config.admitModel(req.Model); err != nil {
+			return Outcome{}, fmt.Errorf("runner: the model %q asked for %s, %w", req.Model, req.Role, err)
+		}
+	}
 	route := d.Config.RouteFor(req.Role)
 	landing := Host
 	if !d.HostSession {
@@ -174,7 +184,16 @@ func (d *Dispatcher) runOn(ctx context.Context, name string, req Request) (Answe
 	if !ok {
 		return Answer{}, fail(name, ReasonAbsent, "it is not enabled on this machine (%s.%s in the machine's config)", runnerKey, name)
 	}
-	if rc.Model != "" {
+	if req.Model != "" {
+		// Admitted when the dispatch began; consulted again at the launch, as
+		// the route's model is, so a runner never launches on a stale answer.
+		if err := d.Config.admitModel(req.Model); err != nil {
+			return Answer{}, fmt.Errorf("runner: the model %q asked for %s, %w", req.Model, req.Role, err)
+		}
+		// The runner asks for the request's model with that model's pins, as
+		// a --route's model is held, never carrying the route model's.
+		rc = d.Config.modelled(rc, req.Model)
+	} else if rc.Model != "" {
 		// Admitted when the configuration was read; consulted again so a
 		// runner never launches on a stale answer.
 		if err := d.Config.admitModel(rc.Model); err != nil {

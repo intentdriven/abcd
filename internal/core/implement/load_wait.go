@@ -422,6 +422,10 @@ type WaitResult struct {
 	// count, when it was (PreflightSlots); the front door prints it once per
 	// waiter, so a preflight, which waits at both gates, shows it twice.
 	SlotsNote string `json:"slots_note,omitempty"`
+	// DiskNote says the disk went unchecked, in whole or in part, and why
+	// (DiskCheck.Note); "" when every volume was read. The front door prints
+	// it on stderr.
+	DiskNote string `json:"disk_note,omitempty"`
 	// Backoffs is how many times the waiter stood back from another that opened
 	// in the same moment (machineload.StandBackFrom).
 	Backoffs int `json:"backoffs,omitempty"`
@@ -433,10 +437,14 @@ type WaitResult struct {
 
 // WaitLoad waits until the gate opens or the timeout passes. Its error is a
 // refusal before any wait (a home it cannot resolve, a home inside a git
-// working tree that is not the account's own, a symlinked ~/.abcd.noindex, or
-// a hold lock that is not a regular file), or a hold it
-// could not give up when standing back after a wait. A timeout is a status,
-// not an error.
+// working tree that is not the account's own, a symlinked ~/.abcd.noindex, a
+// load.preflights it cannot use, a volume holding the Go build cache or the
+// worktree store below the disk floor (diskFloorFor), or a hold lock that is
+// not a regular file), a refusal at the last look before it opens when such
+// a volume has fallen below the floor while it waited, or a hold it could not
+// give up when standing back after a wait. A disk it cannot read, in whole or
+// in part, is never refused; WaitResult.DiskNote says so. A timeout is a
+// status, not an error.
 func WaitLoad(req WaitRequest) (WaitResult, error) {
 	getenv := req.Getenv
 	if getenv == nil {
@@ -503,8 +511,15 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	// open reports the race gate opening at once with one slot: the first gate
 	// admitted this preflight's tests alone, so its race stage follows them at
 	// once, as it did before the race gate existed. No look, no hold, no
-	// jitter.
-	readSlots := func() (open bool, err error) {
+	// jitter, but the disk is still read.
+	//
+	// The disk is read before anything is waited for (the first look), again
+	// just before the gate opens (atOpen, after the jitter: other work fills
+	// the disk while this waits), and before the one-slot race shortcut opens,
+	// each time against the floor the count read at that same look sizes
+	// (diskFloorFor), so a gate and its floor never judge by different counts.
+	// No hold is taken yet, so a refusal leaves nothing behind.
+	readSlots := func(atOpen bool) (open bool, err error) {
 		n, src, note, err := PreflightSlots(getenv, home)
 		if err != nil {
 			if res.Polls == 0 {
@@ -513,7 +528,20 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			return false, fmt.Errorf("the wait stopped after %d looks: %w", res.Polls, err)
 		}
 		res.Slots, res.SlotsSource, res.SlotsNote = n, src, note
-		if req.Race && n <= 1 {
+		first, shortcut := res.Polls == 0, req.Race && n <= 1
+		if first || atOpen || shortcut {
+			disk := ReadDisk(home, diskFloorFor(n))
+			res.DiskNote = disk.Note()
+			if first {
+				if err := disk.Refusal(); err != nil {
+					return false, err
+				}
+			} else if err := disk.RefusalAtOpen(); err != nil {
+				res.WaitedS = now().Sub(start).Seconds()
+				return false, err
+			}
+		}
+		if shortcut {
 			res.Status = WaitOpen
 			res.Reason = "one preflight at a time may be in its test stages, so the race stage follows its tests at once"
 			// An open gate names nothing that held it shut; what an earlier
@@ -570,7 +598,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		crossedN = c.n
 	}
 	for {
-		if open, err := readSlots(); err != nil || open {
+		if open, err := readSlots(false); err != nil || open {
 			return res, err
 		}
 		res.Polls++
@@ -591,7 +619,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 				}
 			}
 			sleep(j)
-			if open, err := readSlots(); err != nil || open {
+			if open, err := readSlots(true); err != nil || open {
 				return res, err
 			}
 			res.Polls++
