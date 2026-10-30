@@ -304,7 +304,9 @@ preflights queued, and they could not tell whether it was working
 (iss-2610241419324875). So each waiter behind a command hold, and the holder
 itself while its command runs, follows the CPU of the holder's whole process
 tree between its looks, from the cumulative CPU times the process table
-carries; a child seen at one look and gone by the next counts as work. When the tree has used no
+carries; a child seen at one look and gone by the next counts as work, except a
+waiter's own errands in the tree (its reads of the table and the git and gh of
+its reservation renewal), which are not the run's work. When the tree has used no
 more than a tenth of a core for ten minutes (`QuietShare`, `QuietSpan`), the
 waiters' `waiting for capacity:` line says so as a fact, with the holder's pid,
 the checkout its hold record names and how long it has held the slot, and the

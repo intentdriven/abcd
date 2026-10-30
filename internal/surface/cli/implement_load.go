@@ -239,7 +239,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"stays shut. A child that starts\n" +
 			"and exits between two looks is never seen, so a tree of short children (git)\n" +
 			"reads low, and counts as working: neither the notice nor the mark calls it\n" +
-			"quiet. A\n" +
+			"quiet; a waiter's own reads of the table and its renewals' git and gh in the\n" +
+			"tree are not counted. A\n" +
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
 			"While it waits, and while its command runs, in a checkout, the waiter keeps\n" +
 			"your own reservations from lapsing: at once and then every five minutes it\n" +

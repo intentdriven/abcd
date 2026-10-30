@@ -2685,7 +2685,8 @@ still reads as one. The line is said again every 10m0s while the gate
 stays shut. A child that starts
 and exits between two looks is never seen, so a tree of short children (git)
 reads low, and counts as working: neither the notice nor the mark calls it
-quiet. A
+quiet; a waiter's own reads of the table and its renewals' git and gh in the
+tree are not counted. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 While it waits, and while its command runs, in a checkout, the waiter keeps

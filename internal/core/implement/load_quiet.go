@@ -302,12 +302,12 @@ func measureHolders(w *holderWatch, h *WaitHolder, slots []int, snap machineload
 		}
 		m := w.meters[pid]
 		if m == nil || start-m.start > holdStartSlack || m.start-start > holdStartSlack {
-			m = &cpuMeter{first: t, start: start, prev: treeCPU(withoutReaders(snap, pid).Procs, pid)}
+			m = &cpuMeter{first: t, start: start, prev: treeCPU(withoutReaders(snap, pid, hold, args).Procs, pid)}
 			w.meters[pid] = m
 			out = append(out, GateHolder{PID: pid, Hold: hold, AgeS: age.Seconds()})
 			return
 		}
-		cpu, measured := m.measure(withoutReaders(snap, pid).Procs, pid, t)
+		cpu, measured := m.measure(withoutReaders(snap, pid, hold, args).Procs, pid, t)
 		quiet := measured && cpu <= QuietShare && m.settled() && !queuedUnder(snap, self, args, pid)
 		out = append(out, GateHolder{PID: pid, Hold: hold, AgeS: age.Seconds(), Measured: measured, CPU: cpu, Quiet: quiet})
 	}
@@ -339,30 +339,34 @@ func measureHolders(w *holderWatch, h *WaitHolder, slots []int, snap machineload
 	return out
 }
 
-// readerName is the base name of the program machineload.Read runs on macOS
-// to read the table.
-const readerName = "ps"
-
-// withoutReaders is snap without the processes that only read the table: any
-// ps that is a direct child of holder, or of an abcd in holder's tree, which
-// is that abcd's own read (on macOS ps lists itself, as a child of its caller)
-// whether its tree or another's look took the snapshot. Each is gone by the
-// next look, and a member gone between looks counts as work, so left in, a
-// holder's own reads would keep it from ever being quiet. The abcd beneath
-// is a whole run's waiter, under the make preflight a waiter names from the
-// slots: its watch reads the table while its command runs, and those reads
-// are no more the run's work than the holder's own. An abcd starts no ps but
-// its reads, and another's reader is gone before its arguments could be asked
+// withoutReaders is snap without a waiter's own errands: any ps, git or gh
+// (machineload.IsErrandName) that is a direct child of a load waiter in
+// holder's tree, with everything beneath it. The waiters are holder itself
+// when waiter says it is one (a command hold's holder), and it or any abcd
+// beneath it whose arguments, as args read them, run `implement load --wait` or
+// `--race-gate` (machineload.IsLoadWaiter): a whole run's waiter, under the
+// make preflight a waiter names from the slots. A ps is the waiter's own read
+// of the table (on macOS ps lists itself, as a child of its caller), whether
+// its tree or another's look took the snapshot; a git or gh is a round of the
+// reservation renewal it runs while its command runs. Each is gone by the next
+// look, or a few seconds later, and a member gone between looks counts as
+// work, so left in, a holder's own errands would keep it from being quiet. Any
+// other abcd in the tree, a verb a test or a stage runs, is the run's work, git
+// children and all. A waiter's gated command is make or go, never one of these
+// names, and another's errand is gone before its arguments could be asked
 // for, so for it the name is the handle there is.
-func withoutReaders(snap machineload.Snapshot, holder int) machineload.Snapshot {
-	readers := map[int]bool{holder: true}
+func withoutReaders(snap machineload.Snapshot, holder int, waiter bool, args map[int][]string) machineload.Snapshot {
+	readers := map[int]bool{}
+	if waiter {
+		readers[holder] = true
+	}
 	for _, p := range snap.Procs {
-		if machineload.IsAbcdName(p.Name) && machineload.Descends(snap.Procs, p.PID, holder) {
+		if machineload.IsAbcdName(p.Name) && (p.PID == holder || machineload.Descends(snap.Procs, p.PID, holder)) && machineload.IsLoadWaiter(args[p.PID]) {
 			readers[p.PID] = true
 		}
 	}
 	snap.Procs = slices.DeleteFunc(slices.Clone(snap.Procs), func(p machineload.Proc) bool {
-		return readers[p.PPID] && p.Name == readerName
+		return readers[p.PPID] && machineload.IsErrandName(p.Name)
 	})
 	return snap
 }
@@ -387,7 +391,7 @@ func judgeHolder(w *quietWatch, h *WaitHolder, snap machineload.Snapshot, self m
 		*w = quietWatch{}
 		return nil
 	}
-	snap = withoutReaders(snap, h.PID)
+	snap = withoutReaders(snap, h.PID, true, args)
 	quiet := w.observe(snap.Procs, h.PID, h.StartUnix, queuedUnder(snap, self, args, h.PID), t)
 	if quiet <= 0 {
 		return nil
@@ -432,7 +436,7 @@ func (hw *HoldWatch) Look() (time.Duration, []int) {
 	if err != nil {
 		return hw.quiet, hw.waiting
 	}
-	snap = withoutReaders(snap, hw.Self.PID)
+	snap = withoutReaders(snap, hw.Self.PID, true, args)
 	// The holder is this process, so its start needs no proving; one read
 	// from its age would differ by a second between looks on macOS.
 	quiet := hw.w.observe(snap.Procs, hw.Self.PID, 0, queuedUnder(snap, hw.Self, args, hw.Self.PID), hw.Now())

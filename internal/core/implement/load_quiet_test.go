@@ -617,10 +617,11 @@ func TestWaitDoesNotMarkARunStartingShortChildrenQuiet(t *testing.T) {
 
 // TestWaitMarksAWholeRunQuietPastItsWaitersReads: at one slot a waiter of
 // another account names a stalled whole run by its make preflight (70000),
-// whose holding waiter (70002) reads the table beneath it while its command
-// runs. Those reads, a ps child of 70002 caught at every other look and gone
-// by the next, are the waiter's, not the run's work, so they do not keep the
-// run from being marked quiet.
+// whose holding waiter (70002) reads the table and renews its reservations
+// beneath it while its command runs. Those errands, a ps child of 70002 caught
+// at every other look and a git push, with its own child, at the others, each
+// gone by the next look, are the waiter's, not the run's work, so they do not
+// keep the run from being marked quiet.
 func TestWaitMarksAWholeRunQuietPastItsWaitersReads(t *testing.T) {
 	clock := &fakeClock{now: waitT0}
 	tb := &runTable{clock: clock, at: func(time.Time) ([]machineload.Proc, map[int][]string) {
@@ -632,6 +633,10 @@ func TestWaitMarksAWholeRunQuietPastItsWaitersReads(t *testing.T) {
 		s, err := tb.read()
 		if n++; n%2 == 0 {
 			s.Procs = append(s.Procs, machineload.Proc{PID: 9000 + n, PPID: 70002, PGID: 70000, UID: 502, CPU: 20 * time.Millisecond, Name: "ps"})
+		} else {
+			s.Procs = append(s.Procs,
+				machineload.Proc{PID: 9000 + n, PPID: 70002, PGID: 70000, UID: 502, CPU: 30 * time.Millisecond, Name: "git"},
+				machineload.Proc{PID: 9500 + n, PPID: 9000 + n, PGID: 70000, UID: 502, CPU: 40 * time.Millisecond, Name: "git-remote-https"})
 		}
 		return s, err
 	}
@@ -645,6 +650,41 @@ func TestWaitMarksAWholeRunQuietPastItsWaitersReads(t *testing.T) {
 	}
 	if h := res.Holders[0]; !h.Measured || !h.Quiet {
 		t.Fatalf("stalled run = %+v, want measured and marked quiet despite its waiter's reads", h)
+	}
+}
+
+// TestWaitCountsAnAbcdVerbsGitAsWork: a whole run whose go test runs an abcd
+// verb (70010, not a waiter) that starts a short git child at every other
+// look is working, as a run spending its time in git is: only a load
+// waiter's errands are left out of the tree, so the run is measured but
+// never marked quiet.
+func TestWaitCountsAnAbcdVerbsGitAsWork(t *testing.T) {
+	clock := &fakeClock{now: waitT0}
+	tb := &runTable{clock: clock, at: func(time.Time) ([]machineload.Proc, map[int][]string) {
+		procs, args := joinRuns(wholeRunOf(70000, 502, 20*time.Minute, true), wholeRunOf(80000, 501, time.Minute, false))
+		procs = append(procs, machineload.Proc{PID: 70010, PPID: 70004, PGID: 70000, UID: 502, Age: time.Minute, Name: "abcd"})
+		args[70010] = []string{"capture", "a finding"}
+		return procs, args
+	}}
+	req := wholeRunReq(t, t.TempDir(), 80000, 501, clock, tb)
+	n := 0
+	req.Read = func() (machineload.Snapshot, error) {
+		s, err := tb.read()
+		if n++; n%2 == 0 {
+			s.Procs = append(s.Procs, machineload.Proc{PID: 9000 + n, PPID: 70010, PGID: 70000, UID: 502, CPU: 10 * time.Millisecond, Name: "git"})
+		}
+		return s, err
+	}
+	req.Timeout = QuietSpan + 2*time.Minute
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Holders) != 1 || res.Holders[0].PID != 70000 {
+		t.Fatalf("holders = %+v, want the whole run's make 70000 alone", res.Holders)
+	}
+	if h := res.Holders[0]; !h.Measured || h.Quiet {
+		t.Fatalf("run whose abcd verb runs git = %+v, want measured and not marked quiet", h)
 	}
 }
 

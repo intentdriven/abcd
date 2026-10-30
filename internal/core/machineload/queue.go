@@ -78,6 +78,11 @@ var errandPrograms = []string{psProgram, "git", "gh"}
 
 func isErrandName(name string) bool { return slices.Contains(errandPrograms, name) }
 
+// IsErrandName reports whether a process's base name is one a waiter's own
+// errands run under (errandPrograms): the ps it reads the machine with and
+// the git and gh it renews reservations through.
+func IsErrandName(name string) bool { return isErrandName(name) }
+
 func isMakeName(name string) bool { return slices.Contains(makePrograms, name) }
 
 func isAbcdName(name string) bool {
@@ -124,6 +129,10 @@ func isLoadWaiter(args []string) bool {
 	wait, race := waiterFlags(args)
 	return wait || race
 }
+
+// IsLoadWaiter reports whether args, abcd's arguments after the program name,
+// run a waiter at either gate (isLoadWaiter).
+func IsLoadWaiter(args []string) bool { return isLoadWaiter(args) }
 
 // isRaceWaiter reports whether args are a waiter's at the race gate:
 // `implement load --race-gate`, the flag before any `--`. A race waiter waits
