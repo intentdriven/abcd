@@ -112,10 +112,10 @@ id and at most one login, and an id declared twice with two pairings each
 refuse every act that reads it, naming the file and the line's number alone,
 never its contents, with nothing pushed, while a render reads no declared id
 from it and still reads the kept id and the login, and says so: `abcd peers`,
-`abcd status` and `abcd reserve --holder` each write one line on stderr
+`abcd status` and the holder query each write one line on stderr
 naming the file, the class of the refusal and that no declared id is read,
-never the file's contents or a login, and carry the class in `--json` as
-`holder_ids_refused` (`not_regular_file`, `writable_by_others`,
+never the file's contents or a login, and carry the class in their JSON
+documents as `holder_ids_refused` (`not_regular_file`, `writable_by_others`,
 `owned_by_another_account`, `behind_symbolic_link`, `folder_exposed`,
 `too_large`, `unreadable` or `malformed`). The paired login is read
 and compared on this machine alone: it is never written into a trailer, a ref
