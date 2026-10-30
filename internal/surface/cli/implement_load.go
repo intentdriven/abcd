@@ -373,13 +373,31 @@ func startHoldRenewal(w io.Writer) (stop func()) {
 		tick := time.NewTicker(every)
 		defer tick.Stop()
 		failed := map[string]bool{}
-		viewFailed := false
+		// The round's own fault, said once while it stands: a sibling pass
+		// holding the copy's renewal lock is not a view that could not be read.
+		const (
+			noFault = iota
+			busy
+			viewFailed
+		)
+		fault := noFault
 		for {
 			got, err := renew(root)
-			if err != nil && !viewFailed {
+			now := noFault
+			switch {
+			case errors.Is(err, claim.ErrRenewalBusy):
+				now = busy
+			case err != nil:
+				now = viewFailed
+			}
+			switch {
+			case now == fault:
+			case now == busy:
+				say("abcd implement load --wait: renewed nothing this round, since %v; the wait goes on\n", err)
+			case now == viewFailed:
 				say("abcd implement load --wait: could not read the reservations to renew them (%v); the wait goes on\n", err)
 			}
-			viewFailed = err != nil
+			fault = now
 			for _, r := range got {
 				switch {
 				case r.Err != nil && !failed[r.Record]:

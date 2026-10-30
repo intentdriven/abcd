@@ -1203,6 +1203,7 @@ func (v verdictDoc) result(slug, rel string) Result {
 		Idea:                 v.idea,
 		Verdict:              v.verdict,
 		Graduates:            v.verdict == VerdictSurvives,
+		Reframing:            v.reframing,
 		Path:                 rel,
 		GrillHits:            len(v.hits),
 		CitedRecords:         v.cited,

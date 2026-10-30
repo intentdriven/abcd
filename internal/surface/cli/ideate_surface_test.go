@@ -230,7 +230,8 @@ func TestIdeateRoutingHintIsAPointerNotAGate(t *testing.T) {
 // TestIdeateRenderSaysWhatEachVerdictLeavesNext is iss-2609100508573400: a
 // reframed idea survives in another shape, so its next line must not read as
 // the killed one's. Each verdict gets its own line, and the reframed one names
-// the reframing as what may graduate.
+// the reframing as what may graduate, by the record section that holds it
+// (iss-2610262154123870).
 func TestIdeateRenderSaysWhatEachVerdictLeavesNext(t *testing.T) {
 	next := func(v ideate.Verdict) string {
 		out := renderIdeateResult(ideate.Result{Slug: "x", Verdict: v, Graduates: v == ideate.VerdictSurvives})
@@ -246,7 +247,7 @@ func TestIdeateRenderSaysWhatEachVerdictLeavesNext(t *testing.T) {
 	if reframed == killed || reframed == survives {
 		t.Errorf("the reframed verdict borrows another verdict's next line: %q", reframed)
 	}
-	for _, want := range []string{"reframing", "abcd intent"} {
+	for _, want := range []string{"reframing", "abcd intent", `"The reframing"`} {
 		if !strings.Contains(reframed, want) {
 			t.Errorf("the reframed next line must name %q: %q", want, reframed)
 		}

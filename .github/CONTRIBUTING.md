@@ -65,7 +65,7 @@ inbound = outbound statement is the whole of it.
   PATH. The repository
   ships its hooks in [`.githooks/`](../.githooks/); they are per-machine opt-in,
   and how to arm them turns on the hooks directory git already runs in the
-  clone, which `go run ./cmd/abcd ahoy --json` reports as `banlist.hooks_path`:
+  clone, which `scripts/abcd.sh ahoy --json` reports as `banlist.hooks_path`:
 
   - `unarmed` — point git at the committed hooks, once per clone:
 
@@ -125,8 +125,9 @@ inbound = outbound statement is the whole of it.
   directory — in Claude Code, `claude --plugin-dir <path-to-your-checkout>`,
   which takes precedence over an installed copy of the same plugin for that
   session — and run `/reload-plugins` after an edit. Invoke the binary as
-  `go run ./cmd/abcd` from the checkout root, as `AGENTS.md` sets out; a
-  published binary is stale by construction in a source checkout.
+  `scripts/abcd.sh` from the checkout root, as `AGENTS.md` sets out: it builds
+  the checkout's tree and keeps the binary's exit code, which `go run` does
+  not, and a published binary is stale by construction in a source checkout.
 
 ## AI assistance and authorship
 

@@ -503,6 +503,71 @@ func TestRecordRecordsAKilledIdea(t *testing.T) {
 	}
 }
 
+// TestRecordCarriesAReframedVerdictsReframing is iss-2610262154123870: a
+// reframed idea graduates as its reframing, so the record gives the reframing a
+// section of its own after the rejected alternatives and before what follows,
+// the result reports it, and a verdict that is not reframed gets no such
+// section.
+func TestRecordCarriesAReframedVerdictsReframing(t *testing.T) {
+	root := seedRepo(t)
+	const reframing = "gate only the ideas a person marks as expensive to be wrong about"
+	p := validPayload()
+	p["verdict"] = "reframed"
+	p["reframing"] = reframing
+	res, err := Record(root, "a-reframed-idea", publicStore, encode(t, p), at)
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if res.Graduates {
+		t.Error("a reframed idea must not be reported as graduating as posed")
+	}
+	if res.Reframing != reframing {
+		t.Errorf("Reframing = %q, want %q", res.Reframing, reframing)
+	}
+	body := readFile(t, root, res.Path)
+	rejected := strings.Index(body, "## Rejected alternatives")
+	section := strings.Index(body, "## The reframing")
+	follows := strings.Index(body, "## What follows")
+	if section < 0 || !(rejected < section && section < follows) {
+		t.Fatalf("the reframing has no section between the rejected alternatives and what follows:\n%s", body)
+	}
+	if !strings.Contains(body[section:follows], reframing) {
+		t.Errorf("the reframing section does not carry the reframing:\n%s", body[section:follows])
+	}
+
+	survives, err := Record(root, "a-surviving-idea", publicStore, encode(t, validPayload()), at)
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if strings.Contains(readFile(t, root, survives.Path), "## The reframing") || survives.Reframing != "" {
+		t.Error("a surviving verdict carries a reframing section")
+	}
+}
+
+// TestRecordRedactsTheReframing proves the reframing is scanned like every
+// other free-text field: it is written into the record, so a secret pasted
+// there must not reach it, and the redaction is counted.
+func TestRecordRedactsTheReframing(t *testing.T) {
+	root := seedRepo(t)
+	p := validPayload()
+	p["verdict"] = "reframed"
+	p["reframing"] = "keep the gate, but read " + fakeIdeateToken + " from nowhere"
+	res, err := Record(root, "a-leaky-reframing", publicStore, encode(t, p), at)
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	body := readFile(t, root, res.Path)
+	if strings.Contains(body, fakeIdeateToken) || strings.Contains(res.Reframing, fakeIdeateToken) {
+		t.Errorf("the reframing carries the raw secret span:\n%s", body)
+	}
+	if !strings.Contains(body, "keep the gate, but read ") {
+		t.Errorf("the reframing did not survive redaction:\n%s", body)
+	}
+	if res.Redactions < 1 {
+		t.Errorf("Redactions = %d, want at least 1", res.Redactions)
+	}
+}
+
 // TestRecordRefusesOutOfEnumVerdict proves the verdict is a closed set: an
 // unregistered verdict refuses the whole document rather than being coerced.
 func TestRecordRefusesOutOfEnumVerdict(t *testing.T) {

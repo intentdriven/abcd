@@ -371,6 +371,9 @@ type Result struct {
 	// Graduates reports whether this verdict admits the idea to a draft intent.
 	// Ideate mints nothing itself; this is the signal the surface relays.
 	Graduates bool `json:"graduates"`
+	// Reframing is a reframed verdict's reframing, as recorded: what a
+	// graduation carries in place of the idea. Empty for any other verdict.
+	Reframing string `json:"reframing,omitempty"`
 	// Visibility is the store the verdict was written to.
 	Visibility Visibility `json:"visibility"`
 	// Path is the verdict record: repo-relative for a public verdict, and
