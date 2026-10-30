@@ -126,7 +126,7 @@ func TestLandWaitsWhileAnotherPersonCutsARelease(t *testing.T) {
 	f.cut(q, "rel-v0.16.0", at)
 	_, err := f.land(f.options())
 	r := wantHeld(t, err)
-	want := "release v0.16.0 is being cut by " + f.heldBy(q) + ", until " + at.Add(24*time.Hour).Format(time.RFC3339) +
+	want := "release v0.16.0 is being cut by " + f.heldBy(q) + " (claimed), until " + at.Add(24*time.Hour).Format(time.RFC3339) +
 		", and a session cutting a release has the final say on what merges before its tag, so abcd land pushes, arms and queues nothing"
 	if r.Reason != want {
 		t.Fatalf("reason = %q; want %q", r.Reason, want)

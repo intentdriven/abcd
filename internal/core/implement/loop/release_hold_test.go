@@ -55,7 +55,7 @@ func TestTheFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 				t.Fatalf("the checkout already sees the hold before the fence fetched: %+v %v", holds, err)
 			}
 			r := f.fenced(t)
-			want := "release v0.16.0 is being cut by " + heldBy(t, quinnEmail) + ", until " + now.Add(-time.Minute).Add(24*time.Hour).Format(time.RFC3339) +
+			want := "release v0.16.0 is being cut by " + heldBy(t, quinnEmail) + " (claimed), until " + now.Add(-time.Minute).Add(24*time.Hour).Format(time.RFC3339) +
 				", and a session cutting a release has the final say on what merges before its tag, so this lane does not arm its merge"
 			if r.Reason != want {
 				t.Fatalf("the fence's reason = %q; want %q", r.Reason, want)
@@ -297,7 +297,7 @@ func TestThePushFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 			if !ok || !r.Contention || r.Stage != string(StageLand) {
 				t.Fatalf("the push fence refuses the push as contention: %v", err)
 			}
-			want := "release v0.16.0 is being cut by " + heldBy(t, quinnEmail) + ", until " + now.Add(-time.Minute).Add(24*time.Hour).Format(time.RFC3339) +
+			want := "release v0.16.0 is being cut by " + heldBy(t, quinnEmail) + " (claimed), until " + now.Add(-time.Minute).Add(24*time.Hour).Format(time.RFC3339) +
 				", and a session cutting a release has the final say on what merges before its tag, so this lane does not push its branch"
 			if r.Reason != want {
 				t.Fatalf("the push fence's reason = %q; want %q", r.Reason, want)

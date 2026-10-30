@@ -573,7 +573,7 @@ func TestStatusListsEveryoneWithTheReservationsAndTheHold(t *testing.T) {
 		!snap.FetchedAt.Equal(v.FetchedAt) {
 		t.Fatalf("view = %+v, reservations = %+v; want the fetch dated and the release reservation listed", v, snap)
 	}
-	held := "release v0.16.0 being cut by " + maya.keptHolderID() + ": merges are held; the hold lapses at " +
+	held := "release v0.16.0 being cut by " + maya.keptHolderID() + " (claimed): merges are held; the hold lapses at " +
 		stamp(t0.Add(time.Minute).Add(lease.Max)) + " unless the cut renews it"
 	if len(v.Holds) != 1 || v.Holds[0].Text() != held {
 		t.Fatalf("holds = %+v; want the release held, naming when it lapses", v.Holds)
@@ -596,7 +596,7 @@ func TestAHoldTheBlockShowedIsFollowedByItsLapse(t *testing.T) {
 		t.Fatalf("reserving the release: %v", err)
 	}
 	pat.status(nil)
-	if got := pat.notes(); !strings.Contains(got, "release v0.16.0 being cut by "+maya.keptHolderID()+": merges are held") {
+	if got := pat.notes(); !strings.Contains(got, "release v0.16.0 being cut by "+maya.keptHolderID()+" (claimed): merges are held") {
 		t.Fatalf("the block:\n%s\nwant the hold", got)
 	}
 	w.set(t0.Add(lease.Max + time.Hour))

@@ -78,7 +78,7 @@ func TestPeersShowsTheCuttingCopysOwnReleaseAsItsCut(t *testing.T) {
 
 	r := w.clone(t, "r", quinnMail)
 	h, _ = peersHolds(t, r)
-	if !is(h.Own, false) || !is(h.Unsighted, false) || h.Text != "release v0.16.0 being cut by "+heldBy(t, p)+": merges are held; the hold lapses at "+h.EffectiveExpiry+" unless the cut renews it" {
+	if !is(h.Own, false) || !is(h.Unsighted, false) || h.Text != "release v0.16.0 being cut by "+heldBy(t, p)+" (claimed): merges are held; the hold lapses at "+h.EffectiveExpiry+" unless the cut renews it" {
 		t.Fatalf("another person's row = %+v; want not own and the hold line", h)
 	}
 }

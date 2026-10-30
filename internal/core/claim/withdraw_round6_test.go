@@ -377,7 +377,7 @@ func TestASecondReleaseReadsTheFirstsEndFromTheRecord(t *testing.T) {
 	w.pushAs(f, "rel-v0.16.0", "mal", tm.text())
 	bob := w.clone("2222+bob@users.noreply.github.com", "")
 	_, err := bob.do(Request{Record: "rel-v0.17.0"})
-	if err == nil || !strings.Contains(err.Error(), "rel-v0.16.0 is being cut by "+octo.holderID()) || !strings.Contains(err.Error(), "its tip is a tombstone "+octo.holderID()+" did not push") {
+	if err == nil || !strings.Contains(err.Error(), "rel-v0.16.0 is being cut by "+octo.holderID()+" (claimed)") || !strings.Contains(err.Error(), "its tip is a tombstone "+octo.holderID()+" (claimed) did not push") {
 		t.Fatalf("bob's reserve = %v; want it backing off, the tombstone named as ending nothing", err)
 	}
 	if _, err := octo.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
