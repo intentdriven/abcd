@@ -304,7 +304,7 @@ func TestAVerdictKeptForATipIsNotReadForAnother(t *testing.T) {
 	k.place(headB, pushedByApp, "")
 	k.place(headC, pushedByLogin, "Octo")
 	k.place(headA, pushedByNone, "")
-	k.markDone("quinn")
+	k.markDone("quinn", "")
 	k.save()
 	again := readTipCache(root, "rel-v0.16.0", headA)
 	if kind, _, ok := again.placed(headB); !ok || kind != pushedByApp {
@@ -316,11 +316,11 @@ func TestAVerdictKeptForATipIsNotReadForAnother(t *testing.T) {
 	if _, _, ok := again.placed(headA); ok {
 		t.Fatal("a commit the record placed nothing on was kept")
 	}
-	if !again.isDone("Quinn") || again.isDone("octo") {
+	if !again.isDone("Quinn", "") || again.isDone("octo", "") {
 		t.Fatal("the persons found done were not kept as they were")
 	}
 	other := readTipCache(root, "rel-v0.16.0", headC)
-	if _, _, ok := other.placed(headB); ok || other.isDone("quinn") {
+	if _, _, ok := other.placed(headB); ok || other.isDone("quinn", "") {
 		t.Fatal("what was kept for one tip was read for another")
 	}
 }

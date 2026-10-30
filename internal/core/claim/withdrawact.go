@@ -876,7 +876,7 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	if !tagged && !lapsed && (t.Unreadable != "" || !t.message.released()) {
 		return Settle{}, false
 	}
-	if c := readTipCache(a.root, id, t.Commit); !own && (c.isDone(a.holder) || c.gaveUp(a.holder, a.now)) {
+	if c := readTipCache(a.root, id, t.Commit); !own && (c.isDone(a.holder, doneScope(a.self)) || c.gaveUp(a.holder, a.now)) {
 		return Settle{}, false
 	}
 	a.subject = id
@@ -915,7 +915,7 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	due := slices.ContainsFunc(rec.mine(a.self), Withdrawal.unsettled) || len(vouched) > 0
 	s.NotRead = rec.above
 	if !due {
-		k.cache().markDone(a.holder)
+		k.cache().markDone(a.holder, doneScope(a.self))
 		s.shownOnce(a.root, id, t.Commit)()
 		return s, s.said()
 	}

@@ -451,7 +451,7 @@ func TestLocalCountsAndMarkersAreKeptOnlyForARelease(t *testing.T) {
 	s := Settle{NotRead: []PushCount{{Pusher: "mal", Commits: 1}}}
 	s.shownOnce(p.dir, "iss-8", headA)()
 	c := readTipCache(p.dir, "iss-8", headA)
-	c.markDone("octo")
+	c.markDone("octo", "")
 	c.save()
 	for _, d := range []string{refusalsDir, shownDirRel, tipCacheDirRel} {
 		if _, err := os.Stat(filepath.Join(p.dir, d, "iss-8")); !errors.Is(err, os.ErrNotExist) {

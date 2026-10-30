@@ -17,9 +17,12 @@ package claim
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -633,7 +636,9 @@ func readTipCache(root, id, tip string) *tipCache {
 		f := strings.Fields(l)
 		switch {
 		case len(f) == 2 && f[0] == "done" && validHolder(f[1]):
-			k.done[strings.ToLower(f[1])] = true
+			k.done[doneEntry(f[1], "")] = true
+		case len(f) == 3 && f[0] == "done" && validHolder(f[1]) && doneScopeRe.MatchString(f[2]):
+			k.done[doneEntry(f[1], f[2])] = true
 		case len(f) == 2 && f[0] == "end-failed":
 			if at, err := time.Parse(time.RFC3339, f[1]); err == nil {
 				k.endFailed = at
@@ -674,15 +679,41 @@ func (k *tipCache) place(commit string, kind pushKind, login string) {
 }
 
 // isDone reports whether holder's record at the tip was found to hold nothing
-// more for this copy to do.
-func (k *tipCache) isDone(holder string) bool { return k.done[strings.ToLower(holder)] }
+// more for this copy to do, read under scope (doneScope).
+func (k *tipCache) isDone(holder, scope string) bool { return k.done[doneEntry(holder, scope)] }
 
-// markDone keeps that holder's record at the tip holds nothing more to do.
-func (k *tipCache) markDone(holder string) {
-	if !validHolder(holder) || k.isDone(holder) {
+// markDone keeps that holder's record at the tip holds nothing more to do,
+// read under scope (doneScope).
+func (k *tipCache) markDone(holder, scope string) {
+	if !validHolder(holder) || scope != "" && !doneScopeRe.MatchString(scope) || k.isDone(holder, scope) {
 		return
 	}
-	k.done[strings.ToLower(holder)], k.changed = true, true
+	k.done[doneEntry(holder, scope)], k.changed = true, true
+}
+
+// doneEntry is how the cache keeps holder's done mark under scope.
+func doneEntry(holder, scope string) string {
+	return strings.TrimSpace(strings.ToLower(holder) + " " + scope)
+}
+
+// doneScopeRe is a scope as the cache keeps it.
+var doneScopeRe = regexp.MustCompile(`^[0-9a-f]{16}$`)
+
+// doneScope is what, beside the holder id, decides which withdrawals self
+// acts on at a tip: their login, and the ids they declare with the login
+// paired with each (DeclaredHolderIDsFile), as a digest, so a done mark kept
+// before the person changed their declaration (paired an id, say) is not
+// read after it, and the tip is read afresh. It is kept in the local tier
+// alone and names no login.
+func doneScope(self Self) string {
+	ids := slices.Clone(self.Declared)
+	slices.Sort(ids)
+	h := sha256.New()
+	fmt.Fprintf(h, "login %s\n", strings.ToLower(self.Login))
+	for _, id := range ids {
+		fmt.Fprintf(h, "%s %s\n", id, strings.ToLower(self.paired[id]))
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 // markFailed keeps when this copy first failed to read holder's record at the
