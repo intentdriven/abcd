@@ -306,6 +306,84 @@ func TestWaitRaceGateOpensOnceTheCountFallsToOne(t *testing.T) {
 	}
 }
 
+// TestWaitDiskFloorFollowsTheCountReadAtEachLook: the disk is judged against
+// the floor the count read at that same look sizes (diskFloorFor), so a count
+// raised while a waiter waits raises the floor its open look reads the disk
+// at, and a race waiter whose count falls to one reads the disk before its
+// shortcut opens, refusing there on a disk that filled while it waited.
+func TestWaitDiskFloorFollowsTheCountReadAtEachLook(t *testing.T) {
+	t.Run("first gate", func(t *testing.T) {
+		var floors []uint64
+		withReadDisk(t, func(_ string, floor uint64) DiskCheck {
+			floors = append(floors, floor)
+			return DiskCheck{Status: DiskOK, FloorBytes: floor, Volumes: []DiskVolume{}}
+		})
+		clock := &fakeClock{now: waitT0}
+		tb := &runTable{clock: clock, at: func(time.Time) ([]machineload.Proc, map[int][]string) {
+			return joinRuns(wholeRunOf(80000, 502, 10*time.Minute, true), wholeRunOf(90000, 501, time.Minute, false))
+		}}
+		req := wholeRunReq(t, t.TempDir(), 90000, 501, clock, tb)
+		slots := "1"
+		req.Getenv = func(k string) string {
+			if k == PreflightSlotsEnv {
+				return slots
+			}
+			return ""
+		}
+		req.Sleep = func(d time.Duration) { clock.Sleep(d); slots = "4" }
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Status != WaitOpen || res.Slots != 4 {
+			t.Fatalf("%+v; want shut with one slot, then open with 4", res)
+		}
+		if want := []uint64{diskFloorFor(1), diskFloorFor(4)}; !slices.Equal(floors, want) {
+			t.Fatalf("the disk was judged against %v; want %v, the first look's floor and then the open look's", floors, want)
+		}
+	})
+	t.Run("race shortcut", func(t *testing.T) {
+		for _, low := range []bool{false, true} {
+			home := t.TempDir()
+			var floors []uint64
+			withReadDisk(t, func(h string, floor uint64) DiskCheck {
+				floors = append(floors, floor)
+				free := 200 * gib
+				if low && len(floors) > 1 {
+					free = 3 * gib
+				}
+				p, _ := fakeDisk(h, 1, dataVolume(h, free))
+				p.floor = floor
+				return checkDisk(h, p)
+			})
+			clock := &fakeClock{now: waitT0}
+			req := waitReq(home, 60000, clock, poll{load: 3, procs: []machineload.Proc{raceRun(70000, 1)}})
+			req.Race = true
+			slots := "4"
+			req.Getenv = func(k string) string {
+				if k == PreflightSlotsEnv {
+					return slots
+				}
+				return ""
+			}
+			req.Sleep = func(d time.Duration) { clock.Sleep(d); slots = "1" }
+			res, err := WaitLoad(req)
+			if want := []uint64{diskFloorFor(4), diskFloorFor(1)}; !slices.Equal(floors, want) {
+				t.Fatalf("low=%v: the disk was judged against %v; want %v, the first look's floor and then the shortcut's", low, floors, want)
+			}
+			if !low {
+				if err != nil || res.Status != WaitOpen || res.Slots != 1 {
+					t.Fatalf("%+v, %v; want the race gate open once the count is one", res, err)
+				}
+				continue
+			}
+			if err == nil || !strings.Contains(err.Error(), "fell below the floor while this waited") || res.Status == WaitOpen {
+				t.Fatalf("%+v, %v; want the shortcut refused on the disk that filled while it waited", res, err)
+			}
+		}
+	})
+}
+
 // TestWaitWholeRunWithTwoSlotsHoldsOnlyToSettle: above one slot a whole run's
 // waiter takes the settle hold, as the plain first gate inside a preflight
 // did, not the command hold, which would keep the account's second slot shut
