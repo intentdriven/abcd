@@ -321,7 +321,7 @@ so the race stage follows the tests as it did before the gate existed. Both
 gates refuse, exiting 1 without waiting, while the volume holding the Go build
 cache or the worktree store has less free space than the disk floor: 4 GiB for
 each preflight the first gate admits at once, and 8 GiB at least; a disk that
-falls below the floor while a gate waits is refused at its last look, before it
+falls below the floor while a gate waits is refused at the re-check before it
 opens. Above one the race gate is
 shut only by another live `go test -race` run, a race waiter queued ahead of
 it by the same rule (started earlier, or within two seconds of it with the
