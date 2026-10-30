@@ -414,11 +414,18 @@ jobs:
       # internal/surface/cli started about three and a half minutes into the
       # step and finished it alone; named first, both start with the step. The set is still exactly ./... (go test runs a package
       # named twice once), which TestPlainTestStepRunsTheWholeModule pins.
+      # It shards the longest packages as preflight does, and its -timeout is
+      # the base preflight's unit stage scales from: as one process under go test's
+      # ten-minute default, internal/core/implement/loop crossed 600s here on
+      # 2026-10-30 with no test hung (iss-2610302058222905).
+      # TestCIRacePassesShardLikePreflight holds the count, and
+      # TestPlainTestStepRunsTheWholeModule the timeout.
       - name: Test
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert == 'true'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test ./internal/core/implement/loop ./internal/surface/cli ./...
+          ABCD_TEST_SHARDS: "3"
+        run: go test -timeout 40m ./internal/core/implement/loop ./internal/surface/cli ./...
 
       # Every package ./... matches that ./internal/... does not;
       # TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot holds the set.
@@ -477,7 +484,7 @@ jobs:
       # macOS pass's 40 minutes on a passing run, and a queue entry timed out on
       # it with no test hung. This step and the macOS pass below carry the same
       # count as the preflight recipe; TestCIRacePassesShardLikePreflight holds
-      # the three to it.
+      # them, and the plain Test step above, to it.
       - name: Test (race, internal)
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
         env:

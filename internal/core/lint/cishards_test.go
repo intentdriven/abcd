@@ -19,6 +19,9 @@ import (
 // same holds for -json, -cover, -shuffle and every other flag testshard does
 // not repeat, so the race steps' go test may carry -race and -timeout alone:
 // another flag would run each package as one process with the count still set.
+// The ubuntu leg's plain pass on an inert change, its only test pass there,
+// shards the same way: as one process internal/core/implement/loop crossed go
+// test's ten-minute default with no test hung (iss-2610302058222905).
 func TestCIRacePassesShardLikePreflight(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 
@@ -30,7 +33,7 @@ func TestCIRacePassesShardLikePreflight(t *testing.T) {
 	want := `ABCD_TEST_SHARDS: "` + m[1] + `"`
 
 	ci := readRepoFile(t, root, filepath.Join(".github", "workflows", "ci.yml"))
-	for _, name := range []string{"Test (race, internal)", "Test (race, whole module)"} {
+	for _, name := range []string{"Test (race, internal)", "Test (race, whole module)", "Test"} {
 		step, ok := workflowStepBlock(ci, name)
 		if !ok {
 			t.Errorf("ci.yml has no `%s` step", name)
