@@ -445,6 +445,9 @@ func (k *asker) firstPushedBy(from int, w Withdrawal, login string) bool {
 		return false
 	}
 	commit, ok := firstRecordAs(k.links[from:], k.complete, w, k.self.alike)
+	if !ok && w.State == WithdrawnKept {
+		commit, ok = firstKeptRecordAs(k.links[from:], k.complete, w, k.self.alike)
+	}
 	if !ok {
 		return false
 	}

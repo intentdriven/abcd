@@ -150,6 +150,39 @@ func firstRecordAs(links []chainLink, complete bool, w Withdrawal, same func(a, 
 	return l.commit, true
 }
 
+// firstKeptRecordAs is the commit that first recorded w kept, for an entry
+// the forge refused from its first record on: walking down from the tip
+// while each commit reads and carries it kept, the last one that does, when
+// the commit beneath it does not carry it at all, which must be a
+// reservation (not a tombstone) whose holder is w.By. It vouches for no
+// withdrawal, since nothing was withdrawn; it says only whose entry it is,
+// for a live renewal that tries the withdrawal again (asker.firstPushedBy).
+// One carried kept over the same entry in any other state is firstRecordAs's
+// to judge, and is not one here.
+func firstKeptRecordAs(links []chainLink, complete bool, w Withdrawal, same func(a, b string) bool) (string, bool) {
+	first := -1
+	for i, l := range links {
+		if !l.readable {
+			return "", false
+		}
+		e, ok := entryInAs(l.m.Withdrawn, w, same)
+		if !ok {
+			break
+		}
+		if e.State != WithdrawnKept {
+			return "", false
+		}
+		first = i
+	}
+	if first < 0 || first == len(links)-1 && !complete {
+		return "", false
+	}
+	if l := links[first]; !l.m.released() && same(l.m.Holder, w.By) {
+		return l.commit, true
+	}
+	return "", false
+}
+
 // lostWithdrawals is each withdrawal still withdrawn on an ancestor of the
 // chain's tip that the commit above it no longer carries for its number, in
 // any state, and that the tip does not carry either: what a commit dropped

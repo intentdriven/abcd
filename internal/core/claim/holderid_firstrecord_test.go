@@ -140,3 +140,39 @@ func TestACutTakenOverByASecondCopyAndBackIsSettledFromEither(t *testing.T) {
 		}
 	})
 }
+
+// TestAnEntryKeptFromItsFirstRecordIsHeldToThatRecordsPush: an entry the
+// forge refused from its first record on is the reader's to try again only
+// through the lowest commit carrying it kept, a reservation held under its
+// id with the commit beneath it read; one first kept on another's
+// reservation, kept over a withdrawn record, at a cut-short walk's last
+// commit, or on a tombstone, is no one's here.
+func TestAnEntryKeptFromItsFirstRecordIsHeldToThatRecordsPush(t *testing.T) {
+	w := Withdrawal{Number: 11, ID: "PR_eleven", Form: FormAutoMerge, Head: headA, By: studioID, State: WithdrawnKept}
+	link := func(c, holder, state string) chainLink {
+		x := w
+		x.State = state
+		return chainLink{commit: c, readable: true, m: message{Holder: holder, Withdrawn: []Withdrawal{x}}}
+	}
+	root := chainLink{commit: "r", readable: true, m: message{Holder: studioID}}
+	tomb := link("a", studioID, WithdrawnKept)
+	tomb.m.ReleasedAt = t0
+	for name, c := range map[string]struct {
+		links    []chainLink
+		complete bool
+		want     string
+	}{
+		"kept from its first record":            {[]chainLink{link("b", studioID, WithdrawnKept), link("a", studioID, WithdrawnKept)}, true, "a"},
+		"kept above a commit without it":        {[]chainLink{link("b", studioID, WithdrawnKept), link("a", studioID, WithdrawnKept), root}, false, "a"},
+		"first kept at a cut-short walk's end":  {[]chainLink{link("b", studioID, WithdrawnKept), link("a", studioID, WithdrawnKept)}, false, ""},
+		"first kept on another's reservation":   {[]chainLink{link("b", studioID, WithdrawnKept), link("a", copyAID, WithdrawnKept)}, true, ""},
+		"kept over its withdrawn record":        {[]chainLink{link("b", studioID, WithdrawnKept), link("a", studioID, WithdrawnPending)}, true, ""},
+		"first kept on a tombstone":             {[]chainLink{link("b", studioID, WithdrawnKept), tomb}, true, ""},
+		"kept beneath a commit that won't read": {[]chainLink{{commit: "c"}, link("b", studioID, WithdrawnKept)}, true, ""},
+	} {
+		got, ok := firstKeptRecordAs(c.links, c.complete, w, sameHolder)
+		if got != c.want || ok != (c.want != "") {
+			t.Errorf("%s: first kept record %q (%v); want %q", name, got, ok, c.want)
+		}
+	}
+}

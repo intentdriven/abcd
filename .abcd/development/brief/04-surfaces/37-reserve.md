@@ -740,7 +740,11 @@ withdrawing nothing, and an admission or a release is refused.
   login whose own newest push to the branch records that entry exactly and
   that login pushed the reservation that first recorded it under the id, or
   names an unpaired declared id and was first recorded by a reservation held
-  under that id that the reader's own login pushed. Every other entry is
+  under that id that the reader's own login pushed. For an entry the forge
+  refused from its first record on (`kept` in every commit that carries
+  it), the first record is the lowest of those commits, held to the same
+  push. A first record at the last commit of a walk its bound cut short is
+  never vouched for, since the commit beneath it is not read. Every other entry is
   carried untouched and listed `stranded`, on the act and in `abcd peers`,
   where `due` lists only what the next act in fact acts on; a stranded entry
   under the reader's own kept id is named as theirs, by why no copy of
