@@ -19,10 +19,13 @@ import (
 // said on stderr, masked; and the read asks the network nothing.
 
 // mergingCheckout is managedCheckout with config committed as the default
-// branch's .abcd/config.json ("" commits none), the merge gate's reading.
+// branch's .abcd/config.json ("" commits none), the merge gate's reading. The
+// element reads the mode through git inside the row's git share, so the budgets
+// are widened for the test: none of these tests is about the deadline.
 func mergingCheckout(t *testing.T, config string) string {
 	t.Helper()
 	root := managedCheckout(t)
+	widenBudgets(t)
 	args := []string{"commit", "--allow-empty", "-m", "root"}
 	if config != "" {
 		if err := os.MkdirAll(filepath.Join(root, ".abcd"), 0o755); err != nil {

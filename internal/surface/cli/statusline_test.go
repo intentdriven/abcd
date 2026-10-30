@@ -25,6 +25,10 @@ func payloadFor(root string) string {
 // and carries colour, the payload elements follow, and --json is the Row.
 func TestStatuslineManagedRendersTheRowBadgeFirst(t *testing.T) {
 	root := managedCheckout(t)
+	// The row's git share is 300ms in production; a race-instrumented
+	// runner's real git can outlast it, and this test is not about the
+	// deadline, so it widens the budgets as the deadline tests do.
+	widenBudgets(t)
 	if err := mode.SetAt(root, mode.Facilitator); err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +105,7 @@ func TestStatuslineUnmanagedRunsThePreviousCommand(t *testing.T) {
 // runs, abcd's row does not.
 func TestStatuslineDisabledBehavesAsUnmanaged(t *testing.T) {
 	root := managedCheckout(t)
+	widenBudgets(t)
 	writeUserSettings(t, `{"schema_version":1,"disabled":true,"previous_command":"printf theirs"}`)
 	stdout, _, err := runSplit(t, payloadFor(root), "statusline")
 	if err != nil {
@@ -138,6 +143,7 @@ func TestStatuslineWithNoPreviousCommandPrintsNothing(t *testing.T) {
 // stderr is silent.
 func TestStatuslineEmptyStdinStillRendersTheBadge(t *testing.T) {
 	root := managedCheckout(t)
+	widenBudgets(t)
 	stdout, stderr, err := runSplit(t, "", "statusline")
 	if err != nil {
 		t.Fatalf("empty stdin: %v", err)
@@ -159,6 +165,7 @@ func TestStatuslineEmptyStdinStillRendersTheBadge(t *testing.T) {
 // badge exists to show.
 func TestStatuslineBadPayloadStillRendersTheBadge(t *testing.T) {
 	root := managedCheckout(t)
+	widenBudgets(t)
 	if err := mode.SetAt(root, mode.ProductThinker); err != nil {
 		t.Fatal(err)
 	}
@@ -179,6 +186,7 @@ func TestStatuslineBadPayloadStillRendersTheBadge(t *testing.T) {
 // the badge still renders.
 func TestStatuslineOverCapPayloadIsNamed(t *testing.T) {
 	managedCheckout(t)
+	widenBudgets(t)
 	big := `{"model":{"display_name":"` + strings.Repeat("x", maxHookStdinBytes) + `"}}`
 	stdout, stderr, err := runSplit(t, big, "statusline")
 	if err != nil {
@@ -197,6 +205,7 @@ func TestStatuslineOverCapPayloadIsNamed(t *testing.T) {
 // payload's cwd, not the process's.
 func TestStatuslineResolvesTheCheckoutFromThePayload(t *testing.T) {
 	root := managedCheckout(t)
+	widenBudgets(t)
 	elsewhere := t.TempDir()
 	t.Chdir(elsewhere)
 	stdout, _, err := runSplit(t, payloadFor(root), "statusline")
@@ -212,6 +221,7 @@ func TestStatuslineResolvesTheCheckoutFromThePayload(t *testing.T) {
 // out of band with the verb's prefix, and the row still renders.
 func TestStatuslineSettingsNotesGoToStderr(t *testing.T) {
 	managedCheckout(t)
+	widenBudgets(t)
 	writeUserSettings(t, `{"schema_version":1,"presence":{"foreground":"#777777","background":"#888888"}}`)
 	stdout, stderr, err := runSplit(t, "", "statusline")
 	if err != nil {
@@ -258,6 +268,7 @@ func TestModeAndStatuslineTouchNoNetwork(t *testing.T) {
 	})
 
 	root := managedCheckout(t)
+	widenBudgets(t)
 	runCLI(t, "mode")
 	runCLI(t, "mode", "product-thinker")
 	runCLI(t, "mode", "--json")
