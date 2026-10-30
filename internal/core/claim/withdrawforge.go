@@ -695,7 +695,12 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 			continue
 		}
 		a.Release = r.Record
-		own, _ := readerRecord(root, r.Record, tip, reader, nil)
+		// An admission under an id the reader only declares is exempt only
+		// as an act would act on it (vouched): its paired login's own newest
+		// push records it, or, unpaired, the reader's own login first
+		// recorded it. One another login wrote is named armed.
+		ws := slices.Clone(r.Withdrawn)
+		own, vouched := readerRecord(root, r.Record, tip, reader, &ws)
 		if own.why != "" {
 			for _, w := range r.Withdrawn {
 				if w.State == WithdrawnAdmitted {
@@ -706,10 +711,10 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 			continue
 		}
 		for _, w := range own.recorded(reader) {
-			switch w.State {
-			case WithdrawnAdmitted:
+			switch {
+			case w.State == WithdrawnAdmitted && (!reader.declaredOnly(w.By) || vouched[w]):
 				a.Admitted = append(a.Admitted, w)
-			case WithdrawnKept:
+			case w.State == WithdrawnKept:
 				a.Kept = append(a.Kept, w)
 			}
 		}
