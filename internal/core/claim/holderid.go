@@ -439,21 +439,16 @@ func mintHolderID(home string) (string, error) {
 	return id, err
 }
 
-// declaredHolderIDs is the ids home declares as the person's too
+// readDeclaredHolderIDs is the ids home declares as the person's too
 // (DeclaredHolderIDsFile), and the login paired with each that has one: one
 // id per line, optionally followed by the GitHub login of the account it is
 // the person's on, a # starting a comment, blank lines passed over, read
 // under the kept id's guards. An absent file declares none; one that
 // refuses, a line that is not one id and at most one login, and an id
 // declared twice with two different pairings are each an error naming the
-// line by its number alone, never its contents.
-func declaredHolderIDs(home string) ([]string, map[string]string, error) {
-	ids, paired, _, err := readDeclaredHolderIDs(home)
-	return ids, paired, err
-}
-
-// readDeclaredHolderIDs is declaredHolderIDs with the class of its refusal
-// (holderIDsClass, or HolderIDsMalformed for a line), "" when it read.
+// line by its number alone, never its contents, with the class of the
+// refusal (holderIDsClass, or HolderIDsMalformed for a line), "" when it
+// read.
 func readDeclaredHolderIDs(home string) (ids []string, paired map[string]string, class string, err error) {
 	ids, paired, err = parseDeclaredHolderIDs(home)
 	var refusal declaredRefusal

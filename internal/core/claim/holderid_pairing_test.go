@@ -140,7 +140,7 @@ func TestAHolderIDsFileNoOneElseMayTrustActsOnNoDeclaredID(t *testing.T) {
 			id := p.keptHolderID()
 			path := declareHolderIDs(t, p.home, pairedA+" maya\n")
 			c.setup(t, p.home, path)
-			if _, _, err := declaredHolderIDs(p.home); err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex/holder-ids") {
+			if _, _, _, err := readDeclaredHolderIDs(p.home); err == nil || !strings.Contains(err.Error(), "~/.abcd.noindex/holder-ids") {
 				t.Fatalf("err = %v; want a refusal naming the file", err)
 			}
 			tip := w.remoteTip("iss-2")
