@@ -164,9 +164,10 @@ under your id, at the head and in the form it is armed in now, in a commit
 another login pushed is left armed, with the forge untouched and nothing
 recorded, and named in `forge_failures`; the launch check keeps naming it, so
 tell the user to withdraw it from the merge path by hand. One recorded `kept`,
-and one under an id you only declare (another home or account of yours), is
-withdrawn again, recorded under your own id. Tell the user what was
-withdrawn.
+and one withdrawn under an id you only declare (another home or account of
+yours), is withdrawn again, recorded under your own id. An admission under an
+id you only declare that this copy does not act on is left armed, and the
+launch check names it. Tell the user what was withdrawn.
 
 One release is cut at a time: reserving a release while another release is
 still being cut backs off (exit 3), naming the release and its holder. A

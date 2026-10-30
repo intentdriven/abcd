@@ -585,8 +585,11 @@ withdrawing nothing, and an admission or a release is refused.
   check keeps naming it, and the refusal names the one step left: withdraw it
   from the merge path by hand. Any other entry is withdrawn over, since the
   copy's push is then the first record of the entry it writes: one recorded
-  `kept`, which the walk for a first record stops at, and one under an id the
-  reader only declares, which names another id than the copy's own.
+  `kept`, which the walk for a first record stops at, and one withdrawn under
+  an id the reader only declares, which names another id than the copy's own.
+  An admission under an id the reader only declares that this copy does not
+  act on is left as it is: the pull request stays armed and the launch check
+  names it.
 - **The record.** One `Abcd-Withdrawn` trailer a pull request, at most 40 on a
   tip, six fields separated by one space: its number, its node id, the form it
   was armed in (`queue` for a merge-queue entry, which is also the form of one
