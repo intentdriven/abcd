@@ -303,8 +303,10 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"The holder is named by your holder id: h_ and 32 random lower-case hex\n" +
 			"characters, minted the first time one is needed into ~/.abcd.noindex/holder-id\n" +
 			"(owner-only) and kept. No trailer and no branch name abcd pushes carries your\n" +
-			"GitHub login; each commit's author and committer fields still carry your git\n" +
-			"identity, and holds already pushed under your login are not rewritten. A fresh\n" +
+			"GitHub login. Each commit's author and committer fields carry your git\n" +
+			"identity when it is a person's; when it is unset or a machine's, they carry the\n" +
+			"GitHub account the token resolves to, by its login and no-reply address. Holds\n" +
+			"already pushed under your login are not rewritten. A fresh\n" +
 			"mint says so once on stderr: holds made under an earlier id of yours read as\n" +
 			"someone else's until they lapse. ABCD_HOLDER_ID, when set, is your id instead,\n" +
 			"read before the file and never written to it: set it to the id --holder prints\n" +

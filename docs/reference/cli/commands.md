@@ -4825,8 +4825,10 @@ consult it too.
 The holder is named by your holder id: h_ and 32 random lower-case hex
 characters, minted the first time one is needed into ~/.abcd.noindex/holder-id
 (owner-only) and kept. No trailer and no branch name abcd pushes carries your
-GitHub login; each commit's author and committer fields still carry your git
-identity, and holds already pushed under your login are not rewritten. A fresh
+GitHub login. Each commit's author and committer fields carry your git
+identity when it is a person's; when it is unset or a machine's, they carry the
+GitHub account the token resolves to, by its login and no-reply address. Holds
+already pushed under your login are not rewritten. A fresh
 mint says so once on stderr: holds made under an earlier id of yours read as
 someone else's until they lapse. ABCD_HOLDER_ID, when set, is your id instead,
 read before the file and never written to it: set it to the id --holder prints

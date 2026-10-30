@@ -20,8 +20,10 @@ writes one commit to the branch `abcd-reserved/<record-id>` on the remote named
 `origin`, and to nothing else. The commit changes no file (its tree is the
 empty tree); its trailers name the record, the holder (by an opaque holder id,
 never the user's GitHub login), this working copy, the footprint and the
-lease. The commit's author and committer fields carry the user's git identity,
-as every commit does. The push is a plain fast-forward with the
+lease. The commit's author and committer fields carry the user's git identity
+when that identity is a person's; when it is unset or a machine's, they carry the GitHub account the forge token resolves to, by its
+login and its no-reply address, so a machine identity never reaches the
+commit. The push is a plain fast-forward with the
 repository's hooks running, never forced and never with `--no-verify`, and it
 touches no HEAD, index or working tree here. When git's identity does not name
 the holder (below), it also makes one read-only call to GitHub's user endpoint,
