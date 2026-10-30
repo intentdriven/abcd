@@ -48,7 +48,8 @@ type LogprobAdapter struct {
 // logprobInstructions frame every question the second candidate is sent.
 const logprobInstructions = "You answer one typed judgement with a single label and nothing else: " +
 	"no words, no punctuation, no explanation. Read the question and the state, then reply with the one label " +
-	"the question offers that is right."
+	"the answer list offers that is right. The label is the whole answer: where the question's own words name an " +
+	"answer, reply with that answer's label from the list, never the words."
 
 // labelLetters label a choose question's options, one letter each: a letter
 // is one token for any tokenizer, where a two-digit number is two for some.
@@ -90,7 +91,8 @@ func renderLabelled(s State, q Question, ls []string) string {
 	fmt.Fprintf(&b, "Judgement: %s (%s)\n\nQuestion: %s\n\n", q.Type, q.Kind, strings.TrimSpace(q.Ask))
 	switch q.Kind {
 	case KindChoose:
-		b.WriteString("Answer with the letter of exactly one of these options, and nothing else:\n")
+		b.WriteString("Answer with the letter of exactly one of these options, and nothing else. Where the question names an " +
+			"answer in words, reply with that answer's letter, never the word:\n")
 		for i, o := range q.Options {
 			fmt.Fprintf(&b, "%s. %s\n", ls[i], o)
 		}
@@ -99,8 +101,26 @@ func renderLabelled(s State, q Question, ls []string) string {
 	case KindYesNo:
 		b.WriteString("Answer yes or no, and nothing else.\n")
 	}
-	fmt.Fprintf(&b, "\nState:\n\n%s\n", s.Text)
+	fmt.Fprintf(&b, "\nState:\n\n%s\n\n%s\n", s.Text, replyLine(q, ls))
 	return b.String()
+}
+
+// replyLine is the prompt's last line, the answer's form said again after
+// the state, so the instruction nearest the answer is the label's: a
+// question's own words may name its answers otherwise (the drain's
+// eligibility question names user-visible, trust-rule and no).
+func replyLine(q Question, ls []string) string {
+	switch q.Kind {
+	case KindChoose:
+		if len(ls) == 1 {
+			return "Reply with one letter: " + ls[0] + "."
+		}
+		return "Reply with one letter: " + strings.Join(ls[:len(ls)-1], ", ") + " or " + ls[len(ls)-1] + "."
+	case KindScore:
+		return fmt.Sprintf("Reply with one digit from %d to %d.", q.Min, q.Max)
+	default:
+		return "Reply yes or no."
+	}
 }
 
 // errNoLogprobs is an answer that carried no log-probabilities.
