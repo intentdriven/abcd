@@ -7,13 +7,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/decide/judge"
 	"github.com/intentdriven/abcd/internal/core/lab"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // embark_lessons_test.go is embark's lesson ranking as a host judgement routed
@@ -289,8 +293,11 @@ func TestEmbarkLessonsSaysWhenTheHomeIsNotRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(stderr, "HOME lies inside the git working tree") != 1 || !strings.Contains(stderr, "abcd: HOME lies inside the git working tree") {
-		t.Fatalf("stderr does not say the home was not read:\n%s", stderr)
+	_, note := layered.MachineRoots(os.Getenv("HOME"))
+	want := "abcd: " + termsafe.Sanitize(fsutil.RedactHome(note))
+	if note == "" || !slices.Contains(strings.Split(stderr, "\n"), want) || strings.Count(stderr, "HOME lies inside the git working tree") != 1 ||
+		strings.Contains(stderr, "abcd: abcd:") {
+		t.Fatalf("stderr does not say the home was not read in the one line\n%s\nwith abcd: once:\n%s", want, stderr)
 	}
 	if v := readLessonsView(t, []byte(stdout)); v.Judgement == nil || v.Judgement.Mode != "host" || len(v.Questions) != 5 {
 		t.Fatalf("the refused home routes nothing: %+v", v)
@@ -314,5 +321,19 @@ func TestEmbarkLessonsRefusesAFramingChapterOutsideTheTarget(t *testing.T) {
 	var ee *exitError
 	if !errors.As(err, &ee) || ee.Code != 2 || !strings.Contains(ee.Msg, "framing chapter") {
 		t.Fatalf("a framing chapter outside the target is read: err %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
+	}
+}
+
+// Each note the layers give carries abcd: once: the HOME refusal RootsFor
+// already prefixes is not prefixed again, and the rules root's refusal reads
+// under the prefix.
+func TestEmbarkLessonsNoteLineCarriesThePrefixOnce(t *testing.T) {
+	for in, want := range map[string]string{
+		"abcd: HOME lies inside the git working tree at /w":                        "abcd: HOME lies inside the git working tree at /w",
+		"rules: REFUSED /w as this session's configuration root — it is not yours": "abcd: rules: REFUSED /w as this session's configuration root — it is not yours",
+	} {
+		if got := noteLine(in); got != want {
+			t.Errorf("noteLine(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
