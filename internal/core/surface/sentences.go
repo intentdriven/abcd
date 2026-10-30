@@ -194,7 +194,7 @@ var sentences = map[string]string{
 	"abcd ideate": "Judge an idea through the host-run admission gauntlet: " +
 		"Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb.",
 	"abcd ideate record": "Validate a host-composed gauntlet verdict: " +
-		"Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.",
+		"Writes the dated record to the private store, or the public one on --public; refuses without an idea slug or --verdict-json.",
 
 	"abcd identity": "Record the identity block and propose drift corrections: " +
 		"Writes nothing bare, only the block and its pointer; refuses an unknown sub-verb.",

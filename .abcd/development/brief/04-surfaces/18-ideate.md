@@ -75,14 +75,16 @@ already judged another idea compares the two instead of attacking this one.
 
 ## Behaviour
 
-The recorder takes the idea's slug, the product thinker's answer to "is this idea
-private or public?", and the verdict JSON, from a file or stdin.
+The recorder takes the idea's slug, the store, and the verdict JSON, from a
+file or stdin.
 
-The answer is **required** and has no default (iss-2610090740139804, the product
-thinker's ruling of 2026-10-14). The command page asks it before the first leg,
-and the recorder refuses a run that carries neither answer or both, writing
-nothing: a verdict filed in the wrong store is either an idea published before
-its time or a public record nobody finds.
+The store is **private** unless `--public` is given (iss-2610300838089246, the
+product thinker's ruling of 2026-10-30, which replaced the question every run
+asked since 2026-10-14). Nobody is asked: the command page records privately
+and passes `--public` only on the person's word, never on an inference. The
+recorder refuses `--private` and `--public` together, writing nothing, since
+they name two stores. A forgotten flag leaves an idea private, the failure that
+costs nothing; a guessed `--public` publishes an idea before its time.
 
 The verdict is **required**. There is no evidence-only fallback, as there is
 for three of `disembark`'s four synthesis verbs, because there is no evidence-only
@@ -165,9 +167,8 @@ something a later reader depends on:
   other verdict, because each leaves the reader to guess what was decided; or a
   verdict record that already exists for this slug and date, because
   overwriting erases a recorded reason.
-- **The store is not answered**: neither answer, or both. The product
-  thinker's answer decides who can ever read the verdict, so the verb never
-  picks one.
+- **The store is named twice**: `--private` and `--public` together. The
+  verb does not pick between two stores a caller named.
 - **The write is not safely containable**: a slug that is not lower-case
   kebab-case, a component under the research directory symlinked out of the
   repository, a repository with no shared tier (`.abcd/work/`, which

@@ -53,9 +53,9 @@ const MaxSlugLen = 64
 // A public verdict lands in ResearchRelDir/<root-sha>/, beside a private one's
 // ~/.abcd.noindex/ideas/<root-sha>/ (PrivateRel), so the two stores share one
 // layout and a verdict moved from one to the other keeps its name. The product
-// thinker's ruling of 2026-10-14 (iss-2610090740139804) set both paths: every
-// idea put through ideate is private or public by the person's answer, asked
-// before anything is written, and only a public one reaches the repository.
+// thinker's ruling of 2026-10-14 (iss-2610090740139804) set both paths, and the
+// ruling of 2026-10-30 (iss-2610300838089246) made private the default: only a
+// verdict the person says is public reaches the repository.
 const ResearchRelDir = ".abcd/development/research/ideas"
 
 // PrivateRel is the private store's folder under abcd's home, in slash form
@@ -64,10 +64,9 @@ const ResearchRelDir = ".abcd/development/research/ideas"
 // decision pointing at it, because the decisions folder is committed.
 var PrivateRel = abcdhome.Rel("ideas")
 
-// Visibility is the person's answer to "is this idea private or public?". It
-// has no default: Record refuses a store without one, because a verdict written
-// to the wrong store is either an idea published before its time or a public
-// record nobody can find.
+// Visibility names the store a verdict is written to. The front door defaults
+// it to private; Record itself still refuses a store without one, because a
+// caller that names no store has not chosen, and the core never picks for it.
 type Visibility string
 
 const (

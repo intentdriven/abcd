@@ -21,18 +21,18 @@ ideate record` validates what they produced, proves every record id the legs
 cite names a real record, and writes the durable verdict. It never fetches a source and
 never forms an opinion.
 
-## First, ask: private or public?
+## Private unless the person says public
 
-Before the first leg, ask the product thinker whether the idea is **private**
-or **public**, under a `Product` chip, and carry the answer to the record. Ask it as its own question,
-never assume it, and never infer it from the idea or the repository: the answer
-decides who can ever read the verdict.
+Every idea is **private** unless the person has said it is **public**. Do not
+ask: record it private, and pass `--public` only when the person has said in
+so many words that the idea is public, never on an inference from the idea or
+the repository. The choice decides who can ever read the verdict.
 
-- **Private** — the verdict stays on this machine, in
+- **Private** (the default) — the verdict stays on this machine, in
   `~/.abcd.noindex/ideas/<root-sha>/`, readable by the person's account alone,
   and no decision points at it. Name no source behind the idea anywhere
   public while it is private.
-- **Public** — the verdict is written into the repository, under
+- **Public** (only on the person's word) — the verdict is written into the repository, under
   `.abcd/development/research/ideas/<root-sha>/`, with a decision record in
   `.abcd/work/decisions/` pointing at it, and is public once pushed, sources
   included.
@@ -139,12 +139,13 @@ refuses a split with no ruling.
 
 ## Record the verdict
 
-Compose the verdict document and hand it to the binary with the product
-thinker's answer: exactly one of `--private` or `--public`. The verb has no default and
-refuses a run with neither or both, writing nothing.
+Compose the verdict document and hand it to the binary. With no flag, or with
+`--private`, the verdict is recorded privately; `--public` records it in the
+repository and is passed only on the person's word. Both flags together are
+refused, writing nothing.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" ideate record <idea-slug> --private --verdict-json <path>   # or --public; - for stdin
+"${CLAUDE_PLUGIN_ROOT}/abcd" ideate record <idea-slug> --verdict-json <path>   # private; add --public on the person's word; - for stdin
 ```
 
 `<idea-slug>` is lower-case kebab-case (it becomes a filename). The document:
@@ -204,11 +205,11 @@ weighed nothing" are indistinguishable to a later reader.
 It writes one record, `<date>-ideate-<slug>.md` — the idea and where it came
 from, the three legs (with the grill's searches, each reviewer's section and any
 ruling), the verdict, the rejected alternatives and any reframing, rendered for a
-human — to the store the answer names:
+human — to the store the flags name:
 
-| Answer | Record | Decision |
+| Flags | Record | Decision |
 |---|---|---|
-| `--private` | `~/.abcd.noindex/ideas/<root-sha>/`, owner-only | none |
+| none, or `--private` | `~/.abcd.noindex/ideas/<root-sha>/`, owner-only | none |
 | `--public` | `.abcd/development/research/ideas/<root-sha>/` | one new record in `.abcd/work/decisions/`, pointing at the verdict |
 
 A private record is refused when the home directory lies inside a git working
@@ -250,8 +251,8 @@ Exit codes:
   matches what was composed, and whoever composed it needs to know a credential
   or an identity was in the text.
 - **2** — refused, and **nothing was written**. Relay the diagnostic: a run
-  with neither `--private` nor `--public`, or both, is refused (ask the product
-  thinker, then re-run with the answer), an
+  with both `--private` and `--public` is refused (re-run with the one the
+  person chose, or with neither for private), an
   unresolvable citation names the leg and the id, a primary source of no known
   shape, a `source:<key>` the corpus does not carry, an empty grill with no
   searches, a split between reviewers with no ruling, a reframed verdict with no

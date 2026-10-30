@@ -2008,7 +2008,7 @@
       "path": "abcd ideate record",
       "hidden": false,
       "block": "agents",
-      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.",
+      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record to the private store, or the public one on --public; refuses without an idea slug or --verdict-json.",
       "flags": [
         {
           "name": "private",
