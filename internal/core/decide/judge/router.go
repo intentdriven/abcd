@@ -9,7 +9,9 @@ package judge
 //   - shadow:<provider>/<model>: the host decides; the adapter answers beside
 //     it and decides nothing; the pair is recorded in the newest lab home
 //     (criterion 1). A state larger than the model's window is not sent: the
-//     pair is recorded as skipped with its size (criterion 5).
+//     pair is recorded as skipped with its size (criterion 5). A caller
+//     stopped before or during the adapter's call keeps no pair: the
+//     adapter's silence is the stop's, not the adapter's.
 //   - <provider>/<model>: the adapter decides and the receipt names the
 //     route; an adapter that cannot answer — unreachable, failed, an answer
 //     outside the question's choices, a state over its window — leaves the
@@ -131,6 +133,15 @@ func Load(roots layered.Roots, repoRoot string) (*Router, error) {
 	return r, nil
 }
 
+// Target is the adapter t is routed to, as <provider>/<model>; "" when t is
+// on the host.
+func (r *Router) Target(t Type) string {
+	if r.Mode(t) == oracle.JudgementHost {
+		return ""
+	}
+	return r.routes[t].String()
+}
+
 // Mode is how t is routed: oracle.JudgementHost, JudgementShadow or
 // JudgementOn.
 func (r *Router) Mode(t Type) string {
@@ -181,12 +192,20 @@ func (r *Router) Decide(ctx context.Context, s State, q Question, host Judge) (A
 		if err != nil {
 			return a, rc, err
 		}
+		if stopped(ctx) {
+			rc.Note = "the shadow pair was not kept: the caller stopped before the adapter answered"
+			return a, rc, nil
+		}
 		pair := lab.Pair{Type: string(q.Type), Kind: string(q.Kind), StateSHA256: rc.StateSHA256, StateTokens: size,
 			Host: a.Value, Target: rc.Target}
 		if size > r.window() {
 			pair.Skipped = lab.SkippedWindow
 			pair.Detail = fmt.Sprintf("the state is about %d tokens, more than the window of %d; the host decided alone", size, r.window())
 		} else if sa, err := r.ask(ctx, tgt, s, q); err != nil {
+			if stopped(ctx) {
+				rc.Note = "the shadow pair was not kept: the caller stopped before the adapter answered"
+				return a, rc, nil
+			}
 			pair.Skipped, pair.Detail = lab.SkippedFailed, detail(err)
 		} else {
 			p := sa.Probability
@@ -244,6 +263,12 @@ func (r *Router) ask(ctx context.Context, tgt oracle.Target, s State, q Question
 	}
 	a.Value = v
 	return a, nil
+}
+
+// stopped reports whether the caller stopped ctx: cancelled, not merely past
+// a deadline it set, which bounds a slow adapter and costs its pair as failed.
+func stopped(ctx context.Context) bool {
+	return errors.Is(ctx.Err(), context.Canceled)
 }
 
 // detail is an error's account for a pair or a receipt: terminal-safe, one

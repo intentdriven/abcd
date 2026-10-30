@@ -171,6 +171,35 @@ func TestShadowRecordsAFailedAdapterAndTheHostStillDecides(t *testing.T) {
 	}
 }
 
+// A caller stopped before or while the adapter is asked in shadow keeps no
+// pair: the adapter's silence is the stop's, not the adapter's, and the host
+// still decides.
+func TestShadowKeepsNoPairForAStoppedCaller(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	adapter, rec := &fake{value: "iss-1", p: 0.9}, &pairs{}
+	a, rc, err := router(oracle.JudgementShadow, adapter, rec).Decide(ctx, State{Text: "s"}, dupQuestion(), Answered("iss-2"))
+	if err != nil || a.Value != "iss-2" || adapter.calls != 0 || len(rec.got) != 0 || rc.Pair != "" || !strings.Contains(rc.Note, "stopped") {
+		t.Fatalf("an already stopped caller: answer %+v, receipt %+v, err %v, calls %d, pairs %+v", a, rc, err, adapter.calls, rec.got)
+	}
+	// Stopped while the adapter answers: its failure is the stop's.
+	ctx, cancel = context.WithCancel(context.Background())
+	stopping := &fake{err: context.Canceled}
+	stop := func(oracle.Target) Judge { cancel(); return stopping }
+	r := newRouter(map[Type]oracle.Target{DuplicateMatch: {Provider: "openrouter", Model: "typesafe/jev-1.13", Mode: oracle.JudgementShadow}}, stop, rec.record)
+	if _, rc, err := r.Decide(ctx, State{Text: "s"}, dupQuestion(), Answered("iss-2")); err != nil || len(rec.got) != 0 || !strings.Contains(rc.Note, "stopped") {
+		t.Fatalf("a caller stopped mid-call: receipt %+v, err %v, pairs %+v", rc, err, rec.got)
+	}
+	// A deadline the caller set for the adapter alone is the adapter's
+	// slowness, and its pair is kept as failed.
+	slow, cancelSlow := context.WithTimeout(context.Background(), 0)
+	defer cancelSlow()
+	if _, _, err := router(oracle.JudgementShadow, &fake{err: context.DeadlineExceeded}, rec).Decide(slow, State{Text: "s"}, dupQuestion(), Answered("iss-2")); err != nil ||
+		len(rec.got) != 1 || rec.got[0].Skipped != lab.SkippedFailed {
+		t.Fatalf("a slow adapter's pair is kept as failed: err %v, pairs %+v", err, rec.got)
+	}
+}
+
 // No lab minted: the host decides, and the receipt says the pair was not kept.
 func TestShadowWithNoLabStillDecidesAndSaysSo(t *testing.T) {
 	rec := &pairs{err: lab.ErrNoLab}
