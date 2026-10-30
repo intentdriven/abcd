@@ -703,6 +703,10 @@ func renderRecordOutages(w io.Writer, spans []implement.OutageSpan) {
 	}
 }
 
+// statusRenewRuns renews the due reservations of the runs implement status
+// shows; a test replaces it to read what it is asked to renew.
+var statusRenewRuns = func(root, runID string) []loop.RunRenewal { return loop.RenewRunsIn(root, runID, time.Now()) }
+
 func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 	var runID string
 	cmd := &cobra.Command{
@@ -710,8 +714,15 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 		Long: "Render the runs `abcd build` started in this checkout, or the one --run names: the\n" +
 			"intent and spec, each lane with its spec step and next stage, what an awaiting lane\n" +
 			"waits on, the pending spec steps, the fallbacks from a routed runner to the host counted\n" +
-			"per runner and per role, and the run record. Read-only: it writes nothing\n" +
-			"and creates nothing. Exit 2 when --run names no run.",
+			"per runner and per role, and the run record. Before it renders, it renews the\n" +
+			"reservation of each run it shows that is due, as implement step does (half\n" +
+			"through its lease, or lapsed and still this copy's), fetching the reservations\n" +
+			"from origin and pushing the renewal there, and logs the renewal, its failure,\n" +
+			"or a reservation another person or copy now holds (reservation_lost), in the\n" +
+			"run record. It renews no issue run whose lane is parked at land, which the\n" +
+			"drain renews, nor one whose lane was handed back, whose hand-back released\n" +
+			"its reservation; it writes nothing else and creates nothing.\n" +
+			"Exit 2 when --run names no run.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd implement status"
@@ -719,6 +730,12 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
+			// A run whose implementer holds its stage for hours is renewed by
+			// no step meanwhile, so the status renews the reservation of each
+			// run it shows that is due before it reads them, and renders the
+			// renewal in the run record (iss-2610261837062463). --run naming
+			// no run renews nothing and is refused below.
+			statusRenewRuns(root, runID)
 			var runs []loop.State
 			if runID != "" {
 				st, err := loop.ReadState(root, runID)
@@ -730,7 +747,8 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			// An unreadable outage record does not hide the runs: the status
-			// is read-only, so it names the bad record in the outage's place.
+			// writes no outage, so it names the bad record in the outage's
+			// place.
 			var outageErr string
 			cur, err := loop.CurrentOutage(root)
 			if err != nil {

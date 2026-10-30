@@ -213,7 +213,14 @@ spec step and next stage, each agent a lane awaits, a held lane with the lane
 whose hand-back caused it, the head judged, the step it stopped before and the
 two flags that decide it, the pending spec steps, the run's fallbacks from a
 routed runner to the host (`fallbacks`, and in the text a count per runner and
-per role) and the run record. It writes nothing.
+per role) and the run record. Before it renders, it renews the reservation of
+each run it shows that is due, as a step does (half through its lease, or
+lapsed and still this copy's), fetching the reservations from origin and
+pushing the renewal there, and logs the renewal, its failure, or a reservation
+another person or copy now holds (`reservation_lost`), in the run record as a
+step logs it. It renews no issue run whose lane is parked at land, which the
+drain's move renews, nor one whose lane was handed back, whose hand-back
+released its reservation; it writes nothing else.
 
 A spec's **steps** and a lane's **stages** are two things: each spec step lands
 as one lane, and the loop takes the lane through its stages. `step` performs the
@@ -628,7 +635,34 @@ merged and nothing pushed. A renewal that fails is
 logged as `reservation_renew_failed` and named in the step's answer, and the
 stage still runs: the land fence is where a lost reservation stops the run. A
 renewal only renews this person's own reservation from this copy: it never
-reserves a released record again and never takes one over. At step 5, before
+reserves a released record again and never takes one over. A renewal of one
+that has lapsed is judged for overlap like a new reservation, since it held
+nothing while it lapsed: another person's live reservation of any path in its
+footprint refuses it, and so does your own from another copy. Only once no
+spec step is still to be opened and every lane is past all editing (done,
+discarded or handed back, or at its landing with no sync conflict waiting to
+be resolved) does your other copy refuse it only where that copy holds a file
+the run's lanes changed (read as the narrowing reads them, at the lane's head
+or its branch's tip). An implementer's edits stay uncommitted until its
+receipt, so the branch does not show them: while any lane is in any other
+state, a held lane included, or at validate even awaiting its reviewers alone
+(one verdict from them hands a fix implementer any file of the footprint), or
+a step is still to be opened, or when the files cannot be read, the whole
+footprint is judged, since two automated lanes never edit one file.
+An issue run's revival at its landing narrows to the files its lane changed,
+as the landing's renewal does, so your other copy's reservation of any other
+file is outside it. An intent run's keeps its whole footprint, and the
+record's line names your other copy's reservation it went ahead past, a file
+none of the lanes' commits changed.
+When a lane later leaves its landing for a fresh round (a hold is not one), a
+reservation that needs no widening, an intent run's or an issue run's still
+naming its whole `found_at`, is judged again against your other copy on its
+whole footprint, the reservations fetched first. One that shares a path with
+it refuses the step for a person, naming it, and so does a fetch that fails
+for any reason but a lost network, or a view of the reservations that cannot
+be read after the fetch; a lost network is waited out on the shared network
+probe, as a lost fetch of the default branch is. Either way the lane stays at
+its landing with nothing merged and nothing pushed. At step 5, before
 the merge rule decides, the **land fence** fetches the reservation and arms
 nothing unless it is still this person's, from this copy, and live: it names
 the other person and the expiry, says the reservation moved to your other copy
@@ -651,12 +685,15 @@ stays open for the cutting session to merge or hold. A release whose tag is on
 `origin`, or whose holder released it, holds nothing. Past the fence the reservation holds only
 while something renews it at half its lease: each step of the run does,
 whatever its stage, an implementer's long stage included, so does handing an
-agent's receipt back with `receipt`, and each `abcd drain` move does for a
-drain's lane parked at land and for its lane in progress, waiting or not.
+agent's receipt back with `receipt`, so does `status`, so does the load gate's
+waiter (`implement load --wait` or `--race-gate`) an agent's `go test` or
+`make preflight` runs under, while it waits and while its command runs, and
+each `abcd drain` move does for a drain's lane parked at land and for its lane
+in progress, waiting or not.
 Before the push at step 3 the landing checks the reservation the same way,
 renewing it with its own term: one that is no longer this person's from this
 copy and live pushes nothing and opens no pull request, as contention, and a
-drain hands a lane whose reservation is another person's back at once. A run nobody steps, hands a receipt to or drains
+drain hands a lane whose reservation is another person's back at once. A run nobody steps, hands a receipt to, shows the status of, gates a command for or drains
 over for longer than its lease loses the reservation, and another person may
 then take the record over. A step or a receipt that finds the reservation held
 by another person or copy says so in its answer and logs `reservation_lost` in
@@ -1010,18 +1047,38 @@ it exits and releases the hold, so the command is never left running without
 its waiter. A symlinked `~/.abcd.noindex` is refused, and so is a home that lies inside a git working tree, unless that home is the account's own home itself, before anything is created under it (exit 1). Relay a timeout as
 printed; do not loop around it.
 
-While it waits, in a checkout, the waiter also keeps your own reservations
-from lapsing, so a record you reserved by hand stays yours while your
-preflight waits its turn: at once and then every five minutes it renews each
+While it waits, and while its command runs, in a checkout, the waiter also
+keeps your own reservations from lapsing, so a record you reserved by hand
+stays yours while your preflight waits its turn and runs: at once and then
+every five minutes it renews each
 of your live reservations that is half through its lease and whose latest
 commit this copy pushed, for
 its own term or two hours, whichever is longer, and says each renewal on
-standard error. It never reserves anything new, takes nothing over and revives
-nothing that has lapsed, so a lease shorter than ten minutes can still lapse
-between two rounds; a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on. The renewal runs beside
-the gate, never in it, so the gate's order and its open never wait on one, and
-it stops when the gate opens: a gated command that runs longer than half a
-lease renews nothing itself. Since the renewal runs through git and gh, no
+standard error. Your own reservations it only renews: it reserves nothing new,
+takes nothing over and revives none that has lapsed, so a lease shorter than ten minutes can still lapse
+between two rounds; a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on.
+
+On the same rounds it renews the reservation of each run in progress that
+lives in the waiter's checkout, or that lives in another worktree of the
+repository and has a lane whose worktree is the waiter's checkout, so a build
+whose implementer runs its tests or its preflight under the gate for hours
+keeps its reservation without a step. Each is renewed as a step renews it,
+from the run's own checkout and under the run's lock, when it is half through
+its lease or has lapsed and is still this copy's, and logged in the run
+record, but not that of an issue lane parked at land, which the drain's move renews
+once it has read the lane's pull request. While another invocation holds the
+checkout's run lock, the round skips that checkout's runs, and the next round
+renews them. Each renewal, and each failure, is said
+on standard error, a failure once until what is said of it changes.
+
+The renewal runs beside the gate, never in it, so the gate's order and its
+open never wait on one. It stops when the waiter exits, its command done or,
+without one, its gate open, waiting at most five seconds for a round already in
+flight to finish and say what it renewed. A waiter that lingered on a slow push
+would read as queued and hold every other gate on the machine shut, so a
+renewal still pushing then may go unsaid; the next round reads the fresh
+reservation. Since the
+renewal runs through git and gh, no
 waiter counts another's git or gh child as its command, so gate make or go,
 never git or gh itself.
 

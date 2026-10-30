@@ -238,7 +238,7 @@ var sentences = map[string]string{
 	"abcd implement report": "Derive the comparison of the division modes from the run log: " +
 		"Writes nothing; refuses --date and --log together.",
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
-		"Writes nothing; refuses a --run naming no run.",
+		"Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
 	"abcd implement step": "Perform the next stage of an implement loop run's lane and exit: " +
 		"Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
 

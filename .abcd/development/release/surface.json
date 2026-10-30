@@ -2470,7 +2470,7 @@
     {
       "path": "abcd implement status",
       "hidden": false,
-      "sentence": "Render the implement loop's runs in this checkout, lane by lane: Writes nothing; refuses a --run naming no run.",
+      "sentence": "Render the implement loop's runs in this checkout, lane by lane: Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
       "flags": [
         {
           "name": "run",
