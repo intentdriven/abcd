@@ -164,6 +164,32 @@ func (s Self) isOwn(holder string) bool {
 	return s.Login != "" && sameHolder(holder, s.Login)
 }
 
+// alike reports whether a and b, two holder names on the trailers of one
+// release, name the same holder as s reads them: the same name, compared as
+// the forge compares a login, or each naming s themselves, their kept id and
+// their login alike, since a withdrawal of theirs recorded before the id
+// names the login and every later push of theirs names the id.
+func (s Self) alike(a, b string) bool {
+	return sameHolder(a, b) || s.ID != "" && s.isOwn(a) && s.isOwn(b)
+}
+
+// asKept is ws with each entry naming s by their login, a withdrawal of
+// theirs recorded before the holder id, named by their kept id instead, so
+// no push of theirs carries the login; ws as it is when s keeps no id.
+func (s Self) asKept(ws []Withdrawal) []Withdrawal {
+	if s.ID == "" {
+		return ws
+	}
+	var out []Withdrawal
+	for _, w := range ws {
+		if !validHolderID(w.By) && s.isOwn(w.By) {
+			w.By = s.ID
+		}
+		out = append(out, w)
+	}
+	return out
+}
+
 // pairedLogin is the login DeclaredHolderIDsFile pairs with holder, an id s
 // only declares; ok is false for any other holder, and for a declared id
 // with no login beside it.

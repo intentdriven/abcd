@@ -9,7 +9,7 @@ import (
 
 // TestNoPushedTextNamesAPairedLogin: with a declaration pairing maya's id
 // with maya's login in octo's home, nothing octo's acts push or post names
-// that login: no commit message or trailer, no ref name and no comment body,
+// that login, nor octo's own: no commit message or trailer, no ref name and no comment body,
 // across a reservation, its renewal and release, a take-over of maya's
 // reservation, a release's reservation with its withdrawals, an admission
 // and a release with its re-arms, a settle of a tagged release, an
@@ -80,8 +80,10 @@ func TestNoPushedTextNamesAPairedLogin(t *testing.T) {
 		"comments":        strings.Join(f.posted(), "\n"),
 	}
 	for what, text := range texts {
-		if strings.Contains(strings.ToLower(text), "maya") {
-			t.Errorf("the %s name the paired login:\n%s", what, text)
+		for _, login := range []string{"maya", "octo"} {
+			if strings.Contains(strings.ToLower(text), login) {
+				t.Errorf("the %s name the login %s:\n%s", what, login, text)
+			}
 		}
 	}
 }

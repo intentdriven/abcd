@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,13 @@ func writeCommit(p *prepared, m commitMessage, tree, parent string) (string, err
 // policy.
 func writeEmptyCommit(root string, who identity, now time.Time, m commitMessage, tree, parent string) (string, error) {
 	f := m.messageFamily()
+	if r, ok := m.(message); ok {
+		// No commit carries a login: every withdrawal names its holder id
+		// (pushableWithdrawals), whichever act composed it.
+		if n := len(r.Withdrawn) - len(slices.DeleteFunc(slices.Clone(r.Withdrawn), func(w Withdrawal) bool { return !validHolderID(w.By) })); n > 0 {
+			return "", refuse("%s; %s", heldBeforeIDLine(r.Record, n), nothingPushed)
+		}
+	}
 	text := m.text()
 	if err := checkText(root, f, text); err != nil {
 		return "", err

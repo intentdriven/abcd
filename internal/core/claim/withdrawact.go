@@ -212,6 +212,47 @@ func StrandedLine(subject string, ws []Withdrawal) string {
 	return strings.Join(parts, "; ")
 }
 
+// StrandedNote names every withdrawal of ws, the stranded ones on subject,
+// to a reader whose kept holder id is ownID: another person's by whose they
+// are (StrandedLine), and those naming the reader's own id by why no copy of
+// theirs acts on them (ownStrandedLine), never calling the reader's own id
+// another's.
+func StrandedNote(subject string, ws []Withdrawal, ownID string, loginKnown bool) string {
+	var others, own []Withdrawal
+	for _, w := range ws {
+		if ownID != "" && w.By == ownID {
+			own = append(own, w)
+		} else {
+			others = append(others, w)
+		}
+	}
+	var parts []string
+	if len(others) > 0 {
+		parts = append(parts, StrandedLine(subject, others))
+	}
+	if len(own) > 0 {
+		parts = append(parts, ownStrandedLine(subject, own, loginKnown))
+	}
+	return strings.Join(parts, "; ")
+}
+
+// ownStrandedLine names the reader's own stranded withdrawals on subject:
+// with their login not known here, their own newest push cannot be read, and
+// a reservation act, which asks the forge, or a login named locally settles
+// them; with it known, the reservation that first recorded them under the
+// reader's id was not pushed by the reader's own account, so no copy of
+// theirs acts on them. It names no login.
+func ownStrandedLine(subject string, ws []Withdrawal, loginKnown bool) string {
+	if !loginKnown {
+		return fmt.Sprintf("%s withdrawn under your holder id for %s are not re-armed from here: which GitHub account you are is not known in this session, "+
+			"so your own newest push to its branch cannot be read; a reservation act, which asks the forge, settles them, "+
+			"or set git's user.email to your GitHub no-reply address, or reservation.github_username in ~/.abcd.noindex/config.json",
+			strings.Join(numbers(ws), ", "), subject)
+	}
+	return fmt.Sprintf("%s named by your holder id on %s stay withdrawn: the reservation that first recorded them under your id was not pushed by your own GitHub account, "+
+		"so no copy of yours acts on them, and their owner re-arms them by hand", strings.Join(numbers(ws), ", "), subject)
+}
+
 // actor is who an act's commits are written as: the person, their holder,
 // this copy's key, the clock and the Assisted-by label; subject is the
 // release whose withdrawals it settles, which a comment names.
@@ -524,9 +565,43 @@ func (p *prepared) ownRelease(tree string, j *judged) (Settle, error) {
 		j.mine, j.thisCopy = p.self.Owns(held.m.Holder), held.m.Copy == p.copy
 	}
 	j.Withdrawn = merged(j.Withdrawn, own, p.self)
-	p.vouched = k.vouched(j.Withdrawn)
+	p.vouched = k.vouched(j.Withdrawn, own)
 	s.NotRead = own.above
 	return s, nil
+}
+
+// pushableWithdrawals is ws as a new commit on a release may carry them: no
+// push carries a login, so an entry naming its withdrawer by a login (one
+// recorded before the holder id; the reader's own are named by their kept id
+// by then, Self.asKept) is not written. One of those already settled needs
+// nothing more and is left out; held counts those still to settle (withdrawn,
+// admitted or kept), which only their withdrawer's own copy can settle, and
+// which no act writes over (heldBeforeIDLine).
+func pushableWithdrawals(ws []Withdrawal) (out []Withdrawal, held int) {
+	for _, w := range ws {
+		switch {
+		case validHolderID(w.By):
+			out = append(out, w)
+		case w.unsettled() || w.State == WithdrawnKept:
+			held++
+			out = append(out, w)
+		}
+	}
+	return out, held
+}
+
+// heldBeforeIDLine is the sentence an act that would write over subject's
+// withdrawals refuses with when n of them, still to settle, were recorded
+// before the holder id by another holder: they name that holder by their
+// login, which nothing abcd pushes may carry, so only that holder's own
+// copy, on its next act, settles them. It names no login.
+func heldBeforeIDLine(subject string, n int) string {
+	what := fmt.Sprintf("%d withdrawals", n)
+	if n == 1 {
+		what = "1 withdrawal"
+	}
+	return fmt.Sprintf("%s still holds %s recorded before the holder id by another holder, which name that holder by their login, and nothing abcd pushes may carry a login, "+
+		"so this act writes nothing over it: that holder's own copy settles them first, on its next act, and then this act can be run again", subject, what)
 }
 
 // withdrawalOf is ws's entry for pull request n.
@@ -835,8 +910,8 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	if lapsed && !(rec.found && rec.at == 0 && rec.commit == t.Commit) {
 		return Settle{}, false
 	}
-	acted := merged(t.Withdrawn, rec, a.self)
-	vouched := k.vouched(acted)
+	acted, held := pushableWithdrawals(merged(t.Withdrawn, rec, a.self))
+	vouched := k.vouched(acted, rec)
 	due := slices.ContainsFunc(rec.mine(a.self), Withdrawal.unsettled) || len(vouched) > 0
 	s.NotRead = rec.above
 	if !due {
@@ -859,6 +934,13 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 		}
 	}
 	shown := s.shownOnce(a.root, id, t.Commit)
+	if held > 0 {
+		// Nothing is touched on the forge either: a re-arm with no
+		// tombstone recording it would be read as still withdrawn.
+		s.Failed = heldBeforeIDLine(id, held)
+		shown()
+		return s, true
+	}
 	if why, _ := loginMismatch(a.root, a.self); why != "" {
 		s.Failed = why
 		shown()
@@ -1274,6 +1356,14 @@ type ReleaseWithdrawals struct {
 	// no listing settles Due: their next reservation keeps one and settles
 	// them, and after an announcement keeps one the next listing does.
 	DueAwaitsHolderID bool `json:"due_awaits_holder_id,omitempty"`
+	// ownID and loginKnown are the reader's kept holder id and whether
+	// their login is known, which the stranded line reads (StrandedNote).
+	ownID      string
+	loginKnown bool
+	// HolderIDRefused is the class of the refusal of the reader's holder id
+	// (Self.HolderIDRefused) when Due is not empty: every act refuses until
+	// it is fixed, so nothing settles Due (HolderIDRefusedLine).
+	HolderIDRefused string `json:"holder_id_refused,omitempty"`
 }
 
 // Lines is each sentence the listing shows for the release's withdrawals.
@@ -1314,7 +1404,7 @@ func (r ReleaseWithdrawals) Lines() []string {
 			r.Subject, strings.Join(numbers(r.Due), ", ")))
 	}
 	if len(r.Stranded) > 0 {
-		out = append(out, StrandedLine(r.Subject, r.Stranded))
+		out = append(out, StrandedNote(r.Subject, r.Stranded, r.ownID, r.loginKnown))
 	}
 	if l := UnpairedLine(r.Unpaired); l != "" {
 		out = append(out, l)
@@ -1348,7 +1438,8 @@ func (s Snapshot) ReleaseWithdrawals(root string, reader Self, now time.Time) []
 		tip := r.Commit
 		cut, notEnded, why := asCut(root, r, now, reader)
 		r = cut
-		rw := ReleaseWithdrawals{Subject: r.Record, Holder: r.Holder, HolderClaimed: holderClaimed(r.Holder, reader), Ended: r.State == StateReleased && !notEnded}
+		rw := ReleaseWithdrawals{Subject: r.Record, Holder: r.Holder, HolderClaimed: holderClaimed(r.Holder, reader), Ended: r.State == StateReleased && !notEnded,
+			ownID: reader.ID, loginKnown: reader.Login != ""}
 		if notEnded {
 			if why == "" {
 				rw.NotEnded = r.Holder
@@ -1451,5 +1542,5 @@ func readerRecord(root, id, tip string, reader Self, ws *[]Withdrawal) (ownRecor
 		return unread(own)
 	}
 	*ws = merged(*ws, own, reader)
-	return own, k.vouched(*ws)
+	return own, k.vouched(*ws, own)
 }

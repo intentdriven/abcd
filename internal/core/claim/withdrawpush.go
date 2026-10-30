@@ -261,36 +261,54 @@ type ownRecord struct {
 	m      message
 	above  []PushCount
 	why    string
+	// first reports whether the reservation that first recorded an entry of
+	// the push, held under its holder id, was pushed by the record's own
+	// login (asker.firstPushedBy, walking down from the push); nil, as for a
+	// record no asker read, vouches for none.
+	first func(Withdrawal) bool
 }
 
+// firstOwn reports whether w, an entry of the record's push naming a holder
+// id, was first recorded by a reservation held under that id that the
+// record's own login pushed.
+func (o ownRecord) firstOwn(w Withdrawal) bool { return o.first != nil && o.first(w) }
+
 // mine is the withdrawals the record holds of self's own: those its own
-// newest push carries naming self themselves (their kept holder id, or their
-// login on a withdrawal made before the id) as their withdrawer. One naming
-// an id self only declares is that other account's, and is read from the
-// record its own account pushed (asker.vouched), never from self's.
+// newest push carries naming self themselves as their withdrawer. One naming
+// their kept holder id is theirs only when the reservation that first
+// recorded it, held under that id, was pushed by their own login (firstOwn):
+// a later push of theirs that carries it says nothing of who first recorded
+// it, so an entry naming the id that another login first recorded, carried
+// by a copy of theirs that reads the id as a declared one, is never read as
+// theirs. One naming their login, a withdrawal made before the id, is theirs
+// as their own newest push carries it, and is named by their kept id
+// (Self.asKept), so no push of theirs carries the login. One naming an id
+// self only declares is that other account's, and is read from the record
+// its own account pushed (asker.vouched), never from self's.
 func (o ownRecord) mine(self Self) []Withdrawal {
 	if !o.found {
 		return nil
 	}
 	var out []Withdrawal
 	for _, w := range o.m.Withdrawn {
-		if self.isOwn(w.By) {
+		if self.isOwn(w.By) && (!validHolderID(w.By) || o.firstOwn(w)) {
 			out = append(out, w)
 		}
 	}
-	return out
+	return self.asKept(out)
 }
 
 // recorded is every withdrawal the record's own newest push carries under
 // one of self's holder names, a declared id's included: what that push
 // itself records, which the launch check's exemption of an admission reads.
+// One naming self's kept id counts only as mine counts it.
 func (o ownRecord) recorded(self Self) []Withdrawal {
 	if !o.found {
 		return nil
 	}
 	var out []Withdrawal
 	for _, w := range o.m.Withdrawn {
-		if self.Owns(w.By) {
+		if self.Owns(w.By) && (w.By != self.ID || o.firstOwn(w)) {
 			out = append(out, w)
 		}
 	}
@@ -351,27 +369,39 @@ func (k *asker) namesPusher(holder, login string) bool {
 	return true
 }
 
-// vouched is the withdrawals of ws still to settle, naming an id self only
-// declares, that this copy acts on. One naming an id self pairs with a login
-// (DeclaredHolderIDsFile) is among them when the newest push of that login
-// to the branch, as the forge's record of pushes shows it, records it exactly
-// as ws does. One naming an id declared with no login beside it is among them
-// when the reservation that first recorded it (firstRecord), held under that
-// id, was pushed by self's own login: the same person's other home under one
-// login. Its carry in a later push of self's own says nothing of who first
-// recorded it, so the first record is what is held to the login. An entry
-// whose login's push cannot be found or placed, or that its login did not
-// record, is not among them, and nothing acts on it here.
-func (k *asker) vouched(ws []Withdrawal) map[Withdrawal]bool {
+// vouched is the withdrawals of ws still to settle, naming one of self's
+// holder ids, that this copy acts on: each only when the reservation that
+// first recorded it (firstRecord), held under that id, was pushed by the
+// account the id is held to, since a later push that carries it says
+// nothing of who first recorded it. One naming self's kept id is among them
+// when own, self's own newest push, records it as theirs (ownRecord.mine).
+// One naming an id self pairs with a login (DeclaredHolderIDsFile) is among
+// them when the newest push of that login to the branch, as the forge's
+// record of pushes shows it, records it exactly as ws does, and that login
+// pushed its first record. One naming an id declared with no login beside it
+// is among them when self's own login pushed its first record: the same
+// person's other home under one login. An entry whose login's push cannot be
+// found or placed, or that its login did not first record, is not among
+// them, and nothing acts on it here.
+func (k *asker) vouched(ws []Withdrawal, own ownRecord) map[Withdrawal]bool {
 	out := map[Withdrawal]bool{}
 	recs := map[string]ownRecord{}
+	mine := own.mine(k.self)
 	for _, w := range ws {
-		if !w.unsettled() || !k.self.declaredOnly(w.By) {
+		switch {
+		case !w.unsettled():
+			continue
+		case validHolderID(w.By) && w.By == k.self.ID:
+			if slices.Contains(mine, w) {
+				out[w] = true
+			}
+			continue
+		case !k.self.declaredOnly(w.By):
 			continue
 		}
 		login, ok := k.self.pairedLogin(w.By)
 		if !ok {
-			if k.self.Login != "" && k.firstPushedBy(w, k.self.Login) {
+			if k.self.Login != "" && k.firstPushedBy(0, w, k.self.Login) {
 				out[w] = true
 			}
 			continue
@@ -382,7 +412,7 @@ func (k *asker) vouched(ws []Withdrawal) map[Withdrawal]bool {
 			rec = k.newest(login)
 			recs[key] = rec
 		}
-		if rec.found && rec.why == "" && slices.Contains(rec.m.Withdrawn, w) {
+		if rec.found && rec.why == "" && slices.Contains(rec.m.Withdrawn, w) && rec.firstOwn(w) {
 			out[w] = true
 		}
 	}
@@ -390,12 +420,16 @@ func (k *asker) vouched(ws []Withdrawal) map[Withdrawal]bool {
 }
 
 // firstPushedBy reports whether the reservation commit that first recorded
-// w on the branch, as the walk from the tip reads it (firstRecord), is one
-// the forge's record of pushes says login pushed: false when the chain does
-// not vouch for a first record, or the record places no one login's push on
-// it.
-func (k *asker) firstPushedBy(w Withdrawal, login string) bool {
-	commit, ok := firstRecord(k.links, k.complete, w)
+// w on the branch, as the walk down from links[from] reads it
+// (firstRecordAs, with the reader's own login and kept id read alike), is
+// one the forge's record of pushes says login pushed: false when the chain
+// does not vouch for a first record, or the record places no one login's
+// push on it.
+func (k *asker) firstPushedBy(from int, w Withdrawal, login string) bool {
+	if from < 0 || from >= len(k.links) {
+		return false
+	}
+	commit, ok := firstRecordAs(k.links[from:], k.complete, w, k.self.alike)
 	if !ok {
 		return false
 	}
@@ -408,11 +442,13 @@ func (k *asker) firstPushedBy(w Withdrawal, login string) bool {
 }
 
 // actsOn is the gate every act that re-arms, withdraws again or admits a
-// merge passes a withdrawal through: it acts only on one naming self
-// themselves (their kept holder id, or their login), which is read from
-// their own newest push (merged), and on one vouched names.
+// merge passes a withdrawal through: it acts only on one vouched names (each
+// naming one of self's holder ids, held to its account's first record), and
+// on one naming self's login, a withdrawal made before the id that their own
+// newest push carries (merged), which a reader keeping no id yet still
+// lists as theirs.
 func actsOn(self Self, vouched map[Withdrawal]bool) func(Withdrawal) bool {
-	return func(w Withdrawal) bool { return self.isOwn(w.By) || vouched[w] }
+	return func(w Withdrawal) bool { return vouched[w] || !validHolderID(w.By) && self.isOwn(w.By) }
 }
 
 func (k *asker) cache() *tipCache {
@@ -485,6 +521,8 @@ func (k *asker) newest(login string) (o ownRecord) {
 				return o
 			}
 			o.found, o.at, o.commit, o.m = true, i, l.commit, l.m
+			at := i
+			o.first = func(w Withdrawal) bool { return k.firstPushedBy(at, w, login) }
 			for _, p := range order {
 				o.above = append(o.above, PushCount{Pusher: p, Commits: counts[strings.ToLower(p)]})
 			}
@@ -737,7 +775,7 @@ func merged(base []Withdrawal, own ownRecord, self Self) []Withdrawal {
 		switch {
 		case !self.Owns(w.By):
 			out = append(out, w)
-		case self.declaredOnly(w.By):
+		case self.declaredOnly(w.By) || validHolderID(w.By):
 			if _, dup := withdrawalOf(mine, w.Number); !dup {
 				out = append(out, w)
 			}

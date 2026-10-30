@@ -294,8 +294,9 @@ func loginNamedEndedRelease(t *testing.T) (*world, *fakeForge, *participant) {
 // TestAFirstReleaseReservationMintsTheIDAndSettlesLoginNamedWithdrawals: the
 // person's first pushing act, a release reservation, mints the holder id,
 // settles the ended release's withdrawals named by their login (re-arming
-// #11) under it, and leaves the new release's reservation, which withdraws
-// what is armed, as the cut the launch check reads.
+// #11) under it, naming #11 by the id, and leaves the new release's
+// reservation, which withdraws what is armed, as the cut the launch check
+// reads.
 func TestAFirstReleaseReservationMintsTheIDAndSettlesLoginNamedWithdrawals(t *testing.T) {
 	w, f, octo := loginNamedEndedRelease(t)
 	res, err := octo.do(Request{Record: "rel-v0.17.0"})
@@ -311,8 +312,8 @@ func TestAFirstReleaseReservationMintsTheIDAndSettlesLoginNamedWithdrawals(t *te
 		t.Fatalf("mutations = %v; want #11 re-armed first", got)
 	}
 	old, ows := w.tipWithdrawals("rel-v0.16.0")
-	if !old.released() || old.Holder != id || stateOf(ows, 11) != WithdrawnRearmed {
-		t.Fatalf("rel-v0.16.0's tip = %+v; want a tombstone under the new id recording #11 re-armed", old)
+	if !old.released() || old.Holder != id || stateOf(ows, 11) != WithdrawnRearmed || len(ows) != 1 || ows[0].By != id {
+		t.Fatalf("rel-v0.16.0's tip = %+v; want a tombstone under the new id recording #11 re-armed, withdrawn by the new id", old)
 	}
 	cut, cws := w.tipWithdrawals("rel-v0.17.0")
 	if cut.released() || cut.Holder != id || !slices.Equal(numbers(cws), []string{"#11", "#12", "#13"}) {

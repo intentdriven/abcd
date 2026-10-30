@@ -71,13 +71,19 @@ func releaseChain(root, id, tip, tree string) (links []chainLink, complete bool,
 // state is not compared, since a settle changes it. abcd's own correction
 // after a partial withdrawal changes the form, and is then the corrected
 // entry's first record: a reservation of the withdrawer's, pushed by them.
-func sameEntry(a, b Withdrawal) bool {
-	return a.Number == b.Number && a.ID == b.ID && a.Form == b.Form && a.Head == b.Head && sameHolder(a.By, b.By)
+func sameEntry(a, b Withdrawal) bool { return sameEntryAs(a, b, sameHolder) }
+
+// sameEntryAs is sameEntry with same telling whether two holder names name
+// one holder (Self.alike, for a reader whose login and kept id are one).
+func sameEntryAs(a, b Withdrawal, same func(a, b string) bool) bool {
+	return a.Number == b.Number && a.ID == b.ID && a.Form == b.Form && a.Head == b.Head && same(a.By, b.By)
 }
 
-func entryIn(ws []Withdrawal, w Withdrawal) (Withdrawal, bool) {
+func entryIn(ws []Withdrawal, w Withdrawal) (Withdrawal, bool) { return entryInAs(ws, w, sameHolder) }
+
+func entryInAs(ws []Withdrawal, w Withdrawal, same func(a, b string) bool) (Withdrawal, bool) {
 	for _, x := range ws {
-		if sameEntry(x, w) {
+		if sameEntryAs(x, w, same) {
 			return x, true
 		}
 	}
@@ -106,13 +112,22 @@ func vouched(links []chainLink, complete bool, w Withdrawal) bool {
 // withdrawn record beneath the commits that carry it kept: the walk passes
 // over those first, and nothing else.
 func firstRecord(links []chainLink, complete bool, w Withdrawal) (string, bool) {
+	return firstRecordAs(links, complete, w, sameHolder)
+}
+
+// firstRecordAs is firstRecord with same telling whether two holder names
+// name one holder, the entries' and the first record's own: Self.alike, for
+// a reader, reads a withdrawal of theirs that a push of theirs renamed from
+// their login to their kept id as the one their login-named reservation
+// first recorded.
+func firstRecordAs(links []chainLink, complete bool, w Withdrawal, same func(a, b string) bool) (string, bool) {
 	first := -1
 	kept := w.State == WithdrawnKept
 	for i, l := range links {
 		if !l.readable {
 			return "", false
 		}
-		e, ok := entryIn(l.m.Withdrawn, w)
+		e, ok := entryInAs(l.m.Withdrawn, w, same)
 		if ok && kept {
 			if e.State == WithdrawnKept {
 				continue
@@ -128,8 +143,8 @@ func firstRecord(links []chainLink, complete bool, w Withdrawal) (string, bool) 
 		return "", false
 	}
 	l := links[first]
-	e, _ := entryIn(l.m.Withdrawn, w)
-	if l.m.released() || !sameHolder(l.m.Holder, w.By) || e.State != WithdrawnPending {
+	e, _ := entryInAs(l.m.Withdrawn, w, same)
+	if l.m.released() || !same(l.m.Holder, w.By) || e.State != WithdrawnPending {
 		return "", false
 	}
 	return l.commit, true

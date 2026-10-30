@@ -51,6 +51,10 @@ func TestAnIDNamedWithdrawalIsNotDueWhenTheReadersLoginIsUnknown(t *testing.T) {
 	if !idOnly.Ended || len(idOnly.Due) != 0 || !slices.Equal(numbers(idOnly.Stranded), []string{"#11", "#12", "#13"}) {
 		t.Fatalf("with the login unknown, the listing = %+v; want #11-#13 stranded, none due", idOnly)
 	}
+	lines := strings.Join(idOnly.Lines(), "\n")
+	if strings.Contains(lines, "only a copy of "+octo.keptHolderID()) || !strings.Contains(lines, "which GitHub account you are is not known in this session") {
+		t.Fatalf("with the login unknown, the lines = %q; want the reader's own id never called another's, and the unknown login named", idOnly.Lines())
+	}
 	if got := listing(octo.self()); !slices.Equal(numbers(got.Due), []string{"#11", "#12", "#13"}) {
 		t.Fatalf("with the login known, the listing = %+v; want #11-#13 due", got)
 	}

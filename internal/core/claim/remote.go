@@ -346,6 +346,15 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		res.Stranded = stranded(m.Withdrawn, p.acts)
 		res.Unpaired = unpairedOf(res.Stranded, p.self)
 	}
+	if isRelease(p.id) {
+		// No push carries a login: the person's own withdrawals made before
+		// the holder id are named by their kept id, and another holder's
+		// still to settle hold the act back.
+		var held int
+		if m.Withdrawn, held = pushableWithdrawals(p.self.asKept(m.Withdrawn)); held > 0 {
+			return Result{}, refuse("%s; %s", heldBeforeIDLine(p.id, held), nothingPushed)
+		}
+	}
 	if !p.req.Release {
 		if err := crowding(p, j, &res); err != nil {
 			return Result{}, err
