@@ -111,7 +111,13 @@ Absent, it declares none. A file failing any of that, a line that is not one
 id and at most one login, and an id declared twice with two pairings each
 refuse every act that reads it, naming the file and the line's number alone,
 never its contents, with nothing pushed, while a render reads no declared id
-from it and still reads the kept id and the login. The paired login is read
+from it and still reads the kept id and the login, and says so: `abcd peers`,
+`abcd status` and `abcd reserve --holder` each write one line on stderr
+naming the file, the class of the refusal and that no declared id is read,
+never the file's contents or a login, and carry the class in `--json` as
+`holder_ids_refused` (`not_regular_file`, `writable_by_others`,
+`owned_by_another_account`, `behind_symbolic_link`, `folder_exposed`,
+`too_large`, `unreadable` or `malformed`). The paired login is read
 and compared on this machine alone: it is never written into a trailer, a ref
 name, a record or a comment, and no output names it. Every
 "yours" judgement reads it this way: the renewal and release of one's own
@@ -189,8 +195,10 @@ it is a person's, otherwise the token account's login and no-reply address;
 holds already pushed are not rewritten), and, when any are
 declared, `also yours: <ids>`; or as JSON the document `{"login", "id",
 "noreply", "source", "holder_id", "holder_id_from", "holder_id_file",
-"declared_holder_ids", "declared_holder_ids_file"}` (`id` and `noreply` when
-known). It is how a person prints the id to copy into `ABCD_HOLDER_ID`. None of it is pushed. It may
+"declared_holder_ids", "declared_holder_ids_file", "holder_ids_refused"}`
+(`id` and `noreply` when known; `holder_ids_refused` when the declared ids'
+file was refused, which the query reads as declaring none, and says so on
+stderr, rather than refusing). It is how a person prints the id to copy into `ABCD_HOLDER_ID`. None of it is pushed. It may
 make that one user-endpoint call in the same two cases as a reservation: when
 git's identity is a person's but neither its address nor the machine layer
 names the holder, and when git's identity is not a person's, whatever the

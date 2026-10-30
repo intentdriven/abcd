@@ -83,8 +83,9 @@ The payload carries:
   they could not;
 - `reservations`, `live_by_holder`, `hand_backs_by_holder`, `release_holds`,
   `lapsed_releases`,
-  `view`, `fetch_error` and `derived_unchecked`, the same fields
-  `/abcd:peers` lists;
+  `view`, `fetch_error`, `derived_unchecked` and `holder_ids_refused`, the
+  same fields `/abcd:peers` lists, with the same one line on stderr when
+  `~/.abcd.noindex/holder-ids` is refused;
 - `grants`, the line that an announcement informs and grants nothing.
 
 Tell the user, in plain words, who is doing what, which release is being cut,

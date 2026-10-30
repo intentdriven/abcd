@@ -191,6 +191,7 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			if err := render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderStatus(w, out) }); err != nil {
 				return err
 			}
+			noteHolderIDsRefused(cmd.ErrOrStderr(), "abcd status", out.HolderIDsRefused)
 			if failed != "" {
 				fmt.Fprintln(cmd.ErrOrStderr(), "abcd status: "+failed)
 				return &exitError{Code: 1}

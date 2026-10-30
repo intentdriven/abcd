@@ -4509,6 +4509,10 @@ lists no reservations.
 When the fetch fails, the reservations are listed as last fetched, with that
 view's age, and the failure is named on stderr and in fetch_error.
 
+When ~/.abcd.noindex/holder-ids is there and its guarded read refuses it, no
+declared id is read as yours, and one line on stderr names the class of the
+refusal, never the file's contents (holder_ids_refused in --json).
+
 A worktree is named home-relative (~/...), or by its directory name when it
 sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when
 the reservations could not be fetched; exit 2 outside a git checkout.
@@ -4844,7 +4848,11 @@ that account pushed it; an id with no login beside it is held to your own
 login, as your other home under the same login pushes it, so abcd reads a
 release end from it, and acts on its withdrawals, only when your own login
 pushed the reservation that recorded them. The login is read on this machine
-only and never pushed.
+only and never pushed. A holder-ids file the guarded read refuses (another
+account owns or could write it, it is not a regular file, it is too large or a
+line is malformed) refuses every act; --holder, abcd peers and abcd status read
+it as declaring no id, and each says so in one line on stderr naming the class
+of the refusal, never its contents (holder_ids_refused in --json).
 
 abcd still works out your GitHub username, which is never pushed, from the first
 of these that names it: user.email, when it is a GitHub no-reply address;

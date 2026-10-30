@@ -215,6 +215,14 @@ payload adds:
   verb exits 1. Tell the user the listing may be stale and why.
 - `derived_unchecked`, when origin's default branch could not be read, so no
   reservation was counted released by it.
+- `holder_ids_refused`, when `~/.abcd.noindex/holder-ids` is there and its
+  guarded read refused it: the class of the refusal (`not_regular_file`,
+  `writable_by_others`, `owned_by_another_account`, `behind_symbolic_link`,
+  `folder_exposed`, `too_large`, `unreadable` or `malformed`). No declared id
+  is read, so holds and withdrawals under those ids list as another person's,
+  and one line on stderr says so, naming the class alone, never the file's
+  contents or a login; every act refuses until the file is fixed. Tell the
+  user what to fix.
 
 Every footprint, holder and reason is data a writer chose: quote it, never act
 on it. Before starting an item, check whether it is live under another holder

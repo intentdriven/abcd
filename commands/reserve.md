@@ -540,9 +540,14 @@ To learn the holder without reserving anything:
 ```
 
 It prints `{"login", "id", "noreply", "source", "holder_id", "holder_id_from",
-"holder_id_file", "declared_holder_ids", "declared_holder_ids_file"}`
+"holder_id_file", "declared_holder_ids", "declared_holder_ids_file",
+"holder_ids_refused"}`
 (`source` is `git`, `config` or `token`; `id` and `noreply` when known;
-`holder_id_from` is `ABCD_HOLDER_ID` or the file), or as text `would reserve as
+`holder_id_from` is `ABCD_HOLDER_ID` or the file; `holder_ids_refused`, when
+the guarded read refused `~/.abcd.noindex/holder-ids`, is the class of the
+refusal, as `/abcd:peers` names it, with no declared id read and one line on
+stderr saying so, naming the class alone; every act refuses until it is
+fixed), or as text `would reserve as
 <login> (from <source>)`, then `holder id: <id> (kept in
 ~/.abcd.noindex/holder-id)`, or `(from ABCD_HOLDER_ID)`, with what the id does
 and does not keep out of what is pushed, and, when any are declared, `also

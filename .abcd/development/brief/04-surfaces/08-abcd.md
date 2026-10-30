@@ -302,7 +302,10 @@ holder is a holder id that is not the reader's), and `failures`, a comment not
 posted as sent among them, iss-2610222014550692) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and
-exits 1; the peer rows are unchanged. A checkout with no remote named
+exits 1; the peer rows are unchanged. When `~/.abcd.noindex/holder-ids` is
+there and its guarded read refused it, the listing reads no declared id,
+carries the class of the refusal in `holder_ids_refused`, and names that
+class in one line on stderr, never the file's contents or a login. A checkout with no remote named
 `origin` lists none. The board's peers line reads only the peer reader, and
 fetches nothing.
 

@@ -324,7 +324,11 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"login, as your other home under the same login pushes it, so abcd reads a\n" +
 			"release end from it, and acts on its withdrawals, only when your own login\n" +
 			"pushed the reservation that recorded them. The login is read on this machine\n" +
-			"only and never pushed.\n\n" +
+			"only and never pushed. A holder-ids file the guarded read refuses (another\n" +
+			"account owns or could write it, it is not a regular file, it is too large or a\n" +
+			"line is malformed) refuses every act; --holder, abcd peers and abcd status read\n" +
+			"it as declaring no id, and each says so in one line on stderr naming the class\n" +
+			"of the refusal, never its contents (holder_ids_refused in --json).\n\n" +
 			"abcd still works out your GitHub username, which is never pushed, from the first\n" +
 			"of these that names it: user.email, when it is a GitHub no-reply address;\n" +
 			"reservation.github_username in the machine configuration (the repository's own\n" +
@@ -471,6 +475,10 @@ type reserveHolderOutput struct {
 	HolderIDFile      string   `json:"holder_id_file"`
 	DeclaredHolderIDs []string `json:"declared_holder_ids"`
 	DeclaredIDsFile   string   `json:"declared_holder_ids_file"`
+	// HolderIDsRefused is the class of the refusal of the declared ids'
+	// file when the guarded read refused it, so none of its ids is read
+	// (claim.HolderIDsRefusedLine); absent when it was read or is absent.
+	HolderIDsRefused string `json:"holder_ids_refused,omitempty"`
 }
 
 // runReserveHolder is `reserve --holder`: the account a reservation act from
@@ -502,7 +510,8 @@ func runReserveHolder(w, errw io.Writer, asJSON bool) error {
 		from, where = claim.HolderIDEnv, "from "+claim.HolderIDEnv
 	}
 	out := reserveHolderOutput{Holder: h, HolderID: self.ID, HolderIDFrom: from, HolderIDFile: claim.HolderIDFile,
-		DeclaredHolderIDs: append([]string{}, self.Declared...), DeclaredIDsFile: claim.DeclaredHolderIDsFile}
+		DeclaredHolderIDs: append([]string{}, self.Declared...), DeclaredIDsFile: claim.DeclaredHolderIDsFile, HolderIDsRefused: self.HolderIDsRefused}
+	noteHolderIDsRefused(errw, "abcd reserve", self.HolderIDsRefused)
 	return render(w, asJSON, out, func(w io.Writer) {
 		fmt.Fprintf(w, "would reserve as %s (from %s)\n", h.Login, h.Source)
 		fmt.Fprintf(w, "holder id: %s (%s); %s\n", self.ID, where, holderIDScope)
