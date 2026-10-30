@@ -22,7 +22,7 @@ production_mode: hand-written
 
 ## Why This Matters
 
-The brief-size study of 2026-10-25 measured the brief at about 247,000 words, about 69% of it restating another file; the command chapters alone were 76% restatement (about 121,000 words), and the paraphrased copies had drifted apart in both directions. The 2026-10-26 consistency pass filed 1,301 records, most from that second copy, and 45 major ones are deferred until this rewrite lands. The product thinker ruled on 2026-10-27 that everything has one home (dcn-2610271112331508), that behaviour lives in the command page (dcn-2610271112339516) and that the brief states the target design (dcn-2610271112330235); the ADR that records the reversal is adr-2610290238168123.
+The brief-size study of 2026-10-25 measured the brief at about 247,000 words, about 69% of it restating another file; the command chapters alone were 76% restatement (about 121,000 words), and the paraphrased copies had drifted apart in both directions. The 2026-10-26 consistency pass filed 1,301 records, and 1,080 of its 1,307 findings had a passage of the brief at one end; 45 major ones are deferred until this rewrite lands. The product thinker ruled on 2026-10-27 that everything has one home (dcn-2610271112331508), that behaviour lives in the command page (dcn-2610271112339516) and that the brief states the target design (dcn-2610271112330235); the ADR that records the reversal is adr-2610290238168123.
 
 ## Mechanism
 
@@ -32,7 +32,7 @@ We expect moving each behaviour claim to its command page, and checking the page
 
 - **The command chapters**: each chapter under `04-surfaces/` keeps why the command exists, its trade-offs, why it refuses what it refuses, its `## Sub-verbs` table and its generated appendix; each behaviour passage moves to the command page under `commands/`, or is cut where the page already says it, keeping any sentence only the chapter held.
 - **The documentation-fidelity check** reads the command pages for behaviour claims, its review instructions and receipts with it.
-- **The brief's other copies**, as the always-SSOT ruling settles: invariants become one line naming the rule and its ADR; the verification matrix is generated from the tests or removed; the out-of-scope list points to the drafts shelf; one machine-folder inventory; superseded designs still staged are deleted.
+- **The brief's other copies**, as the one-home ruling settles: invariants become one line naming the rule and its ADR; the verification matrix is generated from the tests or removed; the out-of-scope list points to the drafts shelf; one machine-folder inventory; superseded designs still staged are deleted.
 - **The status overlay**: the brief states the target design in the present tense, and a built part carries a tag saying so; the truth rule in `00-meta.md` is amended to that one variance.
 - **The deferred consistency majors**: each of the 45 is resolved by the change that rewrites its passage, or closed if the passage is gone.
 

@@ -32,8 +32,9 @@ that costs. The brief held about 247,000 words; readers put about
 the duplication was paraphrase, not copy-paste, and the two copies had drifted
 apart in both directions: some command pages were wrong where the chapter was
 right, and some chapters wrong where the page was right. The consistency pass
-of 2026-10-26 filed 1,301 records over the brief and the intents, most of them
-from that second copy.
+of 2026-10-26 read the brief and the intents against each other and filed
+1,301 records; 1,080 of its 1,307 findings had a passage of the brief at one
+end.
 
 ## Decision
 
@@ -67,7 +68,7 @@ above it states none. `TestSurfaceAppendicesMatchCommandTree` and
   stays unchecked. Rejected by the ruling.
 - **Both copies, and a check that reads each pair against the other.** Moves
   nothing, but every change is still written twice and the measured upkeep
-  stays. Rejected: "always SSOT".
+  stays. Rejected by the ruling's first point.
 - **The brief as the shipped state, unbuilt parts marked (itd-147, itd-60).**
   Kept checkable against the code, but once behaviour moves to the command pages
   the brief has nothing left to check against the code, and the person wants it
