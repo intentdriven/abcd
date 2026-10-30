@@ -101,6 +101,12 @@ carries `agreement`. A judgement type is put in shadow by setting
 `oracle.judgements.<type>` to `shadow:<provider>/<model>` in
 `~/.abcd.noindex/config.json`. The host keeps deciding, and each answer the
 adapter gives beside it is appended to `pairs.jsonl` in the newest lab home.
+The adapter is the first candidate, a typed-decision model such as
+`typesafe/jev-1.13`, unless the provider's block names the model in
+`logprob_models`: then it is the second, a small text model whose options are
+scored by the log-probability of their one-token labels. Each pair names the
+`<provider>/<model>` that answered; the harvest counts by type, so compare the
+two candidates in separate labs.
 Two steps go through the router today, so theirs are the types whose pairs
 are kept: the drain's judgement before a lane opens (`eligibility-residual`),
 and embark's lesson ranking (`embark-lesson-ranking`), one pair per lesson once

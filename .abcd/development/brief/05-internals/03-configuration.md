@@ -206,8 +206,10 @@ rather than skipped:
             "canonical_slug": "typesafe/jev-1.13-20260915" // the model's permanent slug
           }
         },
-        "read_generation": true          // optional, OpenRouter's base URL only, default false:
+        "read_generation": true,         // optional, OpenRouter's base URL only, default false:
                                          //   one extra request per call, to read what served it
+        "logprob_models": []             // optional, default none: listed models a judgement is
+                                         //   asked as a small text model scored by log-probability
       },
       "ollama": {
         "base_url": "http://127.0.0.1:11434/v1",
@@ -379,7 +381,12 @@ rather than skipped:
   record names the route and the model that answered. If the adapter cannot
   answer (unreachable, failed, an answer outside the question's choices, a
   state over its window), the host decides instead, with a receipt saying
-  why. A shadow route passes every rule a route turned on does (the
+  why. A judgement routed to a model its provider's block names in
+  `logprob_models` (each a model the block lists; machine layer only, as the
+  block is) is asked as the second candidate, a small text model whose
+  options are scored by the log-probability of their one-token labels; every
+  other route asks the first, a typed-decision model, for a JSON answer
+  ([`02-adapters.md`](02-adapters.md)). A shadow route passes every rule a route turned on does (the
   allowlist, the denylist, the keyed-provider skip, the malformed-route skip)
   when the configuration is read and before any call. A role takes no mode.
   The types are a closed registry: `remedy-read`, `duplicate-match`,

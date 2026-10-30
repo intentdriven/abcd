@@ -251,7 +251,11 @@ plugin surface, and a future MCP server share one engine.
   typed judgement, (state, question) → (value, probability), whose question is
   one of three kinds (choose, score, yes/no) and whose type is one of a closed
   registry. The host's judgement (`Host`, probability 1) and the decision model
-  reached through `core/oracle`'s API call (`Adapter`) both implement it. A
+  reached through `core/oracle`'s API call both implement it: the first
+  candidate, a typed-decision model (`Adapter`), or the second, a small text
+  model scored by the log-probability of its one-token answer
+  (`LogprobAdapter`), for a model its provider block names in
+  `logprob_models`. A
   `Router` reads `oracle.judgements.<type>` as `host`, `shadow:<provider>/<model>`
   or `<provider>/<model>`, which the oracle reader has already held to the
   provider's allowlist. In shadow the host decides and the pair is recorded in
