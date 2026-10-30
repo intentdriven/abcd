@@ -815,13 +815,14 @@ func (k *tipCache) save() {
 
 // merged is the withdrawals a push of self's carries over base, the
 // withdrawals of the record it is written over, onto onto, the withdrawals
-// of the commit the push is written on: every entry of another person's and
-// every entry naming an id self only declares (another account or home of
-// theirs, whose own push recorded it), as base records it, each carried as
-// another's, which nothing here acts on unless it is vouched; and self's own
-// only as their own newest push (own) records them, named by their kept id
-// (Self.asKept), so nothing another login pushed is carried as theirs and no
-// push carries their login. An entry of base for a pull request self's own
+// of the commit the push is written on, as k reads the branch: every entry of
+// another person's and every entry naming an
+// id self only declares (another account or home of theirs, whose own push
+// recorded it), as base records it, each carried as another's, which nothing
+// here acts on unless it is vouched; and self's own only as their own newest
+// push (own) records them, named by their kept id (Self.asKept), so nothing
+// another login pushed is carried as theirs and no push carries their login.
+// An entry of base naming one of self's ids for a pull request self's own
 // record also names is dropped for self's. An entry naming self's login with
 // no push of self's login is not theirs to carry, and is dropped. An entry
 // naming self's kept id that self's own newest push does not record as
@@ -830,8 +831,10 @@ func (k *tipCache) save() {
 // passes over the push to the commit beneath it; written over a commit that
 // does not hold it, the push would be its first record, a reservation held
 // under the id and pushed by self's own login, and it would read as theirs
-// from then on, so it is dropped.
-func merged(base, onto []Withdrawal, own ownRecord, self Self) []Withdrawal {
+// from then on, so it is dropped. The result holds one entry for each pull
+// request (oneEach): another holder's entry for a pull request self's own
+// record also names is weighed against self's, never written beside it.
+func merged(k *asker, base, onto []Withdrawal, own ownRecord, self Self) []Withdrawal {
 	mine := own.mine(self)
 	var out []Withdrawal
 	for _, w := range base {
@@ -849,7 +852,102 @@ func merged(base, onto []Withdrawal, own ownRecord, self Self) []Withdrawal {
 			}
 		}
 	}
-	return append(out, mine...)
+	return k.oneEach(append(out, mine...), mine)
+}
+
+// oneEach is ws with one entry for each pull request, in the order ws first
+// names each, a release holding one entry for each (unwritableWithdrawals
+// refuses a commit listing one twice). Of two entries for one pull request
+// the one kept is, in order: the one still to settle (withdrawn or admitted)
+// over a settled one; then the one its holder's own push vouches for
+// (k.vouches; an entry of mine, self's own as their own newest push records
+// it, always is); then, both vouched or neither, the one recorded earliest on
+// the branch (k.recordedAt). So a later entry another login pushed never
+// displaces an earlier vouched one.
+func (k *asker) oneEach(ws, mine []Withdrawal) []Withdrawal {
+	var out []Withdrawal
+	for _, w := range ws {
+		i := slices.IndexFunc(out, func(x Withdrawal) bool { return x.Number == w.Number })
+		switch {
+		case i < 0:
+			out = append(out, w)
+		case k.preferred(w, out[i], mine):
+			out[i] = w
+		}
+	}
+	return out
+}
+
+// preferred reports whether a is kept over b, two entries for one pull
+// request (oneEach).
+func (k *asker) preferred(a, b Withdrawal, mine []Withdrawal) bool {
+	if a.unsettled() != b.unsettled() {
+		return a.unsettled()
+	}
+	if va, vb := k.vouches(a, mine), k.vouches(b, mine); va != vb {
+		return va
+	}
+	return k.recordedAt(a) > k.recordedAt(b)
+}
+
+// vouches reports whether w's holder's own push vouches for it: one of mine,
+// self's own as their own newest push records it; one naming an id self only
+// declares, as vouched reads it; one naming another holder by their login,
+// when that login pushed the reservation that first recorded it; and one
+// naming a holder id that is not self's, which stands for whoever pushed it
+// (namesPusher), when one login's push placed the reservation that first
+// recorded it. One naming self's kept id that is not of mine never does.
+func (k *asker) vouches(w Withdrawal, mine []Withdrawal) bool {
+	switch {
+	case slices.Contains(mine, w):
+		return true
+	case k == nil || w.By == k.self.ID:
+		return false
+	case k.self.declaredOnly(w.By):
+		return k.vouched([]Withdrawal{w}, ownRecord{})[w]
+	}
+	from := k.carrier(w)
+	if from < 0 {
+		return false
+	}
+	if !validHolderID(w.By) {
+		return k.firstPushedBy(from, w, w.By)
+	}
+	commit, ok := firstRecordAs(k.links[from:], k.complete, w, k.self.alike)
+	if !ok {
+		return false
+	}
+	i := slices.IndexFunc(k.links, func(l chainLink) bool { return l.commit == commit })
+	if i < 0 {
+		return false
+	}
+	kind, _, why := k.place(i)
+	return why == "" && kind == pushedByLogin
+}
+
+// carrier is the index of the newest commit on the walk that carries w, as
+// self reads holder names (Self.alike), -1 when none does.
+func (k *asker) carrier(w Withdrawal) int {
+	return slices.IndexFunc(k.links, func(l chainLink) bool {
+		_, ok := entryInAs(l.m.Withdrawn, w, k.self.alike)
+		return l.readable && ok
+	})
+}
+
+// recordedAt is how far down the walk the oldest commit carrying w lies, as
+// self reads holder names: a higher index is an earlier record. It is -1 when
+// no commit on the walk carries it.
+func (k *asker) recordedAt(w Withdrawal) int {
+	if k == nil {
+		return -1
+	}
+	at := -1
+	for i, l := range k.links {
+		if _, ok := entryInAs(l.m.Withdrawn, w, k.self.alike); l.readable && ok {
+			at = i
+		}
+	}
+	return at
 }
 
 // unplacedLine is the sentence saying nothing of login's on subject was acted

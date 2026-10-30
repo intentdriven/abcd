@@ -37,6 +37,14 @@ func writeEmptyCommit(root string, who identity, now time.Time, m commitMessage,
 		if n := len(r.Withdrawn) - len(slices.DeleteFunc(slices.Clone(r.Withdrawn), func(w Withdrawal) bool { return !validHolderID(w.By) })); n > 0 {
 			return "", refuse("%s; %s", heldBeforeIDLine(r.Record, n), nothingPushed)
 		}
+		// A release holds one entry for each pull request (oneEach).
+		seen := map[int]bool{}
+		for _, w := range r.Withdrawn {
+			if seen[w.Number] {
+				return "", refuse("the commit composed for %s was not written: it lists #%d twice, and a release holds one entry for each pull request; %s", r.Record, w.Number, nothingPushed)
+			}
+			seen[w.Number] = true
+		}
 	}
 	text := m.text()
 	if err := checkText(root, f, text); err != nil {
