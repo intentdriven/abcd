@@ -23,7 +23,14 @@ var (
 // its root.
 func newRepo(t *testing.T, date string) (*gittest.Repo, string) {
 	t.Helper()
-	r := gittest.NewRepo(t)
+	return newRepoFormat(t, "", date)
+}
+
+// newRepoFormat is newRepo with git's object format named ("sha1" or
+// "sha256"; "" is git's default).
+func newRepoFormat(t *testing.T, format, date string) (*gittest.Repo, string) {
+	t.Helper()
+	r := gittest.NewRepoFormat(t, format)
 	r.Write("README.md", "a project\n")
 	r.Git("add", "-A")
 	cmd := exec.Command("git", "-C", r.Root(), "-c", "user.email=fixture@example.invalid", "-c", "user.name=Fixture",
@@ -33,6 +40,30 @@ func newRepo(t *testing.T, date string) (*gittest.Repo, string) {
 		t.Fatalf("commit: %v\n%s", err, out)
 	}
 	return r, r.Git("rev-parse", "HEAD")
+}
+
+// objectFormats are the object formats each refusal is held to: git's
+// default, and SHA-256, whose root names have sixty-four digits.
+var objectFormats = []string{"", "sha256"}
+
+// formatName names a format's subtest.
+func formatName(format string) string {
+	if format == "" {
+		return "default format"
+	}
+	return format
+}
+
+// newRepoIn is newRepoFormat that fails the test when a SHA-256 repository's
+// root is not of sixty-four digits, so a SHA-256 case is never run on a
+// SHA-1 repository unawares.
+func newRepoIn(t *testing.T, format string) (*gittest.Repo, string) {
+	t.Helper()
+	r, root := newRepoFormat(t, format, "2020-01-01T00:00:00Z")
+	if format == "sha256" && len(root) != 64 {
+		t.Fatalf("root %q is %d digits; the fixture is no SHA-256 repository", root, len(root))
+	}
+	return r, root
 }
 
 // addStore registers a detached worktree of r at the store place under key.
@@ -105,6 +136,25 @@ func TestLocateNoStoreIsUnderTheOldestRoot(t *testing.T) {
 	}
 }
 
+// TestLocateKeysASHA256RepositoryOnItsFullRootName: in a repository of
+// SHA-256 object names, the store is to be made under the root commit's
+// full sixty-four-digit name, never a forty-digit cut of it, and a store
+// registered there is found as the store.
+func TestLocateKeysASHA256RepositoryOnItsFullRootName(t *testing.T) {
+	home := t.TempDir()
+	r, root := newRepoIn(t, "sha256")
+	want := abcdhome.Path(home, "worktrees", root, storepath.Name)
+	loc, err := storepath.Locate(home, r.Root())
+	if err != nil || loc.Registered || loc.Path != want {
+		t.Fatalf("Locate = %+v, %v; want %s, not registered", loc, err, want)
+	}
+	p := addStore(t, r, home, root)
+	loc, err = storepath.Locate(home, r.Root())
+	if err != nil || !loc.Registered || loc.Path != want || p != want {
+		t.Fatalf("Locate after the store was made = %+v, %v; want %s, registered", loc, err, want)
+	}
+}
+
 // TestLocateFindsTheRegisteredStoreUnderAnyKey: a store registered as a
 // worktree of the repository is the store, whatever its key, even one that
 // is no commit of the repository at all, and with no folder there.
@@ -130,16 +180,24 @@ func TestLocateFindsTheRegisteredStoreUnderAnyKey(t *testing.T) {
 // repository under some other home (sudo, a sandbox or an aliased HOME) is
 // the store this repository registered, so both Locate and Reachable refuse:
 // read as "no store", the check would pass clean and Locate would make a
-// second store here.
+// second store here. It holds for a SHA-256 repository too, whether the
+// store is keyed on its root or on a forty-digit key.
 func TestStoreUnderAnotherHomeIsRefused(t *testing.T) {
-	home := t.TempDir()
-	r, _ := newRepo(t, "2020-01-01T00:00:00Z")
-	addStore(t, r, t.TempDir(), key40)
-	if loc, err := storepath.Locate(home, r.Root()); !errors.Is(err, storepath.ErrStoreUnderAnotherHome) {
-		t.Fatalf("Locate = %+v, %v; want ErrStoreUnderAnotherHome", loc, err)
-	}
-	if reach, err := storepath.Reachable(home, r.Root()); !errors.Is(err, storepath.ErrStoreUnderAnotherHome) {
-		t.Fatalf("Reachable = %+v, %v; want ErrStoreUnderAnotherHome", reach, err)
+	for _, format := range objectFormats {
+		t.Run(formatName(format), func(t *testing.T) {
+			r, root := newRepoIn(t, format)
+			for _, key := range []string{key40, root} {
+				home, other := t.TempDir(), t.TempDir()
+				p := addStore(t, r, other, key)
+				if loc, err := storepath.Locate(home, r.Root()); !errors.Is(err, storepath.ErrStoreUnderAnotherHome) {
+					t.Fatalf("Locate with a store under %s = %+v, %v; want ErrStoreUnderAnotherHome", key, loc, err)
+				}
+				if reach, err := storepath.Reachable(home, r.Root()); !errors.Is(err, storepath.ErrStoreUnderAnotherHome) {
+					t.Fatalf("Reachable with a store under %s = %+v, %v; want ErrStoreUnderAnotherHome", key, reach, err)
+				}
+				r.Git("worktree", "remove", "--force", p)
+			}
+		})
 	}
 }
 
@@ -279,14 +337,23 @@ func TestLocateRefusesRootsItCannotRead(t *testing.T) {
 	})
 }
 
-// TestLocateRefusesSeveralStores: two registered stores are refused.
+// TestLocateRefusesSeveralStores: two registered stores are refused, in a
+// SHA-256 repository too.
 func TestLocateRefusesSeveralStores(t *testing.T) {
-	home := t.TempDir()
-	r, root := newRepo(t, "2020-01-01T00:00:00Z")
-	addStore(t, r, home, root)
-	addStore(t, r, home, key64)
-	if loc, err := storepath.Locate(home, r.Root()); !errors.Is(err, storepath.ErrSeveralStores) {
-		t.Fatalf("Locate = %+v, %v; want ErrSeveralStores", loc, err)
+	for _, format := range objectFormats {
+		t.Run(formatName(format), func(t *testing.T) {
+			home := t.TempDir()
+			r, root := newRepoIn(t, format)
+			addStore(t, r, home, root)
+			other := key64
+			if len(root) == 64 {
+				other = key40
+			}
+			addStore(t, r, home, other)
+			if loc, err := storepath.Locate(home, r.Root()); !errors.Is(err, storepath.ErrSeveralStores) {
+				t.Fatalf("Locate = %+v, %v; want ErrSeveralStores", loc, err)
+			}
+		})
 	}
 }
 
@@ -309,19 +376,24 @@ func TestLocatePassesOverAnotherRepositorysStore(t *testing.T) {
 
 // TestLocateHasNoFreePlaceBesideAnotherCheckoutsStore: a second clone of a
 // repository, whose one root keys a store the first clone holds, has no
-// store and no free place.
+// store and no free place, in a SHA-256 repository too, where the place's
+// sixty-four-digit key is the root it is matched against.
 func TestLocateHasNoFreePlaceBesideAnotherCheckoutsStore(t *testing.T) {
-	home := t.TempDir()
-	first, root := newRepo(t, "2020-01-01T00:00:00Z")
-	addStore(t, first, home, root)
-	second := filepath.Join(t.TempDir(), "second")
-	cmd := exec.Command("git", "clone", "-q", first.Root(), second)
-	cmd.Env = first.Env()
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("clone: %v\n%s", err, out)
-	}
-	if loc, err := storepath.Locate(home, second); !errors.Is(err, storepath.ErrNoFreePlace) || !errors.Is(err, storepath.ErrPlaceHeldByAClone) {
-		t.Fatalf("Locate = %+v, %v; want ErrNoFreePlace, held by a clone", loc, err)
+	for _, format := range objectFormats {
+		t.Run(formatName(format), func(t *testing.T) {
+			home := t.TempDir()
+			first, root := newRepoIn(t, format)
+			addStore(t, first, home, root)
+			second := filepath.Join(t.TempDir(), "second")
+			cmd := exec.Command("git", "clone", "-q", first.Root(), second)
+			cmd.Env = first.Env()
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("clone: %v\n%s", err, out)
+			}
+			if loc, err := storepath.Locate(home, second); !errors.Is(err, storepath.ErrNoFreePlace) || !errors.Is(err, storepath.ErrPlaceHeldByAClone) {
+				t.Fatalf("Locate = %+v, %v; want ErrNoFreePlace, held by a clone", loc, err)
+			}
+		})
 	}
 }
 
@@ -359,11 +431,18 @@ func TestLocateRefusesACopyOfAStoreGitDoesNotList(t *testing.T) {
 
 // TestLocateRefusesATakenPlace: with no store registered, a place holding
 // something not shown to be another repository's store is refused, never
-// answered as free: a plain folder, and a worktree whose repository is gone.
+// answered as free: a plain folder, and a worktree whose repository is gone,
+// in a SHA-256 repository too.
 func TestLocateRefusesATakenPlace(t *testing.T) {
+	for _, format := range objectFormats {
+		t.Run(formatName(format), func(t *testing.T) { locateRefusesATakenPlace(t, format) })
+	}
+}
+
+func locateRefusesATakenPlace(t *testing.T, format string) {
 	t.Run("a plain folder", func(t *testing.T) {
 		home := t.TempDir()
-		r, root := newRepo(t, "2020-01-01T00:00:00Z")
+		r, root := newRepoIn(t, format)
 		if err := os.MkdirAll(abcdhome.Path(home, "worktrees", root, storepath.Name), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -373,7 +452,7 @@ func TestLocateRefusesATakenPlace(t *testing.T) {
 	})
 	t.Run("a store whose repository is gone", func(t *testing.T) {
 		home := t.TempDir()
-		r, root := newRepo(t, "2020-01-01T00:00:00Z")
+		r, root := newRepoIn(t, format)
 		gone := filepath.Join(t.TempDir(), "gone")
 		cmd := exec.Command("git", "clone", "-q", r.Root(), gone)
 		cmd.Env = r.Env()

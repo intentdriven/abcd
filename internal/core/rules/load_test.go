@@ -381,7 +381,8 @@ func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 		// (iss-2610161639025702).
 		"abcd implement load --race-gate",
 		"never spelt with `--wait`",
-		"two at most until a measured trial supports more",
+		"one by default, four at most",
+		"a preflight queued at its race gate runs nothing and takes no slot",
 		"one race stage at a time within your account",
 		"an account at one opens its race gate at once",
 		"`load.preflights` in `" + abcdhome.Display("config.json") + "`",

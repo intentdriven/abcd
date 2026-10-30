@@ -84,6 +84,11 @@ type UI struct {
 	// looks like a rendering fault, and one reading "v0.6.1" would be a lie.
 	Unreleased string `json:"unreleased"`
 	Beta       string `json:"beta"`
+	// ManagedRecord is the line every page opens with: the site is the record
+	// of an abcd-managed repository, and the line links that repository
+	// (itd-2610091010348892). It says who the content belongs to, because the
+	// repository is where every word on the page comes from.
+	ManagedRecord string `json:"managed_record"`
 }
 
 // RecordNav labels the explorer's sub-navigation.
@@ -192,9 +197,13 @@ type HealthUI struct {
 	Unresolved string `json:"unresolved"`
 	// Isolated is a record nothing links to and which links to nothing.
 	Isolated string `json:"isolated"`
-	// SameAuthor is a candidate duplicate identity: two author names that the
-	// mailmap has not folded but which the evidence says are one person.
-	SameAuthor string `json:"same_author"`
+	// SameAuthor headed the withdrawn panel that paired two author names taken
+	// for one person. No page renders it: the panel named people, and the site
+	// names none (adr-2610291037481588). It is RETIRED: still a field, because
+	// the file is decoded with unknown fields refused and a managed
+	// repository's ui.json that declares it must still build, but never
+	// required, never added to a file, and not a word the generator may add.
+	SameAuthor string `json:"same_author" ui:"retired"`
 	// Undeclared is an authored commit carrying no `Assisted-by:` trailer.
 	Undeclared string `json:"undeclared"`
 	// MultiTrailer is a commit declaring more than one assisting model — not a
@@ -209,8 +218,9 @@ type HealthUI struct {
 	SupersedesLead string `json:"supersedes_lead"`
 	// Clean is what the page says when a family has nothing to report.
 	Clean string `json:"clean"`
-	// Suggestion prefixes the line a finding proposes a human confirm.
-	Suggestion string `json:"suggestion"`
+	// Suggestion prefixed the `.mailmap` line the withdrawn same-author panel
+	// proposed. No page renders it; it is retired as SameAuthor is.
+	Suggestion string `json:"suggestion" ui:"retired"`
 }
 
 // ContributorsUI labels the attribution page.
@@ -300,6 +310,14 @@ func LoadUI(repoRoot, rel string) (UI, error) {
 	if err != nil {
 		return UI{}, err
 	}
+	return decodeUI(data, rel)
+}
+
+// decodeUI decodes an interface-string allowlist against the closed struct,
+// unknown keys refused and every declared string the site renders required (a
+// retired label is tolerated, never required). rel names the file in a
+// refusal.
+func decodeUI(data []byte, rel string) (UI, error) {
 	var ui UI
 	dec := json.NewDecoder(strings.NewReader(string(data)))
 	dec.DisallowUnknownFields()
@@ -313,6 +331,12 @@ func LoadUI(repoRoot, rel string) (UI, error) {
 	return ui, nil
 }
 
+// retiredLabel reports whether a field is a label no page renders any more
+// (tagged `ui:"retired"`). It stays a field so a file that still declares it
+// decodes, and is otherwise ignored: never required, never added by the
+// completion in uiadd.go, never an allowed word on a page.
+func retiredLabel(f reflect.StructField) bool { return f.Tag.Get("ui") == "retired" }
+
 // missing names every interface string the file leaves empty, each by its
 // path in the file (`status.next_up`), so the refusal names the exact key to
 // add. An empty string renders as a blank button or an unlabelled tab, which
@@ -323,6 +347,9 @@ func (ui UI) missing() []string {
 	walk = func(v reflect.Value, t reflect.Type, prefix string) {
 		for i := 0; i < t.NumField(); i++ {
 			f := t.Field(i)
+			if retiredLabel(f) {
+				continue
+			}
 			name := prefix + strings.Split(f.Tag.Get("json"), ",")[0]
 			switch f.Type.Kind() {
 			case reflect.Struct:

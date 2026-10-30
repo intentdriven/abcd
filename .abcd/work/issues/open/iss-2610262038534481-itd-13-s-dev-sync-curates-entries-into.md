@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 825 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-13-scheduled-dev-sync.md:15"
-remedy: "none (filed automatically)"
+remedy: "In itd-13 drop the issue-ledger curation source (press release and the `dev_sync` per-source flags), or re-scope the draft to the four staged source-to-target pairs in 03-configuration section 2; capture already writes the ledger directly. The draft also names the retired logbook path and `intent-fidelity-reviewer`, so edit it in one pass or supersede it."
 related_intents: [itd-13]
 finding_ref: cfk-06ba6997c3aac6e8
 ---

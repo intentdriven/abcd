@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 34 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:74"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (the fourth-capture-verdict paragraph): state that itd-44's classifier and the decision verdict are staged and that nothing yet reads suggested_kind, matching 05-intent."
 finding_ref: cfk-019040a05682f92b
 ---
 

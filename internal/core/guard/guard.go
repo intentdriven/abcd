@@ -78,6 +78,16 @@ type Pattern struct {
 	// leading `+` on the refspec is a force push by another name and Flags has
 	// nothing to look at.
 	ArgPrefixes []string `json:"arg_prefixes,omitempty"`
+	// ArgPrefixesLiteral, when true, requires each arg_prefixes prefix to be
+	// the operand's own text before its first substitution, as typed. By
+	// default a substitution is read as printing nothing, so `"$(x)"+main:main`
+	// carries `+`, which is the safe reading for a refusal. A warning about a
+	// prefix that ordinary spellings place after a substitution
+	// (`"$(git branch --show-current)":main` is a push, not a delete) sets it,
+	// so the text a substitution prints is never read as the prefix's
+	// absence. It is a pointer, as AfterCD is, so a per-repo override can
+	// lift it as well as set it.
+	ArgPrefixesLiteral *bool `json:"arg_prefixes_literal,omitempty"`
 	// ArgValues constrain an OPERAND to one exact word: some non-flag argument
 	// must be one of the listed words, compared by its known text. It is what
 	// separates `rm -rf /` and `rm -rf ~`, which destroy the machine or the
@@ -207,6 +217,10 @@ type Registry struct {
 	// forge is the forge-text opt-in of the repository this registry was
 	// loaded for (forge.go); nil for a registry with no repository behind it.
 	forge *forgeGate
+
+	// deletes proves a delete's targets safe (deletes.go); nil for a registry
+	// no front door attached one to, which refuses every delete.
+	deletes DeleteProver
 }
 
 // Decision is what core returns for one candidate command. It carries no
@@ -239,6 +253,11 @@ type Decision struct {
 	// the command runs that does not exist, so there was nothing to read
 	// (script.go). They ride on any verdict, an allow included.
 	Diagnostics []string `json:"diagnostics,omitempty"`
+	// AllowableOnce marks a block whose only cause is a delete the guard could
+	// not prove safe (deletes.go): a person's one-shot allow of the exact line
+	// lets it through the hook (allowonce.go). Any other blocker leaves it
+	// false, and no allow can pass it.
+	AllowableOnce bool `json:"allowable_once,omitempty"`
 }
 
 //go:embed defaults/guard.json
@@ -399,6 +418,11 @@ func validatePattern(id string, p Pattern) error {
 	// An empty argument prefix is carried by every operand, so the entry
 	// would fire on anything that reached it: the over-blocking twin of the
 	// empty flag group, and as invisible in the file.
+	// A literal reading of no prefix constrains nothing: the field says the
+	// entry reads a prefix it does not have.
+	if p.ArgPrefixesLiteral != nil && *p.ArgPrefixesLiteral && len(p.ArgPrefixes) == 0 {
+		return fmt.Errorf("%w: entry %s sets arg_prefixes_literal without any arg_prefixes", ErrInvalidEntry, id)
+	}
 	for i, prefix := range p.ArgPrefixes {
 		if strings.TrimSpace(prefix) == "" {
 			return fmt.Errorf("%w: entry %s argument prefix %d is empty and would match every argument", ErrInvalidEntry, id, i)
@@ -526,12 +550,22 @@ func (r Registry) check(command string) (Decision, error) {
 	var rc *readCtx
 	if r.files != nil {
 		rc = newReadCtx(r.files)
+		// A line that names the allow store has its writes read, as the
+		// approver reads every line's (allowonce.go).
+		rc.record = strings.Contains(command, allowStoreLeaf)
 	}
 	v, err := r.judge(command, rc, nil)
 	if err != nil {
 		return Decision{}, err
 	}
+	if sig, ok := r.deleteSignal(v); ok {
+		v.signals = append(v.signals, sig)
+	}
+	if sig, ok := r.allowStoreSignal(command, rc, v); ok {
+		v.signals = append(v.signals, sig)
+	}
 	d := r.decide(v)
+	d.AllowableOnce = d.Verdict == VerdictBlock && onlyDeleteBlocks(v)
 	if rc != nil {
 		d.Diagnostics = rc.notes
 	}
@@ -955,7 +989,7 @@ func message(v Verdict, e Entry) string {
 }
 
 func cloneRegistry(r Registry) Registry {
-	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees, files: r.files, forge: r.forge}
+	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees, files: r.files, forge: r.forge, deletes: r.deletes}
 	if r.Entries != nil {
 		out.Entries = make(map[string]Entry, len(r.Entries))
 		for id, e := range r.Entries {
@@ -990,6 +1024,10 @@ func clonePattern(p Pattern) Pattern {
 	out.FlagValues = cloneFlagValues(p.FlagValues)
 	out.ArgsFrom = clonePatterns(p.ArgsFrom)
 	out.Env = append([]string(nil), p.Env...)
+	if p.ArgPrefixesLiteral != nil {
+		v := *p.ArgPrefixesLiteral
+		out.ArgPrefixesLiteral = &v
+	}
 	if p.AfterCD != nil {
 		v := *p.AfterCD
 		out.AfterCD = &v

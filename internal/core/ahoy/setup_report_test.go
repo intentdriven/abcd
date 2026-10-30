@@ -13,7 +13,7 @@ import (
 func TestReportHasThreeParts(t *testing.T) {
 	setupHermetic(t)
 	clearIdentityEnv(t)
-	repo := idGitRepo(t, "Alex Reppel", "alex@example.com")
+	repo := idGitRepo(t, "Alice", "alice@example.com")
 	res, err := Install(repo, planOpts(), &planPrompter{choice: PlanProceed})
 	if err != nil {
 		t.Fatal(err)
@@ -47,14 +47,18 @@ func TestFullySetUpRerunIsOneLine(t *testing.T) {
 	setupHermetic(t)
 	// The PATH entry's folder is on PATH, as a set-up account's is.
 	t.Setenv("PATH", filepath.Dir(os.Getenv("ABCD_BIN_TARGET"))+string(os.PathListSeparator)+os.Getenv("PATH"))
-	repo := idGitRepo(t, "Alex Reppel", "alex@example.com")
+	repo := idGitRepo(t, "Alice", "alice@example.com")
 	// A first commit gives the repository the root commit abcd registers it by.
 	idMustGit(t, repo, "commit", "--allow-empty", "-q", "-m", "first")
 	clearIdentityEnv(t)
 	// Fully set up includes the commit checks git runs (iss-2610241134315056)
-	// and the person's own identity record, each answered yes.
+	// and the person's own identity record, each answered yes, and the live
+	// brief session question answered, since a question left for later is
+	// asked again.
 	first := func(q string) bool { return isArmHooksQuestion(q) || setupConfirmID(q) == UnrecordedGapID }
-	if _, err := Install(repo, planOpts(), &planPrompter{choice: PlanProceed, confirm: first}); err != nil {
+	answered := planOpts()
+	answered.LiveSessions = LiveSessionsNone
+	if _, err := Install(repo, answered, &planPrompter{choice: PlanProceed, confirm: first}); err != nil {
 		t.Fatal(err)
 	}
 	again := &planPrompter{choice: PlanProceed}

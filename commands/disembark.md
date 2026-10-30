@@ -115,6 +115,13 @@ redacted into the artefact. In a source repository that armed gitleaks in
 gitleaks whose binary is not installed refuses the pack (exit 2), as it refuses
 a launch. Relay the refusal message so the user knows what to fix.
 
+The later verbs that write a host payload into the lifeboat (`graveyard`,
+`principles`, `press-release` and `review`) secret-scan the bytes they would
+write before any write, and a hard-fail secret refuses the whole call (exit 2),
+leaving the lifeboat as it was. A packed lifeboat carries no scanner settings of
+its own, so abcd's built-in rules judge: a source repository's own extra
+patterns and its gitleaks opt-in apply at pack, where that repository is read.
+
 ## Graveyard interpretation (layer 3)
 
 A packed lifeboat carries a **graveyard** of what the project tried and left
@@ -146,9 +153,10 @@ Report the result to the user: `written` (into `lessons.json`), `low_confidence`
 (routed aside), and `dropped` (with the reason for each). The verb **exits 0 even
 when every lesson was dropped** — an honest "nothing cited" is a valid outcome.
 It exits non-zero only on a structural fault: the directory is not an abcd
-lifeboat, its graveyard files are unreadable, or the lesson payload is
-unreadable, oversize, or malformed. The lesson files are a later, mutable
-interpretation and are **not** part of the lifeboat's `manifest_sha256`.
+lifeboat, its graveyard files are unreadable, the lesson payload is
+unreadable, oversize, or malformed, or it carries a hard-fail secret. The lesson
+files are a later, mutable interpretation and are **not** part of the
+lifeboat's `manifest_sha256`.
 
 ## Principles (distilled from the record)
 
@@ -183,9 +191,10 @@ by id) and rendered to `principles.md`; a delegated ingest **fully replaces** th
 prior file. Report `written` and each `dropped` (with its reason). The verb
 **exits 0 even when every principle was dropped** — the file is written with an
 empty list, an honest "nothing distilled". It exits non-zero only on a structural
-fault (not an abcd lifeboat, or a payload that is unreadable, oversize, or
-malformed). `principles.json`/`.md` are a later, mutable synthesis layer and are
-**not** part of the lifeboat's `manifest_sha256`.
+fault (not an abcd lifeboat, or a payload that is unreadable, oversize,
+malformed, or carries a hard-fail secret). `principles.json`/`.md` are a later,
+mutable synthesis layer and are **not** part of the lifeboat's
+`manifest_sha256`.
 
 ## Press release (the embark interview contract)
 
@@ -210,8 +219,9 @@ whole-document: its `evidence` must carry at least one ref resolving to `brief/*
 resolvable is refused** — the verb exits non-zero and leaves the previously derived
 press release untouched (there is no per-entry granularity to drop). Report the
 result: `mode` and `evidence_refs`. It also exits non-zero on a structural fault
-(not a lifeboat, or an unreadable/oversize/malformed payload). The press-release
-files are a mutable synthesis layer and are **not** part of `manifest_sha256`.
+(not a lifeboat, or an unreadable/oversize/malformed payload, or one carrying a
+hard-fail secret). The press-release files are a mutable synthesis layer and
+are **not** part of `manifest_sha256`.
 
 ## Review (content fidelity + verdict)
 
@@ -248,8 +258,8 @@ file — a clean replacement, no stale twin. Report the `verdict`, `written`
 findings, and each `dropped` (with its reason); the verb exits 0 even when every
 finding was dropped. It exits non-zero only on a structural fault (not a lifeboat,
 a `<source-repo>` that is not a real directory, or an unreadable/oversize/malformed
-payload). The audit files are a mutable synthesis layer and are **not** part of
-`manifest_sha256`.
+payload, or one carrying a hard-fail secret). The audit files are a mutable
+synthesis layer and are **not** part of `manifest_sha256`.
 
 **Model-tier routing.** Each delegated ingest (`graveyard`, and `principles`,
 `press-release` and `review` given their payload flag) dispatches its agent, and
@@ -287,6 +297,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

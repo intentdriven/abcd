@@ -21,6 +21,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -242,6 +243,10 @@ type StatusView struct {
 	// Holds is every release being cut, judged as the merge hold judges them
 	// (JudgedHolds).
 	Holds []Hold
+	// Lapsed is every release cut whose reservation lapsed with no tag
+	// (Snapshot.Lapsed): the prompt block names each once, so a session
+	// shown the hold is told it holds no more (iss-2610241107191205).
+	Lapsed []Lapsed
 	// holdsUnread is true when the holds could not be read, and the rest of
 	// the view was: the prompt block says so in its own line.
 	holdsUnread bool
@@ -284,6 +289,10 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 	}
 	if !ok {
 		return StatusFetch{}, ErrNoOrigin
+	}
+	// Asked once, before any kept state is read, as ReadStatus asks.
+	if err := localtier.Untracked(root, statusBranches.stateDir); err != nil {
+		return StatusFetch{}, err
 	}
 	names, skipped, past, err := listStatusBranches(root, "")
 	if err != nil {
@@ -391,7 +400,8 @@ func statusName(name string) bool { return validUsername(name) && name == string
 // disk alone: no fetch and no push (invariant 7). It reads the release holds
 // as the merge hold judges them, then takes in whatever a fetch brought since
 // the last read, under ctx, then reads what is kept. It is the one read of the
-// holds `abcd status` and the prompt hook make: neither reads them again. A
+// holds, and of the lapsed release cuts with them, that `abcd status` and the
+// prompt hook make: neither reads them again. A
 // read of the holds that fails does not stop the rest: the announcements are
 // still read, and the error, naming the holds' read, is answered with them.
 // An intake that fails, or a ctx that ends first, answers its error with what
@@ -406,11 +416,17 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	if !ok {
 		return StatusView{}, nil
 	}
+	// What this copy kept of the status branches and its fetches is its own,
+	// so a file git tracks there came with a commit and is never judged as
+	// this copy's reading: asked once, before any of it is read.
+	if err := localtier.UntrackedEach(ctx, root, statusBranches.stateDir, reservations.stampRel(), reservations.stateDir+"/"+failedRel); err != nil {
+		return StatusView{}, err
+	}
 	v := StatusView{Origin: true, FetchedAt: lastFetched(root, statusBranches), NoTier: tierPresent(root) != nil}
 	v.Unread = unreadOf(root, statusBranches)
 	v.ReservationsUnread = unreadOf(root, reservations)
 	var holdsErr error
-	if v.Holds, err = readHolds(root, now, o); err != nil {
+	if v.Holds, v.Lapsed, err = readHolds(root, now, o); err != nil {
 		holdsErr = &holdsUnreadError{err}
 	}
 	in, err := takeIn(ctx, root, now)
@@ -447,9 +463,9 @@ type holdsUnreadError struct{ err error }
 func (e *holdsUnreadError) Error() string { return "reading the release holds: " + e.err.Error() }
 func (e *holdsUnreadError) Unwrap() error { return e.err }
 
-// readHolds is ReadStatus's read of the release holds: JudgedHolds, which a
-// test replaces with one that fails.
-var readHolds = JudgedHolds
+// readHolds is ReadStatus's read of the release holds and the lapsed cuts:
+// judgedHoldsAndLapsed, which a test replaces with one that fails.
+var readHolds = judgedHoldsAndLapsed
 
 // intake is what one intake found.
 type intake struct {

@@ -21,6 +21,7 @@ package loop
 // lanes' hand-backs it routed, with the record change each made.
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -39,6 +40,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -53,17 +55,19 @@ const drainLockRel = RunRelDir + "/drain.lock"
 
 // DrainSchemaVersion is the drain state's shape.
 //
-// Version 2 added a route's pins to a routed judge's stored route: a
-// judgement's route carries the pin and sealed configuration's SHA-256 of a
-// pinned opencode run (`provider_pin`, `pin_config_sha256`), and a route to
-// a model on this machine its local pin, what its server reported and that
-// it is local (`local_pin`, `local_served`, `local`), as the run state's
-// version 16 does. Version 1 is its strict subset, read as a drain whose
-// judge was pointed at no pin and written back at version 2; a file of
-// version 1 carrying any of them is not one its version wrote, and is
-// refused naming the key. v0.15.1 reads no version first, so it refuses a
-// version-2 file as one that does not parse; releases after it that write
-// version 1 refuse it as a newer abcd's before any strict decode.
+// Version 2 added a route's pins and override to a routed judge's stored
+// route: a judgement's route carries the pin and sealed configuration's
+// SHA-256 of a pinned opencode run (`provider_pin`, `pin_config_sha256`), a
+// route to a model on this machine its local pin, what its server reported
+// and that it is local (`local_pin`, `local_served`, `local`), and the
+// route record's `override`, as the run state's version 16 does. The field
+// comes with the route record the two share; no drain flag sets it. Version
+// 1 is its strict subset, read as a drain whose judge was pointed at no pin
+// and carries no override, and written back at version 2; a file of version
+// 1 carrying any of them is not one its version wrote, and is refused naming
+// the key. v0.15.1 reads no version first, so it refuses a version-2 file as
+// one that does not parse; releases after it that write version 1 refuse it
+// as a newer abcd's before any strict decode.
 const DrainSchemaVersion = 2
 
 // drainSchemaVersionUnpinned is the drain state's version before a judge
@@ -161,6 +165,9 @@ type DrainState struct {
 	// (drain_wait.go).
 	WaitingUntil *time.Time `json:"waiting_until,omitempty"`
 	Waiting      string     `json:"waiting,omitempty"`
+	// Skips are the issues and paths a person holds back for now, each with
+	// its reason; the list clears when the drain ends (drain_skip.go).
+	Skips []DrainSkip `json:"skips,omitempty"`
 }
 
 // DrainLane is one issue the drain handed to a lane.
@@ -216,6 +223,12 @@ type DrainOptions struct {
 	// Context ends the move's routed judge: the front door ends it on an
 	// interrupt or a termination. context.Background when nil.
 	Context context.Context
+	// Skip are --skip's targets, issue ids or paths, held back for now with
+	// SkipReason, --reason; Unskip are --unskip's, taken off the list
+	// (drain_skip.go).
+	Skip       []string
+	SkipReason string
+	Unskip     []string
 }
 
 // DrainResult is one drain invocation's summary.
@@ -274,6 +287,9 @@ type DrainResult struct {
 	// PendingHandBacks are the hand-backs routed and not yet published on
 	// origin, as this call leaves them (drain_pending.go).
 	PendingHandBacks []DrainPendingHandBack `json:"pending_hand_backs,omitempty"`
+	// Skips is the drain's skip list as this call leaves it: empty once the
+	// drain has ended, which clears it (drain_skip.go).
+	Skips []DrainSkip `json:"skips"`
 }
 
 // DrainCounts are the drain's totals (itd-82 scope 8): its lanes by outcome,
@@ -323,6 +339,9 @@ func Drain(repoRoot string, o Options, d DrainOptions) (DrainResult, error) {
 	}
 	flags, err := parsePaceFlags(o.Pace, o.SubAgents, o.FixRounds)
 	if err != nil {
+		return DrainResult{}, err
+	}
+	if err := checkSkips(d); err != nil {
 		return DrainResult{}, err
 	}
 	// The rule first: a repository without its own record is refused before
@@ -419,6 +438,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 		}
 	}
+	// The skip list takes this move's --skip and --unskip before the plan
+	// is read, so the move passes over what it holds back (drain_skip.go).
+	skipped, err := applySkips(&st, d, now)
+	if err != nil {
+		return DrainResult{}, err
+	}
 	// The ledger as origin's default branch holds it, fetched now, before any
 	// judgement or reservation: a move that cannot read it plans nothing and
 	// waits (drain_origin.go).
@@ -449,6 +474,16 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		if st.Stopped != "" && st.WaitingUntil != nil {
 			st.WaitingUntil, st.Waiting, write = nil, "", true
+		}
+		if skipped != "" {
+			res.Next = joinNext(skipped, res.Next)
+			write = true
+		}
+		// A drain that ends clears its skip list: a hold for now never
+		// outlives the drain it was given to.
+		if st.Stopped != "" && len(st.Skips) > 0 {
+			res.Next = joinNext(res.Next, fmt.Sprintf("the skip list's %d entr%s cleared with the drain's end", len(st.Skips), plural(len(st.Skips), "y is", "ies are")))
+			st.Skips, write = nil, true
 		}
 		if repaced != "" {
 			res.Next = joinNext(repaced, res.Next)
@@ -504,6 +539,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		res.OriginWait = st.OriginWait
 		res.PendingHandBacks = st.PendingHandBacks
+		res.Skips = st.Skips
+		if res.Skips == nil {
+			res.Skips = []DrainSkip{}
+		}
 		res.Counts = drainCounts(repoRoot, st, res.Flags, res.Passed)
 		// The normal ending is claimed only once every lane has ended: an
 		// outage stop is taken before the lane in progress is read, so a
@@ -889,6 +928,14 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// (drain_readmit.go).
 		if st.taken(v.ID, blobs) {
 			continue
+		}
+		// An issue the skip list holds back is passed over before anything
+		// is pushed or asked over it (drain_skip.go).
+		if iss, ok := plan.OpenIssue(v.ID); ok {
+			if s, ok := skipOf(st, iss); ok {
+				res.Passed = append(res.Passed, skipPassed(v.ID, s))
+				continue
+			}
 		}
 		if l, ok := lapseOf(st, v.ID); ok && now.Before(l.coolDownEnds()) {
 			ends := l.coolDownEnds()
@@ -1376,9 +1423,12 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 		return DrainState{}, false, fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
-	data, err := fsutil.ReadGuardedInRoot(root, DrainStateRel, maxDrainStateBytes)
+	data, err := localtier.ReadInRoot(root, DrainStateRel, maxDrainStateBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		return DrainState{}, false, nil
+	}
+	if rf := tierRefusal(StageDrain, "", err); rf != nil {
+		return DrainState{}, false, rf
 	}
 	if err != nil {
 		return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s cannot be read as the drain's state: %v", DrainStateRel, err),
@@ -1406,7 +1456,7 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 			"the drain is the file's only writer; restore it or remove it")
 	}
 	if st.SchemaVersion == drainSchemaVersionUnpinned {
-		if p := st.pinned(); p != "" {
+		if p := cmp.Or(st.pinned(), st.overridden()); p != "" {
 			return DrainState{}, false, refuse(StageDrain, "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote",
 				DrainStateRel, st.SchemaVersion, p, st.SchemaVersion),
 				"the drain is the file's only writer; restore it or remove it")
@@ -1434,6 +1484,10 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 	}
 	if !st.waitWritten() {
 		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a wait the drain never writes",
+			"the drain is the file's only writer; restore it or remove it")
+	}
+	if !st.skipsWritten() {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a skip-list entry the drain never writes",
 			"the drain is the file's only writer; restore it or remove it")
 	}
 	if !st.pendingWritten() {
@@ -1468,6 +1522,17 @@ func (s DrainState) pinned() string {
 	for i, j := range s.Judgements {
 		if k := pinKey(j.Route); k != "" {
 			return fmt.Sprintf("`%s` on judgement %d's route (%s)", k, i+1, j.Issue)
+		}
+	}
+	return ""
+}
+
+// overridden reports the first judgement, in a drain state, whose route
+// carries `override`, which only version 2 and later write, or "".
+func (s DrainState) overridden() string {
+	for i, j := range s.Judgements {
+		if j.Route != nil && j.Route.Override != "" {
+			return fmt.Sprintf("`override` on judgement %d's route (%s)", i+1, j.Issue)
 		}
 	}
 	return ""

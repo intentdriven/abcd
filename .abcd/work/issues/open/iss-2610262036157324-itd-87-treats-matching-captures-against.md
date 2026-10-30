@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 635 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/23-reading.md:314"
-remedy: "none (filed automatically)"
+remedy: "Narrow itd-87 to what remains: capture's filing-time match already compares open and resolved issues (internal/core/capture/match.go matchCandidates), so name wontfix matching and the escalation behaviour as the new work."
 related_intents: [itd-87]
 finding_ref: cfk-ef72e8c0b2792391
 ---

@@ -18,19 +18,22 @@
 //
 // It also writes the record's generated index regions (iss-2608220150157511):
 // every index the index_drift rule in .abcd/record-lint.json declares in
-// generated mode — the command list in the surfaces register, the drafts bench
-// in the out-of-scope chapter, the ADR index — rendered by lint.RegenerateIndexes,
+// generated mode — the command list in the surfaces register and the ADR
+// index — rendered by lint.RegenerateIndexes,
 // the same function the rule compares against, so a conflicted region is
 // resolved by rerunning this generator over the merged tree.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/occupancy"
+	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/surface/cli"
@@ -53,6 +56,15 @@ func run() error {
 	root, err := fsutil.ModuleRoot(cwd)
 	if err != nil {
 		return err
+	}
+	// The generated regions are records too: the 2026-10-24 incident folded a
+	// peer's untracked draft into them from a shared main checkout
+	// (iss-2610240859590333). A count that cannot be made writes past.
+	if m := sessionname.Live(); m.Home != "" {
+		var shared *occupancy.SharedError
+		if err := occupancy.Check(m.Home, root, m.ReadTable); errors.As(err, &shared) {
+			return shared
+		}
 	}
 	data, err := cli.GenerateSurface(root)
 	if err != nil {

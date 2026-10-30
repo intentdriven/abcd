@@ -26,7 +26,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Bash|AskUserQuestion",
+        "matcher": "Bash|AskUserQuestion|Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",

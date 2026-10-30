@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 796 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/step.md:4"
-remedy: "none (filed automatically)"
+remedy: "Add a qualified row to step.md for the land verb's own steps (gate, push, enqueue, JSON 'steps' field) so 38-land.md's 'every step is idempotent' has a registered sense, distinct from a spec's step."
 finding_ref: cfk-f86aca1aac0fc17e
 ---
 

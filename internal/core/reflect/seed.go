@@ -55,8 +55,10 @@ type SeedIntent struct {
 	Path   string `json:"path"`
 	Impact string `json:"impact"`
 	// Audited is true when the record carries audit notes: an ingested review
-	// (its `Acceptance rollup:` line) or a hand-written audit. A placeholder, an
-	// owed review and an absent section are not audit notes.
+	// (its `Acceptance rollup:` line) or, with no review marker, a hand-written
+	// audit that names the criteria and gives a verdict on them
+	// (intent.HandAudited, the owed listing's rule too). A placeholder, an owed
+	// review, a stray note and an absent section are not audit notes.
 	Audited bool        `json:"audited"`
 	Receipt string      `json:"receipt,omitempty"`
 	Rollup  AuditRollup `json:"rollup"`
@@ -70,8 +72,9 @@ type AuditOffer struct {
 	Command  string `json:"command"`
 }
 
-// TargetedIntent is a planned intent whose target_release names the release
-// and which has not shipped (criterion 7).
+// TargetedIntent is a planned intent targeted at the release and still
+// unshipped (criterion 7): its target_release names the release, or the
+// release's cut moved it past (unshippedTargets).
 type TargetedIntent struct {
 	ID   string `json:"id"`
 	Path string `json:"path"`
@@ -169,22 +172,61 @@ func BuildSeed(root, tag string) (Seed, error) {
 			s.Unaudited = append(s.Unaudited, AuditOffer{IntentID: it.ID, Command: "abcd intent audit " + it.ID})
 		}
 	}
-	for _, it := range corpus.Intents {
-		if it.Bucket == intent.BucketPlanned && it.TargetRelease == tag {
-			s.Unshipped = append(s.Unshipped, TargetedIntent{ID: it.ID, Path: filepath.ToSlash(it.Path)})
-		}
-	}
-	sort.SliceStable(s.Unshipped, func(i, j int) bool { return idNum(s.Unshipped[i].ID) < idNum(s.Unshipped[j].ID) })
-
 	if s.Changelog, err = changelogSection(root, tag); err != nil {
 		return Seed{}, err
 	}
+	s.Unshipped = unshippedTargets(corpus, tag, s.Changelog)
 	s.Metrics.TagDate = tagDate(root, tag)
 	if prev != "" {
 		s.Metrics.PreviousTag = prev
 		s.Metrics.PreviousTagDate = tagDate(root, prev)
 	}
 	return s, nil
+}
+
+// movedTargetRe is one entry of the cut's target-move note: `<id> (targeted …)`.
+var movedTargetRe = regexp.MustCompile(`\b(itd-[0-9]+) \(targeted `)
+
+// unshippedTargets is every intent targeted at the release that did not ship
+// in it (criterion 7), in id order: the planned intents whose target_release
+// names the tag now, and the intents the release's own changelog section names
+// in the cut's target-move note (changelog.IsTargetMoveNote) and are still
+// planned. The second half is the one a cut by launch ship leaves: it rewrites
+// each target it passes to `next` in the commit that rolls the changelog,
+// before the tag exists, so no record names the tag by the time reflect runs
+// (iss-2610241431221889). The note is history and the list is "still
+// unshipped", so a noted intent that has shipped since, or that the store no
+// longer holds, is not named.
+func unshippedTargets(corpus intent.Corpus, tag string, cl ChangelogSection) []TargetedIntent {
+	out := []TargetedIntent{}
+	seen := map[string]bool{}
+	planned := map[string]string{}
+	add := func(id string) {
+		if path, ok := planned[id]; ok && !seen[id] {
+			seen[id] = true
+			out = append(out, TargetedIntent{ID: id, Path: path})
+		}
+	}
+	for _, it := range corpus.Intents {
+		if it.Bucket == intent.BucketPlanned {
+			planned[it.ID] = filepath.ToSlash(it.Path)
+		}
+	}
+	for _, it := range corpus.Intents {
+		if it.Bucket == intent.BucketPlanned && it.TargetRelease == tag {
+			add(it.ID)
+		}
+	}
+	for _, ln := range strings.Split(cl.Body, "\n") {
+		if !changelog.IsTargetMoveNote(ln) {
+			continue
+		}
+		for _, m := range movedTargetRe.FindAllStringSubmatch(ln, -1) {
+			add(m[1])
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return idNum(out[i].ID) < idNum(out[j].ID) })
+	return out
 }
 
 // outputPresent reports whether the retrospective for the release exists. A

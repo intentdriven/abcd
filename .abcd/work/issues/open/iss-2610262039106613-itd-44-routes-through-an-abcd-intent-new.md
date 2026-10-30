@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 844 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-44-fourth-intent-kind-decision.md:111"
-remedy: "none (filed automatically)"
+remedy: "In itd-44 drop the 'abcd-intent-new skill is wrapper-only' justification and route the new `decision` verdict through the `/abcd:intent` command page and its binary verb; abcd ships no skills."
 related_intents: [itd-44]
 finding_ref: cfk-d161ce3aa9b71ae6
 ---

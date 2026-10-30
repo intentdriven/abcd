@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -66,7 +68,7 @@ func newPrePushCaseIn(t *testing.T, format string) *prePushCase {
 	c.git("config", "user.name", "Alice Example")
 	c.git("config", "user.email", "alice@example.com")
 
-	for _, rel := range []string{".githooks/pre-push", "scripts/preflight-receipt.sh"} {
+	for _, rel := range []string{".githooks/pre-push", "scripts/preflight-receipt.sh", "scripts/records-only.sh"} {
 		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if err != nil {
 			t.Fatalf("read the committed %s: %v", rel, err)
@@ -155,13 +157,13 @@ func (c *prePushCase) receipt(dir string, args ...string) (string, error) {
 
 // preflight stands in for `make preflight`: the state before, the gates, the mint
 // after. The Makefile wiring that does the same is pinned separately below.
-func (c *prePushCase) preflight(dir string) string {
+func (c *prePushCase) preflight(dir string, scope ...string) string {
 	c.t.Helper()
 	began, err := c.receipt(dir, "state")
 	if err != nil {
 		c.t.Fatalf("state: %v\n%s", err, began)
 	}
-	out, err := c.receipt(dir, "mint", strings.TrimSpace(began))
+	out, err := c.receipt(dir, append([]string{"mint", strings.TrimSpace(began)}, scope...)...)
 	if err != nil {
 		c.t.Fatalf("mint: %v\n%s", err, out)
 	}
@@ -212,6 +214,133 @@ func TestPrePushPassesACommitWithAReceipt(t *testing.T) {
 	}
 	if tip := c.remoteTip("feature"); tip != head {
 		t.Errorf("the remote holds %q, want %s", tip, head)
+	}
+}
+
+// A receipt is the checkout's own. One a later commit carries (added past the
+// local tier's ignore rule) was minted by whoever made that commit, so it lets
+// no push through, even of the very commit it names.
+func TestPrePushRefusesAReceiptACommitCarries(t *testing.T) {
+	c := newPrePushCase(t)
+	first := c.commit("feature.md", "a feature\n")
+	rel := ".abcd/.work.local/preflight-receipts/" + first
+	c.write(rel, "commit "+first+"\nminted 2026-01-01T00:00:00Z\n", 0o644)
+	c.git("add", "-f", rel)
+	c.git("commit", "-q", "-m", "an unrelated change")
+	out, err := c.push("origin", first+":refs/heads/feature")
+	if err == nil {
+		t.Fatalf("a receipt a commit carries let the push through\n%s", out)
+	}
+	if !strings.Contains(out, "no passing preflight") {
+		t.Errorf("the refusal does not say what is missing\n%s", out)
+	}
+	if tip := c.remoteTip("feature"); tip != "" {
+		t.Errorf("the remote moved to %s although the push was refused", tip)
+	}
+}
+
+// Pushed from a linked worktree, the hook runs with git's GIT_DIR naming that
+// worktree, and a sibling's receipt is still judged by the sibling's own
+// index: one the primary checkout tracks counts for nothing there either.
+func TestPrePushRefusesAReceiptASiblingCheckoutTracks(t *testing.T) {
+	c := newPrePushCase(t)
+	sibling := filepath.Join(t.TempDir(), "sibling")
+	c.git("worktree", "add", "-q", "-b", "lane", sibling)
+	if err := os.WriteFile(filepath.Join(sibling, "lane.md"), []byte("lane\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "lane.md"}, {"commit", "-q", "-m", "lane"}} {
+		if out, err := c.run(sibling, "git", args...); err != nil {
+			t.Fatal(out)
+		}
+	}
+	lane, err := c.run(sibling, "git", "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(lane)
+	}
+	lane = strings.TrimSpace(lane)
+	rel := ".abcd/.work.local/preflight-receipts/" + lane
+	c.write(rel, "commit "+lane+"\nminted 2026-01-01T00:00:00Z\n", 0o644)
+	c.git("add", "-f", rel)
+	c.git("commit", "-q", "-m", "an unrelated change")
+	out, err := c.run(sibling, "git", "push", "origin", "lane")
+	if err == nil {
+		t.Fatalf("a receipt the primary checkout tracks let a sibling's push through\n%s", out)
+	}
+	if tip := c.remoteTip("lane"); tip != "" {
+		t.Errorf("the remote moved to %s although the push was refused", tip)
+	}
+}
+
+// A tier git tracks anything in, by any letter case of its name, holds no
+// receipt that counts: a filesystem that folds case opens .abcd/.Work.Local as
+// the tier itself.
+func TestPrePushRefusesAReceiptBesideATierSpelledAnotherWay(t *testing.T) {
+	c := newPrePushCase(t)
+	head := c.commit("feature.md", "a feature\n")
+	if out := c.preflight(c.dir); !strings.Contains(out, "receipt minted for "+head[:12]) {
+		t.Fatalf("a preflight on a clean tree minted no receipt\n%s", out)
+	}
+	blob := c.git("rev-parse", "HEAD:seed.md")
+	c.git("update-index", "--add", "--cacheinfo", "100644,"+blob+",.abcd/.Work.Local/run/drain.json")
+	out, err := c.push("origin", head+":refs/heads/feature")
+	if err == nil {
+		t.Fatalf("a receipt beside a tier git tracks a file in let the push through\n%s", out)
+	}
+	if tip := c.remoteTip("feature"); tip != "" {
+		t.Errorf("the remote moved to %s although the push was refused", tip)
+	}
+}
+
+// A listing longer than a pipe holds is judged whole: the tracked tier entry
+// sorts first, and a check that stops reading at its first match must still
+// count it as a match, never as none.
+func TestPrePushRefusesAReceiptACommitCarriesAmongManyFiles(t *testing.T) {
+	c := newPrePushCase(t)
+	for i := range 2500 {
+		c.write(fmt.Sprintf("pad/%04d-%s.md", i, strings.Repeat("x", 60)), "x\n", 0o644)
+	}
+	c.git("add", "pad")
+	first := c.commit("feature.md", "a feature\n")
+	rel := ".abcd/.work.local/preflight-receipts/" + first
+	c.write(rel, "commit "+first+"\nminted 2026-01-01T00:00:00Z\n", 0o644)
+	c.git("add", "-f", rel)
+	c.git("commit", "-q", "-m", "an unrelated change")
+	if listed := c.git("ls-files"); len(listed) < 128<<10 {
+		t.Fatalf("the listing is %d bytes; it must outgrow a pipe's buffer", len(listed))
+	}
+	out, err := c.push("origin", first+":refs/heads/feature")
+	if err == nil {
+		t.Fatalf("a receipt a commit carries let the push through beside a long listing\n%s", out)
+	}
+	if tip := c.remoteTip("feature"); tip != "" {
+		t.Errorf("the remote moved to %s although the push was refused", tip)
+	}
+}
+
+// On a filesystem that folds names, a spelling no letter case of the tier's
+// name matches (the Kelvin sign for its k) still opens the tier, and is judged
+// by the directory it opens.
+func TestPrePushRefusesAReceiptBesideATierFoldedByTheFilesystem(t *testing.T) {
+	c := newPrePushCase(t)
+	head := c.commit("feature.md", "a feature\n")
+	if out := c.preflight(c.dir); !strings.Contains(out, "receipt minted for "+head[:12]) {
+		t.Fatalf("a preflight on a clean tree minted no receipt\n%s", out)
+	}
+	spelled := ".abcd/.wor\u212a.local"
+	tier, errT := os.Stat(filepath.Join(c.dir, ".abcd", ".work.local"))
+	folded, errF := os.Stat(filepath.Join(c.dir, filepath.FromSlash(spelled)))
+	if errT != nil || errF != nil || !os.SameFile(tier, folded) {
+		t.Skip("this filesystem does not fold the Kelvin sign onto k")
+	}
+	blob := c.git("rev-parse", "HEAD:seed.md")
+	c.git("update-index", "--add", "--cacheinfo", "100644,"+blob+","+spelled+"/run/drain.json")
+	out, err := c.push("origin", head+":refs/heads/feature")
+	if err == nil {
+		t.Fatalf("a receipt beside a tier git tracks a file in let the push through\n%s", out)
+	}
+	if tip := c.remoteTip("feature"); tip != "" {
+		t.Errorf("the remote moved to %s although the push was refused", tip)
 	}
 }
 
@@ -369,7 +498,9 @@ func TestMakePreflightMintsTheReceiptAfterItsLastGate(t *testing.T) {
 	if err != nil {
 		t.Skip("not in a git checkout")
 	}
-	cmd := exec.Command("make", "-n", "preflight")
+	// The full rule whatever this checkout's change is: a records-only one would
+	// read the second rule, which the lint package pins.
+	cmd := exec.Command("make", "-n", "preflight", "PREFLIGHT_RECORDS_ONLY=")
 	cmd.Dir = strings.TrimSpace(string(out))
 	cmd.Env = gittest.Env(t)
 	dry, err := cmd.CombinedOutput()
@@ -393,5 +524,111 @@ func TestMakePreflightMintsTheReceiptAfterItsLastGate(t *testing.T) {
 	}
 	if raceAt < 0 || raceAt > mintAt {
 		t.Errorf("the receipt is not minted after the race-enabled tests\n%s", dry)
+	}
+}
+
+// receiptLines is the receipt the clone holds for a commit, line by line.
+func (c *prePushCase) receiptLines(commit string) []string {
+	c.t.Helper()
+	b, err := os.ReadFile(filepath.Join(c.dir, ".abcd", ".work.local", "preflight-receipts", commit))
+	if err != nil {
+		c.t.Fatalf("read the receipt for %s: %v", commit, err)
+	}
+	return strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+}
+
+// TestPreflightReceiptNamesItsScope (iss-2610251555094324): a receipt says
+// whether the unit and race stages ran. A records-only one carries the
+// classifier's verdict and the merge base it was taken at, so a later reader
+// can redo the check, and it lets the push through like a full one.
+func TestPreflightReceiptNamesItsScope(t *testing.T) {
+	t.Run("full", func(t *testing.T) {
+		c := newPrePushCase(t)
+		head := c.commit("feature.md", "a feature\n")
+		c.preflight(c.dir)
+		if got := c.receiptLines(head); len(got) != 3 || got[2] != "scope full" {
+			t.Fatalf("a full preflight's receipt is %q; want it to name the full scope", got)
+		}
+	})
+	t.Run("records-only", func(t *testing.T) {
+		c := newPrePushCase(t)
+		base := c.git("rev-parse", "origin/main")
+		head := c.commit(".abcd/work/issues/open/iss-1.md", "one\n")
+		out := c.preflight(c.dir, "records-only")
+		if !strings.Contains(out, "receipt minted for "+head[:12]+", records-only") {
+			t.Fatalf("a records-only preflight does not say its receipt is records-only\n%s", out)
+		}
+		want := []string{
+			"scope records-only",
+			"verdict records-only: all 1 changed paths since the merge base with origin/main, " + base +
+				", are in the record tiers, and no test names one",
+			"base " + base,
+		}
+		if got := c.receiptLines(head); len(got) != 5 || !slices.Equal(got[2:], want) {
+			t.Fatalf("the records-only receipt is %q; want it to end %q", got, want)
+		}
+		if out, err := c.push("origin", "feature"); err != nil {
+			t.Fatalf("a commit with a records-only receipt was refused\n%s", out)
+		}
+	})
+}
+
+// TestPreflightReceiptRefusesARecordsOnlyRunOverACodeChange: a records-only
+// receipt is minted only when the classifier, run again at the mint, still
+// reads the change as records-only, so a code change mixed into a records
+// change gets no receipt for a run that skipped its tests.
+func TestPreflightReceiptRefusesARecordsOnlyRunOverACodeChange(t *testing.T) {
+	c := newPrePushCase(t)
+	c.commit(".abcd/work/issues/open/iss-1.md", "one\n")
+	head := c.commit("feature.go", "package feature\n")
+	out := c.preflight(c.dir, "records-only")
+	if strings.Contains(out, "receipt minted for") || !strings.Contains(out, "no longer reads as records-only (full run: feature.go is outside") {
+		t.Fatalf("a records-only mint over a code change = %q; want it refused, naming the code file", out)
+	}
+	if _, err := os.Stat(filepath.Join(c.dir, ".abcd", ".work.local", "preflight-receipts", head)); err == nil {
+		t.Fatal("a records-only run over a code change left a receipt")
+	}
+	if pushed, err := c.push("origin", "feature"); err == nil {
+		t.Fatalf("a code change whose preflight skipped its tests was pushed\n%s", pushed)
+	}
+}
+
+// TestMakePreflightTakesTheRecordsRuleOnlyForARecordsChange runs the
+// committed Makefile, dry, in a clone whose change is records alone, then the
+// same change with a code file mixed in: the first takes the records-only rule
+// (no race stage, a records-only receipt) and the second the full one.
+func TestMakePreflightTakesTheRecordsRuleOnlyForARecordsChange(t *testing.T) {
+	if _, err := exec.LookPath("make"); err != nil {
+		t.Skip("make unavailable")
+	}
+	c := newPrePushCase(t)
+	root := prePushSourceRoot(t)
+	// go.mod too: the Makefile reads the toolchain it declares as it parses.
+	for _, rel := range []string{"Makefile", "go.mod", "scripts/pinned-toolchain.sh"} {
+		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatalf("read the committed %s: %v", rel, err)
+		}
+		c.write(rel, string(src), 0o755)
+	}
+	c.git("add", "-A")
+	c.git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "the committed Makefile")
+	c.git("update-ref", "refs/remotes/origin/main", "HEAD")
+	dry := func() string {
+		t.Helper()
+		out, err := c.run(c.dir, "make", "-n", "preflight")
+		if err != nil {
+			t.Fatalf("make -n preflight: %v\n%s", err, out)
+		}
+		return out
+	}
+	c.commit(".abcd/work/issues/open/iss-1.md", "one\n")
+	if out := dry(); strings.Contains(out, "go test -race") || !strings.Contains(out, "\nscripts/records-only.sh\n") ||
+		!regexp.MustCompile(`(?m)^scripts/preflight-receipt\.sh mint "[0-9a-f]{40} clean" records-only$`).MatchString(out) {
+		t.Fatalf("a records change did not take the records-only rule:\n%s", out)
+	}
+	c.commit("feature.go", "package feature\n")
+	if out := dry(); !strings.Contains(out, "go test -race") || strings.Contains(out, "records-only") {
+		t.Fatalf("a code change mixed into a records change did not take the full rule:\n%s", out)
 	}
 }

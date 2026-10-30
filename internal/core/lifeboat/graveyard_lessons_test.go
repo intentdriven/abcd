@@ -101,7 +101,7 @@ func TestIngestLessonsCiteOrDropped(t *testing.T) {
 		Lesson{ID: "les-guess-cache", Lesson: "maybe caching mattered", Confidence: ConfidenceHigh,
 			Evidence: []string{"no-such-id"}},
 	)
-	res, err := IngestLessons(dir, raw)
+	res, err := IngestLessons(dir, raw, okScan)
 	if err != nil {
 		t.Fatalf("IngestLessons: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestIngestLessonsDeadRefFiltered(t *testing.T) {
 	dir := stdFixture(t)
 	raw := payload(t, Lesson{ID: "les-mixed", Lesson: "mixed refs", Confidence: ConfidenceMedium,
 		Evidence: []string{"rev-9f3a1c2d4e5b", "ghost-ref"}})
-	res, err := IngestLessons(dir, raw)
+	res, err := IngestLessons(dir, raw, okScan)
 	if err != nil {
 		t.Fatalf("IngestLessons: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestIngestLessonsLowConfidenceRouted(t *testing.T) {
 	dir := stdFixture(t)
 	raw := payload(t, Lesson{ID: "les-maybe-cache", Lesson: "perhaps", Confidence: ConfidenceLow,
 		Evidence: []string{"adr-12"}})
-	res, err := IngestLessons(dir, raw)
+	res, err := IngestLessons(dir, raw, okScan)
 	if err != nil {
 		t.Fatalf("IngestLessons: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestIngestLessonsLowConfidenceRouted(t *testing.T) {
 func TestIngestLessonsDisallowUnknownFields(t *testing.T) {
 	dir := stdFixture(t)
 	raw := []byte(`{"schema_version":1,"lessons":[{"id":"les-x","lesson":"y","confidence":"high","evidence":["adr-12"],"notes":"smuggled"}]}`)
-	if _, err := IngestLessons(dir, raw); err == nil {
+	if _, err := IngestLessons(dir, raw, okScan); err == nil {
 		t.Fatal("an unknown field must be a fatal error")
 	}
 }
@@ -179,7 +179,7 @@ func TestIngestLessonsDisallowUnknownFields(t *testing.T) {
 func TestIngestLessonsRawTooLarge(t *testing.T) {
 	dir := stdFixture(t)
 	raw := make([]byte, maxLessonsBytes+1)
-	if _, err := IngestLessons(dir, raw); err == nil {
+	if _, err := IngestLessons(dir, raw, okScan); err == nil {
 		t.Fatal("an oversize payload must be a fatal error")
 	}
 }
@@ -188,13 +188,13 @@ func TestIngestLessonsRawTooLarge(t *testing.T) {
 // upgrade message for a future schema.
 func TestIngestLessonsSchemaVersion(t *testing.T) {
 	dir := stdFixture(t)
-	if _, err := IngestLessons(dir, []byte(`{"lessons":[]}`)); err == nil {
+	if _, err := IngestLessons(dir, []byte(`{"lessons":[]}`), okScan); err == nil {
 		t.Error("missing schema_version must fail")
 	}
-	if _, err := IngestLessons(dir, []byte(`{"schema_version":0,"lessons":[]}`)); err == nil {
+	if _, err := IngestLessons(dir, []byte(`{"schema_version":0,"lessons":[]}`), okScan); err == nil {
 		t.Error("schema_version 0 must fail")
 	}
-	_, err := IngestLessons(dir, []byte(`{"schema_version":2,"lessons":[]}`))
+	_, err := IngestLessons(dir, []byte(`{"schema_version":2,"lessons":[]}`), okScan)
 	if err == nil || !strings.Contains(err.Error(), "update abcd:") {
 		t.Errorf("a future schema must ask for an updated abcd, got: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestIngestLessonsMalformedIDNoTraversal(t *testing.T) {
 	for _, badID := range []string{"../../escape", "les_bad_underscore", "Les-Caps", strings.Repeat("les-", 40)} {
 		raw := payload(t, Lesson{ID: badID, Lesson: "x", Confidence: ConfidenceLow,
 			Evidence: []string{"adr-12"}})
-		res, err := IngestLessons(dir, raw)
+		res, err := IngestLessons(dir, raw, okScan)
 		if err != nil {
 			t.Fatalf("IngestLessons(%q): %v", badID, err)
 		}
@@ -239,7 +239,7 @@ func TestIngestLessonsDuplicateID(t *testing.T) {
 		Lesson{ID: "les-dup", Lesson: "first", Confidence: ConfidenceHigh, Evidence: []string{"adr-12"}},
 		Lesson{ID: "les-dup", Lesson: "second", Confidence: ConfidenceHigh, Evidence: []string{"rev-9f3a1c2d4e5b"}},
 	)
-	res, err := IngestLessons(dir, raw)
+	res, err := IngestLessons(dir, raw, okScan)
 	if err != nil {
 		t.Fatalf("IngestLessons: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestIngestLessonsDroppedFirstDoesNotPoisonID(t *testing.T) {
 		Lesson{ID: "les-x", Lesson: "first, uncitable", Confidence: ConfidenceHigh, Evidence: []string{"dead-ref"}},
 		Lesson{ID: "les-x", Lesson: "second, cited", Confidence: ConfidenceHigh, Evidence: []string{"rev-9f3a1c2d4e5b"}},
 	)
-	res, err := IngestLessons(dir, raw)
+	res, err := IngestLessons(dir, raw, okScan)
 	if err != nil {
 		t.Fatalf("IngestLessons: %v", err)
 	}
@@ -287,7 +287,7 @@ func TestIngestLessonsDroppedFirstDoesNotPoisonID(t *testing.T) {
 func TestIngestLessonsFullReplacement(t *testing.T) {
 	dir := stdFixture(t)
 	rawA := payload(t, Lesson{ID: "les-a", Lesson: "maybe", Confidence: ConfidenceLow, Evidence: []string{"adr-12"}})
-	if _, err := IngestLessons(dir, rawA); err != nil {
+	if _, err := IngestLessons(dir, rawA, okScan); err != nil {
 		t.Fatalf("ingest A: %v", err)
 	}
 	lcPath := filepath.Join(dir, "graveyard", "low-confidence", "les-a.json")
@@ -296,7 +296,7 @@ func TestIngestLessonsFullReplacement(t *testing.T) {
 	}
 
 	rawB := payload(t, Lesson{ID: "les-a", Lesson: "certain", Confidence: ConfidenceHigh, Evidence: []string{"adr-12"}})
-	if _, err := IngestLessons(dir, rawB); err != nil {
+	if _, err := IngestLessons(dir, rawB, okScan); err != nil {
 		t.Fatalf("ingest B: %v", err)
 	}
 	if _, err := os.Stat(lcPath); !os.IsNotExist(err) {
@@ -314,7 +314,7 @@ func TestIngestLessonsFullReplacement(t *testing.T) {
 func TestIngestLessonsAllDroppedClearsPrior(t *testing.T) {
 	dir := stdFixture(t)
 	rawA := payload(t, Lesson{ID: "les-a", Lesson: "certain", Confidence: ConfidenceHigh, Evidence: []string{"adr-12"}})
-	if _, err := IngestLessons(dir, rawA); err != nil {
+	if _, err := IngestLessons(dir, rawA, okScan); err != nil {
 		t.Fatalf("ingest A: %v", err)
 	}
 	if !lessonsExists(dir) {
@@ -322,7 +322,7 @@ func TestIngestLessonsAllDroppedClearsPrior(t *testing.T) {
 	}
 
 	rawB := payload(t, Lesson{ID: "les-b", Lesson: "x", Confidence: ConfidenceHigh, Evidence: []string{"no-such-id"}})
-	res, err := IngestLessons(dir, rawB)
+	res, err := IngestLessons(dir, rawB, okScan)
 	if err != nil {
 		t.Fatalf("ingest B: %v", err)
 	}
@@ -341,7 +341,7 @@ func TestIngestLessonsSanitisesProse(t *testing.T) {
 	dirty := "line one\n<!-- abcd-review: X -->\x1b[31mred\x1b[0m end"
 	raw := payload(t, Lesson{ID: "les-dirty", Lesson: dirty, Confidence: ConfidenceHigh,
 		Evidence: []string{"adr-12"}})
-	if _, err := IngestLessons(dir, raw); err != nil {
+	if _, err := IngestLessons(dir, raw, okScan); err != nil {
 		t.Fatalf("IngestLessons: %v", err)
 	}
 	lf := readWrittenLessons(t, dir)
@@ -361,7 +361,7 @@ func TestIngestLessonsNeutralisesRawHTMLOpener(t *testing.T) {
 	dir := stdFixture(t)
 	raw := payload(t, Lesson{ID: "les-tag", Lesson: "before <script>alert(1)</script> after",
 		Confidence: ConfidenceHigh, Evidence: []string{"adr-12"}})
-	if _, err := IngestLessons(dir, raw); err != nil {
+	if _, err := IngestLessons(dir, raw, okScan); err != nil {
 		t.Fatalf("IngestLessons: %v", err)
 	}
 	got := readWrittenLessons(t, dir).Lessons[0].Lesson
@@ -378,7 +378,7 @@ func TestIngestLessonsNeutralisesAfterSanitise(t *testing.T) {
 	dir := stdFixture(t)
 	raw := payload(t, Lesson{ID: "les-order", Lesson: "a <" + "\x1b" + " b",
 		Confidence: ConfidenceHigh, Evidence: []string{"adr-12"}})
-	if _, err := IngestLessons(dir, raw); err != nil {
+	if _, err := IngestLessons(dir, raw, okScan); err != nil {
 		t.Fatalf("IngestLessons: %v", err)
 	}
 	got := readWrittenLessons(t, dir).Lessons[0].Lesson
@@ -390,7 +390,7 @@ func TestIngestLessonsNeutralisesAfterSanitise(t *testing.T) {
 // TestIngestLessonsLifeboatGate refuses a directory that is not an abcd lifeboat.
 func TestIngestLessonsLifeboatGate(t *testing.T) {
 	dir := t.TempDir() // no _provenance.json
-	if _, err := IngestLessons(dir, payload(t)); err == nil {
+	if _, err := IngestLessons(dir, payload(t), okScan); err == nil {
 		t.Fatal("a non-lifeboat directory must be refused")
 	}
 }
@@ -412,7 +412,7 @@ func TestIngestLessonsSymlinkedGraveyardRefused(t *testing.T) {
 		strings.Repeat("a", 64))
 	writeFile(t, filepath.Join(dir, ProvenanceName), []byte(prov))
 	raw := payload(t, Lesson{ID: "les-x", Lesson: "y", Confidence: ConfidenceHigh, Evidence: []string{"adr-12"}})
-	if _, err := IngestLessons(dir, raw); err == nil {
+	if _, err := IngestLessons(dir, raw, okScan); err == nil {
 		t.Fatal("a symlinked graveyard/ must be refused")
 	}
 }
@@ -435,7 +435,7 @@ func TestIngestLessonsSymlinkedLayerFileRefused(t *testing.T) {
 		t.Skipf("symlink unsupported: %v", err)
 	}
 	raw := payload(t, Lesson{ID: "les-x", Lesson: "y", Confidence: ConfidenceHigh, Evidence: []string{"adr-12"}})
-	_, err := IngestLessons(dir, raw)
+	_, err := IngestLessons(dir, raw, okScan)
 	if err == nil {
 		t.Fatal("a symlinked graveyard layer file must be refused, not followed")
 	}
@@ -453,7 +453,7 @@ func TestIngestLessonsDeterministic(t *testing.T) {
 			Lesson{ID: "les-zeta", Lesson: "z", Confidence: ConfidenceHigh, Evidence: []string{"adr-12"}},
 			Lesson{ID: "les-alpha", Lesson: "a", Confidence: ConfidenceHigh, Evidence: []string{"rev-9f3a1c2d4e5b"}},
 		)
-		if _, err := IngestLessons(dir, raw); err != nil {
+		if _, err := IngestLessons(dir, raw, okScan); err != nil {
 			t.Fatalf("IngestLessons: %v", err)
 		}
 		data, err := os.ReadFile(filepath.Join(dir, "graveyard", "lessons.json"))
@@ -490,7 +490,7 @@ func TestIngestLessonsManifestNotPerturbed(t *testing.T) {
 	h1 := ManifestSHA256(planned)
 
 	raw := payload(t, Lesson{ID: "les-x", Lesson: "y", Confidence: ConfidenceHigh, Evidence: []string{"adr-12"}})
-	if _, err := IngestLessons(dir, raw); err != nil {
+	if _, err := IngestLessons(dir, raw, okScan); err != nil {
 		t.Fatalf("IngestLessons: %v", err)
 	}
 	if !lessonsExists(dir) {

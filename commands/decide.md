@@ -53,6 +53,19 @@ correction is a new decision that says what it corrects.
 It needs the shared tier `.abcd/work/`. A repository without one is refused,
 naming `ahoy install`, which lays it.
 
+
+## A shared main checkout is refused
+
+A write through this verb backs off with exit 3, writing nothing, when the
+checkout it would write into is a main working tree that two or more live
+sessions started in: a record written there lands under every one of them.
+Work in a worktree of your own in the machine-scoped store
+(`~/.abcd.noindex/worktrees/<root-sha>/<name>/`, made with `git worktree add`)
+and run the verb from there; the refusal names the command. A linked worktree is never
+refused, nor is a checkout one session or none works in, so a person working
+alone is not held up. The session-start hook records which checkout each
+session starts in, and a session stops counting when its host process ends.
+Reads are never refused.
 ## List the decisions
 
 ```bash
@@ -139,6 +152,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

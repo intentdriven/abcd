@@ -39,6 +39,7 @@ GATE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-reviews.sh"
 }
 
 failures=0
+last_out=""
 tmproot="$(mktemp -d)"
 trap 'rm -rf "$tmproot"' EXIT
 
@@ -67,6 +68,7 @@ expect() {
 	# cases, so `/bin/bash scripts/check-reviews-cases.sh` proves it on the bash
 	# 3.2 macOS ships and a bare invocation on whatever bash PATH names.
 	out="$(cd "$repo" && "$BASH" "$GATE" 2>&1)" || rc=$?
+	last_out="$out"
 	case "$want" in
 	pass)
 		if [ "$rc" -ne 0 ]; then
@@ -156,6 +158,27 @@ git -C "$d" rm -q "$SCOPE/01-findings.md"
 git -C "$d" commit -qm "delete a review file"
 expect fail "$d" "RD002 deletion of a review file"
 
+# A path git quotes — non-ASCII bytes by default — begins with a `"`, which the
+# review-path pattern never matched, so its edit was skipped as out of scope.
+# The log now runs with core.quotePath=false; a path git still quotes (a `"` in
+# the name) is inside the reviews-scoped log and is refused, never skipped.
+d="$(newrepo quoted-utf8)"
+printf '# Notes\n\nA note.\n' >"$d/$SCOPE/02-résumé.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "add a review file with a non-ASCII name"
+printf 'An amendment made after the fact.\n' >>"$d/$SCOPE/02-résumé.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "edit it"
+expect fail "$d" "RD002 an edit to a review file with a non-ASCII name" "RD002"
+d="$(newrepo quoted-quote)"
+printf '# Notes\n\nA note.\n' >"$d/$SCOPE/02-a\"b.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "add a review file with a quote in its name"
+printf 'An amendment made after the fact.\n' >>"$d/$SCOPE/02-a\"b.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "edit it"
+expect fail "$d" "RD002 an edit to a review file git still quotes" "RD002"
+
 # --- the clean polarity ------------------------------------------------------
 
 # Add-only is what the charter asks for, and it must pass — a gate that refuses
@@ -174,6 +197,133 @@ printf 'An amendment to the charter.\n' >>"$d/$REV_DIR/README.md"
 git -C "$d" add -A
 git -C "$d" commit -qm "amend the charter"
 expect pass "$d" "the root README stays mutable"
+
+# --- RD002: the one exception, a pure name redaction -------------------------
+#
+# A commit trailed `Review-Redaction: names` may change a review file in place
+# when every change is a name-shaped span swapped for a member of the gate's
+# fixed placeholder set — nothing reworded, added, removed or re-spaced. Each
+# fixture below differs from the clean one by exactly one of those, so each
+# refusal is pinned to the condition it names. Persona names only.
+
+# namesrepo makes a scratch repo whose history holds a review file that names a
+# login and a person, committed add-only, so the redaction commit is the only
+# post-creation change in it.
+namesrepo() {
+	local d
+	d="$(newrepo "$1")"
+	printf '# People\n\nOpened by alice-dev on the forge.\nReviewed by Alice Smith, who signed off.\n' >"$d/$SCOPE/02-people.md"
+	git -C "$d" add -A
+	git -C "$d" commit -qm "add a review naming people"
+	echo "$d"
+}
+
+# redact <repo> <trailer: yes|no> <new body> commits the rewritten review file.
+redact() {
+	printf '%s' "$3" >"$1/$SCOPE/02-people.md"
+	git -C "$1" add -A
+	if [ "$2" = yes ]; then
+		git -C "$1" commit -qm "redact names from a review" -m "Review-Redaction: names"
+	else
+		git -C "$1" commit -qm "redact names from a review"
+	fi
+}
+
+# privatelist <repo> <body> writes the per-machine private name list. It is
+# written after the last commit, so it stays untracked, as the real one is.
+privatelist() {
+	mkdir -p "$1/.abcd/.work.local"
+	printf '%s' "$2" >"$1/.abcd/.work.local/private-names.txt"
+}
+
+# refute <label> <text> asserts that the output of the expect just before it
+# never carries <text>: a refusal about a removed span must not repeat the span
+# it refused.
+refute() {
+	if grep -qiF -- "$2" <<<"$last_out"; then
+		printf 'cases: FAIL %s — the output repeats a removed span:\n%s\n' "$1" "$last_out" >&2
+		failures=$((failures + 1))
+		return
+	fi
+	printf 'cases: ok   %s (no removed span in the output)\n' "$1"
+}
+
+CLEAN=$'# People\n\nOpened by <login> on the forge.\nReviewed by <name>, who signed off.\n'
+
+d="$(namesrepo redact-clean)"
+redact "$d" yes "$CLEAN"
+expect pass "$d" "RD002 a trailed pure name redaction is allowed" "RD002 redaction"
+
+d="$(namesrepo redact-reworded)"
+redact "$d" yes $'# People\n\nOpened by <login> on the forge.\nReviewed by <name>, who approved.\n'
+expect fail "$d" "RD002 a redaction that also rewords prose" "a removed span is not name-shaped"
+
+d="$(namesrepo redact-respaced)"
+redact "$d" yes $'# People\n\nOpened by <login> on the  forge.\nReviewed by <name>, who signed off.\n'
+expect fail "$d" "RD002 a redaction that also changes whitespace" "not a pure substitution"
+
+d="$(namesrepo redact-no-trailer)"
+redact "$d" no "$CLEAN"
+expect fail "$d" "RD002 a pure redaction without the trailer" "RD002"
+
+d="$(namesrepo redact-off-set)"
+redact "$d" yes $'# People\n\nOpened by someone on the forge.\nReviewed by <name>, who signed off.\n'
+expect fail "$d" "RD002 a replacement outside the placeholder set" "not one of the fixed placeholders"
+
+# A role phrase reads as ordinary prose, not as a redaction, so it is not a
+# marker: a swap to one could invent content where only the public check runs.
+d="$(namesrepo redact-role-phrase)"
+redact "$d" yes $'# People\n\nOpened by <login> on the forge.\nReviewed by the product thinker, who signed off.\n'
+expect fail "$d" "RD002 a role phrase is not a redaction marker" "not one of the fixed placeholders"
+
+# The adjacency guards: a removal with nothing inserted, or an insertion with
+# nothing removed, is not a substitution. Each sits beside a valid swap, and
+# after it, so a guard that let a bare '+' borrow the previous pair's removed
+# span would pass the fixture rather than refuse it.
+# adjrepo <name> <before> <after> commits <before>, then <after> trailered.
+adjrepo() {
+	local d
+	d="$(newrepo "$1")"
+	printf '%s' "$2" >"$d/$SCOPE/02-people.md"
+	git -C "$d" add -A
+	git -C "$d" commit -qm "add a review naming people"
+	redact "$d" yes "$3"
+	echo "$d"
+}
+d="$(adjrepo redact-bare-removal $'Opened by alice-dev on the forge.\nA `do-not-merge` label.\n' \
+	$'Opened by <login> on the forge.\nA `` label.\n')"
+expect fail "$d" "RD002 a trailed removal with nothing inserted" "not a pure substitution"
+d="$(adjrepo redact-bare-insertion $'Opened by alice-dev on the forge.\nFiled by ().\n' \
+	$'Opened by <login> on the forge.\nFiled by (<name>).\n')"
+expect fail "$d" "RD002 a trailed insertion with nothing removed" "not a pure substitution"
+
+d="$(namesrepo redact-delete)"
+git -C "$d" rm -q "$SCOPE/02-people.md"
+git -C "$d" commit -qm "redact names from a review" -m "Review-Redaction: names"
+expect fail "$d" "RD002 a trailed deletion is still refused" "not history status D"
+
+d="$(namesrepo redact-rename)"
+git -C "$d" mv "$SCOPE/02-people.md" "$SCOPE/03-people.md"
+git -C "$d" commit -qm "redact names from a review" -m "Review-Redaction: names"
+expect fail "$d" "RD002 a trailed rename is still refused" "not history status R"
+
+# Where the private list exists, a removed span must also be on it. Both of the
+# list's formats are read: keyed (KEY PATTERN) and legacy (whole-line patterns).
+d="$(namesrepo redact-private-on)"
+redact "$d" yes "$CLEAN"
+privatelist "$d" $'# abcd-banlist: keyed\npersona-login alice-dev\npersona-name alice smith\n'
+expect pass "$d" "RD002 a redaction whose spans are on the keyed private list" "RD002 redaction"
+
+d="$(namesrepo redact-private-legacy)"
+redact "$d" yes "$CLEAN"
+privatelist "$d" $'alice-dev\nAlice Smith\n'
+expect pass "$d" "RD002 a redaction whose spans are on the legacy private list" "RD002 redaction"
+
+d="$(namesrepo redact-private-off)"
+redact "$d" yes "$CLEAN"
+privatelist "$d" $'# abcd-banlist: keyed\npersona-login alice-dev\npersona-other bob-dev\n'
+expect fail "$d" "RD002 a removed span missing from the private list" "not on the private name list"
+refute "RD002 the private-list refusal withholds the span" "Alice Smith"
 
 # --- RD004: every review names the commit it read (itd-28) --------------------
 

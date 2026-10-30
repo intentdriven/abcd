@@ -1,7 +1,7 @@
 ---
 name: capture
 description: "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout."
-argument-hint: "[<text> --remedy <fix>] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> [--duplicates <iss-N|itd-N,...>] | defer <iss-N> --after <vX.Y.Z> --reason <text> | remedy <iss-N> <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | mentions [--ref <branch>] | migrate [--apply]"
+argument-hint: "[<text> --remedy <fix>] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> [--grounds \"<token>: <text>\"] [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> [--grounds \"<token>: <text>\"] [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> [--duplicates <iss-N|itd-N,...>] | defer <iss-N> --after <vX.Y.Z> --reason <text> | remedy <iss-N> <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | mentions [--ref <branch>] | migrate [--apply]"
 block: people
 ---
 
@@ -65,6 +65,19 @@ It is a pointer, never a precondition. A capture is one line of text plus one
 line of remedy: every new issue names the fix it proposes, so the filing
 carries the first step towards closing it.
 
+
+## A shared main checkout is refused
+
+A write through this verb backs off with exit 3, writing nothing, when the
+checkout it would write into is a main working tree that two or more live
+sessions started in: a record written there lands under every one of them.
+Work in a worktree of your own in the machine-scoped store
+(`~/.abcd.noindex/worktrees/<root-sha>/<name>/`, made with `git worktree add`)
+and run the verb from there; the refusal names the command. A linked worktree is never
+refused, nor is a checkout one session or none works in, so a person working
+alone is not held up. The session-start hook records which checkout each
+session starts in, and a session stops counting when its host process ends.
+Reads are never refused.
 ## Capture an issue
 
 Append a structured issue from free-form text:
@@ -809,6 +822,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

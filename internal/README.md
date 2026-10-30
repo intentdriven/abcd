@@ -93,6 +93,12 @@ plugin surface, and a future MCP server share one engine.
   over them. History importing either assembler to learn the grammar would pull
   the assemblers into the transcript store, so the grammar lives here and each of
   them imports it.
+- **`core/session/`** — the brief session relay's engine
+  (spc-2610141709430146): rooms, join codes, the member and guest roles, each
+  room's update log held in memory only, guests' suggestions, the Yjs client
+  ids credited to members, the limits and rates, and `blueprint`, which writes
+  the team's own relay deployment under `.abcd/relay/`. It never parses the
+  brief and never writes to disk; `surface/session` carries it over the wire.
 - **`core/relink/`** — the one link-repoint primitive. A record's folder is its
   status, so every lifecycle transition is a rename, and a rename strands every
   relative link that named the file where it was. The verbs that move a record
@@ -134,6 +140,20 @@ plugin surface, and a future MCP server share one engine.
   unescaping and case-insensitively under Unicode simple folding, so a case twin
   counts; the refusal names both spellings and where they sit, and each caller
   phrases its own message from those fields.
+- **`core/matrix/`** — a model-matrix run (itd-2610161733316518): one task done
+  many times across a declared matrix of models from one frozen commit, merged
+  nowhere. It holds the run's records — the declaration, decoded strictly
+  through `core/jsonstrict`; the run record, which pins the frozen commit, the
+  binary, the prompt and tool-definition hashes, the render template, the
+  machine and the caps, and lists every field it could not pin with
+  `core/oracle`'s reasons; and the trial record, which carries the runners' and
+  routes' receipts unchanged — plus the export that maps a trial onto a Harbor
+  trial result and an Inspect eval sample and back. A run is a lab procedure:
+  it writes only under its lab's `state/matrix/`, through `lab.Procedure`, so
+  it obeys the lab's halts and pins its binary through the lab's one hashing
+  path (`lab.BinaryIdentity`). The run record and its declaration pass the
+  repository's secret scanner (`adapter/scanner`) before they are written, and
+  are written together or not at all (`lab.Procedure.WriteStates`).
 - **`core/surface/`** — the compatibility surface as DATA: the snapshot of every
   command, flag, and manifest entry a consumer binds to, and the diff that names
   what a release narrowed. It shares a word with the `surface/` front-door tier
@@ -163,7 +183,16 @@ plugin surface, and a future MCP server share one engine.
   and `core/site`'s authorship tally counts it apart from assistance and `None`.
   Both also read the model form through it: the loop to judge a receipt's
   model, the site to chart one. The attribution gate decides the grammar in
-  shell; a test ties the two.
+  shell; a test ties the two. It also holds the gate's pull-request body check
+  (`JudgeBody`, the body arm with its fence stripping), which the shell guard
+  judges a body with before gh posts it and `core/landing` judges the body it
+  composes with; a test runs the gate itself over the same corpus.
+- **`core/issuemention/`** — RS004's vocabulary: the issue ids a text names and
+  the `Resolves:`/`Refs:` lines that declare its relation to them. It is a leaf
+  because the shell guard (`core/guard`) judges a pull request's title and body
+  with it, and `core/capture`, which reads history with it, imports the guard.
+  scripts/check-issue-resolution.sh decides the rule; a test runs the gate over
+  the same corpus.
 - **`core/cite/`** — the live half of the citation gate: the bounded fetcher and
   the refresh that writes the committed baseline `core/lint` then enforces with
   zero network. It is the only place abcd dials out on behalf of documentation,
@@ -251,6 +280,22 @@ plugin surface, and a future MCP server share one engine.
   front door compensates by making a disabled registry loud rather than silent.
   Fail-open-loud on a broken guard belongs to the hook shim (`hooks/hooks.json`)
   and the `abcd guard hook` adapter, not here.
+- **`core/dogfood/`** — which abcd binary a hook runs in a checkout the person
+  opted in to dogfooding through `~/.abcd.noindex/dogfood-roots`
+  (iss-2610070547057816), and the build it runs. The list is read through
+  `fsutil.HomeDeclarationEntry`, each line naming a checkout, the https or ssh
+  remote its reviewed branch lives on (a path, `file://`, `git://` or `http://`
+  remote is refused, as one an agent or the network path can move), and that
+  branch; a listed main checkout covers the
+  worktrees it records. `Build`, run in the background, is the only caller of
+  the network: it reads the branch's tip with `git ls-remote` against the
+  declared remote, records it in the store under a lock, and builds that commit,
+  its commit and trees re-hashed and its `git archive` export checked against
+  them, into `~/.abcd.noindex/dogfood/<root-sha>/<commit>/`. `Resolve`, the
+  hook's half, names a build only for the recorded tip; the checkout's refs and
+  remote config never choose one. Every failure leaves the installed release
+  running, said on stderr. The hook shims reach it through
+  `hook dogfood-binary`.
 - **`core/board/`** — the status board's one renderer (spc-2610031844142274):
   the product thinker's view and the facilitator's, each as text fitted or
   wrapped to the window or as a markdown list a host session pastes unchanged.
@@ -349,7 +394,11 @@ plugin surface, and a future MCP server share one engine.
   pattern; `Lead` and `Kill` are the same two halves for a caller that keeps
   its own timer and select. The `abcd land` preflight and the status line's
   previous command use `Bound`; the runner's launcher and the tool installer
-  use `Lead` and `Kill`.
+  use `Lead` and `Kill`. `RunToEOF` reads a command's output to EOF before
+  it is waited for, so a command that answered is never reported as a wait
+  that ran out (exec times its own copy from the command's exit): gitutil's
+  context-bound runners, the forge clients, lsof, tailscale and the status
+  line's previous command read through it.
 - **`textwidth/`** — the one display-width measure, word wrap, fit to width
   and break by width (East Asian wide runes count two), a pure leaf with no
   terminal I/O. It sits outside
@@ -362,6 +411,18 @@ plugin surface, and a future MCP server share one engine.
   width and a colour rung, and the sanitising every part passes first. The
   width comes from `term.Size`; text is measured and wrapped through
   `textwidth`.
+- **`surface/session/`** — the relay's HTTP front door, behind `abcd session
+  serve`: the WebSocket at `/session` speaking `core/session`'s messages, the
+  web sign-in's callback at `/auth/callback` and its exchange at
+  `/auth/token` that adds the team's secret, `/config`,
+  `/healthz`, and the origin and forwarded-address checks.
+- **`surface/session/web/`** — the static session page `abcd session page
+  --out` writes, embedded in the binary: the HTML, the page script, the
+  stylesheet and the vendored, provenance-pinned editor bundle. The page joins
+  a relay, edits the brief live, and sends the session back to GitHub as
+  pre-filled issues or one pull request with the person's own token. No Node
+  toolchain enters the repository (adr-47), so its tests are Go tests that pin
+  the script's structure.
 - **`surface/mcp/`** *(later)* — an additive front door exposing the same core
   verbs as `mcp:abcd:*` tools. Added once a surface is worth exposing; no core
   rework required because the core is transport-agnostic.

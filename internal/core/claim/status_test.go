@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -563,11 +564,57 @@ func TestStatusListsEveryoneWithTheReservationsAndTheHold(t *testing.T) {
 		!snap.FetchedAt.Equal(v.FetchedAt) {
 		t.Fatalf("view = %+v, reservations = %+v; want the fetch dated and the release reservation listed", v, snap)
 	}
-	if len(v.Holds) != 1 || v.Holds[0].Text() != "release v0.16.0 being cut by @maya: merges are held" {
-		t.Fatalf("holds = %+v; want the release held", v.Holds)
+	held := "release v0.16.0 being cut by @maya: merges are held; the hold lapses at " +
+		stamp(t0.Add(time.Minute).Add(lease.Max)) + " unless the cut renews it"
+	if len(v.Holds) != 1 || v.Holds[0].Text() != held {
+		t.Fatalf("holds = %+v; want the release held, naming when it lapses", v.Holds)
 	}
-	if got := pat.notes(); !strings.Contains(got, "- release v0.16.0 being cut by @maya: merges are held\n") {
+	if got := pat.notes(); !strings.Contains(got, "- "+held+"\n") {
 		t.Fatalf("the block:\n%s\nwant the hold", got)
+	}
+}
+
+// TestAHoldTheBlockShowedIsFollowedByItsLapse is iss-2610241107191205: a
+// release hold the prompt block named once is followed, after its holder
+// stops renewing it, by one line saying the cut lapsed and holds no merge,
+// so a session told of the hold is not left relaying it as live; the line is
+// shown once.
+func TestAHoldTheBlockShowedIsFollowedByItsLapse(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	if _, err := maya.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatalf("reserving the release: %v", err)
+	}
+	pat.status(nil)
+	if got := pat.notes(); !strings.Contains(got, "release v0.16.0 being cut by @maya: merges are held") {
+		t.Fatalf("the block:\n%s\nwant the hold", got)
+	}
+	w.set(t0.Add(lease.Max + time.Hour))
+	pat.status(nil)
+	v := pat.read()
+	if len(v.Holds) != 0 || len(v.Lapsed) != 1 || v.Lapsed[0].Subject != "rel-v0.16.0" {
+		t.Fatalf("holds = %+v, lapsed = %+v; want no hold and the lapsed cut", v.Holds, v.Lapsed)
+	}
+	got := pat.notes()
+	if !strings.Contains(got, "- "+v.Lapsed[0].Text()+"\n") || !strings.Contains(got, "no merge is held") ||
+		strings.Contains(got, "merges are held") {
+		t.Fatalf("the block:\n%s\nwant the lapse named, and no hold", got)
+	}
+	if again := pat.notes(); strings.Contains(again, "lapsed") {
+		t.Fatalf("the next prompt shows %q; want the lapse shown once", again)
+	}
+	// A week on, the lapse is no news: a session that first reads the block
+	// then (no shown marker of its own) is not told of it, though the spent
+	// branch is still on origin and the read still lists it.
+	w.set(t0.Add(lease.Max + time.Hour + shownKeep + 24*time.Hour))
+	late := w.clone("7+quinn@users.noreply.github.com", "")
+	late.status(nil)
+	if lv := late.read(); len(lv.Lapsed) != 1 {
+		t.Fatalf("a week on, lapsed = %+v; want the spent cut still read", lv.Lapsed)
+	}
+	if later := late.notes(); strings.Contains(later, "lapsed") {
+		t.Fatalf("a session first reading the block a week on is shown %q; want an old lapse not shown", later)
 	}
 }
 

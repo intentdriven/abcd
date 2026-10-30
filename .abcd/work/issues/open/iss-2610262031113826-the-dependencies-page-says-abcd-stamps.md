@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 98 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/02-dependencies.md:95"
-remedy: "none (filed automatically)"
+remedy: "Same edit as iss-2610262030364518: in 02-dependencies.md say the stamp is a convention, not held everywhere (03-configuration.md: eight of fourteen committed records carry it), and that a migration needs a version to read, instead of 'everywhere'."
 finding_ref: cfk-47448b6560f4ad1a
 ---
 

@@ -269,11 +269,13 @@ func newEmbargoCheckCommand(asJSON *bool) *cobra.Command {
 		Use: "check",
 		Long: "The outbound embargo check: before anything is made public, read a commit\n" +
 			"range (--range <a>..<b>: each commit's message and the lines it adds, a\n" +
-			"merge's against its first parent) and any texts (--file <path>, repeatable;\n" +
-			"- reads stdin), and refuse every unpublished advisory's id, a CVE id\n" +
-			"reserved for one, its title, the store's location on this machine, and any\n" +
-			"other advisory id --allow does not name. A finding names where the match is\n" +
-			"and never repeats it.\n\n" +
+			"merge's being those it adds against every parent) and any texts (--file\n" +
+			"<path>, repeatable; - reads stdin), and refuse every unpublished advisory's\n" +
+			"id, a CVE id reserved for one, its title, the store's location on this\n" +
+			"machine, and any other advisory id --allow does not name and GitHub does\n" +
+			"not list among this repository's published advisories (asked only when\n" +
+			"such an id is found). A finding names where the match is and never repeats\n" +
+			"it.\n\n" +
 			"Limits: a title shorter than 12 characters is not matched on its own (its\n" +
 			"id still is); a paraphrase or a count (\"fixes several private reports\") is\n" +
 			"not recognised, and stays the author's to avoid; an advisory id of the\n" +

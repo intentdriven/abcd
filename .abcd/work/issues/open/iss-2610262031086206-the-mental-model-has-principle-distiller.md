@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 90 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/03-mental-model.md:93"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-mental-model.md (Naurian gap paragraph): drop the claim that principle-distiller extracts each spec's grammar at spec completion; principle-distiller serves disembark alone."
 finding_ref: cfk-828117d9aff87248
 ---
 

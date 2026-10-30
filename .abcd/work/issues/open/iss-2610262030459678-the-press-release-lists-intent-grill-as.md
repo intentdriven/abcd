@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 41 of .abcd/work/reviews/2026-10
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/01-product/01-press-release.md:26"
-remedy: "none (filed automatically)"
+remedy: "Remove the '/abcd:intent grill (per itd-27)' companion from the Forward-looking discipline bullet (line 26): itd-27 is superseded by shipped itd-94, whose planning interview is the grilling. The staged list in 02-constraints/04-naming.md still names it and needs the same edit."
 finding_ref: cfk-0c2d6c5af44f467f
 refines: [iss-2609091956001547]
 ---

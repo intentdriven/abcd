@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -1156,6 +1157,64 @@ func TestATakeBackRemovesOnlyTheRoutesAnswerAndNeedsNoLockToDoIt(t *testing.T) {
 	}
 }
 
+// TestKeepingAsideSweepsATemporaryFileAKilledProcessLeft: a process killed
+// between writing an answer's temporary file and linking it to its name
+// leaves a hidden .<route>-return-<hex>.tmp in the review's directory; the
+// next answer kept aside there removes it once it is older than any write
+// could take, and never a temporary file a concurrent writer may still link,
+// nor a file that only resembles one.
+func TestKeepingAsideSweepsATemporaryFileAKilledProcessLeft(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	aw := *res.Awaiting
+	dir := filepath.Join(repo.Root(), filepath.FromSlash(filepath.ToSlash(filepath.Dir(filepath.FromSlash(aw.Receipt)))))
+	old := time.Now().Add(-2 * time.Hour)
+	write := func(name string, mtime time.Time) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("part of an answer"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	staleRP := write(".rp-return-0123456789abcdef.tmp", old)
+	staleOther := write(".other-route-return-fedcba9876543210.tmp", old)
+	live := write(".rp-return-00112233445566ff.tmp", time.Now())
+	lookalikes := []string{
+		write(".rp-return-notes.tmp", old),
+		write("rp-return-0123456789abcdef.tmp", old),
+		write(".rp-return-0123456789abcdef.tmp.keep", old),
+	}
+	staleDir := filepath.Join(dir, ".rp-return-aaaaaaaaaaaaaaaa.tmp")
+	if err := os.Mkdir(staleDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(staleDir, old, old); err != nil {
+		t.Fatal(err)
+	}
+	prev := placeRouteReturn
+	placeRouteReturn = func(string, string, string, string, string) (bool, error) {
+		return false, contend("state", "", "", "another invocation is changing this checkout's runs", "back off and retry")
+	}
+	t.Cleanup(func() { placeRouteReturn = prev })
+	_, err := DriveReview(context.Background(), repo.Root(), id, res, stages, Options{}, rpRoute(t, rpServer(verdictFor)))
+	if r, ok := AsRefusal(err); !ok || !r.Contention {
+		t.Fatalf("the answer is kept aside: %v", err)
+	}
+	for _, p := range []string{staleRP, staleOther} {
+		if _, err := os.Lstat(p); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("a stale temporary file a killed process left is swept: %s %v", p, err)
+		}
+	}
+	for _, p := range append([]string{live, staleDir}, lookalikes...) {
+		if _, err := os.Lstat(p); err != nil {
+			t.Fatalf("%s is no stale temporary file and stands: %v", p, err)
+		}
+	}
+}
+
 // TestAnAnswerIsKeptAsideWhereNoHardLinkCanBeMade: on a filesystem with no
 // hard links (FAT, exFAT, some network and FUSE mounts) the answer is still
 // kept aside, written to its numbered name directly, never dropped.
@@ -1243,7 +1302,7 @@ func TestATakeBackThatCannotReadSaysTheReturnStands(t *testing.T) {
 
 // TestAVersion11ReservationReadsAsVersion12: version 11, the run's
 // reservation, is version 12's strict subset. A version-11 file carrying
-// `reserved_at` reads as the current version and is written back at 12 with
+// `reserved_at` reads as the current version and is written back at it with
 // its reservation kept; a version-12 file carrying both the reservation and
 // the route's answer reads with both.
 func TestAVersion11ReservationReadsAsVersion12(t *testing.T) {
@@ -1262,7 +1321,7 @@ func TestAVersion11ReservationReadsAsVersion12(t *testing.T) {
 	if err != nil || st.SchemaVersion != SchemaVersion || st.ReservedAt == nil || !st.ReservedAt.Equal(reserved) {
 		t.Fatalf("a version-11 file carrying a reservation reads as the current version with it: %+v %v", st.ReservedAt, err)
 	}
-	// The next mutation writes it back at version 12, the reservation kept.
+	// The next mutation writes it back at the current version, the reservation kept.
 	if _, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{}); err == nil {
 		t.Fatal("no return stands yet, so the hand-back is refused and nothing is written")
 	}

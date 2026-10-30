@@ -135,9 +135,10 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"`--wait -- go test -race`. It is spelt without --wait because an\n" +
 			"older abcd reads any `implement load --wait` as a waiter at its first gate, and\n" +
 			"would count a preflight at its race gate as queued, not in its tests, so the two\n" +
-			"are refused together. At one preflight at a time, the default, it opens at once,\n" +
-			"without reading the machine, taking a hold or waiting a jitter, so a preflight's\n" +
-			"race stage follows its tests exactly as before. Above one it is shut only while\n" +
+			"are refused together. At one preflight at a time, the default, it opens at once\n" +
+			"once the disk check below passes, without reading the load or the process table,\n" +
+			"taking a hold or waiting a jitter, so a preflight's race stage follows its tests\n" +
+			"as before. Above one it is shut only while\n" +
 			"another `go test -race` run is live, a race waiter is ahead of it (by the same\n" +
 			"rule) or running its command, the load is at the wait limit, or the race gate's\n" +
 			"own hold is in force (each gate is shut only by its own gate's hold). That keeps\n" +
@@ -149,26 +150,39 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"ages read a tie differently or the later of which stopped counting the earlier\n" +
 			"past its " + implement.WaitCrossedCap.String() + " cap). An account at one opens its race gate at once\n" +
 			"whatever another account set, and a checkout older than the gate runs its race\n" +
-			"stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's\n" +
-			"waiter never queues\n" +
-			"behind a race waiter, and a preflight whose waiter is at its race gate is in its\n" +
-			"test stages. A waiter that has opened stands back only from a waiter that\n" +
+			"stage ungated, so set more than 1 only once no such checkout runs a preflight. A\n" +
+			"first gate's waiter never queues behind a race waiter. A preflight whose race\n" +
+			"waiter is queued runs nothing: at 1 it still counts as in its test stages, and\n" +
+			"above 1 it takes no slot until its race run starts, which the race gate keeps\n" +
+			"to one at a time. A waiter that has opened stands back only from a waiter that\n" +
 			"opened in the same moment at its own gate, never from one at the other gate.\n\n" +
-			"How many preflights may be in their test stages at once is your own machine's\n" +
-			"setting: `" + implement.PreflightSlotsKey + "` in `" + abcdhome.Display("config.json") + "`, or " + implement.PreflightSlotsEnv + " in the\n" +
+			"How many preflights the first gate admits to their test stages at once is your\n" +
+			"own machine's setting: `" + implement.PreflightSlotsKey + "` in `" + abcdhome.Display("config.json") + "`, or " + implement.PreflightSlotsEnv + " in the\n" +
 			"environment, which wins, for a trial; a whole number from 1 to " + strconv.Itoa(implement.MaxPreflightSlots) + ", 1 by default,\n" +
 			"and never read from a repository file, so a checkout cannot raise the machine's\n" +
-			"load. The most is " + strconv.Itoa(implement.MaxPreflightSlots) + " for a measured trial, and it rises once a measured trial\n" +
-			"supports more. At 1 both gates read as before the setting existed. Above 1 the\n" +
+			"load. At 1 both gates read as before the setting existed. Above 1 the\n" +
 			"first gate opens while fewer than that many other preflights or waiters running\n" +
 			"their command are in their test stages (a `--wait -- make preflight` counts\n" +
 			"once), a waiter queued ahead still shuts it, and a live race run does not shut\n" +
 			"it by itself; the load limit still does, and the race gate keeps race stages\n" +
-			"apart. A value it cannot use refuses the wait, naming where it was set. A\n" +
-			"`" + abcdhome.Display("config.json") + "` that cannot be read for it (writable by others,\n" +
-			"not valid JSON, or a `load` that is not an object) is read past instead: one\n" +
-			"preflight at a time applies, and one line on stderr names the file, the cause\n" +
-			"and how to fix it; so does a key under `load` that nothing reads.\n\n" +
+			"apart, so one race stage may run beside that many unit stages. A value it\n" +
+			"cannot use refuses the wait, naming where it was set. A `" + abcdhome.Display("config.json") + "`\n" +
+			"that cannot be read for it (writable by others, not valid JSON, or a `load`\n" +
+			"that is not an object) is read past instead: one preflight at a time applies,\n" +
+			"and one line on stderr names the file, the cause and how to fix it; so does a\n" +
+			"key under `load` that nothing reads.\n\n" +
+			"Both gates refuse, exiting 1 without waiting, while the volume holding the Go\n" +
+			"build cache (`go env GOCACHE`) or the one holding the worktree store\n" +
+			"(`" + abcdhome.Display("worktrees") + "`) has less free space than the disk floor: 4 GiB for each\n" +
+			"preflight the first gate admits at once (`" + implement.PreflightSlotsKey + "`), and 8 GiB at least, so\n" +
+			"8 GiB at the default and 16 GiB at four. The waiter reads the disk as it starts\n" +
+			"and again just before it opens (the race gate at one preflight at a time reads\n" +
+			"it once, as it starts), and refuses at either look. The refusal names\n" +
+			"each low volume, its free space and the floor, and, when the cache's own volume\n" +
+			"is low, the cache's size and a command that deletes its build entries unused for\n" +
+			"two days. A disk it cannot read, in whole or in part, is never refused: one line\n" +
+			"on stderr says it was not checked, and why. The load check (`--site`) prints the\n" +
+			"same finding as a warning and never fails for it.\n\n" +
 			"Within one account the waiter that opens also takes a hold,\n" +
 			"`" + abcdhome.Display(implement.WaitHoldFileName) + "` at the first gate and `" + abcdhome.Display(implement.WaitRaceHoldFileName) + "` at\n" +
 			"the race gate, and every other waiter of that account at the same gate stays\n" +
@@ -267,7 +281,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&site, "site", "", "where the check runs: "+enumHelp(implement.LoadSites()))
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the load is below the wait limit and no other go test -race run is live")
-	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold")
+	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time unless the disk is below the floor, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold")
 	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait or --race-gate, give up after this long and exit 1")
 	return cmd
 }
@@ -314,6 +328,9 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	}
 	if res.SlotsNote != "" {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load %s: %s\n", flag, res.SlotsNote)
+	}
+	if res.DiskNote != "" {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load %s: %s\n", flag, res.DiskNote)
 	}
 	if err := render(out, asJSON, res, func(w io.Writer) { renderLoadWait(w, res) }); err != nil {
 		return err
@@ -652,8 +669,8 @@ func pidsText(pids []int, one, many string) string {
 	return one + " (pid " + strings.Join(list, ", ") + ")"
 }
 
-// slotsText says how many preflights may be in their test stages at once, and
-// where that was set.
+// slotsText says how many preflights the first gate admits to their test
+// stages at once, and where that was set.
 func slotsText(res implement.WaitResult) string {
 	switch res.SlotsSource {
 	case implement.SlotsEnv:
@@ -698,6 +715,7 @@ func renderLoad(w io.Writer, res implement.LoadResult) {
 	case implement.LoadWarning:
 		renderLoadWarning(w, res)
 	}
+	fmt.Fprint(w, res.Disk.WarningText(res.Site))
 	if res.RunLog.Error != "" {
 		fmt.Fprintf(w, "could not write the load warning to the run log: %s; the warning above stands\n", res.RunLog.Error)
 	}

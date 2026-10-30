@@ -337,11 +337,11 @@ func (g *givenNames) UnmarshalJSON(raw []byte) error {
 // running it, or, when it has none, it reserves the next free name as a new
 // session does.
 func Start(m Machine, req Request) Outcome {
-	if !Acts(req) {
+	if !acts(req) {
 		return Outcome{}
 	}
 	switch {
-	case req.Title != "" && req.Source == "startup":
+	case keeps(req):
 		return keep(m, req)
 	case req.Title != "":
 		return hold(m, req)
@@ -351,12 +351,25 @@ func Start(m Machine, req Request) Outcome {
 	return rejoin(m, req)
 }
 
-// Acts reports whether Start can do anything for req, so a front door can skip
-// resolving the repository root for a payload naming never acts on: a
-// sub-agent's (C12), one with no session id, and the compaction of a titled
-// session, through which the host keeps the title (C5). A startup with a title
-// acts only to record that the title is the person's (keep).
+// Acts reports whether Start reads the repository's persona list for req,
+// which is the one thing it needs req.Root for, so a front door resolves the
+// root (a git call) only then. It answers no for every payload naming never
+// acts on (acts), and for a startup with a title, which only records that the
+// title is the person's (keep) and needs no repository (iss-2610152324354563).
 func Acts(req Request) bool {
+	return acts(req) && !keeps(req)
+}
+
+// keeps reports whether req is a startup with a title: a name the person gave
+// on the command line, which Start only records as theirs (keep).
+func keeps(req Request) bool {
+	return req.Title != "" && req.Source == "startup"
+}
+
+// acts reports whether Start can do anything for req. It does nothing for a
+// sub-agent's payload (C12), one with no session id, or the compaction of a
+// titled session, through which the host keeps the title (C5).
+func acts(req Request) bool {
 	if req.AgentID != "" || req.SessionID == "" {
 		return false
 	}
@@ -821,7 +834,7 @@ func (m Machine) update(fn func(reg *register, tab Table, host Host) (bool, erro
 	if err != nil {
 		return fmt.Errorf("the process table could not be read (%v), so a running session cannot be told from an ended one", err)
 	}
-	host, err := findHost(tab, m.From)
+	host, err := FindHost(tab, m.From)
 	if err != nil {
 		return err
 	}

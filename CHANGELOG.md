@@ -865,7 +865,7 @@ These notes list what was added and what was fixed; changes to earlier behaviour
 - `ahoy` repo registration surfaces a history-lock contention failure as a change note instead of discarding it, and a concurrent double-install re-applies a pending lineage link without overwriting the winner's. (iss-128)
 - `docs/requirements.txt` and dotfiles are excluded from the built site via `exclude_docs`, so the Python pin file no longer ships as a public page. (iss-2608271711538151)
 - The writing-style guide and the rules loader's DOCUMENTATION text no longer claim staged masking lints: adr-54 rules punctuation enforcement mechanical-only, the em-dash rule is enforced as a banned token, and the casing rows carry permanent review labels with their corpus-evidence reasons. (iss-2608280801428646, iss-2608280813441672)
-- **`ACKNOWLEDGEMENTS.md` is backfilled from the attribution review.** Inspirations entries for CARL, PAUL, SpecStory, the Karpathy LLM-wiki gist, gitleaks, TruffleHog and Rams; the Diataxis entry completed with author and CC-BY-SA 4.0; the mattpocock entry widened to four adaptations; Dell'Acqua et al. 2023 added to the references and CSL; the Horn entry carries a caveat that its URL was not recoverable; in the principles, the Weng essay is source-linked and the Iacob and GLM-5 citations carry arXiv ids; the mglgit authorship is recorded in the skills-evaluation note; and the itd-27 to-prd link no longer dangles. (iss-2608280824478819)
+- **`ACKNOWLEDGEMENTS.md` is backfilled from the attribution review.** Inspirations entries for CARL, PAUL, SpecStory, the Karpathy LLM-wiki gist, gitleaks, TruffleHog and Rams; the Diataxis entry completed with author and CC-BY-SA 4.0; the mattpocock entry widened to four adaptations; Dell'Acqua et al. 2023 added to the references and CSL; the Horn entry carries a caveat that its URL was not recoverable; in the principles, the Weng essay is source-linked and the Iacob and GLM-5 citations carry arXiv ids; the skills' third-party authorship is recorded in the skills-evaluation note; and the itd-27 to-prd link no longer dangles. (iss-2608280824478819)
 - `ACKNOWLEDGEMENTS.md` credits the external reporter's two reports and the README requirements section shape they proposed, and the adopt-their-branch default for contributors with working branches is recorded as a process lesson. (iss-2608271322159887)
 
 ### Security
@@ -1806,7 +1806,7 @@ These notes list what was added and what was fixed; changes to earlier behaviour
 ### Changed
 
 - **The repository lives at `Partnermedia/abcd`.** The repo transferred from
-  `REPPL/abcd-cli` to the Partnermedia organisation and dropped the `-cli`
+  the product thinker's personal `abcd-cli` repository to the Partnermedia organisation and dropped the `-cli`
   suffix; the Go module path, install one-liner, marketplace add command, and
   plugin metadata all follow (`github.com/Partnermedia/abcd`). Every old URL —
   clones, plugin installs, release downloads — keeps working through GitHub's
@@ -4014,7 +4014,7 @@ a markdown plugin surface that shells out to it.
 
 ### Added
 
-- Phase 0 scaffold: Go module (`github.com/REPPL/abcd-cli`), a
+- Phase 0 scaffold: Go module (`github.com/<personal account>/abcd-cli`), a
   transport-agnostic `internal/core`, a Cobra CLI front door (`abcd` status
   board and `abcd version`), the plugin surface, and the design record carried
   forward as the build specification.

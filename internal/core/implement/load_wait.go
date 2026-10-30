@@ -33,19 +33,22 @@ import (
 // with the waiter's own process and ancestors excluded (machineload.RaceRuns,
 // machineload.QueueAhead). It never signals anything.
 //
-// That is the first gate with one slot, the default. How many preflights may
-// be in their test stages at once is the person's own setting (PreflightSlots,
-// load_slots.go); above one, the first gate opens while fewer than that many
-// other units of work are in their test stages (machineload.Ahead.Shut), a
-// waiter queued ahead still shuts it, and a live race run does not shut it
-// by itself. The race gate (WaitRequest.Race, `--race-gate`), which `make
-// preflight` runs before its race stage, opens at once with one slot, so a
-// preflight's race stage follows its tests exactly as before; above one it is
-// shut only by another race run, a race waiter ahead (machineload.RaceAhead),
-// the load and the race gate's own hold. That keeps race stages apart among
-// the preflights whose checkouts have the race gate (a checkout older than the
-// gate runs its race stage ungated), within one account by the hold, and
-// across accounts only by the process table, the jitter and the re-check.
+// That is the first gate with one slot, the default. How many preflights the
+// first gate admits to their test stages at once is the person's own setting
+// (PreflightSlots, load_slots.go); above one, the first gate opens while
+// fewer than that many other units of work are in their test stages
+// (machineload.Ahead.Shut), a waiter queued ahead still shuts it, a live race
+// run does not shut it by itself, and a preflight queued at its race gate,
+// running nothing, takes no slot until its race run starts
+// (machineload.Ahead.TakingSlots, iss-2610282016250805). The race gate
+// (WaitRequest.Race, `--race-gate`), which `make preflight` runs before its
+// race stage, opens at once with one slot, so a preflight's race stage
+// follows its tests exactly as before; above one it is shut only by another
+// race run, a race waiter ahead (machineload.RaceAhead), the load and the
+// race gate's own hold. That keeps race stages apart among the preflights
+// whose checkouts have the race gate (a checkout older than the gate runs its
+// race stage ungated), within one account by the hold, and across accounts
+// only by the process table, the jitter and the re-check.
 //
 // The process table is the cross-account half (iss-2610140638074587): it
 // shows every account's processes: no file another account can write is read;
@@ -414,8 +417,8 @@ type WaitResult struct {
 	UngatedTests []int `json:"ungated_tests,omitempty"`
 	// Gate is the gate waited at, GateTests or GateRace.
 	Gate string `json:"gate"`
-	// Slots is how many preflights may be in their test stages at once, and
-	// SlotsSource where that came from (PreflightSlots). With one, the race
+	// Slots is how many preflights the first gate admits to their test stages
+	// at once, and SlotsSource where that came from (PreflightSlots). With one, the race
 	// gate opens at once.
 	Slots       int    `json:"slots,omitempty"`
 	SlotsSource string `json:"slots_source,omitempty"`
@@ -423,6 +426,10 @@ type WaitResult struct {
 	// count, when it was (PreflightSlots); the front door prints it once per
 	// waiter, so a preflight, which waits at both gates, shows it twice.
 	SlotsNote string `json:"slots_note,omitempty"`
+	// DiskNote says the disk went unchecked, in whole or in part, and why
+	// (DiskCheck.Note); "" when every volume was read. The front door prints
+	// it on stderr.
+	DiskNote string `json:"disk_note,omitempty"`
 	// Backoffs is how many times the waiter stood back from another that opened
 	// in the same moment (machineload.StandBackFrom).
 	Backoffs int `json:"backoffs,omitempty"`
@@ -447,10 +454,14 @@ type WaitResult struct {
 
 // WaitLoad waits until the gate opens or the timeout passes. Its error is a
 // refusal before any wait (a home it cannot resolve, a home inside a git
-// working tree that is not the account's own, a symlinked ~/.abcd.noindex, or
-// a hold lock that is not a regular file), or a hold it
-// could not give up when standing back after a wait. A timeout is a status,
-// not an error.
+// working tree that is not the account's own, a symlinked ~/.abcd.noindex, a
+// load.preflights it cannot use, a volume holding the Go build cache or the
+// worktree store below the disk floor (diskFloorFor), or a hold lock that is
+// not a regular file), a refusal at the last look before it opens when such
+// a volume has fallen below the floor while it waited, or a hold it could not
+// give up when standing back after a wait. A disk it cannot read, in whole or
+// in part, is never refused; WaitResult.DiskNote says so. A timeout is a
+// status, not an error.
 func WaitLoad(req WaitRequest) (WaitResult, error) {
 	getenv := req.Getenv
 	if getenv == nil {
@@ -513,6 +524,14 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	defer root.Close()
 	if res.Slots, res.SlotsSource, res.SlotsNote, err = PreflightSlots(getenv, home); err != nil {
 		return res, fmt.Errorf("nothing was waited for: %w", err)
+	}
+	// The disk is read before anything is waited for, and again just before
+	// the gate opens (below): other work fills the disk while this waits.
+	floor := diskFloorFor(res.Slots)
+	disk := ReadDisk(home, floor)
+	res.DiskNote = disk.Note()
+	if err := disk.Refusal(); err != nil {
+		return res, err
 	}
 	if req.Race && res.Slots <= 1 {
 		// One preflight at a time: the first gate admitted this preflight's
@@ -593,6 +612,15 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 				}
 			}
 			sleep(j)
+			// The disk as it is now, not as it was when this waiter came:
+			// the waits behind other preflights are when it fills. No hold
+			// is taken yet, so a refusal here leaves nothing behind.
+			disk := ReadDisk(home, floor)
+			res.DiskNote = disk.Note()
+			if err := disk.RefusalAtOpen(); err != nil {
+				res.WaitedS = now().Sub(start).Seconds()
+				return res, err
+			}
 			res.Polls++
 			shut, done, only, err = waitLook(req, root, home, &res, now, true, pastCap(), &watch)
 			if err != nil {
@@ -834,11 +862,11 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			preflight, waiter := ahead.Shut(res.Slots)
 			if preflight {
 				shut = append(shut, WaitOnPreflight)
-				res.Preflights = ahead.Preflights
+				res.Preflights = ahead.TakingSlots(res.Slots).Preflights
 			}
 			if waiter {
 				shut = append(shut, WaitOnWaiter)
-				res.Waiters = ahead.Waiters
+				res.Waiters = ahead.TakingSlots(res.Slots).Waiters
 				_, without := ahead.Uncrossed().Shut(res.Slots)
 				crossedShut = !without
 			}
@@ -1047,7 +1075,7 @@ func releaseHoldIn(root *os.Root, h WaitHolder) error {
 // PreflightParallelism is the -p `make preflight` gives its test and race
 // stages (cmd/test-parallelism prints it), derived from the online cores and
 // the one-minute load as they are when the stage starts, the cores divided
-// among the slots preflights may be in their test stages at once
+// among the preflights the first gate admits to their test stages at once
 // (machineload.GoTestParallelism, PreflightSlots). On a CI runner the machine
 // is not read and go's own default, GOMAXPROCS, stands, as it does when the
 // machine cannot be read.

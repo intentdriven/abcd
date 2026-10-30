@@ -175,6 +175,41 @@ func TestStatusCountsOwedReviews(t *testing.T) {
 	}
 }
 
+// handAuditParagraph is a hand-written audit with no review marker: a paragraph
+// that names the criteria and gives the auditor's verdict on each.
+const handAuditParagraph = "Audited by hand on 2026-07-01 against the merged code: criteria 1 and 2\n" +
+	"are MET, and criterion 3 is NOT_MET because the refusal names no tag."
+
+// strayAmendmentNote is the other unmarked shape: a ruling's amendment line,
+// which names no criterion and gives no verdict.
+const strayAmendmentNote = "- 2026-10-02 — Amendment to decision 8, recorded by lane rd2 of autonomous run A."
+
+// An Audit Notes section with no review marker owes a review unless it reads as
+// a real audit, by the rule the retrospective seed reads it with: a stray
+// amendment line owes one, a paragraph naming the criteria with verdicts does
+// not (iss-2610241431221889).
+func TestReviewsJudgeAnUnmarkedSectionByTheHandAuditRule(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, shippedDir+"/itd-21-stray.md", shippedWithNotes("itd-21", "stray", strayAmendmentNote))
+	writeFile(t, root, shippedDir+"/itd-22-hand.md", shippedWithNotes("itd-22", "hand", handAuditParagraph))
+
+	l, err := Reviews(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := reviewsByID(t, l)
+	stray, hand := got["itd-21"], got["itd-22"]
+	if stray.State != ReviewNone || !stray.IsOwed() || stray.ReEmit != ReEmitCommand("itd-21") {
+		t.Errorf("a stray amendment note owes a review: %+v", stray)
+	}
+	if hand.State != ReviewHandAudited || hand.IsOwed() || hand.ReEmit != "" || hand.ReceiptID != "" {
+		t.Errorf("a hand-written audit owes no review: %+v", hand)
+	}
+	if l.Owed != 1 || l.HandAudited != 1 {
+		t.Fatalf("owed = %d, hand-audited = %d, want 1/1: %+v", l.Owed, l.HandAudited, l.Entries)
+	}
+}
+
 // TestReviewOfOneIntent is the single-intent read the record dispatcher calls:
 // the same reader, one record.
 func TestReviewOfOneIntent(t *testing.T) {

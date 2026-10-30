@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 151 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-21-no-lifeboat-scaffolding.md:32"
-remedy: "none (filed automatically)"
+remedy: "In itd-21 stop naming the starter intent `itd-1` (press release, scope and acceptance criteria): the quoted create mints a timestamp-numeric itd-N through the shared mint, so say 'a starter intent' and let the mint assign its id. The draft also calls `/abcd:intent new`, which is removed."
 related_intents: [itd-21]
 finding_ref: cfk-bed138686b91f0e8
 ---

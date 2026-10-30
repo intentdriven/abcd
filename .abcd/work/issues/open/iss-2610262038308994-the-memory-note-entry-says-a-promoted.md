@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 799 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/memory-note.md:31"
-remedy: "none (filed automatically)"
+remedy: "In memory-note.md change the example to say a promoted note moves into the project's memory notes file (.abcd/memory.json), not into the project's rules."
 finding_ref: cfk-a89e833b5cea5c11
 ---
 

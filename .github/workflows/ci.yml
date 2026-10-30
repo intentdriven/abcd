@@ -280,7 +280,11 @@ jobs:
     # technical facilitator (dcn-2610181756328249): ten merge-group runs took
     # 35.1 to 49.3 minutes, one within a minute of the warning, on a leg whose
     # race pass keeps its three test slots full, so its time is its total work
-    # and varies with the runner. Raising it again is the technical
+    # and varies with the runner. The coordinating session raised it to 85 on
+    # 2026-10-28, on delegation from the technical facilitator
+    # (dcn-2610282036219503): that day's passing merge-group runs took 46 to 68
+    # minutes and run 40752008734 was cancelled at the cap after 71
+    # (iss-2610282035340363). Raising it again is the technical
     # facilitator's call, and the remedy for a leg near the cap is a faster
     # suite (iss-2610181711260494). The ubuntu leg's ceiling is 45. The drain
     # bundle (spc-2610161044461448) grew the loop package's race run until the
@@ -302,7 +306,7 @@ jobs:
     # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds every leg at or below the
     # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
     # end of the job below it.
-    timeout-minutes: ${{ matrix.os == 'macos-latest' && 70 || 45 }}
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 85 || 45 }}
     strategy:
       fail-fast: false
       matrix:
@@ -444,8 +448,9 @@ jobs:
       # -timeout is a declared budget, not go test's 10m per-package default:
       # internal/surface/cli under -race on the macOS runner measured 418-568s
       # passing, and a slow runner crossed 600s with no test hung, ejecting an
-      # unrelated pull request from the merge queue (iss-2609260319483365). 20m
-      # is about twice the slowest passing run, so a real hang still fails with
+      # unrelated pull request from the merge queue (iss-2609260319483365). The
+      # budget was first 20m, about twice the slowest passing run, and is 40m
+      # since 2026-10-17, so a real hang still fails with
       # a goroutine dump where the enclosing ceiling leaves room for it: in
       # release.yml's verify job it does, while this job's own ceiling, held
       # below the merge queue's response cap, is the binding one on macOS (see
@@ -463,10 +468,21 @@ jobs:
       # on 2026-10-15: 172-244s and 160s under -race on the ubuntu runner, they
       # started last in import-path order and were still running when two
       # checks were cancelled at the leg's 30-minute ceiling.
+      #
+      # ABCD_TEST_SHARDS runs each package that opts in through
+      # internal/testshard (internal/core/implement/loop, internal/core/claim
+      # and internal/surface/cli) as that many test processes, each with its
+      # share of the tests under the same -timeout, as the preflight recipe does
+      # (iss-2610290720087336). As one process implement/loop took 2244s of the
+      # macOS pass's 40 minutes on a passing run, and a queue entry timed out on
+      # it with no test hung. This step and the macOS pass below carry the same
+      # count as the preflight recipe; TestCIRacePassesShardLikePreflight holds
+      # the three to it.
       - name: Test (race, internal)
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
+          ABCD_TEST_SHARDS: "3"
         run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
       # The macOS leg's one pass over the module (iss-2610110938293273): race-enabled, over
@@ -485,6 +501,7 @@ jobs:
         if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
+          ABCD_TEST_SHARDS: "3"
         run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./...
 
       # The plain-only guards on the macOS leg (iss-2610180542030806): the same
@@ -580,7 +597,7 @@ jobs:
 
       # Warn before the cap cancels (ruling Z's cancel policy, 2026-09-28). A
       # check that runs past WARN_AFTER_MINUTES is ten minutes from its leg's
-      # ceiling (70 minutes on macOS, 45 on ubuntu), and a cancellation there
+      # ceiling (85 minutes on macOS, 45 on ubuntu), and a cancellation there
       # carries nothing but the cancellation. The rule for a cancelled check is
       # to rerun it once; a second cancellation for the same reason stops that
       # pull request and opens a speed lane, never another raise of the
@@ -600,8 +617,8 @@ jobs:
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
           LEG: ${{ matrix.os }}
-          WARN_AFTER_MINUTES: ${{ matrix.os == 'macos-latest' && 60 || 35 }}
-          CEILING_MINUTES: ${{ matrix.os == 'macos-latest' && 70 || 45 }}
+          WARN_AFTER_MINUTES: ${{ matrix.os == 'macos-latest' && 75 || 35 }}
+          CEILING_MINUTES: ${{ matrix.os == 'macos-latest' && 85 || 45 }}
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)

@@ -83,7 +83,7 @@ a re-checked handle and never by pattern, clean proven by what is running, and
 explicit consent with a cap below the core count on a live development machine;
 and the load gate a preflight waits at: test stages admitted as many at once as
 the person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one
-by default and two at most, never set by a repository), and race stages kept
+by default and four at most, never set by a repository), and race stages kept
 apart among checkouts that have the race gate: one at a time within an account,
 and across accounts all but a narrow window (a race waiter gone before its race
 run shows, or, after a pid wrap, two waiters whose start and pid disagree: one
@@ -146,15 +146,12 @@ Start with the plan and the design record:
 Run from the repo root.
 
 ```bash
-make preflight      # the pre-push gate: the load check first (load-check,
-                    # a warning, never a failure), then fmt-check +
-                    # lint-reviews +
-                    # lint-issues + record-lint +
-                    # issue-drift + docs-lint + check-attribution +
-                    # site-render +
-                    # smoke + evals-cold-reading,
-                    # then build + vet +
-                    # test + race (internal), all on the go.mod toolchain
+make preflight      # the pre-push gate: load-check (a warning, never a
+                    # failure), then fmt-check + lint-reviews + lint-issues +
+                    # record-lint + issue-drift + docs-lint + check-attribution
+                    # + secrets-check + vulncheck + site-render + smoke +
+                    # evals-cold-reading, then build + vet + test + race
+                    # (internal), all on the go.mod toolchain
 make precheck       # minutes, no queue: preflight's gates, build, vet, the
                     # record, page and agent audit packages, and the command
                     # and site audit tests chosen by name; no unit or race
@@ -196,6 +193,17 @@ this case is never reached by following the ladder literally
 (iss-2608230943088357 holds the surface half). The loader's `DOGFOODING` domain
 in `.abcd/rules.json` injects this rule on a prompt that names `abcd` or any of
 its top-level verbs (the `Available Commands` list of `go run ./cmd/abcd --help`).
+
+**The hooks run the latest reviewed default branch where the person opts in.**
+The hooks run the installed release, which `go run` cannot reach. A checkout
+listed in `~/.abcd.noindex/dogfood-roots` (its path, a tab, the `https://` or
+ssh URL of a remote no agent can move, optionally a tab and the branch) runs, in
+every hook, a build of that branch's tip as the declared remote reports it;
+nothing in the checkout chooses it, and until it is ready, or when it fails, the
+installed release runs and says so. The opt-in is the person's act, never an
+agent's; the `DOGFOODING` domain in `.abcd/rules.json` carries the whole rule.
+For this repository the line is
+`mkdir -p ~/.abcd.noindex && printf '%s\t%s\t%s\n' '<checkout>' 'https://github.com/intentdriven/abcd.git' main >> ~/.abcd.noindex/dogfood-roots`.
 
 CI (`.github/workflows/ci.yml`) runs its `check` job on Linux on every event —
 build, vet, test and the race-enabled internal tests, with the `make fmt-check`
@@ -292,6 +300,12 @@ with `*CONCURRENCY` to force it).
 - **The checkout is the unit of isolation, not the branch.** A second
   concurrent agent session works in its own `git worktree`: a branch switch
   swaps the working tree, HEAD and index under whoever else is using them.
+  The record writers enforce it: every write through `capture`, `intent`,
+  `decide` and `spec close`, and the index generator (`go generate
+  ./internal/surface/cli`), refuses (exit 3 for a verb) in a main checkout two
+  or more live sessions started in, and names the worktree store; the guard
+  hook denies the host's own file tools a write there outside
+  `.abcd/.work.local/`.
 - **That worktree goes in the machine-scoped store, and nowhere else:**
   `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, keyed on the full object name
   of the repository's root commit. Never beside the checkout, in the directory
@@ -336,9 +350,9 @@ with `*CONCURRENCY` to force it).
 
 ## Definition of done
 
-- `make preflight` is clean — the eight gates (`fmt-check`, `lint-reviews`,
+- `make preflight` is clean — the ten gates (`fmt-check`, `lint-reviews`,
   `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
-  `check-attribution`, `site-render`), both tagged eval
+  `check-attribution`, `secrets-check`, `vulncheck`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test -timeout 40m ./...`, and
   `go test -race -timeout 40m ./internal/...`, under `ABCD_TEST_SHARDS=3`,

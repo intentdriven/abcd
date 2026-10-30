@@ -465,8 +465,8 @@ it can, each on one line
    cancel, or deciding later, writes nothing. For a repository abcd does not
    manage yet, proceed and customise also adopt it, so the plan is the one
    question that adopts.
-3. **The questions only a person can answer.** The abcd download, the shell
-   settings, the commit checks (`core.hooksPath` in this clone's
+3. **The questions only a person can answer.** The live brief session
+   question, the abcd download, the shell settings, the commit checks (`core.hooksPath` in this clone's
    `.git/config`), the status line (one entry in the assistant's settings),
    the commit identity and each tool abcd offers to install are each their own
    question, naming the value and where it is written, whatever the answer to
@@ -757,8 +757,10 @@ unattended agent may change in the repository. When the result carries `optional
 offer the `yes |` form above as the way to apply it, except
 `git_identity.unrecorded`, `git_identity.repo_pin`, `drain_rule.offered` and
 `conventions.retire_offered`, which only a person at a terminal is asked,
-and `readme.offered`, which this page relays as the README question pair
-below and answers with `--readme-parts`.
+`readme.offered`, which this page relays as the README question pair
+below and answers with `--readme-parts`, and `sessions.offered`, which it
+relays as the live brief session questions below and answers with
+`--live-sessions`.
 
 **Each person's commit identity is their own, kept on their own machine.**
 Nothing in a repository names who may commit to it. The person's record lives
@@ -949,6 +951,34 @@ edited by hand, or a mark that is duplicated or unclosed, is left and named in
 the `notes` with its line; relay those notes as they stand. A project with no
 `README.md` gets one holding only the chosen parts. Committing the result is
 the owner's act.
+
+**The live brief session questions.** Setup asks "Set up live brief
+sessions?" (`yes`, `no`, then deciding later) and, on a yes, "Where may
+sessions run?" (`local`, `cloud`, `both`, then deciding later). The answer is
+stored as `sessions.live` in `.abcd/config.json`: where sessions may run, or
+`none` for a no, which is never asked again. Deciding later stores nothing,
+so the next setup run asks again, and so do `abcd session start` and
+`abcd session blueprint` at a terminal. At a terminal, in a run without
+`--yes`, the install asks them itself, after the README pair; off a terminal,
+and under `--yes`, they are never asked, and the result lists
+`sessions.offered` under `optional_skipped`.
+
+Through this page, while the question is open, the bare detection
+(`ahoy --json`) carries `sessions` and `sessions_tool`, the two questions as
+your question tool's input, built from the words the terminal shows. Ask
+`sessions_tool[0]` alone, exactly as given: never reworded, never with a
+preview, never with an option marked. On a yes, ask `sessions_tool[1]`. Then
+pass the answer:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --live-sessions local|cloud|both|none --json
+```
+
+A no to the first question is `none`. A `Decide later` at either is no
+answer: pass no flag. Any other value is refused with exit 2 before anything
+is written. Recording the answer sets nothing up: the steps are
+`abcd session setup` (see `/abcd:session`), which waits on the person in a
+browser, so tell the user to run it in a Terminal of their own.
 
 **The artefact kind.** A repository with no `.abcd/config/artefact.json` carries
 an `artefact.missing` gap: the launch verbs choose what to preview, check and
@@ -1168,7 +1198,10 @@ the flag keeps both and restores a hand-deleted hook.
   `gh issue` command (create, new, edit, comment) hands the forge are judged
   against the same outbound policy before the command runs, and a live
   agent-session URL or a tool attribution footer in them is refused
-  (`forge-text-outbound`, in `commands/guard.md`). This half writes no hook and
+  (`forge-text-outbound`, in `commands/guard.md`). A pull request's body
+  (`gh pr create`, `new` or `edit`) is also held to the disclosure the
+  bundled `COMMITTING` rule asks of it: one `Assisted-by:` line in an accepted
+  form, and no `Co-authored-by:` line (`forge-text-disclosure`). This half writes no hook and
   needs no `abcd.binary`: the guard is the abcd already running in the session,
   so there is no binary to find and none to be missing. The guard reads
   `outbound.forge` alone; remove both keys, or set them to `false`, to turn
@@ -1242,39 +1275,132 @@ Report the folder kind, the detection-gap count, and the audit-gap count, then
 the per-gap detail from the JSON. This is the sub-verb to reach for when the bare
 render says a repo is healthy and the user's experience says otherwise.
 
-## `--remote` — the repo's GitHub security settings
+## `--remote` — the repo's GitHub settings against abcd's baseline
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy --remote --json
 ```
 
-Reports GitHub's two native secret-scanning toggles on the repository this
-checkout's own origin remote names — `secret_scanning` and
-`secret_scanning_push_protection` — and the changes an apply would make. It
-writes nothing, on the remote or in the tree. A toggle it could not read is
-reported `unknown`, never `disabled`: the two need opposite responses.
+Audits the repository this checkout's own origin remote names against abcd's
+settings baseline, and says what an apply would change. It writes nothing, on
+the remote or in the tree. The baseline follows GitHub's own hardening guidance
+and the OpenSSF Scorecard checks:
+
+- security: secret scanning, push protection, Dependabot alerts and Dependabot security updates on;
+- repository: branches deleted after merge, the wiki and projects off;
+- default branch: no deletion, no force-push, the checks every pull request's workflows report, and a code owner's review;
+- release tags `v*`: no deletion, update or force-move;
+- a CODEOWNERS file covering the publish surface that exists in the tree (`.github/`, `.githooks/`, `.abcd/` config, build files);
+- Actions: actions pinned to a commit SHA, or an allow-list, and a read-only workflow token that cannot approve pull requests.
+
+Each setting is one finding with its current value, its target and a state:
+
+| State | Meaning |
+|---|---|
+| `ok` | At its target. |
+| `differs` | The apply can set it. |
+| `advisory` | Reported and never applied, with the reason: applying it could break a repository that works today, or it is not abcd's to change. |
+| `owed` | The plan or the visibility does not offer it yet. It applies once the repository is public. |
+| `kept` | The repository asked abcd to leave it alone. |
+| `unknown` | abcd could not read it. It is never reported as off, and never applied. |
+
+The audit also reports the real visibility beside the one `.abcd/config.json`
+declares, and the owner's plan where the sign-in can see it. A visibility
+mismatch is advisory: no command of abcd's changes a repository's visibility.
+
+Only checks that every pull request reports are required. A workflow that runs
+only when some paths change, one whose base-branch filter leaves the default
+branch out, one whose `types:` filter leaves out a pull request's opening or a
+push to it, one whose trigger is written in any form outside the plain YAML
+abcd reads (an inline `{...}` mapping, an alias, an anchor, a tag, a merge key,
+or a key that is not one of GitHub's five filters), and, under a merge queue,
+one that does not run on the queue, are left out and named: a form abcd does
+not read leaves a check out, never makes it required. A required check that no workflow is known to report is
+named too, because a pull request waits on it until it reports. A repository
+with no CI is given no required check.
+
+Requiring SHA pinning is offered only when every `uses:` in the workflows is
+already pinned to a commit. Making the workflow token read-only is offered only
+when the token is already read-only or every workflow declares its own
+`permissions:`. Otherwise each is advisory and says what to change first. A
+workflow file abcd could not read, and a local action (`uses: ./…`) whose own
+steps it does not read, hold both at advisory, named in the note.
+
+These three are read from this checkout's workflow files but apply to the
+default branch, so abcd first compares the files with the default branch's on
+GitHub, file by file (a checkout with CRLF line endings matches its LF
+blob). Where any differ (a feature branch, or an uncommitted edit), the required checks, SHA pinning and the workflow token are advisory,
+naming the files, and the apply sets none of them: a check only a feature
+branch reports would hold every pull request into the default branch. Checks
+the repository names in `github.required_checks` are its own and are not held.
+The organization's Actions policy is read where the sign-in can read it, which
+needs an org owner with the `admin:org` scope, and is never written. A missing
+CODEOWNERS file is advisory, and abcd does not write it: whether a managed
+repository keeps one is not yet decided.
+
+A repository sets its own exceptions in `.abcd/config.json`, reviewed like the
+rest of that file:
+
+```json
+{
+  "github": {
+    "keep": ["has_wiki"],
+    "required_checks": ["build", "lint"]
+  }
+}
+```
+
+`keep` lists the settings abcd leaves exactly as they are, by the keys the audit
+prints. `required_checks` replaces the checks taken from the workflows. A key
+abcd does not know refuses the whole run and names the key, so a typo can never
+quietly keep nothing. A repo that sets `scan.native_secret_scanning` to `false`
+has its two secret-scanning toggles kept. The rest of the baseline is still
+audited.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy remote apply --json
 ```
 
 **This writes, and it is the one abcd verb that changes state outside this
-machine.** It enables both toggles — secret scanning first, because GitHub
-refuses push protection on a repository whose secret scanning is off — and
-mirrors the desired state into `.abcd/work/rulesets/repo-settings.json`, so a
-later verify reads the same intent from the tree rather than from a web console.
-Push protection blocks a secret at push time, earlier than any CI scan, and
-secret scanning covers the default branch continuously; both are free on public
-repositories.
+machine.** It applies every `differs` finding and nothing else, in the order
+GitHub requires: secret scanning before push protection, and Dependabot alerts
+before security updates. Then come the repository's flags, abcd's own rulesets,
+the Actions policy and the workflow token. The rulesets are
+`abcd: default branch`, `abcd: code-owner review` and `abcd: release tags`.
+abcd finds them again by name among the repository's own rulesets, never one
+inherited from the organization, and never edits a ruleset of another name. None
+of them is created with a bypass actor. Updating one adds what the baseline asks
+for to what it already holds and removes nothing: its other rules, parameters,
+refs and bypass actors stay, so an update never loosens it. A ruleset abcd
+cannot read whole (its bypass list, rules or conditions missing or malformed),
+one whose target is not the one abcd's ruleset of that name has, and one that
+excludes refs are not updated, and nothing of them changes. A repository with a
+hundred rulesets or more is refused, because abcd reads one page of them.
+Push protection waits for secret scanning, and Dependabot security updates for
+Dependabot alerts: while the first is off and the apply will not turn it on
+(it is kept, owed or unknown), the second is advisory, because GitHub refuses
+it. A first setting that is on, kept or not, never holds the second. Rules from several rulesets add up on GitHub, so a ruleset the repository
+already has keeps working beside abcd's.
+
+After every step succeeds, the apply writes two mirrors. The desired state goes
+into `.abcd/work/rulesets/repo-settings.json`, and each ruleset it applied goes
+beside it as `abcd-<name>.json`. A later verify reads the same intent from the
+tree rather than from a web console. The settings mirror has three blocks:
+
+- `managed`: what abcd holds the repository to;
+- `observed`: the merge settings it only records;
+- `owed`: the settings the plan or the visibility does not offer yet.
+
+No file the apply writes names a person. A repository owned by a person is
+recorded by its name alone, and a bypass actor by its type and id.
 
 Never run it unasked. Four gates stand before any change leaves the machine, and
-each refuses rather than guesses: the folder must be a repo abcd manages, the
-repository must be the one this checkout's own origin names (no other repository
-can be addressed, and a name that is not a plain GitHub name is refused before it
-reaches an API path), the repo's config must not carry the opt-out, and the
-caller must CONFIRM the specific toggles named. A repo that sets
-`scan.native_secret_scanning` to `false` in `.abcd/config.json` is left exactly
-as it is and is not contacted at all.
+each refuses rather than guesses:
+
+- the folder must be a repo abcd manages;
+- the repository must be the one this checkout's own origin names (no other repository can be addressed, and a name that is not a plain GitHub name is refused before it reaches an API path);
+- the repo's `github` block must read cleanly;
+- the caller must CONFIRM the specific settings named.
 
 The confirmation is the fourth gate, not a formality: an unanswered run declines
 and changes nothing, so present the question and the repository it names to
@@ -1282,9 +1408,8 @@ the technical facilitator, under a `Tech` chip, before answering it.
 `--yes` says yes in advance, and it is the technical facilitator's word to give —
 never pass it on their behalf. A run that changed nothing exits NON-ZERO
 (`refused` exits 2, as a refused install does; `aborted` exits 1), so a failed
-invocation is never mistaken for a write that landed; `opted_out` is the one
-non-change that exits clean, because leaving the repo alone is what the repo
-asked for.
+invocation is never mistaken for a write that landed. A run with nothing to
+change exits clean.
 
 The API host is pinned to github.com on every request. `gh` would otherwise take
 it from `GH_HOST` or from whichever host the caller is authenticated to, which
@@ -1303,9 +1428,10 @@ Relay them; the install is the user's to run, by hand or by running the verb at
 a terminal. `ahoy --remote` never offers the install, since it writes nothing,
 and names this verb as the one that does. It is idempotent — a repository already in the desired
 state takes no write, and a re-run rewrites nothing in the tree — and it stops
-at the first failed step rather than attempting one that cannot succeed. Relay
-`status`, the resolved `repo`, every `change`, and every `note`: a note is a
-thing abcd deliberately did not do, and the reason.
+at the first failed step rather than attempting one that cannot succeed, naming
+what had already landed. Relay `status`, the resolved `repo`, every finding that
+is not `ok`, every `change`, and every `note`: a note is a thing abcd
+deliberately did not do, and the reason.
 
 ## `--providers` and `connect` — the optional model provider
 
@@ -1553,12 +1679,23 @@ prompt in a fresh session, and writes nothing. `domains` lists each rule
 domain the prompt matches, with the recall words that hit (`hits`, or
 `*NAME` for a star activation); `notes` lists each memory note it recalls
 from `~/.abcd.noindex/memory.json` or the project's `.abcd/memory.json`, with
-its `layer` (`machine` or `project`) and the recall words that hit. Each
-carries a `form`: `full`, or `over-budget` when it would not fit the
-per-turn budget and would come back on a later prompt instead. `disabled`
-is true under the kill switch, and then nothing comes back; `unreadable`
-names a `memory.json` that could not be read, and why. Use it when someone
-asks why a rule or a note did, or did not, come back on a prompt. A
+its `layer` (`machine` or `project`) and the recall words that hit; `pages`
+lists each memory page it recalls from the project's `.abcd/memory/` or
+`~/.abcd.noindex/memory/`, by its `key` (`page:<filename>`, the name the
+hook's envelope gives it), with its `filename`, `title`, `layer` and the
+recall words that hit. A page comes back only when its frontmatter declares
+a `recall:` list, and a page in the project's store suppresses the machine's
+page of the same name. Notes and pages share one ranked order: each carries
+its `rank` (1 first), its BM25F relevance `score`, and `terms`, each matched
+term with how often it was found in the item's `recall` words, `title` and
+`body` and its `contribution` to the score; the ranking decides which items
+fit the budget. Each carries a `form`: `full`, `over-budget` when
+it would not fit the per-turn budget and would come back on a later prompt
+instead, or `too-large` when it is larger than the whole per-turn budget and
+no prompt brings it back in full. `disabled` is true under the kill switch, and then nothing comes
+back; `unreadable` names a `memory.json`, page store or page that could not
+be read, why, and its `kind` (`note` or `page`). Use it when someone asks why
+a rule, a note or a page did, or did not, come back on a prompt. A
 positional DOMAIN with `--prompt` is refused, exit 2: `rules <DOMAIN>`
 renders one domain's rules instead.
 
@@ -1578,6 +1715,11 @@ too, you are in a source checkout of this repo, where — and only there —
 `go run ./cmd/abcd` works, the published payload carrying no `cmd/`. To put a
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
-`go run ./cmd/abcd ahoy install` in a source checkout.
+`go run ./cmd/abcd ahoy install` in a source checkout. In a checkout the
+person has listed in `~/.abcd.noindex/dogfood-roots`, or a worktree that
+checkout records, `"${CLAUDE_PLUGIN_ROOT}/abcd" hook dogfood-binary` prints
+the path of a build of the reviewed branch's tip, as the remote that line
+declares last reported it, once it is ready: run that path in place of the
+plugin-root binary, and the plugin-root binary while it prints nothing.
 
 **User input:** $ARGUMENTS

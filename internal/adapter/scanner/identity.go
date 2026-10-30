@@ -1385,7 +1385,7 @@ func isHomeSegmentByte(b byte) bool {
 // homeSelfStandsIn reports whether the caller's home occurs in matched as a
 // path of its own, by the anchor the home_path_self detector applies. A
 // generic-home match whose name merely starts with the home basename
-// ("/Users/alexandra" under HOME=/Users/alex) is a DIFFERENT user's path: the abcd-audit:allow
+// ("/Users/everett" under HOME=/Users/eve) is a DIFFERENT user's path: the abcd-audit:allow
 // anchored detector declines it as the caller's own, so the home_path_other
 // skip must decline it too, or nothing reports it at all.
 func homeSelfStandsIn(homeSelf *regexp.Regexp, matched string) bool {

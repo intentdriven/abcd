@@ -9,6 +9,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
 )
 
 // errNotPushedHere is a renewal's answer for a reservation whose tip is not
@@ -105,7 +106,7 @@ func pushedHere(root, id string) string {
 		return ""
 	}
 	defer r.Close()
-	data, err := fsutil.ReadGuardedInRoot(r, pushedRelDir+"/"+id, 128)
+	data, err := localtier.ReadInRoot(r, pushedRelDir+"/"+id, 128)
 	if err != nil {
 		return ""
 	}

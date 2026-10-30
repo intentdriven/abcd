@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 332 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/04-launch.md:10"
-remedy: "none (filed automatically)"
+remedy: "In release.md line 35 change 'the act of publishing one via launch ship' to the act of cutting one with launch ship, with CI and a human doing the tag and publication."
 finding_ref: cfk-d79dbae3a1563dd8
 ---
 

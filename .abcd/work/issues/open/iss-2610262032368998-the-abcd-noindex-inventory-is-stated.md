@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 292 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md:476"
-remedy: "none (filed automatically)"
+remedy: "In 05-internals/03-configuration.md (the user-scope inventory prose near line 661) say load-limits holds three limits: stray-minutes, extreme-load and wait-load."
 finding_ref: cfk-a5017834b2874c2f
 ---
 

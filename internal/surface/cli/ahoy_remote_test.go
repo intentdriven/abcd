@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -87,5 +88,99 @@ func TestAhoyRemoteApplyExitsNonZeroWhenItChangesNothing(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "aborted") {
 		t.Errorf("the abort is not rendered:\n%s", out)
+	}
+}
+
+// TestAhoyRemoteApplyRefusalAfterAToggleDoesNotSayNothingChanged
+// (iss-2610072347230409): secret scanning lands, push protection is refused by
+// GitHub. The verb still refuses (exit 2), but its closing line must not claim
+// nothing was changed, and must name the toggle that did land.
+func TestAhoyRemoteApplyRefusalAfterAToggleDoesNotSayNothingChanged(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	hermeticEnv(t)
+	repo := gittest.NewRepo(t)
+	repo.Git("remote", "add", "origin", "https://github.com/example-org/example-repo.git")
+	t.Chdir(repo.Root())
+	if _, err := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",
+		"--visibility", "private", "--docs-target", "agents_md",
+		"--oracle-backend", "host-delegated", "--scan-deep", "false"); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	// A stand-in `gh`: the GET reports both toggles disabled, the secret-scanning
+	// PATCH succeeds, the push-protection PATCH fails as GitHub would.
+	dir := t.TempDir()
+	script := "#!/usr/bin/env bash\nstdin=$(cat)\n" +
+		`case "$*" in *PATCH*)` + "\n" +
+		`  case "$stdin" in *secret_scanning_push_protection*) echo "gh: HTTP 422" >&2; exit 1;; esac` + "\n" +
+		"  exit 0;;\nesac\n" +
+		`printf '%s' '{"security_and_analysis":{"secret_scanning":{"status":"disabled"},` +
+		`"secret_scanning_push_protection":{"status":"disabled"}}}'` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	out, err := runCLIErr(t, "ahoy", "remote", "apply", "--yes")
+	var ee *exitError
+	if !errors.As(err, &ee) || ee.Code != 2 {
+		t.Fatalf("a refusal after a toggle landed: %v, want exit 2\n%s", err, out)
+	}
+	if strings.Contains(ee.Msg, "nothing was changed") {
+		t.Errorf("the closing line says nothing was changed after secret scanning landed: %q", ee.Msg)
+	}
+	if !strings.Contains(ee.Msg, "secret_scanning: disabled -> enabled") {
+		t.Errorf("the closing line does not name the toggle that landed: %q", ee.Msg)
+	}
+	if !strings.Contains(string(out), "change:   secret_scanning: disabled -> enabled") {
+		t.Errorf("the landed change is not rendered:\n%s", out)
+	}
+}
+
+// TestRenderRemoteResultPrintsOneLinePerSettingThatIsNotOK pins the audit's
+// text form (itd-2610290746077716): one line per setting that is not at its
+// target, naming the setting, its current value and its target, its state and
+// why; the settings already at their target as one count; the visibility and
+// the plan; and every value sanitised, since GitHub's answers are input.
+func TestRenderRemoteResultPrintsOneLinePerSettingThatIsNotOK(t *testing.T) {
+	res := ahoy.RemoteResult{
+		Repo:   "example-org/example-repo",
+		Status: "pending",
+		Audit: &ahoy.SettingsAudit{
+			Visibility: "public", DeclaredVisibility: "public", Plan: "free",
+			RequiredChecks: []string{"build", "lint"},
+			Findings: []ahoy.Finding{
+				{Setting: "has_wiki", Current: "true", Target: "false", State: "differs"},
+				{Setting: "release_tags", Current: "unknown", Target: "protected", State: "owed", Note: "owed until public"},
+				{Setting: "org_actions_policy", Current: "unknown", Target: "pinned", State: "unknown", Note: "needs admin:org\x1b[31m"},
+				{Setting: "default_branch_deletion", Current: "blocked", Target: "blocked", State: "ok"},
+				{Setting: "default_branch_force_push", Current: "blocked", Target: "blocked", State: "ok"},
+			},
+		},
+	}
+	var b strings.Builder
+	renderRemoteResult(&b, "abcd ahoy --remote", res)
+	out := b.String()
+	for _, want := range []string{
+		"has_wiki: true -> false",
+		"[differs]",
+		"release_tags: unknown -> protected",
+		"[owed] owed until public",
+		"needs admin:org",
+		"2 settings at their target",
+		"visibility: public (declared public), plan free",
+		"required checks: build, lint",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "default_branch_deletion") {
+		t.Errorf("a setting at its target got a line of its own:\n%s", out)
+	}
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("an escape sequence from GitHub's answer reached the terminal:\n%q", out)
 	}
 }

@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 289 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/34-build.md:743"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Should build's start checks refuse an intent that records no impact, or accept it and let the landing close refuse after the lane has run? Answer A: add an impact-recorded check at the start, so the run is refused before any lane is built (recommended: the close ships only with an impact, the impact decides the version, and a model must not guess it). Answer B: keep the late refusal and document it in 34-build.md."
 finding_ref: cfk-042ea5abe3c2df26
 ---
 

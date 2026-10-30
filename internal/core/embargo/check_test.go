@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -601,5 +602,321 @@ func TestTheStoreOfAnOrdinaryCloneStaysWhereItWas(t *testing.T) {
 	}
 	if want := filepath.Join(abcdhome.Path(f.home, "worktrees", root, StoreName)); loc.Path != want {
 		t.Fatalf("store path %s; want %s", loc.Path, want)
+	}
+}
+
+// TestAddEmbargoedTakesANamedMode: the set addEmbargoed builds is stated by a
+// named mode, never a bare bool, so a caller cannot pass true or false and
+// silently build the other set (a closed advisory's title leaked into a
+// publication text, or every range refused on a closed report's title).
+func TestAddEmbargoedTakesANamedMode(t *testing.T) {
+	fn := reflect.TypeOf((*denySet).addEmbargoed)
+	if fn.NumIn() != 4 {
+		t.Fatalf("addEmbargoed takes %d arguments with its receiver, want 4", fn.NumIn())
+	}
+	mode := fn.In(3)
+	if mode.Kind() == reflect.Bool || mode.Name() == "" || mode.Name() == "bool" {
+		t.Fatalf("addEmbargoed's mode is %s, want a named mode type the compiler holds apart from bool", mode)
+	}
+	if mode != reflect.TypeOf(denyForRange) {
+		t.Fatalf("addEmbargoed's mode is %s, want denyMode", mode)
+	}
+}
+
+// TestAddEmbargoedModes: each mode builds its own set, and they differ only
+// in a closed advisory's title. A mode neither constant names (the zero
+// denyMode) keeps the title: it holds more, never less.
+func TestAddEmbargoedModes(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		mode       denyMode
+		closedHeld bool
+	}{
+		{"range", denyForRange, false},
+		{"publication", denyForPublication, true},
+		{"unnamed", denyMode(0), true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ds := denySet{}
+			ds.addEmbargoed(closedAdvisoryState(), "", tc.mode)
+			if got := hasNeedle(ds, KindAdvisoryTitle, titleClosed); got != tc.closedHeld {
+				t.Fatalf("closed advisory's title held = %v, want %v: %+v", got, tc.closedHeld, ds.needles)
+			}
+			for _, want := range []struct{ kind, text string }{
+				{KindAdvisoryTitle, titleOpen}, {KindAdvisoryID, ghsaOpen}, {KindAdvisoryID, ghsaClosed}, {KindReservedCVE, cveOpen},
+			} {
+				if !hasNeedle(ds, want.kind, want.text) {
+					t.Fatalf("the %s set lacks %s %q: %+v", tc.name, want.kind, want.text, ds.needles)
+				}
+			}
+			if ds.embargo != 2 {
+				t.Fatalf("embargo count %d, want 2", ds.embargo)
+			}
+		})
+	}
+}
+
+// closedAdvisoryState holds one closed, unpublished advisory with a reserved
+// CVE id, and one still open, both titled long enough to be held.
+func closedAdvisoryState() State {
+	at := fixedNow
+	st := emptyState()
+	st.Advisories = []Advisory{
+		{GHSAID: ghsaOpen, IssueID: "iss-2610120000000001", Title: titleOpen, Severity: "major", ForgeState: "draft",
+			Verdict: strp(VerdictVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at},
+		{GHSAID: ghsaClosed, IssueID: "iss-2610120000000002", Title: titleClosed, CVEID: strp(cveOpen), Severity: "minor",
+			ForgeState: "closed", Verdict: strp(VerdictNotAVulnerability), DecidedBy: strp("Alice"), DecidedAt: &at,
+			Reason: strp("documented"), ClosedAt: &at},
+	}
+	return st
+}
+
+// hasNeedle reports whether ds holds text as a needle of kind.
+func hasNeedle(ds denySet, kind, text string) bool {
+	n, _ := normalise(text)
+	n = strings.TrimSpace(n)
+	for _, have := range ds.needles {
+		if have.kind == kind && have.text == n {
+			return true
+		}
+	}
+	return false
+}
+
+// TestRangeDenySetDropsClosedTitles: the range and file check's set
+// (buildDenySet) drops a closed advisory's title and keeps its id and CVE id;
+// an open advisory keeps its title.
+func TestRangeDenySetDropsClosedTitles(t *testing.T) {
+	ds, err := buildDenySet([]heldStore{{root: t.TempDir(), st: closedAdvisoryState()}}, map[string]bool{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasNeedle(ds, KindAdvisoryTitle, titleClosed) {
+		t.Fatalf("the range set holds a closed advisory's title: %+v", ds.needles)
+	}
+	for _, want := range []struct{ kind, text string }{
+		{KindAdvisoryTitle, titleOpen}, {KindAdvisoryID, ghsaClosed}, {KindReservedCVE, cveOpen},
+	} {
+		if !hasNeedle(ds, want.kind, want.text) {
+			t.Fatalf("the range set lacks %s %q: %+v", want.kind, want.text, ds.needles)
+		}
+	}
+}
+
+// TestPublicationDenySetKeepsClosedTitles: the set a publication or closing
+// text is held to (othersDenySet) keeps a closed advisory's title with its id
+// and CVE id, since the advisory stays private on GitHub, and leaves out the
+// advisory being published.
+func TestPublicationDenySetKeepsClosedTitles(t *testing.T) {
+	ds := othersDenySet(closedAdvisoryState(), ghsaOpen)
+	for _, want := range []struct{ kind, text string }{
+		{KindAdvisoryTitle, titleClosed}, {KindAdvisoryID, ghsaClosed}, {KindReservedCVE, cveOpen},
+	} {
+		if !hasNeedle(ds, want.kind, want.text) {
+			t.Fatalf("the publication set lacks %s %q: %+v", want.kind, want.text, ds.needles)
+		}
+	}
+	if hasNeedle(ds, KindAdvisoryTitle, titleOpen) || hasNeedle(ds, KindAdvisoryID, ghsaOpen) {
+		t.Fatalf("the publication set holds the advisory being published: %+v", ds.needles)
+	}
+}
+
+// TestCheckSkipsWhatAMergeBringsInFromOutsideTheRange: a branch that has
+// merged the default branch is judged by its own lines. A line the merge
+// brings in from a parent behind the range's start is already there and is
+// not read, while a line the merge adds against every parent still is.
+func TestCheckSkipsWhatAMergeBringsInFromOutsideTheRange(t *testing.T) {
+	cf := newCheckFixture(t)
+	r := cf.f.repo
+	r.Git("switch", "-q", "-c", "feature")
+	r.Write("feature.txt", "clean\n")
+	r.Commit("feature work")
+	r.Git("switch", "-q", "main")
+	r.Write("upstream.txt", "already public: "+ghsaRealShaped+"\n")
+	r.Commit("main work")
+	main := r.Git("rev-parse", "HEAD")
+	r.Git("switch", "-q", "feature")
+	r.Git("merge", "-q", "--no-ff", "--no-commit", "main")
+	r.Write("resolved.txt", "names "+ghsaOpen+"\n")
+	r.Git("add", "resolved.txt")
+	r.Git("commit", "-q", "-m", "merge main")
+	merge := r.Git("rev-parse", "HEAD")
+
+	res, err := Check(CheckRequest{Home: cf.f.home, RepoRoot: r.Root(), Range: main + "..HEAD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKinds(t, res, KindAdvisoryID)
+	if f := res.Findings[0]; f.Source != "commit "+merge || f.Where != "added line in resolved.txt" || f.Line != 1 {
+		t.Fatalf("merge finding %+v", f)
+	}
+}
+
+// ghsaOtherShaped is a second advisory id of a real one's shape that no store
+// holds, assembled at run time as ghsaRealShaped is.
+var ghsaOtherShaped = "GHSA-" + strings.Join([]string{"3c4f", "5g6h", "7j8m"}, "-")
+
+// TestCheckPassesAnIdThisRepositoryPublished: an advisory id the store does
+// not hold passes when GitHub lists it among this repository's published
+// advisories, asked once a check finds such an id and never before; an id it
+// does not list as published, one it lists in another state included, stays
+// refused as unlisted.
+func TestCheckPassesAnIdThisRepositoryPublished(t *testing.T) {
+	cf := newCheckFixture(t)
+	cf.f.repo.Git("remote", "add", "origin", "https://github.com/example/example.git")
+	g := newGHFake(t)
+	b, err := json.Marshal([]map[string]any{
+		advisoryJSON(ghsaRealShaped, "published", "high", "an upstream report", "its text"),
+		advisoryJSON(ghsaOtherShaped, "draft", "high", "a report not yet published", "its text"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.answer("GET", listPath, "published", 0, string(b))
+
+	wantKinds(t, cf.text(t, "clean text\n"))
+	if n := len(g.calls()); n != 0 {
+		t.Fatalf("a check that found no unlisted id asked GitHub %d time(s)", n)
+	}
+	wantKinds(t, cf.text(t, "see "+strings.ToLower(ghsaRealShaped)+"\n"))
+	wantKinds(t, cf.text(t, "see "+ghsaRealShaped+" and "+ghsaOtherShaped+"\n"), KindUnlistedAdvisoryID)
+	if n := len(g.calls()); n != 2 {
+		t.Fatalf("two checks asked GitHub %d time(s), want once each", n)
+	}
+}
+
+// TestCheckKeepsAnUnlistedIdGitHubCannotConfirm: with no github.com origin,
+// or when GitHub cannot be read, an unlisted id stays refused and the note
+// says GitHub could not be asked.
+func TestCheckKeepsAnUnlistedIdGitHubCannotConfirm(t *testing.T) {
+	cf := newCheckFixture(t)
+	res := cf.text(t, "see "+ghsaRealShaped+"\n")
+	wantKinds(t, res, KindUnlistedAdvisoryID)
+	if !strings.Contains(res.Note, "published") {
+		t.Fatalf("note %q does not say GitHub could not be asked", res.Note)
+	}
+	cf.f.repo.Git("remote", "add", "origin", "https://github.com/example/example.git")
+	g := newGHFake(t)
+	g.fail("GET", listPath, "published", "HTTP 502: Bad Gateway")
+	res = cf.text(t, "see "+ghsaRealShaped+"\n")
+	wantKinds(t, res, KindUnlistedAdvisoryID)
+	if !strings.Contains(res.Note, "published") || strings.Contains(res.Note, "502") {
+		t.Fatalf("note %q", res.Note)
+	}
+}
+
+// TestParseAddedLinesKeepsLeadingEmptyLines: a hunk's empty added lines are
+// kept, leading ones too, so each line of a run stays at its place in the
+// file.
+func TestParseAddedLinesKeepsLeadingEmptyLines(t *testing.T) {
+	patch := "diff --git a/f.txt b/f.txt\n--- a/f.txt\n+++ b/f.txt\n@@ -1,0 +2,3 @@\n+\n+\n+names it\n"
+	got, err := parseAddedLines([]byte(patch))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []fileAdds{{path: "f.txt", runs: []addedRun{{line: 2, text: "\n\nnames it"}}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("parseAddedLines = %+v, want %+v", got, want)
+	}
+}
+
+// TestCheckReadsAMergesLineAfterABlankItBringsIn: a merge that adds a line
+// against every parent is read even when a blank line before it comes from
+// one parent and is new against the other, so the two parents' diffs start
+// their runs at different lines.
+func TestCheckReadsAMergesLineAfterABlankItBringsIn(t *testing.T) {
+	cf := newCheckFixture(t)
+	r := cf.f.repo
+	r.Write("f.txt", "a\n")
+	r.Commit("base")
+	r.Git("switch", "-q", "-c", "feature")
+	r.Write("feature.txt", "clean\n")
+	r.Commit("feature work")
+	r.Git("switch", "-q", "main")
+	r.Write("f.txt", "a\n\n")
+	r.Commit("main adds a blank line")
+	main := r.Git("rev-parse", "HEAD")
+	r.Git("switch", "-q", "feature")
+	r.Git("merge", "-q", "--no-ff", "--no-commit", "main")
+	r.Write("f.txt", "a\n\n"+ghsaOpen+"\n")
+	r.Git("add", "f.txt")
+	r.Git("commit", "-q", "-m", "merge main")
+	merge := r.Git("rev-parse", "HEAD")
+
+	res, err := Check(CheckRequest{Home: cf.f.home, RepoRoot: r.Root(), Range: main + "..HEAD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKinds(t, res, KindAdvisoryID)
+	if f := res.Findings[0]; f.Source != "commit "+merge || f.Where != "added line in f.txt" || f.Line != 3 {
+		t.Fatalf("merge finding %+v", f)
+	}
+}
+
+// TestCheckReadsAnOctopusMergeOnce: in an octopus merge of branches in the
+// range, a line one merged branch adds is read in that branch's commit and not
+// again in the merge, and a line the merge adds against every parent is read
+// in the merge.
+func TestCheckReadsAnOctopusMergeOnce(t *testing.T) {
+	cf := newCheckFixture(t)
+	r := cf.f.repo
+	base := r.Git("rev-parse", "HEAD")
+	for _, b := range []struct{ name, file, body string }{
+		{"one", "one.txt", "clean\n"},
+		{"two", "two.txt", "names " + ghsaOpen + "\n"},
+	} {
+		r.Git("switch", "-q", "-c", b.name, base)
+		r.Write(b.file, b.body)
+		r.Commit(b.name + " work")
+	}
+	two := r.Git("rev-parse", "HEAD")
+	r.Git("switch", "-q", "main")
+	r.Write("main.txt", "clean\n")
+	r.Commit("main work")
+	r.Git("merge", "-q", "--no-ff", "--no-commit", "one", "two")
+	r.Write("own.txt", "names "+ghsaClosed+"\n")
+	r.Git("add", "own.txt")
+	r.Git("commit", "-q", "-m", "merge one and two")
+	merge := r.Git("rev-parse", "HEAD")
+
+	res, err := Check(CheckRequest{Home: cf.f.home, RepoRoot: r.Root(), Range: base + "..HEAD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKinds(t, res, KindAdvisoryID, KindAdvisoryID)
+	got := map[string]bool{}
+	for _, f := range res.Findings {
+		got[f.Source+" "+f.Where] = true
+	}
+	for _, want := range []string{"commit " + two + " added line in two.txt", "commit " + merge + " added line in own.txt"} {
+		if !got[want] {
+			t.Fatalf("no finding at %q: %+v", want, res.Findings)
+		}
+	}
+}
+
+// TestCheckReadsARootCommitAMergeBringsIn: a commit with no parent in the
+// range is read whatever log.showRoot says, so a line an unrelated history
+// brings into a merge is read in its root commit.
+func TestCheckReadsARootCommitAMergeBringsIn(t *testing.T) {
+	cf := newCheckFixture(t)
+	r := cf.f.repo
+	r.Git("config", "log.showRoot", "false")
+	base := r.Git("rev-parse", "HEAD")
+	r.Git("switch", "-q", "--orphan", "other")
+	r.Write("other.txt", "names "+ghsaOpen+"\n")
+	r.Git("add", "other.txt")
+	r.Git("commit", "-q", "-m", "other root")
+	root := r.Git("rev-parse", "HEAD")
+	r.Git("switch", "-q", "main")
+	r.Git("merge", "-q", "--no-ff", "--allow-unrelated-histories", "-m", "merge other", "other")
+
+	res, err := Check(CheckRequest{Home: cf.f.home, RepoRoot: r.Root(), Range: base + "..HEAD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKinds(t, res, KindAdvisoryID)
+	if f := res.Findings[0]; f.Source != "commit "+root || f.Where != "added line in other.txt" {
+		t.Fatalf("root finding %+v", f)
 	}
 }

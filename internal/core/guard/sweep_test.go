@@ -150,7 +150,8 @@ func sweepPass(t *testing.T, r Registry, inputs []string) {
 		if len(shown) > 160 {
 			shown = shown[:160] + "…"
 		}
-		if contains(d.Matches, forgeTextEntryID) || contains(d.Matches, forgeUnreadEntryID) {
+		if contains(d.Matches, forgeTextEntryID) || contains(d.Matches, forgeUnreadEntryID) ||
+			contains(d.Matches, forgeDisclosureEntryID) || contains(d.Matches, forgeMentionEntryID) {
 			forge++
 			t.Errorf("a forge-text verdict on ordinary work: %s %q", d.EntryID, shown)
 		}

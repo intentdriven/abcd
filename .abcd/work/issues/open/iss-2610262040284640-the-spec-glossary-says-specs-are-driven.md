@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 933 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/spec.md:29"
-remedy: "none (filed automatically)"
+remedy: "In spec.md replace 'driven to completion by the pluggable run seam' with the implement loop that abcd build starts (or direct implementation), noting the seam is unshipped."
 finding_ref: cfk-d3c82e7fbee56a73
 ---
 

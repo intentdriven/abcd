@@ -45,6 +45,14 @@ var sentences = map[string]string{
 		"Writes both settings and their mirror; refuses an unconfirmed run.",
 	"abcd ahoy uninstall": "Remove abcd from this repository, leaving .abcd/ in place: " +
 		"Writes the removal of the marker block, PATH copy, and provenance record; refuses any argument.",
+	"abcd ahoy worktree": "List this repository's worktrees and its lane in the worktree store: " +
+		"Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
+	"abcd ahoy worktree add": "Add a worktree in this repository's lane of the worktree store: " +
+		"Writes the worktree, its start record and its local tier; refuses a taken or reserved name.",
+	"abcd ahoy worktree list": "List this repository's worktrees and its lane, or every lane with --all: " +
+		"Writes nothing; refuses a store it cannot trust or a directory outside a checkout.",
+	"abcd ahoy worktree prune": "Reclaim this lane's merged, clean worktrees, archiving their notes first: " +
+		"Writes the notes archive and removes the worktrees; refuses a store it cannot trust.",
 
 	"abcd banlist": "Render both banned-names layers: " +
 		"Writes nothing; refuses an unknown word without echoing it.",
@@ -155,6 +163,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
 	"abcd guard approve": "Answer a headless agent's permission prompts over MCP: " +
 		"Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
+	"abcd guard allow": "Let one exact unproven delete through the hook, once: " +
+		"Writes one allow record in your home folder; refuses without --once, and when an agent runs it.",
 	"abcd guard hook": "Judge the shell command in a host's pre-tool-use payload: " +
 		"Writes branch records and a question's mode; refuses a hazard or a badly built question.",
 
@@ -241,6 +251,19 @@ var sentences = map[string]string{
 	"abcd dashboard stop": "Stop the dashboard after checking its process is the one start launched: " +
 		"Writes the run file's removal; refuses when another start or stop holds the lock.",
 
+	"abcd session": "Set up live brief sessions, start one here, or run, deploy or write the team's relay and page: " +
+		"Writes nothing bare; refuses an unknown sub-verb.",
+	"abcd session blueprint": "Write the team relay's Render blueprint and Dockerfile, pinned to a release: " +
+		"Writes render.yaml and .abcd/relay/; refuses an edited file or no GitHub origin.",
+	"abcd session page": "Write the brief session's static page and its editor bundle into a directory: " +
+		"Writes only the page's six files; refuses a directory holding anything else.",
+	"abcd session setup": "Set up live brief sessions with the team's own GitHub sign-in app: " +
+		"Writes its client id, the answer and the blueprint; refuses no GitHub origin or no answer.",
+	"abcd session start": "Start a live brief session on this computer, over your tailnet: " +
+		"Writes only an answer it asks; refuses no recorded GitHub App, no Tailscale or no GitHub origin.",
+	"abcd session serve": "Run the brief session relay in the foreground, on loopback by default: " +
+		"Writes nothing; refuses a bad --listen, or no repository to serve beyond loopback.",
+
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",
 	"abcd inbox promote": "File one report as a capture in abcd's own ledger: " +
@@ -298,6 +321,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses outside a git checkout.",
 	"abcd lab harvest": "Assemble a lab's harvest with its capture candidates: " +
 		"Writes harvest/harvest.md; refuses a finding its probe records cannot back, or a hand-written harvest.",
+	"abcd lab matrix": "Show a model matrix run's plan, or record the run its digest consents to: " +
+		"Writes the run record only with --approve; refuses a metered run with no cap.",
 	"abcd lab mint": "Mint a lab for one question, with a standalone snapshot at the pin: " +
 		"Writes only under the lab store; refuses a multi-line question or a pin naming no commit.",
 	"abcd lab preflight": "Run a lab's harness-isolation and dual-binary checks: " +
@@ -370,8 +395,8 @@ var sentences = map[string]string{
 	"abcd mode queue": "Queue one step for the person's return while they are away: " +
 		"Writes the away record; refuses when no away record holds.",
 
-	"abcd peers": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: " +
-		"Writes the fetched reservations; refuses outside a git checkout.",
+	"abcd peers": "List what peers hold that this checkout lacks, and the reservations: " +
+		"Writes the fetched reservations, re-arms withdrawn merges; refuses outside a git checkout.",
 
 	"abcd status": "List everyone's announcements, reservations and releases being cut: " +
 		"Writes the fetched status branches and reservations; refuses outside a git checkout.",

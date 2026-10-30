@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 962 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/10-site.md:83"
-remedy: "none (filed automatically)"
+remedy: "Supersede draft itd-2610040754453237 by planned itd-2610091010348892 (every opted-in project's record on its own Pages route) with abcd intent reclassify, naming shipped itd-2609061543533170 as the setup half already delivered; or re-scope the draft to what neither covers."
 related_intents: [itd-2610040754453237]
 finding_ref: cfk-a44feb861636f010
 ---

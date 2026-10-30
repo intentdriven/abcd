@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 198 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-39-scope-aware-memory-retrieval.md:78"
-remedy: "none (filed automatically)"
+remedy: "In the memory-unification entry of 04-tradeoffs, add a note that the ingest, ask and lint sub-verbs are now `library ingest`, `library ask` and `library lint` (itd-2610090831227812) and that memory is the agents' notes command."
 related_intents: [itd-39]
 finding_ref: cfk-7737f2157ae95533
 ---

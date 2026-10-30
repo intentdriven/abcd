@@ -9,12 +9,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/localtier"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The prompt hook's status block (C6, C8, C10 to C12, C18): each announcement
-// this checkout has not shown, each doubt, each release hold and each failed
-// fetch, shown once, from this checkout's disk alone, as of the last fetch
+// this checkout has not shown, each doubt, each release hold, each lapsed
+// release cut and each failed fetch, shown once, from this checkout's disk alone, as of the last fetch
 // with its age. It never touches the network, and is read, rendered and kept
 // shown inside the one deadline the hook sets at its start, so a slow read
 // says the status is unavailable rather than hold the prompt.
@@ -101,8 +102,14 @@ func writeUnflushed(root, sub, name string, data []byte) {
 // the name of every marker an earlier build kept one per line. It stops, with
 // ctx's error, when ctx ends.
 func shownSet(ctx context.Context, root string) (map[string]bool, error) {
+	entries := statusEntries(root, shownDir)
+	if len(entries) > 0 {
+		if err := localtier.UntrackedContext(ctx, root, statusFile(shownDir)); err != nil {
+			return nil, err
+		}
+	}
 	set := map[string]bool{}
-	for _, e := range statusEntries(root, shownDir) {
+	for _, e := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -252,6 +259,18 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 	for _, h := range v.Holds {
 		first = append(first, noteLine{key: hashedKey("hold\x00" + h.Subject + "\x00" + h.Holder + "\x00" + stamp(h.EffectiveExpiry)),
 			text: termsafe.Sanitize(h.Line())})
+	}
+	for _, l := range v.Lapsed {
+		// Shown once per lapse: a hold the block named earlier is followed
+		// by its end, so no session keeps relaying it as live. A lapse older
+		// than shownKeep is no news, and its shown marker is pruned at that
+		// age, so it is not shown again every shownKeep while the spent
+		// branch waits for the sweep.
+		if now.Sub(l.LapsedAt) >= shownKeep {
+			continue
+		}
+		first = append(first, noteLine{key: hashedKey("lapsed\x00" + l.Subject + "\x00" + l.Holder + "\x00" + stamp(l.LapsedAt)),
+			text: termsafe.Sanitize(l.Text())})
 	}
 	for _, d := range v.Doubts {
 		doubts = append(doubts, noteLine{key: hashedKey("doubt\x00" + d.Branch + "\x00" + d.Reason + "\x00" + d.Tip), text: DoubtLine(d), weight: 1})

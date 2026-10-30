@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 685 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md:661"
-remedy: "none (filed automatically)"
+remedy: "Edit 03-configuration.md (user scope inventory): change 'the load check's two limits in load-limits' to name all three keys (stray-minutes, extreme-load, wait-load)."
 finding_ref: cfk-1df57a93e1507cd9
 ---
 

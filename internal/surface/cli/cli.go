@@ -154,6 +154,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"hook", "subagent-stop"}, {"hook", "question-answered"},
 		{"hook", "permission-request"},
 		{"hook", "stop"}, {"hook", "stop-failure"},
+		{"hook", "dogfood-binary"},
 	} {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
@@ -356,7 +357,8 @@ func NewRootCommand() *cobra.Command {
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			ver := core.NewVersion()
-			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd)}
+			peersLine, worktreesLine := boardScan(cwd, cmd.ErrOrStderr())
+			bo := boardOutput{StatusInfo: st, View: viewName(view), Version: ver.Version, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: peersLine, Worktrees: worktreesLine, Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr()), Facilitator: readBoardFacilitator(cwd)}
 			// One renderer draws both views in both forms; the surface reads
 			// the window, the colour rung and the locale and hands them in
 			// (spc-2610031844142274). In a pipe the board is drawn at Mono and
@@ -417,6 +419,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newMemoryCommand(&asJSON))
 	root.AddCommand(newInboxCommand(&asJSON))
 	root.AddCommand(newDashboardCommand(&asJSON))
+	root.AddCommand(newSessionCommand(&asJSON))
 	root.AddCommand(newStatuslineCommand(&asJSON))
 
 	root.AddCommand(newAhoyCommand(&asJSON))
@@ -1126,44 +1129,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if info, err := os.Stat(repoAbs); err != nil || !info.IsDir() {
 				return &exitError{Code: 2, Msg: "disembark pack: the <repo> argument is not a directory (it is not repeated here)"}
 			}
-			// Build the source repo's secret scanner and fail closed if its config
-			// is degraded — a pack must not ship secrets under a weakened ruleset.
-			sc, err := scanner.New(repoAbs)
+			scan, err := lifeboatSecretScan(repoAbs)
 			if err != nil {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: %s", scrubPaths(err))}
-			}
-			if bad, reason := sc.Unavailable(); bad {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: secret scanner unavailable, refusing: %s", reason)}
-			}
-			// A lifeboat is written OUT of the repository, as a release is, so the
-			// scanner augmenter the source configured and nobody installed refuses
-			// the pack as it refuses a launch (the 2026-09-25 ruling on
-			// iss-2608291814575788).
-			if gap := sc.AugmenterGap(); gap != "" {
-				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: the scanner augmenter this repository configured is not installed, refusing: %s", gap)}
-			}
-			scan := func(files []lifeboat.PlannedFile) error {
-				hard, first := 0, ""
-				for _, f := range files {
-					for _, fnd := range sc.ScanText(string(f.Content), f.Path) {
-						if fnd.Severity == scanner.SeverityHardFail {
-							hard++
-							if first == "" {
-								first = fmt.Sprintf("%s (%s)", f.Path, fnd.Kind)
-							}
-						}
-					}
-				}
-				// The augmenter runs inside ScanText, and a run that failed
-				// degrades the scanner during the walk: refuse, never read the
-				// shorter list as clean.
-				if bad, reason := sc.Unavailable(); bad {
-					return fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
-				}
-				if hard > 0 {
-					return fmt.Errorf("%d hard-fail secret(s) in planned content (first: %s); fix at source, not in the lifeboat", hard, first)
-				}
-				return nil
+				return &exitError{Code: 2, Msg: "disembark pack: " + scrubPaths(err)}
 			}
 			res, err := lifeboat.Pack(repoAbs, args[1], scan, ignoredScope(packIgnored)...)
 			if err != nil {
@@ -1203,7 +1171,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			// a drop is reported honestly, not a failure. Only structural faults
 			// (not a lifeboat, unreadable graveyard, unparseable/oversize payload)
 			// return an error and exit 2.
-			res, err := lifeboat.IngestLessons(dirAbs, raw)
+			res, err := lifeboat.IngestLessons(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark graveyard: " + scrubPaths(err)}
 			}
@@ -1243,7 +1211,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
 			}
-			res, err := lifeboat.SynthesizePrinciples(dirAbs, raw)
+			res, err := lifeboat.SynthesizePrinciples(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark principles: " + scrubPaths(err)}
 			}
@@ -1281,7 +1249,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			// refusal (ErrPressReleaseUncited): exit 2, the derived file left untouched
 			// (design §5 exception). It flows through the generic exit-2 wrapping like
 			// every other structural fault.
-			res, err := lifeboat.ComposePressRelease(dirAbs, raw)
+			res, err := lifeboat.ComposePressRelease(dirAbs, raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark press-release: " + scrubPaths(err)}
 			}
@@ -1322,7 +1290,7 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			}
 			// The source repo's content is never read (the core gates it as a real dir
 			// only); a manifest failure is a MAJOR_RETHINK verdict input, exit 0.
-			res, err := lifeboat.ReviewLifeboat(dirAbs, args[1], raw)
+			res, err := lifeboat.ReviewLifeboat(dirAbs, args[1], raw, deferredLifeboatSecretScan(dirAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
 			}
@@ -1349,6 +1317,72 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 	disembarkCmd.AddCommand(pressReleaseCmd)
 	disembarkCmd.AddCommand(reviewCmd)
 	return disembarkCmd
+}
+
+// lifeboatSecretScan builds the secret scan every verb that writes into a
+// lifeboat hands the core: pack over its planned bytes, and graveyard,
+// principles, press-release and review over the host payload they would write.
+// It builds the scanner over root and fails closed when the scanner's config is
+// degraded, since a lifeboat must not be written under a weakened ruleset. A
+// lifeboat is written OUT of the repository, as a release is, so a scanner
+// augmenter root configured and nobody installed refuses as it refuses a launch
+// (the 2026-09-25 ruling on iss-2608291814575788). The returned scan refuses on
+// any hard-fail finding: refuse, never redact.
+func lifeboatSecretScan(root string) (lifeboat.SecretScan, error) {
+	sc, err := scanner.New(root)
+	if err != nil {
+		return nil, err
+	}
+	if bad, reason := sc.Unavailable(); bad {
+		return nil, fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
+	}
+	if gap := sc.AugmenterGap(); gap != "" {
+		return nil, fmt.Errorf("the scanner augmenter this repository configured is not installed, refusing: %s", gap)
+	}
+	return func(files []lifeboat.PlannedFile) error {
+		hard, first := 0, ""
+		for _, f := range files {
+			for _, fnd := range sc.ScanText(string(f.Content), f.Path) {
+				if fnd.Severity == scanner.SeverityHardFail {
+					hard++
+					if first == "" {
+						first = fmt.Sprintf("%s (%s)", f.Path, fnd.Kind)
+					}
+				}
+			}
+		}
+		// The augmenter runs inside ScanText, and a run that failed
+		// degrades the scanner during the walk: refuse, never read the
+		// shorter list as clean.
+		if bad, reason := sc.Unavailable(); bad {
+			return fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
+		}
+		if hard > 0 {
+			return fmt.Errorf("%d hard-fail secret(s) in planned content (first: %s); fix at source, not in the lifeboat", hard, first)
+		}
+		return nil
+	}, nil
+}
+
+// deferredLifeboatSecretScan is lifeboatSecretScan over the lifeboat directory,
+// built when the core first scans rather than up front, so the core's own
+// lifeboat gate (not a directory, not a lifeboat) still answers first for an
+// operand that is not one, and the scanner is built over a directory proved to
+// be a lifeboat. A lifeboat carries no scanner settings of its own, so abcd's
+// built-in rules judge: a source repository's extra patterns and augmenter
+// apply at pack, where that repository is read. A call that would write
+// nothing has nothing to scan, and no scanner is built for it.
+func deferredLifeboatSecretScan(dirAbs string) lifeboat.SecretScan {
+	return func(files []lifeboat.PlannedFile) error {
+		if len(files) == 0 {
+			return nil
+		}
+		scan, err := lifeboatSecretScan(dirAbs)
+		if err != nil {
+			return err
+		}
+		return scan(files)
+	}
 }
 
 // newEmbarkCommand builds the operator `embark` sub-tree — the write half of the
@@ -1712,20 +1746,21 @@ func newHookCommand(asJSON *bool) *cobra.Command {
 	// prompt-router — UserPromptSubmit: recall-match, dedup, inject.
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router",
-		Short: "UserPromptSubmit: inject the rules and memory notes matching the prompt",
+		Short: "UserPromptSubmit: inject the rules, memory notes and pages matching the prompt",
 		Long: `Plain, stdout is the rendered rule block the host injects, followed by a
-"## MEMORY" block of the memory notes the prompt recalls, and nothing on a
-turn with nothing new. With --json, stdout is one envelope in place of the
+"## MEMORY" block of the memory notes and pages the prompt recalls, and nothing
+on a turn with nothing new. With --json, stdout is one envelope in place of the
 generic machine-reader shape:
 
   {"text": ..., "injected": [...], "recalled": [...], "active": [...], "error": ...}
 
 text is byte for byte what the plain form writes; injected names the domains
-text carries, and recalled the notes; active is the full set of domains in
+text carries, and recalled the notes and pages (a note by its id, a page as
+page:<filename>); active is the full set of domains in
 force this turn, so a name missing from it has stopped. error is present only
 when the prompt could not be evaluated, and then active is absent: the set is
-unknown. A memory.json that cannot be read is named on stderr and recalls
-nothing, and the rules still inject. Every outcome, an error included,
+unknown. A memory.json, page store or page that cannot be read is named on
+stderr and recalls nothing, and the rules still inject. Every outcome, an error included,
 exits 0, so the hook can never wedge a session.
 
 After them comes a "## STATUS" block when the last fetch of the status
@@ -1859,16 +1894,20 @@ envelope carries it as system_message.`,
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
-			// Each note id carries its layer ("mem-… (project)"), as the
-			// rules line's names carry theirs, so the log says whether the
-			// words came from this repository's committed file or from the
-			// person's own notes.
-			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d note(s) [%s], %d bytes", len(mem.Recalled),
+			// Each item carries its layer ("mem-… (project)", "page:… (machine)"),
+			// as the rules line's names carry theirs, so the log says whether
+			// the words came from this repository's committed files or from
+			// the person's own.
+			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 || len(mem.TooLarge) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d item(s) [%s], %d bytes", len(mem.Recalled),
 					strings.Join(mem.Labels(mem.Recalled), ", "), len(mem.Text))
 				if len(mem.Omitted) > 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched note(s) [%s] did not fit this turn's budget and are tried again on the next",
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) [%s] did not fit this turn's budget and are tried again on the next",
 						len(mem.Omitted), strings.Join(mem.Labels(mem.Omitted), ", "))
+				}
+				if len(mem.TooLarge) > 0 {
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) [%s] are larger than the whole per-turn budget and do not come back in full",
+						len(mem.TooLarge), strings.Join(mem.Labels(mem.TooLarge), ", "))
 				}
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
@@ -1981,107 +2020,7 @@ envelope carries it as system_message.`,
 		Use:   "session-end",
 		Short: "SessionEnd: stage the raw transcript for the next session to redact and store",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			started := time.Now()
-			// Diagnostics go to stderr, out of band; stdout stays empty, since a
-			// Stop hook's stdout is not a place to speak to the model — unless
-			// the caller asked for --json, when it carries one result line on
-			// every path (hook_result.go, iss-2608261550596333).
-			// The result names the session it lost, as subagent-stop's does
-			// (iss-2609260221577624): in is read below, and warn names whatever
-			// of it was parsed — nothing, for a payload that did not parse.
-			var in hookInput
-			warn := func(format string, a ...any) error {
-				msg := diagnosticLine(cmd.ErrOrStderr(), "abcd history: "+format, a...)
-				emitHookResult(cmd, hookStageResult{Hook: "session-end", Outcome: hookOutcomeNotCaptured,
-					SessionID: termsafe.Sanitize(in.SessionID), Reason: strings.TrimPrefix(msg, "abcd history: ")})
-				return nil // never non-zero: a Stop hook must not wedge the session
-			}
-
-			parsed, err := readHookInput(cmd)
-			if err != nil {
-				return warn("unreadable Stop payload (%v); capturing nothing", err)
-			}
-			in = parsed
-			if in.TranscriptPath == "" {
-				return warn("Stop payload carries no transcript_path; capturing nothing")
-			}
-			cwd := in.Cwd
-			if cwd == "" {
-				if wd, err := os.Getwd(); err == nil {
-					cwd = wd
-				}
-			}
-			detectStart := time.Now()
-			det, err := ahoy.Detect(cwd)
-			detectCost := time.Since(detectStart)
-			if err == nil && det.RootSHA == "" && det.RepoIdentity.RootErr() != nil {
-				// git failing once on a loaded machine is not a directory
-				// outside any repository: ask again before giving the session
-				// up, as the sub-agent hook does (iss-2610051434156079).
-				det, err = retryDetect(cmd.ErrOrStderr(), sessionEndResolveWaits, started.Add(sessionEndRetryBudget), detectCost, cwd, det)
-			}
-			if err == nil && det.RootSHA == "" {
-				if rerr := det.RepoIdentity.RootErr(); rerr != nil {
-					return warn("git gave no root commit for %q (%s); capturing nothing", cwd, fsutil.RedactHome(rerr.Error()))
-				}
-			}
-			if err != nil || det.RootSHA == "" {
-				return warn("cannot resolve the repo's root-commit SHA from %q; capturing nothing", cwd)
-			}
-			raw, err := readTranscript(in.TranscriptPath)
-			if err != nil {
-				return warn("%v; capturing nothing", err)
-			}
-			// Stage, do NOT capture. Redaction costs ~0.7s/MB and the host cancels
-			// a shutdown hook rather than wait, so capturing here dropped every
-			// transcript past a couple of MB — silently, and precisely the long,
-			// dense sessions most worth keeping (iss-2608230817034768). Staging is
-			// one write, so this hook's cost no longer scales with the transcript;
-			// the next SessionStart drains it through the same fail-closed Capture.
-			// Resolve first, so the store's own diagnostics — a corpus migrated
-			// off the legacy location, an opt-in declaration that was not
-			// honoured — reach stderr rather than being discarded inside Stage.
-			if st, err := history.Resolve(captureRoot(cwd), det.RootSHA); err == nil {
-				for _, n := range st.Notes {
-					fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
-				}
-			}
-			res, err := stageWithRetry(cmd.ErrOrStderr(), 0, captureRoot(cwd), det.RootSHA, history.StageMeta{
-				Lineage:    history.CaptureMeta{SessionID: in.SessionID, Kind: "native", LineageSource: "hook"},
-				SourcePath: in.TranscriptPath,
-			}, raw)
-			if err != nil {
-				// The marker is where the person sees the loss: this hook exits
-				// 0, and its stderr reaches only the host's debug log.
-				if nerr := history.NoteStageMiss(captureRoot(cwd), det.RootSHA, "session "+in.SessionID, err.Error()); nerr != nil {
-					diagnosticLine(cmd.ErrOrStderr(), "abcd history: the missed stage could not be recorded either (%v)", nerr)
-				}
-				return warn("staging failed (%v); this session was not captured, and `abcd history staged` reports it", err)
-			}
-			staged := hookStageResult{Hook: "session-end", Captured: true, SessionID: res.Staged.SessionID, Bytes: res.Staged.Bytes}
-			if !res.Wrote {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: session %s already staged with identical bytes (no-op)\n", res.Staged.SessionID)
-				staged.Outcome = hookOutcomeAlreadyStaged
-				emitHookResult(cmd, staged)
-				return nil
-			}
-			if res.Replaced {
-				// Different bytes for an already-staged session: the later
-				// snapshot replaced the earlier one, and this says so rather
-				// than reporting a no-op that would hide a replaced transcript.
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: re-staged %s (%d bytes), replacing %d stale bytes; the next session redacts and stores it\n",
-					res.Staged.SessionID, res.Staged.Bytes, res.ReplacedBytes)
-				staged.Outcome, staged.ReplacedBytes = hookOutcomeRestaged, res.ReplacedBytes
-				emitHookResult(cmd, staged)
-				return nil
-			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: staged %s (%d bytes); the next session redacts and stores it\n",
-				res.Staged.SessionID, res.Staged.Bytes)
-			staged.Outcome = hookOutcomeStaged
-			emitHookResult(cmd, staged)
-			return nil
-		},
+		RunE:  runHookSessionEnd, // hook_session_end.go
 	})
 
 	// session-start — SessionStart: warn, visibly, when the transcript store is
@@ -2120,6 +2059,9 @@ envelope carries it as system_message.`,
 			// name the first prompt sets, and writes nothing to stdout
 			// (hook_session_name.go).
 			startSessionName(cmd, in, cwd)
+			// Which checkout this session works in, for the record verbs' count
+			// of sessions sharing a main checkout (hook_occupancy.go).
+			noteOccupancy(cmd, in, cwd)
 			// The away block, on every source, compaction included, and the
 			// session's start copy noted (spc-2610180914469489 step 2). The
 			// block is the home store's own words, never a tracked file's.
@@ -2141,6 +2083,10 @@ envelope carries it as system_message.`,
 			// otherwise redact all of it before the user's first prompt. Whatever
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
+			// The transcripts session-end left pending go to their stores
+			// first, so this repository's drain below stores its own
+			// (iss-2610241519088123).
+			notices = append(notices, placePendingNotices()...)
 			det, detErr := ahoy.Detect(cwd)
 			if rerr := det.RepoIdentity.RootErr(); detErr == nil && rerr != nil {
 				// git did not answer for this repository: nothing is
@@ -2226,6 +2172,18 @@ envelope carries it as system_message.`,
 			// whatever the repo detection above could answer (itd-105).
 			if n := binarySkewNotice(); n != "" {
 				notices = append(notices, n)
+			}
+			// Committed hooks git does not run in this clone
+			// (iss-2610241133284600): commits and pushes pass unchecked, and
+			// until this notice nothing said so before a gate failed afterwards.
+			hooksOff := false
+			if detErr == nil {
+				if n := ahoy.HooksUnrunNotice(det.Gaps); n != "" {
+					notices = append(notices, n)
+				}
+				// Only the certain case reaches the session's context: a hooks
+				// path set elsewhere may still run the checks.
+				hooksOff = ahoy.HooksUnarmed(det.Gaps)
 			}
 			// The harness's user settings (iss-2610050556323779): a hook there
 			// that runs abcd, or an abcd status line that is gone or fails the
@@ -2320,6 +2278,13 @@ envelope carries it as system_message.`,
 				"abcd: %d session-start notice(s) on this hook's stderr; "+
 					"run `abcd history staged` for transcript backlog or `abcd ahoy` for install state.\n",
 				len(notices))
+			// The one notice the session itself must act on before it commits,
+			// so its gist reaches the context too. A constant, like the line
+			// above: the notice's own words stay on stderr.
+			if hooksOff {
+				fmt.Fprintln(cmd.OutOrStdout(),
+					"abcd: git does not run this repository's committed commit checks in this clone, so no commit made here is checked; `abcd ahoy` names the fix.")
+			}
 			return nil
 		},
 	})
@@ -2336,6 +2301,9 @@ envelope carries it as system_message.`,
 	// stop and stop-failure — Stop and StopFailure: the away mode's stop
 	// check (spc-2610180914469489 step 5). Their bodies live in hook_stop.go.
 	hookCmd.AddCommand(newHookStopCommand(), newHookStopFailureCommand())
+	// dogfood-binary and dogfood-build — the hook shims' dogfood rung
+	// (hook_dogfood.go): which build a listed checkout runs, and making it.
+	hookCmd.AddCommand(newDogfoodBinaryCommand(), newDogfoodBuildCommand())
 
 	return hookCmd
 }
@@ -2630,8 +2598,14 @@ its .abcd/rules.json.
 --prompt "<text>" shows what that one prompt would bring back to a fresh
 session: each rule domain it matches, with the recall words that hit, and
 each memory note it recalls from ` + abcdhome.Display("memory.json") + ` and .abcd/memory.json,
-with its layer and the recall words that hit, each in full or as not fitting
-the per-turn budget. It reads against an empty ledger and writes nothing.
+and each memory page from .abcd/memory/ and ` + abcdhome.Display("memory") + `/, with its
+layer and the recall words that hit, each in full or as not fitting the
+per-turn budget, or as larger than the whole budget, which no turn can
+carry in full. Notes and pages share one ranked order, a BM25F relevance
+score that decides which of them fit the budget: each shows its rank and
+score and, under it, every matched term with the fields it was found in
+(recall words, title, body) and what it added to the score. It reads
+against an empty ledger and writes nothing.
 --prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.`,
 		Args: cobra.MaximumNArgs(1),
@@ -2689,7 +2663,7 @@ Read-only.`,
 			})
 		},
 	}
-	cmd.Flags().StringVar(&prompt, "prompt", "", "show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes it recalls")
+	cmd.Flags().StringVar(&prompt, "prompt", "", "show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes and pages it recalls")
 	return cmd
 }
 
@@ -2751,6 +2725,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
+			}
+			if len(args) > 0 {
+				if err := refuseSharedMainCheckout(cmd, "abcd intent", repoRoot); err != nil {
+					return err
+				}
 			}
 			// Quoted text (no sub-verb) files a new draft — the symmetric create path
 			// (itd-46). Bare invocation stays read-only status + help (never mutates).
@@ -2856,6 +2835,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent plan", repoRoot); err != nil {
+				return err
+			}
 			// The mode belongs to the SPEC this mints; the intent's own stamp was
 			// written when its draft was created and is never rewritten.
 			mode, err := resolveProductionMode(repoRoot, planProductionMode)
@@ -2933,6 +2915,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
+			}
+			if strings.TrimSpace(readyGrounds) != "" {
+				if err := refuseSharedMainCheckout(cmd, "abcd intent ready", repoRoot); err != nil {
+					return err
+				}
 			}
 			var recorded *intent.GroundsResult
 			if strings.TrimSpace(readyGrounds) != "" {
@@ -3024,6 +3011,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent link", repoRoot); err != nil {
+				return err
+			}
 			res, err := intent.Link(repoRoot, args[0], args[1])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent link: " + err.Error()}
@@ -3044,6 +3034,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent edge", repoRoot); err != nil {
 				return err
 			}
 			res, err := intent.Edge(repoRoot, intent.EdgeRequest{
@@ -3080,6 +3073,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent hold", repoRoot); err != nil {
+				return err
+			}
 			if strings.TrimSpace(holdReason) == "" {
 				return &exitError{Code: 2, Msg: "abcd intent hold: --reason is required — a hold with no reason is a state nobody can lift on its merits (nothing written)"}
 			}
@@ -3107,6 +3103,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent unhold", repoRoot); err != nil {
+				return err
+			}
 			res, err := intent.Unhold(repoRoot, args[0])
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent unhold: " + err.Error()}
@@ -3127,6 +3126,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent target", repoRoot); err != nil {
 				return err
 			}
 			res, err := intent.Target(repoRoot, args[0], args[1])
@@ -3209,6 +3211,9 @@ func newIntentReclassifyCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent reclassify", repoRoot); err != nil {
+				return err
+			}
 			res, err := intent.Reclassify(repoRoot, args[0], intent.ReclassifyRequest{Kind: kind, Bundle: bundle, By: by, Reason: reason})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent reclassify: " + err.Error()}
@@ -3257,6 +3262,11 @@ func newIntentConditionCommand(asJSON *bool) *cobra.Command {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
+			}
+			if len(args) > 1 {
+				if err := refuseSharedMainCheckout(cmd, "abcd intent condition", repoRoot); err != nil {
+					return err
+				}
 			}
 			if len(args) == 1 {
 				for _, f := range []string{"disposition", "occasioned-by", "grounds", "narrowing"} {
@@ -3451,6 +3461,9 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent audit", repoRoot); err != nil {
+				return err
+			}
 			route, err := auditRoute.resolve(cmd, "abcd intent audit", auditAgent)
 			if err != nil {
 				return err
@@ -3505,6 +3518,9 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd intent audit ingest", repoRoot); err != nil {
 				return err
 			}
 			if verdictJSON == "" {
@@ -3615,8 +3631,8 @@ func runOwedReviews(cmd *cobra.Command, asJSON bool) error {
 		return &exitError{Code: 2, Msg: "abcd intent audit: " + err.Error()}
 	}
 	return render(cmd.OutOrStdout(), asJSON, l, func(w io.Writer) {
-		fmt.Fprintf(w, "abcd intent audit — fidelity reviews owed %d · dead-lettered %d · ingested %d (of %d shipped)\n",
-			l.Owed, l.DeadLettered, l.Ingested, len(l.Entries))
+		fmt.Fprintf(w, "abcd intent audit — fidelity reviews owed %d · dead-lettered %d · ingested %d · hand-audited %d (of %d shipped)\n",
+			l.Owed, l.DeadLettered, l.Ingested, l.HandAudited, len(l.Entries))
 		fmt.Fprintln(w, "owed:")
 		if l.Owed == 0 {
 			fmt.Fprintln(w, "  none")
@@ -3824,6 +3840,9 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd spec close", repoRoot); err != nil {
+				return err
+			}
 			// A production mode stamps the MINTED remainder and nothing else, so
 			// without --remainder there is no record for it to describe: refuse
 			// rather than accept a disclosure that goes nowhere.
@@ -3996,6 +4015,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					out.ReadmeTool = append(out.ReadmeTool, hostCall(a))
 				}
 			}
+			if res.Sessions != nil {
+				for _, a := range res.Sessions.Asks {
+					out.SessionsTool = append(out.SessionsTool, hostCall(a))
+				}
+			}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy — %s\n", res.FolderKind)
 				fmt.Fprintf(w, "  plugin root: %s\n", res.PluginRootStatus)
@@ -4088,7 +4112,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.Flags().BoolVar(&identityMode, "identity", false,
 		"check git's commit author and committer against the identity you recorded on this machine, exiting non-zero when either diverges or is a machine identity (for a pre-commit hook or CI)")
 	ahoyCmd.Flags().BoolVar(&remoteMode, "remote", false,
-		"report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change")
+		"audit this repository's GitHub settings against abcd's baseline, one line per setting, and say what the remote apply sub-verb would change")
 	ahoyCmd.Flags().BoolVar(&providersMode, "providers", false,
 		"explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live")
 	ahoyCmd.MarkFlagsMutuallyExclusive("dry-run", "identity", "remote", "providers")
@@ -4111,6 +4135,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		answersPath   string
 		answeredIn    string
 		readmeParts   string
+		liveSessions  string
 		details       bool
 	)
 	installCmd := &cobra.Command{
@@ -4132,6 +4157,14 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					return &exitError{Code: 2, Msg: "abcd ahoy install: " + perr.Error() + "; nothing was written"}
 				}
 				opts.ReadmeParts = readmeParts
+			}
+			// The live brief session answer (spc-2610141709430146 step 6):
+			// refused, naming the answers, before anything is written.
+			if cmd.Flags().Changed("live-sessions") {
+				if perr := ahoy.ParseLiveSessions(liveSessions); perr != nil {
+					return &exitError{Code: 2, Msg: "abcd ahoy install: " + perr.Error() + "; nothing was written"}
+				}
+				opts.LiveSessions = liveSessions
 			}
 			opts.Outbound = outbound
 			opts.OnlyWaiting = onlyWaiting(cmd)
@@ -4275,6 +4308,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					default:
 						fmt.Fprint(w, "    the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
 					}
+					switch {
+					case !slices.Contains(res.OptionalSkipped, ahoy.SessionsOfferGapID):
+					case res.SessionsAwaitsConfig():
+						fmt.Fprint(w, "    the live brief session answer is kept in .abcd/config.json, which does not exist yet: answer y to creating abcd's starter files first, then answer the question at a terminal, or answer it with --live-sessions "+ahoy.LiveSessionsChoices+"\n")
+					default:
+						fmt.Fprint(w, "    the live brief session question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --live-sessions "+ahoy.LiveSessionsChoices+"\n")
+					}
 				}
 			}); rerr != nil {
 				return rerr
@@ -4300,7 +4340,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
 	installCmd.Flags().BoolVar(&attribution, "attribution", false, "opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook")
-	installCmd.Flags().BoolVar(&outbound, "outbound", false, "opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both")
+	installCmd.Flags().BoolVar(&outbound, "outbound", false, "opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which also refuses a pull request body (gh pr create, new or edit) with no Assisted-by line in an accepted form, or one carrying a Co-authored-by line; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both")
 	installCmd.Flags().BoolVar(&allowStale, "allow-stale-binary", false, "proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix")
 	installCmd.Flags().StringVar(&binDir, "bin-dir", "", "directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges")
 	installCmd.Flags().StringVar(&visibility, "visibility", "", "repo visibility: private | public")
@@ -4310,6 +4350,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
 	installCmd.Flags().StringVar(&answersPath, "answers", "", "answer the setup questions from this answers file (JSON: schema_version, interview \"setup\", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key")
 	installCmd.Flags().StringVar(&readmeParts, "readme-parts", "", "answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included")
+	installCmd.Flags().StringVar(&liveSessions, "live-sessions", "", "answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up")
 	installCmd.Flags().StringVar(&answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
 	addOnlyWaitingFlag(installCmd)
 	ahoyCmd.AddCommand(installCmd)
@@ -4384,6 +4425,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoyWorktreeCommand(asJSON))
 
 	return ahoyCmd
 }
@@ -4527,9 +4569,10 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 			// A change that did not happen exits non-zero. `aborted` is on this list
 			// deliberately: a non-interactive run without --yes reads EOF, declines,
 			// and would otherwise print "aborted" and exit 0 — which to a script is
-			// indistinguishable from a write that landed. `opted_out` is the one
-			// non-change that exits clean, because leaving the repo alone IS what the
-			// repo asked for. The reason is on stdout above either way. A refusal
+			// indistinguishable from a write that landed. A run with nothing to
+			// change exits clean, settings the repo keeps included, because leaving
+			// them alone IS what the repo asked for. The reason is on stdout above
+			// either way. A refusal
 			// exits 2, the code every other verb and `ahoy install` give one; an
 			// abort keeps exit 1, where scripts already read it
 			// (iss-2610031915386832).
@@ -4538,8 +4581,17 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 				if res.Status == "refused" {
 					code = 2
 				}
+				// A refusal can come AFTER a toggle landed (a later step failed, or
+				// the mirror could not be written), and then "nothing was changed"
+				// is false: name what landed instead (iss-2610072347230409). The
+				// change lines quote GitHub's own status words, so they are sanitised.
+				outcome := " — nothing was changed"
+				if len(res.Changes) > 0 {
+					outcome = " — already changed on GitHub before it stopped: " +
+						termsafe.Sanitize(strings.Join(res.Changes, "; "))
+				}
 				return &exitError{Code: code, Msg: "abcd ahoy remote apply: " + res.Status +
-					" — nothing was changed (the reason is in the result's notes above)"}
+					outcome + " (the reason is in the result's notes above)"}
 			}
 			return nil
 		},
@@ -4570,8 +4622,13 @@ func renderRemoteResult(w io.Writer, verb string, res ahoy.RemoteResult) {
 	fmt.Fprintf(w, "  observed: secret scanning %s, push protection %s\n",
 		termsafe.Sanitize(remoteStatusWord(res.Observed.SecretScanning)),
 		termsafe.Sanitize(remoteStatusWord(res.Observed.PushProtection)))
-	for _, c := range res.Changes {
-		fmt.Fprintf(w, "  change:   %s\n", termsafe.Sanitize(c))
+	renderSettingsAudit(w, res.Audit)
+	// The read's changes are the audit's differences, already printed above
+	// one per setting; an apply's are what it changed.
+	if res.Audit == nil || res.Status != "pending" {
+		for _, c := range res.Changes {
+			fmt.Fprintf(w, "  change:   %s\n", termsafe.Sanitize(c))
+		}
 	}
 	for _, p := range res.Writes {
 		fmt.Fprintf(w, "  wrote:    %s\n", termsafe.Sanitize(p))
@@ -4580,6 +4637,43 @@ func renderRemoteResult(w io.Writer, verb string, res ahoy.RemoteResult) {
 	// failure, so the reason is printed whatever the status.
 	for _, n := range res.Notes {
 		fmt.Fprintf(w, "  note:     %s\n", termsafe.Sanitize(n))
+	}
+}
+
+// renderSettingsAudit prints the settings audit (itd-2610290746077716): the
+// visibility and plan, the checks the baseline requires, then one
+// `setting: current -> target [state] note` line per setting not at its
+// target, and the rest as one count. Every value is sanitised: it is GitHub's
+// answer or the tree's, not abcd's own words.
+func renderSettingsAudit(w io.Writer, a *ahoy.SettingsAudit) {
+	if a == nil {
+		return
+	}
+	plan := a.Plan
+	if plan == "" {
+		plan = "unknown"
+	}
+	fmt.Fprintf(w, "  visibility: %s (declared %s), plan %s\n",
+		termsafe.Sanitize(remoteStatusWord(a.Visibility)), termsafe.Sanitize(remoteStatusWord(a.DeclaredVisibility)),
+		termsafe.Sanitize(plan))
+	if len(a.RequiredChecks) > 0 {
+		fmt.Fprintf(w, "  required checks: %s\n", termsafe.Sanitize(strings.Join(a.RequiredChecks, ", ")))
+	}
+	ok := 0
+	for _, f := range a.Findings {
+		if f.State == "ok" {
+			ok++
+			continue
+		}
+		line := fmt.Sprintf("  setting:  %s: %s -> %s [%s]", f.Setting, f.Current, f.Target, f.State)
+		if f.Note != "" {
+			line += " " + f.Note
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(line))
+	}
+	fmt.Fprintf(w, "  baseline: %d settings at their target\n", ok)
+	for _, n := range a.Notes {
+		fmt.Fprintf(w, "  workflow: %s\n", termsafe.Sanitize(n))
 	}
 }
 
@@ -4682,6 +4776,8 @@ func optionalSkipReason(id string) string {
 		return "an agent tool's own conventions file that only repeats AGENTS.md is removed from the project only against a prompt answered at a terminal"
 	case ahoy.ReadmeOfferGapID:
 		return "which parts of README.md abcd keeps current is the owner's choice, so abcd writes none until --readme-parts or the README question answers it"
+	case ahoy.SessionsOfferGapID:
+		return "whether the team edits its brief live, and where sessions may run, is the owner's choice, so abcd records nothing until --live-sessions or the question answers it"
 	case ahoy.HooksArmGapID:
 		return "core.hooksPath chooses every hook git runs in this clone, so it is only set against a prompt answered at a terminal; or run " + ahoy.ArmHooksCommand
 	}
@@ -5196,6 +5292,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if len(args) > 0 {
+				if err := refuseSharedMainCheckout(cmd, "abcd capture", repoRoot); err != nil {
+					return err
+				}
+			}
 			// Bare invocation: read-only status render (never mutates).
 			if len(args) == 0 {
 				st, err := capture.Status(capture.StatusRequest{RepoRoot: repoRoot})
@@ -5539,6 +5640,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture resolve", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Resolve(capture.ResolveRequest{
 				RepoRoot: repoRoot, ID: args[0], Resolution: args[1], Impact: resolveImpact,
 				ByIntent: resolveByIntent, BySpec: resolveBySpec, ByCommit: resolveByCommit,
@@ -5599,6 +5703,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture link", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Link(capture.LinkRequest{
 				RepoRoot: repoRoot, ID: args[0],
 				BlockedBy: splitIDList(linkBlockedBy), Unblock: splitIDList(linkUnblock),
@@ -5633,6 +5740,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture promote", repoRoot); err != nil {
 				return err
 			}
 			// The grounds argument belongs to the ISSUE route, which has no
@@ -5708,6 +5818,11 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if migrateApply {
+				if err := refuseSharedMainCheckout(cmd, "abcd capture migrate --apply", repoRoot); err != nil {
+					return err
+				}
+			}
 			res, err := capture.Migrate(capture.MigrateRequest{RepoRoot: repoRoot, Apply: migrateApply})
 			// Migrate takes no input it could refuse, so what fails here is a
 			// fault and exits 1, as every ledger verb's fault does.
@@ -5754,6 +5869,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture disposition", repoRoot); err != nil {
 				return err
 			}
 			recurs, err := parseRecurs(dispRecurs)
@@ -5812,6 +5930,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture admit", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Admit(capture.AdmitRequest{RepoRoot: repoRoot, Item: args[0], Grounds: admitGrounds})
 			if err != nil {
 				return captureRefusal("admit", err)
@@ -5855,6 +5976,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture surprise", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Surprise(capture.SurpriseRequest{RepoRoot: repoRoot, OccasionedBy: surpriseOccasion, Text: args[0]})
 			if err != nil {
 				return captureRefusal("surprise", err)
@@ -5893,6 +6017,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture reframe", repoRoot); err != nil {
 				return err
 			}
 			res, err := capture.Reframe(capture.ReframeRequest{
@@ -5939,6 +6066,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture wontfix", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Wontfix(capture.WontfixRequest{
 				RepoRoot: repoRoot, ID: args[0], Reason: args[1], Grounds: wontfixGrounds,
 				ProductionMode: wontfixProductionMode, Duplicates: splitIDList(wontfixDuplicates),
@@ -5978,6 +6108,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture defer", repoRoot); err != nil {
+				return err
+			}
 			res, err := capture.Defer(capture.DeferRequest{
 				RepoRoot: repoRoot, ID: args[0], After: deferAfter, Reason: deferReason,
 			})
@@ -6006,6 +6139,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
 			if err != nil {
+				return err
+			}
+			if err := refuseSharedMainCheckout(cmd, "abcd capture remedy", repoRoot); err != nil {
 				return err
 			}
 			res, err := capture.SetRemedy(capture.RemedyRequest{

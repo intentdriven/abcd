@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1036 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/02-verification-matrix.md:79"
-remedy: "none (filed automatically)"
+remedy: "Rewrite the Spec-tied reviews row to itd-28's re-scoped delivery (decision 1): the per-spec review store is dropped, and pin by dated review folder name plus the staleness count on the status board ship (internal/core/reviews); add the shipped behaviour as a row."
 related_intents: [itd-28]
 finding_ref: cfk-6adf70ba083b4357
 ---

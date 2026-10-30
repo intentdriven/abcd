@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 775 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/shipped/itd-60-doc-fidelity-anti-drift.md:124"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Does a closing lane's landing run the per-intent doc-fidelity gate that the abcd spec close verb runs? Answer A: yes, the landing refuses while the brief lags and the lane records a docs review for its head first. Answer B: no, a lane's close skips that enforcement point and only the release cut's gate catches a lagging brief. Recommend A: itd-60 says autonomy changes who waits, never what refuses, and B turns every autonomous closing lane into a bypass whose failure shows up late, at the cut."
 related_intents: [itd-60]
 finding_ref: cfk-ed05aadd9c1412da
 ---

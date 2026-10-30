@@ -2,7 +2,7 @@
 
 Two third-party `.skill` archives (each a single `SKILL.md`, MIT-spirit, dated
 2026-05-17) were evaluated for usefulness to abcd. Both are the work of the
-GitHub user [mglgit](https://github.com/mglgit) (author identification
+GitHub user, a third-party author (author identification
 supplied by the maintainer, 2026-08-28; the account lists no public
 repositories, so the archives have no resolvable public source and the
 MIT-spirit licence stays unverifiable). Source archives were on the

@@ -24,6 +24,8 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/localtier"
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // TierRelDir is the local-ephemeral tier of a checkout, repo-relative and
@@ -52,7 +54,14 @@ const (
 // the repository at repoRoot, as the pre-push hook's check does, and returns
 // its path, or "" when none names sha. A receipt must be a regular file, never
 // a symlink.
-func Receipt(repoRoot, sha string) (string, error) {
+func Receipt(repoRoot, sha string) (string, error) { return findReceipt(repoRoot, ReceiptsRelDir, sha) }
+
+// findReceipt finds the receipt file named sha under rel in any worktree git
+// lists for the repository at repoRoot: a regular file, never a symlink, and
+// that worktree's own: one git tracks came with a commit, and is refused
+// (localtier.Untracked) rather than counted. Preflight and review receipts
+// are found the same way.
+func findReceipt(repoRoot, rel, sha string) (string, error) {
 	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return "", fmt.Errorf("listing the repository's worktrees: %w", err)
@@ -61,8 +70,11 @@ func Receipt(repoRoot, sha string) (string, error) {
 		if wt.Bare {
 			continue
 		}
-		p := filepath.Join(wt.Path, filepath.FromSlash(ReceiptsRelDir), sha)
+		p := filepath.Join(wt.Path, filepath.FromSlash(rel), sha)
 		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() {
+			if err := localtier.Untracked(wt.Path, rel+"/"+sha); err != nil {
+				return "", err
+			}
 			return p, nil
 		}
 	}
@@ -72,10 +84,9 @@ func Receipt(repoRoot, sha string) (string, error) {
 // runCapped runs cmd, returning its stdout within MaxOutput and, on a failure,
 // an error naming what and carrying its bounded stderr, scrubbed of
 // credential URLs (gitutil.ScrubURLCredentials) before it is cut.
-func runCapped(cmd *exec.Cmd, what string) (string, error) {
+func runCapped(ctx context.Context, cmd *exec.Cmd, what string) (string, error) {
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
+	if err := procgroup.RunToEOF(ctx, cmd, &stdout, &stderr); err != nil {
 		// Scrubbed BEFORE the cut, as gitutil's runners do: a cut across a
 		// credential URL leaves a fragment the scrubber no longer recognises.
 		msg := gitutil.ScrubURLCredentials(strings.TrimSpace(stderr.String()))
@@ -105,8 +116,10 @@ func GH(dir string, args ...string) (string, error) {
 }
 
 // GHContext is GH bound to ctx as well as to ForgeTimeout: the client is
-// killed at whichever ends first, and a process it started that still holds
-// its output open is waited for at most a second more, so a caller's own
+// killed at whichever ends first, and its output is read to EOF before it is
+// waited for (procgroup.RunToEOF), so a client that answered is read whole
+// however late its output closes, and a process it started that still holds
+// that output open holds the call no further than the bound: a caller's own
 // deadline (the away mode's stop check, which lists the forge under ten
 // seconds) holds.
 func GHContext(parent context.Context, dir string, args ...string) (string, error) {
@@ -122,7 +135,7 @@ func GHContext(parent context.Context, dir string, args ...string) (string, erro
 	cmd.Dir = dir
 	cmd.Env = append(gitutil.ScrubbedEnv(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1")
 	cmd.WaitDelay = time.Second
-	return runCapped(cmd, "gh "+strings.Join(args[:min(2, len(args))], " "))
+	return runCapped(ctx, cmd, "gh "+strings.Join(args[:min(2, len(args))], " "))
 }
 
 // GitFunc runs one networked git command (a fetch or a push) from dir:

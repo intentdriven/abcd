@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 1096 of .abcd/work/reviews/2026-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/disciplines/itd-84-intent-decomposition.md:33"
-remedy: "none (filed automatically)"
+remedy: "Ruled 2026-10-27, the recommended answer accepted (dcn-2610271112330536): Decision: does itd-84's rule that model contradiction detection is advisory and never holds a gate shut or auto-files bind the consistency-pass pre-commit hook, whose stop and automatic modes can refuse a commit or file an issue on a model-pass finding? Answers: (A) yes, so stop and automatic apply only to the deterministic rule-seen codes and a model-pass finding only ever warns; (B) no, the owner who picks stop or automatic at setup accepts model false positives. Recommend A: itd-84 cites over-flagging as the dominant failure of contradiction detection, and the hook's own text already says it never refuses on a judgement it could not obtain; narrowing the modes keeps stop useful without letting a model hold a commit."
 related_intents: [itd-84, itd-2609291923559186]
 finding_ref: cfk-31e4a79e0a4969c3
 ---

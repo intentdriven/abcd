@@ -21,6 +21,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
@@ -60,6 +61,11 @@ type Options struct {
 	// deadline; nil asks Runners.
 	Quota func(ctx context.Context, name string) (runner.Quota, bool, error)
 
+	// Tiers is the model-tier routing a step resolves the tier of each role
+	// its rounds hand out through (escalate.go; spc-2609251028149555, AC 10):
+	// the routing tables and the machine's connections. Nil records no route.
+	Tiers *Tiering
+
 	// TakeOver is `abcd build --take-over`: the start's reservation moves
 	// this person's own live reservation from another copy to this one. It
 	// never moves another person's.
@@ -96,6 +102,10 @@ type Options struct {
 	// set's judge (reviewset.go): a test hands a calibrated fixture. Nil is
 	// production, where no judge agent has cleared the gate yet.
 	judgeCalibrated func() (bool, string)
+	// runnerRoute names the runner the step hands a role to, and the --route
+	// text that put it there; "" for the host. Drive sets it from the runner
+	// configuration, so a round's route names the runner it ran on.
+	runnerRoute func(role string) (name, override string)
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -128,6 +138,9 @@ type Context struct {
 	Now    time.Time
 	// Await is the await a verifier is handed the receipt of; nil for a body.
 	Await *Await
+	// router decides the tier each role a round hands out runs at
+	// (escalate.go); nil records no route.
+	router *roundRouter
 }
 
 // Outcome is what a stage's body returns. A body that hands its work to an agent
@@ -292,7 +305,11 @@ type StepResult struct {
 	Stage Stage `json:"stage,omitempty"`
 	// Awaiting is what the lane waits on, when it waits on an agent.
 	Awaiting *Await `json:"awaiting,omitempty"`
-	Complete bool   `json:"complete"`
+	// Tier is the model tier the round asks the awaited agent to run at
+	// (escalate.go), one step up after a round that did not pass; omitted
+	// when its route names no tier.
+	Tier     oracle.Tier `json:"tier,omitempty"`
+	Complete bool        `json:"complete"`
 	// NextEligibleAt is set when this call closed the run's window: nothing
 	// was performed, and no stage is taken before this time.
 	NextEligibleAt *time.Time `json:"next_eligible_at,omitempty"`
@@ -330,7 +347,11 @@ type StepResult struct {
 	// accepted (`implement step --accept-config-change`) before its step:
 	// names alone, a URL subsection hidden, never a value (configwatch.go).
 	AcceptedConfigChange []string `json:"accepted_config_change,omitempty"`
-	Next                 string   `json:"next"`
+	// RouteUnused is each `implement step --route` the step did not use: a
+	// landing ahead of its role moved first (route_use.go). Every other
+	// --route the step would not use is refused before anything is written.
+	RouteUnused []string `json:"route_unused,omitempty"`
+	Next        string   `json:"next"`
 	// handed is true when this call handed the lane to an agent, false when
 	// it re-told an await an earlier call began: only the call that hands the
 	// work out may start a runner for it.
@@ -793,12 +814,12 @@ func openLane(st *State, k int) {
 // waits on the probe while the others move. An outage a stage met is recorded
 // once the lock is released.
 func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error) {
-	return advanceWith(repoRoot, runID, steps, o, nil)
+	return advanceWith(repoRoot, runID, steps, o, nil, nil)
 }
 
 // advanceWith is advance; routed reports whether a role is started through a
 // runner (Drive), which a network outage holds as well as a model one.
-func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool) (StepResult, error) {
+func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool, overrides map[string]string) (StepResult, error) {
 	// The run tripwire (configwatch.go) comes before anything that may start
 	// git: a program-naming setting changed during the run stops the call.
 	if err := configTripwire(repoRoot, runID); err != nil {
@@ -819,6 +840,15 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		if st.NextEligibleAt != nil && now.Before(*st.NextEligibleAt) {
 			return false, contend("pause", "", "", "the run is paused until "+st.NextEligibleAt.UTC().Format(time.RFC3339),
 				"run `abcd implement step` again at or after that time")
+		}
+		// A --route the step will not use is refused before anything is
+		// written (route_use.go).
+		unsure := ""
+		if len(overrides) > 0 {
+			var rerr error
+			if unsure, rerr = checkRoutes(*st, overrides, g, now); rerr != nil {
+				return false, rerr
+			}
 		}
 		if st.Complete() {
 			res = StepResult{RunID: st.RunID, Complete: true, Next: "nothing: every lane of " + st.RunID + " is done"}
@@ -844,7 +874,7 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		logged := len(st.Record)
 		renewNote := renewReservation(repoRoot, st, now, nil)
 		renewed := len(st.Record) != logged
-		r, moved, err := move(repoRoot, st, steps, now, g)
+		r, moved, err := move(repoRoot, st, steps, now, g, newRoundRouter(o))
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
 				rf.Remedy += "; " + renewNote
@@ -868,7 +898,8 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		if renewNote != "" {
 			res.Next += "; " + renewNote
 		}
-		return changed || moved || renewed, nil
+		noted := noteUnusedRoute(st, &res, overrides, unsure, now)
+		return changed || moved || renewed || noted, nil
 	})
 	if err == nil && wait != nil {
 		err = wait
@@ -1061,9 +1092,12 @@ func laneResult(st State, lane Lane, performed Stage, handed *Await) StepResult 
 		res.Next = "nothing: every lane of " + st.RunID + " is done"
 		return res
 	}
+	if res.Awaiting != nil {
+		res.Tier = roundTier(lane, *res.Awaiting)
+	}
 	switch {
 	case handed != nil:
-		res.Next = handedMove(*handed)
+		res.Next = handedMove(*handed, res.Tier)
 	case lane.HandBack != nil:
 		res.Next = handBackMove(st, lane)
 	default:
@@ -1074,9 +1108,13 @@ func laneResult(st State, lane Lane, performed Stage, handed *Await) StepResult 
 
 // handedMove is the one sentence a caller is told when a call handed work to
 // an agent.
-func handedMove(a Await) string {
-	return fmt.Sprintf("start a fresh %s agent with the brief %s; when it has written its receipt, run `abcd implement receipt %s`",
-		a.Role, a.Brief, a.Receipt)
+func handedMove(a Await, tier oracle.Tier) string {
+	at := ""
+	if tier != "" {
+		at = " at model tier " + string(tier)
+	}
+	return fmt.Sprintf("start a fresh %s agent%s with the brief %s; when it has written its receipt, run `abcd implement receipt %s`",
+		a.Role, at, a.Brief, a.Receipt)
 }
 
 // nextMove is the one sentence a caller is told to do next.
@@ -1085,7 +1123,7 @@ func nextMove(st State, lane Lane) string {
 		return handBackMove(st, lane)
 	}
 	if a := lane.awaiting(); a != nil {
-		return handedMove(*a)
+		return handedMove(*a, roundTier(lane, *a))
 	}
 	if lane.Stage == StageHeld {
 		return heldMove(lane)
@@ -1135,7 +1173,7 @@ func readRuns(root *os.Root) ([]State, error) {
 	}
 	out := []State{}
 	for _, id := range ids {
-		st, err := readStateIn(root, id)
+		st, err := readListedState(root, id)
 		if err != nil {
 			return nil, err
 		}

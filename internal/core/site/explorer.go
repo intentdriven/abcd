@@ -119,6 +119,12 @@ func newExplorer(c *composer, export RecordExport, bib *Bibliography, recordRoot
 		glossaryByPath: map[string]glossaryEntry{},
 		pages:          c.manifest.Pages.resolve(),
 	}
+	// A project site has no timeline: it places most records at the day git
+	// first saw their file, and a project site reads no git history
+	// (project.go). The panel and its heading go together.
+	if c.project {
+		e.pages.timeline = false
+	}
 	// A glossary switched off is a glossary the explorer never loads: no pages,
 	// no navigation entry and no term links, the same graceful absence a
 	// repository that keeps none gets.
@@ -133,7 +139,7 @@ func newExplorer(c *composer, export RecordExport, bib *Bibliography, recordRoot
 	for _, en := range entries {
 		e.glossaryByPath[en.Path] = en
 	}
-	e.terms = newTermLinker(entries)
+	e.terms = newTermLinker(entries, c.base)
 	// A decision is a record with a page of its own and a link target like any
 	// other; it is only the chart's node list it is kept out of.
 	for _, n := range export.Decisions {
@@ -185,6 +191,12 @@ func (e *explorer) hasFoundations() bool {
 	return len(e.principles) > 0 || len(e.disciplines) > 0
 }
 
+// hasContributors reports whether the contributors page is built. A project
+// site has none: its count of authors and its declared tools are read out of git
+// history, which is not something abcd writes to the repository, and a project
+// site renders only what abcd writes (project.go).
+func (e *explorer) hasContributors() bool { return !e.c.project }
+
 // hasReferences reports whether the bibliography rendered.
 func (e *explorer) hasReferences() bool { return e.bib != nil && len(e.bib.Entries) > 0 }
 
@@ -210,8 +222,10 @@ func (e *explorer) Pages() (map[string]string, error) {
 			return nil, err
 		}
 	}
-	if err := add(routeContributors, e.contributorsPage); err != nil {
-		return nil, err
+	if e.hasContributors() {
+		if err := add(routeContributors, e.contributorsPage); err != nil {
+			return nil, err
+		}
 	}
 	if e.hasHealth() {
 		if err := add(routeHealth, e.healthPage); err != nil {
@@ -322,7 +336,9 @@ func (e *explorer) subnav(active string) string {
 	if e.hasHealth() {
 		tabs = append(tabs, tab{routeHealth, e.c.ui.RecordNav.Health})
 	}
-	tabs = append(tabs, tab{routeContributors, e.c.ui.RecordNav.Contributors})
+	if e.hasContributors() {
+		tabs = append(tabs, tab{routeContributors, e.c.ui.RecordNav.Contributors})
+	}
 	if e.hasReferences() {
 		tabs = append(tabs, tab{routeReferences, e.c.ui.NavReferences})
 	}
@@ -333,7 +349,7 @@ func (e *explorer) subnav(active string) string {
 		if t.route == active {
 			cls, cur = ` class="on"`, ` aria-current="page"`
 		}
-		b.WriteString(`<a href="/` + t.route + `"` + cls + cur + `>` + escapeText(t.label) + `</a>`)
+		b.WriteString(`<a href="` + escapeAttr(e.c.at("/"+t.route)) + `"` + cls + cur + `>` + escapeText(t.label) + `</a>`)
 	}
 	b.WriteString(`</div></nav>`)
 	return b.String()
@@ -508,7 +524,7 @@ func (e *explorer) dashboard() (string, error) {
 	// The decision records are counted apart from the stores above: they are
 	// not on the chart those tiles count for, and their one page is the log.
 	if e.hasDecisionLog() {
-		b.WriteString(tileLinked("/"+routeDecisionLog, strconv.Itoa(len(e.export.Decisions)),
+		b.WriteString(tileLinked(e.c.at("/"+routeDecisionLog), strconv.Itoa(len(e.export.Decisions)),
 			ui.RecordNav.DecisionLog, nil, ""))
 	}
 
@@ -548,11 +564,11 @@ func (e *explorer) tileHref(typ string) string {
 	switch typ {
 	case "principle":
 		if e.hasFoundations() {
-			return "/" + routeFoundations + "#principle"
+			return e.c.at("/" + routeFoundations + "#principle")
 		}
 	case "adr", "intent", "spec", "issue":
 		if e.hasDevelopment() {
-			return "/" + routeDevelopment + "#" + typ
+			return e.c.at("/" + routeDevelopment + "#" + typ)
 		}
 	}
 	return ""
@@ -627,7 +643,7 @@ func (e *explorer) latestDecisions() string {
 	var b strings.Builder
 	b.WriteString(`<ul class="list">`)
 	for _, n := range adrs {
-		b.WriteString(`<li><span class="id"><a href="/` + escapeAttr(RecordRoute(n)) + `">` + escapeText(n.ID) +
+		b.WriteString(`<li><span class="id"><a href="` + escapeAttr(e.c.at("/"+RecordRoute(n))) + `">` + escapeText(n.ID) +
 			`</a><span class="d">` + escapeText(n.Date) + `</span></span>` +
 			`<span>` + escapeText(shortTitle(n)) + `</span></li>`)
 	}
@@ -645,8 +661,8 @@ func (e *explorer) health() string {
 	// Two lines per finding: the fact, then its explanation — a flowing line
 	// wrapped mid-phrase in the narrow panel.
 	for _, u := range h.Unresolved {
-		b.WriteString(`<div class="hitem"><span class="hfact"><span class="w">!</span> <a href="/` +
-			escapeAttr(e.routeOf(u.From)) + `">` + escapeText(u.From) + `</a> → <b class="stub">` +
+		b.WriteString(`<div class="hitem"><span class="hfact"><span class="w">!</span> <a href="` +
+			escapeAttr(e.c.at("/"+e.routeOf(u.From))) + `">` + escapeText(u.From) + `</a> → <b class="stub">` +
 			escapeText(u.To) + `</b></span><span class="hwhy">` +
 			escapeText(relationWord(u.Rel)) + ` ` + escapeText(ui.Record.NotInTree) + `</span></div>`)
 	}
@@ -734,7 +750,7 @@ func (e *explorer) foundationsPage() (string, error) {
 		var cards strings.Builder
 		cards.WriteString(`<div class="fcards">`)
 		for _, n := range nodes {
-			cards.WriteString(`<a class="fcard" href="/` + escapeAttr(RecordRoute(n)) + `">` +
+			cards.WriteString(`<a class="fcard" href="` + escapeAttr(e.c.at("/"+RecordRoute(n))) + `">` +
 				`<span class="t">` + escapeText(shortTitle(n)) + `</span>` +
 				`<span class="id">` + escapeText(n.ID) + `</span></a>`)
 		}
@@ -757,46 +773,52 @@ func (e *explorer) foundationsPage() (string, error) {
 // assisted.
 //
 // The two are different facts and the page keeps them apart. Humans are the
-// authors of record. The `Assisted-by:` tallies are DISCLOSURE, presented next
+// authors of record, published as a count that names no person. The `Assisted-by:` tallies are DISCLOSURE, presented next
 // to the policy that requires them — and this page is the one place on the site
 // where a model name may appear, under the declared attribution escape
 // (adr-47 decision 3).
 func (e *explorer) contributorsPage() (string, error) {
-	a := e.export.Authorship
+	a := e.export.authorship()
 	ui := e.c.ui
 	var b strings.Builder
 	b.WriteString(`<div class="dash">`)
 
 	// The page carries two things and nothing else: who authored the history,
 	// and what assisted. The stat tiles that stood above them repeated numbers
-	// the two panels already hold — the authors table has the commit counts, the
+	// the two panels already hold — the authors panel has the commit counts, the
 	// trailers figure has its own total — and the disclosure rate belongs with
 	// the other findings, on the health page.
-	if len(a.Humans) > 0 || len(a.Bots) > 0 {
-		var rows strings.Builder
-		rows.WriteString(`<thead><tr><th>` + escapeText(ui.Contributors.Authors) + `</th><th class="tnum">` +
-			escapeText(ui.Tiles.Commits) + `</th></tr></thead><tbody>`)
-		for _, h := range a.Humans {
-			name := escapeText(h.Name)
-			// A noreply-derived profile links the author's own page; an author
-			// without one stays plain text (itd-140: graceful absence).
-			if h.Profile != "" {
-				name = `<a href="` + escapeAttr(h.Profile) + `">` + name + `</a>`
+	if a.HumanAuthors > 0 || len(a.Bots) > 0 {
+		// The people are a COUNT: how many authored the history and how many
+		// commits they made. No person is named, linked or listed
+		// (adr-2610291037481588). Each number is its own element, so a figure
+		// and the interface string beside it are never one composed phrase.
+		var body strings.Builder
+		if a.HumanAuthors > 0 {
+			body.WriteString(`<div class="health"><div class="hsum"><b class="tnum">` +
+				strconv.Itoa(a.HumanAuthors) + `</b> ` + escapeText(ui.Contributors.Authors) +
+				` · <b class="tnum">` + strconv.Itoa(a.HumanCommits) + `</b> ` +
+				escapeText(ui.Tiles.Commits) + `</div></div>`)
+		}
+		// The bots-and-tools row names each tool: a tool's name is credit, and
+		// no person is in it.
+		if len(a.Bots) > 0 {
+			var rows strings.Builder
+			rows.WriteString(`<thead><tr><th>` + escapeText(ui.Contributors.Tools) + `</th><th class="tnum">` +
+				escapeText(ui.Tiles.Commits) + `</th></tr></thead><tbody>`)
+			for _, t := range a.Bots {
+				rows.WriteString(`<tr class="muted"><td>` + escapeText(t.Name) + ` <span class="rel">` +
+					escapeText(ui.Contributors.Tools) + `</span></td><td class="tnum">` + strconv.Itoa(t.Commits) + `</td></tr>`)
 			}
-			rows.WriteString(`<tr><td>` + name + `</td><td class="tnum">` + strconv.Itoa(h.Commits) + `</td></tr>`)
+			rows.WriteString(`</tbody>`)
+			body.WriteString(`<div class="tablewrap"><table>` + rows.String() + `</table></div>`)
 		}
-		for _, t := range a.Bots {
-			rows.WriteString(`<tr class="muted"><td>` + escapeText(t.Name) + ` <span class="rel">` +
-				escapeText(ui.Contributors.Tools) + `</span></td><td class="tnum">` + strconv.Itoa(t.Commits) + `</td></tr>`)
-		}
-		rows.WriteString(`</tbody>`)
 		policy, err := e.policyQuote()
 		if err != nil {
 			return "", err
 		}
-		body := `<div class="tablewrap"><table>` + rows.String() + `</table></div>` + policy
 		b.WriteString(panelDisclosure("c12", ui.Contributors.Authors, "",
-			strconv.Itoa(len(a.Humans)), body))
+			strconv.Itoa(a.HumanAuthors), body.String()+policy))
 	}
 
 	if len(a.ByModel) > 0 {
@@ -927,7 +949,7 @@ func (e *explorer) href(fromPath, target string) string {
 	rel := path.Clean(path.Join(path.Dir(fromPath), file))
 	if strings.HasSuffix(file, ".md") {
 		if n, ok := e.byPath[rel]; ok {
-			out := "/" + RecordRoute(n)
+			out := e.c.at("/" + RecordRoute(n))
 			if frag != "" {
 				out += "#" + frag
 			}
@@ -938,13 +960,13 @@ func (e *explorer) href(fromPath, target string) string {
 		// which is the one place a reader who followed a term link did not mean
 		// to end up.
 		if en, ok := e.glossaryByPath[rel]; ok {
-			out := "/" + en.Route
+			out := e.c.at("/" + en.Route)
 			if frag != "" {
 				out += "#" + frag
 			}
 			return out
 		}
-		return siteHref(path.Dir(fromPath), target, e.c.repo.Repository, e.c.rendersDocs())
+		return siteHref(path.Dir(fromPath), target, e.c.repo.Repository, e.c.rendersDocs(), e.c.base)
 	}
 	// A relative target that is NOT markdown — a directory, a script, a
 	// configuration file. `siteHref` leaves those exactly as the record wrote

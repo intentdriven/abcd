@@ -12,6 +12,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/ideate"
+	"github.com/intentdriven/abcd/internal/core/source"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -50,20 +51,31 @@ func ideateRepo(t *testing.T) string {
 // ideateVerdictJSON is a valid verdict document; cited is the record id the grill
 // hit cites, so a test can swap in an id that does not resolve.
 func ideateVerdictJSON(cited string) string {
+	return ideateVerdictJSONFrom(cited, "https://example.invalid/paper")
+}
+
+// ideateVerdictJSONFrom is ideateVerdictJSON with the research claim's primary
+// source given too, so a test can cite a filed source key.
+func ideateVerdictJSONFrom(cited, primary string) string {
 	return `{
-  "schema_version": 1,
+  "schema_version": 2,
   "prompt_version": "1.0.0",
   "idea": "abcd should gate a new idea before it becomes a record entry",
+  "origin_sources": [],
   "legs": [
     {"kind": "research", "claims": [
       {"claim": "fresh-context evaluation is the measured debiasing effect",
-       "primary_source": "https://example.invalid/paper", "status": "verified"}
+       "primary_source": "` + primary + `", "status": "verified"}
     ]},
     {"kind": "record-grill", "hits": [
       {"record": "` + cited + `", "relation": "covered", "note": "already filed"}
+    ], "searches": [
+      {"terms": ["admission gate"], "places": [".abcd/development/intents/"], "count": 1}
     ]},
-    {"kind": "adversarial-review", "kill_attempts": [
-      {"attempt": "the gauntlet adds friction", "outcome": "survived"}
+    {"kind": "adversarial-review", "reviewers": [
+      {"label": "reviewer-a", "verdict": "survives", "sources": [], "kill_attempts": [
+        {"attempt": "the gauntlet adds friction", "outcome": "survived"}
+      ]}
     ]}
   ],
   "verdict": "survives",
@@ -139,6 +151,14 @@ func TestIdeateRecordRefusalsExitTwo(t *testing.T) {
 			"traversal-slug",
 			[]string{"ideate", "record", "../../../etc/passwd", "--public", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104"))},
 			"slug",
+		},
+		{
+			// A host reading an older command page composes version 1; the
+			// refusal names the version to compose instead.
+			"version-1-payload",
+			[]string{"ideate", "record", "the-ideate-gate", "--public", "--verdict-json",
+				writeVerdict(t, strings.Replace(ideateVerdictJSON("itd-104"), `"schema_version": 2`, `"schema_version": 1`, 1))},
+			"version 2",
 		},
 		{
 			"verdict-json-required",
@@ -367,5 +387,47 @@ func TestIdeateRecordRefusesAShallowCheckout(t *testing.T) {
 	}
 	if _, err := os.Stat(abcdhome.Path(os.Getenv("HOME"), "ideas")); !os.IsNotExist(err) {
 		t.Errorf("a refused run laid the private store: %v", err)
+	}
+}
+
+// TestIdeateRecordResolvesAFiledSourceAgainstTheDefaultCorpus is the front
+// door's half of spc-2610142138047122's source check: a `source:<key>` primary
+// source is resolved against the person's default sources corpus when one
+// exists, and accepted on its shape when none does.
+func TestIdeateRecordResolvesAFiledSourceAgainstTheDefaultCorpus(t *testing.T) {
+	repo := ideateRepo(t)
+	t.Chdir(repo)
+
+	// No corpus under this HOME: a well-formed key is accepted.
+	runCLI(t, "ideate", "record", "a-filed-idea", "--public",
+		"--verdict-json", writeVerdict(t, ideateVerdictJSONFrom("itd-104", "source:survey2026")), "--json")
+
+	for k, v := range map[string]string{
+		"GIT_AUTHOR_NAME": "Fixture", "GIT_AUTHOR_EMAIL": "fixture@example.invalid",
+		"GIT_COMMITTER_NAME": "Fixture", "GIT_COMMITTER_EMAIL": "fixture@example.invalid",
+	} {
+		t.Setenv(k, v)
+	}
+	dir := abcdhome.Path(os.Getenv("HOME"), "sources")
+	if _, err := source.Init(dir); err != nil {
+		t.Fatalf("source.Init: %v", err)
+	}
+	doc := filepath.Join(t.TempDir(), "survey.md")
+	if err := os.WriteFile(doc, []byte("# survey\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.Add(source.AddRequest{Corpus: dir, Key: "survey2026", Title: "A survey", Class: source.ClassPublic, Original: doc}); err != nil {
+		t.Fatalf("source.Add: %v", err)
+	}
+	runCLI(t, "ideate", "record", "a-second-filed-idea", "--public",
+		"--verdict-json", writeVerdict(t, ideateVerdictJSONFrom("itd-104", "source:survey2026")), "--json")
+
+	out, err := runCLIErr(t, "ideate", "record", "an-unfiled-idea", "--public",
+		"--verdict-json", writeVerdict(t, ideateVerdictJSONFrom("itd-104", "source:never-filed")))
+	if err == nil {
+		t.Fatalf("a key the default corpus does not carry was accepted\n%s", out)
+	}
+	if code := exitCodeOf(err); code != 2 || !strings.Contains(err.Error(), "source:never-filed") {
+		t.Errorf("exit %d, diagnostic %q; want 2 naming the key", code, err.Error())
 	}
 }

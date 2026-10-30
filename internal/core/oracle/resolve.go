@@ -125,6 +125,27 @@ type Route struct {
 // own configuration, and conns is asked to serve only a tier that asks for a
 // provider or a connection a --route named.
 func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
+	return resolve(agent, l, conns, "")
+}
+
+// ResolveAt is Resolve with the winning row's tier moved to at, the tier an
+// escalated round asks for (spc-2609251028149555, AC 10): the row, its layer
+// and its settings are the ones Resolve returns, and only its tier differs, so
+// the leg is chosen for the escalated tier exactly as for an accepted one. A
+// connection serving it is held to its allowlist (AC 11) and refuses the
+// route rather than sending it; no connection serving it leaves the step to
+// the harness with the escalated tier named in its request, and the receipt
+// names it as the tier asked. A role pointed at a provider claims no tier and
+// goes to that provider whatever at says, as it does under Resolve.
+func ResolveAt(agent string, l *Layered, conns Connections, at Tier) (Route, error) {
+	if _, err := ParseTier(string(at)); err != nil {
+		return Route{}, fmt.Errorf("oracle routing: the escalated tier of %s: %w", agent, err)
+	}
+	return resolve(agent, l, conns, at)
+}
+
+// resolve is Resolve, the row's tier moved to at when at is not "".
+func resolve(agent string, l *Layered, conns Connections, at Tier) (Route, error) {
 	if !inRoster(agent) {
 		return Route{}, notInRoster(agent)
 	}
@@ -179,6 +200,9 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 		row.Tier = tier
 		row.Settings = merge(row.Settings, flag.Settings)
 		r.Source, r.Origin, r.Override = layered.Flag, flagText, flagText
+	}
+	if at != "" {
+		row.Tier = at
 	}
 	if row.FanOut <= 0 || row.FanOut > ceiling {
 		row.FanOut = ceiling

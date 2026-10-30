@@ -36,10 +36,12 @@
 // agent whose role is pointed at a provider resolves to it with no --route
 // (Connections.Pointed), APIConfig.Dispatch sends the step through it, and
 // Route.FellBack leaves a step whose provider could not be reached to the
-// harness. Escalating a tier after a failed fix round is still that spec's,
-// and so is handing the dispatch to the delegating verbs: until they are
-// wired every delegating verb resolves against NoConnections, so every step
-// resolves to the harness and no front door reaches a provider-leg refusal.
+// harness. The same spec escalates a tier after a failed fix round: Escalate
+// moves a tier one step up the ladder local, economy, frontier, and
+// ResolveAt resolves the winning row again at the escalated tier, through the
+// same legs and allowlist; the implement loop asks it for each round of a
+// lane whose round before did not pass (internal/core/implement/loop,
+// escalate.go).
 package oracle
 
 import (
@@ -79,6 +81,23 @@ func ParseTier(s string) (Tier, error) {
 		}
 	}
 	return "", fmt.Errorf("tier %q is not one of %s", layered.BoundKey(s), tierList())
+}
+
+// Escalate is the tier one step up the ladder local, economy, frontier: the
+// tier a lane's next round asks for after a round whose gates failed
+// (spc-2609251028149555, AC 10; the intent's Decision 1, "a rule, not a
+// router"). frontier is the top and does not move; host-decides asks for no
+// tier, so there is nothing to move, and it does not move either. A value
+// outside the vocabulary is returned as it is: it names no place on the
+// ladder.
+func Escalate(t Tier) Tier {
+	switch t {
+	case Local:
+		return Economy
+	case Economy:
+		return Frontier
+	}
+	return t
 }
 
 func tierList() string {

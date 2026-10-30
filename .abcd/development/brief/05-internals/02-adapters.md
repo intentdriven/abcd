@@ -134,10 +134,12 @@ provider leg through the adapter with the host's brief and the settings as sent,
 and takes the model and the key's reach from the machine's configuration again,
 never from the route alone: a provider that holds a key is reached only through a
 route set on this machine. Every refusal comes before the provider is contacted and
-names the setting to change. A provider that could not be reached at all, so that
-nothing was sent, leaves the step to the harness, and the route records the
-connection tried and the reason (`Route.FellBack`); a provider that answered, or
-took the brief and did not answer, is a failure, never a fallback. A provider
+names the setting to change. A step whose chat call never connected, so that no
+answer was received, leaves the step to the harness, even when a model listing or
+a size count before it had reached the server; the route records the connection
+tried and the reason, and says what had already been sent (`Route.FellBack`). A
+provider that answered, or took the chat request and did not answer, is a
+failure, never a fallback. A provider
 that holds a key takes only a **self-contained** agent (the product thinker's
 ruling DR5 of 2026-09-29): a provider call carries no tools, so an agent that
 reads files cannot read them there, and only an agent whose request carries all
@@ -256,7 +258,9 @@ review is skipped.
 - **The command-line runner** (`internal/core/runner`, itd-2609201916056194)
   starts a model CLI, `claude` or `opencode`, as a subprocess for a role that
   `roles.<role>.runner` routes to it. The opt-in is that key in
-  `~/.abcd.noindex/config.json`; the route, the sealing and the fallback are in
+  `~/.abcd.noindex/config.json`, or for one step the person's own
+  `abcd implement step --route <role>=runner:<name>[@<provider>/<model>]`,
+  which also picks the model; the route, the sealing and the fallback are in
   [`34-build.md`](../04-surfaces/34-build.md). A claude launch whose role's
   contract grants the shell carries the guard as the harness's permission
   prompt tool, `abcd guard approve` over MCP on stdio, set on that launch's
@@ -432,8 +436,15 @@ configuration file it deploys from — rendered into files the verb writes. The
 host half connects with the person's credential and creates the host, routes a
 domain to it and reports the address, after a read that writes nothing.
 
-One provider ships: an assets-only Cloudflare Worker, the host abcd's own site
-uses. A second is one implementation of the interface and one entry in the
+Two providers ship: an assets-only Cloudflare Worker, the host abcd's own site
+uses, and GitHub Pages, which publishes a project's site from its own workflow
+with the run's short-lived token and no credential. Each says in its profile
+what the verb and the workflow need beyond the deploy step: the deploy
+environment and its token permissions, whether a publish switch gates it,
+whether it serves public repositories only, the path the site is served below,
+and whether it publishes a project site, built from nothing but what abcd
+writes ([`04-surfaces/22-site.md`](../04-surfaces/22-site.md#a-projects-own-site)).
+Another provider is one implementation of the interface and one entry in the
 site package's provider list; the verb does not change. The credential is
 resolved by name through the credential store (`internal/core/credential`),
 the one reader; the connected adapter holds it, and it is scrubbed from every

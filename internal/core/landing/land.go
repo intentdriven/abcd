@@ -32,17 +32,25 @@ package landing
 //     Then the release hold (releasehold.go), judged from the checkout land
 //     runs in: nothing is pushed, armed or queued while another session cuts
 //     a release, or when it cannot be read.
-//  5. push (land.push): a plain `git push --porcelain origin
+//  5. announce (with land.push on, announce.go): "merging <item>" on the
+//     person's status branch for each issue, intent or pull request the
+//     branch's own commits name in a Refs:, Resolves: or Delivers: trailer,
+//     through claim.AnnounceBeforePush, the code `abcd announce` runs; the
+//     push waits until each is on origin, and one that cannot be published
+//     refuses the landing, nothing pushed.
+//  6. push (land.push): a plain `git push --porcelain origin
 //     <head>:refs/heads/B` from the branch's checkout, so the commit pushed is
 //     the one the gate checked whatever the branch names by then, the
 //     repository's hooks running, never forced, never the default branch.
 //     Off, it prints the command and names the layer that turned it off.
-//  6. enqueue (land.enqueue): the open pull request for the branch, armed by
+//  7. enqueue (land.enqueue): the open pull request for the branch, armed by
 //     the merge gate (mergeGate), pinned to the head, and confirmed in the
 //     merge queue (PRStateQuery, asked of the repository the forge client
-//     named when origin was checked); with no pull request it prints the
-//     `gh pr create` command and stops. It never opens a pull request, never overrides an arming
-//     someone else made, and never edits the repository's settings.
+//     named when origin was checked); with no pull request it composes the
+//     body from the branch's commits into the local tier, prints the
+//     `gh pr create` command naming it, and stops (prbody.go). It never opens a
+//     pull request, never overrides an arming someone else made, and never
+//     edits the repository's settings.
 //
 // The trust boundaries: the remote is `origin` only, and its every fetch and
 // push URL must be the repository the forge client resolves here; a pull
@@ -74,6 +82,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -135,6 +144,11 @@ type Options struct {
 	// Sleep pauses between the forge readings that wait for land's own push
 	// to show; nil is time.Sleep.
 	Sleep func(time.Duration)
+	// Announce is the options the announcements before the push are made
+	// with (announce.go): its Home "" is Roots.Home, its Embargo nil the
+	// check `abcd announce` uses, its ForgeUser nil the forge's user
+	// endpoint, asked only when git's identity does not name the sender.
+	Announce claim.Options
 }
 
 // Step is what one step of the landing did.
@@ -310,6 +324,9 @@ func Land(cwd string, o Options) (Result, error) {
 		res.Notices = append(res.Notices, notice)
 	}
 	if err != nil {
+		return res, err
+	}
+	if err := announceStep(&res, o, root, dir, tracking); err != nil {
 		return res, err
 	}
 	moved, err := push(&res, o, dir)
@@ -1145,8 +1162,9 @@ const (
 )
 
 // listOwnPR lists branch's one open pull request from this repository. ok is
-// false with a nil error when there is none, and the stop is reported.
-func listOwnPR(res *Result, o Options, dir string) (openPR, bool, error) {
+// false with a nil error when there is none, and the stop is reported, with the
+// body composed from the commits tracking..HEAD (createStop).
+func listOwnPR(res *Result, o Options, dir, tracking string) (openPR, bool, error) {
 	out, err := forge(o, dir, openPRArgs(res.Branch)...)
 	if err != nil {
 		return openPR{}, false, err
@@ -1168,8 +1186,7 @@ func listOwnPR(res *Result, o Options, dir string) (openPR, bool, error) {
 		return openPR{}, false, refuse("pull request #"+fmt.Sprint(listed[0].Number)+" for "+res.Branch+" comes from another repository (a fork), and land arms only a pull request from this repository's own branch",
 			"merge it by hand on the forge, or open one from this repository's branch, then run abcd land again")
 	case len(prs) == 0:
-		res.add("enqueue", StatusStopped, "no open pull request for "+res.Branch+"; land opens none: open it with the command, then run abcd land again to queue it",
-			"gh pr create --base "+shellQuote(res.Default)+" --head "+shellQuote(res.Branch))
+		createStop(res, dir, tracking)
 		return openPR{}, false, nil
 	case len(prs) > 1:
 		return openPR{}, false, refuse("the forge lists more than one open pull request for "+res.Branch+" from this repository", "close all but one, then run abcd land again")
@@ -1185,7 +1202,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
 		return nil
 	}
-	pr, ok, err := listOwnPR(res, o, dir)
+	pr, ok, err := listOwnPR(res, o, dir, tracking)
 	if err != nil || !ok {
 		return err
 	}
@@ -1197,7 +1214,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved 
 	for moved && pr.HeadRefOid != res.Head && waited < headWaitCap {
 		o.Sleep(headWaitInterval)
 		waited += headWaitInterval
-		if pr, ok, err = listOwnPR(res, o, dir); err != nil || !ok {
+		if pr, ok, err = listOwnPR(res, o, dir, tracking); err != nil || !ok {
 			return err
 		}
 	}

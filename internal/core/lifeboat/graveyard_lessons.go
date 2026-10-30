@@ -40,7 +40,15 @@ import (
 // "pinned at pack time") or leave a hash that no longer matches _provenance.json.
 // The graveyard interpretation's integrity is the per-entry cite-or-be-dropped
 // rule, not the manifest seal — by design.
-func IngestLessons(lifeboatDir string, raw []byte) (LessonsResult, error) {
+//
+// The payload is secret-scanned before it is written, as pack's planned bytes
+// are: every file the call would write is handed to scan before anything is
+// cleared or written, and a non-nil error refuses the whole call, leaving the
+// lifeboat as it was. Refuse, never redact. A nil scan fails closed.
+func IngestLessons(lifeboatDir string, raw []byte, scan SecretScan) (LessonsResult, error) {
+	if scan == nil {
+		return LessonsResult{}, errors.New("lessons: a secret scan is required")
+	}
 	abs, err := filepath.Abs(lifeboatDir)
 	if err != nil {
 		return LessonsResult{}, err
@@ -143,7 +151,34 @@ func IngestLessons(lifeboatDir string, raw []byte) (LessonsResult, error) {
 		}
 	}
 
-	// 5. Write survivors. os.Root is an independent containment assertion over the
+	// 5. Plan every file this ingest writes, then secret-scan the planned bytes
+	//    BEFORE the prior layer 3 is cleared or anything is written.
+	var planned []PlannedFile
+	if len(mainLessons) > 0 {
+		sort.Slice(mainLessons, func(i, j int) bool { return mainLessons[i].ID < mainLessons[j].ID })
+		data, err := marshalLessonsFile(mainLessons)
+		if err != nil {
+			return LessonsResult{}, err
+		}
+		planned = append(planned, plannedFile(path.Join("graveyard", "lessons.json"), data))
+	}
+	sort.Slice(lowLessons, func(i, j int) bool { return lowLessons[i].ID < lowLessons[j].ID })
+	for _, l := range lowLessons {
+		data, err := marshalLessonsFile([]Lesson{l})
+		if err != nil {
+			return LessonsResult{}, err
+		}
+		// The filename is built from the VALIDATED lesson id (lessonIDRe +
+		// maxLessonIDLen) — that regex is the path-traversal defence: the id can
+		// carry no separator, "..", or control character, so the target can never
+		// escape graveyard/low-confidence/.
+		planned = append(planned, plannedFile(path.Join("graveyard", "low-confidence", l.ID+".json"), data))
+	}
+	if err := scan(planned); err != nil {
+		return LessonsResult{}, err
+	}
+
+	// 6. Write survivors. os.Root is an independent containment assertion over the
 	//    relative target; the durable write itself runs through the canonical
 	//    fsutil.WriteFileAtomic. Two layers, so a bug in one is not an escape.
 	root, err := os.OpenRoot(abs)
@@ -161,36 +196,29 @@ func IngestLessons(lifeboatDir string, raw []byte) (LessonsResult, error) {
 		return LessonsResult{}, err
 	}
 
-	if len(mainLessons) > 0 {
-		sort.Slice(mainLessons, func(i, j int) bool { return mainLessons[i].ID < mainLessons[j].ID })
-		data, err := marshalLessonsFile(mainLessons)
-		if err != nil {
-			return LessonsResult{}, err
-		}
-		if err := writeIntoLifeboat(root, abs, path.Join("graveyard", "lessons.json"), data); err != nil {
-			return LessonsResult{}, err
-		}
-		res.Written = len(mainLessons)
+	if err := writePlanned(root, abs, planned); err != nil {
+		return LessonsResult{}, err
 	}
-
-	sort.Slice(lowLessons, func(i, j int) bool { return lowLessons[i].ID < lowLessons[j].ID })
-	for _, l := range lowLessons {
-		data, err := marshalLessonsFile([]Lesson{l})
-		if err != nil {
-			return LessonsResult{}, err
-		}
-		// The filename is built from the VALIDATED lesson id (lessonIDRe +
-		// maxLessonIDLen) — that regex is the path-traversal defence: the id can
-		// carry no separator, "..", or control character, so the target can never
-		// escape graveyard/low-confidence/.
-		rel := path.Join("graveyard", "low-confidence", l.ID+".json")
-		if err := writeIntoLifeboat(root, abs, rel, data); err != nil {
-			return LessonsResult{}, err
-		}
-		res.LowConfidence++
-	}
-
+	res.Written = len(mainLessons)
+	res.LowConfidence = len(lowLessons)
 	return res, nil
+}
+
+// plannedFile is one file a post-pack verb is about to write into the
+// lifeboat, in the shape pack's secret scan reads.
+func plannedFile(rel string, data []byte) PlannedFile {
+	return PlannedFile{Path: rel, Content: data, Bytes: len(data)}
+}
+
+// writePlanned writes each planned file, in order, into the contained lifeboat.
+// The caller has already secret-scanned exactly these bytes.
+func writePlanned(root *os.Root, abs string, files []PlannedFile) error {
+	for _, f := range files {
+		if err := writeIntoLifeboat(root, abs, f.Path, f.Content); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Render is the deterministic, sanitised human summary of an ingest.

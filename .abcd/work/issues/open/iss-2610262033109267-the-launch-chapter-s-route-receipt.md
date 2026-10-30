@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 370 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/04-launch.md:937"
-remedy: "none (filed automatically)"
+remedy: "Extend the receipt sentence in 04-launch.md (lines 934-938) and its twin in 02-disembark.md to list provider_call and unpinned, and say an empty model_reported is listed in unpinned with its reason (self-reported or not reported), as internal/core/oracle/receipt.go writes it."
 related_intents: [itd-166]
 finding_ref: cfk-aeaae6b3acc0ffa5
 ---

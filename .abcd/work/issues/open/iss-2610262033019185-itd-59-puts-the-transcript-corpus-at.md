@@ -9,7 +9,7 @@ found_during: "abcd intent consistency, finding 348 of .abcd/work/reviews/2026-1
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/intents/drafts/itd-59-autonomous-worker-transcript-capture.md:36"
-remedy: "none (filed automatically)"
+remedy: "In itd-59 respell every `history/<root_sha>` corpus path as the user-level transcripts directory keyed on the root commit (adr-2610031751066232), reached through the history verb surface; the history directory is ahoy's registry and holds no transcripts."
 related_intents: [itd-59]
 finding_ref: cfk-988c0d136c6f70ed
 ---
