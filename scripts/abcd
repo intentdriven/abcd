@@ -39,7 +39,12 @@ while [ -L "$src" ]; do
 done
 root="$(CDPATH='' cd -P -- "$(dirname -- "$src")/.." && pwd)"
 if [ ! -f "$root/cmd/abcd/main.go" ]; then
-	echo "scripts/abcd: $root holds no cmd/abcd/main.go, so it is not a source checkout of abcd; nothing ran" >&2
+	# The folder in its ~ form, as every abcd surface prints a home path. The
+	# literal ~ is the output wanted, not an expansion left undone.
+	shown="$root"
+	# shellcheck disable=SC2088
+	case $root in "${HOME:-/nonexistent}"/*) shown="~/${root#"$HOME"/}" ;; esac
+	echo "scripts/abcd: $shown holds no cmd/abcd/main.go, so it is not a source checkout of abcd; nothing ran" >&2
 	exit 2
 fi
 

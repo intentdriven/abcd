@@ -310,6 +310,23 @@ func TestTheCheckoutsAbcdRefusesOutsideASourceCheckout(t *testing.T) {
 	}
 }
 
+// The refusal names the folder under the home directory in its ~ form, as
+// every abcd surface prints a home path, never with the account's home spelt
+// out.
+func TestTheCheckoutsAbcdNamesARefusedFolderInItsHomeForm(t *testing.T) {
+	root := devBinaryCheckout(t)
+	if err := os.RemoveAll(filepath.Join(root, "cmd")); err != nil {
+		t.Fatal(err)
+	}
+	got := runDevBinary(t, root, []string{"HOME=" + filepath.Dir(root)}, "status")
+	if want := "~/" + filepath.Base(root) + " holds no cmd/abcd/main.go"; !strings.Contains(got.stderr, want) {
+		t.Errorf("the refusal does not name the folder as %q:\n%s", want, got.stderr)
+	}
+	if strings.Contains(got.stderr, root) {
+		t.Errorf("the refusal spells out the home directory:\n%s", got.stderr)
+	}
+}
+
 // A tree that does not build runs nothing: never the binary an earlier build
 // left, which is the stale answer the dogfooding rule exists to rule out. It
 // exits 2, so a broken build never reads as the 1 of a guard's block, and it

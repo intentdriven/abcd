@@ -246,8 +246,8 @@ resolve_outbound_mode() {
 		OUTBOUND_MODE=bin
 		return 0
 	fi
-	if [ -d cmd/abcd ] && command -v go >/dev/null 2>&1; then
-		OUTBOUND_MODE=gorun
+	if [ -x scripts/abcd ] && [ -d cmd/abcd ] && command -v go >/dev/null 2>&1; then
+		OUTBOUND_MODE=checkout
 		return 0
 	fi
 	OUTBOUND_MODE=none
@@ -263,7 +263,9 @@ resolve_outbound_mode() {
 run_outbound_checker() {
 	case "$OUTBOUND_MODE" in
 	bin) "$ABCD_OUTBOUND_BIN" lint outbound "$@" </dev/null ;;
-	gorun) go run ./cmd/abcd lint outbound "$@" </dev/null ;;
+	# scripts/abcd, not `go run`: go run turns the verb's exit 2 (could not
+	# judge) into 1, which would read below as a policy break.
+	checkout) scripts/abcd lint outbound "$@" </dev/null ;;
 	*) return 2 ;;
 	esac
 }
