@@ -418,8 +418,8 @@ jobs:
       # the base preflight's unit stage scales from: as one process under go test's
       # ten-minute default, internal/core/implement/loop crossed 600s here on
       # 2026-10-30 with no test hung (iss-2610302058222905).
-      # TestCIRacePassesShardLikePreflight holds the count, and the test above
-      # the timeout.
+      # TestCIRacePassesShardLikePreflight holds the count, and
+      # TestPlainTestStepRunsTheWholeModule the timeout.
       - name: Test
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert == 'true'
         env:
@@ -484,7 +484,7 @@ jobs:
       # macOS pass's 40 minutes on a passing run, and a queue entry timed out on
       # it with no test hung. This step and the macOS pass below carry the same
       # count as the preflight recipe; TestCIRacePassesShardLikePreflight holds
-      # the three to it.
+      # them, and the plain Test step above, to it.
       - name: Test (race, internal)
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
         env:
