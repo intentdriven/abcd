@@ -355,13 +355,13 @@
     {
       "path": "abcd ahoy remote",
       "hidden": false,
-      "sentence": "Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.",
+      "sentence": "Apply abcd's GitHub settings baseline: Writes nothing bare, only the settings, rulesets and their mirrors through apply; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd ahoy remote apply",
       "hidden": false,
-      "sentence": "Enable GitHub secret scanning and push protection on this repository: Writes both settings and their mirror; refuses an unconfirmed run.",
+      "sentence": "Apply every GitHub setting the remote audit finds differing: Writes those settings, abcd's own rulesets and their mirrors; refuses an unconfirmed run.",
       "flags": [
         {
           "name": "yes",
@@ -2008,7 +2008,7 @@
       "path": "abcd ideate record",
       "hidden": false,
       "block": "agents",
-      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.",
+      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record, private unless --public; refuses without an idea slug or --verdict-json.",
       "flags": [
         {
           "name": "private",
@@ -2470,7 +2470,7 @@
     {
       "path": "abcd implement status",
       "hidden": false,
-      "sentence": "Render the implement loop's runs in this checkout, lane by lane: Writes nothing; refuses a --run naming no run.",
+      "sentence": "Render the implement loop's runs in this checkout, lane by lane: Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.",
       "flags": [
         {
           "name": "run",

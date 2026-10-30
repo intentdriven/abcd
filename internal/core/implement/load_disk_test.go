@@ -122,7 +122,7 @@ func TestWaitRefusesAtOnceOnALowDisk(t *testing.T) {
 		"the Go build cache (~/Library/Caches/go-build)",
 		"the worktree store (~/" + abcdhome.Rel("worktrees") + ")",
 		"the floor is 8.0 GiB",
-		"The floor is 4.0 GiB for each preflight the gate admits to its test stages at once (load.preflights",
+		"The floor is 4.0 GiB for each preflight the gate admits at once (load.preflights",
 		"about 177.0 GiB (estimated from 12 of its 256 subdirectories)",
 		"find -H ~/Library/Caches/go-build -type f ! -path ~/'Library/Caches/go-build/fuzz/*' -mmin +2880 -delete",
 		"go clean -cache",
@@ -289,6 +289,13 @@ func TestWaitAtOpenDiskRefusalSaysWhetherTheFloorRoseOrTheDiskFell(t *testing.T)
 		{"floor rose", 12 * gib, 12 * gib, false, "the disk floor rose to 16.0 GiB while this waited, because load.preflights is now 4", "fell below the floor"},
 		{"floor rose from the environment", 12 * gib, 12 * gib, true, "the disk floor rose to 16.0 GiB while this waited, because ABCD_LOAD_PREFLIGHTS is now 4", "fell below the floor"},
 		{"disk fell", 200 * gib, 3 * gib, false, "the disk fell below the floor while this waited", "floor rose"},
+		// The boundaries: free space exactly at the first look's floor is not
+		// low there, so only the floor moved; a byte under it, the disk fell
+		// too; and a disk that fell but stayed above the first floor would have
+		// passed at the old count, so the floor's rise is what refuses it.
+		{"free at the first floor", 8 * gib, 8 * gib, false, "the disk floor rose to 16.0 GiB while this waited, because load.preflights is now 4 (the floor was 8.0 GiB", "fell below the floor"},
+		{"free a byte under the first floor", 8 * gib, 8*gib - 1, false, "the disk fell below the floor while this waited", "floor rose"},
+		{"disk fell, still above the first floor", 200 * gib, 12 * gib, false, "the disk floor rose to 16.0 GiB while this waited", "fell below the floor"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home := t.TempDir()

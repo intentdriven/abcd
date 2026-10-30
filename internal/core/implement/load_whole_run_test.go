@@ -304,6 +304,10 @@ func TestWaitRaceGateOpensOnceTheCountFallsToOne(t *testing.T) {
 	if len(res.RaceRuns) != 0 || len(res.Waiters) != 0 || len(res.Preflights) != 0 || res.Holder != nil || len(res.Still) != 0 {
 		t.Fatalf("%+v; want the open result to carry no race runs, waiters, preflights, holder or still", res)
 	}
+	// Nor the holders its shut look named, or their quiet and gates.
+	if len(res.Holders) != 0 || res.Quiet != nil || len(res.HoldGates) != 0 {
+		t.Fatalf("%+v; want the open result to carry no holders, quiet or hold gates from its shut look", res)
+	}
 }
 
 // TestWaitDiskFloorFollowsTheCountReadAtEachLook: the disk is judged against
@@ -572,6 +576,25 @@ func TestWaitRaisedCountReachesARunQueuedBehindACommandHold(t *testing.T) {
 		}
 		if res.Status != WaitOpen || res.Slots != 2 || !slices.Contains(res.WaitedOn, WaitOnPreflight) {
 			t.Fatalf("%+v (holder %+v); want shut on the running preflight at one slot, then open at 2 despite its command hold", res, res.Holder)
+		}
+	})
+
+	// Judged as the settle hold, not dropped: inside the two minutes after the
+	// first run opened, the queued run still waits on it.
+	t.Run("a look inside the settle window waits on the hold", func(t *testing.T) {
+		c := &fakeClock{now: waitT0.Add(time.Minute)}
+		tb := &runTable{clock: c, at: func(time.Time) ([]machineload.Proc, map[int][]string) {
+			return joinRuns(wholeRunOf(70000, 501, time.Minute, true), wholeRunOf(80000, 501, 0, false))
+		}}
+		req := wholeRunReq(t, heldHome(t), 80000, 501, tb.clock, tb)
+		req.Timeout = 30 * time.Second
+		req.Getenv = slotsEnv("2")
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Status != WaitTimedOut || !slices.Contains(res.Still, WaitOnLock) {
+			t.Fatalf("%+v; want shut on the first run's hold inside its settle window", res)
 		}
 	})
 

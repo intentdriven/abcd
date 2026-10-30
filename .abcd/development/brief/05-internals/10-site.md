@@ -80,12 +80,15 @@ intents:
   audit is CI's optional, non-gating job; static and rendered gates are
   complementary, and the audit's first run caught an overflow the static
   gate cannot see.
-- **`abcd site setup`** lays the site into a repository abcd manages: the
-  composition derived from the identity block and the documentation, the
-  static inputs seeded from abcd's own `site-src/` (byte copies, held equal by
-  a test), a render-on-release workflow whose action pins follow abcd's own
-  site workflow by test, and the provider's host configuration — written
-  through the launch scaffold's shared writer. The forge environments go
+- **`abcd site setup`** lays the site into a repository abcd manages. A
+  composed site gets the composition derived from the identity block and the
+  documentation, the static inputs seeded from abcd's own `site-src/` (byte
+  copies, held equal by a test), a render-on-release workflow whose action pins
+  follow abcd's own site workflow by test, and the provider's host
+  configuration. A project site, the one the `github-pages` provider sets up,
+  gets the settings file and the workflow alone, since its words, styles and
+  scripts come from the binary. Each is written through the launch scaffold's
+  shared writer. The forge environments go
   through `gh` as the invoking person, and the host through the hosting
   adapter seam (`internal/adapter/hosting`, two providers: `cloudflare` and `github-pages`). The manifest's
   `pages` block is the closed page set's switches, resolved once and consulted

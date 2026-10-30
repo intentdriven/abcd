@@ -92,8 +92,8 @@ evals-cold-reading:
 # then reports where it landed, and the gofmt under that GOROOT is the one CI
 # runs. `fmt` applies the same binary, so the remedy and the diagnosis can never
 # disagree, and `preflight` exports the same GOTOOLCHAIN to every Go step it
-# makes (see below), the load gate's `go run` first, and runs this gate first
-# among its stages, straight after the load check.
+# makes (see below), the load gate's `go run` first on the full rule, and runs
+# this gate first among its stages, straight after the load check.
 #
 # It REFUSES rather than falling back when the toolchain cannot be resolved
 # (offline, or the fetch declined). A fallback would print a filename judged by
@@ -162,8 +162,8 @@ check-attribution:
 		ABCD_OUTBOUND_BIN="$$tmp/abcd" bash scripts/check-attribution.sh commits origin/main HEAD
 
 # The two scans CI runs on every pull request (iss-2610261151381604), as
-# preflight prerequisites so a finding stops the run before its test stages wait
-# at the load gate: gitleaks over the branch's own commits (origin's default
+# preflight prerequisites so a finding stops the run before its build and test
+# stages: gitleaks over the branch's own commits (origin's default
 # branch..HEAD) and govulncheck over the module, each at the version ci.yml pins,
 # read from ci.yml. A scan that cannot run here (no gitleaks on PATH, or no
 # network for govulncheck's database) is skipped loudly, never passed in
@@ -499,12 +499,14 @@ preflight: export ABCD_TEST_SHARDS := 3
 # that asserts standard-library wording passed preflight on a newer local go and
 # failed CI (pull request 728). The go on PATH switches to the declared release
 # and puts its bin first on PATH for anything it runs, so a `go` a test execs is
-# the declared one too. The first Go step is the load gate's own `go run
-# ./cmd/abcd implement load --wait` on the preflight line, before any stage, so
-# a machine that lacks the declared release and cannot fetch it (offline) sees
-# that go run fail with go's own toolchain download error, before anything is
-# waited for or gated. Once the release is cached, `fmt-check` runs first among
-# the stages, straight after the load check, and its resolver
+# the declared one too. On the full rule the first Go step is the load gate's
+# own `go run ./cmd/abcd implement load --wait` on the preflight line, before
+# any stage, so a machine that lacks the declared release and cannot fetch it
+# (offline) sees that go run fail with go's own toolchain download error, before
+# anything is waited for or gated. The records-only rule waits at no gate: its
+# first Go step is the load check's, whose failure is ignored, so offline its
+# `fmt-check` refuses first. Once the release is cached, `fmt-check` runs first
+# among the stages, straight after the load check, and its resolver
 # (scripts/pinned-toolchain.sh) refuses, naming the skew, whenever the release
 # cannot be resolved, before any other gate runs on it.
 preflight: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)

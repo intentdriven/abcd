@@ -139,8 +139,9 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 	}
 	s := Sync{At: c.Now, Siblings: siblings, Merged: merged}
 	// The sync sends the lane back to a fresh round, so an issue lane
-	// reserves its whole found_at again first (reserveOnLeavingLand;
-	// dcn-2610171009498218), before
+	// reserves its whole found_at again first, and a reservation needing no
+	// widening is judged again against the same person's other copy
+	// (reserveOnLeavingLand; dcn-2610171009498218, dcn-2610300422481486), before
 	// anything changes locally: a refused widening leaves the branch and the
 	// worktree at the judged head, and the retry finds no merge of its own to
 	// read as a foreign move of the branch.
@@ -154,7 +155,7 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 				fmt.Sprintf("%s moved to %s, which is not a sync of the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
 				"restore the branch to the judged head, then run `abcd implement step` again")
 		}
-		if reserved, err = reserveOnLeavingLand(c.RepoRoot, c.State, *lane, c.Now); err != nil {
+		if reserved, err = reserveOnLeavingLand(c.RepoRoot, c.State, *lane, StageValidate, c.Now); err != nil {
 			return Outcome{}, false, err
 		}
 	} else {
@@ -168,7 +169,7 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 			return Outcome{}, false, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds uncommitted changes, so the sync with "+def+" is not merged over them",
 				"commit or remove them in the lane's worktree (a change the validators did not judge goes back through a fix round), then run `abcd implement step` again")
 		}
-		if reserved, err = reserveOnLeavingLand(c.RepoRoot, c.State, *lane, c.Now); err != nil {
+		if reserved, err = reserveOnLeavingLand(c.RepoRoot, c.State, *lane, StageValidate, c.Now); err != nil {
 			return Outcome{}, false, err
 		}
 		msg := syncMessage(*lane, c.State.RunID, def, merged, siblings)

@@ -118,17 +118,17 @@ func (e *ExistsError) Error() string {
 		" — refusing to overwrite it; a re-run of the same idea keeps the first record, and a different run earns its own slug"
 }
 
-// VisibilityError is the refusal for a verdict with no answer to "is this idea
-// private or public?" (iss-2610090740139804). It is typed because it is an
-// OPERAND fault: the fix is to ask the person and re-run with the answer, never
-// to re-compose the verdict, and never to pick a store on their behalf.
+// VisibilityError is the refusal for a store that names neither private nor
+// public (iss-2610090740139804). It is typed because it is an OPERAND fault: the
+// fix is to name the store and re-run, never to re-compose the verdict. The
+// record verb never reaches it, because it defaults to private.
 type VisibilityError struct {
 	Got Visibility
 }
 
 func (e *VisibilityError) Error() string {
-	return "the verdict's store is not answered (" + termsafe.DescribeRefused(string(e.Got)) + ") — nothing was written; " +
-		"ask the person whether the idea is private or public, and record it with that answer"
+	return "the verdict's store is not named (" + termsafe.DescribeRefused(string(e.Got)) + ") — nothing was written; " +
+		"name the store, private or public, and record again"
 }
 
 // Record validates the host-composed verdict for slug and writes it.
@@ -142,10 +142,9 @@ func (e *VisibilityError) Error() string {
 // rather than accepted: if recording the pointer fails after the verdict landed,
 // the verdict is removed again, so a run never leaves half a decision behind.
 //
-// store carries the person's answer, private or public, and the root commit
-// both stores are keyed on (iss-2610090740139804); it is checked beside the
-// slug, before the payload is decoded, so a run without the answer writes
-// nothing. A private verdict goes to recordPrivate and never touches the
+// store names the store, private or public, and the root commit both stores
+// are keyed on (iss-2610090740139804); it is checked beside the slug, before
+// the payload is decoded, so a store that names neither writes nothing. A private verdict goes to recordPrivate and never touches the
 // repository.
 //
 // A public verdict's artefacts are COMMITTED, so both go through the
@@ -307,7 +306,7 @@ func recordPrivate(v verdictDoc, red *recordRedactor, store Store, name string, 
 }
 
 // validateStore is the store's operand check, run beside the slug's and before
-// the payload is decoded: the answer must be given, the key must be a git
+// the payload is decoded: the store must be named, the key must be a git
 // object name before it reaches a path, and a private verdict's home must be
 // one a commit cannot carry.
 func validateStore(store Store) error {

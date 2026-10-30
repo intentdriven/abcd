@@ -9,7 +9,8 @@ in the tree rather than only a web console.
 
 - `main-protection.json` — deletion/force-push protection, the required
   status checks (strict; the file's `required_status_checks` list is the
-  count), and the merge queue. **No bypass actors**: nobody
+  count, each pinned by `integration_id` to the app that reports it, so a
+  status set by anyone else does not satisfy it), and the merge queue. **No bypass actors**: nobody
   merges past a red required check.
 - `main-review.json` — the pull-request rule requiring a code-owner review.
   Its approval count is 0, and the repository has no code-owners file, so the
@@ -87,7 +88,9 @@ Refresh the rulesets after any settings change (ids: 19969675, 21045110, 2492163
 
 ```sh
 gh api repos/intentdriven/abcd/rulesets/<id> \
-  | jq -S '{name, target, enforcement, conditions, bypass_actors, rules}'
+  | jq -S '{name, target, enforcement, conditions, bypass_actors, rules}
+      | .rules |= map(if .type == "required_status_checks"
+          then .parameters.required_status_checks |= sort_by(.context) else . end)'
 ```
 
 Refresh `repo-settings.json` with the verb that owns it, which rewrites the file

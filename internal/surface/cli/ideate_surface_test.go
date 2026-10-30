@@ -257,32 +257,25 @@ func TestIdeateRenderSaysWhatEachVerdictLeavesNext(t *testing.T) {
 	}
 }
 
-// TestIdeateRecordRefusesWithoutTheAnswer pins iss-2610090740139804's front
-// door: the verb writes nothing until the person's answer arrives as exactly
-// one of --private or --public, and names both flags when it refuses.
-func TestIdeateRecordRefusesWithoutTheAnswer(t *testing.T) {
+// TestIdeateRecordRefusesBothAnswers pins the front door's one remaining
+// refusal: --private and --public together name two stores, so the verb
+// writes nothing and names both flags.
+func TestIdeateRecordRefusesBothAnswers(t *testing.T) {
 	repo := ideateRepo(t)
 	t.Chdir(repo)
 	payload := writeVerdict(t, ideateVerdictJSON("itd-104"))
 
-	for name, args := range map[string][]string{
-		"neither": {"ideate", "record", "an-unanswered-idea", "--verdict-json", payload},
-		"both":    {"ideate", "record", "an-unanswered-idea", "--private", "--public", "--verdict-json", payload},
-	} {
-		t.Run(name, func(t *testing.T) {
-			out, err := runCLIErr(t, args...)
-			if err == nil {
-				t.Fatalf("the run succeeded; want a refusal\n%s", out)
-			}
-			if code := exitCodeOf(err); code != 2 {
-				t.Errorf("exit code = %d, want 2", code)
-			}
-			for _, want := range []string{"--private", "--public"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("diagnostic %q does not name %s", err.Error(), want)
-				}
-			}
-		})
+	out, err := runCLIErr(t, "ideate", "record", "a-doubly-answered-idea", "--private", "--public", "--verdict-json", payload)
+	if err == nil {
+		t.Fatalf("the run succeeded; want a refusal\n%s", out)
+	}
+	if code := exitCodeOf(err); code != 2 {
+		t.Errorf("exit code = %d, want 2", code)
+	}
+	for _, want := range []string{"--private", "--public"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("diagnostic %q does not name %s", err.Error(), want)
+		}
 	}
 	entries, err := os.ReadDir(filepath.Join(repo, filepath.FromSlash(ideate.ResearchRelDir)))
 	if err != nil && !os.IsNotExist(err) {
@@ -293,6 +286,44 @@ func TestIdeateRecordRefusesWithoutTheAnswer(t *testing.T) {
 	}
 	if _, err := os.Stat(abcdhome.Path(os.Getenv("HOME"), "ideas")); !os.IsNotExist(err) {
 		t.Errorf("a refused run laid the private store: %v", err)
+	}
+}
+
+// TestIdeateRecordDefaultsToPrivate is iss-2610300838089246: ideate is
+// private unless the person says public, and nobody is asked. A run with
+// neither flag records the verdict in the private store, exactly as
+// --private does, and leaves the checkout as it was.
+func TestIdeateRecordDefaultsToPrivate(t *testing.T) {
+	repo := ideateRepo(t)
+	t.Chdir(repo)
+
+	out, err := runCLIErr(t, "ideate", "record", "an-unflagged-idea",
+		"--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")), "--json")
+	if err != nil {
+		t.Fatalf("a run with neither flag refused: %v\n%s", err, out)
+	}
+	var res ideate.Result
+	if err := json.Unmarshal(out, &res); err != nil {
+		t.Fatalf("decode result: %v\n%s", err, out)
+	}
+	sha := gittest.RootCommit(t, repo)
+	wantPrefix := abcdhome.Display("ideas", sha) + "/"
+	if res.Visibility != ideate.VisibilityPrivate || !strings.HasPrefix(res.Path, wantPrefix) || res.DecisionPath != "" {
+		t.Errorf("result = visibility %q path %q decision %q; want private under %s with no pointer",
+			res.Visibility, res.Path, res.DecisionPath, wantPrefix)
+	}
+	if _, err := os.Stat(abcdhome.Path(os.Getenv("HOME"), "ideas", sha, filepath.Base(res.Path))); err != nil {
+		t.Errorf("the private record is not on disk: %v", err)
+	}
+	if log := decisionTexts(t, repo); log != "" {
+		t.Errorf("an unflagged verdict recorded a committed decision:\n%s", log)
+	}
+	entries, err := os.ReadDir(filepath.Join(repo, filepath.FromSlash(ideate.ResearchRelDir)))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		t.Errorf("an unflagged verdict wrote %s into the checkout", e.Name())
 	}
 }
 
