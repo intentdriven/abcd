@@ -50,6 +50,59 @@ func reservationPushers(ctx context.Context, root, ref string) ([]Push, error) {
 	return out, nil
 }
 
+// declaredTipNote is what the other-copy back-off adds when j's holder is
+// an id the person only declares: whether the declaration pairs it with a
+// login, and, when it does, whether the forge's record of pushes says that
+// login pushed j's tip, so the person can tell a reservation that is not
+// their other account's. It names neither the paired login nor the pusher:
+// it is shown on this terminal alone, and says only whether they match.
+func declaredTipNote(p *prepared, j judged) string {
+	h := j.Holder
+	if !p.self.declaredOnly(h) {
+		return ""
+	}
+	login, paired := p.self.pairedLogin(h)
+	if !paired {
+		return fmt.Sprintf(" (%s is an id %s declares as yours with no login beside it, so which account pushed this reservation is not checked)",
+			h, DeclaredHolderIDsFile)
+	}
+	pusher, why := tipPusher(p.root, p.id, j.Commit)
+	switch {
+	case why != "":
+		return fmt.Sprintf(" (%s is an id %s pairs with an account's login, but whether that account pushed this reservation is not known: %s)",
+			h, DeclaredHolderIDsFile, why)
+	case sameHolder(pusher, login):
+		return fmt.Sprintf(" (%s is an id %s pairs with an account's login, and the forge's record of pushes says the account it is paired with pushed this reservation)",
+			h, DeclaredHolderIDsFile)
+	}
+	return fmt.Sprintf(" (%s is an id %s pairs with an account's login, but the forge's record of pushes says an account other than the one it is paired with pushed this reservation, so it is not your other account's)",
+		h, DeclaredHolderIDsFile)
+}
+
+// tipPusher is the login the forge's record of pushes to id's branch says
+// pushed tip, or why it does not say: no forge, a record that does not read
+// or has not caught up with tip, or an app's push, which names no person.
+func tipPusher(root, id, tip string) (login, why string) {
+	if releaseForge.pushers == nil {
+		return "", "no record of who pushed each reservation commit is read on this path"
+	}
+	if _, _, err := releaseForge.repo(root); err != nil {
+		return "", "origin names no repository on the forge whose record of pushes could be asked"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), pusherBudget)
+	defer cancel()
+	pushes, err := releaseForge.pushers(ctx, root, refName(id))
+	switch {
+	case err != nil && !errors.Is(err, ErrPartialRecord):
+		return "", "the forge's record of pushes could not be read (" + termsafe.Sanitize(forgeReason(err)) + ")"
+	case len(pushes) == 0 || pushes[0].After != tip:
+		return "", "the forge's record of pushes has not caught up with the tip read here"
+	case pushes[0].App || !validUsername(pushes[0].Pusher):
+		return "", "the forge's record says an app pushed it, which names no person"
+	}
+	return pushes[0].Pusher, ""
+}
+
 // pushRecord is the forge's record of pushes to one release branch, placed
 // on this checkout's commits: each commit's pushers, and why the record does
 // not settle a commit it places nothing on ("" when it was read in full and
