@@ -1067,8 +1067,9 @@ line, read from a file, from `--input` or from a substitution
 (`merge-graphql-unread-human`); and a `PUT` to the REST merge route
 `repos/{owner}/{repo}/pulls/N/merge` (`merge-rest-human`). In `auto` they are
 allowed, except a merge command that names its repository (`-R`, `--repo`, a
-`GH_REPO` prefix, a REST route spelling owner and name): this checkout's mode
-does not answer for another repository, so that counts as `human`. The safe
+`GH_REPO` prefix, a REST route spelling owner and name, or one the line does
+not fix): this checkout's mode does not answer for another repository, so that
+is refused too. The safe
 form is to say the pull request is ready for the technical facilitator's
 approval and leave the arming to `abcd land`.
 

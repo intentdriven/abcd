@@ -47,6 +47,14 @@ func TestHumanModeRefusesTheMergeCommands(t *testing.T) {
 		{`gh api --method=put /repos/{owner}/{repo}/pulls/123/merge -f merge_method=squash`, mergeRESTEntryID},
 		{`gh api -XPUT repos/{owner}/{repo}/pulls/123/merge`, mergeRESTEntryID},
 		{`gh api --method "$M" repos/{owner}/{repo}/pulls/123/merge`, mergeRESTEntryID},
+		{`gh api --method=$M repos/{owner}/{repo}/pulls/123/merge`, mergeRESTEntryID},
+		{`gh api -X"$M" repos/{owner}/{repo}/pulls/123/merge`, mergeRESTEntryID},
+		{`gh api -X PUT "repos/$REPO/pulls/$N/merge"`, mergeRESTEntryID},
+		{`gh api -X PUT "$URL"`, mergeRESTEntryID},
+		{`gh api -H 'Accept: application/vnd.github+json' graphql -f query='mutation{mergePullRequest(input:{pullRequestId:"X"}){clientMutationId}}'`, mergeEnqueueEntryID},
+		{`gh api --hostname h.example graphql -F query=@q.graphql`, mergeUnreadEntryID},
+		{`gh api --method POST graphql --input body.json`, mergeUnreadEntryID},
+		{`gh api "$EP" -f query='mutation{mergePullRequest(input:{pullRequestId:"X"}){clientMutationId}}'`, mergeEnqueueEntryID},
 	} {
 		t.Run(c.cmd, func(t *testing.T) {
 			reads := 0
@@ -71,6 +79,10 @@ func TestHumanModeRefusesTheMergeCommands(t *testing.T) {
 		`gh api repos/{owner}/{repo}/pulls/123/merge`,
 		`gh api -X GET repos/{owner}/{repo}/pulls/123/merge`,
 		`gh api -X PUT repos/{owner}/{repo}/pulls/123/requested_reviewers`,
+		`gh api "repos/$REPO/pulls/$N"`,
+		`gh api -X PUT "repos/$REPO/collaborators/$U"`,
+		`gh api -H 'Accept: application/vnd.github+json' repos/{owner}/{repo}/pulls/123`,
+		`gh api -F file=@notes.md repos/{owner}/{repo}/issues`,
 		`git merge main`,
 		`abcd capture "an agent ran gh pr merge 123 --auto"`,
 	} {
@@ -106,11 +118,12 @@ func TestAMergeNamingItsRepositoryCountsAsHuman(t *testing.T) {
 		{`gh pr merge -Ro/r 123 --auto`, mergeAutoEntryID},
 		{`GH_REPO=o/r gh pr merge 123 --auto`, mergeAutoEntryID},
 		{`gh api -X PUT repos/o/r/pulls/123/merge`, mergeRESTEntryID},
+		{`gh api -X PUT "repos/$REPO/pulls/$N/merge"`, mergeRESTEntryID},
 	} {
 		reads := 0
 		d, err := Defaults().WithMergeMode(modeOf(false, &reads)).Check(c.cmd)
-		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry || !strings.Contains(d.Message, "names its repository") {
-			t.Fatalf("in auto, Check(%q) = %q via %q (%s), %v; want a block via %q saying it names its repository", c.cmd, d.Verdict, d.EntryID, d.Message, err, c.entry)
+		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry || !strings.Contains(d.Message, "names the repository it merges in") || strings.Contains(d.Message, "facilitator.mode: auto") {
+			t.Fatalf("in auto, Check(%q) = %q via %q (%s), %v; want a block via %q saying it names its repository, offering no setting", c.cmd, d.Verdict, d.EntryID, d.Message, err, c.entry)
 		}
 	}
 	reads := 0

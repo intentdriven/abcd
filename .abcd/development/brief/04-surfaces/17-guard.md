@@ -153,15 +153,17 @@ that allows it:
   with `query=@…`, from `--input`, or printed by a substitution), which could
   be one of those mutations, under `merge-graphql-unread-human`;
 - a `PUT` to the REST merge route, `repos/{owner}/{repo}/pulls/N/merge`
-  (a method word the line does not fix counts as `PUT`), under
-  `merge-rest-human`.
+  (a method word the line does not fix counts as `PUT`, and a route word it
+  fixes only in part counts as the route where it could be), under
+  `merge-rest-human`. A merge mutation is looked for on any `gh api` call,
+  since an endpoint the line does not fix may be `graphql`.
 
 In `auto` all of them are allowed, and the merge gate decides what abcd arms,
 except a merge command that names its repository (`-R`, `--repo`, a `GH_REPO`
 prefix, or a REST route spelling owner and name rather than gh's
 placeholders): the mode read is this checkout's, which does not answer for
-another repository, so such a command counts as `human` and is refused the
-same way.
+another repository, so such a command is refused under the same id, with no
+setting offered, since none here would allow it.
 
 The technical facilitator's approval act, the land verb's approval of a head
 ([`38-land.md`](38-land.md)), is refused to an agent in every mode: the merge

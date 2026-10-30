@@ -137,13 +137,20 @@ func (r Registry) mergeSignals(segs []segment) []payloadSignal {
 	for _, s := range segs {
 		for _, hit := range mergeCommands(s) {
 			human, reading := r.merge.mode()
-			if hit.named && !human {
-				human, reading = true, "the command names its repository, whose facilitator.mode is not read here (this checkout's is), so it counts as human"
-			}
-			if !human {
+			if !human && !hit.named {
 				continue
 			}
 			sig := payloadSignal{verdict: VerdictBlock, family: familyMerge, successor: mergeSuccessor}
+			if !human {
+				// Auto here, but the command merges in a repository it
+				// names, whose mode this checkout's reading does not
+				// answer for, and no setting here changes that.
+				sig.id = hit.id
+				sig.reason = "The command names the repository it merges in (-R, --repo, GH_REPO, or a REST route spelling owner and name), and the facilitator.mode read here is this checkout's, which does not answer for another repository, so it is refused whatever this checkout's mode says."
+				sig.successor = "Run the merge from that repository's own checkout without naming the repository, where its mode is read, or leave it to the person."
+				add(sig)
+				continue
+			}
 			switch kind := hit.id; kind {
 			case mergeAutoEntryID:
 				sig.id = kind
@@ -226,13 +233,20 @@ func mergeCommands(s segment) []mergeHit {
 				case !disable:
 					out = append(out, mergeHit{mergeNowEntryID, named})
 				}
-			case group == "api" && verb == "graphql":
-				if hit, ok := graphqlMerge(s, a.idx+1+idx[1]+1); ok {
-					out = append(out, mergeHit{hit, named})
-				}
 			case group == "api":
-				if restMerge(all) {
-					out = append(out, mergeHit{mergeRESTEntryID, named || restNamesRepo(all)})
+				// The endpoint is read wherever it stands: gh api's own
+				// value flags (-H, -X, --hostname) are not in ghRepoFlags,
+				// so the operand reading can take a flag's value for it.
+				from := a.idx + 1 + idx[0] + 1
+				if graphqlCall(s, from) {
+					if hit, ok := graphqlMerge(s, from); ok {
+						out = append(out, mergeHit{hit, named})
+					}
+				} else if mentionsMutation(s, from) {
+					// An endpoint the line does not fix may be graphql.
+					out = append(out, mergeHit{mergeEnqueueEntryID, named})
+				} else if put, route, spelled := restMerge(s, from); put && route {
+					out = append(out, mergeHit{mergeRESTEntryID, named || spelled})
 				}
 			default:
 				continue
@@ -248,16 +262,14 @@ func mergeCommands(s segment) []mergeHit {
 // query is not on the line (a file gh reads, `--input`, a value a
 // substitution prints), since that query could be one.
 func graphqlMerge(s segment, from int) (string, bool) {
+	if mentionsMutation(s, from) {
+		return mergeEnqueueEntryID, true
+	}
 	// unread is a query the line points away from; unknown is a field the
 	// line does not fix, which may be the query unless a fixed query= stood.
 	unread, unknown, query := false, false, false
 	for i := from; i < len(s.tokens); i++ {
 		w, fixed, ok := forgeWord(s, i)
-		for _, m := range mergeMutations {
-			if ok && strings.Contains(w, m) {
-				return mergeEnqueueEntryID, true
-			}
-		}
 		if ok && fixed && (w == "--input" || strings.HasPrefix(w, "--input=")) {
 			unread = true
 		}
@@ -307,53 +319,75 @@ func fieldValue(s segment, i int) (text string, vfixed, vok, isField bool) {
 	return "", false, false, false
 }
 
-// restMerge reports whether a `gh api` call's words name the REST merge route
-// with the PUT method: `-X PUT`, `-XPUT`, `--method PUT` or `--method=PUT`,
-// any case. A method word the line does not fix counts as PUT.
-func restMerge(words []string) bool {
-	route := false
-	for _, w := range words {
-		route = route || mergePathRe.MatchString(w)
-	}
-	if !route {
-		return false
-	}
-	for i, w := range words {
-		var m string
-		switch {
-		case w == "-X" || w == "--method":
-			if i+1 >= len(words) {
-				continue
-			}
-			m = words[i+1]
-			if m == "" {
+// mentionsMutation reports whether a word from `from` on, as far as the line
+// fixes it, names one of mergeMutations.
+func mentionsMutation(s segment, from int) bool {
+	for i := from; i < len(s.tokens); i++ {
+		w, _, ok := forgeWord(s, i)
+		for _, m := range mergeMutations {
+			if ok && strings.Contains(w, m) {
 				return true
 			}
-		case strings.HasPrefix(w, "--method="):
-			m = strings.TrimPrefix(w, "--method=")
-		case strings.HasPrefix(w, "-X") && len(w) > 2:
-			m = strings.TrimPrefix(w, "-X")
-		default:
-			continue
 		}
-		if strings.EqualFold(m, "PUT") {
+	}
+	return false
+}
+
+// graphqlCall reports whether a `gh api` call's words from `from` on name
+// the GraphQL endpoint (`graphql`, or a URL ending in `/graphql`).
+func graphqlCall(s segment, from int) bool {
+	for i := from; i < len(s.tokens); i++ {
+		if w, fixed, ok := forgeWord(s, i); ok && fixed && (w == "graphql" || strings.HasSuffix(w, "/graphql")) {
 			return true
 		}
 	}
 	return false
 }
 
-// restNamesRepo reports whether the REST merge route among words spells its
-// repository rather than gh's `{owner}/{repo}` placeholders, which gh fills
-// with this checkout's.
-func restNamesRepo(words []string) bool {
-	for _, w := range words {
-		if m := mergePathRe.FindStringSubmatch(w); m != nil {
-			return m[2] != "{owner}" || m[3] != "{repo}"
+// mergeRouteLoose is the REST merge route as a word the line fixes only in
+// part may spell it, its unknown parts read as one segment each:
+// `"repos/$REPO/pulls/$N/merge"`.
+var mergeRouteLoose = regexp.MustCompile(`(?i)(^|/)pulls/[^/]+/merge/?([?#].*)?$`)
+
+// restMerge reads a `gh api` call's words from `from` on: put is a PUT
+// method (`-X PUT`, `-XPUT`, `--method PUT`, `--method=PUT`, any case) or a
+// method word the line does not fix; route is the REST merge route, or a word
+// the line does not fix that could be it (one wholly unknown, or one ending
+// in the route's tail); spelled is a route whose repository is not gh's
+// `{owner}/{repo}`, which an unknown route counts as.
+func restMerge(s segment, from int) (put, route, spelled bool) {
+	for i := from; i < len(s.tokens); i++ {
+		tok := s.tokens[i]
+		if !unfixed(tok) {
+			if m := mergePathRe.FindStringSubmatch(tok); m != nil {
+				route = true
+				spelled = spelled || m[2] != "{owner}" || m[3] != "{repo}"
+			}
+		} else if loose := strings.NewReplacer(unknownText, "X", varText, "X").Replace(tok); strings.Trim(tok, unknownText+varText) == "" || mergeRouteLoose.MatchString(loose) {
+			route, spelled = true, true
 		}
+		var m string
+		switch {
+		case tok == "-X" || tok == "--method":
+			if i+1 >= len(s.tokens) {
+				continue
+			}
+			m = s.tokens[i+1]
+		case strings.HasPrefix(tok, "--method="):
+			m = strings.TrimPrefix(tok, "--method=")
+		case strings.HasPrefix(tok, "-X") && len(tok) > 2:
+			m = strings.TrimPrefix(tok, "-X")
+		default:
+			continue
+		}
+		put = put || unfixed(m) || strings.EqualFold(m, "PUT")
 	}
-	return false
+	return put, route, spelled
 }
+
+// unfixed reports whether tok holds text the line does not fix: a
+// substitution's output, or a variable's value in a re-read payload.
+func unfixed(tok string) bool { return isUnknown(tok) || strings.ContainsRune(tok, varMark) }
 
 // approveAct reports whether segment s records the technical facilitator's
 // approval under a name the registry entry abcd-land-approve does not read:
