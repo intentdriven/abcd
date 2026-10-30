@@ -99,7 +99,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"value out of range, is reported loudly and every default is used.\n\n" +
 			"With --wait it waits for capacity instead of warning, and it is the one waiter\n" +
 			"concurrent sessions gate a preflight or a race run with, in place of a hand-written\n" +
-			"loop; `make preflight` runs its test stages through it. It blocks until the\n" +
+			"loop; `make preflight` waits at it once, as one whole run. It blocks until the\n" +
 			"one-minute load average is below the wait limit (`wait-load <load>` in the same\n" +
 			"file; by default twice the online core count), no other `go test -race` run is\n" +
 			"live, no other `make preflight` is running and no other waiter is ahead of it in\n" +
@@ -165,18 +165,18 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"whatever another account set, and a checkout older than the gate runs its race\n" +
 			"stage ungated, so set more than 1 only once no such checkout runs a preflight. A\n" +
 			"first gate's waiter never queues behind a race waiter. A preflight whose race\n" +
-			"waiter is queued runs nothing: at 1 it still counts as in its test stages, and\n" +
+			"waiter is queued runs nothing: at 1 it still takes its slot, and\n" +
 			"above 1 it takes no slot until its race run starts, which the race gate keeps\n" +
 			"to one at a time. A waiter that has opened stands back only from a waiter that\n" +
 			"opened in the same moment at its own gate, never from one at the other gate.\n\n" +
-			"How many preflights the first gate admits to their test stages at once is your\n" +
+			"How many preflights the first gate admits at once, each a whole run, is your\n" +
 			"own machine's setting: `" + implement.PreflightSlotsKey + "` in `" + abcdhome.Display("config.json") + "`, or " + implement.PreflightSlotsEnv + " in the\n" +
 			"environment, which wins, for a trial; a whole number from 1 to " + strconv.Itoa(implement.MaxPreflightSlots) + ", 1 by default,\n" +
 			"and never read from a repository file, so a checkout cannot raise the machine's\n" +
 			"load. At 1 both gates read as before the setting existed. Above 1 the\n" +
-			"first gate opens while fewer than that many other preflights or waiters running\n" +
-			"their command are in their test stages (a `--wait -- make preflight` counts\n" +
-			"once), a waiter queued ahead still shuts it, and a live race run does not shut\n" +
+			"first gate opens while fewer than that many other preflights or gated commands\n" +
+			"are running (a `--wait -- make preflight` counts once), a waiter queued ahead\n" +
+			"still shuts it, and a live race run does not shut\n" +
 			"it by itself; the load limit still does, and the race gate keeps race stages\n" +
 			"apart, so one race stage may run beside that many unit stages. A value it\n" +
 			"cannot use refuses the wait, naming where it was set. A `" + abcdhome.Display("config.json") + "`\n" +
@@ -606,7 +606,7 @@ func renderLoadWait(w io.Writer, res implement.WaitResult) {
 		case res.Gate == implement.GateRace:
 			gate, clear = "race gate", "no other go test -race run or race waiter ahead is live"
 		case res.Slots > 1:
-			clear = fmt.Sprintf("fewer than %d other preflights or gated commands are in their test stages (%s) and no waiter is queued ahead", res.Slots, slotsText(res))
+			clear = fmt.Sprintf("fewer than %d other preflights or gated commands are running (%s) and no waiter is queued ahead", res.Slots, slotsText(res))
 		}
 		fmt.Fprintf(w, "%s open after %s: load %.1f is below %s (%s), and %s; %s, so one waiter starts at a time\n",
 			gate, waited, res.Load, num(res.WaitLoad), waitLimitText(res), clear, hold)
@@ -672,8 +672,8 @@ func pidsText(pids []int, one, many string) string {
 	return one + " (pid " + strings.Join(list, ", ") + ")"
 }
 
-// slotsText says how many preflights the first gate admits to their test
-// stages at once, and where that was set.
+// slotsText says how many preflights the first gate admits at once, and
+// where that was set.
 func slotsText(res implement.WaitResult) string {
 	switch res.SlotsSource {
 	case implement.SlotsEnv:

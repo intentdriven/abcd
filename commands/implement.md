@@ -838,10 +838,11 @@ too, and the check never fails for either.
 
 ### Wait for capacity before a preflight or a race run
 
-`make preflight` gates itself: before its test stages it runs
-`implement load --wait`, so run it plain, with no wrapper and no waiter loop
-of your own. Gate every other `go test -race` on a shared machine with
-`--wait` too, and never write a waiter loop: a hand-written
+`make preflight` gates itself: it waits at `implement load --wait` once, as one
+whole run, before any of its stages (a records-only change takes a shorter
+rule that waits at no gate), so run it plain, with no wrapper and no
+waiter loop of your own. Gate every other `go test -race` on a shared machine
+with `--wait` too, and never write a waiter loop: a hand-written
 `pgrep -f "go test -race"` loop matched its own shell, whose command line
 carries that string, and never opened. `--wait` blocks until the one-minute
 load average is below the wait limit (`wait-load`, by default twice the online
@@ -894,9 +895,10 @@ as the stage starts (twice the cores less the load, at most the cores and at
 least a quarter of them), so one run cannot saturate the machine. It reads the
 machine every 15 seconds, prints one line when it starts waiting and one when
 it first finds the machine free, and nothing more until it opens, and gives up
-after `--timeout` (30 minutes by default; `make preflight` gives it two hours),
-exiting 1 and naming what it still waited on (`still`: `load`, `race-run`,
-`preflight`, `waiter`, `lock` or `unreadable`). `--json` reports `status`
+after `--timeout` (30 minutes by default; `make preflight` gives its first gate
+twelve hours and its race gate two), exiting 1 and naming what it still waited
+on (`still`: `load`, `race-run`, `preflight`, `waiter`, `lock` or
+`unreadable`). `--json` reports `status`
 (`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
 platform), `waited_on` and `waited_s`, with the `gate` it waited at
 (`tests` or `race`), `slots` and `slots_source`, and `backoffs` when it stood
@@ -905,8 +907,8 @@ back.
 Both gates also refuse, exiting 1 without waiting, while the volume holding
 the Go build cache (`go env GOCACHE`) or the one holding the worktree store
 (`~/.abcd.noindex/worktrees`, or its nearest existing parent) has less free
-space than the disk floor: 4 GiB for each preflight the first gate admits to
-its test stages at once (`load.preflights`, below), and 8 GiB at least, so 8
+space than the disk floor: 4 GiB for each preflight the first gate admits at
+once (`load.preflights`, below), and 8 GiB at least, so 8
 GiB at the default of one and 16 GiB at four. One cold preflight of this module
 writes about 4 GiB of build cache and test binaries. The waiter reads the disk
 as it starts and again just before it opens (the race gate at one preflight at
@@ -940,22 +942,24 @@ is at the wait limit, or the race gate's own hold is in force (another race
 waiter of the account opened within two minutes), so race stages are kept
 apart whatever the first gate admits: one at a time within an account, and
 across accounts all but the narrow windows below. Each gate is shut only by its own gate's
-hold: a first gate's `--wait -- make preflight` holds its gate until its
-preflight starts its race run, and were that to shut the race gate too, an
+hold: at one preflight at a time the first gate of `make preflight` takes the
+command hold, which lasts until the preflight starts its race run (an hour at
+most; above one it takes the two-minute settle hold), and were that to shut
+the race gate too, an
 earlier preflight's race stage would wait on it while the holder's own race
 waiter queued behind that earlier one, and neither would move. That command
 hold is taken at one preflight at a time; a waiter that reads more than one,
 unless its own command is a race run, judges it as the two-minute settle hold,
 so raising `load.preflights` reaches a preflight already queued behind it,
 and the preflights running still count against the setting. A preflight waiting there has passed its first gate and
-runs nothing: at one preflight at a time it counts as in its test stages, and
+runs nothing: at one preflight at a time it still takes its slot, and
 above one it takes no slot at the first gate until its race run starts, so the
 machine is not left idle while it waits for another preflight's race run
 (iss-2610282016250805). A waiter that has opened stands back only from a
 waiter that opened in the same moment at its own gate, never from one at the
 other gate.
 
-How many preflights the first gate admits to their test stages at once is the
+How many preflights the first gate admits at once, each a whole run, is the
 person's own machine setting, never a repository's, so a checkout cannot raise
 the machine's load: `load.preflights` in `~/.abcd.noindex/config.json` (a whole
 number from 1 to 4, read through the same guarded read as every machine
@@ -965,15 +969,15 @@ naming where the value was set. One race run at a time and the load limit stay
 the bounds whatever the setting. It is 1 by default, and the preflight then runs
 exactly as before the setting existed: the first gate reads as described
 above, and the race gate opens at once. What a setting above 1 adds: the first gate admits a
-preflight while fewer than that many other preflights or waiters running their
-command are in their test stages (`--wait -- make preflight` counts once, and
+preflight while fewer than that many other preflights or gated commands are
+running (`--wait -- make preflight` counts once, and
 a preflight queued at its race gate not at all), a waiter queued ahead still
 shuts it, and a live race run does not shut it by itself; the load limit still
 does, and the race gate waits as described
 above. The first gate's last look still applies: an opener that finds another
 opened in the same moment stands back as above, and its next look counts that
-waiter, from the moment its mark shows it running, as one of the preflights in
-their test stages. Race stages are kept apart only among preflights whose
+waiter, from the moment its mark shows it running, as one of the preflights
+running. Race stages are kept apart only among preflights whose
 checkouts have the race gate: a preflight run from a checkout older than the
 gate runs its race stage ungated, so set more than 1 only once no such checkout
 runs a preflight. Each stage's `go test -p` is then at most the cores divided
@@ -1002,10 +1006,10 @@ What a setting above 1 does not close, across accounts, which share no hold:
   or once the later has stopped counting the earlier past its five-minute cap
   on crossed waiters (the cap grows by a step for each crossed waiter more
   ahead, so the earlier normally opens first).
-- **One more in their test stages.** The plain form of the first gate, which
-  `make preflight` runs, takes no last look either, so two accounts' openers
-  whose re-checks fall in one moment can both open into the last free slot,
-  one preflight more in its test stages than the setting.
+- **One more running.** The plain form of the first gate, which an older
+  checkout's `make preflight` runs, takes no last look either, so two
+  accounts' openers whose re-checks fall in one moment can both open into the
+  last free slot, one preflight more running than the setting.
 
 A `~/.abcd.noindex/config.json` that cannot be read for the count does not
 stop the wait: one that others can write, one that is not valid JSON, or one

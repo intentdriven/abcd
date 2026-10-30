@@ -10,7 +10,6 @@ severity: minor
 impact: fix
 origin: researcher-authored
 production_mode: hand-written
-target_release: next
 ---
 
 # A preflight waits for its turn as one whole run
@@ -57,7 +56,9 @@ _None recorded yet._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-a712216d677f -->
+Fidelity review OWED (receipt rcp-a712216d677f).
+<!-- abcd-review-end receipt=rcp-a712216d677f -->
 
 ## Grounds
 

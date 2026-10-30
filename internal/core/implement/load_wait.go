@@ -37,9 +37,9 @@ import (
 // machineload.QueueAhead). It never signals anything.
 //
 // That is the first gate with one slot, the default. How many preflights the
-// first gate admits to their test stages at once is the person's own setting
-// (PreflightSlots, load_slots.go); above one, the first gate opens while
-// fewer than that many other units of work are in their test stages
+// first gate admits at once, each as one whole run, is the person's own
+// setting (PreflightSlots, load_slots.go); above one, the first gate opens
+// while fewer than that many other units of work are running past it
 // (machineload.Ahead.Shut), a waiter queued ahead still shuts it, a live race
 // run does not shut it by itself, and a preflight queued at its race gate,
 // running nothing, takes no slot until its race run starts
@@ -98,7 +98,7 @@ import (
 // stands back at most WaitBackoffCap times. It stands back only from a waiter
 // at its own gate (machineload.JustOpened), and at the first gate whatever the
 // slots: above one, the other keeps going and this one's next look counts it,
-// and its mark, among the units in their test stages (machineload.Ahead.Shut).
+// and its mark, among the units running past the gate (machineload.Ahead.Shut).
 // With one slot the race gate opens before any look, so it never marks or
 // stands back.
 //
@@ -143,7 +143,7 @@ const (
 	// WaitOnLoad: the one-minute load average is not below the wait limit.
 	WaitOnLoad = "load"
 	// WaitOnRaceRun: another go test -race run is live (at the first gate,
-	// only while one preflight at a time may be in its test stages).
+	// only while one preflight runs at a time).
 	WaitOnRaceRun = "race-run"
 	// WaitOnLock: another waiter's hold is in force.
 	WaitOnLock = "lock"
@@ -413,8 +413,8 @@ type WaitResult struct {
 	UngatedTests []int `json:"ungated_tests,omitempty"`
 	// Gate is the gate waited at, GateTests or GateRace.
 	Gate string `json:"gate"`
-	// Slots is how many preflights the first gate admits to their test stages
-	// at once, and SlotsSource where that came from (PreflightSlots). With one, the race
+	// Slots is how many preflights the first gate admits at once, and
+	// SlotsSource where that came from (PreflightSlots). With one, the race
 	// gate opens at once.
 	Slots       int    `json:"slots,omitempty"`
 	SlotsSource string `json:"slots_source,omitempty"`
@@ -545,7 +545,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		}
 		if shortcut {
 			res.Status = WaitOpen
-			res.Reason = "one preflight at a time may be in its test stages, so the race stage follows its tests at once"
+			res.Reason = "one preflight runs at a time, so the race stage follows its tests at once"
 			// An open gate names nothing that held it shut; what an earlier
 			// look found is WaitedOn's.
 			res.Still, res.RaceRuns, res.Holder = nil, []int{}, nil
@@ -824,10 +824,10 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 		}
 	} else {
 		// A live race run shuts the race gate always, and the first gate
-		// only while one preflight at a time may be in its test stages, or
-		// for a waiter whose own command is a race run: with more, the race
-		// gate is what keeps race stages apart, and the load limit what keeps
-		// the machine from saturating.
+		// only while one preflight runs at a time, or for a waiter whose own
+		// command is a race run: with more, the race gate is what keeps race
+		// stages apart, and the load limit what keeps the machine from
+		// saturating.
 		if len(racing) > 0 && (req.Race || res.Slots <= 1 || raceCmd) {
 			shut = append(shut, WaitOnRaceRun)
 			res.RaceRuns = racing
@@ -879,7 +879,11 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				// hold until its race run starts, and judged as written it would
 				// keep a raised count from reaching the runs queued behind it. The
 				// running preflights are still counted against the slots from the
-				// process table (machineload.Ahead.Shut).
+				// process table (machineload.Ahead.Shut). A race command's own
+				// first-gate hold, taken at any count, is judged the same way: a
+				// hold does not record the count it was written at, and that run
+				// is counted from the process table too, so the gate never admits
+				// more than the slots.
 				if gate == GateTests && h.Form == HoldCommand && res.Slots > 1 && !raceCmd {
 					h.Form = HoldSettle
 					if settled := h.Opened.Add(WaitSettle); settled.Before(h.Until) {
@@ -912,7 +916,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			// plain form's bounded hold instead. Above one slot a command that
 			// is not a race run (a whole preflight, `--wait -- make preflight`)
 			// takes the settle hold, as the plain first gate inside a preflight
-			// did: the units in their test stages are counted from the process
+			// did: the units running past the gate are counted from the process
 			// table (machineload.Ahead.Shut), and a command hold would keep the
 			// account's next slot shut until this run reached its race stage.
 			if req.Command && (res.Slots <= 1 || raceCmd) {
@@ -1052,7 +1056,7 @@ func releaseHoldIn(root *os.Root, h WaitHolder) error {
 // PreflightParallelism is the -p `make preflight` gives its test and race
 // stages (cmd/test-parallelism prints it), derived from the online cores and
 // the one-minute load as they are when the stage starts, the cores divided
-// among the preflights the first gate admits to their test stages at once
+// among the preflights the first gate admits at once
 // (machineload.GoTestParallelism, PreflightSlots). On a CI runner the machine
 // is not read and go's own default, GOMAXPROCS, stands, as it does when the
 // machine cannot be read.
