@@ -581,7 +581,10 @@ func TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot(t *testing.T) {
 // names its slowest packages ahead of ./..., so they start with the step
 // instead of behind every faster package (a speed lane under the cancel policy
 // of 2026-09-28), and it still runs exactly the module: ./... last, no package
-// named twice, and the same set go list resolves ./... to.
+// named twice, and the same set go list resolves ./... to. Its -timeout is
+// make preflight's unit-stage base, declared rather than go test's ten-minute
+// default: internal/core/implement/loop ran 466s to 593s here and crossed 600s
+// on 2026-10-30 with no test hung (iss-2610302058222905).
 func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	const where = ".github/workflows/ci.yml job check"
@@ -604,8 +607,17 @@ func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
 		t.Fatalf("%s step Test: want one `go test` command, found %d", where, len(cmds))
 	}
 	var pkgs []string
-	for _, w := range strings.Fields(cmds[0])[2:] {
-		if !strings.HasPrefix(w, "-") {
+	timeout := ""
+	words := strings.Fields(cmds[0])[2:]
+	for i := 0; i < len(words); i++ {
+		switch w := words[i]; {
+		case w == "-timeout" && i+1 < len(words):
+			i++
+			timeout = words[i]
+		case strings.HasPrefix(w, "-timeout="):
+			timeout = strings.TrimPrefix(w, "-timeout=")
+		case strings.HasPrefix(w, "-"):
+		default:
 			pkgs = append(pkgs, w)
 		}
 	}
@@ -613,4 +625,50 @@ func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
 		t.Fatalf("%s step Test: `%s` names no packages", where, cmds[0])
 	}
 	sameRacePackageSet(t, root, where+" step Test", pkgs, modulePattern)
+
+	recipe, ok := makeRecipe(readRepoFile(t, root, "Makefile"), preflightStages)
+	if !ok {
+		t.Fatalf("Makefile declares no `%s:` recipe", preflightStages)
+	}
+	local := unitStageTimeout(t, "Makefile preflight", recipe)
+	if timeout == "" {
+		t.Fatalf("%s step Test: `%s` sets no -timeout, so each package inherits go test's 10m "+
+			"default, which internal/core/implement/loop has already crossed; make preflight's "+
+			"unit stage uses %s", where, cmds[0], local)
+	}
+	d, err := time.ParseDuration(timeout)
+	if err != nil {
+		t.Fatalf("%s step Test: -timeout %q: %v", where, timeout, err)
+	}
+	if d != local {
+		t.Errorf("%s step Test runs under -timeout %s but make preflight's unit stage uses %s; "+
+			"local and CI must judge the module against one budget", where, d, local)
+	}
+}
+
+// unitStageTimeout is the base -timeout make preflight's unit stage scales
+// from: the `t=$$(go run ./cmd/test-parallelism -timeout <base>)` line last
+// before the recipe's plain `go test` command, the one without -race.
+func unitStageTimeout(t *testing.T, where, recipe string) time.Duration {
+	t.Helper()
+	base := ""
+	for _, l := range strings.Split(recipe, "\n") {
+		l = strings.TrimSpace(l)
+		if m := timeoutCall.FindStringSubmatch(l); m != nil {
+			base = m[1]
+			continue
+		}
+		if strings.HasPrefix(l, "go test ") && !strings.Contains(l, "-race") {
+			if base == "" {
+				t.Fatalf("%s: `%s` takes no base -timeout from cmd/test-parallelism", where, l)
+			}
+			d, err := time.ParseDuration(base)
+			if err != nil {
+				t.Fatalf("%s: unit stage -timeout %q: %v", where, base, err)
+			}
+			return d
+		}
+	}
+	t.Fatalf("%s: no plain `go test` command", where)
+	return 0
 }

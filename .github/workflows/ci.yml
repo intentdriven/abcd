@@ -414,11 +414,14 @@ jobs:
       # internal/surface/cli started about three and a half minutes into the
       # step and finished it alone; named first, both start with the step. The set is still exactly ./... (go test runs a package
       # named twice once), which TestPlainTestStepRunsTheWholeModule pins.
+      # Its -timeout is make preflight's unit-stage base, which the same test
+      # holds it to: with go test's ten-minute default, internal/core/implement/loop
+      # crossed 600s here on 2026-10-30 with no test hung (iss-2610302058222905).
       - name: Test
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert == 'true'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test ./internal/core/implement/loop ./internal/surface/cli ./...
+        run: go test -timeout 40m ./internal/core/implement/loop ./internal/surface/cli ./...
 
       # Every package ./... matches that ./internal/... does not;
       # TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot holds the set.
