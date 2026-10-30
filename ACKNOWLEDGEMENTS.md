@@ -457,6 +457,24 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   test for which fixes need no decision: one that keeps the meaning. The
   fix-in-place discipline (itd-2610271130017437) follows them; the evidence is
   `.abcd/development/research/notes/2026-10-27-fix-in-place-or-file-sota.md`.
+- **Evidence on how agents learn and use a tool: SWE-agent's ablations (Yang
+  et al., 2024, <https://arxiv.org/abs/2405.15793>); troubleshooting
+  documents for tool-call repair (Tsay et al., 2025,
+  <https://arxiv.org/abs/2510.17874>); augmented tool descriptions (Hasan et
+  al., 2026, <https://arxiv.org/abs/2602.14878>); and context files (Gloaguen
+  et al., 2026, <https://arxiv.org/abs/2602.11988>). Practice from
+  `kubectl explain` (<https://kubernetes.io/docs/reference/kubectl/generated/kubectl_explain/>),
+  rustc's error codes and `rustc --explain`
+  (<https://doc.rust-lang.org/error_codes/error-index.html>), the Model
+  Context Protocol's handling of input-validation errors (specification
+  2025-11-25, <https://modelcontextprotocol.io/specification/2025-11-25>), and
+  clap's retirement of its YAML builder
+  (<https://github.com/clap-rs/clap/issues/3087>)** — the grounds for an agent
+  learning a command from the running program (itd-2610301346085246), for
+  refusals that carry a code and the next command (itd-2610301428378830) and
+  for a practice run before a write (itd-2610301428390406): a short answer
+  from the binary over a long page, fix-oriented guidance over reference text,
+  and command facts held in code rather than in a hand-edited data file.
 
 ## References & sources
 
