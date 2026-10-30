@@ -458,6 +458,10 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again bool) (commi
 				continue
 			}
 		}
+		if have, ok := withdrawalOf(m.Withdrawn, pr.Number); ok && p.notFirstRecorded(have) {
+			fails = append(fails, ForgeFailure{Number: pr.Number, Act: ForgeWithdraw, Reason: notFirstRecordedReason(p.id, pr)})
+			continue
+		}
 		w := Withdrawal{Number: pr.Number, ID: pr.ID, Form: withdrawalFormOf(pr.Queued, pr.Method), Head: pr.Head, By: p.holder, State: WithdrawnPending}
 		next := withWithdrawal(all, w)
 		if len(next) > maxWithdrawals || !p.tombstoneFits(next) {
@@ -543,6 +547,34 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again bool) (commi
 		return commit, recorded, made, fails, ""
 	}
 	return next, fixed, made, fails, ""
+}
+
+// notFirstRecorded reports whether w, the entry the record this act writes
+// over holds for a pull request, names one of the reader's own holder ids
+// (their kept id or a declared one), is still withdrawn, admitted or kept, and
+// is not one this copy acts on (acts): the reservation that first recorded it
+// under that id was not pushed by the account the id is held to. A copy never
+// withdraws such a pull request: carried unchanged, the entry would still not
+// be the reader's, so no copy of theirs would ever re-arm it.
+func (p *prepared) notFirstRecorded(w Withdrawal) bool {
+	return p.self.Owns(w.By) && (w.unsettled() || w.State == WithdrawnKept) && !p.acts(w)
+}
+
+// notFirstRecordedReason is why a withdrawal of pr was refused
+// (notFirstRecorded), with the one step its holder takes: withdraw it from
+// the merge path by hand. It names no login.
+func notFirstRecordedReason(subject string, pr ArmedPR) string {
+	n := strconv.Itoa(pr.Number)
+	how := "gh pr merge " + n + " --disable-auto"
+	switch {
+	case pr.Queued && pr.Method != "":
+		how += ", then take it out of the merge queue on its pull request page"
+	case pr.Queued:
+		how = "take it out of the merge queue on its pull request page"
+	}
+	return fmt.Sprintf("%s records #%s under your holder id in a commit another login pushed (the reservation that first recorded it there was not pushed by "+
+		"your own GitHub account, as the forge's record of pushes reads it), so this copy neither withdraws nor re-arms it: withdraw #%s from the merge path by hand (%s), "+
+		"which is recorded nowhere, so nothing re-arms it once the release ends and its author arms it again then", subject, n, n, how)
 }
 
 // ownRelease reads a release's tip as this act judged it (j) against the
