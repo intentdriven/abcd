@@ -101,7 +101,8 @@ func TestLandWaitsWhileAnotherPersonCutsARelease(t *testing.T) {
 	if r.Reason != want {
 		t.Fatalf("reason = %q; want %q", r.Reason, want)
 	}
-	if r.Fix != "ask quinn to merge it or to release rel-v0.16.0, or wait until v0.16.0 is tagged, then run abcd land again" {
+	if r.Fix != "ask quinn to merge it or to release rel-v0.16.0, or wait until v0.16.0 is tagged or the hold lapses at "+
+		at.Add(24*time.Hour).Format(time.RFC3339)+" unrenewed, when nothing holds the merge, then run abcd land again" {
 		t.Fatalf("fix = %q", r.Fix)
 	}
 	f.heldNothing()
