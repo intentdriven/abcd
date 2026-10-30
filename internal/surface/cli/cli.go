@@ -1288,9 +1288,16 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
 			}
-			// The source repo's content is never read (the core gates it as a real dir
-			// only); a manifest failure is a MAJOR_RETHINK verdict input, exit 0.
-			res, err := lifeboat.ReviewLifeboat(dirAbs, args[1], raw, deferredLifeboatSecretScan(dirAbs))
+			// The review is handed the source repository, so its scanner settings
+			// apply as they do to pack: they add to the built-in rules and remove
+			// none. Only that config is read from it, and only once the core has
+			// gated it as a real directory; a manifest failure is a MAJOR_RETHINK
+			// verdict input, exit 0.
+			srcAbs, err := filepath.Abs(args[1])
+			if err != nil {
+				return err
+			}
+			res, err := lifeboat.ReviewLifeboat(dirAbs, srcAbs, raw, deferredLifeboatSecretScan(srcAbs))
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
 			}
@@ -1322,7 +1329,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 // lifeboatSecretScan builds the secret scan every verb that writes into a
 // lifeboat hands the core: pack over its planned bytes, and graveyard,
 // principles, press-release and review over the host payload they would write.
-// It builds the scanner over root and fails closed when the scanner's config is
+// It builds the scanner over root, whose settings can only add to the built-in
+// rules: a built-in pattern keeps its regex and its severity floor, and the
+// path skips and exclusions bind a tree walk, never ScanText. It fails closed when the scanner's config is
 // degraded, since a lifeboat must not be written under a weakened ruleset. A
 // lifeboat is written OUT of the repository, as a release is, so a scanner
 // augmenter root configured and nobody installed refuses as it refuses a launch
@@ -1364,20 +1373,21 @@ func lifeboatSecretScan(root string) (lifeboat.SecretScan, error) {
 	}, nil
 }
 
-// deferredLifeboatSecretScan is lifeboatSecretScan over the lifeboat directory,
-// built when the core first scans rather than up front, so the core's own
-// lifeboat gate (not a directory, not a lifeboat) still answers first for an
-// operand that is not one, and the scanner is built over a directory proved to
-// be a lifeboat. A lifeboat carries no scanner settings of its own, so abcd's
-// built-in rules judge: a source repository's extra patterns and augmenter
-// apply at pack, where that repository is read. A call that would write
-// nothing has nothing to scan, and no scanner is built for it.
-func deferredLifeboatSecretScan(dirAbs string) lifeboat.SecretScan {
+// deferredLifeboatSecretScan is lifeboatSecretScan over root, built when the
+// core first scans rather than up front, so the core's own gates (not a
+// directory, not a lifeboat) still answer first for an operand that is not
+// one, and the scanner is built over a directory the core has gated. root is
+// the lifeboat for graveyard, principles and press-release, which carries no
+// scanner settings of its own, so abcd's built-in rules judge; and the source
+// repository for review, which is handed it, so its extra patterns and
+// augmenter apply as they do at pack. A call that would write nothing has
+// nothing to scan, and no scanner is built for it.
+func deferredLifeboatSecretScan(root string) lifeboat.SecretScan {
 	return func(files []lifeboat.PlannedFile) error {
 		if len(files) == 0 {
 			return nil
 		}
-		scan, err := lifeboatSecretScan(dirAbs)
+		scan, err := lifeboatSecretScan(root)
 		if err != nil {
 			return err
 		}

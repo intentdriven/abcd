@@ -175,9 +175,11 @@ Each delegated payload is composed by a plugin agent and validated by the
 binary, which treats it as untrusted input: it decodes the payload with
 unknown fields refused, sanitises its prose, and writes only what survives the
 citation gate. The bytes it would write are secret-scanned before any write,
-and a hard-fail secret refuses the whole write. A packed lifeboat carries no
-scanner settings of its own, so abcd's built-in rules judge; a source
-repository's own extra patterns apply at pack, where that repository is read. The press release is delegated to `press-release-composer`, the graveyard
+and a hard-fail secret refuses the whole write. The review, which is handed the
+source repository, scans with that repository's settings as pack does, added
+to abcd's built-in rules and never in place of them; the other three use the
+built-in rules alone, since a packed lifeboat carries no scanner settings of
+its own. The press release is delegated to `press-release-composer`, the graveyard
 to `graveyard-interpreter`, the principles to `principle-distiller` and the
 review to `lifeboat-reviewer`. Each prompt declares
 `reads_untrusted_input: true` and tells the agent that everything it reads is

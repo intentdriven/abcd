@@ -100,8 +100,10 @@ func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte, scan SecretScan)
 	// audit deterministic and safe when the source is gone. A symlinked or absent
 	// source is structural (mirrors embark's target gate). It is the one operand
 	// not proved against a symlinked ancestor (proveOperand): nothing under it is
-	// read or written and only its base name reaches the audit, so an ancestor
-	// link redirects nothing (iss-2609261232464351).
+	// written, only its base name reaches the audit, and the one thing a front
+	// door reads under it is the scanner config scan may be built from, which can
+	// only add rules, so an ancestor link redirects nothing that weakens the scan
+	// (iss-2609261232464351).
 	srcAbs, err := filepath.Abs(sourceRepo)
 	if err != nil {
 		return ReviewResult{}, err
