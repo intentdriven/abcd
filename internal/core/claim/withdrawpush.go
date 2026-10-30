@@ -58,8 +58,9 @@ func reservationPushers(ctx context.Context, root, ref string) ([]Push, error) {
 // login, and, when it does, whether the forge's record of pushes says that
 // login pushed j's tip, so the person can tell a reservation that is not
 // their other account's. doubtful is true when nothing ties the reservation
-// to an account of theirs (the id is unpaired, or its paired account did not
-// push it), and the back-off then says plainly what a take-over would do. It
+// to an account of theirs (the id is unpaired, its paired account did not
+// push it, or whether it did is not known), and the back-off then says
+// plainly what a take-over would do. It
 // names neither the paired login nor the pusher: it is shown on this
 // terminal alone, and says only whether they match.
 func declaredTipNote(p *prepared, j judged) (note string, doubtful bool) {
@@ -76,7 +77,7 @@ func declaredTipNote(p *prepared, j judged) (note string, doubtful bool) {
 	switch {
 	case why != "":
 		return fmt.Sprintf(" (%s is an id %s pairs with an account's login, but whether that account pushed this reservation is not known: %s)",
-			h, DeclaredHolderIDsFile, why), false
+			h, DeclaredHolderIDsFile, why), true
 	case sameHolder(pusher, login):
 		return fmt.Sprintf(" (%s is an id %s pairs with an account's login, and the forge's record of pushes says the account it is paired with pushed this reservation)",
 			h, DeclaredHolderIDsFile), false
@@ -87,12 +88,12 @@ func declaredTipNote(p *prepared, j judged) (note string, doubtful bool) {
 
 // takeOverDoubtfulTail is how the other-copy back-off over a reservation no
 // account of the person's is tied to ends: what --take-over would do, and
-// why it is allowed; for a release (release true), what becomes of its hold
-// and its withdrawals too.
+// why it is allowed; for a release (release true), what becomes of its hold,
+// which is the taker's from then on, and of its withdrawals too.
 func takeOverDoubtfulTail(id string, release bool) string {
 	does := "it replaces that reservation with yours"
 	if release {
-		does += " and ends its hold, while its withdrawals are carried untouched and none is re-armed from here"
+		does += " and makes its hold yours, while its withdrawals are carried untouched and none is re-armed from here"
 	}
 	return fmt.Sprintf("--take-over is still allowed here, only because %s lists %s as yours: %s; if the id is not yours, remove it from %s and leave the reservation be",
 		DeclaredHolderIDsFile, id, does, DeclaredHolderIDsFile)

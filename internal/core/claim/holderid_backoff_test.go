@@ -21,6 +21,7 @@ func TestATakeOverBackOffSaysWhetherADeclaredIDsPushIsItsPairedAccounts(t *testi
 		{"paired, its account", mayaB + " maya\n", "maya", "the forge's record of pushes says the account it is paired with pushed this reservation", false},
 		{"paired, another account", mayaB + " maya\n", "mal", "the forge's record of pushes says an account other than the one it is paired with pushed this reservation, so it is not your other account's", true},
 		{"unpaired", mayaB + "\n", "maya", "with no login beside it, so which account pushed this reservation is not checked", true},
+		{"paired, its record not read", mayaB + " maya\n", "", "whether that account pushed this reservation is not known", true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			w := newWorld(t)
@@ -28,6 +29,9 @@ func TestATakeOverBackOffSaysWhetherADeclaredIDsPushIsItsPairedAccounts(t *testi
 			m := message{Record: "iss-5", Holder: mayaB, Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", Footprint: []string{"a.go"},
 				ClaimedAt: w.clock(), ExpiresAt: w.clock().Add(time.Hour)}
 			f.pusherOf[w.pushTipAt("iss-5", m.text(), w.clock())] = c.pusher
+			if c.pusher == "" {
+				f.pushersErr = errors.New("HTTP 502")
+			}
 			octo := w.clone("1234+octo@users.noreply.github.com", "")
 			declareHolderIDs(t, octo.home, c.declared)
 			_, err := octo.reserve("iss-5", "a.go")
@@ -40,5 +44,23 @@ func TestATakeOverBackOffSaysWhetherADeclaredIDsPushIsItsPairedAccounts(t *testi
 				t.Fatalf("err = %v; want the tail saying what a take-over does %v, and the plain invitation otherwise", err, c.doubtful)
 			}
 		})
+	}
+}
+
+// TestAReleaseTakeOverBackOffSaysTheHoldBecomesTheTakers: over a release
+// nothing ties to an account of the person's, the back-off's tail says a
+// take-over makes the hold the taker's, carries the withdrawals untouched and
+// re-arms none of them; it never says the hold ends.
+func TestAReleaseTakeOverBackOffSaysTheHoldBecomesTheTakers(t *testing.T) {
+	w := newWorld(t)
+	f := armedForge(t)
+	m := message{Record: "rel-v0.16.0", Holder: mayaB, Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: w.clock(), ExpiresAt: w.clock().Add(time.Hour)}
+	f.pusherOf[w.pushTipAt("rel-v0.16.0", m.text(), w.clock())] = "maya"
+	octo := w.clone("1234+octo@users.noreply.github.com", "")
+	declareHolderIDs(t, octo.home, mayaB+"\n")
+	_, err := octo.do(Request{Record: "rel-v0.16.0"})
+	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "it replaces that reservation with yours and makes its hold yours, while its withdrawals are carried untouched and none is re-armed from here") ||
+		strings.Contains(err.Error(), "ends its hold") {
+		t.Fatalf("err = %v; want the tail saying the hold becomes the taker's, never that it ends", err)
 	}
 }
