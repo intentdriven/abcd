@@ -326,7 +326,7 @@ tree's CPU over the last ten minutes of this waiter's looks, or `not yet
 measured` before then, and a holder whose tree has used no more than a tenth
 of a core over that span, with no waiter of its own queued at a gate, is marked
 `quiet:` in place of its use, whatever hold it is under (`GateHolder.Quiet`,
-`"quiet": true` in `--json`); a preflight is named once whichever way its make
+`"quiet": true` in the JSON result); a preflight is named once whichever way its make
 and the holding waiter nest, and a unit taking no slot (above one, a
 preflight at its race gate) is not named. The line is said again each span
 while the gate stays shut (iss-2610241457170255). A child that starts and exits between two
