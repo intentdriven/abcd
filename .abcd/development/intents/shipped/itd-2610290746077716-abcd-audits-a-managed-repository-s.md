@@ -78,8 +78,111 @@ _None recorded yet._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-6083de2cef52 -->
-Fidelity review OWED (receipt rcp-6083de2cef52).
+<!-- abcd-review: INGESTED receipt=rcp-6083de2cef52 -->
+Fidelity review — receipt rcp-6083de2cef52 (verifier intent-auditor claude-opus-5-5).
+
+Provenance: intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:a7a8b4b7a236080fd3c5fb3d436c002f2bc79425b9bcc63af3bd39ec23d9fa84
+Input attestations: diff:1b89a7e123b84846417b7bc959c7b212c47858c4^1..1b89a7e123b84846417b7bc959c7b212c47858c4 (PR #1225)@sha256:3ad1904768ba8ea2abf342388c530afd5d657d56e1257038c0a4f1540a0867e8; tree:a584e1cdf8a28ef1bb54b501e23fd427573babf3 (origin/main; internal/core/ahoy and internal/core/launch/scaffold unchanged since the merge)@-;
+
+Acceptance rollup: MET 7 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: RemoteRead builds the whole audit and returns its differences without any write; the text render prints one 'setting: current -> target [state]' line per finding not at target; a routed-fake test on the managed repository's reported state asserts each listed setting, no PATCH/PUT/POST/DELETE, and an unchanged tree
+  evidence: internal/core/ahoy/remote.go:195 — "res.Audit = auditSettings(in)"
+  evidence: internal/surface/cli/cli.go:4668 — "line := fmt.Sprintf(" setting: %s: %s -> %s [%s]", f.Setting, f.Current, f.Target, f.State)"
+  evidence: internal/core/ahoy/remote_baseline_test.go:265 — "func TestRemoteAuditListsEachDifferenceAndChangesNothing(t *testing.T) {"
+  evidence: internal/core/ahoy/remote_baseline_test.go:315 — "if w := writeCalls(t, logPath); len(w) != 0 {"
+  evidence: internal/core/ahoy/remote_baseline.go:811 — "f.Current, f.State, f.Note = "absent", findingAdvisory, "add a CODEOWNERS file covering these paths"+later"
+- ac-2 — MET: applyDifferences writes every differs finding in GitHub's required order (toggles, one repository PATCH, abcd's own rulesets, Actions settings); the test applies on the reported state, then re-reads the post-apply state with zero differences, and a second apply makes no write and rewrites no file
+  evidence: internal/core/ahoy/remote_baseline_apply.go:52 — "func applyDifferences(root, repo string, audit *SettingsAudit) (a applied, failure string) {"
+  evidence: internal/core/ahoy/remote_baseline_apply_test.go:77 — "func TestRemoteApplyAppliesTheDifferencesThenAuditsClean(t *testing.T) {"
+  evidence: internal/core/ahoy/remote_baseline_apply_test.go:146 — "if d := read.Audit.Differences(); len(d) != 0 {"
+  evidence: internal/core/ahoy/remote_baseline_apply_test.go:158 — "if w := writeCalls(t, logPath); len(w) != 0 {"
+- ac-3 — MET: the confirmation precedes every write and a decline returns status aborted before applyDifferences runs; the CLI maps aborted to exit 1, and core and CLI tests drive RefusingPrompter and an EOF run to aborted, no write, no mirror, non-zero exit
+  evidence: internal/core/ahoy/remote.go:265 — "if !p.Confirm(termsafe.Sanitize("Change GitHub settings on " + res.Repo + "? (" + strings.Join(pending, "; ") + ")")) {"
+  evidence: internal/core/ahoy/remote.go:266 — "res.Status = "aborted""
+  evidence: internal/surface/cli/cli.go:4579 — "if res.Status == "refused" || res.Status == "aborted" {"
+  evidence: internal/surface/cli/ahoy_remote_test.go:54 — "func TestAhoyRemoteApplyExitsNonZeroWhenItChangesNothing(t *testing.T) {"
+- ac-4 — MET: on a private repository an absent scanning field and a 403/404 'upgrade' refusal of the rules reads make those settings owed; the apply writes only differs findings, and the mirror gains an owed list; the test asserts only the Dependabot writes land, no ruleset POST, and owed holds secret scanning, push protection, release tags and code-owner review
+  evidence: internal/core/ahoy/remote_baseline.go:286 — "case status == "" && priv:"
+  evidence: internal/core/ahoy/remote_baseline.go:541 — "if planRefusal(err) && priv {"
+  evidence: internal/core/ahoy/remote.go:560 — "doc["owed"] = owed"
+  evidence: internal/core/ahoy/remote_baseline_apply_test.go:169 — "func TestRemoteApplyOnAPrivateRepoAppliesWhatThePlanOffers(t *testing.T) {"
+- ac-5 — MET: visibilityFinding compares the GitHub answer with repo.visibility and reports a mismatch as advisory (never differs, so never applied); no write body carries visibility, asserted by the apply test, and no repository-edit call exists in internal/
+  evidence: internal/core/ahoy/remote_baseline.go:395 — "f.State, f.Note = findingAdvisory, "the repository is "+real+" but .abcd/config.json declares it "+declared+"
+  evidence: internal/core/ahoy/remote_baseline_test.go:365 — "func TestRemoteAuditReportsAVisibilityMismatch(t *testing.T) {"
+  evidence: internal/core/ahoy/remote_baseline_apply_test.go:131 — "if b := stdinOf(c); strings.Contains(b, "visibility") || strings.Contains(b, `"private"`) {"
+- ac-6 — MET: scaffold.RequiredChecks keeps only pull_request workflows with no paths filter and, under a merge queue, with merge_group; the apply test (build/lint, a path-filtered docs workflow, a pr-only workflow under a queue) asserts the ruleset requires exactly build,lint; a required context no workflow reports is named in the finding's note
+  evidence: internal/core/launch/scaffold/cichecks.go:149 — "case mergeQueue && !hasEvent(on, "merge_group"):"
+  evidence: internal/core/ahoy/remote_baseline_apply_test.go:260 — "if strings.Join(got, ",") != "build,lint" {"
+  evidence: internal/core/ahoy/remote_baseline.go:643 — "staleNote = "required but not reported by any workflow abcd can read: " + strings.Join(stale, ", ") +"
+  evidence: internal/core/ahoy/remote_baseline_test.go:300 — "if n := got["required_status_checks"].Note; !strings.Contains(n, "zizmor") {"
+- ac-7 — MET: every finding passes through add(), which turns a github.keep setting into kept; the apply writes only differs and excludes kept rules from abcd's default-branch ruleset; tests assert kept states, no kept setting in any write body, and an unknown keep key refused before GitHub is contacted
+  evidence: internal/core/ahoy/remote_baseline.go:267 — "if in.ov.keep[f.Setting] {"
+  evidence: internal/core/ahoy/remote_baseline_apply.go:153 — "if !kept(settingBranchDeletion) {"
+  evidence: internal/core/ahoy/remote_baseline_apply_test.go:267 — "func TestRemoteApplyLeavesAKeptSettingAlone(t *testing.T) {"
+  evidence: internal/core/ahoy/remote_baseline_test.go:391 — "func TestRemoteAuditHonoursKeepAndRefusesAnUnknownKey(t *testing.T) {"
+- ac-8 — MET_WITH_CONCERNS: the organization Actions policy read on 403/404 is unknown with a note naming admin:org and the 'gh auth refresh -h github.com -s admin:org' command, tested; concern: only that one read names a scope and a granting command, every repository-level 403/404 names the missing admin role with no command, and a failed plan read is silently 'unknown' with no reason
+  evidence: internal/core/ahoy/remote_baseline.go:979 — "f.Note = "reading the organization's Actions policy needs an org owner's sign-in with the admin:org scope " +"
+  evidence: internal/core/ahoy/remote_baseline.go:980 — ""(gh auth refresh -h github.com -s admin:org); abcd never writes it""
+  evidence: internal/core/ahoy/remote_baseline.go:459 — "return "the sign-in cannot read " + what + ": it needs admin rights on the repository""
+  evidence: internal/core/ahoy/remote_baseline.go:478 — "if err != nil { return """
+  evidence: internal/core/ahoy/remote_baseline_test.go:306 — "if n := got["org_actions_policy"].Note; !strings.Contains(n, "admin:org") {"
+- ac-9 — MET_WITH_CONCERNS: with a tag-referenced action, actions_sha_pinning is advisory with 'N uses ... not pinned' and the apply writes only differs findings, tested; concern: the unread-workflow branch is checked before the count branch, so a repository that also uses a local action or has an unreadable workflow gets advisory with no count, and an Actions answer without sha_pinning_required gives unknown rather than advisory
+  evidence: internal/core/ahoy/remote_baseline.go:925 — "f.Note = strconv.Itoa(facts.Unpinned) + " " + uses + " not pinned to a commit SHA in .github/workflows; " +"
+  evidence: internal/core/ahoy/remote_baseline.go:913 — "case len(facts.Unread) > 0:"
+  evidence: internal/core/ahoy/remote_baseline.go:911 — "case doc.SHAPinningRequired == nil:"
+  evidence: internal/core/ahoy/remote_baseline_apply_test.go:127 — "if w := callsTo(t, logPath, "PUT", "actions/permissions"); len(w) != 0 {"
+
+Gap audit:
+- honoured:
+  - one read-only report, one line per setting saying what it is now and what it should be
+    evidence: internal/surface/cli/cli.go:4668 — "line := fmt.Sprintf(" setting: %s: %s -> %s [%s]", f.Setting, f.Current, f.Target, f.State)"
+    evidence: internal/core/ahoy/remote_baseline_test.go:318 — "if after := treeSnapshot(t, repo); after != before {"
+  - on a yes abcd turns on what is missing and writes down what it changed (managed block, owed list, per-ruleset mirrors through os.Root, content-keyed)
+    evidence: internal/core/ahoy/remote.go:306 — "wrote, err := writeRepoSettingsMirror(abs, mirrorRepoName(res.Repo, obj.Owner.Type), managedSettings(audit, ran), owedSettings(audit), merge)"
+    evidence: internal/core/ahoy/remote_baseline_apply.go:605 — "if have, err := fsutil.ReadGuardedInRoot(r, rel, maxAhoyFileBytes); err == nil && bytes.Equal(have, data) {"
+  - never changes whether a repository is public or private
+    evidence: internal/core/ahoy/remote_baseline.go:396 — ""; abcd never changes a repository's visibility: change it on GitHub, or correct repo.visibility""
+  - never requires a check the repository's own workflows do not run, and names a required check no workflow reports
+    evidence: internal/core/launch/scaffold/cichecks.go:124 — "func RequiredChecks(repoRoot, defaultBranch string, mergeQueue bool) (checks, notes []string) {"
+    evidence: internal/core/ahoy/remote_baseline_apply.go:163 — "if differs(settingRequiredChecks) && len(audit.RequiredChecks) > 0 {"
+  - a setting the plan does not offer is listed as owed
+    evidence: internal/core/ahoy/remote_baseline_apply.go:569 — "func owedSettings(audit *SettingsAudit) []string {"
+  - a repository asks for a setting to be left alone in its own reviewed config (github.keep), and a typo refuses
+    evidence: internal/core/ahoy/remote_baseline.go:155 — "return ov, fmt.Errorf("github.keep names %q, which is not a baseline setting (the settings are: %s)","
+    evidence: commands/ahoy.md:1344 — ""keep": ["has_wiki"],"
+  - abcd's rulesets carry no bypass actor and abcd edits only rulesets it created, merging rather than loosening
+    evidence: internal/core/ahoy/remote_baseline_apply.go:242 — ""bypass_actors": []any{},"
+    evidence: internal/core/ahoy/remote_baseline_apply.go:275 — "if _, ours := rulesetMirrorName[rs.Name]; ours && rulesetIDRe.MatchString(rs.ID.String()) {"
+  - no file abcd writes names a person: a person-owned repository is mirrored by name alone
+    evidence: internal/core/ahoy/remote_baseline_apply.go:508 — "func mirrorRepoName(repo, ownerType string) string {"
+    evidence: internal/core/ahoy/remote_baseline_apply_test.go:292 — "func TestRemoteApplyWritesNoLoginIntoAnyFile(t *testing.T) {"
+- diverged:
+  - a missing scope is named with the command that grants it: delivered for the organization Actions policy only; repository-level read failures name the admin role with no command, and a failed plan read is silent
+    evidence: internal/core/ahoy/remote_baseline.go:459 — "return "the sign-in cannot read " + what + ": it needs admin rights on the repository""
+    evidence: internal/core/ahoy/remote_baseline.go:478 — "if err != nil { return """
+  - SHA pinning reported as advisory with the number of unpinned uses: the count is dropped when any workflow or local action went unread, because that branch is checked first
+    evidence: internal/core/ahoy/remote_baseline.go:913 — "case len(facts.Unread) > 0:"
+  - owed on any plan: a plan refusal is recognised as owed only on a private or internal repository and only when GitHub's 403/404 text contains 'upgrade'; any other wording reads as unknown
+    evidence: internal/core/ahoy/remote_baseline.go:452 — "return isHTTP(err, 403, 404) && strings.Contains(strings.ToLower(err.Error()), "upgrade")"
+    evidence: internal/core/ahoy/remote_baseline.go:236 — "func (o repoObject) private() bool { return o.Visibility == "private" || o.Visibility == "internal" }"
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2610290749117650 — survived: the repository comes only from the origin remote parsed as a github.com owner/name, and every read and write goes through github.API, which runs the person's own gh sign-in; abcd holds no token
+  evidence: internal/core/ahoy/remote.go:155 — "func resolveGitHubRepo(cwd string) (string, error) {"
+  evidence: internal/core/github/github.go:186 — ""remote write is made by your own authenticated identity, never by a token abcd holds""
+- cond-2610290749117599 — survived: remotePrepare, shared by the read and the apply, refuses any folder whose kind is not ManagedRepo before a request leaves the machine, and the CLI test exercises the refusal
+  evidence: internal/core/ahoy/remote.go:392 — "if det.FolderKind != ManagedRepo {"
+  evidence: internal/surface/cli/ahoy_remote_test.go:20 — "func TestAhoyRemoteRefusesAnUnmanagedFolderFromTheCLI(t *testing.T) {"
+- cond-2610290749118129 — narrowed: an unoffered setting is never written and never fails the run, but 'owed' is inferred from the visibility and the refusal's wording, not from the plan; the plan is only displayed
+  narrowing: owed is reported only for a private or internal repository, and for rulesets only when GitHub's 403/404 message contains 'upgrade'; a plan refusal worded otherwise, or one on a public repository, is reported unknown rather than owed (still never a failure)
+  evidence: internal/core/ahoy/remote_baseline.go:452 — "return isHTTP(err, 403, 404) && strings.Contains(strings.ToLower(err.Error()), "upgrade")"
+  evidence: internal/core/ahoy/remote_baseline.go:544 — "return all(findingUnknown, readFailure("the default branch's rules", err)), nil, nil"
+- cond-2610290749116813 — survived: the only organization endpoints touched are GET reads (plan and Actions policy); the apply file holds no orgs/ path and the org policy finding is never differs, and a 403 names admin:org
+  evidence: internal/core/ahoy/remote_baseline.go:974 — "out, err := github.API(root, nil, "orgs/"+owner+"/actions/permissions")"
+  evidence: internal/core/ahoy/remote_baseline.go:998 — "f.Current, f.State, f.Note = "any action, by any ref", findingAdvisory, "an org owner can require SHA pinning or an allow-list; abcd never writes the organization's settings""
 <!-- abcd-review-end receipt=rcp-6083de2cef52 -->
 
 ## Grounds

@@ -120,11 +120,13 @@ While that reservation is live, every other session's land step (an
 `implement step` arming a merge, or `abcd land`, under any account, on any
 computer) refuses to arm, names you and the release, and leaves its pull
 request open for you to merge or hold; `/abcd:peers` shows other sessions
-"release vX.Y.Z being cut by @you: merges are held", and shows this copy "you
+"release vX.Y.Z being cut by @you: merges are held; the hold lapses at
+<time> unless the cut renews it", and shows this copy "you
 are cutting release vX.Y.Z from this copy: every other session's merges are
 held". It takes no footprint and holds for a day. If the cut runs longer,
-run the same command again from the same copy to renew it for another day. It
-ends by itself once the release workflow pushes the tag `vX.Y.Z`; if you
+run the same command again from the same copy to renew it for another day.
+Unrenewed, it lapses at that time: from then no merge is held, and other
+sessions land without waiting for anyone to say so. It ends by itself once the release workflow pushes the tag `vX.Y.Z`; if you
 abandon the cut before then, release it with
 `"${CLAUDE_PLUGIN_ROOT}/abcd" reserve rel-vX.Y.Z --release --json`. `launch
 ship` does not take or release it for you: the tag is pushed by the release
