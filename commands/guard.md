@@ -669,13 +669,23 @@ shell's script or standard input, a `source` or `.` operand, or a path
 sh i.sh`, `curl -O …/i.sh && ./i.sh`): the file is one curl's `-o` or `-O`,
 wget's `-O` or saved name, a `tee` a fetch feeds or a redirection of what a
 fetch printed writes, matched by the name the line writes it under, and a
-name the line does not fix can be any file. Download it in one command, read
-it, and run it in the next. A command
+name the line does not fix can be any file. The shell's options before the
+script are read as the script reading below reads them, so `bash -login
+<(curl …)` and `zsh -oerrexit <(curl …)` block too. Download it in one
+command, read it, and run it in the next. A command
 line longer than 64 KiB is a **block** (`command-too-long`), because the guard
 does not read it.
 
 A script file a shell runs is **read and judged** before the command is: a
-shell's script operand (`bash build.sh`), a `source` or `.` operand (searched on
+shell's script operand (`bash build.sh`; not under `-n` or `-o noexec`, a
+syntax check that runs none of it, unless `-i` makes the shell interactive,
+which ignores the option; each shell's options are read as that shell reads
+them, so bash's `-login` is `--login` before its first single-letter option
+and letters after one, zsh's and ksh's `-oerrexit` is one option, a lone `-`
+ends the options as `--` does, and so do zsh's lone `+` and its `-b`, while a name that is
+more than one shell, `sh` among them, is read every way it can be and any
+script one of the ways runs is judged; the same reading finds a `-c` string
+behind options that take a value, `bash -co errexit '…'`), a `source` or `.` operand (searched on
 `PATH` and then in the working directory when it has no slash, as bash does,
 while zsh's `source` looks in the working directory first and its `.` only on
 `PATH`; a `PATH=` prefix
@@ -1064,7 +1074,9 @@ teaches the safe form: remove the session URL, and
 replace a tool footer with the repository's own disclosure trailer
 (`Assisted-by: <Vendor>:<model-version>`). It reads `--title`/`-t`,
 `--body`/`-b` and `--body-file`/`-F` in every spelling (`--body x`,
-`--body=x`, `-b x`, `-bx`, `-b=x`), a value written out in full on the line, and
+`--body=x`, `-b x`, `-bx`, `-b=x`, and each behind gh's boolean shorthands, `-db x`),
+with `-R`/`--repo` and its repository read wherever they stand (`gh -R o/r pr create`),
+a value written out in full on the line, and
 a `"$(cat <<'EOF' … EOF)"` body, read as the document it prints. A body file is
 read through the guard's guarded read, from the directory the command runs in:
 regular files only, no symlinked leaf (a symlink to a file is followed first),
@@ -1074,7 +1086,8 @@ command runs: one that does not exist, is a pipe, a directory or a file this
 account may not read, is over 256 KiB, sits relative to a directory the line
 leaves unknown, or is written earlier on the same line (the file the guard could
 read is not the one gh will post). So is a `.abcd/config/pii.json` that does not
-load, and a line handing the forge more than sixteen texts. A warn never stops a
+load, a line handing the forge more than sixteen texts, and a gh line whose
+words can be read more ways than the guard follows. A warn never stops a
 command, and it never passes one in silence.
 
 A pull request's own text is held to two more checks before it is posted,
@@ -1102,8 +1115,7 @@ declaration.
 It does not see: a body or a path the line does not fix (`--body "$BODY"`,
 `--body-file "$F"`, a substitution other than the `cat` document above), a body
 on standard input (`--body-file -`), a flag spelled by a substitution
-(`--$(echo body)`), a short flag bundled behind another (`-db x`), text typed
-into an editor or a browser (`--editor`, `--web`), text gh takes from the
+(`--$(echo body)`), text typed into an editor or a browser (`--editor`, `--web`), text gh takes from the
 commits (`--fill`) or a template (`--template`), a posting command inside a
 script the line runs, and every other posting path: `gh api`, `gh pr review`,
 `gh release`, `gh pr merge --body`, `gh pr close --comment`,
