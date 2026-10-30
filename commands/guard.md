@@ -1084,8 +1084,9 @@ refused as `abcd-land-approve-any-program`, whatever the program is called. A
 flag word that a substitution prints is not read. An approving review on the
 forge is a **block** in every mode too (`forge-review-approve`):
 `gh pr review --approve`, and a `gh api` review call (the REST review route, or
-the `addPullRequestReview` or `submitPullRequestReview` mutation) with
-`APPROVE` in it; a review that comments or requests changes is allowed. Never
+the `addPullRequestReview` or `submitPullRequestReview` mutation) whose event is
+`APPROVE` or not shown on the line; a review that comments or requests changes,
+and a read of the reviews, are allowed. Never
 run any of them; tell the person which head you believe is ready and let them
 approve it. These blocks stop an agent merging or approving by mistake; they
 are not a wall against a determined one, which holds the person's own

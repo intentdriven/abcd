@@ -123,11 +123,24 @@ func LocalGit(dir string, args ...string) (string, error) {
 	return runHooked(dir, false, "", args, nil)
 }
 
+// NetContext is Net bounded by ctx as well as by NetTimeout: a caller with a
+// deadline of its own (the shell guard reading the merge mode inside a host's
+// hook) has git killed when ctx ends, and the error says so. It runs with the
+// person's own configuration and credentials, as Net does, never prompting.
+func NetContext(ctx context.Context, dir string, args ...string) (string, error) {
+	return runHookedContext(ctx, dir, true, "", args, nil)
+}
+
 // runHooked is Net (network true) and LocalGit (false), with stdin fed to
 // the command when it is not "". With sink set, stdout is written to it as
 // it is read, none is kept, and the output returned is "".
 func runHooked(dir string, network bool, stdin string, args []string, sink io.Writer) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), NetTimeout)
+	return runHookedContext(context.Background(), dir, network, stdin, args, sink)
+}
+
+// runHookedContext is runHooked under parent.
+func runHookedContext(parent context.Context, dir string, network bool, stdin string, args []string, sink io.Writer) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, NetTimeout)
 	defer cancel()
 	full := []string{"-c", "core.quotePath=false"}
 	if network {
@@ -152,6 +165,9 @@ func runHooked(dir string, network bool, stdin string, args []string, sink io.Wr
 	}
 	what := "git " + args[0]
 	if err := cmd.Run(); err != nil {
+		if perr := parent.Err(); perr != nil {
+			return "", fmt.Errorf("%s: %w", what, perr)
+		}
 		// Scrubbed BEFORE the cut: a cut across a credential URL leaves a
 		// fragment with no host, which the scrubber no longer recognises, and
 		// the token's start would go out with it.

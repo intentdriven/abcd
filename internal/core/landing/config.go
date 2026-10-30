@@ -290,7 +290,9 @@ const FetchedReadTimeout = 15 * time.Second
 // remote than Remote (one named upstream or github, which gh prefers, or one
 // gh repo set-default chose), whose mode this read would not be. The fetch
 // writes what any fetch of the branch writes (its remote-tracking ref), never
-// origin/HEAD and never FETCH_HEAD, and starts no maintenance.
+// origin/HEAD and never FETCH_HEAD, and starts no maintenance. The network
+// calls run as Net's do, with the person's own git configuration and
+// credentials and never a prompt, so a private repository reads as it fetches.
 //
 // It trusts Remote's URL as the checkout's configuration names it: an agent
 // that rewrites the URL is out of its reach, as the guard's limit says.
@@ -318,7 +320,7 @@ func readFetchedFacilitator(ctx context.Context, cwd string) (Facilitator, error
 	} else if other != "" {
 		return Facilitator{}, fresh("the forge client would act on the remote "+other+" here, not on "+Remote, nil)
 	}
-	out, err := gitutil.RunLimitedNetContext(ctx, root, 4096, "ls-remote", "--symref", Remote, "HEAD")
+	out, err := gitutil.NetContext(ctx, root, "ls-remote", "--symref", Remote, "HEAD")
 	if err != nil {
 		return Facilitator{}, fresh(Remote+" could not say which branch is its default", err)
 	}
@@ -338,7 +340,7 @@ func readFetchedFacilitator(ctx context.Context, cwd string) (Facilitator, error
 	if _, err := gitutil.RunLimitedContext(ctx, root, 4096, "check-ref-format", "refs/heads/"+def); err != nil {
 		return Facilitator{}, fresh(Remote+"'s HEAD names a branch whose name is not a valid ref", nil)
 	}
-	if _, err := gitutil.RunLimitedNetContext(ctx, root, 4096, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance", Remote, "refs/heads/"+def); err != nil {
+	if _, err := gitutil.NetContext(ctx, root, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance", Remote, "refs/heads/"+def); err != nil {
 		return Facilitator{}, fresh("fetching "+Remote+"'s "+def+" failed", err)
 	}
 	if _, err := gitutil.RunLimitedContext(ctx, root, 4096, "cat-file", "-e", tip+"^{commit}"); err != nil {
@@ -350,7 +352,8 @@ func readFetchedFacilitator(ctx context.Context, cwd string) (Facilitator, error
 // forgeRemote names the remote the forge client would act on in the checkout
 // at root when that is not Remote, "" when it is Remote: gh takes a remote
 // gh repo set-default marked (remote.<name>.gh-resolved) first, then one
-// named upstream, then github, then origin.
+// named upstream, then github, then origin. A set-default on Remote that
+// names another repository rather than "base" counts as another.
 func forgeRemote(ctx context.Context, root string) (string, error) {
 	out, err := gitutil.RunLimitedContext(ctx, root, 64<<10, "config", "--get-regexp", `^remote\..*\.(url|gh-resolved)$`)
 	if err != nil && strings.TrimSpace(out) != "" {
@@ -363,8 +366,14 @@ func forgeRemote(ctx context.Context, root string) (string, error) {
 		if !ok {
 			continue
 		}
-		if n, ok := strings.CutSuffix(name, ".gh-resolved"); ok && n != Remote {
-			return n, nil
+		if n, ok := strings.CutSuffix(name, ".gh-resolved"); ok {
+			// gh repo set-default marks the remote it chose "base", or, on
+			// a remote it does not act on as itself (a fork's parent),
+			// names the repository it acts on instead.
+			_, val, _ := strings.Cut(line, " ")
+			if n != Remote || strings.TrimSpace(val) != "base" {
+				return n + " (gh repo set-default)", nil
+			}
 		}
 		if n, ok := strings.CutSuffix(name, ".url"); ok {
 			urls[n] = true

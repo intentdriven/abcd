@@ -1,6 +1,8 @@
 package gitutil_test
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,5 +41,21 @@ func TestNetRunsTheRepositorysHooksWithNoPrompt(t *testing.T) {
 	_, err = gitutil.Net(r.Root(), "fetch", "origin")
 	if err == nil || !strings.Contains(err.Error(), "git fetch") || !strings.Contains(err.Error(), "absent.git") {
 		t.Fatalf("a fetch from a missing origin = %v; want git's reason naming the path", err)
+	}
+}
+
+// TestNetContextEndsWithItsContext: NetContext runs as Net does but stops when
+// its caller's context ends, and says so, so a caller with a deadline of its
+// own (the guard's merge-mode read) never outlives it.
+func TestNetContextEndsWithItsContext(t *testing.T) {
+	dir := gittest.NewRepo(t).Root()
+	if _, err := gitutil.NetContext(context.Background(), dir, "rev-parse", "--git-dir"); err != nil {
+		t.Fatalf("NetContext with a live context: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := gitutil.NetContext(ctx, dir, "rev-parse", "--git-dir")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("NetContext with an ended context = %v; want it to end with context.Canceled", err)
 	}
 }

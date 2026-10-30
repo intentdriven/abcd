@@ -146,6 +146,17 @@ func TestTheGuardReadsTheModeOnlyAsJustFetched(t *testing.T) {
 		t.Fatalf("a checkout where gh would act on upstream counts as human, naming it: %q", reason)
 	}
 
+	// gh repo set-default on origin naming another repository (a fork's
+	// parent) acts there, not on origin.
+	parent := guardRepo(t)
+	commitConfig(t, parent, `{"facilitator":{"mode":"auto"}}`+"\n")
+	withOrigin(t, parent)
+	git(parent, "config", "remote.origin.gh-resolved", "parent-org/parent-repo")
+	stdout, stderr, code = runGuard(preToolUse(t, "Bash", merge, parent), "guard", "hook")
+	if reason := mustDeny(t, stdout, stderr, code); !strings.Contains(reason, "merge-auto-human") || !strings.Contains(reason, "set-default") {
+		t.Fatalf("a set-default on origin naming another repository counts as human, saying so: %q", reason)
+	}
+
 	gone := guardRepo(t)
 	commitConfig(t, gone, `{"facilitator":{"mode":"auto"}}`+"\n")
 	withOrigin(t, gone)

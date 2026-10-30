@@ -60,6 +60,7 @@ func TestHumanModeRefusesTheMergeCommands(t *testing.T) {
 		{`gh api graphql -F=query=@q.graphql`, mergeUnreadEntryID},
 		{`gh api -X=PUT repos/{owner}/{repo}/pulls/123/merge`, mergeRESTEntryID},
 		{`gh api -X PUT repos/:owner/:repo/pulls/123/merge`, mergeRESTEntryID},
+		{`gh api "$EP" -F query=@q.graphql`, mergeUnreadEntryID},
 	} {
 		t.Run(c.cmd, func(t *testing.T) {
 			reads := 0
@@ -88,6 +89,11 @@ func TestHumanModeRefusesTheMergeCommands(t *testing.T) {
 		`gh api -X PUT "repos/$REPO/collaborators/$U"`,
 		`gh api -H 'Accept: application/vnd.github+json' repos/{owner}/{repo}/pulls/123`,
 		`gh api -F file=@notes.md repos/{owner}/{repo}/issues`,
+		`gh api repos/{owner}/{repo}/issues/5/comments -f body='the mergePullRequest mutation is refused'`,
+		`gh api --method "$M" repos/{owner}/{repo}/labels`,
+		`gh api -X PUT repos/{owner}/{repo}/issues/1 -H "$H"`,
+		`gh api -X PUT repos/{owner}/{repo}/contents/f --input "$TMP"`,
+		`gh api repos/{owner}/{repo}/graphql/contents -f ref="$B"`,
 		`git merge main`,
 		`abcd capture "an agent ran gh pr merge 123 --auto"`,
 	} {
@@ -132,7 +138,7 @@ func TestAMergeNamingItsRepositoryCountsAsHuman(t *testing.T) {
 	} {
 		reads := 0
 		d, err := Defaults().WithMergeMode(modeOf(false, &reads)).Check(c.cmd)
-		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry || !strings.Contains(d.Message, "names the repository it merges in") || strings.Contains(d.Message, "facilitator.mode: auto") {
+		if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry || !strings.Contains(d.Message, "refused whatever this checkout's mode says") || strings.Contains(d.Message, "facilitator.mode: auto") {
 			t.Fatalf("in auto, Check(%q) = %q via %q (%s), %v; want a block via %q saying it names its repository, offering no setting", c.cmd, d.Verdict, d.EntryID, d.Message, err, c.entry)
 		}
 	}
@@ -182,6 +188,9 @@ func TestTheApprovalActIsThePersons(t *testing.T) {
 			{`gh api repos/{owner}/{repo}/pulls/12/reviews -f event=APPROVE`, approveForgeEntryID},
 			{`gh api -X POST "repos/$R/pulls/$N/reviews/$ID/events" -f event=APPROVE`, approveForgeEntryID},
 			{`gh api graphql -f query='mutation{addPullRequestReview(input:{pullRequestId:"X",event:APPROVE}){clientMutationId}}'`, approveForgeEntryID},
+			{`gh api graphql -f query='mutation($e:PullRequestReviewEvent){addPullRequestReview(input:{pullRequestId:"X",event:$e}){clientMutationId}}' -f e=APPROVE`, approveForgeEntryID},
+			{`gh api repos/{owner}/{repo}/pulls/12/reviews --input review.json`, approveForgeEntryID},
+			{`gh api repos/{owner}/{repo}/pulls/12/reviews -f event="$E"`, approveForgeEntryID},
 		} {
 			d, err := reg.Check(c.cmd)
 			if err != nil || d.Verdict != VerdictBlock || d.EntryID != c.entry {
@@ -201,6 +210,8 @@ func TestTheApprovalActIsThePersons(t *testing.T) {
 			`gh pr review 12 --request-changes -b "see the approve path"`,
 			`gh api repos/{owner}/{repo}/pulls/12/reviews`,
 			`gh api repos/{owner}/{repo}/pulls/12/reviews -f event=COMMENT -f body=ok`,
+			`gh api repos/{owner}/{repo}/pulls/12/reviews --jq '[.[] | select(.state=="APPROVED")] | length'`,
+			`gh api repos/{owner}/{repo}/pulls/12/reviews -f event=COMMENT -f body='please APPROVE when ready'`,
 		} {
 			if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
 				t.Fatalf("human %v: Check(%q) = %+v, %v; want it allowed", human, cmd, d, err)

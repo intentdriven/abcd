@@ -121,14 +121,13 @@ var wordReaders = map[string]string{
 	"gitValueFlags":          "exempt: builds the value-flag table the git passes read words with, and reads no word",
 
 	// merge.go: the merge rule (spc-2610161609350616 step 5).
-	"mergeCommands":    "sitesNamed and operandReadings; a later word the line does not fix reads as empty, so a flag a substitution prints is not taken as --auto",
-	"graphqlMerge":     "forgeWord on every word: a field the line does not fix is a query it cannot read, refused while the mode is human",
-	"fieldValue":       "forgeWord; reads a flag word only where the line fixes it, and hands its value back with whether it is fixed",
-	"restMerge":        "isUnknown and varMark on every word (unfixed): a route or method word the line does not fix counts as the merge route or as PUT",
-	"graphqlCall":      "forgeWord; a word the line does not fix is not taken as the graphql endpoint, and a merge mutation is then looked for on any gh api call",
-	"mentionsMutation": "forgeWord: reads what the line fixes of each word; a mutation name a substitution prints is not seen, as for the graphql query",
-	"unfixed":          "exempt: the marker test restMerge reads every word with",
-	"approveAct":       "commandSites and commandNamed; a word the line does not fix reads as empty, so a flag a substitution prints is not taken as --approve, as commands/guard.md names",
+	"mergeCommands": "sitesNamed and operandReadings; a later word the line does not fix reads as empty, so a flag a substitution prints is not taken as --auto",
+	"graphqlMerge":  "forgeWord on every word: a field the line does not fix is a query it cannot read, refused while the mode is human",
+	"fieldValue":    "forgeWord; reads a flag word only where the line fixes it, and hands its value back with whether it is fixed",
+	"restMerge":     "isUnknown and varMark on every word (unfixed): a route or method word the line does not fix counts as the merge route or as PUT",
+	"apiEndpoints":  "operandReadings, with gh api's value flags, so a method, header or field value is never read as the endpoint",
+	"forgeApproval": "sitesNamed, operandReadings and forgeWord; a word the line does not fix is never read as -a, --approve or an APPROVE event, and an unfixed event field on the REST review route counts as one",
+	"approveAct":    "commandSites and commandNamed; a word the line does not fix reads as empty, so a flag a substitution prints is not taken as --approve, as commands/guard.md names",
 
 	// speculate.go
 	"eligibleStart": "steppedBeforeCommand and anyProgram: no start where no program name is fixed",
