@@ -38,3 +38,14 @@ func TestADueWithdrawalUnderARefusedHolderIDIsNotPromisedToTheNextAct(t *testing
 		})
 	}
 }
+
+// TestARefusedVariableIsToldToBeUnsetFirst: `abcd reserve --holder` refuses
+// while ABCD_HOLDER_ID is malformed, so the line names unsetting it first,
+// which lets that query print the id, and setting it to the id second.
+func TestARefusedVariableIsToldToBeUnsetFirst(t *testing.T) {
+	l := HolderIDRefusedLine(HolderIDEnvNotID)
+	unset, set := strings.Index(l, "unset it (`abcd reserve --holder` then prints your id)"), strings.Index(l, "or set it to that id")
+	if unset < 0 || set < unset {
+		t.Fatalf("the line = %q; want it to say to unset the variable first, which lets the holder query print the id, then to set it to that id", l)
+	}
+}

@@ -67,7 +67,7 @@ func envHolderID() (id string, set bool, err error) {
 	}
 	if !validHolderID(v) {
 		return "", true, refuse("%s is set but is not a holder id (h_ and 32 lower-case hex characters), so which holds are yours cannot be told; "+
-			"it is never replaced by %s or by a new id: set it to the id `abcd reserve --holder` prints, or unset it; %s",
+			"it is never replaced by %s or by a new id: unset it (`abcd reserve --holder` then prints your id), or set it to that id; %s",
 			HolderIDEnv, HolderIDFile, nothingSent)
 	}
 	return v, true, nil
@@ -597,7 +597,7 @@ func HolderIDRefusedLine(class string) string {
 	}
 	if class == HolderIDEnvNotID {
 		return fmt.Sprintf("%s is set but is not a holder id, so no holder id is read: holds and withdrawals under your id read here as another person's, "+
-			"and every act refuses, naming it, until it is set to the id `abcd reserve --holder` prints or unset", HolderIDEnv)
+			"and every act refuses, naming it, until it is fixed: unset it (`abcd reserve --holder` then prints your id), or set it to that id", HolderIDEnv)
 	}
 	why := guardWhy[class]
 	switch class {
