@@ -139,13 +139,13 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
 
 #### `abcd ahoy remote`
 
-Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.
+Apply abcd's GitHub settings baseline: Writes nothing bare, only the settings, rulesets and their mirrors through apply; refuses an unknown sub-verb.
 
 **Usage:** `abcd ahoy remote`
 
 ##### `abcd ahoy remote apply`
 
-Enable GitHub secret scanning and push protection on this repository: Writes both settings and their mirror; refuses an unconfirmed run.
+Apply every GitHub setting the remote audit finds differing: Writes those settings, abcd's own rulesets and their mirrors; refuses an unconfirmed run.
 
 **Usage:** `abcd ahoy remote apply [flags]`
 
@@ -2309,15 +2309,15 @@ verb requires it, and skipping it is never warned about.
 
 #### `abcd ideate record`
 
-Validate a host-composed gauntlet verdict: Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.
+Validate a host-composed gauntlet verdict: Writes the dated record, private unless --public; refuses without an idea slug or --verdict-json.
 
-**Usage:** `abcd ideate record <idea-slug> --private|--public --verdict-json <file|-> [flags]`
+**Usage:** `abcd ideate record <idea-slug> [--private | --public] --verdict-json <file|-> [flags]`
 
 **Flags:**
 
 ```
-      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
-      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
+      --private               the idea is private, the default: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
+      --public                the idea is public, on the person's word only: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
       --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
 ```
 
@@ -2666,19 +2666,54 @@ command that is a race run (go, then `test` with -race) is gated as one for both
 gates: above one preflight at a time it stays shut while another race run is
 live, judges and takes the race gate's hold as well as its own, and from the
 moment it opens every race gate and every other such command counts it as a
-race run, so a second one waits for the first. A
+race run, so a second one waits for the first. A command that is not a race run
+takes the command hold only at one preflight at a time; above one its hold lasts
+2m0s, as without a command, and the process table counts it in its slot.
+A command hold lasts until its command exits, starts its own race run or has run
+1h0m0s, so once
+the holder's whole process tree has used no more than
+10% of a core for 10m0s, each waiter behind it says so in one more
+`waiting for capacity:` line naming its pid, its checkout and how long it has held
+the slot, and the holder says so on its own standard error while others queue.
+Little CPU is a fact, not a verdict: a slow run waiting on its subprocesses uses
+little too. The hold stays in force and nothing is signalled; a tree with a
+waiter of its own queued at a gate is not counted quiet; only your own
+account's hold is said quiet. Every waiting line also names each holder ahead,
+of any account, after `holding:`, with its age and its tree's CPU over the last
+10m0s, or `not yet measured` until this waiter has watched it that long, and
+marks one `quiet:` in place of `using` once that CPU is no more than 10%
+of a core and no waiter of its own is queued at a gate, whatever hold it is
+under, so a stalled run above one preflight at a time, which no notice names,
+still reads as one. The line is said again every 10m0s while the gate
+stays shut. A child that starts
+and exits between two looks is never seen, so a tree of short children (git)
+reads low, and counts as working: neither the notice nor the mark calls it
+quiet; a waiter's own reads of the table and its renewals' git and gh in the
+tree are not counted. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
-While it waits, in a checkout, the waiter keeps your own reservations from
-lapsing: at once and then every five minutes it renews each of your live
+While it waits, and while its command runs, in a checkout, the waiter keeps
+your own reservations from lapsing: at once and then every five minutes it
+renews each of your live
 reservations that is half through its lease and whose latest commit this copy
 pushed, for its own term or
-two hours, whichever is longer, and says each renewal on standard error. It
-never reserves anything new, takes nothing over and revives nothing that has
-lapsed, so a lease shorter than ten minutes can still lapse between two rounds;
-a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on. The renewal runs beside the gate, never in it, so
-the gate's order and its open never wait on one, and it stops when the gate
-opens. Since it runs through git and gh, no waiter counts another's git or gh
+two hours, whichever is longer, and says each renewal on standard error. Your
+own reservations it only renews: it reserves nothing new, takes nothing over and
+revives none that has lapsed, so a lease shorter than ten minutes can still lapse between two rounds;
+a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on.
+On the same rounds it renews, as implement step does, the due reservation of
+each run in progress that lives in this checkout, or in another worktree of
+the repository with a lane whose worktree is this checkout, reviving one that
+has lapsed and logging each in the run record, but not a run parked at land,
+which the drain renews; while another invocation holds the checkout's run
+lock the round skips that checkout's runs, and the next round renews them. Each is said
+on standard error, a failure once until what is said of it changes. The
+renewal runs beside the gate, never in it, so
+the gate's order and its open never wait on one; it stops when the waiter
+exits, its command done or, without one, its gate open, waiting at most 5s
+for a round in flight to finish and be said, so a renewal still pushing then may go unsaid,
+since a waiter lingering on a slow push reads as queued and holds every other gate shut.
+Since it runs through git and gh, no waiter counts another's git or gh
 child as its command: gate make or go, never git or gh itself.
 
 **Flags:**
@@ -3009,15 +3044,22 @@ By default the run's whole log is read, every day of it; --date reads one day, a
 
 #### `abcd implement status`
 
-Render the implement loop's runs in this checkout, lane by lane: Writes nothing; refuses a --run naming no run.
+Render the implement loop's runs in this checkout, lane by lane: Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.
 
 **Usage:** `abcd implement status [--run <run-id>] [flags]`
 
 Render the runs `abcd build` started in this checkout, or the one --run names: the
 intent and spec, each lane with its spec step and next stage, what an awaiting lane
 waits on, the pending spec steps, the fallbacks from a routed runner to the host counted
-per runner and per role, and the run record. Read-only: it writes nothing
-and creates nothing. Exit 2 when --run names no run.
+per runner and per role, and the run record. Before it renders, it renews the
+reservation of each run it shows that is due, as implement step does (half
+through its lease, or lapsed and still this copy's), fetching the reservations
+from origin and pushing the renewal there, and logs the renewal, its failure,
+or a reservation another person or copy now holds (reservation_lost), in the
+run record. It renews no issue run whose lane is parked at land, which the
+drain renews, nor one whose lane was handed back, whose hand-back released
+its reservation; it writes nothing else and creates nothing.
+Exit 2 when --run names no run.
 
 **Flags:**
 

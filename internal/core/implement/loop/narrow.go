@@ -52,24 +52,11 @@ func narrowedFootprint(repoRoot string, st State, own claim.Reservation) (fp []s
 	if l.Stage != StageLand || !gitutil.IsFullSHA(l.HeadSHA) {
 		return nil, false, ""
 	}
-	def, err := defaultBranch(Context{RepoRoot: repoRoot}, l)
-	if err != nil {
-		return nil, false, "the default branch on " + Remote + " cannot be read"
+	changed, declined := laneChangedFiles(repoRoot, l, l.HeadSHA)
+	if declined != "" {
+		return nil, false, declined
 	}
-	tracking := Remote + "/" + termsafe.Sanitize(def)
-	base, err := gitutil.Run(repoRoot, "merge-base", l.HeadSHA, "refs/remotes/"+Remote+"/"+def)
-	if base = strings.TrimSpace(base); err != nil || !gitutil.IsFullSHA(base) {
-		return nil, false, "git could not read the merge base of the lane's head " + shortSHA(l.HeadSHA) + " and " + tracking
-	}
-	out, err := gitutil.RunCappedBytes(repoRoot, maxGitOutput, "diff", "--no-renames", "--name-only", "-z", base, l.HeadSHA, "--")
-	if err != nil {
-		return nil, false, "git could not read the files the lane changed since its merge base with " + tracking
-	}
-	for _, raw := range bytes.Split(out, []byte{0}) {
-		p := string(raw)
-		if p == "" {
-			continue
-		}
+	for _, p := range changed {
 		in := covers(own.Footprint, []string{p})
 		if !claim.ValidFootprintPath(p) {
 			if in {
@@ -89,4 +76,103 @@ func narrowedFootprint(repoRoot string, st State, own claim.Reservation) (fp []s
 		return nil, false, ""
 	}
 	return fp, true, ""
+}
+
+// laneChangedFiles is the files lane l changed at head, as git names them:
+// the diff of head against its merge base with origin's default branch, the
+// one reading narrowedFootprint and a lapsed revival's overlap
+// (revivalChangedFiles) share. It names the lane's own work, a conflict
+// resolved inside a sync's merge commit included, and none of the files a
+// merged default branch brought. declined, set when the files cannot be
+// read (the default branch, the merge base or the diff), says why in plain,
+// terminal-safe words, and files is then nil.
+func laneChangedFiles(repoRoot string, l Lane, head string) (files []string, declined string) {
+	def, err := defaultBranch(Context{RepoRoot: repoRoot}, l)
+	if err != nil {
+		return nil, "the default branch on " + Remote + " cannot be read"
+	}
+	tracking := Remote + "/" + termsafe.Sanitize(def)
+	base, err := gitutil.Run(repoRoot, "merge-base", head, "refs/remotes/"+Remote+"/"+def)
+	if base = strings.TrimSpace(base); err != nil || !gitutil.IsFullSHA(base) {
+		return nil, "git could not read the merge base of the lane's head " + shortSHA(head) + " and " + tracking
+	}
+	out, err := gitutil.RunCappedBytes(repoRoot, maxGitOutput, "diff", "--no-renames", "--name-only", "-z", base, head, "--")
+	if err != nil {
+		return nil, "git could not read the files the lane changed since its merge base with " + tracking
+	}
+	files = []string{}
+	for _, raw := range bytes.Split(out, []byte{0}) {
+		if p := string(raw); p != "" {
+			files = append(files, p)
+		}
+	}
+	return files, ""
+}
+
+// revivalChangedFiles is the files a lapsed revival of st's reservation is
+// judged on against the same person's other copy (claim.Request.OwnOverlapOn;
+// iss-2610261837062463, dcn-2610291352512058, dcn-2610291925508286,
+// dcn-2610292238191496, dcn-2610300422481486): the files each lane of the run still at work
+// changed, read as laneChangedFiles reads them, at its branch's tip, which
+// holds the implementer's commits before any receipt records a head. It reads
+// them only once no spec step is pending and every lane is past all editing
+// (pastEditing: done, discarded, handed back, or at its landing with no sync
+// pending; dcn-2610300422481486): an implementer's edits stay uncommitted
+// until its receipt, so the tip of a lane that has one at work, or may hand
+// one out next, does not show them, and a lane yet to open has changed
+// nothing it can name. Until
+// then nil is returned and the whole footprint is judged, since two automated
+// lanes must never edit one file. nil too when any lane's files cannot be
+// read; a non-nil empty list when no lane changed a file.
+func revivalChangedFiles(repoRoot string, st State) []string {
+	if len(st.Pending) > 0 {
+		return nil
+	}
+	for i := range st.Lanes {
+		if !pastEditing(st, i) {
+			return nil
+		}
+	}
+	files := []string{}
+	for _, l := range st.Lanes {
+		if l.Stage == StageDone || l.Stage == StageDiscarded || l.Branch == "" {
+			continue
+		}
+		head, err := branchTip(Context{RepoRoot: repoRoot}, l)
+		if err != nil {
+			return nil
+		}
+		changed, declined := laneChangedFiles(repoRoot, l, head)
+		if declined != "" {
+			return nil
+		}
+		for _, p := range changed {
+			if p = path.Clean(p); !slices.Contains(files, p) {
+				files = append(files, p)
+			}
+		}
+	}
+	slices.Sort(files)
+	return files
+}
+
+// pastEditing reports whether lane i of st can hold no edit its branch does
+// not show, now or by the run's next hand-out: an allow-list, so a stage or
+// state not named here (held, validate, an unset stage, one at or before its
+// implement stage) counts as editing. A lane is past editing when it is done,
+// discarded or handed back, or at its landing with no sync conflict pending.
+// A lane at validate is not, even awaiting its reviewers alone: one verdict
+// from them hands a fix implementer any file of the footprint
+// (dcn-2610300422481486). A lane its landing sends back to a fresh round
+// has its run's overlap with the same person's other copy judged again on
+// the whole footprint as it leaves (reserveOnLeavingLand).
+func pastEditing(st State, i int) bool {
+	l := st.Lanes[i]
+	switch l.Stage {
+	case StageDone, StageDiscarded, StageHandedBack:
+		return true
+	case StageLand:
+		return l.pendingSync() == nil
+	}
+	return false
 }
