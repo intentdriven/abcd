@@ -907,11 +907,15 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 		s.Failed = "could not read the history of " + id + "'s branch to tell which withdrawals are yours (" + redacted(err) + "), so none was re-armed"
 		return s, true
 	}
+	// An act that ends the release reads it whatever it holds: the holder's
+	// next act over their own lapsed cut ends it, and their own --release
+	// settles what is under the marker.
+	ends := func(w Withdrawal) bool { return w.unsettled() && (lapsed || own && w.preID()) }
 	if complete && !slices.ContainsFunc(links, func(l chainLink) bool {
-		return slices.ContainsFunc(l.m.Withdrawn, func(w Withdrawal) bool { return a.self.Owns(w.By) })
+		return slices.ContainsFunc(l.m.Withdrawn, func(w Withdrawal) bool { return a.self.Owns(w.By) || ends(w) })
 	}) {
 		// No commit on the branch names a withdrawal of theirs, so no push
-		// of theirs holds one.
+		// of theirs holds one, and the act ends nothing.
 		return Settle{}, false
 	}
 	k := &asker{c: pushCheck{a.root, id, []string{t.Commit}}, links: links, complete: complete, self: a.self}
@@ -938,7 +942,12 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	// the holder's own --release or their next act over their own lapsed
 	// cut, which ends it.
 	byHandDue := (own || lapsed) && slices.ContainsFunc(acted, func(w Withdrawal) bool { return w.preID() && w.unsettled() })
-	due := slices.ContainsFunc(rec.mine(a.self), Withdrawal.unsettled) || len(vouched) > 0 || byHandDue
+	// The holder's next act over their own lapsed cut ends it whatever else
+	// it holds: its tombstone carries each entry this copy does not act on
+	// unchanged, another holder's among them, for that holder's own copy to
+	// settle as a release that has ended.
+	lapseDue := lapsed && slices.ContainsFunc(acted, func(w Withdrawal) bool { return w.unsettled() && !w.preID() })
+	due := slices.ContainsFunc(rec.mine(a.self), Withdrawal.unsettled) || len(vouched) > 0 || byHandDue || lapseDue
 	s.NotRead = rec.above
 	if !due {
 		k.cache().markDone(a.holder, doneScope(a.self))
