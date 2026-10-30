@@ -28,6 +28,13 @@ const maxLogprobToken = 64
 // the provider spelled it, scrubbed and bounded, and its natural-log
 // probability.
 type TokenLogprob struct {
+	// Token is the provider's own text, scrubbed of the key and at most
+	// maxLogprobToken bytes, and NOT safe for a terminal. It is kept byte for
+	// byte so a caller can compare it with its labels: termsafe.Sanitize
+	// would turn a newline inside it into '?' and an invalid UTF-8 byte into
+	// U+FFFD, and the comparison would no longer read what the model said. A
+	// caller that prints it sanitises it where it prints, as the decision
+	// adapter's error does (strconv.Quote, then the router's termsafe pass).
 	Token   string
 	Logprob float64
 }
@@ -36,6 +43,12 @@ type TokenLogprob struct {
 // is admitted: the alternatives that read (the top list, or the token chosen
 // alone when the provider sent no list), and whether the answer carried any
 // log-probabilities at all.
+//
+// It runs when the client admits the answer, before Complete returns, so a
+// layer above the client can still refuse the call after it ran: oracle's
+// Call discards an answer whose reported model its denylist refuses. The
+// alternatives count only when the whole call returns no error. A sink keeps
+// them for its caller to read after the call, and never acts on them itself.
 type LogprobSink func(top []TokenLogprob, carried bool)
 
 // WithTopLogprobs asks the call for the log-probabilities of its answer's
