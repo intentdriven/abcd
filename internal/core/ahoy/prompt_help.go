@@ -239,7 +239,7 @@ var statusLineElementAbout = map[statusline.ElementKey]string{
 	statusline.KeySevenDay: "how much of your assistant plan's seven-day usage allowance is used, as a percentage",
 	statusline.KeyIntents:  "how many intents (the planned pieces of work abcd tracks) the repository holds",
 	statusline.KeyIssues:   "how many issues abcd's issue ledger holds for the repository",
-	statusline.KeyMerging:  "that abcd merges ready pull requests without asking a person, when the repository is set to let it",
+	statusline.KeyMerging:  "that abcd merges a ready pull request by someone with write access once a review pair passes it, without asking a person, when the repository is set to let it",
 }
 
 // visibilityTrackedCaveat ends public's meaning where .abcd/ already holds

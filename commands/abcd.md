@@ -24,21 +24,23 @@ In a repository abcd manages the board also says what the merge gate does
 with a ready pull request: the repository's `facilitator.mode`, read as the
 gate reads it (the default branch's committed `.abcd/config.json` beside the
 machine layer, never the checkout's working tree), and the layer that set it.
-So the board and the gate never disagree: an `auto` written in the checkout but
-not on the default branch changes neither. Under `human` the gate merges once
+So an `auto` written in the checkout but not on the default branch changes
+neither. The board reads the default branch as this checkout last fetched it
+and asks the network nothing, while the gate fetches it first, so after the
+mode changes on origin the two can disagree until the next fetch. Under `human` the gate merges once
 the technical facilitator approves the head; under `auto` it merges
 autonomously once a review pair has passed the head. The product view draws one
 line above the version (`merges: once the technical facilitator approves (the
 bundled default)`, or `merges: autonomously, once a review pair passes (set in
-.abcd/config.json at main)`); the facilitator view draws it as a `merges:` row
+.abcd/config.json at origin/main)`); the facilitator view draws it as a `merges:` row
 after the status block, naming the key and the mode as configured (`merges:
 once the technical facilitator approves the head (facilitator.mode human, from
 the bundled default)`). A pull request a contributor opens needs an approval of
 its head by someone with write access in either mode, which the line does not
 repeat. `--json` carries it as `facilitator` (`key`, `mode`, `layer`, `origin`,
 and `home_refused` when a refused home decided it). A `human` from any layer
-wins, so a `human` in `~/.abcd.noindex/config.json` reads as the facilitator's
-approval whatever the repository says, and a refused home reads as `human`
+wins, so a `human` in `~/.abcd.noindex/config.json` reads as `human`
+whatever the repository says, and a refused home reads as `human`
 (`merges: once the technical facilitator approves (the home directory was
 refused, so a machine-wide setting cannot be read)`). When the mode cannot be
 read, or the repository has no default branch to read it at, the line says it
