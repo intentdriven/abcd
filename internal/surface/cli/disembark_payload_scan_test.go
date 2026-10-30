@@ -178,16 +178,21 @@ func TestDisembarkReviewScansWithTheSourcesOwnPatterns(t *testing.T) {
 // settings add to the built-in rules and remove none. A config that excludes,
 // skips every path and extension of what review writes and redefines the
 // built-in GitHub token pattern as a never-matching warning still has review
-// refuse that token.
+// refuse that token. The config's own pattern catching its sentinel proves the
+// review read it.
 func TestDisembarkReviewSourceSettingsCannotHideABuiltInHit(t *testing.T) {
 	// Built at run time, so no secret-shaped literal is committed.
 	token := "ghp_" + testsecret.Synthetic(2610300212, 36)
+	sentinel := "ACME-WIDGET-" + strings.Repeat("5", 6)
 	src := realSrcDir(t, "src")
 	writeSourcePiiConfig(t, src, `{"skip_dirs":["review"],"skip_path_fragments":["review"],`+
 		`"exclude_path_fragments":[{"fragment":"review","reason":"generated audit"}],`+
 		`"skip_extensions":[".json",".md"],"skip_filenames":["audit.json","audit.md"],`+
-		`"patterns":{"github_pat":{"regex":"a^","severity":"warn"}}}`)
-	dir, code, stdout, stderr := reviewCarrying(t, src, token)
+		`"patterns":{"github_pat":{"regex":"a^","severity":"warn"},`+
+		`"acme_secret":{"regex":"ACME-WIDGET-[0-9]{6}","kind":"token","label":"acme secret","severity":"hard_fail"}}}`)
+	dir, code, stdout, stderr := reviewCarrying(t, src, sentinel)
+	assertReviewRefusedTheSecret(t, dir, code, stdout, stderr, sentinel)
+	dir, code, stdout, stderr = reviewCarrying(t, src, token)
 	assertReviewRefusedTheSecret(t, dir, code, stdout, stderr, token[4:16])
 }
 

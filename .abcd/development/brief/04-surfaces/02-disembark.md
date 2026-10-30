@@ -175,11 +175,11 @@ Each delegated payload is composed by a plugin agent and validated by the
 binary, which treats it as untrusted input: it decodes the payload with
 unknown fields refused, sanitises its prose, and writes only what survives the
 citation gate. The bytes it would write are secret-scanned before any write,
-and a hard-fail secret refuses the whole write. The review, which is handed the
-source repository, scans with that repository's settings as pack does, added
-to abcd's built-in rules and never in place of them; the other three use the
-built-in rules alone, since a packed lifeboat carries no scanner settings of
-its own. The press release is delegated to `press-release-composer`, the graveyard
+and a hard-fail secret refuses the whole write. A packed lifeboat carries no
+scanner settings of its own, so abcd's built-in rules judge. The review, which
+is handed the source repository, also scans with that repository's settings as
+pack does, and refuses what either scan refuses, so nothing the source declares
+can clear a built-in hit. The press release is delegated to `press-release-composer`, the graveyard
 to `graveyard-interpreter`, the principles to `principle-distiller` and the
 review to `lifeboat-reviewer`. Each prompt declares
 `reads_untrusted_input: true` and tells the agent that everything it reads is
@@ -244,9 +244,9 @@ exemptions where a feature genuinely does not apply. *The corpus manifest
   size, and any write under `.git`. No path under the source repo is ever a
   destination. *(The fingerprint is asserted for the probe, the plan and the pack,
   which are the three sub-verbs that open the source at all. The review also takes
-  a source repo, but only to check that it is a real directory and to take its
-  name for the attestation: the content is never read, so there is nothing for a
-  fingerprint to catch.)*
+  a source repo, but only to check that it is a real directory, to take its name
+  for the attestation and to read its scanner settings: the content is never
+  read, so there is nothing for a fingerprint to catch.)*
 - **Given** a corpus repo with an intent corpus, ADRs, and a memory backend
   present, **when** a full pack runs to completion, **then** the destination
   contains all sections in [§ 5](#5-output-shape) and the review returns a

@@ -1289,15 +1289,18 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
 			}
 			// The review is handed the source repository, so its scanner settings
-			// apply as they do to pack: they add to the built-in rules and remove
-			// none. Only that config is read from it, and only once the core has
-			// gated it as a real directory; a manifest failure is a MAJOR_RETHINK
-			// verdict input, exit 0.
+			// apply as they do to pack, beside the built-in scan over the lifeboat
+			// the other ingests run: the review refuses what either refuses, so
+			// nothing the source declares can clear a hit the built-in scan makes.
+			// The source is read for that scan only, once the core has gated it as
+			// a real directory; a manifest failure is a MAJOR_RETHINK verdict
+			// input, exit 0.
 			srcAbs, err := filepath.Abs(args[1])
 			if err != nil {
 				return err
 			}
-			res, err := lifeboat.ReviewLifeboat(dirAbs, srcAbs, raw, deferredLifeboatSecretScan(srcAbs))
+			scan := bothSecretScans(deferredLifeboatSecretScan(dirAbs), deferredLifeboatSecretScan(srcAbs))
+			res, err := lifeboat.ReviewLifeboat(dirAbs, srcAbs, raw, scan)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "disembark review: " + scrubPaths(err)}
 			}
@@ -1329,14 +1332,13 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 // lifeboatSecretScan builds the secret scan every verb that writes into a
 // lifeboat hands the core: pack over its planned bytes, and graveyard,
 // principles, press-release and review over the host payload they would write.
-// It builds the scanner over root, whose settings can only add to the built-in
-// rules: a built-in pattern keeps its regex and its severity floor, and the
-// path skips and exclusions bind a tree walk, never ScanText. It fails closed when the scanner's config is
-// degraded, since a lifeboat must not be written under a weakened ruleset. A
-// lifeboat is written OUT of the repository, as a release is, so a scanner
-// augmenter root configured and nobody installed refuses as it refuses a launch
-// (the 2026-09-25 ruling on iss-2608291814575788). The returned scan refuses on
-// any hard-fail finding: refuse, never redact.
+// It builds the scanner over root and fails closed when the scanner's config is
+// degraded, since a lifeboat must not be written
+// under a weakened ruleset. A lifeboat is written OUT of the repository, as a
+// release is, so a scanner augmenter root configured and nobody installed
+// refuses as it refuses a launch (the 2026-09-25 ruling on
+// iss-2608291814575788). The returned scan refuses on any hard-fail finding:
+// refuse, never redact.
 func lifeboatSecretScan(root string) (lifeboat.SecretScan, error) {
 	sc, err := scanner.New(root)
 	if err != nil {
@@ -1377,11 +1379,11 @@ func lifeboatSecretScan(root string) (lifeboat.SecretScan, error) {
 // core first scans rather than up front, so the core's own gates (not a
 // directory, not a lifeboat) still answer first for an operand that is not
 // one, and the scanner is built over a directory the core has gated. root is
-// the lifeboat for graveyard, principles and press-release, which carries no
-// scanner settings of its own, so abcd's built-in rules judge; and the source
-// repository for review, which is handed it, so its extra patterns and
-// augmenter apply as they do at pack. A call that would write nothing has
-// nothing to scan, and no scanner is built for it.
+// the lifeboat for every ingest, which carries no scanner settings of its own,
+// so abcd's built-in rules judge; review also scans with root the source
+// repository it is handed, so its extra patterns and augmenter apply as they
+// do at pack (bothSecretScans). A call that would write nothing has nothing to
+// scan, and no scanner is built for it.
 func deferredLifeboatSecretScan(root string) lifeboat.SecretScan {
 	return func(files []lifeboat.PlannedFile) error {
 		if len(files) == 0 {
@@ -1392,6 +1394,18 @@ func deferredLifeboatSecretScan(root string) lifeboat.SecretScan {
 			return err
 		}
 		return scan(files)
+	}
+}
+
+// bothSecretScans is a scan that refuses what either a or b refuses, a first,
+// so a review's scan under the source's settings adds to the built-in scan and
+// can clear nothing it finds.
+func bothSecretScans(a, b lifeboat.SecretScan) lifeboat.SecretScan {
+	return func(files []lifeboat.PlannedFile) error {
+		if err := a(files); err != nil {
+			return err
+		}
+		return b(files)
 	}
 }
 
