@@ -399,18 +399,24 @@ func sharedPath(a, b string) (string, bool) {
 	return "", false
 }
 
-// OtherCopyOverlap is the first path of footprint that holder's live
-// reservation of a record other than id, made from another copy, shares in
+// OtherCopyOverlap is the first path of footprint that a live reservation of
+// the reader's of a record other than id, made from another copy, shares in
 // the view s, as crowding judges an overlap (a generated file is shared), and
-// that reservation; ok is false when none does. It reads the view alone. A
+// that reservation; ok is false when none does. A reservation is the
+// reader's as crowding reads it (Self.Owns: their kept id, an id they
+// declare, or their login on one made before the id), or when it names
+// holder, the id of their own reservation of id, exactly, so a reader whose
+// id cannot be read here still counts the copies holding under that id. It
+// reads the view alone. A
 // run whose lane leaves its landing for a fresh round judges it
 // (iss-2610261837062463, dcn-2610300422481486): a lapsed revival may have
 // gone ahead past that copy on a file no lane had changed
 // (Request.OwnOverlapOn), which the fresh round's implementer may now edit,
 // and two automated lanes must never edit one file.
-func (s Snapshot) OtherCopyOverlap(id string, footprint []string, holder string) (OwnOverlap, bool) {
+func (s Snapshot) OtherCopyOverlap(id string, footprint []string, holder string, reader Self) (OwnOverlap, bool) {
 	for _, r := range s.Reservations {
-		if r.State != StateLive || r.Record == id || r.Copy == CopyThis || !sameHolder(r.Holder, holder) {
+		mine := reader.Owns(r.Holder) || validHolderID(holder) && r.Holder == holder
+		if r.State != StateLive || r.Record == id || r.Copy == CopyThis || !mine {
 			continue
 		}
 		for _, want := range footprint {

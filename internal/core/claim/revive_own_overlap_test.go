@@ -72,3 +72,36 @@ func TestOnlyARenewalNamesTheFilesItsOverlapIsJudgedOn(t *testing.T) {
 		t.Fatal("the refused reservation reached origin")
 	}
 }
+
+// TestAnOtherCopyOverlapReadsEveryHolderOfTheReaders: the overlap a lane
+// leaving its landing judges counts the reader's live reservation from
+// another copy under their kept id, an id they declare, and their login on
+// one made before the id, and, when their id cannot be read here, under the
+// id of their own reservation exactly; never another person's, by id or by
+// login.
+func TestAnOtherCopyOverlapReadsEveryHolderOfTheReaders(t *testing.T) {
+	kept := "h_" + strings.Repeat("a", 32)
+	reader := Self{ID: kept, Login: "octo", Declared: []string{kept, studioID}}
+	until := t0.Add(time.Hour)
+	for _, c := range []struct {
+		name, holder string
+		reader       Self
+		want         bool
+	}{
+		{"under the kept id", kept, reader, true},
+		{"under a declared id", studioID, reader, true},
+		{"under the login, made before the id", "OCTO", reader, true},
+		{"under the own reservation's id, the reader's id not read", kept, Self{}, true},
+		{"under another person's id", mayaB, reader, false},
+		{"under another person's login", "quinn", reader, false},
+	} {
+		s := Snapshot{Reservations: []Reservation{
+			{Record: "iss-1", Holder: kept, Copy: CopyThis, State: StateLive, Footprint: []string{"loop/a.go"}, EffectiveExpiry: until},
+			{Record: "iss-2", Holder: c.holder, Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", State: StateLive, Footprint: []string{"loop"}, EffectiveExpiry: until},
+		}}
+		o, ok := s.OtherCopyOverlap("iss-1", []string{"loop/a.go"}, kept, c.reader)
+		if ok != c.want || ok && (o.Path != "loop/a.go" || o.Record != "iss-2") {
+			t.Errorf("%s: overlap %+v, %v; want %v", c.name, o, ok, c.want)
+		}
+	}
+}

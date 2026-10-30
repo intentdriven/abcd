@@ -937,7 +937,7 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, to Stage, now ti
 			"the lane leaves its landing for a fresh round, and the reservations, fetched, cannot be read to judge "+st.Key+"'s again against your other copy: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
 			"settle what it names, then run `abcd implement step` again")
 	}
-	if o, ok := snap.OtherCopyOverlap(st.Key, own.Footprint, own.Holder); ok {
+	if o, ok := snap.OtherCopyOverlap(st.Key, own.Footprint, own.Holder, claim.ReaderSelf(repoRoot, claimOptions(now))); ok {
 		// Only an issue run's lane can be handed back here, to be built again.
 		remedy := "wait for that reservation to end, or release it from your other copy, then run `abcd implement step` again"
 		if issue {
