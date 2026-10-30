@@ -33,17 +33,17 @@ refuses.
 
 ## Footprint
 
-- packages: internal/core/landing/config.go, internal/core/landing/config_test.go, internal/core/layered/layered.go, internal/core/layered/layered_test.go, internal/core/landing/facilitator.go, internal/core/landing/facilitator_test.go, internal/core/landing/review.go, internal/core/landing/review_test.go, internal/core/landing/primitives.go, internal/core/landing/land.go, internal/core/board/board.go, internal/core/board/board_test.go, internal/core/guard/merge.go, internal/core/guard/merge_test.go, internal/core/guard/guard.go, internal/surface/cli/board.go, internal/surface/cli/board_status.go, internal/surface/cli/board_status_test.go, internal/surface/cli/land.go, internal/surface/cli/land_surface_test.go, internal/surface/cli/receipts.go, internal/surface/cli/guard.go, .abcd/config.json, commands/land.md, commands/guard.md, .abcd/development/brief/04-surfaces/38-land.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/brief/04-surfaces/39-status.md, commands/abcd.md, internal/surface/cli/statusline.go, internal/surface/cli/statusline_test.go, .abcd/development/brief/04-surfaces/26-mode.md
-- tests: internal/core/landing, internal/core/implement/loop, internal/core/board, internal/core/guard, internal/surface/cli
+- packages: internal/core/landing/config.go, internal/core/landing/config_test.go, internal/core/layered/layered.go, internal/core/layered/layered_test.go, internal/core/layered/repoat_test.go, internal/core/board/board.go, internal/core/board/board_test.go, internal/surface/cli/cli.go, internal/surface/cli/board.go, internal/surface/cli/board_status.go, internal/surface/cli/board_status_test.go, internal/core/landing/review.go, internal/core/landing/review_test.go, internal/core/landing/primitives.go, internal/surface/cli/receipts.go, internal/core/landing/facilitator.go, internal/core/landing/facilitator_test.go, internal/core/landing/land.go, internal/core/landing/land_test.go, internal/core/landing/ruleset.go, internal/core/implement/loop/land.go, internal/core/implement/loop/land_test.go, internal/core/implement/loop/land_approval_test.go, internal/core/implement/loop/hold_approval_test.go, internal/core/implement/loop/drain_finish_test.go, internal/core/implement/loop/ghcontract_test.go, internal/core/implement/loop/issue_test.go, internal/core/implement/loop/parallel_test.go, internal/core/implement/loop/parked_reserve_test.go, internal/ghcontract/rest.go, internal/ghcontract/rest-fields.txt, internal/ghcontract/ghcontract_test.go, internal/surface/cli/land.go, internal/surface/cli/land_surface_test.go, internal/core/guard/merge.go, internal/core/guard/merge_test.go, internal/core/guard/guard.go, internal/core/guard/speculate.go, internal/core/guard/unknownsites_test.go, internal/core/guard/defaults/guard.json, internal/surface/cli/guard.go, internal/surface/cli/guard_approve.go, internal/surface/cli/guard_merge_test.go, .abcd/config.json, commands/land.md, commands/guard.md, commands/build.md, commands/implement.md, .abcd/development/brief/04-surfaces/38-land.md, .abcd/development/brief/04-surfaces/17-guard.md, .abcd/development/brief/04-surfaces/27-implement.md, .abcd/development/brief/04-surfaces/34-build.md, .abcd/development/brief/04-surfaces/39-status.md, internal/core/statusline/compose.go, internal/core/statusline/render.go, internal/core/statusline/defaults/statusline.json, internal/core/statusline/merging_test.go, internal/gitutil/defaultref.go, internal/gitutil/rangebase.go, internal/surface/cli/statusline.go, internal/surface/cli/statusline_merging_test.go, commands/abcd.md, .abcd/development/brief/04-surfaces/26-mode.md
+- tests: internal/core/landing, internal/core/layered, internal/core/implement/loop, internal/core/board, internal/core/guard, internal/core/statusline, internal/ghcontract, internal/gitutil, internal/surface/cli
 - The packages line names the files the steps change, not their directories,
-  so the reservation does not hold unrelated work in the same packages.
-  Generated output (`docs/reference/cli/commands.md`,
+  so the reservation does not hold unrelated work in the same packages. It
+  names every file steps 1 to 7 changed, as each was built, the ones a step
+  reached beyond its own packages line included (step 2's
+  `internal/surface/cli/cli.go`, step 4's loop and `internal/ghcontract`
+  files, step 7's `internal/core/statusline`, `internal/core/layered` and
+  `internal/gitutil` files). Generated output (`docs/reference/cli/commands.md`,
   `.abcd/development/release/surface.json` and any other linguist-generated
   file) is reserved by no one: whoever lands second regenerates it.
-- Step 2 also changes `internal/surface/cli/cli.go`, and step 4
-  `internal/core/implement/loop/land.go` and its test. Each joins the
-  packages line when its step begins, and `abcd build` then reserves the
-  widened footprint (dcn-2610222356532638).
 
 ## Steps
 
@@ -135,8 +135,8 @@ refuses.
      change as step 4, so its sessions keep queueing.
    - Make the docs say exactly what each mode does, and who approves.
 7. The status line
-   - packages: internal/surface/cli/statusline.go, internal/surface/cli/statusline_test.go, commands/abcd.md, .abcd/development/brief/04-surfaces/26-mode.md
-   - tests: internal/surface/cli
+   - packages: internal/core/statusline/compose.go, internal/core/statusline/render.go, internal/core/statusline/defaults/statusline.json, internal/core/statusline/merging_test.go, internal/core/landing/config.go, internal/core/layered/layered.go, internal/gitutil/defaultref.go, internal/gitutil/rangebase.go, internal/surface/cli/statusline.go, internal/surface/cli/statusline_merging_test.go, commands/abcd.md, .abcd/development/brief/04-surfaces/26-mode.md
+   - tests: internal/core/statusline, internal/core/landing, internal/core/layered, internal/gitutil, internal/surface/cli
    - needs: 1
    - While the mode is `auto`, abcd's status-line row says merging is
      autonomous; under `human` the row has no such element. It is switchable
