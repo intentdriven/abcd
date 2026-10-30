@@ -307,6 +307,34 @@ func TestForgeTextJudgesABoundedNumberOfTexts(t *testing.T) {
 	}
 }
 
+// TestForgeTextWarnsWhenItCannotFindTheCommand: a gh line with more readings
+// of its words than the guard follows may hide which command it runs, so the
+// forge check says it read none of it rather than read it as posting nothing.
+func TestForgeTextWarnsWhenItCannotFindTheCommand(t *testing.T) {
+	line := "gh" + strings.Repeat(` "$(x)"`, 24) + ` pr create --body "` + forgeSessionURL() + `"`
+	segs, err := tokenize(line)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	for i, s := range segs {
+		if len(sitesNamed(s, "gh")) == 0 {
+			continue
+		}
+		ran = true
+		if _, complete := forgePostsOf(s, i); complete {
+			t.Fatal("the reading reports it followed every reading of a line past its bound")
+		}
+	}
+	if !ran {
+		t.Fatal("no segment of the line runs gh")
+	}
+	_, reg := forgeRepo(t, forgeOptedIn)
+	if d := forgeCheck(t, reg, line); !contains(d.Matches, forgeUnreadEntryID) {
+		t.Fatalf("Check = %q (matches %v), want the forge check's %q among them", d.Verdict, d.Matches, forgeUnreadEntryID)
+	}
+}
+
 // TestForgeTextWorkIsLinear: the forge-text reading adds a constant per word
 // to a posting command's check, for a long body and for many commands alike.
 func TestForgeTextWorkIsLinear(t *testing.T) {

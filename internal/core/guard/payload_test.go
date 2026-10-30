@@ -59,6 +59,9 @@ func TestExecuteStringFamilyInspected(t *testing.T) {
 		// one it is letters, and a c among them is -c.
 		{"bash long option after a letter is letters", "bash -x -rcfile 'git push --force origin main'", VerdictBlock, "git-push-force"},
 		{"bash --rcfile's value keeps the long options", "bash --rcfile /dev/null -rcfile /dev/null -c 'git push --force origin main'", VerdictBlock, "git-push-force"},
+		// zsh's -b ends the options as -- does, so the word after it is the
+		// command string, whatever it starts with.
+		{"zsh -b ends the options before the -c string", "zsh -c -b '-x; git push --force origin main'", VerdictBlock, "git-push-force"},
 		// A lone - ends the options as -- does, and zsh ends them at a lone +
 		// too; bash steps over a lone + as an empty cluster.
 		{"bash -c - ends the options", "bash -c - 'git push --force origin main'", VerdictBlock, "git-push-force"},

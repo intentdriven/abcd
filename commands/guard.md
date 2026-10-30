@@ -682,7 +682,7 @@ syntax check that runs none of it, unless `-i` makes the shell interactive,
 which ignores the option; each shell's options are read as that shell reads
 them, so bash's `-login` is `--login` before its first single-letter option
 and letters after one, zsh's and ksh's `-oerrexit` is one option, a lone `-`
-ends the options as `--` does, and so does zsh's lone `+`, while a name that is
+ends the options as `--` does, and so do zsh's lone `+` and its `-b`, while a name that is
 more than one shell, `sh` among them, is read every way it can be and any
 script one of the ways runs is judged; the same reading finds a `-c` string
 behind options that take a value, `bash -co errexit '…'`), a `source` or `.` operand (searched on
@@ -1086,7 +1086,8 @@ command runs: one that does not exist, is a pipe, a directory or a file this
 account may not read, is over 256 KiB, sits relative to a directory the line
 leaves unknown, or is written earlier on the same line (the file the guard could
 read is not the one gh will post). So is a `.abcd/config/pii.json` that does not
-load, and a line handing the forge more than sixteen texts. A warn never stops a
+load, a line handing the forge more than sixteen texts, and a gh line whose
+words can be read more ways than the guard follows. A warn never stops a
 command, and it never passes one in silence.
 
 A pull request's own text is held to two more checks before it is posted,

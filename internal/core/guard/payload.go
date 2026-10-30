@@ -2038,6 +2038,8 @@ func shellCPayloads(tokens []string, sites []int) (values []string, unresolved b
 			}
 			if a == "--rcfile" || a == "--init-file" {
 				// Its value is no option, and the long options read on past it.
+				// A shell that has no such option refuses it and runs nothing,
+				// so stepping over the value hides no run.
 				i++
 				continue
 			}
@@ -2184,6 +2186,11 @@ func shellOperands(rest []string, starts []int) (values []string, unresolved boo
 				values = append(values, tok)
 			}
 		case len(tok) >= 2 && (tok[0] == '-' || tok[0] == '+'):
+			if strings.ContainsRune(tok[1:], 'b') && i+1 < len(rest) {
+				// zsh's -b ends the options as -- does, so the next word
+				// may be the command string whatever it looks like.
+				values = append(values, rest[i+1])
+			}
 			if shellClusterBoolean(tok[1:]) {
 				stack = append(stack, i+1) // a boolean option cluster is not the command string
 			} else {
@@ -2423,6 +2430,11 @@ func shellReadsStreamAs(d shellDialect, args []string, stdin bool, carried func(
 				return true
 			}
 			stack = append(stack, at{i + 2, longs})
+		case a == "--emulate":
+			// zsh's --emulate takes its mode as a value, as parseShellCall
+			// reads it; a shell without the option refuses it and runs
+			// nothing, so the word after it is walked both ways.
+			stack = append(stack, at{i + 2, longs}, at{i + 1, longs})
 		case d == dialectKsh && strings.HasPrefix(a, "---"):
 			// ksh93 runs a word of three dashes or more as its script.
 			if fetched(a) {
@@ -2440,6 +2452,16 @@ func shellReadsStreamAs(d shellDialect, args []string, stdin bool, carried func(
 				return true
 			case a[0] == '-' && strings.ContainsRune(letters, 's'):
 				// the script is standard input, which is no stream here
+			case d == dialectZsh && strings.ContainsRune(letters, 'b'):
+				// zsh's -b ends the options as -- does: the next word is the
+				// script, whatever it looks like.
+				if j := i + 1 + takes; j >= len(args) {
+					if stdin {
+						return true
+					}
+				} else if !carried(j) && scriptIsStream(args[j], stdin) || fetched(args[j]) {
+					return true
+				}
 			default:
 				stack = append(stack, at{i + 1 + takes, false})
 			}

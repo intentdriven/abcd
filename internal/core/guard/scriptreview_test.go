@@ -136,6 +136,19 @@ func TestEachShellEndsItsOptionsWhereItDoes(t *testing.T) {
 	})
 }
 
+// zsh's -b (or +b) ends its options as -- does: the word after it is the
+// script, even one named like an option, while the letters beside the b in
+// its cluster still take effect.
+func TestZshEndsItsOptionsAtB(t *testing.T) {
+	dir := scriptTree(t, map[string]string{"s.sh": hazardLine, "-o": hazardLine})
+	runScriptCases(t, dir, []scriptCase{
+		{`zsh -b {d}/s.sh`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && zsh -b -o noexec`, VerdictBlock, scriptHazardEntryID},
+		{`cd {d} && zsh +b -o noexec`, VerdictBlock, scriptHazardEntryID},
+		{`zsh -bn {d}/s.sh`, VerdictAllow, ""},
+	})
+}
+
 // The site bound holds before any lookup: a line naming thousands of bare
 // names makes at most a bounded number of filesystem lookups.
 func TestScriptSiteBoundHoldsBeforeLookups(t *testing.T) {

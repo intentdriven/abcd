@@ -2373,7 +2373,8 @@ func parseShellCall(d shellDialect, args []string) shellCall {
 		case len(a) >= 2 && (a[0] == '-' || a[0] == '+'):
 			set := a[0] == '-'
 			var values []shellOptionValue
-			next := 0 // the words after this one that values take
+			next := 0     // the words after this one that values take
+			ends := false // zsh's -b (or +b): the options end after this word
 		cluster:
 			for k := 1; k < len(a); k++ {
 				switch a[k] {
@@ -2391,6 +2392,8 @@ func parseShellCall(d shellDialect, args []string) shellCall {
 					if d == dialectZsh && set {
 						c.norcs = true
 					}
+				case 'b':
+					ends = ends || d == dialectZsh
 				case 'o', 'O':
 					if a[k] == 'O' && d != dialectBash {
 						// zsh's -O is a flag of its own, and dash and ksh refuse it.
@@ -2430,6 +2433,15 @@ func parseShellCall(d shellDialect, args []string) shellCall {
 				}
 			}
 			i += 1 + next
+			if ends {
+				// As after `--`, the word after it is the script.
+				if !c.cmdString && !c.stdin && i < len(args) {
+					c.script = i
+				} else if i >= len(args) && !c.cmdString {
+					c.stdin = true
+				}
+				return c
+			}
 			continue
 		default:
 			if !c.cmdString && !c.stdin {
