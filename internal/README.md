@@ -257,9 +257,10 @@ plugin surface, and a future MCP server share one engine.
   provider's allowlist. In shadow the host decides and the pair is recorded in
   the newest lab home's `pairs.jsonl` (`core/lab`). Turned on, the adapter
   decides, and an adapter that cannot answer leaves the decision to the host
-  with a receipt. The drain's judgement before a lane opens
-  (`eligibility-residual`, `core/implement/loop`) is the one step that calls
-  it; every other type stays on the host.
+  with a receipt. Two steps call it: the drain's judgement before a lane opens
+  (`eligibility-residual`, `core/implement/loop`) and embark's lesson ranking
+  (`embark-lesson-ranking`, `core/lifeboat`); every other type stays on the
+  host.
 - **`core/decisions/`** — the decision records' folder, `.abcd/work/decisions/`:
   one `dcn-<id>-<slug>.md` file per decision (adr-2610110925465593). `Record` is
   its one writer, behind `abcd decide "<text>"`: it mints through

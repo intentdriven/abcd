@@ -279,12 +279,19 @@ the configuration is read, before any call. `abcd lab harvest` turns the pairs
 into agreement per type, with counts and probability bands, and the research
 note filed from it is the evidence a ruling turns a type on with. The first
 candidate is `typesafe/jev-1.13` on OpenRouter's list. The live paid check
-against it is owed to a person (iss-2609291925398978). The drain's judgement
-(`eligibility-residual`) is the one type whose step calls the router: the
-drain's move asks it in each mode. No other type's step calls the router yet,
-so every other judgement stays on the host whatever its route says. The tests
-drive the router, the pairs file, the harvest and the drain's moves in each
-mode with a fake adapter and a temporary home.
+against it is owed to a person (iss-2609291925398978). Two types' steps
+call the router. The drain's judgement (`eligibility-residual`) is one: the
+drain's move asks it in each mode. Embark's lesson ranking
+(`embark-lesson-ranking`) is the other: one score question per lesson, from 0
+to 4, which the host answers with a scores file, the adapter scoring beside it
+in shadow and in its place turned on
+([`04-surfaces/03-embark.md`](../04-surfaces/03-embark.md)). No other type's
+step calls the router yet, so every other judgement stays on the host whatever
+its route says. A route naming a type outside the registry is a diagnostic
+both callers report: the drain in its next step, embark on stderr and in its
+result. The tests drive the router, the pairs file, the harvest, the drain's
+moves and the lesson ranking in each mode with a fake adapter and a temporary
+home.
 
 ### Reviewer routes — the command-line runner, and RepoPrompt over MCP
 

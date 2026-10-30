@@ -398,10 +398,22 @@ rather than skipped:
   judge's is taken, with the route named `decision-adapter <provider>/<model>`
   in the drain's record. If the adapter cannot answer, the host's request
   stands, with a fallback receipt in the drain's state beside the routed
-  judge's, and the adapter is not asked again for that request. No other
-  type's step calls the router yet. Those judgements are made in the host's
-  command pages, which hand nothing back to the binary, so they stay on the
-  host whatever their route says until their step calls the router. `abcd lab harvest` reports the agreement per type, and
+  judge's, and the adapter is not asked again for that request; a routed
+  runner that never started is still started by a later move, since each of
+  the two is marked asked only once it was. Embark's lesson ranking runs as
+  `embark-lesson-ranking`, a score of 0 to 4 per lesson, and is the router's
+  second caller: on the host the lessons command lists one question per
+  lesson and the host's scores, handed back in a scores file, rank the
+  lessons; in shadow the adapter scores each lesson beside those scores and
+  each pair is recorded; turned on, the adapter's scores rank and the host is
+  asked nothing, and an adapter that cannot answer leaves the host's questions
+  standing with a fallback receipt
+  ([`04-surfaces/03-embark.md`](../04-surfaces/03-embark.md)). A route naming
+  a type outside the registry is reported by both callers: the drain in its
+  next step, embark on stderr and in its result. No other type's step calls
+  the router yet. Those judgements are made in the host's command pages,
+  which hand nothing back to the binary, so they stay on the host whatever
+  their route says until their step calls the router. `abcd lab harvest` reports the agreement per type, and
   the research note filed from it is the evidence a ruling turns a type on
   with.
 - **A route to a provider that holds a key sits on the machine alone.** Only a
