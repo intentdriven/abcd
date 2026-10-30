@@ -569,7 +569,9 @@ naming the time, and nothing changes; stop driving the run and invoke it again
 at or after that time, when a new window opens. The pause lives in the state
 file, so no process waits through it.
 `"${CLAUDE_PLUGIN_ROOT}/abcd" implement status --json` renders every run, its
-lanes and its record, and writes nothing. A lane's `worktree` is home-relative,
+lanes and its record; before it renders it renews any run reservation that is
+due, pushing the renewal to origin and logging it in the run record
+(`implement.md` says how). A lane's `worktree` is home-relative,
 or its directory name when it sits outside HOME; its `brief` and `receipt` keep
 their full home-relative paths, because the agent acts on them.
 

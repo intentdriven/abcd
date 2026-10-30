@@ -675,7 +675,7 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 	// refusal leaves the branch as it was too; this is for any other way
 	// back from the landing.
 	if out.Goto != "" && lane.Stage == StageLand && !out.LandLeft {
-		note, err := reserveOnLeavingLand(repoRoot, *st, lane, now)
+		note, err := reserveOnLeavingLand(repoRoot, *st, lane, out.Goto, now)
 		if err != nil {
 			return StepResult{}, err
 		}

@@ -347,7 +347,11 @@ since the race gate, not the slot count, keeps race runs to one at a time. Each 
 own hold record and is shut only by it: a first gate's command hold lasts
 until its preflight starts its race run, so were it to shut the race gate, an
 earlier preflight's race waiter would wait on it while the holder's own race
-waiter queued behind that earlier one, and neither would move. How many preflights
+waiter queued behind that earlier one, and neither would move. That command
+hold is taken at one slot; a look that reads more than one, for a waiter whose
+own command is not a race run, judges it as the settle hold
+(dcn-2610300618371321), so a raised count reaches a run already queued behind
+it, and the running preflights are still counted against the slots. How many preflights
 the first gate admits to their test stages at once is the person's own machine
 setting (iss-2610161639025702): `load.preflights` in <!-- record-lint: forward-looking -->
 `~/.abcd.noindex/config.json`, read through the layered configuration with the
@@ -386,7 +390,8 @@ Deriving the count from the machine's resources is a later step
 Three sub-verbs drive the loop a build starts, each over the run's state file in
 the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
 checks and the step interface). The status render reads every run, or the one
-named, and writes nothing: it names the slots in use out of the run's ceiling,
+named, and writes only the renewal of a due reservation of each run it shows,
+logged in the run record as a step logs it: it names the slots in use out of the run's ceiling,
 every lane alive with its stage and each agent it awaits, and each held lane with
 its cause, the head judged, the landing step it stopped before and the two flags
 that decide it. The step verb performs the run's next move and exits (a lane's
@@ -436,7 +441,31 @@ keeping its own term (at least the default lease, at most a day), and logs
 `reservation_renewed` in the run record; under
 half it pushes nothing, and a renewal that fails is logged and named while the
 stage still runs. A renewal renews only this person's own reservation from
-this copy, never reserving a released record again or taking one over. Before
+this copy, never reserving a released record again or taking one over. A
+renewal of a lapsed one is judged for overlap like a new reservation, but,
+once no spec step is pending and every lane is past all editing (done,
+discarded or handed back, or at land with no sync conflict pending), against
+this person's own reservation from another copy only on the files the run's
+lanes changed, read as the narrowing reads them; while any lane is in any
+other state, held included, or at validate even awaiting its reviewers alone
+(an implementer's edits are not on its branch until its receipt, and one
+verdict hands a fix implementer any file of the footprint), or a step is
+pending, or when the files cannot be read, the whole footprint is judged. An
+issue run's revival at land narrows to its lane's changed files as the
+landing's renewal does; an intent run's keeps its whole footprint, its record
+line naming the other copy's reservation it went ahead past; and another
+person's reservation still refuses either on any path of the footprint it
+renews. A lane that later leaves land for a fresh round (a hold is not one)
+has a reservation needing no widening (an intent run's, or an issue run's
+still naming its whole found_at) judged again against this person's other
+copy on its whole footprint, the reservations fetched first. An overlap, a
+fetch that fails for any reason but a lost network, or a view that cannot be
+read after the fetch refuses the step for a person, as a refused widening
+does; a lost network is waited out on the shared network probe, as a lost
+fetch of the default branch is; either way the lane is left at land with
+nothing merged and nothing pushed (iss-2610261837062463, dcn-2610291352512058,
+dcn-2610291925508286, dcn-2610292238191496, dcn-2610300422481486,
+dcn-2610300615451659). Before
 the landing's merge rule decides, the land fence fetches the reservation and
 arms nothing unless it is still this person's, from this copy, and live,
 naming the other person, the other copy or the release, as contention; when it
@@ -445,13 +474,22 @@ without one, since every landing waits on a person (the approval an armed
 merge needs, or the merge of a pull request left open, as a checkout with no
 mirror always leaves it), which is also past any queue's
 `check_response_timeout_minutes`. Past the fence the hold rests on renewals at half the lease: each step
-of the run, whatever its stage, each receipt handed back, and each drain move
-for a drain lane parked at land or in progress, waiting or not
+of the run, whatever its stage, each receipt handed back, each status render,
+the load gate's waiter, while it waits and while its command runs, for each
+run in progress that lives in its checkout or has a lane whose worktree is
+that checkout, except an issue lane parked at land, which the drain's move
+renews (a round skips a checkout's runs while another invocation holds its
+run lock, and the next round renews them; when it exits, its command done or,
+without one, its gate open, the waiter waits at most five seconds for a round
+in flight to finish and be said, and a renewal still pushing then goes
+unsaid, since a waiter lingering on a slow push reads as queued and holds
+every other gate shut), and
+each drain move for a drain lane parked at land or in progress, waiting or not
 (spc-2610161044461448 step 7). The landing checks the reservation before its
 push as the fence does before arming, renewing it with its own term, so a
 reservation that moved while the lane worked pushes nothing and opens no
-pull request. A run neither stepped, given a receipt nor
-drained over for longer than its lease loses its reservation; one that finds
+pull request. A run neither stepped, given a receipt, shown, gated
+nor drained over for longer than its lease loses its reservation; one that finds
 it held by another person or copy says so and logs `reservation_lost` once. Once the run's last lane has landed, the
 step pushes a tombstone over the reservation while it is still this person's
 from this copy, leaves another's as it stands and names the holder, and a

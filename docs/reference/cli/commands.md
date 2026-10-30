@@ -139,13 +139,13 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
 
 #### `abcd ahoy remote`
 
-Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.
+Apply abcd's GitHub settings baseline: Writes nothing bare, only the settings, rulesets and their mirrors through apply; refuses an unknown sub-verb.
 
 **Usage:** `abcd ahoy remote`
 
 ##### `abcd ahoy remote apply`
 
-Enable GitHub secret scanning and push protection on this repository: Writes both settings and their mirror; refuses an unconfirmed run.
+Apply every GitHub setting the remote audit finds differing: Writes those settings, abcd's own rulesets and their mirrors; refuses an unconfirmed run.
 
 **Usage:** `abcd ahoy remote apply [flags]`
 
@@ -2669,16 +2669,28 @@ moment it opens every race gate and every other such command counts it as a
 race run, so a second one waits for the first. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
-While it waits, in a checkout, the waiter keeps your own reservations from
-lapsing: at once and then every five minutes it renews each of your live
+While it waits, and while its command runs, in a checkout, the waiter keeps
+your own reservations from lapsing: at once and then every five minutes it
+renews each of your live
 reservations that is half through its lease and whose latest commit this copy
 pushed, for its own term or
-two hours, whichever is longer, and says each renewal on standard error. It
-never reserves anything new, takes nothing over and revives nothing that has
-lapsed, so a lease shorter than ten minutes can still lapse between two rounds;
-a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on. The renewal runs beside the gate, never in it, so
-the gate's order and its open never wait on one, and it stops when the gate
-opens. Since it runs through git and gh, no waiter counts another's git or gh
+two hours, whichever is longer, and says each renewal on standard error. Your
+own reservations it only renews: it reserves nothing new, takes nothing over and
+revives none that has lapsed, so a lease shorter than ten minutes can still lapse between two rounds;
+a renewal that fails, or a reservation whose latest commit this copy did not push (or pushed before it kept a note of it), is said once, and the wait goes on.
+On the same rounds it renews, as implement step does, the due reservation of
+each run in progress that lives in this checkout, or in another worktree of
+the repository with a lane whose worktree is this checkout, reviving one that
+has lapsed and logging each in the run record, but not a run parked at land,
+which the drain renews; while another invocation holds the checkout's run
+lock the round skips that checkout's runs, and the next round renews them. Each is said
+on standard error, a failure once until what is said of it changes. The
+renewal runs beside the gate, never in it, so
+the gate's order and its open never wait on one; it stops when the waiter
+exits, its command done or, without one, its gate open, waiting at most 5s
+for a round in flight to finish and be said, so a renewal still pushing then may go unsaid,
+since a waiter lingering on a slow push reads as queued and holds every other gate shut.
+Since it runs through git and gh, no waiter counts another's git or gh
 child as its command: gate make or go, never git or gh itself.
 
 **Flags:**
@@ -3009,15 +3021,22 @@ By default the run's whole log is read, every day of it; --date reads one day, a
 
 #### `abcd implement status`
 
-Render the implement loop's runs in this checkout, lane by lane: Writes nothing; refuses a --run naming no run.
+Render the implement loop's runs in this checkout, lane by lane: Writes a due renewal to origin, its outcome to the run record; refuses a --run naming no run.
 
 **Usage:** `abcd implement status [--run <run-id>] [flags]`
 
 Render the runs `abcd build` started in this checkout, or the one --run names: the
 intent and spec, each lane with its spec step and next stage, what an awaiting lane
 waits on, the pending spec steps, the fallbacks from a routed runner to the host counted
-per runner and per role, and the run record. Read-only: it writes nothing
-and creates nothing. Exit 2 when --run names no run.
+per runner and per role, and the run record. Before it renders, it renews the
+reservation of each run it shows that is due, as implement step does (half
+through its lease, or lapsed and still this copy's), fetching the reservations
+from origin and pushing the renewal there, and logs the renewal, its failure,
+or a reservation another person or copy now holds (reservation_lost), in the
+run record. It renews no issue run whose lane is parked at land, which the
+drain renews, nor one whose lane was handed back, whose hand-back released
+its reservation; it writes nothing else and creates nothing.
+Exit 2 when --run names no run.
 
 **Flags:**
 

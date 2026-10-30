@@ -106,7 +106,9 @@ composed and nothing is read from `site-src/`: every page is built from what
 abcd already writes to the repository, and the interface words, the
 stylesheet, the scripts and the headers policy come from the binary. The about
 page at `/` is, in this order and each only where the repository holds it: the
-identity block `.abcd/positioning.json` points at (as the heading), the
+identity block `.abcd/positioning.json` points at (as the heading, and only
+when abcd writes the file it lives in: one under `.abcd/`, outside the local
+tier), the
 brief's opening (the first section with text in
 `.abcd/development/brief/01-product/01-press-release.md`), the press releases of
 the three newest shipped intents whose audit was met (newest by id: a

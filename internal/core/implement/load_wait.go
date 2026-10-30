@@ -24,8 +24,11 @@ import (
 
 // The waiter (`abcd implement load --wait`, iss-2610111826193257) is the one
 // wait-for-capacity primitive concurrent sessions use instead of writing their
-// own, and `make preflight` runs its test stages through it. It blocks until
-// the one-minute load average is strictly below the machine's wait limit
+// own, and `make preflight` runs its whole run through its command form, so a
+// queued preflight does no work until its turn and the turn holds until the
+// run ends (itd-2610262127138979). The slot count is read at every look
+// (PreflightSlots), so a change to it reaches the waiters already queued. It
+// blocks until the one-minute load average is strictly below the machine's wait limit
 // (wait-load in ~/.abcd.noindex/load-limits, twice the online core count by
 // default), no other `go test -race` run is live, no other `make preflight` is
 // running and no waiter is queued ahead of it or running its command, every one
@@ -117,7 +120,10 @@ import (
 //     start time), until the command has started its own race run, the
 //     command exits, or WaitCommandCap passes, whichever comes first. A holder
 //     that has died, or whose pid now belongs to another process, is not
-//     trusted, and its hold is reclaimed by the next waiter that looks.
+//     trusted, and its hold is reclaimed by the next waiter that looks. Above
+//     one slot a command that is not a race run takes the plain form's settle
+//     hold instead, so the account's next slot opens once the load shows the
+//     work, as it did when a preflight's own plain gate admitted its tests.
 
 // The waiter's statuses.
 const (
@@ -496,27 +502,59 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		return res, fmt.Errorf("nothing was waited for: %w", err)
 	}
 	defer root.Close()
-	if res.Slots, res.SlotsSource, res.SlotsNote, err = PreflightSlots(getenv, home); err != nil {
-		return res, fmt.Errorf("nothing was waited for: %w", err)
-	}
-	// The disk is read before anything is waited for, and again just before
-	// the gate opens (below): other work fills the disk while this waits.
-	floor := diskFloorFor(res.Slots)
-	disk := ReadDisk(home, floor)
-	res.DiskNote = disk.Note()
-	if err := disk.Refusal(); err != nil {
-		return res, err
-	}
-	if req.Race && res.Slots <= 1 {
-		// One preflight at a time: the first gate admitted this preflight's
-		// tests alone, so its race stage follows them at once, as it did
-		// before the race gate existed. No look, no hold, no jitter.
-		res.Status = WaitOpen
-		res.Reason = "one preflight at a time may be in its test stages, so the race stage follows its tests at once"
-		return res, nil
-	}
-
 	start := now()
+	// readSlots reads the count at every look, before the machine is read, so
+	// a change to it reaches a waiter already queued at its next look, and the
+	// race gate's shortcut judges by the same value as the rest of that look
+	// (itd-2610262127138979). A count that has become unusable refuses at the
+	// look that finds it, naming where it was set, as it does before any wait.
+	// open reports the race gate opening at once with one slot: the first gate
+	// admitted this preflight's tests alone, so its race stage follows them at
+	// once, as it did before the race gate existed. No look, no hold, no
+	// jitter, but the disk is still read.
+	//
+	// The disk is read before anything is waited for (the first look), again
+	// just before the gate opens (atOpen, after the jitter: other work fills
+	// the disk while this waits), and before the one-slot race shortcut opens,
+	// each time against the floor the count read at that same look sizes
+	// (diskFloorFor), so a gate and its floor never judge by different counts.
+	// No hold is taken yet, so a refusal leaves nothing behind.
+	var firstFloor uint64
+	readSlots := func(atOpen bool) (open bool, err error) {
+		n, src, note, err := PreflightSlots(getenv, home)
+		if err != nil {
+			if res.Polls == 0 {
+				return false, fmt.Errorf("nothing was waited for: %w", err)
+			}
+			return false, fmt.Errorf("the wait stopped after %d looks: %w", res.Polls, err)
+		}
+		res.Slots, res.SlotsSource, res.SlotsNote = n, src, note
+		first, shortcut := res.Polls == 0, req.Race && n <= 1
+		if first || atOpen || shortcut {
+			disk := ReadDisk(home, diskFloorFor(n))
+			res.DiskNote = disk.Note()
+			if first {
+				firstFloor = diskFloorFor(n)
+				if err := disk.Refusal(); err != nil {
+					return false, err
+				}
+			} else if err := disk.RefusalAtOpen(firstFloor, n, slotsSetting(src)); err != nil {
+				res.WaitedS = now().Sub(start).Seconds()
+				return false, err
+			}
+		}
+		if shortcut {
+			res.Status = WaitOpen
+			res.Reason = "one preflight at a time may be in its test stages, so the race stage follows its tests at once"
+			// An open gate names nothing that held it shut; what an earlier
+			// look found is WaitedOn's.
+			res.Still, res.RaceRuns, res.Holder = nil, []int{}, nil
+			res.Preflights, res.Waiters, res.UngatedTests = nil, nil, nil
+			res.WaitedS = now().Sub(start).Seconds()
+			return true, nil
+		}
+		return false, nil
+	}
 	deadline := start.Add(req.Timeout)
 	announced, settled := false, false
 	// crossedSince is the first look of the run of looks at which crossed
@@ -562,6 +600,9 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		crossedN = c.n
 	}
 	for {
+		if open, err := readSlots(false); err != nil || open {
+			return res, err
+		}
 		res.Polls++
 		shut, done, only, err := waitLook(req, root, home, &res, now, false, pastCap())
 		if err != nil {
@@ -580,13 +621,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 				}
 			}
 			sleep(j)
-			// The disk as it is now, not as it was when this waiter came:
-			// the waits behind other preflights are when it fills. No hold
-			// is taken yet, so a refusal here leaves nothing behind.
-			disk := ReadDisk(home, floor)
-			res.DiskNote = disk.Note()
-			if err := disk.RefusalAtOpen(); err != nil {
-				res.WaitedS = now().Sub(start).Seconds()
+			if open, err := readSlots(true); err != nil || open {
 				return res, err
 			}
 			res.Polls++
@@ -838,6 +873,19 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				if procsOK && machineload.Descends(snap.Procs, req.Self.PID, h.PID) {
 					continue
 				}
+				// Above one slot a waiter whose command is not a race run judges a
+				// first gate's command hold as the settle hold
+				// (dcn-2610300618371321): a run admitted at one slot keeps that
+				// hold until its race run starts, and judged as written it would
+				// keep a raised count from reaching the runs queued behind it. The
+				// running preflights are still counted against the slots from the
+				// process table (machineload.Ahead.Shut).
+				if gate == GateTests && h.Form == HoldCommand && res.Slots > 1 && !raceCmd {
+					h.Form = HoldSettle
+					if settled := h.Opened.Add(WaitSettle); settled.Before(h.Until) {
+						h.Until = settled
+					}
+				}
 				if holdInForce(h, snap, procsOK, runs, t) {
 					if res.Holder == nil {
 						res.Holder = &h
@@ -861,8 +909,13 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			own.StartUnix = s
 			// The command form rests on its holder's life, so it needs the
 			// holder's start time to be proven later; without one it takes the
-			// plain form's bounded hold instead.
-			if req.Command {
+			// plain form's bounded hold instead. Above one slot a command that
+			// is not a race run (a whole preflight, `--wait -- make preflight`)
+			// takes the settle hold, as the plain first gate inside a preflight
+			// did: the units in their test stages are counted from the process
+			// table (machineload.Ahead.Shut), and a command hold would keep the
+			// account's next slot shut until this run reached its race stage.
+			if req.Command && (res.Slots <= 1 || raceCmd) {
 				own.Until, own.Form = t.Add(WaitCommandCap), HoldCommand
 			}
 		}

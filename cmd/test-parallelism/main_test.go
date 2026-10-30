@@ -80,3 +80,23 @@ func TestAnUnreadableMachineConfigTakesOneSlot(t *testing.T) {
 		t.Fatalf("printed %q (stderr %q), want %q and nothing on stderr", got, errOut.String(), "16\n")
 	}
 }
+
+// TestDividesTheCoresAmongTheSlotsSetOnTheMachine: the count the load gate
+// judges by, load.preflights in the machine's config.json, is the count the
+// stage divides the cores by, read through the same reader
+// (implement.PreflightSlots), so the gate and -p never disagree.
+func TestDividesTheCoresAmongTheSlotsSetOnTheMachine(t *testing.T) {
+	home := t.TempDir()
+	dir := abcdhome.Path(home)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"load": {"preflights": 2}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	run(&out, &errOut, func(string) string { return "" }, idle, home)
+	if got := out.String(); got != "8\n" || errOut.Len() != 0 {
+		t.Fatalf("printed %q (stderr %q), want %q", got, errOut.String(), "8\n")
+	}
+}
