@@ -68,9 +68,10 @@ flags.
   the update chapter's ([21-update.md](21-update.md#sub-verbs)).
 - **Uninstall** is reversible removal: the marker block, abcd's README parts
   (and a README.md abcd created, once nothing but blank lines remains), abcd's
-  own `PATH` entry where abcd owns it, and the provenance record that proves
-  that ownership. It leaves `.abcd/` intact but for clearing `readme.created`
-  from `.abcd/config.json` once the README.md that record vouches for is gone,
+  own `PATH` entry where abcd owns it, the provenance record that proves
+  that ownership, and the `PATH` line setup added to the shell settings. It
+  leaves `.abcd/` intact but for clearing `readme.created` from
+  `.abcd/config.json` once the README.md that record vouches for is gone,
   never mutates the hook manifest, and a later install re-installs cleanly.
   It finds the entry by scanning `PATH`, so an entry that was installed into a
   directory `PATH` does not carry is removed by naming that directory again,
@@ -158,8 +159,8 @@ stays. A ruleset abcd cannot read whole, of another target, or excluding refs
 is not updated. A setting GitHub accepts only on top of another that is off and stays off
 (push protection without secret scanning, security updates without alerts) is
 advisory. No request body names the repository's visibility. It then
-mirrors the result into the repo's committed settings mirror, which has three
-blocks:
+mirrors the result into the repo's committed settings mirror, which has a
+managed and an observed block, and an owed block while anything is owed:
 
 - a managed block holding what abcd holds the repository to;
 - an owed block naming what the plan or the visibility does not offer yet;
@@ -1386,7 +1387,8 @@ manifest are intact); the audit reconciles the registered path against the
 registry. It never mutates, and never auto-fixes user-scope state.
 
 **Uninstall** removes the marker block, abcd's own `PATH` entry where abcd owns
-it, and the provenance record by which that ownership is proven. Ownership is
+it, the provenance record by which that ownership is proven, and the `PATH`
+line setup added to the shell settings. Ownership is
 the same three-shape predicate detection classifies with, and only one of the
 three is a pointer at all: the dev shim; the owned copy the `path-entry` record
 names and whose bytes still hash to the recorded value, which is the default
