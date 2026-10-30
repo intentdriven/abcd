@@ -51,6 +51,7 @@ func mergingGit(t *testing.T, dir string, args ...string) {
 const mergingWords = "autonomous merging"
 
 func TestStatuslineSaysMergingIsAutonomousUnderAuto(t *testing.T) {
+	widenBudgets(t)
 	root := mergingCheckout(t, `{"facilitator": {"mode": "auto"}}`)
 	stdout, stderr, err := runSplit(t, payloadFor(root), "statusline")
 	if err != nil {
@@ -65,6 +66,7 @@ func TestStatuslineSaysMergingIsAutonomousUnderAuto(t *testing.T) {
 }
 
 func TestStatuslineSaysNothingOfMergingUnderHuman(t *testing.T) {
+	widenBudgets(t)
 	for name, config := range map[string]string{
 		"human":     `{"facilitator": {"mode": "human"}}`,
 		"no config": "",
@@ -129,6 +131,7 @@ func TestStatuslineDropsAnUnreadableMergingModeOnStderr(t *testing.T) {
 }
 
 func TestStatuslineMergingElementTouchesNoNetwork(t *testing.T) {
+	widenBudgets(t)
 	var hits int32
 	origTransport := http.DefaultTransport
 	http.DefaultTransport = countingTransport{&hits}

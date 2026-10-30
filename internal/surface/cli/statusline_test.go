@@ -24,6 +24,7 @@ func payloadFor(root string) string {
 // in a managed checkout the harness gets abcd's row, the badge is element one
 // and carries colour, the payload elements follow, and --json is the Row.
 func TestStatuslineManagedRendersTheRowBadgeFirst(t *testing.T) {
+	widenBudgets(t)
 	root := managedCheckout(t)
 	if err := mode.SetAt(root, mode.Facilitator); err != nil {
 		t.Fatal(err)
@@ -137,6 +138,7 @@ func TestStatuslineWithNoPreviousCommandPrintsNothing(t *testing.T) {
 // payload — every payload element drops, the badge stays, the exit is 0 and
 // stderr is silent.
 func TestStatuslineEmptyStdinStillRendersTheBadge(t *testing.T) {
+	widenBudgets(t)
 	root := managedCheckout(t)
 	stdout, stderr, err := runSplit(t, "", "statusline")
 	if err != nil {
