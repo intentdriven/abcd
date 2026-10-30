@@ -59,7 +59,7 @@ Settled on 2026-09-20 with one defensible answer each, on the product thinker's 
 
 1. **The orchestrator is the verb's own loop over a state file, never a model.** The pilot's context numbers and adr-27 leave one shape. Roles are implementer and validators only.
 2. **Re-entrant, never blocking.** A multi-hour process launched from a harness tool dies at the tool's timeout; every invocation does one step and exits, and a pause is `next_eligible_at` in the state file.
-3. **The merge target is the repository's own rule**: A pull request with auto-merge armed where the ruleset gates it through a queue, a pull request left open where it does not. The loop never pushes to a pull request after arming it.
+3. **The merge target is the one merge gate's** (amended 2026-10-30, dcn-2610300955154851): the loop asks the gate `abcd land` asks. In `auto` a ready pull request is armed, into the merge queue where one gates the branch and as auto-merge where none does, once a review receipt names its head; in `human` it is armed only once the technical facilitator's approval of its head counts, and is otherwise left open. The loop never pushes to a pull request after arming it.
 4. **The binary-owned pieces the pilot listed are this intent's scope**, not seven records: They share the state file and are worthless apart.
 
 Asked and answered on 2026-09-20:
