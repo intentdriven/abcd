@@ -163,8 +163,8 @@ that allows it:
   whose endpoint the line does not fix at all is also read as GraphQL.
 
 In `auto` all of them are allowed, and the merge gate decides what abcd arms,
-except a merge command that names its repository (`-R`, `--repo`, a `GH_REPO`
-prefix, or a REST route spelling owner and name rather than gh's
+except a merge command that names its repository (gh's repository flag in
+either spelling, a `GH_REPO` prefix, or a REST route spelling owner and name rather than gh's
 placeholders, or one the line does not fix), or that runs after the line
 changed directory or set `GH_REPO`: the mode read is this checkout's, which does not answer for
 another repository, so such a command is refused under the same id, with no
@@ -176,13 +176,13 @@ gate counts that record as an approval of the head, so an agent that writes it
 records a false approval. Run through the binary it is refused by the registry
 entry `abcd-land-approve`, which the `SHELL` domain teaches. Under any other
 program name it is refused in code as `abcd-land-approve-any-program`: the
-guard reads the words the program is handed (the land verb and `--approve`, in
-either order, as the command parser reads them),
+guard reads the words the program is handed (the land verb and its approval
+flag, in either order, as the command parser reads them),
 not what the program is called, so `go run` of the module or of `.`, a
 cross-compiled build and a renamed copy are all refused. A flag word a
 substitution prints is not read. An approving review posted on the forge,
 which the gate also counts as an approval, is refused the same way in every
-mode, as `forge-review-approve`: `gh pr review --approve`; a `gh api` call to the
+mode, as `forge-review-approve`: an approving `gh pr review`; a `gh api` call to the
 REST review route whose `event` field is `APPROVE`, or whose event or body the
 line does not show; and one carrying the `addPullRequestReview` or
 `submitPullRequestReview` mutation with an `APPROVE` event. Reading the reviews
