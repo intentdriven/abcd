@@ -1646,7 +1646,7 @@
     {
       "path": "abcd embark lessons",
       "hidden": false,
-      "sentence": "Rank the lessons a lifeboat's retrospectives carry against the new voyage's brief: Writes nothing; refuses a lifeboat that fails its manifest.",
+      "sentence": "Rank a lifeboat's retrospective lessons against the new voyage's brief: Writes only shadow pairs to the lab home; refuses a lifeboat that fails its manifest.",
       "flags": [
         {
           "name": "brief",

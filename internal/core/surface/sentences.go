@@ -152,8 +152,8 @@ var sentences = map[string]string{
 		"Writes only its record families and marker block; refuses the whole write on any conflict.",
 	"abcd embark from": "Unpack a lifeboat's record families into a target repository: " +
 		"Writes those families and the marker block; refuses the whole write on any conflict.",
-	"abcd embark lessons": "Rank the lessons a lifeboat's retrospectives carry against the new voyage's brief: " +
-		"Writes nothing; refuses a lifeboat that fails its manifest.",
+	"abcd embark lessons": "Rank a lifeboat's retrospective lessons against the new voyage's brief: " +
+		"Writes only shadow pairs to the lab home; refuses a lifeboat that fails its manifest.",
 	"abcd embark probe": "Report what a lifeboat would write into a target, coverage blanks first: " +
 		"Writes nothing; refuses a lifeboat whose manifest does not verify.",
 
