@@ -377,6 +377,35 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 	})
 }
 
+// TestTheProductViewWrapsTheMergesLine: at a narrow window the product
+// view's merges line wraps at spaces with a hanging indent, as a facilitator
+// row does, so no line runs past the window and no word is cut.
+func TestTheProductViewWrapsTheMergesLine(t *testing.T) {
+	m := &Merges{Mode: "auto", Layer: "repo", Origin: ".abcd/config.json at origin/main, the default branch as just fetched from the repository"}
+	lines := Render(Input{Status: fixture(2, 0), Merges: m, Version: ver}, Frame{View: Product, Form: Text, Width: 80, Rung: Mono})
+	var merges []string
+	for i, l := range lines {
+		if strings.HasPrefix(l, "merges: ") {
+			merges = lines[i : len(lines)-1]
+			break
+		}
+	}
+	if len(merges) < 2 {
+		t.Fatalf("lines = %q; want the merges line wrapped onto two or more", lines)
+	}
+	for i, l := range merges {
+		if textwidth.Columns(l) > 80 {
+			t.Fatalf("line %q runs past 80 columns", l)
+		}
+		if i > 0 && !strings.HasPrefix(l, "    ") {
+			t.Fatalf("continuation %q has no hanging indent", l)
+		}
+	}
+	if got := strings.Join(strings.Fields(strings.Join(merges, " ")), " "); !strings.Contains(got, "as just fetched from the repository") {
+		t.Fatalf("the wrapped line lost or cut words: %q", got)
+	}
+}
+
 // TestAnUnreadableModeIsSaidAndMasked: a refused read is drawn as such,
 // masked like every other line, since the refusal can quote a key a
 // configuration file wrote (the layered reader returns its raw bytes).

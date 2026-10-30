@@ -129,36 +129,56 @@ Who merges is decided by `facilitator.mode`
 ([`38-land.md`](38-land.md), itd-2610150602547271). `abcd land` and the build
 loop ask one merge gate before arming anything; the guard holds the same line
 on the commands themselves, so a path that never asks the gate is still
-stopped. The guard reads the mode through the gate's own resolver: the default
+stopped. The guard reads the mode as the gate does: the default
 branch's committed `.abcd/config.json` and `~/.abcd.noindex/config.json`, a
-`human` in either winning, never the working tree's copy. A mode that cannot be
-read counts as `human`. The guard cannot import that resolver (it sits above
+`human` in either winning, never the working tree's copy. It reads the default
+branch as origin names it and only after fetching it, never from the refs this
+checkout holds, which an agent can move (`git remote set-head`,
+`git update-ref`). A mode that cannot be read, an origin that cannot be reached
+included, counts as `human`. The guard cannot import that resolver (it sits above
 the guard), so each front door that loads a repository's registry hands the mode
 in; a registry with no mode handed in judges no merge command.
 
-While the mode is `human`, three commands are refused, each naming the setting
+While the mode is `human`, these commands are refused, each naming the setting
 that allows it:
 
 - `gh pr merge --auto`, under `merge-auto-human`;
 - any other `gh pr merge` that merges, into the merge queue where one gates the
   default branch and at once where none does, under `merge-now-human`
   (`gh pr merge --disable-auto` withdraws an arming and is allowed);
-- a `gh api graphql` call whose query is the `enqueuePullRequest` or
-  `enablePullRequestAutoMerge` mutation, under `merge-enqueue-human`. A query
-  read from a file is not seen.
+- a `gh api graphql` call whose query is the `enqueuePullRequest`,
+  `enablePullRequestAutoMerge` or `mergePullRequest` mutation, under
+  `merge-enqueue-human`;
+- a `gh api graphql` call whose query is not on the line (read from a file
+  with `query=@…`, from `--input`, or printed by a substitution), which could
+  be one of those mutations, under `merge-graphql-unread-human`;
+- a `PUT` to the REST merge route, `repos/{owner}/{repo}/pulls/N/merge`
+  (a method word the line does not fix counts as `PUT`), under
+  `merge-rest-human`.
 
-In `auto` all three are allowed, and the merge gate decides what abcd arms.
+In `auto` all of them are allowed, and the merge gate decides what abcd arms,
+except a merge command that names its repository (`-R`, `--repo`, a `GH_REPO`
+prefix, or a REST route spelling owner and name rather than gh's
+placeholders): the mode read is this checkout's, which does not answer for
+another repository, so such a command counts as `human` and is refused the
+same way.
 
 The technical facilitator's approval act, the land verb's approval of a head
 ([`38-land.md`](38-land.md)), is refused to an agent in every mode: the merge
 gate counts that record as an approval of the head, so an agent that writes it
 records a false approval. Run through the binary it is refused by the registry
-entry `abcd-land-approve`, which the `SHELL` domain teaches; run through
-`go run ./cmd/abcd`, which no pattern can name, it is refused in code as
-`abcd-land-approve-go-run`. A package or flag word a substitution prints is not
-read. The three merge ids
-and `abcd-land-approve-go-run` are reserved, so a repository's
+entry `abcd-land-approve`, which the `SHELL` domain teaches. Under any other
+program name it is refused in code as `abcd-land-approve-any-program`: the
+guard reads the words the program is handed (the land verb, then `--approve`),
+not what the program is called, so `go run` of the module or of `.`, a
+cross-compiled build and a renamed copy are all refused. A flag word a
+substitution prints is not read. The five merge ids
+and `abcd-land-approve-any-program` are reserved, so a repository's
 `.abcd/guard.json` cannot declare an entry under them.
+
+The guard holds against an agent merging by mistake, not against a determined
+one: an agent runs with the person's own credentials and can reach the forge
+by routes no command line shows.
 
 ## The question gate
 

@@ -304,8 +304,10 @@ type gateFacts struct {
 	// approvedBy names the approval of head that counts, "" for none, and
 	// approvalWhy why none does.
 	approvedBy, approvalWhy string
-	// reviewed is whether a review receipt names head.
-	reviewed bool
+	// reviewed is whether a review receipt names head, and reviewWhy why
+	// the receipts could not be read, "" when they were.
+	reviewed  bool
+	reviewWhy string
 }
 
 // gateDecision is the merge gate's answer: whether to arm the merge and with
@@ -334,6 +336,8 @@ func mergeGate(f gateFacts) gateDecision {
 	case f.mode.Mode != ModeAuto && f.approvedBy == "":
 		return gateDecision{why: modeText(f.mode) + ", so it waits for the technical facilitator's approval of " + head +
 			" (a forge review approving that commit by someone with write access other than its author, or abcd land --approve run by the facilitator): " + f.approvalWhy}
+	case f.mode.Mode == ModeAuto && f.reviewWhy != "":
+		return gateDecision{why: modeText(f.mode) + ", but the review receipts cannot be read (" + f.reviewWhy + "), so whether a review pair passed " + head + " is unknown and nothing is armed"}
 	case f.mode.Mode == ModeAuto && !f.reviewed:
 		return gateDecision{why: modeText(f.mode) + ", but no review receipt names " + f.head + ": the head has no recorded review pair (record it with abcd land --record-review), so nothing is armed"}
 	}
@@ -402,6 +406,9 @@ func DecideMerge(q MergeQuery) (MergeDecision, error) {
 	if mode.Mode == ModeAuto {
 		p, err := reviewReceipt(q.RepoRoot, q.Head)
 		f.reviewed = err == nil && p != ""
+		if err != nil {
+			f.reviewWhy = termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+		}
 	}
 	d := mergeGate(f)
 	return MergeDecision{Arm: d.arm, Method: d.method, Why: d.why}, nil

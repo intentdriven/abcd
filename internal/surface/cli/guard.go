@@ -671,11 +671,12 @@ func loadGuardRegistry(w io.Writer) (guard.Loaded, error) {
 
 // loadRepoGuard is guard.LoadRepo for the repository at root, judging the
 // merge commands by its facilitator.mode (guard.WithMergeMode,
-// spc-2610161609350616 step 5), read through the merge gate's own resolver
-// (landing.ReadDefaultFacilitator): the default branch's committed
-// .abcd/config.json and the machine layer. A mode that cannot be read counts
-// as human, and the refusal says why, its text masked as every other
-// facilitator.mode refusal is.
+// spc-2610161609350616 step 5), read as the merge gate reads it (the default
+// branch's committed .abcd/config.json and the machine layer) but at origin's
+// default branch as just fetched (landing.ReadFetchedFacilitator), never at
+// refs this checkout holds, which an agent can move. A mode that cannot be
+// read, origin unreachable included, counts as human, and the refusal says
+// why, its text masked as every other facilitator.mode refusal is.
 func loadRepoGuard(root string) guard.Loaded {
 	ld := guard.LoadRepo(root)
 	ld.Registry = ld.Registry.WithMergeMode(guardMergeMode(root))
@@ -685,7 +686,7 @@ func loadRepoGuard(root string) guard.Loaded {
 // guardMergeMode reads the mode for the repository at root.
 func guardMergeMode(root string) guard.MergeMode {
 	return func() (bool, string) {
-		f, err := landing.ReadDefaultFacilitator(root)
+		f, err := landing.ReadFetchedFacilitator(root)
 		if err != nil {
 			return true, "facilitator.mode cannot be read (" + termsafe.Sanitize(scrubPaths(err)) + "), so it counts as human"
 		}

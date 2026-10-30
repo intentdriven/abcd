@@ -234,7 +234,7 @@ _None recorded yet._
   a maintainer's approval in either mode; a maintainer's goes through in
   `auto` and waits for the facilitator's approval in `human`. Who is a
   maintainer is read from the repository permission level. The contributor
-  rules are carried on by itd-2610290858115394, which builds on this intent. <!-- record-lint: forward-looking -->
+  rules are carried on by itd-2610290858115394, which builds on this intent.
 - 2026-10-29, the technical facilitator on the product thinker's delegation
   (records): AM1 is retired as the merge gate's stand-in, but its reading of
   approvals is kept for a contributor's pull request and for `human`, and it

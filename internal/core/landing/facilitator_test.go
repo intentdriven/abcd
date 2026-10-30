@@ -62,6 +62,18 @@ func TestMergeGateDecisionTable(t *testing.T) {
 	}
 }
 
+// TestAnUnreadableReviewReceiptArmsNothingAndSaysWhy: in auto, receipts that
+// cannot be read are not taken for a missing receipt; the gate arms nothing
+// and its reason names the read that failed.
+func TestAnUnreadableReviewReceiptArmsNothingAndSaysWhy(t *testing.T) {
+	auto := Facilitator{Mode: ModeAuto, Layer: "repo", Origin: ".abcd/config.json at origin/main"}
+	d := mergeGate(gateFacts{mode: auto, rule: MergeRule{Method: "SQUASH"}, def: "main", head: "0123456789abcdef0123456789abcdef01234567",
+		author: "author-a", role: RoleMaintainer, roleWhy: "read", reviewed: false, reviewWhy: "git worktree list failed"})
+	if d.arm || !strings.Contains(d.why, "review receipts cannot be read (git worktree list failed)") {
+		t.Fatalf("mergeGate = %+v; want nothing armed, naming the failed read", d)
+	}
+}
+
 // roleForge answers one permission read.
 func roleForge(answer string, err error) ForgeCall {
 	return func(args ...string) (string, error) {

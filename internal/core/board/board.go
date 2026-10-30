@@ -145,10 +145,16 @@ func Render(in Input, f Frame) []string {
 	if f.View != Facilitator {
 		if t := mergesText(in.Merges, f.View); t != "" {
 			l := "merges: " + t
-			if f.Form == Markdown {
-				l = "- " + l
+			switch f.Form {
+			case Markdown:
+				out = append(out, "- "+l)
+			case Text:
+				// Laid as a facilitator row is, with a hanging indent, so
+				// fitWindow's hard break never cuts it mid-word.
+				out = append(out, wrap(l, f.Width)...)
+			default:
+				out = append(out, l)
 			}
-			out = append(out, l)
 		}
 	}
 	if l := versionLine(in.Version, f); l != "" {

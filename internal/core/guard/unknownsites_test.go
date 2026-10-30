@@ -122,7 +122,11 @@ var wordReaders = map[string]string{
 
 	// merge.go: the merge rule (spc-2610161609350616 step 5).
 	"mergeCommands": "sitesNamed and operandReadings; a later word the line does not fix reads as empty, so a flag a substitution prints is not taken as --auto",
-	"approveGoRun":  "sitesNamed; a word the line does not fix reads as empty, so a package or flag a substitution prints is not taken as abcd's or as --approve, as commands/guard.md names",
+	"graphqlMerge":  "forgeWord on every word: a field the line does not fix is a query it cannot read, refused while the mode is human",
+	"fieldValue":    "forgeWord; reads a flag word only where the line fixes it, and hands its value back with whether it is fixed",
+	"restMerge":     "exempt: reads the literalWords mergeCommands hands it, where a method word the line does not fix reads as empty and counts as PUT",
+	"restNamesRepo": "exempt: reads the literalWords mergeCommands hands it",
+	"approveAct":    "commandSites and commandNamed; a word the line does not fix reads as empty, so a flag a substitution prints is not taken as --approve, as commands/guard.md names",
 
 	// speculate.go
 	"eligibleStart": "steppedBeforeCommand and anyProgram: no start where no program name is fixed",

@@ -271,6 +271,50 @@ func ReadDefaultFacilitator(cwd string) (Facilitator, error) {
 	return ReadDefaultFacilitatorContext(context.Background(), cwd)
 }
 
+// ReadFetchedFacilitator is ReadDefaultFacilitator for a caller that judges
+// an act by the mode and so must not take it from refs an agent can move
+// (`git remote set-head`, `git update-ref` on a remote-tracking ref): the
+// shell guard, deciding a merge command. It asks Remote which branch is its
+// default (gitutil.RemoteHeadBranch) and at which commit (git ls-remote),
+// fetches that branch, and reads the mode at the commit Remote named, from
+// the local object store. A remote that cannot be asked, a fetch that fails,
+// and a branch that moved between the two are errors, which the caller counts
+// as human: it never falls back to the checkout's last fetch. The fetch
+// writes what any fetch of the branch writes (its remote-tracking ref), never
+// origin/HEAD and never FETCH_HEAD.
+func ReadFetchedFacilitator(cwd string) (Facilitator, error) {
+	r, _ := layered.HomeRoots()
+	root, err := gitutil.Toplevel(cwd)
+	if err != nil {
+		return Facilitator{}, fmt.Errorf("%s is not inside a git checkout, so the default branch's %s cannot be read", fsutil.RedactHome(cwd), KeyFacilitatorMode)
+	}
+	def, err := gitutil.RemoteHeadBranch(root, Remote)
+	if err != nil {
+		return Facilitator{}, fmt.Errorf("%s could not say which branch is its default, so its %s cannot be read as just fetched: %s", Remote, KeyFacilitatorMode, fsutil.RedactHome(err.Error()))
+	}
+	ref := "refs/heads/" + def
+	out, err := gitutil.Net(root, "ls-remote", Remote, ref)
+	if err != nil {
+		return Facilitator{}, fmt.Errorf("%s could not say where %s is, so its %s cannot be read as just fetched: %s", Remote, def, KeyFacilitatorMode, fsutil.RedactHome(err.Error()))
+	}
+	tip := ""
+	for _, line := range strings.Split(out, "\n") {
+		if sha, name, ok := strings.Cut(line, "\t"); ok && name == ref {
+			tip = sha
+		}
+	}
+	if !gitutil.IsFullSHA(tip) {
+		return Facilitator{}, fmt.Errorf("%s did not name %s's tip, so its %s cannot be read as just fetched", Remote, def, KeyFacilitatorMode)
+	}
+	if _, err := gitutil.Net(root, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", Remote, ref); err != nil {
+		return Facilitator{}, fmt.Errorf("fetching %s's %s failed, so its %s cannot be read as just fetched: %s", Remote, def, KeyFacilitatorMode, fsutil.RedactHome(err.Error()))
+	}
+	if _, err := gitutil.Run(root, "cat-file", "-e", tip+"^{commit}"); err != nil {
+		return Facilitator{}, fmt.Errorf("%s's %s moved while it was fetched, so its %s cannot be read as just fetched", Remote, def, KeyFacilitatorMode)
+	}
+	return ReadFacilitatorAt(r, root, tip, Remote+"/"+def)
+}
+
 // ErrNoDefaultBranch is ReadDefaultFacilitator's answer for a repository with
 // no default branch to read facilitator.mode at: one with no commit yet, say.
 // It is not a refusal of anything a file declares, so a caller that only
