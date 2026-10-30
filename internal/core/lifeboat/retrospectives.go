@@ -198,11 +198,20 @@ func (v LessonsView) Render() string {
 		if jd.Fallback != "" {
 			fmt.Fprintf(&b, "\nthe decision adapter did not rank them: %s\n", sanitize(jd.Fallback))
 		}
+		// The pairs line and the note are both printed: a pass that stopped
+		// early keeps the pairs it recorded, and the note names the lessons
+		// never asked. Only a pass with no note asked every lesson.
 		switch {
+		case jd.Pairs > 0 && jd.PairsNote == "":
+			fmt.Fprintf(&b, "\nshadow: the decision adapter was asked beside the host on each lesson; %d pair(s) recorded in %s\n", jd.Pairs, sanitize(jd.PairsFile))
 		case jd.Pairs > 0:
-			fmt.Fprintf(&b, "\nshadow: the decision adapter scored each lesson beside the host; %d pair(s) recorded in %s\n", jd.Pairs, sanitize(jd.PairsFile))
-		case jd.PairsNote != "":
-			fmt.Fprintf(&b, "\nshadow: %s\n", sanitize(jd.PairsNote))
+			fmt.Fprintf(&b, "\nshadow: %d pair(s) recorded in %s\n", jd.Pairs, sanitize(jd.PairsFile))
+		}
+		if jd.PairsNote != "" {
+			if jd.Pairs == 0 {
+				b.WriteString("\n")
+			}
+			fmt.Fprintf(&b, "shadow: %s\n", sanitize(jd.PairsNote))
 		}
 	}
 	if len(v.Questions) > 0 {

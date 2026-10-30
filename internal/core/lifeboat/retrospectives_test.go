@@ -536,6 +536,36 @@ func TestRankPredecessorLessonsInShadowStopsAtTheFirstFailedPair(t *testing.T) {
 			t.Fatalf("the note names the lessons not asked and why (%q): %q", want, jd.PairsNote)
 		}
 	}
+	// The text view says the same: the pairs kept, and the note naming the
+	// lessons never asked, never a claim that every lesson was scored.
+	text := got.Render()
+	for _, want := range []string{"1 pair(s) recorded", "4 lesson(s) not asked", "lesson-2 through lesson-5"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the text view names the pairs and the lessons not asked (%q):\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "each lesson") {
+		t.Fatalf("the text view claims every lesson was asked when four were not:\n%s", text)
+	}
+}
+
+// A shadow pass that asked every lesson says so in the text view, with no
+// note.
+func TestRenderShadowSaysEveryLessonWasAskedOnlyWhenItWas(t *testing.T) {
+	v, err := PredecessorLessons(lessonsLifeboat(t), lessonsFraming)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, pairs := &scoreFake{}, []lab.Pair{}
+	got, err := RankPredecessorLessons(context.Background(), v, lessonsRouter(oracle.JudgementShadow, adapter, &pairs),
+		scoresFor(t, v, func(LessonQuestion) int { return 2 }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := got.Render()
+	if !strings.Contains(text, "asked beside the host on each lesson; 5 pair(s) recorded") || strings.Contains(text, "not asked") {
+		t.Fatalf("every lesson asked, five pairs:\n%s", text)
+	}
 }
 
 // Shadow has one deadline for the whole pass: once it is spent, no further
