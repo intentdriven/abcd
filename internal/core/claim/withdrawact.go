@@ -980,7 +980,12 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	// unchanged, another holder's among them, for that holder's own copy to
 	// settle as a release that has ended.
 	lapseDue := lapsed && slices.ContainsFunc(acted, func(w Withdrawal) bool { return w.unsettled() && !w.preID() })
-	due := slices.ContainsFunc(rec.mine(a.self), Withdrawal.unsettled) || len(vouched) > 0 || byHandDue || lapseDue
+	// A vouched entry is due only while it is still to settle: one kept, a
+	// withdrawal the forge refused, left its pull request armed, so a release
+	// that has ended has nothing of it to re-arm, and one holding nothing else
+	// of the reader's is done for them.
+	vouchedDue := slices.ContainsFunc(acted, func(w Withdrawal) bool { return vouched[w] && w.unsettled() })
+	due := slices.ContainsFunc(rec.mine(a.self), Withdrawal.unsettled) || vouchedDue || byHandDue || lapseDue
 	s.NotRead = rec.above
 	if !due {
 		k.cache().markDone(a.holder, doneScope(a.self))
