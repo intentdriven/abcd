@@ -48,8 +48,9 @@ type LogprobAdapter struct {
 // logprobInstructions frame every question the second candidate is sent.
 const logprobInstructions = "You answer one typed judgement with a single label and nothing else: " +
 	"no words, no punctuation, no explanation. Read the question and the state, then reply with the one label " +
-	"the answer list offers that is right. The label is the whole answer: where the question's own words name an " +
-	"answer, reply with that answer's label from the list, never the words."
+	"that is right, in the form the question asks for: an option's letter, a digit on the scale, or yes or no. " +
+	"The label is the whole answer: where the question's own words name an answer, reply with that answer's " +
+	"label, never the words."
 
 // labelLetters label a choose question's options, one letter each: a letter
 // is one token for any tokenizer, where a two-digit number is two for some.
