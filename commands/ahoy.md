@@ -798,9 +798,10 @@ declared in `.abcd/config/provenance.json`, removes `identity.json` from the
 working tree, and says each of those; the owner commits the removal. A record
 the owner already keeps for this repository is left as it is, never
 overwritten. When the file holds anything abcd cannot carry (a setting other
-than the name, the email and `production_mode`, an incomplete identity, or a
-`production_mode` that disagrees with `.abcd/config/provenance.json`), the move
-is not offered and the gap names what blocks it. On anyone
+than the name, the email and `production_mode`, or a `production_mode` that
+disagrees with `.abcd/config/provenance.json`), the move is not offered and the
+gap names what blocks it. A file whose identity is incomplete, or a tool's, is
+no one's to move: every machine sees it as another person's. On anyone
 else's machine the gap says only that the stored identity is not theirs and is
 not read, names no one, and nothing is copied or removed. The stored file is read through
 the guarded reader: one that is a symlink, not a regular file, or over 64 KiB
@@ -1244,8 +1245,10 @@ entry — the owned copy (or a legacy pinned symlink), found wherever it sits on
 removed with it even when no plugin root resolves any more — and leaves
 `.abcd/` intact, so the
 repo's record survives. The persistent download cache is left to the harness's
-own uninstall to delete. It also takes out the `PATH` line `abcd ahoy install`
-added to the person's shell settings, and nothing else in that file. Report
+own uninstall to delete. Uninstall also takes out the `PATH` line `abcd ahoy
+install` added to the person's shell settings and nothing else in that file,
+and deletes a file setup created for the line once nothing else is in it.
+Report
 `marker.removed`, the `readme` receipt, the entry note and `shell_path`: whether
 that line was taken out (`removed`) and its `note`, relayed as given. The `readme` receipt lists the parts it `removed` from
 `README.md`, each whose text was still abcd's; the parts it `left`, each with
