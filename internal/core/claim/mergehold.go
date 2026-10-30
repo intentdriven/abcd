@@ -94,8 +94,11 @@ func (m MergeHold) Waits() string {
 		case h.Mine:
 			waits = append(waits, "merge it from the copy cutting "+h.Release+", or wait until "+h.Release+" is tagged or that copy releases "+h.Subject)
 		default:
-			waits = append(waits, "wait until "+h.Release+" is tagged, or until "+h.Subject+", held by "+h.Holder+" from the copy cutting it, ends: "+
-				"its holder releases it, or stops renewing it and it ends at "+stamp(h.EffectiveExpiry)+"; the copy cutting it can also merge this itself")
+			// The wait comes last, so a caller's ", then run ... again"
+			// follows it and never reads as an instruction to the
+			// cutting copy.
+			waits = append(waits, "the copy cutting "+h.Release+" may merge this itself; otherwise wait until "+h.Release+" is tagged, or until "+h.Subject+
+				", held by "+h.Holder+" from that copy, ends: its holder releases it, or stops renewing it and it ends at "+stamp(h.EffectiveExpiry))
 		}
 	}
 	return strings.Join(waits, "; ")

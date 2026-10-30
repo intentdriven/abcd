@@ -131,8 +131,8 @@ func TestLandWaitsWhileAnotherPersonCutsARelease(t *testing.T) {
 	if r.Reason != want {
 		t.Fatalf("reason = %q; want %q", r.Reason, want)
 	}
-	if r.Fix != "wait until v0.16.0 is tagged, or until rel-v0.16.0, held by "+f.heldBy(q)+" from the copy cutting it, ends: its holder releases it, or stops renewing it and it ends at "+
-		at.Add(24*time.Hour).Format(time.RFC3339)+"; the copy cutting it can also merge this itself, then run abcd land again" {
+	if r.Fix != "the copy cutting v0.16.0 may merge this itself; otherwise wait until v0.16.0 is tagged, or until rel-v0.16.0, held by "+f.heldBy(q)+" from that copy, ends: its holder releases it, or stops renewing it and it ends at "+
+		at.Add(24*time.Hour).Format(time.RFC3339)+", then run abcd land again" {
 		t.Fatalf("fix = %q", r.Fix)
 	}
 	f.heldNothing()
