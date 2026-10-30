@@ -2544,7 +2544,8 @@ value out of range, is reported loudly and every default is used.
 
 With --wait it waits for capacity instead of warning, and it is the one waiter
 concurrent sessions gate a preflight or a race run with, in place of a hand-written
-loop; `make preflight` waits at it once, as one whole run. It blocks until the
+loop; `make preflight` waits at it once, as one whole run (a records-only change
+waits at no gate). It blocks until the
 one-minute load average is below the wait limit (`wait-load <load>` in the same
 file; by default twice the online core count), no other `go test -race` run is
 live, no other `make preflight` is running and no other waiter is ahead of it in
@@ -2655,10 +2656,12 @@ the work admitted. With a command after `--` (`abcd implement load --wait -- go
 test -race ./...`) the waiter runs it once the gate opens and exits with its exit code,
 or with 128+N, as a shell does, when signal N killed it;
 the hold lasts until the command has started its own race run, the command exits,
-or 60 minutes pass, and a hold whose waiter has died, or whose pid now
-belongs to another process (a different start time), is reclaimed by the next
-waiter. A SIGINT or SIGTERM to the waiter is passed on to the command, and the
-waiter waits for it to exit, exits with its code and releases the hold. A
+or 60 minutes pass (above one preflight at a time, a command that is not a
+race run holds it for 2m0s, as the plain form does), and a hold whose waiter has
+died, or whose pid now belongs to another process (a different start time), is
+reclaimed by the next waiter. A SIGINT or SIGTERM to the waiter is passed on to
+the command, and the waiter waits for it to exit, exits with its code and
+releases the hold. A
 command that is a race run (go, then `test` with -race) is gated as one for both
 gates: above one preflight at a time it stays shut while another race run is
 live, judges and takes the race gate's hold as well as its own, and from the

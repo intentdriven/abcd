@@ -824,8 +824,8 @@ package's tests run through `--wait -- go test …` rather than plain
 (iss-2610241130157455). A waiter queued ahead of yours still delays yours, under
 any account, until it opens or reaches its own `--timeout` (it may be shut by
 its own account's stricter `wait-load`, which you cannot see), and a waiter
-running its command holds every later gate for the command's length, by
-design. The one exception is a waiter ahead with a higher pid, as after the
+running its command holds every later gate for the command's length at one
+preflight at a time, and takes one slot above it, by design. The one exception is a waiter ahead with a higher pid, as after the
 machine's process ids wrap: it may run an abcd built before the start order
 (v0.15.0 and earlier), which waits on every lower pid and so on yours, and
 each would wait on the other until its timeout. So once such waiters alone
@@ -1002,7 +1002,9 @@ after it opens. The command form, `implement load --wait -- go test -race ./...`
 runs the command once the gate opens, exits with the command's exit code
 (128+N, as a shell reports it, when signal N killed the command, so a SIGTERM
 reads 143, never a failed gate's 1), and holds the gate until the command has
-started its own race run, the command exits, or 60 minutes pass; to every other
+started its own race run, the command exits, or 60 minutes pass (above one
+preflight at a time, a command that is not a race run holds it for two minutes,
+as the plain form does); to every other
 account its waiter is running its command until the command exits, which with
 one preflight at a time shuts their first gates and above one takes a slot. A
 command that is a race run (`go`, then `test` with `-race`) is gated as one

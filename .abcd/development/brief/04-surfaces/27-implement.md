@@ -290,7 +290,7 @@ plus a step for each crossed waiter ahead beyond the first, so the earlier of
 two waiters behind the same one opens before the later stops counting it; no
 back-off breaks that cycle, since the back-off cap bounds only the last look,
 and a stand-back starts the count again.
-A waiter running its command holds every later gate for the command's length, by design. A look that finds the machine clear does not open the
+A waiter running its command holds every later gate for the command's length at one preflight at a time, and takes one slot above it, by design. A look that finds the machine clear does not open the
 gate: the waiter waits a random 15 to 60 seconds and checks everything again,
 and opens only if that re-check is clear too (iss-2610102020442624). Within one
 account it also takes a hold under the abcd home, which a waiter beneath the
