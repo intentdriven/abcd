@@ -83,9 +83,10 @@ The payload carries:
   they could not;
 - `reservations`, `live_by_holder`, `hand_backs_by_holder`, `release_holds`,
   `lapsed_releases`,
-  `view`, `fetch_error`, `derived_unchecked` and `holder_ids_refused`, the
-  same fields `/abcd:peers` lists, with the same one line on stderr when
-  `~/.abcd.noindex/holder-ids` is refused;
+  `view`, `fetch_error`, `derived_unchecked`, `holder_ids_refused` and
+  `holder_id_refused`, the same fields `/abcd:peers` lists, with the same one
+  line on stderr when `~/.abcd.noindex/holder-ids`, or the holder id itself,
+  is refused;
 - `grants`, the line that an announcement informs and grants nothing.
 
 Tell the user, in plain words, who is doing what, which release is being cut,
@@ -133,7 +134,7 @@ Without `--json`, the verb prints, in order:
   could not be asked, or when branches were left for the next fetch to ask
   about;
 - the reservations block `/abcd:peers` prints, release holds included
-  (`release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef: merges are
+  (`release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef (claimed): merges are
   held; the hold lapses at <time> unless the cut renews it`) and lapsed cuts;
 - the line that an announcement informs and grants nothing.
 
@@ -153,7 +154,7 @@ branches it left:
 ## STATUS
 
 From the status branches on the shared remote, as of the last fetch 4 minutes ago (`abcd status` fetches):
-- release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef: merges are held; the hold lapses at 2026-10-17T09:00:00Z unless the cut renews it
+- release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef (claimed): merges are held; the hold lapses at 2026-10-17T09:00:00Z unless the cut renews it
 - h_0123456789abcdef0123456789abcdef (claimed): merging #1012, for 30 min
 - abcd-status/h_fedcba9876543210fedcba9876543210 (doubtful): continuity not verified: <reason>
 - 1 status branch whose name is not read; `abcd status` says how to list them

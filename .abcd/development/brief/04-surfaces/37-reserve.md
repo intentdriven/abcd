@@ -139,10 +139,14 @@ only when the reader's own login pushed the commit, a declared id paired with
 a login counts only when that login pushed it, and an unpaired declared id
 counts only when the reader's own login pushed it, as the same person's other
 home under one login, minting an id of its own, does: no pairing is needed
-for that. A withdrawal under an unpaired id is acted on only when the
-reservation that first recorded it, held under that id, was pushed by the
-reader's own login; a later push of the reader's that carries it says
-nothing of who first recorded it.
+for that. A withdrawal under any of the reader's ids, the kept one included,
+is acted on only when the reservation that first recorded it, held under
+that id, was pushed by the account the id is held to (the reader's own login
+for the kept id and an unpaired one, the paired login for a paired one); a
+later push that carries it says nothing of who first recorded it, so an
+entry another login first recorded under one copy's kept id, carried by a
+second copy of the same person that declares that id, is never read as the
+first copy's own.
 
 Across versions the change fails safe. A copy on an older release reads the
 new holds as held until it updates: its reader takes a holder to be a GitHub
@@ -447,9 +451,11 @@ branch `abcd-reserved/rel-vX.Y.Z` (itd-2609151838312703 C7 and C8,
 spc-2610150728396006 step 4, resolving iss-2609091037191879). While it is live,
 every other session's land step refuses to arm its merge, naming the holder and
 the release, and leaves the pull request open; `abcd peers` shows the line
-"release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef: merges are
+"release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef (claimed): merges are
 held; the hold lapses at <time> unless the cut renews it" (the holder's full
-id; one reserved before the holder id shows `@maya`), judged by the merge
+id, marked claimed, as every line naming a release's holder marks each
+mention of a holder id that is not the reader's, since no record of pushes
+vouches for whose it is; one reserved before the holder id shows `@maya`), judged by the merge
 hold's own rule (`claim.JudgedHolds`, iss-2610160415393242): the cutting
 copy's own release is shown as "you are cutting release v0.16.0 from this
 copy: every other session's merges are held", and a release dated ahead whose
@@ -576,7 +582,11 @@ withdrawing nothing, and an admission or a release is refused.
   both armed and queued; `auto:merge`, `auto:squash` or `auto:rebase` for
   auto-merge with its method), its head when withdrawn, the holder whose
   reservation withdrew it (their holder id; the GitHub username on a
-  withdrawal recorded before the id), and its state: `withdrawn` (still to settle),
+  withdrawal recorded before the id, which no push of abcd's writes: a
+  person's own are written under their kept id in every push of theirs
+  that carries them, and read as the ones their login recorded, and an act
+  that would write over another holder's still to settle refuses, below),
+  and its state: `withdrawn` (still to settle),
   `admitted`, `rearmed`, `armed` (found armed or queued again, counted done),
   `moved`, `closed`, `merged`, `mismatch`, `manual` or `refused` (skipped for
   its owner), or `kept` (the forge refused its withdrawal, so it was left
@@ -610,8 +620,10 @@ withdrawing nothing, and an admission or a release is refused.
   drop, admit or change the person's withdrawals, and each act names them
   once for each tip, counted by pusher (`not_read`, on the act and in
   `abcd peers`). The person's own entries (their kept id, or their login on
-  an entry made before the id) are taken from their newest push, and every
-  other entry from the tip, a declared id's included, whether or not the
+  an entry made before the id) are taken from their newest push, an entry
+  under their kept id only when they first recorded it (see "What a copy
+  acts on"), and every other entry from the tip, an entry under their kept
+  id that they did not first record carried as another's, a declared id's included, whether or not the
   person's own login has pushed to the branch: a take-over between two
   accounts of one person, and its round trip back, carries each account's
   entries as the tip records them, and drops a declared id's entry only for
@@ -632,7 +644,9 @@ withdrawing nothing, and an admission or a release is refused.
   is kept for that tip in the local tier and read by listings alone (`abcd
   peers`, the launch check, the one-release-at-a-time check); every act asks
   the record again, and the local mark of a person with nothing left to do at
-  a tip only ever lets an act do nothing. The lost walk reads the history
+  a tip only ever lets an act do nothing, and is kept under the person's
+  login and declared ids with their pairings, so a declaration changed
+  since reads the tip afresh. The lost walk reads the history
   alone.
 - **Admit.** An admission, the reserve verb naming one pull request on the
   release, from the cutting copy's live reservation alone, reads the pull
@@ -719,14 +733,20 @@ withdrawing nothing, and an admission or a release is refused.
   reservation it makes and in `abcd peers` (`release_withdrawals`).
 - **What a copy acts on.** Every act that re-arms, withdraws again or admits
   a merge (a settle, the holder's release, a renewal's withdrawal again, an
-  admission) acts on an entry only when it names the person themselves (their
-  kept id, or their login on an entry made before the id), read from their
-  own newest push, names a declared id paired with a login whose own
-  newest push to the branch records that entry exactly, or names an
-  unpaired declared id and was first recorded by a reservation held under
-  that id that the reader's own login pushed. Every other entry is
+  admission) acts on an entry only when it names the person themselves, read
+  from their own newest push (their login on an entry made before the id, or
+  their kept id when the reservation that first recorded it, held under that
+  id, was pushed by their own login), names a declared id paired with a
+  login whose own newest push to the branch records that entry exactly and
+  that login pushed the reservation that first recorded it under the id, or
+  names an unpaired declared id and was first recorded by a reservation held
+  under that id that the reader's own login pushed. Every other entry is
   carried untouched and listed `stranded`, on the act and in `abcd peers`,
-  where `due` lists only what the next act in fact acts on. For a stranded
+  where `due` lists only what the next act in fact acts on; a stranded entry
+  under the reader's own kept id is named as theirs, by why no copy of
+  theirs acts on it (their login not known in the session, or the
+  reservation that first recorded it not pushed by their own login), never
+  as another holder's. For a stranded
   entry naming an unpaired declared id, one line on the terminal
   (`unpaired`, on the act and in `abcd peers`) names the id and
   says that writing its account's login beside it in
@@ -738,7 +758,12 @@ withdrawing nothing, and an admission or a release is refused.
   terminal alone and naming no login, whether the id is paired and, when it
   is, whether the forge's record of pushes says its paired account pushed
   that reservation, so the person can tell one that is not their other
-  account's before taking it over.
+  account's before taking it over. When nothing ties it to an account of
+  theirs (the id is unpaired, or its paired account did not push it), the
+  back-off ends by saying that `--take-over` is allowed only because the
+  declaration lists the id as theirs, that it replaces the reservation and
+  ends its hold while acting on none of its withdrawals, and that an id that
+  is not theirs is removed from the declaration instead.
 - **What ties a push to a login.** The pusher of each commit on a release
   branch is the login the forge's own activity record of pushes to that
   branch names (the repository activity endpoint,
@@ -763,8 +788,22 @@ withdrawing nothing, and an admission or a release is refused.
   each time that held merges from before the holder id stay held until the
   next reservation or announcement (`due_awaits_holder_id`), and a
   reservation then settles them as it keeps the id (an announcement keeps the
-  id, and the next listing settles them). Neither a read nor a push naming
-  the login stands in (dcn-2610300525431448).
+  id, and the next listing settles them), its tombstone naming each by the
+  kept id. Neither a read nor a push naming the login stands in
+  (dcn-2610300525431448). A holder id that is set or kept but refused
+  (`ABCD_HOLDER_ID` set to no id, or the kept file refused by its guard) is
+  not awaited: every act refuses until it is fixed, so the listing says so
+  instead, naming the class of the refusal (`holder_id_refused` on the
+  release and at the top of the `abcd peers` and `abcd status` documents,
+  with one line on stderr) and never the value or the file's contents.
+- **Withdrawals another holder made before the holder id.** An entry naming
+  another holder by their login names that login, which nothing abcd pushes
+  carries, so an act that would write one still to settle (withdrawn,
+  admitted or kept) into a new commit, a take-over or a settle among them,
+  refuses before it pushes anything or touches the forge, with one line
+  saying how many the release holds and that the holder's own copy settles
+  them first; it names no login. One of theirs already settled needs nothing
+  more and is not written.
 - **Lost withdrawals.** An older abcd ignores the `Abcd-Withdrawn` trailer, so
   its renewal, take-over or tombstone rewrites the tip without them. For each
   release claimed in the last 14 days, `abcd peers` and the launch check walk

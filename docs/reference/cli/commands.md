@@ -4854,11 +4854,14 @@ still going on renews it by reserving again. One
 whose head moved, that was closed or merged, or that can only be merged by hand
 (no merge queue), is skipped and named for its owner; every state is recorded on
 the tombstone (settles in --json), so no copy acts twice, a copy of another
-person never re-arms (stranded in --json). A person's withdrawals are read only
-from their own newest push to the release's branch, as the forge's record of
-pushes shows it: commits others pushed above it are counted and never read
-(not_read in settles), and when that push cannot be found or placed nothing is
-acted on for that person (unplaced in settles).
+person never re-arms (stranded in --json), and each id you declare with no
+login beside it that names one of those is listed (unpaired in --json): writing
+its account's login after it in ~/.abcd.noindex/holder-ids lets this copy settle
+them. A person's withdrawals are read only from their own newest push to the
+release's branch, as the forge's record of pushes shows it: commits others
+pushed above it are counted and never read (not_read in settles), and when that
+push cannot be found or placed nothing is acted on for that person (unplaced in
+settles).
 
 Every act fetches the reservations from origin, judges the tip, writes one
 commit and makes one plain fast-forward push, with the repository's hooks

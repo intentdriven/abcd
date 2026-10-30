@@ -122,9 +122,10 @@ queued before it (**Withdrawn merges** below). The hold binds sessions, not
 people, so the cutting session tells people working in the repository by hand
 to hold.
 `/abcd:peers` shows the line "release
-v0.16.0 being cut by h_0123456789abcdef0123456789abcdef: merges are held; the
-hold lapses at <time> unless the cut renews it" (the holder's full id, here
-an invented one; a release reserved before the holder id shows its holder's
+v0.16.0 being cut by h_0123456789abcdef0123456789abcdef (claimed): merges are
+held; the hold lapses at <time> unless the cut renews it" (the holder's full
+id, here an invented one, marked claimed wherever a line names an id that is
+not yours, since no record of pushes vouches for whose it is; a release reserved before the holder id shows its holder's
 username, `@octo`), by the same rule the hold
 counts with: in the cutting copy it shows "you are cutting release v0.16.0
 from this copy: every other session's merges are held", and a release dated
@@ -286,7 +287,11 @@ Other people's entries on the tip are carried forward as the tip records
 them. A copy of another person
 never re-arms: a reservation it makes over the release carries the
 withdrawals forward untouched (`stranded`, and a `note:` line naming whose
-they are), and `/abcd:peers` names them (`release_withdrawals`). A
+they are), and `/abcd:peers` names them (`release_withdrawals`). Beside
+`stranded`, `unpaired` lists each id the person declares in
+`~/.abcd.noindex/holder-ids` with no login beside it that names one of the
+stranded withdrawals: tell the user that writing that account's login after
+the id, on its line, lets this copy settle them. A
 withdrawal recorded on an earlier commit of the branch and missing from a
 later one, with the tip not carrying it either, is reported lost
 (`lost_withdrawals` on `/abcd:peers`, and a warning in the launch check): an

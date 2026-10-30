@@ -123,9 +123,10 @@ reservations block's own fields, with `senders_unchecked`, `not_dropped`,
 The prompt hook appends a `## STATUS` block to the text it injects
 when this checkout holds something it has not shown: a failed fetch per
 namespace, a release being cut ("release v0.16.0 being cut by
-h_0123456789abcdef0123456789abcdef: merges are held; the hold lapses at <time>
-unless the cut renews it", C8), each release cut that lapsed within the last
-week ("release v0.16.0: the cut by h_0123456789abcdef0123456789abcdef lapsed
+h_0123456789abcdef0123456789abcdef (claimed): merges are held; the hold lapses
+at <time> unless the cut renews it", C8, a holder id not the reader's marked
+claimed), each release cut that lapsed within the last
+week ("release v0.16.0: the cut by h_0123456789abcdef0123456789abcdef (claimed) lapsed
 at …; no merge is held", iss-2610241107191205), then the newest
 announcement per item, then the doubts,
 at most two one by one and otherwise one line that sums them up and always
