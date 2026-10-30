@@ -3853,7 +3853,10 @@ and is not the author's, or when the technical facilitator recorded it with
 approval of the head counts, and otherwise says it waits for the technical
 facilitator's; auto arms only a head a review receipt names (--record-review),
 and otherwise names the commit. An author whose permission cannot be read is
-unverified, and nothing is armed.
+unverified, and nothing is armed. human stops an agent merging by mistake, not
+one set on getting round it: the recorded approval is a file anything running
+under your account can write, so it is a rule your agents keep, not a proof
+that you approved.
 
 land.push and land.enqueue are read from .abcd/config.json (in the working
 directory's checkout and the branch's own) and ~/.abcd.noindex/config.json,

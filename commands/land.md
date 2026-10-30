@@ -210,6 +210,14 @@ abcd adds no approval rule or code-owner file to the forge: the forge lets a
 pull request merge with no approval, so abcd enforces this itself, and the
 shell guard refuses an agent's own `gh pr merge` while the mode is `human`.
 
+**What `human` holds against.** The gate assumes agents keep the rules: it
+stops an agent merging by mistake, not one set on getting round it. The
+recorded approval is a file in the checkout's local tier, and anything running
+under your account can write that file, reach the forge with your login, or
+merge by a route the shell guard cannot read. So `human` is a rule your agents
+keep, not a proof that you approved; nothing in abcd yet proves an approval
+was yours.
+
 ## Record the technical facilitator's approval
 
 ```bash

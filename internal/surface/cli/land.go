@@ -86,7 +86,10 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"approval of the head counts, and otherwise says it waits for the technical\n" +
 			"facilitator's; auto arms only a head a review receipt names (--record-review),\n" +
 			"and otherwise names the commit. An author whose permission cannot be read is\n" +
-			"unverified, and nothing is armed.\n\n" +
+			"unverified, and nothing is armed. human stops an agent merging by mistake, not\n" +
+			"one set on getting round it: the recorded approval is a file anything running\n" +
+			"under your account can write, so it is a rule your agents keep, not a proof\n" +
+			"that you approved.\n\n" +
 			"land.push and land.enqueue are read from .abcd/config.json (in the working\n" +
 			"directory's checkout and the branch's own) and " + abcdhome.Display("config.json") + ",\n" +
 			"default true, and off wins from any layer: any file can turn an act off and none\n" +
