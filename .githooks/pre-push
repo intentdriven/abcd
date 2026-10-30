@@ -62,7 +62,8 @@
 #
 #      The second: a status branch (`abcd announce`, itd-2609151838312703,
 #      adr-2610150729333337), refs/heads/abcd-status/<holder id> (a GitHub
-#      username on a branch made before the holder id), one per person, holding that person's announcements as a chain of empty-tree
+#      username on a branch made before the holder id), one per person,
+#      holding that person's announcements as a chain of empty-tree
 #      commits. It passes the same reservation_shape check, so it admits
 #      nothing the reservation row does not: a fast-forward of commits that
 #      change no file. A push under it that changes a file or rewrites the
