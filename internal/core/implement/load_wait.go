@@ -916,7 +916,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			// plain form's bounded hold instead. Above one slot a command that
 			// is not a race run (a whole preflight, `--wait -- make preflight`)
 			// takes the settle hold, as the plain first gate inside a preflight
-			// did: the units in their test stages are counted from the process
+			// did: the units running past the gate are counted from the process
 			// table (machineload.Ahead.Shut), and a command hold would keep the
 			// account's next slot shut until this run reached its race stage.
 			if req.Command && (res.Slots <= 1 || raceCmd) {

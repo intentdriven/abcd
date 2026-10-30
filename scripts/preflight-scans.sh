@@ -4,7 +4,7 @@
 # gitleaks over the commits the branch would land. Between 2026-10-18 and
 # 2026-10-26 they failed 12 of 32 failed CI runs, each found only after a push
 # and a hosted run; here a finding stops the preflight as a prerequisite, before
-# its test stages wait at the machine's load gate. The one exception is a
+# its build and test stages. The one exception is a
 # govulncheck finding on a branch that moves no dependency, when the same scan
 # of the fork point's tree reports every vulnerability it names: govulncheck is
 # not a required check, and the branch did not bring that finding in, so

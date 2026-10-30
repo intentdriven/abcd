@@ -802,7 +802,8 @@ too, and the check never fails for either.
 ### Wait for capacity before a preflight or a race run
 
 `make preflight` gates itself: it waits at `implement load --wait` once, as one
-whole run, before any of its stages, so run it plain, with no wrapper and no
+whole run, before any of its stages (a records-only change takes a shorter
+rule that waits at no gate), so run it plain, with no wrapper and no
 waiter loop of your own. Gate every other `go test -race` on a shared machine
 with `--wait` too, and never write a waiter loop: a hand-written
 `pgrep -f "go test -race"` loop matched its own shell, whose command line

@@ -53,7 +53,7 @@ const DiskPerPreflight uint64 = 4 << 30
 const DiskFloorMin uint64 = 8 << 30
 
 // diskFloorFor is the free space, in bytes, below which the load gate admits
-// no test stage, for a gate admitting slots preflights at once
+// no run, for a gate admitting slots preflights at once
 // (load.preflights, PreflightSlots): DiskPerPreflight for each, and
 // DiskFloorMin at least. So 8 GiB at the default of one and 16 GiB at four.
 // It follows only the person's own load.preflights (or its environment
@@ -246,7 +246,7 @@ func (d DiskCheck) Refusal() error {
 	if d.Status != DiskLow {
 		return nil
 	}
-	return errors.New("the disk is nearly full, so no test stage is admitted: a test stage writes gigabytes of build output and test binaries, " +
+	return errors.New("the disk is nearly full, so the gate admits no run: a test stage writes gigabytes of build output and test binaries, " +
 		"and on a full disk every preflight fails or writes truncated files. Waiting would not help: nothing frees disk while a waiter sleeps, " +
 		"so this refuses at once; nothing was waited for.\n" + d.describe())
 }
@@ -268,7 +268,7 @@ func (d DiskCheck) RefusalAtOpen(firstFloor uint64, slots int, setting string) e
 		lead = fmt.Sprintf("the disk floor rose to %s while this waited, because %s is now %d (the floor was %s when this began to wait)",
 			bytesText(d.FloorBytes), setting, slots, bytesText(firstFloor))
 	}
-	return errors.New(lead + ", so no test stage is admitted: a test stage writes gigabytes of build output and test binaries, " +
+	return errors.New(lead + ", so the gate admits no run: a test stage writes gigabytes of build output and test binaries, " +
 		"and on a full disk every preflight fails or writes truncated files. The gate did not open and took no hold.\n" + d.describe())
 }
 
@@ -321,7 +321,7 @@ func (d *DiskCheck) WarningText(site string) string {
 	}
 	switch d.Status {
 	case DiskLow:
-		return fmt.Sprintf("LOW DISK WARNING (%s): the load gate will admit no test stage until there is more room.\n%s", site, d.describe())
+		return fmt.Sprintf("LOW DISK WARNING (%s): the load gate will admit no run until there is more room.\n%s", site, d.describe())
 	}
 	if note := d.Note(); note != "" {
 		return fmt.Sprintf("disk check (%s): %s\n", site, note)
