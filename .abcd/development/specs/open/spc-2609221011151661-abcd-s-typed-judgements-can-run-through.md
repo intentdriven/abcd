@@ -30,7 +30,7 @@ One interface, one router with three modes, one adapter over the API adapter's c
 
 ## Footprint
 
-- packages: internal/core/decide, internal/core/lab, the OpenAI-compatible client adapter, and callers across capture, intent, memory and lint
+- packages: internal/core/decide, internal/core/lab, internal/adapter/openaiapi, internal/core/oracle/config.go, internal/core/oracle/judgement_mode_test.go, internal/core/oracle/connect_guide.go, internal/core/implement/loop/drain_decide.go, internal/core/implement/loop/drain_decide_test.go, internal/surface/cli/lab.go, internal/surface/cli/lab_surface_test.go, internal/README.md, commands/lab.md, .abcd/development/brief/04-surfaces/31-lab.md, .abcd/development/brief/05-internals/02-adapters.md, .abcd/development/brief/05-internals/03-configuration.md, .abcd/development/intents/planned/itd-2609221009495079-abcd-s-typed-judgements-can-run-through.md, .abcd/work/issues/open/iss-2610262033055327-the-decision-adapter-intent-treats.md, .abcd/work/issues/resolved/iss-2610262033055327-the-decision-adapter-intent-treats.md, .abcd/work/issues/open/iss-2610262037348735-the-decision-adapter-intent-needs-lab.md, .abcd/work/issues/resolved/iss-2610262037348735-the-decision-adapter-intent-needs-lab.md
 - tests: the router's three modes with a fake adapter; the pairs file; the harvest's rates; the window skip; the fallback receipt
 
 ## How the criteria are satisfied

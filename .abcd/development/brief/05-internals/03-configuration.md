@@ -227,7 +227,8 @@ rather than skipped:
     },
     "denylist": ["openai/*"],            // optional, none bundled; repo or machine
     "roles": { "scribe": "openrouter/typesafe/jev-1.13" },            // an agent in the roster; a keyed
-    "judgements": { "duplicate-match": "openrouter/typesafe/jev-1.13" } //   provider's routes: machine only
+    "judgements": { "duplicate-match": "shadow:openrouter/typesafe/jev-1.13" } // provider's routes: machine only;
+                                         //   host | shadow:<provider>/<model> | <provider>/<model>
   }
 }
 ```
@@ -352,6 +353,57 @@ rather than skipped:
   one, applies in its place (ruling CD2 of 2026-09-29). The same fault in
   `~/.abcd.noindex/config.json` is refused, because that file is the person's own and a
   route they set is never dropped silently.
+- **A judgement type's route has a mode** (itd-2609221009495079). An
+  `oracle.judgements.<type>` value is `host`, `shadow:<provider>/<model>` or
+  `<provider>/<model>`. `host`, or no route, keeps the type on the host. A
+  repository's `host` holds against the machine's route to the same name,
+  since it only keeps work on the host. Only the person's own configuration
+  turns a type on: a bare `<provider>/<model>` is honoured from
+  `~/.abcd.noindex/config.json`, the rule a role handed to a runner follows
+  (`runner.personal`). The same route
+  in a repository's `.abcd/config.json` is skipped with one diagnostic naming
+  the file and the route, and the machine's own route to the type applies in
+  its place, in its own mode, or the host when the machine sets none; so a
+  repository never turns a machine's shadow into on. A repository may still
+  set `host`, or `shadow:<provider>/<model>`, which decides nothing. In
+  **shadow** the host still decides.
+  The decision adapter is asked the same typed question over the same state
+  beside it and decides nothing. Each pair (the host's answer, the adapter's
+  answer and probability, the state's SHA-256 and size) is appended to
+  `pairs.jsonl` in the newest lab home the repository's lane of
+  `~/.abcd.noindex/lab/` holds, so `abcd lab mint` comes first. A state larger
+  than the model's window (32K tokens, counted high at three bytes a token) is
+  never sent: its pair is recorded as skipped with the size. With no lab
+  minted, the host still decides and no pair is kept. A bare
+  `<provider>/<model>` **turns the type on**: the adapter decides, and the run
+  record names the route and the model that answered. If the adapter cannot
+  answer (unreachable, failed, an answer outside the question's choices, a
+  state over its window), the host decides instead, with a receipt saying
+  why. A shadow route passes every rule a route turned on does (the
+  allowlist, the denylist, the keyed-provider skip, the malformed-route skip)
+  when the configuration is read and before any call. A role takes no mode.
+  The types are a closed registry: `remedy-read`, `duplicate-match`,
+  `unmeetable-criteria`, `eligibility-residual`, `source-classification`,
+  `source-selection`, `memory-check`, `ledger-category`, `ledger-severity`,
+  `prepass-overlap`, `present-tense-advisory`, `embark-lesson-ranking`. A
+  route naming anything else is
+  a diagnostic and is skipped. The drain's judgement before a lane opens runs
+  as `eligibility-residual`, a choice of `no`, `user-visible` or
+  `trust-rule`, and the drain's move calls the router for it
+  (`loop/drain_decide.go`). On the host, the default, the drain moves as it
+  always did. In shadow, the move records a pair once the host's or the
+  routed judge's answer is taken, and changes nothing else. Turned on, the
+  move asks the adapter once the host's request is written, before any runner
+  the drain's judge is routed to, and takes the answer the way a routed
+  judge's is taken, with the route named `decision-adapter <provider>/<model>`
+  in the drain's record. If the adapter cannot answer, the host's request
+  stands, with a fallback receipt in the drain's state beside the routed
+  judge's, and the adapter is not asked again for that request. No other
+  type's step calls the router yet. Those judgements are made in the host's
+  command pages, which hand nothing back to the binary, so they stay on the
+  host whatever their route says until their step calls the router. `abcd lab harvest` reports the agreement per type, and
+  the research note filed from it is the evidence a ruling turns a type on
+  with.
 - **A route to a provider that holds a key sits on the machine alone.** Only a
   route the person set up on their own machine may spend their paid key (the
   product thinker's ruling AA(b) of 2026-09-29), so a repository's
@@ -369,7 +421,9 @@ rather than skipped:
   provider holds a key when its block names `key`, judged from the block and
   never by reading the credential store. A repository's route to a provider
   whose block names no key (a local server) is admitted and wins over the
-  machine's per name, and a `--route` the person types is unaffected.
+  machine's per name, except a judgement type's route that turns the type on,
+  which only the machine's file may set (above), and a `--route` the person
+  types is unaffected.
 - **A call that spends a key takes no repository settings unless the person typed its route.** A
   provider leg sends the connection's defaults, then the winning routing row's
   settings, then the `--route`'s. On a leg to a provider that holds a key and

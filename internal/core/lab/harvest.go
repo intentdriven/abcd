@@ -51,13 +51,20 @@ type Harvested struct {
 	Gaps       []Gap             `json:"gaps"`
 	Coverage   []SectionCoverage `json:"coverage"`
 	Halted     []string          `json:"halted"`
+	// Agreement is the decision adapter's shadow agreement over the lab's
+	// pairs.jsonl (pairs.go); absent when the lab recorded no pair.
+	Agreement *Agreement `json:"agreement,omitempty"`
 }
 
 // Harvest assembles the lab's harvest in the lifeboat's section shape —
 // intention, method, what worked, what is open, candidates, coverage — from the
 // INTENTION, the findings log and the probe records, citing each finding's probe
 // records by path. Its product findings are listed as capture candidates, each
-// with the capture line that files it, found during this lab.
+// with the capture line that files it, found during this lab. A lab that
+// recorded the decision adapter's shadow pairs (pairs.go) also gets the
+// agreement per judgement type, with counts and probability bands, and the
+// line a research note filed from it carries, naming the lab home and the
+// count (itd-2609221009495079 criterion 2).
 //
 // No claim outlives its input: a finding that cites no probe record or evidence
 // file, or cites one that is missing or incomplete, is a gap, and a harvest with
@@ -132,6 +139,9 @@ func Harvest(repoRoot, id string) (Harvested, error) {
 		}
 	}
 	res.Coverage = coverage(intention, findings, probes, res)
+	if res.Agreement, err = l.agreement(); err != nil {
+		return Harvested{}, err
+	}
 	if len(res.Gaps) > 0 {
 		return res, fmt.Errorf("%w: %d finding citation(s) cannot be verified from the lab's records; nothing was written", ErrHalted, len(res.Gaps))
 	}
@@ -301,5 +311,8 @@ func harvestDoc(e Entry, intention string, findings []Finding, probes map[string
 		fmt.Fprintf(&b, "| %s | %s | %s |\n", c.Section, c.Status, c.Note)
 	}
 	b.WriteString("\nCost: this harvest records what the lab's records hold and claims no token or\nmoney cost the lab did not measure.\n")
+	if res.Agreement != nil {
+		b.WriteString("\n" + agreementDoc(res.Agreement))
+	}
 	return b.String()
 }

@@ -148,8 +148,10 @@ func TestAhoyConnectVerifiesThenWrites(t *testing.T) {
 }
 
 // TestAhoyConnectKeylessOffersBothFiles: a provider that takes no key spends
-// no key, so a route to it may sit in the repository's file or the machine's,
-// and the advice names both.
+// no key, so a role's route to it may sit in the repository's file or the
+// machine's, and the advice names both. A judgement type is offered the shadow
+// spelling, which both files honour, and told that the bare spelling turns the
+// type on only from the machine's file, the person's own.
 func TestAhoyConnectKeylessOffersBothFiles(t *testing.T) {
 	hermeticEnv(t)
 	t.Chdir(t.TempDir())
@@ -158,8 +160,20 @@ func TestAhoyConnectKeylessOffersBothFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ahoy connect: %v\n%s", err, out)
 	}
-	if calls.Load() != 1 || !strings.Contains(string(out), `= "local/qwen/qwen3-8b" in .abcd/config.json or `+abcdhome.Display("config.json")) {
-		t.Fatalf("ahoy connect (%d call(s)):\n%s", calls.Load(), out)
+	if calls.Load() != 1 {
+		t.Fatalf("ahoy connect made %d call(s):\n%s", calls.Load(), out)
+	}
+	for _, want := range []string{
+		`oracle.roles.<agent> = "local/qwen/qwen3-8b" in .abcd/config.json or ` + abcdhome.Display("config.json"),
+		`oracle.judgements.<type> = "shadow:local/qwen/qwen3-8b" in either file`,
+		`turns the type on only from ` + abcdhome.Display("config.json"),
+	} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("ahoy connect does not say %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(string(out), `oracle.judgements.<type> = "local/qwen/qwen3-8b" in .abcd/config.json`) {
+		t.Errorf("ahoy connect offers the repository's file a judgement route that turns the type on:\n%s", out)
 	}
 }
 
@@ -384,5 +398,30 @@ func TestAhoyConnectTakesStreamUsage(t *testing.T) {
 	raw, _ := os.ReadFile(abcdhome.Path(os.Getenv("HOME"), "config.json"))
 	if !strings.Contains(string(raw), `"stream_usage": false`) {
 		t.Fatalf("config.json:\n%s", raw)
+	}
+}
+
+// TestAhoyProvidersSpellsAShadowJudgementRoute: the text board spells a
+// judgement route as the configuration does, so a shadow route reads as
+// shadow and never as the bare <provider>/<model> that turns a type on.
+func TestAhoyProvidersSpellsAShadowJudgementRoute(t *testing.T) {
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+	cfg := abcdhome.Path(os.Getenv("HOME"), "config.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte(`{"oracle":{"api":{"local":{"base_url":"http://localhost:11434/v1","models":["m"]}},`+
+		`"judgements":{"remedy-read":"shadow:local/m","duplicate-match":"local/m"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCLIErr(t, "ahoy", "--providers")
+	if err != nil {
+		t.Fatalf("ahoy --providers: %v\n%s", err, out)
+	}
+	for _, want := range []string{"judgement remedy-read -> shadow:local/m (", "judgement duplicate-match -> local/m ("} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("the board does not say %q:\n%s", want, out)
+		}
 	}
 }
