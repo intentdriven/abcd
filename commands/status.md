@@ -57,10 +57,11 @@ The payload carries:
   sender's clock), `check` (`verified`, `claimed` or `doubtful`), `doubtful`
   with the reason, and `text`, the line it is shown by;
 - `doubtful`: each status branch read as doubtful, with the reason;
-  `branch` is the full branch name, `abcd-status/h_0123456789abcdef0123456789abcdef`;
+  `branch` is the full branch name,
+  `abcd-status/h_0123456789abcdef0123456789abcdef`;
 - `unread_names`: how many status branches have a name that is neither a
-  holder id nor a GitHub username in lower case, or `null` when that count could not be read here,
-  or was not kept at the status branches' last fetch.
+  holder id nor a GitHub username in lower case, or `null` when that count could
+  not be read here, or was not kept at the status branches' last fetch.
   The names themselves are never listed: whoever pushed the branch chose the
   name;
 - `branches_not_read`: how many status branches lie past the 500 one read
@@ -105,21 +106,21 @@ Without `--json`, the verb prints, in order:
   never read here: the fetch at 09:12 UTC failed: <reason>` when it never
   succeeded), and `not read: <reason>` when the read of what was fetched
   failed;
-- each announcement, newest first, `h_0123456789abcdef0123456789abcdef (claimed): merging
-  #1012, for 30 min  sent 2026-10-16T09:10:00Z`, its sender named by the
-  full holder id it carries (the ids here are invented); one on a branch made
-  before the holder id names its sender by username, `@maya (verified): …`. A
-  doubtful one says why: `h_fedcba9876543210fedcba9876543210 on
-  abcd-status/h_0123456789abcdef0123456789abcdef (doubtful: it names a sender other than
-  the branch's owner): merged #7, for 30 min`, or, on a branch named by a
-  username, `@quinn (doubtful: the forge's record names @mallory as its
+- each announcement, newest first, `h_0123456789abcdef0123456789abcdef
+  (claimed): merging #1012, for 30 min  sent 2026-10-16T09:10:00Z`, its sender
+  named by the full holder id it carries (the ids here are invented); one on a
+  branch made before the holder id names its sender by username, `@maya
+  (verified): …`. A doubtful one says why: `h_fedcba9876543210fedcba9876543210
+  on abcd-status/h_0123456789abcdef0123456789abcdef (doubtful: it names a sender
+  other than the branch's owner): merged #7, for 30 min`, or, on a branch named
+  by a username, `@quinn (doubtful: the forge's record names @mallory as its
   pusher): asking #7, for 30 min`. A commit that does
   not read as an announcement shows only its branch and the reason:
   `abcd-status/zed (doubtful: its tree is not the empty tree): an
   announcement that is not shown`. `none standing` follows a fetch that
   succeeded and found none; `none read` follows any other;
-- each doubtful branch, `abcd-status/h_fedcba9876543210fedcba9876543210 (doubtful):
-  continuity not verified: <reason>`;
+- each doubtful branch, `abcd-status/h_fedcba9876543210fedcba9876543210
+  (doubtful): continuity not verified: <reason>`;
 - the count of names not read, never the names: ``2 status branches whose
   names are not read, so not shown: `git ls-remote origin
   'refs/heads/abcd-status/*'` lists every name``, or, when that count could
@@ -134,8 +135,9 @@ Without `--json`, the verb prints, in order:
   could not be asked, or when branches were left for the next fetch to ask
   about;
 - the reservations block `/abcd:peers` prints, release holds included
-  (`release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef (claimed): merges are
-  held; the hold lapses at <time> unless the cut renews it`) and lapsed cuts;
+  (`release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef (claimed):
+  merges are held; the hold lapses at <time> unless the cut renews it`) and
+  lapsed cuts;
 - the line that an announcement informs and grants nothing.
 
 ## What a running session sees
@@ -241,9 +243,9 @@ Each of these is shown with its reason, and every other branch is still read:
   one read covers when it is first read here, whatever times its commits
   carry ("continuity not verified");
 - a branch under `abcd-status/` whose name is neither a holder id nor a GitHub
-  username in lower case: it is counted, never named and never fetched, since two names that
-  differ only in case break every fetch on a case-insensitive filesystem, and
-  whoever pushed the branch chose the name.
+  username in lower case: it is counted, never named and never fetched, since
+  two names that differ only in case break every fetch on a case-insensitive
+  filesystem, and whoever pushed the branch chose the name.
 
 ## Exits
 

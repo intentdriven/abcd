@@ -288,10 +288,10 @@ nothing re-arms is never due: the reader's own, and a paired declared id's
 that its login's own newest push records, and an unpaired declared id's that a
 reservation under it pushed by the reader's own login first recorded, each
 entry under one of the reader's ids, the kept one included, only when the
-account that id is held to pushed the reservation that first recorded it), stranded (another person's, and a
-declared id's this copy does not act on), skipped, with
-`holder_claimed` (true when the holder is a holder id that is not the
-reader's), `unpaired` (each unpaired declared id among the stranded),
+account that id is held to pushed the reservation that first recorded it),
+stranded (another person's, and a declared id's this copy does not act on),
+skipped, with `holder_claimed` (true when the holder is a holder id that is not
+the reader's), `unpaired` (each unpaired declared id among the stranded),
 `due_awaits_holder_id` (true when the reader keeps no holder id yet and
 `ABCD_HOLDER_ID` is not set, so the due ones stay held until their next
 reservation or announcement), `holder_id_refused` (the class of the refusal

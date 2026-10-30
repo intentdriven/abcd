@@ -66,12 +66,12 @@ after a short wait refuses with a retry, and never advises removing the file:
 the winner may already have pushed under the id it is writing. The act that
 mints says so once, on stderr, naming the id and the file: holds made under an
 earlier id of the person's read as someone else's until they lapse, and the
-cap counts them apart; the next act, which reads the id kept, says nothing. It is no hash of
-anything, so it says nothing of the account; the underscore cannot occur in a
-GitHub username, so it never collides with the login an older reservation
-names; and lower case keeps a status branch named by it apart from every other
-on a case-insensitive filesystem. It is read back only when the file is a
-regular file the account owns and no other account can write, through the
+cap counts them apart; the next act, which reads the id kept, says nothing. It
+is no hash of anything, so it says nothing of the account; the underscore cannot
+occur in a GitHub username, so it never collides with the login an older
+reservation names; and lower case keeps a status branch named by it apart from
+every other on a case-insensitive filesystem. It is read back only when the file
+is a regular file the account owns and no other account can write, through the
 guard every home declaration is read through; a file that fails that, or holds
 no id, refuses the act and is never replaced. A HOME inside a git working tree
 that is not the account's own is judged as the machine layer is: no holder id
@@ -102,9 +102,9 @@ their other machines and accounts, or, on a hold made before the holder id,
 the login the resolver below yields, compared without regard to case. The
 declaration holds one id per line, `h_<32 hex>` alone or followed by the
 GitHub login of the account that id is the person's on
-(`h_<32 hex> <login>`, whitespace between, `#` starting a comment): an id with a login
-beside it is paired with that login, one without is unpaired. It is read only
-from the account's own home, never from a repository's tiers, through the
+(`h_<32 hex> <login>`, whitespace between, `#` starting a comment): an id with a
+login beside it is paired with that login, one without is unpaired. It is read
+only from the account's own home, never from a repository's tiers, through the
 guard every home declaration is read through: a regular file the account owns
 that no other account can write, through no symbolic link, within 64 KiB.
 Absent, it declares none. A file failing any of that, a line that is not one
@@ -162,9 +162,9 @@ holder it cannot read backs off until the hold ends and leaves origin's tip as
 it stands.
 
 The person's GitHub username is still worked out, locally and never pushed, by
-the one holder resolver in `internal/core/claim` (invariant 10). When git's identity, read
-under the person's own configuration, is a person's (`user.name` and
-`user.email` both set, and not a machine identity as the attribution gate
+the one holder resolver in `internal/core/claim` (invariant 10). When git's
+identity, read under the person's own configuration, is a person's (`user.name`
+and `user.email` both set, and not a machine identity as the attribution gate
 judges an author), the holder comes from the first of: `user.email` when it is
 a GitHub no-reply address; `reservation.github_username` in the machine layer
 of the configuration (`~/.abcd.noindex/config.json`), never the repository's
@@ -202,14 +202,14 @@ declared, `also yours: <ids>`; or as JSON the document `{"login", "id",
 "declared_holder_ids", "declared_holder_ids_file", "holder_ids_refused"}`
 (`id` and `noreply` when known; `holder_ids_refused` when the declared ids'
 file was refused, which the query reads as declaring none, and says so on
-stderr, rather than refusing). It is how a person prints the id to copy into `ABCD_HOLDER_ID`. None of it is pushed. It may
-make that one user-endpoint call in the same two cases as a reservation: when
-git's identity is a person's but neither its address nor the machine layer
-names the holder, and when git's identity is not a person's, whatever the
-machine layer says. It takes no record id and no other flag, reserves and
-pushes nothing, and writes only the holder id, minted when none is kept and
-the variable is not set. It exits 0 when the account and the holder id are
-known and 2 when not.
+stderr, rather than refusing). It is how a person prints the id to copy into
+`ABCD_HOLDER_ID`. None of it is pushed. It may make that one user-endpoint call
+in the same two cases as a reservation: when git's identity is a person's but
+neither its address nor the machine layer names the holder, and when git's
+identity is not a person's, whatever the machine layer says. It takes no record
+id and no other flag, reserves and pushes nothing, and writes only the holder
+id, minted when none is kept and the variable is not set. It exits 0 when the
+account and the holder id are known and 2 when not.
 
 ## What it writes
 
@@ -289,11 +289,11 @@ fetch of that branch succeeds (dcn-2610161837009957).
 The act is then judged against the rest of the fetched view. A reservation
 that would take its holder past their cap of live reservations, ten unless
 their machine raises it, counted across every record by whose holds are
-theirs (the holder id, the declared ids and, on older holds, the login), is refused
-naming the cap and the reservations, with the advice to wait for one of their
-pull requests to merge, which ends its reservation, rather than release one
-whose work is done, or to raise the cap; the refusal is typed, so a drain waits
-on it instead of refusing its move, at the same cap
+theirs (the holder id, the declared ids and, on older holds, the login), is
+refused naming the cap and the reservations, with the advice to wait for one of
+their pull requests to merge, which ends its reservation, rather than release
+one whose work is done, or to raise the cap; the refusal is typed, so a drain
+waits on it instead of refusing its move, at the same cap
 ([`35-drain.md`](35-drain.md), spc-2610161044461448 step 6);
 a renewal, and a take-over of
 the same person's other copy, of a reservation still live add none and are
@@ -372,17 +372,16 @@ why; at the ceiling of 100 the refusal no longer offers raising it.
 The count is by whose holds are the person's (their holder id, the ids they
 declare, and their login on older holds), while each machine reads its own
 ceiling, so another account whose id is declared here is counted against the
-same total under a ceiling no session here can read (iss-2610231004140527). Two places say so. The
-refusal at the cap groups the held records by the copy each was made from: this
-copy, each other worktree of the repository on this machine by its directory's
-name, and elsewhere. And `abcd peers` counts the reader's own live reservations
-the same way against this machine's ceiling, warning from four fifths of it
-that the total is shared with every session and account whose holds are the
-reader's. A sibling
-worktree is told apart by the copy key kept in its local tier, read without
-minting one and only for the reader's own holds; the key itself is never
-shown. The worktrees are listed only by those two readers, never by the view
-every other surface shares.
+same total under a ceiling no session here can read (iss-2610231004140527). Two
+places say so. The refusal at the cap groups the held records by the copy each
+was made from: this copy, each other worktree of the repository on this machine
+by its directory's name, and elsewhere. And `abcd peers` counts the reader's own
+live reservations the same way against this machine's ceiling, warning from four
+fifths of it that the total is shared with every session and account whose holds
+are the reader's. A sibling worktree is told apart by the copy key kept in its
+local tier, read without minting one and only for the reader's own holds; the
+key itself is never shown. The worktrees are listed only by those two readers,
+never by the view every other surface shares.
 
 An act the judgement finds reserves afresh, a reservation over no tip or a
 released one, or a take-over, then asks the forge whether origin is a fork,
@@ -451,15 +450,15 @@ branch `abcd-reserved/rel-vX.Y.Z` (itd-2609151838312703 C7 and C8,
 spc-2610150728396006 step 4, resolving iss-2609091037191879). While it is live,
 every other session's land step refuses to arm its merge, naming the holder and
 the release, and leaves the pull request open; `abcd peers` shows the line
-"release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef (claimed): merges are
-held; the hold lapses at <time> unless the cut renews it" (the holder's full
-id, marked claimed, as every line naming a release's holder marks each
-mention of a holder id that is not the reader's, since no record of pushes
-vouches for whose it is; one reserved before the holder id shows `@maya`), judged by the merge
-hold's own rule (`claim.JudgedHolds`, iss-2610160415393242): the cutting
-copy's own release is shown as "you are cutting release v0.16.0 from this
-copy: every other session's merges are held", and a release dated ahead whose
-first sighting the checkout cannot keep is shown as not counted, in land's
+"release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef (claimed):
+merges are held; the hold lapses at <time> unless the cut renews it" (the
+holder's full id, marked claimed, as every line naming a release's holder marks
+each mention of a holder id that is not the reader's, since no record of pushes
+vouches for whose it is; one reserved before the holder id shows `@maya`),
+judged by the merge hold's own rule (`claim.JudgedHolds`, iss-2610160415393242):
+the cutting copy's own release is shown as "you are cutting release v0.16.0 from
+this copy: every other session's merges are held", and a release dated ahead
+whose first sighting the checkout cannot keep is shown as not counted, in land's
 notice's words, with `own` and `unsighted` on each `release_holds` row of
 its machine-readable form. A release reservation that expired with no tag
 on origin is a cut its holder stopped renewing: it holds no merge, and
@@ -622,22 +621,28 @@ withdrawing nothing, and an admission or a release is refused.
   `abcd peers`). The person's own entries (their kept id, or their login on
   an entry made before the id) are taken from their newest push, an entry
   under their kept id only when they first recorded it (see "What a copy
-  acts on"), and every other entry from the tip, an entry under their kept
-  id that they did not first record carried as another's, a declared id's included, whether or not the
-  person's own login has pushed to the branch: a take-over between two
-  accounts of one person, and its round trip back, carries each account's
-  entries as the tip records them, and drops a declared id's entry only for
-  the person's own entry for the same pull request. When that newest push cannot be found or
-  placed (an app's push above it, which says nothing of which person sent it;
-  the record read short, not caught up with the tip, broken or not
-  answering; a commit the record places several accounts on; or the push past
-  the 64 commits read), abcd does nothing for that person on the release: no
-  re-arm, no withdrawal, no admission, no comment. It says so, once for each
-  tip on an act and on every `abcd peers` (`unplaced`), and a later act asks
-  again; a renewal, an admission or a release over it is refused with nothing
-  pushed. A copy that pushes through an app therefore has no newest push of
-  its own, and abcd acts on none of its withdrawals: its person re-arms them
-  by hand. A renewal or a release over a later commit is judged from the
+  acts on"), and every other entry from the tip, a declared id's included,
+  whether or not the person's own login has pushed to the branch: a take-over
+  between two accounts of one person, and its round trip back, carries each
+  account's entries as the tip records them, and drops a declared id's entry
+  only for the person's own entry for the same pull request. An entry under
+  their kept id that they did not first record is carried as another's only
+  when the commit the push is written on holds it exactly as it stands, so the
+  walk for its first record passes over that push; over any other commit (a
+  renewal from their own newest push over a commit above it that does not
+  carry it, say) it is dropped, since the push would be its first record, a
+  reservation held under their id and pushed by their own login, and it would
+  read as theirs from then on. When that
+  newest push cannot be found or placed (an app's push above it, which says
+  nothing of which person sent it; the record read short, not caught up with the
+  tip, broken or not answering; a commit the record places several accounts on;
+  or the push past the 64 commits read), abcd does nothing for that person on
+  the release: no re-arm, no withdrawal, no admission, no comment. It says so,
+  once for each tip on an act and on every `abcd peers` (`unplaced`), and a
+  later act asks again; a renewal, an admission or a release over it is refused
+  with nothing pushed. A copy that pushes through an app therefore has no newest
+  push of its own, and abcd acts on none of its withdrawals: its person re-arms
+  them by hand. A renewal or a release over a later commit is judged from the
   holder's own newest push, so a tombstone another login pushed neither ends
   nor renews the release, the admissions are kept, and nothing is withdrawn
   or commented on twice. What the record placed on each commit beneath a tip
@@ -744,8 +749,8 @@ withdrawing nothing, and an admission or a release is refused.
   refused from its first record on (`kept` in every commit that carries
   it), the first record is the lowest of those commits, held to the same
   push. A first record at the last commit of a walk its bound cut short is
-  never vouched for, since the commit beneath it is not read. Every other entry is
-  carried untouched and listed `stranded`, on the act and in `abcd peers`,
+  never vouched for, since the commit beneath it is not read. Every other entry
+  is carried untouched and listed `stranded`, on the act and in `abcd peers`,
   where `due` lists only what the next act in fact acts on; a stranded entry
   under the reader's own kept id is named as theirs, by why no copy of
   theirs acts on it (their login not known in the session, or the
@@ -763,25 +768,26 @@ withdrawing nothing, and an admission or a release is refused.
   is, whether the forge's record of pushes says its paired account pushed
   that reservation, so the person can tell one that is not their other
   account's before taking it over. When nothing ties it to an account of
-  theirs (the id is unpaired, or its paired account did not push it), the
-  back-off ends by saying that a take-over is allowed only because the
+  theirs (the id is unpaired, its paired account did not push it, or whether
+  it did is not known), the back-off ends by saying that a take-over is allowed only because the
   declaration lists the id as theirs, that it replaces the reservation (and,
-  for a release, ends its hold while acting on none of its withdrawals), and
-  that an id that is not theirs is removed from the declaration instead.
+  for a release, makes its hold the taker's while acting on none of its
+  withdrawals), and that an id that is not theirs is removed from the
+  declaration instead.
 - **What ties a push to a login.** The pusher of each commit on a release
   branch is the login the forge's own activity record of pushes to that
   branch names (the repository activity endpoint,
   `repos/<owner>/<name>/activity`, asked for the branch's full ref, the
-  record `abcd status` holds announcements to as well), placed on the commits each push carried. Nothing
-  on this path falls back to a commit's author or committer fields, which
-  any writer can set. Where that record cannot say (a page read short, a
-  record not caught up with the tip, a push missing from it, an app's push,
-  which names no person, a commit several accounts' pushes are placed on, or
-  a push past the 64 commits read), nothing is read as anyone's push and
-  nothing is acted on for that person. What a listing reads of the record is
-  kept for one tip in the checkout's local tier and read by listings alone;
-  an act always asks the forge again. So a take-over carries a paired id's
-  entries, and they are acted on, only as far as that check reaches: an
+  record `abcd status` holds announcements to as well), placed on the commits
+  each push carried. Nothing on this path falls back to a commit's author or
+  committer fields, which any writer can set. Where that record cannot say (a
+  page read short, a record not caught up with the tip, a push missing from it,
+  an app's push, which names no person, a commit several accounts' pushes are
+  placed on, or a push past the 64 commits read), nothing is read as anyone's
+  push and nothing is acted on for that person. What a listing reads of the
+  record is kept for one tip in the checkout's local tier and read by listings
+  alone; an act always asks the forge again. So a take-over carries a paired
+  id's entries, and they are acted on, only as far as that check reaches: an
   entry is acted on when the paired login's own newest push records it, and
   that reach is no more than the write access the pushing account already
   holds on the repository.
