@@ -72,8 +72,8 @@ source run cannot be traced to the pack items it tested.
   shown its ranked ideas to pick from.
 - **Given** automatic mode, **when** the run starts, **then** the top ideas up to
   the cap are tested one after another with no question asked, and each
-  verdict is recorded privately unless `--public` is passed on the person's
-  word (adr-2610300908239458).
+  verdict is recorded privately, as every verdict from a private pack is
+  (adr-2610300908239458).
 - **Given** a verdict from a source run, **when** it is recorded, **then** it
   carries the ideas offered and the ideas picked, and cites the pack items it
   tested, each resolving in the local pack store.
