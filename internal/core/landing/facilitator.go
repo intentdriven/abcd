@@ -8,7 +8,7 @@ package landing
 // approval of the head commit by a maintainer other than the author.
 //
 // Its inputs are the facilitator mode as the default branch's committed
-// .abcd/config.json and the machine layer declare it (ReadFacilitatorAt), the
+// .abcd/config.json and the machine layer declare it (readFacilitatorAt), the
 // ruleset mirror's merge rule at the same tip, the author's permission on the
 // repository, the pull request's reviews, the technical facilitator's recorded
 // approval (RecordApproval), and in auto a review receipt naming the head
@@ -394,7 +394,7 @@ var ErrModeUnreadable = errors.New("facilitator.mode cannot be read")
 // sanitised); a forge answer that cannot be read is a reason in the decision,
 // never an arming.
 func DecideMerge(q MergeQuery) (MergeDecision, error) {
-	mode, err := ReadFacilitatorAt(q.Roots, q.RepoRoot, q.Tip, q.TipName)
+	mode, err := readFacilitatorAt(q.Roots, q.RepoRoot, q.Tip, q.TipName)
 	if err != nil {
 		return MergeDecision{}, fmt.Errorf("%w: %s", ErrModeUnreadable, termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 	}

@@ -202,7 +202,7 @@ func RootsFor(cwd string) (Roots, []string) {
 
 // HomeRoots is RootsFor without the repository: the machine layer of the
 // caller's own home, judged by MachineRoots, and the note it made. It asks git
-// nothing, so a reader that names its repository itself (ReadFacilitatorAt's
+// nothing, so a reader that names its repository itself (readFacilitatorAt's
 // callers) and runs under a deadline resolves its home with no unbounded git.
 func HomeRoots() (Roots, string) {
 	home, err := userHomeDir()

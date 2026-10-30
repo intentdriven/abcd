@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/ghcontract"
 )
 
@@ -350,7 +351,7 @@ func TestTheLaneDoesNotDecideItsOwnMode(t *testing.T) {
 // human in the machine layer beats auto in the repository's.
 func TestTheMachinesHumanWins(t *testing.T) {
 	f := newFixtureFiles(t, queueRuleset, map[string]string{".abcd/config.json": autoConfig})
-	dir := filepath.Join(f.home, ".abcd.noindex")
+	dir := abcdhome.Path(f.home)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

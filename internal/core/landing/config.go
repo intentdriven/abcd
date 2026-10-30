@@ -193,17 +193,6 @@ func checkMode(m string) error {
 	return nil
 }
 
-// ReadFacilitator resolves facilitator.mode for the working directory cwd,
-// as the layered configuration resolves it, with the notes RootsFor wrote on the way (a
-// refused home among them) for the caller to print. The error is the reader's
-// raw text: a front door masks it before printing it, since it can quote a key
-// a configuration file wrote.
-func ReadFacilitator(cwd string) (Facilitator, []string, error) {
-	r, notes := layered.RootsFor(cwd)
-	f, err := readMode(r)
-	return f, notes, err
-}
-
 // readMode resolves facilitator.mode through the layered configuration
 // reader, which claims the facilitator namespace with its one key mode, so a
 // misspelt key is refused naming its file.
@@ -248,7 +237,7 @@ func readModeContext(ctx context.Context, r layered.Roots) (Facilitator, error) 
 	return Facilitator{Key: KeyFacilitatorMode, Mode: ModeHuman, Layer: layered.Bundled.String(), Origin: layered.Bundled.String()}, nil
 }
 
-// ReadFacilitatorAt resolves facilitator.mode as the merge gate reads it: the
+// readFacilitatorAt resolves facilitator.mode as the merge gate reads it: the
 // repository layer is .abcd/config.json as the commit tip holds it (the
 // default branch's tip, named name in every origin), read from the object
 // store of the repository at repoRoot, beside r's machine layer, never the
@@ -256,20 +245,20 @@ func readModeContext(ctx context.Context, r layered.Roots) (Facilitator, error) 
 // commits auto, or deletes the default branch's human, does not decide the
 // gate for itself. r's Repo is replaced; its Home and HomeRefused are kept.
 // The error is the reader's raw text, for the caller to mask.
-func ReadFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator, error) {
+func readFacilitatorAt(r layered.Roots, repoRoot, tip, name string) (Facilitator, error) {
 	r.Repo, r.RepoAt, r.RepoAtName = repoRoot, tip, name
 	return readMode(r)
 }
 
 // ReadDefaultFacilitator resolves facilitator.mode for the repository holding
-// cwd as the merge gate does (ReadFacilitatorAt), at the tip of the default
+// cwd as the merge gate does (readFacilitatorAt), at the tip of the default
 // branch git tracks for it (gitutil.DefaultRef), with the machine layer of the
 // caller's home (layered.HomeRoots, as RootsFor resolves it). The board reads
 // the mode through it; the shell guard reads ReadFetchedFacilitator. A repository with no default branch to read is
 // an error (ErrNoDefaultBranch): a caller that cannot read the mode takes it
 // as human.
 func ReadDefaultFacilitator(cwd string) (Facilitator, error) {
-	return ReadDefaultFacilitatorContext(context.Background(), cwd)
+	return readDefaultFacilitatorContext(context.Background(), cwd)
 }
 
 // FetchedReadTimeout bounds ReadFetchedFacilitator as a whole: the shell
@@ -346,7 +335,7 @@ func readFetchedFacilitator(ctx context.Context, cwd string) (Facilitator, error
 	if _, err := gitutil.RunLimitedContext(ctx, root, 4096, "cat-file", "-e", tip+"^{commit}"); err != nil {
 		return Facilitator{}, fresh(Remote+"'s "+def+" moved while it was fetched", nil)
 	}
-	return ReadFacilitatorAt(r, root, tip, Remote+"/"+def)
+	return readFacilitatorAt(r, root, tip, Remote+"/"+def)
 }
 
 // forgeRemote names the remote the forge client would act on in the checkout
@@ -393,13 +382,13 @@ func forgeRemote(ctx context.Context, root string) (string, error) {
 // shows the mode (the status line) may stay quiet over it.
 var ErrNoDefaultBranch = errors.New("the repository has no default branch to read " + KeyFacilitatorMode + " at")
 
-// ReadDefaultFacilitatorContext is ReadDefaultFacilitator with every git
+// readDefaultFacilitatorContext is ReadDefaultFacilitator with every git
 // question bounded by ctx: a git still running when ctx ends is killed and the
 // read fails with ctx's error wrapped, never with ErrNoDefaultBranch. It asks
 // the network nothing: the default branch is the one last fetched, and its
 // configuration is read from the local object store. The status line reads
 // the mode through it, inside its own deadline.
-func ReadDefaultFacilitatorContext(ctx context.Context, cwd string) (Facilitator, error) {
+func readDefaultFacilitatorContext(ctx context.Context, cwd string) (Facilitator, error) {
 	r, _ := layered.HomeRoots()
 	root, err := gitutil.ToplevelContext(ctx, cwd)
 	if ctxErr := ctx.Err(); ctxErr != nil {
@@ -435,7 +424,7 @@ func deadlineErr(err error) error {
 
 // AutonomousMerging is the status line's merging element, read: it reports
 // whether the repository's facilitator.mode is auto, read through the merge
-// gate's own resolver (ReadDefaultFacilitatorContext): the default branch's
+// gate's own resolver (readDefaultFacilitatorContext): the default branch's
 // committed .abcd/config.json and the machine layer, never the working tree's
 // copy, so the row and the gate cannot disagree about who merges. Its git
 // questions are bounded by ctx, the row's git share, and ask the network
@@ -448,7 +437,7 @@ func deadlineErr(err error) error {
 // site), and ahoy reads statusline, so the import would close a cycle. The
 // front door hands it to statusline as statusline.MergingMode.
 func AutonomousMerging(ctx context.Context, root string) (bool, string) {
-	f, err := ReadDefaultFacilitatorContext(ctx, root)
+	f, err := readDefaultFacilitatorContext(ctx, root)
 	switch {
 	case errors.Is(err, ErrNoDefaultBranch):
 		return false, ""

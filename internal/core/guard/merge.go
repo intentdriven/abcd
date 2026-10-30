@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The merge rule (itd-2610150602547271, spc-2610161609350616 step 5). The
@@ -69,13 +71,13 @@ const (
 
 	familyMerge = "merge"
 
-	// modeSetting names the setting that allows the merge commands.
-	modeSetting = "facilitator.mode: auto in the default branch's committed .abcd/config.json, with no facilitator.mode: human in ~/.abcd.noindex/config.json"
-
 	// mergeSuccessor is what to do instead of a merge command while the mode
 	// is human.
 	mergeSuccessor = "Leave the merge to the technical facilitator: say the pull request is ready for their approval. Once they approve its head (a forge review, or `abcd land --approve` run by them), `abcd land` arms it."
 )
+
+// modeSetting names the setting that allows the merge commands.
+var modeSetting = "facilitator.mode: auto in the default branch's committed .abcd/config.json, with no facilitator.mode: human in " + abcdhome.Display("config.json")
 
 // MergeMode reports whether the repository's facilitator mode is human, and
 // how it reads ("facilitator.mode is human (repo layer, …)"), for the

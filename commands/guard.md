@@ -1078,8 +1078,8 @@ approval and leave the arming to `abcd land`.
 Recording the technical facilitator's approval, `abcd land --approve`, is a
 **block** in every mode: it is the person's own act, and an approval an agent
 records is a false record of who approved. The binary's spelling is the registry
-entry `abcd-land-approve`; under any other program name (`go run ./cmd/abcd`,
-`go run .`, a cross-compiled or renamed build) the land verb with `--approve` is
+entry `abcd-land-approve`; under any other program name (in a source checkout,
+`go run ./cmd/abcd` or `go run .`; a cross-compiled or renamed build) the land verb with `--approve` is
 refused as `abcd-land-approve-any-program`, whatever the program is called. A
 flag word that a substitution prints is not read. An approving review on the
 forge is a **block** in every mode too (`forge-review-approve`):
