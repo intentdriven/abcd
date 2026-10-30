@@ -285,7 +285,8 @@ reaches it when the provider's block names the model in `logprob_models`
 `APIConfig.Call`, so the allowlist, the denylist, the key by name and the
 router's window check hold for it unchanged, for a one-token answer with
 `logprobs` and `top_logprobs`: a choose question's options are labelled by
-letter (at most 26), a score is one digit, and yes or no is itself. Each
+letter from B, skipping I (at most 24: A and I are words a reply can open
+with), a score is one digit, and yes or no is itself. Each
 option's probability is what the first token's alternatives give its label,
 normalised over the options, and the most probable is the answer. An answer
 whose alternatives name no option, or one with no log-probabilities, is no

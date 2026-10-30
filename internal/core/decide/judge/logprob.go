@@ -53,7 +53,11 @@ const logprobInstructions = "You answer one typed judgement with a single label 
 
 // labelLetters label a choose question's options, one letter each: a letter
 // is one token for any tokenizer, where a two-digit number is two for some.
-const labelLetters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+// A and I are left out: each is an English word a reply can open with ("A
+// trust-rule change …", "I think …"), and a first token is read as a label, so
+// a model ignoring the letter instruction would be read as answering the first
+// option (the drain's "no").
+const labelLetters = "BCDEFGHJKLMNOPQRSTUVWXYZ"
 
 // labels are the one-token answer labels of q's choices, in the choices'
 // order: a letter per option, each score on the scale as its digit, yes and

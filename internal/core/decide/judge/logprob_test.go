@@ -125,27 +125,27 @@ func TestTheLogprobCandidatePicksTheMostProbableOptionNormalised(t *testing.T) {
 	}
 }
 
-// A choose question's options are labelled by letter, and the letter's
-// probability is the option's.
+// A choose question's options are labelled by letter from B, and the
+// letter's probability is the option's.
 func TestTheLogprobCandidateReadsAChooseQuestionByItsLetters(t *testing.T) {
 	q := dupQuestion()
 	ls, err := labels(q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a, err := fromLogprobs(q, ls, "B", []openaiapi.TokenLogprob{{Token: "B", Logprob: -0.1}, {Token: " a", Logprob: -2.0}, {Token: "b", Logprob: -3.0}})
+	a, err := fromLogprobs(q, ls, "C", []openaiapi.TokenLogprob{{Token: "C", Logprob: -0.1}, {Token: " b", Logprob: -2.0}, {Token: "c", Logprob: -3.0}})
 	if err != nil || a.Value != q.Options[1] || a.Probability <= 0.5 || a.Probability >= 1 {
 		t.Fatalf("answer %+v, err %v", a, err)
 	}
-	if !strings.Contains(renderLabelled(State{Text: "s"}, q, ls), "B. "+q.Options[1]) {
+	if !strings.Contains(renderLabelled(State{Text: "s"}, q, ls), "C. "+q.Options[1]) {
 		t.Fatal("the options are labelled by letter")
 	}
-	many := Question{Type: DuplicateMatch, Kind: KindChoose, Ask: "which", Options: make([]string, 27)}
+	many := Question{Type: DuplicateMatch, Kind: KindChoose, Ask: "which", Options: make([]string, len(labelLetters)+1)}
 	for i := range many.Options {
 		many.Options[i] = "o" + strconv.Itoa(i)
 	}
 	if _, err := labels(many); err == nil {
-		t.Fatal("27 options cannot each be one letter")
+		t.Fatalf("%d options cannot each be one letter", len(many.Options))
 	}
 	if _, err := labels(Question{Type: EmbarkLessonRanking, Kind: KindScore, Ask: "how far", Min: 0, Max: 10}); err == nil {
 		t.Fatal("a score of 10 is not one digit")
@@ -300,10 +300,41 @@ func TestTheLogprobCandidateRefusesAnOffLabelAnswerWhateverTheAlternatives(t *te
 		Options: []string{"no", "user-visible", "trust-rule"}}
 	tgt := oracle.Target{Provider: "lp", Model: "small/model", Mode: oracle.JudgementOn}
 	a, err := LogprobAdapter{Calls: cfg, Target: tgt}.Judge(context.Background(), State{Text: "s"}, q)
-	if err == nil || !strings.Contains(err.Error(), `answered "no"`) || !strings.Contains(err.Error(), "A, B, C") {
+	if err == nil || !strings.Contains(err.Error(), `answered "no"`) || !strings.Contains(err.Error(), "B, C, D") {
 		t.Fatalf("an off-label answer is no answer: answer %+v, err %v", a, err)
 	}
 	if f.calls.Load() != 1 {
 		t.Fatalf("asked once, got %d calls", f.calls.Load())
+	}
+}
+
+// A choose question's labels are never an English word a reply can open
+// with: a model that ignores the letter instruction and begins "A trust-rule
+// change …" or "I think …" has answered no option, so the article is never
+// read as the first option (the drain's "no").
+func TestTheLogprobCandidateReadsNoWordAsAChooseLabel(t *testing.T) {
+	q := Question{Type: EligibilityResidual, Kind: KindChoose, Ask: "Which hand-back, if any?",
+		Options: []string{"no", "user-visible", "trust-rule"}}
+	for _, first := range []string{"A", " a", "I"} {
+		f := newLPFake(t, 200, lpAnswer("small/model", first, `{"content":[{"token":`+strconv.Quote(first)+`,"logprob":-0.05,"top_logprobs":[`+
+			`{"token":`+strconv.Quote(first)+`,"logprob":-0.05},{"token":"B","logprob":-4.0},{"token":"C","logprob":-5.0}]}]}`))
+		cfg, err := oracle.LoadAPI(lpRoots(t, f.srv.URL+"/v1", marked, "host"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tgt := oracle.Target{Provider: "lp", Model: "small/model", Mode: oracle.JudgementOn}
+		a, err := LogprobAdapter{Calls: cfg, Target: tgt}.Judge(context.Background(), State{Text: "s"}, q)
+		if err == nil || !strings.Contains(err.Error(), "answered "+strconv.Quote(strings.TrimSpace(first))) {
+			t.Errorf("a first token %q is a word, not a label: answer %+v, err %v", first, a, err)
+		}
+	}
+	ls, err := labels(Question{Type: DuplicateMatch, Kind: KindChoose, Ask: "which", Options: make([]string, len(labelLetters))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range []string{"A", "I"} {
+		if labelOf(ls, w) >= 0 {
+			t.Errorf("%q, a word, labels an option among %v", w, ls)
+		}
 	}
 }

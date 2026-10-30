@@ -232,15 +232,15 @@ func TestTheDrainsQuestionThroughTheLogprobCandidate(t *testing.T) {
 	now := time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)
 
 	mu.Lock()
-	reply = answer("C", `{"content":[{"token":"C","logprob":-0.1,"top_logprobs":[`+
-		`{"token":"C","logprob":-0.1},{"token":"B","logprob":-2.5},{"token":"no","logprob":-3.0}]}]}`)
+	reply = answer("D", `{"content":[{"token":"D","logprob":-0.1,"top_logprobs":[`+
+		`{"token":"D","logprob":-0.1},{"token":"C","logprob":-2.5},{"token":"no","logprob":-3.0}]}]}`)
 	mu.Unlock()
 	taken, fb, err := decideDrainJudgement(context.Background(), root, o, judging, *plan, now)
 	if err != nil || fb != nil || taken == nil {
 		t.Fatalf("taken %+v, fallback %+v, err %v", taken, fb, err)
 	}
 	if taken.Answer != JudgementYes || taken.Kind != HandBackTrustRule || !strings.Contains(taken.Reason, "probability 0.92") {
-		t.Fatalf("C labels trust-rule, at its probability over the letters: %+v", taken)
+		t.Fatalf("D labels trust-rule, at its probability over the letters: %+v", taken)
 	}
 	mu.Lock()
 	var req struct {
@@ -263,15 +263,15 @@ func TestTheDrainsQuestionThroughTheLogprobCandidate(t *testing.T) {
 	p := prompt.String()
 	for _, want := range []string{
 		drainQuestion().Ask,
-		"A. " + JudgementNo + "\n", "B. " + HandBackUserVisible + "\n", "C. " + HandBackTrustRule + "\n",
+		"B. " + JudgementNo + "\n", "C. " + HandBackUserVisible + "\n", "D. " + HandBackTrustRule + "\n",
 		"reply with that answer's letter, never the word",
-		"Reply with one letter: A, B or C.",
+		"Reply with one letter: B, C or D.",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("the prompt lacks %q:\n%s", want, p)
 		}
 	}
-	if !strings.HasSuffix(strings.TrimSpace(p), "Reply with one letter: A, B or C.") {
+	if !strings.HasSuffix(strings.TrimSpace(p), "Reply with one letter: B, C or D.") {
 		t.Errorf("the letter instruction is the prompt's last word:\n%s", p)
 	}
 	if string(req.MaxTokens) != "1" || string(req.Logprobs) != "true" || string(req.TopLogprobs) != "20" {
@@ -282,7 +282,7 @@ func TestTheDrainsQuestionThroughTheLogprobCandidate(t *testing.T) {
 	// answer, however a letter ranks below it.
 	mu.Lock()
 	reply = answer("no", `{"content":[{"token":"no","logprob":-0.01,"top_logprobs":[`+
-		`{"token":"no","logprob":-0.01},{"token":"C","logprob":-7.0}]}]}`)
+		`{"token":"no","logprob":-0.01},{"token":"D","logprob":-7.0}]}]}`)
 	mu.Unlock()
 	taken, fb, err = decideDrainJudgement(context.Background(), root, o, judging, *plan, now)
 	if err != nil || taken != nil || fb == nil || !strings.Contains(fb.Detail, `answered "no"`) ||
