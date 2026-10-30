@@ -892,8 +892,12 @@ one waiter at a time is kept by the process table, the hold and that last look
 three times the cores, under the extreme limit. Inside `make preflight` each
 test stage then takes a `go test -p` derived from the online cores and the load
 as the stage starts (twice the cores less the load, at most the cores and at
-least a quarter of them), so one run cannot saturate the machine. It reads the
-machine every 15 seconds, prints one line when it starts waiting and one when
+least a quarter of them), so one run cannot saturate the machine, and a
+`go test -timeout` of 40 minutes a package, or 80 when the one-minute load
+passes one per core as the stage starts (two values only, since go test's
+cache key holds the timeout), so a package slowed by the load is not killed
+with no test hung. It reads the machine every 15 seconds, prints one line when
+it starts waiting and one when
 it first finds the machine free, and nothing more until it opens, and gives up
 after `--timeout` (30 minutes by default; `make preflight` gives its first gate
 twelve hours and its race gate two), exiting 1 and naming what it still waited
@@ -1049,8 +1053,8 @@ So a second lone race run gated this way waits for the first, as a second
 race stage does. A hold whose waiter has died, or whose pid now belongs to
 another process, is reclaimed by the next waiter. A SIGINT or SIGTERM to the
 waiter is passed on to the command, and the waiter waits for it to exit before
-it exits and releases the hold, so the command is never left running without
-its waiter. A symlinked `~/.abcd.noindex` is refused, and so is a home that lies inside a git working tree, unless that home is the account's own home itself, before anything is created under it (exit 1). Relay a timeout as
+it exits and releases a command hold (a settle hold lapses on its own), so the
+command is never left running without its waiter. A symlinked `~/.abcd.noindex` is refused, and so is a home that lies inside a git working tree, unless that home is the account's own home itself, before anything is created under it (exit 1). Relay a timeout as
 printed; do not loop around it.
 
 A command hold lasts until its command exits, starts its own race run or has

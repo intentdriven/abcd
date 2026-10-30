@@ -127,7 +127,9 @@ const preflightRaceGateWait = 2 * time.Hour
 // preflightRunBound is how long a whole preflight run may take once the gate
 // admits it, on a loaded machine: the gates, the eval lanes, build, vet, and
 // the unit and race stages, each of those two under a 40-minute package
-// budget.
+// budget, or machineload.TestTimeoutMaxFactor times that when the load passes
+// one runnable per core as the stage starts
+// (TestRunBoundHoldsBothStagesAtTheTimeoutCap).
 const preflightRunBound = 4 * time.Hour
 
 // gateTimeout bounds one `make preflight`: its wait at the load gate, the

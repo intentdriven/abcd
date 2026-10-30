@@ -491,6 +491,20 @@ func raceTimeout(t *testing.T, where, text string) time.Duration {
 	t.Helper()
 	cmd := raceCommand(t, where, text)
 	m := regexp.MustCompile(`\s-timeout[ =](\S+)`).FindStringSubmatch(cmd)
+	if m != nil && m[1] == `"$$t"` {
+		// make preflight's stage scales its base with the load as it starts
+		// (timeoutCall); the base is the budget CI's steps declare.
+		m = nil
+		before := text
+		if i := strings.Index(text, cmd); i >= 0 {
+			before = text[:i]
+		}
+		for _, l := range strings.Split(before, "\n") {
+			if b := timeoutCall.FindStringSubmatch(strings.TrimSpace(l)); b != nil {
+				m = b
+			}
+		}
+	}
 	if m == nil {
 		t.Fatalf("%s: `%s` sets no -timeout, so the lane inherits go test's 10m default "+
 			"per package, which internal/surface/cli under -race has already crossed", where, cmd)
