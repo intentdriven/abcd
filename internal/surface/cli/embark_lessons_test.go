@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -132,7 +133,7 @@ func withLessonsRouter(t *testing.T, mode string, adapter *lessonsFake, got *[]l
 		routes[judge.EmbarkLessonRanking] = oracle.Target{Provider: "openrouter", Model: "typesafe/jev-1.13", Mode: mode}
 	}
 	prev := loadLessonsRouter
-	loadLessonsRouter = func(string) (*judge.Router, error) {
+	loadLessonsRouter = func(io.Writer, string) (*judge.Router, error) {
 		return judge.NewForTest(routes, func(oracle.Target) judge.Judge { return adapter }, func(p lab.Pair) (string, string, error) {
 			*got = append(*got, p)
 			return "lab-261030000000-abcdef0", abcdhome.Display("lab/x/lab-261030000000-abcdef0/pairs.jsonl"), nil
@@ -274,5 +275,24 @@ func TestEmbarkLessonsReportsARouteToAnUnknownType(t *testing.T) {
 	v := readLessonsView(t, []byte(js))
 	if len(v.Diagnostics) != 1 || !strings.Contains(v.Diagnostics[0], "embark-lesson-rankng") {
 		t.Fatalf("the JSON carries the diagnostic: %+v", v.Diagnostics)
+	}
+}
+
+// The configuration's layers are read as every front door reads them, and
+// what they refuse is said: a HOME inside a git working tree is not read as
+// the machine's layer, and one stderr line says so, with stdout still one
+// JSON document.
+func TestEmbarkLessonsSaysWhenTheHomeIsNotRead(t *testing.T) {
+	lb, target := lessonsTarget(t)
+	plantHome(t)
+	stdout, stderr, err := runCLISplit(t, "embark", "lessons", lb, target, "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(stderr, "HOME lies inside the git working tree") != 1 {
+		t.Fatalf("stderr does not say the home was not read:\n%s", stderr)
+	}
+	if v := readLessonsView(t, []byte(stdout)); v.Judgement == nil || v.Judgement.Mode != "host" || len(v.Questions) != 5 {
+		t.Fatalf("the refused home routes nothing: %+v", v)
 	}
 }

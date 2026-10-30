@@ -35,9 +35,14 @@ const maxEmbarkBriefBytes = 256 * 1024
 
 // loadLessonsRouter reads the decision adapter's configuration for the target
 // at targetAbs: the repository it lies in, or the target itself, is where a
-// shadow pair's lab is looked for. Tests replace it.
-var loadLessonsRouter = func(targetAbs string) (*judge.Router, error) {
-	roots, _ := layered.RootsFor(targetAbs)
+// shadow pair's lab is looked for. What resolving the layers refused (a
+// foreign-owned root, a HOME inside a working tree) goes to stderr, one line
+// each, as every front door that reads the layers says it. Tests replace it.
+var loadLessonsRouter = func(stderr io.Writer, targetAbs string) (*judge.Router, error) {
+	roots, notes := layered.RootsFor(targetAbs)
+	for _, n := range notes {
+		fmt.Fprintln(stderr, termsafe.Sanitize(fsutil.RedactHome(n)))
+	}
 	repo := roots.Repo
 	if repo == "" {
 		repo = targetAbs
@@ -87,7 +92,7 @@ func newEmbarkLessonsCommand(asJSON *bool, resolveDirs func([]string) (string, s
 			// brief, or no lessons, nothing is judged.
 			var router *judge.Router
 			if len(view.Questions) > 0 {
-				if router, err = loadLessonsRouter(tgtAbs); err != nil {
+				if router, err = loadLessonsRouter(cmd.ErrOrStderr(), tgtAbs); err != nil {
 					return fail(fmt.Errorf("the decision adapter's configuration: %w", err))
 				}
 				out.Diagnostics = termsafe.SanitizeAll(router.Diagnostics)
