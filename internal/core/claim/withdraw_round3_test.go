@@ -10,11 +10,11 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lease"
 )
 
-// forgedOver pushes, over id's tip, a reservation commit naming octo as its
+// rewrittenOver pushes, over id's tip, a reservation commit naming octo as its
 // holder and recording #11 withdrawn at headA, then a tombstone over it
 // carrying the same: what any writer who can push to the branch can write.
 // It returns the two commits.
-func (w *world) forgedOver(id string) (record, tomb string) {
+func (w *world) rewrittenOver(id string) (record, tomb string) {
 	w.t.Helper()
 	wd := []Withdrawal{{Number: 11, ID: "PR_eleven", Form: FormAutoSquash, Head: headA, By: "octo", State: WithdrawnPending}}
 	rec := message{Record: id, Holder: "octo", Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: t0, ExpiresAt: t0.Add(time.Hour), Withdrawn: wd}
@@ -49,7 +49,7 @@ func releasedWithNothingArmed(t *testing.T) (*world, *fakeForge, *participant) {
 // octo's record, and are re-armed.
 func TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.pusherOf[record], f.pusherOf[tomb] = "mal", "mal"
 	res, err := octo.reserve("iss-8", "o.go")
 	if err != nil {
@@ -82,7 +82,7 @@ func TestAWithdrawalRecordedByACommitAnotherLoginPushedIsNeverReArmed(t *testing
 // record is whole.
 func TestARecordOfPushesThatIsPartialOrBehindDefersTheReArm(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	w.forgedOver("rel-v0.16.0") // octo's own pushes, as the record reads by default
+	w.rewrittenOver("rel-v0.16.0") // octo's own pushes, as the record reads by default
 	tip := w.remoteTip("rel-v0.16.0")
 	for i, c := range []struct {
 		name string
@@ -127,7 +127,7 @@ func TestARecordOfPushesThatIsPartialOrBehindDefersTheReArm(t *testing.T) {
 // is re-armed, and why is named once for the tip.
 func TestAWithdrawalAnAppPushedIsLeftForItsPersonAndNamedOncePerTip(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, _ := w.forgedOver("rel-v0.16.0")
+	record, _ := w.rewrittenOver("rel-v0.16.0")
 	f.pusherOf[record] = "app"
 	res, err := octo.reserve("iss-8", "o.go")
 	if err != nil {
@@ -155,7 +155,7 @@ func TestAWithdrawalAnAppPushedIsLeftForItsPersonAndNamedOncePerTip(t *testing.T
 // and not on every act after.
 func TestAnUnrecordedWithdrawalIsNamedOncePerTip(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.pusherOf[record], f.pusherOf[tomb] = "mal", "mal"
 	for i, want := range []int{1, 0, 0} {
 		res, err := octo.reserve("iss-8", "o.go")

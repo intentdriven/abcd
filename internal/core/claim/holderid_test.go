@@ -446,8 +446,8 @@ func TestAHomeInsideAWorkingTreeKeepsNoHolderID(t *testing.T) {
 		t.Fatal(err)
 	}
 	home := filepath.Join(tree, "home")
-	planted := "h_" + strings.Repeat("c", 32)
-	keepHolderID(t, home, planted)
+	seeded := "h_" + strings.Repeat("c", 32)
+	keepHolderID(t, home, seeded)
 	declareHolderIDs(t, home, "h_"+strings.Repeat("d", 32)+"\n")
 
 	w := newWorld(t)
@@ -456,7 +456,7 @@ func TestAHomeInsideAWorkingTreeKeepsNoHolderID(t *testing.T) {
 	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "HOME lies inside the git working tree") || w.remoteTip("iss-5") != "" {
 		t.Fatalf("an act under a HOME inside a working tree = %v; want it refused, nothing pushed", err)
 	}
-	if s := ReaderSelf(p.dir, p.opts()); s.ID != "" || len(s.Declared) != 0 || s.Owns(planted) || s.Login != "" || s.Owns("octo") || s.Known() {
+	if s := ReaderSelf(p.dir, p.opts()); s.ID != "" || len(s.Declared) != 0 || s.Owns(seeded) || s.Login != "" || s.Owns("octo") || s.Known() {
 		t.Fatalf("the reader under such a HOME = %+v; want no holder id read and no login, so no hold reads as theirs", s)
 	}
 

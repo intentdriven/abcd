@@ -56,8 +56,8 @@ func TestAReleaseNamesWhatItDoesNotActOnOncePerTip(t *testing.T) {
 		m, ws := w.tipWithdrawals("rel-v0.16.0")
 		m.Withdrawn = append(ws, Withdrawal{Number: 14, ID: "PR_fourteen", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending})
 		m.ClaimedAt, m.ExpiresAt = w.clock(), w.clock().Add(time.Hour)
-		planted := w.pushChild("rel-v0.16.0", record, m.text(), w.clock())
-		f.pusherOf[planted] = "mal"
+		rival := w.pushChild("rel-v0.16.0", record, m.text(), w.clock())
+		f.pusherOf[rival] = "mal"
 		f.reset()
 		w.set(t0.Add(time.Minute))
 		return w, f, octo, record
@@ -200,7 +200,7 @@ var quinnID = "h_" + strings.Repeat("c", 32)
 // a reservation, never as this person's.
 func TestASettleNamesOnlyItsOwnPersonsWithdrawals(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	w.forgedOver("rel-v0.16.0") // octo's #11, octo's own pushes
+	w.rewrittenOver("rel-v0.16.0") // octo's #11, octo's own pushes
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
 	m.Withdrawn = append(ws, Withdrawal{Number: 12, ID: "PR_twelve", Form: FormAutoMerge, Head: headB, By: quinnID, State: WithdrawnPending})
 	w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), t0)
@@ -217,7 +217,7 @@ func TestASettleNamesOnlyItsOwnPersonsWithdrawals(t *testing.T) {
 // once for each tip, so a new tip names them again.
 func TestAnUnrecordedWithdrawalIsNamedAgainOnANewTip(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.pusherOf[record], f.pusherOf[tomb] = "mal", "mal"
 	if s := settleAfter(t, octo); !slices.Equal(s.NotRead, []PushCount{{Pusher: "mal", Commits: 2}}) {
 		t.Fatalf("settle = %+v", s)
@@ -294,7 +294,7 @@ func TestAnAdmittedMergeTheSettleCannotArmIsNamedForItsOwner(t *testing.T) {
 // record, so it is re-armed.
 func TestAPersonsOwnPushOfSeveralCommitsVouchesForEach(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.edit = func(ps []Push) []Push {
 		i, j := pushIndex(ps, tomb), pushIndex(ps, record)
 		return slices.Concat(ps[:i], []Push{{Before: ps[j].Before, After: tomb, Pusher: "octo"}}, ps[j+1:])

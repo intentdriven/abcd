@@ -14,9 +14,9 @@ import (
 // reader's id is not the reader's push, as a commit naming their login is not
 // (iss-2610290809526033).
 
-// forgedOverNaming is forgedOver with the commits naming holder, as holder and
-// as the withdrawer of #11.
-func (w *world) forgedOverNaming(id, holder string) (record, tomb string) {
+// rewrittenOverNaming is rewrittenOver with the commits naming holder, as holder
+// and as the withdrawer of #11.
+func (w *world) rewrittenOverNaming(id, holder string) (record, tomb string) {
 	w.t.Helper()
 	wd := []Withdrawal{{Number: 11, ID: "PR_eleven", Form: FormAutoSquash, Head: headA, By: holder, State: WithdrawnPending}}
 	rec := message{Record: id, Holder: holder, Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: t0, ExpiresAt: t0.Add(time.Hour), Withdrawn: wd}
@@ -34,7 +34,7 @@ func (w *world) forgedOverNaming(id, holder string) (record, tomb string) {
 // re-armed.
 func TestACommitAnotherLoginPushedNamingTheReadersHolderIDIsNeverReArmed(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, tomb := w.forgedOverNaming("rel-v0.16.0", octo.keptHolderID())
+	record, tomb := w.rewrittenOverNaming("rel-v0.16.0", octo.keptHolderID())
 	f.pusherOf[record], f.pusherOf[tomb] = "mal", "mal"
 	res, err := octo.reserve("iss-8", "o.go")
 	if err != nil {
@@ -72,9 +72,9 @@ func malEndedOctosCutNamingOctosID(t *testing.T) (*world, *fakeForge, *participa
 	if m.Holder != octo.keptHolderID() {
 		t.Fatalf("octo's cut names %q; want octo's holder id", m.Holder)
 	}
-	forged := message{Record: m.Record, Holder: m.Holder, Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: w.clock(), ExpiresAt: w.clock().Add(time.Hour), Withdrawn: ws, AssistedBy: m.AssistedBy}
-	w.pushAs(f, "rel-v0.16.0", "mal", forged.text())
-	tomb := forged
+	rival := message{Record: m.Record, Holder: m.Holder, Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55", ClaimedAt: w.clock(), ExpiresAt: w.clock().Add(time.Hour), Withdrawn: ws, AssistedBy: m.AssistedBy}
+	w.pushAs(f, "rel-v0.16.0", "mal", rival.text())
+	tomb := rival
 	tomb.ReleasedAt, tomb.ExpiresAt = w.clock(), w.clock()
 	w.pushAs(f, "rel-v0.16.0", "mal", tomb.text())
 	w.set(t0.Add(time.Minute))

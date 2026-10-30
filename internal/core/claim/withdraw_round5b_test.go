@@ -28,8 +28,8 @@ func tombstonedByMal(t *testing.T) (*world, *fakeForge, *participant) {
 	}
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
 	tm := message{Record: m.Record, Holder: m.Holder, Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
-	f.pusherOf[planted] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
+	f.pusherOf[rival] = "mal"
 	w.set(t0.Add(time.Minute))
 	return w, f, octo
 }

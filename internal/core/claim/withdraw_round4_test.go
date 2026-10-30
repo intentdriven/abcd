@@ -115,8 +115,8 @@ func TestALiveRenewalWithdrawsAgainOnlyWhatItsWithdrawerRecorded(t *testing.T) {
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
 	m.Withdrawn = append(ws, Withdrawal{Number: 14, ID: "PR_fourteen", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending})
 	m.ClaimedAt, m.ExpiresAt = w.clock(), w.clock().Add(time.Hour)
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
-	f.pusherOf[planted] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
+	f.pusherOf[rival] = "mal"
 	f.reset()
 	w.set(t0.Add(time.Minute))
 	res, err := octo.do(Request{Record: "rel-v0.16.0"})
@@ -258,7 +258,7 @@ func TestPeersNeverCallsAWithdrawalAnAppOrAnotherLoginPushedDue(t *testing.T) {
 		},
 	} {
 		w, f, octo := releasedWithNothingArmed(t)
-		record, tomb := w.forgedOver("rel-v0.16.0")
+		record, tomb := w.rewrittenOver("rel-v0.16.0")
 		f.pusherOf[record], f.pusherOf[tomb] = pusher, pusher
 		if _, err := Fetch(octo.dir, octo.opts()); err != nil {
 			t.Fatal(err)
@@ -513,7 +513,7 @@ func pushIndex(ps []Push, after string) int {
 // newest push, and both are counted, not read.
 func TestAPushCarryingSeveralCommitsIsPlacedOnEachOfThem(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.edit = func(ps []Push) []Push {
 		i, j := pushIndex(ps, tomb), pushIndex(ps, record)
 		one := Push{Before: ps[j].Before, After: tomb, Pusher: "mal"}
@@ -532,7 +532,7 @@ func TestAPushCarryingSeveralCommitsIsPlacedOnEachOfThem(t *testing.T) {
 // nothing is re-armed.
 func TestAForcedPushIsPlacedOnEveryCommitBeneathIt(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	_, tomb := w.forgedOver("rel-v0.16.0") // octo's own pushes
+	_, tomb := w.rewrittenOver("rel-v0.16.0") // octo's own pushes
 	m, _ := w.tipWithdrawals("rel-v0.16.0")
 	forced := w.pushChild("rel-v0.16.0", tomb, m.text()+"\n", t0)
 	if _, err := Fetch(octo.dir, octo.opts()); err != nil {
@@ -557,7 +557,7 @@ func TestAForcedPushIsPlacedOnEveryCommitBeneathIt(t *testing.T) {
 // octo's withdrawal beneath it is re-armed.
 func TestAPushIsPlacedOnlyOnTheCommitsAboveItsEarlierTip(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	_, tomb := w.forgedOver("rel-v0.16.0") // octo's own pushes
+	_, tomb := w.rewrittenOver("rel-v0.16.0") // octo's own pushes
 	m, _ := w.tipWithdrawals("rel-v0.16.0")
 	later := w.pushChild("rel-v0.16.0", tomb, m.text()+"\n", t0)
 	f.pusherOf[later] = "mal"
@@ -573,7 +573,7 @@ func TestAPushIsPlacedOnlyOnTheCommitsAboveItsEarlierTip(t *testing.T) {
 // is named.
 func TestAPushThisCheckoutCannotPlaceIsPlacedOnTheWholeLine(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	_, tomb := w.forgedOver("rel-v0.16.0") // octo's own pushes
+	_, tomb := w.rewrittenOver("rel-v0.16.0") // octo's own pushes
 	m, _ := w.tipWithdrawals("rel-v0.16.0")
 	back := w.pushChild("rel-v0.16.0", tomb, m.text()+"\n", t0) // octo's, as the record reads by default
 	// Two pushes of mal's this checkout never saw, then octo's back to the
@@ -599,7 +599,7 @@ func TestAPushThisCheckoutCannotPlaceIsPlacedOnTheWholeLine(t *testing.T) {
 func TestARecordWithAPushMissingSettlesNothing(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
 	before := w.remoteTip("rel-v0.16.0")
-	record, tomb := w.forgedOver("rel-v0.16.0")
+	record, tomb := w.rewrittenOver("rel-v0.16.0")
 	f.edit = func(ps []Push) []Push {
 		i, j := pushIndex(ps, tomb), pushIndex(ps, record)
 		return slices.Concat(ps[:i], []Push{{Before: before, After: tomb, Pusher: "octo"}, {Before: record, After: before, Pusher: "mal"}}, ps[j+1:])
@@ -651,7 +651,7 @@ func TestUnbrokenNeedsEveryLinkDownToTheBranchsFirstPush(t *testing.T) {
 // full, places no newest push of octo's.
 func TestARecordOfNoPushesSettlesNothing(t *testing.T) {
 	w, f, octo := releasedWithNothingArmed(t)
-	w.forgedOver("rel-v0.16.0")
+	w.rewrittenOver("rel-v0.16.0")
 	f.edit = func([]Push) []Push { return nil }
 	s := settleAfter(t, octo)
 	if len(f.mutations()) != 0 || s.Unplaced == "" {
@@ -728,8 +728,8 @@ func TestAnUnrecordedWithdrawalIsShownAgainWhenTheSettleNamingItIsLost(t *testin
 	}
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
 	m.Withdrawn = append(ws, Withdrawal{Number: 14, ID: "PR_fourteen", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending})
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
-	f.pusherOf[planted] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
+	f.pusherOf[rival] = "mal"
 	w.tagOrigin("v0.16.0")
 	if _, err := Fetch(octo.dir, octo.opts()); err != nil {
 		t.Fatal(err)

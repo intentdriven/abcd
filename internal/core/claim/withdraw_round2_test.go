@@ -155,11 +155,11 @@ func TestALapsedReleaseEndsForItsHolderAndReArmsWhatItWithdrew(t *testing.T) {
 	}
 }
 
-// TestALapseAnotherLoginForgedEndsNothing (dcn-2610271926369425 review): a
+// TestALapseAnotherLoginWroteEndsNothing (dcn-2610271926369425 review): a
 // commit another login pushes over a live cut, naming its holder with a lease
 // long past, is no lapse of theirs: the tip is not the holder's own newest
 // push, so their next act re-arms nothing and pushes no tombstone.
-func TestALapseAnotherLoginForgedEndsNothing(t *testing.T) {
+func TestALapseAnotherLoginWroteEndsNothing(t *testing.T) {
 	w := newWorld(t)
 	f := armedForge(t)
 	octo := w.clone("1234+octo@users.noreply.github.com", "")
@@ -169,8 +169,8 @@ func TestALapseAnotherLoginForgedEndsNothing(t *testing.T) {
 	m, _ := w.tipWithdrawals("rel-v0.16.0")
 	past := t0.Add(-48 * time.Hour)
 	m.ClaimedAt, m.ExpiresAt = past, past.Add(time.Hour)
-	forged := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), past)
-	f.pusherOf[forged] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), past)
+	f.pusherOf[rival] = "mal"
 	f.reset()
 	w.set(t0.Add(time.Minute))
 	if _, err := octo.reserve("iss-8", "o.go"); err != nil {
@@ -179,8 +179,8 @@ func TestALapseAnotherLoginForgedEndsNothing(t *testing.T) {
 	if got := f.mutations(); len(got) != 0 {
 		t.Fatalf("mutations = %v; want nothing re-armed on a lapse another login wrote", got)
 	}
-	if tip, _ := w.tipWithdrawals("rel-v0.16.0"); tip.released() || w.remoteTip("rel-v0.16.0") != forged {
-		t.Fatal("octo's act pushed a tombstone over the forged lapse")
+	if tip, _ := w.tipWithdrawals("rel-v0.16.0"); tip.released() || w.remoteTip("rel-v0.16.0") != rival {
+		t.Fatal("octo's act pushed a tombstone over a lapse another login wrote")
 	}
 }
 

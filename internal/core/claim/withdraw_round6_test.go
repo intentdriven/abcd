@@ -86,44 +86,44 @@ func allRearmed(f *fakeForge) bool {
 // nothing, and says so, on the act and on peers.
 func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *testing.T) {
 	for name, c := range map[string]struct {
-		plant  func(w *world, f *fakeForge)
+		seed   func(w *world, f *fakeForge)
 		above  int  // commits mal pushed above octo's newest push
 		buried bool // octo's newest push lies past the walk
 	}{
-		"one entry dropped, then re-added kept": {plant: func(w *world, f *fakeForge) {
+		"one entry dropped, then re-added kept": {seed: func(w *world, f *fakeForge) {
 			m, ws := w.tipWithdrawals("rel-v0.16.0")
 			m.Withdrawn = withoutWithdrawal(ws, 11)
 			w.pushAs(f, "rel-v0.16.0", "mal", m.text())
 			m.Withdrawn = withState(ws, 11, WithdrawnKept)
 			w.pushAs(f, "rel-v0.16.0", "mal", m.text())
 		}, above: 2},
-		"one entry dropped, then re-added re-armed": {plant: func(w *world, f *fakeForge) {
+		"one entry dropped, then re-added re-armed": {seed: func(w *world, f *fakeForge) {
 			m, ws := w.tipWithdrawals("rel-v0.16.0")
 			m.Withdrawn = withoutWithdrawal(ws, 11)
 			w.pushAs(f, "rel-v0.16.0", "mal", m.text())
 			m.Withdrawn = withState(ws, 11, WithdrawnRearmed)
 			w.pushAs(f, "rel-v0.16.0", "mal", m.text())
 		}, above: 2},
-		"two changes in a row, moved then closed": {plant: func(w *world, f *fakeForge) {
+		"two changes in a row, moved then closed": {seed: func(w *world, f *fakeForge) {
 			m, ws := w.tipWithdrawals("rel-v0.16.0")
 			m.Withdrawn = withState(ws, 11, WithdrawnMoved)
 			w.pushAs(f, "rel-v0.16.0", "mal", m.text())
 			m.Withdrawn = withState(ws, 11, WithdrawnClosed)
 			w.pushAs(f, "rel-v0.16.0", "mal", m.text())
 		}, above: 2},
-		"a change beneath an unreadable commit": {plant: func(w *world, f *fakeForge) {
+		"a change beneath an unreadable commit": {seed: func(w *world, f *fakeForge) {
 			m, ws := w.tipWithdrawals("rel-v0.16.0")
 			m.Withdrawn = withState(ws, 11, WithdrawnKept)
 			w.pushAs(f, "rel-v0.16.0", "mal", m.text())
 			w.pushAs(f, "rel-v0.16.0", "mal", "garbage\n\nnot a reservation\n")
 		}, above: 2},
-		"an unreadable commit, then a change": {plant: func(w *world, f *fakeForge) {
+		"an unreadable commit, then a change": {seed: func(w *world, f *fakeForge) {
 			m, ws := w.tipWithdrawals("rel-v0.16.0")
 			w.pushAs(f, "rel-v0.16.0", "mal", "garbage\n\nnot a reservation\n")
 			m.Withdrawn = withState(ws, 11, WithdrawnKept)
 			w.pushAs(f, "rel-v0.16.0", "mal", m.text())
 		}, above: 2},
-		"a change beneath 65 commits": {plant: func(w *world, f *fakeForge) {
+		"a change beneath 65 commits": {seed: func(w *world, f *fakeForge) {
 			m, ws := w.tipWithdrawals("rel-v0.16.0")
 			m.Withdrawn = withState(ws, 11, WithdrawnKept)
 			tip := w.pushChildren("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m, maxChain+1)
@@ -131,7 +131,7 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 				f.pusherOf[c] = "mal"
 			}
 		}, buried: true},
-		"a tombstone dated outside the window": {plant: func(w *world, f *fakeForge) {
+		"a tombstone dated outside the window": {seed: func(w *world, f *fakeForge) {
 			m, ws := w.tipWithdrawals("rel-v0.16.0")
 			old := w.clock().Add(-15 * 24 * time.Hour)
 			tm := message{Record: m.Record, Holder: m.Holder, Copy: m.Copy, ClaimedAt: old, ExpiresAt: old, ReleasedAt: old,
@@ -141,7 +141,7 @@ func TestEachShapeAboveAPersonsNewestPushLeavesTheirRecordAsTheyPushedIt(t *test
 	} {
 		t.Run(name, func(t *testing.T) {
 			w, f, octo := heldOver(t)
-			c.plant(w, f)
+			c.seed(w, f)
 			w.set(t0.Add(time.Minute))
 			rw := listingOf(t, w, octo, "rel-v0.16.0")
 			commented, tip := len(f.posted()), w.remoteTip("rel-v0.16.0")

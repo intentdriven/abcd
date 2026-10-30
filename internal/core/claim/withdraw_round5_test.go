@@ -39,8 +39,8 @@ func TestAStateAnotherLoginChangedOnALiveReservationIsReArmedByTheRelease(t *tes
 	}
 	m.Withdrawn = ws
 	m.ClaimedAt, m.ExpiresAt = w.clock(), w.clock().Add(time.Hour)
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
-	f.pusherOf[planted] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), m.text(), w.clock())
+	f.pusherOf[rival] = "mal"
 	f.reset()
 	w.set(t0.Add(2 * time.Hour))
 	res, err := octo.do(Request{Record: "rel-v0.16.0", Release: true})
@@ -94,8 +94,8 @@ func TestATombstoneAnotherLoginPushedRecordingEveryWithdrawalSettledChangesNothi
 		ws[i].State = WithdrawnRearmed
 	}
 	tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
-	f.pusherOf[planted] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
+	f.pusherOf[rival] = "mal"
 	w.set(t0.Add(time.Minute))
 	if _, err := octo.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil {
 		t.Fatal(err)
@@ -124,8 +124,8 @@ func TestAStateAnotherLoginsTombstoneChangedIsReArmedWhenTheReleaseEnds(t *testi
 		}
 	}
 	tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
-	f.pusherOf[planted] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
+	f.pusherOf[rival] = "mal"
 	f.reset()
 	w.set(t0.Add(time.Minute))
 	s := settleAfter(t, octo)
@@ -163,8 +163,8 @@ func TestAnotherLoginsTombstoneMidCutEndsNothing(t *testing.T) {
 	}
 	m, ws := w.tipWithdrawals("rel-v0.16.0")
 	tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
-	f.pusherOf[planted] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
+	f.pusherOf[rival] = "mal"
 	f.reset()
 	w.set(t0.Add(time.Minute))
 	before := len(f.posted())
@@ -682,8 +682,8 @@ func TestAReservationOverAnotherLoginsTombstoneCarriesWhatItChanged(t *testing.T
 		}
 	}
 	tm := message{Record: m.Record, Holder: "octo", Copy: m.Copy, ClaimedAt: w.clock(), ExpiresAt: w.clock(), ReleasedAt: w.clock(), Withdrawn: ws, AssistedBy: m.AssistedBy}
-	planted := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
-	f.pusherOf[planted] = "mal"
+	rival := w.pushChild("rel-v0.16.0", w.remoteTip("rel-v0.16.0"), tm.text(), w.clock())
+	f.pusherOf[rival] = "mal"
 	w.set(t0.Add(time.Minute))
 	if _, err := octo.do(Request{Record: "rel-v0.16.0"}); err != nil {
 		t.Fatal(err)
