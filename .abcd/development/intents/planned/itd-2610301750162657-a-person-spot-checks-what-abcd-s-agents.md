@@ -29,7 +29,7 @@ Typed links: `builds_on`
 work is sampled and whose written rule,
 [adr-2609291342092738](../../decisions/adrs/2609291342092738-a-drain-takes-an-issue-alone-only-when.md),
 is what a finding about it amends) and
-[itd-2610150602547271](itd-2610150602547271-a-repository-declares-whether-its.md)
+[itd-2610150602547271](../shipped/itd-2610150602547271-a-repository-declares-whether-its.md)
 (the merge mode under which a pull request that passed its gates merges with
 no person asked: "the reviews are automated, not skipped"). Related:
 [itd-2610240850336695](../drafts/itd-2610240850336695-before-stepping-away-the-person-grants.md),
