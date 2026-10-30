@@ -88,7 +88,9 @@ Refresh the rulesets after any settings change (ids: 19969675, 21045110, 2492163
 
 ```sh
 gh api repos/intentdriven/abcd/rulesets/<id> \
-  | jq -S '{name, target, enforcement, conditions, bypass_actors, rules}'
+  | jq -S '{name, target, enforcement, conditions, bypass_actors, rules}
+      | .rules |= map(if .type == "required_status_checks"
+          then .parameters.required_status_checks |= sort_by(.context) else . end)'
 ```
 
 Refresh `repo-settings.json` with the verb that owns it, which rewrites the file
