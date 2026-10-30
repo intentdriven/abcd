@@ -71,6 +71,15 @@ const (
 	SlotsEnv     = "env"
 )
 
+// slotsSetting is the setting a count from src was read from, as a message
+// names it.
+func slotsSetting(src string) string {
+	if src == SlotsEnv {
+		return PreflightSlotsEnv
+	}
+	return PreflightSlotsKey
+}
+
 // The two gates a waiter waits at.
 const (
 	// GateTests is the first gate, before a preflight's test stages.

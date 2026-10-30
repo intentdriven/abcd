@@ -91,8 +91,9 @@ evals-cold-reading:
 # env GOROOT` fetches and caches the declared toolchain if the machine lacks it,
 # then reports where it landed, and the gofmt under that GOROOT is the one CI
 # runs. `fmt` applies the same binary, so the remedy and the diagnosis can never
-# disagree, and `preflight` runs this gate before any other and then exports the
-# same GOTOOLCHAIN to every Go step it makes (see below).
+# disagree, and `preflight` exports the same GOTOOLCHAIN to every Go step it
+# makes (see below), the load gate's `go run` first, and runs this gate first
+# among its stages, straight after the load check.
 #
 # It REFUSES rather than falling back when the toolchain cannot be resolved
 # (offline, or the fetch declined). A fallback would print a filename judged by
@@ -495,9 +496,14 @@ preflight: export ABCD_TEST_SHARDS := 3
 # that asserts standard-library wording passed preflight on a newer local go and
 # failed CI (pull request 728). The go on PATH switches to the declared release
 # and puts its bin first on PATH for anything it runs, so a `go` a test execs is
-# the declared one too. `fmt-check` runs second, straight after the load check,
-# and its resolver (scripts/pinned-toolchain.sh) refuses, naming the skew, when
-# the release cannot be fetched, before any gate runs on it.
+# the declared one too. The first Go step is the load gate's own `go run
+# ./cmd/abcd implement load --wait` on the preflight line, before any stage, so
+# a machine that lacks the declared release and cannot fetch it (offline) sees
+# that go run fail with go's own toolchain download error, before anything is
+# waited for or gated. Once the release is cached, `fmt-check` runs first among
+# the stages, straight after the load check, and its resolver
+# (scripts/pinned-toolchain.sh) refuses, naming the skew, whenever the release
+# cannot be resolved, before any other gate runs on it.
 preflight: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
 
 # The test binaries these targets run skip the flush to stable storage

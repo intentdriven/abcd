@@ -519,6 +519,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	// each time against the floor the count read at that same look sizes
 	// (diskFloorFor), so a gate and its floor never judge by different counts.
 	// No hold is taken yet, so a refusal leaves nothing behind.
+	var firstFloor uint64
 	readSlots := func(atOpen bool) (open bool, err error) {
 		n, src, note, err := PreflightSlots(getenv, home)
 		if err != nil {
@@ -533,10 +534,11 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			disk := ReadDisk(home, diskFloorFor(n))
 			res.DiskNote = disk.Note()
 			if first {
+				firstFloor = diskFloorFor(n)
 				if err := disk.Refusal(); err != nil {
 					return false, err
 				}
-			} else if err := disk.RefusalAtOpen(); err != nil {
+			} else if err := disk.RefusalAtOpen(firstFloor, n, slotsSetting(src)); err != nil {
 				res.WaitedS = now().Sub(start).Seconds()
 				return false, err
 			}
@@ -870,6 +872,19 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				// replaced.
 				if procsOK && machineload.Descends(snap.Procs, req.Self.PID, h.PID) {
 					continue
+				}
+				// Above one slot a waiter whose command is not a race run judges a
+				// first gate's command hold as the settle hold
+				// (dcn-2610300618371321): a run admitted at one slot keeps that
+				// hold until its race run starts, and judged as written it would
+				// keep a raised count from reaching the runs queued behind it. The
+				// running preflights are still counted against the slots from the
+				// process table (machineload.Ahead.Shut).
+				if gate == GateTests && h.Form == HoldCommand && res.Slots > 1 && !raceCmd {
+					h.Form = HoldSettle
+					if settled := h.Opened.Add(WaitSettle); settled.Before(h.Until) {
+						h.Until = settled
+					}
 				}
 				if holdInForce(h, snap, procsOK, runs, t) {
 					if res.Holder == nil {
