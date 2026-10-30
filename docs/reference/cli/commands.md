@@ -1737,7 +1737,7 @@ unknown verdict, or one missing its reason, is refused with nothing written.
 **Example:**
 
 ```
-abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "Alice Example" --reason "the behaviour is the documented one"
+abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "<who decided>" --reason "the behaviour is the documented one"
 ```
 
 ### `abcd embark`
@@ -1760,14 +1760,15 @@ abcd embark from ../lifeboat
 
 #### `abcd embark lessons`
 
-Rank the lessons a lifeboat's retrospectives carry against the new voyage's brief: Writes nothing; refuses a lifeboat that fails its manifest.
+Rank a lifeboat's retrospective lessons against the new voyage's brief: Writes only shadow pairs to the lab home; refuses a lifeboat that fails its manifest.
 
 **Usage:** `abcd embark lessons <lifeboat-dir> [target-dir] [flags]`
 
 **Flags:**
 
 ```
-      --brief string   rank against this file's text (the press release the interview is writing) instead of the target's framing chapter
+      --brief string    rank against this file's text (the press release the interview is writing) instead of the target's framing chapter
+      --scores string   rank by the host's scores in this file (a scores document answering every lesson's question; - reads stdin)
 ```
 
 **Example:**

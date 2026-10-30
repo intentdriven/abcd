@@ -168,7 +168,7 @@ approves the head; under `auto`, that it merges autonomously once a review pair
 has passed the head. The product view draws a line of its own above the
 version (`merges: once the technical facilitator approves (the bundled
 default)`, `merges: autonomously, once a review pair passes (set in
-.abcd/config.json at main)`); the facilitator view draws a `merges:` row after
+.abcd/config.json at origin/main)`); the facilitator view draws a `merges:` row after
 the status block that also names the key and the mode as configured (`merges:
 once the technical facilitator approves the head (facilitator.mode human, from
 the bundled default)`). A contributor's pull request needs an approval of its

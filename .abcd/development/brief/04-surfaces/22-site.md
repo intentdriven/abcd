@@ -134,16 +134,14 @@ layout under `.abcd/development/`. The issue ledger is always read, so an
 intent's typed link to an issue resolves, and an issue is published only where
 the settings opt in with `"record": {"issue_ledger": true}`. The references
 page and every picture are left out, because each comes from a person's own
-files rather than from what abcd writes (pictures are a later intent,
-iss-2610150529485165).
+files rather than from what abcd writes (pictures: iss-2610150529485165).
 
 A project site shows nothing read from git history either, and its build does
 not read it. Who wrote a commit, what model it declared, how many commits there
 are and when any of them landed are git's record, not abcd's, so the
 contributors page, the timeline, the health page's authorship checks and
 record.json's authorship, history and per-record git dates are all left out,
-and a record is dated by its own frontmatter alone. Whether a project site
-should show any of it is to be revisited.
+and a record is dated by its own frontmatter alone.
 
 The project route depends on abcd's own releases: the workflow downloads abcd's
 latest release to build with, so a project site cannot build until a release of

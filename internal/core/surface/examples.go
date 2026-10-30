@@ -59,7 +59,7 @@ var examples = map[string]string{
 	"abcd disembark review":        "abcd disembark review ../lifeboat .",
 
 	"abcd embargo close":  "abcd embargo close GHSA-xxxx-xxxx-xxxx",
-	"abcd embargo triage": `abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "Alice Example" --reason "the behaviour is the documented one"`,
+	"abcd embargo triage": `abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "<who decided>" --reason "the behaviour is the documented one"`,
 
 	"abcd embark from":    "abcd embark from ../lifeboat",
 	"abcd embark lessons": "abcd embark lessons ../lifeboat",

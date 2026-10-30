@@ -8,8 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/lab"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
@@ -210,5 +212,83 @@ func TestADrainStoppedWhileTheAdapterJudgesTakesNoAnswer(t *testing.T) {
 	res, err := Drain(repo.Root(), Options{}, DrainOptions{})
 	if err != nil || res.Judged == nil || res.Judged.Route == nil || adapter.calls != 2 {
 		t.Fatalf("the next move asks the adapter again and takes its answer: %+v, %v, calls %d", res, err, adapter.calls)
+	}
+}
+
+// TestAnAdapterThatFailedDoesNotMarkARunnerThatNeverStarted: turned on, an
+// adapter that cannot answer is marked as asked, but a routed judge whose
+// runner never started (its directory not made) is not, so the next move
+// starts the runner and takes its answer, and asks the adapter nothing again.
+// The first move's next says which was asked and which was not started.
+func TestAnAdapterThatFailedDoesNotMarkARunnerThatNeverStarted(t *testing.T) {
+	repo := issueRepo(t)
+	e := judgeEnv(t, "judge-no")
+	adapter, got := &drainFakeJudge{err: openaiapi.ErrUnreachable}, []lab.Pair{}
+	withDrainRouter(t, oracle.JudgementOn, adapter, &got)
+	cfg := runnerConfig(t, judgeRoutedConfig, "")
+	tmp := os.Getenv("TMPDIR")
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "gone"))
+	first, err := Drain(repo.Root(), Options{Runners: cfg}, DrainOptions{Transcripts: &memTranscripts{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Judging == nil || !first.Judging.AdapterAsked || first.Judging.RoutedAsked {
+		t.Fatalf("only the adapter is marked as asked: %+v", first.Judging)
+	}
+	if !strings.Contains(first.Next, "the decision adapter did not judge "+eligibleIssue) || !strings.Contains(first.Next, "was not started") {
+		t.Fatalf("next says the adapter was asked and the judge not started: %s", first.Next)
+	}
+	if n := launches(t, e, "claude"); n != 0 {
+		t.Fatalf("no runner started: %d", n)
+	}
+	t.Setenv("TMPDIR", tmp)
+	again, err := Drain(repo.Root(), Options{Runners: cfg}, DrainOptions{Transcripts: &memTranscripts{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Judged == nil || again.Judged.Answer != JudgementNo || strings.Contains(again.Next, "drain judge was already asked") {
+		t.Fatalf("the next move starts the judge and takes its answer: judged %+v next %q", again.Judged, again.Next)
+	}
+	if adapter.calls != 1 {
+		t.Fatalf("the adapter is asked once for the request: %d calls", adapter.calls)
+	}
+}
+
+// TestADrainStoppedBeforeTheShadowCallKeepsNoPair: with eligibility-residual
+// in shadow, a judgement taken by a drain whose context is already stopped
+// asks the adapter nothing and keeps no pair.
+func TestADrainStoppedBeforeTheShadowCallKeepsNoPair(t *testing.T) {
+	plan, root, _ := drainDecidePlan(t)
+	adapter, got := &drainFakeJudge{value: JudgementNo, p: 0.9}, []lab.Pair{}
+	withDrainRouter(t, oracle.JudgementShadow, adapter, &got)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	j := DrainJudgement{Issue: eligibleIssue, Answer: JudgementNo, Reason: "a renderer guard", Applied: true}
+	if rc := shadowDrainJudgement(ctx, root, Options{}, j, *plan); rc != nil || adapter.calls != 0 || len(got) != 0 {
+		t.Fatalf("a stopped drain keeps no pair: receipt %+v, calls %d, pairs %+v", rc, adapter.calls, got)
+	}
+}
+
+// TestADrainNamesAJudgementRouteToAnUnknownType: a route in the decision
+// adapter's configuration naming a type outside the registry is not silently
+// left on the host: the move's next names it.
+func TestADrainNamesAJudgementRouteToAnUnknownType(t *testing.T) {
+	repo := issueRepo(t)
+	home := t.TempDir()
+	cfg := abcdhome.Path(home, "config.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte(`{"oracle":{"api":{"openrouter":{"base_url":"https://openrouter.ai/api/v1","key":"openrouter",
+		"models":["typesafe/jev-1.13"]}},"judgements":{"eligibility-residul":"shadow:openrouter/typesafe/jev-1.13"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	o := Options{Roots: &layered.Roots{Repo: repo.Root(), Home: home}}
+	res, err := Drain(repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(res.Next, "oracle.judgements.eligibility-residul") || !strings.Contains(res.Next, "not a judgement type") {
+		t.Fatalf("next names the unknown judgement type: %s", res.Next)
 	}
 }

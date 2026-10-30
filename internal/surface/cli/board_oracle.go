@@ -23,7 +23,7 @@ import (
 func boardOracle(cwd string, stderr io.Writer) []oracle.BoardRow {
 	roots, notes := layered.RootsFor(cwd)
 	for _, n := range notes {
-		fmt.Fprintf(stderr, "abcd: %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
+		fmt.Fprintln(stderr, noteLine(n))
 	}
 	l, err := oracle.Load(roots)
 	if err != nil {

@@ -59,9 +59,8 @@ idea with them. For each, open the **primary** source — the paper, the
 specification, the API reference, the original data — and check the claim
 against it.
 
-A secondary citation is not a check. In the run this protocol comes from, three
-secondary-source claims were falsified once the primary was opened, one of them
-an extraction artefact that no source ever said.
+A secondary citation is not a check: a claim read from a secondary source can
+fail once the primary is opened.
 
 Produce, for each claim: the claim, the primary source, and the finding —
 `verified`, `quoted`, `falsified`, or `unverifiable`. A primary source is one of

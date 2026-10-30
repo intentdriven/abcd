@@ -108,8 +108,8 @@ the forge-text check, iss-2610142210511831), its two pull-request checks,
 arm judges it, iss-2609061525437969) and `forge-text-mention` (a pull request
 whose title and body name an issue id no `Resolves:` or `Refs:` line declares,
 RS004 before the push, in a repository that also sets
-`outbound.declare_mentions`, iss-2610261152125261), and the merge rule below,
-are enforced but not taught; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
+`outbound.declare_mentions`, iss-2610261152125261), and the merge rule below
+(all but its `abcd-land-approve` entry), are enforced but not taught; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
 script that deletes, which the guard refuses as `shell-c-variable-delete`
 (iss-2610161612200864), are taught by two rules the generator adds after the
 entries', each written beside the code that reads it. The registry taught is the one the guard
