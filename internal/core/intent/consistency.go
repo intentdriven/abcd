@@ -1086,6 +1086,10 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 				_ = os.Remove(filepath.Join(req.RepoRoot, filepath.FromSlash(findingsRel)))
 			}
 			_ = os.Remove(filepath.Join(req.RepoRoot, filepath.FromSlash(reportRel)))
+			// The directory too, once empty: this run created it, and a retry
+			// that finds it gone takes the same name, so the evidence line of
+			// every record already filed names the report the retry writes.
+			_ = os.Remove(filepath.Join(req.RepoRoot, filepath.FromSlash(ReviewsShelfRelDir), dirName))
 			return ConsistencyIngestResult{}, afterFiling(err)
 		}
 	}

@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/core/site"
 )
 
 // TestCaptureRefusesABodyTheSiteRendererRefuses (iss-2610261616580903): issue
@@ -49,20 +47,12 @@ func TestCaptureRefusesABodyTheSiteRendererRefuses(t *testing.T) {
 // every finding it would file before it files any, so when the renderer
 // refuses one, nothing is filed and no report is written, rather than the
 // refusal stopping the filing after the earlier findings are in the ledger. A
-// finding's free text is neutralised before it reaches the filing, so no
-// payload trips the renderer today; the check is made to refuse the second
-// finding's body here, to hold the ordering to account for when one does.
+// finding's free text is neutralised before filing, but a summary that opens
+// with a pipe still opens the record body as a one-line table, which the
+// renderer refuses; the second finding's summary does.
 func TestConsistencyIngestRefusesAnUnrenderableFindingBeforeFiling(t *testing.T) {
-	const marker = "the second finding's body"
-	checkRecordBody = func(rel, content string) error {
-		if strings.Contains(content, marker) {
-			return errors.New("a construct the renderer refuses")
-		}
-		return site.CheckRecordBody(rel, content)
-	}
-	t.Cleanup(func() { checkRecordBody = site.CheckRecordBody })
 	root := consistencyLedgerRepo(t)
-	second := cxFinding("itd-10 and itd-11 disagree in "+marker, cxDoubleExplain)
+	second := cxFinding("| itd-10 says one spec | itd-11 says one or more", cxDoubleExplain)
 	second["class"] = "scope_leakage"
 	payload := consistencyPayloadWith(t, root, []any{cxFinding(cxDoubleSummary, cxDoubleExplain), second})
 	_, err := IngestConsistency(root, payload, "2026-09-26", nil)

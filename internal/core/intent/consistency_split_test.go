@@ -128,8 +128,9 @@ func TestConsistencyIngestRemovesTheSummaryWhenItsFindingsFail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != "ingested" {
-		t.Fatalf("the second ingest's status is %q; want the report written again", res.Status)
+	if want := ".abcd/work/reviews/" + cxDate + "-consistency/00-summary.md"; res.Status != "ingested" || res.ReportPath != want {
+		t.Fatalf("the second ingest is %q at %s; want the report written again at %s, the path the first run's records cite",
+			res.Status, res.ReportPath, want)
 	}
 	if _, err := os.Stat(filepath.Join(root, filepath.Dir(res.ReportPath), "01-findings.md")); err != nil {
 		t.Fatalf("the second ingest wrote no findings file: %v", err)
