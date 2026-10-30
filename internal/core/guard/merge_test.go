@@ -210,19 +210,23 @@ func TestTheApprovalActIsThePersons(t *testing.T) {
 		} {
 			d, err := reg.Check(c.cmd)
 			// go run of cmd/abcd arrives at a program the walk names abcd,
-			// so the registry entry may refuse it before the guard's own.
+			// so the registry entry may refuse it before the guard's own,
+			// and a program a variable names is refused as unknown first.
 			goRunAbcd := strings.Contains(c.cmd, "cmd/abcd") && d.EntryID == "abcd-land-approve"
-			if err != nil || d.Verdict != VerdictBlock || (d.EntryID != c.entry && !goRunAbcd) {
-				t.Fatalf("human %v: Check(%q) = %q via %q, %v; want a block via %q", human, c.cmd, d.Verdict, d.EntryID, err, c.entry)
+			varProgram := strings.HasPrefix(c.cmd, `"$`) && d.EntryID == unknownProgramEntryID
+			if err != nil || d.Verdict != VerdictBlock || (d.EntryID != c.entry && !goRunAbcd && !varProgram) {
+				t.Errorf("human %v: Check(%q) = %q via %q, %v; want a block via %q", human, c.cmd, d.Verdict, d.EntryID, err, c.entry)
 			}
 		}
 		for _, cmd := range []string{
 			`abcd land`,
 			`go run ./cmd/abcd land`,
 			`go run ./cmd/abcd land --record-review a.md --record-review b.md`,
-			`go run ./cmd/abcd land --approve=false`,
 			`go run ./cmd/abcd capture "abcd land --approve"`,
 			`bin/abcd-darwin-arm64 land`,
+			// The registry entry matches --approve whatever its value, so an
+			// abcd it names is refused --approve=false too, which costs
+			// nothing; the guard's own rule reads the value.
 			`bin/abcd-darwin-arm64 land --approve=false`,
 			`bin/abcd-darwin-arm64 capture "land --approve"`,
 			`gh pr review 12 --comment -b looks-fine`,
@@ -234,7 +238,7 @@ func TestTheApprovalActIsThePersons(t *testing.T) {
 			`gh api "repos/{owner}/{repo}/pulls/$PR/reviews" -F per_page="$N"`,
 		} {
 			if d, err := reg.Check(cmd); err != nil || d.Verdict == VerdictBlock {
-				t.Fatalf("human %v: Check(%q) = %+v, %v; want it allowed", human, cmd, d, err)
+				t.Errorf("human %v: Check(%q) = %+v, %v; want it allowed", human, cmd, d, err)
 			}
 		}
 	}
