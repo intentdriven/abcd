@@ -99,6 +99,10 @@ type Hold struct {
 	Sibling string `json:"sibling,omitempty"`
 	// key is the copy key the reservation names; never shown.
 	key string
+	// claimed is true when Holder is a holder id that is not the reader's
+	// (holderClaimed), which every line naming it marks; only releaseHolds
+	// sets it.
+	claimed bool
 	// EffectiveExpiry is when the hold ends unless it is renewed, released or
 	// its tag reaches origin first.
 	EffectiveExpiry time.Time `json:"effective_expiry"`
@@ -121,8 +125,12 @@ func (h Hold) Text() string {
 			h.Release, h.Unreadable, stamp(h.EffectiveExpiry))
 	}
 	return fmt.Sprintf("release %s being cut by %s: merges are held; the hold lapses at %s unless the cut renews it",
-		h.Release, senderName(h.Holder), stamp(h.EffectiveExpiry))
+		h.Release, h.holderName(), stamp(h.EffectiveExpiry))
 }
+
+// holderName is the hold's holder as a line names it: a login as @login, and
+// a holder id that is not the reader's marked claimed.
+func (h Hold) holderName() string { return claimedName(senderName(h.Holder), h.claimed) }
 
 // Line is the line a listing shows a judged hold by (JudgedHolds), by the
 // rule the merge hold counts it with: the cutting copy's own release as the
@@ -176,6 +184,9 @@ type Lapsed struct {
 	// holding.
 	RenewedAt time.Time `json:"renewed_at"`
 	LapsedAt  time.Time `json:"lapsed_at"`
+	// claimed is true when Holder is a holder id that is not the reader's
+	// (holderClaimed); only LapsedFor sets it.
+	claimed bool
 }
 
 // Text is the line a listing shows a lapsed cut by: "release v0.16.0: the cut
@@ -189,7 +200,7 @@ func (l Lapsed) Text() string {
 	return fmt.Sprintf("release %s: the cut by %s lapsed at %s, last renewed %s, with no tag %s on origin; "+
 		"no merge is held. From %s, any copy reserves it again with `abcd reserve %s`, to resume the cut or, "+
 		"followed by `abcd reserve %s --release`, to withdraw it",
-		l.Release, senderName(l.Holder), stamp(l.LapsedAt), stamp(l.RenewedAt), l.Release, stamp(l.LapsedAt.Add(TakeoverMargin)),
+		l.Release, claimedName(senderName(l.Holder), l.claimed), stamp(l.LapsedAt), stamp(l.RenewedAt), l.Release, stamp(l.LapsedAt.Add(TakeoverMargin)),
 		l.Subject, l.Subject)
 }
 
@@ -205,6 +216,16 @@ func (s Snapshot) Lapsed(now time.Time) []Lapsed {
 		}
 		out = append(out, Lapsed{Release: releaseTag(r.Record), Subject: r.Record, Holder: r.Holder, Copy: r.Copy,
 			RenewedAt: r.ClaimedAt, LapsedAt: r.EffectiveExpiry})
+	}
+	return out
+}
+
+// LapsedFor is Lapsed for reader (ReaderSelf): each holder id that is not
+// theirs is marked claimed in the line naming it, as every listing marks it.
+func (s Snapshot) LapsedFor(now time.Time, reader Self) []Lapsed {
+	out := s.Lapsed(now)
+	for i := range out {
+		out[i].claimed = holderClaimed(out[i].Holder, reader)
 	}
 	return out
 }
@@ -232,14 +253,15 @@ func releaseHoldsAndLapsed(root string, now time.Time, o Options) ([]Hold, []Lap
 	if err != nil {
 		return nil, nil, err
 	}
-	lapsed := snap.Lapsed(now)
+	reader := readerSelf(root, o)
+	lapsed := snap.LapsedFor(now, reader)
 	holds := snap.Holds(now)
 	if len(holds) == 0 {
 		return nil, lapsed, nil
 	}
-	reader := readerSelf(root, o)
 	for i, h := range holds {
 		holds[i].Mine = h.Unreadable == "" && reader.Owns(h.Holder)
+		holds[i].claimed = h.Unreadable == "" && holderClaimed(h.Holder, reader)
 		holds[i].Own = holds[i].Mine && h.Copy == CopyThis
 		if holds[i].Mine && !holds[i].Own {
 			holds[i].Sibling = siblingCopy(root, h.key)

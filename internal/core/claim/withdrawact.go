@@ -1262,21 +1262,22 @@ func otherLiveRelease(root, id string, now time.Time, self Self) error {
 		if !stillBeingCut(r) {
 			continue
 		}
+		holder := claimedName(r.Holder, holderClaimed(r.Holder, self))
 		over := ""
 		if notEnded {
-			over = fmt.Sprintf(" (its tip is a tombstone %s did not push, as the forge's record of pushes says, which ends nothing)", r.Holder)
+			over = fmt.Sprintf(" (its tip is a tombstone %s did not push, as the forge's record of pushes says, which ends nothing)", holder)
 		}
 		if r.State == StateLive {
 			return backOff("%s is being cut by %s until %s%s, and one release is cut at a time: a second reservation would withdraw the merges the first admitted; "+
-				"wait for it to end (its tag on %s, or its holder's --release); %s", r.Record, claimedName(r.Holder, holderClaimed(r.Holder, self)), stamp(r.EffectiveExpiry), over, Remote, nothingPushed)
+				"wait for it to end (its tag on %s, or its holder's --release); %s", r.Record, holder, stamp(r.EffectiveExpiry), over, Remote, nothingPushed)
 		}
 		lapseEnds := ""
 		if !notEnded {
-			lapseEnds = fmt.Sprintf(", or, from %s, at %s's next act from any copy while the cut's tip is their own newest push", stamp(r.EffectiveExpiry.Add(TakeoverMargin)), r.Holder)
+			lapseEnds = fmt.Sprintf(", or, from %s, at %s's next act from any copy while the cut's tip is their own newest push", stamp(r.EffectiveExpiry.Add(TakeoverMargin)), holder)
 		}
 		return backOff("%s is still being cut by %s: its lease lapsed at %s%s, but it still holds merges withdrawn or admitted, and one release is cut at a time; "+
 			"it ends when %s renews it (abcd reserve %s) and finishes the cut, or ends it (abcd reserve %s --release)%s; %s",
-			r.Record, claimedName(r.Holder, holderClaimed(r.Holder, self)), stamp(r.EffectiveExpiry), over, r.Holder, r.Record, r.Record, lapseEnds, nothingPushed)
+			r.Record, holder, stamp(r.EffectiveExpiry), over, holder, r.Record, r.Record, lapseEnds, nothingPushed)
 	}
 	return nil
 }
@@ -1374,11 +1375,11 @@ func (r ReleaseWithdrawals) Lines() []string {
 	case r.Lapsed && r.NotEnded != "":
 		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended, beneath a tombstone %s did not push: it holds no merge now, and nothing re-arms "+
 			"what it withdrew until %s ends it (abcd reserve %s --release, after --take-over from another copy of theirs) or its tag is on %s",
-			r.Subject, stamp(r.LapsedAt), claimedName(r.NotEnded, r.HolderClaimed), r.NotEnded, r.Subject, Remote))
+			r.Subject, stamp(r.LapsedAt), claimedName(r.NotEnded, r.HolderClaimed), claimedName(r.NotEnded, r.HolderClaimed), r.Subject, Remote))
 	case r.Lapsed:
 		out = append(out, fmt.Sprintf("%s's lease lapsed at %s before the release ended: it holds no merge now, and from %s the next act of a copy of %s's "+
 			"ends it and re-arms what it withdrew, while the cut's tip is their own newest push (else their --release ends it); %s renews it from the cutting copy first (abcd reserve %s) if the cut goes on",
-			r.Subject, stamp(r.LapsedAt), stamp(r.LapsedAt.Add(TakeoverMargin)), claimedName(r.Holder, r.HolderClaimed), r.Holder, r.Subject))
+			r.Subject, stamp(r.LapsedAt), stamp(r.LapsedAt.Add(TakeoverMargin)), claimedName(r.Holder, r.HolderClaimed), claimedName(r.Holder, r.HolderClaimed), r.Subject))
 	}
 	if len(r.Held) > 0 {
 		out = append(out, fmt.Sprintf("%s holds %s withdrawn until it ends: the cutting copy admits one with --admit <pr>",

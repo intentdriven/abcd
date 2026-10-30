@@ -68,7 +68,7 @@ func (m MergeHold) Reason() string {
 		case h.Mine:
 			reasons = append(reasons, fmt.Sprintf("release %s is being cut by %s, until %s", h.Release, h.yourCopy(), until))
 		default:
-			reasons = append(reasons, fmt.Sprintf("release %s is being cut by %s, until %s", h.Release, h.Holder, until))
+			reasons = append(reasons, fmt.Sprintf("release %s is being cut by %s, until %s", h.Release, claimedName(h.Holder, h.claimed), until))
 		}
 	}
 	return strings.Join(reasons, "; ") + ", and a session cutting a release has the final say on what merges before its tag"
@@ -98,7 +98,7 @@ func (m MergeHold) Waits() string {
 			// follows it and never reads as an instruction to the
 			// cutting copy.
 			waits = append(waits, "the copy cutting "+h.Release+" may merge this itself; otherwise wait until "+h.Release+" is tagged, or until "+h.Subject+
-				", held by "+h.Holder+" from that copy, is released"+lapses(h))
+				", held by "+claimedName(h.Holder, h.claimed)+" from that copy, is released"+lapses(h))
 		}
 	}
 	return strings.Join(waits, "; ")
@@ -145,7 +145,7 @@ func (h Hold) notCounted() string {
 			h.Release, h.yourCopy(), lease.Skew/time.Minute)
 	default:
 		what = fmt.Sprintf("release %s is reserved by %s with a date more than %d minutes ahead of this clock",
-			h.Release, h.Holder, lease.Skew/time.Minute)
+			h.Release, claimedName(h.Holder, h.claimed), lease.Skew/time.Minute)
 	}
 	return what + ", and this checkout cannot keep when it first saw it (" + tierRelDir +
 		"/ is missing or cannot be written), so it is not counted as holding"

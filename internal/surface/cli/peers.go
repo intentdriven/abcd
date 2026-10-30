@@ -575,7 +575,7 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 	out.LiveByHolder = snap.LiveByHolder()
 	out.ReleaseWithdrawals = snap.ReleaseWithdrawals(root, reader, now)
 	out.LostWithdrawals = claim.LostReleaseWithdrawals(root, now)
-	for _, l := range snap.Lapsed(now) {
+	for _, l := range snap.LapsedFor(now, reader) {
 		out.LapsedReleases = append(out.LapsedReleases, lapsedRow{Release: l.Release, Subject: l.Subject,
 			Holder: termsafe.Sanitize(l.Holder), Copy: l.Copy, RenewedAt: rfc3339(l.RenewedAt), LapsedAt: rfc3339(l.LapsedAt),
 			Text: termsafe.Sanitize(l.Text())})
