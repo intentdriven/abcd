@@ -340,6 +340,11 @@ status kept apart from the grant, irreversible acts outside every level).
     itd-2610222029228127, which the question put to the product thinker
     wrongly counted in.
 
+The product thinker bundled the spot-check of itd-2610301750162657 with this
+draft on 2026-10-30 and took it out again the same evening, so that the
+spot-check could be planned before this bundle is ready; it draws from abcd's
+record of how each change landed instead of this draft's report.
+
 ## Open Questions
 
 - The spelling of revoking the grant without ending the absence (the spec's to
