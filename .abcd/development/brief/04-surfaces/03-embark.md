@@ -56,13 +56,48 @@ Bare `/abcd:embark` prints dispatcher help and mutates nothing.
   and runs no product audit.
 - **The lessons** take the same two paths and answer what the previous voyage
   learned (itd-24): every lesson the lifeboat's release retrospectives carry,
-  ranked by term overlap against the new voyage's brief (the target's framing
-  chapter, or the text of a brief file the caller names), the three most like it first and the
+  ranked against the new voyage's brief (the target's framing chapter, read
+  inside the target so no directory on its path leads out of it, or the
+  text of a brief file the caller names), the three most like it first and the
   rest as a list, for the press-release interview to ask which apply. The
   manifest is verified first, a lesson is attributed to its directory's
   validated release tag rather than to anything the file says of itself, and
   each lesson is cleaned to one inert line of at most 600 bytes. It writes
-  nothing.
+  nothing in the repository.
+
+  How far a lesson applies is a judgement, `embark-lesson-ranking`, which the
+  host makes by default (dcn-2610300523005947). With a brief, the result asks
+  one score question per lesson, from 0 (does not apply) to 4 (applies
+  directly), over a state made of the brief's framing, cut to fit the decision
+  model's window, and the one lesson, quoted as data. Each question carries the
+  lesson's number and the hash of its state. The agent running the embark page
+  scores them and hands the scores back in a scores file: one document, at most
+  128 KiB, read as every other untrusted input file is (a regular file, never
+  through a link), in which every lesson asked is scored exactly once, over the
+  state its question named, with a whole number on the scale. Anything else is
+  refused and nothing is ranked. The lessons are then ranked by the host's
+  scores, highest first, term overlap breaking ties. Until the scores come
+  back, the lessons keep the term-overlap order, which the result names as a
+  heuristic, so a caller that never scores sees what it always saw. With no
+  brief, the lessons stay listed unranked and nothing is asked.
+
+  The judgement routes as every typed judgement does
+  ([`05-internals/02-adapters.md`](../05-internals/02-adapters.md)). On the
+  host, as above. In shadow, once the host's scores are given, the decision
+  adapter scores each lesson beside them and each pair is recorded in the
+  newest lab home; the host's scores rank. The target repository's own
+  configuration may set shadow too, to a keyless provider the person
+  configured on the machine, so the lessons and the framing can leave the
+  machine on a repository's word, but only to a provider the person chose. The
+  shadow pass has two minutes in all and stops at the first lesson the adapter
+  fails to answer; the lessons not asked keep no pair, and the result names
+  them and says why. Turned on, which only the person's own machine
+  configuration can do, the adapter's scores rank the lessons and the host is
+  asked nothing. An adapter that cannot answer, or that has not scored every
+  lesson within five minutes, leaves the host's questions standing, with a
+  fallback receipt in the result saying why. A
+  route in the configuration naming a judgement type that does not exist is
+  reported, never left silently on the host.
 
 ## 1. Source lookup
 
@@ -332,6 +367,7 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--brief` | string |
+| `--scores` | string |
 
 ### `abcd embark probe`
 

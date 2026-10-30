@@ -11,9 +11,11 @@ package loop
 //   - Configured for shadow, the host (or the routed runner) decides exactly
 //     as it does today; once its answer is taken, the adapter is asked the
 //     same question over the same record and the pair is recorded in the
-//     newest lab home (shadowDrainJudgement). Shadow never changes or stops
-//     the drain, and its one call, made after the answer is taken, is bounded
-//     by drainShadowTimeout.
+//     newest lab home (shadowDrainJudgement). Shadow never changes the
+//     drain's answer or stops the drain. Its one call is made after the
+//     answer is taken, inside the move and synchronously, so a slow provider
+//     holds the move up to drainShadowTimeout before its pair is recorded as
+//     failed. A drain already stopped asks nothing and keeps no pair.
 //   - Turned on, the adapter is asked once the host's request is written
 //     (decideDrainJudgement, through adapterJudgement), before any runner the
 //     drain's judge is routed to: its answer is taken as a routed judge's is,
@@ -21,7 +23,9 @@ package loop
 //     Route names the adapter and the model that answered. An adapter that
 //     cannot answer leaves the host's request standing, with a fallback
 //     receipt kept beside the routed judge's, and the request is marked as
-//     asked, so the polls that follow ask it nothing again.
+//     asked of the adapter (DrainJudging.AdapterAsked), so the polls that
+//     follow ask it nothing again; a routed runner is marked apart, only once
+//     it was started.
 //
 // Both functions read the configuration themselves (loadDrainRouter), so the
 // drain's call sites pass only what they already hold. On the host, the
@@ -55,8 +59,9 @@ const drainAdapterRoute = "decision-adapter"
 const drainAdapterTimeout = 2 * time.Minute
 
 // drainShadowTimeout bounds the adapter's call in shadow, where its answer
-// decides nothing: a provider slower than this costs the pair (recorded as
-// failed), never the move's time.
+// decides nothing. The call is synchronous, made inside the move once the
+// answer is taken, so a provider this slow holds the move up to this long and
+// then costs only its pair, recorded as failed.
 const drainShadowTimeout = 20 * time.Second
 
 // loadDrainRouter reads the decision adapter's configuration for the checkout
@@ -103,10 +108,11 @@ func drainValue(j DrainJudgement) string {
 // issue has left the open ledger, or the configuration cannot be read (the
 // drain has its answer; shadow never stops it). The drain's take point calls
 // it once j is applied and recorded, so an answer the move could not take is
-// never paired.
+// never paired. A drain already stopped asks nothing and keeps no pair, and
+// one stopped during the call keeps none either (the router's rule).
 func shadowDrainJudgement(ctx context.Context, repoRoot string, o Options, j DrainJudgement, plan capture.DrainPlan) *decision.Receipt {
 	iss, ok := plan.OpenIssue(j.Issue)
-	if !ok || drainValue(j) == "" {
+	if !ok || drainValue(j) == "" || ctxOr(ctx).Err() != nil {
 		return nil
 	}
 	r, err := loadDrainRouter(repoRoot, o)
@@ -173,8 +179,8 @@ func decideDrainJudgement(ctx context.Context, repoRoot string, o Options, judgi
 // routed judge's is, or nil with the clause the move's next step adds and the
 // fallback receipt kept in st, the host's request then standing. asked
 // reports whether the adapter was asked and did not answer, so the request is
-// marked as asked (DrainJudging.RoutedAsked) and the polls that follow while
-// the host's request stands ask it nothing again. Not turned on, it asks
+// marked as asked of it (DrainJudging.AdapterAsked) and the polls that follow
+// while the host's request stands ask it nothing again. Not turned on, it asks
 // nothing and returns nil, "", false. A drain stopped while the adapter was
 // asked is no fallback: the move refuses, and the next one asks again.
 func adapterJudgement(ctx context.Context, repoRoot string, o Options, judging DrainJudging, plan capture.DrainPlan,
@@ -195,18 +201,29 @@ func adapterJudgement(ctx context.Context, repoRoot string, o Options, judging D
 	return nil, "the decision adapter did not judge " + judging.Issue + ", recorded as a fallback: " + fb.Detail, true, nil
 }
 
-// adapterAskedClause is the move's clause for a request marked as asked
-// (DrainJudging.RoutedAsked) when the drain's judge is not routed to a
-// runner and eligibility-residual is turned on: the decision adapter was the
-// one asked, in an earlier move, and is not asked again. Otherwise it is the
-// routed runner's clause (judgeAskedClause).
-func adapterAskedClause(repoRoot string, o Options, d DrainOptions, issue string) string {
-	if !judgeRouted(o, d) {
-		if r, err := loadDrainRouter(repoRoot, o); err == nil && r.Mode(drainJudgementType) == oracle.JudgementOn {
-			return "the decision adapter was already asked over " + issue + " for this request and did not answer, so it is not asked again and the request is the host's"
-		}
+// adapterAskedClause is the move's clause for a request the decision adapter
+// was asked in an earlier move and did not answer (DrainJudging.AdapterAsked):
+// it is not asked again.
+func adapterAskedClause(issue string) string {
+	return "the decision adapter was already asked over " + issue + " for this request and did not answer, so it is not asked again and the request is the host's"
+}
+
+// drainRouterDiagnostics are the decision adapter's configuration's non-fatal
+// reports for the checkout at repoRoot (a route naming a type outside the
+// registry, a route the oracle reader skipped), each as a clause the move's
+// next step names, so a misspelt route is never silently on the host. A
+// configuration that cannot be read names nothing here: the judgement that
+// reads it refuses with why.
+func drainRouterDiagnostics(repoRoot string, o Options) []string {
+	r, err := loadDrainRouter(repoRoot, o)
+	if err != nil || r == nil {
+		return nil
 	}
-	return judgeAskedClause(issue)
+	out := make([]string, 0, len(r.Diagnostics))
+	for _, d := range r.Diagnostics {
+		out = append(out, termsafe.Sanitize(d))
+	}
+	return out
 }
 
 // ctxOr is ctx, or the background context when it is nil.

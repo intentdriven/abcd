@@ -78,6 +78,9 @@ const (
 	// readGenerationKey is a provider block's opt-in to the generation
 	// readback (pin.go).
 	readGenerationKey = "read_generation"
+	// logprobModelsKey is a provider block's list of the listed models a
+	// judgement routed to is scored by log-probability (ScoresByLogprob).
+	logprobModelsKey = "logprob_models"
 )
 
 // Bounds on what the configuration may carry.
@@ -127,6 +130,12 @@ type Provider struct {
 	// answered (pin.go), a request of its own. false, the default, makes
 	// none; true is read only on a block whose base URL is OpenRouter's.
 	ReadGeneration bool `json:"read_generation,omitempty"`
+	// LogprobModels is the block's logprob_models: the listed models a
+	// judgement routed to is asked as a small text model whose closed
+	// options are scored by the log-probability it gives each option's
+	// answer token, rather than for a typed answer (itd-2609221009495079's
+	// second candidate). Empty, the default, scores none that way.
+	LogprobModels []string `json:"logprob_models,omitempty"`
 }
 
 // AsksStreamUsage reports whether a call through p asks for usage in the
@@ -222,6 +231,8 @@ type providerFile struct {
 	Pins map[string]json.RawMessage `json:"pins"`
 	// ReadGeneration is read_generation, nil when the block omits it.
 	ReadGeneration *bool `json:"read_generation"`
+	// LogprobModels is logprob_models, nil when the block omits it.
+	LogprobModels []string `json:"logprob_models"`
 }
 
 // LoadAPI reads the provider configuration through the layered resolver and
@@ -315,7 +326,7 @@ func (c *APIConfig) readProviders(s *layered.Stack) error {
 				origin, apiKey, name, Harness)
 		}
 	}
-	if err := s.Claim(apiKey+".*", "base_url", "key", "models", streamUsageKey, pinsKey, readGenerationKey); err != nil {
+	if err := s.Claim(apiKey+".*", "base_url", "key", "models", streamUsageKey, pinsKey, readGenerationKey, logprobModelsKey); err != nil {
 		return fmt.Errorf("oracle adapter: %w", err)
 	}
 	for _, name := range names {
@@ -380,7 +391,41 @@ func (c *APIConfig) provider(name string, fd layered.Found) (Provider, error) {
 	if p.ReadGeneration, err = readGenerationSetting(p.BaseURL, pf.ReadGeneration); err != nil {
 		return Provider{}, err
 	}
+	if p.LogprobModels, err = readLogprobModels(p.Models, pf.LogprobModels); err != nil {
+		return Provider{}, err
+	}
 	return p, nil
+}
+
+// readLogprobModels checks a block's logprob_models: each a model the block
+// lists, once. It marks how a listed model is asked, never what may be
+// asked, so it admits nothing the models list does not.
+func readLogprobModels(models, marked []string) ([]string, error) {
+	if len(marked) == 0 {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	for _, m := range marked {
+		if !slices.Contains(models, m) {
+			return nil, fmt.Errorf("%s names %q, which is not on the block's models list; it marks only a model the block lists",
+				logprobModelsKey, layered.BoundKey(m))
+		}
+		if seen[m] {
+			return nil, fmt.Errorf("%s names %s twice", logprobModelsKey, m)
+		}
+		seen[m] = true
+	}
+	return append([]string(nil), marked...), nil
+}
+
+// ScoresByLogprob reports whether a judgement routed to t is asked as a small
+// text model scored by log-probability: its provider's block names t's model
+// in logprob_models. A target this configuration does not admit is not.
+func (c *APIConfig) ScoresByLogprob(t Target) bool {
+	if c.Admit(t.Provider, t.Model) != nil {
+		return false
+	}
+	return slices.Contains(c.providers[t.Provider].LogprobModels, t.Model)
 }
 
 // readAnyPins reads a block's pins as the block's base URL decides: an

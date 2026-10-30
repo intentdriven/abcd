@@ -88,12 +88,18 @@ type DrainJudging struct {
 	// held the issue from this copy, which is theirs and never the drain's
 	// to release).
 	Hold *DrainHold `json:"hold,omitempty"`
-	// RoutedAsked is true once the routed judge was started on this request
-	// and did not answer (drain_judge.go): the polls that follow while the
-	// host's request stands do not start it again. A judge that never
+	// RoutedAsked and AdapterAsked mark who was asked this request and did
+	// not answer, so the polls that follow while the host's request stands
+	// ask neither again. RoutedAsked is the judge routed to a runner, true
+	// once its runner was started (drain_judge.go): a judge that never
 	// started (its directory not made, its request refused before any
-	// launch) leaves it false, so the next move starts it.
-	RoutedAsked bool `json:"routed_asked,omitempty"`
+	// launch) leaves it false, so the next move starts it. AdapterAsked is
+	// the decision adapter, with eligibility-residual turned on, true once
+	// it was asked and gave no answer the move could take (drain_decide.go).
+	// Each is marked alone, so a failed adapter never stands for a runner
+	// that never started.
+	RoutedAsked  bool `json:"routed_asked,omitempty"`
+	AdapterAsked bool `json:"adapter_asked,omitempty"`
 }
 
 // DrainHold is a reservation the drain took on an issue to judge it: the
@@ -178,7 +184,7 @@ func requestJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict
 		Answer: DrainJudgementAnswerRel, RequestedAt: now}
 	same := prior != nil && prior.Issue == j.Issue && prior.RemedySHA256 == j.RemedySHA256
 	if same {
-		j.RequestedAt, j.RoutedAsked = prior.RequestedAt, prior.RoutedAsked
+		j.RequestedAt, j.RoutedAsked, j.AdapterAsked = prior.RequestedAt, prior.RoutedAsked, prior.AdapterAsked
 	}
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {

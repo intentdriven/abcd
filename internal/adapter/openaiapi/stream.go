@@ -174,6 +174,9 @@ type chunk struct {
 			Content *string `json:"content"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
+		// Logprobs is kept raw and read only by a call that asked
+		// (logprobs.go).
+		Logprobs json.RawMessage `json:"logprobs"`
 	} `json:"choices"`
 	servedBy
 	Error json.RawMessage `json:"error"`
@@ -241,6 +244,7 @@ func (c *Client) readStream(l *limits, body io.Reader, asked string, contract fu
 			if p := choice.FinishReason; p != nil && *p != "" {
 				a.finish = *p
 			}
+			c.readLogprobs(choice.Logprobs, &a)
 		}
 	}
 	if err := sc.Err(); err != nil {

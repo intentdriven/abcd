@@ -42,10 +42,11 @@ const (
 // the adapter. The registry is closed: a type outside it is refused.
 type Type string
 
-// The judgement types the intent's scope lists. Embark's lesson ranking is
-// one: it is to run through the adapter in place of the term-overlap ordering
-// the embark verb uses today (iss-2610262033055327), and like every other
-// type it is decided by the host until its step calls the router.
+// The judgement types the intent's scope lists. Two steps call the router
+// today: the drain's eligibility-residual, and embark's lesson ranking, one
+// score question per lesson that the host answers with a scores file
+// (dcn-2610300523005947, iss-2610262033055327). Every other type is decided
+// by the host until its step calls the router.
 const (
 	RemedyRead           Type = "remedy-read"
 	DuplicateMatch       Type = "duplicate-match"
@@ -63,6 +64,11 @@ const (
 
 var registry = []Type{RemedyRead, DuplicateMatch, UnmeetableCriteria, EligibilityResidual, SourceClassification,
 	SourceSelection, MemoryCheck, LedgerCategory, LedgerSeverity, PrepassOverlap, PresentTense, EmbarkLessonRanking}
+
+// asked are the types a step asks through the router today. A route to any
+// other type is kept but runs nothing: the host decides it alone, and a shadow
+// route there records no pair, which Load says.
+var asked = []Type{EligibilityResidual, EmbarkLessonRanking}
 
 // types returns the registry, in its order.
 func types() []Type { return slices.Clone(registry) }

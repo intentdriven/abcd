@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // oracleBoardCheckout lays an unmanaged checkout and a fresh home, and
@@ -179,5 +183,25 @@ func TestBoardReadsTheRoutingTableFromTheRulesRoot(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "repo=local*") {
 		t.Fatalf("the board inside the member did not read the member's routing table:\n%s\nstderr: %s", stdout, stderr)
+	}
+}
+
+// The board says once that the home was not read, under abcd: once: the HOME
+// refusal layered.RootsFor already prefixes is not prefixed again.
+func TestBoardOracleSaysTheHomeIsNotReadWithThePrefixOnce(t *testing.T) {
+	plantHome(t)
+	cwd := t.TempDir()
+	gitInitAt(t, cwd)
+	var stderr strings.Builder
+	boardOracle(cwd, &stderr)
+	_, note := layered.MachineRoots(os.Getenv("HOME"))
+	if note == "" {
+		t.Fatal("a HOME inside a working tree gives no note")
+	}
+	want := "abcd: " + termsafe.Sanitize(fsutil.RedactHome(note))
+	got := stderr.String()
+	if !slices.Contains(strings.Split(got, "\n"), want) || strings.Count(got, "HOME lies inside the git working tree") != 1 ||
+		strings.Contains(got, "abcd: abcd:") {
+		t.Fatalf("stderr does not say the home was not read in the one line\n%s\nwith abcd: once:\n%s", want, got)
 	}
 }

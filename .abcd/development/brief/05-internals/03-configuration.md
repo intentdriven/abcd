@@ -206,8 +206,10 @@ rather than skipped:
             "canonical_slug": "typesafe/jev-1.13-20260915" // the model's permanent slug
           }
         },
-        "read_generation": true          // optional, OpenRouter's base URL only, default false:
+        "read_generation": true,         // optional, OpenRouter's base URL only, default false:
                                          //   one extra request per call, to read what served it
+        "logprob_models": []             // optional, default none: listed models a judgement is
+                                         //   asked as a small text model scored by log-probability
       },
       "ollama": {
         "base_url": "http://127.0.0.1:11434/v1",
@@ -379,7 +381,12 @@ rather than skipped:
   record names the route and the model that answered. If the adapter cannot
   answer (unreachable, failed, an answer outside the question's choices, a
   state over its window), the host decides instead, with a receipt saying
-  why. A shadow route passes every rule a route turned on does (the
+  why. A judgement routed to a model its provider's block names in
+  `logprob_models` (each a model the block lists; machine layer only, as the
+  block is) is asked as the second candidate, a small text model whose
+  options are scored by the log-probability of their one-token labels; every
+  other route asks the first, a typed-decision model, for a JSON answer
+  ([`02-adapters.md`](02-adapters.md)). A shadow route passes every rule a route turned on does (the
   allowlist, the denylist, the keyed-provider skip, the malformed-route skip)
   when the configuration is read and before any call. A role takes no mode.
   The types are a closed registry: `remedy-read`, `duplicate-match`,
@@ -398,10 +405,22 @@ rather than skipped:
   judge's is taken, with the route named `decision-adapter <provider>/<model>`
   in the drain's record. If the adapter cannot answer, the host's request
   stands, with a fallback receipt in the drain's state beside the routed
-  judge's, and the adapter is not asked again for that request. No other
-  type's step calls the router yet. Those judgements are made in the host's
-  command pages, which hand nothing back to the binary, so they stay on the
-  host whatever their route says until their step calls the router. `abcd lab harvest` reports the agreement per type, and
+  judge's, and the adapter is not asked again for that request; a routed
+  runner that never started is still started by a later move, since each of
+  the two is marked asked only once it was. Embark's lesson ranking runs as
+  `embark-lesson-ranking`, a score of 0 to 4 per lesson, and is the router's
+  second caller: on the host the lessons command lists one question per
+  lesson and the host's scores, handed back in a scores file, rank the
+  lessons; in shadow the adapter scores each lesson beside those scores and
+  each pair is recorded; turned on, the adapter's scores rank and the host is
+  asked nothing, and an adapter that cannot answer leaves the host's questions
+  standing with a fallback receipt
+  ([`04-surfaces/03-embark.md`](../04-surfaces/03-embark.md)). A route naming
+  a type outside the registry is reported by both callers: the drain in its
+  next step, embark on stderr and in its result. No other type's step calls
+  the router yet. Those judgements are made in the host's command pages,
+  which hand nothing back to the binary, so they stay on the host whatever
+  their route says until their step calls the router. `abcd lab harvest` reports the agreement per type, and
   the research note filed from it is the evidence a ruling turns a type on
   with.
 - **A route to a provider that holds a key sits on the machine alone.** Only a
