@@ -40,7 +40,7 @@ import (
 // or a read that fails, is reported and never refused.
 
 // DiskPerPreflight is the free space the floor keeps for each preflight the
-// gate admits to its test stages at once. Measured on 29 Oct 2026, the stages
+// gate admits at once. Measured on 29 Oct 2026, the stages
 // one `make preflight` of this module builds (go build, go vet, go test and
 // go test -race over internal/), run into an empty build cache, wrote 1.9 GiB
 // of cache entries, and their test binaries took another 1.9 GiB of the
@@ -53,8 +53,8 @@ const DiskPerPreflight uint64 = 4 << 30
 const DiskFloorMin uint64 = 8 << 30
 
 // diskFloorFor is the free space, in bytes, below which the load gate admits
-// no test stage, for a gate admitting slots preflights to their test stages
-// at once (load.preflights, PreflightSlots): DiskPerPreflight for each, and
+// no test stage, for a gate admitting slots preflights at once
+// (load.preflights, PreflightSlots): DiskPerPreflight for each, and
 // DiskFloorMin at least. So 8 GiB at the default of one and 16 GiB at four.
 // It follows only the person's own load.preflights (or its environment
 // variable), never a repository file, so no checkout can lower it.
@@ -265,7 +265,7 @@ func (d DiskCheck) RefusalAtOpen(firstFloor uint64, slots int, setting string) e
 	}
 	lead := "the disk fell below the floor while this waited"
 	if d.FloorBytes > firstFloor && d.lowAbove(firstFloor) {
-		lead = fmt.Sprintf("the disk floor rose to %s while this waited, because %s is now %d (it was %s when this began to wait)",
+		lead = fmt.Sprintf("the disk floor rose to %s while this waited, because %s is now %d (the floor was %s when this began to wait)",
 			bytesText(d.FloorBytes), setting, slots, bytesText(firstFloor))
 	}
 	return errors.New(lead + ", so no test stage is admitted: a test stage writes gigabytes of build output and test binaries, " +
@@ -356,7 +356,7 @@ func (d DiskCheck) describe() string {
 		fmt.Fprintf(&b, "  %s free on %s, which holds %s; the floor is %s.\n",
 			bytesText(v.FreeBytes), where, strings.Join(holds, " and "), bytesText(d.FloorBytes))
 	}
-	fmt.Fprintf(&b, "  The floor is %s for each preflight the gate admits to its test stages at once (%s in %s, or %s), and %s at least.\n",
+	fmt.Fprintf(&b, "  The floor is %s for each preflight the gate admits at once (%s in %s, or %s), and %s at least.\n",
 		bytesText(DiskPerPreflight), PreflightSlotsKey, abcdhome.Display("config.json"), PreflightSlotsEnv, bytesText(DiskFloorMin))
 	if cacheLow {
 		switch {

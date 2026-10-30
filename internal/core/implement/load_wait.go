@@ -879,7 +879,11 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				// hold until its race run starts, and judged as written it would
 				// keep a raised count from reaching the runs queued behind it. The
 				// running preflights are still counted against the slots from the
-				// process table (machineload.Ahead.Shut).
+				// process table (machineload.Ahead.Shut). A race command's own
+				// first-gate hold, taken at any count, is judged the same way: a
+				// hold does not record the count it was written at, and that run
+				// is counted from the process table too, so the gate never admits
+				// more than the slots.
 				if gate == GateTests && h.Form == HoldCommand && res.Slots > 1 && !raceCmd {
 					h.Form = HoldSettle
 					if settled := h.Opened.Add(WaitSettle); settled.Before(h.Until) {
