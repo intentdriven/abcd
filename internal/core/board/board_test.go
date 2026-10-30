@@ -332,14 +332,16 @@ func TestFacilitatorRowNamesAnotherCopysReservation(t *testing.T) {
 	}
 }
 
-// TestTheBoardSaysWhoMerges pins the line naming facilitator.mode and the layer
-// that set it (spc-2610161609350616 step 2): worded by outcome, never as a bare
-// mode, so it does not read as abcd mode's waiting-on state. The product view
-// draws it as a line of its own above the version; the facilitator view as a
-// labelled row after the status block, so it wraps as every row does.
+// TestTheBoardSaysWhoMerges pins the line saying what the merge gate does in
+// the mode it reads (spc-2610161609350616), and the layer that set it: worded
+// by outcome, never as a bare mode, so it does not read as abcd mode's
+// waiting-on state. human merges once the technical facilitator approves the
+// head; auto merges autonomously once a review pair has passed it. The product
+// view draws it as a line of its own above the version; the facilitator view
+// as a labelled row after the status block, so it wraps as every row does.
 func TestTheBoardSaysWhoMerges(t *testing.T) {
 	person := &Merges{Mode: "human", Layer: "bundled", Origin: "bundled"}
-	repoAuto := &Merges{Mode: "auto", Layer: "repo", Origin: ".abcd/config.json"}
+	repoAuto := &Merges{Mode: "auto", Layer: "repo", Origin: ".abcd/config.json at main"}
 	machine := &Merges{Mode: "human", Layer: "machine", Origin: abcdhome.Display("config.json")}
 	refusedHome := &Merges{Mode: "human", Layer: "machine", Origin: "the home directory was refused (HOME lies inside a git working tree that is not this account's), so a machine-wide human cannot be read; run abcd with your own HOME", HomeRefused: true}
 	for _, c := range []struct {
@@ -349,17 +351,18 @@ func TestTheBoardSaysWhoMerges(t *testing.T) {
 		form Form
 		want string
 	}{
-		{"bundled, facilitator view", person, Facilitator, Text, "  merges:     a person (facilitator.mode human, from the bundled default)"},
-		{"repo auto, facilitator view", repoAuto, Facilitator, Text, "  merges:     a person (facilitator.mode auto, from .abcd/config.json; the merge gate does not read it yet)"},
-		{"machine human, facilitator view", machine, Facilitator, Text, "  merges:     a person (facilitator.mode human, from " + abcdhome.Display("config.json") + ")"},
-		{"bundled, product view", person, Product, Text, "merges: a person (the bundled default)"},
-		{"repo auto, product view", repoAuto, Product, Text, "merges: a person (auto is set in .abcd/config.json, but the merge gate does not read it yet)"},
-		{"repo auto, markdown", repoAuto, Product, Markdown, "- merges: a person (auto is set in .abcd/config.json, but the merge gate does not read it yet)"},
-		{"refused home, facilitator view", refusedHome, Facilitator, Text, "  merges:     a person (facilitator.mode human, from a refused home)"},
-		{"refused home, product view", refusedHome, Product, Text, "merges: a person (the home directory was refused, so a machine-wide setting cannot be read)"},
+		{"bundled, facilitator view", person, Facilitator, Text, "  merges:     once the technical facilitator approves the head (facilitator.mode human, from the bundled default)"},
+		{"repo auto, facilitator view", repoAuto, Facilitator, Text, "  merges:     autonomously, once a review pair passes the head (facilitator.mode auto, from .abcd/config.json at main)"},
+		{"machine human, facilitator view", machine, Facilitator, Text, "  merges:     once the technical facilitator approves the head (facilitator.mode human, from " + abcdhome.Display("config.json") + ")"},
+		{"bundled, product view", person, Product, Text, "merges: once the technical facilitator approves (the bundled default)"},
+		{"repo auto, product view", repoAuto, Product, Text, "merges: autonomously, once a review pair passes (set in .abcd/config.json at main)"},
+		{"repo auto, markdown", repoAuto, Product, Markdown, "- merges: autonomously, once a review pair passes (set in .abcd/config.json at main)"},
+		{"machine human, product view", machine, Product, Text, "merges: once the technical facilitator approves (set in " + abcdhome.Display("config.json") + ")"},
+		{"refused home, facilitator view", refusedHome, Facilitator, Text, "  merges:     once the technical facilitator approves the head (facilitator.mode human, from a refused home)"},
+		{"refused home, product view", refusedHome, Product, Text, "merges: once the technical facilitator approves (the home directory was refused, so a machine-wide setting cannot be read)"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			lines := Render(Input{Status: fixture(2, 0), Merges: c.m, Version: ver}, Frame{View: c.view, Form: c.form, Width: 120, Rung: Mono})
+			lines := Render(Input{Status: fixture(2, 0), Merges: c.m, Version: ver}, Frame{View: c.view, Form: c.form, Width: 200, Rung: Mono})
 			if n := len(lines); n < 2 || lines[n-2] != c.want || lines[n-1] != versionLine(ver, Frame{Form: c.form}) {
 				t.Fatalf("last two lines = %q; want %q, then the version line", lines[max(0, len(lines)-2):], c.want)
 			}
