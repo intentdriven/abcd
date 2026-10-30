@@ -463,7 +463,7 @@ func TestALaneSentBackFromItsLandingJudgesItsOtherCopyAgain(t *testing.T) {
 	f := newNarrowFixture(t)
 	f.implement(t, Options{}, "docs/page.md")
 	f.toLand(t)
-	f.reserveAs(t, "iss-77", "octo", "docs/guide.md", time.Now().UTC().Truncate(time.Second))
+	f.reserveAs(t, "iss-77", heldBy(t, patEmail), "docs/guide.md", time.Now().UTC().Truncate(time.Second))
 	f.moveDefault(t, "other.txt")
 	judged := currentLane(t, f.repo, f.runID)
 
@@ -604,7 +604,7 @@ func TestALaneHeldAtItsLandingIsNotJudgedAgainstItsOtherCopy(t *testing.T) {
 	bare := strings.TrimSpace(f.repo.Git("remote", "get-url", "origin"))
 	reserveRun(t, f.repo, f.runID, "itd-10", f.now, "pkg")
 	f.handedBack(t)
-	(&narrowFixture{bare: bare}).reserveAs(t, "iss-77", "octo", "pkg/widget.go", f.now)
+	(&narrowFixture{bare: bare}).reserveAs(t, "iss-77", heldBy(t, patEmail), "pkg/widget.go", f.now)
 
 	res, err := advance(f.repo.Root(), f.runID, f.stages, f.opts())
 	if err != nil {

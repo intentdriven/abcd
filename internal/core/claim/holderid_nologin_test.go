@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestNoPushedTextNamesAPairedLogin: with a declaration pairing maya's id
@@ -62,6 +63,17 @@ func TestNoPushedTextNamesAPairedLogin(t *testing.T) {
 			res, err := octo.do(Request{Record: "iss-4", Release: true, HandBack: HandBackUserVisible, HandBackBlob: blob, OverAbsent: true})
 			if err == nil && (res.Act != ActReleased || w.remoteTip("iss-4") == "") {
 				return errors.New("the hand-back was not published over the absent branch")
+			}
+			return err
+		}},
+		{"revival of a lapsed reservation judged on the files its work changed", func() error {
+			if _, err := octo.do(Request{Record: "iss-5", Footprint: []string{"e.go"}, Lease: time.Minute}); err != nil {
+				return err
+			}
+			w.set(w.clock().Add(2 * time.Minute))
+			res, err := octo.do(Request{Record: "iss-5", Renew: true, OwnOverlapOn: []string{"e.go"}})
+			if err == nil && res.Act != ActRenewed {
+				return errors.New("the lapsed reservation was not revived")
 			}
 			return err
 		}},
