@@ -167,9 +167,12 @@ check-attribution:
 # read from ci.yml. A scan that cannot run here (no gitleaks on PATH, or no
 # network for govulncheck's database) is skipped loudly, never passed in
 # silence, and CI's scan still runs. A govulncheck finding on a branch that
-# changes neither go.mod nor go.sum most likely stands on the default branch
-# (iss-2610261151481013), and govulncheck is not a required check, so it warns
-# and does not stop the run; a gitleaks that runs and cannot scan stops it.
+# changes neither go.mod nor go.sum, when the fork point's own tree reports
+# every vulnerability it names, was not brought in by the branch
+# (iss-2610261151481013, iss-2610262259078996), and govulncheck is not a
+# required check, so it warns and does not stop the run; any other finding
+# stops it, and so does a gitleaks that runs and cannot scan. The comparison is
+# by id, so a branch newly reaching an id the fork point reaches is warned of.
 secrets-check:
 	@bash scripts/preflight-scans.sh secrets
 
@@ -279,6 +282,27 @@ asking-sync:
 asking-sync-check:
 	@go run ./cmd/asking-sync -check
 
+# A records-only change (iss-2610251555094324) takes a shorter preflight: when
+# every path HEAD changes against the merge base with origin's default branch
+# lies in .abcd/development/ or .abcd/work/, no test names one of them (by its
+# path, its file name or its record id), and the
+# tree matches HEAD, scripts/records-only.sh says so and the second preflight
+# rule below runs in place of the first. It runs the same gates, build and vet,
+# then precheck's test lines in place of the unit and race stages, and says so
+# before its tests and in the receipt it mints. Anything else, a failed check included,
+# is the full rule. The verdict is read while this Makefile is parsed, as the
+# starting state is, and only yes or nothing reaches make: the reason can name a
+# changed path, so it is printed by the script itself, never placed in a recipe
+# line. The records rule's first step and its mint each run the classifier
+# again, so a verdict that no longer holds fails the run rather than skipping
+# its tests. `make preflight PREFLIGHT_RECORDS_ONLY=` takes the full rule
+# whatever the change. TestPreflightRecordsRuleRunsPrechecksTests holds the
+# second rule's gates to the first's and its test lines to precheck's.
+ifneq ($(filter preflight,$(MAKECMDGOALS)),)
+PREFLIGHT_RECORDS_ONLY := $(shell scripts/records-only.sh >/dev/null 2>&1 && echo yes)
+endif
+
+ifneq ($(PREFLIGHT_RECORDS_ONLY),yes)
 # Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
 # receipt the last step mints, below): the load check first (a
 # warning, never a failure: load-check), then the format gate (fmt-check), the
@@ -360,11 +384,25 @@ preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift
 	go test -race -p "$$p" -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
+else
+preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
+	@scripts/records-only.sh
+	@echo "preflight: a records-only change, so the unit and race stages are skipped and precheck's tests run in their place; CI's unit lane still runs every test"
+	go build ./...
+	go vet ./...
+	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat
+	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site
+	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)" records-only
+endif
+
 # The precheck (iss-2610230016523625): the minutes-long pass a lane runs before
 # it queues a preflight, so a test that reads the whole tree fails before the
 # queue rather than after it. It runs preflight's gates (all but the load check,
 # which reads the machine and only warns), build and vet, the packages whose
 # tests audit the record, the generated pages and the agent definitions, in full,
+# and the packages whose tests read the committed record tree whole (record ids
+# and slugs, the changelog derivation, intents, release pages, decisions, the
+# brief's lifeboat table),
 # and the command and site packages' audit tests, chosen by name: a test in those
 # two packages that reads the committed tree carries one of the PRECHECK_AUDIT_TESTS
 # words in its name, which is how a new one joins without a list to keep. It skips
@@ -377,7 +415,7 @@ PRECHECK_AUDIT_TESTS := Surface|Page|Brief|Parity|Reference|Snapshot|Appendix|Ap
 precheck: fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution secrets-check vulncheck site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
-	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading
+	go test -timeout 20m ./internal/core/lint ./internal/core/launch/scaffold ./internal/core/mdrecord ./internal/core/issueschema ./internal/core/guard ./internal/core/glossary ./internal/core/reading ./internal/core/recordid ./internal/core/changelog ./internal/core/intent ./internal/core/release ./internal/core/releasedigest ./internal/core/decisions ./internal/core/record/match ./internal/core/lifeboat
 	go test -timeout 20m -run '$(PRECHECK_AUDIT_TESTS)' ./internal/surface/cli ./internal/core/site
 
 precheck: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)

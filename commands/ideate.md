@@ -270,8 +270,8 @@ Exit codes:
   path, `abcd intent "<text>"`. Ideate mints no intent itself; graduation stays a
   deliberate act you take with the user.
 - **killed** — stop. Do not file an intent, and do not soften the record.
-- **reframed** — any graduation carries the verdict's `reframing`, not the
-  original wording.
+- **reframed** — any graduation carries the verdict's `reframing`, recorded
+  under "The reframing", not the original wording.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

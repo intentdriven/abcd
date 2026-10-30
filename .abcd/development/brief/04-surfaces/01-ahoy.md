@@ -876,7 +876,12 @@ anything, in this order:
 
 Run from a source checkout of abcd through `go run ./cmd/abcd`, setup is a
 build of that checkout as it stands, so the stale-binary refusal treats it as
-current (`gorun_vintage.go`, iss-2610240824047504). With no plugin root, the
+current (`gorun_vintage.go`, iss-2610240824047504). So is the build that
+checkout's own `scripts/abcd.sh` has just made in its local tier, which the
+script names in `ABCD_CHECKOUT_BUILD` before running it
+(iss-2610241240133009); another checkout's build, or a copy left in the tier
+and run directly, is refused, and in a source checkout the refusal sends the
+person to that script. With no plugin root, the
 copy `~/.abcd.noindex/path-entry` records still reports its install mode
 (iss-2610240916382802).
 

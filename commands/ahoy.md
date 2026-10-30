@@ -507,9 +507,12 @@ and the person-only questions alone: the abcd download, the shell settings,
 the commit checks and the commit identity, plus the status line where it can be
 wired and one question for each tool it offers to install.
 
-In a source checkout of abcd, `go run ./cmd/abcd ahoy install` is treated as
-current: `go run` builds the checkout as it stands, so its unstamped vintage is
-not refused as stale there. Any other unstamped binary is still refused. On
+In a source checkout of abcd, run it as `scripts/abcd.sh ahoy install`: the script
+builds the checkout as it stands and starts that build, so its unstamped
+vintage is not refused as stale there. So is `go run ./cmd/abcd ahoy install`,
+though `go run` reports every nonzero exit as 1. Any other unstamped binary is
+still refused, a copy left in the checkout's local tier and run directly
+included. On
 the `PATH` there means a release copy, as anywhere else: the `--dev` shim
 rebuilds abcd on every call and is never the status line's entry.
 
@@ -1468,8 +1471,9 @@ adapter refuses as `oracle_api.config_refused`, naming the file and the key.
 A route the configuration read skips (a repository's route to a provider that
 holds a key, a repository's route that is not `<provider>/<model>` or whose
 name is not a plain lower-case name, a repository's route to a model a provider
-holding no key does not list, a route to a provider this machine has not
-configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
+holding no key does not list, a repository's judgement route that turns a type
+on, which only `~/.abcd.noindex/config.json` may set, a route to a provider this
+machine has not configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
 `detail` one line per skipped route; relay each line. A skipped
 repository route never displaces the machine's: where `~/.abcd.noindex/config.json`
 routes the same name, that route applies.

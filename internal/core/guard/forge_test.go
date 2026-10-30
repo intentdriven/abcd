@@ -73,6 +73,11 @@ func TestForgeTextBlocksAPostingCommandCarryingALeak(t *testing.T) {
 		`gh pr create --body="Summary` + "\n\n" + footer + `"`,
 		`gh pr create -b"Summary` + "\n\n" + footer + `"`,
 		`gh pr create -b="Session: ` + url + `"`,
+		// pflag reads a text shorthand behind boolean ones in the same word:
+		// --draft then --body, --editor then --body (iss-2610262229344994).
+		`gh pr create -db "Summary` + "\n\n" + footer + `"`,
+		`gh pr create -db"Summary` + "\n\n" + footer + `"`,
+		`gh pr comment 12 -eb "` + url + `"`,
 		`gh pr new --body "` + url + `"`,
 		`gh pr edit 12 --body "` + url + `"`,
 		`gh pr comment 12 --body "` + url + `"`,
@@ -80,6 +85,16 @@ func TestForgeTextBlocksAPostingCommandCarryingALeak(t *testing.T) {
 		`gh issue new --body "` + url + `"`,
 		`gh issue edit 7 --title "` + url + `"`,
 		`gh issue comment 7 -b "` + url + `"`,
+		// -R and --repo take the next word as the repository, wherever they
+		// stand, so the group and verb after them are still read.
+		`gh -R o/r pr create --body "` + url + `"`,
+		`gh --repo o/r pr create --body "` + url + `"`,
+		`gh --repo=o/r pr create --body "` + url + `"`,
+		`gh pr -R o/r create --body "` + url + `"`,
+		`gh pr create -R o/r --body "` + url + `"`,
+		`gh -R o/r issue create --body "` + url + `"`,
+		`gh -R o/r issue comment 7 --body "` + url + `"`,
+		`gh --repo o/r issue edit 7 --title "` + url + `"`,
 		"gh pr create --title t --body \"$(cat <<'EOF'\nSummary\n\n" + footer + "\nEOF\n)\"",
 		"cd /tmp && gh pr create --body \"" + url + "\"",
 		"sh -c 'gh pr comment 3 --body \"" + url + "\"'",
@@ -120,6 +135,9 @@ func TestForgeTextAllowsCleanAndNonPostingCommands(t *testing.T) {
 		`gh pr create --body "$BODY"`,
 		`gh pr create --body-file -`,
 		`gh pr create --fill`,
+		// A shorthand that takes a value takes the rest of its word: -a's
+		// value is "b", and no body is set.
+		`gh issue create -ab "` + url + `"`,
 	}
 	for _, cmd := range cases {
 		t.Run(cmd, func(t *testing.T) {
@@ -286,6 +304,34 @@ func TestForgeTextJudgesABoundedNumberOfTexts(t *testing.T) {
 	d := forgeCheck(t, reg, line)
 	if d.Verdict != VerdictWarn || !contains(d.Matches, forgeUnreadEntryID) {
 		t.Fatalf("Check = %q via %q (matches %v), want warn via %q past the bound", d.Verdict, d.EntryID, d.Matches, forgeUnreadEntryID)
+	}
+}
+
+// TestForgeTextWarnsWhenItCannotFindTheCommand: a gh line with more readings
+// of its words than the guard follows may hide which command it runs, so the
+// forge check says it read none of it rather than read it as posting nothing.
+func TestForgeTextWarnsWhenItCannotFindTheCommand(t *testing.T) {
+	line := "gh" + strings.Repeat(` "$(x)"`, 24) + ` pr create --body "` + forgeSessionURL() + `"`
+	segs, err := tokenize(line)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	for i, s := range segs {
+		if len(sitesNamed(s, "gh")) == 0 {
+			continue
+		}
+		ran = true
+		if _, complete := forgePostsOf(s, i); complete {
+			t.Fatal("the reading reports it followed every reading of a line past its bound")
+		}
+	}
+	if !ran {
+		t.Fatal("no segment of the line runs gh")
+	}
+	_, reg := forgeRepo(t, forgeOptedIn)
+	if d := forgeCheck(t, reg, line); !contains(d.Matches, forgeUnreadEntryID) {
+		t.Fatalf("Check = %q (matches %v), want the forge check's %q among them", d.Verdict, d.Matches, forgeUnreadEntryID)
 	}
 }
 
