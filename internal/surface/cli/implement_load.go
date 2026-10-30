@@ -195,7 +195,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"died, or whose pid now belongs to another process (a different start time), is\n" +
 			"reclaimed by the next waiter. A SIGINT or SIGTERM to the waiter is passed on to\n" +
 			"the command, and the waiter waits for it to exit, exits with its code and\n" +
-			"releases the hold. A\n" +
+			"releases a command hold (a settle hold lapses on its own). A\n" +
 			"command that is a race run (go, then `test` with -race) is gated as one for both\n" +
 			"gates: above one preflight at a time it stays shut while another race run is\n" +
 			"live, judges and takes the race gate's hold as well as its own, and from the\n" +

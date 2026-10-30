@@ -1016,8 +1016,8 @@ So a second lone race run gated this way waits for the first, as a second
 race stage does. A hold whose waiter has died, or whose pid now belongs to
 another process, is reclaimed by the next waiter. A SIGINT or SIGTERM to the
 waiter is passed on to the command, and the waiter waits for it to exit before
-it exits and releases the hold, so the command is never left running without
-its waiter. A symlinked `~/.abcd.noindex` is refused, and so is a home that lies inside a git working tree, unless that home is the account's own home itself, before anything is created under it (exit 1). Relay a timeout as
+it exits and releases a command hold (a settle hold lapses on its own), so the
+command is never left running without its waiter. A symlinked `~/.abcd.noindex` is refused, and so is a home that lies inside a git working tree, unless that home is the account's own home itself, before anything is created under it (exit 1). Relay a timeout as
 printed; do not loop around it.
 
 While it waits, in a checkout, the waiter also keeps your own reservations
