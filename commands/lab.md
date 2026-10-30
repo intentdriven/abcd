@@ -105,7 +105,8 @@ Two steps go through the router today, so theirs are the types whose pairs
 are kept: the drain's judgement before a lane opens (`eligibility-residual`),
 and embark's lesson ranking (`embark-lesson-ranking`), one pair per lesson once
 the host's scores are handed back. Every other type stays on the host whatever
-its route says, and a lab with no pairs has no `agreement`.
+its route says (the drain and `embark lessons` each print a diagnostic for a
+route set on such a type), and a lab with no pairs has no `agreement`.
 For each type, `agreement` gives `pairs`, `compared` (the adapter answered),
 `agreed`, `skipped` (the state was over the model's window, or the call
 failed), `rate`, and the compared and agreed counts in four probability

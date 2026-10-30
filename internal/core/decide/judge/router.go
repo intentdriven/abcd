@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/credential"
@@ -125,6 +126,10 @@ func Load(roots layered.Roots, repoRoot string) (*Router, error) {
 			continue
 		}
 		routes[Type(pr.Name)] = pr.Target
+		if !slices.Contains(asked, Type(pr.Name)) && (pr.Target.Mode == oracle.JudgementShadow || pr.Target.Mode == oracle.JudgementOn) {
+			diags = append(diags, fmt.Sprintf("decision adapter: oracle.judgements.%s in %s routes a type no step asks through the decision adapter yet; "+
+				"the host decides it alone, nothing runs beside it, and no pair is recorded", pr.Name, termsafe.Sanitize(pr.Target.Origin)))
+		}
 	}
 	creds := credential.Store(roots.Home)
 	r := newRouter(routes, func(t oracle.Target) Judge { return Adapter{Calls: cfg, Creds: creds, Target: t} },

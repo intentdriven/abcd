@@ -287,9 +287,10 @@ to 4, which the host answers with a scores file, the adapter scoring beside it
 in shadow and in its place turned on
 ([`04-surfaces/03-embark.md`](../04-surfaces/03-embark.md)). No other type's
 step calls the router yet, so every other judgement stays on the host whatever
-its route says. A route naming a type outside the registry is a diagnostic
-both callers report: the drain in its next step, embark on stderr and in its
-result. The tests drive the router, the pairs file, the harvest, the drain's
+its route says, and a route set on one of them is a diagnostic saying it runs
+nothing and records no pair. A route naming a type outside the registry is a
+diagnostic too; both callers report them: the drain in its next step, embark
+on stderr and in its result. The tests drive the router, the pairs file, the harvest, the drain's
 moves and the lesson ranking in each mode with a fake adapter and a temporary
 home.
 

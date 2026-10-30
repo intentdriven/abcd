@@ -417,7 +417,35 @@ func TestLoadRefusesAnUnlistedModelBeforeAnyCall(t *testing.T) {
 	if rt.Mode(DuplicateMatch) != oracle.JudgementShadow || rt.Mode(RemedyRead) != oracle.JudgementOn || rt.Mode(MemoryCheck) != oracle.JudgementHost {
 		t.Fatalf("modes: %s %s %s", rt.Mode(DuplicateMatch), rt.Mode(RemedyRead), rt.Mode(MemoryCheck))
 	}
-	if len(rt.Diagnostics) != 1 || !strings.Contains(rt.Diagnostics[0], "lesson-polish") {
+	if len(rt.Diagnostics) != 3 || !strings.Contains(strings.Join(rt.Diagnostics, "\n"), "lesson-polish") {
 		t.Fatalf("diagnostics = %q, want the unknown type named", rt.Diagnostics)
+	}
+}
+
+// A route to a type in the registry that no step asks through the router yet
+// is kept, and said: the host decides it alone and nothing runs beside it, so
+// a shadow route there records no pair. A route to a type a step asks is not
+// remarked on.
+func TestLoadSaysARouteToATypeNoStepAsksYetRunsNothing(t *testing.T) {
+	roots := layered.Roots{Repo: t.TempDir(), Home: t.TempDir()}
+	p := abcdhome.Path(roots.Home, "config.json")
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(`{"oracle":{"api":{"openrouter":{"base_url":"https://openrouter.ai/api/v1","key":"openrouter",
+		"models":["typesafe/jev-1.13"]}},"judgements":{"duplicate-match":"shadow:openrouter/typesafe/jev-1.13",
+		"eligibility-residual":"shadow:openrouter/typesafe/jev-1.13","embark-lesson-ranking":"shadow:openrouter/typesafe/jev-1.13"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rt, err := Load(roots, roots.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rt.Mode(DuplicateMatch) != oracle.JudgementShadow {
+		t.Fatalf("the route is kept: %s", rt.Mode(DuplicateMatch))
+	}
+	if len(rt.Diagnostics) != 1 || !strings.Contains(rt.Diagnostics[0], "oracle.judgements.duplicate-match") ||
+		!strings.Contains(rt.Diagnostics[0], "no step asks") || !strings.Contains(rt.Diagnostics[0], "no pair") {
+		t.Fatalf("diagnostics = %q, want the one route that runs nothing named", rt.Diagnostics)
 	}
 }

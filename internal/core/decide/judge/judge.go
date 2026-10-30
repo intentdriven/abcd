@@ -65,6 +65,11 @@ const (
 var registry = []Type{RemedyRead, DuplicateMatch, UnmeetableCriteria, EligibilityResidual, SourceClassification,
 	SourceSelection, MemoryCheck, LedgerCategory, LedgerSeverity, PrepassOverlap, PresentTense, EmbarkLessonRanking}
 
+// asked are the types a step asks through the router today. A route to any
+// other type is kept but runs nothing: the host decides it alone, and a shadow
+// route there records no pair, which Load says.
+var asked = []Type{EligibilityResidual, EmbarkLessonRanking}
+
 // types returns the registry, in its order.
 func types() []Type { return slices.Clone(registry) }
 
