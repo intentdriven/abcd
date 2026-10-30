@@ -2324,7 +2324,7 @@ Validate a host-composed gauntlet verdict: Writes the dated record, private unle
 **Example:**
 
 ```
-abcd ideate record widen-the-public-api --public --verdict-json verdict.json
+abcd ideate record widen-the-public-api --verdict-json verdict.json
 ```
 
 ### `abcd identity`
