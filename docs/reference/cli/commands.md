@@ -4611,6 +4611,12 @@ When ~/.abcd.noindex/holder-ids is there and its guarded read refuses it, no
 declared id is read as yours, and one line on stderr names the class of the
 refusal, never the file's contents (holder_ids_refused in --json).
 
+When your holder id is set or kept but refused (ABCD_HOLDER_ID set to
+anything but one holder id, or ~/.abcd.noindex/holder-id refused by its
+guarded read), no hold or withdrawal under it is read as yours, and one line
+on stderr names the class of the refusal, never the value or the file's
+contents (holder_id_refused in --json).
+
 A worktree is named home-relative (~/...), or by its directory name when it
 sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when
 the reservations could not be fetched; exit 2 outside a git checkout.
@@ -5528,6 +5534,16 @@ A running session sees each new line once, at its next prompt, in a
 block headed STATUS of at most ten lines and one more that counts the
 rest, read from disk alone.
 An announcement informs and grants nothing.
+
+When ~/.abcd.noindex/holder-ids is there and its guarded read refuses it, no
+declared id is read as yours, and one line on stderr names the class of the
+refusal, never the file's contents (holder_ids_refused in --json).
+
+When your holder id is set or kept but refused (ABCD_HOLDER_ID set to
+anything but one holder id, or ~/.abcd.noindex/holder-id refused by its
+guarded read), no hold or withdrawal under it is read as yours, and one line
+on stderr names the class of the refusal, never the value or the file's
+contents (holder_id_refused in --json).
 
 When the fetch fails, the status is listed as last fetched, with that view's
 age and a line saying it is unread since then and why. Exit 0 when the fetch

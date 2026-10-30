@@ -59,3 +59,18 @@ func TestEveryRenderNamesARefusedHolderIDsFile(t *testing.T) {
 		t.Fatalf("an act over the refused declaration: exit %d, %s; want it refused naming the file", code, stderr)
 	}
 }
+
+// TestPeersAndStatusHelpNameBothHolderIDRefusals: the help of each render
+// that names a refused holder-ids file or a refused holder id says both, and
+// the JSON field each is carried in.
+func TestPeersAndStatusHelpNameBothHolderIDRefusals(t *testing.T) {
+	var asJSON bool
+	for name, long := range map[string]string{"peers": newPeersCommand(&asJSON).Long, "status": newStatusCommand(&asJSON).Long} {
+		flat := strings.Join(strings.Fields(long), " ")
+		for _, want := range []string{"(holder_ids_refused in --json)", "(holder_id_refused in --json)", "ABCD_HOLDER_ID"} {
+			if !strings.Contains(flat, want) {
+				t.Errorf("abcd %s --help does not say %q", name, want)
+			}
+		}
+	}
+}

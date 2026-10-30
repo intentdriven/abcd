@@ -140,6 +140,14 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"block headed STATUS of at most ten lines and one more that counts the\n" +
 			"rest, read from disk alone.\n" +
 			"An announcement informs and grants nothing.\n\n" +
+			"When ~/.abcd.noindex/holder-ids is there and its guarded read refuses it, no\n" +
+			"declared id is read as yours, and one line on stderr names the class of the\n" +
+			"refusal, never the file's contents (holder_ids_refused in --json).\n\n" +
+			"When your holder id is set or kept but refused (ABCD_HOLDER_ID set to\n" +
+			"anything but one holder id, or ~/.abcd.noindex/holder-id refused by its\n" +
+			"guarded read), no hold or withdrawal under it is read as yours, and one line\n" +
+			"on stderr names the class of the refusal, never the value or the file's\n" +
+			"contents (holder_id_refused in --json).\n\n" +
 			"When the fetch fails, the status is listed as last fetched, with that view's\n" +
 			"age and a line saying it is unread since then and why. Exit 0 when the fetch\n" +
 			"succeeded and with no remote named origin; exit 1 when it failed, when\n" +
