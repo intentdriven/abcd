@@ -1,6 +1,6 @@
 //go:build unix
 
-package gitutil
+package gitutil_test
 
 import (
 	"context"
@@ -13,6 +13,9 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // TestAStoppedCommitLeavesNoChildGitStartsAfterTheSnapshot is the reproduced
@@ -25,14 +28,13 @@ import (
 func TestAStoppedCommitLeavesNoChildGitStartsAfterTheSnapshot(t *testing.T) {
 	dir, pidFile := lateChildRepo(t)
 	var held time.Time
-	afterSnapshot = func() {
+	gitutil.SetAfterSnapshotForTest(t, func() {
 		time.Sleep(2 * time.Second)
 		held = time.Now()
-	}
-	t.Cleanup(func() { afterSnapshot = nil })
+	})
 	stalled := errors.New("did not finish")
 
-	_, err := RunCommitCommandBounded(dir, 500*time.Millisecond, stalled, "commit", "-q", "-m", "late", "--", "a.md")
+	_, err := gitutil.RunCommitCommandBounded(dir, 500*time.Millisecond, stalled, "commit", "-q", "-m", "late", "--", "a.md")
 	took := time.Since(held)
 	if !errors.Is(err, stalled) {
 		t.Fatalf("the stopped commit was not refused as stalled: %v", err)
@@ -41,7 +43,7 @@ func TestAStoppedCommitLeavesNoChildGitStartsAfterTheSnapshot(t *testing.T) {
 	if pid, ok := lateChildAlive(t, pidFile); ok {
 		t.Errorf("prepare-commit-msg's program (pid %d) is still running after the stop", pid)
 	}
-	if took >= stopGrace {
+	if took >= gitutil.StopGrace {
 		t.Errorf("the commit came back %s after the stop was let go: a late child held git's output for the WaitDelay", took)
 	}
 }
@@ -53,12 +55,13 @@ func lateChildRepo(t *testing.T) (dir, pidFile string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("XDG_CONFIG_HOME", home)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	env := gittest.Env(t)
 	dir = t.TempDir()
 	git := func(args ...string) {
 		t.Helper()
 		c := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		c.Env = env
 		if out, err := c.CombinedOutput(); err != nil {
 			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 		}
@@ -119,12 +122,10 @@ func TestAStopThatCannotReadTheTableStillContinuesGit(t *testing.T) {
 			_ = syscall.Kill(pid, syscall.SIGKILL)
 		}
 	})
-	was := psPaths
-	psPaths = []string{filepath.Join(t.TempDir(), "no-ps")}
-	t.Cleanup(func() { psPaths = was })
+	gitutil.SetPSPathsForTest(t, []string{filepath.Join(t.TempDir(), "no-ps")})
 	stalled := errors.New("did not finish")
 
-	_, err := RunCommitCommandBounded(dir, 500*time.Millisecond, stalled, "commit", "-q", "-m", "x", "--", "a.md")
+	_, err := gitutil.RunCommitCommandBounded(dir, 500*time.Millisecond, stalled, "commit", "-q", "-m", "x", "--", "a.md")
 	if !errors.Is(err, stalled) {
 		t.Fatalf("the stopped commit was not refused as stalled: %v", err)
 	}
@@ -143,19 +144,16 @@ func TestAStopFreezesGitItself(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".git", "hooks", "pre-commit"), []byte("#!/bin/sh\n: > '"+began+"'\nsleep 2\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	was := psPaths
-	psPaths = []string{filepath.Join(t.TempDir(), "no-ps")}
-	t.Cleanup(func() { psPaths = was })
+	gitutil.SetPSPathsForTest(t, []string{filepath.Join(t.TempDir(), "no-ps")})
 	var inHook bool
-	afterSnapshot = func() {
+	gitutil.SetAfterSnapshotForTest(t, func() {
 		_, err := os.Stat(began)
 		inHook = err == nil
 		time.Sleep(3 * time.Second)
-	}
-	t.Cleanup(func() { afterSnapshot = nil })
+	})
 	stalled := errors.New("did not finish")
 
-	_, err := RunCommitCommandBounded(dir, 500*time.Millisecond, stalled, "commit", "-q", "-m", "late", "--", "a.md")
+	_, err := gitutil.RunCommitCommandBounded(dir, 500*time.Millisecond, stalled, "commit", "-q", "-m", "late", "--", "a.md")
 	if !errors.Is(err, stalled) {
 		t.Fatalf("the stopped commit was not refused as stalled: %v", err)
 	}
@@ -182,7 +180,7 @@ func TestTheSweepStopsASurvivorBeforeKillingIt(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", "/bin/sh -c '"+strings.ReplaceAll(script, "'", `'\''`)+"' & wait")
 	cmd.WaitDelay = time.Second
-	sweep := stopWithDescendants(cmd)
+	sweep := gitutil.StopWithDescendants(cmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +194,7 @@ func TestTheSweepStopsASurvivorBeforeKillingIt(t *testing.T) {
 	})
 	survivor := waitPid(t, survivorPid)
 	var beforeStop, beforeKill bool
-	beforeSweepStop = func() {
+	gitutil.SetSweepSeamsForTest(t, func() {
 		beforeStop = true
 		_ = syscall.Kill(survivor, syscall.SIGUSR1)
 		for deadline := time.Now().Add(5 * time.Second); len(childPids(children)) == 0; time.Sleep(20 * time.Millisecond) {
@@ -204,13 +202,11 @@ func TestTheSweepStopsASurvivorBeforeKillingIt(t *testing.T) {
 				t.Fatal("the survivor started no child before its stop")
 			}
 		}
-	}
-	beforeSweepKill = func() {
+	}, func() {
 		beforeKill = true
 		_ = syscall.Kill(survivor, syscall.SIGUSR1)
 		time.Sleep(500 * time.Millisecond)
-	}
-	t.Cleanup(func() { beforeSweepStop, beforeSweepKill = nil, nil })
+	})
 
 	cancel()
 	_ = cmd.Wait()
@@ -263,7 +259,7 @@ func TestADescendantThatIgnoresTheStopIsNotLeftFrozen(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", "trap '' TERM; sleep 60 & echo $! > '"+pidFile+"'; wait")
-	_ = stopWithDescendants(cmd)
+	_ = gitutil.StopWithDescendants(cmd)
 	stopped := make(chan struct{})
 	cancelStop := cmd.Cancel
 	cmd.Cancel = func() error {
@@ -304,7 +300,7 @@ func TestADescendantThatIgnoresTheStopIsNotLeftFrozen(t *testing.T) {
 // where its signals do nothing and git's exit is still read.
 func TestAStopOfAGitThatHasAlreadyExitedIsHarmless(t *testing.T) {
 	reaped := exec.CommandContext(context.Background(), "/bin/sh", "-c", "exit 0")
-	_ = stopWithDescendants(reaped)
+	_ = gitutil.StopWithDescendants(reaped)
 	if err := reaped.Run(); err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +309,7 @@ func TestAStopOfAGitThatHasAlreadyExitedIsHarmless(t *testing.T) {
 	}
 
 	zombie := exec.CommandContext(context.Background(), "/bin/sh", "-c", "exit 0")
-	sweep := stopWithDescendants(zombie)
+	sweep := gitutil.StopWithDescendants(zombie)
 	if err := zombie.Start(); err != nil {
 		t.Fatal(err)
 	}
