@@ -128,6 +128,31 @@ Coverage grades each section grounded, partial or blank, the lifeboat's
 vocabulary. The harvest files nothing, and claims no cost the lab did not
 measure.
 
+A lab that collected the decision adapter's shadow pairs
+(itd-2609221009495079) gets one more section. When a judgement type is
+configured for shadow (`oracle.judgements.<type>` set to
+`shadow:<provider>/<model>`, [`03-configuration.md`](../05-internals/03-configuration.md)),
+the host decides and the adapter answers beside it. Each pair is appended to
+`pairs.jsonl` in the newest lab home minted for the repository: the host's
+answer, the adapter's answer, the adapter's probability, the state's SHA-256 and
+size, and the model that answered, or why it did not. That is the only file the
+adapter writes, and it is never written into the repository. The drain's
+judgement before a lane opens (`eligibility-residual`) is today the one step
+that goes through the router, so it is the one type whose pairs are kept;
+every other type stays on the host whatever its route says
+([`03-configuration.md`](../05-internals/03-configuration.md)).
+Here the harvest
+computes something rather than only assembling prose: from `pairs.jsonl` it
+counts, for each judgement type, the pairs, the pairs compared (the adapter
+answered), the pairs that agreed and the pairs skipped (the state was larger
+than the model's window, or the call failed). It reports the agreement rate,
+and the compared and agreed counts in four probability bands (below 0.50,
+0.50–0.70, 0.70–0.90, 0.90 and above). Lines that do not parse are counted
+apart and never guessed at. The section ends with the line a research note
+filed from it carries, naming the lab home and the count. That note is the
+evidence a ruling turns a type on with. A lab with no pairs has no such
+section.
+
 ## Halt and record
 
 A gate refusal halts the lab and is recorded, never adapted around. When the

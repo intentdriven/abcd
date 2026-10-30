@@ -96,8 +96,11 @@ do*; the id form answers *what is this, and what is my next move* (spc-26,
 itd-121). For a shipped intent the move is its fidelity-review state, read by
 the intent store's one reader of the review marker (itd-2609150819445595): an
 owed review names its receipt and the re-emit command; a shipped intent with no
-marker owes one too, and the re-emit mints its receipt; a dead-lettered review
-is reported unreviewed with its reason; an ingested one leaves nothing to do.
+marker owes one too, and the re-emit mints its receipt, unless its Audit Notes
+read as a hand-written audit (they name the acceptance criteria and give a
+verdict on them), when the move reports it audited by hand and owes nothing; a
+dead-lettered review is reported unreviewed with its reason; an ingested one
+leaves nothing to do.
 For a ready planned intent, and for its open spec, the move is closing the spec,
 and it says that the close ships the intent when no open spec still names it. A
 positional on the namespace root is not a `show` sub-verb, so the form stays

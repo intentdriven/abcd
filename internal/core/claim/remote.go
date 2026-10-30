@@ -370,9 +370,16 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// release: a refused release would leave the issue held until its lease
 		// ran out (spc-2610161044461448, review of steps 1-18).
 		if why := handBackUnfit(root, m); why != "" {
-			m.HandedBack, m.RecordBlob, res.HandBackKept, res.HandBackUnpublished = "", "", nil, why
+			m.HandedBack, m.RecordBlob, res.HandBackKept, res.HandBackUnpublished = "", "", nil, why+", so a plain tombstone released it"
+			if !j.present {
+				// Over an absent branch a plain tombstone would make one for
+				// nothing.
+				return Result{Act: ActAlreadyReleased, Record: p.id, HandBackUnpublished: why + ", so nothing is published and the branch stays absent",
+					DerivedUnchecked: p.derivedGap}, nil
+			}
 			if j.message.released() {
 				// Over a tombstone already there, a plain one says nothing new.
+				why += ", so the release already there stands"
 				return Result{Act: ActAlreadyReleased, Record: p.id, Holder: j.Holder, Footprint: j.Footprint, ClaimedAt: j.ClaimedAt,
 					ExpiresAt: j.ExpiresAt, Commit: j.Commit, HandBackUnpublished: why, DerivedUnchecked: p.derivedGap}, nil
 			}
@@ -632,11 +639,19 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 // already at the tip is reported and nothing is pushed.
 func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 	switch {
+	case !j.present && p.req.OverAbsent:
+		return overAbsent(p, j)
 	case !j.present:
 		return Result{}, message{}, "", refuse("%s holds no reservation on %s to release; %s", p.id, Remote, nothingPushed)
 	case j.Unreadable != "":
 		return Result{}, message{}, "", refuse("the reservation on %s is unreadable (%s), so nobody holds it to release; %s",
 			p.id, j.Unreadable, nothingPushed)
+	case p.req.OverAbsent && !j.message.released():
+		// A branch made since it was found absent holds a reservation the
+		// hand-back was never judged over: whoever made it holds the record.
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldMoved, ErrRefused,
+			fmt.Sprintf("%s was reserved again on %s since its branch was found absent, so the hand-back is not published over it; %s",
+				p.id, Remote, nothingPushed))
 	case j.message.released():
 		return releasedAlready(p, j)
 	case !j.mine:
@@ -670,6 +685,26 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 	}
 	res.HandBackUnpublished = why
 	return res, m, j.Commit, nil
+}
+
+// overAbsent is a release's row over a branch origin no longer holds, asked
+// with OverAbsent: the hand-back is published as the branch's first commit,
+// a tombstone with no footprint, which the plain push lands only while the
+// branch is still absent. A record finished on the default branch has
+// nothing left to hand back, and a hand-back markHandBack cannot mark is not
+// published: either way nothing is pushed and the branch stays absent.
+func overAbsent(p *prepared, j judged) (Result, message, string, error) {
+	done := Result{Act: ActAlreadyReleased, Record: p.id}
+	if j.derived {
+		done.HandBackUnpublished = derivedWhy(p.id) + ", so the hand-back is no longer due"
+		return done, message{}, "", nil
+	}
+	m := p.tombstone(nil)
+	if why, unread := p.markHandBack(&m, j); why != "" {
+		done.HandBackUnpublished, done.HandBackUnread = why, unread
+		return done, message{}, "", nil
+	}
+	return Result{Act: ActReleased, Record: p.id, Holder: p.holder, ClaimedAt: m.ClaimedAt, ExpiresAt: m.ExpiresAt}, m, "", nil
 }
 
 // markHandBack names the hand-back asked for on m, the tombstone a release

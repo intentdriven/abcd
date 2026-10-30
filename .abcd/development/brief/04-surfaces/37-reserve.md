@@ -447,7 +447,8 @@ branch `abcd-reserved/rel-vX.Y.Z` (itd-2609151838312703 C7 and C8,
 spc-2610150728396006 step 4, resolving iss-2609091037191879). While it is live,
 every other session's land step refuses to arm its merge, naming the holder and
 the release, and leaves the pull request open; `abcd peers` shows the line
-"release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef: merges are held" (the holder's full
+"release v0.16.0 being cut by h_0123456789abcdef0123456789abcdef: merges are
+held; the hold lapses at <time> unless the cut renews it" (the holder's full
 id; one reserved before the holder id shows `@maya`), judged by the merge
 hold's own rule (`claim.JudgedHolds`, iss-2610160415393242): the cutting
 copy's own release is shown as "you are cutting release v0.16.0 from this

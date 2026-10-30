@@ -83,15 +83,36 @@ flags.
   to touch until a human repairs it. A bare count of those would be a number the
   reader cannot act on. It is the check to reach for after a repo rename, a
   machine migration, or "why aren't my transcripts showing up".
-- **The remote report** reports, read-only, the GitHub-native secret-scanning toggles on
-  the repository this checkout's own origin names, and the changes an apply
-  would make. A toggle it could not read reports `unknown`, never `disabled`.
+- **The remote report** audits, read-only, the repository this checkout's own
+  origin names against abcd's settings baseline (itd-2610290746077716), and
+  says what an apply would change. The baseline follows GitHub's hardening
+  guidance and the OpenSSF Scorecard checks. It covers: security features;
+  the repository's flags; the default branch's deletion, force-push,
+  required-check and code-owner rules; release-tag protection; CODEOWNERS
+  coverage of the publish surface; and the Actions policy and workflow token.
+  Each setting is one finding with its current value, target and state: `ok`,
+  `differs` (the apply can set it), `advisory` (reported and never applied),
+  `owed` (the plan or visibility does not offer it yet), `kept` (the
+  repository's `github.keep`), or `unknown`. A setting it could not read is
+  `unknown`, never off. It reports the real visibility beside the declared one,
+  and the owner's plan where the sign-in can see it. It requires only the checks
+  every pull request's workflows report, reading a workflow's trigger only in
+  plain YAML and leaving out one written in any other form, and names a
+  required check no workflow is known to report. A tightening that could break a working CI is advisory
+  until the workflows comply, and so is one over a workflow or local action it
+  could not read, or drawn from workflow files that differ from the default
+  branch's on GitHub. The organization's Actions policy is read and
+  never written, and a missing scope is named. A missing CODEOWNERS is advisory
+  until it is decided whether a managed repository keeps one
+  (iss-2610290755587946).
   The same request also reads the repository's merge hygiene, and a second
   reads its fork pull-request approval policy (whose pull-request workflows
   wait for the technical facilitator's approval before they run, one of the
   controls that bear on which workflows report a required check's name). abcd
-  mirrors these and never sets them: they encode the technical facilitator's
-  workflow rather than a posture abcd holds the repository to, and each is
+  mirrors these. It sets only `delete_branch_on_merge`, on a yes, as part of the
+  baseline. The merge methods and the approval policy it never sets: they
+  encode the technical facilitator's workflow rather than a posture abcd holds
+  the repository to. Each is
   reported only when the API answered for it, because `false` and "the API did not say" are
   different facts (iss-2608270512210664). A policy read that fails otherwise
   than GitHub's 404 is said in a note, and an apply keeps the policy the
@@ -119,18 +140,36 @@ namespace too (itd-10), as distinct from the uninstall's reversible behaviour.
 
 ### The remote apply, the one outward-visible write
 
-It enables GitHub's native secret scanning and then push protection, in that
-order, because GitHub refuses push protection on a repository whose secret
-scanning is off. It then mirrors the desired state into the repo's committed
-settings mirror: a managed block holding the two toggles abcd drives, and an
-observed block holding the merge-hygiene settings and the fork pull-request
-approval policy it only reads.
+It applies every `differs` finding of the remote report, and nothing else, in
+the order GitHub requires. Secret scanning comes before push protection,
+because GitHub refuses push protection on a repository whose secret scanning
+is off, and Dependabot alerts before security updates. Then come the
+repository's flags in one request, abcd's own rulesets, the Actions policy and
+the workflow token. abcd creates and updates only its own three rulesets,
+found by name among the repository's own: `abcd: default branch`,
+`abcd: code-owner review` and `abcd: release tags`. None is created with a
+bypass actor. An update adds what the baseline asks for to what the ruleset
+holds and removes nothing, so a rule, parameter, ref or bypass someone added
+stays. A ruleset abcd cannot read whole, of another target, or excluding refs
+is not updated. A setting GitHub accepts only on top of another that is off and stays off
+(push protection without secret scanning, security updates without alerts) is
+advisory. No request body names the repository's visibility. It then
+mirrors the result into the repo's committed settings mirror, which has three
+blocks:
+
+- a managed block holding what abcd holds the repository to;
+- an owed block naming what the plan or the visibility does not offer yet;
+- an observed block holding the merge-hygiene settings and the fork pull-request approval policy it only reads.
+
+Each ruleset it applied is mirrored beside it. No file it writes names a
+person: a repository owned by a person is recorded by its name alone, and a
+bypass actor by its type and id.
 
 It answers to adr-44 and invariant 10 — no uninvited remote mutation, through a
 verb the user invokes **and** confirms — with four gates that refuse rather than
 guess. The folder must be a repo abcd manages. The repository must be the one
-this checkout's origin names. The repo's own config must not have opted out. And
-the caller must confirm the specific toggles named, an unanswered run declining
+this checkout's origin names. The repo's `github` block must read cleanly. And
+the caller must confirm the specific settings named, an unanswered run declining
 and a pre-given yes being the explicit advance answer.
 
 Exactly two statuses exit non-zero: refused, a gate abcd itself closed, and
@@ -837,7 +876,12 @@ anything, in this order:
 
 Run from a source checkout of abcd through `go run ./cmd/abcd`, setup is a
 build of that checkout as it stands, so the stale-binary refusal treats it as
-current (`gorun_vintage.go`, iss-2610240824047504). With no plugin root, the
+current (`gorun_vintage.go`, iss-2610240824047504). So is the build that
+checkout's own `scripts/abcd.sh` has just made in its local tier, which the
+script names in `ABCD_CHECKOUT_BUILD` before running it
+(iss-2610241240133009); another checkout's build, or a copy left in the tier
+and run directly, is refused, and in a source checkout the refusal sends the
+person to that script. With no plugin root, the
 copy `~/.abcd.noindex/path-entry` records still reports its install mode
 (iss-2610240916382802).
 

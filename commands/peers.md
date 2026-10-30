@@ -141,7 +141,10 @@ payload adds:
   `effective_expiry`, `own` (this copy's own cut), `unsighted` (dated more
   than five minutes ahead or undated, with no first sighting kept here), neither of
   which holds a merge, and `text`, the line the text form shows it by. Tell
-  the user who is cutting which release, and that merges are held.
+  the user who is cutting which release, and that merges are held until
+  `effective_expiry`. A hold past that time holds nothing: read it again
+  just before acting on it or relaying it, and never pass on a hold from an
+  earlier read.
 - `release_withdrawals`: each release whose reservation records withdrawn
   pull requests, with its `subject`, `holder`, `ended` (its tag on `origin`,
   or a tombstone of its holder's that is their own newest push), `lapsed` and `lapsed_at` (its lease lapsed before it

@@ -36,10 +36,10 @@ func TestEveryCopyButTheCuttingOneIsHeld(t *testing.T) {
 		{"the cutting copy", p, "", ""},
 		{"the same person's other copy", p2,
 			"release v0.16.0 is being cut by your copy on another computer, until 2026-10-03T15:00:00Z" + tail,
-			"merge it from the copy cutting v0.16.0, or wait until v0.16.0 is tagged or that copy releases rel-v0.16.0"},
+			"merge it from the copy cutting v0.16.0, or wait until v0.16.0 is tagged, that copy releases rel-v0.16.0 or the hold lapses at 2026-10-03T15:00:00Z unrenewed, when nothing holds the merge"},
 		{"another person", q,
 			"release v0.16.0 is being cut by " + p.keptHolderID() + ", until 2026-10-03T15:00:00Z" + tail,
-			"the copy cutting v0.16.0 may merge this itself; otherwise wait until v0.16.0 is tagged, or until rel-v0.16.0, held by " + p.keptHolderID() + " from that copy, ends: its holder releases it, or stops renewing it and it ends at 2026-10-03T15:00:00Z"},
+			"the copy cutting v0.16.0 may merge this itself; otherwise wait until v0.16.0 is tagged, or until rel-v0.16.0, held by " + p.keptHolderID() + " from that copy, is released or the hold lapses at 2026-10-03T15:00:00Z unrenewed, when nothing holds the merge"},
 	} {
 		m, err := FetchMergeHold(c.p.dir, t0, c.p.opts())
 		if err != nil {

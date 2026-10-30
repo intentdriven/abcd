@@ -111,14 +111,17 @@ type Hold struct {
 	Undated   bool `json:"undated,omitempty"`
 }
 
-// Text is the line every surface shows a hold by (C8): "release v0.16.0 being
-// cut by @maya: merges are held".
+// Text is the line every surface shows a hold by (C8), naming when it lapses,
+// so a reader that relays or acts on it later can tell it no longer holds
+// (iss-2610241107191205): "release v0.16.0 being cut by @maya: merges are
+// held; the hold lapses at <time> unless the cut renews it".
 func (h Hold) Text() string {
 	if h.Unreadable != "" {
 		return fmt.Sprintf("release %s held by an unreadable reservation (%s) until %s: merges are held",
 			h.Release, h.Unreadable, stamp(h.EffectiveExpiry))
 	}
-	return fmt.Sprintf("release %s being cut by %s: merges are held", h.Release, senderName(h.Holder))
+	return fmt.Sprintf("release %s being cut by %s: merges are held; the hold lapses at %s unless the cut renews it",
+		h.Release, senderName(h.Holder), stamp(h.EffectiveExpiry))
 }
 
 // Line is the line a listing shows a judged hold by (JudgedHolds), by the
@@ -216,14 +219,23 @@ func (s Snapshot) Lapsed(now time.Time) []Lapsed {
 // by the same rule (Hold.Line), as `abcd status` and the prompt hook do. It
 // reads the release reservations' tips alone.
 func releaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
+	holds, _, err := releaseHoldsAndLapsed(root, now, o)
+	return holds, err
+}
+
+// releaseHoldsAndLapsed is releaseHolds, and every release cut lapsed at now
+// (Snapshot.Lapsed), from the one read of the view, so the two can never
+// disagree about one reservation.
+func releaseHoldsAndLapsed(root string, now time.Time, o Options) ([]Hold, []Lapsed, error) {
 	now = now.UTC().Truncate(time.Second)
 	snap, err := viewOf(root, now, true, isRelease)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	lapsed := snap.Lapsed(now)
 	holds := snap.Holds(now)
 	if len(holds) == 0 {
-		return nil, nil
+		return nil, lapsed, nil
 	}
 	reader := readerSelf(root, o)
 	for i, h := range holds {
@@ -233,7 +245,7 @@ func releaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 			holds[i].Sibling = siblingCopy(root, h.key)
 		}
 	}
-	return holds, nil
+	return holds, lapsed, nil
 }
 
 // ReleaseHoldsForTest is releaseHolds, for the implement loop's tests of the

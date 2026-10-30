@@ -95,7 +95,7 @@ func ghCalls(t *testing.T, logPath string) []string {
 
 const (
 	mergeHygiene = `,"delete_branch_on_merge":true,"allow_merge_commit":true,` +
-		`"allow_squash_merge":true,"allow_rebase_merge":false`
+		`"allow_squash_merge":true,"allow_rebase_merge":false,"owner":{"type":"Organization"}`
 	bothDisabled = `{"security_and_analysis":{"secret_scanning":{"status":"disabled"},` +
 		`"secret_scanning_push_protection":{"status":"disabled"}}` + mergeHygiene + `}`
 	bothEnabled = `{"security_and_analysis":{"secret_scanning":{"status":"enabled"},` +
@@ -216,25 +216,30 @@ func TestRemoteApplyEnablesSecretScanningBeforePushProtection(t *testing.T) {
 	if res.Status != "clean" {
 		t.Fatalf("status = %q (notes=%v), want clean", res.Status, res.Notes)
 	}
+	// Every read comes before the first write: the state is READ before
+	// anything is changed. Then exactly the two toggles, in order.
 	calls := ghCalls(t, logPath)
-	if len(calls) != 4 {
-		t.Fatalf("want two GETs and two PATCHes, got %d calls:\n%s", len(calls), strings.Join(calls, "\n"))
-	}
-	for _, c := range calls[:2] {
+	var writes []string
+	for _, c := range calls {
 		if strings.Contains(c, "PATCH") {
-			t.Errorf("a read call writes; the state must be READ before anything is changed:\n%s", c)
+			writes = append(writes, c)
+		} else if len(writes) > 0 {
+			t.Errorf("a read came after a write; the state must be READ before anything is changed:\n%s", c)
 		}
 	}
-	if !strings.Contains(calls[2], `"secret_scanning"`) {
-		t.Errorf("the first write is not secret scanning:\n%s", calls[2])
+	if len(writes) != 2 {
+		t.Fatalf("want two PATCHes, got %d:\n%s", len(writes), strings.Join(calls, "\n"))
 	}
-	if !strings.Contains(calls[3], `"secret_scanning_push_protection"`) {
-		t.Errorf("the second write is not push protection:\n%s", calls[3])
+	if !strings.Contains(writes[0], `"secret_scanning"`) {
+		t.Errorf("the first write is not secret scanning:\n%s", writes[0])
 	}
-	// Every call names the repo the verb resolved, and no other.
+	if !strings.Contains(writes[1], `"secret_scanning_push_protection"`) {
+		t.Errorf("the second write is not push protection:\n%s", writes[1])
+	}
+	// Every repository call names the repo the verb resolved, and no other.
 	for _, c := range calls {
-		if !strings.Contains(c, "repos/example-org/example-repo") {
-			t.Errorf("a call does not name the resolved repo:\n%s", c)
+		if strings.Contains(c, "repos/") && !strings.Contains(c, "repos/example-org/example-repo") {
+			t.Errorf("a call names a repository other than the resolved one:\n%s", c)
 		}
 	}
 }
@@ -375,10 +380,10 @@ func TestRemoteApplyIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestRemoteApplyHonoursTheOptOut is AC2, and it is stricter than the criterion:
-// an opted-out repo takes no remote call AT ALL, not merely no write. A verb that
-// still asked GitHub about a repo the maintainer told it to leave alone would be
-// reaching across the boundary the opt-out draws.
+// TestRemoteApplyHonoursTheOptOut is itd-153's AC2, narrowed by
+// itd-2610290746077716: the native-scanning opt-out keeps the two toggles it
+// names exactly as they are, never written and never recorded as managed, and
+// the rest of the baseline is audited and applied as for any repository.
 func TestRemoteApplyHonoursTheOptOut(t *testing.T) {
 	setupHermetic(t)
 	logPath := ghFake(t, bothDisabled)
@@ -389,17 +394,25 @@ func TestRemoteApplyHonoursTheOptOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Status != "opted_out" {
-		t.Errorf("status = %q, want opted_out", res.Status)
+	if res.Status == "refused" || res.Status == "aborted" {
+		t.Errorf("status = %q (notes %v)", res.Status, res.Notes)
 	}
-	if calls := ghCalls(t, logPath); len(calls) != 0 {
-		t.Errorf("an opted-out repo was still contacted:\n%s", strings.Join(calls, "\n"))
+	for _, c := range ghCalls(t, logPath) {
+		if strings.Contains(c, "PATCH") && strings.Contains(c, "secret_scanning") {
+			t.Errorf("an opted-out toggle was written:\n%s", c)
+		}
 	}
-	if m := mirror(t, repo); m != "" {
-		t.Errorf("a committed mirror was written for a repo that opted out:\n%s", m)
+	if m := mirror(t, repo); strings.Contains(m, "secret_scanning") {
+		t.Errorf("the mirror claims the opted-out toggles as managed:\n%s", m)
 	}
-	if len(res.Notes) == 0 {
-		t.Error("the opt-out is silent; a thing abcd deliberately did not do must say so")
+	kept := 0
+	for _, f := range res.Audit.Findings {
+		if (f.Setting == "secret_scanning" || f.Setting == "secret_scanning_push_protection") && f.State == "kept" && f.Note != "" {
+			kept++
+		}
+	}
+	if kept != 2 {
+		t.Errorf("the opt-out does not say it kept both toggles: %+v", res.Audit.Findings)
 	}
 }
 
@@ -492,11 +505,13 @@ func TestRemoteApplyRefusesRatherThanGuess(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.Status != "opted_out" {
-			t.Errorf("status from a subdirectory = %q, want opted_out", res.Status)
+		if res.Status == "refused" {
+			t.Errorf("status from a subdirectory = %q (notes %v)", res.Status, res.Notes)
 		}
-		if calls := ghCalls(t, logPath); len(calls) != 0 {
-			t.Errorf("a run from a subdirectory contacted a repo that opted out:\n%s", strings.Join(calls, "\n"))
+		for _, c := range ghCalls(t, logPath) {
+			if strings.Contains(c, "PATCH") && strings.Contains(c, "secret_scanning") {
+				t.Errorf("a run from a subdirectory wrote a toggle the repo opted out of:\n%s", c)
+			}
 		}
 		if _, err := os.Stat(filepath.Join(sub, ".abcd")); err == nil {
 			t.Error("a stray .abcd tree was created in the subdirectory")

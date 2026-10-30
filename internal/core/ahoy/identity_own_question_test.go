@@ -13,7 +13,7 @@ import (
 func TestIdentityQuestionStandsWithoutTheSettingsApproval(t *testing.T) {
 	clearIdentityEnv(t)
 	dir := idGitRepo(t, "Test User", "test@example.com")
-	idWritePin(t, dir, pinAlex)
+	idWritePin(t, dir, pinAlice)
 	p := &identityPrompter{terminal: true, answer: true}
 	a := establishCtx(dir, p, MismatchGapID)
 	a.approved = map[GapCategory]bool{} // the settings change declined
@@ -24,12 +24,12 @@ func TestIdentityQuestionStandsWithoutTheSettingsApproval(t *testing.T) {
 		t.Fatalf("asked %d questions, want the one identity question: %q", len(p.asked), p.asked)
 	}
 	q := p.asked[0]
-	for _, want := range []string{"Alex Reppel <alex@example.com>", ".git/config"} {
+	for _, want := range []string{"Alice <alice@example.com>", ".git/config"} {
 		if !strings.Contains(q, want) {
 			t.Errorf("the identity question does not name %q: %q", want, q)
 		}
 	}
-	if got := localConfig(t, dir, "user.name"); got != "Alex Reppel" {
+	if got := localConfig(t, dir, "user.name"); got != "Alice" {
 		t.Errorf("user.name = %q after a yes, want the pinned name", got)
 	}
 }

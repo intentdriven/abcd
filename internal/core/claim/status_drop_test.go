@@ -116,8 +116,8 @@ func TestTheAnnouncementsAreReadWhenTheHoldsAreNot(t *testing.T) {
 	maya.announceAs("merging", "#1012")
 	pat.status(nil)
 	old := readHolds
-	readHolds = func(string, time.Time, Options) ([]Hold, error) {
-		return nil, errors.New("the reservations did not read")
+	readHolds = func(string, time.Time, Options) ([]Hold, []Lapsed, error) {
+		return nil, nil, errors.New("the reservations did not read")
 	}
 	t.Cleanup(func() { readHolds = old })
 	v, err := ReadStatus(context.Background(), pat.dir, w.clock(), pat.opts())

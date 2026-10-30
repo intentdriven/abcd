@@ -323,7 +323,10 @@ on origin's default branch backs off, with a tip or without one
    pending in its state, carries it into the next drain, and publishes it over
    the issue's next release on origin, a tombstone marking no hand-back, as
    that tombstone's child, fenced on it and on the blob the yes was judged
-   over; a tip already marking a hand-back, a record finished or changed on
+   over, or, when the sweep has deleted that release first, as the first
+   commit of a branch origin no longer holds, which the plain push lands only
+   while it is still absent, and dropped there when it names no judged blob
+   (adr-2610161940004937); a tip already marking a hand-back, a record finished or changed on
    origin's default branch since, one origin holds in no one file, or a
    tombstone the hand-back would take past its cap ends it with nothing
    published, and the move says it was dropped and why; a default branch that
@@ -599,6 +602,25 @@ ruling or a deferral) is flagged in the summary naming the rule. Every route is
 in the summary, in text and in the machine-readable payload, with the record
 change it made, so nothing is dropped silently.
 
+### Held back for now
+
+A person holds one issue, or every issue whose `found_at` path lies in a path
+or contains it, back from the drain in progress, with a reason
+(iss-2610090642385898): a peer's fix in flight in one package, or an issue a
+person means to take themselves. The move adds the entry to the drain's skip
+list in its state, beginning a drain when none is in progress, and every move
+passes a held-back issue over before anything is pushed or asked over it,
+naming it among the passed issues with the check `skipped`, the entry and its
+reason. Several targets may be held back at once, all with the one reason; a
+target already on the list takes the new reason; an entry can be taken off
+again. The list is the drain's, not the ledger's: nothing is written onto the
+issue, and the list clears when the drain ends, so a hold for now never
+outlives the drain it was given to. A drain left with only held-back issues has
+nothing eligible to take and ends, clearing the list. A target that is neither
+an issue id nor a clean repository-relative path, a hold without a reason or a
+reason without a hold, and a list past sixty-four entries are refused with
+nothing written.
+
 ### The summary's counts
 
 Every move's summary totals the drain as it stands, in text and in the
@@ -685,7 +707,10 @@ drain state it cannot read as its own; another drain moving in the checkout is
 a contention (exit 3). It refuses a judgement's answer when the drain awaits
 none, when it is given at another path than the one the request names, when it
 cannot be read or is not exactly the request's shape, and when the remedy it
-judges has been rewritten since; each refusal writes nothing. The dry run
+judges has been rewritten since; each refusal writes nothing. It refuses a
+skip target that is neither an issue id nor a clean repository-relative path,
+a hold without its reason, a reason without a hold, and a skip list past its
+cap, each writing nothing. The dry run
 refuses the run's own flags. A run that
 opens nothing or merges nothing exits 0 and says why. A checkout that cannot be resolved,
 or a ledger holding one id in two status folders, is refused as every capture
@@ -718,7 +743,10 @@ Sub-verbs: none.
 | `--judgement` | string |
 | `--max` | int |
 | `--pace` | string |
+| `--reason` | string |
+| `--skip` | stringArray |
 | `--sub-agents` | string |
 | `--take-over` | bool |
+| `--unskip` | stringArray |
 
 <!-- surface-appendix:end -->

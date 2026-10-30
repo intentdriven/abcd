@@ -1,0 +1,4 @@
+A pull-request body read from a file: what the change does and the tests that
+prove it, with the assistance disclosed on a line of its own.
+
+Assisted-by: Claude:claude-opus-5-5

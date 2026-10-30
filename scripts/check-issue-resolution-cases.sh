@@ -1001,6 +1001,67 @@ printf '%s' "chore: tidy the parser" >"$d/title.txt"
 printf '%s\n' "No record is named here." >"$d/body.md"
 expect pass "$d" "RS004 a pull-request form naming no record" -- pr title.txt body.md
 
+# RS004 over one commit message, the form the committed commit-msg hook runs so
+# a bare mention is refused at the commit rather than at the preflight that
+# lint-issues runs it in (iss-2610241424265464). It is the message half alone:
+# no range and no ledger, so it needs nothing but the file.
+d="$(newrepo rs004-message-bare)"
+printf '%s\n' "fix: the parser hole behind iss-999" "" "Assisted-by: None" >"$d/msg.txt"
+expect_refusal_naming "$d" "RS004 bare mention in a commit message" \
+	"RS004.*iss-999.*Refs: iss-999" -- message msg.txt
+
+d="$(newrepo rs004-message-declared)"
+printf '%s\n' "fix: the parser hole behind iss-999" "" "Refs: iss-999" >"$d/msg.txt"
+expect pass "$d" "RS004 a commit message declaring its mention" -- message msg.txt
+
+d="$(newrepo rs004-message-list)"
+printf '%s\n' "fix: iss-998 and iss-999" "" "Resolves: iss-998, iss-999" >"$d/msg.txt"
+expect pass "$d" "RS004 a commit message declaring a list" -- message msg.txt
+
+d="$(newrepo rs004-message-mixed)"
+printf '%s\n' "fix: iss-999 behind itd-146" "" "Refs: itd-146, iss-999" >"$d/msg.txt"
+expect_refusal_naming "$d" "RS004 a mixed-family line in a commit message" \
+	"RS004.*iss-999.*a Refs: line naming iss-999 beside an id of another family" -- message msg.txt
+
+d="$(newrepo rs004-message-crlf)"
+printf 'fix: iss-999\r\n\r\nRefs: iss-999\r\n' >"$d/msg.txt"
+expect pass "$d" "RS004 a CRLF commit message declaring its mention" -- message msg.txt
+
+d="$(newrepo rs004-message-missing)"
+out="$(cd "$d" && bash "$GATE" message no-such.txt 2>&1)" && rc=0 || rc=$?
+if [ "$rc" -ne 2 ]; then
+	printf 'cases: FAIL RS004 a missing message file — expected exit 2, got %d:\n%s\n' "$rc" "$out" >&2
+	failures=$((failures + 1))
+else
+	printf 'cases: ok   RS004 a missing message file (exit 2, as expected)\n'
+fi
+
+# `-` reads the message on the standard input, the form the hook runs so that
+# it writes no file before a shell runs the gate: refused and passed alike.
+d="$(newrepo rs004-message-stdin)"
+for c in "1|fix: the parser hole behind iss-999" "0|fix: the parser hole behind iss-999\n\nRefs: iss-999"; do
+	want="${c%%|*}"
+	out="$(cd "$d" && printf '%b\n' "${c#*|}" | bash "$GATE" message - 2>&1)" && rc=0 || rc=$?
+	if [ "$rc" -ne "$want" ]; then
+		printf 'cases: FAIL RS004 a commit message on standard input — expected exit %d, got %d:\n%s\n' "$want" "$rc" "$out" >&2
+		failures=$((failures + 1))
+	else
+		printf 'cases: ok   RS004 a commit message on standard input (exit %d, as expected)\n' "$want"
+	fi
+done
+
+# The message form never asks git about history, so a shallow clone, where the
+# range forms refuse to run, judges a message all the same: the hook runs in
+# whatever clone the commit is made in.
+d="$(newrepo rs004-message-shallow-src)"
+git -C "$d" commit -q --allow-empty -m "one"
+git -C "$d" commit -q --allow-empty -m "two"
+s="$tmproot/rs004-message-shallow"
+git clone -q --depth 1 "file://$d" "$s"
+printf '%s\n' "fix: the parser hole behind iss-999" >"$s/msg.txt"
+expect_refusal_naming "$s" "RS004 a commit message in a shallow clone" \
+	"RS004.*iss-999" -- message msg.txt
+
 # --- RS005: a declared delivery must ship the intent --------------------------
 #
 # The intent-store twin of RS001 (itd-2609111003026787). A change that delivers

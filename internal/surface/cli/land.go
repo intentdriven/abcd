@@ -68,8 +68,12 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"     queue where the merge gate allows it (today: only where a merge queue gates the\n" +
 			"     default branch and a ruleset requires a person's approval), pinned to the\n" +
 			"     head, then confirmed in the queue. An arming someone else made is left as it\n" +
-			"     is. With no pull request it prints the `gh pr create` command and stops; it\n" +
-			"     never opens one.\n\n" +
+			"     is. With no pull request it composes the body from the branch's commits (each\n" +
+			"     subject, their Refs:, Resolves: and Delivers: lines, abcd's own Assisted-by label\n" +
+			"     and the models their Assisted-by: lines name) into the\n" +
+			"     checkout's .abcd/.work.local/ where it has one, judges it as the shell guard\n" +
+			"     judges a posted body, prints the `gh pr create` command naming it with\n" +
+			"     --body-file, and stops; it never opens one.\n\n" +
 			"land.push and land.enqueue are read from .abcd/config.json (in the working\n" +
 			"directory's checkout and the branch's own) and " + abcdhome.Display("config.json") + ",\n" +
 			"default true, and off wins from any layer: any file can turn an act off and none\n" +

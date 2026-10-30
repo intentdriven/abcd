@@ -1,7 +1,7 @@
 ---
 name: drain
 description: "Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record."
-argument-hint: "[--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over]"
+argument-hint: "[--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]"
 block: agents
 user-invocable: false
 ---
@@ -277,7 +277,12 @@ what it did in `next`:
   `pending_hand_backs`; a later move whose view shows the issue released by a
   tombstone that marks no hand-back publishes it over that release, fenced on
   it and on the blob the `yes` was judged over, so your own reserve and
-  release never erase it. A record changed or finished on origin's default
+  release never erase it. A view that shows no branch at all, the sweep having
+  deleted the release first, publishes it as the branch's first commit, which
+  origin takes only while the branch is still absent: if anyone reserves the
+  issue meanwhile, the hand-back stays pending for that reservation's release.
+  One judged while origin's default branch could not be read names no record
+  to fence on, so over a deleted branch it is dropped, and the move says so. A record changed or finished on origin's default
   branch since, one origin holds in no one file, or a tombstone the hand-back
   would take past its cap ends it with nothing published, and the move says
   in `next` and in the route's `wrote` that it was dropped, and why, never
@@ -509,6 +514,24 @@ hand-back and moves on to the next issue unattended. No verb ends a drain
 early, so a person who interrupts a drain and carries on by
 hand sees the prompts again two hours after it last moved.
 
+### Holding an issue back for now
+
+To keep the drain off one issue, or off every issue whose `found_at` lies in
+one path (a package a fix is in flight in), hold it back with a reason:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" drain --skip internal/core/capture --reason "a peer's fix is in flight there" --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" drain --unskip internal/core/capture --json
+```
+
+The move adds the entry to the drain's skip list (beginning a drain when none
+is in progress) and then moves as usual; every move passes a held-back issue
+over before anything is pushed or asked, in `passed` with check `skipped` and
+the reason. `--skip` may be repeated, all with the one `--reason`; a target
+already listed takes the new reason; `--unskip` takes an entry off. The list
+lives in the drain's state, writes nothing onto the issue, and clears when the
+drain ends; a drain left with only held-back issues ends, clearing it.
+
 ### The hand-back, by kind
 
 A `yes` from the host judgement is routed by its kind as the table below routes
@@ -550,6 +573,9 @@ drain has taken (`issue`, `remedy_sha256`, `answer`, `kind`, `reason`,
 for an answer over an issue that left the eligible set before it was taken,
 `hold` the reservation it was asked on, and `route` the runner that answered
 (`asked`, `ran`, `model`) when the judge is routed, absent for yours;
+`skips` is the drain's skip list (`target`, an issue id or a path; `reason`;
+`at`), empty once the drain has ended, which the text form lists as
+`held back:` lines;
 `pending_hand_backs` are the hand-backs routed and not yet published on
 `origin` (`issue`, `kind`, `blob`, `why`, `at`), which the text form lists as
 `hand-back pending:` lines;
@@ -601,7 +627,12 @@ a flagged decision: those are a person's.
   began with; a drain state it cannot read as its own is refused,
   naming the file. Another drain moving in the checkout exits 3: back off and
   retry. `--dry-run` refuses `--max`, `--pace`, `--sub-agents`,
-  `--fix-rounds`, `--judgement` and `--take-over`.
+  `--fix-rounds`, `--judgement`, `--take-over`, `--skip`, `--reason` and
+  `--unskip`.
+- The run refuses (exit 2, nothing written) a `--skip` or `--unskip` target
+  that is neither an issue id nor a clean repository-relative path, a `--skip`
+  without `--reason` (or a blank one, or one past 512 bytes), a `--reason`
+  without `--skip`, and a skip list that would pass 64 entries.
 - `--judgement` refuses (exit 2, nothing written) when the drain awaits no
   judgement, when the path is not the answer's path the request names, when
   the answer cannot be read as a regular file within 64 KiB, and when it is not

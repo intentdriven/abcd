@@ -12,8 +12,8 @@ import (
 // that login: no commit message or trailer, no ref name and no comment body,
 // across a reservation, its renewal and release, a take-over of maya's
 // reservation, a release's reservation with its withdrawals, an admission
-// and a release with its re-arms, a settle of a tagged release, and an
-// announcement.
+// and a release with its re-arms, a settle of a tagged release, an
+// announcement, and a hand-back published over an absent branch.
 func TestNoPushedTextNamesAPairedLogin(t *testing.T) {
 	w := newWorld(t)
 	f := commentedForge(t)
@@ -50,6 +50,21 @@ func TestNoPushedTextNamesAPairedLogin(t *testing.T) {
 			return err
 		}},
 		{"announce", func() error { _, err := octo.announce("merging", "#1012"); return err }},
+		{"hand-back over an absent branch", func() error {
+			blob := w.fileOnMain("iss-4", "The widget breaks.")
+			if _, err := octo.reserve("iss-4", "d.go"); err != nil {
+				return err
+			}
+			if _, err := octo.do(Request{Record: "iss-4", Release: true}); err != nil {
+				return err
+			}
+			runGit(t, w.bare, "update-ref", "-d", RefPrefix+"iss-4")
+			res, err := octo.do(Request{Record: "iss-4", Release: true, HandBack: HandBackUserVisible, HandBackBlob: blob, OverAbsent: true})
+			if err == nil && (res.Act != ActReleased || w.remoteTip("iss-4") == "") {
+				return errors.New("the hand-back was not published over the absent branch")
+			}
+			return err
+		}},
 	}
 	for _, s := range steps {
 		if err := s.do(); err != nil {

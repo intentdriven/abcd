@@ -139,7 +139,25 @@ that name with none at this head, since the proof may lie past the bound.
    is now disarmed and gives the command that arms it again. With no pull
    request the step is
    `stopped` with the `gh pr create` command: relay it to the user, who opens
-   the pull request; the next `abcd land` queues it.
+   the pull request; the next `abcd land` queues it. The command carries
+   `--title` (the branch's first commit's subject) and `--body-file`, naming a
+   body land composed from the branch's commits into the checkout's
+   `.abcd/.work.local/scratch/land/`: each commit's subject as a list, then
+   their `Refs:`, `Resolves:` and `Delivers:` lines, once each, then abcd's
+   own `Assisted-by: abcd:<version>` label, since abcd composed the text, and
+   the models the commits' `Assisted-by:` lines name (a commit's `None` is not
+   carried), and no commit's prose. land judges that body as the shell guard judges a
+   posted one (the outbound policy, the disclosure line, and the issue-id
+   declarations where the repository opted into them), and a body that fails
+   one is still written, with the stop's note naming the check, so the user
+   fixes it before posting. The file is named after the branch and its head
+   commit, and a file already at that name is kept as it is, never rewritten,
+   so a body edited before posting survives running land again; the note says
+   so, the kept text is what land judges, and deleting the file has the next
+   run compose it afresh. A new head gets a file of its own, and land removes
+   no earlier one, since it may hold an edit. Where git does not ignore the
+   local tier, or the checkout has none (land makes none), land writes no
+   file and the command is the bare `gh pr create`.
 
 The payload carries `branch`, `head`, `checkout` (home-relative),
 `default_branch`, `push` and `enqueue` (each `key`, `on`, and the `layer` and
@@ -217,7 +235,7 @@ hand-run `gh pr merge` the merge gate did not allow.
 reservations and `origin`'s release tags, as the implement loop's land fence
 does, and makes the same judgement. While another session holds a live
 release reservation (`rel-vX.Y.Z`, ended by the tag `vX.Y.Z` reaching
-`origin` or by its holder releasing it), or an unreadable one within its hold,
+`origin`, by its holder releasing it, or by its lapse at the time it names), or an unreadable one within its hold,
 nothing is pushed, armed or queued, and the refusal names the release, its
 holder (or "your worktree … on this machine" when another worktree of this
 checkout cut it, else "your copy on another computer") and until when. A session cutting
@@ -228,8 +246,8 @@ from the cutting checkout is not held. A checkout with no `origin` is not
 held. A release reserved with a date more than five minutes ahead of this
 clock holds from when this checkout first saw it; a checkout that cannot keep
 that sighting (no `.abcd/.work.local/`) does not count it, and prints one
-notice line naming it. Exit 3 means back off: relay who holds the release, and
-run `abcd land` again once it is tagged.
+notice line naming it. Exit 3 means back off: relay who holds the release and until when, and
+run `abcd land` again once it is tagged or the hold has lapsed.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

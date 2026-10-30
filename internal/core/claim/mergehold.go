@@ -90,18 +90,25 @@ func (m MergeHold) Waits() string {
 		case h.Unreadable != "":
 			waits = append(waits, "wait until "+h.Release+" is tagged or the hold ends at "+stamp(h.EffectiveExpiry))
 		case h.Mine && h.Sibling != "":
-			waits = append(waits, "merge it from "+h.Sibling+", the worktree cutting "+h.Release+", or wait until "+h.Release+" is tagged or that copy releases "+h.Subject)
+			waits = append(waits, "merge it from "+h.Sibling+", the worktree cutting "+h.Release+", or wait until "+h.Release+" is tagged, that copy releases "+h.Subject+lapses(h))
 		case h.Mine:
-			waits = append(waits, "merge it from the copy cutting "+h.Release+", or wait until "+h.Release+" is tagged or that copy releases "+h.Subject)
+			waits = append(waits, "merge it from the copy cutting "+h.Release+", or wait until "+h.Release+" is tagged, that copy releases "+h.Subject+lapses(h))
 		default:
 			// The wait comes last, so a caller's ", then run ... again"
 			// follows it and never reads as an instruction to the
 			// cutting copy.
 			waits = append(waits, "the copy cutting "+h.Release+" may merge this itself; otherwise wait until "+h.Release+" is tagged, or until "+h.Subject+
-				", held by "+h.Holder+" from that copy, ends: its holder releases it, or stops renewing it and it ends at "+stamp(h.EffectiveExpiry))
+				", held by "+h.Holder+" from that copy, is released"+lapses(h))
 		}
 	}
 	return strings.Join(waits, "; ")
+}
+
+// lapses is the last way a readable hold ends, for Waits: its lapse, after
+// which nothing holds the merge and no person need say so
+// (iss-2610241107191205).
+func lapses(h Hold) string {
+	return " or the hold lapses at " + stamp(h.EffectiveExpiry) + " unrenewed, when nothing holds the merge"
 }
 
 // Notice is the one line that names each release dated ahead and not
@@ -176,9 +183,19 @@ func MergeHolds(root string, now time.Time, o Options) (MergeHold, error) {
 // it; `abcd peers` shows it, each hold by its Line. It fetches nothing and
 // pushes nothing.
 func JudgedHolds(root string, now time.Time, o Options) ([]Hold, error) {
+	holds, _, err := judgedHoldsAndLapsed(root, now, o)
+	return holds, err
+}
+
+// judgedHoldsAndLapsed is JudgedHolds, and every release cut lapsed at now,
+// from the same read of the view (releaseHoldsAndLapsed): ReadStatus's one
+// read of the release reservations, for the holds and for the prompt hook's
+// notes, which name each lapsed cut so a session shown its hold knows it
+// holds no more (iss-2610241107191205).
+func judgedHoldsAndLapsed(root string, now time.Time, o Options) ([]Hold, []Lapsed, error) {
 	now = now.UTC().Truncate(time.Second)
 	keepFirstFetched(root, now, isRelease)
-	return releaseHolds(root, now, o)
+	return releaseHoldsAndLapsed(root, now, o)
 }
 
 // FetchMergeHold fetches the reservations and origin's release tags, then

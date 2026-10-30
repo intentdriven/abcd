@@ -36,9 +36,10 @@ type drainOutput struct {
 func newDrainCommand(asJSON *bool) *cobra.Command {
 	var dryRun, takeOver bool
 	var maxLanes int
-	var pace, subAgents, fixRounds, judgement string
+	var pace, subAgents, fixRounds, judgement, skipReason string
+	var skip, unskip []string
 	cmd := &cobra.Command{
-		Use: "drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over]",
+		Use: "drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [--skip <iss-N|path> --reason <why>] [--unskip <iss-N|path>]",
 		Long: "Work the open issue ledger unattended: fix the issues that need no decision, and\n" +
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
@@ -114,10 +115,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"moved on (renewed, reserved again or taken over since, or released by a person),\n" +
 			"or that took none because you held the issue live, publishes nothing yet: the\n" +
 			"drain keeps the hand-back pending (pending_hand_backs in --json) and publishes it\n" +
-			"over the issue's next release on origin. A record changed or finished on origin's\n" +
-			"default branch since, one origin holds in no one file, or a tombstone the hand-back\n" +
-			"would take past its cap drops it, and the move says it was dropped and why; a\n" +
-			"default branch that could not be read keeps it pending. A promotion\n" +
+			"over the issue's next release on origin, or, once the sweep has deleted that\n" +
+			"release, as the first commit of a branch no one has made again since. A record\n" +
+			"changed or finished on origin's default branch since, one origin holds in no one\n" +
+			"file, or a tombstone the hand-back would take past its cap drops it, and the move\n" +
+			"says it was dropped and why; a default branch that could not be read keeps it\n" +
+			"pending. A promotion\n" +
 			"this checkout cannot make, not holding the record as origin does, is left to a\n" +
 			"checkout that can. The reservation is taken once per request: one unanswered when it lapses is\n" +
 			"dropped and the issue asked again only after the drain's other eligible work. The\n" +
@@ -189,6 +192,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"lost connection (`abcd implement outage`), the drain opens nothing and ends with\n" +
 			"stopped \"outage\", naming the services down, since when, the probes and the lanes it\n" +
 			"opened; the next `abcd drain`, once the outage is cleared, begins a new one.\n\n" +
+			"--skip <iss-N|path> --reason <why> holds one issue, or every issue whose found_at\n" +
+			"lies in that path, back for now: the move adds it to the drain's skip list (beginning\n" +
+			"a drain when none is in progress) and every move passes it over before anything is\n" +
+			"pushed or asked, named in passed with check \"skipped\" and the reason. --skip may be\n" +
+			"given more than once, all with the one --reason; --unskip takes an entry off. The\n" +
+			"list clears when the drain ends.\n\n" +
 			"Without the repository's record, the dry run and the run both refuse (exit 2),\n" +
 			"naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or\n" +
 			"merges nothing exits 0 and says why. Exit 2 on a refusal, exit 3 when another\n" +
@@ -201,10 +210,13 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if !dryRun {
-				return runDrain(cmd, *asJSON, repoRoot, maxLanes, pace, subAgents, fixRounds, judgement, takeOver)
+				return runDrain(cmd, *asJSON, repoRoot, maxLanes, pace, subAgents, fixRounds, judgement, takeOver,
+					drainSkips{skip: skip, reason: skipReason, unskip: unskip})
 			}
-			if cmd.Flags().Changed("max") || cmd.Flags().Changed("pace") || cmd.Flags().Changed("sub-agents") || cmd.Flags().Changed("fix-rounds") || cmd.Flags().Changed("judgement") || cmd.Flags().Changed("take-over") {
-				return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --pace, --sub-agents, --fix-rounds, --judgement or --take-over: it opens no lane, asks no judgement and reserves nothing (nothing written)"}
+			for _, f := range []string{"max", "pace", "sub-agents", "fix-rounds", "judgement", "take-over", "skip", "reason", "unskip"} {
+				if cmd.Flags().Changed(f) {
+					return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --pace, --sub-agents, --fix-rounds, --judgement, --take-over, --skip, --reason or --unskip: it opens no lane, asks no judgement, reserves nothing and keeps no skip list (nothing written)"}
+				}
 			}
 			pv, err := loop.DrainDryRun(repoRoot, time.Now())
 			// Every refusal of the rule exits 2, as the bare verb's does: a rule
@@ -232,6 +244,9 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane may take before it is handed back; wins over every configured layer")
 	cmd.Flags().StringVar(&judgement, "judgement", "", "the host's answer to the judgement the drain awaits, at the path its request names")
 	cmd.Flags().BoolVar(&takeOver, "take-over", false, "move your own live reservation of each issue this move reaches from another copy to this one; never another person's")
+	cmd.Flags().StringArrayVar(&skip, "skip", nil, "hold an issue (iss-N), or every issue whose found_at lies in a path, back for now; needs --reason; cleared when the drain ends")
+	cmd.Flags().StringVar(&skipReason, "reason", "", "why --skip holds its issues back, shown in each pass-over")
+	cmd.Flags().StringArrayVar(&unskip, "unskip", nil, "take an issue or path off the drain's skip list")
 	return cmd
 }
 
@@ -244,8 +259,15 @@ func warnLoosened(cmd *cobra.Command, record string, loosened []string) {
 	}
 }
 
+// drainSkips are the skip-list flags of a bare drain move.
+type drainSkips struct {
+	skip   []string
+	reason string
+	unskip []string
+}
+
 // runDrain is the bare verb: one move of the drain run.
-func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pace, subAgents, fixRounds, judgement string, takeOver bool) error {
+func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pace, subAgents, fixRounds, judgement string, takeOver bool, sk drainSkips) error {
 	const prefix = "abcd drain"
 	roots, notes := layered.RootsFor(repoRoot)
 	for _, n := range notes {
@@ -275,7 +297,7 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	ctx, stop := drainSignalContext()
 	defer stop()
 	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement,
-		Transcripts: &lazyHistoryStore{cmd: cmd}, Context: ctx})
+		Transcripts: &lazyHistoryStore{cmd: cmd}, Context: ctx, Skip: sk.skip, SkipReason: sk.reason, Unskip: sk.unskip})
 	if isDrainRuleRefusal(err) {
 		return &exitError{Code: 2, Msg: "abcd drain: " + termsafe.Sanitize(err.Error()) + " (nothing written)"}
 	}
@@ -363,6 +385,9 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 	for _, p := range res.PendingHandBacks {
 		fmt.Fprintf(w, "  hand-back pending: %s (%s), routed %s, not yet on origin: %s\n", p.Issue, p.Kind,
 			p.At.UTC().Format(time.RFC3339), termsafe.Sanitize(p.Why))
+	}
+	for _, s := range res.Skips {
+		fmt.Fprintf(w, "  held back: %s since %s: %s\n", termsafe.Sanitize(s.Target), s.At.UTC().Format(time.RFC3339), termsafe.Sanitize(s.Reason))
 	}
 	for _, p := range res.Passed {
 		fmt.Fprintf(w, "  passed: %s (%s): %s\n", p.ID, p.Check, termsafe.Sanitize(p.Reason))
