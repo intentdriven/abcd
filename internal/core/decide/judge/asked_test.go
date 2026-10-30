@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	gotypes "go/types"
 	"io/fs"
 	"path/filepath"
 	"slices"
@@ -14,12 +15,16 @@ import (
 )
 
 // asked is pinned to the steps that ask through the router: every judgement
-// type a file outside this package names, and only those, is in it. A step
-// wired to the router without its type added to asked, or a type left in
-// asked after its step stopped asking, fails here. A file that dot-imports
-// the package fails it too, and so does one that builds a type by
-// conversion: neither can be read as naming a constant, so the pin fails
-// closed rather than miss them.
+// type a file outside this package names by its constant, and only those, is
+// in it. A step wired to the router without its type added to asked, or a type
+// left in asked after its step stopped asking, fails here. Three spellings of a
+// type that name no constant fail it too, rather than pass unseen: a dot
+// import of the package, a conversion to its Type (parenthesised or not), and
+// a string literal as the Type field of a composite literal of one of its
+// types, the literal's type spelled or elided. The pin reads syntax, not
+// types, so a string literal that reaches a Type any other way (an argument
+// to a parameter of that type, an assignment to a Type field, a typed
+// variable's initial value) is not seen; reading those needs go/types.
 func TestAskedIsTheTypesTheCallersName(t *testing.T) {
 	consts := map[string]Type{}
 	fset := token.NewFileSet()
@@ -85,9 +90,60 @@ func TestAskedIsTheTypesTheCallersName(t *testing.T) {
 			return nil
 		}
 		var built error
+		ours := func(e ast.Expr) bool {
+			if st, ok := e.(*ast.StarExpr); ok {
+				e = st.X
+			}
+			sel, ok := e.(*ast.SelectorExpr)
+			if !ok {
+				return false
+			}
+			x, ok := sel.X.(*ast.Ident)
+			return ok && x.Name == local
+		}
+		var lit func(cl *ast.CompositeLit, typ ast.Expr)
+		lit = func(cl *ast.CompositeLit, typ ast.Expr) {
+			if ours(typ) {
+				for _, el := range cl.Elts {
+					kv, ok := el.(*ast.KeyValueExpr)
+					if !ok {
+						continue
+					}
+					if k, ok := kv.Key.(*ast.Ident); ok && k.Name == "Type" && literal(kv.Value) && built == nil {
+						built = fmt.Errorf("%s gives a judgement type as a string literal (Type: %s), which this pin of asked "+
+							"cannot read; name the type's constant instead", fset.Position(kv.Value.Pos()), gotypes.ExprString(kv.Value))
+					}
+				}
+				return
+			}
+			var elem ast.Expr
+			switch t := typ.(type) {
+			case *ast.ArrayType:
+				elem = t.Elt
+			case *ast.MapType:
+				elem = t.Value
+			default:
+				return
+			}
+			for _, el := range cl.Elts {
+				if kv, ok := el.(*ast.KeyValueExpr); ok {
+					el = kv.Value
+				}
+				if u, ok := el.(*ast.UnaryExpr); ok && u.Op == token.AND {
+					el = u.X
+				}
+				if inner, ok := el.(*ast.CompositeLit); ok && inner.Type == nil {
+					lit(inner, elem)
+				}
+			}
+		}
 		ast.Inspect(f, func(n ast.Node) bool {
+			if cl, ok := n.(*ast.CompositeLit); ok && cl.Type != nil {
+				lit(cl, cl.Type)
+			}
 			if call, ok := n.(*ast.CallExpr); ok {
-				if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Type" {
+				fun := ast.Unparen(call.Fun)
+				if sel, ok := fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Type" {
 					if x, ok := sel.X.(*ast.Ident); ok && x.Name == local && built == nil {
 						built = fmt.Errorf("%s builds a judgement type by conversion (%s.Type(...)), which this pin of asked "+
 							"cannot read; name the type's constant instead", fset.Position(call.Pos()), local)
@@ -117,5 +173,18 @@ func TestAskedIsTheTypesTheCallersName(t *testing.T) {
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Fatalf("the types the callers name are %v; asked is %v", got, want)
+	}
+}
+
+// literal is an expression built from literals alone ("remedy-read", or
+// "remedy" + "-read"): a constant naming no constant of the package.
+func literal(e ast.Expr) bool {
+	switch v := ast.Unparen(e).(type) {
+	case *ast.BasicLit:
+		return true
+	case *ast.BinaryExpr:
+		return literal(v.X) && literal(v.Y)
+	default:
+		return false
 	}
 }
