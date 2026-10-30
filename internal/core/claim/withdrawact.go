@@ -457,6 +457,11 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again bool) (commi
 		if ours(pr) {
 			continue // the release pull request itself
 		}
+		w := Withdrawal{Number: pr.Number, ID: pr.ID, Form: withdrawalFormOf(pr.Queued, pr.Method), Head: pr.Head, By: p.holder, State: WithdrawnPending}
+		if have, ok := withdrawalOf(m.Withdrawn, pr.Number); ok && p.notFirstRecorded(have, w) {
+			fails = append(fails, ForgeFailure{Number: pr.Number, Act: ForgeWithdraw, Reason: notFirstRecordedReason(p.id, pr)})
+			continue
+		}
 		if have, ok := withdrawalOf(all, pr.Number); ok && have.State == WithdrawnAdmitted {
 			continue // ruled into the cut already
 		}
@@ -465,11 +470,6 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again bool) (commi
 				continue
 			}
 		}
-		if have, ok := withdrawalOf(m.Withdrawn, pr.Number); ok && p.notFirstRecorded(have) {
-			fails = append(fails, ForgeFailure{Number: pr.Number, Act: ForgeWithdraw, Reason: notFirstRecordedReason(p.id, pr)})
-			continue
-		}
-		w := Withdrawal{Number: pr.Number, ID: pr.ID, Form: withdrawalFormOf(pr.Queued, pr.Method), Head: pr.Head, By: p.holder, State: WithdrawnPending}
 		next := withWithdrawal(all, w)
 		if len(next) > maxWithdrawals || !p.tombstoneFits(next) {
 			fails = append(fails, ForgeFailure{Number: pr.Number, Act: ForgeWithdraw,
@@ -556,15 +556,20 @@ func (p *prepared) withdrawArmed(tree, sha string, m message, again bool) (commi
 	return next, fixed, made, fails, ""
 }
 
-// notFirstRecorded reports whether w, the entry the record this act writes
-// over holds for a pull request, names one of the reader's own holder ids
-// (their kept id or a declared one), is still withdrawn, admitted or kept, and
-// is not one this copy acts on (acts): the reservation that first recorded it
-// under that id was not pushed by the account the id is held to. A copy never
-// withdraws such a pull request: carried unchanged, the entry would still not
-// be the reader's, so no copy of theirs would ever re-arm it.
-func (p *prepared) notFirstRecorded(w Withdrawal) bool {
-	return p.self.Owns(w.By) && (w.unsettled() || w.State == WithdrawnKept) && !p.acts(w)
+// notFirstRecorded reports whether have, the entry the record this act
+// writes over holds for a pull request, is one this copy's withdrawal w of
+// it would carry unchanged without becoming its first record: have is still
+// withdrawn or admitted, records the same withdrawal as w (sameEntryAs, the
+// reader's login and kept id read alike), and is not one this copy acts on
+// (acts), so the reservation that first recorded it was not pushed by the
+// reader's own login. A copy never withdraws such a pull request: the walk
+// for the entry's first record would pass over the reader's push to that
+// commit, so the entry would still not be the reader's and no copy of theirs
+// would ever re-arm it. Any other entry is safe to withdraw over: a kept one
+// ends the walk, and one naming another id differs from w, so the reader's
+// push becomes w's first record.
+func (p *prepared) notFirstRecorded(have, w Withdrawal) bool {
+	return have.unsettled() && sameEntryAs(have, w, p.self.alike) && !p.acts(have)
 }
 
 // notFirstRecordedReason is why a withdrawal of pr was refused
