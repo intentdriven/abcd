@@ -350,7 +350,7 @@ func (p *prepared) pushRecord(tree, parent string, m message) (string, error) {
 func (p *prepared) withdrawArmed(tree, sha string, m message, again bool) (commit string, recorded message, made []Withdrawal, fails []ForgeFailure, unchecked string) {
 	commit, recorded = sha, m
 	retryable := func(w Withdrawal) bool {
-		return (w.Pending() || w.State == WithdrawnKept) && p.self.Owns(w.By)
+		return (w.Pending() || w.State == WithdrawnKept) && p.acts(w)
 	}
 	if again && !slices.ContainsFunc(m.Withdrawn, retryable) {
 		return commit, recorded, nil, nil, ""
@@ -523,6 +523,7 @@ func (p *prepared) ownRelease(tree string, j *judged) (Settle, error) {
 		j.mine, j.thisCopy = p.self.Owns(held.m.Holder), held.m.Copy == p.copy
 	}
 	j.Withdrawn = merged(j.Withdrawn, own, p.self)
+	p.vouched = k.vouched(j.Withdrawn)
 	s.NotRead = own.above
 	return s, nil
 }
@@ -542,7 +543,8 @@ func withoutWithdrawal(ws []Withdrawal, n int) []Withdrawal {
 }
 
 // rearmMine settles each withdrawal in ws still to settle (withdrawn, or
-// admitted) whose withdrawer is a's holder, and returns ws
+// admitted) that a may act on (actsOn: one naming a's holder themselves, or
+// one vouched names), and returns ws
 // with their new states, the ones it settled, whether any state changed, and
 // the failures. A withdrawn one is re-armed in its own form, pinned to its
 // head; an admitted one is checked on the forge, which counts it done when
@@ -553,9 +555,10 @@ func withoutWithdrawal(ws []Withdrawal, n int) []Withdrawal {
 // maxRearmRefusals-th it is settled as refused, for its owner, and no copy
 // tries again. why is set, and nothing is touched, when the forge cannot be
 // named or gh acts as another account than a's holder.
-func rearmMine(a actor, ws []Withdrawal) (out, settled []Withdrawal, changed bool, fails []ForgeFailure, why string) {
+func rearmMine(a actor, ws []Withdrawal, vouched map[Withdrawal]bool) (out, settled []Withdrawal, changed bool, fails []ForgeFailure, why string) {
 	out = slices.Clone(ws)
-	mine := func(w Withdrawal) bool { return w.unsettled() && a.self.Owns(w.By) }
+	acts := actsOn(a.self, vouched)
+	mine := func(w Withdrawal) bool { return w.unsettled() && acts(w) }
 	if !slices.ContainsFunc(ws, mine) {
 		return out, nil, false, nil, ""
 	}
@@ -696,15 +699,46 @@ func (s *Settle) shownOnce(root, id, commit string) (shown func()) {
 	return func() { _ = writeUnflushedIn(root, shownDirRel, id, []byte(commit+"\n")) }
 }
 
-// stranded is the withdrawals in ws still withdrawn that are not self's.
-func stranded(ws []Withdrawal, self Self) []Withdrawal {
+// stranded is the withdrawals in ws still withdrawn that acts does not act
+// on: another person's, and those of a declared id this copy does not act on
+// (one with no login beside it, or one its paired login's own push does not
+// record).
+func stranded(ws []Withdrawal, acts func(Withdrawal) bool) []Withdrawal {
 	var out []Withdrawal
 	for _, w := range ws {
-		if w.Pending() && !self.Owns(w.By) {
+		if w.Pending() && !acts(w) {
 			out = append(out, w)
 		}
 	}
 	return out
+}
+
+// unpairedOf is each id self declares with no login beside it that names a
+// withdrawal of ws still withdrawn, in the order ws names them.
+func unpairedOf(ws []Withdrawal, self Self) []string {
+	var out []string
+	for _, w := range ws {
+		if w.Pending() && self.unpaired(w.By) && !slices.Contains(out, w.By) {
+			out = append(out, w.By)
+		}
+	}
+	return out
+}
+
+// UnpairedLine is the sentence naming the ids the person declares with no
+// login beside them whose withdrawals this copy acts on none of, and how to
+// let it: pair each with its account's login in DeclaredHolderIDsFile. It
+// names the ids alone, never a login.
+func UnpairedLine(ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	if len(ids) == 1 {
+		return fmt.Sprintf("%s is an id %s declares as yours with no login beside it, so this copy acts on none of its withdrawals: "+
+			"write the GitHub login of the account it is yours on after it, on its line, and this copy settles them", ids[0], DeclaredHolderIDsFile)
+	}
+	return fmt.Sprintf("%s are ids %s declares as yours with no login beside them, so this copy acts on none of their withdrawals: "+
+		"write the GitHub login of the account each is yours on after it, on its line, and this copy settles them", strings.Join(ids, ", "), DeclaredHolderIDsFile)
 }
 
 // settleEnded settles id's withdrawals of a's holder when its release has
@@ -796,7 +830,9 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 	if lapsed && !(rec.found && rec.at == 0 && rec.commit == t.Commit) {
 		return Settle{}, false
 	}
-	due := slices.ContainsFunc(rec.mine(a.self), Withdrawal.unsettled)
+	acted := merged(t.Withdrawn, rec, a.self)
+	vouched := k.vouched(acted)
+	due := slices.ContainsFunc(rec.mine(a.self), Withdrawal.unsettled) || len(vouched) > 0
 	s.NotRead = rec.above
 	if !due {
 		k.cache().markDone(a.holder)
@@ -823,7 +859,7 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 		shown()
 		return s, true
 	}
-	base, acted := t.Commit, merged(t.Withdrawn, rec, a.self)
+	base := t.Commit
 	if !rec.m.released() {
 		claimed, err := a.pushTombstone(tree, id, t.Commit, acted)
 		if err != nil {
@@ -837,7 +873,7 @@ func settleTip(a actor, tree, id string, t tip, own bool) (s Settle, ok bool) {
 		s.LapsedAt = &lapsedAt
 	}
 	shown()
-	ws, settled, changed, fails, why := rearmMine(a, acted)
+	ws, settled, changed, fails, why := rearmMine(a, acted, vouched)
 	s.Settled, s.Failures, s.Failed = append(s.Settled, settled...), fails, why
 	if !changed {
 		return s, true
@@ -1007,7 +1043,7 @@ func (p *prepared) admitCheck(w Withdrawal) (state string, err error) {
 func (p *prepared) settleOwnRelease(tree, sha string, ws []Withdrawal) (Settle, string, []Withdrawal) {
 	a := p.actor()
 	s := Settle{Subject: p.id, Settled: []Withdrawal{}, Commit: sha}
-	out, settled, changed, fails, why := rearmMine(a, ws)
+	out, settled, changed, fails, why := rearmMine(a, ws, p.vouched)
 	s.Settled, s.Failures, s.Failed = append(s.Settled, settled...), fails, why
 	if !changed {
 		return s, sha, ws
@@ -1226,6 +1262,13 @@ type ReleaseWithdrawals struct {
 	// that holder's own newest push is not: it ends nothing, so nothing is
 	// re-armed yet.
 	NotEnded string `json:"not_ended,omitempty"`
+	// Unpaired is each id the reader declares with no login beside it that
+	// names one of Stranded (UnpairedLine).
+	Unpaired []string `json:"unpaired,omitempty"`
+	// DueAwaitsHolderID is true when the reader keeps no holder id yet, so
+	// no listing settles Due: their next reservation keeps one and settles
+	// them, and after an announcement keeps one the next listing does.
+	DueAwaitsHolderID bool `json:"due_awaits_holder_id,omitempty"`
 }
 
 // Lines is each sentence the listing shows for the release's withdrawals.
@@ -1256,12 +1299,20 @@ func (r ReleaseWithdrawals) Lines() []string {
 			out = append(out, l)
 		}
 	}
-	if len(r.Due) > 0 {
+	switch {
+	case len(r.Due) > 0 && r.DueAwaitsHolderID:
+		out = append(out, fmt.Sprintf("%s has ended, and %s you withdrew for it are not re-armed yet: held merges from before the holder id stay held "+
+			"until your next reservation or announcement; a reservation re-arms them as it keeps your holder id, and after an announcement your next listing does",
+			r.Subject, strings.Join(numbers(r.Due), ", ")))
+	case len(r.Due) > 0:
 		out = append(out, fmt.Sprintf("%s has ended, and %s you withdrew for it are not re-armed yet: your next abcd act that fetches the reservations re-arms them",
 			r.Subject, strings.Join(numbers(r.Due), ", ")))
 	}
 	if len(r.Stranded) > 0 {
 		out = append(out, StrandedLine(r.Subject, r.Stranded))
+	}
+	if l := UnpairedLine(r.Unpaired); l != "" {
+		out = append(out, l)
 	}
 	for _, w := range r.Skipped {
 		out = append(out, SettledLine(r.Subject, w))
@@ -1301,13 +1352,16 @@ func (s Snapshot) ReleaseWithdrawals(root string, reader Self, now time.Time) []
 			}
 		}
 		ws := r.Withdrawn
+		// due is what the reader's next act would in fact act on: their own,
+		// read from their own newest push, and a declared id's that its
+		// paired login's own push records (actsOn). Nothing is due with the
+		// reader's login unknown: no act of theirs re-arms it from here.
+		due := func(Withdrawal) bool { return false }
 		if reader.Login != "" && why == "" && (len(ws) == 0 || r.State == StateUnreadable || slices.ContainsFunc(ws, Withdrawal.unsettled)) {
-			own := readerRecord(root, r.Record, tip, reader)
+			own, vouched := readerRecord(root, r.Record, tip, reader, &ws)
 			rw.Reader, rw.NotRead, rw.Unplaced = reader.Name(), own.above, own.why
-			if own.why != "" {
-				ws = slices.DeleteFunc(slices.Clone(ws), func(w Withdrawal) bool { return reader.Owns(w.By) })
-			} else {
-				ws = merged(ws, own, reader)
+			if own.why == "" {
+				due = actsOn(reader, vouched)
 			}
 		}
 		for _, w := range ws {
@@ -1320,15 +1374,14 @@ func (s Snapshot) ReleaseWithdrawals(root string, reader Self, now time.Time) []
 			case !w.Pending():
 			case !rw.Ended:
 				rw.Held = append(rw.Held, w)
-			case reader.Owns(w.By) && reader.Login != "":
-				// Due only when the reader's own newest push was read
-				// for it: with their login unknown it cannot be, and no
-				// act of theirs re-arms it from here.
+			case due(w):
 				rw.Due = append(rw.Due, w)
 			default:
 				rw.Stranded = append(rw.Stranded, w)
 			}
 		}
+		rw.Unpaired = unpairedOf(rw.Stranded, reader)
+		rw.DueAwaitsHolderID = len(rw.Due) > 0 && reader.ID == ""
 		if r.State == StateExpired && stillBeingCut(r) {
 			rw.Lapsed, rw.LapsedAt = true, r.EffectiveExpiry
 		}
@@ -1362,17 +1415,35 @@ func holdsUnsettledOf(root, id, tip string, reader Self) bool {
 // readerRecord is the record on id's release branch at tip of the person the
 // forge's record of pushes names by login (asker.newest), read as a listing
 // reads it: what the record placed on each commit taken from the cache kept
-// for the tip when it holds it, for reader, by their login.
-func readerRecord(root, id, tip string, reader Self) ownRecord {
+// for the tip when it holds it, for reader, by their login. With ws set, the
+// listing's withdrawals are read for reader as an act's settle reads them:
+// when that record is found or placed, *ws becomes what the act would carry
+// (merged) and vouched the declared entries it would act on; when it is not,
+// the reader's own are dropped from *ws, since none of them can be read.
+func readerRecord(root, id, tip string, reader Self, ws *[]Withdrawal) (ownRecord, map[Withdrawal]bool) {
+	unread := func(own ownRecord) (ownRecord, map[Withdrawal]bool) {
+		if ws != nil {
+			*ws = slices.DeleteFunc(slices.Clone(*ws), func(w Withdrawal) bool { return reader.isOwn(w.By) })
+		}
+		return own, nil
+	}
 	tree, err := emptyTree(root)
 	if err != nil {
-		return ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err) + ")"}
+		return unread(ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err) + ")"})
 	}
 	links, complete, err := releaseChain(root, id, tip, tree)
 	if err != nil {
-		return ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err) + ")"}
+		return unread(ownRecord{why: "the history of " + id + "'s branch could not be read (" + redacted(err) + ")"})
 	}
 	k := &asker{c: pushCheck{root, id, []string{tip}}, links: links, complete: complete, reading: true, self: reader}
 	defer k.save()
-	return k.newest(reader.Login)
+	own := k.newest(reader.Login)
+	switch {
+	case ws == nil:
+		return own, nil
+	case own.why != "":
+		return unread(own)
+	}
+	*ws = merged(*ws, own, reader)
+	return own, k.vouched(*ws)
 }

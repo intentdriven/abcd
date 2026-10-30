@@ -138,9 +138,14 @@ type Result struct {
 	// Admitted is the pull request an --admit re-armed and recorded
 	// admitted; nil for every other act.
 	Admitted *Withdrawal
-	// Stranded is each withdrawal of another person's the commit pushed
-	// carries, which this copy never re-arms (dcn-2610222219297651).
+	// Stranded is each withdrawal the commit pushed carries that this copy
+	// does not act on: another person's, which it never re-arms
+	// (dcn-2610222219297651), and one naming an id the person declares that
+	// is not held to an account's push (actsOn).
 	Stranded []Withdrawal
+	// Unpaired is each id the person declares with no login beside it that
+	// names one of Stranded (UnpairedLine).
+	Unpaired []string
 	// Settles is each release whose withdrawals this act re-armed or
 	// skipped: its own on a release's --release, and any ended release of
 	// the same person's it found on its fetch.
@@ -317,13 +322,13 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// withdrawal as it stands, and once it has landed every one of this
 		// person's is re-armed and a second tombstone records each state.
 		m.Withdrawn = j.Withdrawn
-		if slices.ContainsFunc(j.Withdrawn, func(w Withdrawal) bool { return w.unsettled() && p.self.Owns(w.By) }) {
+		if slices.ContainsFunc(j.Withdrawn, func(w Withdrawal) bool { return w.unsettled() && p.acts(w) }) {
 			if why, definite := loginMismatch(root, p.self); definite {
 				return Result{}, refuse("%s was not released: %s; %s", p.id, why, nothingPushed)
 			}
 			settleOwn = true
 		}
-		res.Stranded = stranded(j.Withdrawn, p.self)
+		res.Stranded, res.Unpaired = stranded(j.Withdrawn, p.acts), unpairedOf(j.Withdrawn, p.self)
 	case p.req.Admit != 0:
 		// The admission is recorded before the forge re-arms it, so a push
 		// that loses leaves nothing armed.
@@ -337,7 +342,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// A reservation keeps what its record still has withdrawn: its own
 		// admissions too while it is this person's reservation.
 		m.Withdrawn = carried(j.Withdrawn, j.mine && !j.message.released() && !j.derived)
-		res.Stranded = stranded(m.Withdrawn, p.self)
+		res.Stranded, res.Unpaired = stranded(m.Withdrawn, p.acts), unpairedOf(m.Withdrawn, p.self)
 	}
 	if !p.req.Release {
 		if err := crowding(p, j, &res); err != nil {
@@ -764,7 +769,9 @@ func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
 			n, p.id, listed, nothingPushed)
 	case !j.Withdrawn[i].unsettled():
 		return Result{}, message{}, "", refuse("#%d is recorded %s on %s, so there is nothing to admit; %s", n, j.Withdrawn[i].State, p.id, nothingPushed)
-	case !p.self.Owns(j.Withdrawn[i].By):
+	case p.self.unpaired(j.Withdrawn[i].By):
+		return Result{}, message{}, "", refuse("#%d was not admitted: %s; %s", n, UnpairedLine([]string{j.Withdrawn[i].By}), nothingPushed)
+	case !p.acts(j.Withdrawn[i]):
 		// Another person's copy never re-arms a withdrawal
 		// (dcn-2610222219297651), and an admission arms one under this
 		// person's account: only its withdrawer admits it

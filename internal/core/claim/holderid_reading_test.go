@@ -104,8 +104,8 @@ func TestATakeOverBetweenTwoDeclaredAccountsKeepsTheWithdrawals(t *testing.T) {
 	maya := w.clone("5678+maya@users.noreply.github.com", "")
 	b := "h_" + strings.Repeat("b", 32)
 	keepHolderID(t, maya.home, b)
-	declareHolderIDs(t, maya.home, a+"\n")
-	declareHolderIDs(t, octo.home, b+"\n")
+	declareHolderIDs(t, maya.home, a+" octo\n")
+	declareHolderIDs(t, octo.home, b+" maya\n")
 
 	if _, err := maya.do(Request{Record: "rel-v0.16.0", TakeOver: true}); err != nil {
 		t.Fatalf("maya's take-over: %v", err)

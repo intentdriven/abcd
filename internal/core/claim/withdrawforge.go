@@ -695,7 +695,7 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 			continue
 		}
 		a.Release = r.Record
-		own := readerRecord(root, r.Record, tip, reader)
+		own, _ := readerRecord(root, r.Record, tip, reader, nil)
 		if own.why != "" {
 			for _, w := range r.Withdrawn {
 				if w.State == WithdrawnAdmitted {
@@ -705,7 +705,7 @@ func ArmedMergesForCut(root string, o Options) (ArmedMerges, error) {
 			a.UnverifiedWhy = own.why + "; run the check again in a minute, once the forge's record has caught up"
 			continue
 		}
-		for _, w := range own.mine(reader) {
+		for _, w := range own.recorded(reader) {
 			switch w.State {
 			case WithdrawnAdmitted:
 				a.Admitted = append(a.Admitted, w)

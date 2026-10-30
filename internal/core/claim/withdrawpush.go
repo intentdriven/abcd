@@ -211,8 +211,27 @@ type ownRecord struct {
 }
 
 // mine is the withdrawals the record holds of self's own: those its own
-// newest push carries with one of self's holder names as their withdrawer.
+// newest push carries naming self themselves (their kept holder id, or their
+// login on a withdrawal made before the id) as their withdrawer. One naming
+// an id self only declares is that other account's, and is read from the
+// record its own account pushed (asker.vouched), never from self's.
 func (o ownRecord) mine(self Self) []Withdrawal {
+	if !o.found {
+		return nil
+	}
+	var out []Withdrawal
+	for _, w := range o.m.Withdrawn {
+		if self.isOwn(w.By) {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// recorded is every withdrawal the record's own newest push carries under
+// one of self's holder names, a declared id's included: what that push
+// itself records, which the launch check's exemption of an admission reads.
+func (o ownRecord) recorded(self Self) []Withdrawal {
 	if !o.found {
 		return nil
 	}
@@ -256,22 +275,61 @@ type asker struct {
 // person as its holder. A holder named by a GitHub username, as every hold
 // made before the holder id is, names login when it is login. A holder id
 // names no account the record of pushes could be matched against, so self's
-// own kept id names login only when login is self's, and any other id is
-// taken as naming whoever pushed it: the record of pushes, not the trailer,
-// says who the person is, and a commit someone else pushes naming another's
-// id can do no more than one naming themselves already could. An id self
-// only declares (DeclaredHolderIDsFile) is another account's of the person's,
-// whose login self does not know, so it too names whoever pushed it: held to
-// self's login, the other account's own reservation and tombstone would never
-// read as its own, and a release it took over would never end here.
+// own kept id names login only when login is self's, and an id self only
+// declares (DeclaredHolderIDsFile) names login only when the declaration
+// pairs it with login: one declared with no login beside it names no one, so
+// a commit naming it is never read as anyone's push, and this copy reads no
+// end from it. Any other id is taken as naming whoever pushed it: the record
+// of pushes, not the trailer, says who the person is, and a commit someone
+// else pushes naming another's id can do no more than one naming themselves
+// already could.
 func (k *asker) namesPusher(holder, login string) bool {
 	switch {
 	case !validHolderID(holder):
 		return sameHolder(holder, login)
 	case holder == k.self.ID:
 		return k.self.Login != "" && sameHolder(login, k.self.Login)
+	case k.self.declaredOnly(holder):
+		paired, ok := k.self.pairedLogin(holder)
+		return ok && sameHolder(login, paired)
 	}
 	return true
+}
+
+// vouched is the withdrawals of ws still to settle that name an id self
+// pairs with a login (DeclaredHolderIDsFile) and that the newest push of
+// that login to the branch, as the forge's record of pushes shows it, records
+// exactly as ws does: the declared entries this copy acts on. An entry
+// naming an unpaired id, or one its paired login's own newest push does not
+// record, or one whose paired login's newest push cannot be found or placed,
+// is not among them, and nothing acts on it here.
+func (k *asker) vouched(ws []Withdrawal) map[Withdrawal]bool {
+	out := map[Withdrawal]bool{}
+	recs := map[string]ownRecord{}
+	for _, w := range ws {
+		login, ok := k.self.pairedLogin(w.By)
+		if !ok || !w.unsettled() {
+			continue
+		}
+		key := strings.ToLower(login)
+		rec, seen := recs[key]
+		if !seen {
+			rec = k.newest(login)
+			recs[key] = rec
+		}
+		if rec.found && rec.why == "" && slices.Contains(rec.m.Withdrawn, w) {
+			out[w] = true
+		}
+	}
+	return out
+}
+
+// actsOn is the gate every act that re-arms, withdraws again or admits a
+// merge passes a withdrawal through: it acts only on one naming self
+// themselves (their kept holder id, or their login), which is read from
+// their own newest push (merged), and on one vouched names.
+func actsOn(self Self, vouched map[Withdrawal]bool) func(Withdrawal) bool {
+	return func(w Withdrawal) bool { return self.isOwn(w.By) || vouched[w] }
 }
 
 func (k *asker) cache() *tipCache {
@@ -582,22 +640,27 @@ func (k *tipCache) save() {
 
 // merged is the withdrawals a push of self's carries over base, the
 // withdrawals of the record it is written over: every entry of another
-// person's as base records it, and self's own only as their own newest push
+// person's, and every entry naming an id self only declares (another account
+// or home of theirs, whose own push recorded it), as base records it, and
+// self's own (their kept id, or their login) only as their own newest push
 // (own) records them, so nothing another login pushed is carried as theirs.
-// When self's login has pushed nothing to the branch (own not found), an
-// entry naming an id self only declares is kept as base records it: it is
-// the person's other account's, which its own push recorded under a login
-// self cannot name, and dropping it would lose that account's withdrawal from
-// a take-over of its cut. An entry naming self's kept id or login with no
-// push of self's login is not theirs to carry, and is dropped.
+// A declared id's entry for a pull request self's own record also names is
+// dropped for self's. An entry naming self's kept id or login with no push of
+// self's login is not theirs to carry, and is dropped.
 func merged(base []Withdrawal, own ownRecord, self Self) []Withdrawal {
+	mine := own.mine(self)
 	var out []Withdrawal
 	for _, w := range base {
-		if !self.Owns(w.By) || !own.found && self.declaredOnly(w.By) {
+		switch {
+		case !self.Owns(w.By):
 			out = append(out, w)
+		case self.declaredOnly(w.By):
+			if _, dup := withdrawalOf(mine, w.Number); !dup {
+				out = append(out, w)
+			}
 		}
 	}
-	return append(out, own.mine(self)...)
+	return append(out, mine...)
 }
 
 // unplacedLine is the sentence saying nothing of login's on subject was acted

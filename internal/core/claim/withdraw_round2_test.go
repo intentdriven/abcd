@@ -568,7 +568,7 @@ func TestReArmMineSkipsAnotherPersonsEntryOnTheSameTip(t *testing.T) {
 		{Number: 11, ID: "PR_eleven", Form: FormAutoMerge, Head: headA, By: "octo", State: WithdrawnPending},
 		{Number: 12, ID: "PR_twelve", Form: FormAutoMerge, Head: headB, By: "quinn", State: WithdrawnPending},
 	}
-	out, settled, _, fails, why := rearmMine(actor{root: p.dir, holder: "octo", self: Self{Login: "octo"}, subject: "rel-v0.16.0"}, ws)
+	out, settled, _, fails, why := rearmMine(actor{root: p.dir, holder: "octo", self: Self{Login: "octo"}, subject: "rel-v0.16.0"}, ws, nil)
 	if why != "" || len(fails) != 0 || len(settled) != 1 || settled[0].Number != 11 || out[1].State != WithdrawnPending ||
 		!slices.Equal(f.mutations(), []string{"enablePullRequestAutoMerge #11"}) {
 		t.Fatalf("rearmMine = %+v %+v %+v %q, mutations %v; want only octo's #11", out, settled, fails, why, f.mutations())
@@ -667,10 +667,10 @@ func TestCarriedKeepsOnlyWhatIsStillToSettle(t *testing.T) {
 	if got := numbersOf(carried(ws, true)); !slices.Equal(got, []int{1, 2, 5}) {
 		t.Fatalf("carried from one's own = %v; want pending and admitted", got)
 	}
-	if got := numbersOf(stranded(ws, Self{Login: "octo"})); !slices.Equal(got, []int{5}) {
+	if got := numbersOf(stranded(ws, actsOn(Self{Login: "octo"}, nil))); !slices.Equal(got, []int{5}) {
 		t.Fatalf("stranded for octo = %v; want quinn's", got)
 	}
-	if got := numbersOf(stranded(ws, Self{Login: "OCTO"})); !slices.Equal(got, []int{5}) {
+	if got := numbersOf(stranded(ws, actsOn(Self{Login: "OCTO"}, nil))); !slices.Equal(got, []int{5}) {
 		t.Fatalf("stranded for OCTO = %v; want quinn's (holders compare without case)", got)
 	}
 }

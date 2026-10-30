@@ -129,8 +129,9 @@ type reserveOutput struct {
 	// records (iss-2610222014550692); ForgeFailures each pull request the
 	// forge refused a withdrawal or re-arm of, and ForgeUnchecked why the
 	// armed merges could not be listed at all. Admitted is the pull request
-	// --admit re-armed; Stranded each withdrawal of another person's the
-	// release carries; Settles each release whose withdrawals the act re-armed
+	// --admit re-armed; Stranded each withdrawal the release carries that this
+	// copy does not act on, and Unpaired each id the person declares with no
+	// login beside it among them; Settles each release whose withdrawals the act re-armed
 	// or skipped. The text form warns of every failure on stderr.
 	Withdrew       []claim.Withdrawal   `json:"withdrew,omitempty"`
 	Withdrawals    []claim.Withdrawal   `json:"withdrawals,omitempty"`
@@ -138,6 +139,7 @@ type reserveOutput struct {
 	ForgeUnchecked string               `json:"forge_unchecked,omitempty"`
 	Admitted       *claim.Withdrawal    `json:"admitted,omitempty"`
 	Stranded       []claim.Withdrawal   `json:"stranded,omitempty"`
+	Unpaired       []string             `json:"unpaired,omitempty"`
 	Settles        []claim.Settle       `json:"settles,omitempty"`
 	// DirectoryFootprint is each footprint path naming a directory git
 	// tracks, with the tracked files beneath it (iss-2610230016544142): the
@@ -549,7 +551,7 @@ func reserveView(res claim.Result) reserveOutput {
 			EffectiveExpiry: rfc3339(o.Expiry), Copy: termsafe.Sanitize(o.Copy), CopyUnread: termsafe.Sanitize(o.CopyUnread)})
 		out.warnings = append(out.warnings, o.Warning())
 	}
-	out.Withdrew, out.Withdrawals, out.Stranded = res.Withdrew, res.Withdrawals, res.Stranded
+	out.Withdrew, out.Withdrawals, out.Stranded, out.Unpaired = res.Withdrew, res.Withdrawals, res.Stranded, res.Unpaired
 	out.Admitted, out.Settles = res.Admitted, res.Settles
 	out.ForgeUnchecked = termsafe.Sanitize(fsutil.RedactHome(res.ForgeUnchecked))
 	for _, f := range res.ForgeFailures {
@@ -627,6 +629,9 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	}
 	if len(out.Stranded) > 0 {
 		fmt.Fprintf(w, "  note: %s\n", claim.StrandedLine(out.Record, out.Stranded))
+		if l := claim.UnpairedLine(out.Unpaired); l != "" {
+			fmt.Fprintf(w, "  note: %s\n", l)
+		}
 	}
 	if len(out.Footprint) > 0 && out.Act != claim.ActAlreadyReleased {
 		quoted := make([]string, len(out.Footprint))

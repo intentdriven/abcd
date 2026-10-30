@@ -168,7 +168,15 @@ type prepared struct {
 	// derivedGap is why the act's fetch could not read origin's default
 	// branch, "" when it read it: the derived release is then not applied.
 	derivedGap string
+	// vouched is the release's withdrawals naming an id self pairs with a
+	// login whose own newest push records them (asker.vouched), set by
+	// ownRelease: with self's own, what the act may act on (acts).
+	vouched map[Withdrawal]bool
 }
+
+// acts reports whether the act may re-arm, withdraw again or admit w
+// (actsOn).
+func (p *prepared) acts(w Withdrawal) bool { return actsOn(p.self, p.vouched)(w) }
 
 // prepare checks a request in the order the refusals promise: the id before
 // any ref name is formed, then the footprint and the lease before any git
