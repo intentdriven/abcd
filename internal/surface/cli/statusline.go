@@ -12,6 +12,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
@@ -86,6 +87,13 @@ var statuslineGitContext = func(parent context.Context, gitBudget time.Duration)
 	return context.WithTimeout(parent, gitBudget)
 }
 
+// The row's merging element reads facilitator.mode through the merge gate's
+// own resolver, which core/statusline cannot import (landing reaches ahoy, and
+// ahoy reads statusline: the import would close a cycle). It is handed over
+// here, once, for both compositions of the row this binary makes: the status
+// verb's and the bare board's (board.go).
+func init() { statusline.MergingMode = landing.AutonomousMerging }
+
 // previousCommandWaitDelay is how long the verb waits, after killing the
 // previous command's group, for the command to exit. The verb's own streams
 // are files, which the command writes to directly; any other writer (a test's
@@ -126,10 +134,13 @@ func newStatuslineCommand(asJSON *bool) *cobra.Command {
 			"row is abcd's own: the presence badge first — `abcd-managed`, `waiting on\n" +
 			"the technical facilitator` or `waiting on the product thinker`, from the state\n" +
 			"`abcd mode` stores, its colour ending at the badge — then the session's\n" +
-			"name when the harness supplies one, the repository name, the branch, the\n" +
-			"model, the context percentage, the five-hour and seven-day usage\n" +
-			"percentages, and the record's counts of intents not yet shipped and open\n" +
-			"issues. Each element after the session name is switchable in\n" +
+			"name when the harness supplies one, the repository name, the branch,\n" +
+			"`autonomous merging` while the repository's facilitator.mode is auto (read\n" +
+			"as the merge gate reads it: the default branch's committed\n" +
+			"`.abcd/config.json` and the machine layer), the model, the context\n" +
+			"percentage, the five-hour and seven-day usage percentages, and the record's\n" +
+			"counts of intents not yet shipped and open issues. Each element after the\n" +
+			"session name is switchable in\n" +
 			"`" + abcdhome.Display("statusline.json") + "`; a payload field the harness did not\n" +
 			"supply drops its element with no placeholder.\n\n" +
 			"Outside a managed checkout, or with `disabled` set in the user-level\n" +

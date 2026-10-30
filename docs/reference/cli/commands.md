@@ -3839,6 +3839,7 @@ Push a branch whose preflight passed and queue its pull request: Writes a push t
 
 abcd land [<branch>] [--no-push] [--no-enqueue]
 abcd land [<branch>] --record-review <return> --record-review <return> [...]
+abcd land [<branch>] --approve
 
 Land a branch whose work is committed: the checkout's current branch, or the one
 named, from the worktree that has it checked out. Each step can be resumed by
@@ -3872,16 +3873,32 @@ credentials, so run it only on a branch whose content you trust.
   5. Push (land.push): a plain push of the gated commit to the branch's name on
      origin, with the repository's hooks running, never forced, never the default
      branch.
-  6. Enqueue (land.enqueue): the branch's open pull request, armed for the merge
-     queue where the merge gate allows it (today: only where a merge queue gates the
-     default branch and a ruleset requires a person's approval), pinned to the
-     head, then confirmed in the queue. An arming someone else made is left as it
-     is. With no pull request it composes the body from the branch's commits (each
-     subject, their Refs:, Resolves: and Delivers: lines, abcd's own Assisted-by label
-     and the models their Assisted-by: lines name) into the
-     checkout's .abcd/.work.local/ where it has one, judges it as the shell guard
-     judges a posted body, prints the `gh pr create` command naming it with
-     --body-file, and stops; it never opens one.
+  6. Enqueue (land.enqueue): the branch's open pull request, armed where the merge
+     gate allows it, pinned to the head: into the merge queue by its method where
+     one gates the default branch (then confirmed in the queue), otherwise as the
+     forge's auto-merge (a merge commit; a forge that refuses it is said). An
+     arming someone else made is left as it is. With no pull request it composes
+     the body from the branch's commits (each subject, their Refs:, Resolves: and
+     Delivers: lines, abcd's own Assisted-by label and the models their
+     Assisted-by: lines name) into the checkout's .abcd/.work.local/ where it has
+     one, judges it as the shell guard judges a posted body, prints the `gh pr
+     create` command naming it with --body-file, and stops; it never opens one.
+
+The merge gate reads facilitator.mode from the default branch's committed
+.abcd/config.json and ~/.abcd.noindex/config.json (human from either wins;
+human by default), never from the branch being landed. A pull request whose
+author has Read or Triage permission, or none, is armed only once an approval of
+its head counts, in either mode. An approval counts when it is the latest review
+by someone with Write, Maintain or Admin permission, approves the head commit
+and is not the author's, or when the technical facilitator recorded it with
+--approve. Then, and for an author with one of those: human arms only once an
+approval of the head counts, and otherwise says it waits for the technical
+facilitator's; auto arms only a head a review receipt names (--record-review),
+and otherwise names the commit. An author whose permission cannot be read is
+unverified, and nothing is armed. human stops an agent merging by mistake, not
+one set on getting round it: the recorded approval is a file anything running
+under your account can write, so it is a rule your agents keep, not a proof
+that you approved.
 
 land.push and land.enqueue are read from .abcd/config.json (in the working
 directory's checkout and the branch's own) and ~/.abcd.noindex/config.json,
@@ -3919,9 +3936,16 @@ heading, it writes the head's review receipt in
 refused naming it, exit 2, and nothing is written. It takes no --no-push or
 --no-enqueue.
 
+--approve records the technical facilitator's approval of the branch's head and
+lands nothing: it writes .abcd/.work.local/approvals/<head>, which the merge
+gate counts as an approval of that commit, and of no other. It is the
+facilitator's own act, for a pull request they authored (the forge refuses an
+author's approval of their own): the shell guard refuses it to an agent.
+
 **Flags:**
 
 ```
+      --approve                     record the technical facilitator's approval of the branch's head, a person's act the shell guard refuses to an agent; lands nothing
       --no-enqueue                  do not arm or queue the pull request this run
       --no-push                     do not push the branch this run; print the push command instead
       --record-review stringArray   record the review pair's verdicts for the branch's head from this reviewer's return (give it once per return, at least two); lands nothing
@@ -5526,10 +5550,13 @@ payload on stdin, and shows what it prints. In a checkout abcd manages the
 row is abcd's own: the presence badge first — `abcd-managed`, `waiting on
 the technical facilitator` or `waiting on the product thinker`, from the state
 `abcd mode` stores, its colour ending at the badge — then the session's
-name when the harness supplies one, the repository name, the branch, the
-model, the context percentage, the five-hour and seven-day usage
-percentages, and the record's counts of intents not yet shipped and open
-issues. Each element after the session name is switchable in
+name when the harness supplies one, the repository name, the branch,
+`autonomous merging` while the repository's facilitator.mode is auto (read
+as the merge gate reads it: the default branch's committed
+`.abcd/config.json` and the machine layer), the model, the context
+percentage, the five-hour and seven-day usage percentages, and the record's
+counts of intents not yet shipped and open issues. Each element after the
+session name is switchable in
 `~/.abcd.noindex/statusline.json`; a payload field the harness did not
 supply drops its element with no placeholder.
 

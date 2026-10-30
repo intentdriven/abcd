@@ -51,6 +51,9 @@ const (
 	KeySevenDay ElementKey = "seven_day"
 	KeyIntents  ElementKey = "intents"
 	KeyIssues   ElementKey = "issues"
+	// KeyMerging says merging is autonomous, while the repository's
+	// facilitator.mode is auto (itd-2610150602547271); under human it drops.
+	KeyMerging ElementKey = "merging"
 	// KeySession is the session's name (itd-2610111707085098). It is not in
 	// order and has no switch: it is the session's own name, shown whenever
 	// the harness supplies one, directly after the badge.
@@ -60,13 +63,16 @@ const (
 // order is the fixed element order itd-200's commitments set: the badge, the
 // repository name, the branch, the model, the context percentage, the
 // five-hour and seven-day usage percentages, and the record's intent and issue
-// counts.
+// counts. The merging element (itd-2610150602547271) follows the branch: like
+// the two before it, it is a fact about the repository, and it sits left of
+// the payload elements so a narrow host cuts it after them.
 //
 // The badge is element one and is not switchable. Everything after it is.
 var order = []ElementKey{
 	KeyPresence,
 	KeyRepo,
 	KeyBranch,
+	KeyMerging,
 	KeyModel,
 	KeyContext,
 	KeyFiveHour,
@@ -151,6 +157,9 @@ type Input struct {
 	Repo    Repo    `json:"repo"`
 	Payload Payload `json:"payload"`
 	Counts  Counts  `json:"counts"`
+	// AutonomousMerging reports that the repository's facilitator.mode is
+	// auto, as the merge gate reads it. False renders no merging element.
+	AutonomousMerging bool `json:"autonomous_merging"`
 }
 
 // renderRow composes the row.
@@ -194,6 +203,9 @@ func renderRow(in Input, set Settings) Row {
 	return row
 }
 
+// MergingText is the merging element's words.
+const MergingText = "autonomous merging"
+
 // elementText is the plain text of one non-badge element, or "" when the
 // element has nothing to say and must drop.
 func elementText(k ElementKey, in Input) string {
@@ -202,6 +214,11 @@ func elementText(k ElementKey, in Input) string {
 		return termsafe.Sanitize(strings.TrimSpace(in.Repo.Name))
 	case KeyBranch:
 		return termsafe.Sanitize(strings.TrimSpace(in.Repo.Branch))
+	case KeyMerging:
+		if in.AutonomousMerging {
+			return MergingText
+		}
+		return ""
 	case KeyModel:
 		return strings.TrimSpace(in.Payload.Model)
 	case KeyContext:

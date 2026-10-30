@@ -20,23 +20,31 @@ Paste its output to the user unchanged, in one fenced block: add nothing inside 
 
 ## Who merges
 
-In a repository abcd manages the board also says who merges a ready pull
-request: the repository's `facilitator.mode`, as the layered configuration
-resolves it, and the layer that set it. The product view draws one line above the version
-(`merges: a person (the bundled default)`); the facilitator view draws it as a
-`merges:` row after the status block, naming the key and the mode as configured
-(`merges: a person (facilitator.mode human, from the bundled default)`). No
-merge gate reads the mode yet, so a person merges in every repository, and an
-`auto` is drawn as set but not yet read (`merges: a person (auto is set in
-.abcd/config.json, but the merge gate does not read it yet)`). `--json` carries it as
-`facilitator` (`key`, `mode`, `layer`, `origin`, and `home_refused` when a
-refused home decided it). A person from any layer wins,
-so a `human` in `~/.abcd.noindex/config.json` reads as a person whatever the
-repository says, and a refused home reads as a person (`merges: a person (the
-home directory was refused, so a machine-wide setting cannot be read)`). When
-the mode cannot be read, the line says it is unreadable, and `--json` carries
-only `key` and the refusal as `error`. This is not `/abcd:mode`'s `facilitator` state, which says whose answer
-the loop is waiting on right now; `facilitator.mode` declares who should merge.
+In a repository abcd manages the board also says what the merge gate does
+with a ready pull request: the repository's `facilitator.mode`, read as the
+gate reads it (the default branch's committed `.abcd/config.json` beside the
+machine layer, never the checkout's working tree), and the layer that set it.
+So the board and the gate never disagree: an `auto` written in the checkout but
+not on the default branch changes neither. Under `human` the gate merges once
+the technical facilitator approves the head; under `auto` it merges
+autonomously once a review pair has passed the head. The product view draws one
+line above the version (`merges: once the technical facilitator approves (the
+bundled default)`, or `merges: autonomously, once a review pair passes (set in
+.abcd/config.json at main)`); the facilitator view draws it as a `merges:` row
+after the status block, naming the key and the mode as configured (`merges:
+once the technical facilitator approves the head (facilitator.mode human, from
+the bundled default)`). A pull request a contributor opens needs an approval of
+its head by someone with write access in either mode, which the line does not
+repeat. `--json` carries it as `facilitator` (`key`, `mode`, `layer`, `origin`,
+and `home_refused` when a refused home decided it). A `human` from any layer
+wins, so a `human` in `~/.abcd.noindex/config.json` reads as the facilitator's
+approval whatever the repository says, and a refused home reads as `human`
+(`merges: once the technical facilitator approves (the home directory was
+refused, so a machine-wide setting cannot be read)`). When the mode cannot be
+read, or the repository has no default branch to read it at, the line says it
+is unreadable, and `--json` carries only `key` and the refusal as `error`. This
+is not `/abcd:mode`'s `facilitator` state, which says whose answer the loop is
+waiting on right now; `facilitator.mode` declares who merges.
 
 ## The version
 
@@ -96,7 +104,10 @@ In a repository abcd manages the board also carries one line of presence — the
 shows, in plain words: the badge first (`abcd-managed`, `waiting on the
 technical facilitator` or `waiting on the product thinker`, from the state
 `/abcd:mode` stores), then the
-repository, the branch and the record's counts. Relay the `plain` text when the
+repository, the branch, `autonomous merging` while the repository's
+`facilitator.mode` is `auto` (read as the merge gate reads it, from the default
+branch's committed `.abcd/config.json` and the machine layer; absent under
+`human`), and the record's counts. Relay the `plain` text when the
 state is not `managed`: it says whose answer the loop is waiting on. The field
 is omitted in a repository abcd does not manage. The board reads the state and
 never changes it; `/abcd:mode` is the writer.
@@ -112,7 +123,10 @@ prints abcd's row; anywhere else it runs the status command that was recorded
 at install time and passes its output through unchanged, so the user's own line
 is untouched. It writes nothing, and it is time-bounded: abcd's own work stops
 at 500ms and the recorded command at 5s, and at either bound it prints what it
-has and exits 0. `/abcd:ahoy install` offers and wires it, after a yes and only
+has and exits 0. Each element after the session name is switchable in
+`~/.abcd.noindex/statusline.json` (`merging` is the autonomous-merging
+element's switch); an element that cannot be read drops and is named on
+stderr. `/abcd:ahoy install` offers and wires it, after a yes and only
 to the trusted PATH install abcd recorded, never to the plugin's own copy;
 nothing here invokes it.
 

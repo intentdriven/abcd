@@ -45,9 +45,7 @@ func drainLandFixtureWith(t *testing.T, ruleset string) *landFixture {
 	repo.Git("push", "-q", "origin", "main")
 	repo.Git("fetch", "-q", "origin")
 	gh := t.TempDir()
-	if err := os.WriteFile(filepath.Join(gh, "gh"), []byte(stubGH), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	installStubGH(t, gh, ruleset)
 	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return &landFixture{repo: repo, bare: bare, gh: gh, stages: DefaultStages()}
 }

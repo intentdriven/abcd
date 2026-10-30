@@ -1,7 +1,7 @@
 ---
 name: land
 description: "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree."
-argument-hint: "[<branch>] [--no-push] [--no-enqueue] [--record-review <return>...]"
+argument-hint: "[<branch>] [--no-push] [--no-enqueue] [--record-review <return>...] [--approve]"
 block: people
 ---
 
@@ -33,9 +33,11 @@ no announcement. The push is a plain
 `git push origin <head>:refs/heads/<branch>` of the commit the gate checked,
 from the branch's own checkout, with the repository's hooks running, never
 forced and never with `--no-verify`, and never of the default branch. Arming
-is `gh pr merge <n> --auto` with the merge queue's method and
+is `gh pr merge <n> --auto` with the merge queue's method (`--merge`, a merge
+commit, where no queue gates the default branch) and
 `--match-head-commit=<head>`, through the forge client already signed in with
-the user's own identity.
+the user's own identity. Every other forge read land makes for the merge gate
+is a plain GET.
 
 ## Run it
 
@@ -107,12 +109,15 @@ that name with none at this head, since the proof may lie past the bound.
    client's own timeout), and, if the head never shows, stops saying how long
    it waited. The merge rule is read from the ruleset mirror
    (`.abcd/work/rulesets/`) at `origin`'s default branch as just fetched,
-   never at the branch's tip. Today every repository runs in human mode, so
-   auto-merge is armed only where a merge queue gates the default branch and a
-   ruleset requires a person's approval (ruling AM1); anywhere else the step
-   is `left` and says why. The note gives the forge's review decision, not
-   the ruleset mirror's: held for a person's approval, approved, or no review
-   required for this pull request. A pull request another account already
+   never at the branch's tip. Then the merge gate decides, and where it arms
+   nothing the step is `left` and says why (see **Who approves a merge**
+   below). An armed pull request goes into the merge queue by the queue's
+   method where one gates the default branch; where none does, its arming is
+   the forge's auto-merge, the note says the forge merges it once its
+   required checks pass, and a forge that refuses auto-merge (a repository
+   that leaves it off) leaves the step `left`, saying so. The note gives the
+   forge's review decision too: held for a person's approval, approved, or no
+   review required for this pull request. A pull request another account already
    armed is left as it is and its queue state reported. After arming it
    confirms the pull request is in the queue at the head it armed, and
    otherwise names what holds it: required checks that have not passed first
@@ -169,6 +174,68 @@ did not count as a hold, for one), when there are any.
 
 Tell the user what was pushed and where the pull request stands.
 
+## Who approves a merge
+
+The merge gate is the one decision `abcd land` and the build loop both ask
+before arming. It reads `facilitator.mode` from the default branch's committed
+`.abcd/config.json` (as just fetched) and `~/.abcd.noindex/config.json`, never
+from the branch being landed, so a branch cannot choose its own gate. The
+value is `human` (a person facilitates; every fresh install's default) or
+`auto` (abcd does), and `human` from either file wins. A value that is neither
+is refused with exit 2, naming the file, and nothing is armed.
+
+The pull request's author is read from the forge, with their permission on
+the repository. Write, Maintain and Admin are write access; Read and Triage,
+or no permission at all, make a contributor; a custom role counts as the role it is
+based on. An approval of the head counts when it is the latest review by
+someone with write access, approves the head commit itself (an earlier commit's approval counts
+for nothing) and is not the author's own, or when the technical facilitator
+recorded it with `--approve` (below). Then:
+
+- **An author whose role cannot be read** (the forge cannot be asked, or a
+  custom role's base cannot be read) is unverified: nothing is armed,
+  whatever approvals the pull request has, and the note says so.
+- **A contributor's pull request**, in either mode, is armed only once an
+  approval of its head counts; until then the note says an approval by
+  someone with write access is needed. Once one counts, the mode decides as below.
+- **`human`**: the pull request of an author with write access is armed only
+  once an approval of its head counts. Until then the note says it waits for the technical
+  facilitator's approval. The product thinker never approves a merge.
+- **`auto`**: the pull request of an author with write access is armed with
+  no one asked, but
+  only when a review receipt (`--record-review`, below) names its head; until
+  then the note names the commit that has no recorded review pair.
+
+abcd adds no approval rule or code-owner file to the forge: the forge lets a
+pull request merge with no approval, so abcd enforces this itself, and the
+shell guard refuses an agent's own `gh pr merge` while the mode is `human`.
+
+**What `human` holds against.** The gate assumes agents keep the rules: it
+stops an agent merging by mistake, not one set on getting round it. The
+recorded approval is a file in the checkout's local tier, and anything running
+under your account can write that file, reach the forge with your login, or
+merge by a route the shell guard cannot read. So `human` is a rule your agents
+keep, not a proof that you approved; nothing in abcd yet proves an approval
+was yours.
+
+## Record the technical facilitator's approval
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" land [<branch>] --approve [--json]
+```
+
+`--approve` records the technical facilitator's approval of the branch's head
+and lands nothing. The forge refuses an author's approval of their own pull
+request, and the facilitator authors most of the pull requests abcd opens, so
+this is how they approve one. It writes
+`.abcd/.work.local/approvals/<full sha>`, found from any worktree as the
+receipts are, which the merge gate counts as an approval of that commit and of
+no other; `--json` carries the `commit` and the `approval` path. It is the
+person's own act: **never run it for the user.** The shell guard refuses it
+to an agent in either mode; tell the user the head is ready for their
+approval and let them run it. It takes no `--no-push`, `--no-enqueue` or
+`--record-review`.
+
 ## Record the review pair's verdicts
 
 ```bash
@@ -220,7 +287,8 @@ cannot be asked (whether the branch already merged included), a merged
 listing full with none at the head, a push git or the pre-push hook
 refused, more than one open pull request from this repository, only a fork's
 pull request, a pull request that conflicts with the default branch, a head
-that moved on the forge after arming, an unreadable ruleset mirror,
+that moved on the forge after arming, an unreadable ruleset mirror, a
+`facilitator.mode` that cannot be read,
 reservations that cannot be fetched from `origin` before the push (a hold
 land cannot see may be there, so nothing is pushed), an announcement that
 cannot be published before the push (an embargo store that holds the record

@@ -651,14 +651,18 @@ A lane's stages run in order:
    run's records and passed through the outbound scrub, ending with
    `Assisted-by: abcd:<version>` and then one `Assisted-by:` per model the
    lane's receipts reported, re-reads the body the forge holds and strips a
-   session URL or tool footer. It arms auto-merge with
-   the merge-queue method the ruleset mirror (`.abcd/work/rulesets/`) names
-   only where that mirror also requires a person's approval (an approving
-   review count of one or more, or a code-owner review with a CODEOWNERS file
-   naming an owner). Otherwise it leaves the pull request open for a person to
-   merge, says so in the step's note and the run record ("left open for a
-   person to merge: the ruleset requires no approval"), and never arms it on a
-   later step; a missing mirror requires nothing. It pushes nothing to the lane
+   session URL or tool footer. It arms the merge only where the merge gate
+   `abcd land` asks allows it (`commands/land.md`, "Who approves a merge"),
+   reading `facilitator.mode` from the default branch's committed
+   `.abcd/config.json` and `~/.abcd.noindex/config.json`, never the lane's
+   checkout: in `human`, once an approval of the pushed head counts; in
+   `auto`, once a review receipt names it (`abcd land --record-review`); and a
+   contributor's pull request in either mode only once an approval by someone
+   with write access counts. An armed merge goes into the merge queue by the
+   ruleset mirror's (`.abcd/work/rulesets/`) method, or as the forge's
+   auto-merge where no queue gates the default branch. Otherwise the step's
+   note and the run record say "left open: " and why, and each later step asks
+   the gate again, arming once it allows. It pushes nothing to the lane
    afterwards. Before it arms or leaves anything open, the land fence fetches
    the reservations from `origin` and, while another session holds a live
    release reservation (`rel-vX.Y.Z`, `/abcd:reserve`), arms nothing: `step`

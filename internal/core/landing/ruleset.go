@@ -22,11 +22,12 @@ const (
 var MergeMethods = map[string]string{"MERGE": "--merge", "SQUASH": "--squash", "REBASE": "--rebase"}
 
 // MergeRule is the ruleset mirror read at a commit: the merge queue's method
-// ("" when no merge queue gates the default branch), whether an active
-// ruleset on the default branch requires a person's approval (ruling AM1).
+// ("" when no merge queue gates the default branch). A pull-request rule's
+// approval requirement is not read: ruling AM1, which armed only where one
+// required a person's approval, is retired, and the merge gate
+// (facilitator.go) reads approvals from the forge itself.
 type MergeRule struct {
-	Method   string
-	Approval bool
+	Method string
 }
 
 // MirrorError is a ruleset mirror that cannot be read into a merge rule:
@@ -107,9 +108,6 @@ func ReadMergeRule(repoRoot, base, def, at string) (MergeRule, error) {
 			continue
 		}
 		for _, rule := range rs.Rules {
-			if rule.Type == "pull_request" && requiresApproval(repoRoot, base, rule.Parameters) {
-				r.Approval = true
-			}
 			if rule.Type != "merge_queue" {
 				continue
 			}
@@ -133,87 +131,29 @@ func ReadMergeRule(repoRoot, base, def, at string) (MergeRule, error) {
 	return r, nil
 }
 
-// requiresApproval reports whether a pull_request rule's parameters require a
-// person's approval: an approving count of one or more, or a code-owner review
-// where a CODEOWNERS file at base names an owner. Parameters that do not parse
-// require nothing, so the merge is left for a person.
-func requiresApproval(repoRoot, base string, params json.RawMessage) bool {
-	var p struct {
-		Count     int  `json:"required_approving_review_count"`
-		CodeOwner bool `json:"require_code_owner_review"`
-	}
-	if json.Unmarshal(params, &p) != nil {
-		return false
-	}
-	return p.Count >= 1 || (p.CodeOwner && namesCodeOwners(repoRoot, base))
-}
-
-// codeOwnersPaths are where the forge reads a CODEOWNERS file from, in the
-// order it looks: the first file found is the only one it reads.
-var codeOwnersPaths = []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"}
-
-// namesCodeOwners reports whether the CODEOWNERS file the forge reads at base
-// — the first found in codeOwnersPaths, so a file there shadows the later ones
-// even when it names nobody — names at least one owner: a line whose pattern
-// is followed by an owner token (codeOwner).
-func namesCodeOwners(repoRoot, base string) bool {
-	for _, p := range codeOwnersPaths {
-		raw, err := gitutil.RunCappedBytes(repoRoot, maxRulesetBytes, "cat-file", "blob", base+":"+p)
-		if err != nil {
-			continue
-		}
-		for _, line := range strings.Split(string(raw), "\n") {
-			if lineNamesOwner(line) {
-				return true
-			}
-		}
-		return false
-	}
-	return false
-}
-
-// lineNamesOwner reports whether one CODEOWNERS line names an owner: after its
-// pattern, a field before any comment is an owner token. A blank line, a
-// comment and a pattern with no owner name nobody.
-func lineNamesOwner(line string) bool {
-	fields := strings.Fields(line)
-	if len(fields) < 2 || strings.HasPrefix(fields[0], "#") {
-		return false
-	}
-	for _, f := range fields[1:] {
-		if strings.HasPrefix(f, "#") {
-			return false
-		}
-		if codeOwner(f) {
-			return true
-		}
-	}
-	return false
-}
-
-// codeOwner reports whether a token is one the forge takes as an owner:
-// @username, @org/team-name, or an e-mail address.
-func codeOwner(tok string) bool {
-	if name, ok := strings.CutPrefix(tok, "@"); ok {
-		org, team, isTeam := strings.Cut(name, "/")
-		if isTeam {
-			return ownerName(org) && team != "" && !strings.ContainsAny(team, "/@")
-		}
-		return ownerName(name)
-	}
-	local, domain, ok := strings.Cut(tok, "@")
-	return ok && local != "" && strings.Contains(domain, ".") && !strings.HasPrefix(domain, ".") &&
-		!strings.HasSuffix(domain, ".") && !strings.Contains(domain, "@")
-}
-
 // ownerName reports whether s is a forge account name: letters, digits and
-// hyphens, not empty.
+// hyphens, not empty, so it can stand in a forge API path as it is.
 func ownerName(s string) bool {
 	if s == "" {
 		return false
 	}
 	for _, r := range s {
 		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// repoName reports whether s is a forge repository name (letters, digits,
+// '-', '_' and '.', and neither "." nor ".."), so it can stand in a forge API
+// path as it is.
+func repoName(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
 			return false
 		}
 	}

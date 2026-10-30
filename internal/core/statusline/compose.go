@@ -104,6 +104,15 @@ func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (
 
 	set = clone(set)
 	var notes []string
+	if set.Enabled(KeyMerging) {
+		if read := MergingMode; read != nil {
+			auto, note := read(ctx, root)
+			in.AutonomousMerging = auto
+			if note != "" {
+				notes = append(notes, note)
+			}
+		}
+	}
 	if fsutil.IsRealDir(filepath.Join(root, filepath.FromSlash(RecordRelDir))) {
 		if n, err := openIssues(root); err != nil {
 			set.Elements[KeyIssues] = false
@@ -124,6 +133,21 @@ func ComposeContext(ctx context.Context, root string, p Payload, set Settings) (
 
 	return Result{State: state, Row: renderRow(in, set), Notes: notes}, nil
 }
+
+// MergingMode reads whether merging is autonomous for the repository at root:
+// auto true when its facilitator.mode is auto as the merge gate reads it, and
+// a note, masked, for the front door's stderr when the mode could not be read
+// (the element then drops). Its git questions run under ctx, the row's git
+// share.
+//
+// It is set by the front door (internal/surface/cli, to
+// landing.AutonomousMerging) rather than called here, because this package
+// cannot import landing: landing reaches ahoy (through embargo, capture and
+// site), and ahoy reads this package, so the import would close a cycle — the
+// same reason MANAGED is the caller's decision. While it is nil the merging
+// element drops silently, with no note: a composition with no reader has
+// nothing it failed to read.
+var MergingMode func(ctx context.Context, root string) (auto bool, note string)
 
 // branch is the checkout's branch name, the short sha when HEAD is detached,
 // or "" when git will not answer — in which case the element drops, the same

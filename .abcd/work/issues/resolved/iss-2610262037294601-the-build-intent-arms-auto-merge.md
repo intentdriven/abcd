@@ -12,6 +12,10 @@ found_at: ".abcd/development/intents/planned/itd-2609201916151817-one-verb-takes
 remedy: "In the build intent amend decision 3 with 'amended 2026-09-30 by ruling AM1 (dcn-2609300000000025): auto-merge is armed only where a queue gates the branch and a ruleset requires a person's approval, otherwise the pull request is left open; the merge gate decides it'."
 related_intents: [itd-2609201916151817]
 finding_ref: cfk-053d456c2b6e64fd
+resolution: "Decision 3 of the build intent now says the merge gate decides the merge target, by the facilitator mode (dcn-2610300955154851), the same edit as iss-2610262043535279."
+impact: internal
+resolved_by:
+  intent: "itd-2610150602547271"
 ---
 
 The build intent arms auto-merge wherever a queue gates the default branch; the build brief arms it only when a ruleset also requires a person's approval

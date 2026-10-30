@@ -14,6 +14,10 @@ related_intents: [itd-2609201916151817, itd-2610150602547271]
 finding_ref: cfk-cad55990057f7808
 deferred_after: v0.15.1
 deferral_reason: "Deferred by the product thinker on 2026-10-27 (dcn-2610271112330536): the brief's single-home rewrite (dcn-2610271112339516, dcn-2610271112330235) rewrites or removes most of the passages this record quotes."
+resolution: "The build loop arms only through the one merge gate abcd land asks, so arming follows the facilitator mode: in auto a reviewed head is armed, in human it waits for the technical facilitator's approval (dcn-2610300955154851); decision 3 of the build intent now says so."
+impact: internal
+resolved_by:
+  intent: "itd-2610150602547271"
 ---
 
 The build loop arms auto-merge whenever the ruleset gates through a queue; the facilitator-mode intent says that by default abcd never arms or queues a pull request

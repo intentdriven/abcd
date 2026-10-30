@@ -568,15 +568,16 @@ over each of the run's lanes' own diff.
    then one `Assisted-by:` per model the lane's receipts reported (the change
    carries their work); a lane whose receipt reports no model is refused before
    the pull request is opened.
-5. It reads the merge rule from the ruleset mirror (`.abcd/work/rulesets/`) at
-   the lane's base: where a merge queue gates the default branch AND a ruleset
-   requires a person's approval (an approving review count of one or more, or
-   a code-owner review with a CODEOWNERS file naming an owner) it arms
-   auto-merge with the queue's method. Elsewhere it leaves the pull request
-   open for a person to merge, and `implement status` shows the landing as
-   "left open for a person to merge: the ruleset requires no approval" where a
-   queue exists but nothing requires approval; a later step never arms it, and
-   a missing mirror requires nothing. Before arming it asks the forge whether
+5. It asks the merge gate `abcd land` asks (`commands/land.md`, "Who approves
+   a merge"), with `facilitator.mode` read from the default branch's committed
+   `.abcd/config.json` and `~/.abcd.noindex/config.json`: in `human` it arms
+   once an approval of the pushed head counts, in `auto` once a review receipt
+   names it, and a contributor's pull request in either mode only once an
+   approval by someone with write access counts. An armed merge goes into the
+   merge queue by the ruleset mirror's (`.abcd/work/rulesets/`) method, or as
+   the forge's auto-merge where no queue gates the default branch. Otherwise
+   `implement status` shows the landing as "left open: " and why, and each
+   later step asks again. Before arming it asks the forge whether
    the pull request merges (`gh pr view <n> --json mergeable,mergeStateStatus`),
    and one the forge reports `CONFLICTING` is refused (exit 2), not armed: the
    merge queue never takes a conflicting pull request. Nothing is pushed to the
@@ -670,9 +671,8 @@ the other person and the expiry, says the reservation moved to your other copy
 <id>`), and a fetch origin does not answer is named too, each as contention
 (exit 3 when nothing else moves). When it holds, the fence renews it for a
 day, with a ruleset mirror at the lane's base or without one: every landing
-waits on a person, either the approval the armed merge needs (an approving
-review, or a code owner's) or the merge of a pull request left open for one,
-as a checkout with no mirror always leaves it, and either can wait overnight;
+can wait on a person, for the approval the merge gate needs or for a review
+receipt naming the head, and either can wait overnight;
 a day is also past any merge queue's `check_response_timeout_minutes`. The
 fence then reads the **release hold** from the
 reservations it just fetched (a run holding no reservation fetches them for

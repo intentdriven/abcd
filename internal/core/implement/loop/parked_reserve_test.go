@@ -98,6 +98,7 @@ func TestADrainKeepsItsOpenPullRequestLanesHeld(t *testing.T) {
 // gates behind a person's approval (here a code-owner review, with a
 // CODEOWNERS file naming an owner) can wait overnight, so the fence renews the
 // reservation with the longest lease, a day, not the queue's check timeout.
+// The head is approved, so the merge gate arms it.
 func TestTheFenceHoldsADayWhenTheMergeWaitsOnACodeOwner(t *testing.T) {
 	ruleset := `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":[],"include":["~DEFAULT_BRANCH"]}},` +
 		`"enforcement":"active","name":"main review","rules":[{"type":"deletion"},` +
@@ -107,6 +108,7 @@ func TestTheFenceHoldsADayWhenTheMergeWaitsOnACodeOwner(t *testing.T) {
 		".abcd/work/rulesets/main-review.json": ruleset,
 		".github/CODEOWNERS":                   "* @octo\n",
 	})
+	f.approve(t)
 	f.toArm(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
@@ -164,6 +166,7 @@ func TestARenewalKeepsTheDayTheFenceGave(t *testing.T) {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
 	f.runID, f.issue = first.Start.RunID, secondIssue
+	f.approve(t)
 	f.armIssueLane(t)
 	ref := claim.RefPrefix + secondIssue
 	fenced := originReservation(t, f.bare, ref)

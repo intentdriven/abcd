@@ -22,12 +22,15 @@ func fullInput(t *testing.T) Input {
 		Repo:    Repo{Name: "abcd", Branch: "main"},
 		Payload: p,
 		Counts:  Counts{Intents: 12, Issues: 34},
+
+		AutonomousMerging: true,
 	}
 }
 
-// wantFullRow is ac-11: the nine elements in the order itd-200 fixes, each
-// separated the same way.
-const wantFullRow = "abcd-managed · abcd · main · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
+// wantFullRow is ac-11: the nine elements in the order itd-200 fixes, with
+// the merging element after the branch (itd-2610150602547271), each separated
+// the same way.
+const wantFullRow = "abcd-managed · abcd · main · autonomous merging · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
 
 // TestRenderFullRow is ac-11. Nine elements (the spec's "twelve" is a
 // miscount of its own list), in the order the intent's commitments fix, with
@@ -39,7 +42,7 @@ func TestRenderFullRow(t *testing.T) {
 		t.Fatalf("row.Plain() =\n  %q\nwant\n  %q", got, wantFullRow)
 	}
 	wantKeys := []ElementKey{
-		KeyPresence, KeyRepo, KeyBranch, KeyModel,
+		KeyPresence, KeyRepo, KeyBranch, KeyMerging, KeyModel,
 		KeyContext, KeyFiveHour, KeySevenDay, KeyIntents, KeyIssues,
 	}
 	if len(row.Elements) != len(wantKeys) {
@@ -59,7 +62,7 @@ func TestRenderFullRow(t *testing.T) {
 // fixture, so a reordering shows up here as well as in the row test.
 func TestRenderOrderIsFixed(t *testing.T) {
 	want := []ElementKey{
-		KeyPresence, KeyRepo, KeyBranch, KeyModel,
+		KeyPresence, KeyRepo, KeyBranch, KeyMerging, KeyModel,
 		KeyContext, KeyFiveHour, KeySevenDay, KeyIntents, KeyIssues,
 	}
 	got := Order()
@@ -664,7 +667,7 @@ func TestRenderShowsTheSessionNameAfterTheBadge(t *testing.T) {
 	in := fullInput(t)
 	in.Payload.SessionName = "Alice"
 	row := renderRow(in, Defaults())
-	want := "abcd-managed · Alice · abcd · main · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
+	want := "abcd-managed · Alice · abcd · main · autonomous merging · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
 	if got := row.Plain(); got != want {
 		t.Fatalf("row.Plain() =\n  %q\nwant\n  %q", got, want)
 	}

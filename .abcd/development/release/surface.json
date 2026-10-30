@@ -2984,6 +2984,13 @@
       "sentence": "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",
       "flags": [
         {
+          "name": "approve",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "no-enqueue",
           "shorthand": "",
           "type": "bool",

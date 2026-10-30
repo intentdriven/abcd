@@ -88,16 +88,18 @@ type Input struct {
 	// views and both forms (spc-2610100613109045, decision 4), and the line is
 	// left out only when no version is handed in.
 	Version core.VersionInfo
-	// Merges is facilitator.mode as the layered configuration resolves it (spc-2610161609350616
-	// step 2), drawn just above the version line in both views and both forms;
-	// nil draws no line.
+	// Merges is facilitator.mode as the merge gate resolves it
+	// (spc-2610161609350616): the default branch's committed configuration
+	// beside the machine layer. It is drawn just above the version line in both
+	// views and both forms; nil draws no line.
 	Merges *Merges
 }
 
-// Merges is who merges: facilitator.mode and the layer and origin that set
-// it, or, when the mode could not be read, the refusal. It is worded by
-// outcome ("merges: a person"), never as a bare mode, so it does not read as
-// abcd mode's facilitator state, which is whose answer the loop waits on.
+// Merges is how a ready pull request merges: facilitator.mode and the layer
+// and origin that set it, or, when the mode could not be read, the refusal. It
+// is worded by outcome ("merges: once the technical facilitator approves"),
+// never as a bare mode, so it does not read as abcd mode's facilitator state,
+// which is whose answer the loop waits on.
 type Merges struct {
 	Mode    string // human or auto
 	Layer   string // bundled, machine, repo, …
@@ -143,10 +145,16 @@ func Render(in Input, f Frame) []string {
 	if f.View != Facilitator {
 		if t := mergesText(in.Merges, f.View); t != "" {
 			l := "merges: " + t
-			if f.Form == Markdown {
-				l = "- " + l
+			switch f.Form {
+			case Markdown:
+				out = append(out, "- "+l)
+			case Text:
+				// Laid as a facilitator row is, with a hanging indent, so
+				// fitWindow's hard break never cuts it mid-word.
+				out = append(out, wrap(l, f.Width)...)
+			default:
+				out = append(out, l)
 			}
-			out = append(out, l)
 		}
 	}
 	if l := versionLine(in.Version, f); l != "" {
@@ -158,17 +166,15 @@ func Render(in Input, f Frame) []string {
 	return out
 }
 
-// mergesText names who merges and where that was set, without its label:
-// the product view says the outcome and the place, a line of its own above the
-// version; the facilitator view adds the key and the mode as configured, a
-// labelled row after the status block. A refused read says the mode is
-// unreadable and carries the refusal; a refused home names itself, not a file.
-// Nothing merges by the mode yet: the merge gate reads it only from
-// spc-2610161609350616 step 4, and until then every repository runs in human
-// mode (landing's mergeGate). So a person merges whatever the mode says, and an
-// auto is drawn as declared but not yet read, never as abcd merging.
-// The text is masked: an origin or a refusal can carry what a configuration
-// file wrote.
+// mergesText says what the merge gate does in the mode it reads, and where
+// that was set, without its label: under human it merges once the technical
+// facilitator approves the head, under auto autonomously once a review pair has
+// passed the head (landing's mergeGate). The product view says the outcome and
+// the place, a line of its own above the version; the facilitator view adds
+// the key and the mode as configured, a labelled row after the status block. A
+// refused read says the mode is unreadable and carries the refusal; a refused
+// home names itself, not a file. The text is masked: an origin or a refusal
+// can carry what a configuration file wrote.
 func mergesText(m *Merges, v View) string {
 	if m == nil {
 		return ""
@@ -183,14 +189,14 @@ func mergesText(m *Merges, v View) string {
 	case m.HomeRefused:
 		from, set = "a refused home", "the home directory was refused, so a machine-wide setting cannot be read"
 	}
-	unread := ""
+	outcome := "once the technical facilitator approves"
 	if m.Mode == "auto" {
-		set, unread = "auto is "+set+", but the merge gate does not read it yet", "; the merge gate does not read it yet"
+		outcome = "autonomously, once a review pair passes"
 	}
 	if v == Facilitator {
-		return termsafe.Sanitize("a person (facilitator.mode " + m.Mode + ", from " + from + unread + ")")
+		return termsafe.Sanitize(outcome + " the head (facilitator.mode " + m.Mode + ", from " + from + ")")
 	}
-	return termsafe.Sanitize("a person (" + set + ")")
+	return termsafe.Sanitize(outcome + " (" + set + ")")
 }
 
 // versionLine is the board's last line, the installed version as `abcd
