@@ -50,7 +50,7 @@ func TestARevivalJudgesOnesOtherCopyOnTheFilesItsWorkChanged(t *testing.T) {
 	}
 
 	res, err := p.do(Request{Record: "itd-82", Renew: true, OwnOverlapOn: []string{"loop/narrow.go"}})
-	want := []OwnOverlap{{Path: "loop/loop.go", Record: "iss-2", Expiry: t0.Add(2*time.Minute + 2*time.Hour)}}
+	want := []OwnOverlap{{Path: "loop/loop.go", Record: "iss-2", Expiry: t0.Add(2*time.Minute + 2*time.Hour), Copy: "your copy on another computer"}}
 	if err != nil || res.Act != ActRenewed || !slices.Equal(res.OwnOverlap, want) {
 		t.Fatalf("the revival past one's other copy on a file its work did not change = %+v, %v; want it renewed, naming %+v", res, err, want)
 	}
