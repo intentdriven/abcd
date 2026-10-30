@@ -253,8 +253,8 @@ func holdWatchLooks(w *HoldWatch, clock *fakeClock) (time.Duration, []int) {
 
 // quietTable is a quiet holder's table on clock, with waiter 60000 queued
 // beside it, and a fresh ps child of psParent at each read (none
-// when psParent is zero), named as the snapshot's reader when reader is set.
-func quietTable(clock *fakeClock, psParent int, reader bool) func() (machineload.Snapshot, error) {
+// when psParent is zero).
+func quietTable(clock *fakeClock, psParent int) func() (machineload.Snapshot, error) {
 	holder, tree := quietHolderProcs()
 	procs := append(append([]machineload.Proc{holder}, tree...), waiterAt(60000)...)
 	n := 0
@@ -266,11 +266,7 @@ func quietTable(clock *fakeClock, psParent int, reader bool) func() (machineload
 		snap := machineload.Snapshot{HasLoad: true, Load1: 3, Cores: 16, HasProcs: true}
 		if psParent != 0 {
 			n++
-			p := machineload.Proc{PID: 9000 + n, PPID: psParent, PGID: 777, UID: 501, CPU: 20 * time.Millisecond, Name: "ps"}
-			ps = append(ps, p)
-			if reader {
-				snap.ReaderPID = p.PID
-			}
+			ps = append(ps, machineload.Proc{PID: 9000 + n, PPID: psParent, PGID: 777, UID: 501, CPU: 20 * time.Millisecond, Name: "ps"})
 		}
 		snap.Procs = ps
 		return snap, nil
@@ -285,7 +281,7 @@ func TestHoldWatchLeavesOutItsOwnPs(t *testing.T) {
 	clock := &fakeClock{now: waitT0}
 	args := map[int][]string{60000: {"implement", "load", "--wait", "--", "make", "preflight"}}
 	w := &HoldWatch{
-		Read:     quietTable(clock, 777, true),
+		Read:     quietTable(clock, 777),
 		ReadArgs: func([]int) (map[int][]string, error) { return args, nil },
 		Self:     machineload.Self{PID: 777, UID: 501},
 		Now:      clock.Now,
@@ -305,7 +301,7 @@ func TestWaitLeavesOutTheHoldersOwnPs(t *testing.T) {
 	clock := &fakeClock{now: waitT0}
 	req := waitReq(home, 60000, clock, poll{load: 3})
 	// The table's waiter 60000 is this one.
-	req.Read = quietTable(clock, 777, false)
+	req.Read = quietTable(clock, 777)
 	req.Timeout = QuietSpan + 2*time.Minute
 	var said int
 	req.OnQuiet = func(WaitResult) { said++ }
@@ -320,7 +316,7 @@ func TestHoldWatchCountsWaitersAtEveryGateItHolds(t *testing.T) {
 	clock := &fakeClock{now: waitT0}
 	args := map[int][]string{60000: {"implement", "load", "--race-gate"}}
 	w := &HoldWatch{
-		Read:     quietTable(clock, 0, false),
+		Read:     quietTable(clock, 0),
 		ReadArgs: func([]int) (map[int][]string, error) { return args, nil },
 		Self:     machineload.Self{PID: 777, UID: 501},
 		Now:      clock.Now,
@@ -451,5 +447,50 @@ func TestWaitRaceGateCountsARaceCommandOnce(t *testing.T) {
 	}
 	if want := []GateHolder{{PID: 70000, AgeS: 300}}; !reflect.DeepEqual(res.Holders, want) {
 		t.Fatalf("holders = %+v, want the race command once: %+v", res.Holders, want)
+	}
+}
+
+// A table read that does not hold the holder measured nothing about it, so a
+// holder missing from look after look is never said quiet: an empty tree is
+// not one that used no CPU.
+func TestQuietWatchNeverCallsAnAbsentHolderQuiet(t *testing.T) {
+	const holder = 4242
+	others := []machineload.Proc{{PID: 1, PPID: 0, CPU: time.Second}}
+	var w quietWatch
+	t0 := time.Date(2026, 10, 30, 5, 0, 0, 0, time.UTC)
+	for i := 0; i <= 4; i++ {
+		at := t0.Add(time.Duration(i) * QuietSpan)
+		if q := w.observe(others, holder, 7, false, at); q != 0 {
+			t.Fatalf("look %d: an absent holder read as quiet for %s", i, q)
+		}
+	}
+}
+
+// A look whose table cannot be read measured nothing, so the holder's watch
+// gives its last answer again rather than read as not quiet: read as not
+// quiet, a quiet tree's notice would end and be said a second time at the next
+// readable look.
+func TestHoldWatchKeepsItsAnswerThroughAnUnreadableLook(t *testing.T) {
+	clock := &fakeClock{now: waitT0}
+	args := map[int][]string{60000: {"implement", "load", "--wait", "--", "make", "preflight"}}
+	read := quietTable(clock, 0)
+	w := &HoldWatch{
+		Read:     read,
+		ReadArgs: func([]int) (map[int][]string, error) { return args, nil },
+		Self:     machineload.Self{PID: 777, UID: 501},
+		Now:      clock.Now,
+		Gates:    []string{GateTests},
+	}
+	quiet, waiting := holdWatchLooks(w, clock)
+	if quiet < QuietSpan || len(waiting) == 0 {
+		t.Fatalf("quiet %s, waiting %v; want the holder quiet with a waiter before the unreadable look", quiet, waiting)
+	}
+	w.Read = func() (machineload.Snapshot, error) { return machineload.Snapshot{}, os.ErrDeadlineExceeded }
+	if q, wt := w.Look(); q != quiet || !reflect.DeepEqual(wt, waiting) {
+		t.Fatalf("unreadable look gave quiet %s, waiting %v; want the last answer, %s and %v", q, wt, quiet, waiting)
+	}
+	w.Read = func() (machineload.Snapshot, error) { return machineload.Snapshot{HasLoad: true, Load1: 3}, nil }
+	if q, wt := w.Look(); q != quiet || !reflect.DeepEqual(wt, waiting) {
+		t.Fatalf("look with no process table gave quiet %s, waiting %v; want the last answer, %s and %v", q, wt, quiet, waiting)
 	}
 }

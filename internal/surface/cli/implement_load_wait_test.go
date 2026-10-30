@@ -332,7 +332,6 @@ func TestStartQuietWatchSaysItsOwnQuiet(t *testing.T) {
 			machineload.Proc{PID: 778, PPID: 777, PGID: 777, UID: 501, Age: time.Minute + aged, CPU: time.Second, Name: "make"},
 			machineload.Proc{PID: 60000, PPID: 1, PGID: 60000, UID: 501, Age: aged, Name: "abcd"},
 			ps)
-		snap.ReaderPID = ps.PID
 		return snap, nil
 	}
 	loadArgsReader = func([]int) (map[int][]string, error) {

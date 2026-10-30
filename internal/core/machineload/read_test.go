@@ -65,34 +65,6 @@ func TestReadSeesThisProcess(t *testing.T) {
 	t.Fatalf("this process (pid %d) is not in the snapshot of %d processes", os.Getpid(), len(snap.Procs))
 }
 
-// TestReadNamesItsOwnReader: on macOS the table is read by a ps child of
-// the caller that lists itself, and the snapshot names it, so a caller judging
-// its own process tree can leave it out; Linux reads /proc, with no child.
-func TestReadNamesItsOwnReader(t *testing.T) {
-	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
-		t.Skipf("no reader on %s", runtime.GOOS)
-	}
-	snap, err := readMachine(t)
-	if err != nil {
-		t.Fatalf("Read: %v", err)
-	}
-	if runtime.GOOS == "linux" {
-		if snap.ReaderPID != 0 {
-			t.Fatalf("reader pid %d on Linux, want none", snap.ReaderPID)
-		}
-		return
-	}
-	for _, p := range snap.Procs {
-		if p.PID == snap.ReaderPID {
-			if p.PPID != os.Getpid() || p.Name != "ps" {
-				t.Fatalf("reader %+v, want a ps child of this process (pid %d)", p, os.Getpid())
-			}
-			return
-		}
-	}
-	t.Fatalf("reader pid %d is not in the snapshot", snap.ReaderPID)
-}
-
 // TestMachineLoadImportsOnlyTheStandardLibrary: the package is a leaf that adds
 // no dependency, not even one of this module's own packages.
 func TestMachineLoadImportsOnlyTheStandardLibrary(t *testing.T) {

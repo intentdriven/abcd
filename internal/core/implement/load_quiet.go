@@ -107,9 +107,15 @@ type quietWatch struct {
 // QuietSpan or more past the baseline that has not is quiet: the quiet begins
 // at the baseline (or goes on), and the baseline moves to it, so a tree that
 // picks up again ends the quiet within one span's worth of CPU. A member gone
-// since the baseline exited, which is work too.
+// since the baseline exited, which is work too. A look that does not find pid
+// at all measured nothing, so it starts the watch again rather than count an
+// empty tree as quiet.
 func (w *quietWatch) observe(procs []machineload.Proc, pid int, start int64, waiting bool, t time.Time) time.Duration {
 	tree := treeCPU(procs, pid)
+	if _, ok := tree[pid]; !ok {
+		*w = quietWatch{}
+		return 0
+	}
 	if w.base == nil || w.pid != pid || w.start != start || waiting {
 		*w = quietWatch{pid: pid, start: start, since: t, base: tree}
 		return 0
@@ -184,7 +190,9 @@ type holderWatch struct {
 // the CPU the tree used in each interval between looks, by the interval's
 // end. A member that starts and exits between two looks is never seen, and
 // one gone since the last look adds nothing more, so the meter can read low
-// for a tree of short-lived children; it never reads high.
+// for a tree of short-lived children. A member new to the tree counts its
+// whole CPU so far, so a long-running process moved under the tree reads high
+// for the look that finds it.
 type cpuMeter struct {
 	first time.Time
 	start int64
@@ -228,9 +236,10 @@ func (m *cpuMeter) measure(procs []machineload.Proc, pid int, t time.Time) (floa
 // each once, a slot beneath another holder named counting as part of it, as
 // the first gate's slots count them (machineload.Ahead.Busy): at the race
 // gate a race command's waiter and the go test -race under it are one holder,
-// whose tree would otherwise be counted twice. Each is metered: a holder first seen at this look starts its
-// meter, and one no longer ahead drops it. A pid whose start time moved past
-// holdStartSlack is a new process, and starts a new meter.
+// whose tree would otherwise be counted twice. Each is metered: a holder
+// first seen at this look starts its meter, and one no longer ahead drops it.
+// A pid whose start time moved past holdStartSlack is a new process, and
+// starts a new meter.
 func measureHolders(w *holderWatch, h *WaitHolder, slots []int, snap machineload.Snapshot, t time.Time) []GateHolder {
 	if w.meters == nil {
 		w.meters = map[int]*cpuMeter{}
@@ -288,17 +297,17 @@ func measureHolders(w *holderWatch, h *WaitHolder, slots []int, snap machineload
 // to read the table.
 const readerName = "ps"
 
-// withoutReaders is snap without the processes that only read the table: the
-// one that read this snapshot (Snapshot.ReaderPID, on macOS a ps child of the
-// reader, which lists itself), and any ps that is a direct child of holder,
-// the holder's own read caught by another's look. Each is gone by the next
+// withoutReaders is snap without the processes that only read the table: any
+// ps that is a direct child of holder, which is the holder's own read (on
+// macOS ps lists itself, as a child of its caller) whether the holder or
+// another's look took the snapshot. Each is gone by the next
 // look, and a member gone between looks counts as work, so left in, a
 // holder's own reads would keep it from ever being quiet. The holder starts
 // no ps but its reads, and another's reader is gone before its arguments
 // could be asked for, so for it the name is the handle there is.
 func withoutReaders(snap machineload.Snapshot, holder int) machineload.Snapshot {
 	snap.Procs = slices.DeleteFunc(slices.Clone(snap.Procs), func(p machineload.Proc) bool {
-		return (snap.ReaderPID != 0 && p.PID == snap.ReaderPID) || (p.PPID == holder && p.Name == readerName)
+		return p.PPID == holder && p.Name == readerName
 	})
 	return snap
 }
@@ -348,20 +357,25 @@ type HoldWatch struct {
 	// command above one slot holds both, and a waiter at either waits on it.
 	Gates []string
 	w     quietWatch
+	// quiet and waiting are the last answer a readable look gave.
+	quiet   time.Duration
+	waiting []int
 }
 
 // Look takes one look and returns how long the holder's tree has been quiet
 // and the waiters queued at its gate outside the tree, in pid order; the
 // quiet time is zero while the tree is not quiet. A table that cannot be read
-// says nothing.
+// measured nothing, so the look gives the last readable look's answer again,
+// as a waiter keeps its verdict: read as not quiet, it would end a quiet the
+// tree never left and say it again at the next readable look.
 func (hw *HoldWatch) Look() (time.Duration, []int) {
 	snap, err := hw.Read()
 	if err != nil || !snap.HasProcs {
-		return 0, nil
+		return hw.quiet, hw.waiting
 	}
 	args, err := hw.ReadArgs(machineload.GateCandidates(snap, hw.Self))
 	if err != nil {
-		return 0, nil
+		return hw.quiet, hw.waiting
 	}
 	snap = withoutReaders(snap, hw.Self.PID)
 	// The holder is this process, so its start needs no proving; one read
@@ -376,5 +390,6 @@ func (hw *HoldWatch) Look() (time.Duration, []int) {
 		}
 	}
 	slices.Sort(waiting)
+	hw.quiet, hw.waiting = quiet, waiting
 	return quiet, waiting
 }
