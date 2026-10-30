@@ -282,7 +282,8 @@ no tag on origin, holding no merge), `hand_backs_by_holder` (`holder`,
 admitted, due (read from the reader's own newest push to the branch, as the
 forge's record of pushes shows it, as an act's settle reads them, so one
 nothing re-arms is never due: the reader's own, and a paired declared id's
-that its login's own newest push records), stranded (another person's, and a
+that its login's own newest push records, and an unpaired declared id's that a
+reservation under it pushed by the reader's own login first recorded), stranded (another person's, and a
 declared id's this copy does not act on), skipped, with
 `holder_claimed` (true when the holder is a holder id that is not the
 reader's), `unpaired` (each unpaired declared id among the stranded),

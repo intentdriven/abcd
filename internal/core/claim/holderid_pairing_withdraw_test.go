@@ -10,8 +10,9 @@ import (
 // A declared holder id is held to the account its declaration pairs it with
 // (iss-2610290809526033): a commit naming it is that account's only when the
 // forge's record of pushes says that account pushed it, and an id declared
-// with no login beside it names no account, so this copy reads no end from a
-// commit naming it and acts on none of its withdrawals.
+// with no login beside it is held to the reader's own login, so a commit
+// naming it that another login pushed ends nothing here and no withdrawal of
+// it another login recorded is acted on.
 
 // unpairedD is an id octo declares with no login beside it.
 var unpairedD = "h_" + strings.Repeat("d", 32)
@@ -43,9 +44,9 @@ func endedOverOctosCutNaming(t *testing.T, holder, pusher string) (*world, *fake
 
 // TestAnUnpairedDeclaredIDsReservationAndTombstoneEndNothing: over octo's
 // live cut, mal pushes a reservation and a tombstone naming an id octo
-// declares with no login beside it. To octo they name no account, so the
-// listing, the launch reading and the act's settle each read the cut as not
-// ended, and nothing is re-armed.
+// declares with no login beside it. Held to octo's own login, which did not
+// push them, the listing, the launch reading and the act's settle each read
+// the cut as not ended, and nothing is re-armed.
 func TestAnUnpairedDeclaredIDsReservationAndTombstoneEndNothing(t *testing.T) {
 	w, f, octo := endedOverOctosCutNaming(t, unpairedD, "mal")
 	declareHolderIDs(t, octo.home, unpairedD+"\n")

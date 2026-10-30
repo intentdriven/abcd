@@ -328,13 +328,13 @@ type asker struct {
 // person as its holder. A holder named by a GitHub username, as every hold
 // made before the holder id is, names login when it is login. A holder id
 // names no account the record of pushes could be matched against, so self's
-// own kept id names login only when login is self's, and an id self only
+// own kept id names login only when login is self's; an id self only
 // declares (DeclaredHolderIDsFile) names login only when the declaration
-// pairs it with login: one declared with no login beside it names no one, so
-// a commit naming it is never read as anyone's push, and this copy reads no
-// end from it. Any other id is taken as naming whoever pushed it: the record
-// of pushes, not the trailer, says who the person is, and a commit someone
-// else pushes naming another's id can do no more than one naming themselves
+// pairs it with login, and one declared with no login beside it only when
+// login is self's own, as it is for the same person's other home under one
+// login. Any other id is taken as naming whoever pushed it: the record of
+// pushes, not the trailer, says who the person is, and a commit someone else
+// pushes naming another's id can do no more than one naming themselves
 // already could.
 func (k *asker) namesPusher(holder, login string) bool {
 	switch {
@@ -343,25 +343,37 @@ func (k *asker) namesPusher(holder, login string) bool {
 	case holder == k.self.ID:
 		return k.self.Login != "" && sameHolder(login, k.self.Login)
 	case k.self.declaredOnly(holder):
-		paired, ok := k.self.pairedLogin(holder)
-		return ok && sameHolder(login, paired)
+		if paired, ok := k.self.pairedLogin(holder); ok {
+			return sameHolder(login, paired)
+		}
+		return k.self.Login != "" && sameHolder(login, k.self.Login)
 	}
 	return true
 }
 
-// vouched is the withdrawals of ws still to settle that name an id self
-// pairs with a login (DeclaredHolderIDsFile) and that the newest push of
-// that login to the branch, as the forge's record of pushes shows it, records
-// exactly as ws does: the declared entries this copy acts on. An entry
-// naming an unpaired id, or one its paired login's own newest push does not
-// record, or one whose paired login's newest push cannot be found or placed,
-// is not among them, and nothing acts on it here.
+// vouched is the withdrawals of ws still to settle, naming an id self only
+// declares, that this copy acts on. One naming an id self pairs with a login
+// (DeclaredHolderIDsFile) is among them when the newest push of that login
+// to the branch, as the forge's record of pushes shows it, records it exactly
+// as ws does. One naming an id declared with no login beside it is among them
+// when the reservation that first recorded it (firstRecord), held under that
+// id, was pushed by self's own login: the same person's other home under one
+// login. Its carry in a later push of self's own says nothing of who first
+// recorded it, so the first record is what is held to the login. An entry
+// whose login's push cannot be found or placed, or that its login did not
+// record, is not among them, and nothing acts on it here.
 func (k *asker) vouched(ws []Withdrawal) map[Withdrawal]bool {
 	out := map[Withdrawal]bool{}
 	recs := map[string]ownRecord{}
 	for _, w := range ws {
+		if !w.unsettled() || !k.self.declaredOnly(w.By) {
+			continue
+		}
 		login, ok := k.self.pairedLogin(w.By)
-		if !ok || !w.unsettled() {
+		if !ok {
+			if k.self.Login != "" && k.firstPushedBy(w, k.self.Login) {
+				out[w] = true
+			}
 			continue
 		}
 		key := strings.ToLower(login)
@@ -375,6 +387,24 @@ func (k *asker) vouched(ws []Withdrawal) map[Withdrawal]bool {
 		}
 	}
 	return out
+}
+
+// firstPushedBy reports whether the reservation commit that first recorded
+// w on the branch, as the walk from the tip reads it (firstRecord), is one
+// the forge's record of pushes says login pushed: false when the chain does
+// not vouch for a first record, or the record places no one login's push on
+// it.
+func (k *asker) firstPushedBy(w Withdrawal, login string) bool {
+	commit, ok := firstRecord(k.links, k.complete, w)
+	if !ok {
+		return false
+	}
+	i := slices.IndexFunc(k.links, func(l chainLink) bool { return l.commit == commit })
+	if i < 0 {
+		return false
+	}
+	kind, who, why := k.place(i)
+	return why == "" && kind == pushedByLogin && sameHolder(who, login)
 }
 
 // actsOn is the gate every act that re-arms, withdraws again or admits a

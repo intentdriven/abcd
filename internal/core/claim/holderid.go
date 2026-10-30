@@ -119,7 +119,8 @@ type Self struct {
 	Login string
 	// paired is the GitHub login DeclaredHolderIDsFile pairs with each
 	// declared id that has one beside it: the account that id is the
-	// person's on, which a commit naming it is held to (asker.namesPusher).
+	// person's on, which a commit naming it is held to (asker.namesPusher);
+	// a commit naming a declared id with none is held to Login.
 	// It is read and compared on this machine alone, and never written into
 	// anything pushed or shown.
 	paired map[string]string
@@ -170,8 +171,10 @@ func (s Self) pairedLogin(holder string) (login string, ok bool) {
 }
 
 // unpaired reports whether holder is an id s only declares with no login
-// beside it: nothing ties a commit naming it to an account, so this copy
-// reads no end from it and acts on none of its withdrawals.
+// beside it: a commit naming it is held to s's own login, as the same
+// person's other home under one login pushes it (asker.namesPusher), so this
+// copy reads an end from it, and acts on its withdrawals, only from pushes of
+// s's own login.
 func (s Self) unpaired(holder string) bool {
 	_, ok := s.pairedLogin(holder)
 	return s.declaredOnly(holder) && !ok

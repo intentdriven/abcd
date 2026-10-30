@@ -498,9 +498,12 @@ GitHub login of the account the id is the user's on after it
 (`h_<32 hex> <login>`): a release's commit naming that id then counts as the
 user's only when the forge's record of pushes says that account pushed it, and
 this copy settles the id's withdrawals that account's own push records. An id
-with no login beside it names no account: this copy reads no release end from
-a commit naming it and acts on none of its withdrawals, which `abcd peers` and
-the release list as stranded with a note saying how to pair it. The login is
+with no login beside it is held to the user's own login, which is all the same
+person's other machine under one login needs: a release's commit naming it
+counts only when that login pushed it, and this copy settles its withdrawals
+only when a reservation under the id that the user's own login pushed first
+recorded them. Any other of its withdrawals `abcd peers` and the release list
+as stranded, with a note saying how to pair it. The login is
 read on this machine only, never pushed, and never echoed: a malformed line is
 refused by its number alone.
 

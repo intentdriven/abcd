@@ -131,8 +131,12 @@ holder id the reader does not own, which no record of pushes can be matched
 against. The reader's own ids are held to an account: their kept id counts
 only when the reader's own login pushed the commit, a declared id paired with
 a login counts only when that login pushed it, and an unpaired declared id
-counts for no one, so this copy reads no release end from a commit naming it
-and acts on none of its withdrawals.
+counts only when the reader's own login pushed it, as the same person's other
+home under one login, minting an id of its own, does: no pairing is needed
+for that. A withdrawal under an unpaired id is acted on only when the
+reservation that first recorded it, held under that id, was pushed by the
+reader's own login; a later push of the reader's that carries it says
+nothing of who first recorded it.
 
 Across versions the change fails safe. A copy on an older release reads the
 new holds as held until it updates: its reader takes a holder to be a GitHub
@@ -652,8 +656,9 @@ withdrawing nothing, and an admission or a release is refused.
   against one, so an id stands for whoever pushed it, except the reader's
   own ids: the kept id counts only when the reader's own login pushed it, a
   declared id paired with a login only when that login pushed it, and an
-  unpaired declared id for no one, so a reservation or tombstone naming it is
-  passed over and the release is judged by the reservation beneath it. A
+  unpaired declared id only when the reader's own login pushed it, so a
+  reservation or tombstone naming it that another login pushed is passed
+  over and the release is judged by the reservation beneath it. A
   commit another login pushes naming someone else's id can do no more than
   one naming themselves already could. A tombstone its holder did not
   push ends nothing (dcn-2610230833367984): it is named once for its tip
@@ -707,15 +712,19 @@ withdrawing nothing, and an admission or a release is refused.
   a merge (a settle, the holder's release, a renewal's withdrawal again, an
   admission) acts on an entry only when it names the person themselves (their
   kept id, or their login on an entry made before the id), read from their
-  own newest push, or names a declared id paired with a login whose own
-  newest push to the branch records that entry exactly. Every other entry is
+  own newest push, names a declared id paired with a login whose own
+  newest push to the branch records that entry exactly, or names an
+  unpaired declared id and was first recorded by a reservation held under
+  that id that the reader's own login pushed. Every other entry is
   carried untouched and listed `stranded`, on the act and in `abcd peers`,
-  where `due` lists only what the next act in fact acts on. An entry naming
-  an unpaired declared id is never acted on, and one line on the terminal
+  where `due` lists only what the next act in fact acts on. For a stranded
+  entry naming an unpaired declared id, one line on the terminal
   (`unpaired`, on the act and in `abcd peers`) names the id and
   says that writing its account's login beside it in
   `~/.abcd.noindex/holder-ids` lets this copy settle it; the line names no
-  login. An admission of such an entry is refused with the same line. The
+  login, and an unpaired id whose entries the reader's own login vouched for
+  is never named in it. An admission of a stranded entry of an unpaired id
+  is refused with the same line. The
   other-copy back-off over a reservation naming a declared id says, on the
   terminal alone and naming no login, whether the id is paired and, when it
   is, whether the forge's record of pushes says its paired account pushed

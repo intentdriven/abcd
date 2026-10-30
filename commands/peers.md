@@ -167,8 +167,10 @@ payload adds:
   its holder did not push ends nothing, so none of yours on it is `due`, and
   `not_ended` names that holder. A reader whose GitHub username is not known
   has no newest push to read, so their own on an ended release are listed as
-  `stranded`, never `due`. `unpaired` names each id you declare in
-  `~/.abcd.noindex/holder-ids` with no login beside it among the stranded:
+  `stranded`, never `due`. An id you declare in `~/.abcd.noindex/holder-ids`
+  with no login beside it is held to your own login: its withdrawals that a
+  reservation under it pushed by your own login first recorded are `due` like
+  your own. `unpaired` names each such id among the stranded:
   tell the user that writing that account's login after the id, on its line,
   lets this copy settle them. `due_awaits_holder_id` is true when your home
   keeps no holder id yet: held merges from before the holder id stay held

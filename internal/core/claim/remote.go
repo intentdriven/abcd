@@ -328,7 +328,8 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 			}
 			settleOwn = true
 		}
-		res.Stranded, res.Unpaired = stranded(j.Withdrawn, p.acts), unpairedOf(j.Withdrawn, p.self)
+		res.Stranded = stranded(j.Withdrawn, p.acts)
+		res.Unpaired = unpairedOf(res.Stranded, p.self)
 	case p.req.Admit != 0:
 		// The admission is recorded before the forge re-arms it, so a push
 		// that loses leaves nothing armed.
@@ -342,7 +343,8 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		// A reservation keeps what its record still has withdrawn: its own
 		// admissions too while it is this person's reservation.
 		m.Withdrawn = carried(j.Withdrawn, j.mine && !j.message.released() && !j.derived)
-		res.Stranded, res.Unpaired = stranded(m.Withdrawn, p.acts), unpairedOf(m.Withdrawn, p.self)
+		res.Stranded = stranded(m.Withdrawn, p.acts)
+		res.Unpaired = unpairedOf(res.Stranded, p.self)
 	}
 	if !p.req.Release {
 		if err := crowding(p, j, &res); err != nil {
@@ -769,7 +771,7 @@ func decideAdmit(p *prepared, j judged) (Result, message, string, error) {
 			n, p.id, listed, nothingPushed)
 	case !j.Withdrawn[i].unsettled():
 		return Result{}, message{}, "", refuse("#%d is recorded %s on %s, so there is nothing to admit; %s", n, j.Withdrawn[i].State, p.id, nothingPushed)
-	case p.self.unpaired(j.Withdrawn[i].By):
+	case p.self.unpaired(j.Withdrawn[i].By) && !p.acts(j.Withdrawn[i]):
 		return Result{}, message{}, "", refuse("#%d was not admitted: %s; %s", n, UnpairedLine([]string{j.Withdrawn[i].By}), nothingPushed)
 	case !p.acts(j.Withdrawn[i]):
 		// Another person's copy never re-arms a withdrawal

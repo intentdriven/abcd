@@ -702,8 +702,9 @@ func (s *Settle) shownOnce(root, id, commit string) (shown func()) {
 
 // stranded is the withdrawals in ws still withdrawn that acts does not act
 // on: another person's, and those of a declared id this copy does not act on
-// (one with no login beside it, or one its paired login's own push does not
-// record).
+// (one its paired login's own push does not record, or, with no login
+// beside it, one no reservation of that id pushed by the reader's own login
+// first recorded).
 func stranded(ws []Withdrawal, acts func(Withdrawal) bool) []Withdrawal {
 	var out []Withdrawal
 	for _, w := range ws {
@@ -715,7 +716,9 @@ func stranded(ws []Withdrawal, acts func(Withdrawal) bool) []Withdrawal {
 }
 
 // unpairedOf is each id self declares with no login beside it that names a
-// withdrawal of ws still withdrawn, in the order ws names them.
+// withdrawal of ws, the stranded ones, still withdrawn, in the order ws
+// names them: an id whose withdrawals the reader's own login vouched for is
+// acted on, so it is never stranded and never named here.
 func unpairedOf(ws []Withdrawal, self Self) []string {
 	var out []string
 	for _, w := range ws {
@@ -727,19 +730,20 @@ func unpairedOf(ws []Withdrawal, self Self) []string {
 }
 
 // UnpairedLine is the sentence naming the ids the person declares with no
-// login beside them whose withdrawals this copy acts on none of, and how to
-// let it: pair each with its account's login in DeclaredHolderIDsFile. It
-// names the ids alone, never a login.
+// login beside them whose withdrawals here this copy acts on none of, since
+// no reservation of theirs that the reader's own login pushed recorded them,
+// and how to let it: pair each with its account's login in
+// DeclaredHolderIDsFile. It names the ids alone, never a login.
 func UnpairedLine(ids []string) string {
 	if len(ids) == 0 {
 		return ""
 	}
 	if len(ids) == 1 {
-		return fmt.Sprintf("%s is an id %s declares as yours with no login beside it, so this copy acts on none of its withdrawals: "+
-			"write the GitHub login of the account it is yours on after it, on its line, and this copy settles them", ids[0], DeclaredHolderIDsFile)
+		return fmt.Sprintf("%s is an id %s declares as yours with no login beside it, and your own login did not push the reservation that recorded these withdrawals, "+
+			"so this copy acts on none of them: write the GitHub login of the account it is yours on after it, on its line, and this copy settles them", ids[0], DeclaredHolderIDsFile)
 	}
-	return fmt.Sprintf("%s are ids %s declares as yours with no login beside them, so this copy acts on none of their withdrawals: "+
-		"write the GitHub login of the account each is yours on after it, on its line, and this copy settles them", strings.Join(ids, ", "), DeclaredHolderIDsFile)
+	return fmt.Sprintf("%s are ids %s declares as yours with no login beside them, and your own login did not push the reservations that recorded these withdrawals, "+
+		"so this copy acts on none of them: write the GitHub login of the account each is yours on after it, on its line, and this copy settles them", strings.Join(ids, ", "), DeclaredHolderIDsFile)
 }
 
 // settleEnded settles id's withdrawals of a's holder when its release has
@@ -1355,7 +1359,8 @@ func (s Snapshot) ReleaseWithdrawals(root string, reader Self, now time.Time) []
 		ws := r.Withdrawn
 		// due is what the reader's next act would in fact act on: their own,
 		// read from their own newest push, and a declared id's that its
-		// paired login's own push records (actsOn). Nothing is due with the
+		// paired login's own push records, or, unpaired, that a reservation
+		// of that id the reader's own login pushed first recorded (actsOn). Nothing is due with the
 		// reader's login unknown: no act of theirs re-arms it from here.
 		due := func(Withdrawal) bool { return false }
 		if reader.Login != "" && why == "" && (len(ws) == 0 || r.State == StateUnreadable || slices.ContainsFunc(ws, Withdrawal.unsettled)) {
