@@ -211,6 +211,13 @@ installs it; `abcd update` opens its receipt with the same line. If the new
 release was installed by a hook that shows no output, the next session start
 prints that line instead, once.
 
+The agent's first reply in that session then says what the update changed:
+one line per release this computer has not been shown, naming how many
+changes it made and which of them need you to act. Where the update brings
+setup this repository has never answered, the reply also offers to run setup
+again. `abcd update news` prints the same lines, and `abcd update news --full`
+lists every change.
+
 For a stronger root of trust than same-origin checksums, build from source —
 `go build ./cmd/abcd` — and place the binary in the plugin root and on your
 `PATH` yourself. A binary placed there by hand takes the same no-network fast
