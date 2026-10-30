@@ -447,6 +447,28 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   and Harbor's `TrialResult` (0.24.0) at
   [`harbor-framework/harbor@d0fe0b24703f`](https://github.com/harbor-framework/harbor/blob/d0fe0b24703f4e53806be5cb3b5e07d622aebbfa/src/harbor/models/trial/result.py).
   abcd runs neither and depends on neither.
+- **Audit sampling and its evidence: ISA 530 (IAASB,
+  <https://www.ifac.org/system/files/publications/files/A028%202012%20IAASB%20Handbook%20ISA%20530.pdf>);
+  the selective labels problem (Lakkaraju et al., KDD 2017,
+  <https://www.cs.cornell.edu/home/kleinber/kdd17-selective.pdf>); the rule of
+  three (Hanley and Lippman-Hand, *JAMA* 1983, as restated by Newman, *JAMA*
+  1995, <https://jamanetwork.com/journals/jama/article-abstract/389714>);
+  automation bias (Parasuraman and Manzey, *Human Factors* 2010,
+  <https://pubmed.ncbi.nlm.nih.gov/21077562/>; Singh et al., FSE 2026,
+  <https://susi.usi.ch/usi/documents/336576>); studies of agent pull requests
+  and automated review (Oukay et al., MSR 2026,
+  <https://2026.msrconf.org/details/msr-2026-mining-challenge/27/>; Ehsani et
+  al., <https://arxiv.org/html/2601.15195>; CR-Bench,
+  <https://arxiv.org/html/2603.11078v1>); the NIST AI Risk Management
+  Framework (<https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf>); and
+  Google's postmortem practice (*Site Reliability Engineering*, ch. 15,
+  <https://sre.google/sre-book/postmortem-culture/>)** — the grounds for a
+  person spot-checking what agents changed with no person reading it
+  (itd-2610301750162657): a sample no agent can steer, drawn across every
+  group the rule sorts, read before the automated verdict, honest about what a
+  clean read rules out, and each finding turned into a person's change to the
+  rule. The evidence is
+  `.abcd/development/research/notes/2026-10-30-spot-check-unattended-changes-sota.md`.
 - **Safe-fix tiers in linters (Ruff, <https://docs.astral.sh/ruff/linter/>;
   ESLint, <https://eslint.org/docs/latest/extend/custom-rules>) and the
   static-analysis lessons of Google (Sadowski et al., "Lessons from Building
