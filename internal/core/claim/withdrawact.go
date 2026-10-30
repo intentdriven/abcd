@@ -1352,9 +1352,10 @@ type ReleaseWithdrawals struct {
 	// Unpaired is each id the reader declares with no login beside it that
 	// names one of Stranded (UnpairedLine).
 	Unpaired []string `json:"unpaired,omitempty"`
-	// DueAwaitsHolderID is true when the reader keeps no holder id yet, so
-	// no listing settles Due: their next reservation keeps one and settles
-	// them, and after an announcement keeps one the next listing does.
+	// DueAwaitsHolderID is true when the reader keeps no holder id yet and
+	// HolderIDEnv is not set, so no listing settles Due: their next
+	// reservation keeps one and settles them, and after an announcement
+	// keeps one the next listing does.
 	DueAwaitsHolderID bool `json:"due_awaits_holder_id,omitempty"`
 	// ownID and loginKnown are the reader's kept holder id and whether
 	// their login is known, which the stranded line reads (StrandedNote).
@@ -1395,6 +1396,9 @@ func (r ReleaseWithdrawals) Lines() []string {
 		}
 	}
 	switch {
+	case len(r.Due) > 0 && r.HolderIDRefused != "":
+		out = append(out, fmt.Sprintf("%s has ended, and %s you withdrew for it are not re-armed: %s",
+			r.Subject, strings.Join(numbers(r.Due), ", "), HolderIDRefusedLine(r.HolderIDRefused)))
 	case len(r.Due) > 0 && r.DueAwaitsHolderID:
 		out = append(out, fmt.Sprintf("%s has ended, and %s you withdrew for it are not re-armed yet: held merges from before the holder id stay held "+
 			"until your next reservation or announcement; a reservation re-arms them as it keeps your holder id, and after an announcement your next listing does",
@@ -1478,7 +1482,12 @@ func (s Snapshot) ReleaseWithdrawals(root string, reader Self, now time.Time) []
 			}
 		}
 		rw.Unpaired = unpairedOf(rw.Stranded, reader)
-		rw.DueAwaitsHolderID = len(rw.Due) > 0 && reader.ID == ""
+		if len(rw.Due) > 0 && reader.ID == "" {
+			// Only a home that keeps no id and a variable not set await
+			// the id: one refused refuses every act until it is fixed.
+			rw.HolderIDRefused = reader.HolderIDRefused
+			rw.DueAwaitsHolderID = reader.HolderIDRefused == ""
+		}
 		if r.State == StateExpired && stillBeingCut(r) {
 			rw.Lapsed, rw.LapsedAt = true, r.EffectiveExpiry
 		}

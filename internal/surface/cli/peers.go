@@ -76,6 +76,11 @@ type reservationsBlock struct {
 	// file when the guarded read refused it, so the listing read none of its
 	// ids as the reader's (claim.HolderIDsRefusedLine); stderr says so too.
 	HolderIDsRefused string `json:"holder_ids_refused,omitempty"`
+	// HolderIDRefused is the class of the refusal of the reader's holder id
+	// (ABCD_HOLDER_ID set to no id, or the kept file refused), so the
+	// listing read no id as the reader's (claim.HolderIDRefusedLine); stderr
+	// says so too.
+	HolderIDRefused string `json:"holder_id_refused,omitempty"`
 }
 
 // noteHolderIDsRefused writes the one line saying the declared ids' file
@@ -83,6 +88,15 @@ type reservationsBlock struct {
 // writes nothing for no class.
 func noteHolderIDsRefused(errw io.Writer, verb, class string) {
 	if l := claim.HolderIDsRefusedLine(class); l != "" {
+		fmt.Fprintln(errw, verb+": "+l)
+	}
+}
+
+// noteHolderIDRefused writes the one line saying the reader's holder id was
+// refused as class, so no id was read, to errw under verb; it writes nothing
+// for no class.
+func noteHolderIDRefused(errw io.Writer, verb, class string) {
+	if l := claim.HolderIDRefusedLine(class); l != "" {
 		fmt.Fprintln(errw, verb+": "+l)
 	}
 }
@@ -259,6 +273,7 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			noteHolderIDsRefused(cmd.ErrOrStderr(), "abcd peers", out.HolderIDsRefused)
+			noteHolderIDRefused(cmd.ErrOrStderr(), "abcd peers", out.HolderIDRefused)
 			if failed != "" {
 				// The last view is rendered; the failure is named and exits 1.
 				fmt.Fprintln(cmd.ErrOrStderr(), "abcd peers: "+failed)
@@ -514,7 +529,7 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 	}
 	out.View.Origin = true
 	reader := claim.ReaderSelf(root, claim.Options{Now: func() time.Time { return now }})
-	out.HolderIDsRefused = reader.HolderIDsRefused
+	out.HolderIDsRefused, out.HolderIDRefused = reader.HolderIDsRefused, reader.HolderIDRefused
 	if err != nil {
 		out.FetchError = termsafe.Sanitize(fsutil.RedactHome(err.Error()))
 		failed = out.FetchError

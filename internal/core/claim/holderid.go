@@ -122,6 +122,11 @@ type Self struct {
 	// so no declared id was read from it; "" when it was read or is absent.
 	// An act's read refuses instead.
 	HolderIDsRefused string
+	// HolderIDRefused is the class of the refusal of the holder id itself
+	// when a render's read refused it (HolderIDEnvNotID for a malformed
+	// HolderIDEnv, else the class of HolderIDFile's), so ID is "" though
+	// an id is set or kept; "" when one was read or none is set or kept.
+	HolderIDRefused string
 	// paired is the GitHub login DeclaredHolderIDsFile pairs with each
 	// declared id that has one beside it: the account that id is the
 	// person's on, which a commit naming it is held to (asker.namesPusher);
@@ -246,8 +251,11 @@ func ReaderSelf(root string, o Options) Self { return readerSelf(root, o) }
 func readerSelf(root string, o Options) Self {
 	var s Self
 	id, set, err := envHolderID()
-	if set && err == nil {
+	switch {
+	case set && err == nil:
 		s.ID, s.FromEnv = id, true
+	case set:
+		s.HolderIDRefused = HolderIDEnvNotID
 	}
 	home := o.home()
 	if home != "" && gitutil.HomeInsideWorkingTree(home) != "" {
@@ -260,6 +268,8 @@ func readerSelf(root string, o Options) Self {
 	if !set {
 		if id, _, err := readHolderID(home); err == nil {
 			s.ID = id
+		} else {
+			s.HolderIDRefused = keptIDClass(err)
 		}
 	}
 	if ids, paired, class, err := readDeclaredHolderIDs(home); err == nil {
@@ -363,24 +373,24 @@ func readKeptID(read func() ([]byte, fsutil.DeclarationRefusal, error)) (string,
 		case fsutil.DeclarationAbsent:
 			return "", false, nil
 		default:
-			return "", true, holderFileRefusal(HolderIDFile, refusal, err)
+			return "", true, declaredRefusal{holderIDsClass(refusal, err), holderFileRefusal(HolderIDFile, refusal, err)}
 		}
 		id := strings.TrimSpace(string(data))
 		if validHolderID(id) {
 			return id, true, nil
 		}
 		if id != "" {
-			return "", true, refuse("%s does not hold a holder id (h_ and 32 lower-case hex characters), so which holds are yours cannot be told; "+
+			return "", true, declaredRefusal{HolderIDsMalformed, refuse("%s does not hold a holder id (h_ and 32 lower-case hex characters), so which holds are yours cannot be told; "+
 				"it is never replaced: remove it to mint a new id, and list the old one in %s if it named holds of yours; %s",
-				HolderIDFile, DeclaredHolderIDsFile, nothingSent)
+				HolderIDFile, DeclaredHolderIDsFile, nothingSent)}
 		}
 		if attempt >= 20 {
 			// Another run's mint may have written its id since, and may
 			// already have pushed under it: removing the file now would
 			// mint a second id beside one already in use.
-			return "", true, refuse("%s is empty: another abcd run is most likely minting your holder id at this moment, so which holds are yours cannot be told yet; "+
+			return "", true, declaredRefusal{HolderIDEmpty, refuse("%s is empty: another abcd run is most likely minting your holder id at this moment, so which holds are yours cannot be told yet; "+
 				"retry; only if it is still empty on a second try, look at the file (a run stopped mid-write leaves it empty) before doing anything with it; %s",
-				HolderIDFile, nothingSent)
+				HolderIDFile, nothingSent)}
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -461,6 +471,20 @@ type declaredRefusal struct {
 
 func (r declaredRefusal) Error() string { return r.err.Error() }
 
+func (r declaredRefusal) Unwrap() error { return r.err }
+
+// keptIDClass is the class a refusal of the holder id names
+// (Self.HolderIDRefused): the guard's, HolderIDsMalformed for a file that
+// holds no id, HolderIDEmpty for an empty one; HolderIDsUnreadable for any
+// other.
+func keptIDClass(err error) string {
+	var refusal declaredRefusal
+	if errors.As(err, &refusal) {
+		return refusal.class
+	}
+	return HolderIDsUnreadable
+}
+
 func parseDeclaredHolderIDs(home string) ([]string, map[string]string, error) {
 	data, refusal, err := fsutil.ReadHomeDeclaration(home, abcdhome.Rel(holderIDsLeaf), maxHolderIDsBytes)
 	switch refusal {
@@ -513,6 +537,11 @@ const (
 	HolderIDsTooLarge         = "too_large"
 	HolderIDsUnreadable       = "unreadable"
 	HolderIDsMalformed        = "malformed"
+	// HolderIDEmpty is a HolderIDFile that holds nothing, and
+	// HolderIDEnvNotID a HolderIDEnv set to something that is not one
+	// holder id: classes of Self's HolderIDRefused alone.
+	HolderIDEmpty    = "empty"
+	HolderIDEnvNotID = "env_not_holder_id"
 )
 
 // holderIDsClass is the class a refusal of the guarded read names.
@@ -535,26 +564,58 @@ func holderIDsClass(refusal fsutil.DeclarationRefusal, err error) string {
 	return HolderIDsUnreadable
 }
 
+// guardWhy is each class a home declaration's guarded read refuses with, in
+// words.
+var guardWhy = map[string]string{
+	HolderIDsNotRegular:       "it is not a regular file",
+	HolderIDsWritableByOthers: "another account can write it",
+	HolderIDsForeignOwner:     "another account owns it",
+	HolderIDsBehindSymlink:    "a folder on its path is a symbolic link",
+	HolderIDsFolderExposed:    "another account can change a folder on its path",
+	HolderIDsTooLarge:         "it is larger than 64 KiB",
+	HolderIDsUnreadable:       "it could not be read",
+}
+
 // HolderIDsRefusedLine is the sentence a render shows when it read no
 // declared id because DeclaredHolderIDsFile was refused as class: the file,
 // the class in words, and what follows, never its contents or a login; ""
 // for no class.
 func HolderIDsRefusedLine(class string) string {
-	why := map[string]string{
-		HolderIDsNotRegular:       "it is not a regular file",
-		HolderIDsWritableByOthers: "another account can write it",
-		HolderIDsForeignOwner:     "another account owns it",
-		HolderIDsBehindSymlink:    "a folder on its path is a symbolic link",
-		HolderIDsFolderExposed:    "another account can change a folder on its path",
-		HolderIDsTooLarge:         "it is larger than 64 KiB",
-		HolderIDsUnreadable:       "it could not be read",
-		HolderIDsMalformed:        "a line in it is not one holder id, alone or followed by one GitHub login, or pairs an id a second way",
-	}[class]
+	why := guardWhy[class]
+	if class == HolderIDsMalformed {
+		why = "a line in it is not one holder id, alone or followed by one GitHub login, or pairs an id a second way"
+	}
 	if why == "" {
 		return ""
 	}
 	return fmt.Sprintf("%s is refused (%s), so no declared id is read: holds and withdrawals under the ids it declares read here as another person's, "+
 		"and every act refuses, naming it, until it is fixed", DeclaredHolderIDsFile, why)
+}
+
+// HolderIDRefusedLine is the sentence a render shows when it read no holder
+// id because the id set or kept was refused as class (Self.HolderIDRefused):
+// the variable or the file, the class in words, and what follows, never the
+// value or the file's contents; "" for no class.
+func HolderIDRefusedLine(class string) string {
+	if class == "" {
+		return ""
+	}
+	if class == HolderIDEnvNotID {
+		return fmt.Sprintf("%s is set but is not a holder id, so no holder id is read: holds and withdrawals under your id read here as another person's, "+
+			"and every act refuses, naming it, until it is set to the id `abcd reserve --holder` prints or unset", HolderIDEnv)
+	}
+	why := guardWhy[class]
+	switch class {
+	case HolderIDEmpty:
+		why = "it is empty"
+	case HolderIDsMalformed:
+		why = "it does not hold one holder id"
+	}
+	if why == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s is refused (%s), so no holder id is read: holds and withdrawals under your id read here as another person's, "+
+		"and every act refuses, naming it, until it is fixed", HolderIDFile, why)
 }
 
 // holderFileRefusal is the refusal of a holder-id file one of the home
