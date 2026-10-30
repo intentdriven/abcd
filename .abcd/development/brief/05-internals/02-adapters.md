@@ -289,10 +289,11 @@ letter from B, skipping I (at most 24: A and I are words a reply can open
 with), a score is one digit, and yes or no is itself. Each
 option's probability is what the first token's alternatives give its label,
 normalised over the options, and the most probable is the answer. An answer
-whose alternatives name no option, or one with no log-probabilities, is no
-answer: a failed pair in shadow, the host's fallback turned on, never a
-guess. The live paid check against either candidate is owed to a person
-(iss-2609291925398978). Two types' steps
+whose alternatives name no option, one whose first token (the answer the
+model gave) is none of the labels, whatever its alternatives name, or one with
+no log-probabilities, is no answer: a failed pair in shadow, the host's
+fallback turned on, never a guess. The live paid check against either
+candidate is owed to a person (iss-2609291925398978). Two types' steps
 call the router. The drain's judgement (`eligibility-residual`) is one: the
 drain's move asks it in each mode. Embark's lesson ranking
 (`embark-lesson-ranking`) is the other: one score question per lesson, from 0
