@@ -474,7 +474,7 @@ func TestAMadeUpLoginOnALapsedReleaseGetsTheMarker(t *testing.T) {
 	if e, _ := withdrawalOf(tipEntries(t, w, "rel-v0.16.0"), 12); e.By != preIDMarker || !e.Pending() {
 		t.Fatalf("take-over records %+v; want #12 under the marker, still withdrawn", tipEntries(t, w, "rel-v0.16.0"))
 	}
-	note := StrandedNote("rel-v0.16.0", res.Stranded, octoKept, true)
+	note := StrandedNote("rel-v0.16.0", res.Stranded, octoKept, true, false)
 	if !strings.Contains(note, "#12") || !strings.Contains(note, "by hand") || strings.Contains(note, "rosa") {
 		t.Fatalf("take-over's stranded note = %q; want #12 named to be re-armed by hand, and no login", note)
 	}
