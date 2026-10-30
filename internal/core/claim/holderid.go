@@ -162,26 +162,30 @@ func OwnSelf(login string, o Options) (Self, error) { return ownSelf(o.home(), l
 // inside a git working tree that is not the account's own names no one: no
 // id and no login, since the login too may be read from that home's machine
 // configuration, so a render names no hold as the reader's, old login holds
-// included. A file that refuses, or a malformed variable, is read as naming
-// no id, so a render shows the holds it cannot tell as the person's as
-// another's, and the act that needs them refuses naming the file.
+// included, but for the id HolderIDEnv names, which no home supplies. A file
+// that refuses, or a malformed variable, is read as naming no id, so a render
+// shows the holds it cannot tell as the person's as another's, and the act
+// that needs them refuses naming the file.
 func ReaderSelf(root string, o Options) Self { return readerSelf(root, o) }
 
 func readerSelf(root string, o Options) Self {
+	var s Self
+	id, set, err := envHolderID()
+	if set && err == nil {
+		s.ID, s.FromEnv = id, true
+	}
 	home := o.home()
 	if home != "" && gitutil.HomeInsideWorkingTree(home) != "" {
-		return Self{}
+		return s
 	}
-	s := Self{Login: readerHolder(root, o)}
+	s.Login = readerHolder(root, o)
 	if home == "" {
 		return s
 	}
-	if id, set, err := envHolderID(); set {
-		if err == nil {
-			s.ID, s.FromEnv = id, true
+	if !set {
+		if id, _, err := readHolderID(home); err == nil {
+			s.ID = id
 		}
-	} else if id, _, err := readHolderID(home); err == nil {
-		s.ID = id
 	}
 	if ids, err := declaredHolderIDs(home); err == nil {
 		s.Declared = ids
@@ -196,20 +200,32 @@ func readerSelf(root string, o Options) Self {
 // refused, never replaced. A home inside a git working tree that is not the
 // account's own is refused as the machine layer is (layered.MachineRoots):
 // a checkout that sets HOME into its tree would otherwise choose whose holds
-// are the person's, and the mint would write into the tree.
+// are the person's, and the mint would write into the tree. The id
+// HolderIDEnv names needs no home: with no home, or one inside a working
+// tree, it is still the id, and the declared ids, which only a home keeps,
+// are none.
 func ownSelf(home, login string, mint bool) (Self, error) {
 	s := Self{Login: login}
-	if home == "" {
-		return Self{}, refuse("no home directory could be named to keep your holder id in (%s); %s", HolderIDFile, nothingSent)
+	id, set, err := envHolderID()
+	if err != nil {
+		return Self{}, err
 	}
-	if tree := gitutil.HomeInsideWorkingTree(home); tree != "" {
+	noHome := home == ""
+	tree := ""
+	if !noHome {
+		tree = gitutil.HomeInsideWorkingTree(home)
+	}
+	switch {
+	case set && (noHome || tree != ""):
+		s.ID, s.FromEnv = id, true
+		return s, nil
+	case noHome:
+		return Self{}, refuse("no home directory could be named to keep your holder id in (%s); %s", HolderIDFile, nothingSent)
+	case tree != "":
 		return Self{}, refuse("HOME lies inside the git working tree at %s and is not this account's home, so %s is neither read nor written there "+
 			"and which holds are yours cannot be told; run abcd with your own HOME; %s", tree, HolderIDFile, nothingSent)
 	}
-	id, set, err := envHolderID()
 	switch {
-	case err != nil:
-		return Self{}, err
 	case set:
 		s.ID, s.FromEnv = id, true
 	case mint:

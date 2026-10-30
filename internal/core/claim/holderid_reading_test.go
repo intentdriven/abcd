@@ -2,9 +2,13 @@ package claim
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The readings of a release hold a holder id as the acts do
@@ -147,5 +151,40 @@ func TestATakeOverBetweenTwoDeclaredAccountsKeepsTheWithdrawals(t *testing.T) {
 	}
 	if final, _ := w.tipWithdrawals("rel-v0.16.0"); final.Holder != a {
 		t.Fatalf("the tip after octo's settle names %q; want octo's tombstone", final.Holder)
+	}
+}
+
+// TestAValidEnvironmentHolderIDIsTheIDWhateverTheHome: ABCD_HOLDER_ID, set to
+// one id, is the id even when no home can be named or the home lies inside a
+// working tree: the declared ids, read from the home, are then none, and
+// nothing is written.
+func TestAValidEnvironmentHolderIDIsTheIDWhateverTheHome(t *testing.T) {
+	const id = "h_0123456789abcdef0123456789abcdef"
+	t.Setenv(HolderIDEnv, id)
+	tree := t.TempDir()
+	if err := os.Mkdir(filepath.Join(tree, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	inside := filepath.Join(tree, "home")
+	declareHolderIDs(t, inside, "h_"+strings.Repeat("d", 32)+"\n")
+	for name, home := range map[string]string{"no home": "", "a home inside a working tree": inside} {
+		s, err := ownSelf(home, "octo", true)
+		if err != nil || s.ID != id || !s.FromEnv || len(s.Declared) != 0 {
+			t.Errorf("%s: the act's self = %+v, %v; want the variable's id and no declared ids", name, s, err)
+		}
+		if home != "" {
+			if _, err := os.Lstat(abcdhome.Path(home, "holder-id")); !os.IsNotExist(err) {
+				t.Errorf("%s: a holder id was written there (%v)", name, err)
+			}
+		}
+	}
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", inside)
+	if s := ReaderSelf(p.dir, p.opts()); s.ID != id || !s.FromEnv || len(s.Declared) != 0 || s.Login != "" {
+		t.Errorf("a reader under a home inside a working tree = %+v; want the variable's id, no declared ids and no login", s)
+	}
+	t.Setenv("HOME", "")
+	if s := ReaderSelf(p.dir, Options{Now: w.clock}); s.ID != id || !s.FromEnv {
+		t.Errorf("a reader with no home = %+v; want the variable's id", s)
 	}
 }
