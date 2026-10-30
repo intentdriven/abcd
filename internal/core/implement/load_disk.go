@@ -53,9 +53,9 @@ const DiskPerPreflight uint64 = 4 << 30
 const DiskFloorMin uint64 = 8 << 30
 
 // diskFloorFor is the free space, in bytes, below which the load gate admits
-// no run, for a gate admitting slots preflights at once
-// (load.preflights, PreflightSlots): DiskPerPreflight for each, and
-// DiskFloorMin at least. So 8 GiB at the default of one and 16 GiB at four.
+// no run, for a gate admitting slots preflights at once (load.preflights,
+// PreflightSlots): DiskPerPreflight for each, and DiskFloorMin at least. So
+// 8 GiB at the default of one and 16 GiB at four.
 // It follows only the person's own load.preflights (or its environment
 // variable), never a repository file, so no checkout can lower it.
 func diskFloorFor(slots int) uint64 {

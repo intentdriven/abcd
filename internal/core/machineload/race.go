@@ -143,9 +143,9 @@ func RaceRuns(snap Snapshot, self Self, args map[int][]string) []int {
 // --wait`). Those are the gate's own work: a waiter runs its command once
 // admitted, and a preflight waits at its gate once, as one whole run, before
 // any of its stages. A records-only preflight's shorter rule waits at no
-// gate, and its tests, beneath its make, are not named either. Any other run adds to the load the gate
-// waits on without ever waiting itself, so the waiter names it beside the
-// load. It shuts nothing.
+// gate, and its tests, beneath its make, are not named either. Any other run
+// adds to the load the gate waits on without ever waiting itself, so the
+// waiter names it beside the load. It shuts nothing.
 func UngatedTests(snap Snapshot, self Self, args map[int][]string) []int {
 	byPID := make(map[int]Proc, len(snap.Procs))
 	for _, p := range snap.Procs {
